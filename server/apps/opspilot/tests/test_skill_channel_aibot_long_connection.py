@@ -1,6 +1,9 @@
 """企微机器人长连接：假连接上的回复帧、会话历史与选主。"""
 
+import asyncio
+import json
 import logging
+import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -13,6 +16,8 @@ from apps.opspilot.services.skill_channel_aibot_long_connection import (
     FAILURE_TEXT,
     PROCESSING_TEXT,
     SUBSCRIBE_LOG_TEMPLATE,
+    STREAM_DEADLINE_SECONDS,
+    STREAM_FINISH_LEAD_SECONDS,
     TIMEOUT_TEXT,
     UNSUPPORTED_TEXT,
     LeaderLock,
@@ -325,6 +330,62 @@ def test_answer_failure_owns_one_traceback_and_omits_exception_text(caplog):
     assert SECRET_SENTINEL not in caplog.text
 
 
+def test_cancelling_a_turn_stops_the_blocked_agent_stream(monkeypatch):
+    from apps.opspilot.services.skill_channel_aibot_long_connection_agent import _run
+
+    started = threading.Event()
+    closed = threading.Event()
+    finished = []
+    failed = []
+
+    async def fake_stream(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.sleep(30)
+        finally:
+            closed.set()
+        if False:
+            yield ""
+
+    monkeypatch.setattr("apps.opspilot.utils.agui_chat._generate_agui_stream", fake_stream)
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.get_or_create_conversation",
+        lambda *args, **kwargs: SimpleNamespace(session_id="session-1"),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.build_skill_chat_params",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service._history_from_conversation",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_memory_service.inject_skill_memory_prompt",
+        lambda *args, **kwargs: None,
+    )
+    request = SimpleNamespace(
+        channel=SimpleNamespace(id=7, skill=SimpleNamespace(id=1, name="skill", skill_type=1, conversation_window_size=10)),
+        external_user_id="user-1",
+        session_id="room-1",
+        user_message="第一句",
+        cancelled=False,
+        publish=lambda text: None,
+        finish=lambda: finished.append("finish"),
+        fail=lambda message=None: failed.append(message),
+    )
+    thread = threading.Thread(target=_run, args=(request,))
+    thread.start()
+    assert started.wait(2)
+    request.cancelled = True
+    thread.join(2)
+
+    assert not thread.is_alive()
+    assert closed.is_set()
+    assert finished == []
+    assert failed == []
+
+
 def test_duplicate_bot_opens_one_connection():
     redis = FakeRedis()
     opened = []
@@ -493,6 +554,23 @@ class TestLongConnectionConversation:
         assert len(_streams(transport)) == 2
         assert self._history(channel) == [("user", "慢问题"), ("assistant", TIMEOUT_TEXT)]
 
+    def test_timeout_finishes_before_the_ten_minute_mark(self):
+        channel = self._saved_channel(self._skill())
+        agent = RecordingAgent()
+        clock = ManualClock()
+        session, transport, clock = self._session(channel, agent, clock)
+        session.handle_frame(_text_frame("req-1", "慢问题"))
+        clock.advance(STREAM_DEADLINE_SECONDS - STREAM_FINISH_LEAD_SECONDS - 1)
+        session.tick()
+
+        assert _stream_body(_streams(transport)[-1])["finish"] is False
+        clock.advance(1)
+        session.tick()
+        finished = _stream_body(_streams(transport)[-1])
+        assert finished["finish"] is True
+        assert finished["content"] == TIMEOUT_TEXT
+        assert clock.now() - 1_000 < STREAM_DEADLINE_SECONDS
+
     def test_timeout_with_body_keeps_that_body(self):
         channel = self._saved_channel(self._skill())
         agent = RecordingAgent()
@@ -507,6 +585,29 @@ class TestLongConnectionConversation:
         assert finished["finish"] is True
         assert finished["content"] == "已经写出的正文"
         assert self._history(channel) == [("user", "慢问题"), ("assistant", "已经写出的正文")]
+
+    def test_stream_error_uses_the_channel_failure_copy(self, monkeypatch):
+        channel = self._saved_channel(self._skill())
+        failure = "无法连接大模型服务，请检查 API 地址、网络连通性或白名单"
+
+        async def fake_stream(*args, **kwargs):
+            yield f"data: {json.dumps({'type': 'ERROR', 'error': failure}, ensure_ascii=False)}\n\n"
+
+        monkeypatch.setattr("apps.opspilot.utils.agui_chat._generate_agui_stream", fake_stream)
+
+        def runner(request):
+            from apps.opspilot.services.skill_channel_aibot_long_connection_agent import _run
+
+            _run(request)
+
+        session, transport, _clock = self._session(channel, runner)
+        session.handle_frame(_text_frame("req-1", "会失败"))
+
+        finished = _stream_body(_streams(transport)[-1])
+        assert finished["finish"] is True
+        assert finished["content"] == failure
+        assert self._history(channel) == [("user", "会失败"), ("assistant", failure)]
+        assert FAILURE_TEXT not in finished["content"]
 
     def test_failure_replaces_the_message_and_history(self):
         channel = self._saved_channel(self._skill())

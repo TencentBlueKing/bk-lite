@@ -26,6 +26,8 @@ EMPTY_ANSWER_TEXT = "处理完成，但未产生可展示内容"
 
 STREAM_REFRESH_SECONDS = 2
 STREAM_DEADLINE_SECONDS = 10 * 60
+# 企微约 10 分钟关掉这条流。提前结束，结束帧才发得出去。
+STREAM_FINISH_LEAD_SECONDS = 30
 HEARTBEAT_SECONDS = 30
 
 NON_TEXT_MSGTYPES = frozenset({"image", "file", "voice", "video", "mixed"})
@@ -304,7 +306,7 @@ class WecomAibotConnection:
     def _apply_deadline(self, turn: Turn, now: float) -> None:
         if turn.closed:
             return
-        if now - turn.started_at < STREAM_DEADLINE_SECONDS:
+        if now - turn.started_at < STREAM_DEADLINE_SECONDS - STREAM_FINISH_LEAD_SECONDS:
             return
         if turn.request is not None:
             turn.request.cancelled = True

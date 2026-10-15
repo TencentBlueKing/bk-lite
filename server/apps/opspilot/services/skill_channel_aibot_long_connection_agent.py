@@ -7,6 +7,8 @@ import asyncio
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.services.skill_channel_aibot_long_connection import AnswerRequest, visible_answer_delta
 
+_CANCEL_POLL_SECONDS = 0.05
+
 ANSWER_FAILED_LOG_TEMPLATE = (
     "event=wecom_aibot_long_connection_answer_failed channel_id=%s failed_stage=run_agent error_type=%s"
 )
@@ -44,6 +46,27 @@ def _run_guarded(request: AnswerRequest) -> None:
         close_old_connections()
 
 
+def user_visible_failure(event: dict) -> str | None:
+    """智能体流里已经展示给用户的失败说明。没有这句时由会话回落到渠道固定文案。"""
+    if not isinstance(event, dict) or event.get("type") not in {"ERROR", "RUN_ERROR"}:
+        return None
+    text = event.get("error") or event.get("message") or ""
+    if not isinstance(text, str):
+        return None
+    text = text.strip()
+    return text or None
+
+
+async def _aclose_stream(stream) -> None:
+    close = getattr(stream, "aclose", None)
+    if close is None:
+        return
+    try:
+        await close()
+    except Exception:
+        logger.debug("event=wecom_aibot_long_connection_stream_close_ignored")
+
+
 def _run(request: AnswerRequest) -> None:
     from apps.opspilot.services.skill_channel_chat_service import (
         _history_from_conversation,
@@ -70,41 +93,59 @@ def _run(request: AnswerRequest) -> None:
         "usage_calls": [],
     }
 
+    stream = _generate_agui_stream(
+        params,
+        skill.name,
+        skill.skill_type,
+        False,
+        final_stats,
+        {},
+        "",
+        request.user_message,
+        skill.id,
+        None,
+    )
+
     async def consume():
         text = ""
-        failed = False
-        stream = _generate_agui_stream(
-            params,
-            skill.name,
-            skill.skill_type,
-            False,
-            final_stats,
-            {},
-            "",
-            request.user_message,
-            skill.id,
-            None,
-        )
-        async for line in stream:
-            if request.cancelled:
-                return False
-            piece = line.decode("utf-8") if isinstance(line, (bytes, bytearray)) else str(line)
-            for event in parse_sse_json_payloads(piece):
-                if event.get("type") == "ERROR":
-                    failed = True
-                    break
-                delta = visible_answer_delta(event)
-                if delta:
-                    text += delta
-                    request.publish(text)
-            if failed:
-                break
-        return not failed
+        failure = None
 
-    completed = asyncio.run(consume())
+        async def pump():
+            nonlocal text, failure
+            async for line in stream:
+                if request.cancelled:
+                    return
+                piece = line.decode("utf-8") if isinstance(line, (bytes, bytearray)) else str(line)
+                for event in parse_sse_json_payloads(piece):
+                    visible = user_visible_failure(event)
+                    if visible:
+                        failure = visible
+                        return
+                    delta = visible_answer_delta(event)
+                    if delta:
+                        text += delta
+                        request.publish(text)
+
+        worker = asyncio.create_task(pump())
+        try:
+            while not worker.done():
+                if request.cancelled:
+                    worker.cancel()
+                    break
+                await asyncio.sleep(_CANCEL_POLL_SECONDS)
+            try:
+                await worker
+            except asyncio.CancelledError:
+                if not request.cancelled:
+                    raise
+        finally:
+            await _aclose_stream(stream)
+        return failure
+
+    failure = asyncio.run(consume())
     if request.cancelled:
         return
-    if completed:
-        request.finish()
-    else:
-        raise RuntimeError("AnswerStreamError")
+    if failure:
+        request.fail(failure)
+        return
+    request.finish()
