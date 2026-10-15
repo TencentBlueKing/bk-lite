@@ -74,7 +74,7 @@ export interface ApmServiceRedPoint {
 }
 
 export interface ApmClientRollupRow {
-  channel: 'database' | 'outbound';
+  channel: 'database' | 'outbound' | 'http';
   system: string;
   statement: string;
   duration_ms: number;

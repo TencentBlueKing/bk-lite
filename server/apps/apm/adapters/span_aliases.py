@@ -98,6 +98,7 @@ def classify_client_http_rollup(attributes: Mapping[str, object], name: str = ""
 
     服务间调用也会留下 http.method；产品要把这些操作列在「出站调用 / HTTP」。
     未接入对端用 peer.service 当系统名，已接入对端没有该字段时系统名为 http。
+    有 http.route 时用「方法 + 路由」做语句，避免 Span 名只剩 GET/POST。
     """
 
     if classify_client_db_rollup(attributes) is not None:
@@ -107,9 +108,10 @@ def classify_client_http_rollup(attributes: Mapping[str, object], name: str = ""
         return None
     route = span_attribute_text(attributes, HTTP_ROUTE_KEYS)
     peer = span_attribute_text(attributes, PEER_SERVICE_KEYS)
-    statement = str(name or "").strip()
-    if not statement:
-        statement = f"{method} {route}".strip() if route else method
+    if route:
+        statement = f"{method} {route}".strip()
+    else:
+        statement = str(name or "").strip() or method
     return "http", peer or "http", statement[:256]
 
 

@@ -537,6 +537,15 @@ describe('APM 服务详情错误 Tab', () => {
           error_count: 1,
           inferred: true,
         },
+        {
+          channel: 'http',
+          system: 'http',
+          statement: 'POST /orders',
+          duration_ms: 80,
+          call_count: 4,
+          error_count: 0,
+          inferred: false,
+        },
       ],
     });
     api.getTraces.mockImplementation(async (params: { status?: string; span_name?: string }) => ({
@@ -567,7 +576,8 @@ describe('APM 服务详情错误 Tab', () => {
     await user.click(screen.getByRole('tab', { name: '出站调用' }));
     expect((await screen.findAllByText(/redis/)).length).toBeGreaterThan(0);
     await user.click(screen.getByText('HTTP'));
-    expect(screen.getByText(/HTTP 出站/)).not.toBeNull();
+    expect(await screen.findByText('POST /orders')).not.toBeNull();
+    expect(screen.getByText(/按方法与路由模板汇总/)).not.toBeNull();
 
     await user.click(screen.getByRole('tab', { name: '属性' }));
     expect(await screen.findByText('service.name')).not.toBeNull();

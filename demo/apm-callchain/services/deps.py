@@ -1,9 +1,11 @@
-"""只读 PG 查询和短 TTL Redis，用来在 APM 里打出数据库语句 / 出站调用 Span。"""
+"""只读 PG 查询、短 TTL Redis，以及给 HTTP Client Span 补路由模板。"""
 
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
+from urllib.parse import urlparse
 
 import psycopg2
 import redis
@@ -62,3 +64,50 @@ def cache_set(key: str, value: str, ttl: int = CACHE_TTL_SECONDS) -> None:
     if client is None:
         return
     client.setex(CACHE_PREFIX + key, ttl, value)
+
+
+_HTTP_ROUTE_TEMPLATES = (
+    (re.compile(r"^/products/[^/]+$"), "/products/{sku}"),
+    (re.compile(r"^/stock/[^/]+$"), "/stock/{sku}"),
+    (re.compile(r"^/reserve/[^/]+$"), "/reserve/{sku}"),
+    (re.compile(r"^/orders/?$"), "/orders"),
+    (re.compile(r"^/charges/?$"), "/charges"),
+)
+
+
+def http_route_template(path: str) -> str:
+    """把带 sku 的路径收成模板，避免 HTTP 出站按字面量膨胀。"""
+
+    for pattern, template in _HTTP_ROUTE_TEMPLATES:
+        if pattern.match(path):
+            return template
+    return path or "/"
+
+
+def _http_request_hook(span, request_obj) -> None:
+    if span is None or not span.is_recording():
+        return
+    parsed = urlparse(getattr(request_obj, "url", "") or "")
+    method = str(getattr(request_obj, "method", "") or "GET").upper()
+    route = http_route_template(parsed.path or "/")
+    span.set_attribute("http.method", method)
+    span.set_attribute("http.request.method", method)
+    span.set_attribute("http.route", route)
+    span.update_name(f"{method} {route}")
+
+
+def _instrument_http_client() -> None:
+    try:
+        from opentelemetry.instrumentation.requests import RequestsInstrumentor
+    except Exception:
+        return
+    instrumentor = RequestsInstrumentor()
+    try:
+        if instrumentor.is_instrumented_by_opentelemetry:
+            instrumentor.uninstrument()
+        instrumentor.instrument(request_hook=_http_request_hook)
+    except Exception:
+        return
+
+
+_instrument_http_client()

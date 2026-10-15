@@ -412,13 +412,19 @@ export default function ApmServiceDetailPage() {
     () => rollups.filter((row) => row.channel === 'outbound'),
     [rollups],
   );
+  const httpRows = useMemo(
+    () => rollups.filter((row) => row.channel === 'http'),
+    [rollups],
+  );
   const shareSegments = useMemo(() => {
     const grouped = new Map<string, { label: string; durationMs: number; calls: number }>();
     rollups.forEach((row) => {
       const key = `${row.channel}:${row.system}`;
       const channelLabel = row.channel === 'database'
         ? t('apm.serviceDetail.database', '数据库')
-        : t('apm.serviceDetail.cache', '缓存');
+        : row.channel === 'http'
+          ? t('apm.serviceDetail.channelHttp', 'HTTP')
+          : t('apm.serviceDetail.cache', '缓存');
       const current = grouped.get(key) ?? {
         label: `${channelLabel} · ${row.system}`,
         durationMs: 0,
@@ -1060,45 +1066,48 @@ export default function ApmServiceDetailPage() {
                         { label: t('apm.serviceDetail.channelOther', '其他'), value: 'other' },
                       ]}
                     />
-                    {outboundChannel === 'http' ? (
-                      <Typography.Text type="secondary">
-                        {t('apm.serviceDetail.httpOutboundEmpty', '没有打到另一个已接入服务的 HTTP 出站。服务之间的调用仍在概览的下游。')}
-                      </Typography.Text>
-                    ) : (
-                      <ApmDataTable
-                        rowKey={(row) => `${row.system}:${row.statement}`}
-                        dataSource={outboundRows}
-                        pagination={false}
-                        locale={{ emptyText: t('apm.serviceDetail.otherOutboundEmpty', '当前时间窗没有缓存或其他出站。') }}
-                        columns={[
-                          {
-                            title: t('apm.serviceDetail.outboundCalls', '出站调用'),
-                            dataIndex: 'system',
-                            render: (value: string, row) => (
+                    <ApmDataTable
+                      rowKey={(row) => `${row.channel}:${row.system}:${row.statement}`}
+                      dataSource={outboundChannel === 'http' ? httpRows : outboundRows}
+                      pagination={false}
+                      locale={{
+                        emptyText: outboundChannel === 'http'
+                          ? t('apm.serviceDetail.httpOutboundEmpty', '当前时间窗没有 HTTP 出站。')
+                          : t('apm.serviceDetail.otherOutboundEmpty', '当前时间窗没有缓存或其他出站。'),
+                      }}
+                      columns={[
+                        {
+                          title: t('apm.serviceDetail.outboundCalls', '出站调用'),
+                          dataIndex: 'system',
+                          render: (value: string, row) => (
+                            <div>
                               <div>
-                                <div>
-                                  {value}
-                                  {row.inferred ? ` ${t('apm.serviceDetail.inferred', '推断')}` : ''}
-                                </div>
-                                <div className="text-xs text-[var(--color-text-3)]">{row.statement}</div>
+                                {value}
+                                {row.inferred ? ` ${t('apm.serviceDetail.inferred', '推断')}` : ''}
                               </div>
-                            ),
-                          },
-                          { title: t('apm.serviceDetail.occurrenceCount', '次数'), dataIndex: 'call_count', align: 'right' },
-                          { title: t('apm.serviceDetail.failureCount', '失败次数'), dataIndex: 'error_count', align: 'right' },
-                          {
-                            title: t('apm.serviceDetail.average', '平均'),
-                            align: 'right',
-                            render: (_, row) => formatLatency(row.call_count ? row.duration_ms / row.call_count : row.duration_ms, false, t),
-                          },
-                          {
-                            title: t('apm.serviceDetail.accumulated', '累计'),
-                            align: 'right',
-                            render: (_, row) => formatLatency(row.duration_ms, false, t),
-                          },
-                        ]}
-                      />
-                    )}
+                              <div className="text-xs text-[var(--color-text-3)]">{row.statement}</div>
+                            </div>
+                          ),
+                        },
+                        { title: t('apm.serviceDetail.occurrenceCount', '次数'), dataIndex: 'call_count', align: 'right' },
+                        { title: t('apm.serviceDetail.failureCount', '失败次数'), dataIndex: 'error_count', align: 'right' },
+                        {
+                          title: t('apm.serviceDetail.average', '平均'),
+                          align: 'right',
+                          render: (_, row) => formatLatency(row.call_count ? row.duration_ms / row.call_count : row.duration_ms, false, t),
+                        },
+                        {
+                          title: t('apm.serviceDetail.accumulated', '累计'),
+                          align: 'right',
+                          render: (_, row) => formatLatency(row.duration_ms, false, t),
+                        },
+                      ]}
+                    />
+                    {outboundChannel === 'http' ? (
+                      <Typography.Text type="secondary" className="mt-2 block text-xs">
+                        {t('apm.serviceDetail.httpOutboundHint', '按方法与路由模板汇总；入库会丢掉完整 URL。')}
+                      </Typography.Text>
+                    ) : null}
                   </ApmSurface>
                 ),
               },

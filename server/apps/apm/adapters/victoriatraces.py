@@ -1024,7 +1024,7 @@ class VictoriaTracesTelemetryStore:
                     continue
                 channel, system, statement = http_outcome
                 statement = statement[:MAX_ENDPOINT_NAME_LENGTH]
-                inferred = bool(str(row.get("span_attr:peer.service") or "").strip())
+                inferred = False
             if not statement:
                 continue
             classified.append(

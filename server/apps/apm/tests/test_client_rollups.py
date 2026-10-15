@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
-from apps.apm.adapters.span_aliases import classify_client_db_rollup, client_db_statement
+from apps.apm.adapters.span_aliases import classify_client_db_rollup, classify_client_http_rollup, client_db_statement
 from apps.apm.services import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery
 from apps.apm.tests.helpers import create_application
@@ -22,6 +22,19 @@ def test_classify_client_db_rollup_splits_cache_and_drops_http():
         "SELECT sku FROM stock WHERE sku = %s"
     )
     assert client_db_statement({"name": "SELECT"}, "SELECT") == "SELECT"
+
+
+def test_classify_client_http_rollup_prefers_method_and_route():
+    assert classify_client_http_rollup({"http.method": "POST", "http.route": "/orders"}, "POST") == (
+        "http",
+        "http",
+        "POST /orders",
+    )
+    assert classify_client_http_rollup(
+        {"span_attr:http.request.method": "GET", "span_attr:peer.service": "risk-api"},
+        "GET",
+    ) == ("http", "risk-api", "GET")
+    assert classify_client_http_rollup({"db.system": "postgresql", "http.method": "POST"}) is None
 
 
 def test_client_db_rollups_query_only_db_client_spans(mocker):
@@ -46,6 +59,14 @@ def test_client_db_rollups_query_only_db_client_spans(mocker):
                 "calls": 63,
                 "errors": 1,
             },
+            {
+                "name": "POST",
+                "span_attr:http.method": "POST",
+                "span_attr:http.route": "/orders",
+                "duration_ns": 4_000_000_000,
+                "calls": 12,
+                "errors": 0,
+            },
             {"name": "GET /stock", "calls": 4, "duration_ns": 1000},
         ],
     )
@@ -60,6 +81,8 @@ def test_client_db_rollups_query_only_db_client_spans(mocker):
     assert "`span_attr:db.system.name`:*" in query
     assert "`span_attr:db.statement`" in query
     assert "`span_attr:db.query.text`" in query
+    assert "`span_attr:http.method`" in query
+    assert "`span_attr:http.route`" in query
     assert "limit 40" in query
     assert rows == [
         {
@@ -79,6 +102,15 @@ def test_client_db_rollups_query_only_db_client_spans(mocker):
             "call_count": 63,
             "error_count": 1,
             "inferred": True,
+        },
+        {
+            "channel": "http",
+            "system": "http",
+            "statement": "POST /orders",
+            "duration_ms": 4000.0,
+            "call_count": 12,
+            "error_count": 0,
+            "inferred": False,
         },
     ]
 
