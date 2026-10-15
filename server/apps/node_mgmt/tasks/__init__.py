@@ -11,3 +11,4 @@ from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.tasks.action_task import timeout_collector_action_task
 from apps.node_mgmt.tasks.collector_auto_restart import restart_failed_collectors
+from apps.node_mgmt.tasks.collector_default_backfill import backfill_collector_default_configs

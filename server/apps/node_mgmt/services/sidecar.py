@@ -564,15 +564,19 @@ class Sidecar:
             return 1
         return 0
 
+    @staticmethod
+    def allowed_collector_architectures(node_cpu_architecture):
+        node_arch = normalize_cpu_architecture(node_cpu_architecture)
+        if node_arch == NodeConstants.ARM64_ARCH:
+            return [NodeConstants.ARM64_ARCH]
+        if node_arch == NodeConstants.X86_64_ARCH:
+            return [NodeConstants.X86_64_ARCH, ""]
+        return ["", NodeConstants.X86_64_ARCH]
+
     @classmethod
     def _get_default_collectors_for_node(cls, node):
         node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
-        if node_arch == NodeConstants.ARM64_ARCH:
-            allowed_architectures = [NodeConstants.ARM64_ARCH]
-        elif node_arch == NodeConstants.X86_64_ARCH:
-            allowed_architectures = [NodeConstants.X86_64_ARCH, ""]
-        else:
-            allowed_architectures = ["", NodeConstants.X86_64_ARCH]
+        allowed_architectures = cls.allowed_collector_architectures(node_arch)
         collector_objs = Collector.objects.filter(
             controller_default_run=True,
             node_operating_system=node.operating_system,

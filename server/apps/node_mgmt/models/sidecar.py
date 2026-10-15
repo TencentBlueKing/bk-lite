@@ -105,6 +105,37 @@ class Collector(TimeInfo, MaintainerInfo):
         super().save(*args, **kwargs)
 
 
+class CollectorDefaultBackfill(models.Model):
+    """新写入的内置采集器等待给已纳管节点补预置配置。"""
+
+    STATUS_PENDING = "pending"
+    STATUS_RUNNING = "running"
+    STATUS_DONE = "done"
+    STATUS_FAILED = "failed"
+
+    collector = models.OneToOneField(
+        Collector,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="default_backfill",
+        verbose_name="采集器",
+    )
+    status = models.CharField(max_length=16, default=STATUS_PENDING, verbose_name="状态")
+    attempts = models.PositiveSmallIntegerField(default=0, verbose_name="连续无进展次数")
+    cursor_id = models.CharField(max_length=100, blank=True, default="", verbose_name="续跑节点")
+    saw_failure = models.BooleanField(default=False, verbose_name="本轮出现失败")
+    locked_at = models.DateTimeField(null=True, blank=True, verbose_name="领取时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "采集器默认配置补齐"
+        verbose_name_plural = "采集器默认配置补齐"
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="node_backfill_status_created"),
+        ]
+
+
 class CollectorConfiguration(TimeInfo, MaintainerInfo):
     id = models.CharField(primary_key=True, max_length=100, verbose_name="配置ID")
     name = models.CharField(unique=True, max_length=100, verbose_name="配置名称")
