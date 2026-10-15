@@ -8,6 +8,7 @@ import OperateDrawer from '@/components/operate-drawer';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
+import { downloadExecutionArtifact } from '../lib/download-artifact';
 import { executionStatusPresentation, formatDuration, formatStartedBy, formatTriggerTypeLabel, presentExecutionInfoItem, formatJson } from '../lib/presentation';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
 import type { ExecutionArtifactRecord, ExecutionNodeDetail, ExecutionNodeSummary, ExecutionNodesResponse, ExecutionRecord } from '../lib/types';
@@ -127,13 +128,7 @@ function NodeDetail({ detail, instancePermissions, onChanged }: { detail: Execut
   const download = async (artifact: ExecutionArtifactRecord) => {
     setDownloading(artifact.id);
     try {
-      const blob = await get<Blob>(artifact.download_url, { responseType: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = artifact.filename;
-      link.click();
-      URL.revokeObjectURL(url);
+      await downloadExecutionArtifact(get, artifact);
     } finally {
       setDownloading(undefined);
     }
@@ -154,6 +149,7 @@ function NodeDetail({ detail, instancePermissions, onChanged }: { detail: Execut
           return { key, label: item.label, children: item.children };
         })} />
       </section>
+      {detail.artifacts.length ? <section className="flex flex-col gap-3"><h3 className="m-0 text-sm font-medium">{t('workflowOrchestration.node.artifacts', '产物')}</h3><div className="space-y-2">{detail.artifacts.map((artifact) => <div key={artifact.id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--color-border-1)] p-3"><div className="min-w-0"><div className="truncate">{artifact.filename}</div><div className="mt-1 text-xs text-[var(--color-text-3)]">{artifact.format.toUpperCase()} · {(artifact.size / 1024).toFixed(1)} KiB</div></div><WorkflowPermission operation="View" area="executions" instancePermissions={instancePermissions}><Button icon={<DownloadOutlined />} loading={downloading === artifact.id} onClick={() => void download(artifact)}>{t('common.download', '下载')}</Button></WorkflowPermission></div>)}</div></section> : null}
       {approval ? (
         <section className="flex flex-col gap-4">
           <Alert type={approval.can_act ? 'info' : 'warning'} showIcon message={approval.title} description={approval.description || t('workflowOrchestration.approval.waitingCandidate', '等待候选审批人处理')} />
@@ -177,7 +173,6 @@ function NodeDetail({ detail, instancePermissions, onChanged }: { detail: Execut
           <JsonEvidence title={t('workflowOrchestration.node.output', '输出')} value={detail.outputs} />
         </>
       )}
-      {detail.artifacts.length ? <section className="flex flex-col gap-3"><h3 className="m-0 text-sm font-medium">{t('workflowOrchestration.node.artifacts', '产物')}</h3><div className="space-y-2">{detail.artifacts.map((artifact) => <div key={artifact.id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--color-border-1)] p-3"><div className="min-w-0"><div className="truncate">{artifact.filename}</div><div className="mt-1 text-xs text-[var(--color-text-3)]">{artifact.format.toUpperCase()} · {(artifact.size / 1024).toFixed(1)} KiB</div></div><WorkflowPermission operation="View" area="executions" instancePermissions={instancePermissions}><Button icon={<DownloadOutlined />} loading={downloading === artifact.id} onClick={() => void download(artifact)}>{t('common.download', '下载')}</Button></WorkflowPermission></div>)}</div></section> : null}
     </div>
   );
 }

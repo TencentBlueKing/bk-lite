@@ -310,6 +310,14 @@ export interface AtomExecutionRecord {
   error_message: string;
 }
 
+export interface DownloadableArtifact {
+  id: string;
+  format: 'docx' | 'xlsx';
+  filename: string;
+  size: number;
+  download_url: string;
+}
+
 export interface ExecutionArtifactRecord {
   id: string;
   format: 'docx' | 'xlsx';
@@ -409,6 +417,7 @@ export interface ExecutionRecord {
   atom_executions: AtomExecutionRecord[];
   artifacts: ExecutionArtifactRecord[];
   artifact_count?: number;
+  downloadable_artifacts?: DownloadableArtifact[];
   pending_approval_count?: number;
   actionable_approval_ids?: string[];
   waiting_node_summary?: string;

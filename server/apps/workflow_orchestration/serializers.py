@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.core.utils.team_utils import get_current_team
@@ -319,6 +320,19 @@ class AtomExecutionSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class DownloadableArtifactSerializer(serializers.ModelSerializer):
+    download_url = serializers.SerializerMethodField()
+
+    @staticmethod
+    def get_download_url(artifact):
+        return f"/workflow_orchestration/api/artifacts/{artifact.id}/download/"
+
+    class Meta:
+        model = ExecutionArtifact
+        fields = ("id", "format", "filename", "size", "download_url")
+        read_only_fields = fields
+
+
 class ExecutionArtifactSerializer(serializers.ModelSerializer):
     download_url = serializers.SerializerMethodField()
 
@@ -424,6 +438,14 @@ class WorkflowExecutionListSerializer(serializers.ModelSerializer):
     workflow_enabled = serializers.BooleanField(source="workflow.enabled", read_only=True)
     workflow_deleted = serializers.SerializerMethodField()
     artifact_count = serializers.IntegerField(read_only=True, default=0)
+    downloadable_artifacts = serializers.SerializerMethodField()
+
+    @staticmethod
+    def get_downloadable_artifacts(execution):
+        now = timezone.now()
+        artifacts = [artifact for artifact in execution.artifacts.all() if artifact.deleted_at is None and artifact.expires_at > now]
+        return DownloadableArtifactSerializer(artifacts, many=True).data
+
     parent_execution = serializers.SerializerMethodField()
     pending_approval_count = serializers.IntegerField(read_only=True, default=0)
     actionable_approval_ids = serializers.SerializerMethodField()
@@ -490,6 +512,7 @@ class WorkflowExecutionListSerializer(serializers.ModelSerializer):
             "failed_stage",
             "termination_reason",
             "artifact_count",
+            "downloadable_artifacts",
             "created_at",
             "finished_at",
             "updated_at",
