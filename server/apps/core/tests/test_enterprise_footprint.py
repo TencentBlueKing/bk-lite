@@ -500,3 +500,41 @@ class TestExtraPyEnterpriseWiring:
         mod = _load_extra(tmp_path, monkeypatch, install_apps="license_mgmt")
 
         assert getattr(mod, "LICENSE_MGMT_CONFIG_LOADED", False) is False, "INSTALL_APPS=license_mgmt must not bypass the enterprise gate in extra.py"
+
+
+_RETURNED_MESSAGE_MIDDLEWARE = "apps.opspilot.middlewares.returned_message_middleware.ReturnedMessageLocaleMiddleware"
+
+
+class TestReturnedMessageMiddlewareInstallGate:
+    def test_explicit_install_apps_without_opspilot_omits_middleware(self, tmp_path, monkeypatch):
+        """INSTALL_APPS 不含 opspilot 时，即使目录存在，全局 MIDDLEWARE 也不挂它。"""
+        _make_apps(
+            tmp_path,
+            {
+                "opspilot": ["__init__.py"],
+                "monitor": ["__init__.py"],
+                "system_mgmt": ["__init__.py"],
+                "console_mgmt": ["__init__.py"],
+            },
+        )
+        mod = _load_app(tmp_path, monkeypatch, install_apps="monitor")
+        assert "apps.opspilot" not in mod.INSTALLED_APPS
+        assert _RETURNED_MESSAGE_MIDDLEWARE not in mod.MIDDLEWARE
+
+    def test_explicit_install_apps_with_opspilot_appends_middleware(self, tmp_path, monkeypatch):
+        _make_apps(
+            tmp_path,
+            {
+                "opspilot": ["__init__.py"],
+                "system_mgmt": ["__init__.py"],
+                "console_mgmt": ["__init__.py"],
+            },
+        )
+        mod = _load_app(tmp_path, monkeypatch, install_apps="opspilot")
+        assert "apps.opspilot" in mod.INSTALLED_APPS
+        assert _RETURNED_MESSAGE_MIDDLEWARE in mod.MIDDLEWARE
+
+    def test_full_install_appends_middleware_when_opspilot_exists(self, tmp_path, monkeypatch):
+        _make_apps(tmp_path, {"opspilot": ["__init__.py"], "monitor": ["__init__.py"]})
+        mod = _load_app(tmp_path, monkeypatch, install_apps="")
+        assert _RETURNED_MESSAGE_MIDDLEWARE in mod.MIDDLEWARE
