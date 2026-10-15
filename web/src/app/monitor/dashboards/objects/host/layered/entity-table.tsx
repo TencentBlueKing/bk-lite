@@ -63,7 +63,8 @@ export default function LayeredEntityTable({
   onSelect,
   emptyText = '暂无数据',
   expandedRowRender,
-  rowExpandable
+  rowExpandable,
+  toolbar
 }: {
   rows: EntityTableRow[];
   columns: LayeredColumn[];
@@ -74,6 +75,8 @@ export default function LayeredEntityTable({
   /** 选中行下方的附加行。未提供时表格不出现展开列。 */
   expandedRowRender?: (row: EntityTableRow) => React.ReactNode;
   rowExpandable?: (row: EntityTableRow) => boolean;
+  /** 表框内、列头上方右侧。导出按钮放这里，不浮在边框外。 */
+  toolbar?: React.ReactNode;
 }) {
   const tableColumns: ColumnsType<EntityTableRow> = columns.map((column) => ({
     title: column.title,
@@ -120,6 +123,7 @@ export default function LayeredEntityTable({
 
   return (
     <div className={`${classic.panel} ${styles.tableWrap}`}>
+      {toolbar ? <div className="mb-1 flex justify-end">{toolbar}</div> : null}
       <Table<EntityTableRow>
         size="small"
         rowKey="key"

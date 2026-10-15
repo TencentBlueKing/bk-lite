@@ -11,6 +11,7 @@ import {
   type EntityTableRow
 } from '../entity-series';
 import { hostCategoryText, type HostCategoryCopyKey } from './category-copy';
+import classic from '../index.module.scss';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
 import TableCsvExportButton from './table-csv-export';
 import ThinTimeSeries from './thin-time-series';
@@ -292,9 +293,6 @@ export default function DiskPane({
               }]}
             />
           </div>
-          <div className="flex justify-end">
-            <TableCsvExportButton host={hostLabel} slug="mounts" columns={mountColumns} rows={mountRows} />
-          </div>
           {showMountBody ? (
             <LayeredEntityTable
               rows={mountRows}
@@ -303,9 +301,15 @@ export default function DiskPane({
               onSelect={onSelectMount}
               emptyText={hostCategoryText(t, 'noMountPoints')}
               columns={mountColumns}
+              toolbar={<TableCsvExportButton host={hostLabel} slug="mounts" columns={mountColumns} rows={mountRows} />}
             />
           ) : (
-            <div className={styles.note}>{hostCategoryText(t, 'noMountPoints')}</div>
+            <div className={`${classic.panel} ${styles.tableWrap}`}>
+              <div className="flex justify-end">
+                <TableCsvExportButton host={hostLabel} slug="mounts" columns={mountColumns} rows={mountRows} />
+              </div>
+              <div className={styles.note}>{hostCategoryText(t, 'noMountPoints')}</div>
+            </div>
           )}
         </>
       ) : (
@@ -338,9 +342,6 @@ export default function DiskPane({
               );
             })}
           </div>
-          <div className="flex justify-end">
-            <TableCsvExportButton host={hostLabel} slug="devices" columns={deviceColumns} rows={deviceRows} />
-          </div>
           {showDeviceBody ? (
             <LayeredEntityTable
               rows={deviceRows}
@@ -349,9 +350,15 @@ export default function DiskPane({
               onSelect={onSelectDevice}
               emptyText={hostCategoryText(t, 'noBlockDevices')}
               columns={deviceColumns}
+              toolbar={<TableCsvExportButton host={hostLabel} slug="devices" columns={deviceColumns} rows={deviceRows} />}
             />
           ) : (
-            <div className={styles.note}>{hostCategoryText(t, 'noBlockDevices')}</div>
+            <div className={`${classic.panel} ${styles.tableWrap}`}>
+              <div className="flex justify-end">
+                <TableCsvExportButton host={hostLabel} slug="devices" columns={deviceColumns} rows={deviceRows} />
+              </div>
+              <div className={styles.note}>{hostCategoryText(t, 'noBlockDevices')}</div>
+            </div>
           )}
         </>
       )}

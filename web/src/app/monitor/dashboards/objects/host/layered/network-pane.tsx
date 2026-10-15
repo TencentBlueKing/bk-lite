@@ -140,7 +140,6 @@ export default function NetworkPane({
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>网卡</div>
-        <TableCsvExportButton host={hostLabel} slug="nics" columns={nicColumns} rows={viewRows} />
       </div>
       <LayeredEntityTable
         rows={viewRows}
@@ -149,6 +148,7 @@ export default function NetworkPane({
         onSelect={onSelect}
         emptyText="暂无网卡数据"
         columns={nicColumns}
+        toolbar={<TableCsvExportButton host={hostLabel} slug="nics" columns={nicColumns} rows={viewRows} />}
       />
     </>
   );
