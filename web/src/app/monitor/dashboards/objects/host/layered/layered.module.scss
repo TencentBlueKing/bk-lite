@@ -427,17 +427,39 @@ button.kpiCard {
   box-shadow: 0 0 0 2px rgba(245, 34, 45, 0.18);
 }
 
-/* 卡气味只复用页签角点。不加左边框，也不描满边。 */
+/* 卡级气味：贴右上的折角。页签仍用上面的圆点。不加左边框，也不描满边。 */
 .cardAlert {
   position: relative;
+  overflow: hidden;
 }
 
-.cardAlertDot {
+.cardAlertFold {
+  --fold-face: #fa8c16;
+  --fold-crease: #d46b08;
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
   z-index: 2;
   pointer-events: none;
+  background: linear-gradient(
+    to top right,
+    transparent 50%,
+    var(--fold-crease) 50%,
+    var(--fold-crease) 56%,
+    var(--fold-face) 56%
+  );
+}
+
+.cardAlertFoldWarn {
+  --fold-face: #fa8c16;
+  --fold-crease: #d46b08;
+}
+
+.cardAlertFoldCritical {
+  --fold-face: #f5222d;
+  --fold-crease: #cf1322;
 }
 
 .cardAlert .chartLegend,
@@ -446,10 +468,13 @@ button.kpiCard {
 }
 
 .cardAlert .currentName,
+.cardAlert .currentKicker,
 .cardAlert .sectionTitle,
+.cardAlert .kpiLabel,
+.cardAlert .instantKpiLabel,
 .cardAlert .statusLabel,
 .cardAlert .statusHint {
-  padding-right: 12px;
+  padding-right: 14px;
 }
 
 .tabBadge {

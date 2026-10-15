@@ -9,12 +9,12 @@ export const cardAlertClass = (level: TabAlertLevel | undefined) => {
   return styles.cardAlert;
 };
 
-/** 与页签达档点同尺寸同色。无达档不渲染，也不加边框。 */
+/** 卡级气味是右上折角。无达档不渲染，也不加边框。页签圆点不走这里。 */
 export function CardAlertDot({ level }: { level: TabAlertLevel | undefined }) {
   if (!level || level === 'none') return null;
   return (
     <span
-      className={`${styles.tabLevelDot} ${styles.cardAlertDot} ${level === 'critical' ? styles.tabLevelCritical : styles.tabLevelWarn}`}
+      className={`${styles.cardAlertFold} ${level === 'critical' ? styles.cardAlertFoldCritical : styles.cardAlertFoldWarn}`}
       role="img"
       aria-label={level === 'critical' ? '警告' : '提醒'}
     />
