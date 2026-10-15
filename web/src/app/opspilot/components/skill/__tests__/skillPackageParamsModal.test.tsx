@@ -6,6 +6,7 @@ import SkillPackageParamsModal, {
   listMissingRequiredParams,
   mergeDeclaredParams,
   packageHasDeclaredParams,
+  skillPackageParamsForSubmit,
 } from '../skillPackageParamsModal';
 import type { SkillPackage } from '@/app/opspilot/types/skill';
 
@@ -42,6 +43,17 @@ describe('mergeDeclaredParams', () => {
   it('treats packages without declared variables as having nothing to configure', () => {
     expect(packageHasDeclaredParams(pkg)).toBe(true);
     expect(packageHasDeclaredParams({ ...pkg, variables: [] })).toBe(false);
+  });
+
+  it('clears stored custom when the package declares no variables', () => {
+    const stored = {
+      atuin: [{ key: 'CUSTOM_FLAG', value: '1', type: 'text' as const }],
+      other: [{ key: 'KEEP', value: 'yes', type: 'text' as const }],
+    };
+    const cleared = skillPackageParamsForSubmit([{ ...pkg, variables: [] }], stored);
+    expect(cleared.atuin).toEqual([]);
+    expect(cleared.other).toEqual(stored.other);
+    expect(skillPackageParamsForSubmit([pkg], stored).atuin).toEqual(stored.atuin);
   });
 
   it('lists missing required declared params', () => {

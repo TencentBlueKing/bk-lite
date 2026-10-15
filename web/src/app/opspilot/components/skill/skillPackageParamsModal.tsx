@@ -62,6 +62,28 @@ export const withResolvedVariables = (pkg: SkillPackage): SkillPackage => ({
 /** 技能包只有声明了变量才需要打开配置；未声明时没有可填参数。 */
 export const packageHasDeclaredParams = (pkg?: SkillPackage | null) => resolvePackageVariables(pkg).length > 0;
 
+/**
+ * 提交（保存、试聊）时使用的技能包参数。
+ *
+ * packageHasDeclaredParams 为 false 时配置入口保持隐藏。已存 custom 没有入口
+ * 可查看或修改，继续下发会在运行时静默生效，因此这里清空该包参数。
+ * 仍声明了变量的包保留已存 custom。
+ */
+export const skillPackageParamsForSubmit = (
+  packages: Array<SkillPackage | null | undefined>,
+  params: Record<string, SkillPackageParam[] | undefined> | null | undefined,
+): Record<string, SkillPackageParam[]> => {
+  const next: Record<string, SkillPackageParam[]> = {};
+  for (const [packageId, items] of Object.entries(params || {})) {
+    next[packageId] = items ? [...items] : [];
+  }
+  for (const pkg of packages) {
+    if (!pkg?.package_id || packageHasDeclaredParams(pkg)) continue;
+    next[pkg.package_id] = [];
+  }
+  return next;
+};
+
 export const getDeclaredMap = (pkg?: SkillPackage | null) => {
   const map = new Map<string, SkillPackageVariableDecl>();
   for (const decl of resolvePackageVariables(pkg)) {

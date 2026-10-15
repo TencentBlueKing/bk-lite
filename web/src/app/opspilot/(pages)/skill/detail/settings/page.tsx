@@ -23,6 +23,7 @@ import SkillPackageParamsModal, {
   mergeDeclaredParams,
   packageHasDeclaredParams,
   resolvePackageVariables,
+  skillPackageParamsForSubmit,
   withResolvedVariables,
 } from '@/app/opspilot/components/skill/skillPackageParamsModal';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
@@ -247,7 +248,7 @@ const SkillSettingsPage: React.FC = () => {
         force_wiki_grounded: !!values.force_wiki_grounded,
         memory_space: values.memory_space || null,
         memory_write_rounds: values.memory_write_rounds ?? 10,
-        skill_package_params: skillPackageParams,
+        skill_package_params: skillPackageParamsForSubmit(effectiveSkillCapabilityProfiles, skillPackageParams),
         skill_packages: effectiveSkillCapabilityProfiles.map((pkg) => ({
           id: pkg.id,
           package_id: pkg.package_id,
@@ -311,7 +312,7 @@ const SkillSettingsPage: React.FC = () => {
         enable_suggest: false,
         enable_query_rewrite: false,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
-        skill_package_params: skillPackageParams,
+        skill_package_params: skillPackageParamsForSubmit(effectiveSkillCapabilityProfiles, skillPackageParams),
         skill_packages: effectiveSkillCapabilityProfiles.map((pkg) => ({
           id: pkg.id,
           package_id: pkg.package_id,
