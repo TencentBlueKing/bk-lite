@@ -146,42 +146,42 @@ export function DashboardPageHeader({
   );
 
   return (
-    <div className={[styles.pageTitleRow, usePill ? styles.pageTitleRowPill : ''].filter(Boolean).join(' ')}>
-      <Breadcrumb className={styles.breadcrumb} items={breadcrumbItems} />
-      <div className={styles.titleControlsRow}>
-        {modePill ? (
+    <>
+      <div className={styles.headerCrumb}>
+        <Breadcrumb className={styles.breadcrumb} items={breadcrumbItems} />
+      </div>
+      <div className={[styles.pageTitleRow, usePill ? styles.pageTitleRowPill : ''].filter(Boolean).join(' ')}>
+        <div className={styles.titleControlsRow}>
           <div className={styles.titleLead}>
             <h1 className={styles.title}>{localizedTitle}</h1>
             {modePill}
+            {viewSwitchSlot}
+            {modeSwitcher}
           </div>
-        ) : (
-          <h1 className={styles.title}>{localizedTitle}</h1>
-        )}
-        <div className={styles.controlsWrap}>
-          {viewSwitchSlot}
-          {modeSwitcher}
-          {showTimeSelector ? (
-            <div className={styles.toolbarTimeSelector}>
-              <TimeSelector
-                appearance="toolbar"
-                defaultValue={timeDefaultValue}
-                customFrequencyList={frequencyList.map((item) => ({
-                  ...item,
-                  label: tDashboardText(t, String(item.label))
-                }))}
-                onChange={onTimeChange}
-                onFrequenceChange={onFrequenceChange}
-                onRefresh={onRefresh}
-              />
-            </div>
-          ) : null}
-          {styles.actionButtons ? (
-            <div className={styles.actionButtons}>{backButton}</div>
-          ) : (
-            backButton
-          )}
+          <div className={styles.controlsWrap}>
+            {showTimeSelector ? (
+              <div className={styles.toolbarTimeSelector}>
+                <TimeSelector
+                  appearance="toolbar"
+                  defaultValue={timeDefaultValue}
+                  customFrequencyList={frequencyList.map((item) => ({
+                    ...item,
+                    label: tDashboardText(t, String(item.label))
+                  }))}
+                  onChange={onTimeChange}
+                  onFrequenceChange={onFrequenceChange}
+                  onRefresh={onRefresh}
+                />
+              </div>
+            ) : null}
+            {styles.actionButtons ? (
+              <div className={styles.actionButtons}>{backButton}</div>
+            ) : (
+              backButton
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

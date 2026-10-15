@@ -68,15 +68,19 @@ export function DashboardInstanceCard({
           {icon}
         </div>
         <div className={styles.instanceInfo}>
-          <div className={styles.meta}>
-            <span className={styles.instanceName}>{instanceName}</span>
-            {metaItems.map((item, index) => (
-              <React.Fragment key={index}>
-                <span className={styles.instanceMetaDivider}>|</span>
-                {item}
-              </React.Fragment>
-            ))}
-          </div>
+          <div className={styles.instanceName}>{instanceName}</div>
+          {metaItems.length > 0 ? (
+            <div className={[styles.meta, styles.instanceMetaLine].filter(Boolean).join(' ')}>
+              {metaItems.map((item, index) => (
+                <React.Fragment key={index}>
+                  {index > 0 ? (
+                    <span className={styles.instanceMetaDivider} aria-hidden="true">|</span>
+                  ) : null}
+                  {item}
+                </React.Fragment>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
       <div className={styles.instanceActions}>

@@ -847,12 +847,16 @@ export const DashboardShell = ({
   <div className={styles.page}>
     <div className={styles.shell} data-view-mode={activeMode}>
       {unifiedChrome ? (
-        <div className={styles.unifiedShell} data-dashboard-shell="unified">
-          <div className={styles.pageIntro}>{pageHeader}</div>
-          <div className={styles.unifiedHostBar}>{instanceCard}</div>
-          {protocolBar}
-          {layouts}
-        </div>
+        <>
+          <div className={styles.unifiedShell} data-dashboard-shell="unified">
+            <div className={styles.pageIntro}>{pageHeader}</div>
+            <div className={styles.unifiedHostBar}>{instanceCard}</div>
+          </div>
+          <div className={styles.unifiedBelow}>
+            {protocolBar}
+            {layouts}
+          </div>
+        </>
       ) : (
         <>
           <div className={styles.pageHeader}>

@@ -36,7 +36,7 @@
   }
 }
 
-// 标题行收进白壳，与实例栏同一张卡，中间用实例栏上沿分割。
+// 页头白卡只含面包屑、标题和主机层，层内 padding 由各层自己承担。
 .shell {
   --host-dashboard-gutter-x: 20px;
   padding-left: 0;
@@ -45,7 +45,7 @@
 
 .pageIntro {
   margin: 0;
-  padding: 14px 16px 12px;
+  padding: 0;
   box-sizing: border-box;
 }
 
@@ -60,6 +60,19 @@
 .pageIntro .breadcrumb :global(ol) {
   margin: 0;
   padding: 0;
+}
+
+.titleLead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.titleLead .title {
+  flex: 0 1 auto;
 }
 
 .pageTitleRowPill {
@@ -144,6 +157,7 @@
 .unifiedShell {
   margin-left: var(--host-dashboard-gutter-x);
   margin-right: var(--host-dashboard-gutter-x);
+  margin-bottom: 16px;
   box-sizing: border-box;
   background: var(--color-bg);
   border: 1px solid #e8e8e8;
@@ -153,14 +167,17 @@
 }
 
 .unifiedHostBar {
-  border-top: 1px solid #e8e8e8;
-  border-bottom: 1px solid var(--color-border-1);
-
   .instanceCard {
-    padding: 12px 16px;
-    border-top: none;
+    padding: 14px 16px;
+    border-top: 1px solid #e8e8e8;
     border-bottom: none;
   }
+}
+
+.unifiedBelow {
+  margin-left: var(--host-dashboard-gutter-x);
+  margin-right: var(--host-dashboard-gutter-x);
+  min-width: 0;
 }
 
 .unifiedBody {
