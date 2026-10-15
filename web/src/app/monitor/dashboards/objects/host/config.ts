@@ -12,11 +12,11 @@ export const HOST_PALETTE = {
   neutral: '#94A3B8'    // 清爽中性灰 (CPU 环图其他)
 } as const;
 
-/** 分类仪表盘 CPU 主值与「CPU 使用率」曲线。概览与性能共用，勿再写一套蓝。 */
+/** 专业仪表盘 CPU 主值与「CPU 使用率」曲线。概览与性能共用，勿再写一套蓝。 */
 export const HOST_CPU_SERIES_COLOR = HOST_PALETTE.emerald;
 
 /**
- * 分类仪表盘跨页序列色。权威是性能页「本机趋势」：
+ * 专业仪表盘跨页序列色。权威是性能页「本机趋势」：
  * 同一指标的 KPI 主值、曲线、图例、tooltip 都读这里，勿再从旧图表配置另取色。
  * 可用内存数值和运行时间没有同色折线，不在此表，保持正文色。
  */

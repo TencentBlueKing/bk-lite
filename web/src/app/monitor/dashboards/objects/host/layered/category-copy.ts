@@ -3,7 +3,7 @@ type Translate = (id: string, defaultMessage?: string, values?: CopyValues) => s
 
 const textId = (suffix: string) => `monitor.dashboards.text.${suffix}`;
 
-/** 分类仪表盘文案。中文是缺词条时的回退，与 locales 中同 key 保持一致。 */
+/** 专业仪表盘文案。中文是缺词条时的回退，与 locales 中同 key 保持一致。 */
 export const HOST_CATEGORY_COPY = {
   detailedMetrics: [textId('hostCategoryDetailedMetrics'), '详细指标'],
   swapUtilization: [textId('hostCategorySwapUtilization'), '交换已用'],

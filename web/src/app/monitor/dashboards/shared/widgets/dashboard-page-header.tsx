@@ -75,12 +75,14 @@ export function DashboardPageHeader({
   }));
   const onBack = () => router.push(returnNavigation.href);
   const resolvedModeOptions = modeOptions ?? DISPLAY_MODE_OPTIONS;
+  const hasProfessionalMode = resolvedModeOptions.some((item) => item.value === 'category');
+  const usePill = modeControl === 'pill' && hasProfessionalMode;
   const modeItems = resolvedModeOptions.map((item) => ({
     value: item.value,
     label: common(item.labelKey, item.fallback)
   }));
   const currentModeLabel = modeItems.find((item) => item.value === displayMode)?.label ?? '';
-  const modeSwitcher = modeControl === 'pill' ? null : modeControl === 'select' ? (
+  const modeSwitcher = usePill || modeControl === 'pill' ? null : modeControl === 'select' ? (
     <Select
       size="middle"
       className={[styles.modeSelect, 'min-w-[280px] max-md:w-full max-md:min-w-0'].filter(Boolean).join(' ')}
@@ -99,7 +101,7 @@ export function DashboardPageHeader({
       onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
     />
   );
-  const modePill = modeControl === 'pill' ? (
+  const modePill = usePill ? (
     <Dropdown
       trigger={['click']}
       menu={{
@@ -125,7 +127,7 @@ export function DashboardPageHeader({
     </Dropdown>
   ) : null;
 
-  const backIsLink = modeControl === 'pill';
+  const backIsLink = usePill;
   const backButton = (
     <Button
       type={backIsLink ? 'link' : 'default'}
@@ -144,7 +146,7 @@ export function DashboardPageHeader({
   );
 
   return (
-    <div className={[styles.pageTitleRow, modeControl === 'pill' ? styles.pageTitleRowPill : ''].filter(Boolean).join(' ')}>
+    <div className={[styles.pageTitleRow, usePill ? styles.pageTitleRowPill : ''].filter(Boolean).join(' ')}>
       <Breadcrumb className={styles.breadcrumb} items={breadcrumbItems} />
       <div className={styles.titleControlsRow}>
         {modePill ? (

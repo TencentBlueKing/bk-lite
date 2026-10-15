@@ -141,7 +141,7 @@ const useDiskDualSelection = (mountRows: EntityTableRow[], deviceRows: EntityTab
   };
 };
 
-/** 分类仪表盘：概览 / 性能 / 磁盘 / 网络 / 进程。KPI 只在概览。 */
+/** 专业仪表盘：概览 / 性能 / 磁盘 / 网络 / 进程。KPI 只在概览。 */
 export default function HostCategoryLayout({
   dashboard,
   diskState,

@@ -716,8 +716,8 @@ export interface DashboardShellProps {
   /** 主机详情用标题旁 pill 切换布局，其它对象保持分段按钮。 */
   viewSwitcher?: DashboardViewSwitcher;
   /**
-   * 主机详情：标题留在灰底上，实例栏、分类 Tab 与内容收进同一白壳。
-   * 模式入口只出现在标题旁，不进 Tab 行。
+   * 主机详情：标题行与实例栏收进同一白卡，内容仍在卡内下方。
+   * 有专业布局时，模式入口是标题旁 pill；没有则不渲染该控件。
    */
   unifiedChrome?: boolean;
   /**
@@ -746,7 +746,9 @@ export const DashboardShell = ({
 }: DashboardShellProps) => {
   const { dt } = useDashboardText();
   const showProtocolBar = FLOW_VIEW_SWITCH_ROUTE_KEYS.has(dashboard.routeKey);
-  const activeMode = viewSwitcher?.mode ?? dashboard.displayMode;
+  const professionalCapable = Boolean(categoryContent);
+  const requestedMode = viewSwitcher?.mode ?? dashboard.displayMode;
+  const activeMode = !professionalCapable && requestedMode === 'category' ? 'dashboard' : requestedMode;
   const showsDashboardChrome = viewSwitcher ? activeMode !== 'metrics' : dashboard.isDashboardMode;
   const [visitedModes, setVisitedModes] = useState<string[]>(() => [activeMode]);
   useEffect(() => {
@@ -787,8 +789,8 @@ export const DashboardShell = ({
       title={dashboard.pageTitle}
       displayMode={activeMode}
       onDisplayModeChange={onDisplayModeChange}
-      modeControl={unifiedChrome ? 'pill' : viewSwitcher?.control}
-      modeOptions={viewSwitcher?.options}
+      modeControl={professionalCapable && (unifiedChrome || viewSwitcher?.control === 'pill') ? 'pill' : viewSwitcher?.control}
+      modeOptions={professionalCapable ? viewSwitcher?.options : undefined}
       timeDefaultValue={dashboard.timeDefaultValue}
       onTimeChange={dashboard.onTimeChange}
       onFrequenceChange={dashboard.setFrequence}
@@ -845,14 +847,12 @@ export const DashboardShell = ({
   <div className={styles.page}>
     <div className={styles.shell} data-view-mode={activeMode}>
       {unifiedChrome ? (
-        <>
+        <div className={styles.unifiedShell} data-dashboard-shell="unified">
           <div className={styles.pageIntro}>{pageHeader}</div>
-          <div className={styles.unifiedShell} data-dashboard-shell="unified">
-            <div className={styles.unifiedHostBar}>{instanceCard}</div>
-            {protocolBar}
-            {layouts}
-          </div>
-        </>
+          <div className={styles.unifiedHostBar}>{instanceCard}</div>
+          {protocolBar}
+          {layouts}
+        </div>
       ) : (
         <>
           <div className={styles.pageHeader}>

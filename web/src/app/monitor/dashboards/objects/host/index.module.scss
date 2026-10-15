@@ -36,7 +36,7 @@
   }
 }
 
-// 页头与白壳共用同一左右槽。标题留在灰底上，内容左右缘对齐白壳外缘。
+// 标题行收进白壳，与实例栏同一张卡，中间用实例栏上沿分割。
 .shell {
   --host-dashboard-gutter-x: 20px;
   padding-left: 0;
@@ -44,9 +44,8 @@
 }
 
 .pageIntro {
-  margin-bottom: 12px;
-  padding-left: var(--host-dashboard-gutter-x);
-  padding-right: var(--host-dashboard-gutter-x);
+  margin: 0;
+  padding: 14px 16px 12px;
   box-sizing: border-box;
 }
 
@@ -85,10 +84,10 @@
   height: 28px;
   margin: 0;
   padding: 0 12px;
-  border: 1px solid var(--color-primary);
+  border: 1px solid #1677ff;
   border-radius: 999px;
   background: var(--color-bg);
-  color: var(--color-primary);
+  color: #1677ff;
   font-size: 13px;
   font-weight: 500;
   line-height: 1;
@@ -97,12 +96,12 @@
 }
 
 .viewModePill:hover {
-  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
+  background: color-mix(in srgb, #1677ff 8%, var(--color-bg));
 }
 
 .viewModeCaret {
   font-size: 10px;
-  color: var(--color-primary);
+  color: #1677ff;
 }
 
 .backLink {
@@ -114,7 +113,7 @@
   border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  color: var(--color-primary) !important;
+  color: #1677ff !important;
   font-size: 14px;
   font-weight: 400;
   line-height: 22px;
@@ -123,14 +122,14 @@
 .backLink:hover,
 .backLink:focus,
 .backLink:active {
-  color: var(--color-primary) !important;
+  color: #1677ff !important;
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
 }
 
 .backLink :global(.anticon) {
-  color: var(--color-primary);
+  color: #1677ff;
 }
 
 :global(html.dark) .backLink,
@@ -139,7 +138,7 @@
 :global(html.dark) .backLink:active {
   background: transparent !important;
   border: none !important;
-  color: var(--color-primary) !important;
+  color: #1677ff !important;
 }
 
 .unifiedShell {
@@ -147,13 +146,14 @@
   margin-right: var(--host-dashboard-gutter-x);
   box-sizing: border-box;
   background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  border: 1px solid #e8e8e8;
   border-radius: 8px;
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-text-1) 4%, transparent);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   overflow: hidden;
 }
 
 .unifiedHostBar {
+  border-top: 1px solid #e8e8e8;
   border-bottom: 1px solid var(--color-border-1);
 
   .instanceCard {

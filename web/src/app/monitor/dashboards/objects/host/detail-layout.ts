@@ -16,7 +16,7 @@ export interface HostDetailLayoutOption {
 
 export const HOST_DETAIL_LAYOUT_OPTIONS: readonly HostDetailLayoutOption[] = [
   { labelKey: 'dashboardMode', fallback: '经典布局', value: 'dashboard' },
-  { labelKey: 'categoryTabMode', fallback: '分类仪表盘', value: 'category' },
+  { labelKey: 'categoryTabMode', fallback: '专业仪表盘', value: 'category' },
   { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
 ];
 
@@ -24,9 +24,16 @@ export const isHostDetailLayout = (value: string): value is HostDetailLayout => 
   value === 'dashboard' || value === 'metrics' || value === 'category'
 );
 
-export const readHostDetailLayout = (params: URLSearchParams): HostDetailLayout => {
+/** 未指定布局时默认专业仪表盘。显式 classic 才回经典。没有专业能力时由调用方改走经典。 */
+export const readHostDetailLayout = (
+  params: URLSearchParams,
+  professionalCapable = true
+): HostDetailLayout => {
   if (params.get('view') === 'metrics') return 'metrics';
-  return params.get(HOST_DETAIL_LAYOUT_PARAM) === 'category' ? 'category' : 'dashboard';
+  if (!professionalCapable) return 'dashboard';
+  const layout = params.get(HOST_DETAIL_LAYOUT_PARAM);
+  if (layout === 'dashboard') return 'dashboard';
+  return 'category';
 };
 
 export const writeHostDetailLayout = (
@@ -35,6 +42,7 @@ export const writeHostDetailLayout = (
 ) => {
   const next = setDashboardDisplayModeInParams(params, layout === 'metrics' ? 'metrics' : 'dashboard');
   if (layout === 'category') next.set(HOST_DETAIL_LAYOUT_PARAM, 'category');
+  else if (layout === 'dashboard') next.set(HOST_DETAIL_LAYOUT_PARAM, 'dashboard');
   else next.delete(HOST_DETAIL_LAYOUT_PARAM);
   return next;
 };

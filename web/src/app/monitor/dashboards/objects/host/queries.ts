@@ -220,7 +220,7 @@ export const HOST_CPU_CORE_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   }
 ];
 
-/** 主机分类仪表盘进程层：按 process_name 聚合，并保留 procstat 的 pattern 标签供选中行展示匹配规则。 */
+/** 主机专业仪表盘进程层：按 process_name 聚合，并保留 procstat 的 pattern 标签供选中行展示匹配规则。 */
 export const HOST_PROCESS_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   {
     key: 'process_cpu_usage',
