@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { RadarChartOutlined } from '@ant-design/icons';
+import { CloseOutlined, RadarChartOutlined } from '@ant-design/icons';
 import { Button, Tag, Typography } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { formatDateTime, formatLatency, formatNumber, formatRequestRate } from '@/app/apm/components/metric-format';
@@ -41,6 +41,8 @@ export default function TopologyInspectPanel({
   serviceIds,
   isolated,
   slice,
+  className,
+  onClose,
   onSelectNode,
   onIsolate,
   onShowFullMap,
@@ -55,6 +57,8 @@ export default function TopologyInspectPanel({
   serviceIds: Map<string, string>;
   isolated: boolean;
   slice?: { status?: 'ok' | 'error'; span_name?: string; min_duration_ms?: number };
+  className?: string;
+  onClose?: () => void;
   onSelectNode: (nodeId: string) => void;
   onIsolate: (nodeId: string) => void;
   onShowFullMap: () => void;
@@ -105,9 +109,10 @@ export default function TopologyInspectPanel({
       ? t('apm.topology.edgeName', '{source} → {target}', { source: source.service_name, target: target.service_name })
       : t('apm.topology.overview', '总览');
   const selectedServiceHref = selectedNode ? serviceHref(selectedNode) : null;
+  const containerClass = className || 'flex h-auto max-h-[min(50vh,480px)] w-full shrink-0 flex-col border-t border-[var(--color-border)] bg-[var(--color-bg)] lg:h-full lg:max-h-none lg:w-80 lg:border-l lg:border-t-0 3xl:w-96';
 
   return (
-    <aside aria-label={t('apm.topology.inspectPanel', '服务概况')} className="flex h-auto max-h-[min(50vh,480px)] w-full shrink-0 flex-col border-t border-[var(--color-border)] bg-[var(--color-bg)] lg:h-full lg:max-h-none lg:w-80 lg:border-l lg:border-t-0 3xl:w-96">
+    <aside aria-label={t('apm.topology.inspectPanel', '服务概况')} className={containerClass}>
       <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-fill-1)]/50 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="mb-0.5 flex items-center gap-1.5 text-xs text-[var(--color-text-3)]">
@@ -132,6 +137,15 @@ export default function TopologyInspectPanel({
           ) : null}
           {isolated ? (
             <Button size="small" onClick={onShowFullMap}>{t('apm.topology.showFullMap', '显示全图')}</Button>
+          ) : null}
+          {onClose ? (
+            <Button
+              aria-label={t('common.close', '关闭')}
+              icon={<CloseOutlined aria-hidden="true" />}
+              size="small"
+              type="text"
+              onClick={onClose}
+            />
           ) : null}
         </div>
       </div>

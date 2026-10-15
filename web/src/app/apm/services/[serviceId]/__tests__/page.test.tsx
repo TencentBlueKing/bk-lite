@@ -10,6 +10,7 @@ import ApmServiceDetailPage from '../page';
 const api = {
   getService: vi.fn(),
   getServiceRed: vi.fn(),
+  getServiceClientRollups: vi.fn(),
   getServiceErrorBreakdown: vi.fn(),
   getTraces: vi.fn(),
   getTopology: vi.fn(),
@@ -97,6 +98,7 @@ beforeEach(() => {
     timeseries: [],
     top_endpoints: [],
   });
+  api.getServiceClientRollups.mockResolvedValue({ rows: [] });
   api.getTraces.mockResolvedValue({ items: [] });
   api.getServiceErrorBreakdown.mockResolvedValue({
     service_id: 'svc-1',
@@ -492,4 +494,88 @@ describe('APM 服务详情错误 Tab', () => {
     expect(screen.getByText('current-staging')).not.toBeNull();
     expect(screen.queryByText('stale-production')).toBeNull();
   }, 15_000);
+
+  it('耗时构成和数据库语句来自 client rollup，不替换原有下游空态', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    api.getServiceRed.mockResolvedValue({
+      service_id: 'svc-1',
+      environment: 'production',
+      started_at: '2026-08-24T00:00:00Z',
+      ended_at: '2026-08-24T01:00:00Z',
+      request_rate: 1,
+      error_rate: 0,
+      p95_ms: 100,
+      p99_ms: 120,
+      request_count: 10,
+      error_count: 0,
+      timeseries: [],
+      top_endpoints: [{
+        endpoint: 'GET /products',
+        request_rate: 1,
+        error_rate: 0,
+        p95_ms: 100,
+        p99_ms: 120,
+      }],
+    });
+    api.getServiceClientRollups.mockResolvedValue({
+      rows: [
+        {
+          channel: 'database',
+          system: 'postgresql',
+          statement: 'SELECT sku, qty FROM stock WHERE sku = %s',
+          duration_ms: 200,
+          call_count: 8,
+          error_count: 0,
+          inferred: true,
+        },
+        {
+          channel: 'outbound',
+          system: 'redis',
+          statement: 'GET',
+          duration_ms: 50,
+          call_count: 2,
+          error_count: 1,
+          inferred: true,
+        },
+      ],
+    });
+    api.getTraces.mockImplementation(async (params: { status?: string; span_name?: string }) => ({
+      items: params.span_name ? [{
+        trace_id: params.status === 'error' ? 'trace-error' : 'trace-ok',
+        started_at: '2026-08-24T00:10:00Z',
+        duration_ms: params.status === 'error' ? 900 : 40,
+        service_namespace: 'shop',
+        service_name: 'checkout',
+        environment: 'production',
+        instance_id: 'pod-a',
+        status: params.status ?? 'ok',
+        root_span_name: params.span_name,
+        span_count: 2,
+      }] : [],
+    }));
+    renderWithApmIntl(<ApmServiceDetailPage />);
+
+    expect(await screen.findByText('耗时构成')).not.toBeNull();
+    expect(screen.getByText('近窗内无向下调用')).not.toBeNull();
+    expect(screen.getByText('库和缓存在「数据库语句」「出站调用」。')).not.toBeNull();
+    expect(screen.getByText(/入口耗时不放进这根条/)).not.toBeNull();
+
+    await user.click(screen.getByRole('tab', { name: '数据库语句' }));
+    expect(await screen.findByText(/SELECT sku, qty FROM stock/)).not.toBeNull();
+    expect(screen.getByText(/绑定参数已折叠成占位符/)).not.toBeNull();
+
+    await user.click(screen.getByRole('tab', { name: '出站调用' }));
+    expect((await screen.findAllByText(/redis/)).length).toBeGreaterThan(0);
+    await user.click(screen.getByText('HTTP'));
+    expect(screen.getByText(/HTTP 出站/)).not.toBeNull();
+
+    await user.click(screen.getByRole('tab', { name: '属性' }));
+    expect(await screen.findByText('service.name')).not.toBeNull();
+    expect(screen.getAllByText('checkout').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('tab', { name: '概览' }));
+    await user.click(await screen.findByRole('button', { name: '展开 GET /products 的样本' }));
+    expect(await screen.findByRole('link', { name: /40/ })).not.toBeNull();
+    expect(screen.getByRole('link', { name: 'GET /products' }).getAttribute('href')).toContain('/apm/explore/endpoints');
+  });
 });

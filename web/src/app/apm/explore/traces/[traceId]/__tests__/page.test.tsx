@@ -15,7 +15,7 @@ const api = {
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ traceId: 'trace-1' }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 vi.mock('next/link', () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
@@ -99,6 +99,15 @@ describe('APM Trace 详情', () => {
     expect(screen.queryByText('遥测存储暂不可用')).toBeNull();
   });
 
+  it('带 span_id 时选中该 Span，而不是首个错误', async () => {
+    window.history.replaceState({}, '', '/apm/explore/traces/trace-1?span_id=span-ok');
+    renderWithApmIntl(<ApmTraceDetailPage />);
+
+    const selected = await screen.findByRole('button', { pressed: true });
+    expect(selected.textContent).toContain('GET /ok');
+    expect(screen.queryByText('http.status_code')).toBeNull();
+  });
+
   it('默认选中首个错误 Span，并支持跳到首个错误', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithApmIntl(<ApmTraceDetailPage />);
@@ -139,5 +148,16 @@ describe('APM Trace 详情', () => {
     expect(byId['apm-trace-selected'] || '').toContain('POST /pay');
     expect(byId['apm-trace-selected'] || '').toContain('http.status_code');
     expect(byId['apm-trace-selected'] || '').toContain('500');
+  });
+
+  it('按名称汇总后只保留该 Span，再清除后瀑布恢复', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithApmIntl(<ApmTraceDetailPage />);
+
+    const groups = await screen.findAllByRole('button', { name: /POST \/pay/ });
+    await user.click(groups[0]);
+    expect(screen.getAllByText('GET /ok')).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: '显示全部 Span' }));
+    expect(screen.getAllByText('GET /ok').length).toBeGreaterThan(1);
   });
 });

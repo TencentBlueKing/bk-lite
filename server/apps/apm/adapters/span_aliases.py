@@ -4,7 +4,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 DB_SYSTEM_KEYS = ("db.system.name", "db.system")
+CACHE_DB_SYSTEMS = frozenset({"redis", "memcached", "valkey"})
 DB_NAME_KEYS = ("db.namespace", "db.name")
+DB_STATEMENT_KEYS = ("db.statement", "db.query.text")
 MESSAGING_SYSTEM_KEYS = ("messaging.system",)
 RPC_SYSTEM_KEYS = ("rpc.system",)
 RPC_SERVICE_KEYS = ("rpc.service",)
@@ -12,6 +14,8 @@ PEER_SERVICE_KEYS = ("peer.service",)
 HOST_KEYS = ("server.address", "net.peer.name", "network.peer.address", "net.peer.ip")
 PORT_KEYS = ("server.port", "net.peer.port", "network.peer.port")
 HTTP_ENTRY_KEYS = ("http.request.method", "http.method", "http.route", "url.path")
+HTTP_CLIENT_METHOD_KEYS = ("http.request.method", "http.method")
+HTTP_ROUTE_KEYS = ("http.route",)
 CLIENT_SPAN_KINDS = frozenset({"client", "producer"})
 ENTRY_SPAN_KINDS = frozenset({"server", "consumer"})
 SERVER_SPAN_KIND = "server"
@@ -66,10 +70,47 @@ def is_user_request_entry(kind: str, attributes: Mapping[str, object]) -> bool:
 
     if kind != SERVER_SPAN_KIND:
         return False
-    return bool(
-        span_attribute_text(attributes, HTTP_ENTRY_KEYS)
-        or span_attribute_text(attributes, RPC_SYSTEM_KEYS)
-    )
+    return bool(span_attribute_text(attributes, HTTP_ENTRY_KEYS) or span_attribute_text(attributes, RPC_SYSTEM_KEYS))
+
+
+def classify_client_db_rollup(attributes: Mapping[str, object]) -> tuple[str, str] | None:
+    """把带数据库系统的 Client Span 分成语句或缓存出站。
+
+    系统名按 db.system.name、db.system 的顺序取值。redis / memcached / valkey
+    归出站，其余数据库系统归语句。没有数据库系统时返回空，服务间 HTTP 不进这张表。
+    """
+
+    system = span_attribute_text(attributes, DB_SYSTEM_KEYS)
+    if not system:
+        return None
+    channel = "outbound" if system.lower() in CACHE_DB_SYSTEMS else "database"
+    return channel, system
+
+
+def client_db_statement(attributes: Mapping[str, object], name: str = "") -> str:
+    """优先用探针采到的 SQL/命令文本，缺省才回落到 Span 名（通常只是 SELECT/GET）。"""
+
+    return span_attribute_text(attributes, DB_STATEMENT_KEYS) or str(name or "").strip()
+
+
+def classify_client_http_rollup(attributes: Mapping[str, object], name: str = "") -> tuple[str, str, str] | None:
+    """把无数据库系统的 HTTP Client Span 归到出站 HTTP。
+
+    服务间调用也会留下 http.method；产品要把这些操作列在「出站调用 / HTTP」。
+    未接入对端用 peer.service 当系统名，已接入对端没有该字段时系统名为 http。
+    """
+
+    if classify_client_db_rollup(attributes) is not None:
+        return None
+    method = span_attribute_text(attributes, HTTP_CLIENT_METHOD_KEYS)
+    if not method:
+        return None
+    route = span_attribute_text(attributes, HTTP_ROUTE_KEYS)
+    peer = span_attribute_text(attributes, PEER_SERVICE_KEYS)
+    statement = str(name or "").strip()
+    if not statement:
+        statement = f"{method} {route}".strip() if route else method
+    return "http", peer or "http", statement[:256]
 
 
 def infer_downstream(attributes: Mapping[str, object]) -> InferredDownstream | None:

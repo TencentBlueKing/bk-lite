@@ -73,6 +73,24 @@ export interface ApmServiceRedPoint {
   p99_ms: number | null;
 }
 
+export interface ApmClientRollupRow {
+  channel: 'database' | 'outbound';
+  system: string;
+  statement: string;
+  duration_ms: number;
+  call_count: number;
+  error_count: number;
+  inferred: boolean;
+}
+
+export interface ApmClientRollups {
+  service_id: string;
+  environment: string;
+  started_at: string;
+  ended_at: string;
+  rows: ApmClientRollupRow[];
+}
+
 export interface ApmServiceEndpointRed {
   endpoint: string;
   request_rate: number;
