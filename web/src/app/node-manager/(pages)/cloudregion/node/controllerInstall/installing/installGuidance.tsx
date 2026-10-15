@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, forwardRef, useImperativeHandle } from 'react';
-import { Progress, Steps, Tag } from 'antd';
+import { Button, Progress, Steps, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
+  ClockCircleFilled,
   LoadingOutlined,
-  ClockCircleFilled
+  ReloadOutlined
 } from '@ant-design/icons';
 import OperateDrawer from '@/components/operate-drawer';
 import { ModalRef } from '@/app/node-manager/types';
@@ -36,12 +37,14 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
 interface InstallGuidanceProps {
   onClose?: () => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 type InstallGuidanceDisplayMode = 'controllerInstall' | 'stepList';
 
 const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
-  ({ onClose }, ref) => {
+  ({ onClose, onRefresh, refreshing = false }, ref) => {
     const { t } = useTranslation();
     const { convertToLocalizedTime } = useLocalizedTime();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
@@ -219,7 +222,22 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
       <div>
         <OperateDrawer
           width={700}
-          title={title}
+          title={(
+            <div className="flex w-full items-center justify-between gap-3">
+              <span>{title}</span>
+              {onRefresh && (
+                <Tooltip title={t('common.refresh')}>
+                  <Button
+                    type="text"
+                    size="small"
+                    aria-label={t('common.refresh')}
+                    icon={<ReloadOutlined spin={refreshing} />}
+                    onClick={onRefresh}
+                  />
+                </Tooltip>
+              )}
+            </div>
+          )}
           visible={groupVisible}
           onClose={handleCancel}
           headerExtra={
