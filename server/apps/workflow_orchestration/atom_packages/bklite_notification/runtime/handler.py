@@ -80,13 +80,11 @@ def execute(inputs: dict[str, Any]) -> dict[str, Any]:
     title = str(inputs.get("title") or "").strip()
     body = str(inputs.get("body") or "").strip()
     report_link = _report_link(inputs, team, execution_id)
-    if report_link:
-        # 邮件走 HTML 投递：链接只放 event_payload，由渠道层拼可点击 <a>；正文避免被 RICH_TEXT 转义破坏。
-        if notification_type == "EMAIL":
-            if not _is_absolute_http_url(report_link):
-                raise ValueError("报告下载链接缺少 WEB_BASE_URL，无法发送邮件下载地址")
-        else:
-            body = f"{body}\n报告下载（24 小时内有效）：{report_link}"
+    if report_link and notification_type != "EMAIL":
+        body = f"{body}\n报告下载（24 小时内有效）：{report_link}"
+    elif report_link and notification_type == "EMAIL" and not _is_absolute_http_url(report_link):
+        # 未配置 WEB_BASE_URL 时链接不是绝对地址，渠道不会把它写成可点击下载。邮件正文仍要发出。
+        report_link = ""
     if (notification_type == "EMAIL" and not title) or len(title) > 200 or not body or len(body) > 10000:
         raise ValueError("通知标题或正文超出限额")
     delivery = SystemMgmt().dispatch_notification(

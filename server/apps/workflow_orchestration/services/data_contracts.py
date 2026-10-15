@@ -199,6 +199,11 @@ def _reference_schema(
 ) -> tuple[dict[str, Any], bool]:
     parts = expression.split(".")
     inputs = {item["key"]: item for item in contract["inputs"]}
+    if len(parts) >= 3 and parts[:3] == ["workflow", "input", "__system"]:
+        schema = _schema_at_path({"type": "object", "properties": SYSTEM_CONTEXT_SCHEMA}, parts[3:])
+        if schema is None:
+            raise DefinitionValidationError(f"数据引用不存在: {expression}")
+        return schema, False
     if len(parts) >= 3 and parts[:2] == ["workflow", "input"] and parts[2] in inputs:
         item = inputs[parts[2]]
         schema = _schema_at_path(item["schema"], parts[3:])

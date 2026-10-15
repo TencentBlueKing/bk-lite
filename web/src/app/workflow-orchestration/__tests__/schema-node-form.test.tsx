@@ -26,7 +26,7 @@ function Harness({ schema, initial, uiSchema, fieldActions }: { schema: JsonSche
 }
 
 describe('原子 Schema 参数表单', () => {
-  it('支持将左侧流程数据拖入字段，清除引用后恢复手动草稿', () => {
+  it('string 字段拖入上游引用时插入到文本中，而不是整格替换为只读芯片', () => {
     render(<Harness schema={{ type: 'object', properties: { owner: { type: 'string', title: '负责人' } } }} initial={{ owner: 'alice' }} />);
 
     const dataTransfer = {
@@ -39,10 +39,29 @@ describe('原子 Schema 参数表单', () => {
     fireEvent.dragOver(screen.getByTestId('workflow-reference-dropzone'), { dataTransfer });
     fireEvent.drop(screen.getByTestId('workflow-reference-dropzone'), { dataTransfer });
 
-    expect(screen.getByDisplayValue('${workflow.input.owner}')).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '清除字段引用' }));
+    expect(screen.getByDisplayValue('alice${workflow.input.owner}')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '清除字段引用' })).toBeNull();
+  });
 
-    expect(screen.getByDisplayValue('alice')).not.toBeNull();
+  it('string 字段允许拖入 object 引用，并在光标处插入表达式', () => {
+    function ObjectHarness() {
+      const [value, setValue] = useState<Record<string, unknown>>({ body: '生成内容：' });
+      return <App><SchemaNodeForm
+        schema={{ type: 'object', properties: { body: { type: 'string', title: '通知内容', 'x-widget': 'textarea' } } }}
+        value={value}
+        references={[{ label: '作业 · 全部输出', value: '${job.output}', source: '作业', type: 'object', displayName: '全部输出' }]}
+        onChange={setValue}
+      /></App>;
+    }
+    render(<ObjectHarness />);
+
+    const dataTransfer = {
+      dropEffect: 'none',
+      types: [WORKFLOW_REFERENCE_MIME],
+      getData: vi.fn().mockImplementation((format: string) => format === WORKFLOW_REFERENCE_MIME ? '${job.output}' : ''),
+    };
+    fireEvent.drop(screen.getByTestId('workflow-reference-dropzone'), { dataTransfer });
+    expect(screen.getByDisplayValue('生成内容：${job.output}')).not.toBeNull();
   });
 
   it('布尔开关保持原生宽度并左对齐', () => {

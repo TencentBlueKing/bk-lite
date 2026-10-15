@@ -980,6 +980,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       selectedTask.inputParameters || {},
       nodeTestInputs,
       inspectorTestData,
+      selectedAtom?.input_schema,
     );
     if (materialized.unresolved.length) {
       setNodeTestError(t('workflowOrchestration.editor.missingUpstreamTestData', '缺少上游测试数据：{sources}。请先测试对应上游节点。', { sources: materialized.unresolved.join('、') }));
