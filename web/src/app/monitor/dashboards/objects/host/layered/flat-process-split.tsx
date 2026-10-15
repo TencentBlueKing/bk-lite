@@ -8,6 +8,7 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { HOST_SERIES_COLOR } from '../config';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
+import TableCsvExportButton from './table-csv-export';
 import StatusCountRow, { processStatusView } from './status-count';
 import ThinTimeSeries from './thin-time-series';
 import { formatPercent, formatUnit, latestPreferCount, metricSettled } from './readings';
@@ -26,7 +27,8 @@ export default function FlatProcessSplit({
   selectedKey,
   onSelect,
   metrics,
-  metricsLoading = false
+  metricsLoading = false,
+  hostLabel
 }: {
   rows: EntityTableRow[];
   loading: boolean;
@@ -34,6 +36,7 @@ export default function FlatProcessSplit({
   onSelect: (key: string) => void;
   metrics?: Record<string, MetricSeries | undefined>;
   metricsLoading?: boolean;
+  hostLabel: string;
 }) {
   const { t } = useDashboardText();
   const processListScopeTip = t(
@@ -69,6 +72,11 @@ export default function FlatProcessSplit({
       next.push({
         key: 'process_alive',
         title: '存活',
+        csvValue: (row) => {
+          const value = numberOrNull(row.values.process_alive);
+          if (value == null) return '—';
+          return value >= 1 ? '是' : '否';
+        },
         render: (row) => {
           const value = numberOrNull(row.values.process_alive);
           if (value == null) return '—';
@@ -146,7 +154,10 @@ export default function FlatProcessSplit({
             </Tooltip>
           </span>
         </div>
-        <span className={styles.note}>点选行查看匹配规则</span>
+        <span className="inline-flex shrink-0 items-center gap-3">
+          <span className={styles.note}>点选行查看匹配规则</span>
+          <TableCsvExportButton host={hostLabel} slug="processes" columns={columns} rows={sorted} />
+        </span>
       </div>
       <LayeredEntityTable
         rows={sorted}

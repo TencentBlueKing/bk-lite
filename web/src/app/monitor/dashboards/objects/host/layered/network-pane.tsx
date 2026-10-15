@@ -5,7 +5,8 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import { hostCategoryText } from './category-copy';
 import { latestFinite, pointsToChartData, sumPoints, type EntityTableRow } from '../entity-series';
-import LayeredEntityTable from './entity-table';
+import LayeredEntityTable, { type LayeredColumn } from './entity-table';
+import TableCsvExportButton from './table-csv-export';
 import ThinTimeSeries from './thin-time-series';
 import { formatUnit, ROW_ACCENTS } from './readings';
 import classic from '../index.module.scss';
@@ -34,13 +35,15 @@ export default function NetworkPane({
   loading,
   errorText,
   selectedKey,
-  onSelect
+  onSelect,
+  hostLabel
 }: {
   rows: EntityTableRow[];
   loading: boolean;
   errorText?: string;
   selectedKey: string;
   onSelect: (key: string) => void;
+  hostLabel: string;
 }) {
   const viewRows = useMemo(() => withRates(rows), [rows]);
   const selected = viewRows.find((row) => row.key === selectedKey) || viewRows[0];
@@ -54,6 +57,24 @@ export default function NetworkPane({
     ...(hasDrop ? [{ points: selected?.series.drop || [], label: '丢包', color: HOST_PALETTE.orange, latest: dropLatest }] : [])
   ];
   const { t } = useDashboardText();
+  const nicColumns: LayeredColumn[] = [
+    {
+      key: 'interface',
+      title: '网卡',
+      labelKey: 'interface',
+      csvValue: (row) => row.labels.interface || '—',
+      render: (row, index) => (
+        <span className={styles.nameCell}>
+          <span className={styles.rowDot} style={{ background: ROW_ACCENTS[index % ROW_ACCENTS.length] }} />
+          {row.labels.interface || '—'}
+        </span>
+      )
+    },
+    { key: 'net_bytes_recv_rate', title: '入', unit: 'byteps', emptyDash: true },
+    { key: 'net_bytes_sent_rate', title: '出', unit: 'byteps', emptyDash: true },
+    ...(hasErr ? [{ key: 'err', title: '错误', unit: 'cps' as const, emptyDash: true }] : []),
+    ...(hasDrop ? [{ key: 'drop', title: '丢包', unit: 'cps' as const, emptyDash: true }] : [])
+  ];
   const throughputTitle = name
     ? hostCategoryText(t, 'inboundOutboundThroughputNamed', { name })
     : hostCategoryText(t, 'inboundOutboundThroughput');
@@ -119,6 +140,7 @@ export default function NetworkPane({
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>网卡</div>
+        <TableCsvExportButton host={hostLabel} slug="nics" columns={nicColumns} rows={viewRows} />
       </div>
       <LayeredEntityTable
         rows={viewRows}
@@ -126,23 +148,7 @@ export default function NetworkPane({
         selectedKey={selected?.key || ''}
         onSelect={onSelect}
         emptyText="暂无网卡数据"
-        columns={[
-          {
-            key: 'interface',
-            title: '网卡',
-            labelKey: 'interface',
-            render: (row, index) => (
-              <span className={styles.nameCell}>
-                <span className={styles.rowDot} style={{ background: ROW_ACCENTS[index % ROW_ACCENTS.length] }} />
-                {row.labels.interface || '—'}
-              </span>
-            )
-          },
-          { key: 'net_bytes_recv_rate', title: '入', unit: 'byteps', emptyDash: true },
-          { key: 'net_bytes_sent_rate', title: '出', unit: 'byteps', emptyDash: true },
-          ...(hasErr ? [{ key: 'err', title: '错误', unit: 'cps' as const, emptyDash: true }] : []),
-          ...(hasDrop ? [{ key: 'drop', title: '丢包', unit: 'cps' as const, emptyDash: true }] : [])
-        ]}
+        columns={nicColumns}
       />
     </>
   );

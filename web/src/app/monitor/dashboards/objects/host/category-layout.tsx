@@ -172,6 +172,10 @@ export default function HostCategoryLayout({
   const applyAlertCount = useCallback((count: number) => {
     setAlertCount(count);
   }, []);
+  const namedHost = String(dashboard.resolvedInstanceName || '').trim();
+  const hostLabel = namedHost && namedHost !== '--'
+    ? namedHost
+    : String(dashboard.instanceId || '').trim();
   const activeTab = onCategoryTabChange ? categoryTab : uncontrolledTab;
   const setActiveTab = onCategoryTabChange || setUncontrolledTab;
   // 点「性能」时上一页的 Tooltip / Popover / 图表要先卸完，再挂性能 KPI。
@@ -321,6 +325,7 @@ export default function HostCategoryLayout({
           coreLoading={coreState.status === 'idle' || coreState.status === 'loading'}
           coreFailed={coreState.status === 'error'}
           onRetryCore={onRetryCore}
+          hostLabel={hostLabel}
         />
       );
     }
@@ -336,6 +341,7 @@ export default function HostCategoryLayout({
           onSelectMount={diskSelection.selectMount}
           onSelectDevice={diskSelection.selectDevice}
           windowsHost={windowsHost}
+          hostLabel={hostLabel}
         />
       );
     }
@@ -347,6 +353,7 @@ export default function HostCategoryLayout({
           errorText={netState.status === 'error' ? '网卡数据加载失败，请稍后重试。' : undefined}
           selectedKey={netSelection.selectedKey}
           onSelect={netSelection.setSelectedKey}
+          hostLabel={hostLabel}
         />
       );
     }
@@ -359,6 +366,7 @@ export default function HostCategoryLayout({
           onSelect={processSelection.setSelectedKey}
           metrics={metrics}
           metricsLoading={dashboard.loading}
+          hostLabel={hostLabel}
         />
       );
     }

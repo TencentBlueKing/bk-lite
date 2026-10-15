@@ -23,6 +23,8 @@ export interface LayeredColumn {
   align?: 'left' | 'right' | 'center';
   fixed?: 'left' | 'right';
   render?: (row: EntityTableRow, index: number) => React.ReactNode;
+  /** 导出用的可读文本。缺省时跟 label / 单位格式化，不含色点和迷你条。 */
+  csvValue?: (row: EntityTableRow) => string;
 }
 
 const USAGE_BAR_WARN = 80;
@@ -40,6 +42,17 @@ const formatCell = (value: number | null | undefined, unit?: MetricUnit, emptyDa
   if (!unit || unit === 'none') return String(value);
   const formatted = formatMetricValue(value, unit);
   return `${formatted.value}${formatted.unit || ''}`;
+};
+
+/** 与单元格展示一致的导出文本。自定义 render 若不是纯文本，请另给 csvValue。 */
+export const layeredColumnText = (column: LayeredColumn, row: EntityTableRow) => {
+  if (column.csvValue) return column.csvValue(row);
+  if (column.labelKey) {
+    const text = row.labels[column.labelKey];
+    if (text) return text;
+    return column.emptyDash ? '—' : '--';
+  }
+  return formatCell(row.values[column.key], column.unit, column.emptyDash);
 };
 
 export default function LayeredEntityTable({

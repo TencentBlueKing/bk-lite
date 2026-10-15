@@ -11,7 +11,8 @@ import {
   type EntityTableRow
 } from '../entity-series';
 import { hostCategoryText, type HostCategoryCopyKey } from './category-copy';
-import LayeredEntityTable from './entity-table';
+import LayeredEntityTable, { type LayeredColumn } from './entity-table';
+import TableCsvExportButton from './table-csv-export';
 import ThinTimeSeries from './thin-time-series';
 import { formatBytesPair, formatUnit, ROW_ACCENTS } from './readings';
 import styles from './layered.module.scss';
@@ -111,7 +112,8 @@ export default function DiskPane({
   selectedMountKey,
   selectedDeviceKey,
   onSelectMount,
-  onSelectDevice
+  onSelectDevice,
+  hostLabel
 }: {
   mountRows: EntityTableRow[];
   deviceRows: EntityTableRow[];
@@ -121,6 +123,7 @@ export default function DiskPane({
   selectedDeviceKey: string;
   onSelectMount: (key: string) => void;
   onSelectDevice: (key: string) => void;
+  hostLabel: string;
   /** 调用方仍传入。inode 列始终展示，缺采集显示 —，不再按系统藏列。 */
   windowsHost?: boolean;
 }) {
@@ -142,6 +145,116 @@ export default function DiskPane({
     onSelectDevice(key);
     setSub('device');
   };
+  const mountColumns: LayeredColumn[] = [
+    {
+      key: 'path',
+      title: '挂载点',
+      labelKey: 'path',
+      width: 200,
+      csvValue: (row) => row.labels.path || '—',
+      render: (row, index) => {
+        const path = row.labels.path || '';
+        return (
+          <span className={`${styles.nameCell} ${styles.nameCellTruncate}`}>
+            <span className={styles.rowDot} style={{ background: ROW_ACCENTS[index % ROW_ACCENTS.length] }} />
+            <Tooltip title={path || undefined}>
+              <span className={styles.pathEllipsis}>{path || '—'}</span>
+            </Tooltip>
+          </span>
+        );
+      }
+    },
+    { key: 'disk_used_percent', title: '使用率', unit: 'percent', bar: true, emptyDash: true },
+    {
+      key: 'disk_used',
+      title: '已用/总量',
+      csvValue: (row) => formatBytesPair(row.values.disk_used, row.values.disk_total)
+    },
+    {
+      key: 'io_device',
+      title: hostCategoryText(t, 'relatedDevice'),
+      labelKey: 'io_device',
+      csvValue: (row) => row.labels.io_device || '—',
+      render: (row) => {
+        const name = row.labels.io_device || '';
+        if (!name) return '—';
+        const device = deviceRows.find((item) => (
+          item.labels.name === name || item.labels.device === name
+        ));
+        if (!device) return name;
+        const active = device.key === selectedDevice?.key;
+        return (
+          <button
+            type="button"
+            className={active ? `${styles.deviceLink} ${styles.deviceLinkOn}` : styles.deviceLink}
+            onClick={(event) => {
+              event.stopPropagation();
+              openDevice(device.key);
+            }}
+          >
+            {name}
+          </button>
+        );
+      }
+    },
+    {
+      key: 'disk_inodes_used_percent',
+      title: hostCategoryText(t, 'inodeUsage'),
+      unit: 'percent' as const,
+      emptyDash: true
+    },
+    ...(showFsType ? [{
+      key: 'fstype',
+      title: hostCategoryText(t, 'filesystemType'),
+      labelKey: 'fstype',
+      emptyDash: true
+    }] : [])
+  ];
+  const deviceColumns: LayeredColumn[] = [
+    {
+      key: 'name',
+      title: '设备',
+      labelKey: 'name',
+      csvValue: (row) => row.labels.name || '—',
+      render: (row, index) => (
+        <span className={styles.nameCell}>
+          <span className={styles.rowDot} style={{ background: ROW_ACCENTS[index % ROW_ACCENTS.length] }} />
+          {row.labels.name || '—'}
+        </span>
+      )
+    },
+    { key: 'diskio_read_bytes_rate', title: '读', unit: 'byteps', emptyDash: true },
+    { key: 'diskio_write_bytes_rate', title: '写', unit: 'byteps', emptyDash: true },
+    { key: 'diskio_reads_rate', title: hostCategoryText(t, 'readIops'), unit: 'cps', emptyDash: true },
+    { key: 'diskio_writes_rate', title: hostCategoryText(t, 'writeIops'), unit: 'cps', emptyDash: true },
+    { key: 'diskio_io_util', title: hostCategoryText(t, 'ioUtilization'), unit: 'percent', emptyDash: true },
+    {
+      key: 'latency',
+      title: hostCategoryText(t, 'latencyReadWrite'),
+      csvValue: (row) => formatLatencyPair(row)
+    },
+    {
+      key: 'mounts',
+      title: '挂载点',
+      ellipsis: false,
+      csvValue: (row) => {
+        const paths = relatedMounts(mountRows, row.labels.name || '');
+        return paths.length ? paths.join('; ') : '—';
+      },
+      render: (row) => {
+        const paths = relatedMounts(mountRows, row.labels.name || '');
+        if (!paths.length) return '—';
+        return (
+          <span className={styles.mountPaths}>
+            {paths.map((path) => (
+              <span key={path} className={styles.mountPath}>{path}</span>
+            ))}
+            <span className={styles.mountCount}>（{paths.length}）</span>
+          </span>
+        );
+      }
+    }
+  ];
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -179,6 +292,9 @@ export default function DiskPane({
               }]}
             />
           </div>
+          <div className="flex justify-end">
+            <TableCsvExportButton host={hostLabel} slug="mounts" columns={mountColumns} rows={mountRows} />
+          </div>
           {showMountBody ? (
             <LayeredEntityTable
               rows={mountRows}
@@ -186,69 +302,7 @@ export default function DiskPane({
               selectedKey={selectedMount?.key || ''}
               onSelect={onSelectMount}
               emptyText={hostCategoryText(t, 'noMountPoints')}
-              columns={[
-                {
-                  key: 'path',
-                  title: '挂载点',
-                  labelKey: 'path',
-                  width: 200,
-                  render: (row, index) => {
-                    const path = row.labels.path || '';
-                    return (
-                      <span className={`${styles.nameCell} ${styles.nameCellTruncate}`}>
-                        <span className={styles.rowDot} style={{ background: ROW_ACCENTS[index % ROW_ACCENTS.length] }} />
-                        <Tooltip title={path || undefined}>
-                          <span className={styles.pathEllipsis}>{path || '—'}</span>
-                        </Tooltip>
-                      </span>
-                    );
-                  }
-                },
-                { key: 'disk_used_percent', title: '使用率', unit: 'percent', bar: true, emptyDash: true },
-                {
-                  key: 'disk_used',
-                  title: '已用/总量',
-                  render: (row) => formatBytesPair(row.values.disk_used, row.values.disk_total)
-                },
-                {
-                  key: 'io_device',
-                  title: hostCategoryText(t, 'relatedDevice'),
-                  labelKey: 'io_device',
-                  render: (row) => {
-                    const name = row.labels.io_device || '';
-                    if (!name) return '—';
-                    const device = deviceRows.find((item) => (
-                      item.labels.name === name || item.labels.device === name
-                    ));
-                    if (!device) return name;
-                    const active = device.key === selectedDevice?.key;
-                    return (
-                      <button
-                        type="button"
-                        className={active ? `${styles.deviceLink} ${styles.deviceLinkOn}` : styles.deviceLink}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openDevice(device.key);
-                        }}
-                      >
-                        {name}
-                      </button>
-                    );
-                  }
-                },
-                {
-                  key: 'disk_inodes_used_percent',
-                  title: hostCategoryText(t, 'inodeUsage'),
-                  unit: 'percent' as const,
-                  emptyDash: true
-                },
-                ...(showFsType ? [{
-                  key: 'fstype',
-                  title: hostCategoryText(t, 'filesystemType'),
-                  labelKey: 'fstype',
-                  emptyDash: true
-                }] : [])
-              ]}
+              columns={mountColumns}
             />
           ) : (
             <div className={styles.note}>{hostCategoryText(t, 'noMountPoints')}</div>
@@ -284,6 +338,9 @@ export default function DiskPane({
               );
             })}
           </div>
+          <div className="flex justify-end">
+            <TableCsvExportButton host={hostLabel} slug="devices" columns={deviceColumns} rows={deviceRows} />
+          </div>
           {showDeviceBody ? (
             <LayeredEntityTable
               rows={deviceRows}
@@ -291,46 +348,7 @@ export default function DiskPane({
               selectedKey={selectedDevice?.key || ''}
               onSelect={onSelectDevice}
               emptyText={hostCategoryText(t, 'noBlockDevices')}
-              columns={[
-                {
-                  key: 'name',
-                  title: '设备',
-                  labelKey: 'name',
-                  render: (row, index) => (
-                    <span className={styles.nameCell}>
-                      <span className={styles.rowDot} style={{ background: ROW_ACCENTS[index % ROW_ACCENTS.length] }} />
-                      {row.labels.name || '—'}
-                    </span>
-                  )
-                },
-                { key: 'diskio_read_bytes_rate', title: '读', unit: 'byteps', emptyDash: true },
-                { key: 'diskio_write_bytes_rate', title: '写', unit: 'byteps', emptyDash: true },
-                { key: 'diskio_reads_rate', title: hostCategoryText(t, 'readIops'), unit: 'cps', emptyDash: true },
-                { key: 'diskio_writes_rate', title: hostCategoryText(t, 'writeIops'), unit: 'cps', emptyDash: true },
-                { key: 'diskio_io_util', title: hostCategoryText(t, 'ioUtilization'), unit: 'percent', emptyDash: true },
-                {
-                  key: 'latency',
-                  title: hostCategoryText(t, 'latencyReadWrite'),
-                  render: (row) => formatLatencyPair(row)
-                },
-                {
-                  key: 'mounts',
-                  title: '挂载点',
-                  ellipsis: false,
-                  render: (row) => {
-                    const paths = relatedMounts(mountRows, row.labels.name || '');
-                    if (!paths.length) return '—';
-                    return (
-                      <span className={styles.mountPaths}>
-                        {paths.map((path) => (
-                          <span key={path} className={styles.mountPath}>{path}</span>
-                        ))}
-                        <span className={styles.mountCount}>（{paths.length}）</span>
-                      </span>
-                    );
-                  }
-                }
-              ]}
+              columns={deviceColumns}
             />
           ) : (
             <div className={styles.note}>{hostCategoryText(t, 'noBlockDevices')}</div>
