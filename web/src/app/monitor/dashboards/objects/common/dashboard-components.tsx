@@ -716,7 +716,7 @@ export interface DashboardShellProps {
   /** 主机详情用标题旁 pill 切换布局，其它对象保持分段按钮。 */
   viewSwitcher?: DashboardViewSwitcher;
   /**
-   * 主机详情：标题行与实例栏收进同一白卡，内容仍在卡内下方。
+   * 标题行与实例栏收进同一白卡，内容在卡外、与白卡同宽。
    * 有专业布局时，模式入口是标题旁 pill；没有则不渲染该控件。
    */
   unifiedChrome?: boolean;
@@ -740,7 +740,7 @@ export const DashboardShell = ({
   metricsContent,
   viewSwitcher,
   preserveLayouts = false,
-  unifiedChrome = false,
+  unifiedChrome = true,
   brandLabel,
   styles
 }: DashboardShellProps) => {

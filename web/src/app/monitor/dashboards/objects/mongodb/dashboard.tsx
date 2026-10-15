@@ -617,7 +617,8 @@ export default function MongoDashboardPage() {
   return (
     <div className={styles.page}>
       <div className={styles.shell}>
-        <div className={styles.pageHeader}>
+        <div className={styles.unifiedShell} data-dashboard-shell="unified">
+          <div className={styles.pageIntro}>
           <DashboardPageHeader
             title={pageTitle}
             displayMode={displayMode}
@@ -629,7 +630,8 @@ export default function MongoDashboardPage() {
             showTimeSelector={false}
             styles={styles}
           />
-
+          </div>
+          <div className={styles.unifiedHostBar}>
           <DashboardInstanceCard
             instanceName={resolvedInstanceName}
             metaItems={instanceMetaItems}
@@ -650,9 +652,10 @@ export default function MongoDashboardPage() {
             }}
             styles={styles}
           />
+          </div>
         </div>
 
-        <div>
+        <div className={styles.unifiedBelow}>
           {displayMode === 'dashboard' ? (
             <>
               {/* 分区 1 · 健康概览：采集状态 + 关键 KPI */}

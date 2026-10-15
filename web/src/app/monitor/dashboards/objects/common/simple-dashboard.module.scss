@@ -15,8 +15,9 @@
 }
 
 .shell {
+  --page-gutter: 20px;
   width: 100%;
-  padding: 16px 20px 24px;
+  padding: 16px var(--page-gutter) 24px;
   box-sizing: border-box;
 }
 
@@ -76,6 +77,59 @@
   padding: 14px 16px;
   border-top: 1px solid #e8e8e8;
   border-bottom: none;
+}
+
+// 各对象顶栏与主机同一白卡：头与内容都是 .shell 的 100% 子块，左右只由 --page-gutter 决定。
+.pageIntro {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.pageIntro .breadcrumb,
+.pageIntro .titleControlsRow {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.pageIntro .breadcrumb :global(ol) {
+  margin: 0;
+  padding: 0;
+}
+
+.unifiedShell {
+  width: 100%;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+  background: var(--color-bg);
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.unifiedHostBar {
+  .instanceCard {
+    padding: 14px 16px;
+    border-top: 1px solid #e8e8e8;
+    border-bottom: none;
+  }
+}
+
+.unifiedBelow {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.unifiedBody {
+  padding: 14px 0 16px;
+}
+
+.unifiedCategoryBody {
+  min-width: 0;
 }
 
 .protocolBar {
@@ -256,6 +310,15 @@
 
 .backLink :global(.anticon) {
   color: #1677ff;
+}
+
+:global(html.dark) .backLink,
+:global(html.dark) .backLink:hover,
+:global(html.dark) .backLink:focus,
+:global(html.dark) .backLink:active {
+  background: transparent !important;
+  border: none !important;
+  color: #1677ff !important;
 }
 
 .breadcrumb {
@@ -2008,7 +2071,17 @@
 
 @media (max-width: 768px) {
   .shell {
-    padding: 14px 12px 22px;
+    --page-gutter: 12px;
+    padding: 14px var(--page-gutter) 22px;
+  }
+
+  .pageTitleRowPill .titleControlsRow {
+    align-items: stretch;
+  }
+
+  .pageTitleRowPill .controlsWrap {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .pageTitleRow,

@@ -127,13 +127,10 @@ export function DashboardPageHeader({
     </Dropdown>
   ) : null;
 
-  const backIsLink = usePill;
   const backButton = (
     <Button
-      type={backIsLink ? 'link' : 'default'}
-      className={backIsLink
-        ? [styles.backLink, 'inline-flex max-w-[260px] items-center'].filter(Boolean).join(' ')
-        : `${styles.toolbarBackBtn ?? ''} inline-flex max-w-[260px] items-center`}
+      type="link"
+      className={[styles.backLink, 'inline-flex max-w-[260px] items-center'].filter(Boolean).join(' ')}
       icon={<ArrowLeftOutlined aria-hidden="true" />}
       onClick={onBack}
       aria-label={backLabel}
