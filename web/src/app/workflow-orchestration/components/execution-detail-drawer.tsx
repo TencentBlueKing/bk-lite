@@ -249,10 +249,10 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
     const ticket = requestCoordinator.begin({ visible: !quiet });
     if (!ticket) return;
     try {
-      const [record, summary] = await Promise.all([
-        get<ExecutionRecord>(`${API}/executions/${executionId}/`, { signal: ticket.signal }),
-        get<ExecutionNodesResponse>(`${API}/executions/${executionId}/nodes/`, { signal: ticket.signal }),
-      ]);
+      // 先拉详情（会向 Conductor 同步终态），再拉节点列表，避免并行时节点快照仍停在 RUNNING。
+      const record = await get<ExecutionRecord>(`${API}/executions/${executionId}/`, { signal: ticket.signal });
+      if (!requestCoordinator.shouldApply(ticket)) return;
+      const summary = await get<ExecutionNodesResponse>(`${API}/executions/${executionId}/nodes/`, { signal: ticket.signal });
       if (!requestCoordinator.shouldApply(ticket)) return;
       const visibleNodes = summary.nodes.filter(isUserVisibleNode);
       setExecution(record);
