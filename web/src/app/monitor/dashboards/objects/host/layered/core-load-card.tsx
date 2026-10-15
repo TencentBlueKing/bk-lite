@@ -43,7 +43,7 @@ export default function CoreLoadCard({
         <div className={styles.chartTitleGroup}>
           <div className={styles.chartTitle}>核负载</div>
           {expanded ? (
-            <div className={styles.chartReading}>{`Top ${rows.length} · 按窗口 p95 · 核间差 ${spreadText}pp`}</div>
+            <div className={styles.chartReading}>{`前 ${rows.length} 个核 · 差值 ${spreadText}%`}</div>
           ) : null}
         </div>
         {expanded && balanced ? (
@@ -79,8 +79,8 @@ export default function CoreLoadCard({
                     />
                   </span>
                   <span className="tabular-nums text-[var(--color-text-3)]">
-                    {`p95 ${formatCorePercent(p95)}`}
-                    {peak != null ? ` · max ${formatCorePercent(peak)}` : ''}
+                    {formatCorePercent(p95)}
+                    {peak != null ? ` · 最高 ${formatCorePercent(peak)}` : ''}
                   </span>
                 </div>
               );
@@ -90,8 +90,8 @@ export default function CoreLoadCard({
             <thead>
               <tr className="text-left font-medium text-[var(--color-text-3)]">
                 <th className="border-b border-[var(--color-border)] px-1 py-1">核</th>
-                <th className="border-b border-[var(--color-border)] px-1 py-1">p95</th>
-                <th className="border-b border-[var(--color-border)] px-1 py-1">max</th>
+                <th className="border-b border-[var(--color-border)] px-1 py-1">使用率</th>
+                <th className="border-b border-[var(--color-border)] px-1 py-1">最高</th>
               </tr>
             </thead>
             <tbody>
@@ -118,8 +118,8 @@ export default function CoreLoadCard({
           className="flex w-full items-center justify-between gap-3 rounded-md bg-[var(--color-fill-1)] px-3 py-2 text-left"
           onClick={() => setOpened(true)}
         >
-          <span className="text-[13px] font-medium text-[var(--color-text-1)]">核负载均衡</span>
-          <span className="text-[12px] text-[var(--color-text-3)]">{`核间差 ${spreadText}pp · 点击展开`}</span>
+          <span className="text-[13px] font-medium text-[var(--color-text-1)]">各核差不多忙</span>
+          <span className="text-[12px] text-[var(--color-text-3)]">各核负载接近 · 点击展开</span>
         </button>
       )}
     </section>

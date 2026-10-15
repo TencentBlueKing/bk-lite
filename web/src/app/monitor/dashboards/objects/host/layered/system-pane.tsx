@@ -46,7 +46,6 @@ const LOAD_SERIES = [
 const CPU_SERIES_COLOR = HOST_SERIES_COLOR.cpu;
 const MEM_USED_COLOR = HOST_SERIES_COLOR.memUsed;
 const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
-const LOAD_PER_CORE_COLOR = HOST_PALETTE.neutral;
 
 const MEM_COMPOSITION = [
   { key: 'mem_used', label: '已用', color: HOST_PALETTE.blue },
@@ -123,28 +122,15 @@ export default function SystemPane({
 
   const breakdown = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
   const loadItems = LOAD_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
-  const loadPerCore = useMemo(() => {
-    const cores = latestNumber(metrics.cpu_n);
-    if (cores == null || cores <= 0) return [];
-    return primaryChartSeries(metrics.system_load1?.viewData).flatMap((point) => {
-      const value = typeof point.value1 === 'number' ? point.value1 / cores : null;
-      return value == null ? [] : [{ time: point.time, value1: value }];
-    });
-  }, [metrics.cpu_n, metrics.system_load1?.viewData, metrics.system_load1?.loadState]);
   const loadTrend = useMemo(() => {
     const items = LOAD_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
-    const series = items.map((item) => ({
+    if (!items.length) return [];
+    return mergeChartSeries(items.map((item) => ({
       key: item.key,
       label: item.label,
       data: primaryChartSeries(metrics[item.key]?.viewData)
-    }));
-    if (loadPerCore.length) {
-      series.push({ key: 'load1_per_core', label: 'load1/核', data: loadPerCore });
-    }
-    if (!series.length) return [];
-    return mergeChartSeries(series);
+    })));
   }, [
-    loadPerCore,
     metrics.system_load1?.viewData,
     metrics.system_load1?.loadState,
     metrics.system_load5?.viewData,
@@ -315,23 +301,16 @@ export default function SystemPane({
     loadActive ? (
       <ThinTimeSeries
         key="load"
-        title="负载（含每核参考）"
+        title="负载"
         loading={loadPhase === 'loading'}
         unit="none"
         data={loadTrend}
         emptyText={loadPhase === 'error' ? '加载失败' : '暂无数据'}
         onRetry={loadPhase === 'error' ? retry(loadNames) : undefined}
-        legends={[
-          ...loadItems.map((item) => ({
-            label: item.label,
-            color: item.color
-          })),
-          ...(loadPerCore.length ? [{
-            label: 'load1/核',
-            color: LOAD_PER_CORE_COLOR,
-            dashed: true
-          }] : [])
-        ]}
+        legends={loadItems.map((item) => ({
+          label: item.label,
+          color: item.color
+        }))}
         alertLevel={alerts.load}
       />
     ) : null
@@ -372,35 +351,6 @@ export default function SystemPane({
     metrics.mem_used?.viewData,
     metrics.mem_used?.loadState
   ]);
-  const processTrend = useMemo(() => {
-    const items: Array<{ key: string; label: string; color: string; data: ChartData[] }> = [];
-    if (metricHasPoints(metrics.processes_running)) {
-      items.push({
-        key: 'processes_running',
-        label: 'running',
-        color: HOST_PALETTE.blue,
-        data: primaryChartSeries(metrics.processes_running?.viewData)
-      });
-    }
-    if (metricHasPoints(metrics.processes_sleeping)) {
-      items.push({
-        key: 'processes_sleeping',
-        label: 'sleeping',
-        color: HOST_PALETTE.cyan,
-        data: primaryChartSeries(metrics.processes_sleeping?.viewData)
-      });
-    }
-    if (!items.length) return { data: [], legends: [] as Array<{ label: string; color: string }> };
-    return {
-      data: mergeChartSeries(items.map((item) => ({ key: item.key, label: item.label, data: item.data }))),
-      legends: items.map((item) => ({ label: item.label, color: item.color }))
-    };
-  }, [
-    metrics.processes_running?.viewData,
-    metrics.processes_running?.loadState,
-    metrics.processes_sleeping?.viewData,
-    metrics.processes_sleeping?.loadState
-  ]);
   const gpuCharts = GPU_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
   const detailCards = [
     <ThinTimeSeries
@@ -436,15 +386,6 @@ export default function SystemPane({
           data: item.data
         })))}
         legends={memoryComposition.map((item) => ({ label: item.label, color: item.color }))}
-      />
-    ) : null,
-    processTrend.data.length ? (
-      <ThinTimeSeries
-        key="proc-running"
-        title="运行中进程"
-        unit="counts"
-        data={processTrend.data}
-        legends={processTrend.legends}
       />
     ) : null
   ].filter(Boolean);
