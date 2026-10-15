@@ -1435,7 +1435,7 @@
     "source": "资产",
     "dashboards": {
       "common": {
-        "dashboardMode": "经典布局",
+        "dashboardMode": "传统仪表盘",
         "metricsMode": "全量指标",
         "fullMetrics": "全量指标",
         "justNow": "刚刚",

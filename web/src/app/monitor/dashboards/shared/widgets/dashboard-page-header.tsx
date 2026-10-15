@@ -19,6 +19,8 @@ export interface DashboardModeOption {
   labelKey: string;
   fallback: string;
   value: string;
+  /** 无该视图能力时仍展示，置灰且不可点。 */
+  disabled?: boolean;
 }
 
 export interface DashboardPageHeaderProps {
@@ -35,16 +37,39 @@ export interface DashboardPageHeaderProps {
   showTimeSelector?: boolean;
   /** SNMP / NetFlow / sFlow 跨路由切换（与展示模式控件并列）。 */
   viewSwitchSlot?: React.ReactNode;
-  /** 默认标题旁单 pill 下拉。选项很多时用 select。主机专业模式走 pill，菜单含分类项。 */
+  /** 默认标题旁单 pill 下拉。选项很多时用 select。无能力的项仍留在菜单里并置灰。 */
   modeControl?: 'segmented' | 'select' | 'pill';
   modeOptions?: readonly DashboardModeOption[];
   styles: DashboardPageHeaderStyles;
 }
 
-const DISPLAY_MODE_OPTIONS = [
-  { labelKey: 'dashboardMode', fallback: '经典布局', value: 'dashboard' },
+/** 菜单固定这三项。调用方没列入、或标了 disabled，就置灰不可点。 */
+const MODE_CATALOG = [
+  { labelKey: 'dashboardMode', fallback: '传统仪表盘', value: 'dashboard' },
+  { labelKey: 'categoryTabMode', fallback: '专业仪表盘', value: 'category' },
   { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
 ] as const;
+
+const DISPLAY_MODE_OPTIONS: readonly DashboardModeOption[] = [
+  { labelKey: 'dashboardMode', fallback: '传统仪表盘', value: 'dashboard' },
+  { labelKey: 'categoryTabMode', fallback: '专业仪表盘', value: 'category', disabled: true },
+  { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
+];
+
+export const resolveDashboardModeMenu = (
+  provided: readonly DashboardModeOption[] | undefined,
+  labelOf: (labelKey: string, fallback: string) => string
+) => {
+  const byValue = new Map((provided ?? DISPLAY_MODE_OPTIONS).map((item) => [item.value, item]));
+  return MODE_CATALOG.map((item) => {
+    const given = byValue.get(item.value);
+    return {
+      value: item.value,
+      label: labelOf(given?.labelKey ?? item.labelKey, given?.fallback ?? item.fallback),
+      disabled: given ? Boolean(given.disabled) : true
+    };
+  });
+};
 
 export function DashboardPageHeader({
   title,
@@ -74,25 +99,23 @@ export function DashboardPageHeader({
     title: typeof item.title === 'string' ? tDashboardText(t, item.title) : item.title
   }));
   const onBack = () => router.push(returnNavigation.href);
-  const resolvedModeOptions = modeOptions ?? DISPLAY_MODE_OPTIONS;
-  const modeItems = resolvedModeOptions.map((item) => ({
-    value: item.value,
-    label: common(item.labelKey, item.fallback)
-  }));
-  const menuItems = modeControl === 'pill'
-    ? modeItems
-    : modeItems.filter((item) => item.value !== 'category');
+  const menuItems = resolveDashboardModeMenu(modeOptions, (labelKey, fallback) => common(labelKey, fallback));
   const currentModeLabel = menuItems.find((item) => item.value === displayMode)?.label ?? '';
   const showModePill = modeControl !== 'select' && menuItems.length >= 2;
-  const modeSwitcher = modeControl === 'select' && modeItems.length >= 2 ? (
+  const chooseMode = (key: string) => {
+    const item = menuItems.find((entry) => entry.value === key);
+    if (!item || item.disabled) return;
+    onDisplayModeChange(key as 'dashboard' | 'metrics');
+  };
+  const modeSwitcher = modeControl === 'select' && menuItems.length >= 2 ? (
     <Select
       size="middle"
       className={[styles.modeSelect, 'min-w-[280px] max-md:w-full max-md:min-w-0'].filter(Boolean).join(' ')}
       value={displayMode}
-      options={modeItems}
+      options={menuItems}
       aria-label={common('viewSwitcher', '视图')}
       popupMatchSelectWidth
-      onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+      onChange={(value) => chooseMode(String(value))}
     />
   ) : null;
   const modePill = showModePill ? (
@@ -103,9 +126,10 @@ export function DashboardPageHeader({
         selectedKeys: [displayMode],
         items: menuItems.map((item) => ({
           key: item.value,
-          label: item.label
+          label: item.label,
+          disabled: item.disabled
         })),
-        onClick: ({ key }) => onDisplayModeChange(key as 'dashboard' | 'metrics')
+        onClick: ({ key }) => chooseMode(key)
       }}
     >
       <button

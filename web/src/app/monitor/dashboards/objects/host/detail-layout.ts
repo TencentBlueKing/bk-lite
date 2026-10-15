@@ -15,7 +15,7 @@ export interface HostDetailLayoutOption {
 }
 
 export const HOST_DETAIL_LAYOUT_OPTIONS: readonly HostDetailLayoutOption[] = [
-  { labelKey: 'dashboardMode', fallback: '经典布局', value: 'dashboard' },
+  { labelKey: 'dashboardMode', fallback: '传统仪表盘', value: 'dashboard' },
   { labelKey: 'categoryTabMode', fallback: '专业仪表盘', value: 'category' },
   { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
 ];

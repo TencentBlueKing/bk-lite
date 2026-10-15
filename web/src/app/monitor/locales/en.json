@@ -1435,7 +1435,7 @@
     "source": "Asset",
     "dashboards": {
       "common": {
-        "dashboardMode": "Classic Layout",
+        "dashboardMode": "Traditional Dashboard",
         "metricsMode": "All Metrics",
         "fullMetrics": "All Metrics",
         "justNow": "Just now",

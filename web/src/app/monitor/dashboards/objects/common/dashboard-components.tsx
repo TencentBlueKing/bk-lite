@@ -717,7 +717,7 @@ export interface DashboardShellProps {
   viewSwitcher?: DashboardViewSwitcher;
   /**
    * 标题行与实例栏收进同一白卡，内容在卡外、与白卡同宽。
-   * 有专业布局时，模式入口是标题旁 pill；没有则不渲染该控件。
+   * 模式入口是标题旁 pill。没有的能力仍留在菜单里，置灰不可点。
    */
   unifiedChrome?: boolean;
   /**
@@ -790,7 +790,18 @@ export const DashboardShell = ({
       displayMode={activeMode}
       onDisplayModeChange={onDisplayModeChange}
       modeControl={professionalCapable && (unifiedChrome || viewSwitcher?.control === 'pill') ? 'pill' : viewSwitcher?.control}
-      modeOptions={professionalCapable ? viewSwitcher?.options : undefined}
+      modeOptions={(viewSwitcher?.options ?? [
+        { labelKey: 'dashboardMode', fallback: '传统仪表盘', value: 'dashboard' },
+        { labelKey: 'categoryTabMode', fallback: '专业仪表盘', value: 'category' },
+        { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
+      ]).map((item) => ({
+        ...item,
+        disabled: item.value === 'category'
+          ? !professionalCapable
+          : item.value === 'dashboard'
+            ? dashboardContent == null
+            : false
+      }))}
       timeDefaultValue={dashboard.timeDefaultValue}
       onTimeChange={dashboard.onTimeChange}
       onFrequenceChange={dashboard.setFrequence}
