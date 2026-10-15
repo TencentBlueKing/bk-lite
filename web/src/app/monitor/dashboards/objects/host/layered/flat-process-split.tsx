@@ -190,7 +190,6 @@ export default function FlatProcessSplit({
             </Tooltip>
           </span>
         </div>
-        <span className={styles.note}>点选行查看匹配规则</span>
       </div>
       <LayeredEntityTable
         rows={sorted}
