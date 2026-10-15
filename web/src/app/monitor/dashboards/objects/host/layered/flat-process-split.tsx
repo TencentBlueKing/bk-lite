@@ -110,6 +110,7 @@ export default function FlatProcessSplit({
           title={name ? `CPU / 内存 · ${name}` : 'CPU / 内存'}
           loading={loading}
           unit="percent"
+          independentAxes
           data={trend}
           legends={[cpuSeries, memSeries]}
         />

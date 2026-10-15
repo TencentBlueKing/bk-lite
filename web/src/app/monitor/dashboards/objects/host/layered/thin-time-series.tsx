@@ -35,6 +35,8 @@ interface ThinTimeSeriesProps {
   hint?: string;
   /** 嵌进已有卡片时不再套一层 panel。 */
   bare?: boolean;
+  /** 每条序列一根 Y 轴。进程 CPU 可超过 100%，与内存共轴时会把内存压扁。 */
+  independentAxes?: boolean;
   onRetry?: () => void;
 }
 
@@ -67,6 +69,7 @@ export default function ThinTimeSeries({
   emptyText = '暂无数据',
   hint,
   bare = false,
+  independentAxes = false,
   onRetry
 }: ThinTimeSeriesProps) {
   const theme = useThemeColors();
@@ -86,13 +89,21 @@ export default function ThinTimeSeries({
     // legendKey 锁内容。legends 每次渲染都是新数组，放进依赖会让图在刷新时反复 setOption。
     [keys, legendKey]
   );
+  const splitAxes = independentAxes && keys.length > 1;
   const option = useMemo(() => {
     if (!data.length || !keys.length) return null;
+    const axisLabel = {
+      fontSize: 10,
+      formatter: (value: number) => {
+        const formatted = formatMetricValue(value, unit);
+        return `${formatted.value}${formatted.unit || ''}`;
+      }
+    };
     return {
       animation: false,
       backgroundColor: 'transparent',
       color: seriesColors,
-      grid: { top: 8, right: 10, bottom: 22, left: 44, containLabel: false },
+      grid: { top: 8, right: splitAxes ? 48 : 10, bottom: 22, left: 44, containLabel: false },
       xAxis: {
         type: 'value' as const,
         min: 'dataMin' as const,
@@ -102,20 +113,24 @@ export default function ThinTimeSeries({
         axisLine: { lineStyle: { color: axisColor } },
         splitLine: { show: false }
       },
-      yAxis: {
-        type: 'value' as const,
-        axisLabel: {
-          color: mutedColor,
-          fontSize: 10,
-          formatter: (value: number) => {
-            const formatted = formatMetricValue(value, unit);
-            return `${formatted.value}${formatted.unit || ''}`;
-          }
+      yAxis: splitAxes
+        ? keys.map((_, index) => ({
+          type: 'value' as const,
+          position: index === 0 ? 'left' as const : 'right' as const,
+          axisLabel: { ...axisLabel, color: seriesColors[index] || mutedColor },
+          axisTick: { show: false },
+          axisLine: { show: false },
+          splitLine: index === 0
+            ? { lineStyle: { color: axisColor, width: 1 } }
+            : { show: false }
+        }))
+        : {
+          type: 'value' as const,
+          axisLabel: { ...axisLabel, color: mutedColor },
+          axisTick: { show: false },
+          axisLine: { show: false },
+          splitLine: { lineStyle: { color: axisColor, width: 1 } }
         },
-        axisTick: { show: false },
-        axisLine: { show: false },
-        splitLine: { lineStyle: { color: axisColor, width: 1 } }
-      },
       tooltip: {
         show: true,
         trigger: 'axis' as const,
@@ -148,6 +163,7 @@ export default function ThinTimeSeries({
         return {
           type: 'line' as const,
           name: legends[index]?.label || key,
+          ...(splitAxes ? { yAxisIndex: index } : {}),
           showSymbol: false,
           symbol: 'none' as const,
           smooth: 0.15,
@@ -161,7 +177,7 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, data, keys, legendKey, mutedColor, panelColor, seriesColors, textColor, unit]);
+  }, [axisColor, data, keys, legendKey, mutedColor, panelColor, seriesColors, splitAxes, textColor, unit]);
   const { containerRef } = useECharts(option);
   const showLegend = legends.length > 1 || legends.some((item) => item.reading);
   const chart = (

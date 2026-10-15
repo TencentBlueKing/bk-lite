@@ -13,13 +13,12 @@ import { formatDuration, type MetricSeries } from '../../common/simple-dashboard
 import ThinTimeSeries from './thin-time-series';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
-  deriveMemoryUsageShares,
   formatPercent,
   formatPlain,
-  latestChartNumber,
   latestNumber,
   metricHasPoints,
-  primaryChartSeries
+  primaryChartSeries,
+  resolveMemoryUsage
 } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -131,9 +130,18 @@ export default function SystemPane({
     metrics.cpu_usage_steal_total?.viewData,
     metrics.cpu_usage_steal_total?.loadState
   ]);
-  const memoryShares = useMemo(
-    () => deriveMemoryUsageShares(metrics.mem_available?.viewData, metrics.mem_total?.viewData),
-    [metrics.mem_available?.viewData, metrics.mem_total?.viewData]
+  const memoryUsage = useMemo(
+    () => resolveMemoryUsage(
+      metrics.mem_available?.viewData,
+      metrics.mem_total?.viewData,
+      metrics.mem_used_percent
+    ),
+    [
+      metrics.mem_available?.viewData,
+      metrics.mem_total?.viewData,
+      metrics.mem_used_percent?.viewData,
+      metrics.mem_used_percent?.loadState
+    ]
   );
   const cpuTrend = useMemo(
     () => primaryChartSeries(metrics.cpu_usage_total?.viewData),
@@ -142,31 +150,25 @@ export default function SystemPane({
   // 有总量时已用/可用按 available 互补，避免 mem_used_percent 与 MemAvailable 叠成超过 100%。
   // 缺总量时只画采集到的使用率，不造第二条百分比。
   const memChart = useMemo(() => {
-    const usedSeries = memoryShares.used.length
-      ? memoryShares.used
-      : primaryChartSeries(metrics.mem_used_percent?.viewData);
     const items = [
-      ...(usedSeries.length
-        ? [{ key: 'used', label: '已用', color: MEM_USED_COLOR, data: usedSeries }]
+      ...(memoryUsage.used.length
+        ? [{ key: 'used', label: '已用', color: MEM_USED_COLOR, data: memoryUsage.used }]
         : []),
-      ...(memoryShares.available.length
-        ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: memoryShares.available }]
+      ...(memoryUsage.available.length
+        ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: memoryUsage.available }]
         : [])
     ];
     const data = items.length
       ? mergeChartSeries(items.map((item) => ({ key: item.key, label: item.label, data: item.data })))
       : [];
     return { items, data };
-  }, [memoryShares, metrics.mem_used_percent?.viewData]);
+  }, [memoryUsage]);
   const memItems = memChart.items;
-  const used = memoryShares.used.length
-    ? latestChartNumber(memoryShares.used)
-    : latestNumber(metrics.mem_used_percent);
-  const availLatest = latestChartNumber(memoryShares.available);
+  const used = memoryUsage.usedNow;
+  const availLatest = memoryUsage.availableNow;
   const cpuNow = latestNumber(metrics.cpu_usage_total);
   // 曲线已用是 available/total 的互补占比。KPI 跟这条线，不再单读 mem_used_percent。
   const memNow = used;
-  const availNow = latestNumber(metrics.mem_available);
   const uptimeNow = latestNumber(metrics.system_uptime);
   const load1Now = latestNumber(metrics.system_load1);
   const phaseFor = (names: readonly string[], hasValue: boolean): MetricBlockPhase => (
@@ -175,7 +177,7 @@ export default function SystemPane({
   const retry = (names: readonly string[]) => () => onRetryMetrics?.([...names]);
   const cpuNames = ['cpu_usage_total'] as const;
   const memKpiNames = ['mem_used_percent'] as const;
-  const availNames = ['mem_available'] as const;
+  const availNames = ['mem_available', 'mem_total'] as const;
   const load1Names = ['system_load1'] as const;
   const uptimeNames = ['system_uptime'] as const;
   const memTrendNames = ['mem_used_percent', 'mem_available', 'mem_total'] as const;
@@ -206,12 +208,12 @@ export default function SystemPane({
     {
       key: 'mem',
       label: '内存',
-      names: memoryShares.used.length ? memTrendNames : memKpiNames,
-      phase: phaseFor(memoryShares.used.length ? memTrendNames : memKpiNames, memNow != null),
+      names: memoryUsage.complementary ? memTrendNames : memKpiNames,
+      phase: phaseFor(memoryUsage.complementary ? memTrendNames : memKpiNames, memNow != null),
       valueColor: MEM_USED_COLOR,
       ...splitMetric(memNow, 'percent')
     },
-    { key: 'avail', label: '可用内存', names: availNames, phase: phaseFor(availNames, availNow != null), ...splitMetric(availNow, 'bytes') },
+    { key: 'avail', label: '可用内存', names: availNames, phase: phaseFor(availNames, availLatest != null), ...splitMetric(availLatest, 'percent') },
     {
       key: 'load',
       label: hostCategoryText(t, 'loadOneMinute'),

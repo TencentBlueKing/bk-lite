@@ -22,7 +22,7 @@ import HostAlertDrawer from './layered/host-alert-drawer';
 import { activeHostAlertParams } from './layered/host-alert-list';
 import OverviewPane from './layered/overview-pane';
 import SystemPane from './layered/system-pane';
-import { latestNumber, latestPreferCount } from './layered/readings';
+import { latestNumber, latestPreferCount, resolveMemoryUsage } from './layered/readings';
 import {
   loadPerCore,
   resolveHostTabLevel,
@@ -209,7 +209,11 @@ export default function HostCategoryLayout({
   const processLoading = processState.status === 'idle' || processState.status === 'loading';
   const tabReadings = useMemo(() => ({
     cpu_usage_total: latestNumber(metrics.cpu_usage_total),
-    mem_used_percent: latestNumber(metrics.mem_used_percent),
+    mem_used_percent: resolveMemoryUsage(
+      metrics.mem_available?.viewData,
+      metrics.mem_total?.viewData,
+      metrics.mem_used_percent
+    ).usedNow,
     disk_used_percent: latestNumber(metrics.disk_used_percent),
     system_load1_per_core: loadPerCore(
       latestNumber(metrics.system_load1),

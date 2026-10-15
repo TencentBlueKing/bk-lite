@@ -16,7 +16,8 @@ import {
   formatUnit,
   latestNumber,
   metricHasPoints,
-  primaryChartSeries
+  primaryChartSeries,
+  resolveMemoryUsage
 } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -89,7 +90,20 @@ export default function OverviewPane({
   const busiest = netRows[0];
   const topProcess = processRows[0];
   const cpu = latestNumber(metrics.cpu_usage_total);
-  const mem = latestNumber(metrics.mem_used_percent);
+  const memoryUsage = useMemo(
+    () => resolveMemoryUsage(
+      metrics.mem_available?.viewData,
+      metrics.mem_total?.viewData,
+      metrics.mem_used_percent
+    ),
+    [
+      metrics.mem_available?.viewData,
+      metrics.mem_total?.viewData,
+      metrics.mem_used_percent?.viewData,
+      metrics.mem_used_percent?.loadState
+    ]
+  );
+  const mem = memoryUsage.usedNow;
   const load = latestNumber(metrics.system_load1);
   const uptime = latestNumber(metrics.system_uptime);
   const showLoad = metricHasPoints(metrics.system_load1);
@@ -166,10 +180,7 @@ export default function OverviewPane({
     () => primaryChartSeries(metrics.cpu_usage_total?.viewData),
     [metrics.cpu_usage_total?.viewData]
   );
-  const memTrend = useMemo(
-    () => primaryChartSeries(metrics.mem_used_percent?.viewData),
-    [metrics.mem_used_percent?.viewData]
-  );
+  const memTrend = memoryUsage.used;
   const netTrend = useMemo(() => mergeChartSeries([
     { key: 'in', label: '入', data: primaryChartSeries(metrics.net_bytes_recv_rate?.viewData) },
     { key: 'out', label: '出', data: primaryChartSeries(metrics.net_bytes_sent_rate?.viewData) }
@@ -233,7 +244,7 @@ export default function OverviewPane({
             <>
               <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
               <div className={styles.shortcutSub}>
-                {`入 ${formatUnit(readingOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')}`}
+                {`该网卡入站 ${formatUnit(readingOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')}`}
               </div>
               <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
                 查看网络
@@ -281,6 +292,9 @@ export default function OverviewPane({
         />
         <ThinTimeSeries
           title={hostCategoryText(t, 'memoryUtilization')}
+          hint={memoryUsage.complementary
+            ? '已用占比 = 100% − 可用 / 总量，与性能页同一口径。'
+            : undefined}
           loading={loading}
           unit="percent"
           data={memTrend}
@@ -295,13 +309,14 @@ export default function OverviewPane({
           legends={[{ label: mountName || '使用率', color: HOST_PALETTE.orange }]}
         />
         <ThinTimeSeries
-          title="网络吞吐"
+          title="网络吞吐 · 全部网卡合计"
+          hint="主机全部网卡的入站与出站合计，不是上方「吞吐最高网卡」那一块。"
           loading={loading}
           unit="byteps"
           data={netTrend}
           legends={[
-            { label: '入', color: HOST_PALETTE.blue, reading: formatUnit(netIn, 'byteps') },
-            { label: '出', color: HOST_PALETTE.cyan, reading: formatUnit(netOut, 'byteps') }
+            { label: '合计入', color: HOST_PALETTE.blue, reading: formatUnit(netIn, 'byteps') },
+            { label: '合计出', color: HOST_PALETTE.cyan, reading: formatUnit(netOut, 'byteps') }
           ]}
         />
       </div>

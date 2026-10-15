@@ -167,6 +167,35 @@ export const deriveMemoryUsageShares = (
   return { used, available: availableShare };
 };
 
+/**
+ * 概览、性能和页签色点共用的内存读数。
+ * 有 available/total 时已用 = 100 − 可用占比，可用是同一对比值；
+ * 缺总量时已用回退采集 mem_used_percent，可用留空，不另造百分比。
+ */
+export const resolveMemoryUsage = (
+  available: ChartData[] | undefined,
+  total: ChartData[] | undefined,
+  collectedUsed?: Pick<MetricSeries, 'loadState' | 'viewData'>
+) => {
+  const shares = deriveMemoryUsageShares(available, total);
+  if (shares.used.length) {
+    return {
+      used: shares.used,
+      available: shares.available,
+      usedNow: latestChartNumber(shares.used),
+      availableNow: latestChartNumber(shares.available),
+      complementary: true
+    };
+  }
+  return {
+    used: primaryChartSeries(collectedUsed?.viewData),
+    available: [] as ChartData[],
+    usedNow: latestNumber(collectedUsed),
+    availableNow: null as number | null,
+    complementary: false
+  };
+};
+
 /** 折线、图例、tooltip 色点共用的序列色。按系列名取，避免 tooltip 落到默认色板。 */
 export const seriesMarkerColor = (
   legends: Array<{ label: string; color: string }>,
