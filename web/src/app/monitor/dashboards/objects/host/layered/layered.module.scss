@@ -706,9 +706,24 @@ button.kpiCard {
 
 .processTop {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(180px, 0.8fr);
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
+}
+
+.processTrends {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.processTrends .chartBody {
+  height: 96px;
+}
+
+.processTrends .chartPanel {
+  min-height: 0;
 }
 
 .currentCard {

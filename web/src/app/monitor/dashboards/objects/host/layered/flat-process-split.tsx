@@ -85,13 +85,17 @@ export default function FlatProcessSplit({
   );
   const selected = sorted.find((row) => row.key === selectedKey) || sorted[0];
   const name = selected?.labels.process_name || '';
-  const trend = useMemo(() => pointsToChartData([
-    { points: selected?.series.process_cpu_usage || [] },
-    { points: selected?.series.process_mem_usage || [] }
-  ]), [selected]);
+  const cpuTrend = useMemo(
+    () => pointsToChartData([{ points: selected?.series.process_cpu_usage || [] }]),
+    [selected]
+  );
+  const memTrend = useMemo(
+    () => pointsToChartData([{ points: selected?.series.process_mem_usage || [] }]),
+    [selected]
+  );
   const cpu = numberOrNull(selected?.values.process_cpu_usage);
   const mem = numberOrNull(selected?.values.process_mem_usage);
-  // 数值色跟左侧折线序列 token 走，换进程也不改色、不跟行色点。
+  // 数值色跟折线序列 token 走，换进程也不改色、不跟行色点。
   const cpuSeries = { label: 'CPU', color: HOST_SERIES_COLOR.cpu, reading: formatPercent(cpu) };
   const memSeries = { label: '内存', color: HOST_SERIES_COLOR.memUsed, reading: formatPercent(mem) };
   const columns = useMemo<LayeredColumn[]>(() => {
@@ -150,14 +154,6 @@ export default function FlatProcessSplit({
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
       </div>
       <div className={styles.processTop}>
-        <ThinTimeSeries
-          title={name ? `CPU / 内存 · ${name}` : 'CPU / 内存'}
-          loading={loading}
-          unit="percent"
-          independentAxes
-          data={trend}
-          legends={[cpuSeries, memSeries]}
-        />
         <section className={`${classic.panel} ${styles.currentCard}`}>
           <div className={styles.currentKicker}>当前进程</div>
           <div className={styles.currentName}>{name || '—'}</div>
@@ -176,6 +172,22 @@ export default function FlatProcessSplit({
             </div>
           ) : null}
         </section>
+        <div className={styles.processTrends}>
+          <ThinTimeSeries
+            title={name ? `CPU · ${name}` : 'CPU'}
+            loading={loading}
+            unit="percent"
+            data={cpuTrend}
+            legends={[cpuSeries]}
+          />
+          <ThinTimeSeries
+            title={name ? `内存 · ${name}` : '内存'}
+            loading={loading}
+            unit="percent"
+            data={memTrend}
+            legends={[memSeries]}
+          />
+        </div>
       </div>
 
       <div className={styles.sectionHead}>
