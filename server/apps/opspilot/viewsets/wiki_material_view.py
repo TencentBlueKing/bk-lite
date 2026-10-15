@@ -16,7 +16,15 @@ from apps.opspilot.services.wiki.material_file_persist import STORAGE_UNAVAILABL
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.material_source_service import MaterialSourceError, source_metadata
 from apps.opspilot.services.wiki.parsed_media_service import _bare_media_locator_spans, rewrite_media_urls_for_display, sign_media_locators
-from apps.opspilot.services.wiki.update_service import handle_material_deletion, preview_material_deletion, preview_material_update, propose_update
+from apps.opspilot.services.wiki.update_service import (
+    delete_materials,
+    handle_material_deletion,
+    preview_material_deletion,
+    preview_material_update,
+    preview_materials_deletion,
+    propose_update,
+)
+from apps.opspilot.utils.user_message import queue_error_message, user_message
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -42,6 +50,8 @@ _MATERIAL_STATUS_GROUPS = {
 }
 
 # 下载响应按扩展名给保守类型；不引入用户可控的 content-type。
+_BUSY_MATERIAL_STATUSES = frozenset({"queued", "parsing", "building"})
+_MAX_MATERIAL_BATCH_DELETE = 200
 _MATERIAL_DOWNLOAD_CONTENT_TYPES = {
     ".pdf": "application/pdf",
     ".doc": "application/msword",
@@ -324,7 +334,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 {
                     "result": False,
                     "code": "material_build_in_progress",
-                    "message": "资料正在构建中，请勿重复提交",
+                    "message": user_message(request, "error.material_build_in_progress", "资料正在构建中，请勿重复提交", self.loader),
                     "retryable": True,
                 },
                 status=409,
@@ -341,7 +351,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": error.code,
-                        "message": error.message,
+                        "message": queue_error_message(request, error, self.loader),
                         "details": error.details,
                         "retryable": error.status_code >= 500,
                     },
@@ -352,7 +362,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": "task_dispatch_failed",
-                        "message": "知识构建任务投递失败，请稍后重试",
+                        "message": user_message(request, "error.material_build_dispatch_failed", "知识构建任务投递失败，请稍后重试", self.loader),
                         "retryable": True,
                     },
                     status=503,
@@ -375,7 +385,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": "material_build_in_progress",
-                        "message": "资料正在构建中，请勿重复提交",
+                        "message": user_message(request, "error.material_build_in_progress", "资料正在构建中，请勿重复提交", self.loader),
                         "retryable": True,
                     },
                     status=409,
@@ -418,7 +428,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 {
                     "result": False,
                     "code": error.code,
-                    "message": error.message,
+                    "message": queue_error_message(request, error, self.loader),
                     "details": error.details,
                 },
                 status=error.status_code,
@@ -428,11 +438,95 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 {
                     "result": False,
                     "code": "task_dispatch_failed",
-                    "message": "知识构建任务投递失败，请稍后重试",
+                    "message": user_message(request, "error.material_build_dispatch_failed", "知识构建任务投递失败，请稍后重试", self.loader),
                     "retryable": True,
                 },
                 status=503,
             )
+        return JsonResponse({"result": True, "data": result})
+
+    def _parse_material_batch(self, request):
+        try:
+            kb_id = int(request.data.get("knowledge_base") or 0)
+        except (TypeError, ValueError):
+            kb_id = 0
+        raw_ids = request.data.get("material_ids")
+        if not kb_id:
+            return None, None, self._batch_delete_error(request, "knowledge_base_required", "knowledge_base 必填", 400)
+        if not isinstance(raw_ids, list) or not raw_ids:
+            return None, None, self._batch_delete_error(request, "material_ids_required", "material_ids 必填", 400)
+        material_ids = []
+        seen = set()
+        for raw_id in raw_ids:
+            try:
+                material_id = int(raw_id)
+            except (TypeError, ValueError):
+                return None, None, self._batch_delete_error(request, "material_ids_invalid", "material_ids 必须为整数列表", 400)
+            if material_id <= 0:
+                return None, None, self._batch_delete_error(request, "material_ids_invalid", "material_ids 必须为整数列表", 400)
+            if material_id not in seen:
+                seen.add(material_id)
+                material_ids.append(material_id)
+        if len(material_ids) > _MAX_MATERIAL_BATCH_DELETE:
+            return (
+                None,
+                None,
+                self._batch_delete_error(
+                    request,
+                    "material_ids_too_many",
+                    f"单次最多删除 {_MAX_MATERIAL_BATCH_DELETE} 条资料",
+                    400,
+                ),
+            )
+        knowledge_base = self.accessible_knowledge_base_or_none(kb_id)
+        if knowledge_base is None:
+            return None, None, JsonResponse({"result": False, "message": "知识库不存在或无权限"}, status=404)
+        return knowledge_base, material_ids, None
+
+    def _batch_delete_error(self, request, code, message, status):
+        return JsonResponse(
+            {
+                "result": False,
+                "code": code,
+                "message": user_message(request, f"error.{code}", message, self.loader),
+            },
+            status=status,
+        )
+
+    def _materials_for_batch_delete(self, request, knowledge_base, material_ids):
+        self.ensure_team_accessible_ids(Material.objects.all(), material_ids)
+        found = {material.id: material for material in Material.objects.filter(knowledge_base_id=knowledge_base.id, id__in=material_ids)}
+        if set(found) != set(material_ids):
+            return None, self._batch_delete_error(request, "material_not_in_knowledge_base", "资料不存在或不属于当前知识库", 400)
+        busy_ids = [material_id for material_id in material_ids if found[material_id].status in _BUSY_MATERIAL_STATUSES]
+        if busy_ids:
+            return None, self._batch_delete_error(request, "material_delete_in_progress", "资料正在构建中，请等待完成后再删除", 409)
+        return [found[material_id] for material_id in material_ids], None
+
+    @HasPermission("wiki_list-View")
+    @action(methods=["POST"], detail=False, url_path="batch_delete_impact")
+    def batch_delete_impact(self, request):
+        """批量删除前的只读影响预览。选中集合之外没有来源的页面会计入将来源失效。"""
+        knowledge_base, material_ids, error = self._parse_material_batch(request)
+        if error:
+            return error
+        materials, error = self._materials_for_batch_delete(request, knowledge_base, material_ids)
+        if error:
+            return error
+        return JsonResponse({"result": True, "data": preview_materials_deletion(materials)})
+
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=False, url_path="batch_delete")
+    def batch_delete(self, request):
+        """批量物理删除资料。校验通过后逐条删除，单条失败时停止后续条目。"""
+        knowledge_base, material_ids, error = self._parse_material_batch(request)
+        if error:
+            return error
+        materials, error = self._materials_for_batch_delete(request, knowledge_base, material_ids)
+        if error:
+            return error
+        result = delete_materials(materials, operator=getattr(request.user, "username", "") or "")
+        log_operation(request, "delete", "opspilot", f"批量删除资料({result['deleted_count']}项)")
         return JsonResponse({"result": True, "data": result})
 
     @HasPermission("wiki_list-Edit")
@@ -454,7 +548,10 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         material = self.get_object()
         kb = material.knowledge_base
         if not kb.embed_provider_id:
-            return JsonResponse({"result": False, "message": "知识库未配置向量模型,无法重建索引"}, status=400)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.no_embedding_model", "知识库未配置向量模型,无法重建索引", self.loader)},
+                status=400,
+            )
 
         evidences = (
             PageEvidence.objects.filter(material=material, page__status="active").select_related("page", "page__current_version").order_by("page_id")
@@ -640,11 +737,17 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         material = self.get_object()
         file_field = material.file
         if not file_field or not file_field.name:
-            return JsonResponse({"result": False, "message": "该资料没有可下载的原始文件"}, status=404)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.material_no_source_file", "该资料没有可下载的原始文件", self.loader)},
+                status=404,
+            )
         try:
             fileobj = file_field.storage.open(file_field.name, "rb")
         except FileNotFoundError:
-            return JsonResponse({"result": False, "message": "原始文件不存在"}, status=404)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.material_source_file_missing", "原始文件不存在", self.loader)},
+                status=404,
+            )
         except Exception as exc:
             logger.warning(
                 "wiki material download open failed material=%s error_type=%s failed_stage=%s",
@@ -652,7 +755,10 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 type(exc).__name__,
                 "storage_open",
             )
-            return JsonResponse({"result": False, "message": "对象存储不可用，请稍后重试"}, status=503)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.object_storage_unavailable", "对象存储不可用，请稍后重试", self.loader)},
+                status=503,
+            )
 
         filename = file_field.name.rsplit("/", 1)[-1] or "download"
         content_type = _material_download_content_type(filename)

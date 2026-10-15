@@ -13,6 +13,7 @@ from apps.monitor.views.monitor_metrics import MetricGroupViewSet, MetricViewSet
 from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
 from apps.monitor.views.monitor_object import MonitorObjectViewSet, MonitorObjectTypeViewSet
 from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+from apps.monitor.views.policy_group import PolicyGroupViewSet
 from apps.monitor.views.node_mgmt import NodeMgmtView
 from apps.monitor.views.organization_rule import MonitorObjectOrganizationRuleViewSet
 from apps.monitor.views.plugin import MonitorPluginViewSet
@@ -34,6 +35,7 @@ router.register(
 )
 router.register(r"api/monitor_instance", MonitorInstanceViewSet, basename="MonitorInstanceViewSet")
 router.register(r"api/monitor_policy", MonitorPolicyViewSet, basename="MonitorPolicyViewSet")
+router.register(r"api/policy_group", PolicyGroupViewSet, basename="PolicyGroupViewSet")
 router.register(r"api/monitor_plugin", MonitorPluginViewSet, basename="MonitorPluginViewSet")
 
 router.register(r"api/monitor_alert", MonitorAlertViewSet, basename="MonitorAlertViewSet")

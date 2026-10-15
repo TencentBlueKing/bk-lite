@@ -10,6 +10,8 @@ import React, {
 } from "react";
 import { Graph, type IElementEvent } from "@antv/g6";
 import { GraphEdge, GraphNode } from "@/app/opspilot/types/wiki";
+import { useTranslation } from "@/utils/i18n";
+import { formatWikiDirectoryLabel } from "./wikiFormat";
 
 // 社区配色:柔和的现代主题色,饱和度适中、不刺眼(导出供图例复用,保证颜色一致)
 export const GRAPH_PALETTE = [
@@ -54,6 +56,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     },
     ref,
   ) => {
+    const { t } = useTranslation();
     const containerRef = useRef<HTMLDivElement | null>(null);
     const graphRef = useRef<Graph | null>(null);
     // 用 ref 持有最新的尺寸/间距,供「创建图」时读取,而不把它们放进创建 effect 的依赖(否则改滑块会整图重建+重排)
@@ -128,7 +131,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             data: {
               label: n.title,
               directoryBreadcrumb: (n.directory_breadcrumb || [])
-                .map((item) => item.name)
+                .map((item) => formatWikiDirectoryLabel(t, item))
                 .join(" / "),
               community: n.community ?? 0,
               size: Math.round(baseSize(String(n.id)) * nodeScaleRef.current),
@@ -247,7 +250,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         graph.destroy();
         graphRef.current = null;
       };
-    }, [nodes, edges, baseSize]);
+    }, [nodes, edges, baseSize, t]);
 
     // 「节点大小」滑块:原地更新尺寸,不重跑布局 → 位置不动,只是变大变小(跳过首渲染,避免与创建重复)
     const firstScale = useRef(true);

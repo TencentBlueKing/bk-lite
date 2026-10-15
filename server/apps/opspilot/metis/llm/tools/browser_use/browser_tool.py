@@ -16,7 +16,7 @@ from browser_use.llm import ChatOpenAI
 from django.conf import settings
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from apps.opspilot.metis.llm.tools.common.browser_security import (
@@ -1558,7 +1558,6 @@ def browse_website(
             api_key=llm_config.openai_api_key,
             base_url=llm_config.openai_api_base,
         )
-        # logger.info(f"task: {task}\n username: {username}\n password: {password}")
 
         original_llm_task = task
         if force_browser_task:

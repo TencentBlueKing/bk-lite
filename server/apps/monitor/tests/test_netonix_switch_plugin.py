@@ -3,20 +3,22 @@
 Validates Telegraf/snmp/switch_netonix against the Cisco baseline and the
 cross-vendor design decisions for the SNMP brand-plugin family.
 
-Netonix (NETONIX-SWITCH-MIB, IANA PEN 46242) is a WISP PoE switch whose private
-MIB exposes only a chassis temperature table; it has NO CPU/memory OID, its fan
-is a tachometer (RPM, not a status enum) and PoE is a per-port attribute. None of
-those map to device-level health, so this plugin intentionally models ONLY
-temperature on top of the shared IF-MIB 64-bit interface counters:
+Netonix (NETONIX-SWITCH-MIB, IANA PEN 46242) is a WISP PoE switch. Its private
+MIB has NO CPU/memory OID and no fan/PSU health enum; fanSpeed is a tachometer
+(RPM) and PoE is a per-port attribute. The plugin therefore does not model
+device_cpu_usage / device_memory_* / device_fan_state / device_psu_state.
 
-  - device_temperature_celsius: max per instance (group Temperature)
+It does collect real NETONIX-SWITCH-MIB objects on top of IF-MIB 64-bit
+counters:
+
+  - device_temperature_celsius: per-sensor series (group Temperature)
+  - device_fan_speed / device_voltage_volts / device_power_used /
+    device_input_current_amps / device_dcdc_efficiency (group Hardware Status)
   - interface_ifHCIn/OutOctets: byte-identical to Cisco (64-bit ifXTable)
 
-CPU / memory / fan / psu are deliberately N/A and must not be modelled.
-
-Netonix reuses the shared Switch metric names + existing Temperature / Traffic
-groups, so i18n and the shared switch dashboard are already in place. New brand
-`netonix` adds a common.tsx match + icon + switch.tsx collectType wiring.
+Netonix reuses the shared Switch metric names + Temperature / Traffic /
+Hardware Status groups. New brand `netonix` adds a common.tsx match + icon +
+switch.tsx collectType wiring.
 
 OID correctness is intentionally NOT tested here (pending on-site SNMP walk).
 """
@@ -44,6 +46,7 @@ OBJECT_NAME = "Switch"
 
 SUPPORTED_SCALAR_UNITS = {
     "byteps", "bytes", "counts", "cps", "percent", "celsius", "s", "short", "none",
+    "volts", "watts",
 }
 INTERFACE_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 ABSENT_METRICS = (
@@ -151,32 +154,36 @@ def test_toml_uses_64bit_hc_counters_not_32bit(toml_text):
 
 
 # --------------------------------------------------------------------------- #
-# temperature: the ONLY private-MIB metric, celsius, max-aggregated
+# temperature: per-sensor celsius series (do not max-aggregate away sensor)
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_temperature_is_celsius_max_aggregated(metrics):
+def test_temperature_is_celsius_per_sensor(metrics):
     t = {m["name"]: m for m in metrics["metrics"]}["device_temperature_celsius"]
     assert t["unit"] == "celsius"
     assert t["metric_group"] == "Temperature"
-    assert t["dimensions"] == []
+    dim_names = [d["name"] for d in t.get("dimensions") or []]
+    assert "sensor" in dim_names
     q = t["query"].replace(" ", "")
-    assert q.startswith("max(") and "by(instance_id)" in q
+    assert "device_temperature_celsius{" in q
+    assert not (q.startswith("max(") and "by(" in q)
 
 
 @pytest.mark.unit
-def test_cpu_mem_fan_psu_not_modelled(metrics):
+def test_cpu_mem_fan_psu_state_not_modelled(metrics):
     names = {m["name"] for m in metrics["metrics"]}
     present = [a for a in ABSENT_METRICS if a in names]
     assert present == [], (
-        f"NETONIX-SWITCH-MIB has no CPU/mem OID and fan is RPM/PoE per-port; "
-        f"must not model device-level health: {present}"
+        f"NETONIX-SWITCH-MIB has no CPU/mem OID and no fan/PSU health enum; "
+        f"must not model device_fan_state/device_psu_state: {present}"
     )
 
 
 @pytest.mark.unit
-def test_only_temperature_and_traffic_groups(metrics):
+def test_temperature_traffic_and_hardware_groups(metrics):
     groups = {m["metric_group"] for m in metrics["metrics"]}
-    assert groups == {"Base", "Temperature", "Traffic"}, f"unexpected metric groups: {groups}"
+    assert groups == {"Base", "Temperature", "Traffic", "Hardware Status"}, (
+        f"unexpected metric groups: {groups}"
+    )
 
 
 # --------------------------------------------------------------------------- #

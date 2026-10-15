@@ -17,12 +17,9 @@ def is_failed_vm_metric(row):
 
 
 class CollectBase(metaclass=ABCMeta):
-    """
-     k8s、阿里云、vc 在vm对比后把旧数据自动删除，如果无数据，定义为这个采集任务异常，任务的数据清空，但是不碰cmdb的数据
-    然后其他对象模型的采集，不删除数据
-    """
+    """标准化指标；清理统一由任务策略、来源归属和完整快照判定。"""
 
-    _MODEL_ID = None  # 模型ID，需要删除cmdb数据的采集子类需要定义 不定义不删除
+    _MODEL_ID = None  # 插件根模型标识，不用于决定是否清理子模型
 
     def __init__(self, inst_name, inst_id, task_id, *args, collect_inst=None, **kwargs):
         self._collect_inst = collect_inst
@@ -42,7 +39,9 @@ class CollectBase(metaclass=ABCMeta):
         if not self.inst_name:
             self.inst_name = self._resolve_inst_name_from_task() or self.inst_name
         assert self.check_metrics(), "请定义_metrics"
-        self.collection_metrics_dict = {i: [] for i in self._metrics}
+        from apps.cmdb.services.pc_discovery import pc_metric_aliases
+
+        self.collection_metrics_dict = pc_metric_aliases(self._metrics)
         try:
             # [T, C] 已由 VM 查询限定时，该轮次可能是恢复窗口内的历史快照，
             # 不能再用“距当前时间超过一天”把它丢弃。
@@ -85,7 +84,9 @@ class CollectBase(metaclass=ABCMeta):
         raise NotImplementedError
 
     def prom_sql(self):
-        sql = " or ".join("{}{{instance_id='{}'}}".format(m, self._instance_id) for m in self._metrics)
+        from apps.cmdb.services.pc_discovery import vm_query_metric_name
+
+        sql = " or ".join("{}{{instance_id='{}'}}".format(vm_query_metric_name(m), self._instance_id) for m in self._metrics)
         return sql
 
     def get_collect_inst(self):
@@ -118,11 +119,35 @@ class CollectBase(metaclass=ABCMeta):
         data = self.query_data()
         # 原始详情保留失败指标，CMDB 计算只处理成功返回的数据。
         self.raw_data = list(data.get("result", []))
+        if any(is_failed_vm_metric(row) for row in self.raw_data):
+            self.snapshot_complete = False
         success_data = dict(data)
         success_data["result"] = [row for row in self.raw_data if not is_failed_vm_metric(row)]
         self.format_data(success_data)
-        self.format_metrics()
+        if self._collects_pc():
+            # 企业插件按字面量 pc_info 分桶，认不出 VM 里的 pc_info_gauge。
+            # 这里直接用查询结果对账，缺完成标记时仍写入已上报的 PC。
+            self._write_pc_snapshots(success_data["result"])
+        else:
+            self.format_metrics()
         return self.result
+
+    def _collects_pc(self) -> bool:
+        from apps.cmdb.services.pc_discovery import PC_QUERY_METRIC_NAMES
+
+        names = {str(name) for name in self._metrics}
+        return bool(names.intersection(PC_QUERY_METRIC_NAMES) or names.intersection(PC_QUERY_METRIC_NAMES.values()))
+
+    def _write_pc_snapshots(self, result_rows):
+        from apps.cmdb.services.pc_discovery import reconcile_pc_vm_result
+
+        format_data = reconcile_pc_vm_result(
+            self.get_collect_inst(),
+            result_rows,
+            reader_factory=getattr(self, "round_metadata_reader_factory", None),
+        )
+        task_key = getattr(self, "TASK_FORMAT_DATA_KEY", "__task_format_data__")
+        self.result[task_key] = format_data
 
     @staticmethod
     def convert_datetime_format(time_str):

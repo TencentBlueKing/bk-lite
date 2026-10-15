@@ -29,6 +29,14 @@ describe('scene widget capabilities', () => {
     expect(getSceneWidgetCapability('networkStatusTopology')?.reportSupported).toBe(false);
   });
 
+  it('keeps applicationTopology on Dashboard and Screen, not report', () => {
+    expect(isSceneWidgetAllowedOnSurface('applicationTopology', 'dashboard')).toBe(true);
+    expect(isSceneWidgetAllowedOnSurface('applicationTopology', 'screen')).toBe(true);
+    expect(isSceneWidgetAllowedOnSurface('applicationTopology', 'report')).toBe(false);
+    expect(isSelfFetchSceneWidget('applicationTopology')).toBe(true);
+    expect(getSceneWidgetCapability('applicationTopology')?.shareSupported).toBe(true);
+  });
+
   it('keeps relatedTopology on Dashboard and Screen, not report', () => {
     expect(isSceneWidgetAllowedOnSurface('relatedTopology', 'dashboard')).toBe(true);
     expect(isSceneWidgetAllowedOnSurface('relatedTopology', 'screen')).toBe(true);

@@ -68,10 +68,7 @@ func newReplayReceiver(cfg *Config, settings *receiver.Settings, next consumer.L
 	if next == nil {
 		return nil, errors.New("rumreplay receiver requires a logs consumer")
 	}
-	ingress, err := ingress.New(ingress.Config{
-		RedisURL:          cfg.AdmissionRedisURL,
-		RedisPasswordFile: cfg.AdmissionRedisPass,
-	})
+	ingress, err := ingress.New(cfg.admissionRedis())
 	if err != nil {
 		return nil, err
 	}

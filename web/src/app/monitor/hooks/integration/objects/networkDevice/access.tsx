@@ -57,6 +57,7 @@ export const useAccessConfig = () => {
       'Access GWD SNMP': 'snmp_gwd',
       'Access V-SOL SNMP': 'snmp_vsolution',
       'Access ARRIS Cadant SNMP': 'snmp_arris',
+      'Access Calix E5 SNMP': 'snmp_calix_e5',
       'Access FiberHome OLT SNMP': 'snmp_fiberhome_olt',
       'Access Huawei OLT SNMP': 'snmp_huawei_olt',
       'Access Zhone DZS SNMP': 'snmp_zhone',
@@ -69,11 +70,13 @@ export const useAccessConfig = () => {
       'Access Casa Systems SNMP': 'snmp_casa',
       'Access Loop Telecom SNMP': 'snmp_loop_telecom',
       'Access Topvision SNMP': 'snmp_topvision',
+      'Access ZTE OLT SNMP': 'snmp_zte_olt',
       'Access Icotera SNMP': 'snmp_icotera',
       'Access Nateks SNMP': 'snmp_nateks',
       'Access Harmonic SNMP': 'snmp_harmonic',
       'Access RAD SNMP': 'snmp_rad',
-      'Access Intelbras OLT SNMP': 'snmp_intelbras_olt'
+      'Access Intelbras OLT SNMP': 'snmp_intelbras_olt',
+      'Access Teleste SNMP': 'snmp_teleste'
     }
   };
 };

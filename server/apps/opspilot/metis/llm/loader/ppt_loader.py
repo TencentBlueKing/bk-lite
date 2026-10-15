@@ -5,7 +5,7 @@ from typing import List
 
 from langchain_core.document_loaders import BaseLoader
 from langchain_core.documents import Document
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from pptx import Presentation
 from tqdm import tqdm
 

@@ -127,7 +127,7 @@ def _seed_empty_ids(fake_graph):
 
 
 @given("关联校验放行")
-def _seed_assoc(monkeypatch, fake_graph):
+def _seed_assoc(monkeypatch, fake_graph, ctx):
     monkeypatch.setattr(f"{MODULE}.create_change_record_by_asso", lambda *a, **k: None)
     monkeypatch.setattr(f"{MODULE}.InstanceManage.check_asso_mapping", lambda data: None)
     monkeypatch.setattr(
@@ -135,7 +135,15 @@ def _seed_assoc(monkeypatch, fake_graph):
         lambda aid: {"src": {"_id": 1, "model_id": "host", "inst_name": "h"},
                      "dst": {"_id": 2, "model_id": "sw", "inst_name": "s"}},
     )
-    fake_graph(MODULE, create_edge={"_id": 100, "model_asst_id": "a_b_c"})
+    endpoints = {
+        1: {"_id": 1, "model_id": "host", "inst_uuid": "00000000-0000-4000-8000-000000000001"},
+        2: {"_id": 2, "model_id": "switch", "inst_uuid": "00000000-0000-4000-8000-000000000002"},
+    }
+    ctx["graph"] = fake_graph(
+        MODULE,
+        query_entity_by_id=lambda inst_id: endpoints[inst_id],
+        create_edge={"_id": 100, "model_asst_id": "a_b_c"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +275,13 @@ def _batch_delete_called(ctx):
 @then("应当对图库执行过 create_edge")
 def _create_edge_called(ctx):
     assert ctx["result"]["_id"] == 100
+    calls = [args for name, args, kwargs in ctx["graph"].calls if name == "create_edge"]
+    assert len(calls) == 1
+    properties = calls[0][5]
+    assert properties["src_inst_uuid"] == "00000000-0000-4000-8000-000000000001"
+    assert properties["dst_inst_uuid"] == "00000000-0000-4000-8000-000000000002"
+    assert "src_inst_id" not in properties
+    assert "dst_inst_id" not in properties
 
 
 @then(parsers.parse("自动关联补齐应当被触发 {count:d} 次"))

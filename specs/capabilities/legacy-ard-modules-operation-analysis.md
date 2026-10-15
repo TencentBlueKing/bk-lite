@@ -71,8 +71,9 @@
 | eventTimeline | widgets/comEventTimeline.tsx | 事件时间线 |
 | cardList | widgets/comCardList.tsx | 普通 DataSource 驱动的记录卡片列表；消费 `array<object>` 或 `{items}`，经 `valueConfig.cardList` 映射固定槽位 |
 | radar | widgets/comRadar.tsx | 雷达图 |
-| room3D | widgets/room3D/index.tsx | 3D 机房 Screen-only 场景组件：经运营分析 `scene_widgets/room3d` 包装 CMDB NATS `get_room_list` / `get_room3d_layout`，渲染 row/col 网格、U 占用、可配机柜顶两行、设备摘要与类型图例；设备告警摘要驱动侧栏/tooltip 与内部红光晕 |
+| room3D | widgets/room3D/index.tsx | 3D 机房 Screen-only 场景组件：经运营分析 `scene_widgets/room3d` 包装 CMDB NATS `get_room_list` / `get_room3d_layout`，渲染 row/col 网格、U 占用、可配机柜顶两行、设备摘要与类型图例；机房读画布筛选 `server_room_id__string`；设备告警摘要驱动侧栏/tooltip 与内部红光晕 |
 | networkStatusTopology | networkStatusTopology/index.tsx | 网络状态拓扑场景组件 |
+| applicationTopology | widgets/applicationTopology/index.tsx | 应用拓扑场景组件：经 `scene_widgets/application_topology` 取 CMDB 五带结构并叠监控活跃告警；点击节点在组件内查看 CMDB 信息、监控信息和告警信息 |
 | multiValue | widgets/comMultiValue.tsx | 多值 |
 | text | ops-analysis-widgets/text-panel | 文本面板 |
 | topologyMap | topologyMap/index.tsx | 普通 DataSource 驱动的通用关系拓扑；消费 `{nodes, edges}`，使用 Dagre + X6 渲染 |
@@ -80,7 +81,7 @@
 证据：`web/src/app/ops-analysis/components/widgetRegistry.ts:19-36`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`、`web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`、`web/src/app/ops-analysis/components/widgets/room3D/{index.tsx,room3DData.ts,room3DMeshes.ts,room3DScene.ts}`。
 
 **大屏与报表前端入口**【已实现】
-- `screen`：前端提供独立页面、全屏、统一筛选、命名空间选择、组件布局与保存接口（`(pages)/view/screen/index.tsx:76-213`、`api/screen.ts:4-28`）。
+- `screen`：前端提供独立页面、三区编辑器、文本/时钟/标题框/装饰元素、面板两档（标准 / 无边框）、查看页收壳、全屏筛选按钮、fill/fitWidth/fitHeight 仅用于放大和分享，以及保存接口（`(pages)/view/screen/`、`api/screen.ts`）。画布背景为纯色、内置壁纸或一张自定义图片（data URL，PNG/JPEG/WebP，不超过 2MB，铺满设计画布）。文本、标题框和时钟的字色可取任意 `#RRGGBB`，取色后不随主题变化；未改过的 `canvas` / `muted` / `accent` 仍跟主题。证据：`specs/changes/ops-analysis-screen-basic-layout/spec.md`、`specs/changes/ops-analysis-screen-custom-background-image/spec.md`。
 - 网络状态拓扑布局【已实现】：组件提供层级、力导向、环形三种布局；编辑态的节点位置和连线形态按布局分别持久化及重置。几何写回只替换布局字段，保留流量阈值与连线展示。查看与分享态只读取已保存布局，不回写配置（证据：`web/src/app/ops-analysis/utils/networkStatusTopologyLayout.ts`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`）。
 - `report`：前端提供独立的纵向报表构建器；非内置且具备 `EditChart` 权限的报表可在草稿态添加、配置、排序和删除组件，当前 `report` surface 只开放 `table` 与 `eventTable`。`section` 仅保存稳定 `id` 与单个组件 `valueConfig`；画布保存统一筛选定义，组件通过 `filterBindings` 选择联动，运行时按数据源的 `filterType=filter` 及 `key + type` 严格匹配注入查询参数，不默认展示或接管时间参数。保存使用保留六位微秒的 `updated_at` 条件令牌防止旧草稿覆盖新版本，后端创建、更新与 YAML 导入统一校验版本化 `view_sets`。查看态工具栏对齐仪表盘：周期刷新（`refresh_interval`）、全屏 overlay、客户端 A4 横向分页 PDF、画布分享与邮件订阅；订阅 Chromium 使用仪表盘视口与分页，不套用大屏单页等比缩小（证据：`web/src/app/ops-analysis/(pages)/view/report/`、`web/src/app/ops-analysis/utils/{chartTypeSurface,reportBuilder,widgetDataTransform}.ts`、`server/apps/operation_analysis/services/report_view_sets.py`、`server/apps/operation_analysis/serializers/directory_serializers.py`）。
 - 画布分享目的地【已实现】：`/ops-analysis/share/*` 隐藏平台顶栏（`shouldHideConsoleTopNav`）、左侧 App 导航（既有 chrome exception）与全局助手（`GLOBAL_WEBCHAT_EXCLUDED_PATH_PREFIXES`），`main` 无内边距；不进入订阅 Render 专用 layout，仍保留 User/Menus/Permissions providers。产品内 `/ops-analysis/view` 保持完整壳层。证据：`web/src/console-layout/resolve.ts`、`web/src/app/layout.tsx`、`web/src/app/(core)/components/global-webchat/visibility.ts`。
@@ -107,6 +108,7 @@
 - `[operation_analysis#20260701-014]` 补录开放导入导出 API Token 认证、组织解析、权限矩阵与实例/组织过滤。
 
 ## 2026-07-09 Code-ARD 校准
+- `[operation_analysis#20261012-001]` 机房改为大屏统一筛选 `server_room_id__string`（单选动态选项，点查询生效）。含 room3D 且缺少该筛选项时加载补上，默认值取第一个组件已保存机房；不可见时展示「机房不可用」。组件内下拉与配置里的默认机房字段移除。内置选项源「CMDB 机房列表（选项）」恢复；「CMDB 3D机房布局」仍下架。
 - `[operation_analysis#20260921-002]` `room3D` 配置增加机柜顶两行显示：选项为位置码 / 机柜名称 / 机柜类型 / 机柜状态；默认位置码 + 类型；第二行可空、两行不可都空、允许重复；只改机柜顶贴图，图例仍按 `rack_type_name`。NATS 增补 `rack_state` / `rack_state_name`。
 - `[operation_analysis#20260921-001]` `room3D` 从数据组件改为 Screen-only 自取数场景组件：capability `{ selfFetch, surfaces: ['screen'], shareSupported }`；配置只钉可选默认机房；查看/分享组件内切换且不写回；运营分析包装 CMDB NATS `get_room_list` / `get_room3d_layout`；用户侧内置数据源「CMDB 3D机房布局」「CMDB 机房列表」下架。
 - `[operation_analysis#20260709-001]` 3D 机房大屏组件 `room3D` 已注册到 `widgetRegistry`（此前 spec 未覆盖）：消费 CMDB NATS `get_room3d_layout` 返回的机房布局数据（含 `rack_type_name` 可读类型名），渲染 row/col 网格、机柜 U 占用、设备摘要与图例。后续于 `20260921-001` 改为场景组件自取数。

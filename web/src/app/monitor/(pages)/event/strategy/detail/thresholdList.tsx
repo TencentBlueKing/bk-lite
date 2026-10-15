@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Select, InputNumber, Tooltip } from 'antd';
+import { Button, Select, InputNumber, Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ListItem } from '@/app/monitor/types';
@@ -39,6 +39,7 @@ interface ThresholdListProps {
   showUnitSelector?: boolean;
   allowedMethods?: ListItem[];
   unitAddonLabel?: string;
+  allowStructureEdit?: boolean;
 }
 
 const ThresholdList: React.FC<ThresholdListProps> = ({
@@ -51,7 +52,8 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
   enumOptions = [],
   showUnitSelector = true,
   allowedMethods,
-  unitAddonLabel
+  unitAddonLabel,
+  allowStructureEdit = false
 }) => {
   const { t } = useTranslation();
 
@@ -77,6 +79,19 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
 
   const handleThresholdUnitChange = (value: string) => {
     onThresholdUnitChange(value);
+  };
+
+  const levelOrder = ['warning', 'error', 'critical'];
+  const unusedLevels = levelOrder.filter((level) => !data.some((item) => item.level === level));
+
+  const handleRemove = (index: number) => {
+    onChange?.(data.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const handleAdd = () => {
+    const level = unusedLevels[0];
+    if (!level) return;
+    onChange?.([...data, { level, method: comparisonMethods[0]?.value ? String(comparisonMethods[0].value) : '>', value: null }]);
   };
 
   // 获取当前选中单位的显示文本
@@ -139,7 +154,12 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
           />
           <div className="pl-[10px]">
             <div className="flex items-center space-x-4 my-1 font-[800]">
-              {t(`monitor.events.${item.level}`)}
+              <span className="flex-1">{t(`monitor.events.${item.level}`)}</span>
+              {allowStructureEdit ? (
+                <Button type="link" className="px-0" onClick={() => handleRemove(index)}>
+                  {t('common.delete')}
+                </Button>
+              ) : null}
             </div>
             <div className="flex items-center">
               <span className="mr-[10px]">
@@ -186,6 +206,11 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
           </div>
         </div>
       ))}
+      {allowStructureEdit && unusedLevels.length > 0 ? (
+        <Button className="mt-[10px]" onClick={handleAdd}>
+          {t('common.add')}
+        </Button>
+      ) : null}
     </div>
   );
 };

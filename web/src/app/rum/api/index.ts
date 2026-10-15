@@ -21,6 +21,8 @@ export interface RumApplicationView {
   budgets?: Record<string, number>;
   lastAcceptedAt?: number;
   lastStoredAt?: number;
+  projectionPending?: boolean;
+  controlUnavailable?: boolean;
 }
 
 export interface RumApplicationStatus {
@@ -52,6 +54,7 @@ export interface RumSnippetSet {
 }
 
 export type RumMeta = {
+  publicOrigin?: string;
   collectUrl: string;
   replayUrl: string;
   sdkCdnUrl: string;
@@ -141,7 +144,8 @@ export interface RumSessionRow {
 
 export type RumSessionListPage = PipelineDegradation & {
   sessions: RumSessionRow[];
-  summary: { total: number; errored: number; replayed: number; medianDurationMs: number };
+  summary?: { total: number; errored: number; replayed: number; medianDurationMs: number };
+  replayScanTruncated?: boolean;
 };
 
 export type RumSessionJourney = PipelineDegradation & {
@@ -281,6 +285,7 @@ export interface RumFunnelItem {
 export type RumFunnelReachResult = PipelineDegradation & {
   steps: string[];
   reached: number[];
+  truncated?: boolean;
 };
 
 export interface RumReleaseRow {
@@ -439,7 +444,7 @@ export function useRumQueries() {
   );
 
   const createApplication = useCallback(
-    async (body: { application: string; origins: string[] }) => {
+    async (body: { application: string; origins: string[]; budgets?: Record<string, number> }) => {
       const data = await api.post<RumApplicationView>('/applications/', body);
       return normalizeApplication(data);
     },
@@ -447,7 +452,7 @@ export function useRumQueries() {
   );
 
   const updateApplication = useCallback(
-    async (name: string, body: { origins?: string[]; enabled?: boolean }) => {
+    async (name: string, body: { origins?: string[]; enabled?: boolean; budgets?: Record<string, number> }) => {
       const data = await api.put<RumApplicationView>(`/applications/${encodeURIComponent(name)}/`, body);
       return normalizeApplication(data);
     },
@@ -566,7 +571,10 @@ export function useRumQueries() {
       });
       return withDegradation({
         sessions: Array.isArray(data?.sessions) ? data.sessions : [],
-        summary: data?.summary || { total: 0, errored: 0, replayed: 0, medianDurationMs: 0 },
+        summary: data?.replayScanTruncated
+          ? undefined
+          : data?.summary || { total: 0, errored: 0, replayed: 0, medianDurationMs: 0 },
+        replayScanTruncated: Boolean(data?.replayScanTruncated),
         controlUnavailable: data?.controlUnavailable,
         analyticsUnavailable: data?.analyticsUnavailable,
       });
@@ -752,6 +760,7 @@ export function useRumQueries() {
       return withDegradation({
         steps: Array.isArray(data?.steps) ? data.steps : [],
         reached: Array.isArray(data?.reached) ? data.reached.map(Number) : [],
+        truncated: Boolean(data?.truncated),
         controlUnavailable: data?.controlUnavailable,
         analyticsUnavailable: data?.analyticsUnavailable,
       });

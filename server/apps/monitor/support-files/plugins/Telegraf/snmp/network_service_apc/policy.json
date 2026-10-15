@@ -51,6 +51,31 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "APC ATS输出负载过高",
+      "alert_name": "网络服务${resource_name} ATS 输出负载过高",
+      "description": "监控 APC 自动转换开关输出负载百分比，持续高于 80% 时触发告警。",
+      "metric_name": "network_service_apc_ats_output_load_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

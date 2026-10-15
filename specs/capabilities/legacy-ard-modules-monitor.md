@@ -16,12 +16,14 @@
 | MonitorPlugin / MonitorPluginConfigTemplate / MonitorPluginUITemplate | `models/plugin.py:8,26,39` | 采集插件（telegraf）、配置模板、UI 模板 |
 | MonitorPolicy / PolicyTemplate / PolicyOrganization | `models/monitor_policy.py:21,10,72` | 告警策略、模板、策略-组织关联表（权限隔离载体） |
 | MonitorAlert / MonitorEvent | `models/monitor_policy.py` | 告警聚合（含生成时组织快照 `organizations`）/ 事件 / 原始数据 / 生命周期快照 |
-| PolicyInstanceBaseline / CollectConfig | `models/*.py` | 无数据基线、采集配置 |
+| PolicyInstanceBaseline / CollectConfig | `models/*.py` | 无数据基线、采集配置。`CollectConfig` 另有仓库绑定字段，见下 |
 | MonitorCondition / MonitorConditionOrganization | `models/monitor_condition.py:7,21` | 可复用监控条件、条件-组织关联表（权限隔离载体） |
 | CollectDetectTask | `models/collect_detect.py` | 接入前采集探测任务（状态、阶段、结果、错误信息） |
 | Setting | `models/setting.py:7` | 监控全局设置（`name` + `value` JSONField 键值对） |
 
 **存储**：PostgreSQL（ORM）；VictoriaMetrics（指标查询，`utils/victoriametrics_api.py`）；MinIO（`monitor-alert-raw-data` 等，S3JSONField）。
+
+采集配置仓库绑定【已实现】：`CollectConfig` 增加 `vault_credential_id`（默认空串，有索引；非空表示选用凭据仓库，空表示手填）、`vault_variant`、`vault_actor_context`（只存绑定人 `username` / `domain` / `current_team`）、`vault_credential_name`、`vault_applied_version`（默认 0，表示尚未成功下发；与从 1 起的 `secret_version` 不相等时要解析，0 不是哨兵）、`vault_sync_error`、`vault_synced_at`。不另存来源列或类型列。口令不写入这些字段。手填行保持空绑定。
 
 ## 3. 接口【已实现/已存在】
 各为独立 ViewSet 路由：`monitor_object`、`monitor_object_type`、`metrics_group`、`metrics`、`metrics_instance`、`organization_rule`、`monitor_instance`、`monitor_policy`、`monitor_plugin`、`monitor_alert`、`monitor_event`、`manual_collect`、`collect_detect`、`unit`、`monitor_condition`、`system_mgmt`、`node_mgmt`；开放端点 `open_api/infra`；另有 `api/k3s_onboarding` 与 `open_api/k3s_onboarding`（轻量集群接入）。
@@ -52,7 +54,9 @@
   - `flow_onboarding.py:17` 创建/绑定流量资产，兜底采样率默认 1000（`DEFAULT_FALLBACK_SAMPLING_RATE`）。
   - `flow_env_config.py` 按云区域刷新采集器环境变量（`refresh_collect_configs`）。
   - `flow_sampling.py:10` 的 `FlowSamplingService.normalize_payload` 归一化上报载荷，产出 `effective_sampling_rate` 字段及来源标记 `sampling_rate_source`（上报值 `reported_effective_sampling_rate` / 派生 `normalized_from_*` / 兜底 `fallback_sampling_rate`）。
-- 接入前采集探测【已实现/已存在】：插件模型新增 `support_collect_detect` 能力标记；`CollectDetectService.create_task()` 创建任务后通过 `run_collect_detect_task.delay(...)` 异步执行一次性探测，结果记录到 `CollectDetectTask`，用于接入向导中的“先探测再落配置”场景。服务层会对超时时间做 1~600 秒钳制，并把请求快照中的敏感值脱敏存档（`models/plugin.py:17`、`services/collect_detect.py:29-69,198-213`、`tasks/collect_detect.py:7`）。
+- 接入前采集探测【已实现/已存在】：插件模型新增 `support_collect_detect` 能力标记；`CollectDetectService.create_task()` 创建任务后通过 `run_collect_detect_task.delay(...)` 异步执行一次性探测，结果记录到 `CollectDetectTask`，用于接入向导中的“先探测再落配置”场景。服务层会对超时时间做 1~600 秒钳制，并把请求快照中的敏感值脱敏存档（`models/plugin.py:17`、`services/collect_detect.py`、`tasks/collect_detect.py:7`）。仓库模式丢弃客户端传入的绑定人，只按当前会话用户解析；Celery 参数与 `request_snapshot` 只带凭据 ID 和会话用户，不带回填明文。手填探测的全局敏感键不变。
+- 接入凭据【已实现】：插件 UI 在本地化之前推导 `credential_binding`，随 `ui_template` / `ui_template_by_params` 下发。编辑采集配置请求带 `credential`。新建可在 `configs` 里带 `credential_source`、`vault_credential_id`、`vault_variant`，读完即从配置项移除，不落来源列。手填路径不加组行锁，env 行为与仓库接线前一致。仓库配置的回显去掉受管 env 键，正文秘密显示为 `***`。
+- NATS 凭据引用【已实现】：`monitor_count_credential_refs` 按实例去重返回引用数，未引用补 0，非法列表返回 `invalid`。`monitor_refresh_credential_refs` 校验同一列表后投递 Celery，不在 NATS 回调里写节点。
 - 内置网络设备模板增量【已实现/已存在】：SNMP 目录本轮新增 `access_topvision`、`access_icotera`、`switch_ipinfusion`、`transmission_ifotec`、`wireless_xirrus` 五组内置模板；其中 IP Infusion 模板附带电源温度默认告警策略，其余四组提供对象接入模板但不内置策略（`support-files/plugins/Telegraf/snmp/*/policy.json`）。
 
 对应 PRD：[[legacy-prd-监控系统-集成.md#3.1 集成（插件管理）]]；对应功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]
@@ -62,6 +66,7 @@
 - 指标采集与告警评估：telegraf 采集 → VictoriaMetrics →（PromQL）scan_policy_task → 阈值/聚合/恢复评估 → MonitorAlert（MonitorEvent 记录触发、级别升级、认领、分派、转派、恢复或关闭；告警指标快照按扫描追加，原始快照存 MinIO；认领 / 分派 / 转派不上快照图）。
 - 流量监控接入：网络设备发送 NetFlow v5(2055)、NetFlow v9/默认 NetFlow 接入端点(2056) 或 sFlow(6343) → 采集器按云区域环境变量监听（`flow_env_config.py`） → 采样率归一化（`flow_sampling.py`） → 入 VictoriaMetrics，复用上述告警评估链路。
 - 漏跑补偿机制【已实现/已存在】：`scan_policy_task` 基于策略 `last_run_time` 与当前时间计算 gap，按周期数自动补偿历史扫描点（`tasks/monitor_policy.py:59-77`）。补偿上限：单次最多 `MAX_BACKFILL_COUNT=30` 个周期、最大补偿时间范围 `MAX_BACKFILL_SECONDS=24*3600` 秒，超出范围的历史数据不再补偿（`constants/alert_policy.py:5-7`）。
+- 凭据重下发与对账【已实现】：系统管理在秘密版本前进后调用 `monitor_refresh_credential_refs`。监控任务 `refresh_vault_credential_refs` 按实例和插件逐组调用 `apply_vault_credential`（绑定人解析，不是当前页面用户）。Beat `reconcile_vault_credentials` 每 10 分钟只把「版本为 null 且尚未记 `not_found`」或「`secret_version` 大于组内 `vault_applied_version`」的组入队。停用、删除和无权限清除都在这次下发里完成。手填配置不进入该队列。
 
 ### 5.1 跨模块实例归并与生命周期【已实现】
 
@@ -85,6 +90,9 @@
 - `[monitor#20260709-001]` 补录告警策略与监控条件 ViewSet 的对象级权限围栏：list/retrieve 受 `View` 权限、create/update/partial_update/destroy 受 `Operate` 权限，写操作前对 `organizations` 字段做授权校验，批量模板创建前对 `asset_ids` 做整体授权预校验（越权 401 整体回滚）。
 - `[monitor#20260709-002]` 前端社区版 4 个企业版 EE 中间件占位 hook 已在 `web/src/app/monitor/hooks/integration/{index.tsx,objects/middleware/{jboss,jetty,tongWeb,webLogic}.tsx}` 删除，社区版不渲染 WebLogic/JBoss/Jetty/TongWeb 卡片；企业版由 `useEnterpriseConfig` 覆盖提供。
 - `[monitor#20260709-003]` i18n `monitor_object_type.OS` 文案由「操作系统」改为「主机资源」（zh-Hans/en），并配套 `migrations/0044_rename_monitor_object_type_os_to_host_resource.py` 同步 DB 兜底字段（仅 `id='os'`）。
+
+## 2026-10-09 Code-ARD 校准
+- `[monitor#20261009-001]` 采集配置可绑定凭据仓库。`CollectConfig.vault_*` 只存凭据 ID、分支、绑定人、名称快照和同步状态。UI 下发 `credential_binding`。编辑请求带 `credential`。NATS `monitor_count_credential_refs` 与 `monitor_refresh_credential_refs` 已注册。重下发与每 10 分钟对账按秘密版本差补齐。手填 env 与手填探测敏感键不变。
 
 ## 2026-08-20 Code-ARD 校准
 - `[monitor#20260820-001]` 新增主机看板 NATS：`get_host_instance_list`、`get_host_metric_range`、`get_host_resource_snapshot`；`get_host_resource_top` 增加可选 `instance_ids` 收窄。未选主机的趋势/快照不退化为全量。权限与现有监控实例可见范围一致，fail-closed。

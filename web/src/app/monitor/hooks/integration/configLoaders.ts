@@ -13,6 +13,8 @@ type ObjectConfigLoader = () => Promise<ObjectConfigFactory>;
 const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
   'Hardware Server': () =>
     import('./objects/hardwareDevice/hardware').then((m) => m.useHardwareConfig),
+  Storage: () =>
+    import('./objects/hardwareDevice/storage').then((m) => m.useStorageConfig),
   Oracle: () => import('./objects/database/oracle').then((m) => m.useOracleConfig),
   ElasticSearch: () =>
     import('./objects/database/elasticSearch').then((m) => m.useElasticSearchConfig),
@@ -28,6 +30,7 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
   'Active Directory': () =>
     import('./objects/middleware/activeDirectory').then((m) => m.useActiveDirectoryConfig),
   Exchange: () => import('./objects/middleware/exchange').then((m) => m.useExchangeConfig),
+  IIS: () => import('./objects/middleware/iis').then((m) => m.useIisConfig),
   Apache: () => import('./objects/middleware/apache').then((m) => m.useApacheConfig),
   Haproxy: () => import('./objects/middleware/haproxy').then((m) => m.useHaproxyConfig),
   Consul: () => import('./objects/middleware/consul').then((m) => m.useConsulConfig),

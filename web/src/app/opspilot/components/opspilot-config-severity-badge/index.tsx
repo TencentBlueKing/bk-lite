@@ -1,5 +1,6 @@
 import React from 'react';
 import StatusBadgeShell from '@/components/status-badge-shell';
+import { useTranslation } from '@/utils/i18n';
 
 export type OpspilotConfigSeverity =
   | 'critical'
@@ -63,11 +64,12 @@ const SEVERITY_STYLES: Record<
 const OpspilotConfigSeverityBadge: React.FC<
   OpspilotConfigSeverityBadgeProps
 > = ({ severity, label, className = '' }) => {
+  const { t } = useTranslation();
   const palette = SEVERITY_STYLES[severity] || SEVERITY_STYLES.unknown;
 
   return (
     <StatusBadgeShell
-      label={label || palette.label}
+      label={label || t(`configSeverity.${severity}`, palette.label)}
       className={className}
       palette={palette}
     />

@@ -196,8 +196,20 @@ const rgbaAlpha = (value: string) => {
   return match ? Number(match[1]) : 0;
 };
 
+/** Paint coordinates stay in the 768×320 layout even when the bitmap is smaller. */
+const logicalCanvasSize = (ctx: CanvasRenderingContext2D) => {
+  const transform = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  const scaleX = transform && Number.isFinite(transform.a) && transform.a !== 0 ? transform.a : 1;
+  const scaleY = transform && Number.isFinite(transform.d) && transform.d !== 0 ? transform.d : 1;
+  return {
+    w: ctx.canvas.width / scaleX,
+    h: ctx.canvas.height / scaleY,
+  };
+};
+
 const paintGlassBody = (ctx: CanvasRenderingContext2D) => {
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const { w, h } = logicalCanvasSize(ctx);
+  ctx.clearRect(0, 0, w, h);
 };
 
 const paintCubeIcon = (
@@ -253,8 +265,7 @@ const paintFrontChrome = (
   ctx: CanvasRenderingContext2D,
   visual: Application3DCardVisual,
 ) => {
-  const w = ctx.canvas.width;
-  const h = ctx.canvas.height;
+  const { w, h } = logicalCanvasSize(ctx);
   const tone = visual.cardTone;
   const tokens = CARD_TONE[tone];
   const padX = 40;
@@ -353,8 +364,7 @@ export const paintApplication3DCardSide = (
 };
 
 const paintBackChrome = (ctx: CanvasRenderingContext2D) => {
-  const w = ctx.canvas.width;
-  const h = ctx.canvas.height;
+  const { w, h } = logicalCanvasSize(ctx);
   const inset = CARD_GLASS.inset + 18;
   roundRectPath(
     ctx,

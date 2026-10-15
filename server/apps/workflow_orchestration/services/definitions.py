@@ -28,10 +28,22 @@ CONDITION_TERM = re.compile(
     r"|\$\.left_(\d+)\.indexOf\(\$\.right_(\d+)\) (?:>=|<|==) 0"
     r"|\$\.left_(\d+)\.slice\(\$\.left_(\d+)\.length - \$\.right_(\d+)\.length\) == \$\.right_(\d+))"
 )
+NOTIFICATION_TYPE_TO_CHANNEL_TYPE = {
+    "EMAIL": "email",
+    "WECOM_BOT": "enterprise_wechat_bot",
+    "FEISHU_BOT": "feishu_bot",
+    "DINGTALK_BOT": "dingtalk_bot",
+    "CUSTOM_WEBHOOK": "custom_webhook",
+}
 
 
 class DefinitionValidationError(ValueError):
-    pass
+    """校验失败。str(self) 保留技术句子供日志和既有测试；对用户展示走错误码。"""
+
+    def __init__(self, message: str, *, code: str = "", **params: Any) -> None:
+        super().__init__(message)
+        self.code = code
+        self.params = params
 
 
 def compile_disabled_nodes(definition: Any, canvas_metadata: Any) -> dict[str, Any]:
@@ -147,6 +159,43 @@ def _walk_tasks(tasks: list[dict[str, Any]]):
                 yield from _walk_tasks(branch)
 
 
+def _task_requires_user_node_title(task: dict[str, Any]) -> bool:
+    """画布上由用户命名的节点：SIMPLE / 条件 SWITCH / 人工审批。隐藏的审批决策 SWITCH 除外。"""
+    reference = task.get("taskReferenceName")
+    if not isinstance(reference, str) or not reference or reference.startswith("__auto_"):
+        return False
+    task_type = task.get("type")
+    name = task.get("name")
+    if task_type == "SIMPLE":
+        return True
+    if task_type == "HUMAN":
+        return True
+    if task_type == "SWITCH" and name == "condition":
+        return True
+    return False
+
+
+def validate_user_facing_node_titles(definition: Any, canvas_metadata: Any) -> None:
+    """发布/校验时：用户已清空的节点名称不能为空（未写入的旧数据仍允许，展示层回落原子名）。"""
+    if not isinstance(definition, dict) or not isinstance(canvas_metadata, dict):
+        return
+    titles = canvas_metadata.get("node_titles")
+    if not isinstance(titles, dict):
+        return
+    tasks = definition.get("tasks")
+    if not isinstance(tasks, list):
+        return
+    for task in _walk_tasks(tasks):
+        if not isinstance(task, dict) or not _task_requires_user_node_title(task):
+            continue
+        reference = task.get("taskReferenceName")
+        if not isinstance(reference, str) or reference not in titles:
+            continue
+        title = titles[reference]
+        if not isinstance(title, str) or not title.strip():
+            raise DefinitionValidationError(f"节点 {reference} 必须填写节点名称")
+
+
 def _maximum_task_depth(tasks: list[dict[str, Any]], depth: int = 1) -> int:
     maximum = depth if tasks else depth - 1
     for task in tasks:
@@ -200,19 +249,83 @@ def _validate_atom_inputs(task: dict[str, Any], atom_catalog: dict[str, dict[str
     try:
         schema = resolve_capability_input_schema(atom_catalog.get(task["name"]) or {}, inputs)
     except CapabilityProfileError as error:
-        raise DefinitionValidationError(f"节点 {reference} {error}") from error
+        raise DefinitionValidationError(
+            f"节点 {reference} {error}",
+            code="node_detail",
+            node_reference=reference,
+            atom_key=str(task.get("name") or ""),
+            detail=str(error),
+        ) from error
     missing = [field for field in schema.get("required", []) if field not in inputs]
     if missing:
-        raise DefinitionValidationError(f"节点 {reference} 缺少必填输入: {', '.join(missing)}")
+        raise DefinitionValidationError(
+            f"节点 {reference} 缺少必填输入: {', '.join(missing)}",
+            code="node_missing_required_input",
+            node_reference=reference,
+            atom_key=str(task.get("name") or ""),
+            field_keys=missing,
+        )
     for field, value in inputs.items():
         field_schema = (schema.get("properties") or {}).get(field)
         if not isinstance(field_schema, dict):
             continue
         if isinstance(value, str) and CONDUCTOR_REFERENCE.fullmatch(value.strip()):
             continue
+        if isinstance(value, list) and isinstance(field_schema.get("items"), dict):
+            item_schema = field_schema["items"]
+            for item in value:
+                if isinstance(item, str) and CONDUCTOR_REFERENCE.fullmatch(item.strip()):
+                    continue
+                item_errors = sorted(Draft202012Validator(item_schema).iter_errors(item), key=lambda entry: list(entry.path))
+                if item_errors:
+                    raise DefinitionValidationError(
+                        f"节点 {reference} 输入 {field} 不符合原子 Schema: {item_errors[0].message}",
+                        code="node_input_invalid",
+                        node_reference=reference,
+                        atom_key=str(task.get("name") or ""),
+                        field_key=field,
+                    )
+            continue
         errors = sorted(Draft202012Validator(field_schema).iter_errors(value), key=lambda item: list(item.path))
         if errors:
-            raise DefinitionValidationError(f"节点 {reference} 输入 {field} 不符合原子 Schema: {errors[0].message}")
+            raise DefinitionValidationError(
+                f"节点 {reference} 输入 {field} 不符合原子 Schema: {errors[0].message}",
+                code="node_input_invalid",
+                node_reference=reference,
+                atom_key=str(task.get("name") or ""),
+                field_key=field,
+            )
+    _validate_notification_channel_capability(task)
+
+
+def _validate_notification_channel_capability(task: dict[str, Any]) -> None:
+    """发布时锁定 notification_type 与 channel.channel_type，避免 EMAIL 绑到 NATS 等脏种子。"""
+    if task.get("name") != "bklite_notification":
+        return
+    reference = str(task.get("taskReferenceName") or "")
+    inputs = task.get("inputParameters") if isinstance(task.get("inputParameters"), dict) else {}
+    notification_type = inputs.get("notification_type")
+    channel_id = inputs.get("channel_id")
+    expected = NOTIFICATION_TYPE_TO_CHANNEL_TYPE.get(str(notification_type or ""))
+    if not expected or isinstance(channel_id, bool) or not isinstance(channel_id, int):
+        return
+    from apps.system_mgmt.models import Channel
+
+    try:
+        channel = Channel.objects.filter(id=channel_id).only("channel_type").first()
+    except RuntimeError:
+        # 无 Django DB 标记的单测会拦截 ORM；此时跳过类型对账。
+        return
+    if channel is None:
+        return
+    if channel.channel_type != expected:
+        raise DefinitionValidationError(
+            f"节点 {reference} 输入 channel_id 不符合原子 Schema: channel type mismatch",
+            code="node_input_invalid",
+            node_reference=reference,
+            atom_key="bklite_notification",
+            field_key="channel_id",
+        )
 
 
 def _validate_structured_condition(task: dict[str, Any]) -> None:
@@ -463,8 +576,7 @@ def build_health_inspection_definition() -> dict[str, Any]:
                 "type": "SIMPLE",
                 "inputParameters": {
                     "notification_type": "EMAIL",
-                    "channel_id": 1,
-                    "recipients": [],
+                    "recipients": ["${workflow.input.__system.actor_name}"],
                     "title": "主机健康巡检报告",
                     "body": "主机健康巡检已完成。",
                     "report_artifact": "${report.output.artifact}",

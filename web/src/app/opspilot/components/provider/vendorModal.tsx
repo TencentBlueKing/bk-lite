@@ -13,8 +13,8 @@ import {
   getVendorOption,
   PROTOCOL_TYPE_OPTIONS,
   supportsProtocolSelection,
-  VENDOR_LABEL_MAP,
-  VENDOR_OPTIONS
+  VENDOR_OPTIONS,
+  vendorDisplayName
 } from '@/app/opspilot/constants/provider';
 import type {ModelVendor, ModelVendorPayload, ProtocolType} from '@/app/opspilot/types/provider';
 
@@ -277,12 +277,12 @@ const VendorModal: React.FC<VendorModalProps> = ({
                 >
                   <Image
                     src={`/app/models/${option.icon}.svg`}
-                    alt={option.label}
+                    alt={vendorDisplayName(option.value, t)}
                     width={28}
                     height={28}
                     className="object-contain"
                   />
-                  <span className="text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>{VENDOR_LABEL_MAP[option.value]}</span>
+                  <span className="text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>{vendorDisplayName(option.value, t)}</span>
                 </button>
               );
             })}
@@ -300,7 +300,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
             <Radio.Group>
               {PROTOCOL_TYPE_OPTIONS.map((option) => (
                 <Radio key={option.value} value={option.value}>
-                  {option.label}
+                  {t(option.labelKey, option.label)}
                 </Radio>
               ))}
             </Radio.Group>

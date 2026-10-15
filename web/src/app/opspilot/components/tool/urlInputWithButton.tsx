@@ -1,5 +1,6 @@
 import React from 'react';
 import { Input, Button, Space } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 
 interface UrlInputWithButtonProps {
   value?: string;
@@ -18,8 +19,9 @@ const UrlInputWithButton: React.FC<UrlInputWithButtonProps> = ({
   placeholder,
   onFetch,
   fetchLoading = false,
-  fetchButtonText = '获取工具',
+  fetchButtonText,
 }) => {
+  const { t } = useTranslation();
   return (
     <Space.Compact style={{ width: '100%' }}>
       <Input
@@ -34,7 +36,7 @@ const UrlInputWithButton: React.FC<UrlInputWithButtonProps> = ({
         loading={fetchLoading}
         disabled={disabled}
       >
-        {fetchButtonText}
+        {fetchButtonText || t('tool.fetchButton', '获取工具')}
       </Button>
     </Space.Compact>
   );

@@ -5,7 +5,7 @@ import { Button, Form, Input, Select, Skeleton, Switch, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import Password from '@/components/password';
 import GroupTreeSelect from '@/components/group-tree-select';
-import { VENDOR_LABEL_MAP, VENDOR_OPTIONS } from '@/app/opspilot/constants/provider';
+import { VENDOR_OPTIONS, vendorDisplayName } from '@/app/opspilot/constants/provider';
 import type { ModelVendor, ModelVendorPayload } from '@/app/opspilot/types/provider';
 import { useProviderApi } from '@/app/opspilot/api/provider';
 
@@ -152,7 +152,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
             label={t('provider.vendor.typeLabel')}
             rules={[{ required: true, message: t('provider.vendor.vendorTypeRequired') }]}
           >
-            <Select options={VENDOR_OPTIONS.map((option) => ({ label: VENDOR_LABEL_MAP[option.value], value: option.value }))} />
+            <Select options={VENDOR_OPTIONS.map((option) => ({ label: vendorDisplayName(option.value, t), value: option.value }))} />
           </Form.Item>
         </div>
 

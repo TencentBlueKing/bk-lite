@@ -1,0 +1,109 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_hirschmann_hios"
+        config_type = "hirschmann_hios"
+        brand = "hirschmann_hios"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Hirschmann HiOS 资源与环境标量（HM2-DIAGNOSTIC-MIB / HM2-DEVMGMT-MIB，hm2ConfigurationMibs = 1.3.6.1.4.1.248.11）----
+    # 适用于 sysObjectID 以 1.3.6.1.4.1.248.11 开头的 HiOS 设备；Classic（1.3.6.1.4.1.248.14）设备使用 switch_hirschmann。
+    # 以下均为标量：顶层 field 带实例 .0，落 measurement snmp，查询用 snmp_ 前缀。
+    # 设备上 hm2DiagEnableMeasurement（…248.11.22.1.8.1.0）为 disable(2) 时不测量 CPU / 内存，对应字段为空。
+    # hm2DiagCpuUtilization（hm2DiagCpuResourcesGroup .1）：当前 CPU 使用率，Integer32 0..100，UNITS "percent"。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.248.11.22.1.8.10.1.0"
+        name = "device_cpu_usage"
+    # hm2DiagMemoryRamAllocated / hm2DiagMemoryRamFree（hm2DiagMemoryResourcesGroup .1 / .2）：已分配 / 空闲 RAM，UNITS "kBytes"。
+    # MIB 无内存总量对象，下方 starlark ×1024 存为字节，并计算 total = used + free、usage = used / total × 100。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.248.11.22.1.8.11.1.0"
+        name = "device_memory_used"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.248.11.22.1.8.11.2.0"
+        name = "device_memory_free"
+    # hm2DevMgmtTemperature（hm2DeviceMgmtTemperatureGroup .1）：设备当前温度，摄氏度。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.248.11.10.1.5.1.0"
+        name = "device_temperature_celsius"
+    # ---- 电源（可选）：HM2-PWRMGMT-MIB hm2PSTable，hm2PSState …248.11.11.1.1.1.1.2（INDEX hm2PSID，table.field 不带 .0）----
+    # present(1) / defective(2) / notInstalled(3) / unknown(4)；未实现该表的机型不产出。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.11.11.1.1.1.1.2"
+        name = "state"
+
+# ---- 内存 kBytes → 字节；total = used + free，usage = used / total × 100（两者缺一或总量为 0 时不补算）。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    used = metric.fields.get("device_memory_used")
+    free = metric.fields.get("device_memory_free")
+    if used != None:
+        used = int(used) * 1024
+        metric.fields["device_memory_used"] = used
+    if free != None:
+        free = int(free) * 1024
+        metric.fields["device_memory_free"] = free
+    if used != None and free != None and used + free > 0:
+        metric.fields["device_memory_total"] = used + free
+        metric.fields["device_memory_usage"] = used * 100.0 / (used + free)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["hirschmann_hios"]
+
+# ---- 电源状态归一：present(1)→1(正常)，defective(2)→2(异常)；notInstalled(3) 空槽→1 保留行；unknown(4)→2 保留行；其它取值整行丢弃。----
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("state")
+    if raw == None:
+        return None
+    raw = int(raw)
+    if raw == 1:
+        metric.fields["state"] = 1
+    elif raw == 2:
+        metric.fields["state"] = 2
+    elif raw == 3:
+        metric.fields["state"] = 1
+    elif raw == 4:
+        metric.fields["state"] = 2
+    else:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["hirschmann_hios"]

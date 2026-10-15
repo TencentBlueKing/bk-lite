@@ -49,9 +49,9 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
         const isFocused = !!input && document.activeElement === input;
         const selection = isFocused
           ? {
-              start: input.selectionStart ?? currentValue.length,
-              end: input.selectionEnd ?? currentValue.length
-            }
+            start: input.selectionStart ?? currentValue.length,
+            end: input.selectionEnd ?? currentValue.length
+          }
           : alertNameSelectionRef.current;
         const { value, cursor } = insertAlertNameVariableAtCursor(
           currentValue,

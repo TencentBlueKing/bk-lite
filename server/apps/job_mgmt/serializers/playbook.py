@@ -4,10 +4,12 @@ import os
 import re
 
 import yaml
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Playbook
+from apps.job_mgmt.services.template_revision import TemplateRevisionService, display_revision_label, request_operator
 from apps.job_mgmt.utils.i18n import serializer_message
 from apps.job_mgmt.utils.playbook_archive import enforce_archive_limits, open_archive, validate_archive_extension
 
@@ -382,6 +384,8 @@ def extract_file_from_archive(file_obj, file_path: str) -> dict:
 class PlaybookListSerializer(TeamSerializer):
     """Playbook列表序列化器（返回精简字段）"""
 
+    current_revision_label = serializers.SerializerMethodField()
+
     class Meta:
         model = Playbook
         fields = [
@@ -394,11 +398,17 @@ class PlaybookListSerializer(TeamSerializer):
             "updated_by",
             "updated_at",
             "description",
+            "current_revision_label",
         ]
+
+    def get_current_revision_label(self, obj):
+        return display_revision_label(obj)
 
 
 class PlaybookDetailSerializer(serializers.ModelSerializer):
     """Playbook详情序列化器（包含解析后的内容）"""
+
+    current_revision_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Playbook
@@ -414,8 +424,12 @@ class PlaybookDetailSerializer(serializers.ModelSerializer):
             "created_by",
             "updated_by",
             "updated_at",
+            "current_revision_label",
         ]
         read_only_fields = fields
+
+    def get_current_revision_label(self, obj):
+        return display_revision_label(obj)
 
 
 class PlaybookCreateSerializer(serializers.Serializer):
@@ -464,21 +478,22 @@ class PlaybookCreateSerializer(serializers.Serializer):
         domain = getattr(request.user, "domain", "domain.com") if request else "domain.com"
 
         # 创建 Playbook
-        playbook = Playbook.objects.create(
-            name=name,
-            version=version,
-            file=file,
-            team=team,
-            readme=parsed["readme"],
-            file_list=parsed["file_list"],
-            params=parsed["params"],
-            created_by=username,
-            updated_by=username,
-            domain=domain,
-            updated_by_domain=domain,
-        )
-
-        return playbook
+        with transaction.atomic():
+            playbook = Playbook.objects.create(
+                name=name,
+                version=version,
+                file=file,
+                team=team,
+                readme=parsed["readme"],
+                file_list=parsed["file_list"],
+                params=parsed["params"],
+                created_by=username,
+                updated_by=username,
+                domain=domain,
+                updated_by_domain=domain,
+            )
+            TemplateRevisionService.capture_playbook(playbook, operator=username)
+            return playbook
 
 
 class PlaybookUpdateSerializer(serializers.ModelSerializer):
@@ -490,6 +505,23 @@ class PlaybookUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Playbook
         fields = ["name", "description", "team"]
+
+    def update(self, instance, validated_data):
+        before, before_bytes, before_name = TemplateRevisionService.playbook_state(instance)
+        before_at = instance.updated_at
+        before_by = instance.updated_by or ""
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)
+            TemplateRevisionService.capture_playbook(
+                instance,
+                operator=request_operator(self) or instance.updated_by or "",
+                before=before,
+                before_bytes=before_bytes,
+                before_name=before_name,
+                before_at=before_at,
+                before_by=before_by,
+            )
+            return instance
 
 
 class PlaybookUpgradeSerializer(serializers.Serializer):
@@ -543,49 +575,53 @@ class PlaybookUpgradeSerializer(serializers.Serializer):
         """
         更新版本
 
-        1. 删除旧文件
-        2. 上传新文件
-        3. 解析 ZIP 包内容
-        4. 更新版本号（自动或手动）
-        5. 从文件名更新 name
+        1. 先保留当前内容的版本快照（含压缩包副本）
+        2. 删除旧的当前文件
+        3. 上传新文件并解析
+        4. 更新语义版本号（自动或手动）
+        5. 再记一条新版本
         """
         file = validated_data["file"]
         new_version = validated_data.get("version", "").strip()
+        operator = request_operator(self)
 
-        # 删除旧文件，避免存储泄漏
-        if instance.file:
-            instance.file.delete(save=False)
+        with transaction.atomic():
+            TemplateRevisionService.capture_playbook(instance, operator=operator)
 
-        # 版本号逻辑：不填则自动 +0.0.1
-        if not new_version:
-            new_version = self._increment_version(instance.version)
+            # 删除旧的当前文件。历史快照已持有自己的副本。
+            if instance.file:
+                instance.file.delete(save=False)
 
-        # 从文件名提取新的 Playbook 名称
-        filename = file.name
-        name = os.path.splitext(filename)[0]
-        if name.endswith(".tar"):
-            name = name[:-4]
+            # 版本号逻辑：不填则自动 +0.0.1
+            if not new_version:
+                new_version = self._increment_version(instance.version)
 
-        # 解析 ZIP 包内容
-        parsed = parse_playbook_zip(file)
+            # 从文件名提取新的 Playbook 名称
+            filename = file.name
+            name = os.path.splitext(filename)[0]
+            if name.endswith(".tar"):
+                name = name[:-4]
 
-        # 获取当前用户信息
-        request = self.context.get("request")
-        username = getattr(request.user, "username", "") if request else ""
-        domain = getattr(request.user, "domain", "domain.com") if request else "domain.com"
+            # 解析 ZIP 包内容
+            parsed = parse_playbook_zip(file)
 
-        # 更新实例
-        instance.file = file
-        instance.name = name
-        instance.version = new_version
-        instance.readme = parsed["readme"]
-        instance.file_list = parsed["file_list"]
-        instance.params = parsed["params"]
-        instance.updated_by = username
-        instance.updated_by_domain = domain
-        instance.save()
+            # 获取当前用户信息
+            request = self.context.get("request")
+            username = getattr(request.user, "username", "") if request else ""
+            domain = getattr(request.user, "domain", "domain.com") if request else "domain.com"
 
-        return instance
+            # 更新实例
+            instance.file = file
+            instance.name = name
+            instance.version = new_version
+            instance.readme = parsed["readme"]
+            instance.file_list = parsed["file_list"]
+            instance.params = parsed["params"]
+            instance.updated_by = username
+            instance.updated_by_domain = domain
+            instance.save()
+            TemplateRevisionService.capture_playbook(instance, operator=operator or username)
+            return instance
 
 
 class PlaybookBatchDeleteSerializer(serializers.Serializer):

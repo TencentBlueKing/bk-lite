@@ -17,11 +17,11 @@
   {
     "name": "Zenitel语音网关电源异常",
     "alert_name": "语音网关${resource_name} 电源状态异常",
-    "description": "监控 Zenitel Vingtor-Stentofon 设备电源状态（归一后 1=正常，>1=异常），当任一电源异常时触发告警。",
+    "description": "监控 Zenitel Vingtor-Stentofon 设备电源状态（归一后 1=正常，2=未连接，3=未知），仅未连接（=2）时触发告警，未知不告警。",
     "metric_name": "device_psu_state",
     "algorithm": "last_over_time",
     "threshold": [
-        { "level": "critical", "value": 1, "method": ">" }
+        { "level": "critical", "value": 2, "method": "=" }
     ]
   }
   ]

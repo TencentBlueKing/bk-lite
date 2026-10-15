@@ -17,7 +17,7 @@ const overviewPath = path.join(
 );
 const resolveLayerPath = path.join(
   webRoot,
-  'src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/resolveLayer.ts'
+  'src/app/cmdb/utils/applicationResourceLayer.ts'
 );
 const zhPath = path.join(webRoot, 'src/app/cmdb/locales/zh.json');
 const enPath = path.join(webRoot, 'src/app/cmdb/locales/en.json');
@@ -79,8 +79,8 @@ if (!/disabled=\{type === 'edit' && isBuiltinEdit\(\)\}/.test(modalSrc)) {
   failures.push('[modelModal.tsx] 内置模型名称/组织必须只读');
 }
 
-if (!/from '\.\/resolveLayer'/.test(overviewSrc)) {
-  failures.push('[index.tsx] 未从 resolveLayer 接入落带');
+if (!/from '@\/app\/cmdb\/utils\/applicationResourceLayer'/.test(overviewSrc)) {
+  failures.push('[index.tsx] 未从 applicationResourceLayer 接入落带');
 }
 if (!/if \(node\.id === rootNode\.id\) return 'root'/.test(resolveLayerSrc)) {
   failures.push('[resolveLayer.ts] 中心节点必须固定系统带');

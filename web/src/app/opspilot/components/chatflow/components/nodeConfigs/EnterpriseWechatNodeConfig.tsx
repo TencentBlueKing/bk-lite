@@ -16,14 +16,20 @@ export const EnterpriseWechatNodeConfig: React.FC<EnterpriseWechatNodeConfigProp
             label={field.toUpperCase().replace('_', ' ')}
             rules={[{
               required: true,
-              message: `请输入${field.toUpperCase().replace('_', ' ')}`,
+              message: t('chatflow.pleaseEnterField', '请输入{field}', {
+                field: field.toUpperCase().replace('_', ' '),
+              }),
               whitespace: true
             }]}
             className={idx === FIELDS.length - 1 ? 'mb-0' : 'mb-3'}
           >
             {field.includes('secret') || field === 'aes_key' ?
-              <Input.Password placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} /> :
-              <Input placeholder={`请输入${field.toUpperCase().replace('_', ' ')}`} />
+              <Input.Password placeholder={t('chatflow.pleaseEnterField', '请输入{field}', {
+                field: field.toUpperCase().replace('_', ' '),
+              })} /> :
+              <Input placeholder={t('chatflow.pleaseEnterField', '请输入{field}', {
+                field: field.toUpperCase().replace('_', ' '),
+              })} />
             }
           </Form.Item>
         ))}

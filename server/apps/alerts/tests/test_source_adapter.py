@@ -280,6 +280,46 @@ def test_mapping_fields_missing_unique_field_returns_empty(event_levels, restful
 
 
 @pytest.mark.django_db
+def test_mapping_assignee_keeps_usernames(event_levels, restful_source):
+    restful_source.config["event_fields_mapping"]["assignee"] = "assignee"
+    adapter = RestFulAdapter(alert_source=restful_source)
+    result = adapter.mapping_fields_to_event(
+        {
+            "title": "CPU高",
+            "assignee": [" alice ", "bob", "alice", "", "  ", 3, None],
+        }
+    )
+    assert result["assignee"] == ["alice", "bob"]
+
+
+@pytest.mark.django_db
+def test_mapping_assignee_drops_invalid_payload_and_caps_at_twenty(event_levels, restful_source):
+    restful_source.config["event_fields_mapping"]["assignee"] = "assignee"
+    adapter = RestFulAdapter(alert_source=restful_source)
+    invalid = adapter.mapping_fields_to_event({"title": "CPU高", "assignee": "alice"})
+    assert invalid["assignee"] == []
+    capped = adapter.mapping_fields_to_event({"title": "CPU高", "assignee": [f"user-{index}" for index in range(25)]})
+    assert capped["assignee"] == [f"user-{index}" for index in range(20)]
+
+
+@pytest.mark.django_db
+def test_unmapped_assignee_is_not_stored(event_levels, restful_source):
+    adapter = RestFulAdapter(alert_source=restful_source)
+    adapter.create_events(
+        [
+            {
+                "title": "事件A",
+                "level": "0",
+                "assignee": ["alice"],
+                "start_time": "1700000000",
+            }
+        ]
+    )
+    event = Event.objects.get(title="事件A")
+    assert event.assignee == []
+
+
+@pytest.mark.django_db
 def test_mapping_fields_invalid_level_defaults_to_info(event_levels, restful_source):
     adapter = RestFulAdapter(alert_source=restful_source)
     result = adapter.mapping_fields_to_event({"title": "t", "level": "999"})

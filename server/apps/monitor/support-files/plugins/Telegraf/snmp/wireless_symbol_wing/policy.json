@@ -1,0 +1,56 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Extreme WiNG SNMP",
+  "templates": [
+    {
+      "name": "WiNG无线设备CPU使用率过高",
+      "alert_name": "WiNG无线设备${resource_name} 设备 ${metric__index} CPU 使用率过高",
+      "description": "监控 Extreme WiNG 无线设备（wingStatsDevSysInfoLoadLimitS0，已按十分之一换算为百分比）的 1 分钟 CPU 使用率，当持续高于阈值时触发告警，提示可能存在 AP 或终端管理负载过重。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "WiNG无线设备内存使用率过高",
+      "alert_name": "WiNG无线设备${resource_name} 设备 ${metric__index} 内存使用率过高",
+      "description": "监控 Extreme WiNG 无线设备由空闲/总内存（KiB）换算得到的内存使用率，当持续高于阈值时触发告警，提示可能存在容量不足或异常占用。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

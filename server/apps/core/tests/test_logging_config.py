@@ -146,6 +146,39 @@ def test_openapi_logger_is_wired_for_console_info():
     assert with_files["handlers"]["openapi"]["filename"].endswith("openapi.log")
 
 
+def _exported_core_logger_names():
+    import apps.core.logger as core_logger
+
+    names = set()
+    for value in vars(core_logger).values():
+        if isinstance(value, logging.Logger):
+            names.add(value.name)
+    return names
+
+
+def test_mlops_and_patch_mgmt_loggers_are_wired_for_console_info():
+    console_only = build_logging_config(log_level="INFO", log_file_output=False)
+    with_files = build_logging_config(log_level="INFO", log_file_output=True)
+    for name in ("mlops", "patch-mgmt"):
+        assert console_only["loggers"][name]["handlers"] == ["console"]
+        assert console_only["loggers"][name]["level"] == "INFO"
+        file_logger = with_files["loggers"][name]
+        assert file_logger["handlers"] == [name, "console"]
+        assert with_files["handlers"][name]["class"] == "logging.handlers.RotatingFileHandler"
+        assert with_files["handlers"][name]["filename"].endswith(f"{name}.log")
+
+
+def test_exported_core_loggers_are_registered_and_info_enabled():
+    config = build_logging_config(log_level="INFO", log_file_output=False)
+    for name in _exported_core_logger_names():
+        logger_config = config["loggers"].get(name)
+        assert logger_config is not None, name
+        assert logger_config["level"] == "INFO", name
+        logger = logging.getLogger(name)
+        logger.setLevel(logger_config["level"])
+        assert logger.isEnabledFor(logging.INFO), name
+
+
 def test_all_rotating_file_handlers_share_default_rotation_limits():
     config = build_logging_config(log_level="INFO", log_file_output=True)
     rotating = _rotating_file_handlers(config)

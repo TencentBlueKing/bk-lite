@@ -44,6 +44,19 @@ class TestScanPolicyTask:
         assert out["success"] is True and out["message"] == "策略未启用"
         scan.assert_not_called()
 
+    def test_empty_instance_source_skips_before_scan(self, mocker):
+        watermark = datetime.now(timezone.utc) - timedelta(hours=2)
+        policy = _make_policy(
+            source={"type": "instance", "values": []},
+            last_run_time=watermark,
+        )
+        scan = mocker.patch("apps.monitor.tasks.monitor_policy.MonitorPolicyScan")
+        out = scan_policy_task(policy.id)
+        assert out["success"] is True and out["message"] == "没有可扫描实例"
+        scan.assert_not_called()
+        policy.refresh_from_db()
+        assert policy.last_run_time == watermark
+
     def test_first_run_records_watermark(self, mocker):
         policy = _make_policy(last_run_time=None)
         scan = mocker.patch("apps.monitor.tasks.monitor_policy.MonitorPolicyScan")
@@ -232,9 +245,15 @@ class TestInfraService:
         with pytest.raises(BaseAppException):
             InfraService.validate_and_get_token_data("")
 
-    def test_validate_unknown_token_raises(self, locmem_cache):
-        with pytest.raises(BaseAppException):
-            InfraService.validate_and_get_token_data("does-not-exist")
+    def test_validate_unknown_token_raises(self, locmem_cache, caplog):
+        import logging
+
+        sentinel = "SENTINEL_MON_5952_ZzQ9mK2p"
+        with caplog.at_level(logging.WARNING, logger="monitor"):
+            with pytest.raises(BaseAppException):
+                InfraService.validate_and_get_token_data(sentinel)
+        assert sentinel not in caplog.text
+        assert sentinel[:8] not in caplog.text
 
     def test_token_usage_limit(self, locmem_cache):
         token = InfraService.generate_install_token("c1", "5")

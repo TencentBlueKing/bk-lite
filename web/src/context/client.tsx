@@ -35,6 +35,7 @@ const APP_ORDER = [
   'cmdb',
   'monitor',
   'apm',
+  'rum',
   'log',
   'node',
   'alarm',

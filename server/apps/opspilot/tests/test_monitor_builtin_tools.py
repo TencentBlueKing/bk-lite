@@ -40,6 +40,7 @@ def test_monitor_language_keys_exist_in_en_and_zh():
         "monitor_list_object_metrics",
         "monitor_list_instance_metrics",
         "monitor_query_metric_data",
+        "monitor_summarize_metric_trend",
         "monitor_list_active_alerts",
         "monitor_query_alert_segments",
         "monitor_get_host_resource_snapshot",
@@ -200,6 +201,87 @@ def test_generate_attachment_file_creates_workflow_asset():
     assert result["file_url"] == build_signed_attachment_download_url(asset)
     assert result["filename"] == "report.md"
     assert content == b"# report"
+
+
+@pytest.mark.django_db
+def test_generate_attachment_file_versions_same_document():
+    from apps.opspilot.metis.llm.tools.attachment.generate_attachment import generate_attachment_file
+
+    config = {
+        "configurable": {
+            "execution_id": "exec-version",
+            "node_id": "agent_node",
+            "flow_id": "flow-1",
+            "user_id": "tester",
+            "attachment_versioning": True,
+            "prior_attachment_filenames": [],
+        }
+    }
+    first = generate_attachment_file.func(filename="广州旅游介绍.pptx", content="# 广州", file_type="pptx", config=config)
+    revised = generate_attachment_file.func(
+        filename="广州旅游介绍_美食重点版.md",
+        content="# 美食",
+        file_type="md",
+        config={
+            "configurable": {
+                **config["configurable"],
+                "prior_attachment_filenames": ["广州旅游介绍_v1.0.pptx"],
+            }
+        },
+    )
+    other = generate_attachment_file.func(
+        filename="北京旅游介绍.pptx",
+        content="# 北京",
+        file_type="pptx",
+        config={
+            "configurable": {
+                **config["configurable"],
+                "execution_id": "exec-version-other",
+                "prior_attachment_filenames": ["广州旅游介绍_v1.0.pptx"],
+            }
+        },
+    )
+
+    assert first["filename"] == "广州旅游介绍_v1.0.pptx"
+    assert revised["filename"] == "广州旅游介绍_v1.1.pptx"
+    assert other["filename"] == "北京旅游介绍_v1.0.pptx"
+    from apps.opspilot.services.workflow_attachment_service import version_attachment_filename
+
+    assert version_attachment_filename("广州旅游介绍_美食重点版.pptx", ["广州旅游介绍.pptx"]) == "广州旅游介绍_v1.1.pptx"
+
+
+@pytest.mark.django_db
+def test_revision_keeps_pptx_and_ignores_repeat_calls():
+    from apps.opspilot.metis.llm.tools.attachment.generate_attachment import generate_attachment_file
+
+    config = {
+        "configurable": {
+            "execution_id": "exec-revision-lock",
+            "node_id": "agent_node",
+            "flow_id": "flow-1",
+            "user_id": "tester",
+            "attachment_versioning": True,
+            "attachment_run_token": "run-once",
+            "prior_attachment_filenames": ["广州旅游介绍_v1.0.pptx"],
+        }
+    }
+    first = generate_attachment_file.func(
+        filename="广州旅游介绍_美食重点版.md",
+        content="# 美食",
+        file_type="md",
+        config=config,
+    )
+    second = generate_attachment_file.func(
+        filename="广州旅游介绍_美食重点版.pptx",
+        content="# 再来一版",
+        file_type="pptx",
+        config=config,
+    )
+
+    assert first["filename"].endswith(".pptx")
+    assert first["filename"] == "广州旅游介绍_v1.1.pptx"
+    assert second.get("skipped") is True
+    assert "file_url" not in second
 
 
 @pytest.mark.django_db

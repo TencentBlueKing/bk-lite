@@ -36,3 +36,26 @@ def test_group_display_name_builtin_and_custom():
     assert group_display_name("基本信息", "en") == "Basic Information"
     assert group_display_name("基本信息", "zh-Hans") == "基本信息"
     assert group_display_name("我的分组", "en") == "我的分组"
+
+
+def test_host_and_mssql_attr_names_resolve_in_both_languages():
+    cases = [
+        ("host", "host_outerip", "zh-Hans", "外网IP"),
+        ("host", "host_outerip", "en", "Outerip"),
+        ("host", "cpu", "zh-Hans", "CPU"),
+        ("host", "cpu", "en", "CPU"),
+        ("host", "cpu_module", "zh-Hans", "CPU模块"),
+        ("host", "cpu_module", "en", "CPU Module"),
+        ("host", "mac", "zh-Hans", "MAC"),
+        ("host", "mac", "en", "MAC"),
+        ("host", "operatr", "zh-Hans", "主要维护人"),
+        ("host", "operatr", "en", "Operator"),
+        ("mssql", "max_connect", "zh-Hans", "最大连接数"),
+        ("mssql", "max_connect", "en", "MAX Connect"),
+        ("mssql", "max_memory", "zh-Hans", "最大内存"),
+        ("mssql", "max_memory", "en", "MAX Memory"),
+    ]
+    for model_id, attr_id, language, expected in cases:
+        attrs = [{"attr_id": attr_id, "attr_name": "stored"}]
+        result = apply_attr_translations(attrs, model_id, language)
+        assert result[0]["attr_name"] == expected, (model_id, attr_id, language)

@@ -152,6 +152,7 @@ class ChatCompletionService:
             else:
                 return JsonResponse({"choices": [{"message": {"role": "assistant", "content": str(e)}}]})
         params["user_id"] = get_user_id(user)
+        params["user_timezone"] = getattr(user, "timezone", "") or ""
         params["enable_suggest"] = False
         params["enable_query_rewrite"] = False
         params.update(server_enriched_params)

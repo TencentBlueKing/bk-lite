@@ -101,7 +101,10 @@ export const handleColorClasses = {
   pink: 'bg-pink-500!',
 } as const;
 
-export const getDefaultConfig = (nodeType: string) => {
+export const getDefaultConfig = (
+  nodeType: string,
+  options?: { defaultIntent?: string },
+) => {
   const baseConfig = {
     inputParams: 'last_message',
     outputParams: 'last_message'
@@ -170,7 +173,7 @@ export const getDefaultConfig = (nodeType: string) => {
         llmModelName: '',
         classificationRules: '',
         intents: [
-          { name: '默认意图' }
+          { name: options?.defaultIntent || '默认意图' }
         ]
       };
     case 'enterprise_wechat':

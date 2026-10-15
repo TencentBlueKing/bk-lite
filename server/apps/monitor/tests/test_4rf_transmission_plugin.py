@@ -35,7 +35,12 @@ TEMP_OID = "1.3.6.1.4.1.14817.7.3.1.2.51.8"
 FAN1_OID = "1.3.6.1.4.1.14817.7.3.1.2.21.1"
 FAN2_OID = "1.3.6.1.4.1.14817.7.3.1.2.21.2"
 
-EXPECTED_METRICS = {"device_temperature_celsius", "device_fan_state"}
+EXPECTED_METRICS = {
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_transmitter_temperature_celsius",
+    "device_power_rail_state",
+}
 ABSENT_METRICS = (
     "snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets",
     "device_total_incoming_traffic", "device_total_outgoing_traffic",
@@ -127,12 +132,14 @@ def test_temperature_and_fan_metric_contract(metrics):
     by_name = {metric["name"]: metric for metric in metrics["metrics"]}
     assert by_name["device_temperature_celsius"]["unit"] == "celsius"
     assert by_name["device_temperature_celsius"]["metric_group"] == "Temperature"
-    assert by_name["device_temperature_celsius"]["query"].startswith("max(")
+    assert by_name["device_temperature_celsius"]["query"] == "device_temperature_celsius{instance_type='transmission', __$labels__}"
+    assert [item["name"] for item in by_name["device_temperature_celsius"]["dimensions"]] == ["index"]
     fan = by_name["device_fan_state"]
     assert fan["metric_group"] == "Hardware Status"
     assert fan["data_type"] == "Enum"
     assert {option["id"] for option in json.loads(fan["unit"])} == {1, 2}
-    assert fan["query"].startswith("max(")
+    assert fan["query"] == "device_fan_state{instance_type='transmission', __$labels__}"
+    assert [item["name"] for item in fan["dimensions"]] == ["index"]
 
 
 @pytest.mark.unit

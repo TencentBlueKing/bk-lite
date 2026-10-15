@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatPageTypeLabel,
+  formatWikiDirectoryLabel,
   formatWikiTagLabel,
   pageTypeSelectOption,
 } from "../wikiFormat";
@@ -13,6 +14,7 @@ const t = (
   const messages: Record<string, string> = {
     "wiki.pageTypeQuery": "待研究问题",
     "wiki.pageTypeEntity": "实体",
+    "wiki.pageTypeSource": "来源",
     "wiki.tagOkfUnverified": "未核验",
     "wiki.tagOkfHumanReviewed": "人工核验",
     "wiki.tagOkfType": "OKF 类型：{type}",
@@ -39,6 +41,23 @@ describe("formatPageTypeLabel", () => {
       value: "query",
       label: "待研究问题",
     });
+  });
+});
+
+describe("formatWikiDirectoryLabel", () => {
+  it("maps frozen directory keys to page-type copy", () => {
+    expect(
+      formatWikiDirectoryLabel(t, { key: "schema_entity", name: "实体" }),
+    ).toBe("实体");
+    expect(
+      formatWikiDirectoryLabel(t, { key: "schema_source", name: "来源" }),
+    ).toBe("来源");
+  });
+
+  it("keeps user directories as stored", () => {
+    expect(
+      formatWikiDirectoryLabel(t, { key: "manual_ops", name: "运维手册" }),
+    ).toBe("运维手册");
   });
 });
 

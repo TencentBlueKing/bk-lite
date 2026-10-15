@@ -45,6 +45,12 @@ const captured = vi.hoisted(() => ({
   } | null,
   raf: [] as FrameRequestCallback[],
   now: 0,
+  viewports: [] as Array<[number, number, number, number]>,
+  pixelRatioCalls: [] as number[],
+  composer: null as { readBuffer: { texture: object } | null } | null,
+  renderer: null as {
+    getDrawingBufferSize: (target: THREE.Vector2) => THREE.Vector2;
+  } | null,
 }));
 
 vi.mock('three', async (importOriginal) => {
@@ -54,6 +60,10 @@ vi.mock('three', async (importOriginal) => {
     outputColorSpace = actual.SRGBColorSpace;
     toneMapping = actual.NoToneMapping;
     toneMappingExposure = 1;
+    width = 1;
+    height = 1;
+    pixelRatio = 1;
+    autoClear = true;
     constructor() {
       this.domElement.getBoundingClientRect = () => ({
         x: 0,
@@ -68,11 +78,30 @@ vi.mock('three', async (importOriginal) => {
       });
       this.domElement.setPointerCapture = () => undefined;
       this.domElement.releasePointerCapture = () => undefined;
+      captured.renderer = this;
     }
     setClearColor() {}
-    setPixelRatio() {}
-    setSize() {}
-    getPixelRatio() { return 1; }
+    setPixelRatio(value: number) {
+      this.pixelRatio = value;
+      captured.pixelRatioCalls.push(value);
+    }
+    setSize(width: number, height: number) {
+      this.width = width;
+      this.height = height;
+    }
+    getPixelRatio() { return this.pixelRatio; }
+    getDrawingBufferSize(target: THREE.Vector2) {
+      target.set(
+        Math.floor(this.width * this.pixelRatio),
+        Math.floor(this.height * this.pixelRatio),
+      );
+      return target;
+    }
+    setViewport(x: number, y: number, width: number, height: number) {
+      captured.viewports.push([x, y, width, height]);
+    }
+    setRenderTarget() {}
+    render() {}
     dispose() {}
     forceContextLoss() {}
   }
@@ -113,6 +142,11 @@ vi.mock('three/examples/jsm/controls/OrbitControls.js', async (importOriginal) =
 
 vi.mock('three/examples/jsm/postprocessing/EffectComposer.js', () => ({
   EffectComposer: class {
+    readBuffer: { texture: object } | null = null;
+    renderToScreen = true;
+    constructor() {
+      captured.composer = this;
+    }
     addPass() {}
     setSize() {}
     render() {}
@@ -186,6 +220,10 @@ describe('application3D architecture scene', () => {
     captured.controls = null;
     captured.raf = [];
     captured.now = 1_000;
+    captured.viewports = [];
+    captured.pixelRatioCalls = [];
+    captured.composer = null;
+    captured.renderer = null;
     mount = document.createElement('div');
     Object.defineProperty(mount, 'clientWidth', { configurable: true, value: 320 });
     Object.defineProperty(mount, 'clientHeight', { configurable: true, value: 180 });
@@ -593,6 +631,33 @@ describe('application3D architecture scene', () => {
     controller.dispose();
   });
 
+  it('sizes each card bitmap to the zoomed-in screen size instead of a fixed 768 canvas', () => {
+    const open = (count: number) => {
+      const node = document.createElement('div');
+      Object.defineProperty(node, 'clientWidth', { configurable: true, value: 1280 });
+      Object.defineProperty(node, 'clientHeight', { configurable: true, value: 720 });
+      document.body.appendChild(node);
+      const controller = createApplication3DScene(node, {
+        interactive: true,
+        translate: (_id, fallback = '') => fallback,
+        onSelect: () => undefined,
+      });
+      controller.reconcile(makeWallItems(count), { playIntro: false });
+      flushFrames();
+      const canvases = Array.from(node.querySelectorAll('canvas.app3d-wall-glass-chrome')) as HTMLCanvasElement[];
+      const width = canvases[0]?.width ?? 0;
+      controller.dispose();
+      node.remove();
+      return { width, canvases: canvases.length };
+    };
+    const few = open(8);
+    const many = open(48);
+    expect(few.canvases).toBe(8);
+    expect(many.canvases).toBe(48);
+    expect(few.width).toBeLessThan(768);
+    expect(many.width).toBeLessThan(few.width);
+  });
+
   it('keeps 0.82 card size past 24 and snaps the camera farther for the actual wall', () => {
     const aspect = 320 / 180;
     const controller = createApplication3DScene(mount, {
@@ -901,6 +966,179 @@ describe('application3D architecture scene', () => {
     expect(midScale).toBeGreaterThan(settledScale);
     controller.dispose();
   });
+
+  it('keeps requesting frames after the wall settles so particles stay in motion', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(4), { playIntro: false });
+    for (let step = 0; step < 40; step += 1) flushFrames(20);
+    expect(captured.raf.length).toBeGreaterThan(0);
+    flushFrames(16);
+    expect(captured.raf.length).toBeGreaterThan(0);
+    controller.dispose();
+  });
+
+  const pumpFrames = (steps: number, ms = 16) => {
+    for (let step = 0; step < steps; step += 1) {
+      if (captured.raf.length === 0) break;
+      flushFrames(ms);
+    }
+  };
+
+  it('presents wall and architecture frames in the CSS viewport at DPR 1 and 1.25', () => {
+    const cssViewport: [number, number, number, number] = [0, 0, 320, 180];
+    [1, 1.25].forEach((dpr) => {
+      const previous = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
+      Object.defineProperty(window, 'devicePixelRatio', {
+        configurable: true,
+        get: () => dpr,
+      });
+      try {
+        const controller = createApplication3DScene(mount, {
+          interactive: true,
+          translate: (_id, fallback = '') => fallback,
+          onSelect: () => undefined,
+        });
+        const appScene = captured.scene;
+        if (!captured.composer) throw new Error('composer missing');
+        captured.composer.readBuffer = { texture: {} };
+        controller.reconcile([wallItem], { playIntro: false });
+        pumpFrames(8);
+        expect(captured.viewports.at(-1)).toEqual(cssViewport);
+        if (dpr === 1.25) {
+          const buffer = new THREE.Vector2();
+          captured.renderer?.getDrawingBufferSize(buffer);
+          expect(buffer.toArray()).toEqual([400, 225]);
+        }
+
+        captured.viewports = [];
+        controller.showArchitecture(architecture);
+        pumpFrames(40, 20);
+        expect(appScene?.getObjectByName(APPLICATION3D_WALL_GROUP_NAME)?.visible).toBe(false);
+        captured.viewports = [];
+        pumpFrames(4, 20);
+        expect(captured.viewports.length).toBeGreaterThan(0);
+        captured.viewports.forEach((viewport) => {
+          expect(viewport).toEqual(cssViewport);
+        });
+        controller.dispose();
+      } finally {
+        if (previous) Object.defineProperty(window, 'devicePixelRatio', previous);
+      }
+    });
+  });
+
+  it('reapplies the pixel ratio when only the device pixel ratio changes, including back to 1', () => {
+    let devicePixelRatio = 1;
+    let pixelRatioChangeListener: (() => void) | null = null;
+    const removePixelRatioListener = vi.fn();
+    const previousRatio = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: (_type: string, listener: EventListenerOrEventListenerObject) => {
+        pixelRatioChangeListener = () => {
+          if (typeof listener === 'function') listener(new Event('change'));
+          else listener.handleEvent(new Event('change'));
+        };
+      },
+      removeEventListener: removePixelRatioListener,
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() { return false; },
+      onchange: null,
+    }));
+    Object.defineProperty(window, 'devicePixelRatio', {
+      configurable: true,
+      get: () => devicePixelRatio,
+    });
+    try {
+      const controller = createApplication3DScene(mount, {
+        interactive: true,
+        translate: (_id, fallback = '') => fallback,
+        onSelect: () => undefined,
+      });
+      expect(captured.pixelRatioCalls).toEqual([1]);
+      controller.resize();
+      flushFrames();
+      expect(captured.pixelRatioCalls).toEqual([1]);
+
+      devicePixelRatio = 1.25;
+      expect(pixelRatioChangeListener).toEqual(expect.any(Function));
+      pixelRatioChangeListener?.();
+      flushFrames();
+      expect(captured.pixelRatioCalls).toEqual([1, 1.25]);
+
+      devicePixelRatio = 1;
+      pixelRatioChangeListener?.();
+      flushFrames();
+      expect(captured.pixelRatioCalls).toEqual([1, 1.25, 1]);
+
+      const removesBeforeDispose = removePixelRatioListener.mock.calls.length;
+      controller.dispose();
+      expect(removePixelRatioListener.mock.calls.length).toBe(removesBeforeDispose + 1);
+    } finally {
+      if (previousRatio) Object.defineProperty(window, 'devicePixelRatio', previousRatio);
+    }
+  });
+
+  it('repaints card bitmaps when the pixel ratio changes and leaves them when it does not', () => {
+    let devicePixelRatio = 1;
+    let pixelRatioChangeListener: (() => void) | null = null;
+    const previousRatio = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: (_type: string, listener: EventListenerOrEventListenerObject) => {
+        pixelRatioChangeListener = () => {
+          if (typeof listener === 'function') listener(new Event('change'));
+          else listener.handleEvent(new Event('change'));
+        };
+      },
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() { return false; },
+      onchange: null,
+    }));
+    Object.defineProperty(window, 'devicePixelRatio', {
+      configurable: true,
+      get: () => devicePixelRatio,
+    });
+    try {
+      const controller = createApplication3DScene(mount, {
+        interactive: true,
+        translate: (_id, fallback = '') => fallback,
+        onSelect: () => undefined,
+      });
+      const appScene = captured.scene;
+      controller.reconcile([wallItem], { playIntro: false });
+      flushFrames();
+      const card = appScene?.getObjectByName(APPLICATION3D_WALL_GROUP_NAME)?.children[0];
+      const settledScale = card?.scale.x ?? 0;
+      const first = mount.querySelector('canvas.app3d-wall-glass-chrome') as HTMLCanvasElement;
+      const firstWidth = first.width;
+
+      controller.resize();
+      flushFrames();
+      expect(mount.querySelector('canvas.app3d-wall-glass-chrome')).toBe(first);
+
+      devicePixelRatio = 1.25;
+      pixelRatioChangeListener?.();
+      flushFrames();
+      const repainted = mount.querySelector('canvas.app3d-wall-glass-chrome') as HTMLCanvasElement;
+      expect(repainted).not.toBe(first);
+      expect(repainted.width).toBeGreaterThan(firstWidth);
+      expect(card?.scale.x).toBeCloseTo(settledScale);
+      expect(appScene?.getObjectByName(APPLICATION3D_WALL_GROUP_NAME)?.visible).toBe(true);
+      controller.dispose();
+    } finally {
+      if (previousRatio) Object.defineProperty(window, 'devicePixelRatio', previousRatio);
+    }
+  });
 });
 
 describe('application3D architecture host pick', () => {
@@ -912,6 +1150,10 @@ describe('application3D architecture host pick', () => {
     captured.controls = null;
     captured.raf = [];
     captured.now = 1_000;
+    captured.viewports = [];
+    captured.pixelRatioCalls = [];
+    captured.composer = null;
+    captured.renderer = null;
     mount = document.createElement('div');
     Object.defineProperty(mount, 'clientWidth', { configurable: true, value: 320 });
     Object.defineProperty(mount, 'clientHeight', { configurable: true, value: 180 });

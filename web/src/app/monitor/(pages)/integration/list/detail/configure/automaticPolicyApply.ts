@@ -30,6 +30,34 @@ export const samePluginId = (
   return String(left) === String(right);
 };
 
+export type PolicyGroupAccessRule = {
+  plugin_id?: string | number;
+  collect_type?: string;
+  [key: string]: unknown;
+};
+
+export const isPolicyGroupRuleApplicable = (
+  rule: PolicyGroupAccessRule,
+  pluginId: string | number | null | undefined,
+  collectType?: string | null
+): boolean => {
+  if (pluginId !== undefined && pluginId !== null && pluginId !== '') {
+    return samePluginId(rule.plugin_id, pluginId);
+  }
+  const wanted = String(collectType || '').trim();
+  if (!wanted) return true;
+  return String(rule.collect_type || '').trim() === wanted;
+};
+
+export const filterPolicyGroupRulesForAccess = <T extends PolicyGroupAccessRule>(
+  rules: T[],
+  pluginId: string | number | null | undefined,
+  collectType?: string | null
+): T[] =>
+  rules.filter((rule) =>
+    isPolicyGroupRuleApplicable(rule, pluginId, collectType)
+  );
+
 export const isCustomPolicyTemplate = (item: PolicyTemplateItem): boolean =>
   item.template_type === 'custom';
 

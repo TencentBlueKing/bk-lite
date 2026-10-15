@@ -326,11 +326,25 @@
       "template": "rate(nginx_handled{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:0afc3d62",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "max(win_iis_w3wp_Percent_404_HTTP_Response_Sent{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:0bad41f3",
       "object_names": [
         "TCPPort"
       ],
       "template": "avg(net_response_result_code{__$labels__} != bool 0) * 100"
+    },
+    {
+      "id": "dashboard:v1:0bb3f606",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "any({instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:0bb78e7f",
@@ -764,6 +778,13 @@
       "template": "avg by (instance_id) (haproxy_ttime{svname=\"BACKEND\",__$labels__})"
     },
     {
+      "id": "dashboard:v1:1aeaac0f",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Post_Requests_persec{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:1b087ed9",
       "object_names": [
         "Mysql"
@@ -1109,6 +1130,13 @@
       "template": "rabbitmq_overview_messages_ready{__$labels__}"
     },
     {
+      "id": "dashboard:v1:27a9291a",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "sum(win_iis_http_queue_RejectedRequests{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:27cd3350",
       "object_names": [
         "Apache"
@@ -1256,6 +1284,13 @@
       "template": "elasticsearch_cluster_health_active_primary_shards{__$labels__}"
     },
     {
+      "id": "dashboard:v1:2ed76a43",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Maximum_Connections{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:2fc2832b",
       "object_names": [
         "InfluxDB"
@@ -1375,6 +1410,13 @@
       "template": "tomcat_connector_processing_time{__$labels__}"
     },
     {
+      "id": "dashboard:v1:3456f20c",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "max(win_iis_http_queue_MaxQueueItemAge{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:34cac749",
       "object_names": [
         "K3SNode"
@@ -1403,6 +1445,13 @@
       "template": "sum by (instance_id) (rate(influxdb_httpd_pointsWrittenDropped{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:352556bd",
+      "object_names": [
+        "Router"
+      ],
+      "template": "any({instance_type='router', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:35497dc1",
       "object_names": [
         "LlamaServer"
@@ -1410,11 +1459,25 @@
       "template": "sum(llamacpp:prompt_tokens_total_counter{__$labels__})"
     },
     {
+      "id": "dashboard:v1:3554ecfd",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "sum(win_iis_http_queue_CurrentQueueSize{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:357a3767",
       "object_names": [
         "Zookeeper"
       ],
       "template": "zookeeper_znode_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:35f32720",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "sum(win_iis_app_pool_was_Current_Worker_Processes{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
     },
     {
       "id": "dashboard:v1:35fca49b",
@@ -1517,6 +1580,13 @@
       "template": "max by (instance_id, node, device) (disk_free{instance_type=\"k3s\", __$labels__})"
     },
     {
+      "id": "dashboard:v1:38441b10",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "any({instance_type='switch', collect_type='netflow', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:3895943d",
       "object_names": [
         "Zookeeper"
@@ -1566,6 +1636,13 @@
         "Switch"
       ],
       "template": "min(10 * log10(device_optical_tx_power{__$labels__} / 1000) and (device_optical_tx_power{__$labels__} > 0) and (device_optical_tx_power{__$labels__} != 2147483647)) by (instance_id) or min(device_optical_tx_power{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:3a73458a",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Locked_Errors_persec{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
     },
     {
       "id": "dashboard:v1:3af524ce",
@@ -1629,6 +1706,13 @@
         "Etcd"
       ],
       "template": "sum by (instance_id) (rate(etcd_server_leader_changes_seen_total_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:3dba6f22",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "any({instance_type='switch', collect_type='sflow', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:3df1b876",
@@ -2013,6 +2097,13 @@
       "template": "rate(nginx_accepts{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:4d286b7f",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Current_Anonymous_Users{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:4d34db2f",
       "object_names": [
         "Firewall",
@@ -2033,6 +2124,13 @@
         "K3SNode"
       ],
       "template": "mem_cached{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4d8c5eda",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Current_NonAnonymous_Users{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
     },
     {
       "id": "dashboard:v1:4db325ac",
@@ -2145,6 +2243,13 @@
         "Docker"
       ],
       "template": "topk(8, max by (container_name) (docker_container_cpu_usage_percent{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:5232deb3",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Total_Method_Requests_persec{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
     },
     {
       "id": "dashboard:v1:5251c26a",
@@ -2483,6 +2588,13 @@
       "template": "nginx_waiting{__$labels__}"
     },
     {
+      "id": "dashboard:v1:5f75763c",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "any({instance_type='loadbalance', collect_type='netflow', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:5f7e5563",
       "object_names": [
         "Tomcat"
@@ -2772,6 +2884,13 @@
       "template": "clamp_max(100 * (zookeeper_open_file_descriptor_count{__$labels__} / clamp_min(zookeeper_max_file_descriptor_count{__$labels__}, 1)), 100)"
     },
     {
+      "id": "dashboard:v1:6c81433a",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Current_Connections{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:6cb43331",
       "object_names": [
         "MSSQL"
@@ -2875,6 +2994,13 @@
         "Loadbalance"
       ],
       "template": "sum(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='loadbalance', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:6fa34265",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "count({instance_type='iis', collect_type='host', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:70750b39",
@@ -3377,6 +3503,13 @@
       "template": "sum by (instance_id) (rate(minio_api_requests_rejected_auth_total_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_requests_rejected_auth_total_counter{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:86e8dcfa",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Bytes_Sent_persec{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:8759e6d3",
       "object_names": [
         "Loadbalance",
@@ -3477,6 +3610,13 @@
       "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or avg(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id)) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100)"
     },
     {
+      "id": "dashboard:v1:8adf2750",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "sum(win_iis_app_pool_was_Recent_Worker_Process_Failures{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:8ae3b991",
       "object_names": [
         "RabbitMQ"
@@ -3538,6 +3678,13 @@
         "Cluster"
       ],
       "template": "100 * clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}) - (sum(prometheus_remote_write_kube_deployment_status_replicas_unavailable{instance_type=\"k8s\",__$labels__}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}),1)"
+    },
+    {
+      "id": "dashboard:v1:8e9c1f97",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Bytes_Received_persec{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
     },
     {
       "id": "dashboard:v1:8ebd3e28",
@@ -3890,6 +4037,13 @@
       "template": "histogram_quantile(0.90, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_generation_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
+      "id": "dashboard:v1:9d0321ff",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Get_Requests_persec{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:9d78c2c3",
       "object_names": [
         "Postgres"
@@ -3979,6 +4133,13 @@
         "Mysql"
       ],
       "template": "mysql_connection_errors_peer_address{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:9fd70b4c",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "any({instance_type='firewall', collect_type='netflow', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:a049174f",
@@ -4154,6 +4315,13 @@
         "Redis"
       ],
       "template": "redis_keyspace_hitrate{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a80f1149",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "http_response_result_code{instance_type=\"iis\", endpoint=\"site\", __$labels__}"
     },
     {
       "id": "dashboard:v1:a875359b",
@@ -4360,6 +4528,13 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (max by (instance_id, pxname) (haproxy_bck{svname=\"BACKEND\",__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:b44e88a3",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "sum(win_iis_http_queue_ArrivalRate{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
     },
     {
       "id": "dashboard:v1:b46758f1",
@@ -4623,6 +4798,13 @@
       "template": "rate(prometheus_remote_write_diskio_write_bytes{instance_type=\"k8s\", __$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:bcc26326",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "sum(win_iis_w3wp_Active_Requests{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:bd2bc914",
       "object_names": [
         "Mysql"
@@ -4642,6 +4824,13 @@
         "NetworkService"
       ],
       "template": "count({instance_type='network_service', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:bddae2b6",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "any({instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:bdfac005",
@@ -4968,11 +5157,25 @@
       "template": "mem_swap_free{instance_type=\"k3s\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:ca718c8f",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "sum(win_iis_w3wp_Active_Threads_Count{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:ca9e04e7",
       "object_names": [
         "MSSQL"
       ],
       "template": "avg_over_time(sqlserver_cpu_sqlserver_process_cpu{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:cade2740",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Not_Found_Errors_persec{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
     },
     {
       "id": "dashboard:v1:cb17c657",
@@ -5166,6 +5369,13 @@
         "Oracle"
       ],
       "template": "topk(8, max by (tablespace) (oracledb_tablespace_used_percent_gauge{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:d1168999",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "win_iis_web_service_Service_Uptime{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
     },
     {
       "id": "dashboard:v1:d123314d",
@@ -5380,11 +5590,25 @@
       "template": "mem_used_percent{instance_type=\"os\", __$labels__} or host_mem_used_percent_gauge{instance_type=\"os\", __$labels__} or mem_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or mem_used_percent_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:dc20cf5d",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "max(win_iis_w3wp_Percent_500_HTTP_Response_Sent{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:dc244186",
       "object_names": [
         "MSSQL"
       ],
       "template": "rate(sqlserver_performance_value{counter=\"SQL Compilations/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:dc58ccb7",
+      "object_names": [
+        "Router"
+      ],
+      "template": "any({instance_type='router', collect_type='netflow', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:dc6a9693",
@@ -5504,6 +5728,13 @@
         "MSSQL"
       ],
       "template": "rate(sqlserver_waitstats_wait_time_ms{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:e0d437df",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "http_response_response_time{instance_type=\"iis\", endpoint=\"site\", __$labels__}"
     },
     {
       "id": "dashboard:v1:e0f2c374",
@@ -5851,6 +6082,13 @@
       "template": "count(prometheus_remote_write_kube_pod_info{instance_type='k8s', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:f27db60c",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "count(win_iis_app_pool_was_Current_Application_Pool_State{instance_type=\"iis\", instance!=\"_Total\", __$labels__} != 3)"
+    },
+    {
       "id": "dashboard:v1:f2b4d061",
       "object_names": [
         "Mysql"
@@ -5870,6 +6108,13 @@
         "Postgres"
       ],
       "template": "sum without (db) (rate(postgresql_tup_updated{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:f3819851",
+      "object_names": [
+        "IIS"
+      ],
+      "template": "sum(win_iis_app_pool_was_Total_Application_Pool_Recycles{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
     },
     {
       "id": "dashboard:v1:f3b7fb69",
@@ -6187,6 +6432,76 @@
         "K3SPod"
       ],
       "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:37f33d8c",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_replication_CopyQueueLength{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:40087132",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_replication_ReplayQueueLength{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:169d0e3c",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_replication_Avg_Log_Copy_Latency_(msec){instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4ce1716a",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_instances_I\\/O_Database_Reads_Average_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a6c4170f",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_instances_I\\/O_Database_Writes_Average_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3e61f930",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_IO_Log_Read_Average_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:02c10cec",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_Log_Bytes_Write_persec{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e7c57391",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_Database_Cache_Percent_Hit{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:dc7d93fe",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DRA_Sync_Failures_on_Schema_Mismatch{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:43ab5f0f",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_dns_Recursive_Query_Failure_persec{instance_type=\"active_directory\", __$labels__}"
     }
   ]
 }

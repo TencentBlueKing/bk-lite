@@ -4,8 +4,10 @@ from typing import Type
 from django.utils import timezone
 
 from apps.cmdb.collection.common import Management
+from apps.cmdb.collection.host_machine_type import preserve_collected_host_machine_type
 from apps.cmdb.constants.constants import INSTANCE, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.services.host_sync_identity import align_collected_host_inst_names
 
 
 class MetricsCannula:
@@ -40,7 +42,10 @@ class MetricsCannula:
         self.raw_data = []
         self.collect_plugin_instance = None
         self.collection_metrics = default_metrics or self.get_collection_metrics()
-        self.now_time = datetime.now(timezone.utc).isoformat()
+        observed_at = getattr(self.collect_plugin_instance, "round_completed_at", None)
+        self.now_time = (
+            datetime.fromtimestamp(float(observed_at), timezone.utc) if observed_at is not None else datetime.now(timezone.utc)
+        ).isoformat()
         self.add_list = []
         self.update_list = []
         self.delete_list = []
@@ -84,6 +89,9 @@ class MetricsCannula:
             rows, _ = ag.query_entity(INSTANCE, base_params + [{"field": "collect_task", "type": field_type, "value": task_id}])
             old_by_id.update((row["_id"], row) for row in rows)
 
+        if model_id == "host":
+            align_collected_host_inst_names(list(old_by_id.values()), metrics)
+
         organizations = {str(value) for value in (self.organization or [])}
         conflicts = {}
         names = list(dict.fromkeys(row["inst_name"] for row in metrics))
@@ -121,6 +129,9 @@ class MetricsCannula:
         result = {}
         all_count = 0
         for model_id, metrics in self.collection_metrics.items():
+            # 任务级 format payload（含 pc_summary）不是实例列表，不能送进通用对账。
+            if not isinstance(metrics, list):
+                continue
             all_count += len(metrics)
             params = [
                 {"field": "model_id", "type": "str=", "value": model_id},
@@ -134,6 +145,8 @@ class MetricsCannula:
                     already_data, metrics, conflicts = self._query_task_assets(ag, model_id, metrics)
                 else:
                     already_data, _ = ag.query_entity(INSTANCE, params)
+                if model_id == "host":
+                    preserve_collected_host_machine_type(already_data, metrics)
                 management = Management(
                     self.organization,
                     self.inst_name,
@@ -146,7 +159,11 @@ class MetricsCannula:
                     collect_plugin=(self.collect_plugin_instance or self.collect_plugin),
                     data_cleanup_strategy=self.data_cleanup_strategy,
                     reconcile_task_assets=self.reconcile_task_assets,
+                    expire_days=getattr(self.task, "expire_days", 0) or 0,
+                    collection_targets=getattr(self.task, "instances", None) or (),
                 )
+                if conflicts:
+                    management.delete_list = []
                 if self.manual:
                     self.add_list.extend(management.add_list)
                     self.delete_list.extend(management.delete_list)

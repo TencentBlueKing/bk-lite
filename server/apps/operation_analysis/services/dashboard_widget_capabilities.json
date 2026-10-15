@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "1.0",
+  "retrieval": "datasource",
+  "gridColumns": 12,
+  "widgets": [
+    {
+      "type": "line",
+      "label": "折线图",
+      "w": 4,
+      "h": 3,
+      "roles": [
+        {"key": "dimensionField", "kind": "category", "required": false},
+        {"key": "valueField", "kind": "number", "required": false}
+      ]
+    },
+    {
+      "type": "bar",
+      "label": "柱状图",
+      "w": 4,
+      "h": 3,
+      "roles": [
+        {"key": "dimensionField", "kind": "category", "required": false},
+        {"key": "valueField", "kind": "number", "required": false}
+      ]
+    },
+    {
+      "type": "pie",
+      "label": "饼图",
+      "w": 4,
+      "h": 3,
+      "roles": [
+        {"key": "dimensionField", "kind": "category", "required": true},
+        {"key": "valueField", "kind": "number", "required": true}
+      ]
+    },
+    {
+      "type": "radar",
+      "label": "雷达图",
+      "w": 4,
+      "h": 3,
+      "roles": [
+        {"key": "radar.arrayNameField", "kind": "category", "required": false},
+        {"key": "radar.arrayValueField", "kind": "number", "required": false}
+      ]
+    },
+    {
+      "type": "gauge",
+      "label": "仪表盘",
+      "w": 4,
+      "h": 3,
+      "expand": "numberFields",
+      "roles": [{"key": "selectedFields", "kind": "number", "required": true}]
+    },
+    {
+      "type": "single",
+      "label": "单值指标",
+      "w": 4,
+      "h": 3,
+      "expand": "numberFields",
+      "roles": [{"key": "selectedFields", "kind": "number", "required": true}]
+    },
+    {
+      "type": "multiValue",
+      "label": "多值指标",
+      "w": 4,
+      "h": 3,
+      "roles": [
+        {"key": "multiValueLabelField", "kind": "category", "required": true},
+        {"key": "multiValueValueField", "kind": "number", "required": true}
+      ]
+    },
+    {
+      "type": "topN",
+      "label": "TopN",
+      "w": 4,
+      "h": 3,
+      "roles": [
+        {"key": "topNLabelField", "kind": "category", "required": true},
+        {"key": "topNValueField", "kind": "number", "required": true}
+      ]
+    },
+    {
+      "type": "table",
+      "label": "表格",
+      "w": 4,
+      "h": 3,
+      "roles": [{"key": "tableConfig.columns", "kind": "any", "required": true}]
+    },
+    {
+      "type": "eventTable",
+      "label": "事件表格",
+      "w": 4,
+      "h": 3,
+      "roles": [{"key": "tableConfig.columns", "kind": "any", "required": true}]
+    },
+    {
+      "type": "eventTimeline",
+      "label": "事件时间线",
+      "w": 4,
+      "h": 3,
+      "roles": [
+        {"key": "eventTimeline.timeField", "kind": "time", "required": true},
+        {"key": "eventTimeline.titleField", "kind": "category", "required": true}
+      ]
+    },
+    {
+      "type": "cardList",
+      "label": "卡片列表",
+      "w": 4,
+      "h": 3,
+      "roles": [{"key": "cardList.titleField", "kind": "category", "required": true}]
+    },
+    {
+      "type": "nodeGraph",
+      "label": "节点关系图",
+      "w": 4,
+      "h": 3,
+      "roles": [
+        {"key": "nodeGraphSourceField", "kind": "category", "required": true},
+        {"key": "nodeGraphTargetField", "kind": "category", "required": true}
+      ]
+    },
+    {
+      "type": "topologyMap",
+      "label": "数据源关系拓扑",
+      "w": 4,
+      "h": 3,
+      "roles": []
+    }
+  ]
+}

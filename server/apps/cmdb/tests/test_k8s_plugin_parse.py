@@ -9,7 +9,6 @@ import pydantic.root_model  # noqa: F401
 
 from apps.cmdb.collection.collect_plugin.k8s import CollectK8sMetrics
 from apps.cmdb.collection.constants import (
-    K8S_DEPLOYMENT_ANNOTATIONS,
     K8S_NODE_INFO,
     K8S_NODE_ROLE,
     K8S_NODE_STATUS_CAPACITY,
@@ -84,8 +83,8 @@ def test_format_node_metrics_full(monkeypatch):
         {"index_key": K8S_NODE_ROLE, "node": "node-1", "role": "master"},
         {"index_key": K8S_NODE_ROLE, "node": "node-1", "role": "worker"},
         {"index_key": K8S_NODE_STATUS_CAPACITY, "node": "node-1", "resource": "cpu", "index_value": "8"},
-        {"index_key": K8S_NODE_STATUS_CAPACITY, "node": "node-1", "resource": "memory", "index_value": str(16 * 1024 ** 3)},
-        {"index_key": K8S_NODE_STATUS_CAPACITY, "node": "node-1", "resource": "ephemeral_storage", "index_value": str(100 * 1024 ** 3)},
+        {"index_key": K8S_NODE_STATUS_CAPACITY, "node": "node-1", "resource": "memory", "index_value": str(16 * 1024**3)},
+        {"index_key": K8S_NODE_STATUS_CAPACITY, "node": "node-1", "resource": "ephemeral_storage", "index_value": str(100 * 1024**3)},
     ]
     r.format_node_metrics()
     out = r.result["k8s_node"]
@@ -134,7 +133,7 @@ def test_format_pod_metrics_with_node_and_workload_assos(monkeypatch):
             "created_by_name": "web-rs-abc",
         },
         {"index_key": K8S_POD_CONTAINER_RESOURCE_LIMITS, "pod": "web-rs-abc-x1", "resource": "cpu", "index_value": "2"},
-        {"index_key": K8S_POD_CONTAINER_RESOURCE_LIMITS, "pod": "web-rs-abc-x1", "resource": "memory", "index_value": str(2 * 1024 ** 3)},
+        {"index_key": K8S_POD_CONTAINER_RESOURCE_LIMITS, "pod": "web-rs-abc-x1", "resource": "memory", "index_value": str(2 * 1024**3)},
         {"index_key": K8S_POD_CONTAINER_RESOURCE_REQUESTS, "pod": "web-rs-abc-x1", "resource": "cpu", "index_value": "1"},
     ]
     r.format_pod_metrics()
@@ -171,6 +170,7 @@ def test_format_pod_metrics_replicaset_without_workload_falls_back_to_namespace(
     asso_models = {a["model_asst_id"] for a in pod["assos"]}
     assert POD_NODE_RELATION not in asso_models
     from apps.cmdb.collection.constants import POD_NAMESPACE_RELATION
+
     assert POD_NAMESPACE_RELATION in asso_models
 
 
@@ -266,9 +266,8 @@ def test_format_workload_metrics_replicaset_without_owner(monkeypatch):
 # --------------------------------------------------------------------------
 def test_format_annotation_metrics_extracts_labels():
     import json
-    annotation = {
-        "spec": {"template": {"metadata": {"labels": {"app": "web", "tier": "frontend"}}}}
-    }
+
+    annotation = {"spec": {"template": {"metadata": {"labels": {"app": "web", "tier": "frontend"}}}}}
     metrics = {"annotation_kubectl_kubernetes_io_last_applied_configuration": json.dumps(annotation)}
     labels = CollectK8sMetrics.format_annotation_metrics(metrics)
     assert "app=web" in labels
@@ -286,6 +285,7 @@ def test_format_annotation_metrics_invalid_json():
 
 def test_format_annotation_metrics_no_labels_in_spec():
     import json
+
     annotation = {"spec": {"template": {"metadata": {}}}}
     metrics = {"annotation_kubectl_kubernetes_io_last_applied_configuration": json.dumps(annotation)}
     assert CollectK8sMetrics.format_annotation_metrics(metrics) == ""
@@ -318,7 +318,7 @@ def test_query_data_parses_vm_response(monkeypatch):
     vm_resp = {"data": {"result": [{"metric": {"__name__": "x"}, "value": [1, "2"]}]}}
     monkeypatch.setattr(
         "apps.cmdb.collection.query_vm.Collection.query",
-        lambda self, sql, timeout=60: vm_resp,
+        lambda self, sql, **kw: {"data": {"result": []}} if "snapshot_timestamp" in sql else vm_resp,
     )
     out = r.query_data()
     assert out == vm_resp["data"]
@@ -330,6 +330,7 @@ def test_query_data_parses_vm_response(monkeypatch):
 # --------------------------------------------------------------------------
 def test_format_data_routes_metrics_into_buckets(monkeypatch):
     import time
+
     now_ts = int(time.time())
     r = _runner(monkeypatch)
     # 桩掉子格式化方法以隔离路由逻辑

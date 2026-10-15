@@ -2,7 +2,7 @@ from typing import Type, TypeVar
 
 import json_repair
 from langchain_core.output_parsers import PydanticOutputParser
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from openai import OpenAI
 from pydantic import BaseModel
 

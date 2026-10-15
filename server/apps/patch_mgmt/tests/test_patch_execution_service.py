@@ -1230,7 +1230,7 @@ def test_run_missing_target_marks_host_and_task_failed():
     assert host.stage == 'failed'
     assert host.failed_stage == 'dispatch'
     assert host.can_retry is False
-    assert '不存在或已删除' in host.reason
+    assert host.reason == 'The target does not exist or has been deleted'
     assert task.status == GovernanceTaskStatus.FAILED
 
 

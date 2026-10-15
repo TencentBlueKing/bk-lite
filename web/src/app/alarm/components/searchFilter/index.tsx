@@ -88,6 +88,7 @@ const PushSourceSearchValue = ({
 };
 
 const SearchFilter: React.FC<SearchFilterProps> = ({ onSearch, attrList, condition }) => {
+  const { t } = useTranslation();
   const [searchAttr, setSearchAttr] = useState<string>('');
   const [searchValue, setSearchValue] = useState<any>('');
 
@@ -128,10 +129,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({ onSearch, attrList, conditi
         return (
           <Select
             allowClear
+            showSearch
+            optionFilterProp="children"
             className="value"
             style={{ width: 250 }}
-            value={searchValue}
-            onChange={(e) => onSearchValueChange(e)}
+            placeholder={t('common.selectTip')}
+            value={searchValue || undefined}
+            onChange={(value) => onSearchValueChange(value)}
             onClear={() => onSearchValueChange('')}
           >
             {selectedAttr.option?.map((opt: any) => (

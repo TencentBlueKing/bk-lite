@@ -52,6 +52,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
+import { getUnifiedFilterTimeSelectorDefaultValue } from '@/app/ops-analysis/utils/filterValue';
 import { hasInvalidDateRangeDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import type {
   UnifiedFilterDefinition,
@@ -69,6 +70,14 @@ import {
   isBindableDataSourceParamType,
   type BindableDataSourceParamType,
 } from '@/app/ops-analysis/utils/dataSourceParamContract';
+import {
+  includeRoom3DCanvasFilter,
+  layoutDeclaresRoom3D,
+} from '@/app/ops-analysis/utils/room3DScreenFilter';
+import {
+  includeApplicationTopologyCanvasFilter,
+  layoutDeclaresApplicationTopology,
+} from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 
 interface UnifiedFilterConfigModalProps {
   open: boolean;
@@ -317,9 +326,20 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     });
 
     merged.sort((a, b) => a.order - b.order);
-    setDefinitions(merged);
-    initialSnapshotRef.current = JSON.stringify(merged);
-  }, [open, initialDefinitions, scannedParams]);
+    const withRoomFilter = includeRoom3DCanvasFilter(
+      merged,
+      layoutDeclaresRoom3D(layoutItems),
+      initialDefinitions,
+      t('dashboard.room3DFilterName'),
+    );
+    const withSystemFilter = includeApplicationTopologyCanvasFilter(
+      withRoomFilter,
+      layoutDeclaresApplicationTopology(layoutItems),
+      initialDefinitions,
+    );
+    setDefinitions(withSystemFilter);
+    initialSnapshotRef.current = JSON.stringify(withSystemFilter);
+  }, [open, initialDefinitions, layoutItems, scannedParams, t]);
 
   const handleCancel = () =>
     guardClose(
@@ -573,35 +593,11 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       width: 350,
       render: (value: FilterValue, record: UnifiedFilterDefinition) => {
         if (record.type === 'timeRange') {
-          const getDefaultValue = (): {
-            selectValue: number;
-            rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null;
-          } => {
-            if (value === null || value === undefined) {
-              return { selectValue: 15, rangePickerVaule: null };
-            }
-            if (typeof value === 'number') {
-              return { selectValue: value, rangePickerVaule: null };
-            }
-            const timeValue = value as TimeRangeValue;
-            if (!timeValue.start || !timeValue.end) {
-              return { selectValue: 15, rangePickerVaule: null };
-            }
-            const selectVal = timeValue.selectValue ?? 0;
-            if (selectVal > 0) {
-              return { selectValue: selectVal, rangePickerVaule: null };
-            }
-            return {
-              selectValue: 0,
-              rangePickerVaule: [dayjs(timeValue.start), dayjs(timeValue.end)],
-            };
-          };
-
           return (
             <TimeSelector
               key={`${record.id}-${JSON.stringify(value)}`}
               onlyTimeSelect
-              defaultValue={getDefaultValue()}
+              defaultValue={getUnifiedFilterTimeSelectorDefaultValue(value)}
               onChange={(range, originValue) => {
                 if (range.length === 2) {
                   handleFieldChange(record.id, 'defaultValue', {

@@ -10,7 +10,6 @@ import {
   Popconfirm,
   Space,
   Table,
-  Tag,
   Typography,
   message,
 } from 'antd';
@@ -24,6 +23,7 @@ import type {
 } from '@/app/cmdb/types/configFile';
 import { isConfigFileSupportedModel, isNetworkConfigFileModel } from '@/app/cmdb/constants/configFile';
 import { useTranslation } from '@/utils/i18n';
+import { StatusToneBadge, type StatusTone } from '@/app/cmdb/utils/statusTone';
 import ContentDrawer from './components/contentDrawer';
 import CompareDrawer from './components/compareDrawer';
 import ManualUploadDrawer from './components/manualUploadDrawer';
@@ -243,16 +243,16 @@ const ConfigFilesPage = () => {
   };
 
   const versionStatusTag = (status: string) => {
-    const map: Record<string, { color: string; label: string }> = {
-      success: { color: 'green', label: t('ConfigFile.statusSuccess') },
-      file_not_found: { color: 'red', label: t('ConfigFile.statusFileNotFound') },
-      permission_denied: { color: 'red', label: t('ConfigFile.statusPermissionDenied') },
-      file_too_large: { color: 'orange', label: t('ConfigFile.statusFileTooLarge') },
-      not_text: { color: 'orange', label: t('ConfigFile.statusNotText') },
-      error: { color: 'red', label: t('ConfigFile.statusError') },
+    const map: Record<string, { tone: StatusTone; label: string }> = {
+      success: { tone: 'success', label: t('ConfigFile.statusSuccess') },
+      file_not_found: { tone: 'fail', label: t('ConfigFile.statusFileNotFound') },
+      permission_denied: { tone: 'fail', label: t('ConfigFile.statusPermissionDenied') },
+      file_too_large: { tone: 'warning', label: t('ConfigFile.statusFileTooLarge') },
+      not_text: { tone: 'warning', label: t('ConfigFile.statusNotText') },
+      error: { tone: 'fail', label: t('ConfigFile.statusError') },
     };
-    const info = map[status] || { color: 'default', label: status };
-    return <Tag color={info.color}>{info.label}</Tag>;
+    const info = map[status] || { tone: 'neutral' as const, label: status };
+    return <StatusToneBadge tone={info.tone} label={info.label} />;
   };
 
   const expandedRowRender = (record: ConfigFileItem) => {
@@ -409,9 +409,9 @@ const ConfigFilesPage = () => {
       width: 100,
       render: (value) =>
         value ? (
-          <Tag color="cyan">{t('ConfigFile.sourceCollected')}</Tag>
+          <StatusToneBadge tone="primary" label={t('ConfigFile.sourceCollected')} />
         ) : (
-          <Tag color="purple">{t('ConfigFile.sourceManual')}</Tag>
+          <StatusToneBadge tone="neutral" label={t('ConfigFile.sourceManual')} />
         ),
     },
     {
@@ -469,7 +469,7 @@ const ConfigFilesPage = () => {
         </Flex>
         <Table
           rowKey="latest_version_id"
-          className="[&_.ant-table-body]:!min-h-[calc(100vh-300px)] [&_.ant-table-thead_th]:!bg-[var(--color-fill-1)] [&_.ant-table-thead_th]:!py-3 [&_.ant-table-thead_th]:text-sm [&_.ant-table-thead_th]:font-semibold [&_.ant-table-tbody_td]:!py-2.5 [&_.ant-table-tbody_td]:!align-middle [&_.ant-table-tbody_tr:hover_td]:!bg-[var(--color-fill-1)] [&_.ant-table-placeholder_td]:!h-[calc(100vh-330px)] [&_.ant-table-expanded-row>td]:!bg-white [&_.ant-table-expanded-row]:!bg-white"
+          className="[&_.ant-table-body]:!min-h-[calc(100vh-300px)] [&_.ant-table-thead_th]:!bg-[var(--color-fill-1)] [&_.ant-table-thead_th]:!py-3 [&_.ant-table-thead_th]:text-sm [&_.ant-table-thead_th]:font-semibold [&_.ant-table-tbody_td]:!py-2.5 [&_.ant-table-tbody_td]:!align-middle [&_.ant-table-tbody_tr:hover_td]:!bg-[var(--color-fill-1)] [&_.ant-table-placeholder_td]:!h-[calc(100vh-330px)] [&_.ant-table-expanded-row>td]:!bg-[var(--color-bg)] [&_.ant-table-expanded-row]:!bg-[var(--color-bg)]"
           loading={fileListLoading}
           dataSource={fileList}
           columns={columns}

@@ -1,0 +1,81 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Datacom DmSwitch SNMP",
+  "templates": [
+    {
+      "name": "Datacom DmSwitch交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Datacom DmSwitch 交换机最近 1 分钟的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载、环路或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Datacom DmSwitch交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Datacom DmSwitch 交换机的内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或表项过大。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Datacom DmSwitch交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Datacom DmSwitch 各堆叠单元温度，当持续高于阈值时触发告警，提示散热故障或环境过热，防止热保护停机。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

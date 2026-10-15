@@ -51,51 +51,74 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- Enterasys CPU load (ENTERASYS-MIB, 私有企业号 5624, etsysResourceCpuLoad, 直接 %) ----
-    # 待现网核验：CPU 负载标量 1.3.6.1.4.1.5624.1.2.49.1.4.1.1.5（etsysResourceCpuLoad5min，0-100%）。
+    # ---- ENTERASYS-RESOURCE-UTILIZATION-MIB (PEN 5624, etsysResourceUtilizationMIB 1.3.6.1.4.1.5624.1.2.49) ----
+    # CPU: etsysResourceCpuTable …49.1.1.1，行索引 = entPhysicalIndex.etsysResourceCpuId，table.field 不带 .0。
+    # etsysResourceCpuLoad5min …49.1.1.1.1.4 为 ResourceUtilization（0-1000 = 百分比 ×10），下方 starlark ÷10 换算为百分比。
     [[inputs.snmp.table]]
         name = "device_cpu"
         inherit_tags = ["source"]
         index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.5624.1.2.49.1.4.1.1.5"
+        oid = "1.3.6.1.4.1.5624.1.2.49.1.1.1.1.4"
         name = "usage"
-    # ---- Enterasys 内存 (已用 + 空闲, KB；无总量 → used/(used+free)) ----
-    # 待现网核验：内存已用 .5624.1.2.49.1.1.1.1.7 / 空闲 .5624.1.2.49.1.1.1.1.8（KB）。
+        conversion = "int"
+    # 内存: etsysResourceStorageTable …49.1.3.1，行索引 = entPhysicalIndex.etsysResourceStorageType.etsysResourceStorageTypeID，
+    # table.field 不带 .0。StorageType 为不可读的索引列，由下方 starlark 从行索引第二段判断，只保留 ram(2) 行。
+    # etsysResourceStorageDescr .1.3 作 descr 标签；Size .1.4 / Available .1.5 单位 KB，starlark ×1024 换算为字节。
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
         index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.5624.1.2.49.1.1.1.1.7"
-        name = "used"
+        oid = "1.3.6.1.4.1.5624.1.2.49.1.3.1.1.3"
+        name = "descr"
+        is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.5624.1.2.49.1.1.1.1.8"
+        oid = "1.3.6.1.4.1.5624.1.2.49.1.3.1.1.4"
+        name = "total"
+        conversion = "int"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5624.1.2.49.1.3.1.1.5"
         name = "free"
-    # ---- Enterasys 温度 (机箱温度, 直接 ℃, scalar) ----
-    # 待现网核验：机箱温度标量 .5624.1.2.16.1.1.1.4（℃）。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.5624.1.2.16.1.1.1.4"
-        name = "celsius"
-    # ---- Enterasys 电源状态表 (etsysChassisPowerSupplyState .5624.1.2.16.1.1.1.3, 每电源 normal(1)/notOperational(2)...) ----
-    # 待现网核验：原始码 normal=1；下方 enum 归一 1→1(正常),其余→2(异常)。
-    [[inputs.snmp.table]]
-        name = "device_psu"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.5624.1.2.16.1.1.1.3"
-        name = "state"
-# ---- 风扇:Enterasys 私有 MIB 未以无需行级过滤的标量形式暴露独立风扇状态 OID → 风扇 N/A。CPU/内存/温度/电源四项干净可采。----
-# ---- 状态归一:电源 normal(1)→1(正常),其余→2(异常)。----
-[[processors.enum]]
-    namepass = ["device_psu"]
-    [[processors.enum.mapping]]
-        field = "state"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "1" = 1
+        conversion = "int"
+# ---- 温度/风扇/电源：SecureStack 在 PEN 5624 下没有已核实的环境对象 → N/A，不采。----
+
+[[processors.starlark]]
+    namepass = ["device_cpu"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("usage")
+    if raw == None:
+        return None
+    value = int(raw)
+    if value < 0 or value > 1000:
+        return None
+    metric.fields["usage"] = value / 10.0
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["enterasys"]
+
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    parts = str(metric.tags.get("index", "")).split(".")
+    if len(parts) < 3 or parts[-2] != "2":
+        return None
+    total = metric.fields.get("total")
+    free = metric.fields.get("free")
+    if total == None or free == None:
+        return None
+    total = int(total) * 1024
+    free = int(free) * 1024
+    if total <= 0 or free > total:
+        return None
+    metric.fields["total"] = total
+    metric.fields["free"] = free
+    metric.fields["used"] = total - free
+    metric.fields["usage"] = (total - free) * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["enterasys"]

@@ -679,7 +679,15 @@ class PolicyService:
             "forecast_target_unit": config.get("forecast_target_unit") or "",
             "forecast_lookback": copy.deepcopy(config.get("forecast_lookback") or {}),
             "recovery_threshold": copy.deepcopy(config.get("recovery_threshold") or {}),
+            "period": copy.deepcopy(config.get("period") or PolicyService._default_duration(None)),
+            "enable_alerts": PolicyService._recipe_enable_alerts(config.get("enable_alerts")),
         }
+
+    @staticmethod
+    def _recipe_enable_alerts(enable_alerts):
+        if isinstance(enable_alerts, list) and enable_alerts:
+            return list(enable_alerts)
+        return ["threshold"]
 
     @staticmethod
     def _mark_new_alerts_closed(alerts_to_close, operator, reason):

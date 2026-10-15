@@ -2,6 +2,7 @@
 from rest_framework import serializers
 
 from apps.alerts.models.action import ActionExecution, ActionRule
+from apps.alerts.utils.i18n import serializer_message
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 
@@ -18,25 +19,25 @@ class ActionRuleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(exc)) from exc
         authorized = set(get_authorized_group_ids(request)) if request else set()
         if not normalized or not set(normalized).issubset(authorized):
-            raise serializers.ValidationError("team 必须位于当前授权团队范围内")
+            raise serializers.ValidationError(serializer_message(self, "error.team_outside_authorized_scope"))
         return normalized
 
     def validate_action_config(self, value):
         if not isinstance(value, dict):
-            raise serializers.ValidationError("action_config 必须是对象")
+            raise serializers.ValidationError(serializer_message(self, "error.action_config_must_be_object"))
         bindings = value.get("param_bindings") or []
         if not isinstance(bindings, list):
-            raise serializers.ValidationError("param_bindings 必须是列表")
+            raise serializers.ValidationError(serializer_message(self, "error.param_bindings_must_be_list"))
         cleaned = []
         for index, binding in enumerate(bindings):
             if not isinstance(binding, dict) or not binding.get("name"):
-                raise serializers.ValidationError(f"param_bindings[{index}] 缺少 name")
+                raise serializers.ValidationError(serializer_message(self, "error.param_binding_missing_name", index=index))
             source = binding.get("from") or "field"
             if source not in {"const", "field"}:
-                raise serializers.ValidationError(f"参数[{binding['name']}] from 只能是 const 或 field")
+                raise serializers.ValidationError(serializer_message(self, "error.param_binding_from_invalid", name=binding["name"]))
             field_value = binding.get("value")
             if source == "field" and not str(field_value or "").strip():
-                raise serializers.ValidationError(f"参数[{binding['name']}] 变量传递必须选择告警字段")
+                raise serializers.ValidationError(serializer_message(self, "error.param_binding_field_required", name=binding["name"]))
             item = {
                 "name": binding["name"],
                 "from": source,

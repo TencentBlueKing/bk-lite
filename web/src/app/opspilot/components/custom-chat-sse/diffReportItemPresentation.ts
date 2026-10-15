@@ -1,12 +1,28 @@
 type Severity = 'critical' | 'high' | 'medium' | 'low' | 'warning' | 'info';
 
-const severityPresentation: Record<Severity, { label: string; tone: string }> = {
-  critical: { label: '严重', tone: 'error' },
-  high: { label: '高危', tone: 'volcano' },
-  medium: { label: '中风险', tone: 'warning' },
-  low: { label: '低风险', tone: 'success' },
-  warning: { label: '警告', tone: 'warning' },
-  info: { label: '提示', tone: 'processing' },
+type Translate = (
+  key: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+/** 严重级别在聊天侧与配置分析侧共用同一套 locale key。 */
+export const configSeverityLabelKey: Record<Severity, string> = {
+  critical: 'configSeverity.critical',
+  high: 'configSeverity.high',
+  medium: 'configSeverity.medium',
+  low: 'configSeverity.low',
+  warning: 'configSeverity.warning',
+  info: 'configSeverity.info',
+};
+
+const severityPresentation: Record<Severity, { tone: string; labelKey: string }> = {
+  critical: { tone: 'error', labelKey: configSeverityLabelKey.critical },
+  high: { tone: 'volcano', labelKey: configSeverityLabelKey.high },
+  medium: { tone: 'warning', labelKey: configSeverityLabelKey.medium },
+  low: { tone: 'success', labelKey: configSeverityLabelKey.low },
+  warning: { tone: 'warning', labelKey: configSeverityLabelKey.warning },
+  info: { tone: 'processing', labelKey: configSeverityLabelKey.info },
 };
 
 interface DiffReportItemIdentity {
@@ -16,22 +32,26 @@ interface DiffReportItemIdentity {
   severity?: string;
 }
 
-export const getDiffReportItemPresentation = (item: DiffReportItemIdentity) => {
+export const getDiffReportItemPresentation = (
+  item: DiffReportItemIdentity,
+  t: Translate,
+) => {
   const severity = severityPresentation[item.severity as Severity] ?? severityPresentation.info;
+  const severityLabel = t(severity.labelKey, item.severity as string);
   const isAllMode = item.workload_type.trim().toLowerCase() === 'all';
 
   if (isAllMode) {
     return {
-      badgeLabel: '全部',
+      badgeLabel: t('chat.diffReport.all', '全部'),
       badgeTone: 'processing',
       targetLabel: item.workload_name,
-      riskLabel: `最高风险：${severity.label}`,
+      riskLabel: t('chat.diffReport.topRisk', '最高风险：{level}', { level: severityLabel }),
     };
   }
 
   const namespacePrefix = item.namespace && item.namespace !== '-' ? `${item.namespace}/` : '';
   return {
-    badgeLabel: severity.label,
+    badgeLabel: severityLabel,
     badgeTone: severity.tone,
     targetLabel: `${namespacePrefix}${item.workload_name}`,
     riskLabel: '',

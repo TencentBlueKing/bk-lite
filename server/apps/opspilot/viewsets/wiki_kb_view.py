@@ -48,6 +48,7 @@ from apps.opspilot.services.wiki.structure_service import StructureServiceError,
 from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key, title_alias_map
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.services.wiki.wiki_context_service import build_context
+from apps.opspilot.utils.user_message import user_message
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from config.drf.renderers import CustomRenderer, EventStreamRenderer
@@ -265,25 +266,28 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if running_build_record(instance):
-            return JsonResponse({"result": False, "message": "知识库存在运行中的构建任务,请等待完成后再操作"}, status=400)
+            message = self.loader.get("error.knowledge_base_build_running") if self.loader else "知识库存在运行中的构建任务,请等待完成后再操作"
+            return JsonResponse({"result": False, "message": message or "知识库存在运行中的构建任务,请等待完成后再操作"}, status=400)
         knowledge_base_id = instance.id
         name = instance.name
         try:
             delete_knowledge_base(instance)
         except ProtectedError:
+            message = self.loader.get("error.knowledge_base_protected") if self.loader else "知识库仍被受保护引用占用，无法删除，请稍后重试或联系管理员"
             return JsonResponse(
                 {
                     "result": False,
-                    "message": "知识库仍被受保护引用占用，无法删除，请稍后重试或联系管理员",
+                    "message": message or "知识库仍被受保护引用占用，无法删除，请稍后重试或联系管理员",
                     "code": "knowledge_base_protected",
                 },
                 status=409,
             )
         except Exception as error:  # noqa: BLE001 - 返回可读失败，避免裸 500
+            template = (self.loader.get("error.knowledge_base_delete_failed") if self.loader else "删除知识库失败: {error}") or "删除知识库失败: {error}"
             return JsonResponse(
                 {
                     "result": False,
-                    "message": f"删除知识库失败: {error}",
+                    "message": template.format(error=error),
                     "code": "knowledge_base_delete_failed",
                 },
                 status=500,
@@ -480,7 +484,10 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         """重建知识库全部有效页面的页面级和 chunk 级索引,并落构建记录供诊断追踪。"""
         kb = self.get_object()
         if not kb.embed_provider_id:
-            return JsonResponse({"result": False, "message": "知识库未配置向量模型,无法重建索引"}, status=400)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.no_embedding_model", "知识库未配置向量模型,无法重建索引", self.loader)},
+                status=400,
+            )
         pages = list(KnowledgePage.objects.filter(knowledge_base=kb, status="active").select_related("current_version").order_by("id"))
         record = rebuild_page_indexes(
             kb,
@@ -651,7 +658,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
                     return JsonResponse(
                         {
                             "result": False,
-                            "message": "知识库存在运行中的构建任务,请等待完成后再操作",
+                            "message": user_message(request, "error.knowledge_base_build_running", "知识库存在运行中的构建任务,请等待完成后再操作", self.loader),
                             "code": "knowledge_base_build_in_progress",
                         },
                         status=400,

@@ -35,13 +35,14 @@ process.on('exit', () => {
 });
 
 const {
-  COPY_SUCCESS_LABEL,
+  COPY_SUCCESS_LABEL_KEY,
   WEBCHAT_ROOT_ID,
   MessageActions,
   resolveWebchatPortalTarget,
 } = await import(pathToFileURL(outputPath));
 
-assert.equal(COPY_SUCCESS_LABEL, '已复制到剪贴板');
+const COPY_SUCCESS_LABEL = '已复制到剪贴板';
+assert.equal(COPY_SUCCESS_LABEL_KEY, 'message.copied');
 
 const writes = [];
 Object.defineProperty(globalThis, 'navigator', {

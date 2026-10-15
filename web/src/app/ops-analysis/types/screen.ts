@@ -19,16 +19,25 @@ export type ScreenWidgetChartType =
   | 'room3D'
   | 'networkStatusTopology'
   | 'application3D'
-  | 'relatedTopology';
+  | 'relatedTopology'
+  | 'applicationTopology';
+
+export type ScreenFitAdapter = 'fill' | 'fitWidth' | 'fitHeight';
+
+/** 编辑画布和 PDF 使用的等比留边，不写入 viewport。 */
+export type ScreenDisplayAdapter = ScreenFitAdapter | 'contain';
+
+export type ScreenBackgroundConfig =
+  | { type: 'color'; color: string }
+  | { type: 'preset'; key: string }
+  | { type: 'image'; src: string };
 
 export interface ScreenViewportConfig {
   width: number;
   height: number;
-  background?: {
-    type?: string;
-    key?: string;
-  };
+  background?: ScreenBackgroundConfig;
   theme?: ScreenThemeId;
+  adapter?: ScreenFitAdapter;
 }
 
 export type ScreenThemeId = 'screen-dark' | 'screen-light';
@@ -39,20 +48,138 @@ export interface ScreenDecorationsConfig {
   title?: string;
 }
 
-export interface ScreenWidgetItem {
+export type ScreenClockFormatId =
+  | 'HH:mm:ss'
+  | 'YYYY-MM-DD'
+  | 'YYYY-MM-DD HH:mm:ss'
+  | 'YYYY年M月D日'
+  | 'M月D日 HH:mm'
+  | 'dddd HH:mm:ss';
+
+export type ScreenTextColorToken = 'canvas' | 'muted' | 'accent';
+/** 主题三档，或用户选定后不再跟随主题的 #RRGGBB。 */
+export type ScreenTextColor = ScreenTextColorToken | string;
+export type ScreenTextAlign = 'left' | 'center' | 'right';
+
+export interface ScreenTextStyleConfig {
+  fontSize?: number;
+  fontWeight?: number;
+  color?: ScreenTextColor;
+  align?: ScreenTextAlign;
+}
+
+export type ScreenTitleFramePresetId =
+  | 'hero-1'
+  | 'hero-2'
+  | 'hero-3'
+  | 'hero-4'
+  | 'hero-5'
+  | 'hero-6'
+  | 'section-1'
+  | 'section-2'
+  | 'section-3'
+  | 'section-4';
+
+export type ScreenDecorationType = 'corner' | 'divider' | 'panelFrame';
+
+/** 空心边框。`a`/`b` 只用于读旧数据。 */
+export type ScreenPanelFramePresetId =
+  | 'border-21'
+  | 'border-22'
+  | 'border-23'
+  | 'border-25'
+  | 'border-1'
+  | 'tech'
+  | 'border-16'
+  | 'border-20'
+  | 'border-24';
+
+/** 分隔线。`a`/`b` 只用于读旧数据。 */
+export type ScreenDividerPresetId =
+  | 'line-1'
+  | 'line-2'
+  | 'line-3'
+  | 'line-dec'
+  | 'line-4';
+
+export type ScreenDecorationPresetId =
+  | 'a'
+  | 'b'
+  | ScreenPanelFramePresetId
+  | ScreenDividerPresetId;
+
+export interface ScreenItemGeometry {
   id: string;
-  type: 'widget';
-  chartType: ScreenWidgetChartType;
-  title: string;
   x: number;
   y: number;
   w: number;
   h: number;
   zIndex: number;
+}
+
+export interface ScreenWidgetItem extends ScreenItemGeometry {
+  kind?: 'widget';
+  type: 'widget';
+  chartType: ScreenWidgetChartType;
+  title: string;
   valueConfig: ValueConfig;
 }
 
-export type ScreenItem = ScreenWidgetItem;
+export interface ScreenTextItem extends ScreenItemGeometry {
+  kind: 'text';
+  content: string;
+  textStyle?: ScreenTextStyleConfig;
+}
+
+export interface ScreenClockItem extends ScreenItemGeometry {
+  kind: 'clock';
+  format: ScreenClockFormatId;
+  textStyle?: ScreenTextStyleConfig;
+}
+
+export interface ScreenTitleFrameItem extends ScreenItemGeometry {
+  kind: 'titleFrame';
+  preset: ScreenTitleFramePresetId;
+  content: string;
+  textStyle?: ScreenTextStyleConfig;
+}
+
+export interface ScreenDecorationItem extends ScreenItemGeometry {
+  kind: 'decoration';
+  decorationType: ScreenDecorationType;
+  preset: ScreenDecorationPresetId;
+}
+
+export type ScreenShapeKind = 'rect' | 'circle' | 'roundedRect';
+
+export type ScreenShapeGradientDirection = 'vertical' | 'horizontal';
+
+export interface ScreenShapeStyle {
+  backgroundColor: string;
+  hideBackground: boolean;
+  borderColor: string;
+  borderWidth: number;
+  hideBorder: boolean;
+  shadow: number;
+  gradient: boolean;
+  gradientDirection: ScreenShapeGradientDirection;
+  gradientStart: string;
+  gradientEnd: string;
+}
+
+export interface ScreenShapeItem extends ScreenItemGeometry {
+  kind: 'shape';
+  shape: ScreenShapeKind;
+  shapeStyle: ScreenShapeStyle;
+}
+
+export type ScreenItem =
+  | ScreenWidgetItem
+  | ScreenTextItem
+  | ScreenClockItem
+  | ScreenTitleFrameItem
+  | ScreenDecorationItem
+  | ScreenShapeItem;
 
 export interface ScreenViewSets {
   viewport: ScreenViewportConfig;
@@ -64,4 +191,6 @@ export interface ScreenViewSets {
 export interface ScreenProps {
   selectedScreen?: DirItem | null;
   shareMode?: boolean;
+  /** 大屏进入或离开编辑。查看页据此收起并恢复目录。 */
+  onEditingChange?: (editing: boolean) => void;
 }

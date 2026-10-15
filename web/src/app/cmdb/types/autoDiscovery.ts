@@ -127,6 +127,8 @@ export interface TreeNode {
   name: string;
   type?: string;
   task_type?: string;
+  os_type?: string;
+  custom_plugin_pk?: number;
   credential_protocol?: string;
   credential_kind?: string;
   credential_default_port?: number;
@@ -153,6 +155,8 @@ export interface ModelItem {
   name: string;
   type?: string;
   task_type?: string;
+  os_type?: string;
+  custom_plugin_pk?: number;
   credential_protocol?: string;
   credential_kind?: string;
   credential_default_port?: number;
@@ -247,9 +251,7 @@ export interface TaskTableProps {
 export interface StatisticCardConfig {
   title: string;
   value: number;
-  bgColor: string;
-  borderColor: string;
-  valueColor: string;
+  tone?: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
   failedCount?: number;
   showFailed?: boolean;
 }

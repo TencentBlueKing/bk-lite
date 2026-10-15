@@ -13,8 +13,10 @@ import (
 
 // RedisIndexConfig opens the maintainer Replay index identity.
 type RedisIndexConfig struct {
-	URL          string
-	PasswordFile string
+	URL                string
+	PasswordFile       string
+	RequireACLIdentity bool
+	ACLUsername        string
 }
 
 // RedisIndexStore is the maintainer view of replayindex.Store.
@@ -28,8 +30,18 @@ func NewRedisIndexStore(cfg RedisIndexConfig) (*RedisIndexStore, error) {
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "redis" && parsed.Scheme != "rediss") {
 		return nil, fmt.Errorf("replay index redis-url must be redis:// or rediss://")
 	}
-	if parsed.User == nil || parsed.User.Username() != "rum-replay-index-maintainer" {
-		return nil, fmt.Errorf("replay index redis-url must use rum-replay-index-maintainer")
+	username := ""
+	if parsed.User != nil {
+		username = parsed.User.Username()
+	}
+	if cfg.RequireACLIdentity {
+		expected := strings.TrimSpace(cfg.ACLUsername)
+		if expected == "" {
+			expected = "rum-replay-index-maintainer"
+		}
+		if username == "" || username != expected {
+			return nil, fmt.Errorf("replay index redis-url ACL username must be %s", expected)
+		}
 	}
 	options, err := redis.ParseURL(cfg.URL)
 	if err != nil {
@@ -41,6 +53,9 @@ func NewRedisIndexStore(cfg RedisIndexConfig) (*RedisIndexStore, error) {
 			return nil, err
 		}
 		options.Password = password
+	}
+	if options.Password == "" {
+		return nil, fmt.Errorf("replay index Redis requires a password or password file")
 	}
 	return &RedisIndexStore{inner: replayindex.NewStore(redis.NewClient(options))}, nil
 }

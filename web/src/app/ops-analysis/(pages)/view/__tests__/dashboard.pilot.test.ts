@@ -62,6 +62,7 @@ describe('ops-analysis dashboard.pilot type gate', () => {
     setView('?type=dashboard&id=dash-1');
     document.body.innerHTML = dashboardShell('');
     expect(getMessage().title).toBe('ops-analysis-dashboard:dash-1');
+    expect(getTextContext().app).toBe('ops-analysis');
   });
 });
 
@@ -249,6 +250,39 @@ describe('ops-analysis dashboard.pilot text context', () => {
   afterEach(() => {
     document.body.innerHTML = '';
     setView('?type=dashboard&id=dash-1');
+  });
+
+  it('keeps visible card values while the dashboard is being edited', () => {
+    setView('?type=dashboard&id=dashboard_426');
+    document.body.innerHTML = dashboardShell(`
+      <div data-dashboard-edit-mode="true"></div>
+      <div data-node-kind="widget">
+        <div class="widget">
+          <div class="widget-header"><h4>未分派、待响应和处理中的告警数</h4></div>
+          <div class="widget-body"><span class="font-semibold">20</span></div>
+        </div>
+      </div>
+      <div data-node-kind="widget">
+        <div class="widget">
+          <div class="widget-header"><h4>活跃告警状态分布</h4></div>
+          <div class="widget-body">
+            <div data-testid="chart-legend-scroll">
+              <button type="button">未分派 (35.0%)</button>
+              <button type="button">待响应 (35.0%)</button>
+              <button type="button">处理中 (30.0%)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+    expect(getMessage().title).toBe('');
+    const sections = getTextContext().sections || [];
+    const text = sections.map((section) => section.content).join('\n');
+    expect(text).toContain('未分派、待响应和处理中的告警数: 20');
+    expect(text).toContain('未分派 (35.0%)');
+    expect(text).toContain('不要让用户自己去看组件');
+    const cards = sections.find((section) => section.id === 'dashboard-cards');
+    expect(cards?.priority).toBeGreaterThan(100);
   });
 
   it('includes visible card names, single values, and at most 10 table/TopN rows', () => {
@@ -513,6 +547,7 @@ describe('ops-analysis dashboard.pilot text context', () => {
     setView('?type=dashboard&id=dash-empty');
     document.body.innerHTML = dashboardShell('');
     const text = getTextContext();
+    expect((text.sections || []).some((section) => section.id === 'dashboard-identity')).toBe(true);
     expect((text.sections || []).some((section) => section.content.includes('生产总览'))).toBe(true);
     expect(text.images || []).toEqual([]);
     const toolkit: PageContextToolkit = {

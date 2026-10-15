@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.logger import node_logger as logger
+from apps.core.logger import node_logger as logger, safe_log_value
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.node_mgmt.models import SidecarEnv
@@ -258,7 +258,13 @@ class RegionService:
             )
 
             if response.status_code != 200:
-                logger.error(f"Webhook API error: status={response.status_code}, region={cloud_region_id}, body={response.text}")
+                logger.error(
+                    "Webhook API error: status=%s region=%s body_len=%s body=%s",
+                    response.status_code,
+                    cloud_region_id,
+                    len(response.text or ""),
+                    safe_log_value(response.text),
+                )
                 raise BaseAppException("Failed to generate deploy script")
 
             webhook_response = response.json()

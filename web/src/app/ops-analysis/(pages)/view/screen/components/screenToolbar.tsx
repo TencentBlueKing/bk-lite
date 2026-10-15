@@ -6,10 +6,11 @@ import {
   EditOutlined,
   FullscreenOutlined,
   MailOutlined,
-  PlusOutlined,
+  RedoOutlined,
   ReloadOutlined,
   SettingOutlined,
   ShareAltOutlined,
+  UndoOutlined,
 } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import PermissionWrapper from '@/components/permission';
@@ -26,7 +27,6 @@ interface ScreenToolbarProps {
   onOpenSubscription?: () => void;
   onOpenSettings: () => void;
   onOpenFilterConfig: () => void;
-  onOpenWidgetSelector: () => void;
   onPreview: () => void;
   onRefresh: () => void;
   frequenceValue?: number;
@@ -36,6 +36,10 @@ interface ScreenToolbarProps {
   onSave: () => void;
   saving?: boolean;
   editExtra?: React.ReactNode;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
@@ -47,7 +51,6 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   onOpenSubscription,
   onOpenSettings,
   onOpenFilterConfig,
-  onOpenWidgetSelector,
   onPreview,
   onRefresh,
   frequenceValue = 0,
@@ -57,6 +60,10 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   onSave,
   saving = false,
   editExtra,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }) => {
   const { t } = useTranslation();
   const iconButtonClassName =
@@ -67,6 +74,30 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
     return (
       <div className="flex items-center gap-2" data-export-hidden="true">
         <div className="flex items-center gap-0.5">
+          {onUndo && onRedo ? (
+            <>
+              <Tooltip title={t('opsAnalysis.screen.undo')}>
+                <Button
+                  type="text"
+                  icon={<UndoOutlined className={iconClassName} />}
+                  aria-label={t('opsAnalysis.screen.undo')}
+                  onClick={onUndo}
+                  disabled={!canUndo}
+                  className={iconButtonClassName}
+                />
+              </Tooltip>
+              <Tooltip title={t('opsAnalysis.screen.redo')}>
+                <Button
+                  type="text"
+                  icon={<RedoOutlined className={iconClassName} />}
+                  aria-label={t('opsAnalysis.screen.redo')}
+                  onClick={onRedo}
+                  disabled={!canRedo}
+                  className={iconButtonClassName}
+                />
+              </Tooltip>
+            </>
+          ) : null}
           <Tooltip title={t('opsAnalysis.screen.canvasSettings')}>
             <Button
               type="text"
@@ -108,13 +139,6 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
         <PermissionWrapper requiredPermissions={['EditChart']}>
           <div className="flex items-center gap-2">
             {editExtra}
-            <Button
-              type="default"
-              icon={<PlusOutlined />}
-              onClick={onOpenWidgetSelector}
-            >
-              {t('opsAnalysis.screen.widgetShort')}
-            </Button>
             <Button type="default" onClick={onCancel}>
               {t('common.cancel')}
             </Button>

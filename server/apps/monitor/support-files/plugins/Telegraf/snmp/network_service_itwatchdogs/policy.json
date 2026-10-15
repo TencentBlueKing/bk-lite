@@ -1,0 +1,31 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService IT Watchdogs WeatherGoose SNMP",
+  "templates": [
+    {
+      "name": "IT Watchdogs环境温度过高",
+      "alert_name": "网络服务${resource_name} 传感器 ${metric__sensor} 环境温度过高",
+      "description": "监控 IT Watchdogs WeatherGoose 环境温度，当持续高于阈值时触发告警，提示机柜过热或空调异常。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ from rest_framework.exceptions import ValidationError
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.models import Alert
 from apps.alerts.utils.enrichment import enrichment_orm_lookups, is_enrichment_path
+from apps.alerts.utils.i18n import alerts_message
 
 
 class AlertModelFilter(FilterSet):
@@ -40,6 +41,7 @@ class AlertModelFilter(FilterSet):
     rule_id = CharFilter(field_name="rule_id", label="是否有事故")
     resource_type = CharFilter(field_name="resource_type", lookup_expr="exact", label="资源类型")
     resource_id = CharFilter(field_name="resource_id", lookup_expr="exact", label="资源ID")
+    owner = CharFilter(method="filter_owner", label="告警责任人")
     enrichment_key = CharFilter(method="filter_enrichment", label="丰富字段路径")
     enrichment_value = CharFilter(method="filter_enrichment_value", label="丰富字段值")
 
@@ -62,9 +64,15 @@ class AlertModelFilter(FilterSet):
             "rule_id",
             "resource_type",
             "resource_id",
+            "owner",
             "enrichment_key",
             "enrichment_value",
         ]
+
+    def filter_owner(self, qs, field_name, value):
+        from apps.alerts.utils.permission_scope import apply_operator_scope
+
+        return apply_operator_scope(qs, (value or "").strip(), field_name="owners")
 
     def filter_enrichment(self, qs, field_name, value):
         """enrichment_key 与 enrichment_value 成对使用，路径例 enrichment.cmdb.owner。"""
@@ -121,28 +129,28 @@ class AlertModelFilter(FilterSet):
             return qs.filter(source_name__in=source_names)
         return qs
 
-    @staticmethod
-    def filter_source_names(qs, field_name, value):
+    def filter_source_names(self, qs, field_name, value):
         from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
         from apps.alerts.utils.typed_rules import rules_q
 
         try:
             names = json.loads(value)
         except (ValueError, TypeError) as error:
-            raise ValidationError({"source_names": "集成源须为 JSON 名称数组"}) from error
+            message = alerts_message(getattr(self, "request", None), "error.source_names_must_be_json_array")
+            raise ValidationError({"source_names": message}) from error
         rules = [[{"key": "source_names", "operator": "any_of", "value": names}]]
         validate_rules_for_serializer(rules, "assignment")
         return qs.filter(rules_q(rules, "assignment"))
 
-    @staticmethod
-    def filter_push_source_ids(qs, field_name, value):
+    def filter_push_source_ids(self, qs, field_name, value):
         from apps.alerts.utils.monitor_source_rules import MonitorSourceRuleMatcher
         from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 
         try:
             ids = json.loads(value)
         except (ValueError, TypeError) as error:
-            raise ValidationError({"push_source_ids": "监控源须为 JSON 字符串数组"}) from error
+            message = alerts_message(getattr(self, "request", None), "error.push_source_ids_must_be_json_array")
+            raise ValidationError({"push_source_ids": message}) from error
         rules = [[{"key": "push_source_ids", "operator": "any_of", "value": ids}]]
         validate_rules_for_serializer(rules, "assignment")
         pks = MonitorSourceRuleMatcher({}, source_field="push_source_ids").filter_queryset(qs, rules)

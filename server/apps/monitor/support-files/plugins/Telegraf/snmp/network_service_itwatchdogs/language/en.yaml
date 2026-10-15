@@ -1,0 +1,56 @@
+NetworkService IT Watchdogs WeatherGoose SNMP:
+  name: IT Watchdogs WeatherGoose (Telegraf)
+  desc: SNMP monitoring template for IT Watchdogs WeatherGoose climate device. It
+    reports environment temperature and humidity, per-port inbound traffic rate,
+    per-port outbound traffic rate, and system uptime (IANA PEN 17373).
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Per-sensor environment temperature in degrees Celsius from wxGoos climateTempC.
+        Rows with climateAvail 0 are dropped. Empty climate tables yield no rows.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Per-sensor relative humidity in percent from wxGoos climateHumidity. The
+        SNMP value is already 0-100 percent. Rows with climateAvail 0 are dropped.
+        Empty climate tables yield no rows.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    NetworkService: NetworkService
+    Environment: Environment

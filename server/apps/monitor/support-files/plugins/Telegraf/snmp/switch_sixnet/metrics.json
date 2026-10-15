@@ -26,12 +26,12 @@
       "query": "max(psu1_status{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "PSU1 Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"off\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"on\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"unknown\",\"id\":2,\"color\":\"#8c8c8c\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of Sixnet P1 power input. Native codes are off (0), on (1), and unknown (2). A value other than 1 means the primary power input is lost or the state cannot be determined."
+      "description": "Operational state of Sixnet P1 power input, normalised so on=1 (normal), off=2 (abnormal), unknown=3 (gray, no alert)."
     },
     {
       "metric_group": "Hardware Status",
@@ -39,12 +39,12 @@
       "query": "max(psu2_status{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "PSU2 Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"off\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"on\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"unknown\",\"id\":2,\"color\":\"#8c8c8c\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of Sixnet P2 power input. Native codes are off (0), on (1), and unknown (2). A value other than 1 means the redundant power input is lost or the state cannot be determined."
+      "description": "Operational state of Sixnet P2 power input, normalised so on=1 (normal), off=2 (abnormal), unknown=3 (gray, no alert)."
     },
     {
       "metric_group": "Hardware Status",

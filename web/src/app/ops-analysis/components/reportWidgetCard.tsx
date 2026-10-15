@@ -10,8 +10,10 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import WidgetCsvHoverButton from '@/app/ops-analysis/components/widgetCsvHoverButton';
 import WidgetDataRenderer from '@/app/ops-analysis/components/widgetDataRenderer';
 import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
+import { notifyWidgetCsvExportNotStarted, useWidgetCsvExportRegistry } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { FilterValue, UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
 import type { ReportSection } from '@/app/ops-analysis/types/report';
@@ -22,9 +24,10 @@ import type {
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useTranslation } from '@/utils/i18n';
 import {
-  resolveAnalysisCanvasInteraction,
-  shouldShowAnalysisWidgetCopyAction,
-} from '@/app/ops-analysis/utils/widgetCopy';
+  buildAnalysisWidgetMenuItems,
+  buildDashboardWidgetMenuKeys,
+  resolveWidgetCsvExportEntry,
+} from '@/app/ops-analysis/utils/widgetCsvMenu';
 
 // Canvas and subscription PDF share this height. Do not mark the card
 // `data-export-expand`: that unlocks 420px in print while the table body
@@ -43,6 +46,9 @@ interface ReportWidgetCardProps {
   dataSource?: DatasourceItem;
   editing: boolean;
   shareMode?: boolean;
+  isFullscreen?: boolean;
+  renderMode?: boolean;
+  pdfExportPreparing?: boolean;
   isBuiltIn?: boolean;
   eagerRuntime?: boolean;
   onEdit: (sectionId: string) => void;
@@ -63,6 +69,9 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   dataSource,
   editing,
   shareMode = false,
+  isFullscreen = false,
+  renderMode = false,
+  pdfExportPreparing = false,
   isBuiltIn = false,
   eagerRuntime = false,
   onEdit,
@@ -71,10 +80,12 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   onWidgetRenderStatus,
 }) => {
   const { t } = useTranslation();
+  const csvExportRegistry = useWidgetCsvExportRegistry();
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [runtimeActive, setRuntimeActive] = useState(eagerRuntime);
   const [localReloadVersion, setLocalReloadVersion] = useState(0);
   const [renderStatus, setRenderStatus] = useState<DashboardWidgetRenderStatus>('loading');
+  const [exportRawData, setExportRawData] = useState<unknown>(undefined);
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: section.id, disabled: !editing });
 
@@ -114,6 +125,42 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
     setNodeRef(element);
   };
 
+  const exportEntry = resolveWidgetCsvExportEntry({
+    surface: 'report',
+    chartType: section.valueConfig.chartType,
+    editMode: editing,
+    shareMode,
+    fullscreen: isFullscreen,
+    renderMode: renderMode || pdfExportPreparing,
+    rawData: exportRawData,
+  });
+  const menuKeys = buildDashboardWidgetMenuKeys({
+    surface: 'report',
+    isEditMode: editing,
+    shareMode,
+    isBuiltIn,
+    renderMode: renderMode || pdfExportPreparing,
+    fullscreen: isFullscreen,
+    chartType: section.valueConfig.chartType,
+    sceneWidgetType: section.valueConfig.sceneWidgetType,
+    rawData: exportRawData,
+  });
+  const exportCsv = () => {
+    void csvExportRegistry?.run(section.id, {
+      title: section.valueConfig.name || '',
+    }).then((started) => {
+      notifyWidgetCsvExportNotStarted(started, t);
+    });
+  };
+  const menuItems = buildAnalysisWidgetMenuItems({
+    keys: menuKeys,
+    t,
+    onEdit: () => onEdit(section.id),
+    onCopy: () => onCopy?.(section.id),
+    onDelete: () => onDelete(section.id),
+    onExportCsv: exportCsv,
+  });
+
   return (
     <div
       ref={setRefs}
@@ -122,12 +169,12 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
         transform: CSS.Transform.toString(transform),
         transition,
       }}
-      className="flex w-full min-w-0 flex-col overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-3"
+      className="group relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-3"
     >
       <WidgetHeaderRuntimeSlotProvider>
         {(runtimeSlotRef) => (
           <>
-            <div className="mb-2 flex min-h-8 items-start gap-2">
+            <div className="mb-2 flex min-h-8 min-w-0 items-start gap-2">
               {editing && (
                 <Button
                   type="text"
@@ -149,7 +196,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                   </p>
                 )}
               </div>
-              <div ref={runtimeSlotRef} className="ml-auto max-w-[55%] shrink-0 overflow-x-auto" />
+              <div ref={runtimeSlotRef} className="ml-auto min-w-0 max-w-[55%] overflow-x-auto" />
               {renderStatus === 'failed' && (
                 <Tooltip title={t('common.retry')}>
                   <Button
@@ -162,40 +209,21 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                   />
                 </Tooltip>
               )}
-              {editing && (
-                <MoreActionsDropdown
-                  trigger={['hover']}
-                  labelAlign="start"
-                  buttonClassName="cursor-pointer text-(--color-text-2) transition-colors hover:!bg-transparent hover:text-(--color-text-1)"
-                  items={[
-                    {
-                      key: 'edit',
-                      label: t('common.edit'),
-                      onClick: () => onEdit(section.id),
-                    },
-                    ...(shouldShowAnalysisWidgetCopyAction({
-                      interaction: resolveAnalysisCanvasInteraction({
-                        editMode: editing,
-                        shareMode,
-                        isBuiltIn,
-                      }),
-                      sceneWidgetType: section.valueConfig.sceneWidgetType,
-                      chartType: section.valueConfig.chartType,
-                    })
-                      ? [{
-                        key: 'copy',
-                        label: t('common.copy'),
-                        onClick: () => onCopy?.(section.id),
-                      }]
-                      : []),
-                    {
-                      key: 'delete',
-                      label: t('common.delete'),
-                      danger: true,
-                      onClick: () => onDelete(section.id),
-                    },
-                  ]}
+              {exportEntry === 'hover' && (
+                <WidgetCsvHoverButton
+                  label={t('dashboard.exportCsv')}
+                  onClick={exportCsv}
                 />
+              )}
+              {menuItems.length > 0 && (
+                <div data-export-hidden="true">
+                  <MoreActionsDropdown
+                    trigger={['hover']}
+                    labelAlign="start"
+                    buttonClassName="cursor-pointer text-(--color-text-2) transition-colors hover:!bg-transparent hover:text-(--color-text-1)"
+                    items={menuItems}
+                  />
+                </div>
               )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -213,6 +241,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                 refreshCause={refreshCause}
                 runtimeActive={runtimeActive}
                 runtimePriority={{ cause: 1, visibility: 0, distance: 0, order: index }}
+                onRawData={setExportRawData}
                 onRenderStatus={(result) => {
                   setRenderStatus(result.status);
                   onWidgetRenderStatus?.(result);

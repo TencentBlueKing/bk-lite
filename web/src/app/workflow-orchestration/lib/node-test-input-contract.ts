@@ -39,7 +39,7 @@ function jobTargetSchema(schema: JsonSchema): JsonSchema {
         ...schema['x-target-binding'],
         allowedSources: schema['x-target-binding'].allowedSources?.length
           ? schema['x-target-binding'].allowedSources
-          : ['job_mgmt'],
+          : ['node_mgmt', 'job_mgmt'],
       },
     };
   }
@@ -48,7 +48,7 @@ function jobTargetSchema(schema: JsonSchema): JsonSchema {
     'x-widget': 'target-selector',
     'x-target-binding': {
       mode: 'runtime',
-      allowedSources: ['job_mgmt'],
+      allowedSources: ['node_mgmt', 'job_mgmt'],
       allowedOperatingSystems: ['linux', 'windows'],
       minCount: Math.max(1, schema.minItems || 1),
       maxCount: schema.maxItems || 100,

@@ -53,6 +53,7 @@ class ConfigurationCollectionPlugin:
 
     async def prepare(self, request: CollectionRequest) -> None:
         """Run 生命周期准备：目标入队前解析静态 Service 执行计划。"""
+        await self._inject_custom_script(request)
         if self._prepared:
             return
         prepare_factory = getattr(self._service_factory, "prepare", None)
@@ -76,6 +77,24 @@ class ConfigurationCollectionPlugin:
                     type(exc).__name__,
                 )
         self._prepared = True
+
+    async def _inject_custom_script(self, request: CollectionRequest) -> None:
+        if str(request.params.get("plugin_name") or "") != "custom_script_info":
+            return
+        if request.params.get("script_content"):
+            return
+        from plugins.inputs.custom_script.collector import ScriptFetchError, fetch_custom_script
+
+        try:
+            script = await fetch_custom_script(request.params.get("collect_task_id") or request.params.get("scope_id"))
+        except Exception as exc:  # noqa: BLE001 - 拉取失败要让整个 Run 停在准备期
+            raise ScriptFetchError("SCRIPT_FETCH_FAILED") from exc
+        params = dict(request.params)
+        params["script_content"] = script.get("content")
+        params["shell"] = script.get("shell")
+        params["os_type"] = script.get("os_type") or params.get("os_type")
+        params["custom_plugin_id"] = script.get("plugin_id")
+        object.__setattr__(request, "params", params)
 
     async def probe(
         self,

@@ -201,6 +201,38 @@ describe('执行记录统一详情入口', () => {
     ));
   });
 
+  it('已终止的审批在全部执行里是查看，抽屉只保留审批内容', async () => {
+    const terminated = { ...execution, status: 'TERMINATED', actionable_approval_ids: [], pending_approval_count: 0 };
+    const skippedNode = { ...approvalNode, state: 'SKIPPED', state_counts: { SKIPPED: 1 }, actionable_interaction_ids: [] };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/executions/execution-1/')) return Promise.resolve(terminated);
+      if (url.endsWith('/executions/execution-1/nodes/')) return Promise.resolve({ nodes: [skippedNode], default_node_reference: 'approve_release' });
+      if (url.includes('/nodes/approve_release/')) return Promise.resolve({
+        node: skippedNode,
+        instances: [{ id: 'approval-1', label: '第 1 次', state: 'SKIPPED' }],
+        selected_instance_id: 'approval-1',
+        execution_info: { status: 'SKIPPED', started_at: execution.created_at },
+        inputs: {}, outputs: {}, system_context: {}, error: null, audit_events: [], artifacts: [], control: {}, technical: {},
+        interaction: {
+          id: 'approval-1', type: 'APPROVAL', status: 'PENDING', title: '确认生产目标范围', description: '请在页面确认或拒绝',
+          public_context: { change_title: '本地闭环审批验收' }, candidate_users: ['alice'], can_act: false,
+          operator: '', decision: '', comment: '', created_at: execution.created_at, due_at: null, handled_at: null,
+        },
+      });
+      return Promise.resolve({ count: 1, items: [terminated] });
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '查看' }));
+
+    expect(await screen.findByText('请在页面确认或拒绝')).not.toBeNull();
+    expect(screen.getByText('审批上下文')).not.toBeNull();
+    expect(screen.getAllByText('alice').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: '通过审批' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '驳回审批' })).toBeNull();
+    expect(screen.queryByPlaceholderText('通过时选填；驳回时必填原因')).toBeNull();
+  });
+
   it('待我审批页签内点击审批打开详情抽屉', async () => {
     mocks.searchParams = 'scope=mine';
     const { container } = renderPage();
@@ -515,6 +547,41 @@ describe('执行记录统一详情入口', () => {
 
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
       expect.stringContaining('query=%E5%81%A5%E5%BA%B7%E5%B7%A1%E6%A3%80'),
+      expect.anything(),
+    ));
+  });
+
+  it('表头筛选后翻页仍请求下一页并保留筛选', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (String(url).includes('/executions/?')) return Promise.resolve({ count: 40, items: [execution] });
+      return Promise.resolve({ count: 0, items: [] });
+    });
+    renderPage();
+    await screen.findByText(execution.workflow_name);
+    mocks.get.mockClear();
+
+    const filterTrigger = screen.getByRole('columnheader', { name: /^状态/ }).querySelector<HTMLElement>('.ant-table-filter-trigger');
+    expect(filterTrigger).not.toBeNull();
+    fireEvent.click(filterTrigger!);
+    const dropdown = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>('.ant-table-filter-dropdown');
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.click(within(dropdown).getByText('已终止'));
+    fireEvent.click(within(dropdown).getByRole('button', { name: /OK|确定/ }));
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      expect.stringContaining('status=TERMINATED'),
+      expect.anything(),
+    ));
+    mocks.get.mockClear();
+
+    const pageTwo = document.querySelector<HTMLElement>('.ant-pagination-item-2');
+    expect(pageTwo).not.toBeNull();
+    fireEvent.click(pageTwo!);
+
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      expect.stringMatching(/page=2.*status=TERMINATED|status=TERMINATED.*page=2/),
       expect.anything(),
     ));
   });

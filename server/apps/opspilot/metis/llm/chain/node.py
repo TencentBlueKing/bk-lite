@@ -40,6 +40,7 @@ from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F40
     _should_use_lightweight_direct_reply,
     _skill_only_step_guidance,
     _skill_package_script_lines,
+    compact_completed_step_line,
 )
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ExtraConfig
 
@@ -67,7 +68,6 @@ from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402,F401
     build_post_tool_directives,
     build_repair_mode_choice_args,
     downgrade_config_analysis_next_step_hint,
-    find_completed_k8s_analysis_choice,
     find_pending_k8s_analysis_choice,
     get_renderer,
     should_emit_config_analysis_report,
@@ -114,6 +114,7 @@ from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.middleware.planned_execution_limits import ask_limit_continue, detect_limit_kind
+from apps.opspilot.metis.llm.middleware.terminal_user_choice import finalize_user_choice
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS,
     PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS,
@@ -123,6 +124,16 @@ from apps.opspilot.metis.llm.middleware.tool_runtime import (
 
 # from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag  # 暂时禁用,master 合并后文件被删除
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
+from apps.opspilot.utils.pending_question import (
+    KIND_K8S_REPAIR_MODE,
+    KIND_LIMIT_CONTINUE,
+    KIND_USER_CHOICE,
+    deserialize_evidence,
+    is_answer_after_choice_prompt,
+    messages_include_terminal_choice,
+    splice_evidence_messages,
+    take_k8s_analysis_details,
+)
 
 # master 删除的 RAG 模块(占位,后续用 lazy import 避免启动失败)
 try:
@@ -290,7 +301,7 @@ class BasicNode:
         return state
 
     def add_chat_history_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-        """添加聊天历史到消息列表"""
+        """添加聊天历史到消息列表，并在提问文本前注入上一轮工具证据。"""
         if config["configurable"]["graph_request"].chat_history:
             for chat in config["configurable"]["graph_request"].chat_history:
                 event = str(getattr(chat, "event", "") or "").strip().lower()
@@ -298,6 +309,15 @@ class BasicNode:
                     state["messages"].append(human_message_with_images(chat.message, chat.image_data))
                 elif event in {"assistant", "bot"}:
                     state["messages"].append(AIMessage(content=chat.message))
+        extra = getattr(config["configurable"]["graph_request"], "extra_config", None) or {}
+        pending = extra.get("pending_question") if isinstance(extra, dict) else None
+        if isinstance(pending, dict) and pending.get("kind") in {KIND_USER_CHOICE, KIND_LIMIT_CONTINUE}:
+            evidence = deserialize_evidence(pending.get("evidence_messages"))
+            state["messages"] = splice_evidence_messages(
+                state["messages"],
+                evidence,
+                str(pending.get("question_text") or ""),
+            )
         return state
 
     async def naive_rag_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -836,7 +856,7 @@ class ToolsNodes(
         if not tool_servers:
             return False
 
-        return all((getattr(server, "url", "") or "").startswith("langchain:") and self._is_k8s_tool_server(server) for server in tool_servers)
+        return any(self._is_k8s_tool_server(server) for server in tool_servers)
 
     async def call_with_structured_output(self, llm, user_message: str, pydantic_model):
         """
@@ -2167,51 +2187,28 @@ class ToolsNodes(
             tools.append(self._build_choice_tool())
         return tools
 
-    async def _run_pending_k8s_repair_workflow(
-        self,
-        messages: list,
-        config: RunnableConfig,
-        *,
-        output_messages: list | None = None,
-    ) -> bool:
-        """模型漏调选择工具时，确定性完成“选择 → 修复对比”闭环。
+    @staticmethod
+    def _match_repair_group_reply(group_by: str) -> str | None:
+        """用户回复能对上展示方式时返回维度，对不上返回 None。"""
+        value = str(group_by or "").strip().lower()
+        if not value:
+            return None
+        if value in {"category", "target", "scope", "severity", "all"}:
+            return value
+        if value == "namespace" or "空间" in value or "namespace" in value or "schema" in value:
+            return "scope"
+        if "等级" in value or "severity" in value or "高危" in value or "风险" in value:
+            return "severity"
+        if "工作负载" in value or "目标" in value or "target" in value:
+            return "target"
+        if "类别" in value or "问题" in value or "category" in value:
+            return "category"
+        if "全部" in value or "一次性" in value or "直接展示" in value or "single" in value:
+            return "all"
+        return None
 
-        output_messages: 若提供，写入合成 ToolMessage，避免同轮分步循环重复提问。
-        """
-        if not (self._enable_config_analysis_report() and self._enable_repair_diff_report()):
-            return False
-
-        completed_choice = find_completed_k8s_analysis_choice(messages)
-        analysis = completed_choice[0] if completed_choice else find_pending_k8s_analysis_choice(messages)
-        if not analysis:
-            return False
-
-        choice_tool = self._build_choice_tool()
-        configurable = (config or {}).get("configurable", {})
-        choice_func = getattr(choice_tool, "_request_choice_func", None)
-        if choice_func is not None:
-            choice_func._configurable = configurable
-            choice_func._execution_id = configurable.get("execution_id", "")
-            choice_func._node_id = configurable.get("node_id") or "skill_test"
-
-        if completed_choice:
-            choice_result = completed_choice[1]
-        else:
-            choice_result = await choice_tool.ainvoke(build_repair_mode_choice_args(analysis), config=config)
-            if output_messages is not None:
-                output_messages.append(
-                    ToolMessage(
-                        name="request_user_choice",
-                        tool_call_id=f"deterministic-choice-{uuid.uuid4().hex[:8]}",
-                        content=str(choice_result or ""),
-                    )
-                )
-        group_by = self._normalize_repair_group_by(str(choice_result or ""))
-
-        from apps.opspilot.metis.llm.tools.kubernetes.analysis import _take_cached_k8s_analysis_details
-
-        configurable = (config or {}).get("configurable", {})
-        deployments = analysis.get("_deployments_full") or _take_cached_k8s_analysis_details(configurable.get("execution_id", "")) or []
+    async def _emit_k8s_repair_report(self, analysis: dict, group_by: str, config: RunnableConfig, output_messages: list | None) -> None:
+        deployments = analysis.get("deployments") or analysis.get("_deployments_full") or []
         analysis_cache = {
             "deployments": deployments if isinstance(deployments, list) else [],
             "cluster_name": analysis.get("cluster_name") or "Kubernetes",
@@ -2242,6 +2239,61 @@ class ToolsNodes(
             parsed_repair = None
         if isinstance(parsed_repair, dict) and parsed_repair.get("items") and parsed_repair.get("_report_emitted_capability") != "repair_diff_report":
             await self._aemit_report_event("repair_diff_report", parsed_repair, config=config)
+
+    async def _run_pending_k8s_repair_workflow(
+        self,
+        messages: list,
+        config: RunnableConfig,
+        *,
+        output_messages: list | None = None,
+    ) -> bool:
+        """分析后终止并询问展示方式；下一轮命中标记时直接出修复对比。"""
+        if not (self._enable_config_analysis_report() and self._enable_repair_diff_report()):
+            return False
+
+        configurable = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
+        if not isinstance(configurable, dict):
+            configurable = {}
+        graph_request = configurable.get("graph_request")
+        extra = getattr(graph_request, "extra_config", None) if graph_request is not None else None
+        pending = extra.get("pending_question") if isinstance(extra, dict) else None
+        if isinstance(pending, dict) and pending.get("kind") == KIND_K8S_REPAIR_MODE:
+            user_message = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "")
+            group_by = self._match_repair_group_reply(user_message)
+            if not group_by:
+                extra.pop("pending_question", None)
+                return False
+            analysis = pending.get("k8s_analysis") if isinstance(pending.get("k8s_analysis"), dict) else {}
+            await self._emit_k8s_repair_report(analysis, group_by, config, output_messages)
+            extra.pop("pending_question", None)
+            return True
+
+        analysis = find_pending_k8s_analysis_choice(messages)
+        if not analysis:
+            return False
+
+        choice_args = build_repair_mode_choice_args(analysis)
+        execution_id = str(configurable.get("execution_id") or "")
+        deployments = analysis.get("_deployments_full") or take_k8s_analysis_details(execution_id) or []
+        k8s_analysis = {
+            "deployments": deployments if isinstance(deployments, list) else [],
+            "cluster_name": analysis.get("cluster_name") or "Kubernetes",
+            "problematic": int(analysis.get("problematic") or 0),
+            "issues_detail": analysis.get("issues_detail"),
+        }
+        question_text, tool_message = finalize_user_choice(
+            question=str(choice_args.get("question") or "请选择修复展示方式"),
+            question_type=str(choice_args.get("question_type") or "single_select"),
+            options=choice_args.get("options"),
+            config=config,
+            messages=messages,
+            tool_call_id=f"deterministic-choice-{uuid.uuid4().hex[:8]}",
+            kind=KIND_K8S_REPAIR_MODE,
+            k8s_analysis=k8s_analysis,
+        )
+        if output_messages is not None:
+            output_messages.append(tool_message)
+            output_messages.append(AIMessage(content=question_text))
         return True
 
     @staticmethod
@@ -2317,6 +2369,7 @@ class ToolsNodes(
         log_reason: str = "",
     ) -> dict:
         from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
+            LLM_ERROR_UNREACHABLE,
             classify_llm_error,
             format_llm_empty_response_log,
             format_llm_failure_log,
@@ -2369,6 +2422,15 @@ class ToolsNodes(
             return {"messages": [response]}
         except Exception as exc:
             classification = classify_llm_error(exc)
+            if classification["code"] == LLM_ERROR_UNREACHABLE:
+                logger.warning(
+                    format_llm_failure_log(
+                        stage="lightweight_direct_reply",
+                        classification=classification,
+                        endpoint=endpoint,
+                    )
+                )
+                return {"messages": [AIMessage(content=str(classification["user_message"]))]}
             logger.exception(
                 format_llm_failure_log(
                     stage="lightweight_direct_reply",
@@ -2423,6 +2485,7 @@ class ToolsNodes(
                 ToolExecutionPlanner,
                 ToolPlanningError,
                 classify_tool_failure_kind,
+                collect_generated_attachment_filenames,
                 drop_alternative_inventory_followups,
                 drop_k8s_followup_steps_after_unresolved_target,
                 extract_declared_cmdb_model,
@@ -2478,6 +2541,11 @@ class ToolsNodes(
             tools = self._collect_deepagent_tools(graph_request)
             registered_tools = list(tools)
             original_messages = list(state.get("messages") or [])
+            prior_attachment_filenames = collect_generated_attachment_filenames(original_messages)
+            attachment_run_token = uuid.uuid4().hex
+            if is_answer_after_choice_prompt(original_messages):
+                tools = [tool for tool in tools if getattr(tool, "name", "") != "request_user_choice"]
+                registered_tools = list(tools)
             collected_output_messages: List[BaseMessage] = []
             summary_ran = False
             skill_packages = self._resolve_skill_packages(graph_request)
@@ -2487,11 +2555,26 @@ class ToolsNodes(
             interrupt_on = self._build_interrupt_on(graph_request, tools)
             token_usage_accumulator = config["configurable"].get("token_usage_accumulator")
 
+            planning_question = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "").strip()
+            if not planning_question:
+                for message in reversed(original_messages):
+                    if isinstance(message, HumanMessage):
+                        planning_question = str(message.content or "").strip()
+                        break
+
+            resumed_messages: list = []
+            extra_config = getattr(graph_request, "extra_config", None) or {}
+            pending_question = extra_config.get("pending_question") if isinstance(extra_config, dict) else None
+            if isinstance(pending_question, dict) and pending_question.get("kind") == "k8s_repair_mode":
+                if await self._run_pending_k8s_repair_workflow(original_messages, config, output_messages=resumed_messages):
+                    return {"messages": resumed_messages}
+
             # 无业务工具、无技能包：跳过规划器与 DeepAgent 内置 FS/execute 工具，直接短 system 回答。
+            # 用户本轮要求生成文件时除外，否则常驻附件进不了规划。
             if self._should_use_lightweight_direct_reply(
                 registered_tools,
                 ["/skills/"] if has_skill_packages else [],
-            ):
+            ) and not self._attachment_request_needs_planner(registered_tools, planning_question, original_messages):
                 light_system = self._build_lightweight_system_prompt(getattr(graph_request, "system_message_prompt", "") or "")
                 if additional_system_prompt:
                     light_system = f"{light_system}\n\n{additional_system_prompt}"
@@ -2527,6 +2610,9 @@ class ToolsNodes(
                         **config.get("configurable", {}),
                         "enabled_report_capabilities": sorted(self._enabled_report_capabilities()),
                         "report_package_context": matched_packages[0] if matched_packages else {},
+                        "attachment_versioning": True,
+                        "prior_attachment_filenames": prior_attachment_filenames,
+                        "attachment_run_token": attachment_run_token,
                     },
                 }
                 try:
@@ -2593,13 +2679,6 @@ class ToolsNodes(
                 accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
             )
 
-            planning_question = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "").strip()
-            if not planning_question:
-                for message in reversed(original_messages):
-                    if isinstance(message, HumanMessage):
-                        planning_question = str(message.content or "").strip()
-                        break
-
             async def _emit_planned_execution_status(phase: str, **payload: Any) -> None:
                 """规划阶段心跳：让前端显示「正在规划」而非长时间空白。"""
                 try:
@@ -2620,6 +2699,7 @@ class ToolsNodes(
                     config=config,
                     agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                     thread_id=missing_params_thread_id,
+                    conversation_messages=original_messages,
                 )
             except Exception as planning_exc:
                 # 规划失败时保持零工具可见，仍允许模型直接回答，绝不退回全量工具。
@@ -2655,10 +2735,14 @@ class ToolsNodes(
             # 空计划（含已启用技能包的寒暄）：跳过 DeepAgent/FS，轻量直答。
             if self._should_use_lightweight_after_empty_plan(plan):
                 await _emit_planned_execution_status("idle", reason="empty_plan")
+                business_tool_names = self._business_tool_names(registered_tools)
                 light_system = self._build_lightweight_system_prompt(
                     getattr(graph_request, "system_message_prompt", "") or "",
-                    skills_available=has_skill_packages,
+                    skills_available=has_skill_packages or bool(business_tool_names),
                 )
+                tool_names = business_tool_names
+                if tool_names:
+                    light_system = f"{light_system}\n当前可用工具: {', '.join(tool_names)}"
                 if additional_system_prompt:
                     light_system = f"{light_system}\n\n{additional_system_prompt}"
                 return await self._invoke_lightweight_direct_reply(
@@ -2765,6 +2849,9 @@ class ToolsNodes(
                     "enabled_report_capabilities": sorted(self._enabled_report_capabilities()),
                     "report_package_context": matched_packages[0] if matched_packages else {},
                     DECLARED_CMDB_MODEL_KEY: extract_declared_cmdb_model(planning_question) or "",
+                    "attachment_versioning": True,
+                    "prior_attachment_filenames": prior_attachment_filenames,
+                    "attachment_run_token": attachment_run_token,
                 },
             }
 
@@ -2819,7 +2906,7 @@ class ToolsNodes(
 
             def _compact_agent_state_with_summaries(*, overflow: bool = False) -> Dict[str, Any]:
                 """用步骤摘要替换完整工具历史，避免 8K 窗口在后续步再次撑爆。"""
-                summary_lines = [f"- {item.objective}: {item.result[:400]}" for item in completed_steps]
+                summary_lines = [compact_completed_step_line(item.objective, item.result) for item in completed_steps]
                 if overflow:
                     header = "【上下文压缩】前序步骤因模型上下文窗口不足已跳过或截断。" "以下为已完成步骤摘要，请仅基于摘要与用户问题继续，不要重复已完成步骤。\n"
                 else:
@@ -2864,6 +2951,7 @@ class ToolsNodes(
             completed_steps: List[CompletedExecutionStep] = []
             replan_count = 0
             summary_ran = False
+            choice_stopped = False
             run_started = monotonic_ms()
             try:
                 pending_steps = list(plan.steps)
@@ -2889,9 +2977,22 @@ class ToolsNodes(
                             "tools": visible_names,
                         },
                     )
-                    limit_middleware.reset_step_continues()
                     step_guidance = ""
-                    if skills_only_plan or (
+                    if "generate_attachment_file" in (step.tools or []):
+                        prior_type = ""
+                        if prior_attachment_filenames and "." in str(prior_attachment_filenames[-1]):
+                            prior_type = str(prior_attachment_filenames[-1]).rsplit(".", 1)[-1].lower()
+                        type_line = f"file_type 必须是 {prior_type}，禁止改成其他格式。" if prior_type else "修改已有文件时必须保持原格式，禁止把 pptx 改成 md 或 docx。"
+                        step_guidance = (
+                            "\n【附件】本步调用一次 generate_attachment_file，content 写入用户要求的全部章节，一次写完。"
+                            f"{type_line}"
+                            "正文字体由系统设为微软雅黑，不要在回复里说不支持字体，也不要让用户自己改。"
+                            "禁止因为写到中途就结束，禁止让用户再说一句才生成完整文件。"
+                            "调用成功后不要在同一步里再调第二次，也不要 request_user_choice。"
+                            "上一轮已经生成过，不能作为跳过本步的理由。"
+                            "工具成功返回前，禁止说已经改好。成功后只给简短摘要，不要贴下载链接。"
+                        )
+                    elif skills_only_plan or (
                         USE_SKILLS_TOOL_NAME in (step.tools or []) and not any(t != USE_SKILLS_TOOL_NAME for t in (step.tools or []))
                     ):
                         step_guidance = "\n" + self._skill_only_step_guidance(skill_packages)
@@ -2931,6 +3032,7 @@ class ToolsNodes(
                             config=config,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                             thread_id=missing_params_thread_id,
+                            conversation_messages=original_messages,
                         )
                         _ensure_skill_runtime_for_plan(replacement)
                         pending_steps = merge_replanned_pending_steps(replacement.steps, leftover_steps)
@@ -3014,6 +3116,16 @@ class ToolsNodes(
                                 tools=active_tools,
                             )
                             step_started = monotonic_ms()
+                            restore_max_tokens = False
+                            saved_max_tokens = getattr(llm, "max_tokens", None)
+                            if "generate_attachment_file" in (step.tools or []):
+                                try:
+                                    current_limit = int(saved_max_tokens or 0)
+                                except (TypeError, ValueError):
+                                    current_limit = 0
+                                if current_limit < 8000:
+                                    llm.max_tokens = 8000
+                                    restore_max_tokens = True
                             try:
                                 with bind_planned_step_index(step_index, config), isolated_child_callback_context():
                                     step_result = await deep_agent.ainvoke(
@@ -3021,6 +3133,8 @@ class ToolsNodes(
                                         config=deep_config,
                                     )
                             finally:
+                                if restore_max_tokens:
+                                    llm.max_tokens = saved_max_tokens
                                 log_stage_timing(
                                     "plan_step",
                                     elapsed_ms(step_started),
@@ -3105,7 +3219,30 @@ class ToolsNodes(
                         result_messages = list(step_result.get("messages") or [])
                         step_messages = result_messages[len(step_payload["messages"]) :]
                         remember_planned_tool_steps(config, step_index, step_messages)
-                        if step_has_unasked_missing_params(step_messages):
+                        if messages_include_terminal_choice(step_messages):
+                            _collect_output_messages(step_messages)
+                            pending_steps.clear()
+                            choice_stopped = True
+                            completed_steps.append(
+                                CompletedExecutionStep(
+                                    objective=step.objective,
+                                    result="已向用户发出选择，本轮结束。",
+                                )
+                            )
+                            await _emit_step_boundary(
+                                "planned_execution_step",
+                                _step_end_payload(
+                                    step_index=step_index,
+                                    total_steps=total_steps,
+                                    objective=step.objective,
+                                    planned_tools=list(step.tools),
+                                    step_messages=step_messages,
+                                    status="awaiting_user_choice",
+                                ),
+                            )
+                            step_finished = True
+                            break
+                        if step_has_unasked_missing_params(step_messages, conversation_messages=original_messages):
                             if missing_params_nudged:
                                 logger.warning(
                                     MISSING_PARAMS_ABORT_LOG,
@@ -3145,33 +3282,18 @@ class ToolsNodes(
                             continue
                         limit_kind = detect_limit_kind(step_messages)
                         if limit_kind:
-                            _collect_output_messages(step_messages)
-                            agent_state = step_result
-                            should_continue = await ask_limit_continue(
+                            summary = _step_summary(step_messages) or "本步骤因调用/预算上限提前结束。"
+                            question_text, tool_message = await ask_limit_continue(
                                 kind=limit_kind,
                                 step_objective=step.objective,
                                 config=config,
+                                messages=list(agent_state.get("messages") or []),
+                                summary=summary,
                             )
-                            if should_continue and limit_middleware.grant_continue(limit_kind):
-                                logger.info(
-                                    "DeepAgent 步骤限制续跑: kind=%s, objective=%s, continue_count=%s",
-                                    limit_kind,
-                                    step.objective,
-                                    limit_middleware.continue_count,
-                                )
-                                continue_msg = _internal_message("用户选择继续当前步骤。请从中断处接着完成，" "不要重复已成功的工具调用；证据足够后立即结束。")
-                                step_payload = {
-                                    **agent_state,
-                                    "messages": list(agent_state.get("messages") or []) + [continue_msg],
-                                }
-                                continue
-                            completed_steps.append(
-                                CompletedExecutionStep(
-                                    objective=step.objective,
-                                    result=_step_summary(step_messages) or "本步骤因调用/预算上限提前结束。",
-                                )
-                            )
-                            agent_state = _compact_agent_state_with_summaries(overflow=False)
+                            _collect_output_messages(step_messages + [tool_message, AIMessage(content=question_text)])
+                            completed_steps.append(CompletedExecutionStep(objective=step.objective, result=summary))
+                            pending_steps.clear()
+                            agent_state = step_result
                             await _emit_step_boundary(
                                 "planned_execution_step",
                                 _step_end_payload(
@@ -3296,68 +3418,70 @@ class ToolsNodes(
                 visibility_middleware.include_always_visible = False
                 limit_middleware.enforce_limits = False
                 self._set_hide_planned_step_text(graph_request, False)
-                # 若分析步因上限提前结束，仍要在最终总结前补上修复闭环。
-                await _maybe_run_repair_workflow()
-                completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "没有需要执行工具的步骤"
-                repair_already_done = any(
-                    getattr(message, "type", "") == "tool" and getattr(message, "name", "") == "generate_repair_report"
-                    for message in collected_output_messages
-                )
-                if repair_already_done:
-                    final_message = _internal_message(
-                        f"工具执行计划目标：{plan.goal or planning_question}\n"
-                        f"已完成步骤及结果：\n{completed_text}\n\n"
-                        "配置检查报告与修复对比已通过界面卡片展示。"
-                        "当前没有可用工具，不要继续调用工具；"
-                        "请用一两句告知用户查看上方报告与修复建议，不要重复 Markdown 表格或声称数据被截断。"
-                    )
-                elif self._should_skip_planned_summary(
-                    collected_output_messages,
-                    completed_step_count=len(completed_steps),
-                    report_mode=self._planned_report_mode(
-                        user_message=planning_question,
-                        agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
-                    ),
-                    require_formatted_report=require_formatted_report,
-                ):
-                    # 步骤正文已经给过表格或完整答案。再跑总结轮会换个说法复述。
+                if choice_stopped:
                     result = {"messages": list(agent_state.get("messages") or [])}
-                    final_message = None
                 else:
-                    final_message = _internal_message(
-                        f"工具执行计划目标：{plan.goal or planning_question}\n"
-                        f"已完成步骤及结果：\n{completed_text}\n\n"
-                        + self._planned_summary_guidance(
+                    # 若分析步因上限提前结束，仍要在最终总结前补上修复闭环。
+                    await _maybe_run_repair_workflow()
+                    completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "没有需要执行工具的步骤"
+                    repair_already_done = any(
+                        getattr(message, "type", "") == "tool" and getattr(message, "name", "") == "generate_repair_report"
+                        for message in collected_output_messages
+                    )
+                    if repair_already_done:
+                        final_message = _internal_message(
+                            f"工具执行计划目标：{plan.goal or planning_question}\n"
+                            f"已完成步骤及结果：\n{completed_text}\n\n"
+                            "配置检查报告与修复对比已通过界面卡片展示。"
+                            "不要继续调用工具；"
+                            "请用一两句告知用户查看上方报告与修复建议，不要重复 Markdown 表格或声称数据被截断。"
+                        )
+                    elif self._should_skip_planned_summary(
+                        collected_output_messages,
+                        completed_step_count=len(completed_steps),
+                        report_mode=self._planned_report_mode(
                             user_message=planning_question,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
-                        )
-                    )
-                if final_message is not None:
-                    summary_ran = True
-                    final_payload = {
-                        **agent_state,
-                        "messages": list(agent_state.get("messages") or []) + [final_message],
-                    }
-                    final_payload["messages"] = await self._prepare_messages_for_llm(
-                        list(final_payload.get("messages") or []),
-                        graph_request,
-                    )
-                    summary_started = monotonic_ms()
-                    try:
-                        with isolated_child_callback_context():
-                            result = await deep_agent.ainvoke(
-                                final_payload,
-                                config=deep_config,
+                        ),
+                        require_formatted_report=require_formatted_report,
+                    ):
+                        result = {"messages": list(agent_state.get("messages") or [])}
+                        final_message = None
+                    else:
+                        final_message = _internal_message(
+                            f"工具执行计划目标：{plan.goal or planning_question}\n"
+                            f"已完成步骤及结果：\n{completed_text}\n\n"
+                            + self._planned_summary_guidance(
+                                user_message=planning_question,
+                                agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                             )
-                    finally:
-                        log_stage_timing(
-                            "planned_summary",
-                            elapsed_ms(summary_started),
-                            thread_id=missing_params_thread_id,
-                            summary_ran=1,
                         )
-                    final_messages = list(result.get("messages") or [])
-                    _collect_output_messages(final_messages[len(final_payload["messages"]) :])
+                    if final_message is not None:
+                        summary_ran = True
+                        final_payload = {
+                            **agent_state,
+                            "messages": list(agent_state.get("messages") or []) + [final_message],
+                        }
+                        final_payload["messages"] = await self._prepare_messages_for_llm(
+                            list(final_payload.get("messages") or []),
+                            graph_request,
+                        )
+                        summary_started = monotonic_ms()
+                        try:
+                            with isolated_child_callback_context():
+                                result = await deep_agent.ainvoke(
+                                    final_payload,
+                                    config=deep_config,
+                                )
+                        finally:
+                            log_stage_timing(
+                                "planned_summary",
+                                elapsed_ms(summary_started),
+                                thread_id=missing_params_thread_id,
+                                summary_ran=1,
+                            )
+                        final_messages = list(result.get("messages") or [])
+                        _collect_output_messages(final_messages[len(final_payload["messages"]) :])
             except Exception as _await_exc:
                 # deepagent 框架层异常(典型:execute 工具撞 sandbox 命令白名单)会把整
                 # 个 graph 标 ERROR,LLM 没机会拿到 ToolMessage 写 follow-up。
@@ -3465,7 +3589,7 @@ class ToolsNodes(
 
         async def _signaled_deep_wrapper(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
             result = await _deep_impl(state, config)
-            publish_node_finished(config)
+            await publish_node_finished(config)
             return result
 
         graph_builder.add_node(deep_wrapper_name, _signaled_deep_wrapper)

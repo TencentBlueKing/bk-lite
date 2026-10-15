@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_snr",
   "plugin": "Switch SNR SNMP",
-  "plugin_desc": "SNMP monitoring template for SNR switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, and interface traffic (enterprise PEN 40418).",
+  "plugin_desc": "SNMP monitoring template for SNR switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply, and interface traffic (enterprise PEN 40418).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_snr'}) by (instance_id)",
   "name": "Switch",
@@ -18,7 +18,8 @@
     "device_cpu_usage",
     "device_memory_usage",
     "device_temperature_celsius",
-    "device_fan_state"
+    "device_fan_state",
+    "device_psu_state"
   ],
   "metrics": [
     {
@@ -127,7 +128,25 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the fan state of the SNR (NAG) device (NAG-MIB sysFanStatus, raw 0=Normal / 1=Abnormal), normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across fans so any faulty fan surfaces. A value greater than 1 indicates a fan failure that can lead to overheating."
+      "description": "This metric reports the fan state of the SNR (NAG) device (NAG-MIB sysFanStatus, raw 0=normal / 1=abnormal), normalized so that 1 = healthy and 2 = fault. Fan positions whose sysFanInserted is not installed (0) are reported as 1 (healthy, no alert) and are not dropped. A value greater than 1 indicates a fan failure that can lead to overheating."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the power supply state of the SNR (NAG) device (NAG-MIB priPowerSupply, raw 1=up / 0=shutdown / 2=unknown), normalized so that 1 = healthy and 2 = fault. A value of 2 indicates a power fault."
     },
     {
       "metric_group": "Traffic",

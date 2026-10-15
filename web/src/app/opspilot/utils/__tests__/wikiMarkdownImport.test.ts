@@ -15,7 +15,7 @@ describe("wikiMarkdownImport", () => {
     expect(markdownImportAccept()).toBe(".zip");
     expect(markdownImportFilePattern().test("bundle.zip")).toBe(true);
     expect(markdownImportFilePattern().test("page.md")).toBe(false);
-    expect(initialCreateDirectoriesFromFolders()).toBe(true);
+    expect(initialCreateDirectoriesFromFolders()).toBe(false);
   });
 
   it("explains reserved OKF skips in plain language", () => {

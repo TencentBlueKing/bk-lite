@@ -37,6 +37,7 @@ from apps.opspilot.services.wiki.material_build_queue_service import (
     unstick_material_for_cancelled_build,
 )
 from apps.opspilot.services.wiki.page_service import PageServiceError, create_manual_page, diff_versions, edit_page, restore_version, save_answer_page
+from apps.opspilot.utils.user_message import BUILD_CONFLICT_CODE, BUILD_CONFLICT_RETRY, build_conflict_message, queue_error_message, user_message
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -111,11 +112,20 @@ def _active_generation_conflict(error):
     )
 
 
-def _directory_service_error(error):
+def _directory_service_error(error, request=None, loader=None):
+    message = str(error)
+    if getattr(error, "code", None) == BUILD_CONFLICT_CODE:
+        message = build_conflict_message(
+            request,
+            message,
+            loader,
+            code=error.code,
+            variant=getattr(error, "conflict_variant", None),
+        )
     return JsonResponse(
         {
             "result": False,
-            "message": str(error),
+            "message": message,
             "code": error.code,
             "retryable": error.retryable,
             "details": error.details,
@@ -927,7 +937,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
                 operator=getattr(request.user, "username", "") or "",
             )
         except DirectoryServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
 
         log_operation(
             request,
@@ -954,7 +964,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
                 operator=getattr(request.user, "username", "") or "",
             )
         except DirectoryServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
 
         log_operation(
             request,
@@ -981,7 +991,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
                 directory_id=data.get("directory_id"),
             )
         except PageServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
         cascade(kb, [page.id], "page_create")
         log_operation(request, "create", "opspilot", f"新增知识页面: {page.title}")
         return JsonResponse({"result": True, "data": self.get_serializer(page).data}, status=201)
@@ -1017,7 +1027,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
                 created_by=getattr(request.user, "username", ""),
             )
         except PageServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
         cascade(kb, [page.id], "qa_answer_save")
         log_operation(request, "create", "opspilot", f"保存问答为知识页面: {page.title}")
         return JsonResponse({"result": True, "data": self.get_serializer(page).data}, status=201)
@@ -1026,7 +1036,10 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
     def update(self, request, *args, **kwargs):
         page = self.get_object()
         if page.status == "archived":
-            return JsonResponse({"result": False, "message": "已归档知识页面不可编辑,请先恢复"}, status=400)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.archived_page_not_editable", "已归档知识页面不可编辑,请先恢复", self.loader)},
+                status=400,
+            )
         old_title = page.title
         try:
             edit_page(
@@ -1038,7 +1051,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
                 updated_by=getattr(request.user, "username", ""),
             )
         except PageServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
         page.refresh_from_db()
         deleted_titles = [old_title] if old_title != page.title else None
         cascade(page.knowledge_base, [page.id], "page_update", deleted_titles=deleted_titles)
@@ -1061,7 +1074,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
                 operator=(getattr(request.user, "username", "") or ""),
             )
         except DirectoryServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
         log_operation(
             request,
             "delete",
@@ -1093,7 +1106,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
                 operator=(getattr(request.user, "username", "") or ""),
             )
         except DirectoryServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
         log_operation(
             request,
             "delete",
@@ -1113,11 +1126,20 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
         page = self.get_object()
         kb = page.knowledge_base
         if page.status != "active":
-            return JsonResponse({"result": False, "message": "只有启用中的知识页面可以重建索引"}, status=400)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.page_reindex_requires_active", "只有启用中的知识页面可以重建索引", self.loader)},
+                status=400,
+            )
         if not kb.embed_provider_id:
-            return JsonResponse({"result": False, "message": "知识库未配置向量模型,无法重建索引"}, status=400)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.no_embedding_model", "知识库未配置向量模型,无法重建索引", self.loader)},
+                status=400,
+            )
         if not page.current_version_id:
-            return JsonResponse({"result": False, "message": "知识页面无当前版本,无法重建索引"}, status=400)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.page_reindex_requires_version", "知识页面无当前版本,无法重建索引", self.loader)},
+                status=400,
+            )
 
         operator = getattr(request.user, "username", "")
         build = rebuild_page_indexes(
@@ -1188,7 +1210,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
         try:
             restore_version(page, version_id, operator=getattr(request.user, "username", ""))
         except PageServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
         page.refresh_from_db()
         cascade(page.knowledge_base, [page.id], "restore")
         log_operation(request, "execute", "opspilot", f"恢复知识页面版本: {page.title}")
@@ -1208,7 +1230,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
                 operator=(getattr(request.user, "username", "") or ""),
             )
         except DirectoryServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
         page.refresh_from_db()
         log_operation(
             request,
@@ -1336,6 +1358,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                         "知识库存在运行中的构建任务，请等待完成后再重试",
                         status_code=409,
                         retryable=True,
+                        conflict_variant=BUILD_CONFLICT_RETRY,
                     )
                 release_idle_runner_lease(knowledge_base.pk, operator=operator, kick_if_queued=False)
 
@@ -1415,7 +1438,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                         task = None
                         task_args = None
         except DirectoryServiceError as service_error:
-            return _directory_service_error(service_error)
+            return _directory_service_error(service_error, request, self.loader)
         except BuildGenerationError as error:
             return _build_generation_error(error)
 
@@ -1432,7 +1455,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": error.code,
-                        "message": error.message,
+                        "message": queue_error_message(request, error, self.loader),
                         "details": error.details,
                         "retryable": error.status_code >= 500,
                     },
@@ -1442,7 +1465,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                 return JsonResponse(
                     {
                         "result": False,
-                        "message": "构建任务下发失败，请重试",
+                        "message": user_message(request, "error.build_task_dispatch_failed", "构建任务下发失败，请重试", self.loader),
                         "code": "task_dispatch_failed",
                         "retryable": True,
                     },
@@ -1453,7 +1476,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": "material_build_in_progress",
-                        "message": "资料正在构建中，请勿重复提交",
+                        "message": user_message(request, "error.material_build_in_progress", "资料正在构建中，请勿重复提交", self.loader),
                         "retryable": True,
                     },
                     status=409,
@@ -1477,7 +1500,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": "构建任务下发失败，请重试",
+                    "message": user_message(request, "error.build_task_dispatch_failed", "构建任务下发失败，请重试", self.loader),
                     "code": "task_dispatch_failed",
                     "retryable": True,
                 },

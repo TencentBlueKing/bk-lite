@@ -31,10 +31,13 @@ def test_k8s_namespace_pipeline(load_fixture, monkeypatch):
     expected = load_fixture("k8s/04_expected_cmdb_result.json")
 
     # 拦掉 VM HTTP
-    monkeypatch.setattr(
-        "apps.cmdb.collection.query_vm.Collection.query",
-        lambda self, sql, timeout=60: vm_resp,
-    )
+    query_calls = []
+
+    def query_metrics(self, sql, timeout=60, min_timestamp=None):
+        query_calls.append((sql, min_timestamp))
+        return vm_resp
+
+    monkeypatch.setattr("apps.cmdb.collection.query_vm.Collection.query", query_metrics)
     # 跳过 search_replicas / format_workload_metrics / format_node_metrics / format_pod_metrics
     # 内部的真实数据库查询；只跑 namespace 部分
     monkeypatch.setattr(CollectK8sMetrics, "search_replicas", lambda self: None)
@@ -42,8 +45,11 @@ def test_k8s_namespace_pipeline(load_fixture, monkeypatch):
     monkeypatch.setattr(CollectK8sMetrics, "format_node_metrics", lambda self: None)
     monkeypatch.setattr(CollectK8sMetrics, "format_workload_metrics", lambda self: None)
 
-    runner = CollectK8sMetrics(cluster_name="k8s-cluster-prod")
+    runner = CollectK8sMetrics(cluster_name="k8s-cluster-prod", round_ts=1700000000)
     runner.run()
+    assert len(query_calls) == 1
+    assert query_calls[0][1] == 1700000000
+    assert 'instance_id="k8s-cluster-prod"' in query_calls[0][0]
 
     namespaces = runner.result["k8s_namespace"]
     actual_names = sorted([ns["name"] for ns in namespaces])
@@ -89,17 +95,23 @@ def test_k8s_4_group_coverage(load_fixture, monkeypatch):
     vm_resp = load_fixture("k8s/03_vm_metrics_response.json")
     expected = load_fixture("k8s/04_expected_cmdb_result.json")
 
-    monkeypatch.setattr(
-        "apps.cmdb.collection.query_vm.Collection.query",
-        lambda self, sql, timeout=60: vm_resp,
-    )
+    query_calls = []
+
+    def query_metrics(self, sql, timeout=60, min_timestamp=None):
+        query_calls.append((sql, min_timestamp))
+        return vm_resp
+
+    monkeypatch.setattr("apps.cmdb.collection.query_vm.Collection.query", query_metrics)
     monkeypatch.setattr(CollectK8sMetrics, "search_replicas", lambda self: None)
     monkeypatch.setattr(CollectK8sMetrics, "format_pod_metrics", lambda self: None)
     monkeypatch.setattr(CollectK8sMetrics, "format_node_metrics", lambda self: None)
     monkeypatch.setattr(CollectK8sMetrics, "format_workload_metrics", lambda self: None)
 
-    runner = CollectK8sMetrics(cluster_name="k8s-cluster-prod")
+    runner = CollectK8sMetrics(cluster_name="k8s-cluster-prod", round_ts=1700000000)
     runner.run()
+    assert len(query_calls) == 1
+    assert query_calls[0][1] == 1700000000
+    assert 'instance_id="k8s-cluster-prod"' in query_calls[0][0]
 
     # namespace 全部采集
     namespaces = runner.result["k8s_namespace"]

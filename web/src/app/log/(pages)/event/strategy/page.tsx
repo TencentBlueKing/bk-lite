@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Input, Button, message, Switch, Popconfirm, Modal } from 'antd';
+import { Button, message, Switch, Popconfirm, Modal } from 'antd';
+import SearchActionBar from '@/components/search-action-bar';
 import useApiClient from '@/utils/request';
 import useLogEventApi from '@/app/log/api/event';
 import { useAlgorithmList } from '@/app/log/hooks/event';
@@ -269,27 +270,28 @@ const Strategy: React.FC = () => {
   return (
     <div className={assetStyle.assetNoTree}>
       <div className={assetStyle.table}>
-        <div className={assetStyle.search}>
-          <div>
-            <Input
-              className="w-[320px]"
-              placeholder={t('common.searchPlaceHolder')}
-              allowClear
-              onPressEnter={enterText}
-              onClear={clearText}
-              onChange={(e) => setSearchText(e.target.value)}
-            ></Input>
-          </div>
-          <Permission requiredPermissions={['Add']}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openPolicyTypeModal}
-            >
-              {t('common.add')}
-            </Button>
-          </Permission>
-        </div>
+        <SearchActionBar
+          searchProps={{
+            allowClear: true,
+            placeholder: t('common.searchPlaceHolder'),
+            value: searchText,
+            onChange: (e) => setSearchText(e.target.value),
+            onPressEnter: enterText,
+            onSearch: enterText,
+            onClear: clearText,
+          }}
+          actions={(
+            <Permission requiredPermissions={['Add']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openPolicyTypeModal}
+              >
+                {t('common.new')}
+              </Button>
+            </Permission>
+          )}
+        />
         <CustomTable
           scroll={{ y: 'calc(100vh - 336px)', x: 'max-content' }}
           columns={columns}

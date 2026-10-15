@@ -1,6 +1,6 @@
 'use client';
 
-import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   Button,
   Drawer,
@@ -32,8 +32,8 @@ import type {
   ApmSloInput,
 } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import FilterToolbar from '@/components/filter-toolbar';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
@@ -404,7 +404,7 @@ export default function ApmSloPage() {
     <CatalogState
       kind="empty"
       description={t('apm.slo.empty', '还没有 SLO，创建一个目标开始跟踪服务可靠性。')}
-      action={<Button disabled={!services.length} type="primary" onClick={openCreateDrawer}>{t('apm.slo.create', '新建 SLO')}</Button>}
+      action={<Button disabled={!services.length} type="primary" onClick={openCreateDrawer}>{t('common.new', '新建')}</Button>}
     />
   ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />;
 
@@ -412,23 +412,25 @@ export default function ApmSloPage() {
     <ApmRouteShell dependency="telemetry" description={t('apm.slo.description', '定义服务可靠性目标，跟踪达标率与错误预算。')} title={t('apm.slo.title', 'SLO')}>
       <ApmSurface>
         <div className="flex flex-col gap-4">
-          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <Input
-              allowClear
-              className="min-w-0 flex-1 md:max-w-sm"
-              prefix={<SearchOutlined aria-hidden="true" />}
-              placeholder={t('apm.slo.searchPlaceholder', '搜索名称 / 服务 / 端点')}
-              value={keyword}
-              onChange={(event) => {
+          <SearchActionBar
+            spacing="flush"
+            searchProps={{
+              placeholder: t('apm.slo.searchPlaceholder', '搜索名称 / 服务 / 端点'),
+              value: keyword,
+              onChange: (event) => {
                 setKeyword(event.target.value);
                 setPage(1);
-              }}
-            />
-            <Space className="ml-auto" size={8}>
-              <Button aria-label={t('apm.slo.refresh', '刷新 SLO')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
-              <Button disabled={!services.length} type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreateDrawer}>{t('apm.slo.create', '新建 SLO')}</Button>
-            </Space>
-          </FilterToolbar>
+              },
+            }}
+            actions={(
+              <Space size={8}>
+                <Button aria-label={t('apm.slo.refresh', '刷新 SLO')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
+                <Button disabled={!services.length} type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreateDrawer}>
+                  {t('common.new', '新建')}
+                </Button>
+              </Space>
+            )}
+          />
           {content}
         </div>
       </ApmSurface>

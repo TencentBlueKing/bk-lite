@@ -53,6 +53,60 @@
       "description": "This metric reports CES/SAOS chassis memory current measurement from cienaCesChassisMemoryHealthCurrMeasurement in KB, scaled to bytes. The chassis memory health table does not expose a paired used/total, so memory utilization percent is not derived."
     },
     {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "Device Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Module temperature of the Ciena CES/SAOS chassis in degrees Celsius (cienaCesChassisModuleTempHealthCurrMeasurement), one series per sensor and slot."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='transmission', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan state of the Ciena CES/SAOS chassis (cienaCesChassisFanStatus): ok/uninstalled=1 normal (empty slots keep a row), rpm-warning=2 abnormal, unknown=3 (gray, no alert); pending (stats not ready) is not reported."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='transmission', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power-supply state of the Ciena CES/SAOS chassis (cienaCesChassisPowerSupplyState): online/uninstalled=1 normal (empty slots keep a row), faulted/offline=2 abnormal."
+    },
+    {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
       "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",

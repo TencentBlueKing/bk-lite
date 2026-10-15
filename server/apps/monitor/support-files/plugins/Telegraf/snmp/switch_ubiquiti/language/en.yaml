@@ -1,6 +1,6 @@
 Switch Ubiquiti SNMP:
   name: Ubiquiti (Telegraf)
-  desc: "SNMP monitoring template for Ubiquiti switch. It reports uptime, memory utilization, temperature, fan, power supply status, and interface traffic, for EdgeSwitch (enterprise PEN 4413)."
+  desc: "SNMP monitoring template for Ubiquiti switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for EdgeSwitch (enterprise PEN 4413)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

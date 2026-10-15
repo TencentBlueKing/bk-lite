@@ -66,6 +66,59 @@
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
 
+    # LANTIME NG 机箱硬件（mbgLtNgSystemHardware 1.3.6.1.4.1.5597.30.0.5）：电源与风扇状态表，table.field 不带 .0；
+    # 设备不提供某张表时不产出对应指标。
+    # mbgLtNgSysPsStatus 1.3.6.1.4.1.5597.30.0.5.0.2.1.2：notAvailable(0) / down(1) / up(2)。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5597.30.0.5.0.2.1.2"
+        name = "status_raw"
+    # mbgLtNgSysFanStatus 1.3.6.1.4.1.5597.30.0.5.1.2.1.2：notAvailable(0) / off(1) / on(2)；mbgLtNgSysFanError 1.3.6.1.4.1.5597.30.0.5.1.2.1.3：notAvailable(0) / no(1) / yes(2)。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5597.30.0.5.1.2.1.2"
+        name = "status_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5597.30.0.5.1.2.1.3"
+        name = "error_raw"
+
+# ---- 电源：up(2)→1 正常、down(1)→2 异常 → device_psu_state；notAvailable 或其它值整行丢弃。
+# ---- 风扇：error yes(2)→2 异常、no(1)→1 正常；error 为 notAvailable 时按 status：on(2)→1、off(1)→2；都为 notAvailable 整行丢弃 → device_fan_state。
+[[processors.starlark]]
+    namepass = ["device_psu", "device_fan"]
+    source = '''
+def apply(metric):
+    status = metric.fields.pop("status_raw", None)
+    error = metric.fields.pop("error_raw", None)
+    state = None
+    if metric.name == "device_psu":
+        if status == 2:
+            state = 1
+        elif status == 1:
+            state = 2
+    else:
+        if error == 2:
+            state = 2
+        elif error == 1:
+            state = 1
+        elif status == 2:
+            state = 1
+        elif status == 1:
+            state = 2
+    if state == None:
+        return None
+    metric.fields["state"] = state
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["meinberg"]
+
 [[processors.enum]]
     namepass = ["snmp"]
     [processors.enum.tagpass]

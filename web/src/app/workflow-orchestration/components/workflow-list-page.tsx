@@ -10,6 +10,7 @@ import { useCallback, useMemo, useState } from 'react';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import OperateModal from '@/components/operate-modal';
+import SourceOriginBadge from '@/components/source-origin-badge';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -23,6 +24,7 @@ import { WorkflowTablePanel } from './workflow-table-panel';
 const API = '/workflow_orchestration/api';
 type ListStatus = 'DRAFT' | 'PUBLISHED';
 type EnabledFilter = 'true' | 'false';
+type BuiltinFilter = 'true' | 'false';
 
 export function WorkflowListPage() {
   const router = useRouter();
@@ -41,6 +43,7 @@ export function WorkflowListPage() {
     return initial === 'DRAFT' || initial === 'PUBLISHED' ? initial : undefined;
   });
   const [enabledFilter, setEnabledFilter] = useState<EnabledFilter>();
+  const [builtinFilter, setBuiltinFilter] = useState<BuiltinFilter>();
   const [triggerType, setTriggerType] = useState<WorkflowTriggerType>();
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [busyId, setBusyId] = useState<number>();
@@ -63,6 +66,7 @@ export function WorkflowListPage() {
       if (query.trim()) params.set('query', query.trim());
       if (status) params.set('status', status);
       if (enabledFilter) params.set('enabled', enabledFilter);
+      if (builtinFilter) params.set('is_builtin', builtinFilter);
       if (triggerType) params.set('trigger_type', triggerType);
       const response = await get<PaginatedResponse<WorkflowRecord>>(`${API}/workflows/?${params.toString()}`, { signal: ticket.signal });
       if (!requestCoordinator.shouldApply(ticket)) return;
@@ -72,9 +76,12 @@ export function WorkflowListPage() {
       setRecords([]);
       setCount(0);
     } finally { requestCoordinator.finish(ticket); }
-  }, [enabledFilter, get, pagination.current, pagination.pageSize, query, requestCoordinator, status, triggerType]);
+  }, [builtinFilter, enabledFilter, get, pagination.current, pagination.pageSize, query, requestCoordinator, status, triggerType]);
 
-  const requestKey = useMemo(() => JSON.stringify([pagination.current, pagination.pageSize, query, status, enabledFilter, triggerType]), [enabledFilter, pagination.current, pagination.pageSize, query, status, triggerType]);
+  const requestKey = useMemo(
+    () => JSON.stringify([pagination.current, pagination.pageSize, query, status, enabledFilter, builtinFilter, triggerType]),
+    [builtinFilter, enabledFilter, pagination.current, pagination.pageSize, query, status, triggerType],
+  );
   useAutoRequest(requestKey, load);
 
   const create = () => {
@@ -126,7 +133,7 @@ export function WorkflowListPage() {
     }
     if (key === 'duplicate') {
       setDuplicateWorkflow(record);
-      setDuplicateName(createDuplicateWorkflowName(record.name, t('workflowOrchestration.workflow.duplicateSuffix', '（副本）')));
+      setDuplicateName(createDuplicateWorkflowName(record.name));
       return;
     }
     if (key === 'delete') {
@@ -144,8 +151,20 @@ export function WorkflowListPage() {
   const moreActions = (record: WorkflowRecord): MenuProps['items'] => [
     { key: 'executions', label: <WorkflowPermission operation="View"><span>{t('workflowOrchestration.execution.records', '执行记录')}</span></WorkflowPermission> },
     { key: 'duplicate', label: <WorkflowPermission operation="Add"><span>{t('common.copy', '复制')}</span></WorkflowPermission> },
-    { type: 'divider' },
-    { key: 'delete', label: <WorkflowPermission operation="Delete" instancePermissions={record.permission}><span>{t('common.delete', '删除')}</span></WorkflowPermission>, danger: true },
+    ...(record.is_builtin
+      ? []
+      : [
+        { type: 'divider' as const },
+        {
+          key: 'delete',
+          label: (
+              <WorkflowPermission operation="Delete" instancePermissions={record.permission}>
+                <span>{t('common.delete', '删除')}</span>
+              </WorkflowPermission>
+          ),
+          danger: true,
+        },
+      ]),
   ];
 
   const runDisabledReason = (record: WorkflowRecord) => {
@@ -172,6 +191,22 @@ export function WorkflowListPage() {
       key: 'name',
       width: 220,
       render: (value: string) => <EllipsisWithTooltip text={value || '--'} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />,
+    },
+    {
+      title: t('workflowOrchestration.workflow.builtin', '是否内置'),
+      key: 'is_builtin',
+      width: 96,
+      filters: [
+        { value: 'true', text: t('common.builtin', '内置') },
+        { value: 'false', text: t('workflowOrchestration.workflow.custom', '自定义') },
+      ],
+      filterMultiple: false,
+      filteredValue: builtinFilter ? [builtinFilter] : null,
+      render: (_, record) => (
+        record.is_builtin
+          ? <SourceOriginBadge kind="builtin" />
+          : <SourceOriginBadge kind="custom" label={t('workflowOrchestration.workflow.custom', '自定义')} />
+      ),
     },
     {
       title: t('workflowOrchestration.workflow.publishStatus', '发布状态'),
@@ -265,7 +300,15 @@ export function WorkflowListPage() {
       fixed: 'right',
       render: (_, record) => (
         <div className="flex items-center gap-1 whitespace-nowrap">
-          <WorkflowPermission operation="Edit" instancePermissions={record.permission}><Button type="link" size="small" onClick={() => router.push(`/workflow-orchestration/workflows/${record.id}?mode=edit`)}>{t('common.edit', '编辑')}</Button></WorkflowPermission>
+          <WorkflowPermission operation={record.is_builtin ? 'View' : 'Edit'} instancePermissions={record.permission}>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => router.push(`/workflow-orchestration/workflows/${record.id}?mode=${record.is_builtin ? 'view' : 'edit'}`)}
+            >
+              {record.is_builtin ? t('common.view', '查看') : t('common.edit', '编辑')}
+            </Button>
+          </WorkflowPermission>
           <WorkflowPermission operation="Execute" instancePermissions={record.permission}>
             <Tooltip title={runDisabledReason(record) || undefined}>
               <span><Button type="link" size="small" disabled={Boolean(runDisabledReason(record))} onClick={() => void execute(record)}>{t('workflowOrchestration.action.run', '运行')}</Button></span>
@@ -293,12 +336,13 @@ export function WorkflowListPage() {
   return <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-4">
     <WorkflowTablePanel
       filters={<Input.Search className="w-[220px]" allowClear enterButton placeholder={t('workflowOrchestration.workflow.searchPlaceholder', '搜索流程名称')} value={queryDraft} onChange={(event) => { const value = event.target.value; setQueryDraft(value); if (!value) { setPagination((item) => ({ ...item, current: 1 })); setQuery(''); } }} onSearch={(value) => { setPagination((item) => ({ ...item, current: 1 })); setQuery(value.trim()); }} />}
-      actions={<><WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={create}>{t('workflowOrchestration.workflow.create', '新建流程')}</Button></WorkflowPermission><WorkflowPermission operation="View"><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission></>}
+      actions={<><WorkflowPermission operation="View"><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission><WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={create}>{t('common.new', '新建')}</Button></WorkflowPermission></>}
     >
       <CustomTable rowKey="id" loading={loading} columns={columns} dataSource={records} className="[&_.ant-table-cell]:whitespace-nowrap" locale={{ emptyText: <Empty description={t('workflowOrchestration.workflow.empty', '当前组织还没有流程')} /> }} pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: count, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], onChange: (current, pageSize) => setPagination({ current, pageSize }) }} onChange={(_, tableFilters, __, extra) => {
         if (extra.action !== 'filter') return;
         setStatus(tableFilters.status?.[0] as ListStatus | undefined);
         setEnabledFilter(tableFilters.enabled?.[0] as EnabledFilter | undefined);
+        setBuiltinFilter(tableFilters.is_builtin?.[0] as BuiltinFilter | undefined);
         setTriggerType(tableFilters.trigger_type?.[0] as WorkflowTriggerType | undefined);
         setPagination((item) => ({ ...item, current: 1 }));
       }} />

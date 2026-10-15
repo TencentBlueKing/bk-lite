@@ -126,6 +126,25 @@ describe('CustomChatSSE 图片预览资源', () => {
       revokeObjectURL,
     });
     mocks.sendMessage.mockReset();
+    let nextId = 1;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = init?.body;
+      const file = body instanceof FormData ? body.get('file') as File | null : null;
+      const id = nextId++;
+      return {
+        ok: true,
+        json: async () => ({
+          result: true,
+          data: {
+            id,
+            name: file?.name || 'file.png',
+            mime: file?.type || 'image/png',
+            size: file?.size || 1,
+            status: 'ready',
+          },
+        }),
+      };
+    }));
   });
 
   afterEach(() => {
@@ -198,8 +217,8 @@ describe('CustomChatSSE 图片预览资源', () => {
       '',
       [],
       [
-        expect.objectContaining({ id: 'first', name: 'first.png', status: 'done' }),
-        expect.objectContaining({ id: 'second', name: 'second.png', status: 'done' }),
+        expect.objectContaining({ id: 1, name: 'first.png', status: 'ready' }),
+        expect.objectContaining({ id: 2, name: 'second.png', status: 'ready' }),
       ],
     );
   });

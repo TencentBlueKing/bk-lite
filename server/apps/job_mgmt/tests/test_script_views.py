@@ -221,6 +221,46 @@ class TestScriptCrud:
         created = Script.objects.get(name="fresh", team=[1])
         assert created.params[0]["default"] == ""
 
+    def test_create_script_with_enum_param(self, su_client):
+        resp = su_client.post(
+            URL,
+            {
+                "name": "enum-script",
+                "content": "echo $1",
+                "script_type": "shell",
+                "team": [1],
+                "params": [
+                    {
+                        "name": "env",
+                        "type": "enum",
+                        "options": ["prod", "dev", "prod", ""],
+                        "default": "prod",
+                        "is_required": True,
+                    }
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
+        script = Script.objects.get(name="enum-script")
+        assert script.params[0]["type"] == "enum"
+        assert script.params[0]["options"] == ["prod", "dev"]
+        assert script.params[0]["default"] == "prod"
+
+    def test_create_rejects_enum_with_encrypt(self, su_client):
+        resp = su_client.post(
+            URL,
+            {
+                "name": "bad-enum",
+                "content": "echo",
+                "script_type": "shell",
+                "team": [1],
+                "params": [{"name": "env", "type": "enum", "options": ["a"], "is_encrypted": True}],
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
     def test_update_keeps_encrypted_default_when_mask_echoed(self, su_client):
         """二次编辑未改加密默认值时，回传 ****** 不得覆盖库中原密文。"""
         from apps.job_mgmt.services.param_crypto import MASKED_DEFAULT, ParamCrypto

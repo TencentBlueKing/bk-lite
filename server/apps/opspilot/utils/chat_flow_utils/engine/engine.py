@@ -347,6 +347,11 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         if start_node:
             mapped_input_data = self.set_start_node_variable(input_data, start_node)
 
+        pending_target = self._pending_question_agent(input_data)
+        if pending_target is not None:
+            logger.info("[SSE-Engine] 续接提问节点: %s", pending_target.get("id"))
+            return pending_target, mapped_input_data, None
+
         final_input_data = self._execute_prerequisite_nodes(nodes_to_execute_before, mapped_input_data)
 
         if target_agent_node:
@@ -375,6 +380,19 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
             start_node_type,
         )
         return None, final_input_data, self._create_error_response("未找到可执行的agents节点（意图路由失败）")
+
+    def _pending_question_agent(self, input_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """标记里的 node_id 仍在当前流程时，跳过意图分类直达该节点。"""
+        pending = input_data.get("pending_question") if isinstance(input_data, dict) else None
+        if not isinstance(pending, dict):
+            return None
+        node_id = str(pending.get("node_id") or "").strip()
+        if not node_id or node_id == "skill_test":
+            return None
+        node = self._get_node_by_id(node_id)
+        if not isinstance(node, dict) or node.get("type") != "agents":
+            return None
+        return node
 
     def _resolve_sse_execute_method(
         self,

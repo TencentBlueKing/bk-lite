@@ -127,6 +127,14 @@ export interface CustomChatMessage {
     name?: string;
     status?: 'uploading' | 'done' | 'error';
   }>;
+  attachments?: Array<{
+    id: number;
+    name: string;
+    mime: string;
+    size: number;
+    status: string;
+    previewUrl?: string;
+  }>;
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
   approvalRequests?: ApprovalRequest[];

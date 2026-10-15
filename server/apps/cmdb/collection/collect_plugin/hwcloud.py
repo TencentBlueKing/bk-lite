@@ -15,8 +15,17 @@ class HwCloudCollectMetrics(CollectBase):
     _MODEL_ID = "hwcloud"
     # 父在子前：ecs 先于 evs(install_on)、vpc 先于 subnet(belong)；其余顺序不敏感。
     MODEL_ORDER = [
-        "hwcloud", "hwcloud_ecs", "hwcloud_vpc", "hwcloud_evs", "hwcloud_obs",
-        "hwcloud_subnet", "hwcloud_eip", "hwcloud_sg", "hwcloud_elb", "hwcloud_rds", "hwcloud_dcs",
+        "hwcloud",
+        "hwcloud_ecs",
+        "hwcloud_vpc",
+        "hwcloud_evs",
+        "hwcloud_obs",
+        "hwcloud_subnet",
+        "hwcloud_eip",
+        "hwcloud_sg",
+        "hwcloud_elb",
+        "hwcloud_rds",
+        "hwcloud_dcs",
     ]
 
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
@@ -53,20 +62,24 @@ class HwCloudCollectMetrics(CollectBase):
 
     def asso_evs(self, data, *args, **kwargs):
         """云硬盘：belong 平台 + （隐藏 server_id 命中时）install_on ECS。"""
-        result = [{
-            "model_id": self._MODEL_ID,
-            "inst_name": self.inst_name,
-            "asst_id": "belong",
-            "model_asst_id": "hwcloud_evs_belong_hwcloud",
-        }]
+        result = [
+            {
+                "model_id": self._MODEL_ID,
+                "inst_name": self.inst_name,
+                "asst_id": "belong",
+                "model_asst_id": "hwcloud_evs_belong_hwcloud",
+            }
+        ]
         ecs_inst = self.ecs_by_id.get(data.get("server_id", ""), "")
         if ecs_inst:
-            result.append({
-                "model_id": "hwcloud_ecs",
-                "inst_name": ecs_inst,
-                "asst_id": "install_on",
-                "model_asst_id": "hwcloud_evs_install_on_hwcloud_ecs",
-            })
+            result.append(
+                {
+                    "model_id": "hwcloud_ecs",
+                    "inst_name": ecs_inst,
+                    "asst_id": "install_on",
+                    "model_asst_id": "hwcloud_evs_install_on_hwcloud_ecs",
+                }
+            )
         return result
 
     def asso_subnet(self, data, *args, **kwargs):
@@ -75,12 +88,14 @@ class HwCloudCollectMetrics(CollectBase):
         if not vpc_inst:
             logger.warning("hwcloud_subnet 关联跳过：未匹配到 VPC(vpc=%s)", data.get("vpc", ""))
             return []
-        return [{
-            "model_id": "hwcloud_vpc",
-            "inst_name": vpc_inst,
-            "asst_id": "belong",
-            "model_asst_id": "hwcloud_subnet_belong_hwcloud_vpc",
-        }]
+        return [
+            {
+                "model_id": "hwcloud_vpc",
+                "inst_name": vpc_inst,
+                "asst_id": "belong",
+                "model_asst_id": "hwcloud_subnet_belong_hwcloud_vpc",
+            }
+        ]
 
     def format_data(self, data):
         for index_data in data["result"]:
@@ -113,10 +128,12 @@ class HwCloudCollectMetrics(CollectBase):
             mapping = self.model_field_mapping.get(model_id, {})
             for index_data in metrics:
                 if index_data.get("cmdb_collect_error"):
+                    self.snapshot_complete = False
                     logger.warning("skip hwcloud model=%s due to cmdb_collect_error", model_id)
                     continue
                 if model_id != self._MODEL_ID:
                     if not index_data.get("resource_name") or not index_data.get("resource_id"):
+                        self.snapshot_complete = False
                         logger.warning("skip hwcloud model=%s: incomplete identity", model_id)
                         continue
                 data = {}
@@ -128,6 +145,7 @@ class HwCloudCollectMetrics(CollectBase):
                         try:
                             data[field] = key_or_func[0](raw)
                         except Exception as e:  # noqa: BLE001
+                            self.snapshot_complete = False
                             logger.error("hwcloud convert failed field=%s value=%s err=%s", field, raw, e)
                     elif callable(key_or_func):
                         data[field] = key_or_func(index_data, model_id=model_id)

@@ -80,7 +80,8 @@ def test_group_data_rule_cmdb_get_app_data_injects_user_info(monkeypatch):
     }
 
 
-def test_group_data_rule_cmdb_get_app_data_rejects_invalid_current_team(monkeypatch):
+@pytest.mark.parametrize("language,expected_message", [("zh-Hans", "current_team 参数非法"), ("en", "current_team parameter is invalid")])
+def test_group_data_rule_cmdb_get_app_data_rejects_invalid_current_team(monkeypatch, language, expected_message):
     class FakeClient:
         def get_module_data(self, **kwargs):
             return {"count": 0, "items": []}
@@ -103,13 +104,15 @@ def test_group_data_rule_cmdb_get_app_data_rejects_invalid_current_team(monkeypa
         },
     )
     request.COOKIES["current_team"] = "bad"
-    force_authenticate(request, user=_request_user([7], {"data_permission-View"}))
+    user = _request_user([7], {"data_permission-View"})
+    user.locale = language
+    force_authenticate(request, user=user)
 
     response = GroupDataRuleViewSet.as_view({"get": "get_app_data"})(request)
     payload = _json_payload(response)
 
     assert response.status_code == 400
-    assert payload == {"result": False, "message": "current_team 参数非法"}
+    assert payload == {"result": False, "message": expected_message}
 
 
 def test_group_data_rule_job_get_app_data_injects_authorized_team(monkeypatch):

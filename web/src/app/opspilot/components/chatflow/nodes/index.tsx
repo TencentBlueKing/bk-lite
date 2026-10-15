@@ -1,6 +1,10 @@
 import React from 'react';
 import { BaseNode } from './BaseNode';
 import { nodeConfig } from '@/app/opspilot/constants/chatflow';
+import { useTranslation } from '@/utils/i18n';
+
+const shortenIntentLabel = (name: string) =>
+  name.length > 16 ? `${name.slice(0, 16)}...` : name;
 
 export const TimeTriggerNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.celery.icon} color={nodeConfig.celery.color} hasOutput={true} />
@@ -82,18 +86,17 @@ export const MemoryWriteNode = (props: any) => (
 );
 
 export const IntentClassificationNode = (props: any) => {
+  const { t } = useTranslation();
+  const fallbackName = t('chatflow.nodeConfig.defaultIntent', '默认意图');
   const intentCount = props.data?.config?.intents?.length || 1;
-  const intents = props.data?.config?.intents || [{ name: '默认意图' }];
-  
-  // 生成简短的标签：取意图名称的前几个字
-  const outputLabels = intents.map((intent: any, index: number) => {
-    const name = intent.name || `意图${index + 1}`;
-    // 如果名称过长，截取前4个字符
-    return name.length > 4 ? name.substring(0, 4) + '...' : name;
-  });
-  
+  const intents = props.data?.config?.intents || [{ name: fallbackName }];
+
+  const outputLabels = intents.map((intent: any) =>
+    shortenIntentLabel(intent.name || fallbackName),
+  );
+
   // 使用 intent name 作为 Handle ID
-  const outputHandleIds = intents.map((intent: any) => intent.name || '默认意图');
+  const outputHandleIds = intents.map((intent: any) => intent.name || fallbackName);
   
   // 使用 intentCount 作为 key 的一部分，确保数量变化时重新渲染
   return (

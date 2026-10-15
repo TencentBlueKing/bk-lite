@@ -1,3 +1,5 @@
+import { translateForLocale } from '@/app/opspilot/components/custom-chat-sse/i18n';
+
 export const MEMORY_LIST_CONTENT_PREVIEW_CHARS = 240;
 export const MEMORY_PREVIEW_CONTENT_LIMIT = 80_000;
 export const MEMORY_INLINE_EDIT_MAX_CHARS = 200_000;
@@ -14,10 +16,11 @@ export function formatMemoryContentSize(length: number, locale = 'zh'): string {
     }
     return `${chars} chars`;
   }
+  const t = translateForLocale('zh');
   if (chars >= 10_000) {
-    return `${(chars / 10_000).toFixed(1)} 万字`;
+    return t('memory.wordCount', '{count} 万字', { count: (chars / 10_000).toFixed(1) });
   }
-  return `${chars} 字`;
+  return t('memory.charCount', '{count} 字', { count: chars });
 }
 
 export function canInlineEditMemory(contentLength?: number): boolean {

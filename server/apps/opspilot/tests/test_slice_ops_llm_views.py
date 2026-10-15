@@ -49,11 +49,12 @@ def _su():
     return u
 
 
-def _dispatch(viewset, action_name, method, *, data=None, query="", user=None, pk=None, fmt="json"):
+def _dispatch(viewset, action_name, method, *, data=None, query="", user=None, pk=None, fmt="json", headers=None):
     factory = APIRequestFactory()
     path = f"/{query}"
+    extra = headers or {}
     if method in ("post", "put", "patch"):
-        request = getattr(factory, method)(path, data=data or {}, format=fmt)
+        request = getattr(factory, method)(path, data=data or {}, format=fmt, **extra)
     elif method == "delete":
         request = factory.delete(path)
     else:
@@ -89,7 +90,34 @@ class TestLLMViewSet:
         obj = LLMSkill.objects.get(name="skill-a")
         # create 强制写入默认 prompt 与开启对话历史
         assert obj.enable_conversation_history is True
+        assert "professional assistant" in obj.skill_prompt
+
+    def test_create_中文用户写入中文默认提示词(self, mocker):
+        mocker.patch(f"{LLM_MOD}.log_operation")
+        user = _su()
+        user.locale = "zh-Hans"
+        user.save(update_fields=["locale"])
+        resp = _dispatch(LLMViewSet, "create", "post", data={"name": "skill-zh", "team": [1]}, user=user)
+        assert resp.status_code == 201
+        obj = LLMSkill.objects.get(name="skill-zh")
         assert "专业机器人" in obj.skill_prompt
+
+    def test_create_页面英文覆盖账号中文(self, mocker):
+        mocker.patch(f"{LLM_MOD}.log_operation")
+        user = _su()
+        user.locale = "zh-Hans"
+        user.save(update_fields=["locale"])
+        resp = _dispatch(
+            LLMViewSet,
+            "create",
+            "post",
+            data={"name": "skill-ui-en", "team": [1]},
+            user=user,
+            headers={"HTTP_X_BK_LOCALE": "en"},
+        )
+        assert resp.status_code == 201
+        obj = LLMSkill.objects.get(name="skill-ui-en")
+        assert "professional assistant" in obj.skill_prompt
 
     def test_create_重名返回false(self, mocker):
         mocker.patch(f"{LLM_MOD}.log_operation")

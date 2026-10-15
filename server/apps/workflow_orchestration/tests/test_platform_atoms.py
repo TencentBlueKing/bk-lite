@@ -235,7 +235,7 @@ def test_notification_atom_fails_when_the_channel_rejects_delivery(mocker):
 
 
 @pytest.mark.django_db
-def test_notification_atom_sends_expiring_report_link_instead_of_the_file(mocker):
+def test_notification_atom_sends_expiring_report_link_instead_of_the_file(mocker, settings):
     from datetime import timedelta
 
     from django.utils import timezone
@@ -243,6 +243,7 @@ def test_notification_atom_sends_expiring_report_link_instead_of_the_file(mocker
     from apps.system_mgmt.models import User
     from apps.workflow_orchestration.models import ExecutionArtifact, Workflow, WorkflowExecution
 
+    settings.WEB_BASE_URL = "https://portal.example"
     User.objects.create(
         username="alice",
         display_name="Alice",
@@ -271,6 +272,7 @@ def test_notification_atom_sends_expiring_report_link_instead_of_the_file(mocker
             "team": 7,
             "execution_id": str(execution.id),
             "channel_id": 3,
+            "notification_type": "EMAIL",
             "recipients": ["alice"],
             "title": "巡检报告",
             "body": "已完成",
@@ -280,10 +282,113 @@ def test_notification_atom_sends_expiring_report_link_instead_of_the_file(mocker
 
     body = system.dispatch_notification.call_args.kwargs["body"]
     payload = system.dispatch_notification.call_args.kwargs["event_payload"]
-    assert "报告下载（24 小时内有效）" in body
-    assert "artifacts/shared/?token=" in body
+    assert body == "已完成"
+    assert "报告下载" not in body
     assert artifact.object_key not in body
-    assert payload["report_link"] == body.split("：", 1)[1]
+    assert payload["report_link"].startswith("https://portal.example/workflow_orchestration/api/artifacts/shared/?token=")
+
+
+@pytest.mark.django_db
+def test_notification_atom_defaults_email_recipients_to_execution_actor(mocker):
+    from apps.system_mgmt.models import User
+
+    user = User.objects.create(
+        username="runner",
+        display_name="Runner",
+        email="runner@example.com",
+        password="x",
+        group_list=[{"id": 7, "name": "Current"}],
+    )
+    system = mocker.patch("apps.workflow_orchestration.atom_packages.bklite_notification.runtime.handler.SystemMgmt").return_value
+    system.dispatch_notification.return_value = {"result": True, "code": "delivered", "message": "success"}
+
+    notification_atom(
+        {
+            "team": 7,
+            "execution_id": "exec-1",
+            "channel_id": 3,
+            "notification_type": "EMAIL",
+            "recipients": [],
+            "title": "巡检报告",
+            "body": "已完成",
+            "__bklite_context": {
+                "execution_id": "exec-1",
+                "organization_id": 7,
+                "actor": {"username": "runner", "domain": "domain.com"},
+            },
+        }
+    )
+
+    assert system.dispatch_notification.call_args.kwargs["recipients"] == [str(user.id)]
+
+
+@pytest.mark.django_db
+def test_notification_atom_requires_channel_for_email(mocker):
+    system = mocker.patch("apps.workflow_orchestration.atom_packages.bklite_notification.runtime.handler.SystemMgmt").return_value
+    with pytest.raises(ValueError, match="通知方式"):
+        notification_atom(
+            {
+                "team": 7,
+                "notification_type": "EMAIL",
+                "recipients": ["1"],
+                "title": "巡检报告",
+                "body": "已完成",
+                "__bklite_context": {
+                    "execution_id": "exec-1",
+                    "organization_id": 7,
+                    "actor": {"username": "runner", "domain": "domain.com"},
+                },
+            }
+        )
+    system.dispatch_notification.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_notification_atom_requires_absolute_report_link_for_email(mocker, settings):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.system_mgmt.models import User
+    from apps.workflow_orchestration.models import ExecutionArtifact, Workflow, WorkflowExecution
+
+    settings.WEB_BASE_URL = ""
+    User.objects.create(
+        username="alice",
+        display_name="Alice",
+        email="alice@example.com",
+        password="x",
+        group_list=[{"id": 7, "name": "Current"}],
+    )
+    system = mocker.patch("apps.workflow_orchestration.atom_packages.bklite_notification.runtime.handler.SystemMgmt").return_value
+    workflow = Workflow.objects.create(name="巡检", team=[7], definition={})
+    execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
+    artifact = ExecutionArtifact.objects.create(
+        execution=execution,
+        team=[7],
+        format="docx",
+        object_key="reports/a.docx",
+        filename="a.docx",
+        content_type="application/docx",
+        sha256="c" * 64,
+        size=4,
+        expires_at=timezone.now() + timedelta(days=1),
+    )
+
+    with pytest.raises(ValueError, match="WEB_BASE_URL"):
+        notification_atom(
+            {
+                "team": 7,
+                "execution_id": str(execution.id),
+                "channel_id": 3,
+                "notification_type": "EMAIL",
+                "recipients": ["alice"],
+                "title": "巡检报告",
+                "body": "已完成",
+                "report_artifact": {"id": str(artifact.id)},
+            }
+        )
+    system.dispatch_notification.assert_not_called()
 
 
 @pytest.mark.django_db

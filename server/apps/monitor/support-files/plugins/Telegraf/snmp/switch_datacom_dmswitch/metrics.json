@@ -1,0 +1,81 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_datacom_dmswitch",
+  "plugin": "Switch Datacom DmSwitch SNMP",
+  "plugin_desc": "SNMP monitoring template for legacy Datacom DmSwitch switch (DMswitch-MIB). It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 3709).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='switch', collect_type='snmp_datacom_dmswitch'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Datacom DmSwitch over the last minute (DMswitch-MIB swCpuUsage, reported in hundredths of a percent and divided by 100). Sustained high CPU usage can indicate control-plane overload or attack traffic."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Datacom DmSwitch in percent (DMswitch-MIB swMemUsage). High memory usage may indicate leaks, oversized tables, or insufficient capacity."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Switch unit index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of each switch unit in degrees Celsius (DMswitch-MIB switchInfoTable swTemperature), one series per stack unit. High temperatures can indicate cooling failure and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

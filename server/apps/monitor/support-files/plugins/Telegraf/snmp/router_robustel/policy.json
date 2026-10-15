@@ -1,5 +1,31 @@
 {
   "object": "Router",
   "plugin": "Router Robustel SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Robustel路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 Robustel 路由器整机内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或连接表过大，避免业务进程异常或设备重启。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
 }

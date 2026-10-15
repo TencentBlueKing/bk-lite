@@ -19,6 +19,7 @@ class AlertStub:
     dimensions: dict = None
     enrichment: dict = None
     operator: list = None
+    owners: list = None
     team: list = None
     created_at: object = None
     first_event_time: object = None
@@ -29,13 +30,17 @@ class AlertStub:
         self.dimensions = self.dimensions or {"instance": "10.0.0.8"}
         self.enrichment = self.enrichment or {"cmdb": {"owner": "张三"}}
         self.operator = self.operator or ["owner"]
+        self.owners = self.owners or []
         self.team = self.team or [1]
 
 
 def test_email_html_keeps_layout_and_escapes_variable_values():
     from apps.alerts.notification_templates.renderer import build_alert_context, render_source
 
-    context = build_alert_context(AlertStub(), ["zhangsan"], "assignment")
+    context = build_alert_context(AlertStub(owners=["alice", "bob"]), ["zhangsan"], "assignment")
+    rendered_owners = render_source("责任人 {{ alert.owners }}", context, channel_type="email")
+    assert "alice" in rendered_owners.value
+    assert "bob" in rendered_owners.value
     result = render_source(
         '<table><tr><td style="color: red">{{ alert.title }}</td></tr>' "<tr><td>{{ alert.content }}</td></tr></table>",
         context,
@@ -233,3 +238,21 @@ def test_large_collection_is_rejected_before_output_expansion():
 
     with pytest.raises(TemplateValidationError, match="不能超过 100 项"):
         render_source("{{ enrichment.cmdb.owners }}", context, channel_type="enterprise_wechat_bot")
+
+
+def test_email_style_accepts_only_level_color_variable():
+    from apps.alerts.notification_templates.renderer import TemplateValidationError, build_alert_context, render_source
+
+    context = build_alert_context(AlertStub(), [], "assignment", level_display_name="警告", level_color="#11aa22")
+    result = render_source(
+        '<strong style="color:{{ alert.level_color }};">{{ alert.level }}</strong>',
+        context,
+        channel_type="email",
+    )
+
+    assert result.value == '<strong style="color:#11AA22;">警告</strong>'
+    unsafe = build_alert_context(AlertStub(), [], "assignment", level_color='red;background:url("https://example.test/x")')
+    fallback = render_source('<p style="color:{{ alert.level_color }};">x</p>', unsafe, channel_type="email")
+    assert fallback.value == '<p style="color:#FFAD42;">x</p>'
+    with pytest.raises(TemplateValidationError, match="变量只能放在 HTML 文本节点中"):
+        render_source('<strong style="color:{{ alert.title }};">{{ alert.level }}</strong>', context, channel_type="email")

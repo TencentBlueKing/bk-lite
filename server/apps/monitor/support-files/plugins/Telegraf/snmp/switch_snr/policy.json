@@ -91,6 +91,21 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "SNR交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 SNR (NAG) 设备电源状态（归一后 1=正常，2=异常），仅取值为 2 时触发告警，提示供电中断或冗余失效。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

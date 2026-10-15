@@ -7,12 +7,20 @@ export const MODEL_TYPE_OPTIONS: Record<string, string> = {
 import type {ProtocolType, ProviderResourceType, VendorType} from '@/app/opspilot/types/provider';
 
 export const MODEL_CATEGORY_OPTIONS = [
-  { value: 'text', label: '文本类' },
-  { value: 'multimodal', label: '多模态' },
-  { value: 'reasoning', label: '推理增强' },
-  { value: 'code', label: '代码类' },
-  { value: 'other', label: '其他' }
+  { value: 'text', label: '文本类', labelKey: 'provider.categoryText' },
+  { value: 'multimodal', label: '多模态', labelKey: 'provider.categoryMultimodal' },
+  { value: 'reasoning', label: '推理增强', labelKey: 'provider.categoryReasoning' },
+  { value: 'code', label: '代码类', labelKey: 'provider.categoryCode' },
+  { value: 'other', label: '其他', labelKey: 'common.other' }
 ];
+
+export const modelCategoryLabel = (
+  value: string,
+  t: (key: string, defaultMessage?: string) => string,
+): string => {
+  const option = MODEL_CATEGORY_OPTIONS.find((item) => item.value === value);
+  return option ? t(option.labelKey, option.label) : value;
+};
 
 export const MODEL_CATEGORY_MAPPING: Record<string, string> = MODEL_CATEGORY_OPTIONS.reduce(
   (acc, option) => {
@@ -46,23 +54,35 @@ export const MODEL_TABS: Array<{ key: string; label: string; type: ProviderResou
 export const VENDOR_OPTIONS: Array<{
   value: VendorType;
   label: string;
+  /** 非空表示 label 是中文兜底值，渲染处应走 t(labelKey, label) */
+  labelKey?: string;
   icon: string;
   defaultApiBase: string;
 }> = [
   { value: 'openai', label: 'OpenAI', icon: 'GPT', defaultApiBase: 'https://api.openai.com/v1' },
   { value: 'azure', label: 'Azure', icon: 'azure', defaultApiBase: 'https://{resource}.openai.azure.com/' },
-  { value: 'aliyun', label: '阿里云', icon: 'Alibaba', defaultApiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-  { value: 'zhipu', label: '智谱', icon: 'Zhipu', defaultApiBase: 'https://open.bigmodel.cn/api/paas/v4' },
-  { value: 'baidu', label: '百度', icon: 'Baidu', defaultApiBase: 'https://qianfan.baidubce.com/v2' },
+  { value: 'aliyun', label: '阿里云', labelKey: 'provider.vendorAliyun', icon: 'Alibaba', defaultApiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+  { value: 'zhipu', label: '智谱', labelKey: 'provider.vendorZhipu', icon: 'Zhipu', defaultApiBase: 'https://open.bigmodel.cn/api/paas/v4' },
+  { value: 'baidu', label: '百度', labelKey: 'provider.vendorBaidu', icon: 'Baidu', defaultApiBase: 'https://qianfan.baidubce.com/v2' },
   { value: 'anthropic', label: 'Anthropic', icon: 'Anthropic', defaultApiBase: 'https://api.anthropic.com' },
   { value: 'deepseek', label: 'DeepSeek', icon: 'DeepSeek', defaultApiBase: 'https://api.deepseek.com/v1' },
-  { value: 'other', label: '其他', icon: 'Default', defaultApiBase: '' },
+  { value: 'other', label: '其他', labelKey: 'common.other', icon: 'Default', defaultApiBase: '' },
 ];
 
 export const VENDOR_LABEL_MAP: Record<VendorType, string> = VENDOR_OPTIONS.reduce((acc, option) => {
   acc[option.value] = option.label;
   return acc;
 }, {} as Record<VendorType, string>);
+
+/** 取供应商展示名：优先走 locale，缺词条时回退中文 label。 */
+export const vendorDisplayName = (
+  vendorType: VendorType,
+  t: (key: string, defaultMessage?: string) => string
+): string => {
+  const option = VENDOR_OPTIONS.find((item) => item.value === vendorType);
+  if (!option) return '--';
+  return option.labelKey ? t(option.labelKey, option.label) : option.label;
+};
 
 export const VENDOR_ICON_MAP: Record<VendorType, string> = VENDOR_OPTIONS.reduce((acc, option) => {
   acc[option.value] = option.icon;
@@ -85,10 +105,11 @@ export const getProviderType = (type: ProviderResourceType): string | undefined 
 export const PROTOCOL_TYPE_OPTIONS: Array<{
   value: ProtocolType;
   label: string;
+  labelKey: string;
   defaultApiBase: string;
 }> = [
-  { value: 'openai', label: 'OpenAI 协议', defaultApiBase: '' },
-  { value: 'anthropic', label: 'Anthropic 协议', defaultApiBase: 'https://api.anthropic.com' },
+  { value: 'openai', label: 'OpenAI 协议', labelKey: 'provider.protocolOpenai', defaultApiBase: '' },
+  { value: 'anthropic', label: 'Anthropic 协议', labelKey: 'provider.protocolAnthropic', defaultApiBase: 'https://api.anthropic.com' },
 ];
 
 // 获取供应商类型对应的默认 Anthropic API 地址

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Button, message, Spin, Tooltip } from 'antd';
+import React from 'react';
+import { Button, message, Tooltip } from 'antd';
 import { RelationshipsProvider } from '@/app/cmdb/context/relationships';
 import SideMenuLayout, { WithSideMenuLayoutProps } from '../components/sub-layout';
 import { useRouter } from 'next/navigation';
@@ -16,7 +16,6 @@ import { useFollowedAssets } from '@/app/cmdb/hooks/useFollowedAssets';
 const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [pageLoading] = useState<boolean>(false);
   const objIcon: string = searchParams.get('icn') || '';
   const modelName: string = searchParams.get('model_name') || '';
   const modelId: string = searchParams.get('model_id') || '';
@@ -42,18 +41,20 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   };
 
   const intro = (
-    <header className="grid grid-cols-[30px_minmax(0,1fr)_28px] items-start gap-[10px]">
-      <ModelIcon
-        icon={objIcon}
-        modelId={modelId}
-        className="block"
-        alt={t('picture')}
-        width={30}
-        height={30}
-      />
+    <header className="grid grid-cols-[40px_minmax(0,1fr)_28px] items-start gap-3">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[var(--color-fill-1)]">
+        <ModelIcon
+          icon={objIcon}
+          modelId={modelId}
+          className="block"
+          alt={t('picture')}
+          width={28}
+          height={28}
+        />
+      </div>
       <div className="min-w-0">
-        <EllipsisWithTooltip text={modelName} className="block w-full whitespace-nowrap overflow-hidden text-ellipsis text-[14px] font-[800] mb-[2px] break-all" />
-        <EllipsisWithTooltip text={instName} className="block w-full whitespace-nowrap overflow-hidden text-ellipsis break-all" />
+        <EllipsisWithTooltip text={modelName} className="mb-0.5 block w-full overflow-hidden text-ellipsis whitespace-nowrap break-all text-base font-semibold text-[var(--color-text-1)]" />
+        <EllipsisWithTooltip text={instName} className="block w-full overflow-hidden text-ellipsis whitespace-nowrap break-all text-xs text-[var(--color-text-3)]" />
       </div>
       <Tooltip title={followed ? t('AssetSearch.unfollow') : t('AssetSearch.follow')}>
         <Button
@@ -61,7 +62,7 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           size="small"
           loading={submitting}
           icon={followed ? <StarFilled /> : <StarOutlined />}
-          className={`shrink-0 ${followed ? 'text-[#fa8c16]' : ''}`}
+          className={`shrink-0 ${followed ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-3)]'}`}
           onClick={handleFollowClick}
         />
       </Tooltip>
@@ -77,9 +78,7 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
   return (
     <div className={`flex flex-col h-full min-h-0 w-full min-w-0 ${attrLayoutStyle.attrLayout}`}>
-      <Spin spinning={pageLoading} wrapperClassName="h-full min-h-0 [&_.ant-spin-container]:h-full">
-        <SideMenuLayout {...layoutProps} />
-      </Spin>
+      <SideMenuLayout {...layoutProps} />
     </div>
   );
 };

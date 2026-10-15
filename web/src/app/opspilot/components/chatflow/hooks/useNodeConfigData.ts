@@ -40,7 +40,7 @@ export const useNodeConfigData = () => {
       setSkillsLoaded(true);
     } catch (error) {
       console.error('Failed to load skills:', error);
-      message.error(t('skill.settings.noSkillHasBeenSelected'));
+      message.error(t('chatflow.messages.loadSkillsFailed', '智能体加载失败'));
     } finally {
       setLoadingSkills(false);
     }

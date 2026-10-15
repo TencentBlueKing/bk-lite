@@ -473,8 +473,9 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
 
   if (!ready) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Spin />
+      <div className="flex h-full min-h-0 flex-col" aria-busy="true" aria-label="loading">
+        <div className="h-12 shrink-0 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35" />
+        <div className="min-h-0 flex-1 animate-pulse bg-[var(--color-fill-1)]" />
       </div>
     );
   }

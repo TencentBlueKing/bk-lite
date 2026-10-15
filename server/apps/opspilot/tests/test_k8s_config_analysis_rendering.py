@@ -4,6 +4,7 @@ import types
 from types import SimpleNamespace
 
 import pytest
+
 for _mod_name in ("oracledb", "pyodbc"):
     sys.modules.setdefault(_mod_name, types.ModuleType(_mod_name))
 
@@ -15,25 +16,22 @@ _falkordb_asyncio = types.ModuleType("falkordb.asyncio")
 setattr(_falkordb_asyncio, "FalkorDB", type("FalkorDB", (), {}))
 sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
-from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.messages import SystemMessage, ToolMessage  # noqa: E402
 
-from apps.opspilot.metis.llm.chain.k8s_report_tools import (
-    build_config_diff_report_payload,
+from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402
     build_config_analysis_report_payload,
+    build_config_diff_report_payload,
     should_emit_config_analysis_report,
 )
-from apps.opspilot.metis.llm.chain.node import (
+from apps.opspilot.metis.llm.chain.node import (  # noqa: E402
     ToolsNodes,
     build_a2ui_report_contract,
     build_post_tool_directives,
     build_repair_mode_choice_args,
     downgrade_config_analysis_next_step_hint,
 )
-from apps.opspilot.metis.llm.tools.kubernetes.analysis import (
-    _take_cached_k8s_analysis_details,
-    analyze_deployment_configurations,
-    build_config_analysis_next_step_hint,
-)
+from apps.opspilot.metis.llm.tools.kubernetes.analysis import analyze_deployment_configurations, build_config_analysis_next_step_hint  # noqa: E402
+from apps.opspilot.utils.pending_question import take_k8s_analysis_details  # noqa: E402
 
 
 @pytest.fixture
@@ -54,11 +52,7 @@ def _make_container(
         requests={"cpu": "100m"} if has_requests else None,
         limits={"memory": "256Mi"} if has_limits else None,
     )
-    security_context = (
-        SimpleNamespace(run_as_non_root=run_as_non_root)
-        if run_as_non_root is not None
-        else None
-    )
+    security_context = SimpleNamespace(run_as_non_root=run_as_non_root) if run_as_non_root is not None else None
     return SimpleNamespace(
         name="main",
         image=image,
@@ -76,17 +70,13 @@ def _make_deployment(*, name="demo", namespace="default", replicas=2, containers
             replicas=replicas,
             strategy=SimpleNamespace(type="RollingUpdate"),
             selector=SimpleNamespace(match_labels={"app": name}),
-            template=SimpleNamespace(
-                spec=SimpleNamespace(containers=containers or [_make_container()], affinity=affinity)
-            ),
+            template=SimpleNamespace(spec=SimpleNamespace(containers=containers or [_make_container()], affinity=affinity)),
         ),
     )
 
 
 def _make_pdb_for(deployment_name):
-    return SimpleNamespace(
-        spec=SimpleNamespace(selector=SimpleNamespace(match_labels={"app": deployment_name}))
-    )
+    return SimpleNamespace(spec=SimpleNamespace(selector=SimpleNamespace(match_labels={"app": deployment_name})))
 
 
 def _run_config_analysis(
@@ -143,16 +133,18 @@ def test_build_post_tool_directives_prevents_duplicate_config_summary_and_report
             ToolMessage(
                 name="analyze_deployment_configurations",
                 tool_call_id="call-1",
-                content='{"cluster_name":"Kubernetes - 1","problematic":32,"issues_detail":[{"severity":"high","issue":"未配置存活探针","count":10,"workloads":["nginx-test (default)"]}]}',
+                content=(
+                    '{"cluster_name":"Kubernetes - 1","problematic":32,'
+                    '"issues_detail":[{"severity":"high","issue":"未配置存活探针",'
+                    '"count":10,"workloads":["nginx-test (default)"]}]}'
+                ),
             )
         ]
     )
 
     assert any(isinstance(message, SystemMessage) for message in directives)
     assert any(
-        "结构化配置检查报告已经通过 AG-UI" in message.content
-        and "不要再用 Markdown" in message.content
-        and "最终文本最多只允许一句简短说明" in message.content
+        "结构化配置检查报告已经通过 AG-UI" in message.content and "不要再用 Markdown" in message.content and "最终文本最多只允许一句简短说明" in message.content
         for message in directives
         if isinstance(message, SystemMessage)
     )
@@ -164,7 +156,11 @@ def test_build_post_tool_directives_reserves_repair_workflow_for_backend():
             ToolMessage(
                 name="analyze_deployment_configurations",
                 tool_call_id="call-1",
-                content='{"cluster_name":"Kubernetes - 1","problematic":32,"issues_detail":[{"severity":"high","issue":"未配置存活探针","count":10,"workloads":["nginx-test (default)"]}]}',
+                content=(
+                    '{"cluster_name":"Kubernetes - 1","problematic":32,'
+                    '"issues_detail":[{"severity":"high","issue":"未配置存活探针",'
+                    '"count":10,"workloads":["nginx-test (default)"]}]}'
+                ),
             )
         ]
     )
@@ -185,7 +181,11 @@ def test_build_post_tool_directives_skips_expert_workflow_without_skill_capabili
             ToolMessage(
                 name="analyze_deployment_configurations",
                 tool_call_id="call-1",
-                content='{"cluster_name":"Kubernetes - 1","problematic":32,"issues_detail":[{"severity":"high","issue":"未配置存活探针","count":10,"workloads":["nginx-test (default)"]}]}',
+                content=(
+                    '{"cluster_name":"Kubernetes - 1","problematic":32,'
+                    '"issues_detail":[{"severity":"high","issue":"未配置存活探针",'
+                    '"count":10,"workloads":["nginx-test (default)"]}]}'
+                ),
             )
         ],
         enable_config_analysis_report=False,
@@ -255,25 +255,18 @@ def test_build_post_tool_directives_prevents_duplicate_summary_for_healthy_scan(
     )
 
     assert any(isinstance(message, SystemMessage) for message in directives)
-    assert any(
-        "如果检查结果没有问题，则直接用一句话结束" in message.content
-        for message in directives
-        if isinstance(message, SystemMessage)
-    )
+    assert any("如果检查结果没有问题，则直接用一句话结束" in message.content for message in directives if isinstance(message, SystemMessage))
 
 
 @pytest.mark.xfail(reason="master baseline 预存失败(origin/master HEAD bdd619de44 同样 fail),与本 PR 无关;streamline-wiki-knowledge-decisions 等待上游修")
 def test_build_summary_diff_from_analysis_emits_one_item_per_issue():
-    from apps.opspilot.metis.llm.chain.report_renderers.k8s import (
-        build_summary_diff_from_analysis,
-    )
+    from apps.opspilot.metis.llm.chain.report_renderers.k8s import build_summary_diff_from_analysis
+
     analysis = {
         "cluster_name": "Kubernetes - 1",
         "issues_detail": [
-            {"severity": "high", "issue": "未配置存活探针", "count": 7,
-             "workloads": ["admin-panel (production)", "api-gateway (production)"]},
-            {"severity": "medium", "issue": "latest 标签", "count": 3,
-             "workloads": ["frontend (production)"]},
+            {"severity": "high", "issue": "未配置存活探针", "count": 7, "workloads": ["admin-panel (production)", "api-gateway (production)"]},
+            {"severity": "medium", "issue": "latest 标签", "count": 3, "workloads": ["frontend (production)"]},
         ],
     }
     payload = build_summary_diff_from_analysis(analysis)
@@ -330,9 +323,8 @@ def test_build_summary_diff_yaml_fallback_for_unknown_issue():
 
 
 def test_build_summary_diff_from_analysis_returns_none_when_no_issues():
-    from apps.opspilot.metis.llm.chain.report_renderers.k8s import (
-        build_summary_diff_from_analysis,
-    )
+    from apps.opspilot.metis.llm.chain.report_renderers.k8s import build_summary_diff_from_analysis
+
     # 空 issues_detail → 不出 diff 卡片(没有需要修的)
     assert build_summary_diff_from_analysis({"issues_detail": []}) is None
     assert build_summary_diff_from_analysis({"issues_detail": None}) is None
@@ -340,21 +332,17 @@ def test_build_summary_diff_from_analysis_returns_none_when_no_issues():
 
 
 def test_summary_diff_truncates_long_workload_lists():
-    from apps.opspilot.metis.llm.chain.report_renderers.k8s import (
-        build_summary_diff_from_analysis,
-    )
+    from apps.opspilot.metis.llm.chain.report_renderers.k8s import build_summary_diff_from_analysis
+
     analysis = {
         "issues_detail": [
-            {"severity": "low", "issue": "镜像 latest 标签",
-             "workloads": [f"pod-{i} (ns)" for i in range(20)]},  # 20 个 workload
+            {"severity": "low", "issue": "镜像 latest 标签", "workloads": [f"pod-{i} (ns)" for i in range(20)]},  # 20 个 workload
         ],
     }
     payload = build_summary_diff_from_analysis(analysis)
     assert payload is not None
     # 超过 8 个就显示截断提示
     assert "等 20 个" in payload["items"][0]["workload_name"]
-
-
 
     hint = build_config_analysis_next_step_hint(problematic_count=32, target_name=None)
 
@@ -441,12 +429,7 @@ def test_expert_k8s_analysis_sanitizes_duplicate_markdown_report_text():
     node._skill_package_capabilities = {"config_analysis_report", "repair_diff_report"}
     response = node._sanitize_duplicate_config_analysis_text(
         response=SimpleNamespace(
-            content=(
-                "## 配置检查报告\n\n"
-                "### High Severity\n\n"
-                "### Medium Severity\n\n"
-                "## 修复建议\n"
-            ),
+            content=("## 配置检查报告\n\n" "### High Severity\n\n" "### Medium Severity\n\n" "## 修复建议\n"),
             tool_calls=[{"name": "request_user_choice", "args": {}, "id": "choice-1"}],
             id="msg-1",
         ),
@@ -496,13 +479,9 @@ def test_build_config_analysis_report_payload_structures_k8s_report():
     assert payload["summary"] == {"total": 9, "problematic": 2, "healthy": 7}
     assert [section["severity"] for section in payload["severity_sections"]] == ["critical", "high"]
     assert payload["severity_sections"][0]["issues"][0]["issue"] == "容器以 root 运行"
-    assert payload["severity_sections"][0]["issues"][0]["risk"] == (
-        "容器以 root 用户运行，容器逃逸后攻击者将获得宿主机 root 权限，安全风险极高。"
-    )
+    assert payload["severity_sections"][0]["issues"][0]["risk"] == ("容器以 root 用户运行，容器逃逸后攻击者将获得宿主机 root 权限，安全风险极高。")
     assert payload["severity_sections"][1]["issues"][0]["issue"] == "未配置存活探针"
-    assert payload["severity_sections"][1]["issues"][0]["risk"] == (
-        "无存活探针时 Kubernetes 无法自动检测和重启不健康的容器，故障容器将持续运行。"
-    )
+    assert payload["severity_sections"][1]["issues"][0]["risk"] == ("无存活探针时 Kubernetes 无法自动检测和重启不健康的容器，故障容器将持续运行。")
     assert payload["recommendations"] == [
         {
             "priority": "P0",
@@ -737,18 +716,13 @@ def test_analyze_deployment_configurations_counts_container_only_issues_consiste
 
 
 def test_analyze_deployment_configurations_scans_all_deployments_within_safe_scope(monkeypatch):
-    deployments = [
-        _make_deployment(name=f"app-{index}", affinity=object())
-        for index in range(51)
-    ]
+    deployments = [_make_deployment(name=f"app-{index}", affinity=object()) for index in range(51)]
     pdb_calls = []
     result = _run_config_analysis(
         monkeypatch,
         deployments=deployments,
         pdb_calls=pdb_calls,
-        pdbs_by_namespace={
-            "default": [_make_pdb_for(deployment.metadata.name) for deployment in deployments]
-        },
+        pdbs_by_namespace={"default": [_make_pdb_for(deployment.metadata.name) for deployment in deployments]},
     )
 
     assert len(result["_deployments_full"]) == 51
@@ -785,7 +759,7 @@ def test_large_config_analysis_keeps_full_details_out_of_tool_message(monkeypatc
     assert result["returned"] == 60
     assert "_deployments_full" not in result
     assert max(len(item["workloads"]) for item in result["issues_detail"]) <= 10
-    assert len(_take_cached_k8s_analysis_details("large-analysis-test")) == 60
+    assert len(take_k8s_analysis_details("large-analysis-test")) == 60
 
 
 def test_analyze_deployment_configurations_requires_scope_above_safe_limit(monkeypatch):
@@ -913,8 +887,5 @@ def test_analyze_deployment_configurations_reports_missing_named_deployment(monk
         "message": "未找到名为 default/missing 的 Deployment",
         "target_name": "missing",
         "namespace": "default",
-        "_next_step_hint": (
-            "未找到名为 default/missing 的 Deployment。"
-            "请先确认名称是否正确，必要时先调用 list_kubernetes_deployments 重新查看可用 Deployment。"
-        ),
+        "_next_step_hint": ("未找到名为 default/missing 的 Deployment。" "请先确认名称是否正确，必要时先调用 list_kubernetes_deployments 重新查看可用 Deployment。"),
     }

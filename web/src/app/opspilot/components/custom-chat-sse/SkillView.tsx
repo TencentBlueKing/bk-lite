@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { BookOutlined, DownOutlined, ToolOutlined } from '@ant-design/icons';
 import { SkillViewItem } from '@/app/opspilot/types/global';
+import { useTranslation } from '@/utils/i18n';
 
 interface SkillViewProps {
   items?: SkillViewItem[];
 }
 
 const SkillView: React.FC<SkillViewProps> = ({ items }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const visibleItems = (items || []).filter(item => item?.name);
   const missingToolCount = visibleItems.reduce((count, item) => (
@@ -24,10 +26,10 @@ const SkillView: React.FC<SkillViewProps> = ({ items }) => {
       >
         <span className="flex items-center gap-1.5">
           <BookOutlined className="text-[11px] text-[var(--color-primary)]" />
-          <span className="font-normal text-[var(--color-text-2)]">技能包命中 ({visibleItems.length})</span>
+          <span className="font-normal text-[var(--color-text-2)]">{t('chat.skillView.hits', '技能包命中 ({count})', { count: visibleItems.length })}</span>
           {missingToolCount > 0 && (
             <span className="rounded bg-[var(--color-warning-light-1)] px-1 text-[10px] text-[var(--color-warning)]">
-              缺 {missingToolCount} 工具
+              {t('chat.skillView.missingTools', '缺 {count} 工具', { count: missingToolCount })}
             </span>
           )}
         </span>
@@ -54,7 +56,7 @@ const SkillView: React.FC<SkillViewProps> = ({ items }) => {
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <span className="inline-flex items-center gap-1 text-[11px] text-[var(--color-warning)]">
                     <ToolOutlined className="text-[10px]" />
-                    待绑定:
+                    {t('chat.skillView.pendingBind')}
                   </span>
                   {item.missing_tools.map(tool => (
                     <span key={tool} className="rounded bg-[var(--color-warning-light-1)] px-1.5 py-0.2 text-[11px] text-[var(--color-warning)]">

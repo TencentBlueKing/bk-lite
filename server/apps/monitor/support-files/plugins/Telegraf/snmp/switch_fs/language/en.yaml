@@ -149,16 +149,22 @@ monitor_object_metric:
         protection or hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: Fan state of the FS switch (fsSystemFanStatus), normalized to 1 = normal
+        (noexist/existreadypower/normal), 2 = fault (existnopower/powerbutabnormal),
+        3 = Unknown (unknow, grey, does not alert). Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: Power-supply state of the FS switch (fsSystemElectricalInformationStatus),
+        normalized to 1 = normal (noexist/existreadypower/normal), 2 = fault (existnopower/powerbutabnormal),
+        3 = Unknown (unknow, grey, does not alert). Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

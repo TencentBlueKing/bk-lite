@@ -1,4 +1,5 @@
 import type { ReportFileDownload } from '@/app/opspilot/types/global';
+import { getOpspilotTranslate } from './i18n';
 
 const API_V1_PREFIX = '/api/v1/';
 const API_PROXY_PREFIX = '/api/proxy/';
@@ -162,6 +163,36 @@ export const isRenderableReportDownload = (download?: ReportFileDownload): boole
   return Boolean(normalizeSafeDownloadUrl(download.file_url));
 };
 
+export const triggerReportDownload = (download: ReportFileDownload): void => {
+  const normalizedFileUrl = normalizeSafeDownloadUrl(download.file_url);
+  if (normalizedFileUrl) {
+    const link = document.createElement('a');
+    link.setAttribute('href', toAbsoluteDownloadHref(download.file_url) || normalizedFileUrl);
+    link.setAttribute('download', download.filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  }
+  if (!download.content_base64) {
+    return;
+  }
+  const byteCharacters = atob(download.content_base64);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i += 1) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const blob = new Blob([new Uint8Array(byteNumbers)], { type: download.mime_type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = download.filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 export const toAbsoluteDownloadHref = (
   url?: string,
   options?: NormalizeDownloadUrlOptions,
@@ -194,12 +225,13 @@ const buildFriendlyDownloadAnchor = (
   options?: NormalizeDownloadUrlOptions,
 ): string => {
   const linkableDownloads = resolveLinkableDownloads(downloads, options);
+  const t = getOpspilotTranslate();
   if (linkableDownloads.length === 0) {
-    return '附件可在对话中下载';
+    return t('chat.download.attachmentInChat', '附件可在对话中下载');
   }
   return linkableDownloads
     .map(({ download, safeUrl }) => (
-      `<a href="${escapeHtml(safeUrl)}" download="${escapeHtml(download.filename)}">下载 ${escapeHtml(download.filename)}</a>`
+      `<a href="${escapeHtml(safeUrl)}" download="${escapeHtml(download.filename)}">${t('chat.download.linkLabel', '下载 {name}', { name: escapeHtml(download.filename) })}</a>`
     ))
     .join(' ');
 };
@@ -304,7 +336,7 @@ export const hydrateGeneratedFileLinks = (
       || looksLikeAttachmentDownloadUrl(href)
       || looksLikeAttachmentDownloadUrl(anchor.textContent || '')
     ) {
-      anchor.textContent = `下载 ${matchedDownload.download.filename}`;
+      anchor.textContent = getOpspilotTranslate()('chat.download.linkLabel', '下载 {name}', { name: matchedDownload.download.filename });
     }
   });
 

@@ -671,5 +671,7 @@ def test_remote_transport_and_kubernetes_greeting_filters():
         ]
     )
     assert tools_node._should_apply_first_turn_greeting_filter(request) is True
-    request.tools_servers.append(SimpleNamespace(url="langchain:mysql"))
+    request.tools_servers.append(SimpleNamespace(url="langchain:attachment_file"))
+    assert tools_node._should_apply_first_turn_greeting_filter(request) is True
+    request.tools_servers = [SimpleNamespace(url="langchain:mysql")]
     assert tools_node._should_apply_first_turn_greeting_filter(request) is False

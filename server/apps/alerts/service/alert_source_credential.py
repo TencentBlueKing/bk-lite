@@ -3,6 +3,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 
 from apps.alerts.constants.constants import DEFAULT_GROUP_ID, SNMP_TRAP_SOURCE_ID
 from apps.alerts.models.alert_source import AlertSource
+from apps.alerts.utils.i18n import alerts_message
 from apps.alerts.utils.util import encode_team_secret
 from apps.core.logger import alert_logger as logger
 
@@ -27,7 +28,7 @@ class AlertSourceCredentialService:
         if getattr(user, "is_superuser", False):
             return team_id
         if team_id not in cls._team_ids(user):
-            raise PermissionDenied("无权管理该组织的集成源密钥")
+            raise PermissionDenied(alerts_message(user, "error.credential_team_denied"))
         return team_id
 
     @classmethod
@@ -57,7 +58,7 @@ class AlertSourceCredentialService:
         team_id = cls.ensure_team_access(user, team_id)
         secret = (source.team_secrets or {}).get(team_id)
         if not secret:
-            raise NotFound("该组织尚未配置密钥")
+            raise NotFound(alerts_message(user, "error.team_secret_missing"))
         cls._audit("revealed", user, source.source_id, team_id)
         return {"team_id": team_id, "secret": secret}
 
@@ -66,7 +67,7 @@ class AlertSourceCredentialService:
         team_id = cls.ensure_team_access(user, team_id)
         if source.source_id == SNMP_TRAP_SOURCE_ID:
             if team_id != str(DEFAULT_GROUP_ID):
-                raise PermissionDenied("SNMP Trap 仅支持默认组织")
+                raise PermissionDenied(alerts_message(user, "error.snmp_trap_default_team_only"))
             cls._audit("material_revealed", user, source.source_id, team_id)
             return source.secret
         return cls.reveal(user, source, team_id)["secret"]
@@ -90,25 +91,25 @@ class AlertSourceCredentialService:
             try:
                 source = AlertSource.objects.select_for_update().get(pk=source_id)
             except AlertSource.DoesNotExist as error:
-                raise NotFound("集成源不存在") from error
+                raise NotFound(alerts_message(user, "error.source_not_found")) from error
 
             if source.source_id == SNMP_TRAP_SOURCE_ID:
-                raise ValidationError({"detail": "SNMP Trap 不支持组织密钥"})
+                raise ValidationError({"detail": alerts_message(user, "error.snmp_trap_no_team_secret")})
 
             team_secrets = dict(source.team_secrets or {})
             if action == "added":
                 if team_id in team_secrets:
-                    raise ValidationError({"detail": f"组织 {team_id} 已存在密钥"})
+                    raise ValidationError({"detail": alerts_message(user, "error.team_secret_exists", team_id=team_id)})
                 secret = encode_team_secret(source.secret, team_id)
                 team_secrets[team_id] = secret
             elif action == "regenerated":
                 if team_id not in team_secrets:
-                    raise NotFound("该组织尚未配置密钥")
+                    raise NotFound(alerts_message(user, "error.team_secret_missing"))
                 secret = encode_team_secret(source.secret, team_id)
                 team_secrets[team_id] = secret
             elif action == "removed":
                 if team_id not in team_secrets:
-                    raise NotFound("该组织尚未配置密钥")
+                    raise NotFound(alerts_message(user, "error.team_secret_missing"))
                 del team_secrets[team_id]
                 secret = None
             else:

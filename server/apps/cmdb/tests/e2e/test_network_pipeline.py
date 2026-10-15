@@ -257,14 +257,14 @@ def test_network_topology_lldp_authoritative_link(monkeypatch):
 
     runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
 
-    uplink = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
-    downlink = _find_interface(runner.result, "10.0.0.2-switch-dist-downlink")
+    uplink = _find_interface(runner.result, "10.0.0.1-switch-GigabitEthernet1/0/1")
+    downlink = _find_interface(runner.result, "10.0.0.2-switch-GigabitEthernet1/0/24")
     forward = _connect_assos(uplink)
     reverse = _connect_assos(downlink)
     # 双向证据经流水线收敛后至少产出一向 connect 关联，且无重复
     assert forward or reverse
-    assert forward in ([], [_connect_asso("10.0.0.2-switch-dist-downlink")])
-    assert reverse in ([], [_connect_asso("10.0.0.1-switch-edge-uplink")])
+    assert forward in ([], [_connect_asso("10.0.0.2-switch-GigabitEthernet1/0/24")])
+    assert reverse in ([], [_connect_asso("10.0.0.1-switch-GigabitEthernet1/0/1")])
 
 
 @pytest.mark.django_db
@@ -274,8 +274,8 @@ def test_network_topology_arp_inferred_link(monkeypatch):
 
     runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
 
-    source_interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
-    assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-dist-downlink")]
+    source_interface = _find_interface(runner.result, "10.0.0.1-switch-GigabitEthernet1/0/1")
+    assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-GigabitEthernet1/0/24")]
 
 
 # 复现线上现象：真实 agent 给同一任务所有设备盖的是任务级 instance_id（cmdb_{task_id}），
@@ -327,8 +327,8 @@ def test_topology_separates_devices_by_host_under_shared_instance_id(monkeypatch
     # 两台设备必须被分别识别（而不是因共享 instance_id 合并成一台）
     assert len(runner.result.get("switch", [])) == 2
     # 跨设备 ARP 推断出 connect 关联
-    source_interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
-    assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-dist-downlink")]
+    source_interface = _find_interface(runner.result, "10.0.0.1-switch-GigabitEthernet1/0/1")
+    assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-GigabitEthernet1/0/24")]
 
 
 @pytest.mark.django_db
@@ -343,11 +343,11 @@ def test_network_topology_authoritative_suppresses_arp_duplicate(monkeypatch):
 
     runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
 
-    uplink = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
-    downlink = _find_interface(runner.result, "10.0.0.2-switch-dist-downlink")
+    uplink = _find_interface(runner.result, "10.0.0.1-switch-GigabitEthernet1/0/1")
+    downlink = _find_interface(runner.result, "10.0.0.2-switch-GigabitEthernet1/0/24")
     all_connects = _connect_assos(uplink) + _connect_assos(downlink)
     assert len(all_connects) == 1
-    assert all_connects == [_connect_asso("10.0.0.2-switch-dist-downlink")]
+    assert all_connects == [_connect_asso("10.0.0.2-switch-GigabitEthernet1/0/24")]
 
 
 @pytest.mark.django_db
@@ -365,8 +365,8 @@ def test_network_topology_unresolved_neighbor_does_not_create_relation(monkeypat
         for asso in _connect_assos(interface):
             assert "ghost" not in asso["inst_name"]
 
-    source_interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
-    assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-dist-downlink")]
+    source_interface = _find_interface(runner.result, "10.0.0.1-switch-GigabitEthernet1/0/1")
+    assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-GigabitEthernet1/0/24")]
 
 
 @pytest.mark.django_db
@@ -386,7 +386,9 @@ def test_network_topology_disabled_keeps_existing_inventory_behavior(monkeypatch
     sql_calls = []
     runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=False, sql_calls=sql_calls)
 
-    interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
+    interface = _find_interface(runner.result, "10.0.0.1-switch-GigabitEthernet1/0/1")
+    assert interface["name"] == "GigabitEthernet1/0/1"
+    assert interface["description"] == "edge-uplink"
     assert sql_calls == [
         "network_system_info_gauge{instance_id='cmdb_7001'} or "
         "network_interfaces_info_gauge{instance_id='cmdb_7001'} or "

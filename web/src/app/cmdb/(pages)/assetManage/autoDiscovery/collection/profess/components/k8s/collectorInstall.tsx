@@ -99,7 +99,7 @@ const CollectorInstall: React.FC<Props> = ({
               'Generate a short-lived install token, then copy and run the command on a host with kubectl access to the target cluster.'}
             overlayStyle={{ maxWidth: 520 }}
           >
-            <QuestionCircleOutlined className="text-[13px] text-[#9aa4b2] cursor-help" />
+            <QuestionCircleOutlined aria-hidden="true" className="text-[13px] text-[var(--color-text-4)] cursor-help" />
           </Tooltip>
         </h3>
         <div className="flex items-center gap-2 mb-2">
@@ -132,7 +132,7 @@ const CollectorInstall: React.FC<Props> = ({
               'After deploying the YAML, click verify; CMDB will query VictoriaMetrics for the configured collector id.'}
             overlayStyle={{ maxWidth: 520 }}
           >
-            <QuestionCircleOutlined className="text-[13px] text-[#9aa4b2] cursor-help" />
+            <QuestionCircleOutlined aria-hidden="true" className="text-[13px] text-[var(--color-text-4)] cursor-help" />
           </Tooltip>
         </h3>
         <div className="flex items-center gap-3">

@@ -143,6 +143,26 @@ export const PAGE_TYPE_LABEL: Record<string, string> = {
   other: "wiki.pageTypeOther",
 };
 
+/** 冻结骨架目录 key → 已有页面类型文案。用户自建目录不在此表，显示库存原名。 */
+export const FROZEN_DIRECTORY_LABEL: Record<string, string> = {
+  __unclassified__: "wiki.directoryUnclassified",
+  schema_entity: "wiki.pageTypeEntity",
+  schema_concept: "wiki.pageTypeConcept",
+  schema_query: "wiki.pageTypeQuery",
+  schema_comparison: "wiki.pageTypeComparison",
+  schema_synthesis: "wiki.pageTypeSynthesis",
+  schema_source: "wiki.pageTypeSource",
+};
+
+export const formatWikiDirectoryLabel = (
+  t: (id: string) => string,
+  directory: { key?: string | null; name?: string | null },
+): string => {
+  const mapped = FROZEN_DIRECTORY_LABEL[String(directory.key || "")];
+  if (mapped) return t(mapped);
+  return String(directory.name ?? "");
+};
+
 export const pageTypeLabelKey = (pageType?: string | null): string => {
   const normalized = String(pageType || "")
     .trim()

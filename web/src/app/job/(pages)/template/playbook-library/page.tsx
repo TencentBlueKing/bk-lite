@@ -16,7 +16,7 @@ import {
   Popconfirm,
 } from 'antd';
 import {
-  CloudUploadOutlined,
+  PlusOutlined,
   InboxOutlined,
   FolderOutlined,
   FileOutlined,
@@ -25,6 +25,7 @@ import {
 import CustomTable from '@/components/custom-table';
 import CompactEmptyState from '@/components/compact-empty-state';
 import VersionBadge from '@/components/version-badge';
+import TemplateVersionDrawer from '@/app/job/components/template-version-drawer';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -32,8 +33,8 @@ import useJobApi from '@/app/job/api';
 import { Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
-import SearchCombination from '@/components/search-combination';
-import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
+import SearchActionBar from '@/components/search-action-bar';
+import TopSection from '@/components/top-section';
 import { useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/markdown';
 import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
@@ -61,7 +62,7 @@ const PlaybookLibraryPage = () => {
   const [upgradeForm] = Form.useForm();
   const [data, setData] = useState<Playbook[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [searchKey, setSearchKey] = useState('');
   const [pagination, setPagination] = useState({
     current: 1,
     total: 0,
@@ -89,6 +90,7 @@ const PlaybookLibraryPage = () => {
   const [upgradeFile, setUpgradeFile] = useState<File | null>(null);
   const [upgradeTargetId, setUpgradeTargetId] = useState<number | null>(null);
   const [upgradeTargetPlaybook, setUpgradeTargetPlaybook] = useState<Playbook | null>(null);
+  const [versionPlaybookId, setVersionPlaybookId] = useState<number | null>(null);
 
   // File preview modal
   const [filePreviewModalOpen, setFilePreviewModalOpen] = useState(false);
@@ -97,24 +99,16 @@ const PlaybookLibraryPage = () => {
   const [filePreviewError, setFilePreviewError] = useState<string | null>(null);
 
   const fetchData = useCallback(
-    async (fetchParams: { filters?: SearchFilters; current?: number; pageSize?: number } = {}) => {
+    async (fetchParams: { keyword?: string; current?: number; pageSize?: number } = {}) => {
       setLoading(true);
       try {
-        const filters = fetchParams.filters ?? searchFilters;
+        const keyword = (fetchParams.keyword ?? searchKey).trim();
         const queryParams: Record<string, unknown> = {
           page: fetchParams.current ?? pagination.current,
           page_size: fetchParams.pageSize ?? pagination.pageSize,
         };
-        if (filters && Object.keys(filters).length > 0) {
-          Object.entries(filters).forEach(([field, conditions]) => {
-            conditions.forEach((condition) => {
-              if (condition.lookup_expr === 'in' && Array.isArray(condition.value)) {
-                queryParams[field] = (condition.value as string[]).join(',');
-              } else {
-                queryParams[field] = condition.value;
-              }
-            });
-          });
+        if (keyword) {
+          queryParams.name = keyword;
         }
         const res = await getPlaybookList(queryParams as Record<string, unknown>);
         setData(res.items || []);
@@ -126,7 +120,7 @@ const PlaybookLibraryPage = () => {
         setLoading(false);
       }
     },
-    [searchFilters, pagination.current, pagination.pageSize]
+    [searchKey, pagination.current, pagination.pageSize]
   );
 
   useEffect(() => {
@@ -141,34 +135,11 @@ const PlaybookLibraryPage = () => {
     }
   }, [pagination.current, pagination.pageSize]);
 
-  const handleSearchChange = useCallback((filters: SearchFilters) => {
-    setSearchFilters(filters);
+  const handleSearch = useCallback((value: string) => {
+    setSearchKey(value);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchData({ filters, current: 1 });
+    fetchData({ keyword: value, current: 1 });
   }, [fetchData]);
-
-  const fieldConfigs: FieldConfig[] = useMemo(() => [
-    {
-      name: 'name',
-      label: t('job.playbookName'),
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'version',
-      label: t('job.version'),
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'team',
-      label: t('job.organization'),
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'description',
-      label: t('job.playbookDescription'),
-      lookup_expr: 'icontains',
-    },
-  ], [t]);
 
   const handleTableChange = (pag: Record<string, number>) => {
     setPagination((prev) => ({ ...prev, ...pag }));
@@ -179,13 +150,6 @@ const PlaybookLibraryPage = () => {
     const d = new Date(timeStr);
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  };
-
-  const getNextVersion = (version: string) => {
-    const match = version.match(/^v?(\d+)\.(\d+)\.(\d+)$/);
-    if (!match) return 'v1.0.1';
-    const [, major, minor, patch] = match;
-    return `v${major}.${minor}.${Number(patch) + 1}`;
   };
 
   // Upload modal handlers
@@ -206,9 +170,6 @@ const PlaybookLibraryPage = () => {
 
       const formData = new FormData();
       formData.append('file', uploadFile);
-      if (values.version) {
-        formData.append('version', values.version);
-      }
       if (values.team && values.team.length > 0) {
         values.team.forEach((id: number) => {
           formData.append('team', String(id));
@@ -330,10 +291,6 @@ const PlaybookLibraryPage = () => {
 
       const formData = new FormData();
       formData.append('file', upgradeFile);
-      const values = await upgradeForm.validateFields();
-      if (values.version) {
-        formData.append('version', values.version);
-      }
 
       const updated = await upgradePlaybook(upgradeTargetId, formData);
       message.success(t('job.upgradeSuccess'));
@@ -438,7 +395,7 @@ const PlaybookLibraryPage = () => {
             {[
               { label: t('job.playbookName'), value: viewingPlaybook.name },
               { label: t('job.playbookDescription'), value: viewingPlaybook.description || '-' },
-              { label: t('job.currentVersion'), value: viewingPlaybook.version || '-' },
+              { label: t('job.currentVersion'), value: <VersionBadge value={viewingPlaybook.current_revision_label} fallback="--" /> },
               { label: t('job.recentUpdateTime'), value: formatTime(viewingPlaybook.updated_at) },
               { label: t('job.uploader'), value: viewingPlaybook.created_by || '-' },
             ].map((item, idx) => (
@@ -525,15 +482,6 @@ const PlaybookLibraryPage = () => {
       width: 200,
     },
     {
-      title: t('job.version'),
-      dataIndex: 'version',
-      key: 'version',
-      width: 100,
-      render: (_: unknown, record: Playbook) => (
-        <VersionBadge value={record.version} />
-      ),
-    },
-    {
       title: t('job.organization'),
       dataIndex: 'team_name',
       key: 'team_name',
@@ -545,6 +493,13 @@ const PlaybookLibraryPage = () => {
       dataIndex: 'created_by',
       key: 'created_by',
       width: 120,
+    },
+    {
+      title: t('job.version'),
+      dataIndex: 'current_revision_label',
+      key: 'current_revision_label',
+      width: 160,
+      render: (value: string) => <VersionBadge value={value} fallback="--" />,
     },
     {
       title: t('job.updateTime'),
@@ -564,7 +519,7 @@ const PlaybookLibraryPage = () => {
       title: t('job.operation'),
       dataIndex: 'action',
       key: 'action',
-      width: 200,
+      width: 260,
       fixed: 'right',
       render: (_: unknown, record: Playbook) => (
         <div className="flex items-center gap-3">
@@ -586,6 +541,12 @@ const PlaybookLibraryPage = () => {
           >
             {t('job.executeScript')}
           </a>
+          <a
+            className="text-[var(--color-primary)] cursor-pointer"
+            onClick={() => setVersionPlaybookId(record.id)}
+          >
+            {t('job.version')}
+          </a>
           <Popconfirm
             title={t('job.deletePlaybook')}
             description={t('job.deletePlaybookConfirm')}
@@ -605,36 +566,32 @@ const PlaybookLibraryPage = () => {
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="mb-4 shrink-0 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-4">
-        <h2 className="m-0 mb-1 text-base font-medium text-[var(--color-text-1)]">
-          {t('job.playbookLibrary')}
-        </h2>
-        <p className="m-0 text-sm text-[var(--color-text-3)]">
-          {t('job.playbookLibraryDesc')}
-        </p>
-      </div>
+      <TopSection
+        title={t('job.playbookLibrary')}
+        content={t('job.playbookLibraryDesc')}
+        className="mb-4 shrink-0"
+      />
 
       {/* Table Section */}
       <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-6">
-        {/* Toolbar */}
-        <div className="flex justify-between mb-4 flex-shrink-0">
-          <SearchCombination
-            fieldConfigs={fieldConfigs}
-            onChange={handleSearchChange}
-            fieldWidth={120}
-            selectWidth={300}
-          />
-          <div className="flex gap-2">
+        <SearchActionBar
+          searchProps={{
+            placeholder: t('common.search'),
+            allowClear: true,
+            value: searchKey,
+            onChange: (event) => setSearchKey(event.target.value),
+            onSearch: handleSearch,
+          }}
+          actions={(
             <Button
               type="primary"
-              icon={<CloudUploadOutlined />}
+              icon={<PlusOutlined />}
               onClick={openUploadModal}
             >
-              {t('job.uploadPlaybook')}
+              {t('common.new')}
             </Button>
-          </div>
-        </div>
+          )}
+        />
 
         {/* Table */}
         <div className="flex-1 min-h-0">
@@ -698,13 +655,6 @@ const PlaybookLibraryPage = () => {
                 <p className="ant-upload-hint">{t('job.playbookArchiveLimitHint')}</p>
                 <p className="ant-upload-hint">{t('job.playbookArchiveEntryLimitHint')}</p>
               </Dragger>
-          </Form.Item>
-
-          <Form.Item
-            name="version"
-            label={t('job.versionOptional')}
-          >
-            <Input placeholder={t('job.versionPlaceholder')} />
           </Form.Item>
 
           <Form.Item
@@ -774,7 +724,7 @@ const PlaybookLibraryPage = () => {
           viewingPlaybook ? (
             <div className="flex items-center gap-3">
               <span>{viewingPlaybook.name}</span>
-              <VersionBadge value={viewingPlaybook.version} />
+              <VersionBadge value={viewingPlaybook.current_revision_label} fallback="--" />
             </div>
           ) : null
         }
@@ -815,6 +765,7 @@ const PlaybookLibraryPage = () => {
       {/* Upgrade Version Modal */}
       <OperateModal
         title={t('job.upgradePlaybookTitle')}
+        zIndex={1200}
         open={upgradeModalOpen}
         confirmLoading={upgradeConfirmLoading}
         onCancel={() => setUpgradeModalOpen(false)}
@@ -838,7 +789,7 @@ const PlaybookLibraryPage = () => {
 
           <Form.Item label={t('job.currentVersionLabel')}>
             <Input
-              value={upgradeTargetPlaybook?.version || 'v1.0.0'}
+              value={upgradeTargetPlaybook?.current_revision_label || '--'}
               disabled
               className="bg-gray-50"
             />
@@ -871,13 +822,6 @@ const PlaybookLibraryPage = () => {
             </Dragger>
           </Form.Item>
 
-          <Form.Item
-            name="version"
-            label={t('job.newVersionNumber')}
-            extra={t('job.newVersionHint')}
-          >
-            <Input placeholder={t('job.newVersionPlaceholder').replace('{version}', getNextVersion(upgradeTargetPlaybook?.version || 'v1.0.0'))} />
-          </Form.Item>
         </Form>
       </OperateModal>
 
@@ -916,6 +860,13 @@ const PlaybookLibraryPage = () => {
           </div>
         ) : null}
       </Modal>
+      <TemplateVersionDrawer
+        open={versionPlaybookId !== null}
+        kind="playbook"
+        targetId={versionPlaybookId}
+        onClose={() => setVersionPlaybookId(null)}
+        onRestored={() => fetchData()}
+      />
     </div>
   );
 };

@@ -365,6 +365,37 @@
       "description": "Estimated ATQ queue delay in milliseconds."
     },
     {
+      "metric_group": "Replication",
+      "name": "ad_dra_sync_failures_on_schema_mismatch",
+      "query": "win_ad_DRA_Sync_Failures_on_Schema_Mismatch{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DRA Sync Failures on Schema Mismatch",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "AD replication sync failures caused by a schema mismatch on this DC."
+    },
+    {
+      "metric_group": "DNS",
+      "name": "ad_dns_recursive_query_failure_persec",
+      "query": "win_ad_dns_Recursive_Query_Failure_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DNS Recursive Query Failures",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DNS recursive queries that failed per second on this domain controller."
+    },
+    {
       "metric_group": "Probe",
       "name": "ad_ldap_probe_result_code",
       "query": "net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldap\", __$labels__}",

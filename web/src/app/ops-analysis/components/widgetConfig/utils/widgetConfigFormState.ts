@@ -6,16 +6,14 @@ import type {
   WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
-import type {
-  NetworkStatusTopologyConfig,
-  SceneWidgetType,
+import {
+  APPLICATION_TOPOLOGY_DEFAULT_DEPTH,
+  type NetworkStatusTopologyConfig,
+  type SceneWidgetType,
 } from '@/app/ops-analysis/types/sceneWidget';
 import { isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import { resolveApplication3DWallConfig } from '@/app/ops-analysis/utils/application3DWallConfig';
-import {
-  hydrateRoom3DConfig,
-  readPersistedServerRoomId,
-} from '@/app/ops-analysis/utils/room3DConfig';
+import { hydrateRoom3DConfig } from '@/app/ops-analysis/utils/room3DConfig';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
 import {
@@ -47,6 +45,7 @@ export interface WidgetChartTypeFlags {
   isTableLike: boolean;
   isNetworkStatusTopology: boolean;
   isRelatedTopology: boolean;
+  isApplicationTopology: boolean;
   isRoom3D: boolean;
   isApplication3D: boolean;
   isSceneWidget: boolean;
@@ -84,6 +83,8 @@ export function getWidgetChartTypeFlags(
       sceneType === 'networkStatusTopology',
     isRelatedTopology:
       chartType === 'relatedTopology' || sceneType === 'relatedTopology',
+    isApplicationTopology:
+      chartType === 'applicationTopology' || sceneType === 'applicationTopology',
     isRoom3D: chartType === 'room3D' || sceneType === 'room3D',
     isApplication3D: chartType === 'application3D' || sceneType === 'application3D',
     isSceneWidget:
@@ -116,7 +117,6 @@ export const buildDataFetchSignature = (
         linkTrafficDisplays: config.networkStatusTopology.linkTrafficDisplays,
       }
       : undefined,
-    room3D: config.room3D?.serverRoomId || undefined,
   });
 };
 
@@ -236,6 +236,11 @@ export function buildSceneWidgetSelectorResetValues(
       instUuid: undefined,
       modelId: undefined,
     },
+    applicationTopology: {
+      instUuid: undefined,
+      modelId: 'system',
+      depth: APPLICATION_TOPOLOGY_DEFAULT_DEPTH,
+    },
     room3D: hydrateRoom3DConfig({}),
     application3DWall: resolveApplication3DWallConfig(undefined),
     params: {},
@@ -263,6 +268,7 @@ export function buildDatasourceSwitchResetValues(options: {
     sceneWidgetType: undefined,
     networkStatusTopology: undefined,
     relatedTopology: undefined,
+    applicationTopology: undefined,
     room3D: undefined,
     application3DWall: undefined,
     params: options.params,
@@ -284,10 +290,8 @@ export function buildOpenedWidgetFormValues(
     sceneWidgetType: valueConfig?.sceneWidgetType,
     networkStatusTopology: valueConfig?.networkStatusTopology,
     relatedTopology: valueConfig?.relatedTopology,
-    room3D: hydrateRoom3DConfig({
-      ...valueConfig?.room3D,
-      serverRoomId: readPersistedServerRoomId(valueConfig),
-    }),
+    applicationTopology: valueConfig?.applicationTopology,
+    room3D: hydrateRoom3DConfig(valueConfig?.room3D),
     application3DWall: resolveApplication3DWallConfig(valueConfig?.application3DWall),
     chartThemeMode: options.showChartThemeMode
       ? valueConfig?.chartThemeMode || 'default'

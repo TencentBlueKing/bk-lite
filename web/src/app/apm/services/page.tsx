@@ -28,6 +28,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import FilterToolbar from '@/components/filter-toolbar';
 import Permission from '@/components/permission';
@@ -653,7 +654,12 @@ export default function ApmServicesPage() {
           <ApmSurface padding="compact">{catalogFilters}</ApmSurface>
         ) : null}
         {perspective === 'application' ? (
-          state === 'ready' ? (
+          state === 'loading' ? (
+            <CardGridSkeleton
+              count={8}
+              className="grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+            />
+          ) : state === 'ready' ? (
             applicationSummaries.length ? (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {applicationSummaries.map((application) => {

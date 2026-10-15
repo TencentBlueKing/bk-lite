@@ -21,6 +21,7 @@ class SkillExecuteService:
             "skill_prompt": skill_prompt,
             "chat_history": chat_history,
             "conversation_window_size": 10,
+            "run_model_call_limit": int(getattr(llm_skill, "run_model_call_limit", 0) or 0),
             "temperature": DEFAULT_CHAT_TEMPERATURE,
             "username": user.name if user else sender_id,
             "user_id": user.user_id if user else sender_id,

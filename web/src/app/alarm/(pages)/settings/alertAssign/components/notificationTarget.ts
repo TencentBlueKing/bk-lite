@@ -7,6 +7,7 @@ export interface NotificationTargetFormValue {
   personnel?: string[];
   organization_ids?: number[];
   include_children?: boolean;
+  prefer_alert_owner?: boolean;
 }
 
 interface OrganizationTreeNode {
@@ -30,6 +31,7 @@ export const getNotificationTargetFormValue = (
         (target.organization_ids || []).map(Number).filter(Number.isFinite),
       ),
       include_children: target.include_children === true,
+      prefer_alert_owner: target.prefer_alert_owner === true,
     };
   }
 
@@ -38,12 +40,17 @@ export const getNotificationTargetFormValue = (
     personnel: deduplicate(target?.usernames || legacyPersonnel || []),
     organization_ids: [],
     include_children: false,
+    prefer_alert_owner: target?.prefer_alert_owner === true,
   };
 };
 
+type BuiltNotificationTarget = Required<
+  Omit<AssignmentNotificationTarget, 'prefer_alert_owner'>
+> & { prefer_alert_owner?: true };
+
 export const buildNotificationTarget = (
   value: NotificationTargetFormValue,
-): Required<AssignmentNotificationTarget> => {
+): BuiltNotificationTarget => {
   if (value.target_type === 'organization') {
     return {
       type: 'organization',
@@ -52,6 +59,7 @@ export const buildNotificationTarget = (
         (value.organization_ids || []).map(Number).filter(Number.isFinite),
       ),
       include_children: value.include_children === true,
+      ...(value.prefer_alert_owner ? { prefer_alert_owner: true } : {}),
     };
   }
 
@@ -60,6 +68,7 @@ export const buildNotificationTarget = (
     usernames: deduplicate(value.personnel || []),
     organization_ids: [],
     include_children: false,
+    ...(value.prefer_alert_owner ? { prefer_alert_owner: true } : {}),
   };
 };
 

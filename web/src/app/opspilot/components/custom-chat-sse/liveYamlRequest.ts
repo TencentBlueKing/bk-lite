@@ -18,9 +18,16 @@ interface LiveYamlUnavailable {
   message: string;
 }
 
+type Translate = (
+  key: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
 export function buildLiveYamlRequest(
   report: ConfigDiffReport,
-  item: ConfigDiffItem
+  item: ConfigDiffItem,
+  t: Translate
 ): LiveYamlRequest | LiveYamlUnavailable | null {
   const skillId = report.skill_id ?? item.skill_id;
   if (!skillId) return null;
@@ -29,7 +36,10 @@ export function buildLiveYamlRequest(
   if (!namespace || namespace === 'all') {
     return {
       kind: 'unavailable',
-      message: '该报告覆盖全部命名空间，无法定位唯一的 deployment 实时 YAML。',
+      message: t(
+        'chat.liveYaml.allNamespaces',
+        '该报告覆盖全部命名空间，无法定位唯一的 deployment 实时 YAML。'
+      ),
     };
   }
 
@@ -37,7 +47,7 @@ export function buildLiveYamlRequest(
   if (!name) {
     return {
       kind: 'unavailable',
-      message: '报告未提供可定位的 deployment 名称。',
+      message: t('chat.liveYaml.noName', '报告未提供可定位的 deployment 名称。'),
     };
   }
 

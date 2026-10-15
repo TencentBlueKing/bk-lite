@@ -186,8 +186,40 @@ describe('resolveRoom3DSelection', () => {
     });
   });
 
-  it('returns empty when the actor cannot see any room', () => {
+  it('loads an applied room id even when the room list does not include it', () => {
+    expect(
+      resolveRoom3DSelection({
+        rooms,
+        savedRoomId: ROOM_A,
+        runtimeRoomId: ROOM_C,
+      }),
+    ).toEqual({
+      status: 'ready',
+      roomId: ROOM_C,
+      rooms,
+    });
+    expect(
+      resolveRoom3DSelection({
+        rooms,
+        savedRoomId: '',
+        runtimeRoomId: 'not-a-room',
+      }),
+    ).toEqual({
+      status: 'unavailable',
+      rooms,
+    });
+  });
+
+  it('loads a saved room when the room list is empty', () => {
     expect(resolveRoom3DSelection({ rooms: [], savedRoomId: ROOM_A })).toEqual({
+      status: 'ready',
+      roomId: ROOM_A,
+      rooms: [],
+    });
+  });
+
+  it('returns empty when nothing is selected and no room is visible', () => {
+    expect(resolveRoom3DSelection({ rooms: [], savedRoomId: '' })).toEqual({
       status: 'empty',
       rooms: [],
     });

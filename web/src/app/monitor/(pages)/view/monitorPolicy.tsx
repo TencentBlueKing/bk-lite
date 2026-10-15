@@ -1,15 +1,18 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Button, Tag } from 'antd';
+import { Button, Select, Tag, message } from 'antd';
 import { useRouter } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import { fetchAllMonitorMetrics } from '@/app/monitor/api/fetchMetricCatalogPages';
 import useEventApi from '@/app/monitor/api/event';
+import useIntegrationApi from '@/app/monitor/api/integration';
+import Permission from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
 import { ColumnItem, Pagination, TableDataItem } from '@/app/monitor/types';
 import { ViewModalProps } from '@/app/monitor/types/view';
 import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
@@ -28,6 +31,7 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
   const { isLoading } = useApiClient();
   const { getMonitorMetrics } = useMonitorApi();
   const { getMonitorPolicy } = useEventApi();
+  const { getPolicyGroupMembership, joinPolicyGroup, leavePolicyGroup } = useIntegrationApi();
   const { t } = useTranslation();
   const router = useRouter();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -45,26 +49,46 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
     total: 0,
     pageSize: 20
   });
+  const [membership, setMembership] = useState<{
+    state: string | null;
+    group_id: number | null;
+    group_name: string;
+    groups: Array<{ id: number; name: string; is_default?: boolean }>;
+    legacy_policies: Array<{ id: number; name: string; enable: boolean }>;
+  } | null>(null);
+  const [nextGroupId, setNextGroupId] = useState<number | undefined>();
 
   const columns: ColumnItem[] = [
     {
       title: t('common.name'),
       dataIndex: 'name',
       key: 'name',
-      render: (_, record) =>
-        !readOnly ? (
-          <Button type="link" className="px-0" onClick={() => linkToStrategyDetail(record)}>
-            {record.name || '--'}
+      ellipsis: true,
+      render: (_, record) => {
+        const name = String(record.name || '--');
+        return !readOnly ? (
+          <Button
+            type="link"
+            className="block min-w-0 max-w-full overflow-hidden px-0 text-left text-ellipsis whitespace-nowrap"
+            title={name}
+            onClick={() => linkToStrategyDetail(record)}
+          >
+            {name}
           </Button>
         ) : (
-          <span>{record.name || '--'}</span>
-        )
+          <EllipsisWithTooltip
+            text={name}
+            className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+          />
+        );
+      }
     },
     {
       title: t('monitor.events.enableStatus'),
       dataIndex: 'enable',
       key: 'enable',
       width: 110,
+      ellipsis: true,
       render: (_, { enable }) =>
         enable ? (
           <Tag color="success">{t('monitor.events.turnedOn')}</Tag>
@@ -100,6 +124,17 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
   useEffect(() => {
     if (isLoading) return;
     getBoundPolicies();
+    const instanceId = String(form.instance_id || '').trim();
+    if (!instanceId) {
+      setMembership(null);
+      return;
+    }
+    getPolicyGroupMembership(instanceId)
+      .then((data) => {
+        setMembership(data);
+        setNextGroupId(data?.group_id || data?.groups?.[0]?.id);
+      })
+      .catch(() => setMembership(null));
   }, [isLoading, pagination.current, pagination.pageSize, form.instance_id, monitorObject]);
 
   useEffect(() => {
@@ -182,9 +217,75 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
     }
   };
 
+  const stateLabel =
+    membership?.state === 'member'
+      ? membership.group_name || '在组'
+      : membership?.state === 'declined'
+        ? '不自动入组'
+        : membership?.state === 'skipped'
+          ? '未入组'
+          : '无记录';
+
+  const refreshMembership = () => {
+    const instanceId = String(form.instance_id || '').trim();
+    if (!instanceId) return;
+    getPolicyGroupMembership(instanceId).then((data) => {
+      setMembership(data);
+      setNextGroupId(data?.group_id || data?.groups?.[0]?.id);
+    });
+  };
+
   return (
     <div className={fillContainer ? 'flex h-full min-h-0 w-full flex-col' : 'w-full'}>
+      {!readOnly && membership ? (
+        <div className="mb-3 rounded border border-[var(--color-border-2)] p-3">
+          <div className="mb-2">所属策略组：{stateLabel}</div>
+          {(membership.legacy_policies || []).map((item) => (
+            <div key={item.id} className="mb-1 text-[12px]">
+              {item.name}
+              {item.enable ? ' 仍会和策略组一起告警' : ' 已停用'}
+            </div>
+          ))}
+          <Permission requiredPermissions={['Edit']} permissionPath="/monitor/event/strategy">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Select
+                className="min-w-[220px]"
+                value={nextGroupId}
+                options={(membership.groups || []).map((item) => ({
+                  value: item.id,
+                  label: item.is_default ? `${item.name}（默认）` : item.name
+                }))}
+                onChange={setNextGroupId}
+              />
+              <Button
+                type="primary"
+                disabled={!nextGroupId}
+                onClick={async () => {
+                  if (!nextGroupId) return;
+                  await joinPolicyGroup(nextGroupId, [String(form.instance_id)]);
+                  message.success(membership.state === 'member' ? '已更换策略组，原规则未恢复告警会结束' : '已加入策略组');
+                  refreshMembership();
+                }}
+              >
+                {membership.state === 'member' ? '更换' : '加入'}
+              </Button>
+              {membership.state === 'member' ? (
+                <Button
+                  onClick={async () => {
+                    await leavePolicyGroup([String(form.instance_id)]);
+                    message.success('已退出，未恢复告警会结束');
+                    refreshMembership();
+                  }}
+                >
+                  退出
+                </Button>
+              ) : null}
+            </div>
+          </Permission>
+        </div>
+      ) : null}
       <CustomTable
+        tableLayout="fixed"
         scroll={fillContainer ? { x: 890 } : { y: 'calc(100vh - 360px)', x: 890 }}
         columns={columns}
         dataSource={tableData}

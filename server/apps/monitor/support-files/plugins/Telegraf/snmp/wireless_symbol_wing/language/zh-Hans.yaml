@@ -1,0 +1,43 @@
+Wireless Extreme WiNG SNMP:
+  name: Extreme WiNG（Telegraf）
+  desc: 面向 Extreme / Symbol / Motorola WiNG 无线局域网设备的 SNMP 监控模板，可采集逐设备 CPU 使用率、内存使用率、接口流量和运行时长（企业号
+    PEN 388，wingMIB 1.3.6.1.4.1.388.50）。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 WiNG 设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，管理员可以了解设备稳定性，识别意外重启。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: WiNG 被管设备近 1 分钟 CPU 使用率（来自 wingStatsDevSysInfoLoadLimitS0，OID 1.3.6.1.4.1.388.50.1.4.2.2.1.1.8），单位为百分比。原始值为
+        10 倍百分比，入库前除以 10。换算后超出 0–100 的读数丢弃。
+    device_memory_usage:
+      name: 内存使用率
+      desc: WiNG 被管设备内存使用率，由 wingStatsDevSysInfoTotalMem 与 wingStatsDevSysInfoFreeMem（OID
+        1.3.6.1.4.1.388.50.1.4.2.2.1.1.2 / .1，单位 KiB）按 (总量−空闲)/总量 计算。仅在总量大于 0 且 0≤空闲≤总量时上报。
+    device_memory_total:
+      name: 内存总量
+      desc: WiNG 被管设备内存总量（来自 wingStatsDevSysInfoTotalMem，OID 1.3.6.1.4.1.388.50.1.4.2.2.1.1.2），单位为字节。原始值为
+        KiB，入库前乘以 1024。
+    device_memory_free:
+      name: 内存空闲
+      desc: WiNG 被管设备空闲内存（来自 wingStatsDevSysInfoFreeMem，OID 1.3.6.1.4.1.388.50.1.4.2.2.1.1.1），单位为字节。原始值为
+        KiB，入库前乘以 1024。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存
+    Traffic: 流量

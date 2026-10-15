@@ -3,6 +3,28 @@ import { FullscreenExitOutlined } from '@ant-design/icons';
 import { Button, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 
+export const APP_VIEW_FULLSCREEN_EVENT = 'bk-app-view-fullscreen';
+const APP_VIEW_FULLSCREEN_ATTR = 'data-app-view-fullscreen';
+
+export function setAppViewFullscreenActive(active: boolean) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  if (active) {
+    document.documentElement.setAttribute(APP_VIEW_FULLSCREEN_ATTR, '');
+  } else {
+    document.documentElement.removeAttribute(APP_VIEW_FULLSCREEN_ATTR);
+  }
+  window.dispatchEvent(new Event(APP_VIEW_FULLSCREEN_EVENT));
+}
+
+export function isAppViewFullscreenActive() {
+  return (
+    typeof document !== 'undefined' &&
+    document.documentElement.hasAttribute(APP_VIEW_FULLSCREEN_ATTR)
+  );
+}
+
 export const useAppViewFullscreen = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -16,6 +38,7 @@ export const useAppViewFullscreen = () => {
 
   useEffect(() => {
     if (!isFullscreen) {
+      setAppViewFullscreenActive(false);
       return;
     }
 
@@ -24,6 +47,7 @@ export const useAppViewFullscreen = () => {
 
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    setAppViewFullscreenActive(true);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -38,6 +62,7 @@ export const useAppViewFullscreen = () => {
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousHtmlOverflow;
       document.removeEventListener('keydown', handleKeyDown);
+      setAppViewFullscreenActive(false);
     };
   }, [isFullscreen]);
 

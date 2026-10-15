@@ -51,7 +51,7 @@ export type PendingImageAction =
 export const DEFAULT_IMAGE_BUDGET: Readonly<ImageBudget> = {
   allowUnknownImagePreview: false,
   imageReadConcurrency: 2,
-  maxImageCount: 4,
+  maxImageCount: 5,
   maxImagePixels: 16 * MEBIBYTE,
   maxTotalImageBytes: 16 * MEBIBYTE,
   maxTotalImagePixels: 32 * MEBIBYTE,

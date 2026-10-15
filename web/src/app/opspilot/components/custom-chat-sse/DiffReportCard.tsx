@@ -6,6 +6,7 @@ import { FileTextOutlined, RightOutlined } from '@ant-design/icons';
 import { ConfigDiffReport, ConfigDiffItem } from '@/app/opspilot/types/global';
 import { getDiffReportItemPresentation } from './diffReportItemPresentation';
 import useApiClient, { isSilentRequestError } from '@/utils/request';
+import { useTranslation } from '@/utils/i18n';
 import { buildLiveYamlRequest } from './liveYamlRequest';
 
 type DiffOp = 'equal' | 'add' | 'remove';
@@ -59,6 +60,7 @@ interface DiffReportCardProps {
 }
 
 const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
+  const { t } = useTranslation();
   const { post } = useApiClient();
   const [selectedItem, setSelectedItem] = useState<ConfigDiffItem | null>(null);
   const [fetchedYaml, setFetchedYaml] = useState<{ yaml: string; loading: boolean; error: string | null }>({
@@ -70,7 +72,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
   // modal 一开就自动 fetch,没 skill_id 就跳过
   useEffect(() => {
     if (!selectedItem) return;
-    const liveYamlRequest = buildLiveYamlRequest(report, selectedItem);
+    const liveYamlRequest = buildLiveYamlRequest(report, selectedItem, t);
     if (!liveYamlRequest) return;
     if (liveYamlRequest.kind === 'unavailable') {
       setFetchedYaml({ yaml: '', loading: false, error: liveYamlRequest.message });
@@ -101,7 +103,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
   }, [post, report, selectedItem]);
   const a2uiComponent = report.a2ui?.component || 'config-diff-report';
   const a2uiVersion = report.a2ui?.version || 'legacy';
-  const selectedPresentation = selectedItem ? getDiffReportItemPresentation(selectedItem) : null;
+  const selectedPresentation = selectedItem ? getDiffReportItemPresentation(selectedItem, t) : null;
 
   return (
     <div
@@ -120,7 +122,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
       {/* Items */}
       <div className="divide-y divide-gray-100">
         {report.items.map((item, idx) => {
-          const presentation = getDiffReportItemPresentation(item);
+          const presentation = getDiffReportItemPresentation(item, t);
           const isAllMode = item.workload_type.trim().toLowerCase() === 'all';
           return (
             <div
@@ -177,7 +179,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
           const afterYaml = (selectedItem.after_yaml || '').trim();
           const looksLikeYaml = beforeYaml.includes(':') || afterYaml.includes(':');
           const diff = looksLikeYaml
-            ? computeLineDiff(beforeYaml || '# (空)', afterYaml || '# (空)')
+            ? computeLineDiff(beforeYaml || t('chat.diffReport.emptyLine'), afterYaml || t('chat.diffReport.emptyLine'))
             : null;
           return (
             <div>
@@ -194,19 +196,19 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
                 <div className="px-4 py-3 border-b border-gray-100">
                   <div className="mb-2 flex items-center gap-2">
                     <span className="inline-flex h-6 items-center rounded-md bg-blue-100 px-2 text-xs font-medium text-blue-700 border border-blue-200">
-                      配置修改对比
+                      {t('chat.diffReport.title')}
                     </span>
                     <span className="text-xs text-gray-500">
                       <span className="inline-block w-3 h-3 bg-red-100 border border-red-300 mr-1 align-middle" />
-                      删除
+                      {t('chat.diffReport.removed')}
                       <span className="inline-block w-3 h-3 bg-green-100 border border-green-300 mx-1 ml-2 align-middle" />
-                      新增
+                      {t('chat.diffReport.added')}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-md border border-gray-200 overflow-hidden">
                       <div className="px-3 py-1.5 bg-red-50/60 border-b border-gray-200 text-xs font-medium text-red-700">
-                        修改前 (Before)
+                        {t('chat.diffReport.before')}
                       </div>
                       <pre className="m-0 p-3 text-xs font-mono leading-5 text-gray-800 overflow-x-auto bg-white">
                         {diff.left.map((line, idx) => (
@@ -231,7 +233,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
                     </div>
                     <div className="rounded-md border border-gray-200 overflow-hidden">
                       <div className="px-3 py-1.5 bg-green-50/60 border-b border-gray-200 text-xs font-medium text-green-700">
-                        修改后 (After)
+                        {t('chat.diffReport.after')}
                       </div>
                       <pre className="m-0 p-3 text-xs font-mono leading-5 text-gray-800 overflow-x-auto bg-white">
                         {diff.right.map((line, idx) => (
@@ -262,7 +264,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
                 <div className="px-4 py-3 border-b border-gray-100 bg-green-50/30">
                   <div className="mb-1.5 flex items-center gap-2">
                     <span className="inline-flex h-6 items-center rounded-md bg-green-100 px-2 text-xs font-medium text-green-700 border border-green-200">
-                      ✅ 修复建议
+                      {t('chat.diffReport.fixSuggestion')}
                     </span>
                   </div>
                   <pre className="whitespace-pre-wrap break-words rounded-md bg-white border border-green-200 p-3 text-sm text-gray-800">
@@ -275,13 +277,13 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
                 <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
                   <div className="mb-1.5 flex items-center gap-2">
                     <span className="inline-flex h-6 items-center rounded-md bg-gray-100 px-2 text-xs font-medium text-gray-700 border border-gray-200">
-                      当前 deployment YAML(集群实际状态)
+                      {t('chat.diffReport.liveYaml')}
                     </span>
                   </div>
                   <pre className="whitespace-pre-wrap break-words rounded-md bg-white border border-gray-200 p-3 text-xs font-mono text-gray-700 max-h-80 overflow-auto">
                     {fetchedYaml.loading
-                      ? '加载中...'
-                      : fetchedYaml.error || fetchedYaml.yaml || '加载失败,请重试'}
+                      ? t('chat.diffReport.loading')
+                      : fetchedYaml.error || fetchedYaml.yaml || t('chat.diffReport.loadFailed')}
                   </pre>
                 </div>
               )}

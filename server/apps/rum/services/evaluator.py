@@ -38,7 +38,7 @@ class AlertEvaluator:
         policies = self.policies.list_enabled()
         end = self.now().astimezone(timezone.utc)
         start = end - self.window
-        fired = resolved = renotified = 0
+        fired = resolved = renotified = skipped_count = 0
         for policy in policies:
             action = self.evaluate_policy(policy, start, end)
             if action == EVAL_FIRE:
@@ -47,12 +47,15 @@ class AlertEvaluator:
                 resolved += 1
             elif action == "renotify":
                 renotified += 1
+            elif action == "skipped":
+                skipped_count += 1
         return {
             "skipped": False,
             "evaluated": len(policies),
             "fired": fired,
             "resolved": resolved,
             "renotified": renotified,
+            "skippedCount": skipped_count,
         }
 
     def evaluate_policy(self, policy: dict, start: datetime, end: datetime) -> str:
@@ -68,12 +71,12 @@ class AlertEvaluator:
             )
         except Exception as exc:
             logger.warning(
-                "rum alert metric read policy=%s metric=%s err=%s",
+                "rum alert metric read skipped policy_id=%s failed_stage=%s error_type=%s",
                 policy.get("id"),
-                policy.get("metric"),
-                exc,
+                "monitor_metric",
+                type(exc).__name__,
             )
-            value = 0.0
+            return "skipped"
 
         comparator = policy.get("comparator") or ">="
         level = breached(

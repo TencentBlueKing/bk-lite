@@ -435,7 +435,11 @@ const ComSingle: React.FC<ComSingleProps> = ({
               unit={unitLabel || undefined}
               color={metricColor}
               unitColor={toAlphaColor(metricColor, 0.78)}
-              className="items-center"
+              className={
+                usesScreenTheme
+                  ? 'items-center justify-center'
+                  : 'items-center'
+              }
               valueClassName="font-semibold"
               unitClassName="font-medium"
               fontVariantNumeric="tabular-nums"

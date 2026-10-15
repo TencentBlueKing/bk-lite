@@ -172,27 +172,23 @@ const CLICK_DRAG_THRESHOLD_PX = 6;
 const CARD_PICK_LAYER = 1;
 const RESIZE_LAYOUT_DEBOUNCE_MS = 120;
 
-const cloneCardChromeCanvas = (source: HTMLCanvasElement) => {
-  const chrome = document.createElement('canvas');
-  chrome.width = source.width;
-  chrome.height = source.height;
-  chrome.className = 'app3d-wall-glass-chrome';
-  const context = chrome.getContext('2d');
-  if (!context) throw new Error('Canvas 2D context unavailable');
-  context.drawImage(source, 0, 0);
-  return chrome;
-};
-
 const paintCardTexture = (
   item: Application3DWallItem,
   visual: ReturnType<typeof resolveApplication3DCardVisual>,
+  size: { width: number; height: number },
 ) => {
   const canvas = document.createElement('canvas');
-  canvas.width = CARD_TEXTURE_WIDTH;
-  canvas.height = CARD_TEXTURE_HEIGHT;
+  canvas.width = size.width;
+  canvas.height = size.height;
+  canvas.className = 'app3d-wall-glass-chrome';
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Canvas 2D context unavailable');
+  // Same 768×320 layout, stored only at the pixels the card can cover when zoomed in.
+  const scaleX = size.width / CARD_TEXTURE_WIDTH;
+  const scaleY = size.height / CARD_TEXTURE_HEIGHT;
+  context.setTransform(scaleX, 0, 0, scaleY, 0, 0);
   paintApplication3DCard(context, visual, item.id, 'front');
+  context.setTransform(1, 0, 0, 1, 0, 0);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.needsUpdate = true;
@@ -202,10 +198,11 @@ const paintCardTexture = (
 const createCardTextures = (
   item: Application3DWallItem,
   translate: Application3DTranslate,
+  size: { width: number; height: number },
 ) => {
   const visual = resolveApplication3DCardVisual(item, translate);
   return {
-    texture: paintCardTexture(item, visual),
+    texture: paintCardTexture(item, visual, size),
     cardTone: visual.cardTone,
   };
 };
@@ -552,7 +549,7 @@ export const createApplication3DScene = (
     const el = document.createElement('div');
     el.className = 'app3d-wall-glass';
     el.dataset.tone = tone;
-    el.appendChild(cloneCardChromeCanvas(canvas));
+    el.appendChild(canvas);
     glassLayer.appendChild(el);
     return el;
   };
@@ -819,7 +816,9 @@ export const createApplication3DScene = (
 
   const syncParticleScale = () => {
     // Widget is smaller than fullscreen legacy — scale sizes with camera distance.
-    particleSizeScale = THREE.MathUtils.clamp(wallCameraPosition.z / 28, 0.85, 2.4);
+    // Point size is in framebuffer pixels, so keep the CSS size when DPR changes.
+    const pixelRatio = renderer.getPixelRatio() || 1;
+    particleSizeScale = THREE.MathUtils.clamp(wallCameraPosition.z / 28, 0.85, 2.4) * pixelRatio;
     if (particleMaterial) {
       particleMaterial.uniforms.uSizeScale.value = particleSizeScale;
     }
@@ -921,6 +920,8 @@ export const createApplication3DScene = (
   let firstRender = true;
   let viewportWidth = 0;
   let viewportHeight = 0;
+  let viewportPixelRatio = 0;
+  let pixelRatioMediaQuery: MediaQueryList | null = null;
   let lastFrameTime = performance.now();
   let tweenIdSeq = 1;
   const tweens = new Map<number, Tween>();
@@ -1220,6 +1221,7 @@ export const createApplication3DScene = (
     }
     if (glassRects.length === 0) {
       composer.renderToScreen = true;
+      renderer.setViewport(0, 0, viewportWidth, viewportHeight);
       composer.render();
       return;
     }
@@ -1261,7 +1263,7 @@ export const createApplication3DScene = (
     const blurred = ping.texture;
     renderer.autoClear = false;
     renderer.setRenderTarget(null);
-    renderer.setViewport(0, 0, frostBufferSize.x, frostBufferSize.y);
+    renderer.setViewport(0, 0, viewportWidth, viewportHeight);
     frostCopyMaterial.uniforms.tDiffuse.value = source.texture;
     frostBlit.material = frostCopyMaterial;
     frostBlit.visible = true;
@@ -1396,8 +1398,8 @@ export const createApplication3DScene = (
       firstRender = false;
       options.onFirstRender?.();
     }
-    // Glass stays on the CSS overlay. Keep painting only while something
-    // on screen is still moving, so a settled wall does not re-blur every card.
+    // Glass stays on the CSS overlay. Card DOM only updates while the wall moves.
+    // Particles still need a frame every tick, or they freeze and then jump.
     if (
       tweens.size > 0
       || cameraAnimating
@@ -1406,6 +1408,7 @@ export const createApplication3DScene = (
       || pointerDown !== null
       || phase === 'initializing'
       || phase === 'architecture'
+      || particlePoints !== null
     ) {
       requestRender();
     }
@@ -1754,9 +1757,58 @@ export const createApplication3DScene = (
     requestRender();
   };
 
+  /**
+   * Bitmap pixels for one card at the closest orbit distance.
+   * A fixed 768×320 image stays full size while extra cards push the camera
+   * back, so many small cards were each compositing a large canvas.
+   */
+  const resolveChromeCanvasSize = () => {
+    if (viewportWidth < 2 || viewportHeight < 2) {
+      return { width: CARD_TEXTURE_WIDTH, height: CARD_TEXTURE_HEIGHT };
+    }
+    const aspect = viewportWidth / viewportHeight;
+    const count = Math.max(wallLayoutCount, visuals.size, 1);
+    const layout = buildApplication3DLayout(count, aspect);
+    const pose = resolveApplication3DWallCamera(count, aspect, camera.fov);
+    const minDistance = Math.max(pose.z * 0.45, 6);
+    const focal = (viewportHeight / 2) / Math.tan((camera.fov * Math.PI) / 360);
+    const cssWidth = (layout.cardWidth * focal) / minDistance;
+    const pixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+    const width = Math.min(
+      CARD_TEXTURE_WIDTH,
+      Math.max(64, Math.ceil(cssWidth * pixelRatio)),
+    );
+    const height = Math.min(
+      CARD_TEXTURE_HEIGHT,
+      Math.max(32, Math.round(width * (CARD_TEXTURE_HEIGHT / CARD_TEXTURE_WIDTH))),
+    );
+    return { width, height };
+  };
+
   const applyFaceMaterial = (material: THREE.ShaderMaterial) => {
     material.uniforms.uBright.value = 1;
     material.needsUpdate = true;
+  };
+
+  const replaceCardChrome = (
+    visual: ApplicationCardVisual,
+    chromeSize: { width: number; height: number },
+  ) => {
+    const next = createCardTextures(visual.item, translate, chromeSize);
+    visual.texture.dispose();
+    visual.texture = next.texture;
+    visual.cardTone = next.cardTone;
+    visual.material.uniforms.uMap.value = visual.texture;
+    applyFaceMaterial(visual.material);
+    visual.sideTexture.dispose();
+    visual.sideTexture = paintCardSideTexture(next.cardTone);
+    applyCardSideMaterial(visual.sideMaterial, visual.sideTexture);
+    visual.reflectionMaterial.uniforms.uMap.value = visual.texture;
+    visual.reflectionMaterial.uniforms.uTint.value.set(CARD_TONE[next.cardTone].tint);
+    visual.floorGlowMaterial.uniforms.uColor.value.set(CARD_TONE[next.cardTone].tint);
+    visual.glassEl.replaceChildren();
+    visual.glassEl.dataset.tone = next.cardTone;
+    visual.glassEl.appendChild(next.texture.image as HTMLCanvasElement);
   };
 
   const reconcile = (
@@ -1814,6 +1866,7 @@ export const createApplication3DScene = (
       if (holdOutgoing) retiring.push(visual);
       else disposeVisual(visual);
     });
+    const chromeSize = resolveChromeCanvasSize();
     items.forEach((item) => {
       const previous = visuals.get(item.id);
       if (previous) {
@@ -1826,24 +1879,10 @@ export const createApplication3DScene = (
           return;
         }
         previous.item = item;
-        const next = createCardTextures(item, translate);
-        previous.texture.dispose();
-        previous.texture = next.texture;
-        previous.cardTone = next.cardTone;
-        previous.material.uniforms.uMap.value = previous.texture;
-        applyFaceMaterial(previous.material);
-        previous.sideTexture.dispose();
-        previous.sideTexture = paintCardSideTexture(next.cardTone);
-        applyCardSideMaterial(previous.sideMaterial, previous.sideTexture);
-        previous.reflectionMaterial.uniforms.uMap.value = previous.texture;
-        previous.reflectionMaterial.uniforms.uTint.value.set(CARD_TONE[next.cardTone].tint);
-        previous.floorGlowMaterial.uniforms.uColor.value.set(CARD_TONE[next.cardTone].tint);
-        previous.glassEl.replaceChildren();
-        previous.glassEl.dataset.tone = next.cardTone;
-        previous.glassEl.appendChild(cloneCardChromeCanvas(next.texture.image as HTMLCanvasElement));
+        replaceCardChrome(previous, chromeSize);
         return;
       }
-      const painted = createCardTextures(item, translate);
+      const painted = createCardTextures(item, translate, chromeSize);
       const material = createGlassFaceMaterial(painted.texture);
       applyFaceMaterial(material);
       const sideTexture = paintCardSideTexture(painted.cardTone);
@@ -2361,7 +2400,9 @@ export const createApplication3DScene = (
 
   const handlePointerMove = (event: PointerEvent) => {
     if (pointerDown) requestRender();
-    syncCursor(event.clientX, event.clientY);
+    // Dragging already shows the grab cursor. Raycasting every card on each
+    // move event is what makes a crowded wall lag behind the pointer.
+    if (!pointerDown) syncCursor(event.clientX, event.clientY);
     if (
       phase === 'architecture'
       && architectureHostId
@@ -2498,10 +2539,19 @@ export const createApplication3DScene = (
 
   let resizeRaf: number | null = null;
 
+  const clampPixelRatio = () => Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+
+  const repaintCardTextures = () => {
+    if (visuals.size === 0) return;
+    const chromeSize = resolveChromeCanvasSize();
+    visuals.forEach((visual) => replaceCardChrome(visual, chromeSize));
+  };
+
   const applyRendererSize = (width: number, height: number) => {
-    const pixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+    const pixelRatio = clampPixelRatio();
     viewportWidth = width;
     viewportHeight = height;
+    viewportPixelRatio = pixelRatio;
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(width, height, false);
     composer.setSize(width, height);
@@ -2520,9 +2570,14 @@ export const createApplication3DScene = (
       Math.round(mountNode.clientHeight || mountNode.getBoundingClientRect().height),
       1,
     );
-    if (width === viewportWidth && height === viewportHeight) return;
+    const pixelRatio = clampPixelRatio();
+    const sizeChanged = width !== viewportWidth || height !== viewportHeight;
+    const pixelRatioChanged = pixelRatio !== viewportPixelRatio;
+    if (!sizeChanged && !pixelRatioChanged) return;
     applyRendererSize(width, height);
+    if (pixelRatioChanged) repaintCardTextures();
     requestRender();
+    if (!sizeChanged) return;
     if (resizeLayoutTimer !== null) window.clearTimeout(resizeLayoutTimer);
     resizeLayoutTimer = window.setTimeout(() => {
       resizeLayoutTimer = null;
@@ -2541,6 +2596,19 @@ export const createApplication3DScene = (
     });
   };
 
+  const handlePixelRatioChange = () => {
+    resize();
+    observePixelRatio();
+  };
+
+  function observePixelRatio() {
+    pixelRatioMediaQuery?.removeEventListener('change', handlePixelRatioChange);
+    pixelRatioMediaQuery = typeof window.matchMedia === 'function'
+      ? window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+      : null;
+    pixelRatioMediaQuery?.addEventListener('change', handlePixelRatioChange);
+  }
+
   renderer.domElement.addEventListener('contextmenu', handleContextMenu);
   if (options.interactive) {
     renderer.domElement.addEventListener('pointerdown', handlePointerDown);
@@ -2552,6 +2620,7 @@ export const createApplication3DScene = (
   }
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(mountNode);
+  observePixelRatio();
   resizeNow();
   requestRender();
 
@@ -2591,6 +2660,7 @@ export const createApplication3DScene = (
       if (frameId !== null) window.cancelAnimationFrame(frameId);
       if (resizeRaf !== null) window.cancelAnimationFrame(resizeRaf);
       resizeObserver.disconnect();
+      pixelRatioMediaQuery?.removeEventListener('change', handlePixelRatioChange);
       renderer.domElement.removeEventListener('contextmenu', handleContextMenu);
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
       renderer.domElement.removeEventListener('pointermove', handlePointerMove);

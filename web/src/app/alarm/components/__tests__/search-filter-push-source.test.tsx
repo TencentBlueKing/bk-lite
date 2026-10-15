@@ -88,6 +88,37 @@ it('点击统计项生成对应监控源筛选条件', () => {
   expect(selectedMonitorSourceIds({ field: 'title', type: 'str', value: 'CPU' })).toEqual([]);
 });
 
+it('状态字段使用下拉，选中后把状态交给搜索', async () => {
+  const onSearch = vi.fn();
+  render(
+    <SearchFilter
+      attrList={[
+        { attr_id: 'alert_id', attr_name: '告警ID', attr_type: 'str', option: [] },
+        {
+          attr_id: 'status',
+          attr_name: '状态',
+          attr_type: 'enum',
+          option: [
+            { id: 'pending', name: '待响应' },
+            { id: 'processing', name: '处理中' },
+          ],
+        },
+      ]}
+      onSearch={onSearch}
+    />
+  );
+
+  fireEvent.mouseDown(screen.getAllByRole('combobox')[0]);
+  fireEvent.click(await screen.findByText('状态', { selector: '.ant-select-item-option-content' }));
+  fireEvent.mouseDown(screen.getAllByRole('combobox')[1]);
+  fireEvent.click(await screen.findByText('待响应', { selector: '.ant-select-item-option-content' }));
+
+  expect(onSearch).toHaveBeenLastCalledWith(
+    { field: 'status', type: 'enum', value: 'pending' },
+    'pending',
+  );
+});
+
 it('外部条件切到监控源筛选', async () => {
   render(
     <SearchFilter

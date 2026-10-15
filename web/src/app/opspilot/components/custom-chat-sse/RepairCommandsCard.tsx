@@ -4,12 +4,14 @@ import React, { useMemo, useState } from 'react';
 import { Button, message } from 'antd';
 import { CopyOutlined, DownOutlined, UpOutlined, CodeOutlined } from '@ant-design/icons';
 import { RepairCommands } from '@/app/opspilot/types/global';
+import { useTranslation } from '@/utils/i18n';
 
 interface RepairCommandsCardProps {
   commands: RepairCommands;
 }
 
 const RepairCommandsCard: React.FC<RepairCommandsCardProps> = ({ commands }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
 
   // Parse markdown: extract code blocks and titles
@@ -42,13 +44,13 @@ const RepairCommandsCard: React.FC<RepairCommandsCardProps> = ({ commands }) => 
 
   const handleCopyAll = () => {
     navigator.clipboard.writeText(allCode).then(() => {
-      message.success('已复制所有修复命令');
+      message.success(t('chat.repairCommands.copiedAll'));
     });
   };
 
   const handleCopySection = (code: string) => {
     navigator.clipboard.writeText(code).then(() => {
-      message.success('已复制');
+      message.success(t('chat.repairCommands.copied'));
     });
   };
 
@@ -60,8 +62,8 @@ const RepairCommandsCard: React.FC<RepairCommandsCardProps> = ({ commands }) => 
         onClick={() => setExpanded(!expanded)}
       >
         <CodeOutlined className="text-base text-[var(--color-success)]" />
-        <span className="text-sm font-semibold text-[var(--color-text-1)]">修复命令</span>
-        <span className="ml-1 text-xs text-[var(--color-text-3)]">（{sections.length} 组）</span>
+        <span className="text-sm font-semibold text-[var(--color-text-1)]">{t('chat.repairCommands.title')}</span>
+        <span className="ml-1 text-xs text-[var(--color-text-3)]">{t('chat.repairCommands.sectionCount', '（{count} 组）', { count: sections.length })}</span>
         <div className="ml-auto flex items-center gap-2">
           <Button
             size="small"
@@ -70,7 +72,7 @@ const RepairCommandsCard: React.FC<RepairCommandsCardProps> = ({ commands }) => 
             onClick={(e) => { e.stopPropagation(); handleCopyAll(); }}
             className="!text-xs !text-[var(--color-text-2)] hover:!text-[var(--color-primary)]"
           >
-            全部复制
+            {t('chat.repairCommands.copyAll')}
           </Button>
           {expanded ? <UpOutlined className="text-xs text-[var(--color-text-4)]" /> : <DownOutlined className="text-xs text-[var(--color-text-4)]" />}
         </div>

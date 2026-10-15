@@ -1,6 +1,6 @@
 Access ARRIS Cadant SNMP:
   name: Access ARRIS Cadant SNMP
-  desc: "SNMP monitoring template for ARRIS Cadant access device. It reports uptime, temperature, power supply status, disk usage, interface traffic, and card status (enterprise PEN 4998)."
+  desc: "SNMP monitoring template for ARRIS Cadant access device. It reports uptime, per-card CPU and heap memory, temperature, power supply status, disk usage, interface traffic, and card status (enterprise PEN 4998)."
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -39,23 +39,23 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
       name: CPU Usage
-      desc: Overall CPU utilization of the access device, reported directly as a percentage
-        by a private scalar. Sustained high usage indicates OLT control-plane or management-plane
-        pressure.
+      desc: Per-card CPU utilization of the ARRIS Cadant CMTS, converted at collection
+        as 100 - cadIdleCpuRecentPercent (idle percent over the last reporting cycle).
+        Sustained high usage indicates line-card or control-plane pressure.
     device_memory_total:
-      name: Memory Total
-      desc: Total physical memory capacity reported by the access device in bytes.
-        This metric can be combined with free memory to derive overall memory utilization.
+      name: Heap Memory Total
+      desc: Per-card total dynamic heap size (cadMeHeapSize), in bytes.
     device_memory_free:
-      name: Memory Free
-      desc: Available physical memory currently reported by the access device in bytes.
-        Persistently decreasing free memory can indicate pressure from control services
-        or service tables.
+      name: Heap Memory Free
+      desc: Per-card unallocated dynamic heap (cadMeHeapRemaining), in bytes. Persistently
+        decreasing free heap can indicate memory pressure on the card.
+    device_memory_used:
+      name: Heap Memory Used
+      desc: Per-card allocated dynamic heap, computed as total - free, in bytes.
     device_memory_usage:
-      name: Memory Usage
-      desc: System memory utilization of the access device, reported directly as a
-        percentage by a private scalar. Sustained high memory can indicate forwarding
-        table, ONU management table, or control-service pressure.
+      name: Heap Memory Usage
+      desc: Per-card dynamic heap utilization, computed as (total - free) / total * 100.
+        Sustained high usage can indicate memory leaks or oversized service tables.
     device_temperature_celsius:
       name: System Temperature
       desc: System temperature of the access device in degrees Celsius. Persistently

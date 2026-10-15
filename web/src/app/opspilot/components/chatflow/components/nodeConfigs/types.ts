@@ -2,7 +2,8 @@ import type {FormInstance, UploadFile, UploadProps} from 'antd';
 import type {LlmModel} from '@/app/opspilot/types/skill';
 
 export interface TranslationFunction {
-  (key: string): string;
+  /** 与 `web/src/utils/i18n.ts` 的 t() 同形：缺 key 时回退 defaultMessage。 */
+  (key: string, defaultMessage?: string, values?: Record<string, string | number>): string;
 }
 
 export interface KeyValueRow {

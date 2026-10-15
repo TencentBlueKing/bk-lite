@@ -129,6 +129,8 @@ const CanvasDraftControls = ({
       await onRestore(id);
       setViewing(null);
       setHistoryOpen(false);
+    } catch {
+      // 取消确认时保留快照列表；恢复失败同样不把它当成已经换上。
     } finally {
       setRestoringId(null);
     }

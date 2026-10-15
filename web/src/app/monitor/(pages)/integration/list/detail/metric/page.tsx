@@ -1116,10 +1116,17 @@ const Configure = () => {
         <span className="inline-flex items-center gap-1">
           {t('monitor.integrations.dimension')}
           <Tooltip
-            title={t(
-              'monitor.integrations.metricInlineEditDimensionHint',
-              '这里改的只是指标说明里的维度，脚本实际输出什么标签不会因此改变，维度名要和脚本输出的标签名一致才有效'
-            )}
+            title={
+              isScriptPlugin
+                ? t(
+                  'monitor.integrations.metricInlineEditDimensionHint',
+                  '这里改的只是指标说明里的维度，脚本实际输出什么标签不会因此改变，维度名要和脚本输出的标签名一致才有效'
+                )
+                : t(
+                  'monitor.integrations.metricInlineEditDimensionCatalogHint',
+                  '维度对应采集器输出的标签。这里改的只是指标说明，不会改变采集器实际输出的标签。'
+                )
+            }
           >
             <QuestionCircleOutlined
               className="text-[12px] text-[var(--color-text-3)]"

@@ -1,15 +1,58 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
-from apps.rum.constants import DEFAULT_BUDGETS, SUBJECT_APPLICATION_APPLY, SUBJECT_APPLICATION_GET, SUBJECT_APPLICATION_LIST
+from cryptography.fernet import InvalidToken
+from django.db import transaction
+
+from apps.core.mixinx import EncryptMixin
+from apps.rum.constants import DEFAULT_BUDGETS, MAX_ORIGINS, SUBJECT_APPLICATION_GET
 from apps.rum.services.analytics import Analytics, get_analytics
 from apps.rum.services.control import ControlError, ControlPlane, control_unavailable
 from apps.rum.services.health import probe_pipeline_health
+from apps.rum.services.projection import PublishService
 from apps.rum.services.settings import RumRuntimeSettings, load_rum_settings
 from apps.rum.services.snippets import build_snippet, parse_analytics_range
 from apps.rum.services.status import build_status
 from apps.rum.services.validation import ValidationError, canonical_origins, new_browser_key, valid_application, valid_budgets
+
+MAX_ACTIVE_KEYS = 2
+
+
+def key_digest(value: str) -> str:
+    return hashlib.sha256(value.strip().encode("utf-8")).hexdigest()
+
+
+def encrypt_browser_key(value: str) -> str:
+    suite = EncryptMixin.get_cipher_suite()
+    return suite.encrypt(value.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_browser_key(cipher: str) -> str:
+    try:
+        suite = EncryptMixin.get_cipher_suite()
+        return suite.decrypt(cipher.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, ValueError, TypeError):
+        return ""
+
+
+def _budget_columns(budgets: dict) -> dict:
+    return {
+        "requests_per_minute": int(budgets["requestsPerMinute"]),
+        "compressed_bytes_per_minute": int(budgets["compressedBytesPerMinute"]),
+        "decompressed_bytes_per_minute": int(budgets["decompressedBytesPerMinute"]),
+        "events_per_minute": int(budgets["eventsPerMinute"]),
+    }
+
+
+def _budgets_json(app) -> dict:
+    return {
+        "requestsPerMinute": int(app.requests_per_minute),
+        "compressedBytesPerMinute": int(app.compressed_bytes_per_minute),
+        "decompressedBytesPerMinute": int(app.decompressed_bytes_per_minute),
+        "eventsPerMinute": int(app.events_per_minute),
+    }
 
 
 def strip_browser_keys(view: Any) -> Any:
@@ -31,30 +74,25 @@ class ApplicationsService:
         self.analytics = analytics if analytics is not None else get_analytics()
 
     def _load_registry(self, actor: str) -> list[dict]:
-        _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
-        if data is None:
-            return []
-        if not isinstance(data, list):
-            raise ControlError("internal_error", "controller list payload must be an array")
-        # The list is a registry overview; browser keys are only handed out
-        # per application (get / keys) so one call cannot dump every key.
-        return [strip_browser_keys(item) for item in data]
+        return self.list_applications(actor)
 
     def list_applications(self, actor: str) -> list[dict]:
-        try:
-            return self._load_registry(actor)
-        except ControlError as exc:
-            if control_unavailable(exc):
-                return []
-            raise
+        from apps.rum.models import RumApplication
+
+        unavailable = not self.control.available()
+        return [
+            strip_browser_keys(self._view(app.name, include_keys=False, control_down=unavailable))
+            for app in RumApplication.objects.all().order_by("name")
+        ]
 
     def get_application(self, actor: str, name: str) -> dict:
         if not valid_application(name):
             raise ValidationError("invalid application")
-        _, data = self.control.request(SUBJECT_APPLICATION_GET, actor, {"application": name})
-        if not isinstance(data, dict):
-            raise ControlError("internal_error", "controller get payload must be an object")
-        return data
+        from apps.rum.models import RumApplication
+
+        if not RumApplication.objects.filter(name=name).exists():
+            raise ControlError("not_found", "application not found")
+        return self._view(name, include_keys=True, control_down=not self.control.available())
 
     def create_application(self, actor: str, body: dict) -> tuple[int, dict]:
         name = (body.get("application") or "").strip()
@@ -64,18 +102,15 @@ class ApplicationsService:
         budgets = body.get("budgets") or dict(DEFAULT_BUDGETS)
         if not valid_budgets(budgets):
             raise ValidationError("invalid budgets")
-        key = new_browser_key()
-        payload = {
-            "application": name,
-            # Organization is derived from the deployment, never from the caller.
-            "orgId": self.settings.tenant_id,
-            "enabled": True,
-            "browserKeys": [key],
-            "origins": origins,
-            "budgets": budgets,
-        }
-        revision, data = self.control.request(SUBJECT_APPLICATION_APPLY, actor, payload, expected_revision=0)
-        return revision, data
+        return self._commit(
+            actor,
+            name,
+            origins=origins,
+            enabled=True,
+            budgets=budgets,
+            extra_keys=[new_browser_key()],
+            create=True,
+        )
 
     def update_application(self, actor: str, name: str, body: dict) -> tuple[int, dict]:
         current = self.get_application(actor, name)
@@ -90,59 +125,160 @@ class ApplicationsService:
             budgets = body["budgets"]
             if not valid_budgets(budgets):
                 raise ValidationError("invalid budgets")
-        payload = {
-            "application": name,
-            "orgId": current.get("orgId") or "",
-            "enabled": enabled,
-            "browserKeys": list(current.get("browserKeys") or []),
-            "origins": origins,
-            "budgets": budgets,
-        }
-        revision, data = self.control.request(
-            SUBJECT_APPLICATION_APPLY,
-            actor,
-            payload,
-            expected_revision=int(current.get("revision") or 0),
-        )
-        return revision, data
+        return self._commit(actor, name, origins=origins, enabled=enabled, budgets=budgets, extra_keys=[], create=False)
 
     def reissue_key(self, actor: str, name: str) -> tuple[int, dict]:
         current = self.get_application(actor, name)
-        keys = list(current.get("browserKeys") or [])
-        keys.append(new_browser_key())
-        payload = {
-            "application": name,
-            "orgId": current.get("orgId") or "",
-            "enabled": bool(current.get("enabled", True)),
-            "browserKeys": keys,
-            "origins": list(current.get("origins") or []),
-            "budgets": current.get("budgets") or dict(DEFAULT_BUDGETS),
-        }
-        revision, data = self.control.request(
-            SUBJECT_APPLICATION_APPLY,
+        return self._commit(
             actor,
-            payload,
-            expected_revision=int(current.get("revision") or 0),
+            name,
+            origins=list(current.get("origins") or []),
+            enabled=bool(current.get("enabled", True)),
+            budgets=current.get("budgets") or dict(DEFAULT_BUDGETS),
+            extra_keys=[new_browser_key()],
+            create=False,
         )
-        return revision, data
 
     def disable_application(self, actor: str, name: str) -> tuple[int, dict]:
         current = self.get_application(actor, name)
-        payload = {
-            "application": name,
-            "orgId": current.get("orgId") or "",
-            "enabled": False,
-            "browserKeys": list(current.get("browserKeys") or []),
-            "origins": list(current.get("origins") or []),
-            "budgets": current.get("budgets") or dict(DEFAULT_BUDGETS),
-        }
-        revision, data = self.control.request(
-            SUBJECT_APPLICATION_APPLY,
+        return self._commit(
             actor,
-            payload,
-            expected_revision=int(current.get("revision") or 0),
+            name,
+            origins=list(current.get("origins") or []),
+            enabled=False,
+            budgets=current.get("budgets") or dict(DEFAULT_BUDGETS),
+            extra_keys=[],
+            create=False,
         )
-        return revision, data
+
+    def _commit(
+        self,
+        actor: str,
+        name: str,
+        *,
+        origins: list[str],
+        enabled: bool,
+        budgets: dict,
+        extra_keys: list[str],
+        create: bool,
+    ) -> tuple[int, dict]:
+        from apps.rum.models import RumApplication, RumApplicationKey, RumApplicationOrigin, RumProjectionOutbox
+
+        if len(origins) > MAX_ORIGINS:
+            raise ValidationError("too many origins")
+        with transaction.atomic():
+            if create:
+                if RumApplication.objects.filter(name=name).exists():
+                    raise ValidationError("application already exists")
+                app = RumApplication.objects.create(
+                    name=name,
+                    tenant_id=self.settings.tenant_id,
+                    org_id=self.settings.tenant_id,
+                    enabled=enabled,
+                    revision=0,
+                    created_by=actor,
+                    **_budget_columns(budgets),
+                )
+            else:
+                app = RumApplication.objects.filter(name=name).first()
+                if app is None:
+                    raise ControlError("not_found", "application not found")
+                app.enabled = enabled
+                app.org_id = app.org_id or self.settings.tenant_id
+                for column, value in _budget_columns(budgets).items():
+                    setattr(app, column, value)
+            active = RumApplicationKey.objects.filter(application=name, status="active").count()
+            if active + len(extra_keys) > MAX_ACTIVE_KEYS:
+                raise ValidationError("at most 2 active browser keys; retire one before issuing another")
+            for plain in extra_keys:
+                RumApplicationKey.objects.create(
+                    application=name,
+                    key_cipher=encrypt_browser_key(plain),
+                    key_digest=key_digest(plain),
+                    status="active",
+                )
+            app.revision = int(app.revision or 0) + 1
+            app.save()
+            RumApplicationOrigin.objects.filter(application=name).delete()
+            RumApplicationOrigin.objects.bulk_create(
+                [RumApplicationOrigin(application=name, origin=origin) for origin in origins]
+            )
+            digests = list(
+                RumApplicationKey.objects.filter(application=name, status="active")
+                .order_by("created_at")
+                .values_list("key_digest", flat=True)
+            )
+            payload = {
+                "application": name,
+                "tenantId": app.tenant_id,
+                "orgId": app.org_id,
+                "enabled": app.enabled,
+                "revision": int(app.revision),
+                "budgets": _budgets_json(app),
+                "origins": list(origins),
+                "browserKeyDigests": digests,
+            }
+            outbox = RumProjectionOutbox.objects.create(
+                kind="application",
+                application=name,
+                revision=int(app.revision),
+                payload_json=payload,
+                status="pending",
+            )
+            revision = int(app.revision)
+            outbox_id = outbox.id
+        published, _data = PublishService(self.control).publish(outbox_id)
+        view = self._view(name, include_keys=True, control_down=not self.control.available())
+        if not published:
+            view["projectionPending"] = True
+        return revision, view
+
+    def _view(self, name: str, *, include_keys: bool, control_down: bool) -> dict:
+        from apps.rum.models import RumApplication, RumApplicationKey, RumApplicationOrigin
+
+        app = RumApplication.objects.get(name=name)
+        origins = list(
+            RumApplicationOrigin.objects.filter(application=name).order_by("origin").values_list("origin", flat=True)
+        )
+        key_rows = list(RumApplicationKey.objects.filter(application=name, status="active").order_by("created_at"))
+        plain: list[str] = []
+        if include_keys:
+            for row in key_rows:
+                value = decrypt_browser_key(row.key_cipher)
+                if value:
+                    plain.append(value)
+        accepted, stored, unavailable = self._timestamps(name, control_down)
+        view = {
+            "application": app.name,
+            "tenantId": app.tenant_id,
+            "orgId": app.org_id,
+            "enabled": app.enabled,
+            "revision": int(app.revision),
+            "browserKeys": plain,
+            "browserKeyDigests": [row.key_digest for row in key_rows],
+            "origins": origins,
+            "budgets": _budgets_json(app),
+            "lastAcceptedAt": accepted,
+            "lastStoredAt": stored,
+        }
+        if unavailable:
+            view["controlUnavailable"] = True
+        if not include_keys:
+            view.pop("browserKeys", None)
+        return view
+
+    def _timestamps(self, name: str, control_down: bool) -> tuple[int, int, bool]:
+        if control_down or not self.control.available():
+            return 0, 0, True
+        try:
+            _, data = self.control.request(SUBJECT_APPLICATION_GET, "system", {"application": name})
+        except ControlError as exc:
+            if control_unavailable(exc):
+                return 0, 0, True
+            return 0, 0, False
+        if not isinstance(data, dict):
+            return 0, 0, False
+        return int(data.get("lastAcceptedAt") or 0), int(data.get("lastStoredAt") or 0), False
 
     def status(self, actor: str, name: str) -> dict:
         if not valid_application(name):
@@ -153,7 +289,11 @@ class ApplicationsService:
             if control_unavailable(exc):
                 return build_status(None, application=name, controller_unreachable=True)
             raise
-        return build_status(view, application=name)
+        return build_status(
+            view,
+            application=name,
+            controller_unreachable=bool(view.get("controlUnavailable")),
+        )
 
     def overview(self, actor: str, name: str, range_key: str | None) -> dict:
         from datetime import datetime, timedelta, timezone
@@ -166,7 +306,7 @@ class ApplicationsService:
         try:
             view = self.get_application(actor, name)
             enabled = bool(view.get("enabled"))
-            control_down = False
+            control_down = bool(view.get("controlUnavailable"))
         except ControlError as exc:
             if not control_unavailable(exc):
                 raise
@@ -220,14 +360,8 @@ class ApplicationsService:
         key, ok = parse_analytics_range(range_key)
         if not ok:
             raise ValidationError("invalid range")
-        try:
-            registry = self._load_registry(actor)
-            control_down = False
-        except ControlError as exc:
-            if not control_unavailable(exc):
-                raise
-            registry = []
-            control_down = True
+        registry = self._load_registry(actor)
+        control_down = not self.control.available()
         enabled_apps = [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)]
         applications = [
             {
@@ -307,6 +441,7 @@ class ApplicationsService:
             settings=self.settings,
         )
         return {
+            "publicOrigin": self.settings.public_origin,
             "collectUrl": self.settings.collect_url,
             "replayUrl": self.settings.replay_url,
             "sdkCdnUrl": self.settings.sdk_cdn_url,

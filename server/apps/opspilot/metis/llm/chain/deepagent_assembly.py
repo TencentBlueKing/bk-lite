@@ -8,15 +8,21 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from apps.opspilot.metis.llm.agent.tool_execution_planner import is_pod_restart_reason_query
+from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+    GENERATE_ATTACHMENT_FILE_TOOL_NAME,
+    is_pod_restart_reason_query,
+    looks_like_attachment_file_task,
+)
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
 
-# HITL/选择卡会进工具目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
-_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice"})
+# HITL/选择卡和常驻附件工具会进目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
+_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice", "generate_attachment_file"})
 
-# 步间摘要上限；正文 + 结构化关键字段共享，优先保住关键字段。
+# 步间正文上限。结构化关键字段单独保留，避免被正文或 400 字切片切掉。
 _STEP_SUMMARY_MAX_CHARS = 1200
+_CARRY_OVER_MARKER = "【本步已取得的结构化结果，后续步骤直接引用】"
+_CARRY_OVER_MAX_CHARS = 8000
 
 # 只有这些工具的结果会产出后续步要复用的结构化字段，避免把无关工具的 id 当成 instance_id。
 _MONITOR_OBJECT_TOOLS = frozenset({"monitor_list_objects"})
@@ -61,9 +67,26 @@ class DeepAgentAssemblyMixin:
         return names
 
     @staticmethod
+    def _business_tool_names(tools) -> list[str]:
+        """去掉选择卡和常驻附件后的业务工具名。空计划直答只列举这些。"""
+        names = []
+        for tool in tools or []:
+            name = str(getattr(tool, "name", "") or "")
+            if name and name not in _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES:
+                names.append(name)
+        return names
+
+    @staticmethod
     def _catalog_has_business_tools(tools) -> bool:
-        """目录里是否有会打断轻量直答的业务工具。HITL/选择卡不算。"""
-        return any((name := getattr(tool, "name", None)) and name not in _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES for tool in (tools or []))
+        """目录里是否有会打断轻量直答的业务工具。HITL/选择卡和常驻附件不算。"""
+        return bool(DeepAgentAssemblyMixin._business_tool_names(tools))
+
+    @staticmethod
+    def _attachment_request_needs_planner(tools, user_message: str, conversation_messages=None) -> bool:
+        """常驻附件不算业务工具，但用户本轮要生成或改写文件时必须进入规划，不能轻量直答。"""
+        if not looks_like_attachment_file_task(user_message, conversation_messages=conversation_messages):
+            return False
+        return any(getattr(tool, "name", "") == GENERATE_ATTACHMENT_FILE_TOOL_NAME for tool in (tools or []))
 
     @staticmethod
     def _should_use_lightweight_direct_reply(tools, skill_sources) -> bool:
@@ -201,13 +224,17 @@ class DeepAgentAssemblyMixin:
 
     @classmethod
     def _join_step_summary(cls, summary: str, carry_over: str) -> str:
-        """摘要正文 + 结构化关键字段，总长受控且不重复拼接。"""
-        body = (summary or "").strip()
+        """正文单独截断，结构化字段另计额度并放在前面，避免 ID 被正文挤掉。"""
+        body = (summary or "").strip()[:_STEP_SUMMARY_MAX_CHARS]
         if not carry_over:
             return body
-        if not body:
-            return carry_over
-        return f"{body}\n{carry_over}"[:_STEP_SUMMARY_MAX_CHARS]
+        facts = carry_over
+        if len(facts) > _CARRY_OVER_MAX_CHARS:
+            facts = facts[:_CARRY_OVER_MAX_CHARS] + "\n…结构化结果已截断"
+        prose = body[:400]
+        if not prose:
+            return facts
+        return f"{facts}\n{prose}"
 
     @classmethod
     def _step_structured_carry_over(cls, messages) -> str:
@@ -230,14 +257,52 @@ class DeepAgentAssemblyMixin:
                 facts.append(fact)
         if not facts:
             return ""
-        return "【本步已取得的结构化结果，后续步骤直接引用】\n" + "\n".join(facts)
+        return _CARRY_OVER_MARKER + "\n" + "\n".join(facts)
+
+    @classmethod
+    def _dashboard_source_facts(cls, payload: dict) -> list[str]:
+        """检索目录的 id、名称、标签、图表和字段。搭盘下一步只能靠这些，不能改用别的源。"""
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        candidates = data.get("candidates")
+        if not isinstance(candidates, list):
+            nested = payload.get("candidates")
+            candidates = nested if isinstance(nested, list) else []
+        facts = [
+            "一张盘要混用不同数据源和图表。概览源最多两个 single 或 gauge，其余组件改用 charts 里带 pie、topN、line、table 的其他 dataSource。不要把同一个源的每个数字都做成卡片。不要让用户挑选指标。",
+        ]
+        for row in candidates:
+            if not isinstance(row, dict) or row.get("id") in (None, ""):
+                continue
+            tags = ",".join(str(tag) for tag in (row.get("tags") or []) if tag not in (None, ""))
+            charts = ",".join(str(chart) for chart in (row.get("chart_type") or []) if chart not in (None, ""))
+            fields = []
+            for field in (row.get("fields") or [])[:6]:
+                if isinstance(field, dict) and field.get("name"):
+                    label = str(field["name"])
+                    title = str(field.get("title") or "").strip()
+                    if title and title != label:
+                        label = f"{label}({title})"
+                    fields.append(label)
+                elif isinstance(field, str) and field:
+                    fields.append(field)
+            fact = f"dataSource={row.get('id')} name={row.get('name') or ''}"
+            if tags:
+                fact += f" tag={tags}"
+            if charts:
+                fact += f" charts={charts}"
+            if fields:
+                fact += f" fields={','.join(fields)}"
+            facts.append(fact)
+        return facts
 
     @classmethod
     def _tool_result_structured_facts(cls, tool_name: str, content) -> list[str]:
-        """按工具类型提关键字段：只有列实例/列对象/列指标的结果会产出 ID 与 metric。"""
+        """按工具类型提关键字段。监控带实例 id，仪表盘检索带数据源目录。"""
         payload = cls._parse_tool_result_payload(content)
         if payload is None:
             return []
+        if tool_name == "search_data_sources":
+            return cls._dashboard_source_facts(payload)
         facts: list[str] = []
         for row in cls._rows_of(payload):
             if not isinstance(row, dict):
@@ -478,7 +543,7 @@ class DeepAgentAssemblyMixin:
         mode = cls._planned_report_mode(user_message=user_message, agent_system_prompt=agent_system_prompt)
         if mode == "restart_reason":
             return (
-                "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具。"
+                "现在向用户给出最终答案。不要继续调用工具。"
                 "按助手约定写一份重启原因报告：时间基准、对象与结论、证据、原因、建议与待确认；没有的章节可省略。"
                 "禁止写「# RCA 报告」或告警复盘的事件概述、异常对象清单。"
                 "标题之前不要写定位说明或步骤结果。"
@@ -487,7 +552,7 @@ class DeepAgentAssemblyMixin:
             )
         if mode == "alert_rca":
             return (
-                "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具。"
+                "现在向用户给出最终答案。不要继续调用工具。"
                 "必须以「# RCA 报告」作为第一行，再按"
                 "「事件概述、异常对象清单、根因分析、修复建议、待确认项」只写一份完整 Markdown 报告，"
                 "异常对象清单表必须保留；标题之前不要写定位说明或步骤结果。"
@@ -499,7 +564,7 @@ class DeepAgentAssemblyMixin:
                 "禁止再贴互相矛盾的名单；累计 restart_count 不要写成时间窗次数。"
             )
         return (
-            "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具。"
+            "现在向用户给出最终答案。不要继续调用工具。"
             "按系统提示写最终答案，不要套「# RCA 报告」告警复盘模板。"
             "不要写事件描述、涉及对象清单、链路分析、调查结论；不要重复粘贴多份同类章节。"
             "禁止改成「日志获取完成」「关键证据确认」要点列表。"
@@ -541,7 +606,10 @@ class DeepAgentAssemblyMixin:
             "禁止只拿告警中心空结果下「无告警」结论，也不要为此先问对象类型。"
             "monitor_query_metric_data 的 metric 必须来自本步 monitor_list_object_metrics 返回的 name；"
             "用户问 CPU/内存/磁盘时先 list_object_metrics(keyword=用户词) 筛选再查，禁止猜测 cpu.util，列表非空不要让用户手填指标名。"
-            "monitor_query_metric_data 的 instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用 name 或 IP 代替。"
+            "monitor_query_metric_data 的 instance_ids 必须原样复制 list_object_instances 返回记录的 instance_id 字段，"
+            "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数。"
+            "问全部实例的趋势、未来一段时间会不会超阈值时，用 monitor_summarize_metric_trend，"
+            "它用完整历史算出汇总行；instance_ids 留空表示该对象全部已授权实例，禁止抽样查原始时序。"
             "monitor_query_metric_data 返回空矩阵/无时序是有效结论，禁止改 instance_ids、IP、dimensions、时间窗或 metric 重试。"
             "问「最近 N 分钟哪些主机使用率高/Top N」时用 monitor_get_host_resource_top_by_time，"
             "窗口传 lookback_minutes，返回自带 rank；返回的 host_count/台数即全量台数，"
@@ -578,6 +646,7 @@ class DeepAgentAssemblyMixin:
     def _build_legacy_deep_agent_middleware(self, token_usage_accumulator, graph_request) -> list:
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
+        from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import ToolTimeoutMiddleware
 
@@ -585,6 +654,7 @@ class DeepAgentAssemblyMixin:
         legacy_middleware = [
             ToolTimeoutMiddleware(),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
+            TerminalUserChoiceMiddleware(),
         ]
         if isinstance(token_usage_accumulator, TokenUsageAccumulator):
             legacy_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
@@ -626,10 +696,11 @@ class DeepAgentAssemblyMixin:
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
         from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
             PlannedExecutionLimitMiddleware,
-            get_planned_execution_run_model_call_limit,
+            resolve_planned_execution_run_model_call_limit,
             resolve_planned_execution_soft_budget_ratio,
             resolve_planned_execution_token_budget,
         )
+        from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import (
             SkillExecutionGuardMiddleware,
@@ -650,7 +721,7 @@ class DeepAgentAssemblyMixin:
             include_always_visible=True,
         )
         limit_middleware = PlannedExecutionLimitMiddleware(
-            run_limit=get_planned_execution_run_model_call_limit(),
+            run_limit=resolve_planned_execution_run_model_call_limit(graph_request),
             token_budget=resolve_planned_execution_token_budget(graph_request),
             soft_budget_ratio=resolve_planned_execution_soft_budget_ratio(graph_request),
             accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
@@ -665,6 +736,7 @@ class DeepAgentAssemblyMixin:
             ToolResultCompactionMiddleware(max_tool_chars=max_tool_chars, max_ai_chars=max_ai_chars),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
             limit_middleware,
+            TerminalUserChoiceMiddleware(),
         ]
         if isinstance(token_usage_accumulator, TokenUsageAccumulator):
             runtime_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
@@ -699,6 +771,25 @@ class DeepAgentAssemblyMixin:
         if interrupt_on:
             agent_kwargs["interrupt_on"] = interrupt_on
         return agent_kwargs
+
+
+def compact_completed_step_line(objective: str, result: str) -> str:
+    """下一步只看这段。有结构化目录时保留目录，只缩短前面的正文。"""
+    text = result or ""
+    if _CARRY_OVER_MARKER not in text:
+        return f"- {objective}: {text[:400]}"
+    prose, _, carried = text.partition(_CARRY_OVER_MARKER)
+    prose = prose.strip()
+    if len(prose) > 200:
+        prose = prose[:200]
+    carried = carried.strip()
+    if len(carried) > _CARRY_OVER_MAX_CHARS:
+        carried = carried[:_CARRY_OVER_MAX_CHARS]
+    parts = [f"- {objective}:"]
+    if prose:
+        parts.append(prose)
+    parts.append(f"{_CARRY_OVER_MARKER}\n{carried}")
+    return "\n".join(parts)
 
 
 # Backward-compat module-level aliases (tests patch chain.node.*)

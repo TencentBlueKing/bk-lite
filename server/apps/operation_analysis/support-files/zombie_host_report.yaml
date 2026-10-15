@@ -51,7 +51,6 @@ reports:
       type: timeRange
       defaultValue:
         selectValue: 10080
-        rangePickerVaule: null
       order: 1
       enabled: true
     - id: os_type__string

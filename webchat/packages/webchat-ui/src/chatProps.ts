@@ -1,5 +1,11 @@
 import type { ChatState, Message, WebChatConfig, LlmContextUsage, Locale } from '@webchat/core';
 
+export interface CompletedToolResult {
+  toolCallId: string;
+  toolCallName: string;
+  content: string;
+}
+
 export interface ChatProps extends WebChatConfig {
   onStateChange?: (state: ChatState) => void;
   onMessageReceived?: (message: Message) => void;
@@ -30,6 +36,11 @@ export interface ChatProps extends WebChatConfig {
   kickoffMessage?: string;
   onKickoffConsumed?: () => void;
   onCustomEvent?: (event: { type: 'CUSTOM'; name: string; value: unknown }) => void;
+  /**
+   * Host callback for a finished tool call. WebChat forwards the tool name,
+   * call id, and raw result text, and does not interpret the payload.
+   */
+  onToolResult?: (result: CompletedToolResult) => void;
   /** @inheritdoc WebChatConfig.streamingTextBatching */
   streamingTextBatching?: WebChatConfig['streamingTextBatching'];
 }

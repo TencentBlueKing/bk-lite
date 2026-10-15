@@ -306,7 +306,9 @@ class CollectModels(MaintainerInfo, TimeInfo):
         if not self.credential:
             return self.credential
 
-        encrypted_fields = set(get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type) or [])
+        encrypted_fields = set(
+            get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type, task_type=self.task_type) or []
+        )
 
         def decrypt_item(raw_item):
             item = copy.deepcopy(raw_item)
@@ -332,7 +334,11 @@ class CollectModels(MaintainerInfo, TimeInfo):
     def save(self, *args, **kwargs):
         # 只有在密码未加密时才进行加密
         if self.credential:
-            encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type)
+            encrypted_fields = get_collect_model_passwords(
+                collect_model_id=self.model_id,
+                driver_type=self.driver_type,
+                task_type=self.task_type,
+            )
 
             def encrypt_item(raw_item):
                 if not isinstance(raw_item, dict):

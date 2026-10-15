@@ -17,7 +17,6 @@ import {
   InstDetailItem,
 } from '@/app/cmdb/types/assetSearch';
 import {
-  Spin,
   Input,
   Tabs,
   Button,
@@ -834,7 +833,6 @@ const AssetSearch = () => {
 
   return (
     <div className={assetSearchStyle.assetSearch}>
-      <Spin spinning={pageLoading}>
         {showSearch ? (
           <AssetSearchLanding
             searchText={searchText}
@@ -923,12 +921,20 @@ const AssetSearch = () => {
                 </Checkbox>
               </div>
             </div>
-            <div
-              style={{
-                height: 'calc(100vh - 136px)',
-              }}
-            >
-              {modelStats.length ? (
+            <div className="min-h-0 flex-1">
+              {pageLoading ? (
+                <div className="space-y-3" aria-busy="true" aria-label="loading">
+                  <div className="flex gap-2">
+                    {[0, 1, 2].map((index) => (
+                      <div
+                        key={index}
+                        className="h-8 w-24 animate-pulse rounded bg-[var(--color-fill-2)]"
+                      />
+                    ))}
+                  </div>
+                  <div className="h-64 animate-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]" />
+                </div>
+              ) : modelStats.length ? (
                 <Tabs
                   activeKey={activeTab}
                   items={getModelTabs()}
@@ -940,7 +946,6 @@ const AssetSearch = () => {
             </div>
           </div>
         )}
-      </Spin>
     </div>
   );
 };

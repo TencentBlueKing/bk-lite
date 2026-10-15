@@ -1,12 +1,12 @@
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
-from apps.core.utils.viewset_utils import AuthViewSet
+from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import LLMSkill, SkillChannel
 from apps.opspilot.serializers.skill_channel_serializer import SkillChannelSerializer
 from apps.opspilot.services.skill_channel_chat_service import (
@@ -15,10 +15,11 @@ from apps.opspilot.services.skill_channel_chat_service import (
     list_skill_conversations_for_admin,
     serialize_skill_session_messages,
 )
+from apps.opspilot.utils.user_message import user_message
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
-class SkillChannelViewSet(viewsets.ModelViewSet):
+class SkillChannelViewSet(LanguageViewSet):
     """智能体渠道发布绑定 CRUD / 启停。权限：有 Skill 管理组即可（skill_setting-Edit）。"""
 
     serializer_class = SkillChannelSerializer
@@ -41,7 +42,13 @@ class SkillChannelViewSet(viewsets.ModelViewSet):
         current_team = request.COOKIES.get("current_team", "0")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         if not helper.get_has_permission(request.user, skill, current_team, include_children=include_children):
-            return JsonResponse({"result": False, "message": "无权管理该智能体渠道"}, status=403)
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": user_message(request, "error.no_skill_channel_permission", "无权管理该智能体渠道", self.loader),
+                },
+                status=403,
+            )
         return skill
 
     @HasPermission("skill_setting-View")

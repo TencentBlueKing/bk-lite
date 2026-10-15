@@ -102,6 +102,13 @@ base_constant:
   time: time
   float: float
   json: json
+skill:
+  default_prompt: |-
+    You are a professional assistant. Reply according to these rules:
+    1. For the user's question, retrieve related knowledge from the knowledge base and summarize the answer.
+    2. Based on the user's need, choose and run the appropriate tool.
+    3. Keep the reply accurate. Do not make things up.
+    4. Organize the answer in clear points.
 error:
   network_whitelist_required: The target IP is not in the allowlist. Add it in System Management > Network Allowlist.
   go_to_network_whitelist: Open Network Allowlist
@@ -129,6 +136,7 @@ error:
   training_document_no_retrain: training document can not be retrained
   qa_pair_update_failed: Failed to update QA pair.
   skill_quota_exceeded: Skill count exceeds quota limit.
+  run_model_call_limit_range: Model calls per step must be between 1 and 100.
   pilot_start_failed: Pilot start failed.
   no_delete_permission: User does not have permission to delete this instance
   generate_question_failed: generate question failed
@@ -190,7 +198,36 @@ error:
   mcp_tools_fetch_failed: Failed to fetch tools from MCP server
   no_bot_stop_permission: You do not have permission to stop this bot
   knowledge_base_training: The knowledge base is training and cannot be modified.
-  knowledge_base_used_by_skills: ''
+  knowledge_base_used_by_skills: 'This knowledge base is used by the following skills and cannot be deleted: {skill_names}'
+  knowledge_base_build_running: A build is still running for this knowledge base. Wait for it to finish before continuing.
+  knowledge_base_build_running_wait: A build is still running for this knowledge base. Wait for it to finish before continuing.
+  knowledge_base_build_running_retry: A build is still running for this knowledge base. Wait for it to finish before retrying.
+  builtin_skill_package_not_deletable: Built-in skill packages cannot be deleted
+  skill_package_zip_required: Upload a skill package ZIP file
+  skill_package_must_be_zip: The skill package must be a ZIP file
+  skill_package_file_missing: The skill package file does not exist
+  skill_package_missing_file: 'The skill package is missing {filename}'
+  no_embedding_model: This knowledge base has no embedding model configured, so the index cannot be rebuilt.
+  material_build_in_progress: This material is already being built. Do not submit it again.
+  knowledge_base_required: knowledge_base is required
+  material_ids_required: material_ids is required
+  material_ids_invalid: material_ids must be a list of integers
+  material_ids_too_many: At most 200 materials can be deleted at once
+  material_not_in_knowledge_base: The material does not exist or does not belong to this knowledge base
+  material_delete_in_progress: A selected material is still being built. Wait for it to finish before deleting.
+  material_build_dispatch_failed: Failed to submit the knowledge build. Try again later.
+  material_no_source_file: This material has no original file to download
+  material_source_file_missing: The original file does not exist
+  object_storage_unavailable: Object storage is unavailable. Try again later.
+  archived_page_not_editable: Archived knowledge pages cannot be edited. Restore the page first.
+  page_reindex_requires_active: Only active knowledge pages can have their index rebuilt
+  page_reindex_requires_version: This knowledge page has no current version, so the index cannot be rebuilt
+  no_skill_channel_permission: You do not have permission to manage this agent's channels
+  local_memory_no_test: Local storage does not need a connection test
+  memory_connection_test_unimplemented: Connection test is not implemented
+  build_task_dispatch_failed: Failed to dispatch the build task. Try again.
+  knowledge_base_protected: This knowledge base is still referenced and cannot be deleted. Try again later or contact an administrator.
+  knowledge_base_delete_failed: 'Failed to delete the knowledge base: {error}'
   knowledge_base_delete_related_data_failed: ''
   crontab_expression_required: crontab_expression is required
   invalid_crontab_expression: 'Invalid crontab expression: {expression}'
@@ -225,6 +262,8 @@ tools:
         description: List metrics already collected on an instance.
       monitor_query_metric_data:
         description: Query time series for a selected metric.
+      monitor_summarize_metric_trend:
+        description: Summarize a metric trend from full history and return only series that reach the threshold within the horizon.
       monitor_list_active_alerts:
         description: List active instance alerts from monitor policies (host detail alert tab; not alert-center tickets).
       monitor_query_alert_segments:
@@ -302,13 +341,22 @@ tools:
         description: Search logs by keyword and time range.
       log_search_raw:
         description: Search logs with native LogsQL.
+  ops_analysis_dashboard:
+    name: Operations Analytics Dashboard
+    description: |
+      Search operations analytics data sources available to the current team and validate a structured proposal that the dashboard page can apply directly.
+    tools:
+      search_data_sources:
+        description: Search authorized, contract-complete data sources from explicit requirements. Call this before naming any data source. candidates[].id is the only legal dataSource, and fields[].name is the only legal field name. fields[].title is the Chinese widget title and fields[].description is the caption; do not use the English field name as a title. chart_type lists the charts that source allows. Mix the types the catalog actually supports instead of making every widget single. After search, build one flat layout and call prepare_dashboard_proposal once so the page writes the canvas. Do not use row or children, do not repeat the search, and do not ask the user to add cards by hand. single and gauge selectedFields must not be empty. Do not call it to read numbers already on the canvas, or to only delete or rearrange widgets.
+      prepare_dashboard_proposal:
+        description: Validate a proposal and apply it to the current canvas. schemaVersion must be the string "1.0". layout must be a flat widget array; do not use row, children, title, panels, chart_type, or data_source_id. The canvas has 12 columns. Widths on one row must sum to at most 12, and each widget must keep x+w within 12. For N widgets on a row, w is 12//N, with leftover columns given to the earlier widgets. Match the column count the user asked for. Widths that do not fit are scaled proportionally into 12 columns. Widget name uses the field title, and description uses the field caption. Choose chartType from that source chart_type and do not make every widget single. dataSource must be a numeric id returned by search; do not invent another number. single and gauge must set selectedFields to one field name from that source, and it must not be empty. pie uses dimensionField and valueField. Call this when the user asks to build or apply a dashboard; a text plan, manual add, or request_user_choice confirmation is insufficient. Success writes an undoable canvas draft; stop calling this tool and let the user save. On failure, correct once using _next_step_hint, sources, or allowedFields; do not probe other ids. Delete or rearrange by editing the current layout, without searching again.
   attachment_file:
     name: Workflow Attachment File
     description: |
-      Generate markdown, PDF, or Word attachment files for workflow execution and return a downloadable link.
+      Generate TXT, Markdown, PDF, Word, PowerPoint, Excel, or CSV attachments. Use only when the user explicitly asks to create, export, or write a new file. Do not use it to answer questions about an existing file.
     tools:
       generate_attachment_file:
-        description: Generate a workflow attachment file, persist it to MinIO-backed storage, and return its download link.
+        description: Generate a txt, md, pdf, docx, pptx, xlsx, or csv attachment and return its download link. txt and md are plain text. pptx becomes slides. xlsx and csv require comma-separated data with a header row. Use pptx when the user asks for a PowerPoint file; do not downgrade it to docx. Keep txt when the user asked for txt.
   kubernetes:
     name: Kubernetes Tools
     description: |
@@ -529,10 +577,10 @@ tools:
       - current_time: Get current time tool
 
       **Tool List:**
-      - get_current_time: Get current system time, supports timezone specification
+      - get_current_time: Get the current time in the current user's timezone
     tools:
       get_current_time:
-        description: This tool can be used to get the current time
+        description: Get the current time in the current user's timezone. Falls back to Asia/Shanghai when the timezone is missing or invalid.
   duckduckgo:
     name: DuckDuckGo Search
     description: |

@@ -159,7 +159,7 @@ const OpspilotProviderVendorGrid: React.FC<OpspilotProviderVendorGridProps> = ({
 
             <div className="mt-auto pt-4">
               <div className="flex items-center justify-between gap-4">
-                <div className="text-xs text-(--color-text-4)">{totalModels} 个模型</div>
+                <div className="text-xs text-(--color-text-4)">{t('vendorGrid.modelCount', '{count} 个模型', { count: totalModels })}</div>
 
                 <div onClick={(event) => event.stopPropagation()}>
                   <Tooltip title={vendor.enabled ? t('common.enable') : t('common.disable')}>

@@ -19,8 +19,10 @@
 import copy
 import json
 import types
+from importlib import import_module
 
 import pytest
+from django.apps import apps
 
 from apps.cmdb.collection.round_metadata import RoundMetadataProtocolError
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, DataCleanupStrategy
@@ -28,7 +30,11 @@ from apps.cmdb.models.change_record import DELETE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
-from apps.cmdb_enterprise.collect.pc import PCCollectionPlugin
+
+enterprise_enabled = apps.is_installed("apps.cmdb_enterprise")
+requires_enterprise = pytest.mark.skipif(not enterprise_enabled, reason="此用例依赖 CMDB 企业 PC 采集或配置扩展")
+if enterprise_enabled:
+    PCCollectionPlugin = import_module("apps.cmdb_enterprise.collect.pc").PCCollectionPlugin
 
 BASE_TS = 1753200000
 
@@ -122,7 +128,8 @@ def _run_plugin(task, vm_doc):
     return plugin.result[PCCollectionPlugin.TASK_FORMAT_DATA_KEY]
 
 
-def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch):
+@requires_enterprise
+def test_round_metadata_failure_still_writes_reported_pc(monkeypatch):
     task = types.SimpleNamespace(
         id=321,
         model_id="pc",
@@ -164,6 +171,16 @@ def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch
     def apply_pc_snapshots(*_args, **_kwargs):
         nonlocal reconciled
         reconciled = True
+        return {
+            "format_data": {
+                "add": [],
+                "update": [],
+                "delete": [],
+                "association": [],
+                "all": 1,
+                "pc_summary": {"pc_total": 1, "pc_partial": 1, "pc_complete": 0, "pc_failed": 0},
+            }
+        }
 
     plugin.round_metadata_reader_factory = Reader
     monkeypatch.setattr(
@@ -171,10 +188,9 @@ def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch
         apply_pc_snapshots,
     )
 
-    with pytest.raises(RoundMetadataProtocolError, match="metadata_unavailable"):
-        plugin.format_metrics()
+    plugin.format_metrics()
 
-    assert reconciled is False
+    assert reconciled is True
 
 
 def _round(vm_doc, snapshot_id, ts, software_overrides=None, drop_software=False, status=None, expected=None):
@@ -250,6 +266,7 @@ def _assert_no_secret_leak(*artifacts):
 # ---------------------------------------------------------------- headers 合同
 
 
+@requires_enterprise
 def test_node_params_headers_carry_no_plaintext_secret():
     for os_type in ("windows", "macos"):
         node = NodeParamsFactory.get_node_params(_fake_header_task(os_type))
@@ -297,6 +314,7 @@ def test_executor_stdout_matches_vm_rows_identity(load_fixture, os_type):
 
 
 @pytest.mark.django_db
+@requires_enterprise
 def test_macos_vm_query_writes_pc_software_and_install_on(load_fixture, graph, monkeypatch):
     """PCCollectionPlugin.run 必须经真实 VM 查询封装把 macOS 快照写入图库。"""
     expected = EXPECTED["macos"]
@@ -331,14 +349,14 @@ def test_macos_vm_query_writes_pc_software_and_install_on(load_fixture, graph, m
     plugin = PCCollectionPlugin(inst_name="", inst_id=f"cmdb_{task.id}", task_id=task.id)
     result = plugin.run()
 
-    assert result == {"pc": []}
+    assert result.get("pc", []) == []
     assert len(requests) == 1
     assert requests[0]["url"].endswith("/prometheus/api/v1/query")
     assert requests[0]["timeout"] == 60
     query = requests[0]["data"]["query"]
-    assert query.startswith("last_over_time((pc_info{")
+    assert query.startswith("last_over_time((pc_info_gauge{")
     assert f"instance_id='cmdb_{task.id}'" in query
-    assert "pc_software_info" in query
+    assert "pc_software_info_gauge" in query
     assert query.endswith(")[1h:])")
 
     assert expected["pc_inst_name"] in graph.store
@@ -357,6 +375,7 @@ def test_macos_vm_query_writes_pc_software_and_install_on(load_fixture, graph, m
 
 
 @pytest.mark.django_db
+@requires_enterprise
 def test_windows_pipeline_full_rounds(load_fixture, graph):
     expected = EXPECTED["windows"]
     vm_doc = load_fixture("pc/windows_vm_rows.json")
@@ -420,6 +439,7 @@ def test_windows_pipeline_full_rounds(load_fixture, graph):
 
 
 @pytest.mark.django_db
+@requires_enterprise
 def test_macos_pipeline_add_update_partial_keeps(load_fixture, graph):
     expected = EXPECTED["macos"]
     vm_doc = load_fixture("pc/macos_vm_rows.json")
@@ -461,6 +481,7 @@ def test_macos_pipeline_add_update_partial_keeps(load_fixture, graph):
 
 
 @pytest.mark.django_db
+@requires_enterprise
 def test_failed_collect_rows_produce_no_snapshot_and_no_delete(load_fixture, graph):
     expected = EXPECTED["windows"]
     vm_doc = load_fixture("pc/windows_vm_rows.json")
@@ -469,7 +490,7 @@ def test_failed_collect_rows_produce_no_snapshot_and_no_delete(load_fixture, gra
     _run_plugin(task, _round(vm_doc, "win-s1", BASE_TS))
     assert expected["software_inst_name"] in graph.store
 
-    # 目标不可达：stargazer 只会落 collect_status=failed 行，全部跳过 → 零快照零删除
+    # 目标不可达：失败 PC 计入任务，不写入、不差集删除
     failed_doc = _round(vm_doc, "win-s2", BASE_TS + 300, drop_software=True, expected=0)
     for row in failed_doc["data"]["result"]:
         row["metric"]["collect_status"] = "failed"
@@ -477,8 +498,16 @@ def test_failed_collect_rows_produce_no_snapshot_and_no_delete(load_fixture, gra
     fd = _run_plugin(task, failed_doc)
 
     assert fd["add"] == []
-    assert fd["update"] == []
     assert fd["delete"] == []
-    assert fd["pc_summary"]["pc_total"] == 0
+    assert fd["pc_summary"]["pc_total"] == 1
+    assert fd["pc_summary"]["pc_failed"] == 1
+    assert fd["update"] == [
+        {
+            "inst_name": failed_doc["data"]["result"][0]["metric"]["collection_target"],
+            "model_id": "pc",
+            "_status": "failed",
+            "_error": "COLLECT_FAILED",
+        }
+    ]
     assert expected["software_inst_name"] in graph.store
     assert ChangeRecord.objects.filter(type=DELETE_INST).count() == 0

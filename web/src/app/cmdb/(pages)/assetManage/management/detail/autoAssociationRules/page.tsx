@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Modal, Space, Switch, Tag, message } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
@@ -283,8 +284,13 @@ const AutoAssociationRulesPage: React.FC = () => {
       <Alert className="mb-[12px]" type="info" showIcon banner message={t('Model.autoAssociationRuleTip')} />
       <div className="flex justify-end mb-[16px]">
         <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>
-          <Button type="primary" disabled={!creatableRules.length} onClick={() => showModal('create')}>
-            {t('Model.addAutoAssociationRule')}
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!creatableRules.length}
+            onClick={() => showModal('create')}
+          >
+            {t('common.new')}
           </Button>
         </PermissionWrapper>
       </div>

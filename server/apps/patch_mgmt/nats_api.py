@@ -2,6 +2,7 @@
 
 import nats_client
 from apps.core.openapi.decorators import openapi_expose
+from apps.core.openapi.envelope import ErrorCode
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.patch_mgmt.models import PatchTarget
 from apps.patch_mgmt.openapi_serializers import ModuleDataQuerySerializer
@@ -42,6 +43,7 @@ def get_patch_mgmt_module_data(module, child_module, page, page_size, group_id, 
     if normalized_group_id not in authorized_team_ids:
         return {
             "result": False,
+            "code": ErrorCode.TEAM_OUT_OF_SCOPE,
             "message": patch_message(
                 None,
                 "error.org_access_denied",

@@ -4,10 +4,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import styles from './index.module.scss';
 import type { Dayjs } from 'dayjs';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
+import SearchActionBar from '@/components/search-action-bar';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useSettingApi } from '@/app/alarm/api/settings';
-import { Input, Select, DatePicker, message } from 'antd';
+import { Select, DatePicker, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useCommon } from '@/app/alarm/context/common';
 import { UserItem, AlarmLogItem } from '@/app/alarm/types/types';
@@ -172,22 +173,20 @@ const OperationLog: React.FC = () => {
 
   return (
     <div className={`${styles.container} flex min-h-0 flex-1 flex-col`}>
-      <Introduction
+      <TopSection
+        className="mb-4"
         title={t('OperationLog.title')}
-        message={t('OperationLog.description')}
+        content={t('OperationLog.description')}
       />
       <div className={`${styles.content} flex min-h-0 flex-1 flex-col`}>
-        <div className={`${styles.filterWrapper} mb-[20px] shrink-0`}>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center">
-              <label className="mr-2 whitespace-nowrap">
-                {t('OperationLog.operator')}:
-              </label>
+        <SearchActionBar
+          filters={(
+            <>
               <Select
                 allowClear
                 showSearch
-                style={{ width: 180 }}
-                placeholder={t('common.selectTip')}
+                className="w-[180px]"
+                placeholder={t('OperationLog.operator')}
                 options={operators}
                 value={filters.operator}
                 onChange={(value) => handleFilterChange('operator', value)}
@@ -200,47 +199,32 @@ const OperationLog: React.FC = () => {
                   return true;
                 }}
               />
-            </div>
-            <div className="flex items-center">
-              <label className="mr-2 whitespace-nowrap">
-                {t('OperationLog.operationType')}:
-              </label>
               <Select
-                style={{ width: 160 }}
-                placeholder={t('common.selectTip')}
+                className="w-40"
+                placeholder={t('OperationLog.operationType')}
                 options={operationTypes}
                 value={filters.type}
                 onChange={(value) => handleFilterChange('type', value)}
                 allowClear
               />
-            </div>
-            <div className="flex items-center">
-              <label className="mr-2 whitespace-nowrap">
-                {t('OperationLog.summary')}:
-              </label>
-              <Input
-                style={{ width: 220 }}
-                placeholder={t('common.inputTip')}
-                value={inputValue}
-                onChange={handleInputChange}
-                onPressEnter={handleInputSearch}
-                onClear={handleInputClear}
-                allowClear
-              />
-            </div>
-            <div className="flex items-center">
-              <label className="mr-2 whitespace-nowrap">
-                {t('OperationLog.timeRange')}:
-              </label>
               <DatePicker.RangePicker
-                style={{ width: 380 }}
+                className="w-[380px]"
                 showTime
                 value={filters.dateRange}
                 onChange={(dates) => handleFilterChange('dateRange', dates)}
               />
-            </div>
-          </div>
-        </div>
+            </>
+          )}
+          searchProps={{
+            placeholder: t('OperationLog.summary'),
+            allowClear: true,
+            value: inputValue,
+            onChange: handleInputChange,
+            onPressEnter: handleInputSearch,
+            onSearch: handleInputSearch,
+            onClear: handleInputClear,
+          }}
+        />
         <div className="min-h-0 flex-1 overflow-hidden">
           <CustomTable
             size="middle"

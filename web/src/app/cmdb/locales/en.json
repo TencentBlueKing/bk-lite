@@ -638,6 +638,18 @@
         "professionalTitle": "Professional Collection",
         "professionalMessage": "You can automatically collect configuration information and associated information of different objects by creating collection tasks.",
         "inputTaskPlaceholder": "Please enter task name",
+        "catalog": {
+            "pluginOverview": "Plugins",
+            "allTasks": "All tasks",
+            "searchPlaceholder": "Search plugin name, description, or tag",
+            "more": "More",
+            "collapse": "Collapse",
+            "empty": "No matching plugins",
+            "taskCount": "{n} tasks",
+            "noTask": "No tasks",
+            "backToPlugins": "Back to plugins",
+            "pluginMissing": "No plugin matches this task"
+        },
         "addTaskTitle": "Add Task",
         "editTaskTitle": "Edit Task",
         "viewDoc": "View Documentation",
@@ -668,7 +680,7 @@
         "afterExpiration": "Expire and Delete",
         "afterExpirationPrefix": "Delete after",
         "afterExpirationSuffix": "days without updates",
-        "afterExpirationTip": "When an instance continuously disappears from the data source and exceeds the set buffer time, cleanup will be performed.",
+        "afterExpirationTip": "After a complete successful collection, delete missing instances owned by this task whose last collection update exceeds the configured number of days. Failed or incomplete collections do not trigger cleanup.",
         "doNotClean": "No Cleanup",
         "doNotCleanDesc": "The system only syncs new and updated instances, completely ignoring deletions or missing data from the source.",
         "doNotCleanTip": "Scenario: Suitable for archived assets or core assets that require manual approval before decommissioning",
@@ -706,6 +718,17 @@
         "hostAssetSelectionNeedsProxy": "Host model instance mode requires selecting a proxy before choosing assets",
         "proxyCloudUnavailable": "The current proxy is not bound to a cloud region, so host model instances cannot be filtered",
         "everyMinute": "Every",
+        "everyMinuteMin": "Minimum execution interval is 1 minute",
+        "api_version": "API version",
+        "smartxTask": {
+            "source": "Authentication source"
+        },
+        "fusioncomputeTask": {
+            "userType": "User type"
+        },
+        "azureTask": {
+            "subscriptionId": "Subscription ID"
+        },
         "executeOnce": "Execute once",
         "database": "Database",
         "port": "Port",
@@ -866,6 +889,7 @@
         },
         "table": {
             "taskName": "Task Name",
+            "pluginName": "Plugin",
             "syncStatus": "Status",
             "latestOverview": "Latest Overview",
             "creator": "Creator",
@@ -1030,7 +1054,9 @@
             "daysAgo": "{n} d ago",
             "never": "none",
             "expand": "Expand overview",
-            "collapse": "Collapse overview"
+            "collapse": "Collapse overview",
+            "clickToViewAll": "Click to view all tasks",
+            "clickToFilter": "Click to filter {name}"
         },
         "IPTask": {
             "chooseSubnet": "Select Subnets",
@@ -1084,6 +1110,7 @@
             "invalidPort": "Enter a valid port from 1 to 65535"
         },
         "platformApiTask": {
+            "identityPort": "Identity service port",
             "tenantId": "Tenant ID",
             "userDomainName": "User domain",
             "projectId": "Project ID",
@@ -1738,9 +1765,9 @@
         "credentialHint": "A reporting credential is generated when the task is saved. View or rotate it in task details.",
         "cudCounts": "Create / update / delete",
         "curlCommand": "Report command (curl)",
-        "curlHintHost": "Replace <CMDB_HOST> with the CMDB backend address (localhost:8011 locally; use the backend domain or gateway in production).",
+        "curlHintHost": "Replace '<CMDB_HOST>' with the CMDB backend address (localhost:8011 locally; use the backend domain or gateway in production).",
         "curlHintPayload": "This is the smallest runnable single report. See Report examples below for multiple records and relations.",
-        "curlHintToken": "Replace <token> with the task credential token and each <field> placeholder with an actual value before running.",
+        "curlHintToken": "Replace '<token>' with the task credential token and each '<field>' placeholder with an actual value before running.",
         "errorCount": "Errors",
         "exampleInstances": "Example 1: Report instances only",
         "exampleInstancesHint": "The instances array supports multiple records. Each identity key locates a record uniquely; existing records update and new records are created. Other model fields are allowed.",

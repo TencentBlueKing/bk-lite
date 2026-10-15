@@ -278,7 +278,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
               ) : null}
               {item.user_prompt ? (
                 <Tooltip title={item.user_prompt}>
-                  <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
+                  <QuestionCircleOutlined className="ml-1 text-[var(--color-text-4)] cursor-help" />
                 </Tooltip>
               ) : null}
             </div>
@@ -630,16 +630,15 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   return (
     <div>
       {hasEditableField && !readOnly && (
-        <div className="flex items-center justify-end mb-2">
+        <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
           {isBatchEdit ? (
             <>
-              <span className="mr-1 text-[12px] text-[var(--color-text-3)]">
+              <span className="text-[12px] text-[var(--color-text-3)]">
                 {t('OperationLog.scenario')}:
               </span>
               <Select
                 size="small"
-                style={{ width: 140 }}
-                className="mr-2"
+                className="w-[140px]"
                 value={editScenario}
                 onChange={(val) => setEditScenario(val)}
                 options={[
@@ -657,7 +656,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                 type="primary"
                 size="small"
                 loading={isBatchSaving}
-                className="mr-2"
                 onClick={handleBatchSave}
               >
                 {t('common.save')}
@@ -671,7 +669,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
               <Button
                 size="small"
                 icon={<BellOutlined />}
-                className="mr-2"
                 onClick={onSubscribe}
               >
                 {t('subscription.subscribe')}
@@ -694,9 +691,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       )}
       {displayGroups && displayGroups.length > 0 && (
         <Collapse
-          style={{ background: 'var(--color-bg-1) ' }}
           bordered={false}
-          className={informationList.list}
+          className={`${informationList.list}${readOnly ? ` ${informationList.embed}` : ''} bg-transparent [&_.ant-collapse-item]:mb-4 [&_.ant-collapse-item]:overflow-hidden [&_.ant-collapse-item]:rounded-lg [&_.ant-collapse-item]:border [&_.ant-collapse-item]:border-[var(--color-border-1)] [&_.ant-collapse-item]:bg-[var(--color-bg)] [&_.ant-collapse-item]:shadow-[0_1px_3px_rgba(0,0,0,0.03)] [&_.ant-collapse-header]:!bg-[var(--color-fill-1)]/35 [&_.ant-collapse-header]:!text-[13px] [&_.ant-collapse-header]:!font-semibold [&_.ant-collapse-header]:!text-[var(--color-text-1)] [&_.ant-collapse-content-box]:!p-0`}
           defaultActiveKey={displayGroups
             .filter((item: any) => !item.is_collapsed)
             .map((item: any) => String(item.id))}
@@ -705,7 +701,16 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           )}
           items={displayGroups.map((group: any) => ({
             key: String(group.id),
-            label: group.display_name || group.group_name,
+            label: (
+              <span className="flex items-center gap-2">
+                <span>{group.display_name || group.group_name}</span>
+                {(group.attrs || []).length > 0 && (
+                  <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-1.5 text-xs font-semibold tabular-nums text-[var(--color-primary)]">
+                    {(group.attrs || []).length}
+                  </span>
+                )}
+              </span>
+            ),
             children: (
               <Descriptions
                 bordered
@@ -717,11 +722,11 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
         />
       )}
       {showSystemLinkage && (
-        <div className="mt-4 rounded border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-4 py-3">
-          <div className="mb-1 flex items-center justify-between gap-2">
-            <div className="text-sm font-medium text-[var(--color-text-1)]">
+        <section className="mt-4 overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35 px-4 py-2.5">
+            <h2 className="m-0 text-[13px] font-semibold text-[var(--color-text-1)]">
               {t('Model.systemLinkage')}
-            </div>
+            </h2>
             {canOperateMonitor && !readOnly && (
               <PermissionWrapper
                 requiredPermissions={['Edit']}
@@ -768,11 +773,11 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
               </PermissionWrapper>
             )}
           </div>
-          <div className="mb-3 text-xs text-[var(--color-text-3)]">
+          <div className="px-4 pb-3 pt-2 text-xs text-[var(--color-text-3)]">
             {t('Model.systemLinkageHint')}
           </div>
           <Descriptions bordered size="small" column={1} items={systemLinkageItems} />
-        </div>
+        </section>
       )}
       <MonitorBindModal
         open={bindModalOpen}

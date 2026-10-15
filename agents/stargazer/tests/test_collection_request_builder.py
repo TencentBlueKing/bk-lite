@@ -32,6 +32,43 @@ def test_request_rejects_credential_pool_above_configured_limit(monkeypatch):
         )
 
 
+def test_custom_script_selects_custom_collector_and_keeps_target_model():
+    request = build_collection_request(
+        task_id="25",
+        params={
+            "plugin_name": "custom_script_info",
+            "model_id": "host",
+            "executor_type": "job",
+            "hosts": "10.0.0.8",
+            "os_type": "windows",
+            "port": "5986",
+            "username": "administrator",
+            "password": "secret",
+        },
+    )
+
+    assert request.plugin_ref == "custom_script.config"
+    assert request.params["model_id"] == "host"
+    assert request.params["plugin_name"] == "custom_script_info"
+    assert request.params["port"] == "5986"
+    assert request.params["preflight_kind"] == "remote"
+    assert request.credentials[0]["username"] == "administrator"
+
+
+def test_builtin_host_plugin_still_uses_host_collector():
+    request = build_collection_request(
+        task_id="builtin-host",
+        params={
+            "plugin_name": "host_info",
+            "model_id": "host",
+            "executor_type": "job",
+            "hosts": "10.0.0.8",
+        },
+    )
+
+    assert request.plugin_ref == "host.config"
+
+
 def test_builder_keeps_one_run_for_many_ips_and_moves_secrets_to_credentials():
     request = build_collection_request(
         task_id="network-scan-001",

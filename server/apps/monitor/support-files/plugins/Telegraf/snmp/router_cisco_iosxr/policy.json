@@ -1,0 +1,54 @@
+{
+  "object": "Router",
+  "plugin": "Router Cisco IOS-XR SNMP",
+  "templates": [
+    {
+      "name": "Cisco IOS-XR路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU ${metric__index} 使用率过高",
+      "description": "监控 Cisco IOS-XR 各处理器的 CPU 使用率（CISCO-PROCESS-MIB cpmCPUTotalTable cpmCPUTotal5minRev），当持续高于阈值时触发告警，提示可能存在控制平面过载或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco IOS-XR路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存池 ${metric__pool_name} 使用率过高",
+      "description": "监控 Cisco IOS-XR 各内存池使用率（CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolTable，优先 64 位计数），当持续高于阈值时触发告警，提示可能存在内存压力或容量不足。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco IOS-XR路由器风扇异常",
+      "alert_name": "路由器${resource_name} 风扇 ${metric__fan_name} 状态异常",
+      "description": "监控 Cisco IOS-XR 各风扇托盘运行状态（CISCO-ENTITY-FRU-CONTROL-MIB cefcFanTrayOperStatus，1=正常/up，2=异常/down 或 warning，3=未知/unknown 不告警），当风扇处于异常状态（=2）时触发告警。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 2, "method": "=" }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco IOS-XR路由器电源异常",
+      "alert_name": "路由器${resource_name} 电源 ${metric__psu_name} 状态异常",
+      "description": "监控 Cisco IOS-XR 各电源模块运行状态（CISCO-ENTITY-FRU-CONTROL-MIB cefcFRUPowerOperStatus，1=正常/on，2=异常/offEnvOther、offAdmin、failed 等，3=未知不告警），当电源处于异常状态（=2）时触发告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 2, "method": "=" }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

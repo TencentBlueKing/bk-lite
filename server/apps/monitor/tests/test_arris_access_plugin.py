@@ -51,10 +51,13 @@ VENDOR_METRICS = {
     "device_psu_state",
     "device_disk_usage",
     "device_disk_state",
+    "device_cpu_usage",
+    "device_memory_total",
+    "device_memory_free",
+    "device_memory_used",
+    "device_memory_usage",
 }
 UNSUPPORTED_METRICS = {
-    "device_cpu_usage",
-    "device_memory_usage",
     "device_fan_state",
     "docsis_channel_state",
     "docsis_cable_modem_state",
@@ -166,8 +169,16 @@ def test_health_metric_queries_and_units(metrics):
     assert by["device_card_temperature_level"]["unit"] == "none"
     for name in ("device_card_state", "device_psu_state", "device_disk_state"):
         assert by[name]["data_type"] == "Enum"
-        assert by[name]["query"].replace(" ", "").startswith("max(")
-        assert "by(instance_id)" in by[name]["query"].replace(" ", "")
+        compact = by[name]["query"].replace(" ", "")
+        assert compact.startswith(f"{name}{{")
+        assert "instance_type='access'" in compact
+    if "device_cpu_usage" in by:
+        assert by["device_cpu_usage"]["unit"] == "percent"
+    if "device_memory_usage" in by:
+        assert by["device_memory_usage"]["unit"] == "percent"
+        assert by["device_memory_total"]["unit"] == "bytes"
+        assert by["device_memory_free"]["unit"] == "bytes"
+        assert by["device_memory_used"]["unit"] == "bytes"
 
 
 @pytest.mark.unit

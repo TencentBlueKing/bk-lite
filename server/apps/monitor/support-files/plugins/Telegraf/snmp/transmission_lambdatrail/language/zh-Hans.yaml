@@ -1,0 +1,42 @@
+Transmission DeltaNet Lambdatrail SNMP:
+  name: DeltaNet Lambdatrail（Telegraf）
+  desc: 面向 DeltaNet Lambdatrail2-S 光传输设备的 SNMP 监控模板，可采集机箱环境温度、电源状态、电源风扇状态与转速、接口流量和运行时长（企业号
+    PEN 35616，lambdatrail2s 1.3.6.1.4.1.35616.5）。
+monitor_object:
+  Transmission: 传输设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 DeltaNet Lambdatrail2-S 自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，管理员可以了解设备稳定性，识别意外重启。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_temperature_celsius:
+      name: 温度
+      desc: DeltaNet Lambdatrail2-S 机箱环境温度（lt2sTemperature，OID 1.3.6.1.4.1.35616.5.2.1.0，Integer32
+        0–80），单位为摄氏度。超出 0–80 或哨兵值的读数丢弃。
+    device_psu_state:
+      name: 电源状态
+      desc: DeltaNet Lambdatrail2-S 电源状态（lt2sPowerStatus，OID 1.3.6.1.4.1.35616.5.2.3.0）。normal(1)→1、failed(2)→2；notPlugged(3)
+        及其它码丢弃。
+    device_fan_state:
+      name: 风扇状态
+      desc: DeltaNet Lambdatrail2-S 电源风扇状态（lt2sPowerFanStatus，OID 1.3.6.1.4.1.35616.5.2.4.0）。on(2)→1（运行）、off(3)→0（停止，策略关闭而非故障）、failed(1)→2（故障）；其它码丢弃。
+    device_fan_speed:
+      name: 风扇转速
+      desc: DeltaNet Lambdatrail2-S 电源风扇转速（lt2sPowerFanRPM，OID 1.3.6.1.4.1.35616.5.2.5.0，Integer32
+        0–20000），单位为 RPM。风扇关闭时 0 为真实读数。超出 0–20000 或哨兵值的读数丢弃。
+monitor_object_metric_group:
+  Transmission:
+    Base: 基础
+    Traffic: 流量
+    Temperature: 温度
+    Hardware Status: 硬件状态

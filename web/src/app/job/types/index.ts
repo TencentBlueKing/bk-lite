@@ -152,12 +152,18 @@ export interface TargetFormData {
 // Script types
 export type ScriptType = 'shell' | 'bat' | 'python' | 'powershell';
 
+export type ScriptParamType = 'text' | 'enum';
+
 export interface ScriptParam {
   name: string;
   description?: string;
   default?: string;
   is_encrypted?: boolean;
   is_required?: boolean;
+  /** 缺省视为 text，兼容存量脚本 */
+  type?: ScriptParamType;
+  /** type=enum 时的单选选项 */
+  options?: string[];
 }
 
 export interface Script {
@@ -178,6 +184,7 @@ export interface Script {
   created_at: string;
   updated_by: string;
   updated_at: string;
+  current_revision_label?: string;
 }
 
 export interface DashboardTrend {
@@ -297,6 +304,7 @@ export interface Playbook {
   created_at: string;
   updated_by: string;
   updated_at: string;
+  current_revision_label?: string;
 }
 
 export interface PlaybookListResponse {
@@ -500,4 +508,70 @@ export interface TargetListItem {
   ip?: string;
   os?: 'linux' | 'windows';
   cloud_region_id?: number;
+}
+
+export interface TemplateRevision {
+  id: number;
+  label: string;
+  created_at: string;
+  created_by: string;
+  is_current?: boolean;
+}
+
+export interface TemplateRevisionList {
+  count: number;
+  items: TemplateRevision[];
+}
+
+export interface TemplateFieldDiff {
+  key: string;
+  selected: string | number;
+  current: string | number;
+  changed: boolean;
+}
+
+export interface TemplateParamSide {
+  name: string;
+  label?: string;
+  description?: string;
+  type?: string;
+  is_encrypted?: boolean;
+  default?: string;
+}
+
+export interface TemplateParamDiff {
+  name: string;
+  status: 'added' | 'removed' | 'modified' | 'unchanged';
+  default_changed: boolean;
+  selected: TemplateParamSide | null;
+  current: TemplateParamSide | null;
+}
+
+export interface TemplateFileDiff {
+  path: string;
+  status: 'added' | 'removed' | 'modified' | 'unchanged';
+  binary: boolean;
+  too_large: boolean;
+  selected_size: number | null;
+  current_size: number | null;
+  selected_text: string;
+  current_text: string;
+}
+
+export interface ScriptRevisionCompare {
+  current: TemplateRevision;
+  selected: TemplateRevision;
+  fields: TemplateFieldDiff[];
+  content: { selected: string; current: string };
+  params: TemplateParamDiff[];
+}
+
+export interface PlaybookRevisionCompare {
+  current: TemplateRevision;
+  selected: TemplateRevision;
+  fields: TemplateFieldDiff[];
+  readme: { selected: string; current: string };
+  params: TemplateParamDiff[];
+  files: TemplateFileDiff[];
+  archive_error: '' | 'selected' | 'current' | 'both';
 }

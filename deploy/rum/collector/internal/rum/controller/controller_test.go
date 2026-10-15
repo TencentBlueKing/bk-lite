@@ -12,7 +12,7 @@ import (
 )
 
 func TestControllerServesVersionedRequestReplyThroughQueueSubscription(t *testing.T) {
-	service, _, _ := newTestService(t)
+	service, _ := newTestService(t)
 	natsServer := runTestNATSServer(t)
 	connection, err := nats.Connect(natsServer.ClientURL())
 	require.NoError(t, err)
@@ -22,21 +22,8 @@ func TestControllerServesVersionedRequestReplyThroughQueueSubscription(t *testin
 	require.NoError(t, controller.Start())
 	t.Cleanup(func() { require.NoError(t, controller.Drain()) })
 
-	expected := int64(0)
-	request := requestBytes(t, "req-nats", "idem-nats", &expected, ApplicationApplyPayload{
-		Application: "storefront",
-		OrgID:       "org-1",
-		Enabled:     true,
-		BrowserKeys: []string{"browser-key-current"},
-		Origins:     []string{"https://app.example.test"},
-		Budgets: Budgets{
-			RequestsPerMinute:          100,
-			CompressedBytesPerMinute:   1_000_000,
-			DecompressedBytesPerMinute: 4_000_000,
-			EventsPerMinute:            1_000,
-		},
-	})
-	message, err := connection.Request(SubjectApplicationApply, request, time.Second)
+	request := requestBytes(t, "req-nats", "idem-nats", nil, projectionPayload("storefront", "browser-key-current", 1, true))
+	message, err := connection.Request(SubjectProjectionApply, request, time.Second)
 	require.NoError(t, err)
 	var response ResponseEnvelope
 	require.NoError(t, json.Unmarshal(message.Data, &response))

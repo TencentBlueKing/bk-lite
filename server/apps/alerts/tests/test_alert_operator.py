@@ -3,6 +3,7 @@
 对照 specs/capabilities/legacy-prd-告警中心-告警.md：未分派→待响应→处理中→关闭，含转派/认领与权限校验。
 """
 
+import logging
 from datetime import datetime
 from unittest import mock
 from zoneinfo import ZoneInfo
@@ -160,6 +161,75 @@ def test_close_success():
     assert alert.status == AlertStatus.CLOSED
     assert alert.closed_at is not None
     assert result["data"]["close_reason"] == "已修复"
+    overview = OperatorLog.objects.get(target_id="A1", operator_object="告警处理-关闭").overview
+    assert overview == "告警关闭成功, 告警[t]状态变更: 处理中 -> 已关闭, 关闭原因：已修复"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("payload", [{}, {"reason": "  \n\t  "}])
+def test_close_without_reason_omits_it_from_overview(payload):
+    _make_alert(status=AlertStatus.PROCESSING, operator=["op1"])
+    op = AlertOperator(user="op1")
+    result = op.operate("close", "A1", payload)
+    assert result["result"] is True
+    assert result["data"]["close_reason"] == "告警已处理完成"
+    overview = OperatorLog.objects.get(target_id="A1", operator_object="告警处理-关闭").overview
+    assert overview == "告警关闭成功, 告警[t]状态变更: 处理中 -> 已关闭"
+    assert "关闭原因" not in overview
+
+
+@pytest.mark.django_db
+def test_close_reason_is_single_line_bounded_and_not_logged(caplog, capsys):
+    reason = "close-reason-sentinel-磁盘已清理"
+    tail = "TAIL-NOT-KEPT"
+    _make_alert(status=AlertStatus.PROCESSING, operator=["op1"])
+    op = AlertOperator(user="op1")
+    with caplog.at_level("INFO", logger="alert"):
+        result = op.operate("close", "A1", {"reason": f"  {reason}\nsecond-line {'x' * 500}{tail}"})
+
+    assert result["result"] is True
+    assert result["data"]["status"] == AlertStatus.CLOSED
+    stored = result["data"]["close_reason"]
+    assert stored.startswith(f"{reason} second-line ")
+    assert len(stored) == 500
+    assert tail not in stored
+    assert "\n" not in stored
+    alert = Alert.objects.get(alert_id="A1")
+    assert alert.status == AlertStatus.CLOSED
+    overview = OperatorLog.objects.get(target_id="A1", operator_object="告警处理-关闭").overview
+    assert overview.endswith(f", 关闭原因：{stored}")
+
+    records = [record for record in caplog.records if record.name == "alert" and str(record.msg).startswith("[AlertOperator] 告警关闭成功:")]
+    assert len(records) == 1
+    record = records[0]
+    assert record.msg == "[AlertOperator] 告警关闭成功: alert_id=%s, user=%s, has_close_reason=%s, 状态变更: %s -> %s"
+    assert record.args == ("A1", "op1", True, AlertStatus.PROCESSING, AlertStatus.CLOSED)
+
+    operate_records = [item for item in caplog.records if item.name == "alert" and str(item.msg).startswith("[AlertOperator] 告警操作执行成功:")]
+    assert len(operate_records) == 1
+    operate_record = operate_records[0]
+    assert operate_record.msg == "[AlertOperator] 告警操作执行成功: action=%s, alert_id=%s, result=%s"
+    assert operate_record.args[0] == "close"
+    assert operate_record.args[1] == "A1"
+    assert operate_record.args[2]["data"]["close_reason"] is True
+    assert operate_record.args[2]["result"] is True
+
+    rendered = logging.Formatter().format(record)
+    operate_rendered = logging.Formatter().format(operate_record)
+    output = capsys.readouterr()
+    blob = (
+        repr(record.args)
+        + record.getMessage()
+        + rendered
+        + repr(operate_record.args)
+        + operate_record.getMessage()
+        + operate_rendered
+        + output.out
+        + output.err
+    )
+    assert reason not in blob
+    assert "second-line" not in blob
+    assert tail not in blob
 
 
 @pytest.mark.django_db
@@ -583,7 +653,24 @@ def test_format_assignment_notify_data_builds_from_notify_channels(_mt, _mc):
 
     nats = next(p for p in result if p["channel_type"] == "nats")
     assert nats["channel_id"] == 9
-    assert nats["content"] == {"message": "正文", "team": 2, "user_ids": ["admin", "op1"]}
+    from datetime import datetime
+    from uuid import UUID
+
+    content = nats["content"]
+    prefix, event_id = content["event_id"].split(":", 1)
+    assert prefix == "alert-notification"
+    assert UUID(event_id).version == 4
+    assert datetime.fromisoformat(content["occurred_at"]).tzinfo is not None
+    assert content == {
+        "message": "正文",
+        "team": 2,
+        "user_ids": ["admin", "op1"],
+        "event_id": content["event_id"],
+        "occurred_at": content["occurred_at"],
+        "producer": "alerts",
+        "object_id": "A-AN",
+        "scene": "assignment",
+    }
     assert nats["object_id"] == "A-AN"
     email = next(p for p in result if p["channel_type"] == "email")
     assert email["channel_id"] == 3
@@ -644,7 +731,24 @@ def test_assign_auto_dispatch_notifies_via_notify_channels(mock_enqueue, _mt, _m
     assert len(params) == 1
     nats = next((p for p in params if p["channel_type"] == "nats"), None)
     assert nats is not None, "expected nats channel in enqueued params"
-    assert nats["content"] == {"message": "正文", "team": 1, "user_ids": ["op1"]}
+    from datetime import datetime
+    from uuid import UUID
+
+    content = nats["content"]
+    prefix, event_id = content["event_id"].split(":", 1)
+    assert prefix == "alert-notification"
+    assert UUID(event_id).version == 4
+    assert datetime.fromisoformat(content["occurred_at"]).tzinfo is not None
+    assert content == {
+        "message": "正文",
+        "team": 1,
+        "user_ids": ["op1"],
+        "event_id": content["event_id"],
+        "occurred_at": content["occurred_at"],
+        "producer": "alerts",
+        "object_id": "A1",
+        "scene": "assignment",
+    }
     assert all(p["channel_type"] != "email" for p in params)
 
 

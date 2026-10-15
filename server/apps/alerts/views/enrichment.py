@@ -10,6 +10,7 @@ from apps.alerts.filters import EnrichmentRuleModelFilter
 from apps.alerts.models.enrichment import EnrichmentRule
 from apps.alerts.models.models import Alert
 from apps.alerts.serializers import EnrichmentRuleModelSerializer
+from apps.alerts.utils.i18n import alerts_message
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.permission_scope import apply_team_scope_for_request, get_current_team_from_request
 from apps.core.decorators.api_permission import HasPermission
@@ -35,7 +36,7 @@ class EnrichmentRuleModelViewSet(ModelViewSet):
     @staticmethod
     def _ensure_mutable(instance, request):
         if instance.is_builtin and not getattr(request.user, "is_superuser", False):
-            raise ValidationError({"detail": "只有超级管理员可以修改全局内置规则"})
+            raise ValidationError({"detail": alerts_message(request, "error.builtin_rule_superuser_only")})
 
     @HasPermission("alert_enrichment-View")
     def list(self, request, *args, **kwargs):
@@ -52,7 +53,7 @@ class EnrichmentRuleModelViewSet(ModelViewSet):
         if "team" not in payload:
             current_team = get_current_team_from_request(request, required=True)
             if not current_team:
-                raise ValidationError({"team": "缺少当前团队"})
+                raise ValidationError({"team": alerts_message(request, "error.team_missing")})
             payload["team"] = [current_team]
         serializer = self.get_serializer(data=payload)
         serializer.is_valid(raise_exception=True)

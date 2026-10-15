@@ -54,7 +54,8 @@ export default function KpiCard({
         label={label}
         value={value}
         valueColor={toneStyle.valueColor}
-        className="h-full min-h-[88px] min-w-0 px-4 py-3 transition-colors duration-200 hover:border-[var(--color-border-2)]"
+        framed={false}
+        className="h-full min-h-[88px] min-w-0 rounded-xl border border-[var(--color-border)] px-4 py-3 transition-colors duration-200 hover:border-[var(--color-border-2)] bg-[image:linear-gradient(180deg,color-mix(in_srgb,var(--color-primary)_1.5%,var(--color-bg))_0%,var(--color-bg)_32%)]"
         iconClassName="h-10 w-10 rounded-[10px] text-[18px]"
         contentClassName="flex-1"
         labelClassName="font-medium text-[var(--color-text-2)]"

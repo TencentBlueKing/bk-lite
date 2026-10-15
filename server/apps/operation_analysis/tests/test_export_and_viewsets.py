@@ -110,6 +110,116 @@ def test_normalize_screen_keeps_valid_view_sets_without_ui_defaults():
     }
 
 
+def test_normalize_screen_keeps_adapter_background_and_chrome_items():
+    items = [
+        {
+            "id": "title-1",
+            "kind": "titleFrame",
+            "preset": "hero-1",
+            "content": "值班总览",
+            "x": 80,
+            "y": 16,
+            "w": 700,
+            "h": 56,
+            "zIndex": 2,
+        },
+        {
+            "id": "clock-1",
+            "kind": "clock",
+            "format": "YYYY-MM-DD HH:mm:ss",
+            "x": 1600,
+            "y": 20,
+            "w": 280,
+            "h": 48,
+            "zIndex": 3,
+        },
+    ]
+    out = vs.normalize_canvas_view_sets_for_storage(
+        {
+            "viewport": {
+                "width": 1920,
+                "height": 1080,
+                "adapter": "fitWidth",
+                "background": {"type": "color", "color": "#112233"},
+                "theme": "screen-dark",
+            },
+            "items": items,
+            "decorations": {"showTitle": False, "showClock": False},
+        },
+        ObjectType.SCREEN,
+    )
+
+    assert out["viewport"]["adapter"] == "fitWidth"
+
+    legacy = vs.normalize_canvas_view_sets_for_storage(
+        {
+            "viewport": {"width": 1920, "height": 1080, "adapter": "contain"},
+            "items": [],
+            "decorations": {},
+        },
+        ObjectType.SCREEN,
+    )
+    assert legacy["viewport"]["adapter"] == "fill"
+    assert out["viewport"]["background"] == {"type": "color", "color": "#112233"}
+    assert out["items"] == items
+
+
+def test_normalize_screen_keeps_custom_image_background_through_yaml_rewrite():
+    src = "data:image/png;base64,iVBORw0KGgo="
+    payload = {
+        "viewport": {
+            "width": 1920,
+            "height": 1080,
+            "background": {"type": "image", "src": src},
+        },
+        "items": [],
+        "decorations": {},
+    }
+    stored = vs.normalize_canvas_view_sets_for_storage(payload, ObjectType.SCREEN)
+    assert stored["viewport"]["background"] == {"type": "image", "src": src}
+
+    exported = vs.rewrite_canvas_view_sets_refs_for_yaml(stored, ObjectType.SCREEN, {})
+    assert exported["viewport"]["background"] == {"type": "image", "src": src}
+
+    imported = vs.rewrite_canvas_view_sets_refs_for_storage(exported, ObjectType.SCREEN, {})
+    assert imported["viewport"]["background"] == {"type": "image", "src": src}
+
+
+def test_validate_screen_allows_chrome_items_without_chart_type():
+    from apps.operation_analysis.services.canvas_draft.validation import validate_projectable
+
+    validate_projectable(
+        ObjectType.SCREEN,
+        {
+            "viewport": {"width": 1920, "height": 1080, "adapter": "contain"},
+            "items": [
+                {
+                    "id": "text-1",
+                    "kind": "text",
+                    "content": "说明",
+                    "x": 0,
+                    "y": 0,
+                    "w": 120,
+                    "h": 40,
+                    "zIndex": 1,
+                },
+                {
+                    "id": "shape-1",
+                    "kind": "shape",
+                    "shape": "rect",
+                    "shapeStyle": {"backgroundColor": "rgba(4, 165, 180, 0.10)"},
+                    "x": 40,
+                    "y": 40,
+                    "w": 320,
+                    "h": 180,
+                    "zIndex": 2,
+                },
+            ],
+            "decorations": {},
+        },
+    )
+
+
 def test_normalize_screen_keeps_unified_filters():
     out = vs.normalize_canvas_view_sets_for_storage(
         {

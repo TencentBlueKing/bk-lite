@@ -27,7 +27,7 @@ import GraphCanvas, {
   GraphCanvasHandle,
   communityColor,
 } from "@/app/opspilot/components/wiki/GraphCanvas";
-import { formatPageTypeLabel } from "./wikiFormat";
+import { formatPageTypeLabel, formatWikiDirectoryLabel } from "./wikiFormat";
 
 interface GraphExplorerProps {
   graph: WikiGraph;
@@ -171,7 +171,7 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
           community: c,
           label: hub?.title || `${t("wiki.communities")} ${c + 1}`,
           breadcrumb: (hub?.directory_breadcrumb || [])
-            .map((item) => item.name)
+            .map((item) => formatWikiDirectoryLabel(t, item))
             .join(" / "),
           count: list.length,
         };

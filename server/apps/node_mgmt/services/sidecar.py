@@ -682,7 +682,7 @@ class Sidecar:
         )
         request_data.pop("architecture", None)
 
-        logger.debug(f"node data: {request_data}")
+        logger.debug("sidecar node update: node_id=%s field_count=%s", node_id, len(request_data))
 
         # 处理标签数据
         allowed_prefixes = [
@@ -1020,7 +1020,11 @@ class Sidecar:
                     # 对包含password的key进行解密
                     decrypted_env_config[key] = aes_obj.decode(str(value))
                 except Exception as e:
-                    logger.warning(f"Failed to decrypt password field {key}: {e}")
+                    logger.warning(
+                        "Failed to decrypt password field %s: error_type=%s",
+                        key,
+                        type(e).__name__,
+                    )
                     # 如果解密失败，可能是明文存储的，直接使用原值
                     decrypted_env_config[key] = str(value)
             else:
@@ -1129,7 +1133,7 @@ class Sidecar:
                     add_config = collector_obj.default_config.get("add_config", "")
                     if add_config:
                         config_template = config_template + "\n" + add_config
-                        logger.info(f"Node {node.id} is a container node, appending add_config for {collector_obj.name}")
+                        logger.debug(f"Node {node.id} is a container node, appending add_config for {collector_obj.name}")
 
                 # 渲染模板
                 tpl = build_sandboxed_env().from_string(config_template)
@@ -1147,9 +1151,9 @@ class Sidecar:
 
                     if update_fields:
                         existing_pre_configuration.save(update_fields=update_fields)
-                        logger.info(f"Node {node.id} updated default configuration for collector {collector_obj.name}.")
+                        logger.debug(f"Node {node.id} updated default configuration for collector {collector_obj.name}.")
                     else:
-                        logger.info(f"Node {node.id} default configuration for collector {collector_obj.name} is up to date.")
+                        logger.debug(f"Node {node.id} default configuration for collector {collector_obj.name} is up to date.")
                     continue
 
                 # 如果已经存在关联的自定义配置则跳过，避免覆盖用户配置

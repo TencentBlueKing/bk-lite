@@ -1,0 +1,51 @@
+Transmission WISI SNMP:
+  name: WISI（Telegraf）
+  desc: 面向 WISI Tangram 传输设备的 SNMP 监控模板，可采集运行时长、机箱温度、风扇转速、电源电流/电压/温度和接口流量（企业号 PEN 7465）。
+monitor_object:
+  Transmission: 传输设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_temperature_celsius:
+      name: 机箱温度
+      desc: WISI Tangram 机箱温度传感器读数，单位为摄氏度。超出 -60 至 195 摄氏度的读数在采集侧丢弃。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+    device_fan_speed:
+      name: 风扇转速
+      desc: WISI Tangram 风扇转速，单位为 RPM。越界或哨兵值在采集侧丢弃。转速过低或为 0 表示风扇卡滞或故障。
+    psu_temperature_celsius:
+      name: 电源温度
+      desc: WISI Tangram 电源模块温度，单位为摄氏度，与机箱温度分系列上报。温度偏高可能表示电源散热异常或过载。
+    psu_current_amps:
+      name: 电源电流
+      desc: WISI Tangram 电源输出电流，单位为安培。原始值为毫安，采集侧除以 1000。双路电压均为 0 的空槽仍上报电流，仅抑制电压。
+    device_voltage_volts:
+      name: 电源电压
+      desc: WISI Tangram 电源内/外电压，单位为伏特。原始值为毫伏，采集侧除以 1000，并用 voltage_type 区分内部与外部电压。
+    psu_rated_power_watts:
+      name: 电源额定功率
+      desc: WISI Tangram 电源最大输出功率，单位为瓦。原始值为毫瓦，采集侧除以 1000。
+monitor_object_metric_group:
+  Transmission:
+    Base: 基础
+    Traffic: 流量
+    Temperature: 温度
+    Hardware Status: 硬件状态
+    Power: 功耗

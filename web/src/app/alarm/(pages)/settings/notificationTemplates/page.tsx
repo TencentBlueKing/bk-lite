@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Input, Modal, Space, Tag, Tooltip, message } from 'antd';
+import { Button, Modal, Space, Tag, Tooltip, message } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import { useScreenAwareRouter } from '@/console-layout';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
+import SearchActionBar from '@/components/search-action-bar';
 import PermissionWrapper from '@/components/permission';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { NotificationTemplateItem } from '@/app/alarm/types/settings';
@@ -175,26 +177,32 @@ export default function NotificationTemplatesPage() {
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex h-full min-h-0 w-full flex-1 flex-col">
-      <Introduction
+      <TopSection
+        className="mb-4"
         title={t('settings.notificationTemplate.title')}
-        message={t('settings.notificationTemplate.message')}
+        content={t('settings.notificationTemplate.message')}
       />
-      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
-        <div className="mb-5 flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <Input.Search
-            allowClear
-            value={search}
-            className="w-[280px]"
-            placeholder={t('common.search')}
-            onChange={(event) => setSearch(event.target.value)}
-            onSearch={(value) => void load(1, pagination.pageSize, value)}
-          />
-          <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="primary" onClick={() => router.push('/alarm/settings/notificationTemplates/new')}>
-              {t('common.addNew')}
-            </Button>
-          </PermissionWrapper>
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-4">
+        <SearchActionBar
+          searchProps={{
+            placeholder: t('common.search'),
+            allowClear: true,
+            value: search,
+            onChange: (event) => setSearch(event.target.value),
+            onSearch: (value) => void load(1, pagination.pageSize, value),
+          }}
+          actions={(
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => router.push('/alarm/settings/notificationTemplates/new')}
+              >
+                {t('common.new')}
+              </Button>
+            </PermissionWrapper>
+          )}
+        />
         <div className="min-h-0 flex-1 overflow-hidden">
           <CustomTable
             rowKey="id"

@@ -13,12 +13,13 @@
     "rootDir": "..",
     "sourceMap": false,
     "paths": {
-      "@webchat/core": ["packages/webchat-core/src/types.ts"]
+      "@webchat/core": ["tests/core-types-stub.d.ts"]
     },
     "types": ["node"]
   },
   "include": [
     "image-budget.issue-4637.test.ts",
+    "core-types-stub.d.ts",
     "../packages/webchat-core/src/types.ts",
     "../packages/webchat-ui/src/imageBudget.ts"
   ]

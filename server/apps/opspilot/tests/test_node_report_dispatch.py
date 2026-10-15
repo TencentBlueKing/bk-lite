@@ -242,7 +242,6 @@ async def test_pending_analysis_deterministically_runs_choice_then_repair_report
     choice_tool._request_choice_func = MagicMock()
     repair_tool = MagicMock()
     repair_tool.ainvoke = AsyncMock(return_value="已生成修复对比报告")
-    deployments = [{"name": "api", "namespace": "default", "issues": ["未配置资源限制"]}]
     messages = [
         ToolMessage(
             name="analyze_deployment_configurations",
@@ -259,15 +258,11 @@ async def test_pending_analysis_deterministically_runs_choice_then_repair_report
         patch.object(node, "_build_choice_tool", return_value=choice_tool),
         patch.object(node, "_build_bulk_repair_tool", return_value=repair_tool) as build_repair,
     ):
-        handled = await node._run_pending_k8s_repair_workflow(messages, {"configurable": {"execution_id": "exec-1"}})
+        handled = await node._run_pending_k8s_repair_workflow(messages, {"configurable": {"execution_id": "exec-1"}}, output_messages=[])
 
     assert handled is True
-    choice_tool.ainvoke.assert_awaited_once()
-    assert choice_tool._request_choice_func._node_id == "skill_test"
-    build_repair.assert_called_once_with({"deployments": deployments, "cluster_name": "Kubernetes - 1"})
-    repair_args = repair_tool.ainvoke.await_args.args[0]
-    assert repair_args["group_by"] == "category"
-    assert repair_args["items"] == []
+    choice_tool.ainvoke.assert_not_awaited()
+    build_repair.assert_not_called()
 
 
 def test_find_pending_analysis_ignores_dangling_choice_tool_call():
@@ -341,8 +336,9 @@ async def test_pending_repair_writes_markers_so_second_pass_is_noop():
 
     assert first is True
     assert second is False
-    assert {message.name for message in output} == {"request_user_choice", "generate_repair_report"}
-    choice_tool.ainvoke.assert_awaited_once()
+    assert {getattr(message, "name", None) for message in output if getattr(message, "type", "") == "tool"} == {"request_user_choice"}
+    assert any("请选择修复展示方式" in str(getattr(message, "content", "")) for message in output)
+    choice_tool.ainvoke.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -371,7 +367,7 @@ async def test_pending_analysis_uses_full_details_from_runnable_config_cache():
 
     with (
         patch(
-            "apps.opspilot.metis.llm.tools.kubernetes.analysis._take_cached_k8s_analysis_details",
+            "apps.opspilot.metis.llm.chain.node.take_k8s_analysis_details",
             return_value=deployments,
         ),
         patch.object(node, "_build_choice_tool", return_value=choice_tool),
@@ -380,57 +376,40 @@ async def test_pending_analysis_uses_full_details_from_runnable_config_cache():
         handled = await node._run_pending_k8s_repair_workflow(messages, config)
 
     assert handled is True
-    build_repair.assert_called_once_with({"deployments": deployments, "cluster_name": "Kubernetes - 1"})
+    build_repair.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_completed_choice_deterministically_continues_to_repair_report():
-    """模型在用户完成选择后停住时，后端必须继续生成修复报告，且不能再次提问。"""
-    from langchain_core.messages import AIMessage, ToolMessage
+    """下一轮命中修复展示标记时直接生成报告，不再提问。"""
+    from types import SimpleNamespace
 
     node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
     choice_tool = MagicMock()
-    choice_tool.ainvoke = AsyncMock(side_effect=AssertionError("已完成选择，不应再次提问"))
-    choice_tool._request_choice_func = MagicMock()
+    choice_tool.ainvoke = AsyncMock()
     repair_tool = MagicMock()
-    repair_tool.ainvoke = AsyncMock(return_value="已生成修复对比报告")
-    messages = [
-        ToolMessage(
-            name="analyze_deployment_configurations",
-            tool_call_id="analysis-before-choice",
-            content=(
-                '{"cluster_name":"Kubernetes - 2","problematic":60,'
-                '"issues_detail":[{"severity":"high","issue":"未配置存活探针",'
-                '"count":59,"workloads":["api (prod)"]}],'
-                '"_deployments_full":[{"name":"api","namespace":"prod",'
-                '"issues":["未配置存活探针"]}]}'
-            ),
-        ),
-        AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "name": "request_user_choice",
-                    "args": {"question": "请选择修复展示方式"},
-                    "id": "choice-call",
-                    "type": "tool_call",
-                }
-            ],
-        ),
-        ToolMessage(
-            name="request_user_choice",
-            tool_call_id="choice-call",
-            content="用户回答: 按工作负载聚合。请根据用户的回答继续执行下一步操作，不要停止。",
-        ),
-    ]
+    repair_tool.ainvoke = AsyncMock(return_value='{"items":[{"name":"api"}]}')
+    graph_request = SimpleNamespace(
+        user_message="按工作负载聚合",
+        extra_config={
+            "pending_question": {
+                "kind": "k8s_repair_mode",
+                "k8s_analysis": {
+                    "deployments": [{"name": "api", "namespace": "prod", "issues": ["未配置存活探针"]}],
+                    "cluster_name": "Kubernetes - 2",
+                    "problematic": 60,
+                },
+            }
+        },
+    )
 
     with (
-        patch.object(node, "_build_choice_tool", return_value=choice_tool),
         patch.object(node, "_build_bulk_repair_tool", return_value=repair_tool),
+        patch.object(node, "_aemit_report_event", new=AsyncMock()),
     ):
         handled = await node._run_pending_k8s_repair_workflow(
-            messages,
-            {"configurable": {"execution_id": "exec-choice-complete"}},
+            [],
+            {"configurable": {"execution_id": "exec-choice-complete", "graph_request": graph_request}},
         )
 
     assert handled is True
@@ -457,7 +436,7 @@ async def test_sixty_object_choice_emits_one_repair_diff_event_from_full_cache(
     from langchain_core.messages import AIMessage, ToolMessage
     from langchain_core.runnables import RunnableLambda
 
-    from apps.opspilot.metis.llm.tools.kubernetes.analysis import _cache_k8s_analysis_details
+    from apps.opspilot.utils.pending_question import store_k8s_analysis_details
 
     execution_id = f"exec-sixty-repair-event-{expected_type.lower()}"
     deployments = [
@@ -469,7 +448,7 @@ async def test_sixty_object_choice_emits_one_repair_diff_event_from_full_cache(
         }
         for index in range(60)
     ]
-    _cache_k8s_analysis_details(execution_id, deployments)
+    store_k8s_analysis_details(execution_id, deployments)
     node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
     messages = [
         ToolMessage(
@@ -502,11 +481,26 @@ async def test_sixty_object_choice_emits_one_repair_diff_event_from_full_cache(
     async def _pipeline(_, config):
         return await node._run_pending_k8s_repair_workflow(messages, config)
 
+    from types import SimpleNamespace
+
+    graph_request = SimpleNamespace(
+        user_message=choice,
+        extra_config={
+            "pending_question": {
+                "kind": "k8s_repair_mode",
+                "k8s_analysis": {
+                    "deployments": deployments,
+                    "cluster_name": "Kubernetes - 2",
+                    "problematic": 60,
+                },
+            }
+        },
+    )
     report_events = []
     download_events = []
     async for event in RunnableLambda(_pipeline).astream_events(
         {},
-        config={"configurable": {"execution_id": execution_id}},
+        config={"configurable": {"execution_id": execution_id, "graph_request": graph_request}},
         version="v2",
     ):
         if event.get("event") == "on_custom_event" and event.get("name") == "repair_diff_report":
@@ -530,10 +524,10 @@ async def test_slow_docx_generation_still_emits_download_for_severity_choice():
     from langchain_core.messages import AIMessage, ToolMessage
     from langchain_core.runnables import RunnableLambda
 
-    from apps.opspilot.metis.llm.tools.kubernetes.analysis import _cache_k8s_analysis_details
+    from apps.opspilot.utils.pending_question import store_k8s_analysis_details
 
     execution_id = "exec-slow-severity-download"
-    _cache_k8s_analysis_details(
+    store_k8s_analysis_details(
         execution_id,
         [{"name": "api", "namespace": "production", "issues": ["未设置资源限制"]}],
     )
@@ -573,6 +567,21 @@ async def test_slow_docx_generation_still_emits_download_for_severity_choice():
     async def _pipeline(_, config):
         return await node._run_pending_k8s_repair_workflow(messages, config)
 
+    from types import SimpleNamespace
+
+    graph_request = SimpleNamespace(
+        user_message="按风险等级聚合",
+        extra_config={
+            "pending_question": {
+                "kind": "k8s_repair_mode",
+                "k8s_analysis": {
+                    "deployments": [{"name": "api", "namespace": "production", "issues": ["未设置资源限制"]}],
+                    "cluster_name": "Kubernetes - 2",
+                    "problematic": 1,
+                },
+            }
+        },
+    )
     event_names = []
     with patch(
         "apps.opspilot.metis.llm.tools.kubernetes.report_generator.generate_k8s_report_docx",
@@ -580,7 +589,7 @@ async def test_slow_docx_generation_still_emits_download_for_severity_choice():
     ):
         async for event in RunnableLambda(_pipeline).astream_events(
             {},
-            config={"configurable": {"execution_id": execution_id}},
+            config={"configurable": {"execution_id": execution_id, "graph_request": graph_request}},
             version="v2",
         ):
             if event.get("event") == "on_custom_event":
@@ -736,7 +745,7 @@ async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
     from langchain_core.runnables import RunnableLambda
     from langchain_core.tools import StructuredTool
 
-    from apps.opspilot.metis.llm.tools.kubernetes.analysis import _cache_k8s_analysis_details
+    from apps.opspilot.utils.pending_question import store_k8s_analysis_details
 
     execution_id = "exec-full-k8s-report-flow"
     deployments = [
@@ -748,7 +757,7 @@ async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
         }
         for index in range(60)
     ]
-    _cache_k8s_analysis_details(execution_id, deployments)
+    store_k8s_analysis_details(execution_id, deployments)
     node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
     graph_builder = MagicMock()
     analysis = ToolMessage(
@@ -782,10 +791,6 @@ async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
         patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
         patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=False),
-        patch(
-            "apps.opspilot.metis.llm.chain.approval_tools.wait_for_choice",
-            new=AsyncMock(return_value={"selected": ["全部一次性展示"], "source": "user"}),
-        ),
     ):
         await node.build_deepagent_nodes(graph_builder)
         wrapper = graph_builder.add_node.call_args.args[1]
@@ -809,10 +814,9 @@ async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
 
     assert event_names.count("config_analysis_report") == 1
     assert event_names.count("user_choice_request") == 1
-    assert event_names.count("user_choice_result") == 1
-    assert event_names.count("repair_diff_report") == 1
+    assert "user_choice_result" not in event_names
+    assert "repair_diff_report" not in event_names
     assert event_names.index("config_analysis_report") < event_names.index("user_choice_request")
-    assert event_names.index("user_choice_result") < event_names.index("repair_diff_report")
 
 
 @pytest.mark.asyncio
@@ -834,12 +838,7 @@ async def test_choice_custom_events_use_explicit_runnable_config():
     choice_func._node_id = "repair-flow"
     runnable_config = {"configurable": {"execution_id": "exec-1"}}
 
-    with (
-        patch(
-            "apps.opspilot.metis.llm.chain.approval_tools.wait_for_choice", new=AsyncMock(return_value={"selected": ["按问题类别聚合"], "source": "user"})
-        ),
-        patch("apps.opspilot.metis.llm.chain.approval_tools.adispatch_custom_event", new=AsyncMock()) as adispatch,
-    ):
+    with patch("apps.opspilot.metis.llm.middleware.terminal_user_choice.dispatch_custom_event") as dispatch:
         await choice_func(
             question="请选择修复展示方式",
             question_type="single_select",
@@ -847,8 +846,9 @@ async def test_choice_custom_events_use_explicit_runnable_config():
             config=runnable_config,
         )
 
-    assert adispatch.await_count == 2
-    assert all(call.kwargs["config"] is runnable_config for call in adispatch.await_args_list)
+    assert dispatch.call_count == 1
+    assert dispatch.call_args.kwargs["config"] is runnable_config
+    assert dispatch.call_args.args[0] == "user_choice_request"
 
 
 @pytest.mark.asyncio
@@ -872,19 +872,15 @@ async def test_choice_custom_events_are_visible_in_real_async_event_stream():
         )
 
     event_names = []
-    with patch(
-        "apps.opspilot.metis.llm.chain.approval_tools.wait_for_choice",
-        new=AsyncMock(return_value={"selected": ["全部一次性展示"], "source": "user"}),
+    async for event in RunnableLambda(_invoke_choice).astream_events(
+        {},
+        config={"configurable": {"execution_id": "exec-choice-stream"}},
+        version="v2",
     ):
-        async for event in RunnableLambda(_invoke_choice).astream_events(
-            {},
-            config={"configurable": {"execution_id": "exec-choice-stream"}},
-            version="v2",
-        ):
-            if event.get("event") == "on_custom_event":
-                event_names.append(event.get("name"))
+        if event.get("event") == "on_custom_event":
+            event_names.append(event.get("name"))
 
-    assert event_names == ["user_choice_request", "user_choice_result"]
+    assert event_names == ["user_choice_request"]
 
 
 def test_post_process_tool_results_dispatches_mapped_tool():

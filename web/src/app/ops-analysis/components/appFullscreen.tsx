@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FullscreenExitOutlined } from '@ant-design/icons';
 import { Button, Tooltip } from 'antd';
 
+import { setAppViewFullscreenActive } from '@/components/app-view-fullscreen';
 import { useTranslation } from '@/utils/i18n';
 
 export const useAppViewFullscreen = () => {
@@ -16,7 +17,12 @@ export const useAppViewFullscreen = () => {
   }, []);
 
   useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
     if (!isFullscreen) {
+      setAppViewFullscreenActive(false);
       return;
     }
 
@@ -25,6 +31,7 @@ export const useAppViewFullscreen = () => {
 
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    setAppViewFullscreenActive(true);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -39,6 +46,7 @@ export const useAppViewFullscreen = () => {
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousHtmlOverflow;
       document.removeEventListener('keydown', handleKeyDown);
+      setAppViewFullscreenActive(false);
     };
   }, [isFullscreen]);
 

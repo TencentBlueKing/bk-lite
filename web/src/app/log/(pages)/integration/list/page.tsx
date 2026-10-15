@@ -1,7 +1,10 @@
 'use client';
 import React, { useEffect, useState, useMemo } from 'react';
-import { Spin, Input, Button, Tag } from 'antd';
+import { Button } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
+import SearchActionBar from '@/components/search-action-bar';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
+import GridEntityCard from '@/components/grid-entity-card';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/log/api/integration';
 import { PlusOutlined } from '@ant-design/icons';
@@ -14,7 +17,6 @@ import { TableDataItem, TreeItem } from '@/app/log/types';
 import Permission from '@/components/permission';
 import TreeSelector from '@/app/log/components/tree-selector';
 import { ObjectItem } from '@/app/log/types/event';
-const { Search } = Input;
 
 const Integration = () => {
   const { isLoading } = useApiClient();
@@ -165,88 +167,65 @@ const Integration = () => {
         loading={treeLoading}
         onNodeSelect={handleObjectChange}
       />
-      <div className="min-w-0 flex-1 p-5 bg-[var(--color-bg-1)]">
-        <div className="flex justify-end">
-          <Search
-            className="mb-[20px] w-60"
-            allowClear
-            enterButton
-            placeholder={`${t('common.search')}...`}
-            onSearch={onTxtPressEnter}
-          />
-        </div>
-        <Spin spinning={pageLoading}>
-          {collectTypes.length ? (
-            <div
-              className="grid gap-4 w-full h-[calc(100vh-236px)] overflow-y-auto"
-              style={{
-                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                alignContent: 'start'
-              }}
-            >
-              {collectTypes.map((app) => (
-                <div key={app.id} className="p-2">
-                  <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
-                    <div className="flex items-center space-x-4 my-2">
-                      <img
-                        src={`/assets/icons/${app.icon || getIcon(app.name, app.collector)}.svg`}
-                        alt={app.display_name || app.name}
-                        className="w-12 h-12 min-w-[48px]"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src =
-                            '/assets/icons/cc-default_默认.svg';
-                        }}
-                      />
-                      <div
-                        style={{
-                          width: 'calc(100% - 60px)'
-                        }}
-                      >
-                        <h2
-                          title={`${app.display_name || app.name} (${app.collector})`}
-                          className="text-xl font-bold m-0 hide-text"
-                        >
-                          {app.display_name || app.name || '--'} (
-                          {app.collector})
-                        </h2>
-                        <Tag className="mt-[4px]">
-                          {categoryMap[app.display_category] ||
-                            app.display_category}
-                        </Tag>
-                      </div>
-                    </div>
-                    <p
-                      className="mb-[15px] text-[var(--color-text-3)] text-[13px] h-[54px] overflow-hidden line-clamp-3"
-                      title={app.display_description || app.description || '--'}
+      <div className="min-w-0 flex-1 bg-[var(--color-bg)] p-5">
+        <SearchActionBar
+          searchProps={{
+            allowClear: true,
+            enterButton: true,
+            placeholder: `${t('common.search')}...`,
+            onSearch: onTxtPressEnter,
+          }}
+        />
+        {pageLoading ? (
+          <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" />
+        ) : collectTypes.length ? (
+          <div className="grid h-[calc(100vh-236px)] w-full grid-cols-1 content-start gap-4 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {collectTypes.map((app) => {
+              const categoryLabel =
+                categoryMap[app.display_category] || app.display_category;
+              return (
+                <GridEntityCard
+                  key={app.id}
+                  name={`${app.display_name || app.name || '--'} (${app.collector})`}
+                  description={app.display_description || app.description}
+                  icon={
+                    <img
+                      src={`/assets/icons/${app.icon || getIcon(app.name, app.collector)}.svg`}
+                      alt=""
+                      className="h-8 w-8 object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          '/assets/icons/cc-default_默认.svg';
+                      }}
+                    />
+                  }
+                  metaLabels={categoryLabel ? [categoryLabel] : []}
+                  footerClassName="w-full"
+                  footer={(
+                    <Permission
+                      requiredPermissions={['Setting']}
+                      className="w-full"
                     >
-                      {app.display_description || app.description || '--'}
-                    </p>
-                    <div className="w-full h-[32px] flex justify-center items-end">
-                      <Permission
-                        requiredPermissions={['Setting']}
+                      <Button
+                        icon={<PlusOutlined />}
+                        type="primary"
                         className="w-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          linkToDetial(app);
+                        }}
                       >
-                        <Button
-                          icon={<PlusOutlined />}
-                          type="primary"
-                          className="w-full rounded-md transition-opacity duration-300"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            linkToDetial(app);
-                          }}
-                        >
-                          {t('log.integration.connect')}
-                        </Button>
-                      </Permission>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <CompactEmptyState description={t('common.noData')} />
-          )}
-        </Spin>
+                        {t('log.integration.connect')}
+                      </Button>
+                    </Permission>
+                  )}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <CompactEmptyState description={t('common.noData')} />
+        )}
       </div>
     </div>
   );

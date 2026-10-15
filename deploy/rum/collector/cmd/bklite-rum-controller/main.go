@@ -28,6 +28,8 @@ func run() error {
 	var natsConfig wire.NATSConfig
 	var redisURL string
 	var redisPasswordFile string
+	var requireACL bool
+	var aclUsername string
 	var currentHMACFile string
 	var currentHMACVersion string
 	var previousHMACFile string
@@ -35,6 +37,8 @@ func run() error {
 	var tenantID string
 	var natsInsecure bool
 	flag.StringVar(&natsConfig.URL, "nats-url", "", "NATS URL")
+	flag.StringVar(&natsConfig.User, "nats-user", "", "NATS username; pair with -nats-password-file")
+	flag.StringVar(&natsConfig.PasswordFile, "nats-password-file", "", "NATS password file")
 	flag.StringVar(&natsConfig.CredentialsFile, "nats-creds", "", "NATS credentials file")
 	flag.StringVar(&natsConfig.NKeySeedFile, "nats-nkey-seed", "", "NATS NKey seed file")
 	flag.StringVar(&natsConfig.CAFile, "nats-ca", "", "NATS TLS CA file")
@@ -42,8 +46,10 @@ func run() error {
 	flag.StringVar(&natsConfig.KeyFile, "nats-key", "", "NATS TLS client key")
 	flag.StringVar(&natsConfig.ServerName, "nats-server-name", "", "NATS TLS server name")
 	flag.BoolVar(&natsInsecure, "nats-insecure", false, "DEV ONLY: allow a plain nats:// URL (optional user:password for the compose fixture); never use in production")
-	flag.StringVar(&redisURL, "redis-url", "", "controller Redis URL (ACL user rum-controller)")
+	flag.StringVar(&redisURL, "redis-url", "", "controller Redis URL")
 	flag.StringVar(&redisPasswordFile, "redis-password-file", "", "controller Redis password file")
+	flag.BoolVar(&requireACL, "redis-require-acl-identity", false, "require the Redis URL username to match redis-acl-username")
+	flag.StringVar(&aclUsername, "redis-acl-username", "rum-controller", "Redis ACL username checked when redis-require-acl-identity is set")
 	flag.StringVar(&currentHMACFile, "identity-hmac-current-file", "", "current identity HMAC secret file")
 	flag.StringVar(&currentHMACVersion, "identity-hmac-current-version", "", "current identity HMAC generation")
 	flag.StringVar(&previousHMACFile, "identity-hmac-previous-file", "", "previous identity HMAC secret file")
@@ -62,6 +68,8 @@ func run() error {
 	store, err := controller.NewStore(controller.StoreConfig{
 		RedisURL:            redisURL,
 		RedisPasswordFile:   redisPasswordFile,
+		RequireACLIdentity:  requireACL,
+		ACLUsername:         aclUsername,
 		CurrentHMACSecret:   currentHMAC,
 		CurrentHMACVersion:  currentHMACVersion,
 		PreviousHMACSecret:  previousHMAC,
@@ -79,10 +87,13 @@ func run() error {
 	}
 	var connection *nats.Conn
 	if natsInsecure {
-		// Dev-only escape: lab NATS may be plain and unauthenticated.
-		// Production keeps tls:// + NKey via ConnectNATS below.
+		// Dev-only escape for the plain compose fixture. Pass -nats-user and
+		// -nats-password-file, or keep the old user:password URL.
+		// Production uses ConnectNATS: tls:// plus a password file, NKey, or creds file.
 		connection, err = wire.ConnectControlClient(wire.ControlClientConfig{
 			URL:             natsConfig.URL,
+			User:            natsConfig.User,
+			PasswordFile:    natsConfig.PasswordFile,
 			CredentialsFile: natsConfig.CredentialsFile,
 			CAFile:          natsConfig.CAFile,
 			CertFile:        natsConfig.CertFile,

@@ -15,22 +15,28 @@ interface StatCardProps {
   subtitleColor?: string;
 }
 
+const KPI_WASH =
+  'linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 1.5%, var(--color-bg)) 0%, var(--color-bg) 32%)';
+
 const StatCard: React.FC<StatCardProps> = ({ icon, iconBg, label, value, unit, subtitle, subtitleColor }) => (
-  <div className="flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-1)] p-[18px_20px] flex items-center gap-4">
+  <div
+    className="flex flex-1 items-center gap-4 rounded-lg border border-[var(--color-border-1)] p-3 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:px-3.5 sm:py-3"
+    style={{ background: KPI_WASH }}
+  >
     <div
-      className="w-[46px] h-[46px] rounded-full shrink-0 grid place-items-center text-[22px]"
+      className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full text-[22px]"
       style={{ background: iconBg }}
     >
       {icon}
     </div>
     <div>
-      <div className="text-xs text-[var(--color-text-3)] mb-1">{label}</div>
+      <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">{label}</div>
       <div className="flex items-baseline gap-1">
-        <span className="text-[26px] font-bold text-[var(--color-text-1)] leading-none tabular-nums">{value}</span>
-        {unit && <span className="text-[13px] text-[var(--color-text-3)] font-medium">{unit}</span>}
+        <span className="text-xl font-bold leading-none text-[var(--color-text-1)] tabular-nums sm:text-2xl">{value}</span>
+        {unit && <span className="text-[13px] font-medium text-[var(--color-text-3)]">{unit}</span>}
       </div>
       {subtitle && (
-        <div className="text-[11px] mt-[3px]" style={{ color: subtitleColor || 'var(--color-text-3)' }}>
+        <div className="mt-[3px] text-[11px]" style={{ color: subtitleColor || 'var(--color-text-3)' }}>
           {subtitle}
         </div>
       )}
@@ -81,7 +87,7 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ sources, dailyStats }) => {
     : { text: t('integration.statComparedYesterday'), color: 'var(--color-text-3)' };
 
   return (
-    <div className="flex gap-[14px] mb-5">
+    <div className="mb-5 flex gap-3">
       <StatCard
         icon={
           <svg viewBox="0 0 24 24" width="24" height="24">

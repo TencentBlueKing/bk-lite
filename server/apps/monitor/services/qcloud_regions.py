@@ -131,13 +131,48 @@ def _extract_child_password(child: dict) -> str:
     return ""
 
 
+def resolve_vault_cloud_credentials(credential_id, actor_context, *, plugin=None, variant_key=None) -> tuple[str, str]:
+    """按当前用户解析云凭据。密钥只留在这次调用里。"""
+    from apps.monitor.services.vault_credential.apply import raise_client, stored_actor
+    from apps.monitor.services.vault_credential.binding import binding_for_plugin
+    from apps.monitor.services.vault_credential.errors import VaultCredentialError
+    from apps.monitor.services.vault_credential.resolver import resolve_for_actor
+    from apps.system_mgmt.services.credential_builtin import usable_builtin_type_keys
+
+    variant = None
+    if plugin is not None:
+        binding = binding_for_plugin(plugin)
+        variant = next((item for item in binding.get("variants") or [] if item.get("key") == (variant_key or "default")), None)
+        if variant is None and len(binding.get("variants") or []) == 1:
+            variant = binding["variants"][0]
+    if variant is None:
+        variant = {"key": variant_key or "default", "type_keys": usable_builtin_type_keys("cloud", "cloud"), "_profile": "cloud"}
+    try:
+        resolved = resolve_for_actor(stored_actor(actor_context), credential_id, variant)
+    except VaultCredentialError as exc:
+        raise_client(exc)
+    return str((resolved.fields or {}).get("access_key") or ""), str((resolved.fields or {}).get("secret_key") or "")
+
+
 def resolve_stored_cloud_credentials(collect_config_id, actor_context=None) -> tuple[str, str]:
     """从已授权的采集子配置解密云账号密钥；不信任前端回填的密文。"""
+    from apps.monitor.models import CollectConfig
     from apps.monitor.services.node_mgmt import InstanceConfigService
 
     ids = _normalize_collect_config_ids(collect_config_id)
     if not ids:
         raise ValidationAppException("配置不存在或无权限")
+
+    authorized = InstanceConfigService._get_authorized_collect_configs(ids, actor_context)
+    authorized_ids = [row.id for row in authorized]
+    vault_row = CollectConfig.objects.filter(id__in=authorized_ids).exclude(vault_credential_id="").select_related("monitor_plugin").first()
+    if vault_row is not None:
+        return resolve_vault_cloud_credentials(
+            vault_row.vault_credential_id,
+            actor_context,
+            plugin=vault_row.monitor_plugin,
+            variant_key=vault_row.vault_variant,
+        )
 
     payload = InstanceConfigService.get_config_content(ids, actor_context)
     child = payload.get("child") if isinstance(payload, dict) else None
@@ -165,10 +200,13 @@ class QCloudRegionService:
         cloud_region_id=None,
         collect_config_id=None,
         actor_context=None,
+        vault_credential_id=None,
     ) -> list[dict]:
         config_ids = _normalize_collect_config_ids(collect_config_id)
         if config_ids:
             username, password = resolve_stored_cloud_credentials(config_ids, actor_context)
+        elif vault_credential_id:
+            username, password = resolve_vault_cloud_credentials(vault_credential_id, actor_context)
         secret_id = str(username or "").strip()
         secret_key = maybe_decrypt_posted_cloud_secret(password)
         if not secret_id or not secret_key:

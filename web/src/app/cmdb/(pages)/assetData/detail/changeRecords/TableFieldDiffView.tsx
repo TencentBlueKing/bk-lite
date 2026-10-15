@@ -189,7 +189,7 @@ const TableFieldDiffView: React.FC<TableFieldDiffViewProps> = ({
             disabled={safePage <= 1}
             onClick={() => setPage((value) => Math.max(1, value - 1))}
           >
-            {t('previousPage', '上一页')}
+            {t('common.previousPage', '上一页')}
           </button>
           <span className="text-[var(--color-text-3)]">{safePage} / {pageCount}</span>
           <button
@@ -197,7 +197,7 @@ const TableFieldDiffView: React.FC<TableFieldDiffViewProps> = ({
             disabled={safePage >= pageCount}
             onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
           >
-            {t('nextPage', '下一页')}
+            {t('common.nextPage', '下一页')}
           </button>
         </div>
       )}

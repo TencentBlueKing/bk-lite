@@ -1,7 +1,5 @@
 """Kubernetes配置分析和策略检查工具"""
 import json
-from collections import OrderedDict
-from threading import Lock
 
 from kubernetes import client
 from kubernetes.client import ApiException
@@ -10,10 +8,7 @@ from langchain_core.tools import tool
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, get_current_cluster_name, parse_resource_quantity, prepare_context
-
-_K8S_ANALYSIS_DETAIL_CACHE = OrderedDict()
-_K8S_ANALYSIS_DETAIL_CACHE_LOCK = Lock()
-_K8S_ANALYSIS_DETAIL_CACHE_MAX_ENTRIES = 128
+from apps.opspilot.utils.pending_question import store_k8s_analysis_details
 
 # 用户要求「范围内全部工作负载」时，禁止用 name 抽样；禁止擅自收到系统命名空间。
 _ALL_WORKLOAD_MARKERS = (
@@ -100,23 +95,6 @@ def resolve_deployment_analysis_scope(
         resolved_namespace = None
 
     return resolved_namespace, resolved_name
-
-
-def _cache_k8s_analysis_details(execution_id: str, deployments: list) -> None:
-    if not execution_id:
-        return
-    with _K8S_ANALYSIS_DETAIL_CACHE_LOCK:
-        _K8S_ANALYSIS_DETAIL_CACHE[execution_id] = deployments
-        _K8S_ANALYSIS_DETAIL_CACHE.move_to_end(execution_id)
-        while len(_K8S_ANALYSIS_DETAIL_CACHE) > _K8S_ANALYSIS_DETAIL_CACHE_MAX_ENTRIES:
-            _K8S_ANALYSIS_DETAIL_CACHE.popitem(last=False)
-
-
-def _take_cached_k8s_analysis_details(execution_id: str) -> list:
-    if not execution_id:
-        return []
-    with _K8S_ANALYSIS_DETAIL_CACHE_LOCK:
-        return _K8S_ANALYSIS_DETAIL_CACHE.pop(execution_id, [])
 
 
 @tool()
@@ -911,7 +889,7 @@ def analyze_deployment_configurations(  # noqa: C901
         configurable = (config or {}).get("configurable") if isinstance(config, dict) else None
         execution_id = configurable.get("execution_id", "") if isinstance(configurable, dict) else ""
         if execution_id:
-            _cache_k8s_analysis_details(execution_id, analysis_results)
+            store_k8s_analysis_details(execution_id, analysis_results)
             # 完整明细只用于本轮修复报告，不应进入 LLM 工具消息。大结果会被
             # 单消息 token 保护截断，进而破坏 JSON 并导致结构化报告丢失。
             if len(serialized) > 12_000:

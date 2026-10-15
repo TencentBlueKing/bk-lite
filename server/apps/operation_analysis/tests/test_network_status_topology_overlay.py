@@ -94,3 +94,29 @@ def test_canvas_data_source_ids_excludes_overlay_without_topology_widget():
     found = _canvas_data_source_ids(view_sets)
     assert found == {99}
     assert found.isdisjoint({cmdb.id, monitor.id})
+
+
+def test_canvas_data_source_ids_includes_room_list_for_room3d_without_saved_filter():
+    from apps.operation_analysis.views.share_view import _canvas_data_source_ids
+
+    room_list = _ds("cmdb/get_room_list", name="CMDB 机房列表（选项）")
+
+    class _Screen:
+        view_sets = {
+            "items": [
+                {
+                    "type": "widget",
+                    "chartType": "room3D",
+                    "valueConfig": {"chartType": "room3D", "sceneWidgetType": "room3D"},
+                }
+            ],
+            "filters": [],
+        }
+
+    found = _canvas_data_source_ids(_Screen())
+    assert room_list.id in found
+
+    class _Line:
+        view_sets = {"items": [{"type": "widget", "chartType": "line", "valueConfig": {"dataSource": 99}}]}
+
+    assert room_list.id not in _canvas_data_source_ids(_Line())

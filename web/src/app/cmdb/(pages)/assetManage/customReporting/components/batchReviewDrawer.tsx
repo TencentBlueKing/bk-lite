@@ -12,6 +12,7 @@ import type {
   CustomReportingCleanupReview,
   CustomReportingTask,
 } from '@/app/cmdb/types/customReporting';
+import { StatusToneBadge, type StatusTone } from '@/app/cmdb/utils/statusTone';
 
 interface BatchReviewDrawerProps {
   open: boolean;
@@ -19,12 +20,12 @@ interface BatchReviewDrawerProps {
   onClose: () => void;
 }
 
-const getReviewColor = (status: string) => {
+const getReviewTone = (status: string): StatusTone => {
   if (status === 'approved') {
     return 'success';
   }
   if (status === 'rejected') {
-    return 'error';
+    return 'fail';
   }
   return 'warning';
 };
@@ -120,7 +121,10 @@ export default function BatchReviewDrawer({
         <Descriptions.Item label={t('CustomReporting.batch')}>
           <Space wrap>
             <Tag>{`#${batch.id}`}</Tag>
-            <Tag color="processing">{t(`CustomReporting.statusLabel.${batch.status}`)}</Tag>
+            <StatusToneBadge
+              tone="primary"
+              label={t(`CustomReporting.statusLabel.${batch.status}`)}
+            />
           </Space>
         </Descriptions.Item>
         <Descriptions.Item label={t('updateTime')}>
@@ -139,9 +143,11 @@ export default function BatchReviewDrawer({
           {batch.cleanup_reviews?.length ? (
             <Space wrap>
               {batch.cleanup_reviews.map((review) => (
-                <Tag key={review.id} color={getReviewColor(review.status)}>
-                  {`${t(`CustomReporting.statusLabel.${review.status}`)}${review.reviewed_by ? ` · ${review.reviewed_by}` : ''}`}
-                </Tag>
+                <StatusToneBadge
+                  key={review.id}
+                  tone={getReviewTone(review.status)}
+                  label={`${t(`CustomReporting.statusLabel.${review.status}`)}${review.reviewed_by ? ` · ${review.reviewed_by}` : ''}`}
+                />
               ))}
             </Space>
           ) : (
@@ -162,9 +168,10 @@ export default function BatchReviewDrawer({
           <Space wrap>
             <Tag>{`#${review.id}`}</Tag>
             <Tag>{`batch #${review.batch_id}`}</Tag>
-            <Tag color={getReviewColor(review.status)}>
-              {t(`CustomReporting.statusLabel.${review.status}`)}
-            </Tag>
+            <StatusToneBadge
+              tone={getReviewTone(review.status)}
+              label={t(`CustomReporting.statusLabel.${review.status}`)}
+            />
           </Space>
         </Descriptions.Item>
         <Descriptions.Item label={t('CustomReporting.reviewedBy')}>
@@ -179,7 +186,7 @@ export default function BatchReviewDrawer({
           </pre>
         </Descriptions.Item>
         {review.status === 'pending' ? (
-          <Descriptions.Item label={t('action')}>
+          <Descriptions.Item label={t('Model.action')}>
             <Space>
               <Button
                 type="primary"
@@ -236,10 +243,22 @@ export default function BatchReviewDrawer({
             <Descriptions column={1} size="small">
               <Descriptions.Item label={t('CustomReporting.reviewStatusSummary')}>
                 <Space wrap>
-                  <Tag color="warning">{`${t('CustomReporting.statusLabel.pending')}: ${activity.review_status_summary.pending}`}</Tag>
-                  <Tag color="success">{`${t('CustomReporting.statusLabel.approved')}: ${activity.review_status_summary.approved}`}</Tag>
-                  <Tag color="error">{`${t('CustomReporting.statusLabel.rejected')}: ${activity.review_status_summary.rejected}`}</Tag>
-                  <Tag>{`${t('CustomReporting.totalCount')}: ${activity.review_status_summary.total}`}</Tag>
+                  <StatusToneBadge
+                    tone="warning"
+                    label={`${t('CustomReporting.statusLabel.pending')}: ${activity.review_status_summary.pending}`}
+                  />
+                  <StatusToneBadge
+                    tone="success"
+                    label={`${t('CustomReporting.statusLabel.approved')}: ${activity.review_status_summary.approved}`}
+                  />
+                  <StatusToneBadge
+                    tone="fail"
+                    label={`${t('CustomReporting.statusLabel.rejected')}: ${activity.review_status_summary.rejected}`}
+                  />
+                  <StatusToneBadge
+                    tone="neutral"
+                    label={`${t('CustomReporting.totalCount')}: ${activity.review_status_summary.total}`}
+                  />
                 </Space>
               </Descriptions.Item>
             </Descriptions>

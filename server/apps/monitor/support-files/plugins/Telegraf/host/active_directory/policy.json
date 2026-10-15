@@ -66,6 +66,41 @@
         }
       ],
       "group_algorithm": "max"
+    },
+    {
+      "name": "架构不匹配导致复制失败",
+      "alert_name": "Active Directory ${resource_name} 复制因架构不匹配失败",
+      "description": "DRA Sync Failures on Schema Mismatch 大于 0，域控复制因架构不一致失败。",
+      "metric_name": "ad_dra_sync_failures_on_schema_mismatch",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "DNS 递归查询失败",
+      "alert_name": "Active Directory ${resource_name} DNS 递归查询失败",
+      "description": "域控 DNS 每秒失败的递归查询持续偏高。",
+      "metric_name": "ad_dns_recursive_query_failure_persec",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "error",
+          "value": 20,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 5,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

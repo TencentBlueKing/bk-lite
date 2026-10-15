@@ -1,5 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
+pytestmark = pytest.mark.django_db
+
 from apps.rum.services.alerteval import EVAL_FIRE, EVAL_NONE, EVAL_RESOLVE, EvalState, advance, breached, should_renotify
 from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService

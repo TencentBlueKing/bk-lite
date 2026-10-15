@@ -15,6 +15,36 @@
           "method": ">"
         }
       ]
+    },
+    {
+      "name": "Meinberg电源异常",
+      "alert_name": "网络服务${resource_name} Meinberg 电源 ${metric__index} 异常",
+      "description": "监控 Meinberg LANTIME NG 各电源模块状态，电源掉电（down）时触发告警，提示供电故障或冗余缺失。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Meinberg风扇异常",
+      "alert_name": "网络服务${resource_name} Meinberg 风扇 ${metric__index} 异常",
+      "description": "监控 Meinberg LANTIME NG 各风扇状态，风扇报错或停转时触发告警，散热故障可能导致授时设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

@@ -3,9 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from django.db import transaction
+
 from apps.core.logger import rum_logger as logger
-from apps.rum.constants import OPERATION_TERMINAL_STATUSES, SUBJECT_APPLICATION_GET, SUBJECT_ERASURE_SUBMIT, SUBJECT_OPERATION_GET
+from apps.rum.constants import OPERATION_TERMINAL_STATUSES, SUBJECT_OPERATION_GET
 from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
+from apps.rum.services.projection import PublishService
 from apps.rum.services.validation import ValidationError, valid_application
 
 # Upper bound on controller lookups a single ledger listing may trigger.
@@ -186,7 +189,9 @@ class ComplianceService:
                     # Operation record expired or was never persisted; keep the
                     # ledger row but stop polling it.
                     updated = self.store.update_status(job["id"], "failed", {**(job.get("result") or {}), "error": "operation not found"})
-                    out.append(updated or job)
+                    saved = updated or job
+                    self._enqueue_fence_release(saved)
+                    out.append(saved)
                     continue
                 logger.warning("rum erase ledger refresh failed job_id=%s error_code=%s", job.get("id"), exc.code)
                 out.append(job)
@@ -197,7 +202,10 @@ class ComplianceService:
                 out.append(job)
                 continue
             updated = self.store.update_status(job["id"], status, {**(job.get("result") or {}), **operation})
-            out.append(updated or job)
+            saved = updated or job
+            if status in OPERATION_TERMINAL_STATUSES:
+                self._enqueue_fence_release(saved)
+            out.append(saved)
         return out
 
     def erase(self, actor: str, body: dict) -> tuple[int, dict]:
@@ -210,40 +218,69 @@ class ComplianceService:
         if len(end_user_id) > 256:
             raise ValidationError("endUserId is too long")
 
-        # Controller SubmitOperation requires expectedRevision matching the
-        # application registry revision (optimistic concurrency). Fetch it
-        # first so the console erase path does not omit the envelope field.
-        try:
-            _, app = self.control.request(SUBJECT_APPLICATION_GET, actor, {"application": application})
-        except ControlError as exc:
-            if control_unavailable(exc):
-                raise ControlError("unavailable", "RUM controller is unavailable") from exc
-            raise
-        if not isinstance(app, dict) or not app.get("enabled", True):
-            raise ControlError("not_found", "application not found")
+        from apps.rum.models import RumApplication, RumProjectionOutbox
 
-        revision, data = self.control.request(
-            SUBJECT_ERASURE_SUBMIT,
-            actor,
-            {
-                "application": application,
-                "identities": [{"kind": "user", "value": end_user_id}],
-            },
-            expected_revision=int(app.get("revision") or 0),
-        )
-        result = data if isinstance(data, dict) else {"data": data}
-        job = self.store.create(
-            {
-                "application": application,
-                "endUserId": end_user_id,
-                "scope": "all",
-                "status": str(result.get("status") or "accepted"),
-                "requestedBy": actor,
-                "result": result,
-            }
-        )
-        # Upstream returns the control-plane operation payload; BK-Lite also attaches
-        # the durable ledger record so the console can stop using localStorage.
+        app = RumApplication.objects.filter(name=application).first()
+        if app is None or not app.enabled:
+            raise ControlError("not_found", "application not found")
+        identities = [{"kind": "user", "value": end_user_id}]
+        with transaction.atomic():
+            job = self.store.create(
+                {
+                    "application": application,
+                    "endUserId": end_user_id,
+                    "scope": "all",
+                    "status": "accepted",
+                    "requestedBy": actor,
+                    "result": {"identities": identities},
+                }
+            )
+            outbox = RumProjectionOutbox.objects.create(
+                kind="fence_add",
+                application=application,
+                revision=int(app.revision),
+                payload_json={
+                    "application": application,
+                    "identities": identities,
+                    "expectedRevision": int(app.revision),
+                },
+                status="pending",
+            )
+            outbox_id = outbox.id
+        published, data = PublishService(self.control).publish(outbox_id)
+        result = data if isinstance(data, dict) else {}
+        if published:
+            job = self.store.update_status(job["id"], str(result.get("status") or "accepted"), result) or job
         response = dict(result)
         response["ledger"] = job
-        return revision, response
+        if not published:
+            response["projectionPending"] = True
+            response.setdefault("application", application)
+            response.setdefault("identities", identities)
+            response.setdefault("type", "erasure")
+        return int(app.revision), response
+
+    def _enqueue_fence_release(self, job: dict) -> None:
+        from apps.rum.models import RumProjectionOutbox
+
+        identities = (job.get("result") or {}).get("identities") or [
+            {"kind": "user", "value": job.get("endUserId") or ""}
+        ]
+        try:
+            with transaction.atomic():
+                outbox = RumProjectionOutbox.objects.create(
+                    kind="fence_release",
+                    application=job.get("application") or "",
+                    revision=0,
+                    payload_json={"application": job.get("application") or "", "identities": identities},
+                    status="pending",
+                )
+                outbox_id = outbox.id
+            PublishService(self.control).publish(outbox_id)
+        except Exception as exc:  # noqa: BLE001 — release is retried by the outbox task
+            logger.warning(
+                "rum erasure fence release enqueue failed job_id=%s failed_stage=%s error_type=%s",
+                job.get("id"),
+                "fence_release",
+                type(exc).__name__,
+            )

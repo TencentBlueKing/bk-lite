@@ -114,6 +114,13 @@ def _validate_dashboard(view_sets: Any, filters: Any = None) -> list[dict]:
     return errors
 
 
+_SCREEN_CHROME_KINDS = {"text", "clock", "titleFrame", "decoration", "shape"}
+
+
+def _is_screen_chrome_item(item: Any) -> bool:
+    return isinstance(item, dict) and item.get("kind") in _SCREEN_CHROME_KINDS
+
+
 def _validate_screen(view_sets: Any) -> list[dict]:
     errors: list[dict] = []
     try:
@@ -123,7 +130,11 @@ def _validate_screen(view_sets: Any) -> list[dict]:
     items = normalized.get("items") or []
     for index, item in enumerate(items):
         path = f"view_sets.items[{index}]"
-        _validate_widget_item(item, id_field="id", errors=errors, path=path)
+        if _is_screen_chrome_item(item):
+            if item.get("id") in (None, ""):
+                errors.append(_error("missing_id", oa_message("messages.draft_component_missing_id", "组件缺少 id"), path))
+        else:
+            _validate_widget_item(item, id_field="id", errors=errors, path=path)
         if not isinstance(item, dict):
             continue
         for coord in ("x", "y", "w", "h"):

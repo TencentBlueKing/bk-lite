@@ -11,7 +11,7 @@ import PermissionWrapper from '@/components/permission';
 import ConfigModal from '@/app/opspilot/components/provider/configModal';
 import { useProviderApi } from '@/app/opspilot/api/provider';
 import { isSilentRequestError } from '@/utils/request';
-import { CONFIG_MAP, MODEL_CATEGORY_MAPPING } from '@/app/opspilot/constants/provider';
+import { CONFIG_MAP, modelCategoryLabel } from '@/app/opspilot/constants/provider';
 
 interface ProviderGridProps {
   models: Model[];
@@ -166,7 +166,7 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
                 )}
                 {model.label && (
                   <span className="inline-block font-mini px-2 py-0.2 rounded-sm bg-green-50 text-green-600">
-                    {MODEL_CATEGORY_MAPPING[model.label] || model.label}
+                    {modelCategoryLabel(model.label, t)}
                   </span>
                 )}
               </div>

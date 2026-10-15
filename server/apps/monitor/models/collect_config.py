@@ -35,6 +35,13 @@ class CollectConfig(TimeInfo, MaintainerInfo):
         verbose_name="已应用的探针包版本",
     )
     content_hand_edited = models.BooleanField(default=False, verbose_name="采集配置已被手改")
+    vault_credential_id = models.CharField(max_length=128, default="", db_index=True, verbose_name="凭据仓库 ID")
+    vault_variant = models.CharField(max_length=32, default="", verbose_name="凭据分支")
+    vault_actor_context = models.JSONField(default=dict, verbose_name="凭据绑定人")
+    vault_credential_name = models.CharField(max_length=128, default="", verbose_name="凭据名称快照")
+    vault_applied_version = models.PositiveIntegerField(default=0, verbose_name="已下发凭据版本")
+    vault_sync_error = models.CharField(max_length=32, default="", verbose_name="凭据同步错误码")
+    vault_synced_at = models.DateTimeField(null=True, blank=True, verbose_name="凭据下发时间")
 
     class Meta:
         verbose_name = "采集配置"

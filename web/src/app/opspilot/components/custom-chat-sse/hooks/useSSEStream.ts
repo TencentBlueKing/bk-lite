@@ -113,6 +113,8 @@ export const useSSEStream = ({
       interruptRequestRef.current = interruptRequest || null;
       latestExecutionIdRef.current = '';
       isStreamActiveRef.current = true;
+      let handler: AGUIMessageHandler | null = null;
+      let streamCloseReason = t('chat.connectionError');
 
       try {
         const headers: Record<string, string> = {
@@ -150,7 +152,7 @@ export const useSSEStream = ({
         let buffer = '';
         
         // 创建一个持久的 Handler 实例，避免 accumulatedContent 被重置
-        const handler = new AGUIMessageHandler(
+        handler = new AGUIMessageHandler(
           botMessage,
           updateMessages,
           toolCallsRef.current,
@@ -243,19 +245,23 @@ export const useSSEStream = ({
         }
       } catch (error: any) {
         if (error.name === 'AbortError') {
+          streamCloseReason = '已停止';
           return;
         }
 
         console.error('SSE stream error:', error);
-
-        updateMessages(prevMessages =>
-          prevMessages.map(msgItem =>
-            msgItem.id === botMessage.id
-              ? { ...msgItem, content: `${t('chat.connectionError')}: ${error.message}` }
-              : msgItem
-          )
-        );
+        streamCloseReason = `${t('chat.connectionError')}: ${error.message}`;
+        if (!handler) {
+          updateMessages(prevMessages =>
+            prevMessages.map(msgItem =>
+              msgItem.id === botMessage.id
+                ? { ...msgItem, content: streamCloseReason }
+                : msgItem
+            )
+          );
+        }
       } finally {
+        handler?.handleStreamClosed(streamCloseReason);
         isStreamActiveRef.current = false;
         setLoading(false);
         abortControllerRef.current = null;

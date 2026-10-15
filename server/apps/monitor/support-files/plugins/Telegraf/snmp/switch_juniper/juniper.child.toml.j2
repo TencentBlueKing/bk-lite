@@ -65,8 +65,8 @@
         name = "celsius"
     # ---- Juniper fans (jnxOperatingState, fan container subtree .6.4) ----
     # 待现网核验：风扇 jnxOperatingState 1.3.6.1.4.1.2636.3.1.13.1.6.4；descr ...13.1.5.4。
-    # jnxOperatingState 枚举非 1=normal：2 running/3 ready/5 runningAtFullSpeed/7 standby=健康，6 down/off=故障。
-    # → 下方 processors.enum 归一到 1=normal/2=abnormal。
+    # jnxOperatingState：running(2)/ready(3)/runningAtFullSpeed(5)/standby(7)→1；
+    # down(6)/reset(4)→2；unknown(1)→3。采集字段名是 state。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -117,26 +117,30 @@
         oid = "1.3.6.1.4.1.2636.3.60.1.1.1.1.25"
         name = "voltage"
 
-# ---- 枚举归一：把 Juniper jnxOperatingState 映射到统一 1=normal/2=abnormal（偏离1即异常）----
-# 待现网核验：仅作用于本品牌(tagpass brand=juniper)。
-# 健康态 2 running/3 ready/5 runningAtFullSpeed/7 standby → 1；其余(1 unknown/4 reset/6 down)→2。
+# ---- 枚举归一：采集字段是 state；running(2)/ready(3)/runningAtFullSpeed(5)/standby(7)→1；
+# unknown(1)→3(未知)；其余(reset(4)/down(6)等)→2。风扇、电源分两个 processor，避免互相改写。
 [[processors.enum]]
+    namepass = ["device_fan"]
     [processors.enum.tagpass]
         brand = ["juniper"]
     [[processors.enum.mapping]]
-        field = "device_fan_state"
-        dest = "device_fan_state"
+        field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
+            "1" = 3
             "2" = 1
             "3" = 1
             "5" = 1
             "7" = 1
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [processors.enum.tagpass]
+        brand = ["juniper"]
     [[processors.enum.mapping]]
-        field = "device_psu_state"
-        dest = "device_psu_state"
+        field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
+            "1" = 3
             "2" = 1
             "3" = 1
             "5" = 1

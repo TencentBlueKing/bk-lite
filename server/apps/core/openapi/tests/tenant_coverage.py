@@ -187,6 +187,167 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_delete_other_org_shield",
         "apps.alerts.tests.test_openapi_gateway::test_shield_delete_forged_team_is_rejected",
     ],
+    "monitor/objects": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_visible_objects",
+        "apps.monitor.tests.test_openapi_gateway::test_other_tenant_sees_the_same_visible_objects",
+        "apps.monitor.tests.test_openapi_gateway::test_objects_forged_team_is_rejected",
+    ],
+    "monitor/instances": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_own_instances",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_instances",
+        "apps.monitor.tests.test_openapi_gateway::test_instances_forged_team_is_rejected",
+    ],
+    "monitor/policies": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_own_policies",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_policies",
+        "apps.monitor.tests.test_openapi_gateway::test_policies_forged_team_is_rejected",
+    ],
+    "monitor/metrics": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_metrics_without_query",
+        "apps.monitor.tests.test_openapi_gateway::test_hidden_object_metrics_are_rejected",
+    ],
+    "monitor/metrics/instant": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_query_own_metric_instant",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_query_other_org_metric",
+        "apps.monitor.tests.test_openapi_gateway::test_metric_query_rejects_raw_query",
+    ],
+    "monitor/metrics/range": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_query_other_org_metric_range",
+        "apps.monitor.tests.test_openapi_gateway::test_metric_range_rejects_window_over_six_hours",
+    ],
+    "monitor/plugins": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_plugins_and_form",
+        "apps.monitor.tests.test_openapi_gateway::test_hidden_object_plugins_are_rejected",
+    ],
+    "monitor/plugins/form": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_plugins_and_form",
+    ],
+    "monitor/policy-groups": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_own_policy_groups",
+        "apps.monitor.tests.test_openapi_gateway::test_policy_groups_forged_team_is_rejected",
+    ],
+    "monitor/integrations": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_save_integration_for_own_node",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_save_integration_for_other_org_node",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_delete_own_integration",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_delete_other_org_integration",
+        "apps.monitor.tests.test_openapi_gateway::test_delete_integration_forged_team_is_rejected",
+    ],
+    "monitor/cluster-collectors": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_create_kubernetes_collector",
+    ],
+    "monitor/cluster-collectors/install-command": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_generate_other_org_cluster_command",
+        "apps.monitor.tests.test_openapi_gateway::test_cluster_command_rejects_k3s_tolerations",
+    ],
+    "monitor/cluster-collectors/status": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_cluster_status",
+    ],
+    "node/cloud-regions": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_both_tenants_see_the_same_cloud_regions",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_cloud_regions_omit_proxy_address",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_cloud_regions_forged_team_is_rejected",
+    ],
+    "node/nodes": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_list_own_nodes",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_nodes",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_nodes_forged_team_is_rejected",
+    ],
+    "node/packages": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_list_packages",
+    ],
+    "node/controllers/install": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_install_controller_for_own_node",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_install_controller_on_other_org_node",
+    ],
+    "node/controllers/install-command": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_install_command_forged_team_is_rejected",
+    ],
+    "node/install-tasks": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_install_task",
+    ],
+    "node/collectors/install": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_install_collector_on_own_node",
+    ],
+    "node/collectors/operate": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_operate_other_org_collector",
+    ],
+    "node/configurations/bind": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_bind_configuration_on_own_node",
+    ],
+    "node/nodes/detail": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_read_own_node_detail",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_node_detail",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_node_detail_forged_team_is_rejected",
+    ],
+    "log/groups": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_list_own_groups",
+        "apps.log.tests.test_openapi_gateway::test_groups_forged_team_is_rejected",
+    ],
+    "log/collect-types": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_list_collect_types",
+    ],
+    "log/collect-instances": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_create_collect_instance_on_own_node",
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_create_collect_instance_on_other_org_node",
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_delete_own_collect_instance",
+    ],
+    "log/collect-instances/config": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_update_other_org_collect_config",
+    ],
+    "log/k8s-collectors": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_create_log_k8s_collector",
+    ],
+    "log/k8s-collectors/setting": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_save_other_org_k8s_setting",
+    ],
+    "log/k8s-collectors/install-command": [
+        "apps.log.tests.test_openapi_gateway::test_k8s_command_forged_team_is_rejected",
+    ],
+    "log/k8s-collectors/status": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_k8s_status",
+    ],
+    "log/search": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_search_own_group",
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_search_other_org_group",
+        "apps.log.tests.test_openapi_gateway::test_search_rejects_window_over_one_hour",
+        "apps.log.tests.test_openapi_gateway::test_search_truncates_long_message",
+    ],
+    "apm/applications": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_applications",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_applications",
+        "apps.apm.tests.test_openapi_gateway::test_applications_forged_team_is_rejected",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_creates_application_in_own_org",
+        "apps.apm.tests.test_openapi_gateway::test_application_create_forged_team_is_rejected",
+    ],
+    "apm/services": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_services",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_services",
+        "apps.apm.tests.test_openapi_gateway::test_services_forged_team_is_rejected",
+    ],
+    "apm/instances": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_instances",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_instances",
+        "apps.apm.tests.test_openapi_gateway::test_instances_forged_team_is_rejected",
+    ],
+    "apm/services/metrics": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_query_own_service_metrics",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_query_other_org_service_metrics",
+        "apps.apm.tests.test_openapi_gateway::test_service_metrics_reject_window_over_seven_days",
+    ],
+    "apm/traces": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_traces",
+        "apps.apm.tests.test_openapi_gateway::test_traces_reject_window_over_one_hour",
+    ],
+    "apm/integration-regions": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_integration_regions",
+    ],
+    "apm/integration-configs": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_render_other_org_integration_config",
+    ],
+    "apm/traces/detail": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_trace",
+    ],
     "system-mgmt/users": [
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_can_read_own_org_users",
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_cannot_read_other_org_users",

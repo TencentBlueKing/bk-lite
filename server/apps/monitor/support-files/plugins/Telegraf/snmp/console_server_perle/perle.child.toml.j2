@@ -59,15 +59,12 @@ def parse_celsius(raw):
     digits = ""
     started = False
     sign = ""
-    i = 0
-    while i < len(text):
+    for i in range(len(text)):
         c = text[i]
         if (not started) and (c == " " or c == "\t"):
-            i += 1
             continue
         if (not started) and (c == "-" or c == "+") and sign == "":
             sign = c
-            i += 1
             continue
         if c >= "0" and c <= "9":
             digits += c
@@ -79,7 +76,6 @@ def parse_celsius(raw):
             break
         elif sign != "":
             return None
-        i += 1
     if digits == "" or digits == ".":
         return None
     return float(sign + digits)

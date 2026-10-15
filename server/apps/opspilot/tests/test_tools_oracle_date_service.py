@@ -8,13 +8,13 @@ oracle: mock get_oracle_connection_from_item / 模块内 execute_readonly_query(
 
 import importlib
 import json
-import re
 import sys
+from datetime import datetime
+from datetime import timezone as dt_timezone
 from unittest.mock import MagicMock, patch
 
 import oracledb
 import pydantic.root_model  # noqa
-import pytest
 
 # 另一存量测试 (test_kubernetes_data_collection_tools) 用
 # sys.modules.setdefault("oracledb", object()) 桩占位,若其先执行会把 oracledb
@@ -72,14 +72,22 @@ def _patch_conn(conn):
 
 # ---------------- date.get_current_time ----------------
 class TestCurrentTime:
-    def test_format_matches_pattern(self):
-        out = dt.get_current_time.invoke({"config": CONFIG})
-        assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", out)
+    def _invoke_at(self, user_timezone: str | None):
+        fixed = datetime(2026, 1, 1, 0, 30, tzinfo=dt_timezone.utc)
+        configurable = {}
+        if user_timezone is not None:
+            configurable["user_timezone"] = user_timezone
+        with patch.object(dt.django_timezone, "now", return_value=fixed):
+            return dt.get_current_time.invoke({}, config={"configurable": configurable})
 
-    def test_default_timezone_arg(self):
-        # 默认时区参数不报错且返回合法时间串
-        out = dt.get_current_time.invoke({"timezone": "UTC", "config": CONFIG})
-        assert len(out) == 19
+    def test_uses_configured_user_timezone(self):
+        assert self._invoke_at("America/New_York") == "2025-12-31 19:30:00 (America/New_York)"
+
+    def test_missing_or_invalid_timezone_falls_back_to_shanghai(self):
+        expected = "2026-01-01 08:30:00 (Asia/Shanghai)"
+        assert self._invoke_at(None) == expected
+        assert self._invoke_at("") == expected
+        assert self._invoke_at("Not/AZone") == expected
 
 
 # ---------------- oracle.execute_safe_select ----------------
@@ -97,8 +105,7 @@ class TestOracleSafeSelect:
         rows = [(1, "alice"), (2, "bob")]
         conn = FakeOracleConn(desc, rows)
         with _patch_conn(conn):
-            out = json.loads(dq.execute_safe_select.invoke(
-                {"sql": "SELECT id, name FROM emp", "config": CONFIG}))
+            out = json.loads(dq.execute_safe_select.invoke({"sql": "SELECT id, name FROM emp", "config": CONFIG}))
         assert out["success"] is True
         assert out["row_count"] == 2
         assert out["data"] == [{"ID": 1, "NAME": "alice"}, {"ID": 2, "NAME": "bob"}]
@@ -112,8 +119,7 @@ class TestOracleSafeSelect:
     def test_existing_rownum_not_double_wrapped(self):
         conn = FakeOracleConn([("X",)], [(1,)])
         with _patch_conn(conn):
-            out = json.loads(dq.execute_safe_select.invoke(
-                {"sql": "SELECT x FROM t WHERE rownum <= 5", "config": CONFIG}))
+            out = json.loads(dq.execute_safe_select.invoke({"sql": "SELECT x FROM t WHERE rownum <= 5", "config": CONFIG}))
         # 已含 rownum, 不再包裹
         assert "SELECT * FROM (" not in out["sql"]
 
@@ -125,8 +131,7 @@ class TestOracleSafeSelect:
         # 同时把 dq 命名空间内的 oracledb 钉成真实模块,屏蔽存量裸 object 桩污染,
         # 使生产 except oracledb.Error 能正常捕获。
         with _patch_conn(conn), patch.object(dq, "oracledb", oracledb):
-            out = json.loads(dq.execute_safe_select.invoke(
-                {"sql": "SELECT id FROM nope", "config": CONFIG}))
+            out = json.loads(dq.execute_safe_select.invoke({"sql": "SELECT id FROM nope", "config": CONFIG}))
         assert "error" in out
         conn.close.assert_called_once()
 
@@ -138,8 +143,7 @@ class TestExplainPlan:
         plan_rows = [("Plan hash value: 123",), ("TABLE ACCESS FULL EMP",)]
         conn = FakeOracleConn([("PLAN_TABLE_OUTPUT",)], plan_rows)
         with _patch_conn(conn):
-            out = json.loads(dq.explain_query_plan.invoke(
-                {"sql": "SELECT id FROM emp", "config": CONFIG}))
+            out = json.loads(dq.explain_query_plan.invoke({"sql": "SELECT id FROM emp", "config": CONFIG}))
         assert out["success"] is True
         assert out["execution_plan"] == ["Plan hash value: 123", "TABLE ACCESS FULL EMP"]
 
@@ -161,8 +165,7 @@ class TestSearchTables:
 
         conn = FakeOracleConn([], [])
         with _patch_conn(conn), patch.object(dq, "execute_readonly_query", side_effect=fake_erq):
-            out = json.loads(dq.search_tables_by_keyword.invoke(
-                {"keyword": "emp", "db_schema": "hr", "config": CONFIG}))
+            out = json.loads(dq.search_tables_by_keyword.invoke({"keyword": "emp", "db_schema": "hr", "config": CONFIG}))
         assert out["keyword"] == "emp"
         assert out["schema"] == "hr"
         assert out["matching_tables"][0]["TABLE_NAME"] == "EMPLOYEES"
@@ -188,10 +191,14 @@ class TestSafeSelectBatch:
     def test_mixed_safe_and_unsafe(self):
         conn = FakeOracleConn([("ID",)], [(1,)])
         with _patch_conn(conn):
-            out = json.loads(dq.execute_safe_select_batch.invoke({
-                "queries": ["SELECT id FROM a", "DELETE FROM b", "SELECT * FROM c"],
-                "config": CONFIG,
-            }))
+            out = json.loads(
+                dq.execute_safe_select_batch.invoke(
+                    {
+                        "queries": ["SELECT id FROM a", "DELETE FROM b", "SELECT * FROM c"],
+                        "config": CONFIG,
+                    }
+                )
+            )
         assert out["total"] == 3
         assert out["failed"] == 2  # DELETE + SELECT *
         assert out["succeeded"] == 1

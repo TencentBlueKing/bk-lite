@@ -32,6 +32,7 @@ from apps.job_mgmt.services.scheduled_task_authz import (
     validate_scheduled_task_resource_boundary,
 )
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService  # noqa: F401 - 保留测试与外部 patch 接缝
+from apps.job_mgmt.services.template_revision import display_revision_label
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
 from apps.node_mgmt.utils.s3 import delete_s3_files
 
@@ -242,7 +243,7 @@ def execute_scheduled_task(scheduled_task_id: int):
         params = scheduled_task.params if isinstance(scheduled_task.params, list) else []
         resolved_params = ScriptParamsService.resolve_params(params, script=scheduled_task.script)
         params_str = ScriptParamsService.params_to_string(resolved_params)
-        playbook_version = scheduled_task.playbook.version if scheduled_task.playbook else ""
+        playbook_version = display_revision_label(scheduled_task.playbook) if scheduled_task.playbook else ""
 
         # 并发策略检查
         policy = scheduled_task.concurrency_policy

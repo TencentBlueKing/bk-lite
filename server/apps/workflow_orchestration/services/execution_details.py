@@ -6,6 +6,8 @@ from typing import Any
 from apps.workflow_orchestration.models import WorkflowExecution, WorkflowInteraction
 from apps.workflow_orchestration.services.atoms import ATOM_CATALOG
 from apps.workflow_orchestration.services.data_contracts import mask_secret_envelopes
+from apps.workflow_orchestration.services.executions import TERMINAL_STATUSES
+from apps.workflow_orchestration.services.validation_messages import render_known_message
 
 START_REFERENCE = "__start__"
 END_REFERENCE = "__end__"
@@ -62,10 +64,21 @@ def _interaction_state(interaction: WorkflowInteraction, *, username: str) -> st
     return "SKIPPED"
 
 
+_IN_FLIGHT_NODE_STATES = frozenset({"ACTIONABLE", "RUNNING", "WAITING", "PENDING"})
+
+
+def _display_state(state: str, *, terminal_execution: bool) -> str:
+    """终态执行里，未结束的任务快照不再显示为仍在运行。"""
+    if terminal_execution and state in _IN_FLIGHT_NODE_STATES:
+        return "SKIPPED"
+    return state
+
+
 def _aggregate_state(states: list[str], *, terminal_execution: bool) -> str:
-    if states:
-        return max(states, key=lambda state: STATE_PRIORITY.get(state, -1))
-    return "UNREACHABLE" if terminal_execution else "PENDING"
+    if not states:
+        return "UNREACHABLE" if terminal_execution else "PENDING"
+    displayed = [_display_state(state, terminal_execution=terminal_execution) for state in states]
+    return max(displayed, key=lambda state: STATE_PRIORITY.get(state, -1))
 
 
 def _node_name(task: dict[str, Any]) -> str:
@@ -147,12 +160,7 @@ def _interactions(execution: WorkflowExecution) -> dict[str, list[WorkflowIntera
 
 
 def _terminal_execution(execution: WorkflowExecution) -> bool:
-    return execution.status in {
-        WorkflowExecution.Status.SUCCEEDED,
-        WorkflowExecution.Status.FAILED,
-        WorkflowExecution.Status.TIMED_OUT,
-        WorkflowExecution.Status.TERMINATED,
-    }
+    return execution.status in TERMINAL_STATUSES
 
 
 def build_execution_node_summary(execution: WorkflowExecution, *, username: str) -> dict[str, Any]:
@@ -185,13 +193,18 @@ def build_execution_node_summary(execution: WorkflowExecution, *, username: str)
         states = [_task_state(instance.get("status")) for instance in runtime_instances]
         states.extend(_interaction_state(interaction, username=username) for interaction in interaction_instances)
         state = _aggregate_state(states, terminal_execution=terminal)
-        counts = dict(Counter(states)) if states else {state: 1}
+        displayed_states = [_display_state(item, terminal_execution=terminal) for item in states]
+        counts = dict(Counter(displayed_states)) if states else {state: 1}
         finished_values = [str(item.get("finished_at")) for item in runtime_instances if item.get("finished_at")]
-        actionable_ids = [
-            str(interaction.id)
-            for interaction in interaction_instances
-            if interaction.status == WorkflowInteraction.Status.PENDING and username in interaction.candidate_users
-        ]
+        actionable_ids = (
+            []
+            if terminal
+            else [
+                str(interaction.id)
+                for interaction in interaction_instances
+                if interaction.status == WorkflowInteraction.Status.PENDING and username in interaction.candidate_users
+            ]
+        )
         nodes.append(
             {
                 "reference": reference,
@@ -249,7 +262,7 @@ def _definition_task(execution: WorkflowExecution, reference: str) -> dict[str, 
     return None
 
 
-def _interaction_payload(interaction: WorkflowInteraction, *, username: str) -> dict[str, Any]:
+def _interaction_payload(interaction: WorkflowInteraction, *, username: str, terminal_execution: bool) -> dict[str, Any]:
     return {
         "id": str(interaction.id),
         "type": interaction.interaction_type,
@@ -258,7 +271,7 @@ def _interaction_payload(interaction: WorkflowInteraction, *, username: str) -> 
         "description": interaction.description,
         "public_context": mask_secret_envelopes(interaction.public_context),
         "candidate_users": interaction.candidate_users,
-        "can_act": interaction.status == WorkflowInteraction.Status.PENDING and username in interaction.candidate_users,
+        "can_act": (not terminal_execution and interaction.status == WorkflowInteraction.Status.PENDING and username in interaction.candidate_users),
         "operator": interaction.operator,
         "decision": interaction.decision,
         "comment": interaction.comment,
@@ -293,6 +306,12 @@ def _control_summary(task: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _visible_error(request: Any, message: str) -> str:
+    if not message:
+        return message
+    return render_known_message(request, message)
+
+
 def build_execution_node_detail(
     execution: WorkflowExecution,
     *,
@@ -300,6 +319,7 @@ def build_execution_node_detail(
     username: str,
     instance_id: str | None = None,
     include_technical: bool = False,
+    request: Any = None,
 ) -> dict[str, Any] | None:
     summary = build_execution_node_summary(execution, username=username)
     node = next((item for item in summary["nodes"] if item["reference"] == node_reference), None)
@@ -342,7 +362,7 @@ def build_execution_node_detail(
             "inputs": {},
             "outputs": mask_secret_envelopes(execution.output),
             "system_context": {},
-            "error": {"message": execution.error_message} if execution.error_message else None,
+            "error": {"message": _visible_error(request, execution.error_message)} if execution.error_message else None,
             "audit_events": ([{"type": "END", "at": _iso(execution.finished_at), "actor": ""}] if execution.finished_at else []),
             "artifacts": [_artifact_payload(artifact) for artifact in execution.artifacts.all()],
             "control": {},
@@ -359,7 +379,7 @@ def build_execution_node_detail(
             {
                 "id": str(item.id),
                 "label": f"第 {index} 次",
-                "state": _interaction_state(item, username=username),
+                "state": _display_state(_interaction_state(item, username=username), terminal_execution=_terminal_execution(execution)),
             }
             for index, item in enumerate(interaction_records, start=1)
         ]
@@ -393,7 +413,11 @@ def build_execution_node_detail(
             ],
             "artifacts": [],
             "control": {},
-            "interaction": _interaction_payload(selected, username=username),
+            "interaction": _interaction_payload(
+                selected,
+                username=username,
+                terminal_execution=_terminal_execution(execution),
+            ),
             "technical": {"workflow_id": execution.conductor_workflow_id, "task_id": selected.conductor_task_id} if include_technical else {},
         }
 
@@ -421,7 +445,7 @@ def build_execution_node_detail(
         {
             "id": str(item.get("task_id") or f"{node_reference}-{index}"),
             "label": f"第 {index} 次",
-            "state": _task_state(item.get("status")),
+            "state": _display_state(_task_state(item.get("status")), terminal_execution=_terminal_execution(execution)),
             "attempt": index,
             "iteration": item.get("iteration", 0),
         }
@@ -450,7 +474,7 @@ def build_execution_node_detail(
             "interaction": None,
             "technical": {"workflow_id": execution.conductor_workflow_id, "task_reference": node_reference} if include_technical else {},
         }
-    selected_state = _task_state(selected.get("status"))
+    selected_state = _display_state(_task_state(selected.get("status")), terminal_execution=_terminal_execution(execution))
     events = [{"type": "START", "at": selected.get("started_at"), "actor": selected.get("worker_id", "")}]
     if selected.get("retry_count"):
         events.append({"type": "RETRY", "at": selected.get("started_at"), "actor": selected.get("worker_id", "")})
@@ -477,7 +501,9 @@ def build_execution_node_detail(
         "outputs": mask_secret_envelopes(selected.get("output") or {}),
         "system_context": {},
         "error": (
-            {"type": selected.get("error_type") or "", "message": selected.get("reason") or ""} if selected_state in {"FAILED", "TIMED_OUT"} else None
+            {"type": selected.get("error_type") or "", "message": _visible_error(request, selected.get("reason") or "")}
+            if selected_state in {"FAILED", "TIMED_OUT"}
+            else None
         ),
         "audit_events": events,
         "artifacts": [_artifact_payload(artifact) for artifact in artifacts],

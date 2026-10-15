@@ -1,19 +1,11 @@
-import React from 'react';
-import '@ant-design/v5-patch-for-react-19';
-import { cleanup, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-
-import ScreenWidgetFrame, {
+import { describe, expect, it } from 'vitest';
+import { buildScreenItemMenu } from '../screenItemMenu';
+import { resolveWidgetCsvExportEntry } from '@/app/ops-analysis/utils/widgetCsvMenu';
+import {
   getScreenWidgetFrameClassName,
 } from '../screenWidgetFrame';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
-
-vi.mock('@/utils/i18n', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
+import { createScreenTextItem } from '../../utils/screenItems';
 
 const dataWidget: ScreenWidgetItem = {
   id: 'w-line',
@@ -38,32 +30,12 @@ const sceneWidget: ScreenWidgetItem = {
   },
 };
 
-beforeAll(() => {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
-});
+const keysOf = (
+  item: ScreenWidgetItem,
+  options?: { shareMode?: boolean; isBuiltIn?: boolean },
+) => buildScreenItemMenu(item, [item], options).map((entry) => entry.key);
 
-afterEach(() => {
-  cleanup();
-});
-
-const openMoreMenu = async () => {
-  const user = userEvent.setup();
-  await user.hover(screen.getByRole('button', { name: 'common.more' }));
-};
-
-describe('ScreenWidgetFrame copy menu', () => {
+describe('screen item context menu', () => {
   it('uses topology frame chrome for related topology and network status topology', () => {
     expect(
       getScreenWidgetFrameClassName({ chartType: 'relatedTopology' }),
@@ -75,77 +47,85 @@ describe('ScreenWidgetFrame copy menu', () => {
       'screen-widget-frame--chart',
     );
   });
-  it('includes 复制 for a data widget in edit mode', async () => {
-    render(
-      <ScreenWidgetFrame item={dataWidget} editMode onConfigure={vi.fn()} onDelete={vi.fn()} onCopy={vi.fn()}>
-        <div />
-      </ScreenWidgetFrame>,
-    );
 
-    await openMoreMenu();
-    expect(await screen.findByText('common.copy')).toBeTruthy();
+  it('includes copy, csv export, and layer actions for a data widget', () => {
+    expect(keysOf(dataWidget)).toEqual([
+      'edit',
+      'copy',
+      'exportCsv',
+      'delete',
+      'bringToFront',
+      'bringToBack',
+      'bringForward',
+      'sendBackward',
+    ]);
   });
 
-  it('omits 复制 entirely for a networkStatusTopology scene widget', async () => {
-    render(
-      <ScreenWidgetFrame item={sceneWidget} editMode onConfigure={vi.fn()} onDelete={vi.fn()} onCopy={vi.fn()}>
-        <div />
-      </ScreenWidgetFrame>,
-    );
-
-    await openMoreMenu();
-    expect(await screen.findByText('common.edit')).toBeTruthy();
-    expect(screen.queryByText('common.copy')).toBeNull();
+  it('omits copy and csv export for a networkStatusTopology scene widget', () => {
+    expect(keysOf(sceneWidget)).not.toContain('copy');
+    expect(keysOf(sceneWidget)).not.toContain('exportCsv');
+    expect(keysOf(sceneWidget)).toContain('edit');
+    expect(keysOf(sceneWidget)).toContain('delete');
   });
 
-  it('omits 复制 in view mode', () => {
-    render(
-      <ScreenWidgetFrame item={dataWidget} editMode={false} onConfigure={vi.fn()} onDelete={vi.fn()} onCopy={vi.fn()}>
-        <div />
-      </ScreenWidgetFrame>,
-    );
-
-    expect(screen.queryByRole('button', { name: 'common.more' })).toBeNull();
-    expect(screen.queryByText('common.copy')).toBeNull();
+  it('omits copy in share mode and on a builtin canvas', () => {
+    expect(keysOf(dataWidget, { shareMode: true })).not.toContain('copy');
+    expect(keysOf(dataWidget, { shareMode: true })).not.toContain('exportCsv');
+    expect(keysOf(dataWidget, { isBuiltIn: true })).not.toContain('copy');
+    expect(buildScreenItemMenu(dataWidget, [dataWidget], { fullscreen: true }).map((entry) => entry.key)).not.toContain('exportCsv');
   });
 
-  it('omits 复制 in share mode', async () => {
-    render(
-      <ScreenWidgetFrame
-        item={dataWidget}
-        editMode
-        shareMode
-        onConfigure={vi.fn()}
-        onDelete={vi.fn()}
-        onCopy={vi.fn()}
-      >
-        <div />
-      </ScreenWidgetFrame>,
-    );
-
-    await openMoreMenu();
-    expect(await screen.findByText('common.edit')).toBeTruthy();
-    expect(screen.queryByText('common.copy')).toBeNull();
-    expect(screen.getByText('common.delete')).toBeTruthy();
+  it('includes copy for chrome, omits edit, and disables layer moves when it is the only item', () => {
+    const text = createScreenTextItem([], { id: 'text-1', content: '说明' });
+    const entries = buildScreenItemMenu(text, [text]);
+    expect(entries.map((entry) => entry.key)).toEqual([
+      'copy',
+      'delete',
+      'bringToFront',
+      'bringToBack',
+      'bringForward',
+      'sendBackward',
+    ]);
+    expect(entries.filter((entry) => entry.key !== 'delete' && entry.key !== 'copy').every((entry) => entry.disabled)).toBe(true);
+    expect(buildScreenItemMenu(text, [text], { shareMode: true }).map((entry) => entry.key)).not.toContain('copy');
+    expect(buildScreenItemMenu(text, [text], { isBuiltIn: true }).map((entry) => entry.key)).not.toContain('copy');
+    expect(buildScreenItemMenu(text, [text]).map((entry) => entry.key)).not.toContain('exportCsv');
   });
 
-  it('omits 复制 on a builtin canvas', async () => {
-    render(
-      <ScreenWidgetFrame
-        item={dataWidget}
-        editMode
-        isBuiltIn
-        onConfigure={vi.fn()}
-        onDelete={vi.fn()}
-        onCopy={vi.fn()}
-      >
-        <div />
-      </ScreenWidgetFrame>,
-    );
-
-    await openMoreMenu();
-    expect(await screen.findByText('common.edit')).toBeTruthy();
-    expect(screen.queryByText('common.copy')).toBeNull();
-    expect(screen.getByText('common.delete')).toBeTruthy();
+  it('keeps csv export out of the view-mode context menu and off the view canvas', () => {
+    expect(buildScreenItemMenu(dataWidget, [dataWidget], { mode: 'view' })).toEqual([]);
+    const radar = {
+      ...dataWidget,
+      id: 'w-radar',
+      chartType: 'radar' as const,
+      valueConfig: { chartType: 'radar' as const },
+    };
+    expect(buildScreenItemMenu(radar, [radar]).map((entry) => entry.key)).toContain('exportCsv');
+    expect(buildScreenItemMenu(radar, [radar], {
+      rawData: {
+        hostA: [{ name: 'CPU', value: 1 }],
+        hostB: [{ name: 'CPU', value: 2 }],
+      },
+    }).map((entry) => entry.key)).not.toContain('exportCsv');
+    expect(resolveWidgetCsvExportEntry({
+      surface: 'screen',
+      chartType: 'line',
+      editMode: false,
+    })).toBe('none');
+    expect(resolveWidgetCsvExportEntry({
+      surface: 'screen',
+      chartType: 'line',
+      editMode: true,
+    })).toBe('menu');
+    (['single', 'gauge', 'topologyMap', 'nodeGraph'] as const).forEach((chartType) => {
+      const item = { ...dataWidget, id: chartType, chartType, valueConfig: { chartType } };
+      expect(buildScreenItemMenu(item, [item], { mode: 'view' })).toEqual([]);
+      expect(buildScreenItemMenu(item, [item]).map((entry) => entry.key)).not.toContain('exportCsv');
+      expect(resolveWidgetCsvExportEntry({
+        surface: 'screen',
+        chartType,
+        editMode: false,
+      })).toBe('none');
+    });
   });
 });

@@ -1,0 +1,63 @@
+Access ZTE OLT SNMP:
+  name: ZTE OLT（Telegraf）
+  desc: 面向 ZTE OLT 接入设备的 SNMP 监控模板，可采集运行时长、板卡 CPU 使用率、板卡内存使用率、板卡温度、风扇与电源状态、接口流量，适用于 ZTE ZXA10 OLT / AN
+    机框（企业号 PEN 3902）。
+monitor_object:
+  Access: 接入设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Access:
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: ZTE ZXA10 OLT 各板卡 CPU 负载（ZTE-AN-CHASSIS-MIB zxAnCardCpuLoad），取最忙的板卡。持续偏高说明主控板或业务板负载过高。
+    device_memory_total:
+      name: 内存总量
+      desc: ZTE ZXA10 各板卡内存容量之和，单位字节（zxAnCardMemSize，按板卡以 MB 上报）。
+    device_memory_usage:
+      name: 内存使用率
+      desc: ZTE ZXA10 OLT 板卡内存使用率（zxAnCardMemUsage），取最高的板卡。持续偏高可能表示内存泄漏或业务表项过大。
+    device_temperature_celsius:
+      name: 板卡温度
+      desc: ZTE ZXA10 OLT 板卡温度的最高值，单位摄氏度（ZTE-AN-ENVMON-MIB zxAnCardTemp）。温度持续升高可能表示散热异常。
+    device_fan_state:
+      name: 风扇状态
+      desc: ZTE ZXA10 OLT 风扇运行状态：1 表示正常或不在位（空槽保留序列），2 表示停转（异常），3 表示未知（灰，不告警）。
+      enum:
+        "1": 正常
+        "2": 异常
+        "3": 未知
+    device_fan_rpm:
+      name: 风扇转速
+      desc: ZTE ZXA10 OLT 风扇实际转速，单位转/分。
+    device_psu_state:
+      name: 电源状态
+      desc: ZTE ZXA10 OLT 电源输入电压状态：1 表示正常，2 表示过压、欠压或关机（异常）。
+      enum:
+        "1": 正常
+        "2": 异常
+        "3": 未知
+monitor_object_metric_group:
+  Access:
+    Base: 基础
+    Traffic: 流量
+    Access: 接入设备
+    Temperature: 温度
+    Hardware Status: 硬件状态

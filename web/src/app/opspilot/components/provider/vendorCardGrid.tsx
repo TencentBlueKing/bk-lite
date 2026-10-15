@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Menu, Modal, message } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
-import { VENDOR_ICON_MAP, VENDOR_LABEL_MAP } from '@/app/opspilot/constants/provider';
+import { VENDOR_ICON_MAP, vendorDisplayName } from '@/app/opspilot/constants/provider';
 import type { ModelVendor } from '@/app/opspilot/types/provider';
 import { useProviderApi } from '@/app/opspilot/api/provider';
 import { ProviderGridSkeleton } from '@/app/opspilot/components/provider/skeleton';
@@ -108,7 +108,7 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
             description={description}
             vendorIcon={VENDOR_ICON_MAP[vendor.vendor_type]}
             updatedAt={formatRelativeTime(pickEntityTimestamp(vendor), t) || undefined}
-            meta={[VENDOR_LABEL_MAP[vendor.vendor_type]].filter(Boolean)}
+            meta={[vendorDisplayName(vendor.vendor_type, t)].filter(Boolean)}
             footer="provider"
             modelCount={totalModels}
             enabled={vendor.enabled}

@@ -18,6 +18,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as monitor_logger
 from apps.core.logger import nats_logger as logger
 from apps.core.logger import safe_exception_info
+from apps.core.logger import safe_log_value
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
@@ -88,6 +89,7 @@ from apps.monitor.services.metric_series import (
     validate_mode,
     wrap_avg_over_time,
 )
+from apps.monitor.services.metric_trend_summary import summarize_trend_rows
 from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
 from apps.monitor.services.nats_query_contract import build_vm_query_failure_result as _build_vm_query_failure_result
 from apps.monitor.services.nats_query_contract import normalize_bool
@@ -1001,7 +1003,7 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
     authorized_qs = _get_authorized_instance_queryset(permission)
     authorized_map = {str(instance.id): instance for instance in authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False)}
     instance_ids, unresolved = resolve_instance_storage_ids(authorized_map, instance_ids)
-    if unresolved or not instance_ids:
+    if not instance_ids:
         return {"result": False, "data": [], "message": unresolved_monitor_instance_message(unresolved)}
 
     authorized_instance_ids = set(authorized_map)
@@ -1050,12 +1052,181 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
 
         Metrics.fill_missing_points(start_sec, end_sec, step_seconds, merged_series)
 
-        return {"result": True, "data": merged_result, "message": ""}
+        if unresolved and isinstance(merged_result, dict):
+            merged_result = dict(merged_result)
+            merged_result["skipped_instance_ids"] = unresolved
+        message = ""
+        if unresolved:
+            shown = "、".join(unresolved[:20])
+            extra = " 等" if len(unresolved) > 20 else ""
+            message = f"已跳过无法识别或无权限的实例: {shown}{extra}"
+        return {"result": True, "data": merged_result, "message": message}
 
     except MetricsQueryBudgetExceeded as exc:
         return _build_query_budget_failure(exc)
     except Exception as e:
         return {"result": False, "data": [], "message": f"查询指标数据失败: {str(e)}"}
+
+
+_TREND_ID_CHUNK = 40
+_TREND_SUMMARY_FAILURE = "指标趋势汇总失败"
+_SAFE_VM_ERROR_TYPE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+
+
+class MetricTrendQueryError(Exception):
+    """趋势查询失败。消息是稳定中文，可以返回给调用方。"""
+
+
+def _trend_vm_error_type(result: dict) -> str:
+    raw = result.get("errorType")
+    if isinstance(raw, str) and _SAFE_VM_ERROR_TYPE.fullmatch(raw):
+        return raw
+    return "vm_status_error"
+
+
+def _trend_span_number(value, name: str, default: float, minimum: float, maximum: float) -> float:
+    if value in (None, ""):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} 必须是数字") from exc
+    if number < minimum or number > maximum:
+        raise ValueError(f"{name} 必须在 {minimum:g} 到 {maximum:g} 之间")
+    return number
+
+
+def _query_trend_series(
+    metric_queries,
+    instance_ids: list[str],
+    start: float,
+    end: float,
+    step: str,
+    *,
+    monitor_obj_id="",
+) -> list[dict]:
+    """按与范围查询相同的预算拉取趋势序列。
+
+    先检查窗口和步长，再用 limitk 限制单次序列数，合并后检查序列数和总点数。
+    超预算抛出 MetricsQueryBudgetExceeded，不把原始点交给调用方。
+    """
+    budget = Metrics._prepare_range_budget(int(start * 1000), int(end * 1000), step)
+    series_limit = budget["limits"]["series"]
+    vm_api = VictoriaMetricsAPI()
+    merged: list[dict] = []
+    for _metric, instance_id_keys, metric_query in metric_queries:
+        for offset in range(0, len(instance_ids), _TREND_ID_CHUNK):
+            chunk = instance_ids[offset : offset + _TREND_ID_CHUNK]
+            query = Metrics._apply_range_series_limit(
+                _build_metric_label_query(
+                    metric_query,
+                    instance_ids=chunk,
+                    instance_id_keys=instance_id_keys,
+                ),
+                series_limit,
+            )
+            result = vm_api.query_range(query, start, end, step)
+            if isinstance(result, dict) and result.get("status") == "error":
+                # VM error 正文可能含查询语句，只记错误类型，不回传、不落日志。
+                logger.warning(
+                    "event=metric_trend_query_failed monitor_obj_id=%s failed_stage=query_range error_type=%s",
+                    safe_log_value(monitor_obj_id),
+                    _trend_vm_error_type(result),
+                )
+                raise MetricTrendQueryError(_TREND_SUMMARY_FAILURE)
+            for series in ((result or {}).get("data") or {}).get("result") or []:
+                if isinstance(series, dict):
+                    merged.append(series)
+            Metrics._enforce_range_response_budget(
+                {"status": "success", "data": {"result": merged}},
+                budget,
+            )
+    return merged
+
+
+@nats_client.register
+def summarize_metric_trend(query_data: dict, *args, **kwargs):
+    """用完整历史计算趋势汇总。instance_ids 为空时覆盖该对象下全部已授权实例。
+
+    只返回预测跨度内会到达阈值的序列，不返回原始点。
+    """
+    query_data = _normalize_monitor_query_data(query_data or {})
+    monitor_obj_id = query_data.get("monitor_obj_id")
+    metric_name = query_data.get("metric")
+    if not monitor_obj_id:
+        return {"result": False, "data": {}, "message": "缺少必要参数: monitor_obj_id"}
+    if not metric_name:
+        return {"result": False, "data": {}, "message": "缺少必要参数: metric"}
+    try:
+        lookback_days = _trend_span_number(query_data.get("lookback_days"), "lookback_days", 14, 1, 30)
+        horizon_days = _trend_span_number(query_data.get("horizon_days"), "horizon_days", 7, 1, 90)
+        threshold = _trend_span_number(query_data.get("threshold"), "threshold", 100, 0, 1_000_000)
+    except ValueError as exc:
+        return {"result": False, "data": {}, "message": str(exc)}
+
+    raw_instance_ids = query_data.get("instance_ids") or []
+    if not isinstance(raw_instance_ids, list):
+        return {"result": False, "data": {}, "message": "instance_ids 必须是列表"}
+
+    user_info = kwargs.get("user_info", {})
+    permission, error = _get_monitor_instance_permission(monitor_obj_id, user_info)
+    if error:
+        return error
+    try:
+        monitor_obj = MonitorObject.objects.get(id=monitor_obj_id)
+    except MonitorObject.DoesNotExist:
+        return {"result": False, "data": {}, "message": "监控对象或指标不存在"}
+    metrics = list(Metric.objects.filter(monitor_object=monitor_obj, name=metric_name).select_related("monitor_plugin").order_by("id"))
+    if not metrics:
+        return {"result": False, "data": {}, "message": "监控对象或指标不存在"}
+
+    metric_queries = []
+    for metric in metrics:
+        if not metric.query:
+            return {"result": False, "data": {}, "message": "指标查询语句为空"}
+        metric_queries.append((metric, _normalize_metric_instance_id_keys(metric, monitor_obj), metric.query))
+
+    authorized_qs = _get_authorized_instance_queryset(permission)
+    authorized_map = {str(instance.id): instance for instance in authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False)}
+    if raw_instance_ids:
+        instance_ids, unresolved = resolve_instance_storage_ids(authorized_map, raw_instance_ids)
+        if not instance_ids:
+            return {"result": False, "data": {}, "message": unresolved_monitor_instance_message(unresolved)}
+    else:
+        instance_ids = list(authorized_map)
+        unresolved = []
+    if not instance_ids:
+        return {
+            "result": True,
+            "data": summarize_trend_rows([], threshold=threshold, horizon_days=horizon_days),
+            "message": "",
+        }
+
+    end = time.time()
+    start = end - lookback_days * 86400
+    step = "1h" if lookback_days >= 1 else "5m"
+    try:
+        series = _query_trend_series(
+            metric_queries,
+            instance_ids,
+            start,
+            end,
+            step,
+            monitor_obj_id=monitor_obj_id,
+        )
+    except MetricsQueryBudgetExceeded as exc:
+        return _build_query_budget_failure(exc)
+    except MetricTrendQueryError:
+        return {"result": False, "data": {}, "message": _TREND_SUMMARY_FAILURE}
+    except Exception:
+        logger.exception("metric trend summary failed monitor_obj_id=%s", monitor_obj_id)
+        return {"result": False, "data": {}, "message": _TREND_SUMMARY_FAILURE}
+    data = summarize_trend_rows(series, threshold=threshold, horizon_days=horizon_days)
+    data["lookback_days"] = lookback_days
+    data["instance_count"] = len(instance_ids)
+    if unresolved:
+        data["skipped_instance_ids"] = unresolved
+    return {"result": True, "data": data, "message": ""}
 
 
 @nats_client.register
@@ -2826,6 +2997,37 @@ def monitor_bind_cmdb_id(params):
         object_name=params.get("object_name"),
         allowed_org_ids=params.get("allowed_org_ids"),
     )
+
+
+def _credential_id_list(credential_ids):
+    if not isinstance(credential_ids, list) or not credential_ids or len(credential_ids) > 100:
+        return None
+    if any(not isinstance(item, str) or not item for item in credential_ids):
+        return None
+    return credential_ids
+
+
+@nats_client.register
+def monitor_count_credential_refs(credential_ids):
+    ids = _credential_id_list(credential_ids)
+    if ids is None:
+        return {"result": False, "message": "invalid"}
+    rows = (
+        CollectConfig.objects.filter(vault_credential_id__in=ids).values("vault_credential_id").annotate(n=Count("monitor_instance", distinct=True))
+    )
+    counts = {item["vault_credential_id"]: item["n"] for item in rows}
+    return {"result": True, "data": {"counts": {credential_id: int(counts.get(credential_id) or 0) for credential_id in ids}}}
+
+
+@nats_client.register
+def monitor_refresh_credential_refs(credential_ids):
+    ids = _credential_id_list(credential_ids)
+    if ids is None:
+        return {"result": False, "message": "invalid"}
+    from apps.monitor.tasks.vault_credential import refresh_vault_credential_refs
+
+    refresh_vault_credential_refs.delay(ids)
+    return {"result": True, "data": {"accepted": len(ids)}}
 
 
 @nats_client.register

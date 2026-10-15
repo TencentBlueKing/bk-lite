@@ -40,7 +40,7 @@
 
 - 支持为专用场景组件提供固定形态的取数入口。
 - 当前已实现网络状态拓扑接口，按模型、实例与深度参数返回拓扑关系数据。
-- 当前已实现 3D 机房场景接口（包装 CMDB NATS `get_room_list` / `get_room3d_layout`），返回可见机房列表与指定机房的 row/col 网格、机柜 U 占用与设备摘要；payload 中机柜类型 `datacenter_type` 同时返回枚举 id 与可读名称 `rack_type_name`，机柜状态 `datacenter_state` 同时返回 `rack_state` / `rack_state_name`（启用/停用），无值时不带可读名。用户侧不再提供「CMDB 3D机房布局」「CMDB 机房列表」数据源。
+- 当前已实现 3D 机房场景接口（包装 CMDB NATS `get_room_list` / `get_room3d_layout`），返回可见机房列表与指定机房的 row/col 网格、机柜 U 占用与设备摘要；payload 中机柜类型 `datacenter_type` 同时返回枚举 id 与可读名称 `rack_type_name`，机柜状态 `datacenter_state` 同时返回 `rack_state` / `rack_state_name`（启用/停用），无值时不带可读名。用户侧内置数据源「CMDB 机房列表（选项）」恢复为可用的动态选项源；「CMDB 3D机房布局」保持下架。
 - 场景组件接口独立于普通数据源管理，不要求用户自行配置 REST API 路径。
 
 ## 4. 关键规则

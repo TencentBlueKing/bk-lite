@@ -138,7 +138,7 @@ def test_ui_is_pure_snmp_form(ui):
 
 
 @pytest.mark.unit
-def test_metrics_json_declares_only_temperature_delta(metrics):
+def test_metrics_json_declares_health_delta_with_sensor_identity(metrics):
     assert set(metrics["supplementary_indicators"]) == {"snmp_uptime", "device_temperature_celsius"}
     names = {m["name"] for m in metrics["metrics"]}
     floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
@@ -147,7 +147,7 @@ def test_metrics_json_declares_only_temperature_delta(metrics):
     assert metric["metric_group"] == "Temperature"
     assert metric["unit"] == "celsius"
     assert metric["data_type"] == "Number"
-    assert metric["dimensions"] == []
+    assert [item["name"] for item in metric["dimensions"]] == ["sensor_label"]
 
 
 @pytest.mark.unit

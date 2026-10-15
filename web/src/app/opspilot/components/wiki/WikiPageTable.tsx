@@ -8,7 +8,11 @@ import PermissionWrapper from "@/components/permission";
 import type { KnowledgePage } from "@/app/opspilot/types/wiki";
 import { useTranslation } from "@/utils/i18n";
 
-import { PAGE_STATUS_LABEL, formatPageTypeLabel } from "./wikiFormat";
+import {
+  PAGE_STATUS_LABEL,
+  formatPageTypeLabel,
+  formatWikiDirectoryLabel,
+} from "./wikiFormat";
 
 const PAGE_STATUS_COLOR: Record<string, string> = {
   active: "green",
@@ -72,7 +76,7 @@ const WikiPageTable: React.FC<WikiPageTableProps> = ({
       .map((item) =>
         item.id === unclassifiedDirectoryId
           ? t("wiki.directoryUnclassified")
-          : item.name,
+          : formatWikiDirectoryLabel(t, item),
       )
       .join(" / ");
 

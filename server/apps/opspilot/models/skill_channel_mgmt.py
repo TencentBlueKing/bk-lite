@@ -4,6 +4,7 @@ import uuid
 
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django_minio_backend import MinioBackend, iso_date_prefix
 
 from apps.core.models.time_info import TimeInfo
 from apps.opspilot.enum import SkillChannelChoices
@@ -114,4 +115,57 @@ class SkillConversationMessage(models.Model):
         ordering = ["created_at", "id"]
         indexes = [
             models.Index(fields=["conversation", "created_at"]),
+        ]
+
+
+class ChatAttachment(models.Model):
+    """对话附件。消息正文保持纯文本，文件事实以本表为准。"""
+
+    STATUS_PENDING = "pending"
+    STATUS_READY = "ready"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "解析中"),
+        (STATUS_READY, "就绪"),
+        (STATUS_FAILED, "失败"),
+    ]
+
+    file = models.FileField(
+        verbose_name="附件文件",
+        storage=MinioBackend(bucket_name="munchkin-private"),
+        upload_to=iso_date_prefix,
+    )
+    original_name = models.CharField(max_length=255, verbose_name="原始文件名")
+    mime_type = models.CharField(max_length=120, verbose_name="MIME")
+    size = models.PositiveIntegerField(verbose_name="字节大小")
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True, verbose_name="状态")
+    parsed_text = models.TextField(blank=True, default="", verbose_name="解析文本")
+    failure_reason = models.CharField(max_length=255, blank=True, default="", verbose_name="失败原因")
+    owner_key = models.CharField(max_length=255, db_index=True, verbose_name="上传者")
+    team_id = models.CharField(max_length=64, db_index=True, verbose_name="组织")
+    conversation = models.ForeignKey(
+        SkillConversation,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="chat_attachments",
+        verbose_name="会话",
+    )
+    message = models.ForeignKey(
+        SkillConversationMessage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chat_attachments",
+        verbose_name="消息",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "对话附件"
+        verbose_name_plural = verbose_name
+        db_table = "model_provider_mgmt_chatattachment"
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="chat_att_status_created_idx"),
+            models.Index(fields=["message", "status"], name="chat_att_message_status_idx"),
         ]

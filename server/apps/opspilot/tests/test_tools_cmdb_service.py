@@ -248,3 +248,61 @@ def test_every_cmdb_tool_requires_caller_identity(tool_name, payload):
     out = tool.invoke(payload, config={"configurable": {}})
     assert out["success"] is False
     assert "caller_identity" in out["error"]
+
+
+@pytest.mark.parametrize("wrapper_name", ["call_cmdb_params", "call_cmdb_kwargs"])
+@pytest.mark.parametrize(
+    "config",
+    [
+        None,
+        {},
+        {"configurable": {"allow_write": True, "is_superuser": True}},
+        cfg({**CALLER_IDENTITY, "username": ""}),
+        cfg({**CALLER_IDENTITY, "domain": ""}),
+        cfg({**CALLER_IDENTITY, "team_id": True}),
+        cfg({**CALLER_IDENTITY, "include_children": "true"}),
+    ],
+)
+def test_cmdb_rpc_rejects_missing_or_invalid_snapshot_before_client_creation(wrapper_name, config):
+    """旧写开关或伪用户字段不能替代真实调用方快照。"""
+    from apps.opspilot.metis.llm.tools.cmdb import utils
+
+    with patch.object(utils, "CMDB") as rpc_cls:
+        result = getattr(utils, wrapper_name)("get_instance_by_uuid", config, inst_uuid="u1")
+    assert result["success"] is False
+    assert "caller_identity" in result["error"]
+    rpc_cls.assert_not_called()
+
+
+def test_cmdb_params_identity_overrides_payload_and_preserves_unicode_result():
+    """身份只取可信快照；JSON 响应保持对象形态，不再测试已删除的字符串序列化。"""
+    with patch("apps.opspilot.metis.llm.tools.cmdb.utils.CMDB") as rpc_cls:
+        rpc_cls.return_value.get_instance_by_uuid.return_value = {"result": True, "data": {"名称": "主机"}}
+        result = call_cmdb_params(
+            "get_instance_by_uuid",
+            cfg(),
+            inst_uuid="u1",
+            operator="mallory",
+            organization_ids=[99],
+            user_info={"user": "mallory", "team": 99},
+        )
+    assert result == {"success": True, "data": {"名称": "主机"}}
+    params = rpc_cls.return_value.get_instance_by_uuid.call_args.kwargs["params"]
+    assert params["operator"] == "alice"
+    assert params["organization_ids"] == [12]
+    assert params["user_info"] == {"user": "alice", "domain": "tenant-a.com", "team": 12, "include_children": True}
+
+
+@pytest.mark.parametrize("wrapper_name", ["call_cmdb_params", "call_cmdb_kwargs"])
+def test_cmdb_rpc_write_denial_is_preserved_even_with_legacy_allow_write(wrapper_name):
+    """写权限由服务端执行，旧 allow_write 开关不能把 RPC 拒绝包装成成功。"""
+    from apps.opspilot.metis.llm.tools.cmdb import utils
+
+    config = cfg()
+    config["configurable"]["allow_write"] = True
+    with patch.object(utils, "CMDB") as rpc_cls:
+        rpc_cls.return_value.create_instance_for_llm.return_value = {"result": False, "message": "write denied"}
+        result = getattr(utils, wrapper_name)("create_instance_for_llm", config, model_id="host")
+    assert result["success"] is False
+    assert result["error"] == "write denied"
+    rpc_cls.return_value.create_instance_for_llm.assert_called_once()

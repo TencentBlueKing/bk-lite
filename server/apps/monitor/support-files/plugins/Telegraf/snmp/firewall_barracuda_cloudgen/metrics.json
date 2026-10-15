@@ -1,0 +1,91 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_barracuda_cloudgen",
+  "plugin": "Firewall Barracuda CloudGen SNMP",
+  "plugin_desc": "SNMP monitoring template for Barracuda CloudGen Firewall F-Series hardware (PHION-MIB, enterprise PEN 10704). It reports uptime, hardware sensor temperatures, fan speed, power supply status, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='firewall', collect_type='snmp_barracuda_cloudgen'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_psu_state"
+  ],
+  "display_fields": [],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='firewall', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Sensor name (hwSensorName)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of each hardware sensor of the Barracuda CloudGen Firewall (for example CPU, mainboard and south bridge) in degrees Celsius, from hwSensorValue rows whose hwSensorType is temperature(2) (PHION-MIB, 1.3.6.1.4.1.10704.1.4.1.3, millidegree units, divided by 1000). Values outside -50 to 150 degrees are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='firewall', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "rpm",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Fan sensor name (hwSensorName)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Speed of each fan of the Barracuda CloudGen Firewall in RPM, from hwSensorValue rows whose hwSensorType is fan(1)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='firewall', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Power supply name (hwSensorName)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of each power supply of the Barracuda CloudGen Firewall, from hwSensorValue rows whose hwSensorType is psu-status(3): 1 maps to normal (1), 0, 2 and 3 map to abnormal (2), other values are dropped."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

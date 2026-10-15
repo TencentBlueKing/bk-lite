@@ -505,6 +505,7 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
     user.id = 1001
     user.is_superuser = True
     user.locale = "zh-Hans"
+    user.timezone = "Asia/Shanghai"
 
     # llm_view.execute 在 streaming 之前访问 skill.wiki_knowledge_bases.values_list,
     # 这里显式 mock 避免 MagicMock 自动属性导致 TypeError

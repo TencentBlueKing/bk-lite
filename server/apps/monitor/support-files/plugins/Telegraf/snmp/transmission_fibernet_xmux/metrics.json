@@ -47,7 +47,7 @@
       "query": "device_psu_state{instance_type='transmission', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -61,7 +61,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Status of the left and right power supplies of each Fibernet XMUX4+ unit (muxLeftPower / muxRightPower, 1.3.6.1.4.1.29003.2.44.1.1.9.1.9 / .10). powerOn(1) is normal (1); powerOff(0) and unknown(8) are abnormal (2)."
+      "description": "Status of the left and right power supplies of each Fibernet XMUX4+ unit (muxLeftPower / muxRightPower, 1.3.6.1.4.1.29003.2.44.1.1.9.1.9 / .10). powerOn(1) is normal (1); powerOff(0) is abnormal (2); unknown(8) is 3 (gray, no alert)."
     },
     {
       "metric_group": "Traffic",

@@ -55,10 +55,10 @@ export interface LogExtractorDraft {
   config: Record<string, unknown>;
 }
 
-export type LogExtractorScopeQuery = {
+export interface LogExtractorScopeQuery {
   collect_instance?: string;
   collect_type?: string;
-};
+}
 
 export interface ExtractorPublicationStatus {
   desired_generation: number;

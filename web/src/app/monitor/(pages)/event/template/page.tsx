@@ -1,14 +1,16 @@
 'use client';
 import './register-template-pilot';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Checkbox, Dropdown, Form, Input, message, Modal, Spin, Tag, Tooltip, Upload } from 'antd';
+import { Button, Checkbox, Dropdown, Form, Input, message, Modal, Tag, Tooltip, Upload } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
+import SearchActionBar from '@/components/search-action-bar';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
+import SourceOriginBadge from '@/components/source-origin-badge';
 import {
   CaretRightOutlined,
   DeleteOutlined,
   DownloadOutlined,
   DownOutlined,
-  SearchOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
@@ -46,7 +48,7 @@ import { resolveTemplateQueryCondition } from '../strategy/detail/formulaExpress
 const MAX_VISIBLE_SELECTED_TEMPLATE_TAGS = 4;
 
 const Template: React.FC = () => {
-  const { isLoading } = useApiClient();
+  const { isLoading, post } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
   const {
     getPolicyTemplate,
@@ -256,7 +258,20 @@ const Template: React.FC = () => {
       message.warning('请先选择策略模版');
       return;
     }
-    setBulkModalVisible(true);
+    const templateIds = selectedTemplates
+      .map((item) => item.id)
+      .filter((item) => item !== undefined && item !== null);
+    void post('/monitor/api/policy_group/create_from_templates/', {
+      template_ids: templateIds,
+      name: '新建策略组',
+    })
+      .then(() => {
+        message.success('已创建策略组。实例尚未加入');
+        setSelectedTemplateKeys(clearTemplateSelection());
+      })
+      .catch((error: { message?: string }) => {
+        message.error(error?.message || '创建策略组失败');
+      });
   };
 
   const refreshTemplates = () => {
@@ -428,15 +443,10 @@ const Template: React.FC = () => {
             <Tooltip title={item.name || '--'} mouseEnterDelay={0.3}>
               <span className={templateStyle.cardTitleInner}>
                 <span className={templateStyle.cardTitleText}>{item.name || '--'}</span>
-                <span
-                  className={`${templateStyle.cardTypeBadge} ${
-                    isCustom
-                      ? templateStyle.cardCustomBadge
-                      : templateStyle.cardBuiltinBadge
-                  }`}
-                >
-                  {isCustom ? '自定义' : '内置'}
-                </span>
+                <SourceOriginBadge
+                  className="shrink-0"
+                  kind={isCustom ? 'custom' : 'builtin'}
+                />
               </span>
             </Tooltip>
           </div>
@@ -487,54 +497,56 @@ const Template: React.FC = () => {
       </ResizableSidebar>
 
       <div className={templateStyle.table}>
-        <div className={`${templateStyle.toolbar} gap-4`}>
-          <Input
-            allowClear
-            suffix={<SearchOutlined />}
-            placeholder="搜索模版名称、指标或描述"
-            value={searchKeyword}
-            onChange={(event) => setSearchKeyword(event.target.value)}
-          />
-          <div className="flex items-center gap-2">
-            <Upload
-              accept=".zip,application/zip"
-              showUploadList={false}
-              beforeUpload={(file) => {
-                void handleImport(file as File);
-                return Upload.LIST_IGNORE;
-              }}
-            >
-              <Button icon={<UploadOutlined />} loading={importing}>导入</Button>
-            </Upload>
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: 'export',
-                    label: '批量导出',
-                    icon: <DownloadOutlined />,
-                    disabled: !selectedTemplateKeys.length,
-                    onClick: () => void handleExport(),
-                  },
-                  {
-                    key: 'delete',
-                    label: containsBuiltin ? '批量删除（内置模版不可删除）' : '批量删除',
-                    icon: <DeleteOutlined />,
-                    danger: true,
-                    disabled: !selectedTemplateKeys.length || containsBuiltin,
-                    onClick: handleDelete,
-                  },
-                ],
-              }}
-            >
-              <Button loading={batchOperating}>批量操作 <DownOutlined /></Button>
-            </Dropdown>
-          </div>
-        </div>
+        <SearchActionBar
+          searchProps={{
+            allowClear: true,
+            placeholder: '搜索模版名称、指标或描述',
+            value: searchKeyword,
+            onChange: (event) => setSearchKeyword(event.target.value),
+          }}
+          actions={(
+            <div className="flex items-center gap-2">
+              <Upload
+                accept=".zip,application/zip"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  void handleImport(file as File);
+                  return Upload.LIST_IGNORE;
+                }}
+              >
+                <Button icon={<UploadOutlined />} loading={importing}>导入</Button>
+              </Upload>
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'export',
+                      label: '批量导出',
+                      icon: <DownloadOutlined />,
+                      disabled: !selectedTemplateKeys.length,
+                      onClick: () => void handleExport(),
+                    },
+                    {
+                      key: 'delete',
+                      label: containsBuiltin ? '批量删除（内置模版不可删除）' : '批量删除',
+                      icon: <DeleteOutlined />,
+                      danger: true,
+                      disabled: !selectedTemplateKeys.length || containsBuiltin,
+                      onClick: handleDelete,
+                    },
+                  ],
+                }}
+              >
+                <Button loading={batchOperating}>批量操作 <DownOutlined /></Button>
+              </Dropdown>
+            </div>
+          )}
+        />
 
-        <Spin spinning={tableLoading}>
-          {templateGroups.length ? (
-            <div className={templateStyle.groupList}>
+        {tableLoading && !templateGroups.length ? (
+          <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" />
+        ) : templateGroups.length ? (
+          <div className={templateStyle.groupList}>
               {templateGroups.map((group) => {
                 const allChecked =
                   group.templates.length > 0 &&
@@ -596,11 +608,10 @@ const Template: React.FC = () => {
                   </section>
                 );
               })}
-            </div>
-          ) : (
-            <CompactEmptyState description={tableLoading ? '加载中' : '暂无策略模版'} />
-          )}
-        </Spin>
+          </div>
+        ) : (
+          <CompactEmptyState description="暂无策略模版" />
+        )}
 
         {selectedTemplates.length > 0 && (
           <div className={templateStyle.bulkBar}>
@@ -635,7 +646,7 @@ const Template: React.FC = () => {
                 清空
               </Button>
               <Button type="primary" onClick={handleApply}>
-                应用
+                创建策略组
               </Button>
             </div>
           </div>

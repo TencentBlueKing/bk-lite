@@ -1,14 +1,21 @@
+import type { ScreenDisplayAdapter } from '@/app/ops-analysis/types/screen';
+
 export interface ScreenFitInput {
   contentWidth: number;
   contentHeight: number;
   designWidth: number;
   designHeight: number;
+  adapter?: ScreenDisplayAdapter;
 }
 
 export interface ScreenFitMetrics {
   fitScale: number;
+  scaleX: number;
+  scaleY: number;
   renderedWidth: number;
   renderedHeight: number;
+  overflowX: boolean;
+  overflowY: boolean;
 }
 
 export interface ScreenVisualMetrics extends ScreenFitMetrics {
@@ -22,11 +29,24 @@ export const clamp = (value: number, min: number, max: number) =>
 const safePositiveNumber = (value: number, fallback: number) =>
   Number.isFinite(value) && value > 0 ? value : fallback;
 
+const resolveAdapter = (adapter?: ScreenDisplayAdapter): ScreenDisplayAdapter => {
+  if (
+    adapter === 'contain' ||
+    adapter === 'fill' ||
+    adapter === 'fitWidth' ||
+    adapter === 'fitHeight'
+  ) {
+    return adapter;
+  }
+  return 'fill';
+};
+
 export const calculateScreenFitMetrics = ({
   contentWidth,
   contentHeight,
   designWidth,
   designHeight,
+  adapter,
 }: ScreenFitInput): ScreenFitMetrics => {
   const safeDesignWidth = safePositiveNumber(designWidth, 1920);
   const safeDesignHeight = safePositiveNumber(designHeight, 1080);
@@ -36,23 +56,49 @@ export const calculateScreenFitMetrics = ({
   if (!safeContentWidth || !safeContentHeight) {
     return {
       fitScale: 1,
+      scaleX: 1,
+      scaleY: 1,
       renderedWidth: safeDesignWidth,
       renderedHeight: safeDesignHeight,
+      overflowX: false,
+      overflowY: false,
     };
   }
 
-  const fitScale = Math.max(
-    Math.min(
-      safeContentWidth / safeDesignWidth,
-      safeContentHeight / safeDesignHeight,
-    ),
-    0.0001,
-  );
+  const widthScale = safeContentWidth / safeDesignWidth;
+  const heightScale = safeContentHeight / safeDesignHeight;
+  const resolvedAdapter = resolveAdapter(adapter);
+  const scaleX =
+    resolvedAdapter === 'fitHeight'
+      ? heightScale
+      : resolvedAdapter === 'contain'
+        ? Math.min(widthScale, heightScale)
+        : widthScale;
+  const scaleY =
+    resolvedAdapter === 'fitWidth'
+      ? widthScale
+      : resolvedAdapter === 'contain'
+        ? Math.min(widthScale, heightScale)
+        : heightScale;
+  const safeScaleX = Math.max(scaleX, 0.0001);
+  const safeScaleY = Math.max(scaleY, 0.0001);
+  const renderedWidth =
+    resolvedAdapter === 'fill' || resolvedAdapter === 'fitWidth'
+      ? safeContentWidth
+      : Math.round(safeDesignWidth * safeScaleX);
+  const renderedHeight =
+    resolvedAdapter === 'fill' || resolvedAdapter === 'fitHeight'
+      ? safeContentHeight
+      : Math.round(safeDesignHeight * safeScaleY);
 
   return {
-    fitScale,
-    renderedWidth: Math.floor(safeDesignWidth * fitScale),
-    renderedHeight: Math.floor(safeDesignHeight * fitScale),
+    fitScale: Math.min(safeScaleX, safeScaleY),
+    scaleX: safeScaleX,
+    scaleY: safeScaleY,
+    renderedWidth,
+    renderedHeight,
+    overflowX: renderedWidth > safeContentWidth,
+    overflowY: renderedHeight > safeContentHeight,
   };
 };
 

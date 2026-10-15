@@ -78,7 +78,12 @@ export const useNodeDeletion = ({
             setIsConfigDrawerVisible(false);
 
             if (currentSelectedEdges.length > 0) {
-              message.success(`${t('chatflow.messages.itemsDeleted')} ${currentSelectedNodes.length} ${t('chatflow.messages.nodes')} ${currentSelectedEdges.length} ${t('chatflow.messages.edges')}`);
+              message.success(
+                t('chatflow.messages.deletedNodesAndEdges', '已删除 {nodeCount} 个节点和 {edgeCount} 条连线', {
+                  nodeCount: currentSelectedNodes.length,
+                  edgeCount: currentSelectedEdges.length,
+                }),
+              );
             } else {
               message.success(`${t('chatflow.messages.multipleNodesDeleted')} ${currentSelectedNodes.length}`);
             }

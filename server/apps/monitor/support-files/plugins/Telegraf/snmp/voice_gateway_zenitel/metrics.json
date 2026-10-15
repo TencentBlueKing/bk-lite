@@ -43,7 +43,7 @@
       "query": "device_psu_state{instance_type='voice_gateway', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -53,7 +53,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports Zenitel power-source status from VS-DEVICE-MIB powerStatus, normalized so connected(3) is 1 = healthy and every other or unknown value is 2 = fault. It is aggregated as the maximum across power sources so any abnormal source is visible."
+      "description": "This metric reports Zenitel power-source status from VS-DEVICE-MIB powerStatus, normalized so connected(3) is 1 = healthy, notConnected(2) is 2 = fault, and unknown(1) is 3 (gray, no alert)."
     },
     {
       "metric_group": "Traffic",

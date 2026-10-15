@@ -70,6 +70,13 @@ class Graph:
         for pk in ids:
             self.rows[pk].update(props)
 
+    def delete_entity_if_unchanged(self, label, instance):
+        current = self.rows.get(instance["_id"])
+        if current is None or any(current.get(k) != instance.get(k) for k in ("model_id", "inst_uuid", "collect_task", "collect_time")):
+            return False
+        self.detach_delete_entity(label, instance["_id"])
+        return True
+
     def detach_delete_entity(self, label, pk):
         self.writes.append(("delete", pk))
         del self.rows[pk]

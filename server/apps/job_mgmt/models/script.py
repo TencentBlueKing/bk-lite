@@ -28,7 +28,10 @@ class Script(TimeInfo, MaintainerInfo):
     #     "label": "参数1",            # 参数标签（显示名称）
     #     "description": "提示信息",   # 提示信息
     #     "default": "",              # 默认值
-    #     "is_encrypted": false       # 是否加密
+    #     "is_encrypted": false,      # 是否加密
+    #     "is_required": false,       # 是否必填
+    #     "type": "text"|"enum",      # 参数类型，缺省 text
+    #     "options": ["a", "b"]       # type=enum 时的可选项
     # }]
     params = models.JSONField(default=list, verbose_name="参数定义")
 

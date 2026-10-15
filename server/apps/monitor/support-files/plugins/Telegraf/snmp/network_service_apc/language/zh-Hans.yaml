@@ -1,6 +1,6 @@
 NetworkService APC UPS PDU Environmental SNMP:
   name: APC UPS PDU Environmental（Telegraf）
-  desc: 面向 APC 网络服务设备的 SNMP 监控模板,可采集 电池剩余容量、输出负载、每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 APC 网络服务设备的 SNMP 监控模板,可采集 电池剩余容量、输出负载、ATS 选源/输入输出电压电流与输出负载、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -84,6 +84,24 @@ monitor_object_metric:
     network_service_apc_output_load:
       name: APC 输出负载
       desc: PowerNet UPS 当前输出负载，按额定容量百分比上报。
+    network_service_apc_ats_selected_source:
+      name: ATS 选源
+      desc: APC 自动转换开关当前选中的输入源，1=A、2=B。
+    network_service_apc_ats_input_voltage_volts:
+      name: ATS 输入电压
+      desc: APC 自动转换开关输入相电压，单位伏特。
+    network_service_apc_ats_input_current_amps:
+      name: ATS 输入电流
+      desc: APC 自动转换开关输入相电流，单位安培。
+    network_service_apc_ats_output_voltage_volts:
+      name: ATS 输出电压
+      desc: APC 自动转换开关输出相电压，单位伏特。
+    network_service_apc_ats_output_current_amps:
+      name: ATS 输出电流
+      desc: APC 自动转换开关输出相电流，单位安培（已按 0.1 A 量纲换算）。
+    network_service_apc_ats_output_load_percent:
+      name: ATS 输出负载
+      desc: APC 自动转换开关输出相负载，按额定容量百分比上报。
 monitor_object_metric_group:
   NetworkService:
     Base: 基础

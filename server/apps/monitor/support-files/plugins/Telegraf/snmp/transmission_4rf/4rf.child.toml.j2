@@ -79,7 +79,38 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.14817.7.3.1.2.21.2"
         name = "state"
-    # ---- CPU/内存/电源：APRISAXE-MIB-4RF 当前可核对稳定共享健康对象仅覆盖温度和风扇；RSSI/SNR/TDM/以太网对象属链路或业务遥测，不提升为设备级健康。----
+    # ---- AprisaXE transmitter temperature: aprisaXETransmitterTemperature, FourRFTemperature, degrees Celsius ----
+    # 与接收机温度相同，table.field 遍历标量叶（OID 不带 .0）。MIB 中该对象标为 obsolete，部分固件可能不再上报，缺失时无点。
+    [[inputs.snmp.table]]
+        name = "device_transmitter_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14817.7.3.1.2.36.12"
+        name = "celsius"
+    # ---- AprisaXE 电源轨告警状态（FourRFAlarmStatus：noAlarm(0) / informationAlarm(1) / warning(2) / minor(3) / major(4) / critical(5)）----
+    # 发射机 5V / 11V / 28V / -5V 电源与接收机 12V 电源，均为标量叶，同样 table.field 遍历后合并为一行，由下方 starlark 拆成每路一条。
+    [[inputs.snmp.table]]
+        name = "device_power_rail"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14817.7.3.1.2.36.4"
+        name = "tx_5v"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14817.7.3.1.2.36.5"
+        name = "tx_11v"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14817.7.3.1.2.36.6"
+        name = "tx_28v"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14817.7.3.1.2.36.35"
+        name = "tx_neg5v"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14817.7.3.1.2.51.4"
+        name = "rx_12v"
+    # ---- CPU/内存：APRISAXE-MIB-4RF 当前可核对稳定共享健康对象仅覆盖温度、风扇和电源轨告警；RSSI/SNR/TDM/以太网对象属链路或业务遥测，不提升为设备级健康。----
+    # 毫伏供电电压标量（1.3.6.1.4.1.14817.7.3.1.2.36.14~18）在 MIB 中已废弃，不采集，以电源轨告警状态为准。
 
 [[processors.enum]]
     namepass = ["device_fan"]
@@ -98,3 +129,34 @@
         [processors.enum.mapping.value_mappings]
             "0" = 1
             "1" = 1
+
+# ---- 发射机温度：须为 -60~150 的整数，否则整行丢弃。----
+# ---- 电源轨：每路拆成一条 device_power_rail（rail 标签 = tx_5v / tx_11v / tx_28v / tx_neg5v / rx_12v），noAlarm(0) → 1，告警 1~5 → 2；缺失或不在 0~5 的路不输出。----
+[[processors.starlark]]
+    namepass = ["device_transmitter_temperature", "device_power_rail"]
+    source = '''
+RAILS = ["tx_5v", "tx_11v", "tx_28v", "tx_neg5v", "rx_12v"]
+
+def apply(metric):
+    if metric.name == "device_transmitter_temperature":
+        value = metric.fields.get("celsius")
+        if type(value) != "int" or value < -60 or value > 150:
+            return None
+        return metric
+    out = []
+    for rail in RAILS:
+        value = metric.fields.get(rail)
+        if type(value) != "int" or value < 0 or value > 5:
+            continue
+        row = Metric("device_power_rail")
+        for key, tag in metric.tags.items():
+            if key != "index":
+                row.tags[key] = tag
+        row.tags["rail"] = rail
+        row.fields["state"] = 1 if value == 0 else 2
+        row.time = metric.time
+        out.append(row)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["4rf"]

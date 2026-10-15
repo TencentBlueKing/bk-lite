@@ -240,13 +240,20 @@ class LanguageViewSet(viewsets.ModelViewSet, GenericViewSetFun):
 
     def initialize_request(self, request, *args, **kwargs):
         request = super().initialize_request(request, *args, **kwargs)
-        app_name = self._get_app_name()
-        if hasattr(request, "user") and request.user:
+        self._bind_language_loader(request)
+        return request
+
+    def _bind_language_loader(self, request):
+        """页面语言优先，其次账号 locale。非 ModelViewSet 也可直接调用。"""
+        app_name = self._get_app_name() if hasattr(self, "_get_app_name") else None
+        header_locale = request.headers.get("X-BK-Locale") if hasattr(request, "headers") else None
+        if header_locale:
+            locale = header_locale
+        elif hasattr(request, "user") and request.user:
             locale = getattr(request.user, "locale", "en") or "en"
         else:
             locale = "en"
         self.loader = LanguageLoader(app=app_name, default_lang=locale)
-        return request
 
 
 class MaintainerViewSet(LanguageViewSet):
@@ -510,11 +517,18 @@ class AuthViewSet(MaintainerViewSet):
                             for item in parsed:
                                 try:
                                     normalized.append(int(item))
-                                except Exception:
+                                except (TypeError, ValueError) as exc:
+                                    logger.debug(
+                                        "event=org_value_skipped failed_stage=json_item error_type=%s",
+                                        type(exc).__name__,
+                                    )
                                     continue
                             continue
-                    except Exception:
-                        pass
+                    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                        logger.debug(
+                            "event=org_value_skipped failed_stage=json_list error_type=%s",
+                            type(exc).__name__,
+                        )
 
                 if "," in v:
                     for item in v.split(","):
@@ -523,13 +537,21 @@ class AuthViewSet(MaintainerViewSet):
                             continue
                         try:
                             normalized.append(int(item))
-                        except Exception:
+                        except (TypeError, ValueError) as exc:
+                            logger.debug(
+                                "event=org_value_skipped failed_stage=csv_item error_type=%s",
+                                type(exc).__name__,
+                            )
                             continue
                     continue
 
                 try:
                     normalized.append(int(v))
-                except Exception:
+                except (TypeError, ValueError) as exc:
+                    logger.debug(
+                        "event=org_value_skipped failed_stage=scalar error_type=%s",
+                        type(exc).__name__,
+                    )
                     continue
 
         return normalized

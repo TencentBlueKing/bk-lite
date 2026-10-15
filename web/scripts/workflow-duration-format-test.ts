@@ -26,8 +26,8 @@ const root = process.cwd();
 const logInfoPage = fs.readFileSync(path.join(root, 'src/app/opspilot/(pages)/studio/detail/logInfo/page.tsx'), 'utf8');
 const executionPreviewPanel = fs.readFileSync(path.join(root, 'src/app/opspilot/components/chatflow/ExecutionPreviewPanel.tsx'), 'utf8');
 
-assert.match(logInfoPage, /formatDurationMs\(duration\)/, 'workflow log table should use formatDurationMs');
-assert.match(executionPreviewPanel, /formatDurationMs\(item\.duration_ms\)/, 'workflow execution preview should use formatDurationMs');
+assert.match(logInfoPage, /formatDurationMs\(duration, t\)/, 'workflow log table should use formatDurationMs');
+assert.match(executionPreviewPanel, /formatDurationMs\(item\.duration_ms, t\)/, 'workflow execution preview should use formatDurationMs');
 assert.doesNotMatch(logInfoPage, /\$\{duration \|\| 0\}ms/, 'workflow log table should not hard-code ms');
 assert.doesNotMatch(executionPreviewPanel, /\$\{duration\}ms/, 'workflow execution preview should not hard-code ms');
 

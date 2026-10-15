@@ -20,11 +20,11 @@ interface ProviderModelManagementProps {
 
 type ModelSectionState = Record<ProviderResourceType, Model[]>;
 
-const SECTION_TITLE_MAP: Record<ProviderResourceType, string> = {
-  llm_model: 'LLM模型',
-  embed_provider: '向量模型',
-  rerank_provider: '重排模型',
-  ocr_provider: '图像模型',
+const SECTION_TITLE_MAP: Record<ProviderResourceType, { label: string; labelKey: string }> = {
+  llm_model: { label: 'LLM模型', labelKey: 'provider.modelSectionLlm' },
+  embed_provider: { label: '向量模型', labelKey: 'provider.modelSectionEmbed' },
+  rerank_provider: { label: '重排模型', labelKey: 'provider.modelSectionRerank' },
+  ocr_provider: { label: '图像模型', labelKey: 'provider.modelSectionOcr' },
 };
 
 const getSectionStyleMap = (mode: string): Record<ProviderResourceType, { topGlow: string; panelGlow: string; headerBg: string; sectionBg: string; tableBg: string; borderColor: string; shadow: string }> => {
@@ -277,7 +277,7 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
                   style={{ background: sectionStyle.headerBg }}
                 >
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-semibold text-[var(--color-text-1)]">{SECTION_TITLE_MAP[type]}</h3>
+                    <h3 className="text-base font-semibold text-[var(--color-text-1)]">{t(SECTION_TITLE_MAP[type].labelKey, SECTION_TITLE_MAP[type].label)}</h3>
                     <span className="text-xs text-[var(--color-text-3)]">{t('provider.model.totalCount', undefined, { count: modelsByType[type].length })}</span>
                   </div>
                   <Button type="primary" ghost size="small" icon={<PlusOutlined />} onClick={() => openAddModal(type)}>

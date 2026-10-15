@@ -642,10 +642,10 @@ class NatsService:
             for config in configs
         ]
 
-    def update_child_config_content(self, id, content, env_config=None):
+    def update_child_config_content(self, id, content, env_config=None, replace_env=False):
         """更新子配置内容"""
 
-        if not content and not env_config:
+        if not content and not env_config and not replace_env:
             raise BaseAppException("Content or env_config must be provided for update.")
 
         child_config = ChildConfig.objects.filter(id=id).first()
@@ -655,9 +655,8 @@ class NatsService:
         if content:
             child_config.content = content
 
-        if env_config:
-            # 智能合并并加密：只对变化的密码字段加密
-            merged_env_config = self._merge_and_encrypt_env_config(child_config.env_config, env_config)
+        if env_config or replace_env:
+            merged_env_config = self._merge_and_encrypt_env_config(child_config.env_config, env_config or {})
             child_config.env_config = merged_env_config
 
         child_config.save()
@@ -676,10 +675,10 @@ class NatsService:
         child_config.save(update_fields=["content", "updated_at"])
         return True
 
-    def update_config_content(self, id, content, env_config=None):
+    def update_config_content(self, id, content, env_config=None, replace_env=False):
         """更新配置内容"""
 
-        if not content and not env_config:
+        if not content and not env_config and not replace_env:
             raise BaseAppException("Content or env_config must be provided for update.")
 
         config = CollectorConfiguration.objects.filter(id=id).first()
@@ -689,9 +688,8 @@ class NatsService:
         if content:
             config.config_template = content
 
-        if env_config:
-            # 智能合并并加密：只对变化的密码字段加密
-            merged_env_config = self._merge_and_encrypt_env_config(config.env_config, env_config)
+        if env_config or replace_env:
+            merged_env_config = self._merge_and_encrypt_env_config(config.env_config, env_config or {})
             config.env_config = merged_env_config
 
         config.save()
@@ -763,7 +761,11 @@ def get_cloud_region_envconfig(cloud_region_id: str):
                 variables[obj.key] = value
             except Exception as e:
                 # 解密失败，记录警告日志并使用原值
-                logger.warning(f"Failed to decrypt secret env variable {obj.key}: {e}")
+                logger.warning(
+                    "Failed to decrypt secret env variable %s: error_type=%s",
+                    obj.key,
+                    type(e).__name__,
+                )
                 variables[obj.key] = obj.value
         else:
             # 如果是普通变量，直接使用
@@ -814,7 +816,11 @@ def get_cloud_region_proxy_address(cloud_region_id: str, organization_ids: list 
         try:
             return aes_obj.decode(env_var.value)
         except Exception as e:
-            logger.warning(f"Failed to decrypt proxy env variable {env_var.key}: {e}")
+            logger.warning(
+                "Failed to decrypt proxy env variable %s: error_type=%s",
+                env_var.key,
+                type(e).__name__,
+            )
 
     return env_var.value or ""
 
@@ -1056,7 +1062,11 @@ def update_child_config_content(data: dict):
     id = data.get("id")
     content = data.get("content")
     env_config = data.get("env_config")
-    NatsService().update_child_config_content(id, content, env_config)
+    replace_env = bool(data.get("replace_env"))
+    if replace_env:
+        NatsService().update_child_config_content(id, content, env_config, replace_env=True)
+    else:
+        NatsService().update_child_config_content(id, content, env_config)
 
 
 def compare_and_swap_child_config_content(data: dict):
@@ -1074,7 +1084,11 @@ def update_config_content(data: dict):
     id = data.get("id")
     content = data.get("content")
     env_config = data.get("env_config")
-    NatsService().update_config_content(id, content, env_config)
+    replace_env = bool(data.get("replace_env"))
+    if replace_env:
+        NatsService().update_config_content(id, content, env_config, replace_env=True)
+    else:
+        NatsService().update_config_content(id, content, env_config)
 
 
 @nats_client.register

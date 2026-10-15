@@ -1,7 +1,8 @@
 NetworkService APC UPS PDU Environmental SNMP:
   name: APC UPS PDU Environmental (Telegraf)
-  desc: SNMP monitoring template for APC UPS network service device. It reports battery charge
-    percent, output load percent, per-port inbound traffic rate, per-port outbound traffic
+  desc: SNMP monitoring template for APC UPS and ATS network service device. It reports battery charge
+    percent, output load percent, ATS selected source, ATS input/output voltage and current, ATS output
+    load percent, per-port inbound traffic rate, per-port outbound traffic
     rate, and system uptime
 monitor_object:
   NetworkService: NetworkService
@@ -107,6 +108,24 @@ monitor_object_metric:
     network_service_apc_output_load:
       name: APC Output Load
       desc: Current PowerNet UPS output load as a percent of rated capacity.
+    network_service_apc_ats_selected_source:
+      name: ATS Selected Source
+      desc: Currently selected APC ATS input source, 1=A and 2=B.
+    network_service_apc_ats_input_voltage_volts:
+      name: ATS Input Voltage
+      desc: APC ATS input phase voltage in volts.
+    network_service_apc_ats_input_current_amps:
+      name: ATS Input Current
+      desc: APC ATS input phase current in amperes.
+    network_service_apc_ats_output_voltage_volts:
+      name: ATS Output Voltage
+      desc: APC ATS output phase voltage in volts.
+    network_service_apc_ats_output_current_amps:
+      name: ATS Output Current
+      desc: APC ATS output phase current in amperes after converting from tenths of an ampere.
+    network_service_apc_ats_output_load_percent:
+      name: ATS Output Load
+      desc: APC ATS output phase load as a percent of rated capacity.
 monitor_object_metric_group:
   NetworkService:
     Base: Base
