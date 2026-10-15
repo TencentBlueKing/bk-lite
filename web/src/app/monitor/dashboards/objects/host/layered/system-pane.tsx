@@ -25,12 +25,16 @@ import {
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
+/** system / steal 没有对应的序列 token，色值跟构成表。 */
+const CPU_SYSTEM_COLOR = '#86909C';
+const CPU_STEAL_COLOR = '#F5319D';
+
 const CPU_BREAKDOWN = [
-  { key: 'cpu_usage_user_total', label: 'user', color: HOST_PALETTE.emerald },
-  { key: 'cpu_usage_system_total', label: 'system', color: HOST_PALETTE.neutral },
-  { key: 'cpu_usage_iowait_total', label: 'iowait', color: HOST_PALETTE.orange },
-  { key: 'cpu_usage_irq_total', label: 'irq', color: HOST_PALETTE.indigo },
-  { key: 'cpu_usage_steal_total', label: 'steal', color: HOST_PALETTE.rose }
+  { key: 'cpu_usage_user_total', label: 'user', color: HOST_SERIES_COLOR.cpu },
+  { key: 'cpu_usage_system_total', label: 'system', color: CPU_SYSTEM_COLOR },
+  { key: 'cpu_usage_iowait_total', label: 'iowait', color: HOST_SERIES_COLOR.load1 },
+  { key: 'cpu_usage_irq_total', label: 'irq', color: HOST_SERIES_COLOR.diskUsed },
+  { key: 'cpu_usage_steal_total', label: 'steal', color: CPU_STEAL_COLOR }
 ];
 
 const LOAD_SERIES = [
@@ -46,9 +50,9 @@ const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
 
 const MEM_COMPOSITION = [
   { key: 'mem_used', label: 'used', color: HOST_SERIES_COLOR.memUsed },
-  { key: 'mem_cached', label: 'cached', color: HOST_PALETTE.emerald },
-  { key: 'mem_buffered', label: 'buffered', color: HOST_PALETTE.cyan },
-  { key: 'mem_shared', label: 'shared', color: HOST_PALETTE.indigo }
+  { key: 'mem_cached', label: 'cached', color: HOST_SERIES_COLOR.memAvailable },
+  { key: 'mem_buffered', label: 'buffered', color: HOST_SERIES_COLOR.load5 },
+  { key: 'mem_shared', label: 'shared', color: HOST_SERIES_COLOR.diskUsed }
 ] as const;
 
 const GPU_SERIES = [
@@ -115,6 +119,70 @@ const formatBytes = (value: number) => {
   return `${formatted.value}${formatted.unit || ''}`;
 };
 
+const formatPercent = (value: number) => {
+  const formatted = formatMetricValue(value, 'percent');
+  return `${formatted.value}${formatted.unit || ''}`;
+};
+
+interface ComposeSlice {
+  key: string;
+  label: string;
+  color: string;
+  amount: number;
+  reading: string;
+}
+
+const RING_RADIUS = 16;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+/** 左环右图例。环心不写字。单段画满环，多段之间留一条缝。 */
+function CompositionDonut({ slices }: { slices: ComposeSlice[] }) {
+  const total = slices.reduce((sum, slice) => sum + slice.amount, 0);
+  const gap = slices.length > 1 ? 1.2 : 0;
+  let cursor = 0;
+  return (
+    <div className={styles.composeBody}>
+      <svg className={styles.composeRing} viewBox="0 0 42 42" aria-hidden="true">
+        {slices.map((slice) => {
+          if (slices.length === 1) {
+            return (
+              <circle key={slice.key} cx="21" cy="21" r={RING_RADIUS} fill="none" stroke={slice.color} strokeWidth="7" />
+            );
+          }
+          const span = total > 0 ? (slice.amount / total) * RING_CIRCUMFERENCE : 0;
+          const seam = Math.min(gap, span * 0.2);
+          const length = Math.max(span - seam, 0);
+          const node = (
+            <circle
+              key={slice.key}
+              cx="21"
+              cy="21"
+              r={RING_RADIUS}
+              fill="none"
+              stroke={slice.color}
+              strokeWidth="7"
+              strokeDasharray={`${length} ${RING_CIRCUMFERENCE - length}`}
+              strokeDashoffset={-cursor}
+              transform="rotate(-90 21 21)"
+            />
+          );
+          cursor += span;
+          return node;
+        })}
+      </svg>
+      <ul className={styles.composeLegend}>
+        {slices.map((slice) => (
+          <li key={slice.key}>
+            <span className={styles.legendSwatch} style={{ background: slice.color }} />
+            <span className={styles.composeName}>{slice.label}</span>
+            <span className={styles.composeReading}>{slice.reading}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function SystemPane({
   metrics,
   pendingMetricNames = EMPTY_PENDING,
@@ -146,15 +214,13 @@ export default function SystemPane({
     metrics.system_load15?.viewData,
     metrics.system_load15?.loadState
   ]);
-  const breakdownTrend = useMemo(() => {
-    const items = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
-    if (!items.length) return [];
-    return mergeChartSeries(items.map((item) => ({
-      key: item.key,
-      label: item.label,
-      data: primaryChartSeries(metrics[item.key]?.viewData)
-    })));
-  }, [
+  const cpuSlices = useMemo(() => (
+    CPU_BREAKDOWN.flatMap((item) => {
+      const value = latestNumber(metrics[item.key]);
+      if (value == null || value <= 0) return [];
+      return [{ ...item, amount: value, reading: formatPercent(value) }];
+    })
+  ), [
     metrics.cpu_usage_user_total?.viewData,
     metrics.cpu_usage_user_total?.loadState,
     metrics.cpu_usage_system_total?.viewData,
@@ -426,42 +492,43 @@ export default function SystemPane({
             <div className={styles.chartTitle}>{hostCategoryText(t, 'memoryComposition')}</div>
           </div>
           {memoryBytes > 0 ? (
-            <div className={styles.compositionBody}>
-              <div className={styles.compositionBar} aria-hidden="true">
-                {memoryParts.map((item) => (
-                  <span
-                    key={item.key}
-                    style={{ width: `${(item.bytes / memoryBytes) * 100}%`, background: item.color }}
-                  />
-                ))}
-              </div>
-              <div className={`${styles.chartLegend} ${styles.compositionLegend}`}>
-                {memoryParts.map((item) => (
-                  <span key={item.key}>
-                    <span className={styles.legendSwatch} style={{ background: item.color }} />
-                    {item.label}
-                    <span className={styles.legendReading} style={{ color: item.color }}>{formatBytes(item.bytes)}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
+            <CompositionDonut
+              slices={memoryParts.map((item) => ({
+                key: item.key,
+                label: item.label,
+                color: item.color,
+                amount: item.bytes,
+                reading: `${formatBytes(item.bytes)} ${((item.bytes / memoryBytes) * 100).toFixed(1)}%`
+              }))}
+            />
           ) : (
             <div className={styles.chartEmpty}>—</div>
           )}
         </section>
-        <ThinTimeSeries
-          className={styles.detailCard}
-          title={hostCategoryText(t, 'cpuTimeBreakdown')}
-          loading={breakdownPhase === 'loading'}
-          unit="percent"
-          data={breakdownTrend}
-          emptyText={breakdownPhase === 'error' ? '加载失败' : '暂无数据'}
-          onRetry={breakdownPhase === 'error' ? retry(breakdownNames) : undefined}
-          legends={breakdown.map((item) => ({
-            label: item.label,
-            color: item.color
-          }))}
-        />
+        <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.detailSlot}`} data-surface="cpu-time">
+          <div className={styles.chartHead}>
+            <div className={styles.chartTitle}>{hostCategoryText(t, 'cpuTimeBreakdown')}</div>
+          </div>
+          {breakdownPhase === 'loading' ? (
+            <span
+              className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
+              aria-busy="true"
+              aria-label="加载中"
+            />
+          ) : breakdownPhase === 'error' ? (
+            <button
+              type="button"
+              className="mt-1 text-left text-[12px] text-[var(--color-text-3)]"
+              onClick={retry(breakdownNames)}
+            >
+              加载失败，重试
+            </button>
+          ) : cpuSlices.length ? (
+            <CompositionDonut slices={cpuSlices} />
+          ) : (
+            <div className={styles.chartEmpty}>暂无数据</div>
+          )}
+        </section>
       </div>
       <div className={styles.detailFull} data-surface="gpu">
         <div className={styles.gpuBandTitle}>GPU</div>
