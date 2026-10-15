@@ -11,6 +11,7 @@ import { CSS } from '@dnd-kit/utilities';
 
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import WidgetCsvHoverButton from '@/app/ops-analysis/components/widgetCsvHoverButton';
+import InteractionTitleIcon from '@/app/ops-analysis/components/interactionTitleIcon';
 import WidgetDataRenderer from '@/app/ops-analysis/components/widgetDataRenderer';
 import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
 import { notifyWidgetCsvExportNotStarted, useWidgetCsvExportRegistry } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
@@ -190,9 +191,12 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                 />
               )}
               <div className="min-w-0 flex-1">
-                <h3 className="m-0 truncate text-sm font-medium text-[var(--color-text-1)]">
-                  {title.trim() ? title : t('opsAnalysis.report.unnamedComponent')}
-                </h3>
+                <div className="flex min-w-0 items-center gap-1">
+                  <h3 className="m-0 min-w-0 truncate text-sm font-medium text-[var(--color-text-1)]">
+                    {title.trim() ? title : t('opsAnalysis.report.unnamedComponent')}
+                  </h3>
+                  <InteractionTitleIcon config={section.valueConfig} />
+                </div>
                 {section.valueConfig.description?.trim() && (
                   <p className="mt-0.5 mb-0 truncate text-xs text-[var(--color-text-3)]">
                     {description}

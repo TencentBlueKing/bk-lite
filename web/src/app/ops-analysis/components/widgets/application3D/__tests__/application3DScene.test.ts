@@ -519,6 +519,48 @@ describe('application3D architecture scene', () => {
     controller.dispose();
   });
 
+  it('opens the link menu only for a right click that stays under the drag threshold', () => {
+    const onLinkContextMenu = vi.fn();
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+      onLinkContextMenu,
+    });
+    controller.reconcile([wallItem], { playIntro: false });
+    flushFrames();
+    const canvas = mount.querySelector('canvas');
+    expect(canvas).toBeTruthy();
+    const point = { clientX: 160, clientY: 90, bubbles: true, cancelable: true };
+    let followed = false;
+    canvas?.addEventListener('contextmenu', () => {
+      followed = true;
+    });
+
+    canvas?.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 2 }));
+    const menu = new MouseEvent('contextmenu', point);
+    canvas?.dispatchEvent(menu);
+    expect(menu.defaultPrevented).toBe(true);
+    expect(onLinkContextMenu).toHaveBeenCalledTimes(1);
+    expect(onLinkContextMenu.mock.calls[0][0]?.system?.id).toBe('sys-1');
+    expect(followed).toBe(false);
+
+    onLinkContextMenu.mockClear();
+    followed = false;
+    canvas?.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 2 }));
+    const drag = new MouseEvent('contextmenu', {
+      clientX: 220,
+      clientY: 90,
+      bubbles: true,
+      cancelable: true,
+    });
+    canvas?.dispatchEvent(drag);
+    expect(drag.defaultPrevented).toBe(true);
+    expect(onLinkContextMenu).not.toHaveBeenCalled();
+    expect(followed).toBe(true);
+    controller.dispose();
+  });
+
   it('parks 1 and 7 cards on the same wall camera and card size', () => {
     const aspect = 320 / 180;
     const parked = resolveApplication3DWallCamera(1, aspect);

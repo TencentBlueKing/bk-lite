@@ -8,6 +8,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 
 import { HandledRequestError } from '@/utils/request';
 import { FilterTemplateProvider, FilterTemplateTitleGate } from '@/app/ops-analysis/context/filterTemplate';
+import { InteractionSurfaceProvider } from '@/app/ops-analysis/context/interactionSurface';
 import { filterTemplateAsyncDependencies } from '@/app/ops-analysis/utils/filterTemplate';
 import { useTranslation } from '@/utils/i18n';
 import useBtnPermissions from '@/hooks/usePermissions';
@@ -847,6 +848,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       resolveEnabled={!editing || isFullscreen || exporting || pdfExportPreparing || renderMode}
       canvasId={selectedReport?.data_id}
     >
+    <InteractionSurfaceProvider editing={editing && !shareMode}>
     <FilterTemplateTitleGate
       texts={titleTemplateTexts}
       active={Boolean(renderMode)}
@@ -909,6 +911,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
         )}
       </div>
     </WidgetCsvExportRegistryProvider>
+    </InteractionSurfaceProvider>
     </FilterTemplateProvider>
   );
 });

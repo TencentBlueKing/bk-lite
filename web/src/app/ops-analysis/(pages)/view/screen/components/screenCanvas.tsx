@@ -1112,6 +1112,41 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           text-shadow: var(--screen-widget-title-shadow);
         }
 
+        .screen-widget-frame__header:has(.screen-widget-frame__title-link) {
+          justify-content: flex-start;
+          gap: calc(6px * var(--screen-widget-ui-scale));
+        }
+
+        .screen-widget-frame__header:has(.screen-widget-frame__title-link) .screen-widget-frame__title {
+          width: auto;
+          flex: 0 1 auto;
+        }
+
+        .screen-widget-frame__title-link {
+          display: inline-flex;
+          flex-shrink: 0;
+          align-items: center;
+          justify-content: center;
+          width: calc(14px * var(--screen-widget-ui-scale));
+          height: calc(14px * var(--screen-widget-ui-scale));
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: color-mix(in srgb, var(--screen-chrome-accent) 68%, var(--screen-widget-title-color));
+          font-size: calc(14px * var(--screen-widget-ui-scale));
+          line-height: 1;
+          cursor: pointer;
+        }
+
+        .screen-widget-frame__title-link .anticon {
+          font-size: 1em;
+        }
+
+        .screen-widget-frame__title-link:hover {
+          color: var(--screen-chrome-accent);
+          filter: drop-shadow(0 0 calc(6px * var(--screen-widget-ui-scale)) var(--screen-chrome-glow));
+        }
+
         .screen-widget-frame__body {
           position: relative;
           z-index: 1;

@@ -3,6 +3,8 @@ import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { withChartLinkPoints } from '@/app/ops-analysis/utils/interactionLink';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { useTranslation } from '@/utils/i18n';
 import {
   getOpsChartColorsByMode,
@@ -55,6 +57,7 @@ const BarChart: React.FC<BarChartProps> = ({
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const yAxisName = getLineBarYAxisName(config);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
+  const { onChartClick } = useWidgetDataLink(config);
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
     setLegendSelected(selected);
@@ -204,7 +207,7 @@ const BarChart: React.FC<BarChartProps> = ({
     option.series = chartData.series.map((item: any) => ({
       name: item.name,
       type: 'bar',
-      data: item.data,
+      data: withChartLinkPoints(item.data, item.points),
       barMaxWidth: scaleScreenMetric(40, screenRenderContext),
       itemStyle: {
         borderRadius: usesScreenChartTheme
@@ -231,7 +234,10 @@ const BarChart: React.FC<BarChartProps> = ({
       {
         name: t('topology.treeValueTitle'),
         type: 'bar',
-        data: chartData && chartData.values ? chartData.values : [],
+        data: withChartLinkPoints(
+          chartData && chartData.values ? chartData.values : [],
+          chartData?.points,
+        ),
         barMaxWidth: scaleScreenMetric(40, screenRenderContext),
         itemStyle: {
           borderRadius: usesScreenChartTheme
@@ -307,6 +313,7 @@ const BarChart: React.FC<BarChartProps> = ({
           ref={chartRef}
           option={option}
           notMerge={true}
+          onEvents={{ click: onChartClick }}
           style={{ height: '100%', width: '100%' }}
         />
       </div>

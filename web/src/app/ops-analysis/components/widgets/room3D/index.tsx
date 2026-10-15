@@ -12,6 +12,12 @@ import { ReloadOutlined } from "@ant-design/icons";
 import { useParams } from "next/navigation";
 import { useTranslation } from "@/utils/i18n";
 import { useShareMode } from "@/app/ops-analysis/context/shareMode";
+import InteractionDataMenu from "@/app/ops-analysis/components/interactionDataMenu";
+import { useWidgetDataLink } from "@/app/ops-analysis/components/interactionTitleIcon";
+import {
+  sceneLinkPoint,
+  type ChartLinkPoint,
+} from "@/app/ops-analysis/utils/interactionLink";
 import { useRoom3DApi } from "@/app/ops-analysis/api/room3D";
 import { isSceneWidgetAllowedOnSurface } from "@/app/ops-analysis/types/sceneWidgetCapability";
 import type { OpsAnalysisWidgetSurface } from "@/app/ops-analysis/utils/chartTypeSurface";
@@ -90,6 +96,34 @@ const Room3D: React.FC<Room3DProps> = ({
 }) => {
   const { t } = useTranslation();
   const shareMode = useShareMode();
+  const { active: dataLinkActive, link: dataLink, openPoint } = useWidgetDataLink(config);
+  const [linkMenu, setLinkMenu] = useState<{
+    x: number;
+    y: number;
+    point: ChartLinkPoint;
+  } | null>(null);
+  const linkMenuRef = useRef<(hit: {
+    rack: Room3DRack;
+    device?: { device_id: string; device_name: string };
+    x: number;
+    y: number;
+  } | null) => void>(() => undefined);
+  linkMenuRef.current = (hit) => {
+    if (!dataLinkActive || !hit) {
+      setLinkMenu(null);
+      return;
+    }
+    setLinkMenu({
+      x: hit.x,
+      y: hit.y,
+      point: sceneLinkPoint({
+        cabinet: { id: hit.rack.rack_id, name: hit.rack.rack_name },
+        device: hit.device
+          ? { id: hit.device.device_id, name: hit.device.device_name }
+          : undefined,
+      }),
+    });
+  };
   const params = useParams<{ sessionId?: string }>();
   const { getRooms, getLayout } = useRoom3DApi(
     shareMode ? params.sessionId : undefined,
@@ -266,6 +300,7 @@ const Room3D: React.FC<Room3DProps> = ({
           }
         },
         onDeviceSelect: setSelectedDevice,
+        onContextMenu: (hit) => linkMenuRef.current(hit),
       },
       rackTopLines,
     );
@@ -605,6 +640,14 @@ const Room3D: React.FC<Room3DProps> = ({
       } as React.CSSProperties}
     >
       <div ref={mountRef} className={styles.canvas} />
+      <InteractionDataMenu
+        open={Boolean(linkMenu)}
+        x={linkMenu?.x ?? 0}
+        y={linkMenu?.y ?? 0}
+        label={dataLink?.name || t("dashboard.interactionOpen", "打开链接")}
+        onSelect={() => openPoint(linkMenu?.point)}
+        onClose={() => setLinkMenu(null)}
+      />
       <div className={styles.topBar}>
         <div className={styles.roomTitle} title={roomSummaryText}>
           <strong className={styles.roomTitleName}>{roomData.room.name}</strong>

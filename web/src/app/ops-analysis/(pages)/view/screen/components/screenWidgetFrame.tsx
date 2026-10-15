@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
+import InteractionTitleIcon from '@/app/ops-analysis/components/interactionTitleIcon';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import type { ScreenWidgetFrame } from '@/app/ops-analysis/types/dashBoard';
 import { resolveScreenWidgetAppearance } from '../utils/layoutUtils';
@@ -65,11 +66,11 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
 
   return (
     <section
-      className={getScreenWidgetFrameClassName(item, {
+      className={`relative ${getScreenWidgetFrameClassName(item, {
         selected,
         editMode,
         frame,
-      })}
+      })}`}
       style={{
         '--screen-widget-scale': screenDensity,
         '--screen-widget-ui-scale': screenUiScale,
@@ -83,6 +84,7 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
           <span className="screen-widget-frame__title">
             {title || item.chartType}
           </span>
+          <InteractionTitleIcon config={item.valueConfig} variant="screen" />
         </header>
       )}
       {isBare && editMode && (

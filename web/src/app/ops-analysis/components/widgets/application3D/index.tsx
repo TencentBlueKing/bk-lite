@@ -8,6 +8,9 @@ import { ReloadOutlined } from '@ant-design/icons';
 import { useParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
+import InteractionDataMenu from '@/app/ops-analysis/components/interactionDataMenu';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import { sceneLinkPoint, type ChartLinkPoint } from '@/app/ops-analysis/utils/interactionLink';
 import { useApplication3DApi } from '@/app/ops-analysis/api/application3D';
 import type {
   Application3DAlarmDetailData,
@@ -78,6 +81,29 @@ export default function Application3D({
   instUuid,
 }: Application3DProps) {
   const { t } = useTranslation();
+  const { active: dataLinkActive, link: dataLink, openPoint } = useWidgetDataLink(config);
+  const [linkMenu, setLinkMenu] = useState<{
+    x: number;
+    y: number;
+    point: ChartLinkPoint;
+  } | null>(null);
+  const linkMenuRef = useRef<(hit: {
+    x: number;
+    y: number;
+    system?: { id: string; name: string };
+    host?: { id: string; name: string };
+  } | null) => void>(() => undefined);
+  linkMenuRef.current = (hit) => {
+    if (!dataLinkActive || !hit) {
+      setLinkMenu(null);
+      return;
+    }
+    setLinkMenu({
+      x: hit.x,
+      y: hit.y,
+      point: sceneLinkPoint({ system: hit.system, host: hit.host }),
+    });
+  };
   const translateRef = useRef(t);
   translateRef.current = t;
   const shareMode = useShareMode();
@@ -219,6 +245,7 @@ export default function Application3D({
           if (editMode) return;
           setArchitectureHost(selection);
         },
+        onLinkContextMenu: (hit) => linkMenuRef.current(hit),
       });
       controllerRef.current = controller;
       resizeSceneRef.current = () => controller.resize();
@@ -703,6 +730,14 @@ export default function Application3D({
         ref={mountRef}
         className="absolute inset-0 z-0 [&>canvas]:relative [&>canvas]:z-0 [&>canvas]:block [&>canvas]:h-full [&>canvas]:w-full"
         aria-hidden="true"
+      />
+      <InteractionDataMenu
+        open={Boolean(linkMenu)}
+        x={linkMenu?.x ?? 0}
+        y={linkMenu?.y ?? 0}
+        label={dataLink?.name || t('dashboard.interactionOpen', '打开链接')}
+        onSelect={() => openPoint(linkMenu?.point)}
+        onClose={() => setLinkMenu(null)}
       />
       {!allowedOnSurface && (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-6">

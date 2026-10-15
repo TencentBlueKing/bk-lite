@@ -58,7 +58,9 @@ test('mapped line chart reads rows wrapped in data or items', () => {
 
   assert.deepEqual(wrapped.categories, ['10.0.0.1']);
   assert.deepEqual(wrapped.values, [3]);
-  assert.deepEqual(items, [{ name: 'a', value: 2 }]);
+  assert.deepEqual(items.map(({ name, value }) => ({ name, value })), [{ name: 'a', value: 2 }]);
+  assert.equal(items[0]?.__link?.fields?.host, 'a');
+  assert.equal(items[0]?.__link?.raw, 2);
 });
 
 test('mapped line chart does not fall back to multi-series', () => {
@@ -102,8 +104,10 @@ test('mapped pie chart omits slices that are not complete numbers', () => {
     { dimensionField: 'host', valueField: 'count' },
   );
 
-  assert.deepEqual(slices, [
+  assert.deepEqual(slices.map(({ name, value }) => ({ name, value })), [
     { name: 'a', value: 4 },
     { name: 'c', value: 0 },
   ]);
+  assert.equal(slices[0]?.__link?.numeric, 4);
+  assert.equal(slices[1]?.__link?.numeric, 0);
 });

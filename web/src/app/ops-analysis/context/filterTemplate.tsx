@@ -138,6 +138,14 @@ export const useFilterTemplateVariables = () => {
   return context?.definitions ?? [];
 };
 
+export const useFilterTemplateSnapshot = () => {
+  const context = useContext(FilterTemplateContext);
+  return {
+    definitions: context?.resolveDefinitions ?? [],
+    values: context?.appliedValues ?? {},
+  };
+};
+
 /** 查看态替换已应用筛选；编辑态、表单和没有提供方时保持模板原文。 */
 export const useFilterTemplateText = (text?: string | null) => {
   const resolve = useFilterTemplateResolver();

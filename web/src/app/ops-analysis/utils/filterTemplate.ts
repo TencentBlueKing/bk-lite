@@ -18,6 +18,11 @@ import { isOrganizationFilterDefinition } from '@/app/ops-analysis/utils/unified
 
 const FILTER_TYPES = new Set(['string', 'number', 'timeRange', 'dateRange']);
 
+/** 下拉右侧用英文类型。string 显示为 text，其余沿用筛选自己的类型名。 */
+export const filterDropdownType = (type: UnifiedFilterDefinition['type']) => (
+  type === 'string' ? 'text' : type
+);
+
 export interface FilterTemplateLabels {
   /** 动态选项加载完成后按筛选 id 填入。缺省表示还在加载。 */
   optionLabelsByFilterId: Record<string, Record<string, string> | undefined>;

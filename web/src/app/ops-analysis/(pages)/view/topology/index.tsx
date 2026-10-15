@@ -13,6 +13,10 @@ import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useShareOrganizationSeed } from '@/app/ops-analysis/context/shareOrganization';
 import { setLocaleData } from './utils/localeStore';
+import {
+  resetInteractionRuntime,
+  setInteractionRuntime,
+} from '@/app/ops-analysis/context/interactionRuntime';
 import { Select } from 'antd';
 import { useTopologyState } from './hooks/useTopologyState';
 import { useGraphOperations } from './hooks/useGraphOperations';
@@ -129,6 +133,19 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     useEffect(() => {
       setLocaleData(intl.locale, intl.messages as Record<string, string>);
     }, [intl.locale, intl.messages]);
+
+    const interactionOwnerRef = useRef(
+      `topology-${Math.random().toString(36).slice(2)}`,
+    );
+    useEffect(() => {
+      const owner = interactionOwnerRef.current;
+      setInteractionRuntime({
+        surface: shareMode ? 'share' : state.isEditMode ? 'edit' : 'view',
+        definitions,
+        values: appliedFilterValues,
+      }, owner);
+      return () => resetInteractionRuntime(owner);
+    }, [appliedFilterValues, definitions, shareMode, state.isEditMode]);
 
     const handleNodeRemovedCallback = useCallback(() => {
       rebuildFiltersRef.current?.();
