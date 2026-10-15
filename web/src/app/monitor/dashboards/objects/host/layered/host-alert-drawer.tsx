@@ -221,7 +221,7 @@ export default function HostAlertDrawer({
     <Drawer
       title={(
         <span className="inline-flex items-center gap-2.5 text-[16px] font-semibold leading-6 text-[var(--color-text-1)]">
-          本机问题
+          本机告警
           {showBadge ? (
             <span
               className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[12px] font-semibold leading-none ${
@@ -247,7 +247,7 @@ export default function HostAlertDrawer({
       }}
       styles={{
         header: {
-          padding: '14px 16px 12px',
+          padding: '14px 20px 12px',
           borderBottom: '1px solid var(--color-border)'
         },
         body: {
@@ -257,7 +257,7 @@ export default function HostAlertDrawer({
           overflow: 'hidden'
         },
         footer: {
-          padding: '12px 16px',
+          padding: '12px 20px',
           borderTop: '1px solid var(--color-border)',
           background: 'var(--color-fill-1, #fafbfc)'
         },
@@ -273,7 +273,7 @@ export default function HostAlertDrawer({
               在告警中心查看 →
             </Link>
           ) : <span />}
-          <span className="shrink-0 text-[12px] leading-5 text-[var(--color-text-3)]">仅本机活跃</span>
+          <span className="shrink-0 text-[12px] leading-5 text-[var(--color-text-3)]">仅显示本机活跃告警</span>
         </div>
       )}
     >
@@ -284,11 +284,11 @@ export default function HostAlertDrawer({
         className="flex h-full min-h-0 w-full flex-1 flex-col outline-none"
       >
         {loading ? (
-          <div className="flex flex-col gap-2 px-3 py-3">
+          <div className="flex flex-col gap-2.5 px-4 py-3">
             {Array.from({ length: SKELETON_ROWS }, (_, index) => (
               <div
                 key={index}
-                className="flex h-16 items-stretch gap-2.5 rounded-lg border border-[var(--color-border)] px-2.5 py-2.5"
+                className="flex h-16 items-stretch gap-3 rounded-lg border border-[var(--color-border)] py-2.5 pl-2.5 pr-3.5"
               >
                 <span className="w-1 animate-pulse rounded-sm bg-[var(--color-fill-3)]" />
                 <span className="flex min-w-0 flex-1 flex-col justify-center gap-2">
@@ -333,7 +333,7 @@ export default function HostAlertDrawer({
         {!loading && phase === 'ready' ? (
           <>
             {summary.length ? (
-              <div className="flex flex-wrap gap-2 px-4 pt-2.5">
+              <div className="flex flex-wrap gap-2 px-5 pt-3">
                 {summary.map((item) => (
                   <span
                     key={item.key}
@@ -350,7 +350,7 @@ export default function HostAlertDrawer({
                 ))}
               </div>
             ) : null}
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-3 pb-2 pt-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto px-4 py-3">
               {rows.map((row) => {
                 const key = String(row.id);
                 const expanded = expandedId === key;
@@ -380,7 +380,7 @@ export default function HostAlertDrawer({
                     <button
                       type="button"
                       data-host-alert-id={key}
-                      className="block w-full border-0 bg-transparent py-2.5 pl-6 pr-3 text-left font-[inherit]"
+                      className="block w-full border-0 bg-transparent py-2.5 pl-[26px] pr-3.5 text-left font-[inherit]"
                       aria-expanded={expanded}
                       onClick={() => setExpandedId(expanded ? '' : key)}
                     >
@@ -410,7 +410,7 @@ export default function HostAlertDrawer({
                       </span>
                     </button>
                     {expanded ? (
-                      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-[var(--color-border)] bg-[var(--color-fill-1)] py-2 pl-6 pr-3 text-[12px] leading-4">
+                      <div className="mb-2.5 ml-[26px] mr-3.5 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-[var(--color-fill-1)] px-3 py-2.5 text-[12px] leading-4">
                         <span className="text-[var(--color-text-3)]">级别</span>
                         <span className="text-[var(--color-text-1)]">{levelLabel}</span>
                         <span className="text-[var(--color-text-3)]">首次</span>
