@@ -3911,7 +3911,7 @@
         "queueAndThroughput": "Queue and Throughput",
         "riskSignals": "Risk Signals",
         "hostProcessListProcstatScope": "This list only shows processes that Telegraf `procstat` is configured to monitor; processes on the host that are not collected do not appear.",
-        "hostCategoryDetailedMetrics": "Composition",
+        "hostCategoryDetailedMetrics": "Detailed metrics",
         "hostCategorySwapUtilization": "Swap used",
         "hostCategorySwapUsedHint": "Swap used: current used swap relative to total capacity. The main value shows used/total; the trend is the used ratio. A rise usually means physical memory is tight and anonymous pages may be swapped out to disk.",
         "hostCategorySwapAbsentHint": "Swap used: this host has no swap partition configured, or collected data is not available yet. The card stays so configuration and collection gaps remain visible; once data arrives it shows used/total and the used-ratio trend.",

@@ -5,7 +5,7 @@ const textId = (suffix: string) => `monitor.dashboards.text.${suffix}`;
 
 /** 专业仪表盘文案。中文是缺词条时的回退，与 locales 中同 key 保持一致。 */
 export const HOST_CATEGORY_COPY = {
-  detailedMetrics: [textId('hostCategoryDetailedMetrics'), '分项构成'],
+  detailedMetrics: [textId('hostCategoryDetailedMetrics'), '详细指标'],
   swapSpaceUsage: [textId('hostCategorySwapSpaceUsage'), '交换空间使用率'],
   swapSpaceUsageSubtitle: [textId('hostCategorySwapSpaceUsageSubtitle'), '已用占交换总量的比例'],
   swapSpaceUsageHint: [textId('hostCategorySwapSpaceUsageHint'), '内存紧张时，系统会把部分内存内容暂存到磁盘（交换分区）。本图看该占比随时间变化；越高通常表示内存越紧。'],
