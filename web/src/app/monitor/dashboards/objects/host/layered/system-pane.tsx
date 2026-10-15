@@ -15,7 +15,6 @@ import type { HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
   deriveRatioPercent,
-  formatPercent,
   formatPlain,
   latestNumber,
   metricHasPoints,
@@ -201,11 +200,11 @@ export default function SystemPane({
     return { items, data };
   }, [memoryUsage]);
   const memItems = memChart.items;
-  const used = memoryUsage.usedNow;
-  const availLatest = memoryUsage.availableNow;
   const cpuNow = latestNumber(metrics.cpu_usage_total);
-  // 曲线已用是 available/total 的互补占比。KPI 跟这条线，不再单读 mem_used_percent。
-  const memNow = used;
+  // 曲线已用是 available/total 的互补占比。内存使用率 KPI 跟这条线。
+  const memNow = memoryUsage.usedNow;
+  // 可用内存卡显示容量，不显示占比。
+  const availBytes = latestNumber(metrics.mem_available);
   const uptimeNow = latestNumber(metrics.system_uptime);
   const load1Now = latestNumber(metrics.system_load1);
   const phaseFor = (names: readonly string[], hasValue: boolean): MetricBlockPhase => (
@@ -214,7 +213,7 @@ export default function SystemPane({
   const retry = (names: readonly string[]) => () => onRetryMetrics?.([...names]);
   const cpuNames = ['cpu_usage_total'] as const;
   const memKpiNames = ['mem_used_percent'] as const;
-  const availNames = ['mem_available', 'mem_total'] as const;
+  const availNames = ['mem_available'] as const;
   const load1Names = ['system_load1'] as const;
   const uptimeNames = ['system_uptime'] as const;
   const memTrendNames = ['mem_used_percent', 'mem_available', 'mem_total'] as const;
@@ -253,7 +252,7 @@ export default function SystemPane({
       alertLevel: alerts.mem,
       ...splitMetric(memNow, 'percent')
     },
-    { key: 'avail', label: '可用内存', names: availNames, phase: phaseFor(availNames, availLatest != null), ...splitMetric(availLatest, 'percent') },
+    { key: 'avail', label: '可用内存', names: availNames, phase: phaseFor(availNames, availBytes != null), ...splitMetric(availBytes, 'bytes') },
     {
       key: 'load',
       label: hostCategoryText(t, 'loadOneMinute'),
@@ -296,14 +295,10 @@ export default function SystemPane({
       data={memChart.data}
       emptyText={memPhase === 'error' ? '加载失败' : '暂无数据'}
       onRetry={memPhase === 'error' ? retry(memTrendNames) : undefined}
-      legends={memItems.map((item) => {
-        const value = item.key === 'used' ? used : availLatest;
-        return {
-          label: item.label,
-          color: item.color,
-          reading: value == null ? undefined : formatPercent(value)
-        };
-      })}
+      legends={memItems.map((item) => ({
+        label: item.label,
+        color: item.color
+      }))}
     />,
     loadActive ? (
       <ThinTimeSeries
