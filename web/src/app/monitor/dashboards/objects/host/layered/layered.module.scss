@@ -739,8 +739,9 @@ button.kpiCard {
 
 .processTop {
   display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
-  gap: 12px;
+  width: min(100%, 1104px);
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 2.4fr);
+  gap: 16px;
   align-items: stretch;
 }
 
@@ -759,20 +760,33 @@ button.kpiCard {
   min-height: 0;
 }
 
+.processTrends .chartTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.processTrends .cardAlert .chartTitle {
+  padding-right: 16px;
+}
+
 .currentCard {
   justify-content: flex-start;
   gap: 4px;
+  padding: 16px 18px;
 }
 
 .currentKicker {
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--color-text-3);
 }
 
 .currentName {
-  margin: 4px 0 12px;
-  font-size: 16px;
+  margin: 6px 0 16px;
+  font-size: 18px;
   font-weight: 650;
+  line-height: 1.35;
   color: var(--color-text-1);
 }
 
@@ -780,14 +794,14 @@ button.kpiCard {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 12px;
+  margin-top: 12px;
   color: var(--color-text-3);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .currentMetric b {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-1);

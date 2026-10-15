@@ -190,7 +190,6 @@ export default function FlatProcessSplit({
             loading={loading}
             unit="percent"
             data={cpuTrend}
-            showSeriesName
             legends={[{ label: 'CPU', color: cpuSeries.color }]}
             alertLevel={selectedLevel('process_cpu_usage', cpu)}
           />
@@ -199,7 +198,6 @@ export default function FlatProcessSplit({
             loading={loading}
             unit="percent"
             data={memTrend}
-            showSeriesName
             legends={[{ label: '内存', color: memSeries.color }]}
             alertLevel={selectedLevel('process_mem_usage', mem)}
           />
