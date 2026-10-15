@@ -13,18 +13,21 @@ import { isScreenChartThemeMode, type OpsChartThemeMode } from '@/app/ops-analys
 import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import ApplicationTopologyGraphView from './graphView';
+import type { ScreenRenderContext } from '@/app/ops-analysis/types/dashBoard';
 import type { ApplicationTopologyResponse } from './types';
 
 export interface ApplicationTopologyProps {
   instUuid: string;
   depth?: number;
   chartThemeMode?: OpsChartThemeMode;
+  screenRenderContext?: ScreenRenderContext;
 }
 
 const ApplicationTopology = ({
   instUuid,
   depth = APPLICATION_TOPOLOGY_DEFAULT_DEPTH,
   chartThemeMode,
+  screenRenderContext,
 }: ApplicationTopologyProps) => {
   const { t } = useTranslation();
   const tRef = useRef(t);
@@ -99,6 +102,8 @@ const ApplicationTopology = ({
         links={payload.links || []}
         usesScreenTheme={usesScreenTheme}
         shareMode={Boolean(shareMode)}
+        screenScaleX={screenRenderContext?.scaleX}
+        screenScaleY={screenRenderContext?.scaleY}
         onRefresh={() => void load()}
       />
     </div>

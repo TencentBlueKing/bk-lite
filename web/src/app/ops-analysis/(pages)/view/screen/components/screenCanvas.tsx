@@ -460,6 +460,7 @@ interface ScreenCanvasNodeProps {
   editable: boolean;
   selected: boolean;
   scale: number;
+  scaleY: number;
   fitScale: number;
   screenDensity: number;
   screenUiScale: number;
@@ -490,6 +491,7 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
   editable,
   selected,
   scale,
+  scaleY,
   fitScale,
   screenDensity,
   screenUiScale,
@@ -522,6 +524,8 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
       refreshCause={refreshCause}
       screenId={screenId}
       fitScale={fitScale}
+      scaleX={scale}
+      scaleY={scaleY}
       screenDensity={screenDensity}
       screenUiScale={screenUiScale}
       dataSourceResolver={dataSourceResolver}
@@ -770,6 +774,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
                 editable={editable}
                 selected={selectedItemId === item.id}
                 scale={scale}
+                scaleY={screenMetrics.scaleY}
                 fitScale={screenMetrics.fitScale}
                 screenDensity={screenMetrics.screenDensity}
                 screenUiScale={screenMetrics.screenUiScale}
