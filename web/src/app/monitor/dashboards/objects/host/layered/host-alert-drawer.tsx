@@ -248,18 +248,31 @@ export default function HostAlertDrawer({
       styles={{
         header: {
           padding: '14px 20px 12px',
-          borderBottom: '1px solid var(--color-border)'
+          borderBottom: '1px solid var(--color-border)',
+          background: 'var(--color-bg)',
+          flex: 'none'
+        },
+        content: {
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          overflow: 'hidden',
+          background: 'var(--color-bg)'
         },
         body: {
           padding: 0,
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden'
+          flex: '1 1 auto',
+          minHeight: 0,
+          overflow: 'hidden',
+          background: 'var(--color-bg)'
         },
         footer: {
           padding: '12px 20px',
           borderTop: '1px solid var(--color-border)',
-          background: 'var(--color-fill-1, #fafbfc)'
+          background: 'var(--color-fill-1, #fafbfc)',
+          flex: 'none'
         },
         wrapper: { maxWidth: 'min(440px, 100vw)' }
       }}
@@ -281,10 +294,10 @@ export default function HostAlertDrawer({
         ref={listRef}
         tabIndex={-1}
         aria-busy={loading}
-        className="flex h-full min-h-0 w-full flex-1 flex-col outline-none"
+        className="flex min-h-0 w-full flex-1 flex-col bg-[var(--color-bg)] outline-none"
       >
         {loading ? (
-          <div className="flex flex-col gap-2.5 px-4 py-3">
+          <div className="flex flex-col gap-3 bg-[var(--color-bg)] px-4 py-3">
             {Array.from({ length: SKELETON_ROWS }, (_, index) => (
               <div
                 key={index}
@@ -333,7 +346,7 @@ export default function HostAlertDrawer({
         {!loading && phase === 'ready' ? (
           <>
             {summary.length ? (
-              <div className="flex flex-wrap gap-2 px-5 pt-3">
+              <div className="flex shrink-0 flex-wrap gap-2 bg-[var(--color-bg)] px-5 pt-3">
                 {summary.map((item) => (
                   <span
                     key={item.key}
@@ -350,7 +363,7 @@ export default function HostAlertDrawer({
                 ))}
               </div>
             ) : null}
-            <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto px-4 py-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto bg-[var(--color-bg)] px-4 py-3">
               {rows.map((row) => {
                 const key = String(row.id);
                 const expanded = expandedId === key;
@@ -370,57 +383,59 @@ export default function HostAlertDrawer({
                 return (
                   <div
                     key={key}
-                    className="relative overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_srgb,var(--color-primary)_32%,var(--color-border))] hover:shadow-[0_2px_8px_color-mix(in_srgb,var(--color-primary)_8%,transparent)]"
+                    className="flex shrink-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] shadow-none transition-colors duration-150 hover:border-[color-mix(in_srgb,var(--color-primary)_32%,var(--color-border))]"
                   >
                     <span
-                      className="pointer-events-none absolute bottom-2.5 left-2.5 top-2.5 w-1 rounded-sm"
+                      className="pointer-events-none my-2.5 ml-2.5 w-1 shrink-0 self-stretch rounded-sm"
                       style={{ background: paint.bar }}
                       aria-hidden="true"
                     />
-                    <button
-                      type="button"
-                      data-host-alert-id={key}
-                      className="block w-full border-0 bg-transparent py-2.5 pl-[26px] pr-3.5 text-left font-[inherit]"
-                      aria-expanded={expanded}
-                      onClick={() => setExpandedId(expanded ? '' : key)}
-                    >
-                      <span className="flex items-start gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[1.35] text-[var(--color-text-1)]" title={title}>
-                          {title}
-                        </span>
-                        <span className="shrink-0 whitespace-nowrap text-[12px] leading-4 text-[var(--color-text-3)]">
-                          {relative}
-                        </span>
-                      </span>
-                      <span className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <span
-                          className="inline-flex h-5 items-center rounded px-[7px] text-[11px] font-medium leading-none"
-                          style={{ background: paint.wash, color: paint.ink }}
-                        >
-                          {levelLabel}
-                        </span>
-                        {statusLabel ? (
-                          <span className="inline-flex h-5 items-center rounded bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-[7px] text-[11px] font-medium leading-none text-[var(--color-primary)]">
-                            {statusLabel}
+                    <div className="flex min-w-0 flex-1 flex-col pl-3 pr-3.5">
+                      <button
+                        type="button"
+                        data-host-alert-id={key}
+                        className="block w-full border-0 bg-transparent py-2.5 text-left font-[inherit]"
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedId(expanded ? '' : key)}
+                      >
+                        <span className="flex items-start gap-2">
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[1.35] text-[var(--color-text-1)]" title={title}>
+                            {title}
                           </span>
-                        ) : null}
-                        {meta ? (
-                          <span className="text-[11px] leading-4 text-[var(--color-text-3)]">{meta}</span>
-                        ) : null}
-                      </span>
-                    </button>
-                    {expanded ? (
-                      <div className="mb-2.5 ml-[26px] mr-3.5 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-[var(--color-fill-1)] px-3 py-2.5 text-[12px] leading-4">
-                        <span className="text-[var(--color-text-3)]">级别</span>
-                        <span className="text-[var(--color-text-1)]">{levelLabel}</span>
-                        <span className="text-[var(--color-text-3)]">首次</span>
-                        <span className="text-[var(--color-text-1)]">{absolute(row.start_event_time || row.created_at)}</span>
-                        <span className="text-[var(--color-text-3)]">最近</span>
-                        <span className="text-[var(--color-text-1)]">{absolute(row.updated_at || row.end_event_time)}</span>
-                        <span className="text-[var(--color-text-3)]">策略</span>
-                        <span className="truncate text-[var(--color-text-1)]">{strategy || '—'}</span>
-                      </div>
-                    ) : null}
+                          <span className="shrink-0 whitespace-nowrap text-[12px] leading-4 text-[var(--color-text-3)]">
+                            {relative}
+                          </span>
+                        </span>
+                        <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className="inline-flex h-5 items-center rounded px-[7px] text-[11px] font-medium leading-none"
+                            style={{ background: paint.wash, color: paint.ink }}
+                          >
+                            {levelLabel}
+                          </span>
+                          {statusLabel ? (
+                            <span className="inline-flex h-5 items-center rounded bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-[7px] text-[11px] font-medium leading-none text-[var(--color-primary)]">
+                              {statusLabel}
+                            </span>
+                          ) : null}
+                          {meta ? (
+                            <span className="text-[11px] leading-4 text-[var(--color-text-3)]">{meta}</span>
+                          ) : null}
+                        </span>
+                      </button>
+                      {expanded ? (
+                        <div className="mb-2.5 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-[var(--color-fill-1)] px-3 py-2.5 text-[12px] leading-4">
+                          <span className="text-[var(--color-text-3)]">级别</span>
+                          <span className="text-[var(--color-text-1)]">{levelLabel}</span>
+                          <span className="text-[var(--color-text-3)]">首次</span>
+                          <span className="text-[var(--color-text-1)]">{absolute(row.start_event_time || row.created_at)}</span>
+                          <span className="text-[var(--color-text-3)]">最近</span>
+                          <span className="text-[var(--color-text-1)]">{absolute(row.updated_at || row.end_event_time)}</span>
+                          <span className="text-[var(--color-text-3)]">策略</span>
+                          <span className="truncate text-[var(--color-text-1)]">{strategy || '—'}</span>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })}
