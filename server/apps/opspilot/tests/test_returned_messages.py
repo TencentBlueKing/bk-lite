@@ -56,13 +56,13 @@ def test_channel_reply_uses_page_language():
     assert localize_returned_text("未登录", en) == "Not signed in"
     assert localize_returned_text("未登录", zh) == "未登录"
     assert localize_returned_text("不支持的渠道类型: feishu", en) == "Unsupported channel type: feishu"
-    assert localize_returned_text("渠道不存在或已下线", en) == "The channel does not exist or is offline"
-    assert localize_returned_text("渠道不存在或已下线", zh) == "渠道不存在或已下线"
+    # 回调 HTTP 正文和发给渠道用户的消息，不随页面语言翻译。
+    assert localize_returned_text("渠道不存在或已下线", en) == "渠道不存在或已下线"
+    assert localize_returned_text("当前仅支持文本消息", en) == "当前仅支持文本消息"
+    assert localize_returned_text("飞书签名校验失败", en) == "飞书签名校验失败"
     assert localize_returned_text("无权管理该智能体渠道", en) == "You cannot manage this agent channel"
     assert localize_returned_text("当前页面内容过多，无法进行问答", en) == "This page has too much content to answer questions about"
     assert localize_returned_text("上下文过长，请新开会话", en) == "The context is too long. Start a new conversation"
-    assert localize_returned_text("当前仅支持文本消息", en) == "Only text messages are supported"
-    assert localize_returned_text("飞书签名校验失败", en) == "Feishu signature verification failed"
 
 
 def test_catalog_sentence_outside_message_fields_is_kept():
@@ -96,11 +96,11 @@ def test_response_body_translates_message_and_single_sse_frame():
     assert body["title"] == "供应商不能为空"
     assert body["message"] == "Vendor is required"
 
-    frame = '{"message": "渠道不存在或已下线"}'
+    frame = '{"message": "无权管理该智能体渠道"}'
     sse_response = HttpResponse(f"data: {frame}\n\n", content_type="text/event-stream")
     translate_response_body(sse_response, request)
-    assert "The channel does not exist or is offline" in sse_response.content.decode()
-    assert "渠道不存在或已下线" not in sse_response.content.decode()
+    assert "You cannot manage this agent channel" in sse_response.content.decode()
+    assert "无权管理该智能体渠道" not in sse_response.content.decode()
 
     multi = HttpResponse(
         'data: {"message": "供应商不能为空"}\n\ndata: {"message": "供应商不能为空"}\n\n',
