@@ -60,6 +60,7 @@ def test_channel_reply_uses_page_language():
     assert localize_returned_text("渠道不存在或已下线", en) == "渠道不存在或已下线"
     assert localize_returned_text("当前仅支持文本消息", en) == "当前仅支持文本消息"
     assert localize_returned_text("飞书签名校验失败", en) == "飞书签名校验失败"
+    assert localize_returned_text("处理完成，但未产生可展示内容", en) == "处理完成，但未产生可展示内容"
     assert localize_returned_text("飞书回调解密失败", en) == "飞书回调解密失败"
     assert localize_returned_text("飞书回调不是合法 JSON", en) == "飞书回调不是合法 JSON"
     assert localize_returned_text("飞书回调缺少 encrypt", en) == "飞书回调缺少 encrypt"

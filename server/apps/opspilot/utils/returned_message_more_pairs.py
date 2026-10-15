@@ -208,7 +208,6 @@ MORE_PAIRS = (
     ("无权管理该智能体渠道", "You cannot manage this agent channel"),
     ("当前页面内容过多，无法进行问答", "This page has too much content to answer questions about"),
     ("上下文过长，请新开会话", "The context is too long. Start a new conversation"),
-    ("处理完成，但未产生可展示内容", "Finished, but there is nothing to show"),
     ("飞书回复失败", "Feishu reply failed"),
     ("飞书图片上传失败", "Feishu image upload failed"),
     ("飞书图片回复失败", "Feishu image reply failed"),
