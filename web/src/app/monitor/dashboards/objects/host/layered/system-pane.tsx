@@ -11,8 +11,6 @@ import type { EntityTableRow } from '../entity-series';
 import { pointsToChartData } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import ThinTimeSeries from './thin-time-series';
-import TableCsvExportButton from './table-csv-export';
-import type { LayeredColumn } from './entity-table';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
   formatPercent,
@@ -71,8 +69,7 @@ export default function SystemPane({
   coreRows = [],
   coreLoading = false,
   coreFailed = false,
-  onRetryCore,
-  hostLabel
+  onRetryCore
 }: {
   metrics: Record<string, MetricSeries | undefined>;
   pendingMetricNames?: ReadonlySet<string>;
@@ -81,7 +78,6 @@ export default function SystemPane({
   coreLoading?: boolean;
   coreFailed?: boolean;
   onRetryCore?: () => void;
-  hostLabel: string;
 }) {
   const { t } = useDashboardText();
   const [selectedCoreKey, setSelectedCoreKey] = useState('');
@@ -288,14 +284,6 @@ export default function SystemPane({
   const selectedCoreName = selectedCore?.labels.cpu || '';
   const selectedCoreAvg = selectedCore?.values.cpu_usage_core_avg;
   const corePeak = coreRows.reduce((peak, row) => Math.max(peak, row.values.cpu_usage_core_avg || 0), 0);
-  const coreExportColumns: LayeredColumn[] = [
-    { key: 'cpu', title: '核', csvValue: (row) => row.labels.cpu || '—' },
-    {
-      key: 'cpu_usage_core_avg',
-      title: hostCategoryText(t, 'average'),
-      csvValue: (row) => (row.values.cpu_usage_core_avg || 0).toFixed(1)
-    }
-  ];
   const detailCards = [
     <ThinTimeSeries
       key="cpu-breakdown"
@@ -344,10 +332,6 @@ export default function SystemPane({
           </div>
         </div>
         <div className="mt-1 grid grid-cols-1 items-start gap-3 min-[960px]:grid-cols-[220px_minmax(0,1fr)]">
-          <div className="flex min-w-0 flex-col gap-1">
-            <div className="flex justify-end">
-              <TableCsvExportButton host={hostLabel} slug="cpu-cores" columns={coreExportColumns} rows={coreRows} />
-            </div>
           <table className="w-full border-collapse text-[11px]">
             <thead>
               <tr className="text-left font-medium text-[var(--color-text-3)]">
@@ -385,7 +369,6 @@ export default function SystemPane({
               })}
             </tbody>
           </table>
-          </div>
           <ThinTimeSeries
             bare
             title=""

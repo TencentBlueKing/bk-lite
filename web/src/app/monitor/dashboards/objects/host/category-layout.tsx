@@ -325,7 +325,6 @@ export default function HostCategoryLayout({
           coreLoading={coreState.status === 'idle' || coreState.status === 'loading'}
           coreFailed={coreState.status === 'error'}
           onRetryCore={onRetryCore}
-          hostLabel={hostLabel}
         />
       );
     }
