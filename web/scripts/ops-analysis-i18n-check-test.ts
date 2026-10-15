@@ -44,6 +44,8 @@ const keptCopy = new Map<string, string>([
   ['五', 'screen clock glyph'],
   ['六', 'screen clock glyph'],
   ['星期', 'screen clock glyph'],
+  ['应用系统', '已落库的应用拓扑筛选默认名，只用来识别种子项，不直接渲染'],
+  ['展开层级', '已落库的应用拓扑筛选默认名，只用来识别种子项，不直接渲染'],
 ]);
 
 /** 整文件跳过：Storybook / pilot / 测试夹具。 */

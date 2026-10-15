@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { buildWidgetSubmitConfig, persistApplicationTopologyConfig } from '../submitConfig';
-import { APPLICATION_TOPOLOGY_FILTER_ID } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
+import {
+  APPLICATION_TOPOLOGY_DEPTH_FILTER_ID,
+  APPLICATION_TOPOLOGY_FILTER_ID,
+} from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 
 const base = {
   name: '应用拓扑',
@@ -32,6 +35,7 @@ describe('applicationTopology submit config', () => {
     });
     expect(saved.config?.filterBindings).toEqual({
       [APPLICATION_TOPOLOGY_FILTER_ID]: true,
+      [APPLICATION_TOPOLOGY_DEPTH_FILTER_ID]: true,
     });
     expect(persistApplicationTopologyConfig({ depth: 9 }).depth).toBe(3);
   });

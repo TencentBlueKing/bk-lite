@@ -336,6 +336,10 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       withRoomFilter,
       layoutDeclaresApplicationTopology(layoutItems),
       initialDefinitions,
+      {
+        system: t('dashboard.applicationTopologyFilterName'),
+        depth: t('dashboard.applicationTopologyDepth'),
+      },
     );
     setDefinitions(withSystemFilter);
     initialSnapshotRef.current = JSON.stringify(withSystemFilter);

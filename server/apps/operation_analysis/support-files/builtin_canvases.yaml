@@ -3522,7 +3522,7 @@ screens:
     - h: 82
       w: 800
       x: 554
-      y: 30
+      y: 4
       id: legacy-title-frame
       kind: titleFrame
       preset: hero-4
@@ -3531,10 +3531,22 @@ screens:
       textStyle:
         align: center
         fontSize: 28
-    - h: 996
+    - h: 56
+      w: 360
+      x: 1528
+      y: 20
+      id: legacy-clock
+      kind: clock
+      format: YYYY-MM-DD HH:mm:ss
+      zIndex: 3
+      textStyle:
+        color: canvas
+        fontSize: 25
+        fontWeight: 600
+    - h: 1004
       w: 1906
       x: 13
-      y: 83
+      y: 75
       id: builtin-application-topology-main
       type: widget
       title: 应用拓扑
@@ -3547,6 +3559,7 @@ screens:
           depth: 3
         filterBindings:
           application_system_id__string: true
+          application_topology_depth__string: true
         appearance:
           frame: bare
     viewport:
@@ -3578,6 +3591,29 @@ screens:
       key: application_system_id
       name: 应用系统
       order: 0
+      type: string
+    - defaultValue: "3"
+      enabled: true
+      id: application_topology_depth__string
+      inputConfig:
+        control: select
+        optionsSource:
+          staticItems:
+          - label: "1"
+            value: "1"
+          - label: "2"
+            value: "2"
+          - label: "3"
+            value: "3"
+          - label: "4"
+            value: "4"
+          - label: "5"
+            value: "5"
+          type: static
+      inputMode: select
+      key: application_topology_depth
+      name: 展开层级
+      order: 1
       type: string
   refs:
     datasource_keys:
