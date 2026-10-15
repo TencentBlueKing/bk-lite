@@ -832,6 +832,11 @@ class CollectModelSerializer(AuthSerializer):
 
     def validate(self, attrs):  # noqa: C901
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
+        if self.instance is not None and getattr(self.instance, "task_type", None) == CollectPluginTypes.CUSTOM_SCRIPT:
+            # 同模型内置插件（如主机）会抢先匹配编辑表单。提交过来的 task_type
+            # 不能把自定义脚本任务改写成普通任务，否则插件列表按 custom_plugin_pk 查不到。
+            task_type = CollectPluginTypes.CUSTOM_SCRIPT
+            attrs["task_type"] = CollectPluginTypes.CUSTOM_SCRIPT
         model_id = self._get_attr_or_instance_value(attrs, "model_id")
         raw_credential = self._get_attr_or_instance_value(attrs, "credential")
         candidate_pool = raw_credential if isinstance(raw_credential, list) else ([raw_credential] if isinstance(raw_credential, dict) else [])
