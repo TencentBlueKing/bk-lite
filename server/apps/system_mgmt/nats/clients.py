@@ -14,6 +14,9 @@ def get_user_menus(client_id, roles, username, is_superuser):
             menu_ids.extend(i)
         menus = list(Menu.objects.filter(app=client_id, id__in=list(set(menu_ids))).values_list("name", flat=True))
     user_menus = client.get_all_menus(client_id, user_menus=menus, username=username, is_superuser=is_superuser)
+    from apps.core.utils.license_capacity import filter_menu_tree
+
+    user_menus = filter_menu_tree(client_id, user_menus)
     return {"result": True, "data": user_menus}
 
 

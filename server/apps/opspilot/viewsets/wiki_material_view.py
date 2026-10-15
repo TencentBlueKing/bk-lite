@@ -9,6 +9,7 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot import tasks as _opspilot_tasks
 from apps.opspilot.models import BuildRecord, KnowledgePage, Material, MaterialVersion, PageEvidence
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, MaterialSerializer
+from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
 from apps.opspilot.services.wiki.embedding_service import index_version, reindex_page_chunks
 from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
 from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildQueueError, enqueue_material_builds
@@ -16,7 +17,15 @@ from apps.opspilot.services.wiki.material_file_persist import STORAGE_UNAVAILABL
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.material_source_service import MaterialSourceError, source_metadata
 from apps.opspilot.services.wiki.parsed_media_service import _bare_media_locator_spans, rewrite_media_urls_for_display, sign_media_locators
-from apps.opspilot.services.wiki.update_service import handle_material_deletion, preview_material_deletion, preview_material_update, propose_update
+from apps.opspilot.services.wiki.update_service import (
+    BUSY_MATERIAL_DELETE_STATUSES,
+    delete_materials,
+    handle_material_deletion,
+    preview_material_deletion,
+    preview_material_update,
+    preview_materials_deletion,
+    propose_update,
+)
 from apps.opspilot.utils.user_message import queue_error_message, user_message
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -43,6 +52,8 @@ _MATERIAL_STATUS_GROUPS = {
 }
 
 # 下载响应按扩展名给保守类型；不引入用户可控的 content-type。
+_BUSY_MATERIAL_STATUSES = BUSY_MATERIAL_DELETE_STATUSES
+_MAX_MATERIAL_BATCH_DELETE = 200
 _MATERIAL_DOWNLOAD_CONTENT_TYPES = {
     ".pdf": "application/pdf",
     ".doc": "application/msword",
@@ -269,7 +280,12 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         instance = self.get_object()
         material_id = instance.id
         name = instance.name
-        build = handle_material_deletion(instance, operator=getattr(request.user, "username", ""))
+        try:
+            build = handle_material_deletion(instance, operator=getattr(request.user, "username", ""))
+        except BuildGenerationError as exc:
+            if exc.code != "material_delete_in_progress":
+                raise
+            return self._batch_delete_error(request, exc.code, str(exc), 409)
         log_operation(request, "delete", "opspilot", f"删除资料: {name}")
         counts = build.counts or {}
         return JsonResponse(
@@ -434,6 +450,90 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 },
                 status=503,
             )
+        return JsonResponse({"result": True, "data": result})
+
+    def _parse_material_batch(self, request):
+        try:
+            kb_id = int(request.data.get("knowledge_base") or 0)
+        except (TypeError, ValueError):
+            kb_id = 0
+        raw_ids = request.data.get("material_ids")
+        if not kb_id:
+            return None, None, self._batch_delete_error(request, "knowledge_base_required", "knowledge_base 必填", 400)
+        if not isinstance(raw_ids, list) or not raw_ids:
+            return None, None, self._batch_delete_error(request, "material_ids_required", "material_ids 必填", 400)
+        material_ids = []
+        seen = set()
+        for raw_id in raw_ids:
+            try:
+                material_id = int(raw_id)
+            except (TypeError, ValueError):
+                return None, None, self._batch_delete_error(request, "material_ids_invalid", "material_ids 必须为整数列表", 400)
+            if material_id <= 0:
+                return None, None, self._batch_delete_error(request, "material_ids_invalid", "material_ids 必须为整数列表", 400)
+            if material_id not in seen:
+                seen.add(material_id)
+                material_ids.append(material_id)
+        if len(material_ids) > _MAX_MATERIAL_BATCH_DELETE:
+            return (
+                None,
+                None,
+                self._batch_delete_error(
+                    request,
+                    "material_ids_too_many",
+                    f"单次最多删除 {_MAX_MATERIAL_BATCH_DELETE} 条资料",
+                    400,
+                ),
+            )
+        knowledge_base = self.accessible_knowledge_base_or_none(kb_id)
+        if knowledge_base is None:
+            return None, None, JsonResponse({"result": False, "message": "知识库不存在或无权限"}, status=404)
+        return knowledge_base, material_ids, None
+
+    def _batch_delete_error(self, request, code, message, status):
+        return JsonResponse(
+            {
+                "result": False,
+                "code": code,
+                "message": user_message(request, f"error.{code}", message, self.loader),
+            },
+            status=status,
+        )
+
+    def _materials_for_batch_delete(self, request, knowledge_base, material_ids):
+        self.ensure_team_accessible_ids(Material.objects.all(), material_ids)
+        found = {material.id: material for material in Material.objects.filter(knowledge_base_id=knowledge_base.id, id__in=material_ids)}
+        if set(found) != set(material_ids):
+            return None, self._batch_delete_error(request, "material_not_in_knowledge_base", "资料不存在或不属于当前知识库", 400)
+        busy_ids = [material_id for material_id in material_ids if found[material_id].status in _BUSY_MATERIAL_STATUSES]
+        if busy_ids:
+            return None, self._batch_delete_error(request, "material_delete_in_progress", "资料正在构建中，请等待完成后再删除", 409)
+        return [found[material_id] for material_id in material_ids], None
+
+    @HasPermission("wiki_list-View")
+    @action(methods=["POST"], detail=False, url_path="batch_delete_impact")
+    def batch_delete_impact(self, request):
+        """批量删除前的只读影响预览。选中集合之外没有来源的页面会计入将来源失效。"""
+        knowledge_base, material_ids, error = self._parse_material_batch(request)
+        if error:
+            return error
+        materials, error = self._materials_for_batch_delete(request, knowledge_base, material_ids)
+        if error:
+            return error
+        return JsonResponse({"result": True, "data": preview_materials_deletion(materials)})
+
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=False, url_path="batch_delete")
+    def batch_delete(self, request):
+        """批量物理删除资料。校验通过后逐条删除，单条失败时停止后续条目。"""
+        knowledge_base, material_ids, error = self._parse_material_batch(request)
+        if error:
+            return error
+        materials, error = self._materials_for_batch_delete(request, knowledge_base, material_ids)
+        if error:
+            return error
+        result = delete_materials(materials, operator=getattr(request.user, "username", "") or "")
+        log_operation(request, "delete", "opspilot", f"批量删除资料({result['deleted_count']}项)")
         return JsonResponse({"result": True, "data": result})
 
     @HasPermission("wiki_list-Edit")

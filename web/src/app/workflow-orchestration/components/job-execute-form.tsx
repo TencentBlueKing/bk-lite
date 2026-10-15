@@ -1,7 +1,7 @@
 'use client';
 
 import { Form, Input, InputNumber, Select } from 'antd';
-import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 
 import ScriptEditor from '@/app/job/components/script-editor';
 import { useTranslation } from '@/utils/i18n';
@@ -22,8 +22,13 @@ function scriptLang(value: unknown): ScriptLang {
   return SCRIPT_LANGS.includes(value as ScriptLang) ? value as ScriptLang : 'shell';
 }
 
-function emptyScripts(): Record<ScriptLang, string> {
-  return { shell: '', bat: '', python: '', powershell: '' };
+function scriptTemplates(t: (id: string, defaultMessage?: string) => string): Record<ScriptLang, string> {
+  return {
+    shell: t('job.scriptTemplateShell', '#!/bin/bash\n\n# 任务正常结束\njob_success() {\n    echo "[INFO] Job completed successfully"\n    exit 0\n}\n\n# 任务异常结束\njob_fail() {\n    echo "[ERROR] Job failed"\n    exit 1\n}\n\n# ---------- 在此处编写脚本逻辑 ----------\n\n\n\n# ---------- 结束 ----------\njob_success'),
+    bat: t('job.scriptTemplateBat', '@echo off\nREM 在此处编写批处理脚本\n'),
+    python: t('job.scriptTemplatePython', '#!/usr/bin/env python3\n# 在此处编写 Python 脚本\n'),
+    powershell: t('job.scriptTemplatePowershell', '# 在此处编写 PowerShell 脚本\n'),
+  };
 }
 
 function fixedTargetIds(value: unknown): string[] {
@@ -131,17 +136,28 @@ export function JobExecuteForm({
 }) {
   const { t } = useTranslation();
   const lang = scriptLang(value.script_type);
-  const [drafts, setDrafts] = useState<Record<ScriptLang, string>>(() => ({
-    ...emptyScripts(),
-    [scriptLang(value.script_type)]: String(value.script_content || ''),
-  }));
+  const templates = useMemo(() => scriptTemplates(t), [t]);
+  const [drafts, setDrafts] = useState<Record<ScriptLang, string>>(() => {
+    const current = scriptLang(value.script_type);
+    const content = String(value.script_content || '');
+    const initial = readOnly ? { shell: '', bat: '', python: '', powershell: '' } : scriptTemplates(t);
+    return { ...initial, [current]: content || initial[current] };
+  });
   const targetIds = fixedTargetIds(value.targets);
   const { records, mergeRecords } = useResolvedTargets(targetIds);
 
   useEffect(() => {
     const content = String(value.script_content || '');
+    if (!content) return;
     setDrafts((prev) => (prev[lang] === content ? prev : { ...prev, [lang]: content }));
   }, [lang, value.script_content]);
+
+  const seededScript = useRef(Boolean(String(value.script_content || '')));
+  useEffect(() => {
+    if (readOnly || seededScript.current) return;
+    seededScript.current = true;
+    onChange({ ...value, script_type: lang, script_content: templates[lang] });
+  }, [lang, onChange, readOnly, templates, value]);
 
   useEffect(() => {
     if (!targetRecords) return;
@@ -198,7 +214,7 @@ export function JobExecuteForm({
           readOnly={readOnly}
           activeLang={lang}
           value={drafts}
-          onLangChange={(next) => onChange({ ...value, script_type: next, script_content: drafts[next] || '' })}
+          onLangChange={(next) => onChange({ ...value, script_type: next, script_content: drafts[next] || templates[next] })}
           onChange={(next) => {
             setDrafts(next);
             onChange({ ...value, script_type: lang, script_content: next[lang] || '' });
@@ -206,7 +222,8 @@ export function JobExecuteForm({
         />
         <div className="self-start">
           <ReportContractGuideDrawer
-            defaultTab="structure"
+            mode="structure"
+            audience="job"
             triggerLabel={t('workflowOrchestration.editor.viewJobOutputContractGuide', '脚本输出说明')}
           />
         </div>

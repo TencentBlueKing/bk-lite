@@ -170,7 +170,7 @@ export function DocumentRenderForm({ schema, value, references, nodeTitle, readO
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <FileSampleLinks schema={SAMPLE_SCHEMA} />
           <ReportContractGuideDrawer
-            defaultTab="template"
+            mode="template"
             triggerLabel={t('workflowOrchestration.editor.viewTemplateSyntaxGuide', '模板语法说明')}
           />
         </div>
@@ -191,7 +191,8 @@ export function DocumentRenderForm({ schema, value, references, nodeTitle, readO
         />
         <div className="self-start">
           <ReportContractGuideDrawer
-            defaultTab="structure"
+            mode="structure"
+            audience="document"
             triggerLabel={t('workflowOrchestration.editor.viewDocumentDataGuide', '数据结构说明')}
           />
         </div>

@@ -395,7 +395,7 @@ class NodeService:
                 add_config = collector.default_config.get("add_config", "")
                 if add_config:
                     config_template = config_template + "\n" + add_config
-                    logger.info(f"Node {node.id} is a container node, appending add_config for {collector.name}")
+                    logger.debug(f"Node {node.id} is a container node, appending add_config for {collector.name}")
 
             # 渲染模板
             tpl = build_sandboxed_env().from_string(config_template)

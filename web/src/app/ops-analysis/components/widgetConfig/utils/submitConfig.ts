@@ -14,11 +14,12 @@ import {
   isFiniteNumber,
   type ThresholdColorConfig,
 } from '@/app/ops-analysis/utils/thresholdUtils';
-import type {
-  NetworkStatusTopologyConfig,
-  RelatedTopologyConfig,
-  Room3DConfig,
-  SceneWidgetType,
+import {
+  type ApplicationTopologyConfig,
+  type NetworkStatusTopologyConfig,
+  type RelatedTopologyConfig,
+  type Room3DConfig,
+  type SceneWidgetType,
 } from '@/app/ops-analysis/types/sceneWidget';
 import {
   normalizeCardListAccentStyle,
@@ -27,7 +28,12 @@ import {
 import { buildPersistedNetworkStatusTopologyConfig } from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 import { validateComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { persistRoom3DConfig } from '@/app/ops-analysis/utils/room3DConfig';
+import {
+  APPLICATION_TOPOLOGY_DEPTH_FILTER_ID,
+  APPLICATION_TOPOLOGY_FILTER_ID,
+} from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 import { ROOM3D_FILTER_ID } from '@/app/ops-analysis/utils/room3DScreenFilter';
+import { resolveOpsTableColumnWidth } from '@/app/ops-analysis/utils/opsTableColumn';
 import {
   resolveApplication3DWallConfig,
   type Application3DWallConfig,
@@ -40,6 +46,7 @@ export interface WidgetConfigFormValues {
   sceneWidgetType?: SceneWidgetType;
   networkStatusTopology?: NetworkStatusTopologyConfig;
   relatedTopology?: RelatedTopologyConfig;
+  applicationTopology?: ApplicationTopologyConfig;
   room3D?: Room3DConfig;
   application3DWall?: Application3DWallConfig;
   chartThemeMode?: OpsChartThemeMode;
@@ -108,7 +115,10 @@ export type WidgetSubmitError =
   | 'chartRoleFieldsRequired'
   | 'chartRoleFieldPairRequired'
   | 'relatedTopologyInstUuidRequired'
-  | 'relatedTopologyModelIdRequired';
+  | 'relatedTopologyModelIdRequired'
+  | 'applicationTopologyInstUuidRequired'
+  | 'applicationTopologyModelIdRequired'
+  | 'applicationTopologyModelUnsupported';
 
 export interface BuildWidgetSubmitConfigInput {
   values: WidgetConfigFormValues;
@@ -129,6 +139,17 @@ export interface BuildWidgetSubmitConfigResult {
   config?: WidgetConfig;
   error?: WidgetSubmitError;
 }
+
+export const persistApplicationTopologyConfig = (
+  config?: ApplicationTopologyConfig,
+): ApplicationTopologyConfig => {
+  const depth = Number(config?.depth);
+  const persistedDepth = Number.isInteger(depth) && depth >= 1 && depth <= 5 ? depth : 3;
+  return {
+    modelId: 'system',
+    depth: persistedDepth,
+  };
+};
 
 export const persistRelatedTopologyConfig = (
   config?: RelatedTopologyConfig,
@@ -173,6 +194,20 @@ const buildSceneWidgetConfig = (
       chartType: 'relatedTopology',
       sceneWidgetType: 'relatedTopology',
       relatedTopology: persistRelatedTopologyConfig(values.relatedTopology),
+      appearance: values.appearance,
+    };
+  }
+  if (values.sceneWidgetType === 'applicationTopology') {
+    return {
+      name: values.name,
+      description: values.description,
+      chartType: 'applicationTopology',
+      sceneWidgetType: 'applicationTopology',
+      applicationTopology: persistApplicationTopologyConfig(values.applicationTopology),
+      filterBindings: {
+        [APPLICATION_TOPOLOGY_FILTER_ID]: true,
+        [APPLICATION_TOPOLOGY_DEPTH_FILTER_ID]: true,
+      },
       appearance: values.appearance,
     };
   }
@@ -268,6 +303,10 @@ const buildTableConfig = ({
         order: index,
         columnType: column.columnType,
       };
+      const columnWidth = resolveOpsTableColumnWidth(column.width);
+      if (columnWidth !== undefined) {
+        next.width = columnWidth;
+      }
       if (column.columnType === 'actions' || !includeCellStyle) {
         return next;
       }

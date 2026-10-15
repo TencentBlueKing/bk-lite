@@ -2,7 +2,7 @@ from typing import List
 
 from langchain_core.documents import Document
 from langchain_core.document_loaders import BaseLoader
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
 
 class TextLoader(BaseLoader):

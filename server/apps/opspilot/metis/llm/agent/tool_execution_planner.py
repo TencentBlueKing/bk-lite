@@ -327,7 +327,8 @@ _DECLARED_SOURCE_TOOL_HINT = "能力导读：当前技能包已声明报告 sour
 GENERATE_ATTACHMENT_FILE_TOOL_NAME = "generate_attachment_file"
 _ATTACHMENT_CATALOG_HINT = (
     "能力导读：目录含 generate_attachment_file。仅当用户本轮明确要求生成、导出、保存或写入"
-    "一份新的报告、文档或可下载附件时，才规划 generate_attachment_file；"
+    "一份新的报告、文档或可下载附件时，才规划 generate_attachment_file。"
+    "若本会话已经生成过文件，用户要求修改、补充或调整该报告/文件的内容时，也要再规划该工具并写出完整新文件。"
     "只是提到文件，或询问已有、已上传文件的内容时，不要规划该工具。寒暄问候返回空 steps。"
 )
 _FILE_GENERATION_INTENT_RE = re.compile(
@@ -341,6 +342,27 @@ _ATTACHMENT_CHITCHAT_RE = re.compile(
     r"^(你好|您好|hello|hi|hey|谢谢|thanks|thank you|在吗|早上好|晚上好)[\s!！.。?？～~]*$",
     re.IGNORECASE,
 )
+_ATTACHMENT_REVISION_RE = re.compile(
+    r"(?:报告|文档|附件|文件|表格|word|excel|ppt)"
+    r".{0,48}"
+    r"(?:要有|加上|增加|补充|改成|改为|修改|更新|调整|去掉|删除|换成|重写|重新生成|再生成|完善|补上|加入)"
+    r"|(?:要有|加上|增加|补充|改成|改为|修改|更新|调整|去掉|删除|换成|重写|重新生成|再生成|完善|补上|加入)"
+    r".{0,48}"
+    r"(?:报告|文档|附件|文件|表格|word|excel|ppt|docx|xlsx|pptx|pdf)",
+    re.IGNORECASE,
+)
+_ATTACHMENT_READONLY_RE = re.compile(r"内容是什么|讲了什么|说了什么|什么意思|打开看看|看一下|预览")
+_ATTACHMENT_FOLLOWUP_EDIT_RE = re.compile(
+    r"字体|排版|配色|字号|幻灯片|润色|重点介绍|写详细|写具体|再改|改一版|这一版|新版本" r"|调整.{0,16}(?:字体|内容|结构|章节|标题|排版|正文)" r"|(?:字体|内容|结构|章节|标题|排版|正文).{0,16}调整",
+)
+_GENERATED_ATTACHMENT_NAME_RE = re.compile(
+    r"[\w\u4e00-\u9fff][\w\u4e00-\u9fff ._-]{0,80}\.(?:docx|xlsx|pptx|pdf|csv|txt|md)\b",
+    re.IGNORECASE,
+)
+_ASSISTANT_GENERATED_ROLES = frozenset({"ai", "aimessage", "assistant", "bot"})
+# 举例紧挨文件名时不当成已生成。下一轮历史只有可见正文，真正的「已生成 …报告.docx」仍要认。
+_ATTACHMENT_EXAMPLE_CUE_RE = re.compile(r"例如|比如|譬如|举例|样例|示例|比方|e\.g\.|for example", re.IGNORECASE)
+_EXAMPLE_CUE_LOOKBEHIND = 32
 # chat_service 注入的强制规则模板含「附件/generate_attachment_file」字样，匹配前需剥离。
 _ATTACHMENT_FORCE_RULE_BLOCK_RE = re.compile(
     r"【附件生成强制规则[\s\S]*?(?=【|$)",
@@ -1401,17 +1423,117 @@ def _agent_task_brief(agent_system_prompt: str, *, limit: int = _DEFAULT_AGENT_P
     return text[:limit].rstrip() + "…"
 
 
-def looks_like_attachment_file_task(user_message: str = "", agent_system_prompt: str = "") -> bool:
-    """是否应落盘。只看用户本轮原话，不看智能体提示词。
+def _history_message_parts(message: Any) -> tuple[str, str, list[Any], str]:
+    """返回 role、工具名、tool_calls、正文。系统提示里的格式说明不当成已生成文件。"""
+    if isinstance(message, dict):
+        role = str(message.get("role") or message.get("type") or "")
+        name = str(message.get("name") or "")
+        tool_calls = list(message.get("tool_calls") or [])
+        content = message.get("content") or ""
+    else:
+        role = message.__class__.__name__.lower()
+        name = str(getattr(message, "name", "") or "")
+        tool_calls = list(getattr(message, "tool_calls", None) or [])
+        content = getattr(message, "content", "") or ""
+    if not isinstance(content, str):
+        content = str(content)
+    return role, name, tool_calls, content
+
+
+def _tool_call_name(call: Any) -> str:
+    if isinstance(call, dict):
+        return str(call.get("name") or "")
+    return str(getattr(call, "name", "") or "")
+
+
+def _message_records_generated_attachment(name: str, tool_calls: list[Any], content: str) -> bool:
+    """工具消息、下载链接，或同时带 file_url 与 filename 的结果。"""
+    if name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
+        return True
+    if any(_tool_call_name(call) == GENERATE_ATTACHMENT_FILE_TOOL_NAME for call in tool_calls):
+        return True
+    if "workflow_attachment/download/" in content:
+        return True
+    return "file_url" in content and "filename" in content
+
+
+def _assistant_generated_filenames(content: str) -> list[str]:
+    """助手可见正文里的已生成文件名。紧挨「例如/比如」的举例不算。
+
+    文件名正则会吃进前面的汉字和空格，举例用语可能落在匹配串内部，不能只看匹配起点之前。
+    """
+    names: list[str] = []
+    for match in _GENERATED_ATTACHMENT_NAME_RE.finditer(content or ""):
+        prefix_start = max(0, match.start() - _EXAMPLE_CUE_LOOKBEHIND)
+        prefix = content[prefix_start : match.start()]
+        if _ATTACHMENT_EXAMPLE_CUE_RE.search(prefix) or _ATTACHMENT_EXAMPLE_CUE_RE.search(match.group(0)):
+            continue
+        name = match.group(0).strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def conversation_has_generated_attachment(messages: Sequence[Any] | None) -> bool:
+    """本会话是否已经生成过附件。
+
+    下一轮进规划器的历史经过 visible_assistant_text，工具事件和 file_url 会被丢掉，
+    只剩「已生成 Word 报告：xxx.docx」这类正文。助手正文里的文件名因此要算已生成；
+    紧挨举例用语的文件名不算。同轮仍留在状态里的工具消息和下载链接也算。
+    """
+    for message in messages or []:
+        role, name, tool_calls, content = _history_message_parts(message)
+        if "system" in role:
+            continue
+        if _message_records_generated_attachment(name, tool_calls, content):
+            return True
+        if role in _ASSISTANT_GENERATED_ROLES and _assistant_generated_filenames(content):
+            return True
+    return False
+
+
+def collect_generated_attachment_filenames(messages: Sequence[Any] | None) -> list[str]:
+    """按出现顺序收集本会话已生成的文件名，供下一次改文件时递增版本。"""
+    found: list[str] = []
+    for message in messages or []:
+        role, name, tool_calls, content = _history_message_parts(message)
+        if "system" in role or role in {"human", "humanmessage", "user"}:
+            continue
+        if _message_records_generated_attachment(name, tool_calls, content) or role in {"tool", "toolmessage"}:
+            found.extend(_GENERATED_ATTACHMENT_NAME_RE.findall(content))
+            continue
+        if role in _ASSISTANT_GENERATED_ROLES:
+            found.extend(_assistant_generated_filenames(content))
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for name in found:
+        key = name.strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(key)
+    return deduped
+
+
+def looks_like_attachment_file_task(
+    user_message: str = "",
+    agent_system_prompt: str = "",
+    conversation_messages: Sequence[Any] | None = None,
+) -> bool:
+    """是否应落盘。明确要求生成文件，或本会话已有文件且用户在改这份报告。
 
     附件工具常驻后，提示词里的「月报 / 报告 / 文件」不能单独触发落盘。
     agent_system_prompt 保留是为了兼容既有调用签名。
     """
     del agent_system_prompt
     text = (user_message or "").strip()
-    if _ATTACHMENT_CHITCHAT_RE.match(text):
+    if not text or _ATTACHMENT_CHITCHAT_RE.match(text) or _ATTACHMENT_READONLY_RE.search(text):
         return False
-    return bool(_FILE_GENERATION_INTENT_RE.search(text))
+    if _FILE_GENERATION_INTENT_RE.search(text):
+        return True
+    if not conversation_has_generated_attachment(conversation_messages):
+        return False
+    return bool(_ATTACHMENT_REVISION_RE.search(text) or _ATTACHMENT_FOLLOWUP_EDIT_RE.search(text))
 
 
 def declared_report_source_tools(skill_packages: Sequence[Any] = ()) -> list[str]:
@@ -1505,18 +1627,24 @@ def enforce_generate_attachment_file(
     *,
     user_message: str = "",
     agent_system_prompt: str = "",
+    conversation_messages: Sequence[Any] | None = None,
     max_steps: int = 4,
 ) -> ToolExecutionPlan:
-    """若可用且任务像「生成报告/文件」，确保计划包含 generate_attachment_file。"""
+    """若可用且任务像「生成或改写报告/文件」，确保计划包含 generate_attachment_file。"""
     if GENERATE_ATTACHMENT_FILE_TOOL_NAME not in available_names:
         return plan
-    if not looks_like_attachment_file_task(user_message, agent_system_prompt):
+    if not looks_like_attachment_file_task(user_message, agent_system_prompt, conversation_messages):
         return plan
     if any(GENERATE_ATTACHMENT_FILE_TOOL_NAME in (step.tools or []) for step in (plan.steps or [])):
         return plan
 
+    priors = collect_generated_attachment_filenames(conversation_messages)
+    prior_ext = priors[-1].rsplit(".", 1)[-1].lower() if priors and "." in priors[-1] else ""
+    objective = "生成可下载的报告/文档附件"
+    if prior_ext:
+        objective = f"按上一份 .{prior_ext} 生成修改后的新版本，禁止改成其他格式"
     attachment_step = ToolExecutionStep(
-        objective="生成可下载的报告/文档附件",
+        objective=objective,
         tools=[GENERATE_ATTACHMENT_FILE_TOOL_NAME],
     )
     steps = list(plan.steps or [])
@@ -1692,6 +1820,15 @@ def render_planning_conversation(messages: Sequence[Any] | None, *, current_user
 
 def is_history_continuation(user_message: str) -> bool:
     return bool(_HISTORY_CONTINUATION_RE.match(str(user_message or "").strip()))
+
+
+def _plan_locale(config: dict[str, Any] | None) -> str:
+    configurable = (config or {}).get("configurable") if isinstance(config, dict) else None
+    if not isinstance(configurable, dict):
+        return "en"
+    graph_request = configurable.get("graph_request")
+    locale = getattr(graph_request, "locale", None) or configurable.get("locale")
+    return str(locale or "en")
 
 
 class ToolExecutionPlanner:
@@ -1891,15 +2028,25 @@ class ToolExecutionPlanner:
             available_names,
             user_message=user_message,
             agent_system_prompt=agent_system_prompt,
+            conversation_messages=conversation_messages,
             max_steps=self._max_steps,
         )
 
-    def _system_prompt(self) -> str:
+    def _system_prompt(self, locale: str | None = None) -> str:
+        normalized = (locale or "en").replace("_", "-").lower()
+        if normalized.startswith("zh"):
+            language_rule = "goal 和每个 objective 必须使用简体中文。"
+        else:
+            language_rule = (
+                "Write goal and every objective in English, even when the user question, "
+                "skill prompt, or tool descriptions are in another language."
+            )
         return (
             "你是工具执行规划器。只负责拆解任务和选择工具，不执行任务。"
             "必须仅输出一个 JSON 对象，不要 Markdown、不要代码块、不要解释。"
             "第一个字符必须是 { ，最后一个字符必须是 } 。格式为:"
             '{"goal":"目标","steps":[{"objective":"步骤目标","tools":["精确工具名"]}]}。'
+            f"{language_rule}"
             f"最多 {self._max_steps} 个步骤，每步最多 {self._max_tools_per_step} 个工具。"
             "只列出必须调用工具的执行步骤，并从目录选择精确工具名；"
             "纯分析或最终总结不要列为步骤，系统会在工具执行后单独完成。"
@@ -1917,7 +2064,11 @@ class ToolExecutionPlanner:
             "步骤目标须写明 model_id 用该模型，禁止默认 host。"
             "禁止把尚未发生的兜底（查不到再换数据源）写成后续步骤；只规划现在必须执行的步骤。"
             "若目录含 generate_attachment_file，仅当用户本轮明确要求生成、导出、保存或写入新文件时才规划该步骤；"
+            "本会话已经生成过文件、用户要求修改内容、字体或排版时，也要规划该步骤并写出完整新文件。"
+            "上一轮已经生成过，不能当作本轮禁止再生成；用户新的修改要求必须重新规划该工具。"
+            "修改已有文件时保持原格式，上一份是 pptx 就继续规划 pptx。"
             "询问已有或上传文件的内容时不要规划 generate_attachment_file。"
+            "没有调用 generate_attachment_file 成功时，禁止回复已经改好文件。"
             "若能力导读列出了技能包声明的 source_tool，优先规划这些业务工具。"
             f"若任务需要技能运行时且无对应业务工具，tools 可含 {USE_SKILLS_TOOL_NAME}；"
             "若给出了近期会话，必须同时依据窗口内的历史和本轮用户话规划，禁止只看本轮短句。"
@@ -1993,7 +2144,7 @@ class ToolExecutionPlanner:
         failure_text = failure.strip() or "无"
         packages = [item for item in (skill_packages or []) if isinstance(item, dict)]
         conversation = render_planning_conversation(conversation_messages, current_user_message=user_message)
-        system_prompt = self._system_prompt()
+        system_prompt = self._system_prompt(_plan_locale(config))
         task_prompt = self._task_prompt(
             user_message,
             completed_text,

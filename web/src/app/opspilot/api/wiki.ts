@@ -13,6 +13,7 @@ import {
   Material,
   MaterialBatchCreateResult,
   MaterialBatchUploadEntry,
+  MaterialBatchDeleteResult,
   MaterialDeleteImpact,
   MaterialFileUploadMetadata,
   MaterialInfo,
@@ -396,6 +397,15 @@ export const useWikiApi = () => {
   ): Promise<MaterialDeleteImpact> =>
     get(`${BASE}/material/${id}/delete_impact/`);
 
+  const fetchMaterialsDeleteImpact = (
+    kbId: number,
+    materialIds: number[],
+  ): Promise<MaterialDeleteImpact> =>
+    post(`${BASE}/material/batch_delete_impact/`, {
+      knowledge_base: kbId,
+      material_ids: materialIds,
+    });
+
   const fetchMaterialUpdateImpact = (
     id: number,
   ): Promise<MaterialUpdateImpact> =>
@@ -465,6 +475,15 @@ export const useWikiApi = () => {
 
   const deleteMaterial = (id: number): Promise<{ pending_review: number }> =>
     del(`${BASE}/material/${id}/`);
+
+  const batchDeleteMaterials = (
+    kbId: number,
+    materialIds: number[],
+  ): Promise<MaterialBatchDeleteResult> =>
+    post(`${BASE}/material/batch_delete/`, {
+      knowledge_base: kbId,
+      material_ids: materialIds,
+    });
 
   const ingestMaterial = (id: number): Promise<Material> =>
     post(`${BASE}/material/${id}/ingest/`, {});
@@ -776,12 +795,14 @@ export const useWikiApi = () => {
     fetchMaterial,
     fetchMaterialInfo,
     fetchMaterialDeleteImpact,
+    fetchMaterialsDeleteImpact,
     fetchMaterialUpdateImpact,
     createMaterial,
     updateMaterial,
     createMaterialFile,
     batchCreateMaterials,
     deleteMaterial,
+    batchDeleteMaterials,
     ingestMaterial,
     buildMaterial,
     batchBuildMaterials,

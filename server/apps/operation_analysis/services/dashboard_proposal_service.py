@@ -18,7 +18,7 @@ def load_widget_capabilities() -> dict:
 
 
 AI_CHART_TYPES = frozenset(item["type"] for item in load_widget_capabilities().get("widgets") or [] if isinstance(item, dict) and item.get("type"))
-SCENE_CHART_TYPES = frozenset({"networkStatusTopology", "relatedTopology", "application3D", "room3D"})
+SCENE_CHART_TYPES = frozenset({"networkStatusTopology", "relatedTopology", "applicationTopology", "application3D", "room3D"})
 
 SCHEMA_VERSION = "1.0"
 
@@ -1217,8 +1217,8 @@ def classify_dashboard_request(message: str) -> str:
 
 
 def preserve_placed_widgets(layout: list[dict]) -> list[dict]:
-    """已有坐标的组件保持原位，只给还没位置的新组件排版。"""
-    from apps.operation_analysis.services.dashboard_widget_draft import pack_widgets
+    """能放进 12 列的坐标保持原样。放不下的行按原宽度比例收进栅格，没坐标的新组件再排到后面。"""
+    from apps.operation_analysis.services.dashboard_widget_draft import fit_layout_to_grid, pack_widgets
 
     placed = []
     missing = []
@@ -1227,6 +1227,7 @@ def preserve_placed_widgets(layout: list[dict]) -> list[dict]:
             placed.append(item)
         else:
             missing.append(item)
+    placed = fit_layout_to_grid(placed)
     if not missing:
         return placed
     return placed + pack_widgets(missing)
@@ -1290,7 +1291,7 @@ def _apply_uniform_layout(layout: list[dict], message: str) -> list[dict] | None
     from apps.operation_analysis.services.dashboard_widget_draft import pack_widgets
 
     compact = compact_text(user_utterance(message))
-    per_row_match = re.search(r"(?:每行|一行)(?:放|展示|显示|排|摆)?(?P<count>\d{1,2}|[一二两三四五六七八九十]{1,3})个", compact)
+    per_row_match = re.search(r"(?:每行|一行)(?:放|展示|显示|排|摆)?(?P<count>\d{1,2}|[一二两三四五六七八九十]{1,3})(?:个|列)", compact)
     width_match = re.search(r"宽(?:度)?(?:改为|改成|为|到)?(\d+)", compact)
     height_match = re.search(r"高(?:度)?(?:改为|改成|为|到)?(\d+)", compact)
     single_width = _WIDTH_ONE_RE.search(user_utterance(message))

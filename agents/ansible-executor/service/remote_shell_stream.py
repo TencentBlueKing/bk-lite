@@ -106,6 +106,7 @@ def _build_remote_commands(
         ]
     )
     encoded_runner = base64.b64encode(runner.encode("utf-8")).decode("ascii")
+    detach_without_fork = "setsid /bin/sh " + shlex.quote(runner_path) + " </dev/null >/dev/null 2>&1 &"
 
     start_command = "\n".join(
         [
@@ -115,8 +116,10 @@ def _build_remote_commands(
             f"printf %s {shlex.quote(encoded_script)} | base64 -d > {shlex.quote(script_path)}",
             f"printf %s {shlex.quote(encoded_runner)} | base64 -d > {shlex.quote(runner_path)}",
             f"chmod 700 {shlex.quote(script_path)} {shlex.quote(runner_path)}",
-            "if command -v setsid >/dev/null 2>&1; then "
+            "if command -v setsid >/dev/null 2>&1 && setsid -f true >/dev/null 2>&1; then "
             f"nohup setsid -f /bin/sh {shlex.quote(runner_path)} >/dev/null 2>&1 < /dev/null; "
+            "elif command -v setsid >/dev/null 2>&1; then "
+            f"nohup /bin/sh -c {shlex.quote(detach_without_fork)} </dev/null >/dev/null 2>&1 & "
             "else "
             f"nohup /bin/sh {shlex.quote(runner_path)} >/dev/null 2>&1 < /dev/null & "
             f"printf '%s\\n' \"$!\" > {shlex.quote(pid_path)}; "

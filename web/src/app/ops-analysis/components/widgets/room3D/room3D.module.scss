@@ -179,27 +179,14 @@
   display: flex;
   align-items: center;
   min-width: 0;
+  margin-left: calc(12px * var(--room3d-readable-scale));
   max-width: calc(100% - (48px * var(--room3d-readable-scale)));
   height: calc(28px * var(--room3d-readable-scale));
-  padding: 0 calc(10px * var(--room3d-readable-scale));
   overflow: hidden;
   font-size: calc(13px * var(--room3d-readable-scale));
   line-height: calc(28px * var(--room3d-readable-scale));
   color: var(--room3d-text);
   pointer-events: none;
-  background: var(--room3d-surface);
-  border: 1px solid var(--room3d-border);
-  border-radius: calc(6px * var(--room3d-readable-scale));
-}
-
-.roomTitleLabel,
-.roomTitleCount {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.roomTitleLabel {
-  color: var(--room3d-muted-text);
 }
 
 .roomTitleName {
@@ -210,12 +197,6 @@
   color: var(--room3d-strong-text);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.roomTitleCount {
-  margin-left: calc(8px * var(--room3d-readable-scale));
-  font-size: calc(13px * var(--room3d-readable-scale));
-  color: var(--room3d-accent);
 }
 
 .noticePanel {

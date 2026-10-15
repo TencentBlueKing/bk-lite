@@ -15,6 +15,7 @@ import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUti
 import type { Dayjs } from 'dayjs';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type {
+  ApplicationTopologyConfig,
   NetworkStatusTopologyConfig,
   RelatedTopologyConfig,
   Room3DConfig,
@@ -73,6 +74,7 @@ export interface AddComponentConfig {
   sceneWidgetType?: SceneWidgetType;
   networkStatusTopology?: NetworkStatusTopologyConfig;
   relatedTopology?: RelatedTopologyConfig;
+  applicationTopology?: ApplicationTopologyConfig;
   room3D?: Room3DConfig;
   application3DWall?: Application3DWallConfig;
   dataSourceParams?: ParamItem[];
@@ -113,6 +115,7 @@ export interface ValueConfig {
   sceneWidgetType?: SceneWidgetType;
   networkStatusTopology?: NetworkStatusTopologyConfig;
   relatedTopology?: RelatedTopologyConfig;
+  applicationTopology?: ApplicationTopologyConfig;
   room3D?: Room3DConfig;
   application3DWall?: Application3DWallConfig;
   chartThemeMode?: OpsChartThemeMode;
@@ -182,6 +185,9 @@ export interface ScreenWidgetAppearance {
 export interface ScreenRenderContext {
   enabled: boolean;
   fitScale: number;
+  /** 大屏画布相对设计尺寸的横向、纵向拉伸。铺满适配时两者可以不同。 */
+  scaleX?: number;
+  scaleY?: number;
   screenDensity: number;
   screenUiScale: number;
   widgetDensity: number;

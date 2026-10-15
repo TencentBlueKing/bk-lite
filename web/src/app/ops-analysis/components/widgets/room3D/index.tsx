@@ -167,6 +167,10 @@ const Room3D: React.FC<Room3DProps> = ({
     return Math.max(uiScale, 1 / fitScale, 1);
   }, [screenRenderContext]);
 
+  const onErrorRef = useRef(onError);
+  const onRawDataRef = useRef(onRawData);
+  onErrorRef.current = onError;
+  onRawDataRef.current = onRawData;
   useEffect(() => {
     if (injected || !runtimeActive || !allowedOnSurface) {
       return undefined;
@@ -185,28 +189,28 @@ const Room3D: React.FC<Room3DProps> = ({
         if (result.status === "empty") {
           setFetchedLayout(null);
           setFetchError(t("dashboard.room3DEmpty"));
-          onError?.(t("dashboard.room3DEmpty"));
-          onRawData?.(null);
+          onErrorRef.current?.(t("dashboard.room3DEmpty"));
+          onRawDataRef.current?.(null);
           return;
         }
         if (result.status === "unavailable") {
           setFetchedLayout(null);
           setFetchError(t("dashboard.room3DDefaultUnavailable"));
-          onError?.(t("dashboard.room3DDefaultUnavailable"));
-          onRawData?.(null);
+          onErrorRef.current?.(t("dashboard.room3DDefaultUnavailable"));
+          onRawDataRef.current?.(null);
           return;
         }
         setFetchedLayout(result.layout);
         setFetchError("");
-        onRawData?.(result.layout);
+        onRawDataRef.current?.(result.layout);
       })
       .catch(() => {
         if (abort.signal.aborted) return;
         const message = t("dashboard.room3DLoadFailed");
         setFetchedLayout(null);
         setFetchError(message);
-        onError?.(message);
-        onRawData?.(null);
+        onErrorRef.current?.(message);
+        onRawDataRef.current?.(null);
       })
       .finally(() => {
         if (!abort.signal.aborted) setFetchLoading(false);
@@ -216,8 +220,6 @@ const Room3D: React.FC<Room3DProps> = ({
     allowedOnSurface,
     api,
     injected,
-    onError,
-    onRawData,
     refreshKey,
     runtimeActive,
     runtimeRoomId,
@@ -584,8 +586,7 @@ const Room3D: React.FC<Room3DProps> = ({
     );
   }
 
-  const roomRackCount = roomData.racks.length;
-  const roomSummaryText = `${t("dashboard.room3DRoomNameLabel")}${roomData.room.name}${t("dashboard.room3DRackCountPrefix")}${roomRackCount}${t("dashboard.room3DRackCountSuffix")}`;
+  const roomSummaryText = roomData.room.name;
 
   return (
     <div
@@ -606,15 +607,7 @@ const Room3D: React.FC<Room3DProps> = ({
       <div ref={mountRef} className={styles.canvas} />
       <div className={styles.topBar}>
         <div className={styles.roomTitle} title={roomSummaryText}>
-          <span className={styles.roomTitleLabel}>
-            {t("dashboard.room3DRoomNameLabel")}
-          </span>
           <strong className={styles.roomTitleName}>{roomData.room.name}</strong>
-          <span className={styles.roomTitleCount}>
-            {t("dashboard.room3DRackCountPrefix")}
-            {roomRackCount}
-            {t("dashboard.room3DRackCountSuffix")}
-          </span>
         </div>
         <div className={styles.topBarActions}>
           <Button

@@ -50,7 +50,7 @@ import {
   type LayerBand,
   type LayerKey,
 } from './layerLayout';
-import { resolveLayer } from './resolveLayer';
+import { resolveLayer, resolveRootNode } from '@/app/cmdb/utils/applicationResourceLayer';
 import {
   centerTopologyNode,
   filterRelationLinks,
@@ -118,11 +118,11 @@ const HOVER_COLOR = 'color-mix(in srgb, var(--color-primary) 72%, var(--color-bg
 
 const RELATIONSHIP_LABEL_ATTRS = {
   textFill: 'var(--color-text-3)',
-  activeTextFill: HOVER_COLOR,
+  activeTextFill: 'var(--color-primary-foreground)',
   bgFill: 'var(--color-bg)',
-  activeBgFill: 'var(--color-primary-bg-active)',
+  activeBgFill: 'var(--color-primary)',
   bgStroke: 'var(--color-border-2)',
-  activeBgStroke: HOVER_COLOR,
+  activeBgStroke: 'var(--color-primary)',
 } as const;
 
 const buildRelationshipLabel = (text: string, position = 0.5) => ({
@@ -171,6 +171,7 @@ const buildHoverLabels = (labels: unknown, active: boolean) => {
           fill: active
             ? RELATIONSHIP_LABEL_ATTRS.activeTextFill
             : RELATIONSHIP_LABEL_ATTRS.textFill,
+          fontSize: active ? 12 : 10,
           fontWeight: active ? 700 : 500,
         },
         bg: {
@@ -181,8 +182,12 @@ const buildHoverLabels = (labels: unknown, active: boolean) => {
           stroke: active
             ? RELATIONSHIP_LABEL_ATTRS.activeBgStroke
             : RELATIONSHIP_LABEL_ATTRS.bgStroke,
-          strokeWidth: active ? 1.35 : 1,
-          fillOpacity: active ? 0.98 : 0.94,
+          strokeWidth: active ? 0 : 1,
+          fillOpacity: 1,
+          refWidth: active ? '168%' : '140%',
+          refHeight: active ? '180%' : '155%',
+          refX: active ? '-34%' : '-20%',
+          refY: active ? '-40%' : '-27%',
           filter: active
             ? 'drop-shadow(0 3px 6px var(--color-portal-card-shadow))'
             : 'none',
@@ -541,13 +546,6 @@ function buildCompactGraphData(
       };
     }),
   };
-}
-
-function resolveRootNode(topology: ApplicationResourceTopologyData): ApplicationResourceNode {
-  const systemNode = [...(topology.nodes || [])]
-    .filter((node) => node.model_id === 'system')
-    .sort((a, b) => a.hop - b.hop || a.name.localeCompare(b.name))[0];
-  return systemNode || topology.center;
 }
 
 function buildLayeredGraphData(params: {

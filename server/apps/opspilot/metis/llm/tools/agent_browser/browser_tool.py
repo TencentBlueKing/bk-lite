@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from langchain_core.tools import tool
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
 from apps.opspilot.metis.llm.tools.common.browser_security import (
     redact_command_args,

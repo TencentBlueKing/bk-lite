@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from '@/utils/i18n';
 
 import type {
   DashboardLayoutItem,
@@ -31,6 +32,11 @@ import {
 import {
   isDashboardWidgetItem,
 } from '@/app/ops-analysis/utils/dashboardGroups';
+import {
+  ensureApplicationTopologyCanvasFilter,
+  relabelApplicationTopologyFilters,
+  withApplicationTopologyFilterBinding,
+} from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 
 export const resolveWidgetBindableParams = (
   valueConfig: DashboardWidgetLayoutItem['valueConfig'] | undefined,
@@ -146,11 +152,15 @@ export const buildFiltersFromDashboardLayout = ({
     },
   );
 
-  return rebuiltDefinitions.sort((a, b) => {
-    const orderDiff = (a.order ?? 0) - (b.order ?? 0);
-    if (orderDiff !== 0) return orderDiff;
-    return a.id.localeCompare(b.id);
-  });
+  return ensureApplicationTopologyCanvasFilter(
+    rebuiltDefinitions.sort((a, b) => {
+      const orderDiff = (a.order ?? 0) - (b.order ?? 0);
+      if (orderDiff !== 0) return orderDiff;
+      return a.id.localeCompare(b.id);
+    }),
+    layout as Parameters<typeof ensureApplicationTopologyCanvasFilter>[1],
+    previousDefinitions,
+  );
 };
 
 export const useDashboardLayoutSync = ({
@@ -161,17 +171,23 @@ export const useDashboardLayoutSync = ({
   setDefinitions,
   setFilterValues,
 }: UseDashboardLayoutSyncOptions) => {
+  const { t } = useTranslation();
   const buildFiltersFromLayout = useCallback(
     (
       nextLayout: DashboardLayoutItem[],
       previousDefinitions: UnifiedFilterDefinition[],
     ): UnifiedFilterDefinition[] =>
-      buildFiltersFromDashboardLayout({
-        layout: nextLayout,
-        previousDefinitions,
-        dataSources,
-      }),
-    [dataSources],
+      relabelApplicationTopologyFilters({
+        filters: buildFiltersFromDashboardLayout({
+          layout: nextLayout,
+          previousDefinitions,
+          dataSources,
+        }),
+      }, {
+        system: t('dashboard.applicationTopologyFilterName'),
+        depth: t('dashboard.applicationTopologyDepth'),
+      }).filters ?? [],
+    [dataSources, t],
   );
 
   const syncLayoutFilterBindings = useCallback(
@@ -232,8 +248,15 @@ export const useDashboardLayoutSync = ({
           {},
         );
 
-        const newBindings = Object.keys(prunedBindings).length
-          ? prunedBindings
+        const boundBindings = withApplicationTopologyFilterBinding(
+          item.valueConfig?.chartType,
+          item.valueConfig?.sceneWidgetType,
+          Object.keys(prunedBindings).length ? prunedBindings : undefined,
+          definitions,
+        );
+
+        const newBindings = boundBindings && Object.keys(boundBindings).length
+          ? boundBindings
           : undefined;
 
         if (JSON.stringify(existingBindings) === JSON.stringify(newBindings)) {

@@ -23,38 +23,46 @@ describe('报告契约与模板语法抽屉', () => {
     });
   });
 
-  it('可从链接打开，并切换输出结构与模板语法', () => {
+  it('模板语法入口只展示语法内容，不出现输出结构与 Tab', () => {
     render(<IntlProvider locale="zh-CN" messages={{}}><App>
-      <ReportContractGuideDrawer defaultTab="template" triggerLabel="模板语法说明" />
+      <ReportContractGuideDrawer mode="template" triggerLabel="模板语法说明" />
     </App></IntlProvider>);
 
     fireEvent.click(screen.getByRole('button', { name: '模板语法说明' }));
-    expect(screen.getByRole('dialog', { name: '模板与数据说明' })).not.toBeNull();
+    expect(screen.getByRole('dialog', { name: '模板语法说明' })).not.toBeNull();
     expect(screen.getByText('怎么工作')).not.toBeNull();
     expect(screen.getByText('Word（docxtpl）')).not.toBeNull();
     expect(screen.getByText('Excel（xlsxjinja）')).not.toBeNull();
-    expect(screen.getByText('Word 版式')).not.toBeNull();
-    expect(screen.getByText('明确支持')).not.toBeNull();
     expect(screen.getAllByText(/\{\{\s*summary\.total\s*\}\}/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/非循环区域的静态合并单元格/)).not.toBeNull();
-    expect(screen.getByText(/不支持循环内按数据动态合并单元格/)).not.toBeNull();
-    expect(screen.getByText(/不支持旧的 Carbone/)).not.toBeNull();
-
-    fireEvent.click(screen.getByRole('tab', { name: '输出结构' }));
-    expect(screen.getByText('平台固定外层')).not.toBeNull();
-    expect(screen.getByText('数据如何进模板')).not.toBeNull();
-    expect(screen.getAllByText(/BK_LITE_RESULT=/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/results\[\]\.data/)).not.toBeNull();
+    expect(screen.queryByRole('tab', { name: '输出结构' })).toBeNull();
+    expect(screen.queryByText('平台固定外层')).toBeNull();
   });
 
-  it('按入口打开对应 tab', () => {
+  it('文档数据结构入口只展示结构内容，并保留模板衔接说明', () => {
     render(<IntlProvider locale="zh-CN" messages={{}}><App>
-      <ReportContractGuideDrawer defaultTab="structure" triggerLabel="数据结构说明" />
+      <ReportContractGuideDrawer mode="structure" audience="document" triggerLabel="数据结构说明" />
     </App></IntlProvider>);
 
     fireEvent.click(screen.getByRole('button', { name: '数据结构说明' }));
+    expect(screen.getByRole('dialog', { name: '数据结构说明' })).not.toBeNull();
     expect(screen.getByText('平台固定外层')).not.toBeNull();
     expect(screen.getByText('数据如何进模板')).not.toBeNull();
+    expect(screen.getAllByText(/BK_LITE_RESULT=/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('tab', { name: '模板语法' })).toBeNull();
     expect(screen.queryByText('怎么工作')).toBeNull();
+  });
+
+  it('作业脚本输出说明只展示输出结构，不含模板语法', () => {
+    render(<IntlProvider locale="zh-CN" messages={{}}><App>
+      <ReportContractGuideDrawer mode="structure" audience="job" triggerLabel="脚本输出说明" />
+    </App></IntlProvider>);
+
+    fireEvent.click(screen.getByRole('button', { name: '脚本输出说明' }));
+    expect(screen.getByRole('dialog', { name: '脚本输出说明' })).not.toBeNull();
+    expect(screen.getByText('平台固定外层')).not.toBeNull();
+    expect(screen.getByText('脚本如何返回')).not.toBeNull();
+    expect(screen.queryByText('数据如何进模板')).toBeNull();
+    expect(screen.queryByText('怎么工作')).toBeNull();
+    expect(screen.queryByRole('tab')).toBeNull();
   });
 });

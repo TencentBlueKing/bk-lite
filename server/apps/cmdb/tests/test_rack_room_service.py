@@ -518,6 +518,14 @@ class TestListServerRooms:
         assert kwargs["page"] == 1
         assert kwargs["page_size"] == 1000  # 业务上限
         assert kwargs["order"] == "inst_name"
+        assert kwargs["creator"] is None
+
+    @patch.object(rack_room.InstanceManage, "instance_list")
+    def test_passes_creator_so_owned_rooms_stay_listable(self, mock_instance_list):
+        """创建人例外要进列表查询，否则按 uuid 能看的机房不会出现在选项里。"""
+        mock_instance_list.return_value = ([], 0)
+        rack_room.list_server_rooms(permission_map={}, user_info={"user": " admin "})
+        assert mock_instance_list.call_args.kwargs["creator"] == "admin"
 
     @patch.object(rack_room.InstanceManage, "instance_list")
     def test_default_empty_permission_map(self, mock_instance_list):

@@ -37,13 +37,9 @@ def validate_variable_id(variable_id: str, used: set[str], column_name: str):
     if not variable_id:
         return
     if not VARIABLE_ID_PATTERN.fullmatch(variable_id):
-        raise BaseAppException(
-            f"display field '{column_name}' has invalid variable_id: {variable_id}"
-        )
+        raise BaseAppException(f"display field '{column_name}' has invalid variable_id: {variable_id}")
     if variable_id in RESERVED_ALERT_TEMPLATE_KEYS or variable_id.startswith("metric__"):
-        raise BaseAppException(
-            f"display field '{column_name}' uses reserved variable_id: {variable_id}"
-        )
+        raise BaseAppException(f"display field '{column_name}' uses reserved variable_id: {variable_id}")
     if variable_id in used:
         raise BaseAppException(f"display field variable_id '{variable_id}' is duplicated")
     used.add(variable_id)
@@ -57,6 +53,71 @@ def resolve_resource_ip(summary_facts, ip) -> str:
     if ip not in (None, ""):
         return str(ip).strip()
     return ""
+
+
+_NOTIFICATION_FACT_PART = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+_NOTIFICATION_SENSITIVE_PARTS = ("password", "token", "secret", "private_key", "credential")
+_NOTIFICATION_FACT_MAX_LENGTH = 1000
+
+
+def _notification_fact_text(value) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bool) or value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, dict):
+                text = str(item.get("name") or item.get("ip") or "").strip()
+            elif item not in (None, ""):
+                text = str(item).strip()
+            else:
+                text = ""
+            if text:
+                parts.append(text)
+        return "、".join(parts)
+    return ""
+
+
+def _put_notification_fact(labels: dict, fact: str, value: str) -> None:
+    parts = fact.split(".")
+    if not parts or any(not _NOTIFICATION_FACT_PART.fullmatch(part) for part in parts):
+        return
+    cursor = labels
+    for part in parts[:-1]:
+        child = cursor.get(part)
+        if child is None:
+            child = {}
+            cursor[part] = child
+        elif not isinstance(child, dict):
+            return
+        cursor = child
+    leaf = parts[-1]
+    if cursor.get(leaf) in (None, ""):
+        cursor[leaf] = value
+
+
+def build_instance_notification_labels(summary_facts, ip, summary_columns) -> dict:
+    """按监控对象自己声明的摘要列，整理可放进告警通知的实例资料。"""
+    facts = summary_facts if isinstance(summary_facts, dict) else {}
+    labels = {}
+    resolved_ip = resolve_resource_ip(facts, ip)
+    if resolved_ip:
+        labels["ip"] = resolved_ip[:_NOTIFICATION_FACT_MAX_LENGTH]
+    for column in summary_columns or []:
+        if not isinstance(column, dict):
+            continue
+        fact = str(column.get("fact") or "").strip()
+        if not fact or any(part in fact.lower() for part in _NOTIFICATION_SENSITIVE_PARTS):
+            continue
+        text = _notification_fact_text(facts.get(fact))
+        if not text:
+            continue
+        _put_notification_fact(labels, fact, text[:_NOTIFICATION_FACT_MAX_LENGTH])
+    return labels
 
 
 def iter_variable_id_columns(display_fields):
@@ -144,7 +205,4 @@ def load_display_variable_map(monitor_object, instance_ids: list[str]) -> dict[s
         obj_metric_map,
         rows,
     )
-    return {
-        row["instance_id"]: extract_display_variable_values(row, filtered_fields)
-        for row in rows
-    }
+    return {row["instance_id"]: extract_display_variable_values(row, filtered_fields) for row in rows}

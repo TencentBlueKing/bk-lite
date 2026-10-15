@@ -74,6 +74,10 @@ import {
   includeRoom3DCanvasFilter,
   layoutDeclaresRoom3D,
 } from '@/app/ops-analysis/utils/room3DScreenFilter';
+import {
+  includeApplicationTopologyCanvasFilter,
+  layoutDeclaresApplicationTopology,
+} from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 
 interface UnifiedFilterConfigModalProps {
   open: boolean;
@@ -328,8 +332,17 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       initialDefinitions,
       t('dashboard.room3DFilterName'),
     );
-    setDefinitions(withRoomFilter);
-    initialSnapshotRef.current = JSON.stringify(withRoomFilter);
+    const withSystemFilter = includeApplicationTopologyCanvasFilter(
+      withRoomFilter,
+      layoutDeclaresApplicationTopology(layoutItems),
+      initialDefinitions,
+      {
+        system: t('dashboard.applicationTopologyFilterName'),
+        depth: t('dashboard.applicationTopologyDepth'),
+      },
+    );
+    setDefinitions(withSystemFilter);
+    initialSnapshotRef.current = JSON.stringify(withSystemFilter);
   }, [open, initialDefinitions, layoutItems, scannedParams, t]);
 
   const handleCancel = () =>

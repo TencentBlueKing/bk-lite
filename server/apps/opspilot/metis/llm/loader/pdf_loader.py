@@ -7,7 +7,7 @@ from typing import List
 import fitz
 import pandas as pd
 from langchain_core.documents import Document
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from tabula.io import read_pdf
 from tqdm import tqdm
 

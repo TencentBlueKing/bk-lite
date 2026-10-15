@@ -87,6 +87,67 @@ def test_completed_with_warnings_is_success_with_warning_metadata():
 
 
 @pytest.mark.django_db
+def test_completed_workflow_with_failed_task_is_failed():
+    from apps.workflow_orchestration.models import AtomExecution
+
+    workflow = Workflow.objects.create(name="健康巡检", team=[7], definition={})
+    execution = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        conductor_workflow_id="conductor-notify",
+        status=WorkflowExecution.Status.RUNNING,
+        team=[7],
+    )
+    AtomExecution.objects.create(
+        execution=execution,
+        conductor_task_id="notify-2",
+        task_reference="notify",
+        atom_key="bklite_notification",
+        status=AtomExecution.Status.FAILED,
+        attempt=2,
+        error_message="通知渠道投递失败",
+    )
+
+    apply_remote_execution(
+        execution,
+        {
+            "status": "COMPLETED",
+            "output": {},
+            "tasks": [
+                {
+                    "taskId": "scan-1",
+                    "referenceTaskName": "scan",
+                    "taskType": "SIMPLE",
+                    "status": "COMPLETED",
+                    "outputData": {"summary": {"failed": 2}},
+                },
+                {
+                    "taskId": "notify-1",
+                    "referenceTaskName": "notify",
+                    "taskType": "SIMPLE",
+                    "status": "FAILED",
+                    "reasonForIncompletion": "ValueError: atom execution failed",
+                },
+                {
+                    "taskId": "notify-2",
+                    "referenceTaskName": "notify",
+                    "taskType": "SIMPLE",
+                    "status": "FAILED",
+                    "reasonForIncompletion": "ValueError: atom execution failed",
+                },
+                {"taskId": "join-1", "referenceTaskName": "join", "taskType": "JOIN", "status": "COMPLETED"},
+            ],
+            "endTime": 1_700_000_000_000,
+        },
+    )
+
+    execution.refresh_from_db()
+    assert execution.status == WorkflowExecution.Status.FAILED
+    assert execution.error_message == "通知渠道投递失败"
+    assert execution.has_warnings is False
+
+
+@pytest.mark.django_db
 def test_remote_non_terminal_does_not_overwrite_terminating_or_terminal_status():
     workflow = Workflow.objects.create(name="终止保护", team=[7], definition={})
     terminating = WorkflowExecution.objects.create(

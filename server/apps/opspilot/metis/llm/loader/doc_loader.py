@@ -4,7 +4,7 @@ import tempfile
 
 import docx
 from langchain_core.documents import Document
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from tqdm import tqdm
 
 from apps.opspilot.metis.ocr.base_ocr import BaseOCR

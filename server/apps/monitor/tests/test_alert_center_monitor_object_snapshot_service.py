@@ -102,6 +102,128 @@ def test_monitor_alert_center_payload_contains_monitor_and_cmdb_identity(monkeyp
     }
 
 
+def test_alert_center_payload_includes_declared_instance_facts(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心-拨测",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+    monitor_object = MonitorObject.objects.create(
+        name="Website",
+        display_name="网站拨测",
+        instance_summary_columns=[
+            {"fact": "probe.target", "title": "monitor.views.probeTarget", "order": 20},
+            {"fact": "collector.nodes", "title": "monitor.views.probeNodes", "order": 10},
+        ],
+    )
+    MonitorInstance.objects.create(
+        id="site-1",
+        name="门户探测",
+        monitor_object=monitor_object,
+        summary_facts={
+            "probe.target": "https://shop.example.com/health",
+            "collector.nodes": [{"id": "n1", "name": "北京节点", "ip": "10.0.0.8"}],
+            "password": "hidden",
+        },
+    )
+    alert = MonitorAlert.objects.create(
+        policy_id=11,
+        monitor_instance_id="site-1",
+        monitor_instance_name="门户探测",
+        metric_instance_id="http_status",
+        content="拨测失败",
+        level="warning",
+        status="new",
+        start_event_time=datetime(2026, 10, 15, 1, 0, tzinfo=timezone.utc),
+        notice_type_ids=[channel.id],
+    )
+    notifier = AlertLifecycleNotifier(
+        policy=SimpleNamespace(
+            id=11,
+            name="拨测策略",
+            organizations=[1],
+            notice=True,
+            monitor_object=monitor_object,
+            query_condition={"type": "metric", "metric_name": "http_status"},
+        )
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.ALERT_CENTER_OUTBOX_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.SystemMgmtUtils.probe_notification_channel",
+        lambda channel_id, capability_only=False: {"delivery_mode": "alert_event_copy"},
+    )
+
+    enqueue_alert_center_deliveries([alert], "created", notifier=notifier)
+
+    labels = MonitorAlertCenterDelivery.objects.get(alert=alert).payload["labels"]
+    assert labels["probe"]["target"] == "https://shop.example.com/health"
+    assert labels["collector"]["nodes"] == "北京节点"
+    assert "password" not in labels
+    assert "ip" not in labels
+
+
+def test_alert_center_payload_includes_asset_ip_for_any_object(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心-中间件",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+    monitor_object = MonitorObject.objects.create(
+        name="Mysql",
+        display_name="MySQL",
+        instance_summary_columns=[{"fact": "asset.ip", "title": "monitor.views.assetIp", "order": 10}],
+    )
+    MonitorInstance.objects.create(
+        id="mysql-1",
+        name="mysql-a",
+        monitor_object=monitor_object,
+        ip="10.0.0.1",
+        summary_facts={"asset.ip": "10.0.0.9"},
+    )
+    alert = MonitorAlert.objects.create(
+        policy_id=12,
+        monitor_instance_id="mysql-1",
+        monitor_instance_name="mysql-a",
+        metric_instance_id="mysql_up",
+        content="MySQL 不可用",
+        level="error",
+        status="new",
+        start_event_time=datetime(2026, 10, 15, 2, 0, tzinfo=timezone.utc),
+        notice_type_ids=[channel.id],
+    )
+    notifier = AlertLifecycleNotifier(
+        policy=SimpleNamespace(
+            id=12,
+            name="MySQL 策略",
+            organizations=[1],
+            notice=True,
+            monitor_object=monitor_object,
+            query_condition={"type": "metric", "metric_name": "mysql_up"},
+        )
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.ALERT_CENTER_OUTBOX_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.SystemMgmtUtils.probe_notification_channel",
+        lambda channel_id, capability_only=False: {"delivery_mode": "alert_event_copy"},
+    )
+
+    enqueue_alert_center_deliveries([alert], "created", notifier=notifier)
+
+    labels = MonitorAlertCenterDelivery.objects.get(alert=alert).payload["labels"]
+    assert labels["ip"] == "10.0.0.9"
+    assert labels["asset"]["ip"] == "10.0.0.9"
+
+
 def test_unlinked_monitor_instance_is_still_present_in_payload(monkeypatch):
     channel = Channel.objects.create(
         name="告警中心-未关联",

@@ -22,6 +22,21 @@ import { resolveAppDisplayName } from '@/utils/appDisplayName';
 
 const TOUR_VIEWED_KEY_PREFIX = 'tour_viewed';
 
+const EmptyLicenseReminder = () => null;
+
+const loadLicenseReminder = () => {
+  try {
+    // EE 增强判断：优先加载 enterprise 组件，缺失时回退到 CE 空实现。
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('@/app/system-manager/(enterprise)/components/license-reminder');
+    return mod.LicenseReminder || EmptyLicenseReminder;
+  } catch {
+    return EmptyLicenseReminder;
+  }
+};
+
+const LicenseReminder = loadLicenseReminder();
+
 interface TopMenuProps {
   hideMainMenu?: boolean;
   hideBrand?: boolean;
@@ -243,6 +258,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
           )}
         </div>
         <div className={`z-10 flex flex-shrink-0 items-center justify-self-end gap-4 ${appTopBrandGrid ? 'pr-4' : ''}`}>
+          <LicenseReminder />
           <Notifications />
           {hasViewedTour && (
             <Tooltip title={t('common.officialDocument')}>

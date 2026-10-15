@@ -27,7 +27,7 @@ import asyncio
 import concurrent.futures
 import re
 
-from loguru import logger
+from apps.core.logger import opspilot_logger, safe_exception_info
 
 # --------------------------------------------------------------------------- #
 # 敏感字段策略 (统一来源)
@@ -274,13 +274,21 @@ def filter_sensitive_columns(rows: list) -> list:
 # --------------------------------------------------------------------------- #
 # 错误脱敏 (F046 / F077)
 # --------------------------------------------------------------------------- #
+def log_db_failure(message: str, error: BaseException) -> None:
+    """记录数据库工具失败,不输出异常正文,也不经 loguru 渲染帧局部变量。"""
+    opspilot_logger.error(
+        message,
+        extra={"error_type": type(error).__name__, "failed_stage": "db_tool"},
+        exc_info=safe_exception_info(error),
+    )
+
+
 def sanitize_db_error(exc: Exception, context: str = "SQL查询") -> str:
     """
     服务端记录完整异常 (含堆栈),对外仅返回脱敏后的通用错误信息。
 
     原始 DB 错误常包含主机名、连接参数、DSN、SQLSTATE 等敏感信息,不应回传给
-    LLM/上层。此处统一:服务端 ``logger.exception`` 记录全量,返回值不含任何
-    连接细节。
+    LLM/上层。此处统一:服务端记录受控 traceback,返回值不含任何连接细节。
 
     Args:
         exc: 捕获到的异常
@@ -289,7 +297,7 @@ def sanitize_db_error(exc: Exception, context: str = "SQL查询") -> str:
     Returns:
         str: 脱敏后的通用错误信息
     """
-    logger.exception(f"{context}失败 (详情见服务端日志)")
+    log_db_failure("%s失败" % context, exc)
     return f"{context}失败,请检查SQL语句或联系管理员。"
 
 

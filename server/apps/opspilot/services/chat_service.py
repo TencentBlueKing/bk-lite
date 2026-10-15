@@ -773,7 +773,15 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
 # 常驻附件的弱提示。是否落盘只看用户本轮是否要文件，勾选工具不再强制生成。
 _ATTACHMENT_GUIDANCE = (
     "\n\n【附件生成】仅当用户本轮明确要求生成、导出、保存或写入一份新的文件、报告或附件时，"
-    "才调用 generate_attachment_file。询问已有或上传文件的内容时直接文字回复，不要生成文件。"
+    "才调用 generate_attachment_file。本会话已经生成过文件时，用户再要求修改内容、字体或排版，"
+    "必须再调用一次 generate_attachment_file 写出完整新文件；没调用成功就不要说已经改好，也不要用文字方案代替文件。"
+    "上一轮工具结果里的停止生成只对那一轮有效，不能用来拒绝用户的新修改。"
+    "文件名沿用上一份的主名，版本由工具处理：首次为 _v1.0，改同一份则为 _v1.1、_v1.2。"
+    "修改已有文件时必须保持原格式，上一份是 pptx 就继续用 pptx，禁止改成 md、docx 或 pdf。"
+    "Word、PPT 和 PDF 的正文由系统写成微软雅黑，不要说工具不支持字体，也不要让用户自己到 Word 里改字体。"
+    "一次调用必须写入用户要的全部章节。禁止写到一半就停，禁止让用户再说一句「重新生成完整版」。"
+    "同一次回复里只调用一次该工具，成功后立即结束，不要接着 request_user_choice。"
+    "询问已有或上传文件的内容时直接文字回复，不要生成文件。"
     "格式支持 txt、md、pdf、docx、pptx、xlsx、csv。用户要 txt 时用 file_type=txt，不要改成 md。"
     "用户要 PPT 时 file_type 必须是 pptx，文件名用 .pptx，禁止降级成 docx 或 pdf。"
     "docx 和 pdf 的 content 用 Markdown，生成时会渲染成标题、段落和表格，不要指望原文符号留在文件里。"

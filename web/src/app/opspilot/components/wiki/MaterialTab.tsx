@@ -40,6 +40,7 @@ import {
   MaterialUpdateImpact,
   WikiDirectoryTreeResult,
 } from "@/app/opspilot/types/wiki";
+import { materialBatchDeleteFeedback } from "./materialBatchDeleteFeedback";
 import MaterialDetailPanel from "./MaterialDetailPanel";
 import WikiDirectorySelect from "./WikiDirectorySelect";
 import {
@@ -107,12 +108,14 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     fetchDirectoryTree,
     fetchMaterialInfo,
     fetchMaterialDeleteImpact,
+    fetchMaterialsDeleteImpact,
     fetchMaterialUpdateImpact,
     createMaterial,
     updateMaterial,
     createMaterialFile,
     batchCreateMaterials,
     deleteMaterial,
+    batchDeleteMaterials,
     buildMaterial,
     batchBuildMaterials,
     proposeUpdate,
@@ -163,6 +166,8 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [deleteImpactLoading, setDeleteImpactLoading] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Material | null>(null);
+  const [deleteMode, setDeleteMode] = useState<"single" | "batch">("single");
+  const [batchDeleteIds, setBatchDeleteIds] = useState<number[]>([]);
   const [deleteImpact, setDeleteImpact] = useState<MaterialDeleteImpact | null>(
     null,
   );
@@ -548,10 +553,13 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     }
   };
 
-  const handleBatchBuild = async () => {
-    const ids = selectedRowKeys
+  const selectedMaterialIds = () =>
+    selectedRowKeys
       .map((key) => Number(key))
       .filter((id) => Number.isFinite(id) && id > 0);
+
+  const handleBatchBuild = async () => {
+    const ids = selectedMaterialIds();
     if (!ids.length) {
       message.warning(t("wiki.batchBuildEmpty"));
       return;
@@ -583,12 +591,39 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   };
 
   const openDeleteImpact = async (record: Material) => {
+    setDeleteMode("single");
+    setBatchDeleteIds([]);
     setDeleteTarget(record);
     setDeleteImpact(null);
     setDeleteImpactVisible(true);
     setDeleteImpactLoading(true);
     try {
       setDeleteImpact(await fetchMaterialDeleteImpact(record.id));
+    } catch {
+      setDeleteImpactVisible(false);
+      setDeleteTarget(null);
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  };
+
+  const openBatchDeleteImpact = async () => {
+    const ids = selectedMaterialIds();
+    if (!ids.length) {
+      message.warning(t("wiki.batchBuildEmpty"));
+      return;
+    }
+    setDeleteMode("batch");
+    setDeleteTarget(null);
+    setBatchDeleteIds(ids);
+    setDeleteImpact(null);
+    setDeleteImpactVisible(true);
+    setDeleteImpactLoading(true);
+    try {
+      setDeleteImpact(await fetchMaterialsDeleteImpact(kbId, ids));
+    } catch {
+      setDeleteImpactVisible(false);
+      setBatchDeleteIds([]);
     } finally {
       setDeleteImpactLoading(false);
     }
@@ -598,10 +633,39 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     if (deleteSubmitting) return;
     setDeleteImpactVisible(false);
     setDeleteTarget(null);
+    setBatchDeleteIds([]);
     setDeleteImpact(null);
   };
 
   const handleDelete = async () => {
+    if (deleteMode === "batch") {
+      if (!batchDeleteIds.length) return;
+      setDeleteSubmitting(true);
+      try {
+        const result = await batchDeleteMaterials(kbId, batchDeleteIds);
+        const nameOf = (id: number) =>
+          data.find((item) => item.id === id)?.name ||
+          deleteImpact?.materials?.find((item) => item.id === id)?.name ||
+          String(id);
+        const feedback = materialBatchDeleteFeedback(result, nameOf);
+        if (feedback?.level === "success") {
+          message.success(t(feedback.messageKey));
+        } else if (feedback) {
+          message.error(
+            t(feedback.messageKey, feedback.defaultMessage, feedback.values),
+          );
+        }
+        setDeleteImpactVisible(false);
+        setDeleteTarget(null);
+        setBatchDeleteIds([]);
+        setDeleteImpact(null);
+        setSelectedRowKeys([]);
+        void load({ silent: true }).catch(() => undefined);
+      } finally {
+        setDeleteSubmitting(false);
+      }
+      return;
+    }
     if (!deleteTarget) return;
     setDeleteSubmitting(true);
     try {
@@ -609,6 +673,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       message.success(t("wiki.deleteSuccess"));
       setDeleteImpactVisible(false);
       setDeleteTarget(null);
+      setBatchDeleteIds([]);
       setDeleteImpact(null);
       void load({ silent: true }).catch(() => undefined);
     } finally {
@@ -927,11 +992,18 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           }
         />
         <Button
-          disabled={!selectedRowKeys.length}
+          disabled={!selectedRowKeys.length || deleteSubmitting}
           loading={batchBuilding}
           onClick={() => void handleBatchBuild()}
         >
           {t("wiki.batchBuild")}
+        </Button>
+        <Button
+          danger
+          disabled={!selectedRowKeys.length || batchBuilding}
+          onClick={() => void openBatchDeleteImpact()}
+        >
+          {t("wiki.batchDelete")}
         </Button>
         <Button type="primary" onClick={openCreate}>
           {t("wiki.addMaterial")}
@@ -976,7 +1048,11 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       </div>
 
       <Modal
-        title={t("wiki.deleteImpact")}
+        title={
+          deleteMode === "batch"
+            ? t("wiki.batchDeleteImpact")
+            : t("wiki.deleteImpact")
+        }
         open={deleteImpactVisible}
         onOk={handleDelete}
         okText={t("common.delete")}
@@ -1005,6 +1081,19 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         ) : (
           deleteImpact && (
             <>
+              {deleteMode === "batch" && (
+                <div className="mb-3 text-sm text-[var(--color-text-1)] break-all">
+                  {t("wiki.batchDeleteCount", "将删除 {count} 条资料", {
+                    count:
+                      deleteImpact.material_count ??
+                      deleteImpact.materials?.length ??
+                      batchDeleteIds.length,
+                  })}
+                  {deleteImpact.materials?.length
+                    ? `：${deleteImpact.materials.map((item) => item.name).join("、")}`
+                    : ""}
+                </div>
+              )}
               <div className="mb-3 text-sm text-[var(--color-text-2)]">
                 {t("wiki.deleteImpactTip")}
               </div>

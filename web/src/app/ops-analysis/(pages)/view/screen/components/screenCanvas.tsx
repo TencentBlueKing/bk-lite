@@ -460,6 +460,7 @@ interface ScreenCanvasNodeProps {
   editable: boolean;
   selected: boolean;
   scale: number;
+  scaleY: number;
   fitScale: number;
   screenDensity: number;
   screenUiScale: number;
@@ -490,6 +491,7 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
   editable,
   selected,
   scale,
+  scaleY,
   fitScale,
   screenDensity,
   screenUiScale,
@@ -522,6 +524,8 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
       refreshCause={refreshCause}
       screenId={screenId}
       fitScale={fitScale}
+      scaleX={scale}
+      scaleY={scaleY}
       screenDensity={screenDensity}
       screenUiScale={screenUiScale}
       dataSourceResolver={dataSourceResolver}
@@ -645,10 +649,12 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
   const presentation = Boolean(fullscreen || shareMode);
   const screenMetrics = useMemo(() => {
-    const padding = presentation ? 0 : 32;
+    // 上下收紧，左右保留。高度是等比适配的短边，少留的垂直间距会直接变成画布高度。
+    const paddingX = presentation ? 0 : 32;
+    const paddingY = presentation ? 0 : 12;
     return calculateScreenVisualMetrics({
-      contentWidth: Math.max(containerSize.width - padding, 0),
-      contentHeight: Math.max(containerSize.height - padding, 0),
+      contentWidth: Math.max(containerSize.width - paddingX, 0),
+      contentHeight: Math.max(containerSize.height - paddingY, 0),
       designWidth: width,
       designHeight: height,
       adapter: displayAdapter,
@@ -676,7 +682,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
     <div
       ref={containerRef}
       className={`screen-canvas-workbench flex h-full min-h-0 w-full ${workbenchAlign} ${
-        presentation ? "screen-canvas-workbench--preview p-0" : "p-4"
+        presentation ? "screen-canvas-workbench--preview p-0" : "px-4 py-1.5"
       }`}
       style={screenTheme.variables as React.CSSProperties}
       onPointerDown={(event) => {
@@ -768,6 +774,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
                 editable={editable}
                 selected={selectedItemId === item.id}
                 scale={scale}
+                scaleY={screenMetrics.scaleY}
                 fitScale={screenMetrics.fitScale}
                 screenDensity={screenMetrics.screenDensity}
                 screenUiScale={screenMetrics.screenUiScale}

@@ -5,11 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from apps.opspilot.services.workflow_attachment_service import (
-    _iter_markdown_blocks,
-    build_attachment_bytes,
-    normalize_attachment_file_type,
-)
+from apps.opspilot.services.workflow_attachment_service import _iter_markdown_blocks, build_attachment_bytes, normalize_attachment_file_type
 
 pytestmark = pytest.mark.unit
 
@@ -69,6 +65,7 @@ def test_build_attachment_bytes_docx_renders_markdown_heading_and_table():
     assert not any("|" in text for text in texts)
     assert document.tables[0].rows[1].cells[0].text == "报告日期"
     assert document.tables[0].rows[1].cells[1].text == "2026-10-12"
+    assert document.paragraphs[0].runs[0].font.name == "微软雅黑"
 
 
 def test_build_attachment_bytes_pptx_is_a_slide_deck():
@@ -82,6 +79,7 @@ def test_build_attachment_bytes_pptx_is_a_slide_deck():
     assert len(deck.slides) == 1
     assert deck.slides[0].shapes.title.text == "广州旅游"
     assert "珠江" in deck.slides[0].placeholders[1].text_frame.text
+    assert deck.slides[0].placeholders[1].text_frame.paragraphs[0].runs[0].font.name == "微软雅黑"
 
 
 def test_build_attachment_bytes_docx_is_office_zip():

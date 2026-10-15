@@ -421,10 +421,7 @@ def test_include_children_does_not_expand_unauthorized_child(tenants):
 
 
 def test_scope_root_parent_id_null_and_preserved_across_pages(tenants):
-    children = [
-        Group.objects.create(name=f"page-child-{index}-{uuid.uuid4().hex[:8]}", parent_id=tenants.a.team.id)
-        for index in range(4)
-    ]
+    children = [Group.objects.create(name=f"page-child-{index}-{uuid.uuid4().hex[:8]}", parent_id=tenants.a.team.id) for index in range(4)]
     tenants.a.system_user.group_list = [tenants.a.team.id, *[child.id for child in children]]
     tenants.a.system_user.save(update_fields=["group_list"])
 
@@ -459,3 +456,147 @@ def test_scope_root_parent_id_null_and_preserved_across_pages(tenants):
     assert page3.status_code == 200, page3.json()
     assert page3.json()["data"]["count"] == expected_count
     assert page3.json()["data"]["results"] == []
+
+
+def _grant_role(system_user, *, name, app=""):
+    role, _ = Role.objects.get_or_create(name=name, app=app, defaults={"menu_list": []})
+    role_ids = list(system_user.role_list or [])
+    if role.id not in role_ids:
+        role_ids.append(role.id)
+        system_user.role_list = role_ids
+        system_user.save(update_fields=["role_list"])
+    return role
+
+
+@pytest.mark.parametrize("role_app", ["", "system-manager"])
+def test_platform_superuser_reads_all_users_and_full_group_list(tenants, role_app):
+    _grant_role(tenants.a.system_user, name="admin", app=role_app)
+    child = Group.objects.create(name=f"child-b-{uuid.uuid4().hex[:8]}", parent_id=tenants.b.team.id)
+    archived = Group.objects.create(name=f"archived-{uuid.uuid4().hex[:8]}", is_delete=True)
+    shared = _create_directory_user(
+        username=f"shared-{uuid.uuid4().hex[:8]}",
+        group_ids=[tenants.a.team.id, tenants.b.team.id, archived.id],
+        display_name="Shared",
+        email="shared@example.com",
+    )
+    ungrouped = _create_directory_user(
+        username=f"none-{uuid.uuid4().hex[:8]}",
+        group_ids=[],
+        display_name="None",
+        email="none@example.com",
+    )
+
+    response = APIClient().get(USERS_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    ids = set(_user_ids(response.json()))
+    assert str(tenants.b.member.id) in ids
+    assert str(shared.id) in ids
+    assert str(ungrouped.id) in ids
+    item = next(row for row in response.json()["data"]["results"] if row["id"] == str(shared.id))
+    assert item["group_list"] == sorted(
+        [str(tenants.a.team.id), str(tenants.b.team.id)],
+        key=int,
+    )
+    assert str(archived.id) not in item["group_list"]
+    assert str(child.id) not in item["group_list"]
+    assert _SENSITIVE_USER_FIELDS.isdisjoint(item)
+
+
+def test_group_inherited_admin_reads_all_users(tenants):
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="", defaults={"menu_list": []})
+    tenants.a.team.roles.add(admin_role)
+
+    response = APIClient().get(USERS_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    assert str(tenants.b.member.id) in set(_user_ids(response.json()))
+
+
+def test_app_admin_cannot_read_other_org_users(tenants):
+    _grant_role(tenants.a.system_user, name="admin", app="cmdb")
+
+    response = APIClient().get(USERS_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    ids = set(_user_ids(response.json()))
+    assert str(tenants.a.member.id) in ids
+    assert str(tenants.b.member.id) not in ids
+
+
+def test_superuser_search_finds_user_outside_acting_team(tenants):
+    _grant_role(tenants.a.system_user, name="admin", app="")
+
+    response = APIClient().get(USERS_URL, {"search": "Bob"}, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    assert _user_ids(response.json()) == [str(tenants.b.member.id)]
+
+
+def test_superuser_reads_all_active_groups(tenants):
+    _grant_role(tenants.a.system_user, name="admin", app="")
+    child = Group.objects.create(name=f"child-b-{uuid.uuid4().hex[:8]}", parent_id=tenants.b.team.id)
+    archived = Group.objects.create(name=f"archived-{uuid.uuid4().hex[:8]}", is_delete=True)
+
+    response = APIClient().get(GROUPS_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    results = {item["id"]: item for item in response.json()["data"]["results"]}
+    assert str(tenants.a.team.id) in results
+    assert str(tenants.b.team.id) in results
+    assert results[str(child.id)]["parent_id"] == str(tenants.b.team.id)
+    assert str(archived.id) not in results
+    assert _SENSITIVE_GROUP_FIELDS.isdisjoint(results[str(tenants.b.team.id)])
+
+
+def test_superuser_can_query_group_outside_acting_team(tenants):
+    _grant_role(tenants.a.system_user, name="admin", app="")
+    child = Group.objects.create(name=f"child-b-{uuid.uuid4().hex[:8]}", parent_id=tenants.b.team.id)
+    outsider = Group.objects.create(name=f"out-{uuid.uuid4().hex[:8]}")
+    child_user = _create_directory_user(
+        username=f"child-user-{uuid.uuid4().hex[:8]}",
+        group_ids=[child.id, outsider.id],
+        display_name="Child",
+        email="child@example.com",
+    )
+
+    groups = APIClient().get(
+        GROUPS_URL,
+        {"group_id": tenants.b.team.id, "include_children": "true"},
+        **_acting(tenants.a),
+    )
+    users = APIClient().get(
+        USERS_URL,
+        {"group_id": tenants.b.team.id, "include_children": "true"},
+        **_acting(tenants.a),
+    )
+
+    assert groups.status_code == 200, groups.json()
+    assert set(_group_ids(groups.json())) == {str(tenants.b.team.id), str(child.id)}
+    assert str(outsider.id) not in _group_ids(groups.json())
+    assert users.status_code == 200, users.json()
+    assert str(child_user.id) in set(_user_ids(users.json()))
+    assert str(tenants.a.member.id) not in set(_user_ids(users.json()))
+    item = next(row for row in users.json()["data"]["results"] if row["id"] == str(child_user.id))
+    assert item["group_list"] == sorted([str(child.id), str(outsider.id)], key=int)
+
+
+def test_superuser_archived_group_still_rejected(tenants):
+    _grant_role(tenants.a.system_user, name="admin", app="")
+    archived = Group.objects.create(name=f"archived-{uuid.uuid4().hex[:8]}", is_delete=True)
+
+    response = APIClient().get(GROUPS_URL, {"group_id": archived.id}, **_acting(tenants.a))
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "BUSINESS_REJECTED"
+
+
+def test_app_admin_cannot_read_other_org_groups(tenants):
+    _grant_role(tenants.a.system_user, name="admin", app="cmdb")
+
+    response = APIClient().get(GROUPS_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    ids = set(_group_ids(response.json()))
+    assert str(tenants.a.team.id) in ids
+    assert str(tenants.b.team.id) not in ids

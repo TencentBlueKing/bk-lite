@@ -3,7 +3,7 @@ from typing import Any, Dict, Literal, Optional
 
 import pyodbc
 from langchain_core.runnables import RunnableConfig
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
 from apps.opspilot.metis.llm.tools.common.credentials import (
     CredentialItem,

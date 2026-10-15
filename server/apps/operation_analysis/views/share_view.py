@@ -95,6 +95,23 @@ _ROOM3D_ROOM_LIST_FILTER = [
     }
 ]
 
+_APPLICATION_TOPOLOGY_SYSTEM_FILTER = [
+    {
+        "id": "application_system_id__string",
+        "key": "application_system_id",
+        "type": "string",
+        "inputConfig": {
+            "control": "select",
+            "optionsSource": {
+                "type": "dynamic",
+                "sourceRef": {"type": "rest_api", "value": "cmdb/list_application_systems"},
+                "valueField": "inst_uuid",
+                "labelField": "inst_name",
+            },
+        },
+    }
+]
+
 
 def _resource_view_sets(resource):
     """模型走 view_sets 属性；测试里直接传入的布局列表或字典也认。"""
@@ -112,6 +129,8 @@ def _canvas_data_source_ids(resource):
     found.update(collect_named_option_datasource_ids_from_filters(_resource_filter_definitions(resource)))
     if _view_sets_has_scene_widget(view_sets, "room3D"):
         found.update(collect_named_option_datasource_ids_from_filters(_ROOM3D_ROOM_LIST_FILTER))
+    if _view_sets_has_scene_widget(view_sets, "applicationTopology"):
+        found.update(collect_named_option_datasource_ids_from_filters(_APPLICATION_TOPOLOGY_SYSTEM_FILTER))
     return found
 
 
@@ -640,6 +659,23 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             undeclared_reason="related_topology_not_declared",
             undeclared_detail=oa_message("messages.share_topology_widget_undeclared", "分享画布未声明关联拓扑组件"),
             extra_reject=self._reject_undeclared_related_topology_inst,
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/application_topology",
+    )
+    def application_topology(self, request, session_id=None):
+        return self._delegated_scene_widget_operation(
+            request,
+            session_id,
+            action_name="application_topology",
+            view_action="application_topology",
+            widget_type="applicationTopology",
+            allowed_resource_types=frozenset({"dashboard", "screen"}),
+            undeclared_reason="application_topology_not_declared",
+            undeclared_detail=oa_message("messages.share_application_topology_undeclared", "分享画布未声明应用拓扑组件"),
         )
 
     def _room3d_operation(self, request, session_id, *, action_name: str, view_action: str):

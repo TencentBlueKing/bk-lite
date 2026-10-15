@@ -221,6 +221,8 @@ def test_list_ensures_one_editable_alert_operation_template_for_current_team(tem
     assert "{{ notification.action_summary }}" in content["body_template"]
     assert "操作信息" in content["body_template"]
     assert "请进入告警中心认领并处理该告警" in content["body_template"]
+    assert "http://testserver/alarm/alarms?alert_id={{ alert.alert_id }}" in content["body_template"]
+    assert "主要变量是 {{ alert.alert_id }}" in content["body_template"]
 
 
 @pytest.mark.django_db
@@ -358,6 +360,7 @@ def test_alert_operation_template_upgrades_only_untouched_legacy_content(templat
     assert template.revision == 2
     assert content.subject_template == "【{{ notification.scene_name }}】【待认领】【{{ alert.level }}】{{ alert.title }}"
     assert "{{ notification.action_summary }}" in content.body_template
+    assert "http://testserver/alarm/alarms?alert_id={{ alert.alert_id }}" in content.body_template
 
     content.subject_template = "用户自定义标题"
     content.body_template = "<p>用户自定义正文</p>"
@@ -372,6 +375,56 @@ def test_alert_operation_template_upgrades_only_untouched_legacy_content(templat
     assert template.revision == 3
     assert content.subject_template == "用户自定义标题"
     assert content.body_template == "<p>用户自定义正文</p>"
+
+
+@pytest.mark.django_db
+def test_alert_operation_template_upgrades_untouched_default_and_keeps_edits(template_client):
+    from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent
+    from apps.alerts.notification_templates.operation import _default_content
+    from apps.system_mgmt.models.channel import Channel
+
+    channel = Channel.objects.create(
+        name="团队邮件",
+        channel_type="email",
+        config={},
+        description="test",
+        team=[1],
+    )
+    template = NotificationTemplate.objects.create(
+        name="告警操作通知",
+        team=[1],
+        scope="alert_operation",
+        builtin_key="alert_operation:1",
+        channel_id=channel.id,
+        revision=1,
+    )
+    subject, body = _default_content("email")
+    content = NotificationTemplateContent.objects.create(
+        template=template,
+        channel_type="email",
+        subject_template=subject,
+        body_template=body,
+    )
+
+    template_client.get("/api/v1/alerts/api/notification_templates/")
+
+    content.refresh_from_db()
+    template.refresh_from_db()
+    assert template.revision == 2
+    assert "http://testserver/alarm/alarms?alert_id={{ alert.alert_id }}" in content.body_template
+    assert "主要变量是 {{ alert.alert_id }}" in content.body_template
+
+    template_client.get("/api/v1/alerts/api/notification_templates/")
+    template.refresh_from_db()
+    assert template.revision == 2
+
+    content.body_template = content.body_template.replace("http://testserver", "https://custom.example.com")
+    content.save(update_fields=["body_template"])
+    template_client.get("/api/v1/alerts/api/notification_templates/")
+    content.refresh_from_db()
+    template.refresh_from_db()
+    assert template.revision == 2
+    assert "https://custom.example.com/alarm/alarms?alert_id={{ alert.alert_id }}" in content.body_template
 
 
 @pytest.mark.django_db
@@ -557,6 +610,7 @@ def test_alert_operation_default_email_content_can_be_previewed(template_client)
     assert response.data["subject"] == "【测试发送】【待认领】【警告】CPU 使用率过高"
     assert "该告警已由 admin 分派给 zhangsan，请及时认领并处理。" in response.data["body"]
     assert "<strong>待响应</strong>" in response.data["body"]
+    assert "http://testserver/alarm/alarms?alert_id=ALERT-PREVIEW" in response.data["body"]
     assert response.data["missing_fields"] == []
 
 

@@ -54,6 +54,13 @@ const isDbTool = (tool?: SelectTool | null) =>
   isPostgresTool(tool) || isEsTool(tool) || isJenkinsTool(tool) || isKubernetesTool(tool) ||
   isActiveDirectoryTool(tool);
 
+/** 连接类工具自带配置表单；其余工具只有声明了 kwargs 才需要打开配置。 */
+export const toolHasConfigurableFields = (tool?: SelectTool | null) => {
+  if (!tool || isMonitorToolConfig(tool)) return false;
+  if (isDbTool(tool)) return true;
+  return (tool.kwargs || []).some((item) => Boolean(String(item?.key || '').trim()));
+};
+
 const isSameToolVariant = (tool?: SelectTool | null, defaultTool?: SelectTool | null) => {
   if (!tool || !defaultTool) return false;
   return (tool.rawName || tool.name) === (defaultTool.rawName || defaultTool.name);
@@ -297,15 +304,17 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
                     </span>
                   </div>
                   <div className="ml-2 flex shrink-0 items-center gap-1">
-                    <Button
-                      type="link"
-                      size="small"
-                      className="h-6 px-1 text-[11px]"
-                      onClick={() => openEditModal(tool)}
-                    >
-                      <EditOutlined className="text-xs" />
-                      <span className="ml-0.5">{t('skill.configureTool')}</span>
-                    </Button>
+                    {toolHasConfigurableFields(tool) && (
+                      <Button
+                        type="link"
+                        size="small"
+                        className="h-6 px-1 text-[11px]"
+                        onClick={() => openEditModal(tool)}
+                      >
+                        <EditOutlined className="text-xs" />
+                        <span className="ml-0.5">{t('skill.configureTool')}</span>
+                      </Button>
+                    )}
                     <DeleteOutlined
                       className="cursor-pointer p-1 text-xs text-[var(--color-text-4)] transition-colors hover:text-red-500"
                       onClick={() => removeSelectedTool(tool.id)}

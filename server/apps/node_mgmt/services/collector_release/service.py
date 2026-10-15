@@ -539,7 +539,11 @@ class CollectorReleaseService:
                 issues, parsed = parse_release_path(staged["path"])
             except OSError as exc:
                 # 暂存包落在处理预览的那个实例本地，多副本部署下 apply 可能被路由到别的实例。
-                logger.warning("collector release staging file unreadable: token=%s error_type=%s", token, type(exc).__name__)
+                logger.warning(
+                    "collector release staging file unreadable: error_type=%s collector=%s",
+                    type(exc).__name__,
+                    collector_name,
+                )
                 cache.delete(f"{C.STAGING_CACHE_PREFIX}{token}")
                 raise ValidationAppException("预览暂存包已失效，请重新选择文件预览。", data={"code": PREVIEW_EXPIRED}) from exc
             extra, meta = ([], {})

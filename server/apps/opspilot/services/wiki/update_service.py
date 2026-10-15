@@ -21,11 +21,15 @@ from apps.opspilot.models import (
 )
 from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki import decision_service
+from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.material_build_queue_service import QUEUE_ITEM_TRIGGER
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, new_material_call_budget
+
+# 与资料列表「构建中 / 排队中」一致。删除前必须在行锁内再验，避免预检后的窗口。
+BUSY_MATERIAL_DELETE_STATUSES = frozenset({"queued", "parsing", "building"})
 
 
 def affected_pages(material):
@@ -67,13 +71,8 @@ def _version_impact_payload(version):
     }
 
 
-def preview_material_deletion(material):
-    """预览物理删除影响；归档页面可恢复，但被删资料来源不可恢复。"""
-    pages = _material_evidence_pages(material)
-    page_ids = [page.id for page in pages]
-    protected_page_ids = set(
-        PageEvidence.objects.filter(page_id__in=page_ids).exclude(material=material).values_list("page_id", flat=True).distinct()
-    )
+def _deletion_impact(pages, protected_page_ids):
+    """按「选中资料之外是否还有来源」划分删除影响。"""
     active_pages = [page for page in pages if page.status == "active"]
     archived_pages = [page for page in pages if page.status == "archived"]
     will_lose_reason = "此页面唯一来源,删除后会变 source_invalid"
@@ -93,8 +92,6 @@ def preview_material_deletion(material):
     shared_source_protected = [_page_impact_payload(page, shared_reason) for page in active_pages if page.id in protected_page_ids]
     archived_recoverable = [_page_impact_payload(page, archived_reason) for page in archived_pages]
     return {
-        "material_id": material.id,
-        "material_name": material.name,
         "affected_count": len(affected),
         "will_be_source_invalid_count": len(will_be_source_invalid),
         "shared_source_protected_count": len(shared_source_protected),
@@ -103,6 +100,48 @@ def preview_material_deletion(material):
         "will_be_source_invalid": will_be_source_invalid,
         "shared_source_protected": shared_source_protected,
         "archived_recoverable": archived_recoverable,
+    }
+
+
+def preview_material_deletion(material):
+    """预览物理删除影响；归档页面可恢复，但被删资料来源不可恢复。"""
+    pages = _material_evidence_pages(material)
+    page_ids = [page.id for page in pages]
+    protected_page_ids = set(
+        PageEvidence.objects.filter(page_id__in=page_ids).exclude(material=material).values_list("page_id", flat=True).distinct()
+    )
+    return {
+        "material_id": material.id,
+        "material_name": material.name,
+        **_deletion_impact(pages, protected_page_ids),
+    }
+
+
+def preview_materials_deletion(materials):
+    """预览批量删除。页面只在选中集合之外仍有来源时视为共享保护。"""
+    ordered = list(materials)
+    selected_ids = [material.id for material in ordered]
+    if not selected_ids:
+        return {
+            "material_ids": [],
+            "material_count": 0,
+            "materials": [],
+            **_deletion_impact([], set()),
+        }
+    knowledge_base_id = ordered[0].knowledge_base_id
+    page_ids = list(PageEvidence.objects.filter(material_id__in=selected_ids).values_list("page_id", flat=True).distinct())
+    pages = list(KnowledgePage.objects.filter(knowledge_base_id=knowledge_base_id, id__in=page_ids).order_by("id"))
+    protected_page_ids = set(
+        PageEvidence.objects.filter(page_id__in=[page.id for page in pages])
+        .exclude(material_id__in=selected_ids)
+        .values_list("page_id", flat=True)
+        .distinct()
+    )
+    return {
+        "material_ids": selected_ids,
+        "material_count": len(selected_ids),
+        "materials": [{"id": material.id, "name": material.name} for material in ordered],
+        **_deletion_impact(pages, protected_page_ids),
     }
 
 
@@ -1144,6 +1183,12 @@ def handle_material_deletion(
     with transaction.atomic():
         knowledge_base = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base_id)
         locked = Material.objects.select_for_update().get(pk=material_id, knowledge_base=knowledge_base)
+        if locked.status in BUSY_MATERIAL_DELETE_STATUSES:
+            raise BuildGenerationError(
+                "material_delete_in_progress",
+                "资料正在构建中，请等待完成后再删除",
+                retryable=True,
+            )
         if not PageEvidence.objects.filter(material_id=material_id).exists():
             return _delete_unpublished_material(locked, operator=operator)
     return _handle_material_deletion_generation(
@@ -1152,6 +1197,49 @@ def handle_material_deletion(
         classification_root_id=classification_root_id,
         frozen_identity=frozen_identity,
     )
+
+
+def delete_materials(materials, operator=""):
+    """按给定顺序逐条删除。中途失败时停住，已成功的删除保持生效。"""
+    ordered = list(materials)
+    deleted = []
+    build_record_ids = []
+    pending_review = 0
+    failed = None
+    not_attempted = []
+    knowledge_base_id = ordered[0].knowledge_base_id if ordered else None
+    for index, material in enumerate(ordered):
+        try:
+            current = Material.objects.get(pk=material.pk, knowledge_base_id=material.knowledge_base_id)
+        except Material.DoesNotExist:
+            failed = {"id": material.pk, "code": "material_not_found", "message": "资料不存在"}
+            not_attempted = [item.pk for item in ordered[index + 1 :]]
+            break
+        try:
+            build = handle_material_deletion(current, operator=operator)
+        except BuildGenerationError as exc:
+            # traceback 已由 generation 删除边界记录，这里只停止后续资料。
+            failed = {"id": material.pk, "code": exc.code, "message": str(exc)}
+            not_attempted = [item.pk for item in ordered[index + 1 :]]
+            break
+        deleted.append(material.pk)
+        build_record_ids.append(build.id)
+        pending_review += int((build.counts or {}).get("pending_review") or 0)
+    if knowledge_base_id is not None:
+        logger.info(
+            "wiki materials batch deleted knowledge_base=%s deleted=%s failed=%s",
+            knowledge_base_id,
+            len(deleted),
+            failed["id"] if failed else 0,
+        )
+    return {
+        "deleted": deleted,
+        "deleted_count": len(deleted),
+        "failed": failed,
+        "not_attempted": not_attempted,
+        "pending_review": pending_review,
+        "build_record_ids": build_record_ids,
+    }
 
 
 def _maintenance_errors(maintenance):

@@ -959,6 +959,17 @@ def test_get_active_alert_top(user_info):
 
 
 @pytest.mark.django_db
+def test_get_active_alert_top_created_at_uses_user_timezone_clock(user_info):
+    alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1], status=AlertStatus.PENDING)
+    Alert.objects.filter(pk=alert.pk).update(created_at=datetime.datetime(2026, 4, 27, 3, 22, 33, tzinfo=datetime.timezone.utc))
+
+    result = N.get_active_alert_top(limit=5, user_info={**user_info, "timezone": "Asia/Shanghai"})
+
+    assert result["result"] is True
+    assert result["data"][0]["created_at"] == "2026-04-27 11:22:33"
+
+
+@pytest.mark.django_db
 def test_get_active_alert_top_limit_normalized(user_info):
     result = N.get_active_alert_top(limit=0, user_info=user_info)
     assert result["result"] is True

@@ -22,7 +22,8 @@ import { deepClone } from '@/app/alarm/utils/common';
 import { useCommon } from '@/app/alarm/context/common';
 import { baseStates, allStates } from '@/app/alarm/constants/alarm';
 import { withAlarmSearchCondition } from './alarmListQuery';
-import { Checkbox, Tabs, Spin, Tooltip, Switch } from 'antd';
+import { applyAlarmLocateParams } from './alarmDetailLink';
+import { Checkbox, Tabs, Spin, Tooltip, Switch, message } from 'antd';
 import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { processDataForStackedBarChart } from '@/app/alarm/utils/alarmChart';
 import {
@@ -60,6 +61,7 @@ const Alert: React.FC = () => {
   const initialResourceId = searchParams.get('resource_id') || '';
   const initialActivate = searchParams.get('activate') || '';
   const initialStatus = searchParams.get('status') || '';
+  const locateAlertId = (searchParams.get('alert_id') || '').trim();
   const { levelList, levelMap } = useCommon();
   const { getAlarmList } = useAlarmApi();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -67,12 +69,17 @@ const Alert: React.FC = () => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const tableRequestIdRef = useRef(0);
   const chartRequestIdRef = useRef(0);
+  const [locatingAlert, setLocatingAlert] = useState<boolean>(Boolean(locateAlertId));
+  const locateMissNotifiedRef = useRef(false);
   const [searchCondition, setSearchCondition] =
-    useState<SearchFilterCondition | null>(() => (
-      initialResourceId
+    useState<SearchFilterCondition | null>(() => {
+      if (locateAlertId) {
+        return { field: 'alert_id', type: 'str', value: locateAlertId };
+      }
+      return initialResourceId
         ? { field: 'resource_id', type: 'str', value: initialResourceId }
-        : null
-    ));
+        : null;
+    });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [chartLoading, setChartLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<AlarmTableDataItem[]>([]);
@@ -81,7 +88,9 @@ const Alert: React.FC = () => {
     timeRange: getRelativeTimeRange(DEFAULT_TIME_RANGE_MINUTES),
     originValue: DEFAULT_TIME_RANGE_MINUTES,
   }));
-  const [activeTab, setActiveTab] = useState<string>('activeAlarms');
+  const [activeTab, setActiveTab] = useState<string>(
+    locateAlertId ? 'historicalAlarms' : 'activeAlarms',
+  );
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
   const [myAlarms, setMyAlarms] = useState<boolean>(() => {
     const { myAlarms } = getSettings();
@@ -185,6 +194,7 @@ const Alert: React.FC = () => {
     pagination.pageSize,
     myAlarms,
     searchCondition,
+    locatingAlert,
   ]);
 
   useEffect(() => {
@@ -201,6 +211,7 @@ const Alert: React.FC = () => {
     pagination.current,
     pagination.pageSize,
     myAlarms,
+    locatingAlert,
   ]);
 
   useEffect(() => {
@@ -216,9 +227,11 @@ const Alert: React.FC = () => {
     filters.push_source_ids,
     myAlarms,
     searchCondition,
+    locatingAlert,
   ]);
 
   const changeTab = useCallback((val: string) => {
+    setLocatingAlert(false);
     setPagination((prev) => ({ ...prev, current: 1 }));
     setChartData([]);
     setActiveTab(val);
@@ -229,7 +242,7 @@ const Alert: React.FC = () => {
     timerRef.current = null;
   };
 
-  const getParams = (condition = null) => {
+  const getParams = (condition = null, locate = locatingAlert) => {
     const conditionValue = condition || searchCondition;
     const queryTimeRange = timeFilter.originValue
       ? getRelativeTimeRange(timeFilter.originValue)
@@ -254,7 +267,11 @@ const Alert: React.FC = () => {
       has_incident: '',
       resource_type: initialResourceType,
     };
-    return withAlarmSearchCondition(params, conditionValue);
+    const queried = withAlarmSearchCondition(params, conditionValue);
+    if (locate && locateAlertId) {
+      return applyAlarmLocateParams(queried, locateAlertId);
+    }
+    return queried;
   };
 
   const handleTableChange = useCallback((pag: any) => {
@@ -262,9 +279,9 @@ const Alert: React.FC = () => {
     setPagination(pag);
   }, []);
 
-  const getAlarmTableData = async (type: string, condition?: any) => {
+  const getAlarmTableData = async (type: string, condition?: any, locate = locatingAlert) => {
     const requestId = ++tableRequestIdRef.current;
-    const params: any = getParams(condition);
+    const params: any = getParams(condition, locate);
     try {
       setTableLoading(type !== 'timer');
       if (activeTab === 'activeAlarms') {
@@ -278,6 +295,16 @@ const Alert: React.FC = () => {
         ...pre,
         total: data.count,
       }));
+      if (
+        locate
+        && locateAlertId
+        && type !== 'timer'
+        && !locateMissNotifiedRef.current
+        && !data.items?.some((item: AlarmTableDataItem) => item.alert_id === locateAlertId)
+      ) {
+        locateMissNotifiedRef.current = true;
+        message.warning(t('alarms.detailLinkNotFound'));
+      }
     } finally {
       if (requestId === tableRequestIdRef.current) {
         setTableLoading(false);
@@ -336,6 +363,7 @@ const Alert: React.FC = () => {
 
   const onTimeChange = useCallback(
     (val: number[], originValue: number | null) => {
+      setLocatingAlert(false);
       setTimeFilter({
         timeRange: val,
         originValue,
@@ -348,6 +376,7 @@ const Alert: React.FC = () => {
     checkedValues: string[],
     field: keyof FiltersConfig
   ) => {
+    setLocatingAlert(false);
     setFilters((prev) => ({
       ...prev,
       [field]: checkedValues,
@@ -359,13 +388,15 @@ const Alert: React.FC = () => {
   }, []);
 
   const clearFilters = useCallback((field: keyof FiltersConfig) => {
+    setLocatingAlert(false);
     setFilters((prev: any) => ({ ...prev, [field]: [] }));
   }, []);
 
   const onFilterSearch = (condition: SearchFilterCondition) => {
+    setLocatingAlert(false);
     setSearchCondition(condition);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    getAlarmTableData('search', condition);
+    getAlarmTableData('search', condition, false);
   };
 
   const alarmAttrList = useMemo(() => [
@@ -484,6 +515,7 @@ const Alert: React.FC = () => {
                   )}
                   <SearchFilter
                     attrList={alarmAttrList}
+                    condition={searchCondition || undefined}
                     onSearch={onFilterSearch}
                   />
                   <DeclareIncident
@@ -505,6 +537,7 @@ const Alert: React.FC = () => {
               pagination={pagination}
               loading={tableLoading}
               selectedRowKeys={selectedRowKeys}
+              openAlertId={locatingAlert ? locateAlertId : ''}
               onSelectionChange={setSelectedRowKeys}
               onChange={handleTableChange}
               onRefresh={onRefresh}

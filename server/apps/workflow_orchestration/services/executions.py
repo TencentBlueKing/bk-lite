@@ -140,6 +140,39 @@ def _remote_maps_to_terminal(remote_status: Any) -> bool:
     return remote_status in TERMINAL_STATUSES
 
 
+_FAILED_REMOTE_TASK_STATUSES = {"FAILED", "FAILED_WITH_TERMINAL_ERROR", "TIMED_OUT", "TIME_OUT"}
+_IGNORED_REMOTE_TASK_TYPES = {"FORK", "JOIN", "FORK_JOIN", "DECISION", "SWITCH", "TERMINATE", "EXCLUSIVE_JOIN"}
+
+
+def _latest_failed_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for index, task in enumerate(tasks):
+        task_type = str(task.get("taskType") or "").upper()
+        if task_type in _IGNORED_REMOTE_TASK_TYPES:
+            continue
+        key = str(task.get("referenceTaskName") or task.get("taskId") or index)
+        latest[key] = task
+    return [task for task in latest.values() if str(task.get("status") or "").upper() in _FAILED_REMOTE_TASK_STATUSES]
+
+
+def _task_failure_text(execution: WorkflowExecution, task: dict[str, Any]) -> str:
+    reason = str(task.get("reasonForIncompletion") or "")
+    if reason and not reason.endswith("atom execution failed"):
+        return reason
+    task_id = str(task.get("taskId") or "")
+    reference = str(task.get("referenceTaskName") or "")
+    atom = None
+    if task_id:
+        atom = execution.atom_executions.filter(conductor_task_id=task_id).exclude(error_message="").order_by("-id").first()
+    if atom is None and reference:
+        atom = (
+            execution.atom_executions.filter(task_reference=reference, status="FAILED").exclude(error_message="").order_by("-attempt", "-id").first()
+        )
+    if atom is not None and atom.error_message:
+        return atom.error_message
+    return reason or "节点执行失败"
+
+
 def apply_remote_execution(execution: WorkflowExecution, remote: dict[str, Any]) -> WorkflowExecution:
     remote_status = remote.get("status")
     valid_statuses = {choice for choice, _ in WorkflowExecution.Status.choices}
@@ -157,16 +190,23 @@ def apply_remote_execution(execution: WorkflowExecution, remote: dict[str, Any])
         execution.status = WorkflowExecution.Status.WAITING_APPROVAL
     execution.error_message = str(remote.get("reasonForIncompletion", "") or "")[:500]
     if allow_status_overwrite and remote_status == "COMPLETED":
-        execution.status = WorkflowExecution.Status.SUCCEEDED
-        failed_targets = []
-        for task in remote_tasks:
-            output = task.get("outputData") if isinstance(task.get("outputData"), dict) else {}
-            summary = output.get("summary") if isinstance(output.get("summary"), dict) else {}
-            failed = summary.get("failed")
-            if isinstance(failed, int) and not isinstance(failed, bool) and failed > 0:
-                failed_targets.append(failed)
-        execution.warning_count = sum(failed_targets)
-        execution.has_warnings = execution.warning_count > 0
+        failed_tasks = _latest_failed_tasks(remote_tasks)
+        if failed_tasks:
+            execution.status = WorkflowExecution.Status.FAILED
+            execution.error_message = _task_failure_text(execution, failed_tasks[-1])[:500]
+            execution.warning_count = 0
+            execution.has_warnings = False
+        else:
+            execution.status = WorkflowExecution.Status.SUCCEEDED
+            failed_targets = []
+            for task in remote_tasks:
+                output = task.get("outputData") if isinstance(task.get("outputData"), dict) else {}
+                summary = output.get("summary") if isinstance(output.get("summary"), dict) else {}
+                failed = summary.get("failed")
+                if isinstance(failed, int) and not isinstance(failed, bool) and failed > 0:
+                    failed_targets.append(failed)
+            execution.warning_count = sum(failed_targets)
+            execution.has_warnings = execution.warning_count > 0
     if execution.status in TERMINAL_STATUSES:
         execution.finished_at = _epoch_ms_datetime(remote.get("endTime")) or execution.finished_at or timezone.now()
     execution.save(

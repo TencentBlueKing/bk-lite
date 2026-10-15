@@ -48,9 +48,12 @@ import {
   buildTableQueryList,
 } from '@/app/ops-analysis/utils/tableQueryList';
 import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
+import {
+  opsTableCellTextStyle,
+  resolveOpsTableColumnWidth,
+} from '@/app/ops-analysis/utils/opsTableColumn';
 
 const { RangePicker } = DatePicker;
-const DEFAULT_CELL_MAX_WIDTH = 260;
 const TOOLTIP_MAX_WIDTH = 480;
 const TOOLTIP_STYLES = {
   root: { maxWidth: TOOLTIP_MAX_WIDTH },
@@ -253,10 +256,12 @@ const ComTable: React.FC<ComTableProps> = ({
       const columnActions = (config?.actions || []).filter(
         (action) => action.columnKey === col.key,
       );
+      const columnWidth = resolveOpsTableColumnWidth(col.width);
       const column: any = {
         title: col.title,
         dataIndex: col.key,
         key: col.key,
+        ...(columnWidth !== undefined ? { width: columnWidth } : {}),
         ellipsis: { showTitle: false },
         render: (text: any, record: TableDataItem) => {
           if (col.columnType === 'actions') {
@@ -302,17 +307,7 @@ const ComTable: React.FC<ComTableProps> = ({
               title={formattedPresentation.displayText}
               styles={TOOLTIP_STYLES}
             >
-              <div
-                style={{
-                  maxWidth: DEFAULT_CELL_MAX_WIDTH,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  ...(formattedPresentation.color
-                    ? { color: formattedPresentation.color, fontWeight: 600 }
-                    : {}),
-                }}
-              >
+              <div style={opsTableCellTextStyle(formattedPresentation.color)}>
                 {formattedPresentation.displayText}
               </div>
             </Tooltip>

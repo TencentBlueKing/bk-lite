@@ -5,15 +5,17 @@ from django.db.models import Q
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.current_team_scope import _normalize_organization_ids
-from apps.system_mgmt.models import Group
+from apps.system_mgmt.models import Group, Role
 from apps.system_mgmt.models import User as SystemUser
-from apps.system_mgmt.openapi_serializers import (
-    SystemMgmtGroupsQuerySerializer,
-    SystemMgmtUsersQuerySerializer,
-)
+from apps.system_mgmt.openapi_serializers import SystemMgmtGroupsQuerySerializer, SystemMgmtUsersQuerySerializer
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
-_ORG_SCOPE = "组织口径：系统令牌授权范围为单个 Acting-Team；不传 group_id 时从该组织查起；include_children 默认 false，为 true 时只加入执行身份有权访问的子组织"
+_ORG_SCOPE = (
+    "组织口径：系统令牌授权范围为单个 Acting-Team；不传 group_id 时从该组织查起；"
+    "include_children 默认 false，为 true 时只加入执行身份有权访问的子组织。"
+    "平台超管（内置 admin 或 system-manager 的 admin，含组织继承角色）不受该范围限制，"
+    "不传 group_id 时返回全部活动组织与全部用户"
+)
 _TEAM_OUT_OF_SCOPE_MESSAGE = "无权访问该组织"
 _GROUP_UNAVAILABLE_MESSAGE = "指定组织不存在或已归档"
 
@@ -51,6 +53,28 @@ def _actor_group_ids(actor):
         return []
 
 
+def _actor_is_platform_superuser(actor):
+    """平台超管只认持久化角色，不接受请求参数声明。"""
+    from apps.system_mgmt.nats.common import get_user_all_roles
+
+    role_ids = get_user_all_roles(actor)
+    if not role_ids:
+        return False
+    return Role.objects.filter(id__in=role_ids, name="admin").filter(Q(app="") | Q(app="system-manager")).exists()
+
+
+def _active_group_ids():
+    return list(GroupUtils.active_queryset().order_by("id").values_list("id", flat=True))
+
+
+def _superuser_query_group_ids(group_id, include_children):
+    if group_id is None:
+        return _active_group_ids()
+    if include_children:
+        return sorted(int(gid) for gid in GroupUtils.get_group_with_descendants(group_id))
+    return [int(group_id)]
+
+
 def _authorized_group_ids(user_groups, team_ids, include_children):
     allowed = set()
     for team_id in team_ids:
@@ -65,24 +89,32 @@ def _authorized_group_ids(user_groups, team_ids, include_children):
 
 
 def _resolve_query_group_ids(*, team, user_info, group_id, include_children):
-    """按网关注入身份解析本次可查询的活动组织 id 集合。越权/缺失返回软错误。"""
+    """按网关注入身份解析本次可查询的活动组织 id 集合。
+
+    返回 (query_ids, error, superuser)。平台超管豁免组织范围：
+    不传 group_id 时 query_ids 为全部活动组织；传了则按该组织（及子组织）查询，不再校验归属。
+    """
     injected = _injected_team_ids(team)
-    if group_id is not None:
-        if _group_unavailable(group_id):
-            return None, _soft_error(_GROUP_UNAVAILABLE_MESSAGE)
-    elif len(injected) == 1 and _group_unavailable(injected[0]):
-        return None, _soft_error(_GROUP_UNAVAILABLE_MESSAGE)
+    if group_id is not None and _group_unavailable(group_id):
+        return None, _soft_error(_GROUP_UNAVAILABLE_MESSAGE), False
 
     actor = _load_actor(user_info)
-    if actor is None or not injected:
-        return None, _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE)
+    if actor is None:
+        return None, _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE), False
+    if _actor_is_platform_superuser(actor):
+        return _superuser_query_group_ids(group_id, include_children), None, True
+
+    if not injected:
+        return None, _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE), False
+    if group_id is None and len(injected) == 1 and _group_unavailable(injected[0]):
+        return None, _soft_error(_GROUP_UNAVAILABLE_MESSAGE), False
 
     user_groups = _actor_group_ids(actor)
     allowed = _authorized_group_ids(user_groups, injected, include_children)
     query_root = group_id if group_id is not None else None
     if query_root is not None:
         if query_root not in allowed:
-            return None, _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE)
+            return None, _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE), False
         query_ids = GroupUtils.get_user_authorized_child_groups(
             user_groups,
             query_root,
@@ -91,8 +123,8 @@ def _resolve_query_group_ids(*, team, user_info, group_id, include_children):
     else:
         query_ids = sorted(allowed)
     if not query_ids:
-        return None, _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE)
-    return [int(group_pk) for group_pk in query_ids], None
+        return None, _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE), False
+    return [int(group_pk) for group_pk in query_ids], None, False
 
 
 def _users_in_groups_query(group_ids):
@@ -165,11 +197,7 @@ def _apply_user_selectors(queryset, *, user_id, username, usernames, search, dis
     elif usernames:
         queryset = queryset.filter(username__in=list(usernames))
     elif search:
-        queryset = queryset.filter(
-            Q(username__icontains=search)
-            | Q(display_name__icontains=search)
-            | Q(email__icontains=search)
-        )
+        queryset = queryset.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
     if disabled is not None:
         queryset = queryset.filter(disabled=bool(disabled))
     return queryset
@@ -198,7 +226,7 @@ def openapi_list_users(
     team=None,
     user_info=None,
 ):
-    query_ids, error = _resolve_query_group_ids(
+    query_ids, error, superuser = _resolve_query_group_ids(
         team=team,
         user_info=user_info,
         group_id=group_id,
@@ -206,7 +234,12 @@ def openapi_list_users(
     )
     if error is not None:
         return error
-    queryset = SystemUser.objects.filter(_users_in_groups_query(query_ids))
+    if superuser and group_id is None:
+        queryset = SystemUser.objects.all()
+    elif not query_ids:
+        return _paginate([], page, page_size)
+    else:
+        queryset = SystemUser.objects.filter(_users_in_groups_query(query_ids))
     queryset = _apply_user_selectors(
         queryset,
         user_id=user_id,
@@ -229,7 +262,8 @@ def openapi_list_users(
         .order_by("id")
         .distinct()
     )
-    serialized = [_serialize_user(user, query_ids) for user in users]
+    visible_group_ids = _active_group_ids() if superuser else query_ids
+    serialized = [_serialize_user(user, visible_group_ids) for user in users]
     return _paginate(serialized, page, page_size)
 
 
@@ -251,7 +285,7 @@ def openapi_list_groups(
     team=None,
     user_info=None,
 ):
-    query_ids, error = _resolve_query_group_ids(
+    query_ids, error, _ = _resolve_query_group_ids(
         team=team,
         user_info=user_info,
         group_id=group_id,
@@ -259,11 +293,9 @@ def openapi_list_groups(
     )
     if error is not None:
         return error
-    groups = list(
-        GroupUtils.active_queryset(id__in=query_ids)
-        .only("id", "name", "parent_id", "is_virtual")
-        .order_by("id")
-    )
+    if not query_ids:
+        return _paginate([], page, page_size)
+    groups = list(GroupUtils.active_queryset(id__in=query_ids).only("id", "name", "parent_id", "is_virtual").order_by("id"))
     result_ids = {group.id for group in groups}
     serialized = [_serialize_group(group, result_ids) for group in groups]
     return _paginate(serialized, page, page_size)

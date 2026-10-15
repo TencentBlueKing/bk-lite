@@ -1133,7 +1133,7 @@ class Sidecar:
                     add_config = collector_obj.default_config.get("add_config", "")
                     if add_config:
                         config_template = config_template + "\n" + add_config
-                        logger.info(f"Node {node.id} is a container node, appending add_config for {collector_obj.name}")
+                        logger.debug(f"Node {node.id} is a container node, appending add_config for {collector_obj.name}")
 
                 # 渲染模板
                 tpl = build_sandboxed_env().from_string(config_template)
@@ -1151,9 +1151,9 @@ class Sidecar:
 
                     if update_fields:
                         existing_pre_configuration.save(update_fields=update_fields)
-                        logger.info(f"Node {node.id} updated default configuration for collector {collector_obj.name}.")
+                        logger.debug(f"Node {node.id} updated default configuration for collector {collector_obj.name}.")
                     else:
-                        logger.info(f"Node {node.id} default configuration for collector {collector_obj.name} is up to date.")
+                        logger.debug(f"Node {node.id} default configuration for collector {collector_obj.name} is up to date.")
                     continue
 
                 # 如果已经存在关联的自定义配置则跳过，避免覆盖用户配置

@@ -31,6 +31,7 @@ export interface NetworkTopologyX6GraphData {
 
 export interface NetworkTopologyToolbarConfig {
   prefix?: React.ReactNode;
+  leading?: React.ReactNode;
   align?: 'left' | 'right' | 'split';
   layoutMode?: string;
   layoutOptions?: Array<{ label: React.ReactNode; value: string }>;
@@ -910,6 +911,7 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
           />
         )}
         <div style={toolbarActionsStyle}>
+        {toolbar.leading}
         {showResetLayout && (
           <Tooltip title={toolbarLabels.resetLayout}>
             <Button

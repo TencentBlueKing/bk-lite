@@ -3,8 +3,9 @@
 import { DeleteOutlined, InboxOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { Alert, App, Button, Collapse, Form, Input, InputNumber, Radio, Select, Upload } from 'antd';
 import type { UploadFile } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { useUserInfoContext } from '@/context/userInfo';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 
@@ -204,6 +205,42 @@ function normalizeRecipientIds(value: unknown, items?: JsonSchema): string[] {
   });
 }
 
+const EXECUTION_ACTOR_RECIPIENT = '${workflow.input.__system.actor_name}';
+
+function currentUserRecipientId(items: JsonSchema | undefined, user: { userId?: string; username?: string }): string {
+  const enumIds = new Set((items?.enum || []).map(String));
+  const id = String(user.userId || '');
+  if (id && enumIds.has(id)) return id;
+  const username = String(user.username || '');
+  if (!username) return '';
+  const usernames = items?.['x-enum-usernames'] || {};
+  for (const [enumId, name] of Object.entries(usernames)) {
+    if (String(name) === username && enumIds.has(String(enumId))) return String(enumId);
+  }
+  const labels = items?.['x-enum-labels'] || {};
+  for (const [enumId, label] of Object.entries(labels)) {
+    const match = /\(([^)]+)\)$/.exec(String(label));
+    if (match?.[1] === username && enumIds.has(String(enumId))) return String(enumId);
+  }
+  return '';
+}
+
+function displayActorRecipient(stored: string[], actorId: string): string[] {
+  if (!actorId) return stored;
+  return [...new Set(stored.map((item) => (item === EXECUTION_ACTOR_RECIPIENT ? actorId : item)))];
+}
+
+function storedRecipientsFromDisplay(next: string[], stored: string[], actorId: string): string[] {
+  if (!actorId || !stored.includes(EXECUTION_ACTOR_RECIPIENT) || stored.includes(actorId)) return next;
+  if (!next.includes(actorId)) return next.filter((item) => item !== EXECUTION_ACTOR_RECIPIENT);
+  let replaced = false;
+  return next.flatMap((item) => {
+    if (item !== actorId || replaced) return [item];
+    replaced = true;
+    return [EXECUTION_ACTOR_RECIPIENT];
+  });
+}
+
 const NOTIFICATION_CHANNEL_TYPE: Record<string, string> = {
   EMAIL: 'email',
   WECOM_BOT: 'enterprise_wechat_bot',
@@ -232,6 +269,7 @@ function notificationChannelOptions(schema: JsonSchema, notificationType: string
 
 function NotificationFields({ schema, value, references, readOnly, onChange }: Pick<Props, 'schema' | 'value' | 'references' | 'readOnly' | 'onChange'>) {
   const { t } = useTranslation();
+  const { userId, username } = useUserInfoContext();
   const setField = (key: string, next: unknown) => onChange({ ...value, [key]: next });
   const typeSchema = field(schema, 'notification_type');
   const channelSchema = field(schema, 'channel_id');
@@ -255,6 +293,14 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
     () => normalizeRecipientIds(value.recipients, recipientItems),
     [recipientItems, value.recipients],
   );
+  const actorRecipientId = useMemo(
+    () => currentUserRecipientId(recipientItems, { userId, username }),
+    [recipientItems, userId, username],
+  );
+  const displayedRecipients = useMemo(
+    () => displayActorRecipient(normalizedRecipients, actorRecipientId),
+    [actorRecipientId, normalizedRecipients],
+  );
 
   useEffect(() => {
     if (!Array.isArray(value.recipients)) return;
@@ -263,13 +309,20 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
     setField('recipients', normalizedRecipients);
   }, [normalizedRecipients, value.recipients]);
 
+  // 用户主动清空后不再强行回填；仅在「无值初始默认」或「当前渠道与类别不匹配」时落到第一项。
+  const channelClearedRef = useRef(false);
   useEffect(() => {
     if (readOnly) return;
     const first = channelOptions[0]?.value;
     const currentValid = channelOptions.some((item) => String(item.value) === String(value.channel_id));
-    if (currentValid) return;
+    if (currentValid) {
+      channelClearedRef.current = false;
+      return;
+    }
+    const empty = value.channel_id == null || value.channel_id === '';
+    if (empty && channelClearedRef.current) return;
     if (first === undefined) {
-      if (value.channel_id != null && value.channel_id !== '') setField('channel_id', undefined);
+      if (!empty) setField('channel_id', undefined);
       return;
     }
     setField('channel_id', first);
@@ -278,12 +331,18 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
   const emailRequired = notificationType === 'EMAIL';
 
   return <>
-    <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationCategory', '通知类别')} required><Radio.Group disabled={readOnly} value={notificationType} options={typeOptions} onChange={(event) => onChange({ ...value, notification_type: event.target.value, channel_id: undefined })} /></Form.Item>
+    <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationCategory', '通知类别')} required><Radio.Group disabled={readOnly} value={notificationType} options={typeOptions} onChange={(event) => {
+      channelClearedRef.current = false;
+      onChange({ ...value, notification_type: event.target.value, channel_id: undefined });
+    }} /></Form.Item>
     <div className="relative">
-      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationMethod', '通知方式')} required={emailRequired || schema.required?.includes('channel_id')}><Select showSearch optionFilterProp="label" allowClear disabled={readOnly} value={channelValue} options={channelOptions} placeholder={channelOptions.length ? t('workflowOrchestration.editor.selectNotificationMethod', '请选择通知方式') : t('workflowOrchestration.editor.noNotificationChannels', '暂无可用通知渠道')} onChange={(next) => setField('channel_id', next)} /></Form.Item>
+      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationMethod', '通知方式')} required={emailRequired || schema.required?.includes('channel_id')}><Select showSearch optionFilterProp="label" allowClear disabled={readOnly} value={channelValue} options={channelOptions} placeholder={channelOptions.length ? t('workflowOrchestration.editor.selectNotificationMethod', '请选择通知方式') : t('workflowOrchestration.editor.noNotificationChannels', '暂无可用通知渠道')} onChange={(next) => {
+        channelClearedRef.current = next == null;
+        setField('channel_id', next);
+      }} /></Form.Item>
       {!readOnly ? <Button className="absolute right-0 top-0 h-auto px-0 text-xs" type="link" size="small" icon={<PlusOutlined />} href="/system-manager/channel" target="_blank">{t('workflowOrchestration.editor.addNotificationChannel', '新增通知渠道')}</Button> : null}
     </div>
-    {notificationType === 'EMAIL' && schema?.properties?.recipients ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationPeople', '通知人')} required><SchemaNodeField schema={recipientSchema} value={normalizedRecipients} references={references} onChange={(next) => setField('recipients', normalizeRecipientIds(next, recipientItems))} /></Form.Item> : null}
+    {notificationType === 'EMAIL' && schema?.properties?.recipients ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationPeople', '通知人')} required><SchemaNodeField schema={recipientSchema} value={displayedRecipients} references={references} onChange={(next) => setField('recipients', storedRecipientsFromDisplay(normalizeRecipientIds(next, recipientItems), normalizedRecipients, actorRecipientId))} /></Form.Item> : null}
     {notificationType === 'EMAIL' && schema?.properties?.title ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationTitle', '通知标题')} required><SchemaNodeField schema={field(schema, 'title')} value={value.title} references={references} onChange={(next) => setField('title', next)} /></Form.Item> : null}
     {notificationType === 'EMAIL' && schema?.properties?.report_artifact ? (
       <Form.Item

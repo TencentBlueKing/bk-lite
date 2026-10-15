@@ -204,6 +204,246 @@ def test_generate_attachment_file_creates_workflow_asset():
 
 
 @pytest.mark.django_db
+def test_generate_attachment_file_versions_same_document():
+    from apps.opspilot.metis.llm.tools.attachment.generate_attachment import generate_attachment_file
+
+    config = {
+        "configurable": {
+            "execution_id": "exec-version",
+            "node_id": "agent_node",
+            "flow_id": "flow-1",
+            "user_id": "tester",
+            "attachment_versioning": True,
+            "prior_attachment_filenames": [],
+        }
+    }
+    first = generate_attachment_file.func(filename="广州旅游介绍.pptx", content="# 广州", file_type="pptx", config=config)
+    revised = generate_attachment_file.func(
+        filename="广州旅游介绍_美食重点版.md",
+        content="# 美食",
+        file_type="md",
+        config={
+            "configurable": {
+                **config["configurable"],
+                "prior_attachment_filenames": ["广州旅游介绍_v1.0.pptx"],
+            }
+        },
+    )
+    other = generate_attachment_file.func(
+        filename="北京旅游介绍.pptx",
+        content="# 北京",
+        file_type="pptx",
+        config={
+            "configurable": {
+                **config["configurable"],
+                "execution_id": "exec-version-other",
+                "prior_attachment_filenames": ["广州旅游介绍_v1.0.pptx"],
+            }
+        },
+    )
+
+    assert first["filename"] == "广州旅游介绍_v1.0.pptx"
+    assert revised["filename"] == "广州旅游介绍_v1.1.pptx"
+    assert other["filename"] == "北京旅游介绍_v1.0.pptx"
+    from apps.opspilot.services.workflow_attachment_service import version_attachment_filename
+
+    assert version_attachment_filename("广州旅游介绍_美食重点版.pptx", ["广州旅游介绍.pptx"]) == "广州旅游介绍_v1.1.pptx"
+
+
+def test_version_attachment_filename_uses_max_version_when_priors_are_unordered():
+    from apps.opspilot.services.workflow_attachment_service import version_attachment_filename
+
+    priors = [
+        "广州旅游介绍_v1.0.pptx",
+        "广州旅游介绍_v1.2.pptx",
+        "广州旅游介绍_v1.1.pptx",
+    ]
+    assert version_attachment_filename("广州旅游介绍.pptx", priors) == "广州旅游介绍_v1.3.pptx"
+    assert version_attachment_filename("广州旅游介绍.pptx", list(reversed(priors))) == "广州旅游介绍_v1.3.pptx"
+    assert version_attachment_filename("广州旅游介绍_美食重点版.pptx", ["广州旅游介绍_v1.2.pptx", "广州旅游介绍.pptx"]) == "广州旅游介绍_v1.3.pptx"
+
+
+def test_version_attachment_filename_does_not_merge_long_distinct_titles():
+    from apps.opspilot.services.workflow_attachment_service import lock_revision_attachment_type, version_attachment_filename
+
+    long_name = "年度运维报告_附录与另一份独立周报.docx"
+    priors = ["年度运维报告_v1.2.docx", "年度运维报告_v1.0.md"]
+    assert version_attachment_filename(long_name, priors) == "年度运维报告_附录与另一份独立周报_v1.0.docx"
+    locked_type, locked_name = lock_revision_attachment_type("md", "广州旅游介绍_字体调整版.md", ["广州旅游介绍_v1.0.md", "广州旅游介绍_v1.2.pptx"])
+    assert locked_type == "pptx"
+    assert locked_name.endswith(".pptx")
+
+
+def test_generate_attachment_file_versions_from_max_db_prior(monkeypatch):
+    from apps.opspilot.metis.llm.tools.attachment import generate_attachment as attachment_tool
+
+    ordered_calls = []
+
+    class _Names:
+        def order_by(self, *args, **kwargs):
+            ordered_calls.append(args)
+            return self
+
+        def values_list(self, *args, **kwargs):
+            # 较高 id 的是更低版本。只看最后一条会得到 _v1.1。
+            return ["广州旅游介绍_v1.2.pptx", "广州旅游介绍_v1.0.pptx"]
+
+    class _Manager:
+        def filter(self, **kwargs):
+            return _Names()
+
+    created = {}
+
+    class _Asset:
+        attachment_id = "agent_node"
+        mime_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        id = 9
+
+        def __init__(self, filename):
+            self.filename = filename
+
+    def _create(**kwargs):
+        created.update(kwargs)
+        return _Asset(kwargs["filename"])
+
+    monkeypatch.setattr(attachment_tool.WorkflowAttachmentAsset, "objects", _Manager())
+    monkeypatch.setattr(attachment_tool, "build_attachment_bytes", lambda **kwargs: b"pptx")
+    monkeypatch.setattr(attachment_tool, "create_workflow_attachment_asset", _create)
+    monkeypatch.setattr(attachment_tool, "build_signed_attachment_download_url", lambda asset: "/api/proxy/x")
+
+    result = attachment_tool.generate_attachment_file.func(
+        filename="广州旅游介绍.pptx",
+        content="# 广州",
+        file_type="pptx",
+        config={
+            "configurable": {
+                "execution_id": "exec-unordered-version",
+                "node_id": "agent_node",
+                "flow_id": "flow-1",
+                "user_id": "tester",
+                "attachment_versioning": True,
+                "attachment_run_token": "exec-unordered-version-token",
+                "prior_attachment_filenames": ["广州旅游介绍_v1.1.pptx"],
+            }
+        },
+    )
+
+    assert ordered_calls == [("id",)]
+    assert result["filename"] == "广州旅游介绍_v1.3.pptx"
+    assert created["filename"] == "广州旅游介绍_v1.3.pptx"
+
+
+def test_claim_attachment_run_rejects_empty_token_and_cache_holder(settings, caplog):
+    import logging
+
+    from django.core.cache import cache
+
+    from apps.opspilot.metis.llm.tools.attachment import generate_attachment as attachment_tool
+
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "attachment-run-claim",
+        }
+    }
+    cache.clear()
+    attachment_tool._ATTACHMENT_RUNS_STARTED.clear()
+    sentinel = "SECRET_ATTACHMENT_BODY"
+    caplog.set_level(logging.WARNING, logger="opspilot")
+
+    assert attachment_tool.claim_attachment_run("") is False
+    rejected = [record for record in caplog.records if record.msg == "attachment run claim rejected reason=empty_token"]
+    assert rejected
+    assert rejected[-1].args == ()
+    assert rejected[-1].exc_info is None
+    assert sentinel not in rejected[-1].getMessage()
+
+    assert attachment_tool.claim_attachment_run("shared-token") is True
+    attachment_tool._ATTACHMENT_RUNS_STARTED.clear()
+    assert attachment_tool.claim_attachment_run("shared-token") is False
+    attachment_tool.release_attachment_run("shared-token")
+    assert attachment_tool.claim_attachment_run("shared-token") is True
+    attachment_tool.release_attachment_run("shared-token")
+
+
+def test_generate_attachment_without_token_logs_degradation_and_still_creates(monkeypatch, caplog):
+    import logging
+
+    from apps.opspilot.metis.llm.tools.attachment import generate_attachment as attachment_tool
+
+    sentinel = "SECRET_ATTACHMENT_BODY"
+
+    class _Asset:
+        attachment_id = "empty-token"
+        filename = "report.md"
+        mime_type = "text/markdown"
+        id = 3
+
+    monkeypatch.setattr(attachment_tool, "build_attachment_bytes", lambda **kwargs: b"body")
+    monkeypatch.setattr(attachment_tool, "create_workflow_attachment_asset", lambda **kwargs: _Asset())
+    monkeypatch.setattr(attachment_tool, "build_signed_attachment_download_url", lambda asset: "/api/proxy/x")
+    caplog.set_level(logging.WARNING, logger="opspilot")
+    result = attachment_tool.generate_attachment_file.func(
+        filename="report.md",
+        content=f"# {sentinel}",
+        file_type="md",
+        config={
+            "configurable": {
+                "execution_id": "exec-empty-token",
+                "attachment_id": "empty-token",
+                "node_id": "agent_node",
+                "flow_id": "flow-1",
+                "user_id": "tester",
+            }
+        },
+    )
+
+    skipped = [record for record in caplog.records if record.msg == "attachment run claim skipped reason=empty_token execution_id=%s"]
+    assert skipped
+    assert skipped[-1].args == ("exec-empty-token",)
+    assert skipped[-1].exc_info is None
+    formatted = skipped[-1].getMessage()
+    assert formatted == "attachment run claim skipped reason=empty_token execution_id=exec-empty-token"
+    assert sentinel not in formatted
+    assert result["filename"] == "report.md"
+    assert result["file_url"] == "/api/proxy/x"
+
+
+@pytest.mark.django_db
+def test_revision_keeps_pptx_and_ignores_repeat_calls():
+    from apps.opspilot.metis.llm.tools.attachment.generate_attachment import generate_attachment_file
+
+    config = {
+        "configurable": {
+            "execution_id": "exec-revision-lock",
+            "node_id": "agent_node",
+            "flow_id": "flow-1",
+            "user_id": "tester",
+            "attachment_versioning": True,
+            "attachment_run_token": "run-once",
+            "prior_attachment_filenames": ["广州旅游介绍_v1.0.pptx"],
+        }
+    }
+    first = generate_attachment_file.func(
+        filename="广州旅游介绍_美食重点版.md",
+        content="# 美食",
+        file_type="md",
+        config=config,
+    )
+    second = generate_attachment_file.func(
+        filename="广州旅游介绍_美食重点版.pptx",
+        content="# 再来一版",
+        file_type="pptx",
+        config=config,
+    )
+
+    assert first["filename"].endswith(".pptx")
+    assert first["filename"] == "广州旅游介绍_v1.1.pptx"
+    assert second.get("skipped") is True
+    assert "file_url" not in second
+
+
+@pytest.mark.django_db
 def test_build_signed_attachment_download_url_uses_proxy_path():
     """build_signed_attachment_download_url must return a /api/proxy/... path so browsers
     route the download request through the Next.js proxy rather than treating it as a page route."""

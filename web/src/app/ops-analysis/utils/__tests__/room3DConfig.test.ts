@@ -186,7 +186,7 @@ describe('resolveRoom3DSelection', () => {
     });
   });
 
-  it('keeps an applied room unavailable when it is not in the visible list', () => {
+  it('loads an applied room id even when the room list does not include it', () => {
     expect(
       resolveRoom3DSelection({
         rooms,
@@ -194,7 +194,8 @@ describe('resolveRoom3DSelection', () => {
         runtimeRoomId: ROOM_C,
       }),
     ).toEqual({
-      status: 'unavailable',
+      status: 'ready',
+      roomId: ROOM_C,
       rooms,
     });
     expect(
@@ -209,8 +210,16 @@ describe('resolveRoom3DSelection', () => {
     });
   });
 
-  it('returns empty when the actor cannot see any room', () => {
+  it('loads a saved room when the room list is empty', () => {
     expect(resolveRoom3DSelection({ rooms: [], savedRoomId: ROOM_A })).toEqual({
+      status: 'ready',
+      roomId: ROOM_A,
+      rooms: [],
+    });
+  });
+
+  it('returns empty when nothing is selected and no room is visible', () => {
+    expect(resolveRoom3DSelection({ rooms: [], savedRoomId: '' })).toEqual({
       status: 'empty',
       rooms: [],
     });

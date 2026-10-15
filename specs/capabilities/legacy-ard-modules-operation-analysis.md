@@ -73,6 +73,7 @@
 | radar | widgets/comRadar.tsx | 雷达图 |
 | room3D | widgets/room3D/index.tsx | 3D 机房 Screen-only 场景组件：经运营分析 `scene_widgets/room3d` 包装 CMDB NATS `get_room_list` / `get_room3d_layout`，渲染 row/col 网格、U 占用、可配机柜顶两行、设备摘要与类型图例；机房读画布筛选 `server_room_id__string`；设备告警摘要驱动侧栏/tooltip 与内部红光晕 |
 | networkStatusTopology | networkStatusTopology/index.tsx | 网络状态拓扑场景组件 |
+| applicationTopology | widgets/applicationTopology/index.tsx | 应用拓扑场景组件：经 `scene_widgets/application_topology` 取 CMDB 五带结构并叠监控活跃告警；点击节点在组件内查看 CMDB 信息、监控信息和告警信息 |
 | multiValue | widgets/comMultiValue.tsx | 多值 |
 | text | ops-analysis-widgets/text-panel | 文本面板 |
 | topologyMap | topologyMap/index.tsx | 普通 DataSource 驱动的通用关系拓扑；消费 `{nodes, edges}`，使用 Dagre + X6 渲染 |

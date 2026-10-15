@@ -81,6 +81,14 @@ class RelatedTopologyRequestSerializer(_Application3DStrictSerializer):
         return str(value)
 
 
+class ApplicationTopologyRequestSerializer(_Application3DStrictSerializer):
+    inst_uuid = serializers.UUIDField()
+    depth = serializers.IntegerField(required=False, min_value=1, max_value=5, default=3)
+
+    def validate_inst_uuid(self, value):
+        return str(value)
+
+
 class Room3DRoomsRequestSerializer(_Application3DStrictSerializer):
     pass
 

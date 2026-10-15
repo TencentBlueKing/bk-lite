@@ -110,26 +110,36 @@ export const resolveRoom3DSelection = ({
   runtimeRoomId?: string;
 }): Room3DSelection => {
   const visible = rooms.filter((item) => normalizeRoomId(item.id));
-  if (!visible.length) {
-    return { status: 'empty', rooms: [] };
-  }
-
   const visibleIds = new Set(visible.map((item) => item.id));
   const runtimeRaw = typeof runtimeRoomId === 'string' ? runtimeRoomId.trim() : '';
+  // 大屏筛选项已经选中机房时，以这个 id 去拉布局。
+  // 机房列表为空或不含该项时，布局接口自己判断权限；不要在这里直接放弃。
   if (runtimeRaw) {
     const runtimeId = normalizeRoomId(runtimeRaw);
-    if (runtimeId && visibleIds.has(runtimeId)) {
+    if (runtimeId) {
       return { status: 'ready', roomId: runtimeId, rooms: visible };
     }
-    return { status: 'unavailable', rooms: visible };
+    const named = visible.find((item) => item.name === runtimeRaw);
+    if (named) {
+      return { status: 'ready', roomId: named.id, rooms: visible };
+    }
+    return visible.length
+      ? { status: 'unavailable', rooms: visible }
+      : { status: 'empty', rooms: [] };
   }
 
   const savedId = normalizeRoomId(savedRoomId);
   if (savedId && visibleIds.has(savedId)) {
     return { status: 'ready', roomId: savedId, rooms: visible };
   }
+  if (savedId && !visible.length) {
+    return { status: 'ready', roomId: savedId, rooms: visible };
+  }
   if (savedId) {
     return { status: 'unavailable', rooms: visible };
+  }
+  if (!visible.length) {
+    return { status: 'empty', rooms: [] };
   }
 
   return { status: 'ready', roomId: visible[0].id, rooms: visible };

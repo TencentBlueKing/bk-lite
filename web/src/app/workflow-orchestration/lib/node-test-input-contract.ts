@@ -1,4 +1,4 @@
-import { resolveNodeTestInputs } from './data-references';
+import { coerceResolvedInputsForSchema, resolveNodeTestInputs } from './data-references';
 import type { ConductorTask, JsonSchema } from './types';
 
 const NODE_OVERRIDE_PREFIX = '__node_input__';
@@ -114,12 +114,13 @@ export function materializeNodeTestInputs(
   taskInputs: Record<string, unknown>,
   testInputs: Record<string, unknown>,
   nodeOutputs: Record<string, unknown>,
+  atomInputSchema?: JsonSchema,
 ) {
   const syntheticFields = new Set(Object.keys(contract.nodeOverrides));
   const workflowFields = new Set(Object.keys(contract.schema.properties || {}).filter((key) => !syntheticFields.has(key)));
   const workflowInputs = Object.fromEntries(Object.entries(testInputs).filter(([key]) => workflowFields.has(key)));
   const resolved = resolveNodeTestInputs(taskInputs, workflowInputs, nodeOutputs);
-  const nodeInputs = { ...resolved.value };
+  const nodeInputs = coerceResolvedInputsForSchema({ ...resolved.value }, atomInputSchema);
   for (const [testField, nodeField] of Object.entries(contract.nodeOverrides)) {
     if (testInputs[testField] !== undefined) nodeInputs[nodeField] = testInputs[testField];
   }

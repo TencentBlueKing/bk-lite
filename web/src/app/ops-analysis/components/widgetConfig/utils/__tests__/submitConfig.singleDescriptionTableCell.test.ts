@@ -146,5 +146,6 @@ test('eventTable submit strips table-only cell style fields and keeps column con
     visible: true,
     order: 0,
     columnType: 'data',
+    width: 180,
   });
 });

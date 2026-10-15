@@ -34,6 +34,13 @@ export const SCENE_WIDGET_CAPABILITIES: Record<
     shareSupported: true,
     reportSupported: false,
   },
+  applicationTopology: {
+    type: 'applicationTopology',
+    selfFetch: true,
+    surfaces: ['dashboard', 'screen'],
+    shareSupported: true,
+    reportSupported: false,
+  },
   room3D: {
     type: 'room3D',
     selfFetch: true,

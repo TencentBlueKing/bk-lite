@@ -456,8 +456,20 @@ def test_mixed_team_batch_ids_fail_closed_before_any_mutation(api_client, team_s
         format="json",
     )
 
+    material_response = api_client.post(
+        "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+        {
+            "knowledge_base": objects["own_kb"].id,
+            "material_ids": [objects["own_material"].id, objects["foreign_material"].id],
+        },
+        format="json",
+    )
+
     assert page_response.status_code == 403, page_response.content
     assert build_response.status_code == 403, build_response.content
+    assert material_response.status_code == 403, material_response.content
+    assert type(objects["own_material"]).objects.filter(pk=objects["own_material"].pk).exists()
+    assert type(objects["foreign_material"]).objects.filter(pk=objects["foreign_material"].pk).exists()
     assert type(objects["own_page"]).objects.filter(pk=objects["own_page"].pk).exists()
     assert type(objects["foreign_page"]).objects.filter(pk=objects["foreign_page"].pk).exists()
     objects["own_build"].refresh_from_db()

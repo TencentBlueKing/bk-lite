@@ -10,9 +10,14 @@ import { OpsPilotAtomForm } from '../components/opspilot-atom-form';
 import type { JsonSchema } from '../lib/types';
 
 const mocks = vi.hoisted(() => ({ post: vi.fn() }));
+const currentUser = vi.hoisted(() => ({ username: 'admin', userId: '1' }));
 
 vi.mock('@/utils/request', () => ({
   default: () => ({ post: mocks.post }),
+}));
+
+vi.mock('@/context/userInfo', () => ({
+  useUserInfoContext: () => currentUser,
 }));
 
 beforeAll(() => {
@@ -212,6 +217,55 @@ describe('OpsPilot 风格原子表单', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ recipients: ['1'] }));
   });
 
+  it('内置发起人表达式回显为当前登录用户，不写入用户编号', async () => {
+    currentUser.username = 'whj';
+    currentUser.userId = '2';
+    const onChange = vi.fn();
+    const notificationSchema: JsonSchema = {
+      type: 'object',
+      properties: {
+        notification_type: { type: 'string', enum: ['EMAIL'], default: 'EMAIL' },
+        channel_id: { type: 'integer', enum: [3], 'x-enum-labels': { '3': '值班邮箱' } },
+        recipients: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['1', '2'],
+            'x-enum-labels': { '1': '管理员 (admin)', '2': '王宏基 (whj)' },
+            'x-enum-usernames': { '1': 'admin', '2': 'whj' },
+          },
+        },
+        title: { type: 'string' },
+        body: { type: 'string', 'x-widget': 'textarea' },
+      },
+    };
+
+    render(<App><OpsPilotAtomForm
+      atomKey="bklite_notification"
+      schema={notificationSchema}
+      value={{
+        notification_type: 'EMAIL',
+        channel_id: 3,
+        recipients: ['${workflow.input.__system.actor_name}'],
+        title: '巡检完成',
+        body: '已完成',
+      }}
+      references={[]}
+      workflowId={1}
+      nodeTitle="对外通知"
+      readOnly
+      onChange={onChange}
+      onNodeTitleChange={vi.fn()}
+    /></App>);
+
+    expect(await screen.findByText('王宏基 (whj)')).not.toBeNull();
+    expect(screen.queryByText('发起人')).toBeNull();
+    expect(screen.queryByText('${workflow.input.__system.actor_name}')).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+    currentUser.username = 'admin';
+    currentUser.userId = '1';
+  });
+
   it('通知方式只列出当前类别的渠道，并且名称不带渠道类型', async () => {
     const user = userEvent.setup();
     const notificationSchema: JsonSchema = {
@@ -267,6 +321,57 @@ describe('OpsPilot 风格原子表单', () => {
     expect((await screen.findAllByText('可观测群')).length).toBeGreaterThan(0);
     expect(screen.queryByText('邮件服务器')).toBeNull();
     expect(screen.queryByText('告警中心')).toBeNull();
+  });
+
+  it('通知方式允许清空且不会被默认渠道立即写回', async () => {
+    const user = userEvent.setup();
+    const notificationSchema: JsonSchema = {
+      type: 'object',
+      required: ['notification_type', 'channel_id', 'body'],
+      properties: {
+        notification_type: {
+          type: 'string',
+          enum: ['EMAIL'],
+          default: 'EMAIL',
+          'x-enum-labels': { EMAIL: '邮件' },
+        },
+        channel_id: {
+          type: 'integer',
+          enum: [3],
+          'x-enum-labels': { '3': '邮件服务器' },
+          'x-enum-channel-types': { '3': 'email' },
+        },
+        body: { type: 'string', title: '通知内容' },
+      },
+    };
+    function ClearChannelHarness() {
+      const [value, setValue] = useState<Record<string, unknown>>({ notification_type: 'EMAIL', channel_id: 3, body: '已完成' });
+      return <App><OpsPilotAtomForm
+        atomKey="bklite_notification"
+        schema={notificationSchema}
+        value={value}
+        references={[]}
+        workflowId={1}
+        nodeTitle="对外通知"
+        readOnly={false}
+        onChange={setValue}
+        onNodeTitleChange={vi.fn()}
+      /><div data-testid="channel-dump">{String(value.channel_id ?? '')}</div></App>;
+    }
+    render(<ClearChannelHarness />);
+    await waitFor(() => {
+      expect(screen.getByTitle('邮件服务器')).not.toBeNull();
+    });
+    const select = screen.getByRole('combobox').closest('.ant-select');
+    expect(select).not.toBeNull();
+    fireEvent.mouseEnter(select!);
+    const clear = select!.querySelector('.ant-select-clear');
+    expect(clear).not.toBeNull();
+    await user.click(clear!);
+    await waitFor(() => {
+      expect(screen.getByTestId('channel-dump').textContent).toBe('');
+    });
+    expect(screen.queryByTitle('邮件服务器')).toBeNull();
   });
 
   it('通知方式在渠道类型不匹配时回落到邮件列表第一项，不显示裸数字 1', async () => {

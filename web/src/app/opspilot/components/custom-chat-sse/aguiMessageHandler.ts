@@ -918,8 +918,64 @@ export class AGUIMessageHandler {
   }
 
   /**
-   * 处理 ERROR 事件
+   * 非 AGUI 正文不在 contentBlocks 里。关闭前种入已流出的文本，避免错误卡片盖掉半截回复。
    */
+  seedPlainText(text: string) {
+    if (!text || this.contentBlocks.length > 0 || this.currentTextBlock) return;
+    this.contentBlocks.push({ type: 'text', content: text });
+  }
+
+  /**
+   * 成功结束：收起流式状态，不追加错误文案。
+   */
+  completeStream() {
+    if (!this.isStreaming) return;
+    this.isStreaming = false;
+    finalizePendingToolCalls(
+      this.toolCallsRef,
+      getOpspilotTranslate()('chat.toolCall.noResultEvent', '工具调用已结束，但未收到结果事件。')
+    );
+    this.plannedExecutionState = finalizePlannedExecutionSteps(this.plannedExecutionState);
+    if (this.plannedExecutionStatus) {
+      this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
+    }
+    this.handleBrowserStepComplete();
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, false);
+  }
+
+  /**
+   * 用户中止：结束流式状态，不追加 run_error / error 文案。
+   */
+  abortStream() {
+    if (!this.isStreaming) return;
+    this.stopThinking();
+    this.isStreaming = false;
+    finalizePendingToolCalls(
+      this.toolCallsRef,
+      getOpspilotTranslate()(
+        'chat.toolCall.streamInterrupted',
+        '工具调用已结束，但流中断前未收到结果事件。'
+      )
+    );
+    this.plannedExecutionState = finalizePlannedExecutionSteps(this.plannedExecutionState);
+    if (this.plannedExecutionStatus) {
+      this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
+    }
+    this.flushCurrentTextBlock();
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, false);
+  }
+
+  /**
+   * 处理半截流或异常关闭。成功路径应先 completeStream，不要走到这里。
+   */
+  handleStreamClosed(reason?: string) {
+    if (!this.isStreaming) return;
+    this.handleError(
+      reason ||
+        getOpspilotTranslate()('chat.connectionError', '连接已中断，未完成的工具调用已停止。')
+    );
+  }
+
   handleError(error: string) {
     this.stopThinking();
     this.isStreaming = false;
@@ -958,7 +1014,7 @@ export class AGUIMessageHandler {
       this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
     }
     this.flushCurrentTextBlock();
-    const errorMessage = renderErrorMessage(message, 'run_error', code);
+    const errorMessage = renderErrorMessage(message, 'run_error', code, getOpspilotTranslate());
     this.contentBlocks.push({ type: 'text', content: errorMessage });
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
@@ -1085,19 +1141,7 @@ export class AGUIMessageHandler {
         return true;
 
       case 'RUN_FINISHED':
-        // 流式回复结束，设置 isStreaming 为 false 并更新内容（收起工具列表）
-        this.isStreaming = false;
-        finalizePendingToolCalls(
-          this.toolCallsRef,
-          getOpspilotTranslate()('chat.toolCall.noResultEvent', '工具调用已结束，但未收到结果事件。')
-        );
-        this.plannedExecutionState = finalizePlannedExecutionSteps(this.plannedExecutionState);
-        if (this.plannedExecutionStatus) {
-          this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
-        }
-        this.handleBrowserStepComplete();
-        // 重新渲染内容以收起工具列表
-        this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, false);
+        this.completeStream();
         return true;
 
       case 'CUSTOM': {

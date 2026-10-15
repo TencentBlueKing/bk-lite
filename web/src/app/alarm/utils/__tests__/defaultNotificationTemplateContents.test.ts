@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALERT_DETAIL_GUIDE,
   DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS,
   DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS,
   FORMATTED_ALERT_OPERATION_EMAIL_BODY,
   LEGACY_ALERT_OPERATION_EMAIL_BODY,
   formatLegacyAlertOperationContent,
+  insertAlertDetailExample,
 } from '../defaultNotificationTemplateContents';
 
 describe('通知模板组默认内容', () => {
@@ -27,6 +29,15 @@ describe('通知模板组默认内容', () => {
     }
     expect(DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.filter((item) => item.subject_template).map((item) => item.channel_type))
       .toEqual(['email', 'dingtalk_bot', 'feishu_bot']);
+  });
+
+  it('内置模板示例用前缀加上告警 ID，已有链接时不重复插入', () => {
+    const email = DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.find((item) => item.channel_type === 'email');
+    const body = insertAlertDetailExample(email?.body_template || '', 'https://bklite.example.com', true);
+    expect(body).toContain('https://bklite.example.com/alarm/alarms?alert_id={{ alert.alert_id }}');
+    expect(body).toContain(ALERT_DETAIL_GUIDE);
+    expect(body.indexOf('告警详情：')).toBeLessThan(body.indexOf('请进入告警中心认领并处理该告警'));
+    expect(insertAlertDetailExample(body, 'https://other.example.com', true)).toBe(body);
   });
 
   it('新建普通模板时提供评审确认的八渠道默认内容', () => {

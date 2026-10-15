@@ -2,7 +2,7 @@ import time
 
 from azure.cognitiveservices.vision.computervision import ComputerVisionClient
 from azure.cognitiveservices.vision.computervision.models import OperationStatusCodes
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from msrest.authentication import CognitiveServicesCredentials
 
 from apps.opspilot.metis.ocr.base_ocr import BaseOCR

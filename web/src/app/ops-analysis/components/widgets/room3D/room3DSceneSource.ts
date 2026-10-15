@@ -26,8 +26,41 @@ export const loadRoom3DScene = async ({
   runtimeRoomId?: string;
   signal?: AbortSignal;
 }): Promise<Room3DSceneSource> => {
-  const payload = await api.getRooms(signal);
-  const rooms = Array.isArray(payload?.items) ? payload.items : [];
+  let rooms: Room3DRoomOption[] = [];
+  try {
+    const payload: unknown = await api.getRooms(signal);
+    const record =
+      payload && typeof payload === 'object'
+        ? (payload as { items?: unknown })
+        : null;
+    const raw = Array.isArray(payload)
+      ? payload
+      : record && Array.isArray(record.items)
+        ? record.items
+        : [];
+    rooms = raw.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const row = item as { id?: unknown; name?: unknown; inst_uuid?: unknown; inst_name?: unknown };
+      const id = typeof row.id === 'string'
+        ? row.id
+        : typeof row.inst_uuid === 'string'
+          ? row.inst_uuid
+          : '';
+      if (!id) return [];
+      const name = typeof row.name === 'string'
+        ? row.name
+        : typeof row.inst_name === 'string'
+          ? row.inst_name
+          : id;
+      return [{ id, name }];
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    const explicitId = [runtimeRoomId, savedRoomId].some(
+      (value) => typeof value === 'string' && value.trim(),
+    );
+    if (!explicitId) throw error;
+  }
   const selection = resolveRoom3DSelection({
     rooms,
     savedRoomId,

@@ -5,7 +5,7 @@ from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
 from apps.opspilot.metis.llm.tools.kubernetes.instance_scope import prepare_point_instance, run_scan_tool
 from apps.opspilot.metis.llm.tools.kubernetes.utils import coerce_int, parse_resource_quantity, prepare_context

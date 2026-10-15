@@ -442,6 +442,214 @@ class TestDeleteView:
         assert not Material.objects.filter(id=material_id).exists()
 
 
+@pytest.mark.django_db(transaction=True)
+class TestBatchDelete:
+    def test_batch_delete_impact_merges_selected_sources_without_mutation(self, api_client):
+        from apps.opspilot.models import BuildRecord, CheckItem, Material, PageEvidence
+
+        kb = _kb()
+        first = _material(kb, "first")
+        second = _material(kb, "second")
+        remaining = _material(kb, "remaining")
+        only_together = _page(kb, "only together")
+        still_shared = _page(kb, "still shared")
+        PageEvidence.objects.create(page=only_together, material=first)
+        PageEvidence.objects.create(page=only_together, material=second)
+        PageEvidence.objects.create(page=still_shared, material=first)
+        PageEvidence.objects.create(page=still_shared, material=remaining)
+        initial_build_count = BuildRecord.objects.filter(knowledge_base=kb).count()
+        initial_check_count = CheckItem.objects.filter(knowledge_base=kb).count()
+
+        response = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete_impact/",
+            {"knowledge_base": kb.id, "material_ids": [second.id, first.id, second.id]},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.content
+        data = response.json()["data"]
+        assert data["material_ids"] == [second.id, first.id]
+        assert data["material_count"] == 2
+        assert [item["id"] for item in data["will_be_source_invalid"]] == [only_together.id]
+        assert [item["id"] for item in data["shared_source_protected"]] == [still_shared.id]
+        assert Material.objects.filter(id__in=[first.id, second.id, remaining.id]).count() == 3
+        assert BuildRecord.objects.filter(knowledge_base=kb).count() == initial_build_count
+        assert CheckItem.objects.filter(knowledge_base=kb).count() == initial_check_count
+        only_together.refresh_from_db()
+        still_shared.refresh_from_db()
+        assert only_together.status == "active"
+        assert still_shared.status == "active"
+
+    def test_batch_delete_removes_materials_and_invalidates_only_when_all_sources_go(self, api_client, caplog):
+        from apps.opspilot.models import Material, PageEvidence
+        from apps.opspilot.tests.wiki.factories import WikiFactory
+
+        factory = WikiFactory()
+        kb = factory.bootstrapped_knowledge_base()
+        first = factory.ready_material(knowledge_base=kb, name="first", source_identity="src-first", content_hash="1" * 64)
+        second = factory.ready_material(knowledge_base=kb, name="second", source_identity="src-second", content_hash="2" * 64)
+        remaining = factory.ready_material(knowledge_base=kb, name="remaining", source_identity="src-remaining", content_hash="3" * 64)
+        only_together = factory.page(knowledge_base=kb, title="only together", body="together")
+        still_shared = factory.page(knowledge_base=kb, title="still shared", body="shared")
+        PageEvidence.objects.create(page=only_together, material=first)
+        PageEvidence.objects.create(page=only_together, material=second)
+        PageEvidence.objects.create(page=still_shared, material=first)
+        PageEvidence.objects.create(page=still_shared, material=remaining)
+
+        caplog.set_level(logging.INFO, logger="opspilot")
+        response = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"knowledge_base": kb.id, "material_ids": [first.id, second.id]},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.content
+        data = response.json()["data"]
+        assert data["deleted"] == [first.id, second.id]
+        assert data["deleted_count"] == 2
+        assert data["failed"] is None
+        assert data["not_attempted"] == []
+        assert not Material.objects.filter(id__in=[first.id, second.id]).exists()
+        assert Material.objects.filter(id=remaining.id).exists()
+        only_together.refresh_from_db()
+        still_shared.refresh_from_db()
+        assert only_together.status == "source_invalid"
+        assert still_shared.status == "active"
+        assert PageEvidence.objects.filter(page=still_shared, material=remaining).exists()
+        records = [record for record in caplog.records if record.msg == "wiki materials batch deleted knowledge_base=%s deleted=%s failed=%s"]
+        assert records
+        assert records[-1].args == (kb.id, 2, 0)
+
+    def test_batch_delete_stops_after_generation_error(self, api_client, monkeypatch):
+        from apps.opspilot.models import Material
+        from apps.opspilot.services.wiki import update_service
+        from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
+
+        kb = _kb()
+        first = _material(kb, "first")
+        second = _material(kb, "second")
+        third = _material(kb, "third")
+        real_delete = update_service.handle_material_deletion
+
+        def fail_second(material, operator="", **kwargs):
+            if material.id == second.id:
+                raise BuildGenerationError("source_identity_changed", "资料来源身份已变化，请重试删除", retryable=True)
+            return real_delete(material, operator=operator, **kwargs)
+
+        monkeypatch.setattr(update_service, "handle_material_deletion", fail_second)
+
+        response = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"knowledge_base": kb.id, "material_ids": [first.id, second.id, third.id]},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.content
+        data = response.json()["data"]
+        assert data["deleted"] == [first.id]
+        assert data["failed"]["id"] == second.id
+        assert data["failed"]["code"] == "source_identity_changed"
+        assert data["not_attempted"] == [third.id]
+        assert not Material.objects.filter(id=first.id).exists()
+        assert Material.objects.filter(id__in=[second.id, third.id]).count() == 2
+
+    def test_batch_delete_rejects_invalid_payloads_and_busy_materials(self, api_client):
+        from apps.opspilot.models import Material, WikiKnowledgeBase
+
+        kb = _kb()
+        other = WikiKnowledgeBase.objects.create(name="other", team=[1])
+        pending = _material(kb, "pending")
+        busy = Material.objects.create(knowledge_base=kb, name="busy", material_type="text", status="parsing", text_content="x")
+        outsider = _material(other, "outsider")
+
+        empty = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"knowledge_base": kb.id, "material_ids": []},
+            format="json",
+        )
+        invalid = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"knowledge_base": kb.id, "material_ids": ["x"]},
+            format="json",
+        )
+        missing_kb = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"material_ids": [pending.id]},
+            format="json",
+        )
+        too_many = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"knowledge_base": kb.id, "material_ids": list(range(1, 202))},
+            format="json",
+        )
+        wrong_kb = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"knowledge_base": kb.id, "material_ids": [outsider.id]},
+            format="json",
+        )
+        in_progress = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"knowledge_base": kb.id, "material_ids": [pending.id, busy.id]},
+            format="json",
+        )
+
+        assert empty.status_code == 400
+        assert empty.json()["code"] == "material_ids_required"
+        assert invalid.status_code == 400
+        assert invalid.json()["code"] == "material_ids_invalid"
+        assert missing_kb.status_code == 400
+        assert missing_kb.json()["code"] == "knowledge_base_required"
+        assert too_many.status_code == 400
+        assert too_many.json()["code"] == "material_ids_too_many"
+        assert wrong_kb.status_code == 400
+        assert wrong_kb.json()["code"] == "material_not_in_knowledge_base"
+        assert in_progress.status_code == 409
+        assert in_progress.json()["code"] == "material_delete_in_progress"
+        assert Material.objects.filter(id__in=[pending.id, busy.id, outsider.id]).count() == 3
+
+    def test_batch_delete_rechecks_busy_status_inside_lock(self, api_client, monkeypatch):
+        from apps.opspilot.models import Material
+        from apps.opspilot.viewsets.wiki_material_view import WikiMaterialViewSet
+
+        kb = _kb()
+        first = _material(kb, "first")
+        second = _material(kb, "second")
+        real = WikiMaterialViewSet._materials_for_batch_delete
+
+        def become_busy(self, request, knowledge_base, material_ids):
+            materials, error = real(self, request, knowledge_base, material_ids)
+            if materials:
+                Material.objects.filter(pk=materials[0].pk).update(status="building")
+            return materials, error
+
+        monkeypatch.setattr(WikiMaterialViewSet, "_materials_for_batch_delete", become_busy)
+        response = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"knowledge_base": kb.id, "material_ids": [first.id, second.id]},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.content
+        data = response.json()["data"]
+        assert data["deleted"] == []
+        assert data["failed"]["id"] == first.id
+        assert data["failed"]["code"] == "material_delete_in_progress"
+        assert data["not_attempted"] == [second.id]
+        assert Material.objects.filter(id=first.id, status="building").exists()
+        assert Material.objects.filter(id=second.id).exists()
+
+    def test_destroy_rejects_building_material(self, api_client):
+        from apps.opspilot.models import Material
+
+        kb = _kb()
+        busy = Material.objects.create(knowledge_base=kb, name="busy", material_type="text", status="parsing", text_content="x")
+        response = api_client.delete(f"/api/v1/opspilot/wiki_mgmt/material/{busy.id}/")
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "material_delete_in_progress"
+        assert Material.objects.filter(id=busy.id).exists()
+
+
 @pytest.mark.django_db
 def test_deleting_file_material_removes_minio_file(monkeypatch, django_capture_on_commit_callbacks):
     """删除 file 资料应删除其 MinIO 文件对象(post_delete 信号)。"""

@@ -40,10 +40,16 @@ class TestValidateToken:
         with pytest.raises(BaseAppException, match="Token is required"):
             InfraService.validate_and_get_token_data("")
 
-    def test_缓存不存在_报错(self, mocker):
+    def test_缓存不存在_报错(self, mocker, caplog):
+        import logging
+
+        sentinel = "SENTINEL_CMDB_5952_ZzQ9mK2p"
         mocker.patch("apps.cmdb.services.infra.cache.get", return_value=None)
-        with pytest.raises(BaseAppException, match="Invalid or expired token"):
-            InfraService.validate_and_get_token_data("abcdef1234")
+        with caplog.at_level(logging.WARNING, logger="cmdb"):
+            with pytest.raises(BaseAppException, match="Invalid or expired token"):
+                InfraService.validate_and_get_token_data(sentinel)
+        assert sentinel not in caplog.text
+        assert sentinel[:8] not in caplog.text
 
     def test_超过最大使用_删除并报错(self, mocker):
         mocker.patch(

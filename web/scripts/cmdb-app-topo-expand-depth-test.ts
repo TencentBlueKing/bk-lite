@@ -44,6 +44,12 @@ const overviewSrc = read(
   'src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/index.tsx'
 );
 assert.match(overviewSrc, /ExpandDepthControl/);
+assert.match(
+  overviewSrc,
+  /className=\{styles\.viewToolbar\}[\s\S]*?<ExpandDepthControl/
+);
+const graphToolbar = overviewSrc.slice(overviewSrc.indexOf('toolbar={{'));
+assert.doesNotMatch(graphToolbar.slice(0, 900), /ExpandDepthControl/);
 assert.match(overviewSrc, /readAppTopoExpandDepth/);
 assert.match(overviewSrc, /writeAppTopoExpandDepth/);
 assert.match(overviewSrc, /getApplicationResourceTopology\([\s\S]*expandDepth/);
@@ -55,7 +61,7 @@ assert.doesNotMatch(
 const controlSrc = read(
   'src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/ExpandDepthControl.tsx'
 );
-assert.match(controlSrc, /Segmented/);
+assert.match(controlSrc, /Select/);
 assert.match(controlSrc, /APP_TOPO_EXPAND_DEPTH_OPTIONS/);
 assert.match(controlSrc, /ApplicationResourceOverview\.expandDepthLabel/);
 

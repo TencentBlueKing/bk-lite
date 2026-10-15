@@ -2,7 +2,7 @@ from typing import Optional
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from redis.exceptions import RedisError
 
 from apps.opspilot.metis.llm.tools.common.credentials import execute_with_credentials

@@ -82,9 +82,9 @@ class DeepAgentAssemblyMixin:
         return bool(DeepAgentAssemblyMixin._business_tool_names(tools))
 
     @staticmethod
-    def _attachment_request_needs_planner(tools, user_message: str) -> bool:
-        """常驻附件不算业务工具，但用户本轮要文件时必须进入规划，不能轻量直答。"""
-        if not looks_like_attachment_file_task(user_message):
+    def _attachment_request_needs_planner(tools, user_message: str, conversation_messages=None) -> bool:
+        """常驻附件不算业务工具，但用户本轮要生成或改写文件时必须进入规划，不能轻量直答。"""
+        if not looks_like_attachment_file_task(user_message, conversation_messages=conversation_messages):
             return False
         return any(getattr(tool, "name", "") == GENERATE_ATTACHMENT_FILE_TOOL_NAME for tool in (tools or []))
 

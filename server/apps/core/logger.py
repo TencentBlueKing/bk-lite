@@ -1,4 +1,5 @@
 import logging
+import sys
 import traceback
 from pathlib import Path
 
@@ -28,6 +29,13 @@ def safe_exception_info(error: BaseException):
     return SafeLogException, safe_error, error.__traceback__
 
 
+def configure_loguru(*, sink=None) -> None:
+    """Turn off loguru diagnose so traceback frames do not render locals such as passwords."""
+    from loguru import logger as loguru_logger
+
+    loguru_logger.configure(handlers=[{"sink": sink or sys.stderr, "diagnose": False, "backtrace": True}])
+
+
 logger = logging.getLogger("app")
 cmdb_logger = logging.getLogger("cmdb")
 operation_analysis_logger = logging.getLogger("operation_analysis")
@@ -48,3 +56,4 @@ rum_logger = logging.getLogger("rum")
 patch_mgmt_logger = logging.getLogger("patch-mgmt")
 openapi_logger = logging.getLogger("openapi")
 workflow_orchestration_logger = logging.getLogger("workflow-orchestration")
+playground_logger = logging.getLogger("playground")

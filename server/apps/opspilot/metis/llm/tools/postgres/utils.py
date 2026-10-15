@@ -3,10 +3,10 @@ import json
 
 import psycopg2
 from langchain_core.runnables import RunnableConfig
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from psycopg2.extras import RealDictCursor
 
-from apps.opspilot.metis.llm.tools.common.sql_guard import run_blocking
+from apps.opspilot.metis.llm.tools.common.sql_guard import log_db_failure, run_blocking
 
 
 def prepare_context(config: RunnableConfig = None) -> dict:
@@ -91,9 +91,9 @@ def get_db_connection(config: RunnableConfig = None, database: str = None):
             connect_timeout=10,
         )
         return conn
-    except psycopg2.Error:
+    except psycopg2.Error as e:
         # 不记录连接参数/异常详情,避免泄露 host/账号信息 (F077)
-        logger.exception("PostgreSQL数据库连接失败")
+        log_db_failure("PostgreSQL数据库连接失败", e)
         raise
 
 
@@ -124,9 +124,9 @@ def _execute_readonly_query_blocking(query: str, params: tuple = None, config: R
         # 转换为列表字典
         return [dict(row) for row in results]
 
-    except psycopg2.Error:
+    except psycopg2.Error as e:
         # 不在此处拼接错误详情(可能含连接信息);由调用方统一脱敏处理
-        logger.exception("PostgreSQL查询执行失败")
+        log_db_failure("PostgreSQL查询执行失败", e)
         if conn:
             conn.rollback()
         raise

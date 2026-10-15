@@ -1,6 +1,7 @@
 """Sidecar 剩余契约：动作 ack、304 无 IP 回退、标签补全、默认配置跳过/更新。"""
 
 import json
+import logging
 import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -456,7 +457,7 @@ def test_create_default_config_skips_when_template_missing():
     assert not CollectorConfiguration.objects.filter(collector=collector).exists()
 
 
-def test_create_default_config_updates_existing_pre_and_skips_identical():
+def test_create_default_config_updates_existing_pre_and_skips_identical(caplog):
     region = _region()
     node = _node(region)
     collector = _collector(region, "Telegraf", {"nats": "url={{ HOST }}"})
@@ -471,17 +472,22 @@ def test_create_default_config_updates_existing_pre_and_skips_identical():
     with (
         patch.object(Sidecar, "_get_default_collectors_for_node", return_value={collector.name: collector}),
         patch.object(Sidecar, "get_cloud_region_envconfig", return_value={"SIDECAR_INPUT_MODE": "nats", "HOST": "10.1.1.1"}),
+        caplog.at_level(logging.INFO, logger="node"),
     ):
         Sidecar.create_default_config(node, [])
     cfg.refresh_from_db()
     assert "10.1.1.1" in cfg.config_template
+    assert "updated default configuration" not in caplog.text
 
+    caplog.clear()
     with (
         patch.object(Sidecar, "_get_default_collectors_for_node", return_value={collector.name: collector}),
         patch.object(Sidecar, "get_cloud_region_envconfig", return_value={"SIDECAR_INPUT_MODE": "nats", "HOST": "10.1.1.1"}),
+        caplog.at_level(logging.INFO, logger="node"),
     ):
         Sidecar.create_default_config(node, [])
     assert CollectorConfiguration.objects.filter(collector=collector, nodes=node).count() == 1
+    assert "is up to date" not in caplog.text
 
 
 def test_create_default_config_skips_custom_and_swallows_render_error():
@@ -510,14 +516,16 @@ def test_create_default_config_skips_custom_and_swallows_render_error():
     assert CollectorConfiguration.objects.get(pk=cfg.pk).config_template == "user"
 
 
-def test_create_default_config_appends_add_config_for_container():
+def test_create_default_config_appends_add_config_for_container(caplog):
     region = _region()
     node = _node(region, node_type=ControllerConstants.NODE_TYPE_CONTAINER)
     collector = _collector(region, "Telegraf", {"nats": "base", "add_config": "extra-line"})
     with (
         patch.object(Sidecar, "_get_default_collectors_for_node", return_value={collector.name: collector}),
         patch.object(Sidecar, "get_cloud_region_envconfig", return_value={"SIDECAR_INPUT_MODE": "nats"}),
+        caplog.at_level(logging.INFO, logger="node"),
     ):
         Sidecar.create_default_config(node, [ControllerConstants.NODE_TYPE_CONTAINER])
     cfg = CollectorConfiguration.objects.get(collector=collector, nodes=node, is_pre=True)
     assert "extra-line" in cfg.config_template
+    assert "appending add_config" not in caplog.text

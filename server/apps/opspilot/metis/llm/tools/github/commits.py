@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import requests
 from langchain_core.tools import tool
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 # 安全配置

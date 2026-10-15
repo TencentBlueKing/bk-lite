@@ -1,7 +1,7 @@
 'use client';
 
 import './register-dashboard-pilot';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import Sidebar from '../../components/sidebar';
 import ViewEmptyState from '../../components/viewEmptyState';
 import Dashboard, { DashboardRef } from './dashBoard/index';
@@ -24,6 +24,7 @@ import {
 } from '@ant-design/icons';
 import { Modal, Tooltip } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { applyDirectoryEditCollapse } from './directoryEditCollapse';
 import { DirItem } from '@/app/ops-analysis/types';
 import {
   getDisplayRecentCanvases,
@@ -48,6 +49,22 @@ const ViewPage: React.FC = () => {
   const searchParams = useSearchParams();
   const screenMode = isScreenModeEnabled(searchParams);
   const [collapsed, setCollapsed] = useState(false);
+  const collapsedRef = useRef(collapsed);
+  const directoryCollapsedBeforeEditRef = useRef<boolean | null>(null);
+  collapsedRef.current = collapsed;
+
+  const handleScreenEditingChange = useCallback((editing: boolean) => {
+    const next = applyDirectoryEditCollapse(
+      {
+        collapsed: collapsedRef.current,
+        savedCollapsed: directoryCollapsedBeforeEditRef.current,
+      },
+      editing,
+    );
+    directoryCollapsedBeforeEditRef.current = next.savedCollapsed;
+    collapsedRef.current = next.collapsed;
+    setCollapsed(next.collapsed);
+  }, []);
   const [selectedType, setSelectedType] = useState<DirectoryType>('directory');
   const [selectedItem, setSelectedItem] = useState<SelectedCanvasItems>(
     createEmptySelectedItems
@@ -236,6 +253,7 @@ const ViewPage: React.FC = () => {
             ref={screenRef}
             key={selectedItem.screen?.data_id ?? 'screen-empty'}
             selectedScreen={selectedItem.screen}
+            onEditingChange={handleScreenEditingChange}
           />
         ) : selectedType === 'report' ? (
           <Report

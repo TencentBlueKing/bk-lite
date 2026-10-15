@@ -2485,6 +2485,7 @@ class ToolsNodes(
                 ToolExecutionPlanner,
                 ToolPlanningError,
                 classify_tool_failure_kind,
+                collect_generated_attachment_filenames,
                 drop_alternative_inventory_followups,
                 drop_k8s_followup_steps_after_unresolved_target,
                 extract_declared_cmdb_model,
@@ -2540,6 +2541,8 @@ class ToolsNodes(
             tools = self._collect_deepagent_tools(graph_request)
             registered_tools = list(tools)
             original_messages = list(state.get("messages") or [])
+            prior_attachment_filenames = collect_generated_attachment_filenames(original_messages)
+            attachment_run_token = uuid.uuid4().hex
             if is_answer_after_choice_prompt(original_messages):
                 tools = [tool for tool in tools if getattr(tool, "name", "") != "request_user_choice"]
                 registered_tools = list(tools)
@@ -2571,7 +2574,7 @@ class ToolsNodes(
             if self._should_use_lightweight_direct_reply(
                 registered_tools,
                 ["/skills/"] if has_skill_packages else [],
-            ) and not self._attachment_request_needs_planner(registered_tools, planning_question):
+            ) and not self._attachment_request_needs_planner(registered_tools, planning_question, original_messages):
                 light_system = self._build_lightweight_system_prompt(getattr(graph_request, "system_message_prompt", "") or "")
                 if additional_system_prompt:
                     light_system = f"{light_system}\n\n{additional_system_prompt}"
@@ -2607,6 +2610,9 @@ class ToolsNodes(
                         **config.get("configurable", {}),
                         "enabled_report_capabilities": sorted(self._enabled_report_capabilities()),
                         "report_package_context": matched_packages[0] if matched_packages else {},
+                        "attachment_versioning": True,
+                        "prior_attachment_filenames": prior_attachment_filenames,
+                        "attachment_run_token": attachment_run_token,
                     },
                 }
                 try:
@@ -2843,6 +2849,9 @@ class ToolsNodes(
                     "enabled_report_capabilities": sorted(self._enabled_report_capabilities()),
                     "report_package_context": matched_packages[0] if matched_packages else {},
                     DECLARED_CMDB_MODEL_KEY: extract_declared_cmdb_model(planning_question) or "",
+                    "attachment_versioning": True,
+                    "prior_attachment_filenames": prior_attachment_filenames,
+                    "attachment_run_token": attachment_run_token,
                 },
             }
 
@@ -2969,7 +2978,21 @@ class ToolsNodes(
                         },
                     )
                     step_guidance = ""
-                    if skills_only_plan or (
+                    if "generate_attachment_file" in (step.tools or []):
+                        prior_type = ""
+                        if prior_attachment_filenames and "." in str(prior_attachment_filenames[-1]):
+                            prior_type = str(prior_attachment_filenames[-1]).rsplit(".", 1)[-1].lower()
+                        type_line = f"file_type 必须是 {prior_type}，禁止改成其他格式。" if prior_type else "修改已有文件时必须保持原格式，禁止把 pptx 改成 md 或 docx。"
+                        step_guidance = (
+                            "\n【附件】本步调用一次 generate_attachment_file，content 写入用户要求的全部章节，一次写完。"
+                            f"{type_line}"
+                            "正文字体由系统设为微软雅黑，不要在回复里说不支持字体，也不要让用户自己改。"
+                            "禁止因为写到中途就结束，禁止让用户再说一句才生成完整文件。"
+                            "调用成功后不要在同一步里再调第二次，也不要 request_user_choice。"
+                            "上一轮已经生成过，不能作为跳过本步的理由。"
+                            "工具成功返回前，禁止说已经改好。成功后只给简短摘要，不要贴下载链接。"
+                        )
+                    elif skills_only_plan or (
                         USE_SKILLS_TOOL_NAME in (step.tools or []) and not any(t != USE_SKILLS_TOOL_NAME for t in (step.tools or []))
                     ):
                         step_guidance = "\n" + self._skill_only_step_guidance(skill_packages)
@@ -3093,6 +3116,16 @@ class ToolsNodes(
                                 tools=active_tools,
                             )
                             step_started = monotonic_ms()
+                            restore_max_tokens = False
+                            saved_max_tokens = getattr(llm, "max_tokens", None)
+                            if "generate_attachment_file" in (step.tools or []):
+                                try:
+                                    current_limit = int(saved_max_tokens or 0)
+                                except (TypeError, ValueError):
+                                    current_limit = 0
+                                if current_limit < 8000:
+                                    llm.max_tokens = 8000
+                                    restore_max_tokens = True
                             try:
                                 with bind_planned_step_index(step_index, config), isolated_child_callback_context():
                                     step_result = await deep_agent.ainvoke(
@@ -3100,6 +3133,8 @@ class ToolsNodes(
                                         config=deep_config,
                                     )
                             finally:
+                                if restore_max_tokens:
+                                    llm.max_tokens = saved_max_tokens
                                 log_stage_timing(
                                     "plan_step",
                                     elapsed_ms(step_started),
