@@ -87,6 +87,25 @@ def test_compiles_trigger_input_index_and_accepts_integer_to_number_reference():
     assert compiled["tasks"][1]["inputParameters"]["label"] == "${workflow.input.__system.execution_id}"
 
 
+def test_compiled_system_context_reference_can_be_published():
+    compiled, _ = validate_and_compile_workflow_data_contract(
+        definition({"label": "${workflow.input.__system.actor_name}"}),
+        {"data_contract": contract()},
+        atom_catalog=CATALOG,
+        strict=True,
+    )
+
+    assert compiled["tasks"][1]["inputParameters"]["label"] == "${workflow.input.__system.actor_name}"
+
+    with pytest.raises(DefinitionValidationError, match="数据引用不存在"):
+        validate_and_compile_workflow_data_contract(
+            definition({"label": "${workflow.input.__system.missing}"}),
+            {"data_contract": contract()},
+            atom_catalog=CATALOG,
+            strict=True,
+        )
+
+
 def test_draft_keeps_broken_reference_but_strict_validation_blocks_it():
     broken = definition({"value": "${missing.output.value}"})
     validate_and_compile_workflow_data_contract(broken, {"data_contract": contract()}, atom_catalog=CATALOG, strict=False)
