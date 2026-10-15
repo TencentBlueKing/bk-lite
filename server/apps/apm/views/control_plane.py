@@ -10,7 +10,14 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
-from apps.apm.adapters import SystemMgmtNotificationDispatcher, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore, telemetry_error_payload
+from apps.apm.adapters import (
+    SystemMgmtNotificationDispatcher,
+    TelemetryQueryTooLarge,
+    TelemetryStoreUnavailable,
+    VictoriaTracesTelemetryStore,
+    telemetry_error_payload,
+)
+from apps.apm.adapters.errors import QUERY_TOO_LARGE_CODE, TELEMETRY_UNAVAILABLE_CODE
 from apps.apm.models import (
     ApmAlert,
     ApmAlertOutbox,
@@ -626,13 +633,21 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 data["started_at"],
                 data["ended_at"],
             )
-        except ValueError as exc:
+        except ValueError:
             return Response(
-                {"code": "invalid_query", "detail": str(exc)},
+                {"code": "invalid_query", "detail": "invalid_query"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except TelemetryStoreUnavailable as exc:
-            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except TelemetryQueryTooLarge:
+            return Response(
+                {"code": QUERY_TOO_LARGE_CODE, "detail": "query_too_large"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except TelemetryStoreUnavailable:
+            return Response(
+                {"code": TELEMETRY_UNAVAILABLE_CODE, "detail": "telemetry_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response(
             {
                 "service_id": str(service.id),

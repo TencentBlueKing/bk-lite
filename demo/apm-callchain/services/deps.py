@@ -14,6 +14,22 @@ CACHE_PREFIX = "apm-demo:"
 CACHE_TTL_SECONDS = 30
 
 
+def resolve_demo_sku(raw: object) -> str | None:
+    """出站 URL 只用 demo 常量 sku，避免把请求原文拼进地址。"""
+
+    if raw == "book":
+        return "book"
+    if raw == "slow":
+        return "slow"
+    if raw == "fail":
+        return "fail"
+    if raw == "stockout":
+        return "stockout"
+    if raw == "crash":
+        return "crash"
+    return None
+
+
 def _pg_connect():
     host = os.environ.get("PGHOST") or os.environ.get("DB_HOST")
     if not host:

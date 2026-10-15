@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters import TelemetryQueryTooLarge, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
 from apps.apm.adapters.span_aliases import classify_client_db_rollup, classify_client_http_rollup, client_db_statement
 from apps.apm.services import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery
@@ -161,7 +161,19 @@ def test_client_rollups_rejects_unknown_parameters_and_maps_store_failure(apm_ap
     assert unknown.data["code"] == "invalid_query"
     store.client_db_rollups.assert_not_called()
 
-    store.client_db_rollups.side_effect = TelemetryStoreUnavailable("VictoriaTraces 查询不可用")
+    store.client_db_rollups.side_effect = ValueError("internal window traceback secret-host:8200")
+    invalid = apm_api_client.get(
+        f"/api/v1/apm/services/{service.id}/client-rollups/",
+        {"environment": "production"},
+    )
+
+    assert invalid.status_code == 400
+    assert invalid.data["code"] == "invalid_query"
+    assert invalid.data["detail"] == "invalid_query"
+    assert "traceback" not in str(invalid.data)
+    assert "secret-host" not in str(invalid.data)
+
+    store.client_db_rollups.side_effect = TelemetryStoreUnavailable("VictoriaTraces 查询不可用 secret-host:8200")
     degraded = apm_api_client.get(
         f"/api/v1/apm/services/{service.id}/client-rollups/",
         {"environment": "production"},
@@ -169,6 +181,21 @@ def test_client_rollups_rejects_unknown_parameters_and_maps_store_failure(apm_ap
 
     assert degraded.status_code == 503
     assert degraded.data["code"] == "telemetry_unavailable"
+    assert degraded.data["detail"] == "telemetry_unavailable"
+    assert "secret-host" not in str(degraded.data)
+    assert "VictoriaTraces 查询不可用" not in str(degraded.data)
+
+    store.client_db_rollups.side_effect = TelemetryQueryTooLarge("VictoriaTraces 响应超过大小上限 secret-host:8200")
+    too_large = apm_api_client.get(
+        f"/api/v1/apm/services/{service.id}/client-rollups/",
+        {"environment": "production"},
+    )
+
+    assert too_large.status_code == 503
+    assert too_large.data["code"] == "query_too_large"
+    assert too_large.data["detail"] == "query_too_large"
+    assert "secret-host" not in str(too_large.data)
+    assert "VictoriaTraces 响应超过大小上限" not in str(too_large.data)
 
 
 @pytest.mark.django_db

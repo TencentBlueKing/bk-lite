@@ -3,7 +3,7 @@
 import os
 
 import requests
-from deps import cache_set, pg_fetchall
+from deps import cache_set, pg_fetchall, resolve_demo_sku
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
@@ -19,7 +19,10 @@ def health():
 @app.post("/orders")
 def create_order():
     body = request.get_json(silent=True) or {}
-    sku = body.get("sku", "book")
+    requested = body.get("sku", "book")
+    sku = resolve_demo_sku(requested)
+    if sku is None:
+        return jsonify({"sku": requested, "status": "invalid_sku"}), 400
     pg_fetchall(
         "SELECT sku, ordered_at FROM (VALUES (%s, now())) AS orders(sku, ordered_at)",
         (sku,),

@@ -3,7 +3,7 @@
 import os
 
 import requests
-from deps import cache_get, cache_set
+from deps import cache_get, cache_set, resolve_demo_sku
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
@@ -18,7 +18,10 @@ def health():
 
 @app.get("/checkout")
 def checkout():
-    sku = request.args.get("sku", "book")
+    requested = request.args.get("sku", "book")
+    sku = resolve_demo_sku(requested)
+    if sku is None:
+        return jsonify({"sku": requested, "status": "catalog_failed"}), 404
     cache_get(f"session:{sku}")
     cache_set(f"session:{sku}", sku)
     try:

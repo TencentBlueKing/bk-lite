@@ -3,7 +3,7 @@
 import os
 
 import requests
-from deps import cache_get, cache_set, pg_fetchall
+from deps import cache_get, cache_set, pg_fetchall, resolve_demo_sku
 from flask import Flask, jsonify
 
 app = Flask(__name__)
@@ -18,8 +18,10 @@ def health():
 
 @app.get("/products/<sku>")
 def product(sku: str):
-    if sku not in PRICES:
-        return jsonify({"sku": sku, "error": "not found"}), 404
+    requested = sku
+    sku = resolve_demo_sku(sku)
+    if sku is None or sku not in PRICES:
+        return jsonify({"sku": requested, "error": "not found"}), 404
     cached = cache_get(f"product:{sku}")
     rows = pg_fetchall(
         "SELECT sku, name, price FROM (VALUES (%s, %s, %s::numeric)) AS catalog(sku, name, price)",
