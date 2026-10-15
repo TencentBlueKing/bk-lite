@@ -88,29 +88,31 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
               canBind ? 'hover:bg-(--color-fill-1)/40' : 'opacity-60'
             }`}
           >
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="truncate text-[13px] font-medium text-(--color-text-1)">
-                {displayName}
-              </span>
-              {hasCustomName ? (
-                <span className="truncate font-mono text-xs text-(--color-text-3)">
-                  ({param.name})
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-[13px] font-medium text-(--color-text-1)">
+                  {displayName}
                 </span>
-              ) : null}
-              <Tag
-                bordered={false}
-                color={getTypeTagColor(param.type)}
-                className="m-0 text-[11px] font-normal leading-tight"
-              >
-                {getTypeLabel(param.type)}
-              </Tag>
-              {!canBind ? (
                 <Tag
                   bordered={false}
-                  className="m-0 text-[11px] font-normal leading-tight text-(--color-text-4)"
+                  color={getTypeTagColor(param.type)}
+                  className="m-0 shrink-0 text-[11px] font-normal leading-tight"
                 >
-                  {t('dashboard.filterDisabled')}
+                  {getTypeLabel(param.type)}
                 </Tag>
+                {!canBind ? (
+                  <Tag
+                    bordered={false}
+                    className="m-0 shrink-0 text-[11px] font-normal leading-tight text-(--color-text-4)"
+                  >
+                    {t('dashboard.filterDisabled')}
+                  </Tag>
+                ) : null}
+              </div>
+              {hasCustomName ? (
+                <div className="mt-0.5 break-all font-mono text-xs leading-4 text-(--color-text-3)">
+                  {param.name}
+                </div>
               ) : null}
             </div>
             <div className="ml-3 flex shrink-0 items-center gap-2">

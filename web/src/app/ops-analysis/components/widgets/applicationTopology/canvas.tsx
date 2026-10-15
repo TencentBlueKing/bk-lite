@@ -9,13 +9,12 @@ import type {
   UnifiedFilterDefinition,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
-import { resolveApplicationTopologyCanvasSelection } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
+import {
+  resolveApplicationTopologyCanvasSelection,
+  resolveApplicationTopologyDepth,
+} from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import { isSceneWidgetAllowedOnSurface } from '@/app/ops-analysis/types/sceneWidgetCapability';
-import {
-  APPLICATION_TOPOLOGY_DEFAULT_DEPTH,
-  APPLICATION_TOPOLOGY_MAX_DEPTH,
-} from '@/app/ops-analysis/types/sceneWidget';
 import { isScreenChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import { applicationTopologySurfaceStyle } from '@/app/ops-analysis/components/widgets/applicationTopology/graphView';
 
@@ -26,14 +25,6 @@ interface ApplicationTopologyCanvasProps {
   unifiedFilterValues?: Record<string, FilterValue>;
   filterDefinitions?: UnifiedFilterDefinition[];
 }
-
-const clampDepth = (value: unknown) => {
-  const depth = Number(value);
-  if (!Number.isInteger(depth) || depth < 1 || depth > APPLICATION_TOPOLOGY_MAX_DEPTH) {
-    return APPLICATION_TOPOLOGY_DEFAULT_DEPTH;
-  }
-  return depth;
-};
 
 const ApplicationTopologyCanvas = ({
   config,
@@ -48,7 +39,11 @@ const ApplicationTopologyCanvas = ({
     unifiedFilterValues,
     fallbackInstUuid: config?.applicationTopology?.instUuid,
   });
-  const depth = clampDepth(config?.applicationTopology?.depth);
+  const depth = resolveApplicationTopologyDepth({
+    filterDefinitions,
+    unifiedFilterValues,
+    fallbackDepth: config?.applicationTopology?.depth,
+  });
   const allowed = isSceneWidgetAllowedOnSurface('applicationTopology', surface);
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
 

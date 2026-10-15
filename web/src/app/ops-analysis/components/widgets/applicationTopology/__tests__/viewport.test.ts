@@ -25,7 +25,7 @@ describe('application topology viewport', () => {
     expect(view.y + 540 * view.scale).toBeLessThanOrEqual(720 + 0.01);
   });
 
-  it('keeps the label rail a short gap from the cluster and centers them together', () => {
+  it('reserves the same label rail on both sides and centers the cluster', () => {
     const rail = 96;
     const gap = 10;
     const view = fitApplicationTopologyLayers({
@@ -38,10 +38,10 @@ describe('application topology viewport', () => {
       labelGap: gap,
     });
     const clusterLeft = view.x + 640 * view.scale;
-    const groupLeft = clusterLeft - gap - rail;
-    const groupRight = clusterLeft + 480 * view.scale;
-    expect(clusterLeft - (groupLeft + rail)).toBe(gap);
-    expect((groupLeft + groupRight) / 2).toBeCloseTo(800, 0);
+    const clusterRight = clusterLeft + 480 * view.scale;
+    expect((clusterLeft + clusterRight) / 2).toBeCloseTo(800, 0);
+    expect(clusterLeft).toBeCloseTo(1600 - clusterRight, 0);
+    expect(clusterLeft).toBeGreaterThanOrEqual(rail + gap);
   });
 
   it('shrinks a taller layer stack so the last band stays in view', () => {

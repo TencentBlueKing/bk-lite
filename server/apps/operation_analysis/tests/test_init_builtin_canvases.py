@@ -68,8 +68,23 @@ def test_builtin_application_topology_screen_filter_uses_canvas_contract():
     screen = next(screen for screen in payload["screens"] if screen["key"] == "screen::应用拓扑大屏_内置")
     widget = next(item for item in screen["view_sets"]["items"] if item["id"] == "builtin-application-topology-main")
 
+    clock = next(item for item in screen["view_sets"]["items"] if item["id"] == "legacy-clock")
+    assert clock == {
+        "h": 56,
+        "w": 360,
+        "x": 1528,
+        "y": 20,
+        "id": "legacy-clock",
+        "kind": "clock",
+        "format": "YYYY-MM-DD HH:mm:ss",
+        "zIndex": 3,
+        "textStyle": {"color": "canvas", "fontSize": 25, "fontWeight": 600},
+    }
     assert widget["valueConfig"]["applicationTopology"] == {"depth": 3}
-    assert widget["valueConfig"]["filterBindings"] == {"application_system_id__string": True}
+    assert widget["valueConfig"]["filterBindings"] == {
+        "application_system_id__string": True,
+        "application_topology_depth__string": True,
+    }
     assert screen["view_sets"]["filters"] == [
         {
             "id": "application_system_id__string",
@@ -89,7 +104,30 @@ def test_builtin_application_topology_screen_filter_uses_canvas_contract():
                 },
             },
             "inputMode": "select",
-        }
+        },
+        {
+            "id": "application_topology_depth__string",
+            "key": "application_topology_depth",
+            "name": "展开层级",
+            "type": "string",
+            "order": 1,
+            "enabled": True,
+            "defaultValue": "3",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "static",
+                    "staticItems": [
+                        {"label": "1", "value": "1"},
+                        {"label": "2", "value": "2"},
+                        {"label": "3", "value": "3"},
+                        {"label": "4", "value": "4"},
+                        {"label": "5", "value": "5"},
+                    ],
+                },
+            },
+            "inputMode": "select",
+        },
     ]
     assert "应用系统::cmdb/list_application_systems" in screen["refs"]["datasource_keys"]
 

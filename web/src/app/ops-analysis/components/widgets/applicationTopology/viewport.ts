@@ -4,9 +4,9 @@ export const APPLICATION_TOPOLOGY_SCALE = {
   step: 0.2,
 } as const;
 
-/** 图例色块在字号 16 时的基准边长会按节点标题比例缩放。 */
+/** 图例留在画布坐标里，不跟拓扑缩放。 */
 export const APPLICATION_TOPOLOGY_LEGEND_FONT = 15;
-/** 节点标题是 text-base。层名和图例用同一字号。 */
+/** 节点标题是 text-base。层名用同一字号。 */
 export const APPLICATION_TOPOLOGY_NODE_TITLE_FONT = 16;
 /** 左侧层级卡片在缩放为 1 时的宽度。要放下图标和「应用服务层」这类五字层名。放大后按比例变宽，缩小时不低于可读宽度。 */
 const LAYER_CARD_WIDTH_PX = 168;
@@ -35,7 +35,7 @@ export function clampApplicationTopologyScale(scale: number): number {
 export const APPLICATION_TOPOLOGY_LABEL_GAP = 10;
 
 /**
- * 五带都留在视口里。层名栏和节点簇当成一组居中，
+ * 五带都留在视口里。左右各留出一层名栏，拓扑本身居中，
  * 放大到分层高度或簇宽度先碰到边。
  */
 export function fitApplicationTopologyLayers(input: {
@@ -51,20 +51,20 @@ export function fitApplicationTopologyLayers(input: {
   const padding = input.padding ?? 8;
   const rail = Math.max(0, input.labelRailWidth ?? 0);
   const labelGap = rail > 0 ? Math.max(0, input.labelGap ?? APPLICATION_TOPOLOGY_LABEL_GAP) : 0;
-  const availW = Math.max(1, input.viewportWidth - padding * 2 - rail - labelGap);
+  const side = rail + labelGap;
+  const availW = Math.max(1, input.viewportWidth - padding * 2 - side * 2);
   const availH = Math.max(1, input.viewportHeight - padding * 2);
   const clusterWidth = Math.max(1, input.clusterWidth);
   const layerHeight = Math.max(1, input.layerHeight);
   const scale = clampApplicationTopologyScale(
     Math.min(availW / clusterWidth, availH / layerHeight),
   );
-  const groupWidth = rail + labelGap + clusterWidth * scale;
-  let groupLeft = (input.viewportWidth - groupWidth) / 2;
-  if (groupLeft < padding) groupLeft = padding;
-  let x = groupLeft + rail + labelGap - input.clusterX * scale;
+  const clusterCenter = input.clusterX + clusterWidth / 2;
+  let x = input.viewportWidth / 2 - clusterCenter * scale;
+  const minLeft = padding + side;
   const clusterLeft = x + input.clusterX * scale;
-  if (clusterLeft < padding + rail + labelGap) {
-    x += padding + rail + labelGap - clusterLeft;
+  if (clusterLeft < minLeft) {
+    x += minLeft - clusterLeft;
   }
   return {
     scale,

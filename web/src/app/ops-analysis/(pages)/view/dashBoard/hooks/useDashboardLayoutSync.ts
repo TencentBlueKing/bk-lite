@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from '@/utils/i18n';
 
 import type {
   DashboardLayoutItem,
@@ -33,6 +34,7 @@ import {
 } from '@/app/ops-analysis/utils/dashboardGroups';
 import {
   ensureApplicationTopologyCanvasFilter,
+  relabelApplicationTopologyFilters,
   withApplicationTopologyFilterBinding,
 } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 
@@ -169,17 +171,23 @@ export const useDashboardLayoutSync = ({
   setDefinitions,
   setFilterValues,
 }: UseDashboardLayoutSyncOptions) => {
+  const { t } = useTranslation();
   const buildFiltersFromLayout = useCallback(
     (
       nextLayout: DashboardLayoutItem[],
       previousDefinitions: UnifiedFilterDefinition[],
     ): UnifiedFilterDefinition[] =>
-      buildFiltersFromDashboardLayout({
-        layout: nextLayout,
-        previousDefinitions,
-        dataSources,
-      }),
-    [dataSources],
+      relabelApplicationTopologyFilters({
+        filters: buildFiltersFromDashboardLayout({
+          layout: nextLayout,
+          previousDefinitions,
+          dataSources,
+        }),
+      }, {
+        system: t('dashboard.applicationTopologyFilterName'),
+        depth: t('dashboard.applicationTopologyDepth'),
+      }).filters ?? [],
+    [dataSources, t],
   );
 
   const syncLayoutFilterBindings = useCallback(
