@@ -184,17 +184,16 @@ function ProcessStatusStack({ items }: { items: StatusCountItem[] }) {
 /** 进程状态：标签在上，整数 +「个」，左侧色条。不画涨跌箭头、不画 spark。 */
 export default function StatusCountRow({
   items,
-  alertLevel
+  leafAlerts
 }: {
   items: StatusCountItem[];
-  /** 阻塞 / 僵尸达档时标整张状态卡。运行、休眠不单独打点。 */
-  alertLevel?: TabAlertLevel;
+  /** 只在达档的阻塞 / 僵尸叶卡右上角打点。外容器不标。 */
+  leafAlerts?: { blocked?: TabAlertLevel; zombies?: TabAlertLevel };
 }) {
   const { t } = useDashboardText();
   if (!items.length) {
     return (
-      <section className={`${classic.panel} ${styles.statusPanel} ${cardAlertClass(alertLevel)}`}>
-        <CardAlertDot level={alertLevel} />
+      <section className={`${classic.panel} ${styles.statusPanel}`}>
         <div className={styles.sectionHead}>
           <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>进程状态</div>
         </div>
@@ -207,16 +206,20 @@ export default function StatusCountRow({
     if (item.key === 'zombies') return hostCategoryText(t, 'zombieProcesses');
     return item.label;
   };
+  const leafLevel = (key: string) => (
+    key === 'blocked' || key === 'zombies' ? leafAlerts?.[key] : undefined
+  );
   return (
-    <section className={`${classic.panel} ${styles.statusPanel} ${cardAlertClass(alertLevel)}`}>
-      <CardAlertDot level={alertLevel} />
+    <section className={`${classic.panel} ${styles.statusPanel}`}>
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>进程状态</div>
       </div>
       <div className={styles.statusCards}>
         {items.map((item) => {
+          const level = leafLevel(item.key);
           const card = (
-            <div className={`${styles.statusCard} ${TONE_CLASS[item.tone]}${item.key === 'total' ? ` ${styles.statusCardTotal}` : ''}`}>
+            <div className={`${styles.statusCard} ${TONE_CLASS[item.tone]}${item.key === 'total' ? ` ${styles.statusCardTotal}` : ''} ${cardAlertClass(level)}`}>
+              <CardAlertDot level={level} />
               <span className={item.hint ? styles.statusHint : styles.statusLabel}>{labelOf(item)}</span>
               <span className={styles.statusValueRow}>
                 <span className={styles.statusValue}>{item.value == null ? '--' : item.value}</span>

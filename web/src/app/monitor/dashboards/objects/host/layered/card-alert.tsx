@@ -6,10 +6,10 @@ import type { TabAlertLevel } from './tab-level';
 
 export const cardAlertClass = (level: TabAlertLevel | undefined) => {
   if (!level || level === 'none') return '';
-  return `${styles.cardAlert} ${level === 'critical' ? styles.cardAlertCritical : styles.cardAlertWarn}`;
+  return styles.cardAlert;
 };
 
-/** 与页签达档点同尺寸同色。无达档不渲染。 */
+/** 与页签达档点同尺寸同色。无达档不渲染，也不加边框。 */
 export function CardAlertDot({ level }: { level: TabAlertLevel | undefined }) {
   if (!level || level === 'none') return null;
   return (

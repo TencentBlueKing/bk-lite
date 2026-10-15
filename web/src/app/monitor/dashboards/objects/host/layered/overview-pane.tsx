@@ -293,7 +293,6 @@ export default function OverviewPane({
           unit="percent"
           data={cpuTrend}
           legends={[CPU_SERIES]}
-          alertLevel={alerts.cpu}
         />
         <ThinTimeSeries
           title={hostCategoryText(t, 'memoryUtilization')}
@@ -304,7 +303,6 @@ export default function OverviewPane({
           unit="percent"
           data={memTrend}
           legends={[MEM_SERIES]}
-          alertLevel={alerts.mem}
         />
         <ThinTimeSeries
           title={mountName ? `磁盘使用率 · ${mountName}` : '磁盘使用率'}
@@ -313,7 +311,6 @@ export default function OverviewPane({
           emptyText="暂无挂载数据"
           data={diskTrend}
           legends={[{ label: mountName || '使用率', color: HOST_SERIES_COLOR.diskUsed }]}
-          alertLevel={alerts.disk}
         />
         <ThinTimeSeries
           title="网卡合计"

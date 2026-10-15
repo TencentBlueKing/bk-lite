@@ -153,13 +153,15 @@ export interface HostSurfaceAlerts {
     uptime: TabAlertLevel;
   };
   process: {
-    status: TabAlertLevel;
+    blocked: TabAlertLevel;
+    zombies: TabAlertLevel;
     list: TabAlertLevel;
   };
 }
 
 /**
  * 卡气味与页签点同源。每张卡只吃自己展示的指标。
+ * 同一指标的趋势图不再打点，读数卡优先。
  * 交换达档仍只点亮性能页签：这一页没有交换卡，不把气味挪到内存数值上。
  */
 export const resolveHostSurfaceAlerts = (
@@ -180,7 +182,8 @@ export const resolveHostSurfaceAlerts = (
     uptime: resolveMetricLevels('system', readings, ['system_uptime'], options)
   },
   process: {
-    status: resolveMetricLevels('process', readings, ['processes_blocked', 'processes_zombies'], options),
+    blocked: resolveMetricLevels('process', readings, ['processes_blocked'], options),
+    zombies: resolveMetricLevels('process', readings, ['processes_zombies'], options),
     list: resolveMetricLevels('process', readings, ['process_cpu_usage', 'process_mem_usage'], options)
   }
 });

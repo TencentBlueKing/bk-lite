@@ -12,7 +12,7 @@ import TableCsvExportButton from './table-csv-export';
 import StatusCountRow, { processStatusView } from './status-count';
 import { CardAlertDot, cardAlertClass } from './card-alert';
 import ThinTimeSeries from './thin-time-series';
-import { resolveMetricLevels, type HostSurfaceAlerts, type TabAlertLevel } from './tab-level';
+import { resolveMetricLevels, type HostSurfaceAlerts } from './tab-level';
 import { formatPercent, formatUnit, latestPreferCount, metricSettled } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -99,9 +99,6 @@ export default function FlatProcessSplit({
   );
   const cpu = numberOrNull(selected?.values.process_cpu_usage);
   const mem = numberOrNull(selected?.values.process_mem_usage);
-  const selectedLevel = (metric: 'process_cpu_usage' | 'process_mem_usage', value: number | null): TabAlertLevel => (
-    resolveMetricLevels('process', { [metric]: value }, [metric])
-  );
   const currentLevel = resolveMetricLevels('process', {
     process_cpu_usage: cpu,
     process_mem_usage: mem
@@ -160,7 +157,10 @@ export default function FlatProcessSplit({
 
   return (
     <>
-      <StatusCountRow items={statusItems} alertLevel={alerts.status} />
+      <StatusCountRow
+        items={statusItems}
+        leafAlerts={{ blocked: alerts.blocked, zombies: alerts.zombies }}
+      />
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
       </div>
@@ -191,7 +191,6 @@ export default function FlatProcessSplit({
             unit="percent"
             data={cpuTrend}
             legends={[{ label: 'CPU', color: cpuSeries.color }]}
-            alertLevel={selectedLevel('process_cpu_usage', cpu)}
           />
           <ThinTimeSeries
             title={name ? `内存 · ${name}` : '内存'}
@@ -199,7 +198,6 @@ export default function FlatProcessSplit({
             unit="percent"
             data={memTrend}
             legends={[{ label: '内存', color: memSeries.color }]}
-            alertLevel={selectedLevel('process_mem_usage', mem)}
           />
         </div>
       </div>

@@ -411,23 +411,23 @@ button.kpiCard {
 }
 
 .tabLevelDot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-/* 页签达档点。提醒 / 警告用约定色，不跟主题主色走，也不改 Tab 文字色。 */
+/* 页签达档点。提醒橙实心，警告红带浅光晕。不跟主题主色走，也不改 Tab 文字色。 */
 .tabLevelWarn {
-  background: #ff7d00;
+  background: #fa8c16;
 }
 
 .tabLevelCritical {
-  background: #f53f3f;
-  box-shadow: 0 0 0 2px rgba(245, 63, 63, 0.18);
+  background: #f5222d;
+  box-shadow: 0 0 0 2px rgba(245, 34, 45, 0.18);
 }
 
-/* 卡气味：角点复用页签点的尺寸和色。左边框 3px 跟点同色，不改 KPI 主值色，不闪。 */
+/* 卡气味只复用页签角点。不加左边框，也不描满边。 */
 .cardAlert {
   position: relative;
 }
@@ -440,23 +440,15 @@ button.kpiCard {
   pointer-events: none;
 }
 
-.cardAlert.cardAlertCritical,
-.cardAlert.cardAlertCritical:hover {
-  border-left: 3px solid #f53f3f;
-}
-
-.cardAlert.cardAlertWarn,
-.cardAlert.cardAlertWarn:hover {
-  border-left: 3px solid #ff7d00;
-}
-
 .cardAlert .chartLegend,
 .cardAlertPad {
   margin-right: 14px;
 }
 
 .cardAlert .currentName,
-.cardAlert .sectionTitle {
+.cardAlert .sectionTitle,
+.cardAlert .statusLabel,
+.cardAlert .statusHint {
   padding-right: 12px;
 }
 

@@ -278,7 +278,6 @@ export default function SystemPane({
         label: 'CPU',
         color: CPU_SERIES_COLOR
       }]}
-      alertLevel={alerts.cpu}
     />,
     <ThinTimeSeries
       key="mem"
@@ -296,7 +295,6 @@ export default function SystemPane({
           reading: value == null ? undefined : formatPercent(value)
         };
       })}
-      alertLevel={alerts.mem}
     />,
     loadActive ? (
       <ThinTimeSeries
@@ -311,7 +309,6 @@ export default function SystemPane({
           label: item.label,
           color: item.color
         }))}
-        alertLevel={alerts.load}
       />
     ) : null
   ].filter(Boolean);
