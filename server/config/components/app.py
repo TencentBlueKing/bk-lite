@@ -69,6 +69,7 @@ AUTHENTICATION_BACKENDS = (
 AUTH_USER_MODEL = "base.User"
 
 MIDDLEWARE = (
+    "apps.opspilot.middlewares.returned_message_middleware.ReturnedMessageLocaleMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "apps.core.middlewares.request_timing_middleware.RequestTimingMiddleware",  # 请求耗时记录

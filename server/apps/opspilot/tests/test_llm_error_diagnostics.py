@@ -13,7 +13,13 @@ from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
 )
 
 
-def test_classify_llm_error_detects_unreachable_connection_refused():
+def test_localized_llm_user_message_follows_locale():
+    from apps.opspilot.metis.llm.common.llm_error_diagnostics import localized_llm_user_message
+
+    classification = classify_llm_error(ConnectionRefusedError("Connection refused"))
+    assert "无法连接" in classification["user_message"]
+    assert localized_llm_user_message(classification, "en").startswith("Cannot reach the model service")
+    assert "无法连接" in localized_llm_user_message(classification, "zh-Hans")
     exc = ConnectionRefusedError("Connection refused")
     result = classify_llm_error(exc)
     assert result["code"] == LLM_ERROR_UNREACHABLE

@@ -431,7 +431,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["enable_query_rewrite"] = False
             params["show_think"] = False
             params["temperature"] = DEFAULT_CHAT_TEMPERATURE
-            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            params["locale"] = self.loader.default_lang if self.loader else (getattr(request.user, "locale", "en") or "en")
             params["user_timezone"] = getattr(request.user, "timezone", "") or ""
             # 透传技能绑定的 Wiki 知识库,触发 format_chat_server_kwargs 的检索增强;
             # 否则智能体对话不会引用知识库内容,易凭 LLM 自身知识作答(幻觉)。
@@ -517,7 +517,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["enable_query_rewrite"] = False
             params["show_think"] = False
             params["temperature"] = DEFAULT_CHAT_TEMPERATURE
-            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            params["locale"] = self.loader.default_lang if self.loader else (getattr(request.user, "locale", "en") or "en")
             params["user_timezone"] = getattr(request.user, "timezone", "") or ""
             params["browser_use_force_task"] = True
             # 同 execute:透传 Wiki 知识库以触发检索增强,避免智能体不查知识库而凭空作答。

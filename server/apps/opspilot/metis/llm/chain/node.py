@@ -2373,6 +2373,7 @@ class ToolsNodes(
             classify_llm_error,
             format_llm_empty_response_log,
             format_llm_failure_log,
+            localized_llm_user_message,
             summarize_llm_endpoint,
         )
 
@@ -2430,7 +2431,16 @@ class ToolsNodes(
                         endpoint=endpoint,
                     )
                 )
-                return {"messages": [AIMessage(content=str(classification["user_message"]))]}
+                return {
+                    "messages": [
+                        AIMessage(
+                            content=localized_llm_user_message(
+                                classification,
+                                getattr(graph_request, "locale", None),
+                            )
+                        )
+                    ]
+                }
             logger.exception(
                 format_llm_failure_log(
                     stage="lightweight_direct_reply",

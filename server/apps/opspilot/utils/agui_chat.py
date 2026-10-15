@@ -13,7 +13,12 @@ from asgiref.sync import sync_to_async
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import is_ephemeral_agui_custom_event
-from apps.opspilot.metis.llm.common.llm_error_diagnostics import classify_llm_error, format_llm_failure_log, summarize_llm_endpoint
+from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
+    classify_llm_error,
+    format_llm_failure_log,
+    localized_llm_user_message,
+    summarize_llm_endpoint,
+)
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
@@ -542,9 +547,13 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
             ),
             exc_info=True,
         )
+        shown = localized_llm_user_message(
+            classification,
+            (kwargs or {}).get("locale") or (params or {}).get("locale"),
+        )
         error_data = {
             "type": "ERROR",
-            "error": f"{classification['user_message']}: {classification['detail']}"[:1000],
+            "error": f"{shown}: {classification['detail']}"[:1000],
             "error_code": classification["code"],
             "timestamp": int(time.time() * 1000),
         }

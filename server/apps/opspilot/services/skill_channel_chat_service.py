@@ -1409,6 +1409,9 @@ def stream_skill_channel_chat(
 
     user = identity_user or request.user
     params = build_skill_chat_params(skill, persist_text, user)
+    page_loader = getattr(request, "opspilot_language_loader", None)
+    if page_loader is not None:
+        params["locale"] = page_loader.default_lang
     inject_skill_memory_prompt(params, skill, external_user_id, persist_text)
     llm_model = getattr(skill, "llm_model", None)
     token_budget = attachment_token_budget(llm_model)

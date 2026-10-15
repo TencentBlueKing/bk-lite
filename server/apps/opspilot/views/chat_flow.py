@@ -89,7 +89,10 @@ def get_loader(request=None, default_lang="en"):
         LanguageLoader实例
     """
     locale = default_lang
-    if request and hasattr(request, "user") and request.user:
+    header_locale = request.headers.get("X-BK-Locale") if request is not None and hasattr(request, "headers") else None
+    if header_locale:
+        locale = header_locale
+    elif request and hasattr(request, "user") and request.user:
         locale = getattr(request.user, "locale", default_lang) or default_lang
     return LanguageLoader(app="opspilot", default_lang=locale)
 
@@ -498,7 +501,7 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
             "session_id": session_id,
             "conversation_key": conversation_key,
             "execution_id": engine.execution_id,
-            "locale": getattr(user, "locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
+            "locale": loader.default_lang,
             "user_timezone": getattr(user, "timezone", "") or "",
             CALLER_IDENTITY_CONFIG_KEY: caller_snapshot,
         }

@@ -46,6 +46,21 @@ from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.pending_question import consume_pending_question, resolve_conversation_key
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
+from apps.opspilot.utils.run_locale import set_run_locale
+
+_REPLY_LANGUAGE_EN = (
+    "\n\n[Reply language] The user interface language is English. "
+    "Reply in English. Skill instructions, the opening guide, and tool results may be in another language; "
+    "the user-facing answer must still be English."
+)
+_REPLY_LANGUAGE_ZH = "\n\n【回复语言】当前界面语言是简体中文。请用简体中文回复。" "技能说明、引导语和工具结果即使是其他语言，面向用户的回答也必须使用简体中文。"
+
+
+def append_reply_language(prompt: str, locale: str | None) -> str:
+    """按当前页面语言要求智能体回复，不改技能里保存的提示词原文。"""
+    normalized = (locale or "en").replace("_", "-").lower()
+    suffix = _REPLY_LANGUAGE_ZH if normalized.startswith("zh") else _REPLY_LANGUAGE_EN
+    return f"{prompt or ''}{suffix}"
 
 
 def _inject_llm_working_budget(chat_kwargs, extra_config, llm_model, *, scene_output_default):
@@ -269,7 +284,7 @@ class ChatService:
             )
 
         try:
-            # 创建 agent 实例并直接执行
+            set_run_locale(chat_kwargs.get("locale") or "en")
             graph, request = create_agent_instance(skill_type, chat_kwargs)
 
             if _is_eventlet_environment():
@@ -620,6 +635,7 @@ class ChatService:
         memory_block = kwargs.get("skill_memory_block") or ""
         if memory_block:
             resolved_prompt = append_skill_memory_block(resolved_prompt, memory_block)
+        resolved_prompt = append_reply_language(resolved_prompt, kwargs.get("locale"))
 
         vendor_type = llm_model.vendor.vendor_type if llm_model.vendor_id else ""
         # 对话温度固定 1；技能表与请求里的旧滑条值忽略。

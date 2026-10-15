@@ -194,7 +194,8 @@ def test_chat_service_passes_wiki_context_options(monkeypatch):
     assert captured["options"]["retrieval_mode"] == "chunk"
     assert captured["options"]["graph_hops"] == 0
     assert captured["options"]["token_budget"] == 64
-    assert chat_kwargs["system_message_prompt"] == "augmented prompt"
+    assert chat_kwargs["system_message_prompt"].startswith("augmented prompt")
+    assert "[Reply language]" in chat_kwargs["system_message_prompt"]
     assert chat_kwargs["extra_config"]["wiki_citations"] == [{"title": "服务操作手册"}]
     assert "max_model_calls" not in chat_kwargs
 
@@ -235,7 +236,8 @@ def test_chat_service_skips_wiki_path_for_greeting(monkeypatch):
     )
 
     assert called["augment"] == 0
-    assert chat_kwargs["system_message_prompt"] == "你是运维助手"
+    assert chat_kwargs["system_message_prompt"].startswith("你是运维助手")
+    assert "[Reply language]" in chat_kwargs["system_message_prompt"]
     assert "max_model_calls" not in chat_kwargs
     assert chat_kwargs["extra_config"]["wiki_budget"]["overview_status"] == "skipped_chitchat"
 
@@ -277,7 +279,8 @@ def test_chat_service_skips_wiki_path_for_current_time(monkeypatch):
     )
 
     assert called["augment"] == 0
-    assert chat_kwargs["system_message_prompt"] == "你是运维助手"
+    assert chat_kwargs["system_message_prompt"].startswith("你是运维助手")
+    assert "[Reply language]" in chat_kwargs["system_message_prompt"]
     assert "wiki_citations" not in chat_kwargs["extra_config"]
     assert "max_model_calls" not in chat_kwargs
     assert chat_kwargs["extra_config"]["wiki_budget"]["overview_status"] == "skipped_chitchat"
@@ -328,7 +331,8 @@ def test_chat_service_non_force_wiki_keeps_tool_loop_for_current_time(monkeypatc
 
     assert captured["query"] == "当前时间"
     assert captured["options"].get("force_wiki_grounded") is False
-    assert chat_kwargs["system_message_prompt"] == "augmented prompt"
+    assert chat_kwargs["system_message_prompt"].startswith("augmented prompt")
+    assert "[Reply language]" in chat_kwargs["system_message_prompt"]
     assert "max_model_calls" not in chat_kwargs
     assert "max_steps" not in chat_kwargs
 
