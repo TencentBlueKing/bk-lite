@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Tooltip } from 'antd';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
-import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
+import { HOST_SERIES_COLOR } from '../config';
 import {
   latestPreferSignal,
   pointsToChartData,
@@ -81,8 +81,8 @@ const DEVICE_CHARTS: Array<{
     titleKey: 'readWriteThroughput',
     unit: 'byteps',
     series: [
-      { key: 'diskio_read_bytes_rate', labelKey: 'read', color: HOST_PALETTE.blue },
-      { key: 'diskio_write_bytes_rate', labelKey: 'write', color: HOST_PALETTE.cyan }
+      { key: 'diskio_read_bytes_rate', labelKey: 'read', color: HOST_SERIES_COLOR.diskRead },
+      { key: 'diskio_write_bytes_rate', labelKey: 'write', color: HOST_SERIES_COLOR.diskWrite }
     ]
   },
   {
@@ -90,8 +90,8 @@ const DEVICE_CHARTS: Array<{
     titleKey: 'readWriteIops',
     unit: 'cps',
     series: [
-      { key: 'diskio_reads_rate', labelKey: 'read', color: HOST_PALETTE.blue },
-      { key: 'diskio_writes_rate', labelKey: 'write', color: HOST_PALETTE.cyan }
+      { key: 'diskio_reads_rate', labelKey: 'read', color: HOST_SERIES_COLOR.diskRead },
+      { key: 'diskio_writes_rate', labelKey: 'write', color: HOST_SERIES_COLOR.diskWrite }
     ]
   },
   {
@@ -99,8 +99,8 @@ const DEVICE_CHARTS: Array<{
     titleKey: 'rwLatency',
     unit: 'ms',
     series: [
-      { key: 'disk_read_latency', labelKey: 'read', color: HOST_PALETTE.orange },
-      { key: 'disk_write_latency', labelKey: 'write', color: HOST_PALETTE.blue }
+      { key: 'disk_read_latency', labelKey: 'read', color: HOST_SERIES_COLOR.diskRead },
+      { key: 'disk_write_latency', labelKey: 'write', color: HOST_SERIES_COLOR.diskWrite }
     ]
   }
 ];

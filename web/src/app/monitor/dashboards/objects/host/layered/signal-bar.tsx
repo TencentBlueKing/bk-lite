@@ -52,7 +52,7 @@ export function KpiStrip({ items }: { items: KpiCardModel[] }) {
         const className = `${styles.kpiCard} ${cardAlertClass(item.alertLevel)}`;
         const body = (
           <>
-            <CardAlertDot level={item.alertLevel} />
+            <CardAlertDot level={item.alertLevel} valueColor={item.tone} />
             <ValueCardBody item={item} />
           </>
         );

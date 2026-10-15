@@ -132,7 +132,7 @@
   margin-left: 3px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--color-text-3);
+  color: inherit;
 }
 
 .kpiGrid {
@@ -460,6 +460,30 @@ button.kpiCard {
 .cardAlertFoldCritical {
   --fold-face: #f5222d;
   --fold-crease: #cf1322;
+}
+
+/* 主值已是同色系（load1 橙字 + 警告折角）时改描边，避免实心折角糊住数字。 */
+.cardAlertFoldOutline {
+  background: none;
+}
+
+.cardAlertFoldOutline::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 20px;
+  height: 20px;
+  background:
+    linear-gradient(var(--fold-face), var(--fold-face)) top / 100% 1.5px no-repeat,
+    linear-gradient(var(--fold-face), var(--fold-face)) right / 1.5px 100% no-repeat,
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 0.75px),
+      var(--fold-crease) calc(50% - 0.75px),
+      var(--fold-crease) calc(50% + 0.75px),
+      transparent calc(50% + 0.75px)
+    );
 }
 
 .cardAlert .chartLegend,
@@ -837,15 +861,15 @@ button.kpiCard {
 }
 
 .miniBarFillSuccess {
-  background: var(--color-success);
+  background: #00b42a;
 }
 
 .miniBarFillWarning {
-  background: var(--color-warning);
+  background: #faad14;
 }
 
 .miniBarFillError {
-  background: var(--color-fail);
+  background: #f5222d;
 }
 
 .entityStack {

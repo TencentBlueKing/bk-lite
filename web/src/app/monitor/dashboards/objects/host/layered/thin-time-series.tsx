@@ -162,7 +162,7 @@ export default function ThinTimeSeries({
               const raw = Array.isArray(item.value) ? item.value[1] : item.value;
               const name = item.seriesName || '';
               const color = seriesMarkerColor(legends, name, item.seriesIndex, item.color);
-              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600">${formatTooltipReading(raw, unit)}</span></div>`;
+              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:${color}">${formatTooltipReading(raw, unit)}</span></div>`;
             })
             .join('');
           return `<div style="min-width:160px"><div style="margin-bottom:6px;color:var(--color-text-3)">${time}</div>${rows}</div>`;
@@ -242,7 +242,7 @@ export default function ThinTimeSeries({
                   {item.reading ? (
                     <span
                       className={styles.legendReading}
-                      style={item.readingTone ? { color: item.readingTone } : undefined}
+                      style={{ color: item.readingTone || item.color }}
                     >
                       {item.reading}
                     </span>

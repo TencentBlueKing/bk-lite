@@ -5,7 +5,7 @@ import { Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import type { MetricSeries } from '../../common/simple-dashboard-core';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
-import { HOST_SERIES_COLOR } from '../config';
+import { HOST_SERIES_COLOR, hostThresholdColor } from '../config';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
 import TableCsvExportButton from './table-csv-export';
@@ -23,16 +23,6 @@ const numberOrNull = (value: number | null | undefined) => (
   value == null || !Number.isFinite(value) ? null : value
 );
 
-const USAGE_WARN = 80;
-const USAGE_CRIT = 90;
-
-/** 与磁盘使用率条同档：<80 绿，80–90 黄，≥90 红。只染数字，不铺底。 */
-const usagePercentClass = (value: number) => {
-  if (value >= USAGE_CRIT) return 'font-medium text-[var(--color-fail)]';
-  if (value >= USAGE_WARN) return 'font-medium text-[var(--color-warning)]';
-  return 'font-medium text-[var(--color-success)]';
-};
-
 const percentColumn = (key: string, title: string): LayeredColumn => ({
   key,
   title,
@@ -41,7 +31,11 @@ const percentColumn = (key: string, title: string): LayeredColumn => ({
   render: (row) => {
     const value = numberOrNull(row.values[key]);
     if (value == null) return <span className="text-[var(--color-text-3)]">—</span>;
-    return <span className={usagePercentClass(value)}>{formatPercent(value)}</span>;
+    return (
+      <span className="font-medium" style={{ color: hostThresholdColor(value) }}>
+        {formatPercent(value)}
+      </span>
+    );
   }
 });
 

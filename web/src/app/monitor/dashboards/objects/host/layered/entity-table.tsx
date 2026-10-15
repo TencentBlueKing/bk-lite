@@ -4,6 +4,7 @@ import React from 'react';
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { formatMetricValue } from '../../../shared/utils/format';
+import { hostThresholdColor } from '../config';
 import type { MetricUnit } from '../../../shared/types';
 import type { EntityTableRow } from '../entity-series';
 import { CardAlertDot, cardAlertClass } from './card-alert';
@@ -99,9 +100,10 @@ export default function LayeredEntityTable({
       if (column.render) return column.render(row, index);
       if (column.labelKey) return row.labels[column.labelKey] || (column.emptyDash ? '—' : '--');
       const value = row.values[column.key];
+      const usageBar = column.bar && value != null && Number.isFinite(value);
       return (
         <span className={column.bar ? styles.quotaCell : undefined}>
-          {column.bar && value != null && Number.isFinite(value) ? (
+          {usageBar ? (
             <span className={styles.miniBar} aria-hidden="true">
               <span
                 className={`${styles.miniBarFill} ${usageBarFillClass(value)}`}
@@ -109,7 +111,9 @@ export default function LayeredEntityTable({
               />
             </span>
           ) : null}
-          {formatCell(value, column.unit, column.emptyDash)}
+          <span style={usageBar ? { color: hostThresholdColor(value), fontWeight: 600 } : undefined}>
+            {formatCell(value, column.unit, column.emptyDash)}
+          </span>
         </span>
       );
     }

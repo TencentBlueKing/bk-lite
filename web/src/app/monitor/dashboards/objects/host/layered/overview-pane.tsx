@@ -140,6 +140,7 @@ export default function OverviewPane({
       label: hostCategoryText(t, 'diskPeak'),
       hint: hostCategoryText(t, 'diskUtilizationPeak'),
       value: formatPercent(diskValue),
+      tone: HOST_SERIES_COLOR.diskUsed,
       subtitle: mountName ? `挂载 ${mountName}` : undefined,
       alertLevel: alerts.disk
     });

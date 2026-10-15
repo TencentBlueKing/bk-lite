@@ -48,7 +48,7 @@ const MEM_USED_COLOR = HOST_SERIES_COLOR.memUsed;
 const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
 
 const MEM_COMPOSITION = [
-  { key: 'mem_used', label: '已用', color: HOST_PALETTE.blue },
+  { key: 'mem_used', label: '已用', color: HOST_SERIES_COLOR.memUsed },
   { key: 'mem_cached', label: '页缓存', color: HOST_PALETTE.cyan },
   { key: 'mem_buffered', label: '缓冲', color: HOST_PALETTE.amber },
   { key: 'mem_shared', label: '共享', color: HOST_PALETTE.indigo }
@@ -400,7 +400,7 @@ export default function SystemPane({
       <div className={styles.instantKpiRow}>
         {instantCards.map((card) => (
           <section key={card.key} className={`${classic.panel} ${styles.instantKpi} ${cardAlertClass(card.alertLevel)}`}>
-            <CardAlertDot level={card.alertLevel} />
+            <CardAlertDot level={card.alertLevel} valueColor={card.valueColor} />
             <div className={styles.instantKpiLabel}>{card.label}</div>
             {card.phase === 'loading' ? (
               <span
