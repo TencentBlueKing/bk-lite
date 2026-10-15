@@ -9,6 +9,7 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot import tasks as _opspilot_tasks
 from apps.opspilot.models import BuildRecord, KnowledgePage, Material, MaterialVersion, PageEvidence
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, MaterialSerializer
+from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
 from apps.opspilot.services.wiki.embedding_service import index_version, reindex_page_chunks
 from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
 from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildQueueError, enqueue_material_builds
@@ -17,6 +18,7 @@ from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.material_source_service import MaterialSourceError, source_metadata
 from apps.opspilot.services.wiki.parsed_media_service import _bare_media_locator_spans, rewrite_media_urls_for_display, sign_media_locators
 from apps.opspilot.services.wiki.update_service import (
+    BUSY_MATERIAL_DELETE_STATUSES,
     delete_materials,
     handle_material_deletion,
     preview_material_deletion,
@@ -50,7 +52,7 @@ _MATERIAL_STATUS_GROUPS = {
 }
 
 # 下载响应按扩展名给保守类型；不引入用户可控的 content-type。
-_BUSY_MATERIAL_STATUSES = frozenset({"queued", "parsing", "building"})
+_BUSY_MATERIAL_STATUSES = BUSY_MATERIAL_DELETE_STATUSES
 _MAX_MATERIAL_BATCH_DELETE = 200
 _MATERIAL_DOWNLOAD_CONTENT_TYPES = {
     ".pdf": "application/pdf",
@@ -278,7 +280,12 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         instance = self.get_object()
         material_id = instance.id
         name = instance.name
-        build = handle_material_deletion(instance, operator=getattr(request.user, "username", ""))
+        try:
+            build = handle_material_deletion(instance, operator=getattr(request.user, "username", ""))
+        except BuildGenerationError as exc:
+            if exc.code != "material_delete_in_progress":
+                raise
+            return self._batch_delete_error(request, exc.code, str(exc), 409)
         log_operation(request, "delete", "opspilot", f"删除资料: {name}")
         counts = build.counts or {}
         return JsonResponse(
