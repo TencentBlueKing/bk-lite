@@ -19,6 +19,7 @@ import NetworkConfigFileTask from './components/networkConfigFileTask';
 import SslCerTask from './components/sslCerTask';
 import IpTask from './components/ipTask';
 import PCTask from './components/pcTask';
+import CustomScriptTask from './components/customScriptTask';
 import PluginCatalogView from './components/pluginCatalogView';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
@@ -313,6 +314,9 @@ const ProfessionalCollection: React.FC = () => {
       ...(plugin.id === 'physcial_server_redfish' && {
         collection_protocol: 'redfish',
       }),
+      ...(plugin.task_type === 'custom_script' && plugin.custom_plugin_pk
+        ? { custom_plugin_pk: plugin.custom_plugin_pk }
+        : {}),
     };
   };
 
@@ -529,6 +533,11 @@ const ProfessionalCollection: React.FC = () => {
       const plugin = findPluginCategory(categoryListRef.current, pluginId)?.tabItems?.find(
         (item) => item.id === pluginId,
       );
+      if (plugin?.task_type === 'custom_script') {
+        const data = await collectApi.getCollectModelDoc('custom_script');
+        setPluginDoc(data || '');
+        return;
+      }
       const data = await collectApi.getCollectModelDoc(plugin?.model_id || pluginId);
       setPluginDoc(data || '');
     } catch {
@@ -682,6 +691,10 @@ const ProfessionalCollection: React.FC = () => {
 
     if (formPlugin.model_id === 'config_file') {
       return <ConfigFileTask {...taskProps} />;
+    }
+
+    if (formPlugin.task_type === 'custom_script') {
+      return <CustomScriptTask {...taskProps} />;
     }
 
     const credentialDescriptor = getCredentialDescriptor(formPlugin);

@@ -16,7 +16,7 @@ from browser_use.llm import ChatOpenAI
 from django.conf import settings
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from apps.opspilot.metis.llm.tools.common.browser_security import (

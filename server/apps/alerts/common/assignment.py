@@ -141,15 +141,18 @@ class AlertAssignmentOperator:
                     else:
                         results["failed_alerts"] += 1
 
-                try:
-                    self._batch_create_log(assignment, matched_alert_ids)
-                except Exception as log_error:
-                    logger.error(
-                        "[AlertAssign] 创建分派日志失败 assignment_id=%s: %s",
-                        assignment.id,
-                        log_error,
-                        exc_info=True,
-                    )
+                raw_target = read_notification_target(assignment.config if isinstance(assignment.config, dict) else {})
+                prefer_alert_owner = isinstance(raw_target, dict) and raw_target.get("prefer_alert_owner") is True
+                if not prefer_alert_owner:
+                    try:
+                        self._batch_create_log(assignment, matched_alert_ids)
+                    except Exception as log_error:
+                        logger.error(
+                            "[AlertAssign] 创建分派日志失败 assignment_id=%s: %s",
+                            assignment.id,
+                            log_error,
+                            exc_info=True,
+                        )
 
             except Exception as e:
                 logger.error("[AlertAssign] 处理分派失败 assignment_id=%s: %s", assignment.id, e, exc_info=True)
@@ -259,6 +262,7 @@ class AlertAssignmentOperator:
             raw_target,
             assignment.personnel,
         )
+        prefer_alert_owner = isinstance(raw_target, dict) and raw_target.get("prefer_alert_owner") is True
         logger.info(
             "[AlertAssign] 通知目标解析: assignment_id=%s, type=%s, " "organization_ids=%s, resolved_count=%s",
             assignment.id,
@@ -266,6 +270,13 @@ class AlertAssignmentOperator:
             normalized_target["organization_ids"],
             len(personnel),
         )
+        if prefer_alert_owner:
+            return self._assign_preferred_owners(
+                alert_ids,
+                assignment,
+                personnel,
+                assignee_scope_group_ids,
+            )
         if not personnel:
             for alert_id in alert_ids:
                 alert = self.alerts.get(alert_id)
@@ -366,6 +377,124 @@ class AlertAssignmentOperator:
             raise
 
         return results
+
+    def _assign_preferred_owners(self, alert_ids, assignment, fallback_personnel, fallback_scope):
+        """有有效责任人时只通知责任人；否则使用页面选择的兜底人员。"""
+        from apps.system_mgmt.models import User
+
+        results = []
+        alerts = list(Alert.objects.filter(id__in=alert_ids, status=AlertStatus.UNASSIGNED))
+        requested_owners = []
+        for alert in alerts:
+            for username in alert.owners or []:
+                if isinstance(username, str) and username.strip() and username not in requested_owners:
+                    requested_owners.append(username)
+        active_owners = set(User.objects.filter(username__in=requested_owners, disabled=False).values_list("username", flat=True))
+        owner_hits = 0
+        fallback_hits = 0
+        logs = []
+        try:
+            with transaction.atomic():
+                for alert in alerts:
+                    if alert.is_session_alert and alert.session_status != SessionStatus.CONFIRMED:
+                        results.append(
+                            {
+                                "alert_id": alert.alert_id,
+                                "alert_pk": alert.id,
+                                "success": False,
+                                "assignment_id": assignment.id,
+                                "assigned_to": [],
+                                "message": "session alert observing",
+                                "skip_session_alert": True,
+                            }
+                        )
+                        continue
+                    owners = [username for username in (alert.owners or []) if username in active_owners]
+                    if owners:
+                        chosen = owners
+                        scope = None
+                        hit = "owner"
+                    else:
+                        chosen = list(fallback_personnel)
+                        scope = fallback_scope
+                        hit = "fallback"
+                    if not chosen:
+                        results.append(
+                            {
+                                "alert_id": alert.alert_id,
+                                "alert_pk": alert.id,
+                                "success": False,
+                                "message": "No active recipients resolved for assignment",
+                                "assignment_id": assignment.id,
+                            }
+                        )
+                        continue
+                    operator = AlertOperator(user=SYSTEM_OPERATOR_USER)
+                    result = operator.operate(
+                        action="assign",
+                        alert_id=alert.alert_id,
+                        data={
+                            "assignee": chosen,
+                            "assignment_id": assignment.id,
+                            "assignee_scope_group_ids": scope,
+                        },
+                    )
+                    if not result.get("result"):
+                        results.append(
+                            {
+                                "alert_id": alert.alert_id,
+                                "alert_pk": alert.id,
+                                "success": False,
+                                "message": result.get("message") or "assignment rejected",
+                                "assignment_id": assignment.id,
+                            }
+                        )
+                        continue
+                    logs.append((alert.id, hit, len(chosen)))
+                    if hit == "owner":
+                        owner_hits += 1
+                    else:
+                        fallback_hits += 1
+                    results.append(
+                        {
+                            "alert_id": alert.alert_id,
+                            "alert_pk": alert.id,
+                            "success": True,
+                            "assignment_id": assignment.id,
+                            "assigned_to": chosen,
+                            "owner_hit": hit,
+                        }
+                    )
+        except Exception as error:
+            logger.error("[AlertAssign] 责任人分派失败: %s", error, exc_info=True)
+            raise
+
+        self._record_owner_dispatch_logs(assignment, logs)
+        logger.info(
+            "[AlertAssign] 责任人分派汇总: assignment_id=%s, owner_hits=%s, fallback_hits=%s",
+            assignment.id,
+            owner_hits,
+            fallback_hits,
+        )
+        return results
+
+    @staticmethod
+    def _record_owner_dispatch_logs(assignment, logs):
+        bulk_data = []
+        for alert_pk, hit, count in logs:
+            hit_label = "责任人" if hit == "owner" else "兜底"
+            bulk_data.append(
+                OperatorLog(
+                    action=LogAction.MODIFY,
+                    target_type=LogTargetType.ALERT,
+                    operator="system",
+                    operator_object="告警处理-自动分派",
+                    target_id=alert_pk,
+                    overview=f"告警自动分派，分派策略ID [{assignment.id}] 命中{hit_label} 人数 {count}",
+                )
+            )
+        if bulk_data:
+            record_operator_logs_bulk(bulk_data)
 
 
 def execute_auto_assignment_for_alerts(alert_ids: List[str]) -> Dict[str, Any]:

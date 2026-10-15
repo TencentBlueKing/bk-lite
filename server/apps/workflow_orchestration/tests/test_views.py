@@ -1234,6 +1234,41 @@ def test_publish_records_atom_keys(superuser, mocker):
 
 
 @pytest.mark.django_db
+def test_publish_enables_workflow(superuser, mocker):
+    from apps.system_mgmt.models import Channel, ChannelChoices
+
+    channel = Channel.objects.create(
+        name="发布启用测试邮箱",
+        channel_type=ChannelChoices.EMAIL,
+        config={"smtp_server": "127.0.0.1", "port": 1025},
+        description="",
+        team=[7],
+    )
+    _enable_notification()
+    task = _notification_task("notify")
+    task["inputParameters"]["channel_id"] = channel.id
+    workflow = Workflow.objects.create(
+        name="发布即启用",
+        team=[7],
+        definition={"tasks": [task]},
+        canvas_metadata={},
+        created_by=superuser.username,
+    )
+    mocker.patch("apps.workflow_orchestration.views.ConductorClient")
+    publish = WorkflowViewSet.as_view({"post": "publish"})
+
+    response = publish(
+        _request(APIRequestFactory(), "post", f"/workflows/{workflow.id}/publish/", superuser),
+        pk=workflow.id,
+    )
+
+    assert response.status_code == 200, response.data
+    workflow.refresh_from_db()
+    assert workflow.enabled is True
+    assert workflow.status == Workflow.Status.PUBLISHED
+
+
+@pytest.mark.django_db
 def test_publish_references_package_atom_by_stable_key(superuser, mocker):
     atom = AtomDefinition.objects.create(
         key="custom.summary",

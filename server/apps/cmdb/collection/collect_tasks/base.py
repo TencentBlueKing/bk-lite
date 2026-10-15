@@ -159,7 +159,7 @@ class BaseCollect(object):
                             update_data = i.get("instance_info")
                             update_data["_error"] = str(i.get("error", ""))
                         else:
-                            update_data = i.get("inst_info")
+                            update_data = i if operator == "delete" else i.get("inst_info")
                         if not update_data:
                             continue
                         _data.update(update_data)

@@ -537,3 +537,14 @@ def test_full_text_by_model_rejects_bad_paging(monkeypatch, kwargs):
     payload.update(kwargs)
     with pytest.raises(BaseAppException):
         c.full_text_by_model(payload["search"], payload["model_id"], page=payload["page"], page_size=payload["page_size"])
+
+
+@pytest.mark.parametrize("records,deleted", [([{"deleted_id": 7}], True), ([], False)])
+def test_conditional_delete_guards_identity_owner_and_heartbeat(records, deleted):
+    c = _client(records)
+    instance = {"_id": 7, "model_id": "vmware_vm", "inst_uuid": "stable-id", "collect_task": 42, "collect_time": "2026-08-24T04:00:00+00:00"}
+    assert c.delete_entity_if_unchanged("instance", instance) is deleted
+    assert c.session.last_params == {"id": 7, **{key: value for key, value in instance.items() if key != "_id"}}
+    for field in ("model_id", "inst_uuid", "collect_task", "collect_time"):
+        assert f"n.{field} = ${field}" in c.session.last_query
+    assert "DETACH DELETE n RETURN deleted_id" in c.session.last_query

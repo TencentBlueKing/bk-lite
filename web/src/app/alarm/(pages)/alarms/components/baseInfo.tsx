@@ -26,6 +26,11 @@ const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
       value: detail.operator_user,
     },
     {
+      key: 'owners',
+      label: t('alarms.owners'),
+      value: Array.isArray(detail.owners) && detail.owners.length ? detail.owners.join('、') : '--',
+    },
+    {
       key: 'notificationStatus',
       label: t('alarms.notificationStatus'),
       value: (

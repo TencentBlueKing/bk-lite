@@ -93,7 +93,9 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       runtimeActive={runtimeActive}
       runtimePriority={runtimePriority}
       onRawData={onRawData}
-      {...(chartType === 'room3D' ? { unifiedFilterValues, filterDefinitions } : {})}
+      {...(chartType === 'room3D' || chartType === 'applicationTopology'
+        ? { unifiedFilterValues, filterDefinitions }
+        : {})}
       {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
     />
   );

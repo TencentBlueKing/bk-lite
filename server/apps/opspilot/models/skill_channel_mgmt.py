@@ -166,6 +166,6 @@ class ChatAttachment(models.Model):
         verbose_name_plural = verbose_name
         db_table = "model_provider_mgmt_chatattachment"
         indexes = [
-            models.Index(fields=["status", "created_at"]),
-            models.Index(fields=["message", "status"]),
+            models.Index(fields=["status", "created_at"], name="chat_att_status_created_idx"),
+            models.Index(fields=["message", "status"], name="chat_att_message_status_idx"),
         ]

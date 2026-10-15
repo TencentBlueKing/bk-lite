@@ -1,9 +1,7 @@
 from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
 from apps.cmdb.collection.constants import NETWORK_COLLECT
-from apps.cmdb.collection.plugins.base import AutoRegisterCollectionPluginMixin
-from apps.cmdb.collection.plugins.base import bind_collection_mapping
+from apps.cmdb.collection.plugins.base import AutoRegisterCollectionPluginMixin, bind_collection_mapping
 from apps.cmdb.constants.constants import CollectPluginTypes
-
 
 NETWORK_DEVICE_MAPPING = {
     "inst_name": CollectNetworkMetrics.set_inst_name,
@@ -21,6 +19,7 @@ NETWORK_INTERFACE_MAPPING = {
     "self_device": CollectNetworkMetrics.set_self_device,
     "mac": "mac_address",
     "name": CollectNetworkMetrics.interface_name,
+    "description": CollectNetworkMetrics.interface_description,
     "status": (CollectNetworkMetrics.set_interface_status, "oper_status"),
     "assos": CollectNetworkMetrics.get_interface_asso,
 }

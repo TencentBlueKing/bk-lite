@@ -53,8 +53,9 @@ class SSHPlugin:
         self.passphrase = params.get("passphrase")
         # header 常把缺省 port 打成 ""；params.get("port", 22) 无法回落到默认值
         self.port = self._coerce_port(params.get("port"), default=22)
-        # 脚本执行上限硬编码；表单 timeout 由框架作单对象采集预算，不写入此处。
-        self.execute_timeout = 60
+        # 默认 60 秒。自定义脚本可传入 execute_timeout，上限 600 秒。
+        self.execute_timeout = self._coerce_positive_int(params.get("execute_timeout"), default=60)
+        self.execute_timeout = min(self.execute_timeout, 600)
         self.probe_timeout = self._coerce_positive_float(params.get("timeout"), default=5.0)
         self.node_info = params.get("node_info", {})
         self.model_id = params.get("model_id")
@@ -66,9 +67,11 @@ class SSHPlugin:
         max_jobs = int(os.getenv("TASK_MAX_JOBS", "10"))
         self.nats_timeout = self.execute_timeout * max_jobs
 
-        if not script_path:
+        self.script_content = params.get("script_content")
+        self.shell = str(params.get("shell") or "").strip()
+        if not script_path and not self.script_content:
             raise ValueError("script_path is required for SSHPlugin")
-        self.script_path = script_path
+        self.script_path = script_path or ""
 
     @staticmethod
     def _coerce_port(raw, *, default: int = 22) -> int:
@@ -109,6 +112,8 @@ class SSHPlugin:
         Returns:
             脚本类型，支持: "sh"(默认), "bash", "bat", "cmd", "powershell", "pwsh"
         """
+        if self.shell:
+            return self.shell
         path = Path(self.script_path)
         ext = path.suffix.lower()
 
@@ -126,6 +131,13 @@ class SSHPlugin:
 
     def _read_script(self) -> str:
         """读取脚本内容"""
+        if self.script_content:
+            content = self.script_content
+            host_innerip = str(self.connect_ip or self.host or "").strip()
+            if host_innerip:
+                content = content.replace("{{bk_host_innerip}}", host_innerip)
+            return content
+
         path = Path(self.script_path)
 
         # 如果是相对路径，转换为基于项目根目录的绝对路径

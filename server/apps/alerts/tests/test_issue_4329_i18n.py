@@ -72,6 +72,7 @@ def test_template_catalog_labels_follow_locale():
     response = view.catalog(SimpleNamespace(user=SimpleNamespace(locale="en", is_superuser=True)))
     labels = [item["label"] for item in response.data["variables"]]
     assert "Alert title" in labels
+    assert "Alert owners" in labels
     assert "告警标题" not in labels
     orders = {item["value"]: item["label"] for item in response.data["event_block"]["orders"]}
     assert orders["-start_time"] == "Occurrence time, newest first"

@@ -39,7 +39,7 @@ def _should_skip_enterprise_child(category_id, model_id):
     return model_id in HIDDEN_ENTERPRISE_COLLECT_OBJECTS
 
 
-def get_collect_obj_tree(*, with_credential_types=False):
+def get_collect_obj_tree(*, with_credential_types=False, team_ids=None):
     tree = deepcopy(COLLECT_OBJ_TREE)
     enterprise_tree = _get_enterprise_collect_obj_tree()
 
@@ -96,7 +96,42 @@ def get_collect_obj_tree(*, with_credential_types=False):
                 continue
             child["encrypted_fields"] = contract["encrypted_fields"]
             child["credential_schema"] = contract
+    if team_ids is not None:
+        tree.append(_custom_script_group(with_credential_types=with_credential_types, builtin_rows=builtin_rows, team_ids=team_ids))
     return tree
+
+
+def _custom_script_group(*, with_credential_types, builtin_rows, team_ids):
+    from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
+    from apps.cmdb.models.custom_collect_plugin import OS_WINDOWS, CustomCollectPlugin
+    from apps.cmdb.services.custom_script_credentials import transport_encrypted_fields
+
+    plugins = CustomCollectPlugin.objects.all()
+    if team_ids is not None:
+        allowed = {str(team_id) for team_id in team_ids}
+        plugins = [plugin for plugin in plugins if allowed.intersection({str(team_id) for team_id in (plugin.team or [])})]
+    children = []
+    for plugin in plugins:
+        binding = "host/winrm" if plugin.os_type == OS_WINDOWS else "host/ssh"
+        child = {
+            "id": plugin.plugin_id,
+            "model_id": plugin.model_id,
+            "name": plugin.name,
+            "task_type": CollectPluginTypes.CUSTOM_SCRIPT,
+            "type": CollectDriverTypes.JOB,
+            "tag": ["自定义", plugin.os_type],
+            "desc": plugin.desc,
+            "encrypted_fields": transport_encrypted_fields(),
+            "custom_plugin_pk": plugin.id,
+            "os_type": plugin.os_type,
+            "shell": plugin.shell,
+        }
+        if with_credential_types:
+            child["credential_category"] = binding.split("/", 1)[0]
+            child["credential_binding"] = binding
+            child["credential_type_keys"] = actual_builtin_type_keys(binding, builtin_rows)
+        children.append(child)
+    return {"id": "custom_script", "name": "自定义", "children": children}
 
 
 def get_collect_object_meta(collect_model_id: str, driver_type: str | None = None):

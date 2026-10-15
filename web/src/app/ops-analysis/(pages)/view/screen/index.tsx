@@ -203,7 +203,14 @@ const ScreenDataConfig = memo(
   areScreenDataConfigPropsEqual,
 );
 
-const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode = false }, ref) => {
+const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode = false, onEditingChange }, ref) => {
+  const onEditingChangeRef = useRef(onEditingChange);
+  onEditingChangeRef.current = onEditingChange;
+  useEffect(() => {
+    return () => {
+      onEditingChangeRef.current?.(false);
+    };
+  }, []);
   const { t } = useTranslation();
   const csvExportRegistry = useWidgetCsvExportRegistryState();
   const resolveFilterTextRef = useRef<(text?: string | null) => string>((text) => text ?? '');
@@ -936,6 +943,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     setEditMode(true);
     setSelectedItemId(null);
     setInspectorCollapsed(false);
+    onEditingChangeRef.current?.(true);
   }, [
     queryState.appliedFilterValues,
     queryState.appliedNamespaceId,
@@ -963,6 +971,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     setSelectedItemId(null);
     setPendingConfigItem(null);
     setFilterConfigOpen(false);
+    onEditingChangeRef.current?.(false);
   }, [
     editQuerySnapshot,
     queryState.appliedFilterValues,
@@ -997,6 +1006,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setEditQuerySnapshot(null);
       setFilterConfigOpen(false);
       resetScreenHistory();
+      onEditingChangeRef.current?.(false);
       message.success(t("opsAnalysis.screen.saveSuccess"));
     } catch (error) {
       console.error("Failed to save screen:", error);
@@ -1380,7 +1390,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           headerVisible={!isFullscreen}
           filterBarVisible={!isFullscreen}
           compactHeader
-          flushContent={isFullscreen}
+          flushContent
           contentClassName={isFullscreen ? "bg-slate-950" : undefined}
           toolbar={
             <ScreenToolbar

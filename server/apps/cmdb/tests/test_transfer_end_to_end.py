@@ -70,7 +70,7 @@ def create_request(transfer_owner, data, key="request"):
 
 
 @pytest.mark.parametrize("scope", ["all", "selected", "currentPage"])
-def test_export_http_to_readable_file_and_download_rechecks_resource_owner(transfer_owner, authorized, fake_graph, monkeypatch, scope):
+def test_export_http_to_readable_file_and_owner_can_download_after_resource_change(transfer_owner, authorized, fake_graph, monkeypatch, scope):
     files = MemoryFiles()
     fake_graph("apps.cmdb.services.instance", query_entity=([dict(INSTANCE)], None))
     from apps.cmdb.services.instance import InstanceManage
@@ -91,11 +91,17 @@ def test_export_http_to_readable_file_and_download_rechecks_resource_owner(trans
     assert sheet.cell(4, 2).value == "host-one"
     TransferExecution.validate_download(task, files)
     current[0]["organization"] = [99]
+    current[0]["model_id"] = "moved"
+    TransferExecution.validate_download(task, files)
+    current.clear()
+    TransferExecution.validate_download(task, files)
     from apps.cmdb.services.transfer_service import TransferError
 
-    with pytest.raises(TransferError) as error:
-        TransferExecution.validate_download(task, files)
-    assert error.value.status_code == 403
+    monkeypatch.setattr(
+        "apps.cmdb.services.transfer_execution.TransferAuthorization.revalidate",
+        Mock(side_effect=TransferError("authorization_changed", "权限范围已变化，请按当前权限重新提交", 403)),
+    )
+    TransferExecution.validate_download(task, files)
 
 
 @pytest.mark.parametrize("update_existing", [False, True])

@@ -1215,7 +1215,7 @@ toolkits:
         description: 结构化数据需求列表，每项至少包含 text，可包含 purpose、domain、metric、dimension、analysisType、chartType。
         required: true
   - name: prepare_dashboard_proposal
-    description: 校验并应用仪表盘方案。schemaVersion 必须为字符串 "1.0"，layout 必须为扁平数组，禁止 row、children、title、panels、chart_type、data_source_id。组件 name 用字段中文 title，description 用字段说明。chartType 从该数据源 chart_type 里选。概览源最多两个 single 或 gauge，其余组件改用 pie、topN、line、table 的其他数据源，不要把同一个源的每个数字都做成卡片。dataSource 只能填检索返回的数字 id。single 和 gauge 的 selectedFields 必须填写该数据源 fields 中的一个 name，不能为空。pie 填写 dimensionField 与 valueField，table 的 selectedFields 填写要展示的列。用户要求搭建或应用时必须调用，不能只写文字、让用户手工添加或再确认，也不要先调用 request_user_choice。通过后页面写入画布，立即结束调用，由用户点击保存。失败时只按 _next_step_hint、sources 或 allowedFields 改一次，禁止换一组 id。删除或改行列时基于当前布局修改后调用，不要重新检索。
+    description: 校验并应用仪表盘方案。schemaVersion 必须为字符串 "1.0"，layout 必须为扁平数组，禁止 row、children、title、panels、chart_type、data_source_id。画布固定 12 列。同一行 w 之和不得超过 12，且每个组件 x+w 不超过 12。一行 N 个时 w 为 12//N，不能整除时把余数分给靠前的组件。用户说几列就按几列排。放不下的宽度会按原比例收进 12 列。组件 name 用字段中文 title，description 用字段说明。chartType 从该数据源 chart_type 里选。概览源最多两个 single 或 gauge，其余组件改用 pie、topN、line、table 的其他数据源，不要把同一个源的每个数字都做成卡片。dataSource 只能填检索返回的数字 id。single 和 gauge 的 selectedFields 必须填写该数据源 fields 中的一个 name，不能为空。pie 填写 dimensionField 与 valueField，table 的 selectedFields 填写要展示的列。用户要求搭建或应用时必须调用，不能只写文字、让用户手工添加或再确认，也不要先调用 request_user_choice。通过后页面写入画布，立即结束调用，由用户点击保存。失败时只按 _next_step_hint、sources 或 allowedFields 改一次，禁止换一组 id。删除或改行列时基于当前布局修改后调用，不要重新检索。
     parameters:
       proposal:
         type: object

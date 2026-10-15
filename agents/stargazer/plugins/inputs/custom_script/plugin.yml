@@ -1,0 +1,24 @@
+name: custom_script
+version: 1.0.0
+category: custom
+metadata:
+  display_name: 自定义脚本采集
+  description: 执行用户在 CMDB 插件库中维护的采集脚本
+  author: WeOps
+  tags:
+  - custom
+  - script
+  cloud_protocol: false
+  model_id: custom_script
+executors:
+  job:
+    type: job
+    script_source: remote
+    execution_mode: remote
+    capacity_group: remote_job
+    collector:
+      module: plugins.inputs.custom_script.collector
+      class: CustomScriptCollector
+    target_policy:
+      mode: remote_channel
+default_executor: job

@@ -292,8 +292,11 @@ export const filterCatalogCategories = (
 };
 
 export const getTaskStatusKey = (
-  tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>,
+  tab: Pick<TreeNode, 'id' | 'model_id' | 'type' | 'task_type' | 'custom_plugin_pk'>,
 ) => {
+  if (tab.task_type === 'custom_script' && tab.custom_plugin_pk) {
+    return `custom_script__${tab.custom_plugin_pk}`;
+  }
   if (tab.model_id && tab.type) {
     if (tab.id === 'physcial_server_ipmi') {
       return `${tab.model_id}__${tab.type}__ipmi`;
@@ -308,7 +311,7 @@ export const getTaskStatusKey = (
 
 export const getTaskStatusStats = (
   statusMap: TaskStatusMap,
-  tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>,
+  tab: Pick<TreeNode, 'id' | 'model_id' | 'type' | 'task_type' | 'custom_plugin_pk'>,
 ) => {
   const specificStats = statusMap[getTaskStatusKey(tab)];
   if (

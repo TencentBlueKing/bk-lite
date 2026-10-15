@@ -42,7 +42,10 @@ class MetricsCannula:
         self.raw_data = []
         self.collect_plugin_instance = None
         self.collection_metrics = default_metrics or self.get_collection_metrics()
-        self.now_time = datetime.now(timezone.utc).isoformat()
+        observed_at = getattr(self.collect_plugin_instance, "round_completed_at", None)
+        self.now_time = (
+            datetime.fromtimestamp(float(observed_at), timezone.utc) if observed_at is not None else datetime.now(timezone.utc)
+        ).isoformat()
         self.add_list = []
         self.update_list = []
         self.delete_list = []
@@ -156,7 +159,11 @@ class MetricsCannula:
                     collect_plugin=(self.collect_plugin_instance or self.collect_plugin),
                     data_cleanup_strategy=self.data_cleanup_strategy,
                     reconcile_task_assets=self.reconcile_task_assets,
+                    expire_days=getattr(self.task, "expire_days", 0) or 0,
+                    collection_targets=getattr(self.task, "instances", None) or (),
                 )
+                if conflicts:
+                    management.delete_list = []
                 if self.manual:
                     self.add_list.extend(management.add_list)
                     self.delete_list.extend(management.delete_list)

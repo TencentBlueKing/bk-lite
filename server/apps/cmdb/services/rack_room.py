@@ -609,6 +609,21 @@ def list_racks_grouped_by_room(
     return {"groups": groups, "count": count}
 
 
+def _room_list_creator(user_info) -> str | None:
+    """与单实例查看一致：创建人在授权组织内的机房也要出现在列表里。"""
+    if not isinstance(user_info, dict):
+        return None
+    user = user_info.get("user")
+    if isinstance(user, str):
+        name = user.strip()
+        return name or None
+    name = getattr(user, "username", None)
+    if isinstance(name, str):
+        name = name.strip()
+        return name or None
+    return None
+
+
 def list_server_rooms(permission_map: dict | None = None, user_info=None) -> list:
     """列出当前用户可见的 server_room，返回 CMDB 原始字段。
 
@@ -616,6 +631,7 @@ def list_server_rooms(permission_map: dict | None = None, user_info=None) -> lis
     （_id, inst_name, model_id, organization, ...），不做 _id→id 等重命名。
 
     复用 ``InstanceManage.instance_list`` 的现成权限过滤逻辑。
+    传入创建人，和单实例查看一样保留授权组织内自己创建的机房。
     """
     inst_list, _count = InstanceManage.instance_list(
         model_id="server_room",
@@ -624,5 +640,6 @@ def list_server_rooms(permission_map: dict | None = None, user_info=None) -> lis
         page_size=_ROOM_LIST_PAGE_SIZE,
         order="inst_name",
         permission_map=permission_map or {},
+        creator=_room_list_creator(user_info),
     )
     return inst_list or []

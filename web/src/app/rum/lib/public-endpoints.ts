@@ -2,7 +2,7 @@ const COLLECT_PATH = '/rum/v1/collect';
 const REPLAY_PATH = '/rum/v1/replay';
 const SDK_PATH = '/rum/bklite-rum-sdk.js';
 
-export type RumBrowserEndpoints = {
+export interface RumBrowserEndpoints {
   collectUrl: string;
   replayUrl: string;
   sdkCdnUrl: string;

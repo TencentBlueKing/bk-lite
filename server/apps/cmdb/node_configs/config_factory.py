@@ -11,7 +11,11 @@ class NodeParamsFactory:
     """
 
     @staticmethod
-    def get_params_class(model_id, driver_type=None):
+    def get_params_class(model_id, driver_type=None, task_type=None):
+        from apps.cmdb.constants.constants import CollectPluginTypes
+
+        if task_type == CollectPluginTypes.CUSTOM_SCRIPT:
+            model_id = CollectPluginTypes.CUSTOM_SCRIPT
         model_id = model_id.replace("_account", "")
         # 优先按 (model_id, driver_type) 分流，确保 physcial_server 的 SSH/job 与 IPMI/protocol
         # 可以命中不同的 NodeParams 实现。
@@ -25,5 +29,5 @@ class NodeParamsFactory:
 
     @staticmethod
     def get_node_params(instance, *, resolve_credentials=True):
-        params_cls = NodeParamsFactory.get_params_class(instance.model_id, instance.driver_type)
+        params_cls = NodeParamsFactory.get_params_class(instance.model_id, instance.driver_type, getattr(instance, "task_type", None))
         return params_cls(instance, resolve_credentials=resolve_credentials)

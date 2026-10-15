@@ -78,13 +78,17 @@ def resolve_task_credential_pool(instance, *, resolver=None):
         if item.get("credential_source") != "vault":
             resolved_pool.append({key: value for key, value in item.items() if key not in _TASK_METADATA})
             continue
-        binding = binding_for_collect_object(
-            getattr(instance, "collect_object_id", None) or getattr(instance, "model_id", None),
-            model_id=getattr(instance, "model_id", None),
-            driver_type=getattr(instance, "driver_type", None),
-            protocol=item.get("credential_protocol") or (getattr(instance, "params", None) or {}).get("collection_protocol"),
-            os_type=(getattr(instance, "params", None) or {}).get("os_type"),
-        )
+        task_params = getattr(instance, "params", None) or {}
+        if getattr(instance, "task_type", None) == "custom_script":
+            binding = "host/winrm" if str(task_params.get("os_type") or "").lower() == "windows" else "host/ssh"
+        else:
+            binding = binding_for_collect_object(
+                getattr(instance, "collect_object_id", None) or getattr(instance, "model_id", None),
+                model_id=getattr(instance, "model_id", None),
+                driver_type=getattr(instance, "driver_type", None),
+                protocol=item.get("credential_protocol") or task_params.get("collection_protocol"),
+                os_type=task_params.get("os_type"),
+            )
         allowed_keys = actual_builtin_type_keys(binding)
         if not allowed_keys:
             raise BaseAppException("采集对象没有可用的内置凭据类型！")

@@ -10,6 +10,7 @@ from apps.operation_analysis.serializers.scene_widget_serializers import (
     Application3DArchitectureRequestSerializer,
     Application3DMetricRequestSerializer,
     Application3DWallRequestSerializer,
+    ApplicationTopologyRequestSerializer,
     NetworkStatusTopologyRequestSerializer,
     RelatedTopologyRequestSerializer,
     Room3DLayoutRequestSerializer,
@@ -17,6 +18,7 @@ from apps.operation_analysis.serializers.scene_widget_serializers import (
 )
 from apps.operation_analysis.services.application3d import Application3DQueryService
 from apps.operation_analysis.services.application3d.errors import Application3DError
+from apps.operation_analysis.services.application_topology import ApplicationTopologyError, ApplicationTopologyService
 from apps.operation_analysis.services.network_status_topology import NetworkStatusTopologyService
 from apps.operation_analysis.services.related_topology import RelatedTopologyError, RelatedTopologyService
 from apps.operation_analysis.services.room3d import Room3DError, Room3DService
@@ -28,6 +30,7 @@ class SceneWidgetViewSet(ViewSet):
         "permission_denied": status.HTTP_403_FORBIDDEN,
         "not_found": status.HTTP_404_NOT_FOUND,
         "scope_changed": status.HTTP_409_CONFLICT,
+        "unsupported_model": status.HTTP_400_BAD_REQUEST,
         "source_failure": status.HTTP_502_BAD_GATEWAY,
         "cmdb_relation_expand_failed": status.HTTP_502_BAD_GATEWAY,
         "capacity_exceeded": status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -129,6 +132,25 @@ class SceneWidgetViewSet(ViewSet):
                 )
             )
         except RelatedTopologyError as exc:
+            return Response(
+                {"code": exc.code, "detail": exc.message},
+                status=self._APPLICATION3D_ERROR_STATUS.get(exc.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+            )
+
+    @action(detail=False, methods=["post"], url_path="application_topology")
+    def application_topology(self, request):
+        """只读应用拓扑。对象读权限走 CMDB NATS user_info，不绑运营分析 view-View。"""
+        serializer = ApplicationTopologyRequestSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        try:
+            return Response(
+                ApplicationTopologyService.build(
+                    request,
+                    inst_uuid=serializer.validated_data["inst_uuid"],
+                    depth=serializer.validated_data["depth"],
+                )
+            )
+        except ApplicationTopologyError as exc:
             return Response(
                 {"code": exc.code, "detail": exc.message},
                 status=self._APPLICATION3D_ERROR_STATUS.get(exc.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
