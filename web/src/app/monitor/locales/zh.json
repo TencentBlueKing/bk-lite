@@ -3911,7 +3911,7 @@
         "queueAndThroughput": "队列与吞吐",
         "riskSignals": "风险信号",
         "hostProcessListProcstatScope": "列表仅展示 Telegraf `procstat` 已配置监控的进程；主机上未纳入采集的进程不会出现。",
-        "hostCategoryDetailedMetrics": "详细指标",
+        "hostCategoryDetailedMetrics": "构成与交换",
         "hostCategorySwapUtilization": "交换已用",
         "hostCategorySwapUsedHint": "交换已用：交换分区当前已用容量相对总容量。主值展示已用/总量；趋势为已用占比。升高通常表示物理内存紧张，进程匿名页可能被换出到磁盘。",
         "hostCategorySwapAbsentHint": "交换已用：当前主机未配置交换分区，或暂无采集数据。卡片保留以便发现配置与采集缺口；有数据后将显示已用/总量及占比趋势。",
