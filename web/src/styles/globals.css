@@ -210,87 +210,6 @@ html:not(.dark) .header-bg-scrolled {
   box-shadow: inset 0 6px 10px -6px rgba(0, 0, 0, 0.03);
 }
 
-.first-loader-wrapper {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 999;
-  background-color: #ffffff;
-}
-.loading-arc {
-  position: absolute;
-  margin: auto;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  border-top: 2px solid #ffea29;
-  border-left: 1px solid transparent;
-  border-right: 1px solid transparent;
-  animation: rt 2s infinite linear;
-}
-.loading-arc::before {
-  position: absolute;
-  margin: auto;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: 70px;
-  height: 70px;
-  border-radius: 50%;
-  border-top: 2px solid #8d29ff;
-  border-left: 1px solid transparent;
-  border-right: 1px solid transparent;
-  animation: rt 4s infinite linear reverse;
-  content: "";
-}
-.loading-arc::after {
-  position: absolute;
-  margin: auto;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  border-top: initial;
-  border-left: initial;
-  border-right: initial;
-  animation: cw 1s infinite;
-  content: "";
-  background: #0b0b14;
-}
-
-.first-loader-wrapper h1 {
-  position: absolute;
-  height: 40px;
-  margin: auto;
-  top: 200px;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  text-transform: uppercase;
-  text-align: center;
-  letter-spacing: 0.1em;
-  font-size: 14px;
-  font-weight: lighter;
-  color: #000000;
-}
-.first-loader-wrapper h1 span {
-  display: none;
-}
-.first-loader-wrapper h1::after {
-  animation: txt 5s infinite;
-  content: "";
-}
-
 .border {
   border: 1px solid var(--color-border) !important;
 }
@@ -311,37 +230,6 @@ html:not(.dark) .header-bg-scrolled {
 .user-groups-submenu .ant-dropdown-menu {
   max-height: 300px !important;
   overflow-y: auto !important;
-}
-
-@keyframes rt {
-  100% {
-      transform: rotate(360deg);
-  }
-}
-@keyframes cw {
-  0% {
-      width: 0;
-      height: 0;
-  }
-  75% {
-      width: 40px;
-      height: 40px;
-  }
-  100% {
-      width: 0;
-      height: 0;
-  }
-}
-@keyframes txt {
-  0% {
-      content: "LOADING.";
-  }
-  50% {
-      content: "LOADING..";
-  }
-  100% {
-      content: "LOADING...";
-  }
 }
 
 /* 禁用的菜单项但允许内部交互 */
@@ -417,5 +305,4 @@ html:not(.dark) .header-bg-scrolled {
   transform: translateY(-50%);
   margin-inline-start: 4px;
 }
-
 

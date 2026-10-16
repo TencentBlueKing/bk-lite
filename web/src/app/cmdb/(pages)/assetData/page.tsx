@@ -7,6 +7,7 @@ import type { TransferTask } from '@/app/cmdb/types/transfer';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { KeepAlive, useActivate, useUnactivate } from 'react-activation';
 import {
+  Alert,
   Button,
   Space,
   Modal,
@@ -17,6 +18,7 @@ import {
   Input,
   Tag,
   Tooltip,
+  Skeleton,
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import type { MenuProps } from 'antd';
@@ -104,6 +106,22 @@ import {
 } from './treeSelectedNodeScroll';
 
 const { confirm } = Modal;
+
+const AssetDataWorkspaceSkeleton = () => (
+  <div className="flex h-full min-h-0 gap-3 p-3" aria-busy="true" aria-label="loading">
+    <div className="w-60 shrink-0 rounded-lg bg-[var(--color-bg)] p-3">
+      <Skeleton.Input active className="!h-8 !w-full !min-w-0" />
+      <Skeleton active title={false} paragraph={{ rows: 8 }} className="mt-4" />
+    </div>
+    <div className="min-w-0 flex-1 rounded-lg bg-[var(--color-bg)] p-4">
+      <div className="mb-4 flex justify-end gap-2">
+        <Skeleton.Input active className="!h-8 !w-64 !min-w-0" />
+        <Skeleton.Button active className="!h-8 !w-20" />
+      </div>
+      <Skeleton active title={false} paragraph={{ rows: 9 }} />
+    </div>
+  </div>
+);
 
 const COPY_EXCLUDE_FIELDS = ['_id', 'inst_id', 'inst_uuid', 'id', 'created_at', 'updated_at', 'created_by', 'updated_by'];
 
@@ -259,6 +277,7 @@ const AssetDataContent = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<any>>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState(false);
   const [modelGroup, setModelGroup] = useState<GroupItem[]>([]);
   const [originModels, setOriginModels] = useState<ModelItem[]>([]);
   const [groupId, setGroupId] = useState<string>('');
@@ -585,6 +604,7 @@ const AssetDataContent = () => {
   const getModelGroup = async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const [groupData, assoType, instCount] = await Promise.all([
         getClassificationList(),
         getModelAssociationTypes(),
@@ -616,6 +636,7 @@ const AssetDataContent = () => {
       getInitData(defaultModelId, initialQueryList);
       updateUrl(defaultModelId, defaultGroupId, urlQueryList);
     } catch {
+      setLoadError(true);
       setLoading(false);
     }
   };
@@ -663,6 +684,7 @@ const AssetDataContent = () => {
       .catch(() => message.error(t('common.loadFailed')));
 
     setLoading(true);
+    setLoadError(false);
     Promise.all([
       getModelAttrList(id),
       searchInstances({ ...tableParams, model_id: id }),
@@ -674,8 +696,8 @@ const AssetDataContent = () => {
         setPropertyList(attrList);
         setTableData(instData.insts);
         setPagination(prev => ({ ...prev, total: instData.count }));
-
       })
+      .catch(() => setLoadError(true))
       .finally(() => {
         setLoading(false);
         requestAnimationFrame(() => {
@@ -1316,6 +1338,22 @@ const AssetDataContent = () => {
 
   return (
     <div className={assetDataStyle.assetLoading}>
+      {loading && modelGroup.length === 0 ? (
+        <AssetDataWorkspaceSkeleton />
+      ) : loadError && modelGroup.length === 0 ? (
+        <div className="h-full p-3">
+          <Alert
+            type="error"
+            showIcon
+            message={t('common.loadFailed')}
+            action={(
+              <Button size="small" onClick={() => void getModelGroup()}>
+                {t('common.retry')}
+              </Button>
+            )}
+          />
+        </div>
+      ) : (
       <div className={assetDataStyle.assetData}>
         {/* 左侧树形选择器 */}
         <div className={`${assetDataStyle.groupSelector}`}>
@@ -1503,29 +1541,39 @@ const AssetDataContent = () => {
             />
           </div>
 
-          <CustomTable
-            style={{ marginTop: '-1px' }}
-            size="small"
-            rowSelection={rowSelection}
-            dataSource={tableData}
-            columns={currentColumns}
-            pagination={pagination}
-            loading={loading || tableLoading}
-            scroll={{
-              x: 'max-content',
-              y: storeQueryList.length > 0
-                ? 'calc(100vh - 320px)'
-                : 'calc(100vh - 300px)'
-            }}
-            fieldSetting={{
-              showSetting: true,
-              displayFieldKeys,
-              choosableFields: columns.filter((item) => item.key !== 'action'),
-            }}
-            onSelectFields={onSelectFields}
-            rowKey="inst_uuid"
-            onChange={handleTableChange}
-          />
+          <div className={assetDataStyle.tableArea}>
+            {loadError ? (
+              <Alert
+                type="error"
+                showIcon
+                message={t('common.loadFailed')}
+                action={(
+                  <Button size="small" onClick={() => getInitData(modelId)}>
+                    {t('common.retry')}
+                  </Button>
+                )}
+              />
+            ) : (
+              <CustomTable
+                style={{ marginTop: '-1px' }}
+                size="small"
+                rowSelection={rowSelection}
+                dataSource={tableData}
+                columns={currentColumns}
+                pagination={pagination}
+                loading={loading || tableLoading}
+                scroll={{ x: 'max-content' }}
+                fieldSetting={{
+                  showSetting: true,
+                  displayFieldKeys,
+                  choosableFields: columns.filter((item) => item.key !== 'action'),
+                }}
+                onSelectFields={onSelectFields}
+                rowKey="inst_uuid"
+                onChange={handleTableChange}
+              />
+            )}
+          </div>
           <FieldModal
             ref={fieldRef}
             userList={userList}
@@ -1614,6 +1662,7 @@ const AssetDataContent = () => {
           </Modal>
         </div>
       </div>
+      )}
     </div>
   );
 };
