@@ -53,6 +53,12 @@ class TransferExecution:
         if not token:
             return
         task = CmdbTransferTask.objects.select_related("owner").get(pk=task_id)
+        logger.info(
+            "event=cmdb_transfer_started task_id=%s kind=%s model_id=%s",
+            str(task.pk),
+            safe_log_value(task.kind, max_length=16),
+            safe_log_value(task.model_id, max_length=128),
+        )
         try:
             files = files or TransferFiles()
             with execution_heartbeat(task.pk, token):
@@ -107,6 +113,15 @@ class TransferExecution:
                 "execution_stopped",
                 "执行已终止，已写入的数据保留",
                 execution_stopped=True,
+            )
+            task.refresh_from_db()
+            logger.info(
+                "event=cmdb_transfer_finished task_id=%s kind=%s status=%s holds_slot=%s error_code=%s",
+                str(task.pk),
+                safe_log_value(task.kind, max_length=16),
+                safe_log_value(task.status, max_length=24),
+                "true" if task.holds_slot else "false",
+                safe_log_value(task.error_code, max_length=64) or "-",
             )
 
     @staticmethod
