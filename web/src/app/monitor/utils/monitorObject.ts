@@ -131,24 +131,27 @@ export const attachSidebarChildrenByParentLabel = <T extends { label?: string; c
   }
 };
 
-/** 演进现有 type=Cloud 作为唯一「云」总根；腾讯云 / 阿里云 type 并入其下。 */
+/** 演进现有 type=Cloud 作为唯一「云」总根。新云只需 type=Cloud，不必改名单。 */
 export const UNIFIED_CLOUD_ROOT_TYPE = 'Cloud';
 
-const CLOUD_FAMILY_SIDEBAR_TYPES = new Set([
-  UNIFIED_CLOUD_ROOT_TYPE,
-  'Tencent Cloud',
-  'Aliyun Cloud'
-]);
+/**
+ * 历史对象仍可能 typed 为 Tencent Cloud / Aliyun Cloud。
+ * 仅作入根归一，不是开放厂商白名单；新云请用 type=Cloud。
+ */
+const LEGACY_CLOUD_FAMILY_TYPE_ALIASES: Record<string, string> = {
+  'Tencent Cloud': UNIFIED_CLOUD_ROOT_TYPE,
+  'Aliyun Cloud': UNIFIED_CLOUD_ROOT_TYPE
+};
 
-const CLOUD_L2_TYPE_DISPLAYS = new Set([
-  '腾讯云',
-  '阿里云',
-  'Tencent Cloud',
-  'Aliyun Cloud'
-]);
+export const normalizeCloudFamilySidebarType = (
+  type?: string | null
+): string | undefined => {
+  if (!type) return undefined;
+  return LEGACY_CLOUD_FAMILY_TYPE_ALIASES[type] ?? type;
+};
 
 export const isCloudFamilySidebarType = (type?: string | null): boolean =>
-  Boolean(type && CLOUD_FAMILY_SIDEBAR_TYPES.has(type));
+  normalizeCloudFamilySidebarType(type) === UNIFIED_CLOUD_ROOT_TYPE;
 
 /**
  * 获取所有派生对象的名称列表
@@ -395,10 +398,7 @@ export const isCloudFamilySidebarDerivative = (
 
 export const resolveUnifiedCloudRootTitle = (objects: ObjectItem[]): string => {
   const cloudType = objects.find(
-    (item) =>
-      item.type === UNIFIED_CLOUD_ROOT_TYPE &&
-      item.display_type &&
-      !CLOUD_L2_TYPE_DISPLAYS.has(item.display_type)
+    (item) => item.type === UNIFIED_CLOUD_ROOT_TYPE && item.display_type
   );
   if (cloudType?.display_type) {
     return cloudType.display_type;
@@ -407,16 +407,6 @@ export const resolveUnifiedCloudRootTitle = (objects: ObjectItem[]): string => {
     /[\u4e00-\u9fff]/.test(String(item.display_name || item.display_type || ''))
   );
   return looksZh ? '云' : 'Cloud';
-};
-
-const cloudPlatformNodeTitle = (
-  item: ObjectItem,
-  fallbackTitle: string
-): string => {
-  if (item.type === 'Tencent Cloud' || item.type === 'Aliyun Cloud') {
-    return item.display_type || fallbackTitle || item.name;
-  }
-  return fallbackTitle || item.display_name || item.name;
 };
 
 interface SidebarTreeNode {
@@ -452,7 +442,6 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
 
   const platformNodes = platforms.map((platform) => {
     const node = toNode(platform);
-    node.title = cloudPlatformNodeTitle(platform, String(node.title || ''));
     const childItems = childrenByParentId.get(platform.id) || [];
     node.children = childItems.map(toNode);
     childrenByParentId.delete(platform.id);
@@ -466,7 +455,6 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
       continue;
     }
     const node = toNode(parent);
-    node.title = cloudPlatformNodeTitle(parent, String(node.title || ''));
     node.children = childItems.map(toNode);
     platformNodes.push(node);
   }
@@ -482,7 +470,7 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
 
 /**
  * 视图 / 专业大盘对象树：
- * - 云族白名单（Cloud / Tencent Cloud / Aliyun Cloud）挂到唯一「云」根下，派生挂父；
+ * - type=Cloud（及历史 Tencent Cloud / Aliyun Cloud 别名）挂到唯一「云」根下，派生挂父；
  * - Meraki 维持挂父；
  * - 其余 type 仍按 #6351 隐藏派生，禁止全局去掉 isDerivativeObject。
  */
