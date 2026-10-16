@@ -1011,7 +1011,7 @@ const JobRecordPage = () => {
                 </span>
                 {streaming && (
                   <Tag color="processing" className="m-0">
-                    <span className="inline-block w-2 h-2 rounded-full bg-current mr-1 animate-pulse align-middle" />
+                    <span className="inline-block w-2 h-2 rounded-full bg-current mr-1 animate-neutral-pulse align-middle" />
                     {t('job.streamingLive')}
                   </Tag>
                 )}

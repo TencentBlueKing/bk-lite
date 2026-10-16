@@ -16,6 +16,18 @@
 
 @theme {
   --breakpoint-3xl: 120rem;
+  --animate-neutral-pulse: bk-neutral-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes bk-neutral-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 * {
@@ -305,4 +317,3 @@ html:not(.dark) .header-bg-scrolled {
   transform: translateY(-50%);
   margin-inline-start: 4px;
 }
-

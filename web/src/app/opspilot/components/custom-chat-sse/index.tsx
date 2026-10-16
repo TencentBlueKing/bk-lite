@@ -92,7 +92,7 @@ const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }> = ({ 
       >
         <RightOutlined className={`text-[9px] text-[var(--color-text-4)] group-hover:text-[var(--color-text-3)] transition-transform duration-200 ${expanded ? 'rotate-90' : 'rotate-0'}`} />
         <span className="flex items-center gap-1.5 font-normal">
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${isThinking ? 'bg-[var(--color-primary)] animate-pulse' : 'bg-emerald-500'}`} />
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${isThinking ? 'bg-[var(--color-primary)] animate-neutral-pulse' : 'bg-emerald-500'}`} />
           <span>{statusText}</span>
         </span>
         {isThinking && (
