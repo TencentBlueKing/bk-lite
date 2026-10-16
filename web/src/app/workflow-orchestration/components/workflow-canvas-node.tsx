@@ -100,7 +100,12 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<WorkflowNod
     >
       {data.testState === 'running' ? <ReloadOutlined spin /> : <NodeIcon data={data} />}
     </button></WorkflowPermission>
-    <div className="pointer-events-none absolute left-1/2 top-[102px] w-48 -translate-x-1/2 text-base font-medium leading-5 text-[var(--color-text-1)]" title={data.title}>{data.title}</div>
+    <div
+      data-workflow-node-title
+      className="nodrag nopan absolute left-1/2 top-[102px] w-48 -translate-x-1/2 text-base font-medium leading-5 text-[var(--color-text-1)]"
+      title={data.title}
+      onDoubleClick={(event) => { event.stopPropagation(); act('configure'); }}
+    >{data.title}</div>
     {data.testState === 'started' && <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full border-2 border-[var(--color-bg)] bg-[var(--color-success)]" title={t('workflowOrchestration.editor.singleStepStarted', '单步执行已启动')} />}
     {branches.length ? <>{branches.map((branch, index) => {
       const top = `${((index + 1) / (branches.length + 1)) * 100}%`;

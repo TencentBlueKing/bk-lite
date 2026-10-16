@@ -1,6 +1,6 @@
 'use client';
 
-import { ReloadOutlined } from '@ant-design/icons';
+import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Dropdown, Empty, Input, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -33,6 +33,7 @@ function ExecutionDownloadAction({
   onDownload: (artifact: DownloadableArtifact) => void;
 }) {
   const { t } = useTranslation();
+  const [keyword, setKeyword] = useState('');
   if (!files.length) return null;
   const loading = files.some((file) => file.id === downloadingId);
   if (files.length === 1) {
@@ -42,19 +43,47 @@ function ExecutionDownloadAction({
       </WorkflowPermission>
     );
   }
+  const query = keyword.trim().toLowerCase();
+  const visible = query ? files.filter((file) => file.filename.toLowerCase().includes(query)) : files;
   return (
     <WorkflowPermission operation="View" area="executions" instancePermissions={instancePermissions}>
       <Dropdown
         trigger={['click']}
+        placement="bottomRight"
+        onOpenChange={(open) => {
+          if (!open) setKeyword('');
+        }}
         menu={{
-          items: files.map((file) => ({ key: file.id, label: file.filename })),
+          style: { maxHeight: 240, overflowY: 'auto', background: 'transparent', boxShadow: 'none', borderRadius: 0 },
+          items: visible.map((file) => ({ key: file.id, label: file.filename })),
           onClick: ({ key }) => {
             const file = files.find((item) => item.id === key);
             if (file) onDownload(file);
           },
         }}
+        popupRender={(menu) => (
+          <div className="min-w-52 overflow-hidden rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)] shadow-md">
+            <div className="border-b border-[var(--color-border-1)] px-2 py-2">
+              <Input
+                size="small"
+                allowClear
+                value={keyword}
+                placeholder={t('common.search', '搜索')}
+                onChange={(event) => setKeyword(event.target.value)}
+                onMouseDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              />
+            </div>
+            {visible.length ? menu : <div className="px-3 py-2 text-xs text-[var(--color-text-3)]">{t('common.noResult', '无结果')}</div>}
+          </div>
+        )}
       >
-        <Button type="link" size="small" className="px-0" loading={loading}>{t('common.download', '下载')}</Button>
+        <Button type="link" size="small" className="px-0" loading={loading}>
+          <span className="inline-flex items-center gap-1">
+            {t('common.download', '下载')}
+            <DownOutlined aria-hidden className="text-xs" />
+          </span>
+        </Button>
       </Dropdown>
     </WorkflowPermission>
   );

@@ -30,7 +30,7 @@ import { OPSPILOT_ATOM_KEYS, OpsPilotAtomForm } from './opspilot-atom-form';
 import { approvalDecisionReference, configureApprovalTask } from '../lib/approval-dsl';
 import { localizeAtom } from '../lib/atom-localization';
 import { BUILTIN_SAMPLE_TEMPLATE_URLS } from '../lib/sample-templates';
-import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, flattenTasks, projectApprovalCanvasEdges, workflowTriggerNodes, type WorkflowCanvasMetadata, type WorkflowReturnNode, type WorkflowTriggerNode } from '../lib/canvas-dsl';
+import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, flattenTasks, positionBesideSource, projectApprovalCanvasEdges, workflowTriggerNodes, type WorkflowCanvasMetadata, type WorkflowReturnNode, type WorkflowTriggerNode } from '../lib/canvas-dsl';
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
 import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
@@ -512,7 +512,12 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         { id: `${pendingSource.id}-${target}-${Date.now()}`, source: pendingSource.id, sourceHandle: pendingSource.handle, target },
       ]
       : projectedEdges;
-    const stagedMetadata = { ...nextMetadata, edges: expandApprovalCanvasEdges(nextDefinition, stagedVisibleEdges) };
+    const sourcePosition = pendingSource ? nodes.find((node) => node.id === pendingSource.id)?.position : undefined;
+    const stagedMetadata = {
+      ...nextMetadata,
+      edges: expandApprovalCanvasEdges(nextDefinition, stagedVisibleEdges),
+      ...(sourcePosition ? { positions: { ...(nextMetadata.positions || {}), [target]: positionBesideSource(sourcePosition) } } : {}),
+    };
     commit(nextDefinition, stagedMetadata);
     setPendingSource(undefined);
     setSelectedId(target);
@@ -1189,7 +1194,11 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const selectedNode = nodes.find((item) => item.id === selectedId);
   const debugTriggers = workflowTriggerNodes(metadata);
   const debugTrigger = debugTriggers.find((item) => item.id === debugTriggerId) || debugTriggers[0];
-  const interactive = nodes.map((node) => ({ ...node, data: { ...node.data, readOnly, locked: Boolean(debugExecution), onAction: action } }));
+  const interactive = nodes.map((node) => ({
+    ...node,
+    className: readOnly ? 'nopan' : node.className,
+    data: { ...node.data, readOnly, locked: Boolean(debugExecution), onAction: action },
+  }));
   const interactiveEdges = edges.map((edge) => ({
     ...edge,
     type: 'workflowCanvas',

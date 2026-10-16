@@ -87,11 +87,12 @@ function StructureGuide({ audience }: { audience: ReportContractGuideAudience })
   return <div className="flex flex-col gap-5 pb-4">
     <GuideSection title={t('workflowOrchestration.editor.reportFixedContractTitle', '平台固定外层')}>
       <p className="m-0">{t('workflowOrchestration.editor.reportFixedContractBody', '作业执行节点的结构化输出外层由平台固定：summary、results、target、status、exit_code、error。脚本不要改这些字段名。')}</p>
-      <p className="m-0">{t('workflowOrchestration.editor.reportCustomDataBody', '业务内容写在每台主机的 results[].data 里，可以是对象、数组和嵌套结构，深度不超过 10 层。')}</p>
+      <p className="m-0">{t('workflowOrchestration.editor.reportCustomDataBody', '业务内容是脚本自己定义的字段，例如结论和指标。平台按主机放进 results[].data。每台主机单独解析，字段可以不同。根必须是 JSON 对象；对象里可以有数组和嵌套，深度不超过 10 层。')}</p>
     </GuideSection>
-    <GuideSection title={t('workflowOrchestration.editor.reportScriptMarkerTitle', '脚本如何返回')}>
-      <p className="m-0">{t('workflowOrchestration.editor.reportScriptMarkerBody', '在 stdout 输出一行 BK_LITE_RESULT=<JSON 对象>。平台会从完整 stdout 中解析该标记；没有标记时 data 为空对象。')}</p>
+    <GuideSection title={t('workflowOrchestration.editor.reportScriptMarkerTitle', '每台主机的脚本要输出什么')}>
+      <p className="m-0">{t('workflowOrchestration.editor.reportScriptMarkerBody', '脚本在每台目标主机上执行。需要交给下游的业务数据，在标准输出里单独打印一行。行首必须是平台固定前缀 BK_LITE_RESULT=，这个名字不能改。等号后面是一个 JSON 对象，对象里的字段由脚本自己定义，例如结论和指标。')}</p>
       <CodeBlock>{`BK_LITE_RESULT={"collected_at":"...","conclusion":"健康","metrics":[]}`}</CodeBlock>
+      <p className="m-0">{t('workflowOrchestration.editor.reportScriptMarkerFollow', '平台只认这个前缀，并把等号后面的对象放进该主机的 results[].data。没有这一行时，data 为 {}。summary、results、target、status 由平台填写，脚本不要打印这些外层字段。')}</p>
     </GuideSection>
     {audience === 'document' ? (
       <GuideSection title={t('workflowOrchestration.editor.reportDataToTemplateTitle', '数据如何进模板')}>
@@ -102,7 +103,8 @@ function StructureGuide({ audience }: { audience: ReportContractGuideAudience })
         </ul>
       </GuideSection>
     ) : null}
-    <GuideSection title={t('workflowOrchestration.editor.reportStructureSampleTitle', '完整结构示例')}>
+    <GuideSection title={t('workflowOrchestration.editor.reportStructureSampleTitle', '下游拿到的完整结果')}>
+      <p className="m-0">{t('workflowOrchestration.editor.reportStructureSampleCaption', '下面这份 JSON 由平台组装，是作业节点交给下游的结果。results 里有几台主机就有几条。每条里的 data，就是该主机脚本打印的那个 JSON 对象。')}</p>
       <CodeBlock>{OUTPUT_CONTRACT_SAMPLE}</CodeBlock>
     </GuideSection>
   </div>;
