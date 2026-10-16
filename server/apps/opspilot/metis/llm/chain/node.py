@@ -3294,7 +3294,8 @@ class ToolsNodes(
                             continue
                         limit_kind = detect_limit_kind(step_messages)
                         if limit_kind:
-                            summary = _step_summary(step_messages) or "本步骤因调用/预算上限提前结束。"
+                            raw_summary = _step_summary(step_messages)
+                            summary = "" if "[OPSPILOT_LIMIT:" in raw_summary else raw_summary
                             question_text, tool_message = await ask_limit_continue(
                                 kind=limit_kind,
                                 step_objective=step.objective,
@@ -3305,6 +3306,7 @@ class ToolsNodes(
                             _collect_output_messages(step_messages + [tool_message, AIMessage(content=question_text)])
                             completed_steps.append(CompletedExecutionStep(objective=step.objective, result=summary))
                             pending_steps.clear()
+                            choice_stopped = True
                             agent_state = step_result
                             await _emit_step_boundary(
                                 "planned_execution_step",

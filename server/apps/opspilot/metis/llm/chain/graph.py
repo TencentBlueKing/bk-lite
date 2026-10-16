@@ -83,6 +83,14 @@ def _hide_planned_step_text(request: BasicLLMRequest) -> bool:
     return bool(extra.get(HIDE_PLANNED_STEP_TEXT_KEY))
 
 
+def _is_replayed_choice_marker(tool_message: Any) -> bool:
+    """续接时带回的选择结束标记，不是用户发起的工具调用。"""
+    if str(getattr(tool_message, "name", "") or "") != "request_user_choice":
+        return False
+    content = str(getattr(tool_message, "content", "") or "")
+    return content.startswith("已向用户发出选择，本轮结束。")
+
+
 # 纯文本轮开播条件（与 show_think、模型名无关）：
 # 1) 连续多个正文 stream chunk 且未见 tool_call，或
 # 2) 缓冲正文已明显长于典型「先旁白再调工具」短句（兼容 Minimax 等单大片输出）。
@@ -1269,6 +1277,8 @@ class BasicGraph(ABC):
         """ToolMessage 尚未对应 TOOL_CALL_START 时补发 START/ARGS（DeepAgent 嵌套常见）。"""
         tool_call_id = str(getattr(tool_message, "tool_call_id", "") or "").strip()
         if not tool_call_id or tool_call_id in current_tool_calls:
+            return []
+        if _is_replayed_choice_marker(tool_message):
             return []
 
         tool_name, tool_args = self._resolve_tool_call_meta_from_messages(messages, tool_call_id, tool_message)

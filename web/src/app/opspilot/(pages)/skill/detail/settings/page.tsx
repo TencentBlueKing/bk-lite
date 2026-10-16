@@ -1046,7 +1046,7 @@ const SkillSettingsPage: React.FC = () => {
 
                   <Form.Item
                     label={t('skill.runModelCallLimit', '每步调用次数')}
-                    tooltip={t('skill.runModelCallLimitTip', '每个执行步骤里，模型可以发起调用的次数上限。达到后本步停止。')}
+                    tooltip={t('skill.runModelCallLimitTip', '每个执行步骤里，模型可以发起调用的次数上限。达到后询问是否继续。')}
                     className="!mb-3.5"
                   >
                     <InputNumber
