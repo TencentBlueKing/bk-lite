@@ -5,7 +5,8 @@ import pytest
 from apps.rum.services.alert_runtime import RumAlertRuntime
 from apps.rum.services.alert_store import DjangoEventStore, DjangoPolicyStore, MemoryEventStore, MemoryPolicyStore
 from apps.rum.services.applications import ApplicationsService
-from apps.rum.services.control import ControlError, MemoryControl
+from apps.rum.models import RumApplication
+from apps.rum.services.control import ControlError, MemoryControl, UnavailableControl
 from apps.rum.services.delivery import SystemMgmtAlertDispatcher
 from apps.rum.services.monitors import MonitorsService
 from apps.rum.services.settings import RumRuntimeSettings
@@ -331,6 +332,47 @@ def test_renotify_waits_for_the_interval_and_skips_the_alert_center_copy():
     assert len(renotify) == 1
     assert renotify[0]["deliveryMode"] == "message"
     assert renotify[0]["eventId"] is None
+
+
+def test_renotify_does_not_advance_without_a_manual_channel():
+    service, policies, events = _service()
+    created = service.create_monitor(
+        "tester",
+        _body(renotifyMinutes=5, notificationTargets=[_channel(9, mode="alert_event_copy")]),
+        assignable_orgs={10},
+    )
+    start = datetime(2026, 10, 16, 8, 0, tzinfo=timezone.utc)
+    runtime = _runtime(policies, events, [0.5])
+    runtime.evaluate_policy(created["id"], start)
+    alert_id = events.active_for_policy(created["id"])["id"]
+    assert runtime.evaluate_policy(created["id"], start + timedelta(minutes=5)) == "none"
+    alert = events.get_alert(alert_id)
+    assert alert["renotifyCount"] == 0
+    assert alert["lastNotifiedAt"] == events.list_events(alert_id)[0]["occurredAt"]
+    assert [item["deliveryMode"] for item in events.list_deliveries(alert_id)] == ["alert_event_copy"]
+
+
+def test_policy_writes_use_the_application_row_when_the_controller_is_down():
+    service, _, _ = _service()
+    service.control = UnavailableControl()
+    created = service.create_monitor("tester", _body(), assignable_orgs={10})
+    updated = service.update_monitor(
+        "tester",
+        created["id"],
+        {"name": "renamed"},
+        assignable_orgs={10},
+        visible_orgs={10},
+    )
+    assert updated["name"] == "renamed"
+
+    with pytest.raises(ControlError) as missing:
+        service.create_monitor("tester", _body(name="missing", application="missing-app"), assignable_orgs={10})
+    assert missing.value.code == "not_found"
+
+    RumApplication.objects.filter(name="checkout").update(enabled=False)
+    with pytest.raises(ControlError) as disabled:
+        service.create_monitor("tester", _body(name="disabled app"), assignable_orgs={10})
+    assert disabled.value.code == "not_found"
 
 
 def test_alert_center_copy_uses_lite_rum_and_is_omitted_without_that_channel():

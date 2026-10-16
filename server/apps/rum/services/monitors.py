@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from apps.core.utils.user_display import build_user_display_map, format_user_identifiers
-from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.alert_runtime import RumAlertRuntime
 from apps.rum.services.alert_store import (  # noqa: F401
     MemoryEventStore,
@@ -15,7 +14,7 @@ from apps.rum.services.alert_store import (  # noqa: F401
     parse_dt,
 )
 from apps.rum.services.analytics import Analytics, get_analytics
-from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
+from apps.rum.services.control import ControlError, ControlPlane, get_control_plane
 from apps.rum.services.settings import load_rum_settings
 from apps.rum.services.validation import ValidationError, valid_application
 
@@ -182,21 +181,10 @@ class MonitorsService:
             tenant_id=settings.tenant_id,
         )
 
-    def _list_enabled_apps(self, actor: str) -> tuple[list[str], str | None]:
-        try:
-            _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
-        except ControlError as exc:
-            if control_unavailable(exc):
-                return [], "control"
-            raise
-        registry = data if isinstance(data, list) else []
-        return [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)], None
+    def _require_application(self, application: str) -> None:
+        from apps.rum.models import RumApplication
 
-    def _require_application(self, actor: str, application: str) -> None:
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
-            raise ControlError("unavailable", "RUM controller is unavailable")
-        if application not in enabled:
+        if not RumApplication.objects.filter(name=application, enabled=True).exists():
             raise ControlError("not_found", "application not found")
 
     def list_monitors(self, *, visible_orgs: set[int]) -> list[dict]:
@@ -213,7 +201,7 @@ class MonitorsService:
     def create_monitor(self, actor: str, body: dict, *, assignable_orgs: set[int]) -> dict:
         normalized = normalize_alert_policy(body)
         _require_assignable(normalized["organizations"], assignable_orgs)
-        self._require_application(actor, normalized["application"])
+        self._require_application(normalized["application"])
         normalized["enabled"] = True
         normalized.setdefault("notificationTargets", [])
         normalized.setdefault("handlers", [])
@@ -229,7 +217,7 @@ class MonitorsService:
             merged_body["notificationTargets"] = existing.get("notificationTargets") or []
         normalized = normalize_alert_policy(merged_body)
         _require_assignable(normalized["organizations"], assignable_orgs)
-        self._require_application(actor, normalized["application"])
+        self._require_application(normalized["application"])
         if set(normalized["organizations"]) != set(org_ids(existing.get("organizations"))):
             _drop_out_of_scope(normalized)
         merged = {**existing, **normalized, "id": policy_id}

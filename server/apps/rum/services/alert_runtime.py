@@ -298,6 +298,8 @@ class RumAlertRuntime:
         last = parse_dt(alert.get("lastNotifiedAt"))
         if not should_renotify(last, policy.get("renotifyMinutes"), evaluated_at):
             return "none"
+        if not any(_is_manual_channel(target) for target in policy.get("notificationTargets") or []):
+            return "none"
         alert["renotifyCount"] = int(alert.get("renotifyCount") or 0) + 1
         alert["lastNotifiedAt"] = fmt_dt(evaluated_at)
         saved = self.alerts.save_alert(alert)
