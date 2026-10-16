@@ -35,7 +35,7 @@ import ContextUsageRing from './components/ContextUsageRing';
 import { SessionFileBar } from './components/SessionFileBar';
 import { collectSessionAttachmentFiles } from './sessionFiles';
 import { applyPlannedExecutionStep, createPlannedExecutionState } from './plannedExecution';
-import { attachmentMetadata, chatAttachmentEndpoints, isAllowedChatFile, uploadChatFile, type StoredChatAttachment } from './chatAttachments';
+import { attachmentMetadata, chatAttachmentEndpoints, fetchChatAttachmentStatus, isAllowedChatFile, uploadChatFile, type StoredChatAttachment } from './chatAttachments';
 import {
   pendingImagesReducer,
   readFileAsDataUrl,
@@ -546,6 +546,28 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       }
     }
   }, [apiKey, reportImageError, requestHeaders, sseUrl, t]);
+
+  useEffect(() => {
+    const pending = documentChips.filter((item) => item.status === 'pending' && item.id);
+    if (!pending.length || !sseUrl) {
+      return undefined;
+    }
+    const headers = chatAuthHeaders(requestHeaders, apiKey);
+    const timer = globalThis.setInterval(() => {
+      pending.forEach((item) => {
+        fetchChatAttachmentStatus(item.id, sseUrl, headers)
+          .then((next) => {
+            setDocumentChips((current) => current.map((chip) => (
+              chip.id === item.id
+                ? { ...chip, status: next.status, failure_reason: next.failure_reason }
+                : chip
+            )));
+          })
+          .catch(() => undefined);
+      });
+    }, 1500);
+    return () => globalThis.clearInterval(timer);
+  }, [apiKey, documentChips, requestHeaders, sseUrl]);
 
   // Handle image upload
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

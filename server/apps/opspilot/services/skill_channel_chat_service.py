@@ -1232,8 +1232,55 @@ def _looks_like_planned_execution_delta(delta: str) -> bool:
     return phase in {"planning", "planned", "replanning", "idle", "start", "end"}
 
 
+_ATTACHMENT_RESULT_FILENAME_RE = re.compile(r"""['"]filename['"]\s*:\s*['"]([^'"]+)['"]""")
+
+
+def _generated_attachment_filename(content: Any) -> str:
+    """从附件工具结果取出文件名。跳过的调用和下载地址不进入下一轮正文。"""
+    text = content if isinstance(content, str) else str(content or "")
+    payload = None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        if payload.get("skipped") or not payload.get("file_url"):
+            return ""
+        return str(payload.get("filename") or "").strip()
+    if "file_url" not in text or re.search(r"""['"]skipped['"]\s*:\s*true""", text, re.IGNORECASE):
+        return ""
+    match = _ATTACHMENT_RESULT_FILENAME_RE.search(text)
+    return match.group(1).strip() if match else ""
+
+
+def _generated_attachment_note(events: list) -> str:
+    """本轮成功生成的文件名。下一轮只有可见正文，没有工具结果就无法再出一版。"""
+    names_by_call: dict[str, str] = {}
+    ordered: list[str] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "TOOL_CALL_START" and event.get("toolCallName") == "generate_attachment_file":
+            call_id = str(event.get("toolCallId") or "")
+            if call_id:
+                names_by_call[call_id] = ""
+            continue
+        if event.get("type") != "TOOL_CALL_RESULT":
+            continue
+        call_id = str(event.get("toolCallId") or "")
+        if call_id and call_id not in names_by_call:
+            continue
+        filename = _generated_attachment_filename(event.get("content") or "")
+        if not filename or filename in ordered:
+            continue
+        ordered.append(filename)
+    if not ordered:
+        return ""
+    return "已生成文件：" + "、".join(ordered)
+
+
 def visible_assistant_text(content: str) -> str:
-    """给模型的上下文只用可见正文，丢掉计划/工具等 AG-UI 事件。"""
+    """给模型的上下文只用可见正文，丢掉计划/工具等 AG-UI 事件。成功生成的文件名保留。"""
     if not content:
         return ""
     stripped = content.strip()
@@ -1256,7 +1303,11 @@ def visible_assistant_text(content: str) -> str:
             continue
         if delta:
             parts.append(str(delta))
-    return "".join(parts).strip()
+    text = "".join(parts).strip()
+    note = _generated_attachment_note(events)
+    if note and note.split("：", 1)[-1] not in text:
+        text = f"{text}\n{note}".strip() if text else note
+    return text
 
 
 def _history_from_conversation(

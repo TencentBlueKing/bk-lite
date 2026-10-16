@@ -2494,6 +2494,7 @@ class ToolsNodes(
                 ToolExecutionPlan,
                 ToolExecutionPlanner,
                 ToolPlanningError,
+                attachment_step_produced_file,
                 classify_tool_failure_kind,
                 collect_generated_attachment_filenames,
                 drop_alternative_inventory_followups,
@@ -2974,6 +2975,7 @@ class ToolsNodes(
                     step = pending_steps.pop(0)
                     step_index = len(completed_steps) + 1
                     missing_params_nudged = False
+                    attachment_call_nudged = False
                     active_tools[:] = _resolve_step_tools(step.tools)
                     visibility_middleware.include_always_visible = True
                     visible_names = [getattr(tool, "name", "") for tool in active_tools]
@@ -3384,6 +3386,16 @@ class ToolsNodes(
                             await _replan_remaining(failure, extra_messages=step_messages)
                             break
 
+                        if "generate_attachment_file" in (step.tools or []) and not attachment_step_produced_file(step_messages):
+                            if not attachment_call_nudged:
+                                attachment_call_nudged = True
+                                agent_state = step_result
+                                step_payload = {
+                                    **agent_state,
+                                    "messages": list(agent_state.get("messages") or [])
+                                    + [_internal_message("本步还没有生成新文件。现在调用一次 generate_attachment_file，" "把修改后的完整文档写入 content。调用成功前不要说已经生成新版本。")],
+                                }
+                                continue
                         _collect_output_messages(step_messages)
                         # 仅在本步实际跑过配置分析时提前推进修复闭环，避免列表/诊断步后抢弹选择卡。
                         if "analyze_deployment_configurations" in (step.tools or []):
