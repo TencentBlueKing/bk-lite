@@ -815,10 +815,12 @@ button.kpiCard {
   overflow-y: auto;
 }
 
-.mountTrend .chartLegend > span {
+.mountTrend .legendItem {
+  display: inline-block;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
+  vertical-align: middle;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

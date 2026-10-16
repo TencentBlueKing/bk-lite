@@ -217,13 +217,13 @@ export const resolveMemoryUsage = (
 
 /** 折线、图例、tooltip 色点共用的序列色。按系列名取，避免 tooltip 落到默认色板。 */
 export const seriesMarkerColor = (
-  legends: Array<{ label: string; color: string }>,
+  legends: Array<{ label: string; color: string; title?: string }>,
   seriesName: string | undefined,
   seriesIndex: number | undefined,
   fallback: unknown
 ) => {
   if (seriesName) {
-    const match = legends.find((item) => item.label === seriesName);
+    const match = legends.find((item) => item.label === seriesName || item.title === seriesName);
     if (match?.color) return match.color;
   }
   if (typeof seriesIndex === 'number' && legends[seriesIndex]?.color) {

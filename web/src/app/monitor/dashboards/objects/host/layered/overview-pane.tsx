@@ -69,8 +69,61 @@ const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
 
 /** 本机趋势磁盘使用率默认只对比最满的挂载，其余用「更多」展开。 */
 const MOUNT_TREND_TOP = 5;
+/** 短于该长度，或路径段数不超过两段时，图例不省略。 */
+const MOUNT_LEGEND_FULL_MAX = 18;
 
 const mountLabel = (row: EntityTableRow) => row.labels.path || row.labels.mount || '挂载';
+
+const mountPathSegments = (path: string) => path.split('/').filter((part) => part.length > 0);
+
+const mountPathShowsFull = (path: string) => (
+  path === '/'
+  || mountPathSegments(path).length <= 2
+  || Array.from(path).length <= MOUNT_LEGEND_FULL_MAX
+);
+
+/** 末 `tail` 段。已覆盖整条路径、或本身是短路径时不加省略号。 */
+const formatMountLegend = (path: string, tail: number) => {
+  if (path === '/' || path === '') return path || '/';
+  const parts = mountPathSegments(path);
+  if (parts.length === 0 || mountPathShowsFull(path) || tail >= parts.length) return path;
+  const count = Math.max(1, tail);
+  return `…/${parts.slice(-count).join('/')}`;
+};
+
+/**
+ * 默认末两段。同一屏里尾段撞名时向前再取一段，直到能分开或已经是全路径。
+ * `minTail` 为 1 时是图例区仍放不下的退路。
+ */
+const mountLegendTexts = (paths: string[], minTail: number) => {
+  const depths = paths.map((path) => {
+    const parts = mountPathSegments(path);
+    if (mountPathShowsFull(path)) return parts.length;
+    return Math.min(Math.max(1, minTail), parts.length);
+  });
+  for (let round = 0; round < paths.length + 1; round += 1) {
+    const labels = paths.map((path, index) => formatMountLegend(path, depths[index] || 1));
+    const groups = new Map<string, number[]>();
+    labels.forEach((label, index) => {
+      const bucket = groups.get(label) || [];
+      bucket.push(index);
+      groups.set(label, bucket);
+    });
+    let changed = false;
+    groups.forEach((indexes) => {
+      if (indexes.length < 2) return;
+      indexes.forEach((index) => {
+        const partCount = mountPathSegments(paths[index]).length;
+        if (depths[index] < partCount) {
+          depths[index] += 1;
+          changed = true;
+        }
+      });
+    });
+    if (!changed) return labels;
+  }
+  return paths.map((path, index) => formatMountLegend(path, depths[index] || 1));
+};
 
 const mountUsageRank = (row: EntityTableRow) => {
   const latest = latestPreferSignal(row.series.disk_used_percent);
@@ -226,10 +279,15 @@ export default function OverviewPane({
     .map((item) => item.row), [diskRows]);
   const mountUsage = useMemo(() => {
     const visible = showAllMounts ? rankedMounts : rankedMounts.slice(0, MOUNT_TREND_TOP);
+    const fullPaths = visible.map((row) => mountLabel(row));
+    const labels = mountLegendTexts(fullPaths, 2);
+    const compactLabels = mountLegendTexts(fullPaths, 1);
     return {
       data: pointsToChartData(visible.map((row) => ({ points: row.series.disk_used_percent || [] }))),
       legends: visible.map((row, index) => ({
-        label: mountLabel(row),
+        label: labels[index] || fullPaths[index],
+        title: fullPaths[index],
+        compactLabel: compactLabels[index] !== labels[index] ? compactLabels[index] : undefined,
         color: mountTrendColor(index)
       }))
     };

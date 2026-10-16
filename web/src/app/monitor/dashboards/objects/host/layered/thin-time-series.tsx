@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -19,6 +19,10 @@ import styles from './layered.module.scss';
 export interface ThinLegend {
   label: string;
   color: string;
+  /** 悬停与折线 tooltip 用的完整名称。缺省时与 label 相同。 */
+  title?: string;
+  /** 图例项仍放不下时改用的更短文案。 */
+  compactLabel?: string;
   /** 紧跟维度名的当前读数，例如「CPU 14.1%」「load1 0.88」。 */
   reading?: string;
   readingTone?: string;
@@ -96,7 +100,41 @@ export default function ThinTimeSeries({
   const mutedColor = theme['--color-text-3'];
   const textColor = theme['--color-text-1'];
   const panelColor = theme['--color-bg'];
-  const legendKey = legends.map((item) => `${item.label}\0${item.color}\0${item.reading || ''}\0${item.dashed ? '1' : '0'}`).join('\n');
+  const legendKey = legends.map((item) => `${item.label}\0${item.title || ''}\0${item.color}\0${item.reading || ''}\0${item.dashed ? '1' : '0'}`).join('\n');
+  const legendBoxRef = useRef<HTMLDivElement>(null);
+  const legendWidthRef = useRef(0);
+  const [legendCompact, setLegendCompact] = useState(false);
+  const [trackedLegendKey, setTrackedLegendKey] = useState(legendKey);
+  if (trackedLegendKey !== legendKey) {
+    setTrackedLegendKey(legendKey);
+    setLegendCompact(false);
+    legendWidthRef.current = 0;
+  }
+  useLayoutEffect(() => {
+    const box = legendBoxRef.current;
+    if (!box) return undefined;
+    const canCompact = legends.some((item) => item.compactLabel && item.compactLabel !== item.label);
+    if (!canCompact) return undefined;
+    const measure = () => {
+      const width = box.clientWidth;
+      const grew = legendWidthRef.current > 0 && width > legendWidthRef.current + 8;
+      legendWidthRef.current = width;
+      if (grew) {
+        setLegendCompact(false);
+        return;
+      }
+      if (legendCompact) return;
+      const clipped = Array.from(box.querySelectorAll<HTMLElement>('[data-legend-item]')).some(
+        (node) => node.scrollWidth > node.clientWidth + 1
+      );
+      if (clipped) setLegendCompact(true);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [legendCompact, legendKey, legends]);
   const keys = useMemo(() => {
     const all = areaKeys(data);
     // 单图例只画一条线。value2 通常是同一指标的 or 回退，叠上去会双计。
@@ -204,7 +242,7 @@ export default function ThinTimeSeries({
         const color = seriesColors[index];
         return {
           type: 'line' as const,
-          name: legends[index]?.label || key,
+          name: legends[index]?.title || legends[index]?.label || key,
           ...(splitAxes ? { yAxisIndex: index } : {}),
           showSymbol: false,
           symbol: 'none' as const,
@@ -263,32 +301,47 @@ export default function ThinTimeSeries({
             </div>
           ) : null}
           {showLegend ? (
-            <div className={styles.chartLegend}>
-              {legends.map((item) => (
-                <span key={item.label} title={item.label}>
+            <div className={styles.chartLegend} ref={legendBoxRef}>
+              {legends.map((item, index) => {
+                const shown = legendCompact && item.compactLabel ? item.compactLabel : item.label;
+                const hover = item.title || item.label;
+                const chip = (
                   <span
-                    className={styles.legendSwatch}
-                    style={item.dashed
-                      ? {
-                        width: 14,
-                        height: 0,
-                        borderRadius: 0,
-                        borderTop: `1.5px dashed ${item.color}`,
-                        background: 'transparent'
-                      }
-                      : { background: item.color }}
-                  />
-                  {item.label}
-                  {item.reading ? (
+                    key={`${hover}-${index}`}
+                    className={styles.legendItem}
+                    title={hover}
+                    data-legend-item=""
+                  >
                     <span
-                      className={styles.legendReading}
-                      style={{ color: item.readingTone || item.color }}
-                    >
-                      {item.reading}
-                    </span>
-                  ) : null}
-                </span>
-              ))}
+                      className={styles.legendSwatch}
+                      style={item.dashed
+                        ? {
+                          width: 14,
+                          height: 0,
+                          borderRadius: 0,
+                          borderTop: `1.5px dashed ${item.color}`,
+                          background: 'transparent'
+                        }
+                        : { background: item.color }}
+                    />
+                    {shown}
+                    {item.reading ? (
+                      <span
+                        className={styles.legendReading}
+                        style={{ color: item.readingTone || item.color }}
+                      >
+                        {item.reading}
+                      </span>
+                    ) : null}
+                  </span>
+                );
+                if (!item.title) return chip;
+                return (
+                  <Tooltip key={`${hover}-${index}`} title={hover}>
+                    {chip}
+                  </Tooltip>
+                );
+              })}
             </div>
           ) : null}
         </div>
