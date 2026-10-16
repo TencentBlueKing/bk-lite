@@ -98,7 +98,7 @@ export const formatBytesPair = (used: number | null | undefined, total: number |
 
 const SHARED_BYTE_LABELS = ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'] as const;
 
-/** 已用/总量共用一个二进制单位，两边都留一位小数，例如 `1.2 / 4.0 GiB`。 */
+/** 已用/总量共用一个二进制单位，两侧都带单位，例如 `1.2 GiB / 4.0 GiB`。 */
 export const formatSharedBytePair = (used: number, total: number | null) => {
   if (!Number.isFinite(used)) return '--';
   if (total == null || !Number.isFinite(total)) return formatUnit(used, 'bytes');
@@ -111,7 +111,8 @@ export const formatSharedBytePair = (used: number, total: number | null) => {
   }
   const divisor = 1024 ** index;
   const side = (value: number) => (value / divisor).toFixed(1);
-  return `${side(used)} / ${side(total)} ${SHARED_BYTE_LABELS[index]}`;
+  const unit = SHARED_BYTE_LABELS[index];
+  return `${side(used)} ${unit} / ${side(total)} ${unit}`;
 };
 
 /** 序列里时间最晚的一个数值。无点或全空返回 null。 */
