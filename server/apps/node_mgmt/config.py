@@ -15,4 +15,8 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.node_mgmt.tasks.collector_auto_restart.restart_failed_collectors',
         'schedule': beat_crontab(minute='0'),  # 每小时扫描一次异常采集器并下发 restart
     },
+    'backfill_collector_default_configs': {
+        'task': 'apps.node_mgmt.tasks.collector_default_backfill.backfill_collector_default_configs',
+        'schedule': beat_crontab(minute='*/5'),
+    },
 }
