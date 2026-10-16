@@ -627,7 +627,7 @@ test('文档解析状态连续查询失败时标记为失败', async () => {
     const renderer = renderChat({ apiKey: 'token', sseUrl: SSE_URL });
     const file = new File([new Uint8Array([1])], 'report.pdf', { type: 'application/pdf' });
     await selectFiles(renderer.root, [file]);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
       await act(async () => {
         timers[0]();
         await Promise.resolve();

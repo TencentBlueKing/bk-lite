@@ -203,6 +203,43 @@ def test_sdk_transport_uses_official_client_for_reply_and_heartbeat():
         transport.close()
 
 
+def test_sdk_transport_stays_open_on_disconnected_while_sdk_reconnects():
+    from apps.opspilot.services.skill_channel_aibot_long_connection_sdk import WecomSdkTransport
+
+    class DisconnectingClient:
+        def __init__(self, options):
+            self.options = options
+            self.handlers = {}
+
+        def on(self, name, callback):
+            self.handlers.setdefault(name, []).append(callback)
+
+        async def connect(self):
+            for callback in self.handlers.get("authenticated", []):
+                callback()
+            for callback in self.handlers.get("disconnected", []):
+                callback("connection reset")
+
+        def disconnect(self):
+            return None
+
+        async def reply_stream(self, frame, stream_id, content, finish=False, msg_item=None, feedback=None):
+            return {}
+
+    transport = WecomSdkTransport(
+        "wss://openws.work.weixin.qq.com",
+        "bot-1",
+        "secret-1",
+        client_factory=DisconnectingClient,
+    )
+    try:
+        assert transport.closed is False
+        with pytest.raises(TimeoutError):
+            transport.recv_json(0.05)
+    finally:
+        transport.close()
+
+
 def test_sdk_transport_surfaces_closed_connection_after_auth_error():
     from apps.opspilot.services.skill_channel_aibot_long_connection_sdk import WecomSdkTransport
 

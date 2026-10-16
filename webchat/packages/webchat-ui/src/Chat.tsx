@@ -157,7 +157,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const [uploadedImages, setUploadedImages] = useState<PendingImage[]>([]);
   const [documentChips, setDocumentChips] = useState<Array<StoredChatAttachment & { localKey: string }>>([]);
   const pendingAttachmentIdsRef = useRef<Set<number>>(new Set());
-  const attachmentPollMetaRef = useRef<Map<number, { failures: number; startedAt: number }>>(new Map());
+  const attachmentPollMetaRef = useRef<Map<number, { failures: number }>>(new Map());
   const selectedFilesRef = useRef<File[]>([]);
   const [hitlEvent, setHitlEvent] = useState<CustomProtocolEvent | null>(null);
   const [contextUsage, setContextUsage] = useState<LlmContextUsage | null>(null);
@@ -565,8 +565,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     }
     const headers = chatAuthHeaders(requestHeaders, apiKey);
     const pollIntervalMs = 1500;
-    const maxPollDurationMs = 120_000;
-    const maxConsecutiveFailures = 3;
+    const maxConsecutiveFailures = 12;
     const markAttachmentFailed = (attachmentId: number, reason: string) => {
       pendingAttachmentIdsRef.current.delete(attachmentId);
       attachmentPollMetaRef.current.delete(attachmentId);
@@ -581,15 +580,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       if (!pendingIds.length) {
         return;
       }
-      const now = Date.now();
       pendingIds.forEach((attachmentId) => {
-        const meta = attachmentPollMetaRef.current.get(attachmentId) ?? { failures: 0, startedAt: now };
+        const meta = attachmentPollMetaRef.current.get(attachmentId) ?? { failures: 0 };
         if (!attachmentPollMetaRef.current.has(attachmentId)) {
           attachmentPollMetaRef.current.set(attachmentId, meta);
-        }
-        if (now - meta.startedAt > maxPollDurationMs) {
-          markAttachmentFailed(attachmentId, t('file.parseTimeout', '解析超时，请移除后重试'));
-          return;
         }
         fetchChatAttachmentStatus(attachmentId, sseUrl, headers)
           .then((next) => {

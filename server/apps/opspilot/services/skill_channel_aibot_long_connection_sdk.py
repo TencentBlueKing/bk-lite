@@ -124,8 +124,20 @@ class WecomSdkTransport:
         def on_authenticated():
             self._authenticated.set()
 
+        def on_disconnected(reason):
+            # 常规断线走 SDK disconnected + 内置重连（max_reconnect_attempts=-1），勿置 closed。
+            logger.info(
+                "WecomSdkDisconnected bot_id=%s reason=%s",
+                self.bot_id,
+                str(reason)[:200],
+            )
+
+        def on_reconnecting(attempt):
+            logger.info("WecomSdkReconnecting bot_id=%s attempt=%s", self.bot_id, attempt)
+
         def on_error(error):
             if self._authenticated.is_set():
+                # 接收循环中非 ConnectionClosed 的异常不会自动重连，需让 Leader pump 重建 transport。
                 logger.warning(
                     "WecomSdkErrorAfterAuth bot_id=%s error_type=%s",
                     self.bot_id,
@@ -139,6 +151,8 @@ class WecomSdkTransport:
         client.on("message", enqueue)
         client.on("event", enqueue)
         client.on("authenticated", on_authenticated)
+        client.on("disconnected", on_disconnected)
+        client.on("reconnecting", on_reconnecting)
         client.on("error", on_error)
         try:
             await client.connect()

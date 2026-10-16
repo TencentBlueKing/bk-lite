@@ -1,4 +1,4 @@
-"""0086：内置工具/技能包 system_tags 须在 migrate 后回填，不依赖重新播种。"""
+"""0086：内置工具/技能包 system_tags 在首次 migrate 时回填。"""
 
 import importlib
 
