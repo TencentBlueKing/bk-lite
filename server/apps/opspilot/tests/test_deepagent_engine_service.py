@@ -1075,6 +1075,36 @@ class TestBuildDeepagentNodes:
         assert call_limit.token_budget == 0
         assert call_limit.enforce_limits is False  # 总结轮关闭硬限制
 
+    def test_model_call_limit_asks_to_continue_instead_of_summarizing(self):
+        from apps.opspilot.metis.llm.middleware.planned_execution_limits import build_limit_exceeded_message
+
+        node = ToolsNodes()
+        node._dynamic_mode = True
+        node.all_tools = [_tool("current_time")]
+        node.active_tools = []
+        req = _request(user_message="确认当前时间")
+        captured = {}
+        limit_text = build_limit_exceeded_message("model_calls", used=10, limit=10)
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "确认当前时间",
+                    "steps": [{"objective": "确认当前时间", "tools": ["current_time"]}],
+                },
+                agent_replies={1: limit_text},
+            )
+
+        assert len(captured["ainvoke_messages"]) == 1
+        text = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
+        assert "是否继续执行" in text
+        assert "1. 继续" in text
+        assert "2. 结束本步骤" in text
+        assert "暂时停止" not in text
+
     def test_tool_failure_replans_only_unfinished_steps(self):
         # 不用 namespace 反查类工具，避免规划硬校验改写步骤顺序。
         node = ToolsNodes()

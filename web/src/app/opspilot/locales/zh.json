@@ -1942,7 +1942,7 @@
     "chatHistoryEnabledSuffix": "轮对话",
     "chatHistoryDisabledHint": "单轮问答（不携带上下文）",
     "runModelCallLimit": "每步调用次数",
-    "runModelCallLimitTip": "每个执行步骤里，模型可以发起调用的次数上限。达到后本步停止。",
+    "runModelCallLimitTip": "每个执行步骤里，模型可以发起调用的次数上限。达到后询问是否继续。",
     "chatEnhancement": "聊天增强",
     "capabilityExpand": "能力拓展",
     "useTemp": "使用该模板",
