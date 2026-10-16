@@ -1,26 +1,24 @@
 from rest_framework import routers
 
-from apps.monitor.views.infra import InfraViewSet
-from apps.monitor.views.k3s_onboarding import (
-    K3SOnboardingOpenViewSet,
-    K3SOnboardingViewSet,
-)
 from apps.monitor.views.collect_detect import CollectDetectViewSet
+from apps.monitor.views.infra import InfraViewSet
+from apps.monitor.views.k3s_onboarding import K3SOnboardingOpenViewSet, K3SOnboardingViewSet
 from apps.monitor.views.manual_collect import ManualCollect
+from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
 from apps.monitor.views.monitor_alert import MonitorAlertViewSet, MonitorEventViewSet
+from apps.monitor.views.monitor_condition import MonitorConditionViewSet
 from apps.monitor.views.monitor_instance import MonitorInstanceViewSet
 from apps.monitor.views.monitor_metrics import MetricGroupViewSet, MetricViewSet
-from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
-from apps.monitor.views.monitor_object import MonitorObjectViewSet, MonitorObjectTypeViewSet
+from apps.monitor.views.monitor_object import MonitorObjectTypeViewSet, MonitorObjectViewSet
 from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
-from apps.monitor.views.policy_group import PolicyGroupViewSet
 from apps.monitor.views.node_mgmt import NodeMgmtView
 from apps.monitor.views.organization_rule import MonitorObjectOrganizationRuleViewSet
 from apps.monitor.views.plugin import MonitorPluginViewSet
+from apps.monitor.views.policy_group import PolicyGroupViewSet
 from apps.monitor.views.system_mgmt import SystemMgmtView
-from apps.monitor.views.monitor_condition import MonitorConditionViewSet
 from apps.monitor.views.unit import UnitViewSet
 from apps.monitor.views.user_habit import UserHabitViewSet
+from apps.monitor.views.weopsx import WeopsxCloudCatalogViewSet
 
 router = routers.DefaultRouter()
 router.register(r"api/monitor_object", MonitorObjectViewSet, basename="MonitorObject")
@@ -64,4 +62,5 @@ router.register(
     basename="K3SOnboardingOpenViewSet",
 )
 router.register(r"api/user_habits", UserHabitViewSet, basename="monitor-user-habit")
+router.register(r"api/weopsx", WeopsxCloudCatalogViewSet, basename="WeopsxCloudCatalog")
 urlpatterns = router.urls

@@ -14,55 +14,45 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { ObjectItem, TreeItem } from '@/app/monitor/types';
 import {
-  attachMerakiSidebarChildren,
-  isMerakiSidebarDerivative
+  buildMonitorObjectSidebarTree,
+  collectCloudFamilyPlatformIdentities
 } from '@/app/monitor/utils/monitorObject';
+import {
+  fetchWeopsxCloudCatalog,
+  toWeopsxCloudTreeNodes,
+  tryOpenWeopsxCloudNav,
+  WeopsxCloudCatalogItem
+} from '@/app/monitor/utils/weopsxCloudNav';
 import styles from './dashboard-sidebar.module.scss';
 
 interface DashboardSidebarProps {
   currentObjectKey: string;
 }
 
-const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] => {
-  const toNode = (item: ObjectItem): TreeItem => ({
-    title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
-    label: item.name || '--',
-    key: item.id,
-    icon: item.icon,
-    count: item.instance_count || 0,
-    children: []
-  });
-  const merakiDerivatives: ObjectItem[] = [];
-  const groupedData = objects.reduce((acc, item) => {
-    if (!acc[item.type]) {
-      acc[item.type] = {
-        title: item.display_type || '--',
-        key: item.type,
-        children: []
-      };
-    }
-    if (isMerakiSidebarDerivative(item, objects)) {
-      merakiDerivatives.push(item);
-      return acc;
-    }
-    acc[item.type].children.push(toNode(item));
-    return acc;
-  }, {} as Record<string, TreeItem>);
-  attachMerakiSidebarChildren(groupedData, merakiDerivatives, toNode);
-
-  if (groupedData.Other) {
-    groupedData.Other.children = groupedData.Other.children?.filter(
-      (item) => item.label !== 'SNMP Trap'
-    );
-  }
-
-  return Object.values(groupedData);
-};
+const buildMonitorObjectTree = (
+  objects: ObjectItem[],
+  weopsxItems: WeopsxCloudCatalogItem[] = []
+): TreeItem[] =>
+  buildMonitorObjectSidebarTree(
+    objects,
+    (item) => ({
+      title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
+      label: item.name || '--',
+      key: item.id,
+      icon: item.icon,
+      count: item.instance_count || 0,
+      children: []
+    }),
+    toWeopsxCloudTreeNodes(
+      weopsxItems,
+      collectCloudFamilyPlatformIdentities(objects)
+    )
+  );
 
 export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) => {
   const router = useScreenAwareRouter();
   const searchParams = useSearchParams();
-  const { isLoading } = useApiClient();
+  const { isLoading, get } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
   const normalizedCurrent = normalizeDashboardKey(currentObjectKey);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
@@ -74,11 +64,14 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
     const loadObjects = async () => {
       try {
         setTreeLoading(true);
-        const data: ObjectItem[] = await getMonitorObject({
-          add_instance_count: true
-        });
+        const [data, weopsxItems] = await Promise.all([
+          getMonitorObject({
+            add_instance_count: true
+          }),
+          fetchWeopsxCloudCatalog(get)
+        ]);
         setObjects(data);
-        setTreeData(buildMonitorObjectTree(data));
+        setTreeData(buildMonitorObjectTree(data, weopsxItems));
       } finally {
         setTreeLoading(false);
       }
@@ -107,6 +100,7 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
   }, [normalizedCurrent, objects, searchParams]);
 
   const handleSelect = (key: string) => {
+    if (tryOpenWeopsxCloudNav(key, treeData)) return;
     if (String(key) === String(selectedObjectId || '')) return;
 
     const monitorItem = objects.find((item) => String(item.id) === String(key));

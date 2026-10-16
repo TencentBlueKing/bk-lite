@@ -17,9 +17,15 @@ import { cloneDeep } from 'lodash';
 import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/registry';
 import { findByMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import {
-  attachMerakiSidebarChildren,
-  isMerakiSidebarDerivative
+  buildMonitorObjectSidebarTree,
+  collectCloudFamilyPlatformIdentities
 } from '@/app/monitor/utils/monitorObject';
+import {
+  fetchWeopsxCloudCatalog,
+  toWeopsxCloudTreeNodes,
+  tryOpenWeopsxCloudNav,
+  WeopsxCloudCatalogItem
+} from '@/app/monitor/utils/weopsxCloudNav';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import {
   VIEW_OBJECT_QUERY_PARAM,
@@ -27,7 +33,7 @@ import {
 } from '@/app/monitor/utils/monitorObjectQuery';
 
 const Integration = () => {
-  const { isLoading } = useApiClient();
+  const { isLoading, get } = useApiClient();
   const searchParams = useSearchParams();
   const { syncObjectId } = useMonitorObjectQuery(VIEW_OBJECT_QUERY_PARAM);
   const { getMonitorObject } = useMonitorApi();
@@ -55,6 +61,7 @@ const Integration = () => {
   }, [isLoading]);
 
   const handleObjectChange = async (id: string) => {
+    if (tryOpenWeopsxCloudNav(id, treeData)) return;
     setObjectId(id);
     setDisplayType('list');
     syncObjectId(id);
@@ -67,10 +74,14 @@ const Integration = () => {
   const getObjects = async (type?: string) => {
     try {
       setTreeLoading(true);
-      const data: ObjectItem[] = await getMonitorObject({
-        add_instance_count: true,
-      });
-      const _treeData = getTreeData(cloneDeep(data));
+      const [data, weopsxItems]: [ObjectItem[], WeopsxCloudCatalogItem[]] =
+        await Promise.all([
+          getMonitorObject({
+            add_instance_count: true,
+          }),
+          fetchWeopsxCloudCatalog(get),
+        ]);
+      const _treeData = getTreeData(cloneDeep(data), weopsxItems);
       setTreeData(_treeData);
       if (type === 'update') return;
       setObjects(data);
@@ -106,38 +117,25 @@ const Integration = () => {
     syncObjectId(fallbackId);
   }, [activeObject, objectId, objects, searchParams, syncObjectId]);
 
-  const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const toNode = (item: ObjectItem): TreeItem => ({
-      title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
-      label: item.name || '--',
-      key: toMonitorIdString(item.id),
-      icon: item.icon,
-      count: item.instance_count || 0,
-      children: [],
-    });
-    const merakiDerivatives: ObjectItem[] = [];
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.type]) {
-        acc[item.type] = {
-          title: item.display_type || '--',
-          key: item.type,
-          children: [],
-        };
-      }
-      if (isMerakiSidebarDerivative(item, data)) {
-        merakiDerivatives.push(item);
-        return acc;
-      }
-      acc[item.type].children.push(toNode(item));
-      return acc;
-    }, {} as Record<string, TreeItem>);
-    attachMerakiSidebarChildren(groupedData, merakiDerivatives, toNode);
-    if (groupedData.Other) {
-      groupedData.Other.children = groupedData.Other.children.filter(
-        (item) => item.label !== 'SNMP Trap'
-      );
-    }
-    return Object.values(groupedData);
+  const getTreeData = (
+    data: ObjectItem[],
+    weopsxItems: WeopsxCloudCatalogItem[] = []
+  ): TreeItem[] => {
+    return buildMonitorObjectSidebarTree(
+      data,
+      (item) => ({
+        title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
+        label: item.name || '--',
+        key: toMonitorIdString(item.id),
+        icon: item.icon,
+        count: item.instance_count || 0,
+        children: [],
+      }),
+      toWeopsxCloudTreeNodes(
+        weopsxItems,
+        collectCloudFamilyPlatformIdentities(data)
+      )
+    );
   };
 
   const updateTree = () => {
