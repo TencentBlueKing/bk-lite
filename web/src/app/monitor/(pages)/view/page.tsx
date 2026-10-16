@@ -16,10 +16,7 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/registry';
 import { findByMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
-import {
-  attachMerakiSidebarChildren,
-  isMerakiSidebarDerivative
-} from '@/app/monitor/utils/monitorObject';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import {
   VIEW_OBJECT_QUERY_PARAM,
@@ -107,37 +104,14 @@ const Integration = () => {
   }, [activeObject, objectId, objects, searchParams, syncObjectId]);
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const toNode = (item: ObjectItem): TreeItem => ({
+    return buildMonitorObjectSidebarTree(data, (item) => ({
       title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
       label: item.name || '--',
       key: toMonitorIdString(item.id),
       icon: item.icon,
       count: item.instance_count || 0,
       children: [],
-    });
-    const merakiDerivatives: ObjectItem[] = [];
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.type]) {
-        acc[item.type] = {
-          title: item.display_type || '--',
-          key: item.type,
-          children: [],
-        };
-      }
-      if (isMerakiSidebarDerivative(item, data)) {
-        merakiDerivatives.push(item);
-        return acc;
-      }
-      acc[item.type].children.push(toNode(item));
-      return acc;
-    }, {} as Record<string, TreeItem>);
-    attachMerakiSidebarChildren(groupedData, merakiDerivatives, toNode);
-    if (groupedData.Other) {
-      groupedData.Other.children = groupedData.Other.children.filter(
-        (item) => item.label !== 'SNMP Trap'
-      );
-    }
-    return Object.values(groupedData);
+    }));
   };
 
   const updateTree = () => {

@@ -13,51 +13,22 @@ import { preserveDashboardReturnContext } from '../shared/utils';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { ObjectItem, TreeItem } from '@/app/monitor/types';
-import {
-  attachMerakiSidebarChildren,
-  isMerakiSidebarDerivative
-} from '@/app/monitor/utils/monitorObject';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import styles from './dashboard-sidebar.module.scss';
 
 interface DashboardSidebarProps {
   currentObjectKey: string;
 }
 
-const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] => {
-  const toNode = (item: ObjectItem): TreeItem => ({
+const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] =>
+  buildMonitorObjectSidebarTree(objects, (item) => ({
     title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
     label: item.name || '--',
     key: item.id,
     icon: item.icon,
     count: item.instance_count || 0,
     children: []
-  });
-  const merakiDerivatives: ObjectItem[] = [];
-  const groupedData = objects.reduce((acc, item) => {
-    if (!acc[item.type]) {
-      acc[item.type] = {
-        title: item.display_type || '--',
-        key: item.type,
-        children: []
-      };
-    }
-    if (isMerakiSidebarDerivative(item, objects)) {
-      merakiDerivatives.push(item);
-      return acc;
-    }
-    acc[item.type].children.push(toNode(item));
-    return acc;
-  }, {} as Record<string, TreeItem>);
-  attachMerakiSidebarChildren(groupedData, merakiDerivatives, toNode);
-
-  if (groupedData.Other) {
-    groupedData.Other.children = groupedData.Other.children?.filter(
-      (item) => item.label !== 'SNMP Trap'
-    );
-  }
-
-  return Object.values(groupedData);
-};
+  }));
 
 export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) => {
   const router = useScreenAwareRouter();
