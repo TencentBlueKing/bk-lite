@@ -13,6 +13,7 @@ from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.utils import stream_common
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers, normalize_llm_error_message
 from apps.opspilot.utils.bot_utils import insert_skill_log
+from apps.opspilot.utils.run_locale import reset_run_locale, set_run_locale
 
 
 def create_error_stream_response(error_message):
@@ -243,6 +244,8 @@ def create_stream_generator(params, skill_name, kwargs, current_ip, user_message
     final_stats = {"content": ""}
 
     async def generate_stream():
+        locale = params.get("locale") or (kwargs or {}).get("locale") or "en"
+        token = set_run_locale(locale)
         try:
             # F044: 将同步前置工作（取模型 / 格式化参数 / 创建 Agent 实例）移入生成器内，
             # 经 sync_to_async 执行，避免在首个 flush 前阻塞请求线程，改善 TTFB。
@@ -281,5 +284,7 @@ def create_stream_generator(params, skill_name, kwargs, current_ip, user_message
             logger.error(f"Stream chat error: {e}", exc_info=True)
             error_chunk = _create_error_chunk(f"聊天错误: {str(e)}", skill_name)
             yield f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\n"
+        finally:
+            reset_run_locale(token)
 
     return generate_stream()

@@ -23,6 +23,7 @@ from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.agui_chat import _build_sse_line
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
+from apps.opspilot.utils.run_locale import reset_run_locale, set_run_locale
 from apps.opspilot.utils.skill_package_params import annotate_packages_missing_params
 
 
@@ -375,8 +376,11 @@ class AgentNode(BaseNodeExecutor):
         user_message = llm_params.get("user_message", "")
 
         # 直接返回异步生成器
+        locale = chat_kwargs.get("locale") or "en"
+
         async def generate_agui_stream():
             """异步生成器：直接生成 AGUI 数据流"""
+            token = set_run_locale(locale)
             try:
                 logger.info(f"[AgentNode-AGUI] 开始流式处理 - skill_name: {skill_name}, node_id: {node_id}, show_think: {show_think}")
 
@@ -416,6 +420,8 @@ class AgentNode(BaseNodeExecutor):
                     "timestamp": int(time.time() * 1000),
                 }
                 yield _build_sse_line(error_data)
+            finally:
+                reset_run_locale(token)
 
         return generate_agui_stream()
 

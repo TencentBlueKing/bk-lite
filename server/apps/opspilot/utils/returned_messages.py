@@ -11,7 +11,8 @@ from apps.opspilot.utils.returned_message_pairs import PAIRS
 
 _CJK = re.compile(r"[\u4e00-\u9fff]")
 _PLACEHOLDER = re.compile(r"\{[^{}]+\}")
-_MESSAGE_KEYS = {"message", "detail", "reason", "error", "non_field_errors"}
+# 只翻译这些面向用户的文案字段。其它字段即使整句命中词表也不改。
+_MESSAGE_KEYS = frozenset({"message", "detail", "reason", "error", "non_field_errors"})
 
 
 def _pairs():
@@ -118,7 +119,7 @@ def localize_returned_payload(payload, loader):
 
     def walk(node, key=None):
         if isinstance(node, str):
-            if key in _MESSAGE_KEYS or node.strip() in _catalog()[0]:
+            if key in _MESSAGE_KEYS:
                 return localize_returned_text(node, loader)
             return node
         if isinstance(node, list):
@@ -130,25 +131,58 @@ def localize_returned_payload(payload, loader):
     return walk(payload)
 
 
+_MAX_LOCALIZED_BODY = 512_000
+
+
+def _write_response_content(response, content: bytes) -> None:
+    response.content = content
+    if "Content-Length" in response:
+        response["Content-Length"] = str(len(content))
+
+
+def _translate_json_text(text, loader):
+    try:
+        payload = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    translated = localize_returned_payload(payload, loader)
+    if translated == payload:
+        return None
+    return json.dumps(translated, ensure_ascii=False)
+
+
 def translate_response_body(response, request):
     loader = getattr(request, "opspilot_language_loader", None)
     if loader is None or _is_chinese_locale(locale_from_loader(loader)):
         return
     if getattr(response, "streaming", False):
         return
-    content_type = response.get("Content-Type", "")
-    if "application/json" not in content_type:
-        return
     raw = getattr(response, "content", None)
-    if not raw or len(raw) > 512_000 or not _CJK.search(raw.decode("utf-8", errors="ignore")):
+    if not raw or len(raw) > _MAX_LOCALIZED_BODY:
         return
     try:
-        payload = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeError, TypeError):
+        text = raw.decode("utf-8")
+    except UnicodeError:
         return
-    translated = localize_returned_payload(payload, loader)
-    if translated == payload:
+    if not _CJK.search(text):
         return
-    response.content = json.dumps(translated, ensure_ascii=False).encode("utf-8")
-    if "Content-Length" in response:
-        response["Content-Length"] = str(len(response.content))
+    content_type = response.get("Content-Type", "")
+    if "application/json" in content_type:
+        translated = _translate_json_text(text, loader)
+        if translated is None:
+            return
+        _write_response_content(response, translated.encode("utf-8"))
+        return
+    # EventStreamRenderer 把动作前的 DRF 错误包成单帧 SSE，正文仍是 JSON。
+    if "text/event-stream" not in content_type:
+        return
+    frames = [part for part in text.split("\n\n") if part.strip()]
+    if len(frames) != 1:
+        return
+    frame = frames[0].strip()
+    if not frame.startswith("data:"):
+        return
+    translated = _translate_json_text(frame[5:].strip(), loader)
+    if translated is None:
+        return
+    _write_response_content(response, f"data: {translated}\n\n".encode("utf-8"))

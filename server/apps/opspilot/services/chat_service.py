@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import contextvars
 import os
 import re
 import threading
@@ -46,7 +47,7 @@ from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.pending_question import consume_pending_question, resolve_conversation_key
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
-from apps.opspilot.utils.run_locale import set_run_locale
+from apps.opspilot.utils.run_locale import reset_run_locale, set_run_locale
 
 _REPLY_LANGUAGE_EN = (
     "\n\n[Reply language] The user interface language is English. "
@@ -283,8 +284,8 @@ class ChatService:
                 {},
             )
 
+        token = set_run_locale(chat_kwargs.get("locale") or "en")
         try:
-            set_run_locale(chat_kwargs.get("locale") or "en")
             graph, request = create_agent_instance(skill_type, chat_kwargs)
 
             if _is_eventlet_environment():
@@ -338,7 +339,14 @@ class ChatService:
 
             # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
             _agent_timeout = _resolve_agent_execute_timeout()
-            worker = threading.Thread(target=_worker, name="opspilot-invoke-chat", daemon=True)
+            # 工作线程不继承 ContextVar。拷贝当前轮次语言后再启动；
+            # 调用线程在 finally 里 reset，下一轮不会读到上一轮的 locale。
+            worker = threading.Thread(
+                target=contextvars.copy_context().run,
+                args=(_worker,),
+                name="opspilot-invoke-chat",
+                daemon=True,
+            )
             worker.start()
             if not worker_done.wait(timeout=_agent_timeout):
                 timed_out_holder["value"] = True
@@ -428,6 +436,8 @@ class ChatService:
                 doc_map,
                 title_map,
             )
+        finally:
+            reset_run_locale(token)
 
     @staticmethod
     def _process_tools_and_extra_config(kwargs, chat_kwargs, extra_config):  # noqa: C901

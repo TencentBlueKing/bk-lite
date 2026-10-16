@@ -65,21 +65,11 @@ class CustomRenderer(JSONRenderer):
             ret = {
                 "result": False,
                 "code": str((response.status_code if response else 500) * 100),
-                "message": self._localize_opspilot_message(self._format_validation_message(detail=detail), renderer_context),
+                "message": self._format_validation_message(detail=detail),
                 "data": data.get("data") if isinstance(data, dict) else None,
             }
-        # 返回JSON数据
+        # 英文错误由 opspilot 条件中间件按 message 字段翻译，避免 always-on renderer 点名 optional app。
         return super(CustomRenderer, self).render(ret, accepted_media_type, renderer_context)
-
-    @staticmethod
-    def _localize_opspilot_message(message, renderer_context):
-        view = (renderer_context or {}).get("view")
-        loader = getattr(view, "loader", None)
-        if getattr(loader, "app", None) != "opspilot":
-            return message
-        from apps.opspilot.utils.returned_messages import localize_returned_text
-
-        return localize_returned_text(message, loader)
 
 
 class EventStreamRenderer(CustomRenderer):
