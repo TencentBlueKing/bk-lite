@@ -139,7 +139,7 @@ export default function NetworkPane({
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>网卡</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>网卡列表</div>
       </div>
       <LayeredEntityTable
         rows={viewRows}
