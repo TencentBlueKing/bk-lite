@@ -362,6 +362,7 @@ class TestBuildDeepagentNodes:
         direct_reply_content=None,
         agent_reply=None,
         agent_replies=None,
+        agent_step_tool_results=None,
     ):
         gb = _FakeGraphBuilder()
 
@@ -411,6 +412,24 @@ class TestBuildDeepagentNodes:
             else:
                 reply_text = agent_reply or f"执行结果 {call_index}"
             appended_messages = [AIMessage(content=reply_text)]
+            tool_result = (agent_step_tool_results or {}).get(call_index)
+            if tool_result is not None:
+                from langchain_core.messages import ToolMessage
+
+                tool_name, tool_content = tool_result
+                tool_call_id = f"step-tool-{call_index}"
+                appended_messages = [
+                    AIMessage(
+                        content="",
+                        tool_calls=[{"id": tool_call_id, "name": tool_name, "args": {}}],
+                    ),
+                    ToolMessage(
+                        content=tool_content,
+                        tool_call_id=tool_call_id,
+                        name=tool_name,
+                    ),
+                    *appended_messages,
+                ]
             if call_index in failing_agent_calls:
                 from langchain_core.messages import ToolMessage
 
@@ -1076,17 +1095,43 @@ class TestBuildDeepagentNodes:
         assert call_limit.enforce_limits is False  # 总结轮关闭硬限制
 
     def test_model_call_limit_asks_to_continue_instead_of_summarizing(self):
-        from apps.opspilot.metis.llm.middleware.planned_execution_limits import build_limit_exceeded_message
+        import json
+
+        from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
+            LIMIT_MARKER_MODEL_CALLS,
+            build_limit_exceeded_message,
+        )
+        from apps.opspilot.utils.pending_question import consume_pending_question, deserialize_evidence
 
         node = ToolsNodes()
         node._dynamic_mode = True
-        node.all_tools = [_tool("current_time")]
+        node.all_tools = [_tool("current_time"), _tool("monitor_list_object_instances")]
         node.active_tools = []
         req = _request(user_message="确认当前时间")
         captured = {}
         limit_text = build_limit_exceeded_message("model_calls", used=10, limit=10)
+        instance_id = "3f0e6d2a-1c2b-4a5d-9e8f-7a6b5c4d3e2f"
+        tool_payload = json.dumps(
+            {
+                "success": True,
+                "data": [{"instance_id": instance_id, "name": "bj-web-server-01"}],
+            },
+            ensure_ascii=False,
+        )
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+        from django.test import override_settings
+
+        _locmem = {
+            "default": {
+                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                "LOCATION": "deepagent-limit-continue-test",
+            }
+        }
+
+        with (
+            override_settings(CACHES=_locmem),
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+        ):
             result = self._run_wrapper(
                 node,
                 req,
@@ -1096,14 +1141,29 @@ class TestBuildDeepagentNodes:
                     "steps": [{"objective": "确认当前时间", "tools": ["current_time"]}],
                 },
                 agent_replies={1: limit_text},
+                agent_step_tool_results={
+                    1: ("monitor_list_object_instances", tool_payload),
+                },
             )
 
-        assert len(captured["ainvoke_messages"]) == 1
-        text = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
-        assert "是否继续执行" in text
-        assert "1. 继续" in text
-        assert "2. 结束本步骤" in text
-        assert "暂时停止" not in text
+            assert len(captured["ainvoke_messages"]) == 1
+            assert captured.get("direct_reply_calls") in (None, [])
+            text = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
+            assert "已达模型调用次数上限，是否继续执行" in text
+            assert "已有结论：" in text
+            assert instance_id in text
+            assert LIMIT_MARKER_MODEL_CALLS not in text
+            assert "1. 继续" in text
+            assert "2. 结束本步骤" in text
+            assert "暂时停止" not in text
+
+            pending = consume_pending_question("thread:thread-ut-1")
+            assert pending is not None
+            assert pending["kind"] == "limit_continue"
+            evidence = deserialize_evidence(pending.get("evidence_messages"))
+            tool_names = {str(getattr(message, "name", "") or "") for message in evidence}
+            assert "monitor_list_object_instances" in tool_names
+            assert any(instance_id in str(getattr(message, "content", "") or "") for message in evidence)
 
     def test_tool_failure_replans_only_unfinished_steps(self):
         # 不用 namespace 反查类工具，避免规划硬校验改写步骤顺序。
@@ -2248,6 +2308,37 @@ def test_summarize_planned_step_keeps_tool_result_not_investigation_dump():
     assert "OOMKilled" in summary
     assert "事件描述" not in summary
     assert "调查结论" not in summary
+
+
+def test_summarize_planned_step_for_limit_continue_keeps_carry_over():
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from apps.opspilot.metis.llm.middleware.planned_execution_limits import build_limit_exceeded_message
+
+    instances = json.dumps(
+        {
+            "success": True,
+            "data": [
+                {
+                    "instance_id": "3f0e6d2a-1c2b-4a5d-9e8f-7a6b5c4d3e2f",
+                    "name": "bj-web-server-01",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "monitor_list_object_instances", "args": {}}]),
+        ToolMessage(content=instances, tool_call_id="1", name="monitor_list_object_instances"),
+        AIMessage(content="已获取 1 个主机实例。"),
+        AIMessage(content=build_limit_exceeded_message("model_calls", used=10, limit=10)),
+    ]
+    summary = ToolsNodes._summarize_planned_step_for_limit_continue(messages)
+    assert "3f0e6d2a-1c2b-4a5d-9e8f-7a6b5c4d3e2f" in summary
+    assert "[OPSPILOT_LIMIT:" not in summary
+    assert "暂时停止" not in summary
 
 
 def test_summarize_planned_step_carries_instance_id_into_next_step():
