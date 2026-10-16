@@ -14,7 +14,6 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import CustomTable from '@/components/custom-table';
-import TopSection from '@/components/top-section';
 import SearchActionBar from '@/components/search-action-bar';
 import SourceOriginBadge from '@/components/source-origin-badge';
 import PermissionWrapper from '@/components/permission';
@@ -248,11 +247,13 @@ const PortFingerprintPage: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="shrink-0 overflow-x-auto">
-        <TopSection
-          title={t('OidLibrary.portIntroTitle')}
-          content={t('OidLibrary.portIntroMessage')}
-        />
+      <div className="shrink-0 px-4 pb-3 pt-4">
+        <h2 className="m-0 text-base font-semibold text-[var(--color-text-1)]">
+          {t('OidLibrary.portIntroTitle')}
+        </h2>
+        <p className="mb-0 mt-1 text-xs text-[var(--color-text-3)]">
+          {t('OidLibrary.portIntroMessage')}
+        </p>
       </div>
 
       <SearchActionBar
