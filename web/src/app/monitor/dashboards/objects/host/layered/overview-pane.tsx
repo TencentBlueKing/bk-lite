@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
@@ -24,8 +24,7 @@ import {
   latestNumber,
   metricHasPoints,
   primaryChartSeries,
-  resolveMemoryUsage,
-  ROW_ACCENTS
+  resolveMemoryUsage
 } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -67,77 +66,50 @@ const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
   return latestOfRow(row, key);
 };
 
-/** 本机趋势磁盘使用率默认只对比最满的挂载，其余用「更多」展开。 */
-const MOUNT_TREND_TOP = 5;
-/** 短于该长度，或路径段数不超过两段时，图例不省略。 */
-const MOUNT_LEGEND_FULL_MAX = 18;
-
-const mountLabel = (row: EntityTableRow) => row.labels.path || row.labels.mount || '挂载';
-
-const mountPathSegments = (path: string) => path.split('/').filter((part) => part.length > 0);
-
-const mountPathShowsFull = (path: string) => (
-  path === '/'
-  || mountPathSegments(path).length <= 2
-  || Array.from(path).length <= MOUNT_LEGEND_FULL_MAX
-);
-
-/** 末 `tail` 段。已覆盖整条路径、或本身是短路径时不加省略号。 */
-const formatMountLegend = (path: string, tail: number) => {
-  if (path === '/' || path === '') return path || '/';
-  const parts = mountPathSegments(path);
-  if (parts.length === 0 || mountPathShowsFull(path) || tail >= parts.length) return path;
-  const count = Math.max(1, tail);
-  return `…/${parts.slice(-count).join('/')}`;
+const finiteByTime = (points: Array<{ time: number; value: number }> | undefined) => {
+  const map = new Map<number, number>();
+  (points || []).forEach((point) => {
+    if (Number.isFinite(point.time) && Number.isFinite(point.value)) map.set(point.time, point.value);
+  });
+  return map;
 };
 
 /**
- * 默认末两段。同一屏里尾段撞名时向前再取一段，直到能分开或已经是全路径。
- * `minTail` 为 1 时是图例区仍放不下的退路。
+ * 总使用率 = 100 × Σ已用 / Σ总量。
+ * 同一时刻已用优先用总量减空闲，否则用总量 × 使用率；没有总量的挂载不进合计。
+ * 与挂载行 disk_used 的推法一致，按时刻对所有挂载加权。
  */
-const mountLegendTexts = (paths: string[], minTail: number) => {
-  const depths = paths.map((path) => {
-    const parts = mountPathSegments(path);
-    if (mountPathShowsFull(path)) return parts.length;
-    return Math.min(Math.max(1, minTail), parts.length);
+const hostDiskUsagePoints = (rows: EntityTableRow[]) => {
+  const buckets = new Map<number, { used: number; total: number }>();
+  rows.forEach((row) => {
+    const totals = finiteByTime(row.series.disk_total);
+    const frees = finiteByTime(row.series.disk_free);
+    const percents = finiteByTime(row.series.disk_used_percent);
+    totals.forEach((total, time) => {
+      if (total <= 0) return;
+      const free = frees.get(time);
+      const percent = percents.get(time);
+      const used = free != null
+        ? Math.max(0, total - free)
+        : percent != null
+          ? Math.max(0, total * percent / 100)
+          : null;
+      if (used == null) return;
+      const bucket = buckets.get(time) || { used: 0, total: 0 };
+      bucket.used += used;
+      bucket.total += total;
+      buckets.set(time, bucket);
+    });
   });
-  for (let round = 0; round < paths.length + 1; round += 1) {
-    const labels = paths.map((path, index) => formatMountLegend(path, depths[index] || 1));
-    const groups = new Map<string, number[]>();
-    labels.forEach((label, index) => {
-      const bucket = groups.get(label) || [];
-      bucket.push(index);
-      groups.set(label, bucket);
-    });
-    let changed = false;
-    groups.forEach((indexes) => {
-      if (indexes.length < 2) return;
-      indexes.forEach((index) => {
-        const partCount = mountPathSegments(paths[index]).length;
-        if (depths[index] < partCount) {
-          depths[index] += 1;
-          changed = true;
-        }
-      });
-    });
-    if (!changed) return labels;
-  }
-  return paths.map((path, index) => formatMountLegend(path, depths[index] || 1));
+  return Array.from(buckets.entries())
+    .filter(([, bucket]) => bucket.total > 0)
+    .sort((left, right) => left[0] - right[0])
+    .map(([time, bucket]) => ({ time, value: (100 * bucket.used) / bucket.total }));
 };
-
-const mountUsageRank = (row: EntityTableRow) => {
-  const latest = latestPreferSignal(row.series.disk_used_percent);
-  if (latest != null) return latest;
-  const value = row.values.disk_used_percent;
-  return value == null || !Number.isFinite(value) ? Number.NEGATIVE_INFINITY : value;
-};
-
-const mountTrendColor = (index: number) => (
-  index === 0 ? HOST_SERIES_COLOR.diskUsed : ROW_ACCENTS[(index - 1) % ROW_ACCENTS.length]
-);
 
 /** 与性能页同名曲线共用序列色。负载跟 load1 橙，不读旧图表的靛色。 */
 const CPU_SERIES = { label: 'CPU', color: HOST_SERIES_COLOR.cpu };
+const DISK_TOTAL_SERIES = { label: '总使用率', color: HOST_SERIES_COLOR.diskUsed };
 const MEM_SERIES = { label: '内存', color: HOST_SERIES_COLOR.memUsed };
 const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
 
@@ -161,7 +133,6 @@ export default function OverviewPane({
   alerts
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
-  const [showAllMounts, setShowAllMounts] = useState(false);
   const worst = diskRows[0];
   const busiest = netRows[0];
   const topProcess = processRows[0];
@@ -272,26 +243,10 @@ export default function OverviewPane({
     () => (worst ? pointsToChartData([{ points: worst.series.disk_used_percent || [] }]) : []),
     [worst]
   );
-  const rankedMounts = useMemo(() => diskRows
-    .filter((row) => (row.series.disk_used_percent || []).length > 0)
-    .map((row, index) => ({ row, index, rank: mountUsageRank(row) }))
-    .sort((left, right) => right.rank - left.rank || left.index - right.index)
-    .map((item) => item.row), [diskRows]);
-  const mountUsage = useMemo(() => {
-    const visible = showAllMounts ? rankedMounts : rankedMounts.slice(0, MOUNT_TREND_TOP);
-    const fullPaths = visible.map((row) => mountLabel(row));
-    const labels = mountLegendTexts(fullPaths, 2);
-    const compactLabels = mountLegendTexts(fullPaths, 1);
-    return {
-      data: pointsToChartData(visible.map((row) => ({ points: row.series.disk_used_percent || [] }))),
-      legends: visible.map((row, index) => ({
-        label: labels[index] || fullPaths[index],
-        title: fullPaths[index],
-        compactLabel: compactLabels[index] !== labels[index] ? compactLabels[index] : undefined,
-        color: mountTrendColor(index)
-      }))
-    };
-  }, [rankedMounts, showAllMounts]);
+  const diskUsageTrend = useMemo(
+    () => pointsToChartData([{ points: hostDiskUsagePoints(diskRows) }]),
+    [diskRows]
+  );
   const nicThroughput = busiest == null
     ? null
     : (() => {
@@ -437,23 +392,12 @@ export default function OverviewPane({
           legends={[MEM_SERIES]}
         />
         <ThinTimeSeries
-          className={showAllMounts ? `${styles.mountTrend} ${styles.mountTrendOpen}` : styles.mountTrend}
           title="磁盘使用率"
-          titleExtra={rankedMounts.length > MOUNT_TREND_TOP ? (
-            <button
-              type="button"
-              className={styles.mountMore}
-              aria-expanded={showAllMounts}
-              onClick={() => setShowAllMounts((open) => !open)}
-            >
-              {showAllMounts ? '收起' : '更多'}
-            </button>
-          ) : null}
           loading={diskLoading}
           unit="percent"
           emptyText="暂无挂载数据"
-          data={mountUsage.data}
-          legends={mountUsage.legends}
+          data={diskUsageTrend}
+          legends={[DISK_TOTAL_SERIES]}
         />
         <ThinTimeSeries
           title="网卡合计"
