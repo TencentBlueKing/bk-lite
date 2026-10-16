@@ -1,5 +1,4 @@
 import pydantic.root_model  # noqa
-
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -10,6 +9,7 @@ from apps.core.utils.serializers import AuthSerializer, TeamSerializer, Username
 from apps.system_mgmt.models import User
 
 pytestmark = pytest.mark.django_db
+
 
 class _Obj:
     """轻量对象，模拟带 created_by/updated_by/team/id 的 DRF instance。"""
@@ -25,6 +25,7 @@ def _make_serializer_cls(base, method_field=None, fields=None, **extra):
     meta_fields = list(base_fields) + ([method_field] if method_field else [])
 
     if fields is None:
+
         class _S(base):
             created_by = serializers.CharField(required=False)
             updated_by = serializers.CharField(required=False)
@@ -36,7 +37,9 @@ def _make_serializer_cls(base, method_field=None, fields=None, **extra):
             class Meta:
                 model = User
                 fields = meta_fields
+
     else:
+
         class Meta:
             model = User
             fields = meta_fields
@@ -133,6 +136,18 @@ class TestTeamSerializer:
         data = S(obj, context={"request": request}).data
         # 99 不在 group_map 中被过滤
         assert data["team_name"] == ["Eng", "Ops"]
+
+    @pytest.mark.django_db
+    def test_integer_group_list_resolves_team_name(self):
+        from apps.system_mgmt.models import Group
+
+        group = Group.objects.create(name="ApiTeam", parent_id=0)
+        user = _Obj(group_list=[group.id])
+        request = _Obj(user=user)
+        S = _make_serializer_cls(TeamSerializer, method_field="team_name")
+        obj = _Obj(created_by=None, updated_by=None, id=5, team=[group.id])
+        data = S(obj, context={"request": request}).data
+        assert data["team_name"] == ["ApiTeam"]
 
 
 class TestAuthSerializer:
