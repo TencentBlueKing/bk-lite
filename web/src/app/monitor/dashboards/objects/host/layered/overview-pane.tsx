@@ -5,7 +5,14 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
 import { HOST_SERIES_COLOR } from '../config';
-import { latestPreferSignal, maxFinite, pointsToChartData, type EntityTableRow } from '../entity-series';
+import {
+  latestPreferSignal,
+  maxFinite,
+  pointsToChartData,
+  sumPoints,
+  type EntityTableRow,
+  type RangePoint
+} from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
@@ -64,6 +71,47 @@ const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
 const CPU_SERIES = { label: 'CPU', color: HOST_SERIES_COLOR.cpu };
 const MEM_SERIES = { label: '内存', color: HOST_SERIES_COLOR.memUsed };
 const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
+
+const FOCUS_SPARK_WIDTH = 110;
+const FOCUS_SPARK_HEIGHT = 48;
+
+interface FocusSparkProps {
+  points: RangePoint[];
+  color: string;
+}
+
+function FocusSpark({ points, color }: FocusSparkProps) {
+  const finite = points.filter((point) => Number.isFinite(point.value));
+  if (finite.length < 2) return null;
+  const values = finite.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const pad = 3;
+  const coords = finite.map((point, index) => {
+    const x = pad + (index / (finite.length - 1)) * (FOCUS_SPARK_WIDTH - pad * 2);
+    const y = pad + (1 - (point.value - min) / span) * (FOCUS_SPARK_HEIGHT - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return (
+    <svg
+      className={styles.focusSpark}
+      viewBox={`0 0 ${FOCUS_SPARK_WIDTH} ${FOCUS_SPARK_HEIGHT}`}
+      width={FOCUS_SPARK_WIDTH}
+      height={FOCUS_SPARK_HEIGHT}
+      aria-hidden="true"
+    >
+      <polyline
+        fill="none"
+        stroke={color}
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        points={coords}
+      />
+    </svg>
+  );
+}
 
 export default function OverviewPane({
   metrics,
@@ -194,6 +242,20 @@ export default function OverviewPane({
     () => (worst ? pointsToChartData([{ points: worst.series.disk_used_percent || [] }]) : []),
     [worst]
   );
+  const nicThroughput = busiest == null
+    ? null
+    : (() => {
+      const inbound = readingOfRow(busiest, 'net_bytes_recv_rate');
+      const outbound = readingOfRow(busiest, 'net_bytes_sent_rate');
+      if (inbound == null && outbound == null) return null;
+      return (inbound ?? 0) + (outbound ?? 0);
+    })();
+  const nicPoints = useMemo(
+    () => (busiest
+      ? sumPoints(busiest.series.net_bytes_recv_rate, busiest.series.net_bytes_sent_rate)
+      : []),
+    [busiest]
+  );
 
   return (
     <>
@@ -208,78 +270,69 @@ export default function OverviewPane({
       </div>
       <div className={styles.shortcutGrid}>
         <div key="disk" className={`${classic.panel} ${styles.shortcutCard}`}>
-          <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestMount')}</div>
-          {worst ? (
-            <>
-              <div className={styles.shortcutMain}>
-                {mountName || '—'}
-                {' · '}
-                <span>{formatPercent(diskCurrent)}</span>
-              </div>
-              <div className={styles.shortcutSub}>
-                {(() => {
-                  const total = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total ?? null;
-                  const used = (() => {
-                    const totalBytes = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total;
-                    const usedBytes = readingOfRow(worst, 'disk_used');
-                    if (usedBytes != null) return usedBytes;
-                    if (totalBytes != null && diskCurrent != null) return totalBytes * diskCurrent / 100;
-                    return worst.values.disk_used ?? null;
-                  })();
-                  const usedText = used != null && Number.isFinite(used) ? formatUnit(used, 'bytes') : null;
-                  const totalText = total != null && Number.isFinite(total) ? formatUnit(total, 'bytes') : null;
-                  if (usedText == null && totalText == null) return '—';
-                  return hostCategoryText(t, 'mountUsedOfTotal', {
-                    used: usedText ?? '—',
-                    total: totalText ?? '—'
-                  });
-                })()}
-              </div>
-              <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
-                查看磁盘
-              </button>
-            </>
-          ) : (
-            <div className={styles.shortcutSub}>{diskLoading ? '加载中' : '暂无挂载数据'}</div>
-          )}
-        </div>
-        <div key="net" className={`${classic.panel} ${styles.shortcutCard}`}>
-          <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestNic')}</div>
-          {busiest ? (
-            <>
-              <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
-              <div className={styles.shortcutSub}>
-                {`该网卡入站 ${formatUnit(readingOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')}`}
-              </div>
-              <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
-                查看网络
-              </button>
-            </>
-          ) : (
-            <div className={styles.shortcutSub}>{netLoading ? '加载中' : '暂无网卡数据'}</div>
-          )}
-        </div>
-        {processReady ? (
-          <div key="process" className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutLabel}>CPU 占用最高</div>
-            {topProcess ? (
+          <div className={styles.shortcutCopy}>
+            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestMount')}</div>
+            {worst ? (
               <>
-                <div className={styles.shortcutMain}>
-                  {topProcess.labels.process_name || '—'}
+                <div className={styles.shortcutMain}>{mountName || '—'}</div>
+                <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.diskUsed }}>
+                  {formatPercent(diskCurrent)}
                 </div>
-                <div className={styles.shortcutSub}>
-                  {`CPU ${formatPercent(readingOfRow(topProcess, 'process_cpu_usage'))}`}
-                  {readingOfRow(topProcess, 'process_mem_usage') != null
-                    ? ` · 内存 ${formatPercent(readingOfRow(topProcess, 'process_mem_usage'))}`
-                    : ''}
-                </div>
-                <button type="button" className={styles.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
-                  查看进程
+                <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
+                  查看磁盘
                 </button>
               </>
             ) : (
-              <div className={styles.shortcutSub}>{processLoading ? '加载中' : '暂无进程数据'}</div>
+              <div className={styles.shortcutSub}>{diskLoading ? '加载中' : '暂无挂载数据'}</div>
             )}
+          </div>
+          {worst ? (
+            <FocusSpark points={worst.series.disk_used_percent || []} color={HOST_SERIES_COLOR.diskUsed} />
+          ) : null}
+        </div>
+        <div key="net" className={`${classic.panel} ${styles.shortcutCard}`}>
+          <div className={styles.shortcutCopy}>
+            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestNic')}</div>
+            {busiest ? (
+              <>
+                <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
+                <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.netIn }}>
+                  {formatUnit(nicThroughput, 'byteps')}
+                </div>
+                <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
+                  查看网络
+                </button>
+              </>
+            ) : (
+              <div className={styles.shortcutSub}>{netLoading ? '加载中' : '暂无网卡数据'}</div>
+            )}
+          </div>
+          {busiest ? <FocusSpark points={nicPoints} color={HOST_SERIES_COLOR.netIn} /> : null}
+        </div>
+        {processReady ? (
+          <div key="process" className={`${classic.panel} ${styles.shortcutCard}`}>
+            <div className={styles.shortcutCopy}>
+              <div className={styles.shortcutLabel}>CPU 占用最高</div>
+              {topProcess ? (
+                <>
+                  <div className={styles.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
+                  <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
+                    {formatPercent(readingOfRow(topProcess, 'process_cpu_usage'))}
+                  </div>
+                  <button type="button" className={styles.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
+                    查看进程
+                  </button>
+                </>
+              ) : (
+                <div className={styles.shortcutSub}>{processLoading ? '加载中' : '暂无进程数据'}</div>
+              )}
+            </div>
+            {topProcess ? (
+              <FocusSpark
+                points={topProcess.series.process_cpu_usage || []}
+                color={HOST_SERIES_COLOR.cpu}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>
