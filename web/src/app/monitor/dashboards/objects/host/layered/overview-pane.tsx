@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
@@ -24,7 +24,8 @@ import {
   latestNumber,
   metricHasPoints,
   primaryChartSeries,
-  resolveMemoryUsage
+  resolveMemoryUsage,
+  ROW_ACCENTS
 } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -66,6 +67,22 @@ const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
   return latestOfRow(row, key);
 };
 
+/** 本机趋势磁盘使用率默认只对比最满的挂载，其余用「更多」展开。 */
+const MOUNT_TREND_TOP = 5;
+
+const mountLabel = (row: EntityTableRow) => row.labels.path || row.labels.mount || '挂载';
+
+const mountUsageRank = (row: EntityTableRow) => {
+  const latest = latestPreferSignal(row.series.disk_used_percent);
+  if (latest != null) return latest;
+  const value = row.values.disk_used_percent;
+  return value == null || !Number.isFinite(value) ? Number.NEGATIVE_INFINITY : value;
+};
+
+const mountTrendColor = (index: number) => (
+  index === 0 ? HOST_SERIES_COLOR.diskUsed : ROW_ACCENTS[(index - 1) % ROW_ACCENTS.length]
+);
+
 /** 与性能页同名曲线共用序列色。负载跟 load1 橙，不读旧图表的靛色。 */
 const CPU_SERIES = { label: 'CPU', color: HOST_SERIES_COLOR.cpu };
 const MEM_SERIES = { label: '内存', color: HOST_SERIES_COLOR.memUsed };
@@ -91,6 +108,7 @@ export default function OverviewPane({
   alerts
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
+  const [showAllMounts, setShowAllMounts] = useState(false);
   const worst = diskRows[0];
   const busiest = netRows[0];
   const topProcess = processRows[0];
@@ -201,6 +219,21 @@ export default function OverviewPane({
     () => (worst ? pointsToChartData([{ points: worst.series.disk_used_percent || [] }]) : []),
     [worst]
   );
+  const rankedMounts = useMemo(() => diskRows
+    .filter((row) => (row.series.disk_used_percent || []).length > 0)
+    .map((row, index) => ({ row, index, rank: mountUsageRank(row) }))
+    .sort((left, right) => right.rank - left.rank || left.index - right.index)
+    .map((item) => item.row), [diskRows]);
+  const mountUsage = useMemo(() => {
+    const visible = showAllMounts ? rankedMounts : rankedMounts.slice(0, MOUNT_TREND_TOP);
+    return {
+      data: pointsToChartData(visible.map((row) => ({ points: row.series.disk_used_percent || [] }))),
+      legends: visible.map((row, index) => ({
+        label: mountLabel(row),
+        color: mountTrendColor(index)
+      }))
+    };
+  }, [rankedMounts, showAllMounts]);
   const nicThroughput = busiest == null
     ? null
     : (() => {
@@ -346,12 +379,23 @@ export default function OverviewPane({
           legends={[MEM_SERIES]}
         />
         <ThinTimeSeries
-          title={mountName ? `磁盘使用率 · ${mountName}` : '磁盘使用率'}
+          className={showAllMounts ? `${styles.mountTrend} ${styles.mountTrendOpen}` : styles.mountTrend}
+          title="磁盘使用率"
+          titleExtra={rankedMounts.length > MOUNT_TREND_TOP ? (
+            <button
+              type="button"
+              className={styles.mountMore}
+              aria-expanded={showAllMounts}
+              onClick={() => setShowAllMounts((open) => !open)}
+            >
+              {showAllMounts ? '收起' : '更多'}
+            </button>
+          ) : null}
           loading={diskLoading}
           unit="percent"
           emptyText="暂无挂载数据"
-          data={diskTrend}
-          legends={[{ label: mountName || '使用率', color: HOST_SERIES_COLOR.diskUsed }]}
+          data={mountUsage.data}
+          legends={mountUsage.legends}
         />
         <ThinTimeSeries
           title="网卡合计"

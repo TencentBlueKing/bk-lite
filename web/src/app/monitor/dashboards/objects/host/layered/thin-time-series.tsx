@@ -39,6 +39,8 @@ interface ThinTimeSeriesProps {
   hint?: string;
   /** 标题下的灰色副行。 */
   subtitle?: string;
+  /** 标题右侧的附加操作，例如本机趋势磁盘图的「更多」。 */
+  titleExtra?: React.ReactNode;
   className?: string;
   /** 嵌进已有卡片时不再套一层 panel。 */
   bare?: boolean;
@@ -82,6 +84,7 @@ export default function ThinTimeSeries({
   emptyText = '暂无数据',
   hint,
   subtitle,
+  titleExtra,
   className,
   bare = false,
   independentAxes = false,
@@ -251,6 +254,7 @@ export default function ThinTimeSeries({
                   {subtitle ? <div className={styles.chartSubtitle}>{subtitle}</div> : null}
                 </div>
               ) : null}
+              {titleExtra}
               {reading ? (
                 <div className={styles.chartReading} style={readingTone ? { color: readingTone } : undefined}>
                   {reading}
@@ -261,7 +265,7 @@ export default function ThinTimeSeries({
           {showLegend ? (
             <div className={styles.chartLegend}>
               {legends.map((item) => (
-                <span key={item.label}>
+                <span key={item.label} title={item.label}>
                   <span
                     className={styles.legendSwatch}
                     style={item.dashed
