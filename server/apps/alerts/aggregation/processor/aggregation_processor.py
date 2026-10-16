@@ -4,7 +4,6 @@ import re
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, cast
-from zoneinfo import ZoneInfo
 
 from croniter import croniter
 from django.db import transaction
@@ -37,10 +36,6 @@ from apps.core.logger import alert_logger as logger
 
 
 class AggregationProcessor:
-    # TODO(timezone): 心跳 cron 时区硬编码 Asia/Shanghai，对非 +8 部署（海外客户）或用户以其他时区
-    # 配置心跳 cron 时，deadline 会整体偏移。需要可配置化设计，需产品确认时区契约后单独立项。
-    HEARTBEAT_CRON_SOURCE_TIMEZONE = ZoneInfo("Asia/Shanghai")
-
     def __init__(self):
         self.sql_builder = SQLBuilder()
         self.db_conn = DuckDBConnection()
@@ -371,8 +366,8 @@ class AggregationProcessor:
         return params
 
     def _calculate_deadline(self, strategy: AlarmStrategy, params: Dict[str, Any], now: datetime) -> Optional[datetime]:
-        project_tz = timezone.get_current_timezone()
-        cron_tz = self.HEARTBEAT_CRON_SOURCE_TIMEZONE
+        cron_tz = self._heartbeat_timezone(strategy)
+        project_tz = cron_tz
         now_in_tz = self._normalize_to_project_timezone(now, project_tz)
         now_in_cron_tz = self._normalize_to_timezone(now, cron_tz)
         last_heartbeat_time = self._parse_runtime_datetime(params.get("last_heartbeat_time"))
@@ -543,6 +538,13 @@ class AggregationProcessor:
         }
 
     @staticmethod
+    def _heartbeat_timezone(strategy):
+        """周期表达式按策略创建人的时区解释，没有创建人时用默认展示时区。"""
+        from apps.alerts.notification_templates.timefmt import coerce_display_timezone, resolve_display_timezone
+
+        return coerce_display_timezone(resolve_display_timezone([getattr(strategy, "created_by", None)]))
+
+    @staticmethod
     def _parse_runtime_datetime(value: Optional[str]) -> Optional[datetime]:
         if not value:
             return None
@@ -550,7 +552,7 @@ class AggregationProcessor:
         if parsed is None:
             parsed = datetime.fromisoformat(value)
         if timezone.is_naive(parsed):
-            parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+            parsed = timezone.make_aware(parsed, timezone.utc)
         return parsed
 
     @staticmethod

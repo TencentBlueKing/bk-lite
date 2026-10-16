@@ -787,7 +787,7 @@ class MissingDetectionProcessorTestCase(TestCase):
 
         deadline = self.processor._calculate_deadline(strategy, strategy.params, now)
 
-        self.assertEqual(deadline.isoformat(), "2026-03-20T08:50:00+00:00")
+        self.assertEqual(deadline.astimezone(timezone.utc).isoformat(), "2026-03-20T08:50:00+00:00")
 
     def test_immediate_mode_waits_until_first_expected_slot_after_creation(self):
         now = timezone.make_aware(datetime(2026, 3, 20, 10, 2, 0))
