@@ -4545,6 +4545,13 @@
       "template": "http_response_result_code{instance_type=\"iis\", endpoint=\"site\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:a859975e",
+      "object_names": [
+        "Host"
+      ],
+      "template": "max by (instance_id) (nvidia_smi_memory_used{instance_type=\"os\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:a875359b",
       "object_names": [
         "JVM"
@@ -5730,6 +5737,13 @@
         "K3SCluster"
       ],
       "template": "100 * sum(any(disk_used{instance_type=\"k3s\",__$labels__}) by (instance_id, device)) / sum(any(disk_total{instance_type=\"k3s\",__$labels__}) by (instance_id, device))"
+    },
+    {
+      "id": "dashboard:v1:d5fd5fe1",
+      "object_names": [
+        "Host"
+      ],
+      "template": "max by (instance_id) (nvidia_smi_memory_total{instance_type=\"os\", __$labels__})"
     },
     {
       "id": "dashboard:v1:d6273c80",
