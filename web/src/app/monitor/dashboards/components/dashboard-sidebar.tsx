@@ -13,7 +13,10 @@ import { preserveDashboardReturnContext } from '../shared/utils';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { ObjectItem, TreeItem } from '@/app/monitor/types';
-import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
+import {
+  buildMonitorObjectSidebarTree,
+  collectCloudFamilyPlatformIdentities
+} from '@/app/monitor/utils/monitorObject';
 import {
   fetchWeopsxCloudCatalog,
   toWeopsxCloudTreeNodes,
@@ -40,7 +43,10 @@ const buildMonitorObjectTree = (
       count: item.instance_count || 0,
       children: []
     }),
-    toWeopsxCloudTreeNodes(weopsxItems)
+    toWeopsxCloudTreeNodes(
+      weopsxItems,
+      collectCloudFamilyPlatformIdentities(objects)
+    )
   );
 
 export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) => {

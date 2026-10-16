@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from urllib.parse import urlsplit
 
 import httpx
@@ -16,13 +17,39 @@ DEFAULT_DEEP_LINK_TEMPLATE = "/monitor/view/dashboard/{id}"
 MAX_CATALOG_ITEMS = 200
 MAX_DEEP_LINK_LEN = 2048
 CATALOG_TIMEOUT_SECONDS = 5.0
+_MIN_OVERLAP_TOKEN_LEN = 4
 
-_EXCLUDED_ID_MARKERS = ("qcloud", "tencent", "sangfordesktop")
-_EXCLUDED_NAME_MARKERS = ("qcloud", "tencent", "腾讯", "sangfordesktop")
+# type=Cloud 及历史入根别名；与侧栏 isCloudFamilySidebarType 对齐。
+CLOUD_FAMILY_TYPE_IDS = ("Cloud", "Tencent Cloud", "Aliyun Cloud")
+
+# 产品路径已装云：腾讯云 / 阿里云 / 深信服 SCP / 云宏 CNware，及 WeOpsX 目录同义 id。
+_EXCLUDED_ID_MARKERS = (
+    "qcloud",
+    "tencent",
+    "sangfordesktop",
+    "aliyun",
+    "sangforscp",
+    "cnware",
+)
+_EXCLUDED_NAME_MARKERS = (
+    "qcloud",
+    "tencent",
+    "腾讯",
+    "sangfordesktop",
+    "aliyun",
+    "阿里云",
+    "sangforscp",
+    "sangfor scp",
+    "深信服scp",
+    "深信服 scp",
+    "cnware",
+    "云宏",
+)
 
 LOG_FETCHED = "event=weopsx_cloud_catalog_fetched item_count=%s"
 LOG_DEGRADED = "event=weopsx_cloud_catalog_degraded failed_stage=%s error_type=%s item_count=%s"
 LOG_FAILED = "event=weopsx_cloud_catalog_failed failed_stage=%s error_type=%s item_count=%s"
+LOG_LOCAL_IDENTITIES = "event=weopsx_cloud_catalog_local_identities_unavailable failed_stage=%s error_type=%s"
 
 
 def _env(name: str, default: str = "") -> str:
@@ -56,12 +83,62 @@ def _validate_catalog_path(raw: str) -> str:
     return "/" + "/".join(parts)
 
 
-def _is_excluded_cloud(plugin_id: str, name: str, cn_name: str) -> bool:
-    identity = plugin_id.lower()
-    if identity == "tcp" or any(marker in identity for marker in _EXCLUDED_ID_MARKERS):
+def _fold_identity(text: str) -> str:
+    return re.sub(r"[\s_\-]+", "", (text or "").lower())
+
+
+def _identity_tokens(*parts: str) -> set[str]:
+    tokens = set()
+    for part in parts:
+        folded = _fold_identity(part)
+        if folded:
+            tokens.add(folded)
+    return tokens
+
+
+def _identities_overlap(left: str, right: str) -> bool:
+    if not left or not right:
+        return False
+    if left == right:
         return True
-    joined = f"{name} {cn_name}".lower()
-    return any(marker in joined for marker in _EXCLUDED_NAME_MARKERS)
+    shorter, longer = (left, right) if len(left) <= len(right) else (right, left)
+    return len(shorter) >= _MIN_OVERLAP_TOKEN_LEN and shorter in longer
+
+
+def _is_excluded_cloud(plugin_id: str, name: str, cn_name: str) -> bool:
+    identity = _fold_identity(plugin_id)
+    if identity == "tcp":
+        return True
+    if any(marker and marker in identity for marker in (_fold_identity(item) for item in _EXCLUDED_ID_MARKERS)):
+        return True
+    joined = _fold_identity(f"{name} {cn_name}")
+    return any(marker and marker in joined for marker in (_fold_identity(item) for item in _EXCLUDED_NAME_MARKERS))
+
+
+def _overlaps_local_cloud(plugin_id: str, name: str, cn_name: str, local_identities) -> bool:
+    if not local_identities:
+        return False
+    catalog_tokens = _identity_tokens(plugin_id, name, cn_name)
+    for catalog_token in catalog_tokens:
+        for local_token in local_identities:
+            if _identities_overlap(catalog_token, local_token):
+                return True
+    return False
+
+
+def load_local_cloud_family_identities() -> frozenset[str]:
+    """已装 type=Cloud（含历史别名）平台基对象的 name / display_name，供目录去重。"""
+    try:
+        from apps.monitor.models.monitor_object import MonitorObject
+
+        rows = MonitorObject.objects.filter(type_id__in=CLOUD_FAMILY_TYPE_IDS).exclude(level="derivative").values_list("name", "display_name")
+        tokens = set()
+        for name, display_name in rows:
+            tokens.update(_identity_tokens(name, display_name))
+        return frozenset(tokens)
+    except Exception as exc:
+        logger.warning(LOG_LOCAL_IDENTITIES, "query", type(exc).__name__)
+        return frozenset()
 
 
 def _as_text(value) -> str:
@@ -111,7 +188,8 @@ def _extract_items(payload) -> list:
     return []
 
 
-def normalize_weopsx_catalog_items(payload) -> list[dict]:
+def normalize_weopsx_catalog_items(payload, local_identities=None) -> list[dict]:
+    identities = frozenset(local_identities or ())
     normalized = []
     seen = set()
     for raw in _extract_items(payload):
@@ -124,7 +202,7 @@ def normalize_weopsx_catalog_items(payload) -> list[dict]:
             continue
         name = _as_text(raw.get("name")) or plugin_id
         cn_name = _as_text(raw.get("cn_name")) or name
-        if _is_excluded_cloud(plugin_id, name, cn_name):
+        if _is_excluded_cloud(plugin_id, name, cn_name) or _overlaps_local_cloud(plugin_id, name, cn_name, identities):
             continue
         children_count = raw.get("children_count", 0)
         try:
@@ -162,6 +240,7 @@ def _empty_catalog(*, failed_stage: str, error_type: str, with_traceback: bool =
 
 
 def fetch_weopsx_cloud_catalog(*, locale: str | None = None, authorization: str | None = None) -> dict:
+    # WEOPSX_BASE_URL 开启双源云侧栏；应指向真实 WeOpsX 目录，不要指向校验用 stub。
     base_url = _validate_base_url(_env("WEOPSX_BASE_URL"))
     if not base_url:
         return _empty_catalog(failed_stage="configure", error_type="unconfigured")
@@ -225,6 +304,9 @@ def fetch_weopsx_cloud_catalog(*, locale: str | None = None, authorization: str 
         )
         return {"items": [], "degraded": True, "error_type": "invalid_json"}
 
-    items = normalize_weopsx_catalog_items(payload)
+    items = normalize_weopsx_catalog_items(
+        payload,
+        local_identities=load_local_cloud_family_identities(),
+    )
     logger.info(LOG_FETCHED, len(items))
     return {"items": items, "degraded": False}

@@ -15,7 +15,9 @@
 import { ObjectItem } from '@/app/monitor/types';
 import {
   WEOPSX_CLOUD_KEY_PREFIX,
-  WEOPSX_CLOUD_NAV_SOURCE
+  WEOPSX_CLOUD_NAV_SOURCE,
+  foldCloudNavIdentity,
+  weopsxCatalogOverlapsLocalCloud
 } from '@/app/monitor/utils/weopsxCloudNav';
 
 const objectLevel = (obj: ObjectItem): 'base' | 'derivative' =>
@@ -358,6 +360,21 @@ export const filterVisibleMonitorObjects = (
 const isCloudFamilyPlatformBase = (item: ObjectItem): boolean =>
   isCloudFamilySidebarType(item.type) && objectLevel(item) === 'base';
 
+/** 已装云族平台基对象的 name / display_name，用来剔除 WeOpsX 目录里的重复云。 */
+export const collectCloudFamilyPlatformIdentities = (
+  objects: ObjectItem[]
+): string[] => {
+  const tokens = new Set<string>();
+  for (const item of objects) {
+    if (!isCloudFamilyPlatformBase(item)) continue;
+    for (const raw of [item.name, item.display_name]) {
+      const folded = foldCloudNavIdentity(raw);
+      if (folded) tokens.add(folded);
+    }
+  }
+  return [...tokens];
+};
+
 /**
  * 云族派生的父平台：优先 parent / getBaseObject，缺失时按名称前缀
  * （SangforSCPHost → SangforSCP，CNwareVM → CNware）。CVM 不依赖前缀，走 parent。
@@ -418,6 +435,8 @@ interface SidebarTreeNode {
   label?: string;
   key?: string | number;
   source?: string;
+  name?: string;
+  cn_name?: string;
   children: SidebarTreeNode[];
 }
 
@@ -470,7 +489,14 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
   }
 
   platformNodes.push(...unattached.map(toNode));
-  platformNodes.push(...(weopsxNodes.filter(isWeopsxCloudNavNode) as T[]));
+  const localIdentities = collectCloudFamilyPlatformIdentities(objects);
+  platformNodes.push(
+    ...(weopsxNodes.filter(
+      (node) =>
+        isWeopsxCloudNavNode(node) &&
+        !weopsxCatalogOverlapsLocalCloud(node, localIdentities)
+    ) as T[])
+  );
 
   return {
     title: resolveUnifiedCloudRootTitle(objects),
@@ -483,6 +509,7 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
  * 视图 / 专业大盘对象树：
  * - type=Cloud（及历史 Tencent Cloud / Aliyun Cloud 别名）挂到唯一「云」根下，派生挂父；
  * - WeOpsX 已装云（key=`weopsx:{id}`）接在同层后，不另套分组根，也不进入非云 type；
+ *   与已装云族平台基对象 id/name/cn_name 重叠的目录项不挂树；
  * - Meraki 维持挂父；
  * - 其余 type 仍按 #6351 隐藏派生，禁止全局去掉 isDerivativeObject。
  */

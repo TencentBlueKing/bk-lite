@@ -18,19 +18,9 @@ export interface WeopsxCloudTreeNode {
   source: typeof WEOPSX_CLOUD_NAV_SOURCE;
   deep_link: string;
   count: number;
+  name?: string;
+  cn_name?: string;
   children: WeopsxCloudTreeNode[];
-}
-
-type CatalogRequest = (
-  url: string,
-  config?: { suppressErrorNotification?: boolean; params?: Record<string, string> }
-) => Promise<unknown>;
-
-interface TreeNodeLike {
-  key?: string | number;
-  deep_link?: string;
-  source?: string;
-  children?: TreeNodeLike[];
 }
 
 const asText = (value: unknown): string => {
@@ -43,6 +33,80 @@ export const weopsxCloudNavKey = (id: string): string =>
 
 export const isWeopsxCloudNavKey = (key: unknown): boolean =>
   String(key ?? '').startsWith(WEOPSX_CLOUD_KEY_PREFIX);
+
+const MIN_OVERLAP_TOKEN_LEN = 4;
+
+export const foldCloudNavIdentity = (value: unknown): string =>
+  asText(value)
+    .toLowerCase()
+    .replace(/[\s_\-]+/g, '');
+
+export const collectCloudNavIdentityTokens = (...parts: unknown[]): string[] => {
+  const tokens = new Set<string>();
+  for (const part of parts) {
+    const folded = foldCloudNavIdentity(part);
+    if (folded) tokens.add(folded);
+  }
+  return [...tokens];
+};
+
+export const cloudNavIdentitiesOverlap = (left: string, right: string): boolean => {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const [shorter, longer] =
+    left.length <= right.length ? [left, right] : [right, left];
+  return shorter.length >= MIN_OVERLAP_TOKEN_LEN && longer.includes(shorter);
+};
+
+export interface WeopsxCatalogIdentity {
+  id?: string;
+  name?: string;
+  cn_name?: string;
+  title?: unknown;
+  label?: string;
+  key?: string | number;
+}
+
+export const weopsxCatalogOverlapsLocalCloud = (
+  item: WeopsxCatalogIdentity,
+  localIdentities: Iterable<string>
+): boolean => {
+  const localTokens = [...localIdentities].filter(Boolean);
+  if (!localTokens.length) return false;
+  const keyText = asText(item.key);
+  const idFromKey = isWeopsxCloudNavKey(keyText)
+    ? keyText.slice(WEOPSX_CLOUD_KEY_PREFIX.length)
+    : '';
+  const catalogTokens = collectCloudNavIdentityTokens(
+    item.id,
+    item.name,
+    item.cn_name,
+    item.title,
+    item.label,
+    idFromKey
+  );
+  return catalogTokens.some((token) =>
+    localTokens.some((localToken) => cloudNavIdentitiesOverlap(token, localToken))
+  );
+};
+
+export const excludeWeopsxCatalogOverlaps = (
+  items: WeopsxCloudCatalogItem[],
+  localIdentities: Iterable<string>
+): WeopsxCloudCatalogItem[] =>
+  items.filter((item) => !weopsxCatalogOverlapsLocalCloud(item, localIdentities));
+
+type CatalogRequest = (
+  url: string,
+  config?: { suppressErrorNotification?: boolean; params?: Record<string, string> }
+) => Promise<unknown>;
+
+interface TreeNodeLike {
+  key?: string | number;
+  deep_link?: string;
+  source?: string;
+  children?: TreeNodeLike[];
+}
 
 const parseCatalogItems = (payload: unknown): WeopsxCloudCatalogItem[] => {
   const root = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
@@ -75,15 +139,18 @@ const parseCatalogItems = (payload: unknown): WeopsxCloudCatalogItem[] => {
 };
 
 export const toWeopsxCloudTreeNodes = (
-  items: WeopsxCloudCatalogItem[]
+  items: WeopsxCloudCatalogItem[],
+  localIdentities: Iterable<string> = []
 ): WeopsxCloudTreeNode[] =>
-  items.map((item) => ({
+  excludeWeopsxCatalogOverlaps(items, localIdentities).map((item) => ({
     title: item.cn_name,
     label: item.cn_name,
     key: weopsxCloudNavKey(item.id),
     source: WEOPSX_CLOUD_NAV_SOURCE,
     deep_link: item.deep_link,
     count: item.children_count,
+    name: item.name,
+    cn_name: item.cn_name,
     children: []
   }));
 
