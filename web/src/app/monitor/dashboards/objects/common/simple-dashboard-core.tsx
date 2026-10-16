@@ -61,7 +61,13 @@ import {
   GENERIC_DEVICE_TEMPERATURE_CHART_GUIDE,
   GENERIC_DEVICE_TEMPERATURE_KPI_GUIDE
 } from './device-temperature-guide';
-import { dashboardDatasetKey, metricNamesNeedingFetch } from './metric-series-reuse';
+import {
+  dashboardDatasetKey,
+  dashboardMetricScopeKey,
+  metricNamesFromScopeKey,
+  metricNamesNeedingFetch,
+  resolveLiveAbortController
+} from './metric-series-reuse';
 
 export type SimpleMetricUnit = MetricUnit;
 
@@ -422,7 +428,7 @@ export function useSimpleDashboardData(
   const [pendingMetricNames, setPendingMetricNames] = useState<ReadonlySet<string>>(() => new Set());
   const requestedMetricNames = options?.metricNames;
   const metricNamesProvided = requestedMetricNames != null;
-  const metricScopeKey = metricNamesProvided ? requestedMetricNames.join('\n') : '';
+  const metricScopeKey = dashboardMetricScopeKey(requestedMetricNames);
   const reuseLoadedSeries = Boolean(options?.reuseLoadedSeries);
   const inflightRef = useRef<AbortController | null>(null);
   const inflightNamesRef = useRef<Set<string>>(new Set());
@@ -694,8 +700,12 @@ export function useSimpleDashboardData(
       metricGenerationRef.current += 1;
       seriesDatasetKeyRef.current = datasetKey;
       frozenTimeRef.current = freezeTimeValues(timeValues);
-    } else if (!inflightRef.current) {
-      inflightRef.current = new AbortController();
+    } else {
+      const live = resolveLiveAbortController(inflightRef.current);
+      if (live !== inflightRef.current) {
+        inflightNamesRef.current = new Set();
+      }
+      inflightRef.current = live;
     }
     const controller = inflightRef.current as AbortController;
     const signal = controller.signal;
@@ -725,7 +735,7 @@ export function useSimpleDashboardData(
           setPreviousSeries({});
         }
         if (scoped) {
-          const wanted = new Set(metricScopeKey.split('\n').filter(Boolean));
+          const wanted = new Set(metricNamesFromScopeKey(metricScopeKey));
           const metricsWanted = activeMetrics.filter((metric) => wanted.has(metric.name));
           const wantedNames = metricsWanted.map((metric) => metric.name);
           const names = incremental
@@ -748,7 +758,7 @@ export function useSimpleDashboardData(
           if (!silent) {
             if (incremental) {
               setPendingMetricNames((prev) => {
-                if (!names.length) return prev;
+                if (!names.length) return prev.size ? new Set() : prev;
                 const next = new Set(prev);
                 names.forEach((name) => next.add(name));
                 return next;
@@ -762,6 +772,7 @@ export function useSimpleDashboardData(
             setPendingMetricNames((prev) => (prev.size ? new Set() : prev));
           }
           if (!names.length) {
+            setPendingMetricNames((prev) => (prev.size ? new Set() : prev));
             if (!silent) setLoading(false);
             return;
           }
