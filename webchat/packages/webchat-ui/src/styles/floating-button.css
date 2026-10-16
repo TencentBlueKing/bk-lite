@@ -157,7 +157,7 @@
 }
 
 /* Animation */
-@keyframes pulse {
+@keyframes webchat-floating-button-pulse {
   0%,
   100% {
     box-shadow: 
@@ -172,7 +172,7 @@
 }
 
 .floating-button {
-  animation: pulse 2s infinite;
+  animation: webchat-floating-button-pulse 2s infinite;
 }
 
 #webchat-root {

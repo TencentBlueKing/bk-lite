@@ -244,7 +244,7 @@ export default function RumMonitorsPage() {
               <SemanticBadge
                 label={
                   <span className="inline-flex items-center gap-1">
-                    <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-fail)]" />
+                    <span className="size-1.5 animate-neutral-pulse rounded-full bg-[var(--color-fail)]" />
                     {t('rum.monitors.statusFiring', '告警中')}
                   </span>
                 }
