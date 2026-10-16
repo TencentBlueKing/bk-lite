@@ -576,7 +576,7 @@ export default function SystemPane({
         ))}
       </div>
       <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>本机趋势</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'viewTrend')}</div>
       </div>
       <div className={gridClass}>{charts}</div>
       <div className={styles.sectionHead}>
