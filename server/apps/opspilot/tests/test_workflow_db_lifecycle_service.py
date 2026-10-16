@@ -1,4 +1,9 @@
-"""真实数据库验证工作流旁路线程的连接生命周期。"""
+"""真实数据库验证工作流旁路线程的连接生命周期。
+
+不使用 django_db(transaction=True)：共享 reuse-db 上的 flush 会截断
+system_mgmt 表并撞到未纳入本文件 INSTALL_APPS 的外键。
+工作线程连接是 thread-local，外层 TestCase 事务不影响本断言。
+"""
 
 import asyncio
 import threading
@@ -9,7 +14,7 @@ from django.contrib.sessions.models import Session
 from django.db import connection, connections, transaction
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "method,args",
     [
@@ -58,7 +63,7 @@ def test_async_persistence_closes_own_thread_connection(monkeypatch, method, arg
     asyncio.run(exercise())
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_cancelled_persistence_cleans_up_after_worker_finishes(monkeypatch):
     from apps.opspilot.utils.chat_flow_utils.engine.engine import ChatFlowEngine
 
