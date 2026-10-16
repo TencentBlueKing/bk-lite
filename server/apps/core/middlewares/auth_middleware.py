@@ -1,11 +1,14 @@
 import jwt
-from apps.core.logger import logger
+from django.conf import settings
+from django.contrib import auth
+from django.db import InterfaceError, OperationalError
+from django.utils.deprecation import MiddlewareMixin
+from django.utils.functional import LazyObject, empty
+
+from apps.core.logger import logger, safe_exception_info, safe_log_value
 from apps.core.utils.custom_error import DoesNotExist
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
-from django.conf import settings
-from django.contrib import auth
-from django.utils.deprecation import MiddlewareMixin
 
 
 class AuthMiddleware(MiddlewareMixin):
@@ -19,9 +22,11 @@ class AuthMiddleware(MiddlewareMixin):
 
     def _get_loader(self, request=None) -> LanguageLoader:
         """获取基于用户locale的LanguageLoader"""
-        locale = "en"
-        if request and hasattr(request, "user") and hasattr(request.user, "locale"):
-            locale = request.user.locale or "en"
+        # 错误文案只读取已加载的用户字段，不能触发 Session / 惰性用户查库。
+        user = vars(request).get("user") if request is not None else None
+        if isinstance(user, LazyObject):
+            user = user._wrapped
+        locale = vars(user).get("locale", "en") if user is not None and user is not empty else "en"
         return LanguageLoader(app="core", default_lang=locale)
 
     @staticmethod
@@ -39,17 +44,29 @@ class AuthMiddleware(MiddlewareMixin):
 
             # 执行Token认证
             return self._authenticate_token(request)
-        except DoesNotExist as e:
-            logger.error("Authentication error for %s: %s", request.path, str(e))
+        except DoesNotExist:
+            logger.warning("event=auth_user_missing path=%s", safe_log_value(request.path))
             loader = self._get_loader(request)
             return WebUtils.response_error(
                 error_message=self._get_loader_message(loader, "error.user_does_not_exist", "User Does Not Exist"),
                 status_code=self.USER_NOT_FOUND_STATUS_CODE,
             )
+        except (OperationalError, InterfaceError) as e:
+            return self._service_error(request, e, 503)
         except Exception as e:
-            logger.error("Authentication error for %s: %s", request.path, str(e))
-            loader = self._get_loader(request)
-            return WebUtils.response_401(loader.get("error.auth_failed", "Authentication failed"))
+            return self._service_error(request, e, 500)
+
+    @staticmethod
+    def _service_error(request, error, status_code):
+        # 此边界独占 traceback；异常正文可能包含连接串，不直接返回或记录。
+        logger.error(
+            "event=auth_service_failed path=%s request_id=%s failed_stage=authentication error_type=%s",
+            safe_log_value(request.path),
+            safe_log_value(vars(request).get("request_id", "")),
+            type(error).__name__,
+            exc_info=safe_exception_info(error),
+        )
+        return WebUtils.response_error(error_message="Authentication service unavailable", status_code=status_code)
 
     def _is_exempt(self, request, view):
         """检查请求是否豁免认证"""
@@ -72,50 +89,32 @@ class AuthMiddleware(MiddlewareMixin):
 
         # Render JWT：scope 白名单 + 实时创建者身份；不得走普通 verify_token / Session。
         if self._is_render_token_candidate(token):
-            from apps.operation_analysis.services.render_scope_service import (
-                DashboardReportRenderScopeService,
-            )
+            from apps.operation_analysis.services.render_scope_service import DashboardReportRenderScopeError, DashboardReportRenderScopeService
 
-            render_claims = DashboardReportRenderScopeService.authorize_request(
-                request, token
-            )
-            user = DashboardReportRenderScopeService.resolve_request_user(
-                request, render_claims
-            )
+            try:
+                render_claims = DashboardReportRenderScopeService.authorize_request(request, token)
+                user = DashboardReportRenderScopeService.resolve_request_user(request, render_claims)
+            except DashboardReportRenderScopeError:
+                loader = self._get_loader(request)
+                return WebUtils.response_401(loader.get("error.auth_failed", "Authentication failed"))
             if not user:
                 loader = self._get_loader(request)
-                return WebUtils.response_401(
-                    loader.get("error.please_provide_token", "Please provide Token")
-                )
+                return WebUtils.response_401(loader.get("error.please_provide_token", "Please provide Token"))
             request.user = user
             request.dashboard_report_render_scope = render_claims
             return None
 
         # 认证用户
-        try:
-            user = auth.authenticate(request=request, token=token)
-            if not user:
-                logger.warning("Token authentication failed for %s", request.path)
-                loader = self._get_loader(request)
-                return WebUtils.response_401(loader.get("error.please_provide_token", "Please provide Token"))
-
-            auth.login(request, user)
-            if not request.session.session_key:
-                request.session.cycle_key()
-
-            return None
-
-        except DoesNotExist as e:
-            logger.error("Token authentication user does not exist for %s: %s", request.path, str(e))
-            loader = self._get_loader(request)
-            return WebUtils.response_error(
-                error_message=self._get_loader_message(loader, "error.user_does_not_exist", "User Does Not Exist"),
-                status_code=self.USER_NOT_FOUND_STATUS_CODE,
-            )
-        except Exception as e:
-            logger.error("Token authentication error for %s: %s", request.path, str(e))
+        user = auth.authenticate(request=request, token=token)
+        if not user:
+            logger.warning("Token authentication failed for %s", safe_log_value(request.path))
             loader = self._get_loader(request)
             return WebUtils.response_401(loader.get("error.please_provide_token", "Please provide Token"))
+
+        auth.login(request, user)
+        if not request.session.session_key:
+            request.session.cycle_key()
+        return None
 
     @staticmethod
     def _extract_token(request):
@@ -140,7 +139,4 @@ class AuthMiddleware(MiddlewareMixin):
             )
         except Exception:
             return False
-        return (
-            claims.get("token_type") == "dashboard_report_render"
-            or "render_execution_id" in claims
-        )
+        return claims.get("token_type") == "dashboard_report_render" or "render_execution_id" in claims

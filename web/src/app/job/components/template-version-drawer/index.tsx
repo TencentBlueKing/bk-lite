@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 import useJobApi from '@/app/job/api';
 import OperateDrawer from '@/components/operate-drawer';
+import Permission from '@/components/permission';
 import {
   PlaybookRevisionCompare,
   ScriptRevisionCompare,
@@ -178,17 +179,19 @@ const TemplateVersionDrawer: React.FC<TemplateVersionDrawerProps> = ({
               <span className="cursor-not-allowed text-[var(--color-text-4)]">{t('job.restore')}</span>
             </Tooltip>
           ) : (
-            <Tooltip title={t('job.restoreThisVersion')}>
-              <Popconfirm
-                title={t('job.restoreThisVersion')}
-                description={t('job.restoreVersionConfirm')}
-                okText={t('job.confirm')}
-                cancelText={t('job.cancel')}
-                onConfirm={() => restore(record)}
-              >
-                <a className="cursor-pointer text-[var(--color-primary)]">{t('job.restore')}</a>
-              </Popconfirm>
-            </Tooltip>
+            <Permission requiredPermissions={['Edit']}>
+              <Tooltip title={t('job.restoreThisVersion')}>
+                <Popconfirm
+                  title={t('job.restoreThisVersion')}
+                  description={t('job.restoreVersionConfirm')}
+                  okText={t('job.confirm')}
+                  cancelText={t('job.cancel')}
+                  onConfirm={() => restore(record)}
+                >
+                  <a className="cursor-pointer text-[var(--color-primary)]">{t('job.restore')}</a>
+                </Popconfirm>
+              </Tooltip>
+            </Permission>
           )}
         </div>
       ),

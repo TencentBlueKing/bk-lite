@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import {
   CloseCircleOutlined,
   CheckCircleOutlined,
+  FilterOutlined,
   FireFilled,
   SearchOutlined,
 } from '@ant-design/icons';
@@ -43,7 +44,7 @@ interface SpanLayoutItem {
   width: number;
 }
 
-const FLAME_ROW_HEIGHT = 24;
+const FLAME_ROW_HEIGHT = 28;
 const SPAN_ATTRIBUTE_KEY_COLUMN_WIDTH = '58%';
 const SPAN_ATTRIBUTE_VALUE_COLUMN_WIDTH = '42%';
 
@@ -74,49 +75,113 @@ function serviceColor(serviceName: string, services: string[]): string {
 function TraceFlameChart({
   layout,
   services,
+  totalDuration = 0,
   selectedSpanId,
   onSelect,
 }: {
   layout: SpanLayoutItem[];
   services: string[];
+  totalDuration?: number;
   selectedSpanId?: string;
   onSelect: (spanId: string) => void;
 }) {
+  const { t } = useTranslation();
   const maxDepth = layout.reduce((max, item) => Math.max(max, item.depth), 0);
+  const chartHeight = Math.max((maxDepth + 1) * FLAME_ROW_HEIGHT + 8, 96);
+  const timeTicks = [0, 0.25, 0.5, 0.75, 1];
+
   return (
-    <div className="w-full overflow-x-auto">
-      <div
-        className="relative min-h-[72px] w-full"
-        style={{ height: (maxDepth + 1) * FLAME_ROW_HEIGHT }}
-      >
-        {layout.map(({ span, depth, left, width }) => {
-          const selected = selectedSpanId === span.span_id;
-          const color = span.status === 'error'
-            ? 'var(--color-fail)'
-            : serviceColor(span.service_name, services);
-          return (
-            <button
-              type="button"
-              key={span.span_id}
-              aria-pressed={selected}
-              aria-label={`${span.service_name} · ${span.name}`}
-              title={`${span.service_name} · ${span.name}`}
-              onClick={() => onSelect(span.span_id)}
-              className={`absolute overflow-hidden truncate rounded-sm px-1.5 text-left font-mono text-[11px] leading-[22px] text-white ${
-                selected ? 'z-10 ring-2 ring-[var(--color-primary)] ring-offset-1' : ''
-              }`}
-              style={{
-                left: `${left}%`,
-                top: depth * FLAME_ROW_HEIGHT,
-                width: `${Math.max(width, 0.8)}%`,
-                height: FLAME_ROW_HEIGHT - 2,
-                background: color,
-              }}
-            >
-              {width > 6 ? span.name : ''}
-            </button>
-          );
-        })}
+    <div className="w-full overflow-hidden rounded-xl border border-[var(--color-border)]/60 bg-[var(--color-bg)] shadow-2xs">
+      <div className="flex items-center justify-between border-b border-[var(--color-border)]/50 bg-[var(--color-fill-1)]/30 px-3 py-1.5 text-[11px] tabular-nums text-[var(--color-text-3)]">
+        {timeTicks.map((tick) => (
+          <span key={tick} className={tick === 0 ? 'text-left' : tick === 1 ? 'text-right' : 'text-center'}>
+            {formatLatency(totalDuration * tick, false, t)}
+          </span>
+        ))}
+      </div>
+
+      <div className="relative w-full overflow-x-auto p-3">
+        <div className="pointer-events-none absolute inset-0 flex justify-between px-3" aria-hidden="true">
+          {timeTicks.map((tick) => (
+            <div
+              key={tick}
+              className="h-full border-r border-dashed border-[var(--color-border)]/30"
+              style={{ width: 0 }}
+            />
+          ))}
+        </div>
+
+        <div
+          className="relative min-h-[72px] w-full"
+          style={{ height: chartHeight }}
+        >
+          {layout.map(({ span, depth, left, width }) => {
+            const selected = selectedSpanId === span.span_id;
+            const isError = span.status === 'error';
+            const color = isError
+              ? 'var(--color-fail)'
+              : serviceColor(span.service_name, services);
+            return (
+              <button
+                type="button"
+                key={span.span_id}
+                data-span-id={span.span_id}
+                aria-pressed={selected}
+                aria-label={`${span.service_name} · ${span.name}`}
+                title={`${span.service_name} · ${span.name} · ${formatLatency(span.duration_ms, false, t)}${isError ? ' (错误)' : ''}`}
+                onClick={() => onSelect(span.span_id)}
+                className={`group absolute flex items-center overflow-hidden rounded-[4px] border border-white/20 px-1.5 text-left font-mono text-[11px] leading-[22px] text-white shadow-2xs transition-all duration-150 select-none hover:z-20 hover:brightness-110 hover:shadow-sm ${
+                  selected
+                    ? 'z-30 ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-[var(--color-bg)] shadow-md brightness-105'
+                    : ''
+                }`}
+                style={{
+                  left: `${left}%`,
+                  top: depth * FLAME_ROW_HEIGHT + 4,
+                  width: `${Math.max(width, 0.8)}%`,
+                  height: FLAME_ROW_HEIGHT - 4,
+                  background: color,
+                }}
+              >
+                {isError ? (
+                  <span className="mr-1 inline-flex shrink-0 items-center justify-center text-[11px] font-bold text-white drop-shadow-2xs">
+                    ⚠
+                  </span>
+                ) : null}
+                {width > 6 ? (
+                  <span className="min-w-0 truncate drop-shadow-2xs">
+                    {span.name}
+                    {width > 16 ? (
+                      <span className="ml-1 opacity-80 font-sans text-[10px] tabular-nums">
+                        · {formatLatency(span.duration_ms, false, t)}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--color-border)]/50 bg-[var(--color-fill-1)]/20 px-3 py-2 text-xs">
+        <span className="text-[11px] font-medium text-[var(--color-text-3)]">{t('apm.trace.serviceLegend', '服务图例')}:</span>
+        {services.map((svc) => (
+          <span key={svc} className="inline-flex items-center gap-1.5 text-[11px] text-[var(--color-text-2)]">
+            <span
+              className="inline-block h-2 w-2 rounded-full"
+              style={{ background: serviceColor(svc, services) }}
+              aria-hidden="true"
+            />
+            <span className="font-mono">{svc}</span>
+          </span>
+        ))}
+        {layout.some(({ span }) => span.status === 'error') ? (
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-fail)]">
+            <span className="inline-block h-2 w-2 rounded-full bg-[var(--color-fail)]" aria-hidden="true" />
+            <span>{t('apm.trace.hasError', '含错误')}</span>
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -185,6 +250,14 @@ export default function ApmTraceDetailPage() {
   }, [authLoading, getTrace, params.traceId, preferredSpanId, refreshKey]);
 
   useEffect(() => {
+    if (!preferredSpanId || selectedSpanId !== preferredSpanId) return;
+    const node = document.querySelector(`[data-span-id="${CSS.escape(preferredSpanId)}"]`);
+    if (node instanceof HTMLElement && typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ block: 'center' });
+    }
+  }, [preferredSpanId, selectedSpanId, trace, viewMode]);
+
+  useEffect(() => {
     if (screens.md === false) setViewMode('list');
   }, [screens.md]);
 
@@ -207,6 +280,25 @@ export default function ApmTraceDetailPage() {
     }));
   }, [trace]);
 
+  const [spanGroup, setSpanGroup] = useState<string>();
+  const displayLayout = useMemo(
+    () => (spanGroup ? layout.filter(({ span }) => span.name === spanGroup) : layout),
+    [layout, spanGroup],
+  );
+  const spanGroups = useMemo(() => {
+    const grouped = new Map<string, { count: number; errors: number; duration: number }>();
+    (trace?.spans ?? []).forEach((span) => {
+      const current = grouped.get(span.name) ?? { count: 0, errors: 0, duration: 0 };
+      current.count += 1;
+      current.duration += span.duration_ms;
+      if (span.status === 'error') current.errors += 1;
+      grouped.set(span.name, current);
+    });
+    return Array.from(grouped.entries())
+      .map(([name, stats]) => ({ name, ...stats }))
+      .sort((left, right) => right.duration - left.duration);
+  }, [trace]);
+
   const serviceBreakdown = useMemo(() => {
     if (!trace?.spans.length) return [];
     const byService = new Map<string, number>();
@@ -225,12 +317,12 @@ export default function ApmTraceDetailPage() {
 
   const filteredList = useMemo(() => {
     const normalized = spanQuery.trim().toLocaleLowerCase();
-    if (!normalized) return layout;
-    return layout.filter(({ span }) => (
+    if (!normalized) return displayLayout;
+    return displayLayout.filter(({ span }) => (
       span.name.toLocaleLowerCase().includes(normalized)
       || span.service_name.toLocaleLowerCase().includes(normalized)
     ));
-  }, [layout, spanQuery]);
+  }, [displayLayout, spanQuery]);
 
   const selected = trace?.spans.find((span) => span.span_id === selectedSpanId);
   const errorSpans = trace?.spans.filter((span) => span.status === 'error') ?? [];
@@ -327,6 +419,59 @@ export default function ApmTraceDetailPage() {
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={16}>
               <ApmSurface className="h-full !rounded-xl shadow-2xs">
+                {spanGroups.length > 1 ? (
+                  <div className="mb-3 rounded-lg border border-[var(--color-border)]/60 bg-[var(--color-fill-1)]/25 p-2.5">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-2)]">
+                        <FilterOutlined className="text-[var(--color-primary)]" aria-hidden="true" />
+                        <span className="font-medium">{t('apm.trace.spanGroups', '按名称汇总')}</span>
+                        <span className="text-xs text-[var(--color-text-3)]">({spanGroups.length})</span>
+                      </div>
+                      {spanGroup ? (
+                        <Button type="link" size="small" className="!p-0 !h-auto text-xs" onClick={() => setSpanGroup(undefined)}>
+                          {t('apm.trace.clearSpanGroup', '显示全部 Span')}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {spanGroups.map((group) => {
+                        const isSelected = spanGroup === group.name;
+                        const hasErr = group.errors > 0;
+                        return (
+                          <button
+                            type="button"
+                            key={group.name}
+                            aria-pressed={isSelected}
+                            onClick={() => setSpanGroup((current) => (current === group.name ? undefined : group.name))}
+                            className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-left text-xs transition-colors ${
+                              isSelected
+                                ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)] font-medium text-[var(--color-primary)]'
+                                : 'border-[var(--color-border)]/60 bg-[var(--color-bg)] hover:border-[var(--color-border)] hover:bg-[var(--color-fill-1)]/50'
+                            }`}
+                          >
+                            <span className="max-w-[200px] truncate font-mono">{group.name}</span>
+                            <span className="rounded bg-[var(--color-fill-1)] px-1 py-0.2 text-[10px] tabular-nums text-[var(--color-text-3)]">
+                              {group.count}
+                            </span>
+                            {hasErr ? (
+                              <span className="text-[10px] font-bold text-[var(--color-fail)]">
+                                ⚠ {group.errors}
+                              </span>
+                            ) : null}
+                            <span className="text-[10px] tabular-nums text-[var(--color-text-3)]">
+                              {formatLatency(group.duration, false, t)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {trace.truncated ? (
+                      <Typography.Text type="secondary" className="mt-1.5 block text-xs">
+                        {t('apm.trace.truncated', 'Trace 响应已达到安全上限，当前展示部分 Span 或属性。')}
+                      </Typography.Text>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <Segmented<ViewMode>
                     aria-label={t('apm.trace.viewMode', 'Trace 视图模式')}
@@ -345,7 +490,7 @@ export default function ApmTraceDetailPage() {
                 {viewMode === 'waterfall' ? (
                   <>
                     <div className="space-y-1 overflow-x-auto">
-                      {layout.map(({ span, depth, left, width }) => {
+                      {displayLayout.map(({ span, depth, left, width }) => {
                         const selectedRow = selectedSpanId === span.span_id;
                         const color = span.status === 'error'
                           ? 'var(--color-fail)'
@@ -354,6 +499,7 @@ export default function ApmTraceDetailPage() {
                           <button
                             type="button"
                             key={span.span_id}
+                            data-span-id={span.span_id}
                             onClick={() => setSelectedSpanId(span.span_id)}
                             aria-pressed={selectedRow}
                             className={`flex min-h-10 w-full items-center rounded-md px-2 py-1 text-left transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] ${
@@ -395,8 +541,9 @@ export default function ApmTraceDetailPage() {
                   </>
                 ) : viewMode === 'flame' ? (
                   <TraceFlameChart
-                    layout={layout}
+                    layout={displayLayout}
                     services={services}
+                    totalDuration={totalDuration}
                     selectedSpanId={selectedSpanId}
                     onSelect={setSelectedSpanId}
                   />
@@ -418,6 +565,7 @@ export default function ApmTraceDetailPage() {
                           <button
                             type="button"
                             key={span.span_id}
+                            data-span-id={span.span_id}
                             onClick={() => setSelectedSpanId(span.span_id)}
                             aria-pressed={selectedRow}
                             className={`flex min-h-10 w-full items-center gap-3 border-0 border-b border-b-[var(--color-border)] px-3 py-2 text-left text-sm last:border-b-0 ${

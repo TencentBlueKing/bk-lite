@@ -23,6 +23,9 @@ from apps.apm.adapters.span_aliases import (
     PORT_KEYS,
     RPC_SERVICE_KEYS,
     RPC_SYSTEM_KEYS,
+    classify_client_db_rollup,
+    classify_client_http_rollup,
+    client_db_statement,
 )
 from apps.apm.services.contracts import (
     DeploymentReleaseQuery,
@@ -57,8 +60,8 @@ from apps.apm.services.error_breakdown import (
     MAX_ERROR_TYPE_GROUPS,
     MAX_ERROR_TYPE_SAMPLES,
     MAX_FAILED_ENDPOINTS,
-    RawErrorGroup,
     UNATTRIBUTED_ERROR_TYPE,
+    RawErrorGroup,
     attach_samples,
     merge_error_groups,
     rank_failed_endpoints,
@@ -94,6 +97,7 @@ SAMPLE_TRACE_ID_PROBE_SPANS = 5000
 RED_EXACT_DEDUP_WINDOW = timedelta(days=1)
 MAX_RED_POINTS = 120
 MAX_TOP_ENDPOINTS = 10
+MAX_CLIENT_ROLLUPS = 40
 MAX_ENDPOINT_NAME_LENGTH = 256
 _RAW_SPAN_PARSE_LIMIT = 1001
 
@@ -148,6 +152,14 @@ _EXCEPTION_TYPE_FIELD = "`event:event_attr:exception.type:0`"
 _EXCEPTION_MESSAGE_FIELD = "`event:event_attr:exception.message:0`"
 _SPAN_ERROR_TYPE_FIELD = "`span_attr:error.type`"
 _HTTP_STATUS_FIELD = "`span_attr:http.response.status_code`"
+_DB_SYSTEM_NAME_FIELD = "`span_attr:db.system.name`"
+_DB_SYSTEM_FIELD = "`span_attr:db.system`"
+_DB_STATEMENT_FIELD = "`span_attr:db.statement`"
+_DB_QUERY_TEXT_FIELD = "`span_attr:db.query.text`"
+_HTTP_METHOD_FIELD = "`span_attr:http.method`"
+_HTTP_REQUEST_METHOD_FIELD = "`span_attr:http.request.method`"
+_HTTP_ROUTE_FIELD = "`span_attr:http.route`"
+_PEER_SERVICE_FIELD = "`span_attr:peer.service`"
 
 
 def _timestamp_us(value: datetime) -> int:
@@ -477,11 +489,7 @@ class VictoriaTracesTelemetryStore:
             summaries = [item for item in summaries if _before_cursor(item[0], item[1].trace_id, cursor_us, cursor_id)]
         page_pairs = summaries[: query.limit]
         page_items = tuple(summary for _, summary in page_pairs)
-        next_cursor = (
-            _encode_cursor(page_pairs[-1][0], page_pairs[-1][1].trace_id)
-            if len(summaries) > query.limit and page_pairs
-            else None
-        )
+        next_cursor = _encode_cursor(page_pairs[-1][0], page_pairs[-1][1].trace_id) if len(summaries) > query.limit and page_pairs else None
         return TracePage(items=page_items, next_cursor=next_cursor)
 
     def search_spans(self, query: SpanSearchQuery) -> SpanPage:
@@ -531,19 +539,13 @@ class VictoriaTracesTelemetryStore:
         if cursor_id is not None and cursor_us is not None:
             items = [item for item in items if _before_cursor(item.started_at, item.span_id, cursor_us, cursor_id)]
         page_items = tuple(items[: query.limit])
-        next_cursor = (
-            _encode_cursor(page_items[-1].started_at, page_items[-1].span_id)
-            if len(items) > query.limit and page_items
-            else None
-        )
+        next_cursor = _encode_cursor(page_items[-1].started_at, page_items[-1].span_id) if len(items) > query.limit and page_items else None
         return SpanPage(items=page_items, next_cursor=next_cursor)
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         ended_at = datetime.now(UTC) + timedelta(minutes=1)
         started_at = ended_at - MAX_QUERY_WINDOW
-        structure_query = (
-            f"trace_id:={_logsql_string(trace_id)} | limit {_RAW_SPAN_PARSE_LIMIT} {_trace_structure_fields_pipe()}"
-        )
+        structure_query = f"trace_id:={_logsql_string(trace_id)} | limit {_RAW_SPAN_PARSE_LIMIT} {_trace_structure_fields_pipe()}"
         rows = self._query_rows(structure_query, started_at, ended_at, limit=_RAW_SPAN_PARSE_LIMIT)
         detail = self._traces_from_span_rows(rows).get(trace_id)
         if detail is None:
@@ -573,9 +575,7 @@ class VictoriaTracesTelemetryStore:
             return {}
         ended_at = datetime.now(UTC) + timedelta(minutes=1)
         started_at = ended_at - MAX_QUERY_WINDOW
-        traces_by_id = self._traces_from_span_rows(
-            self._query_span_structure_rows(wanted, started_at=started_at, ended_at=ended_at)
-        )
+        traces_by_id = self._traces_from_span_rows(self._query_span_structure_rows(wanted, started_at=started_at, ended_at=ended_at))
         found: dict[tuple[str, str], SpanDetail] = {}
         for trace_id, span_id in wanted:
             detail = traces_by_id.get(trace_id)
@@ -732,9 +732,7 @@ class VictoriaTracesTelemetryStore:
         if not span_ids:
             return {}
         quoted = ",".join(_logsql_string(span_id) for span_id in span_ids)
-        logs_query = (
-            f"trace_id:={_logsql_string(trace_id)} span_id:in({quoted}) | limit {len(span_ids)}"
-        )
+        logs_query = f"trace_id:={_logsql_string(trace_id)} span_id:in({quoted}) | limit {len(span_ids)}"
         try:
             rows = self._query_rows(logs_query, started_at, ended_at, limit=len(span_ids))
         except TelemetryStoreUnavailable as exc:
@@ -789,8 +787,7 @@ class VictoriaTracesTelemetryStore:
             version=query.version,
         )
         final_stats = (
-            'stats count() as requests, count() if (status_code:="2") as errors, '
-            "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
+            'stats count() as requests, count() if (status_code:="2") as errors, ' "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
         )
         aggregate_base = self._bounded_spans(deduped) if exact_dedup else entry_filters
         aggregate = f"{aggregate_base} | {final_stats}"
@@ -913,17 +910,14 @@ class VictoriaTracesTelemetryStore:
             if endpoint and name and value is not None:
                 grouped.setdefault(endpoint, {})[name] = value
         return rank_failed_endpoints(
-            [
-                (endpoint, int(values.get("requests", 0)), int(values.get("errors", 0)))
-                for endpoint, values in grouped.items()
-            ],
+            [(endpoint, int(values.get("requests", 0)), int(values.get("errors", 0))) for endpoint, values in grouped.items()],
             total_errors=total_errors,
         )
 
     def _error_types(self, query: ServiceErrorBreakdownQuery):
         filters = self._service_span_filters(query.service_namespace, query.service_name, query.environment)
         stats_query = (
-            f"{filters} status_code:=\"2\" | stats by (kind, {_EXCEPTION_TYPE_FIELD}, {_SPAN_ERROR_TYPE_FIELD}, "
+            f'{filters} status_code:="2" | stats by (kind, {_EXCEPTION_TYPE_FIELD}, {_SPAN_ERROR_TYPE_FIELD}, '
             f"status_message, {_HTTP_STATUS_FIELD}, {_EXCEPTION_MESSAGE_FIELD}) count() as c, max(_time) as last_seen "
             f"| sort by (c) desc | limit {MAX_ERROR_TYPE_GROUPS}"
         )
@@ -958,8 +952,7 @@ class VictoriaTracesTelemetryStore:
     def _error_type_samples(self, query: ServiceErrorBreakdownQuery, error_type: str) -> tuple[ServiceErrorSampleTrace, ...]:
         filters = self._service_span_filters(query.service_namespace, query.service_name, query.environment)
         logs_query = (
-            f"{filters} status_code:=\"2\" {self._error_type_predicate(error_type)} "
-            f"| sort by (_time) desc | limit {MAX_ERROR_TYPE_SAMPLES}"
+            f'{filters} status_code:="2" {self._error_type_predicate(error_type)} ' f"| sort by (_time) desc | limit {MAX_ERROR_TYPE_SAMPLES}"
         )
         rows = self._query_rows(logs_query, query.started_at, query.ended_at, limit=MAX_ERROR_TYPE_SAMPLES)
         samples: list[ServiceErrorSampleTrace] = []
@@ -983,22 +976,69 @@ class VictoriaTracesTelemetryStore:
         no_error_type = f"not {_SPAN_ERROR_TYPE_FIELD}:*"
         no_status_message = "not status_message:*"
         if error_type == UNATTRIBUTED_ERROR_TYPE:
-            return (
-                f"({no_exception} and {no_error_type} and {no_status_message} "
-                f"and not {_HTTP_STATUS_FIELD}:~\"^5\")"
-            )
+            return f"({no_exception} and {no_error_type} and {no_status_message} " f'and not {_HTTP_STATUS_FIELD}:~"^5")'
         if error_type.startswith("HTTP "):
             code = error_type.removeprefix("HTTP ").strip()
-            return (
-                f"({no_exception} and {no_error_type} and {no_status_message} "
-                f"and {_HTTP_STATUS_FIELD}:={_logsql_string(code)})"
-            )
+            return f"({no_exception} and {no_error_type} and {no_status_message} " f"and {_HTTP_STATUS_FIELD}:={_logsql_string(code)})"
         quoted = _logsql_string(error_type)
         return (
             f"({_EXCEPTION_TYPE_FIELD}:={quoted} "
             f"or ({no_exception} and {_SPAN_ERROR_TYPE_FIELD}:={quoted}) "
             f"or ({no_exception} and {no_error_type} and status_message:={quoted}))"
         )
+
+    def client_db_rollups(
+        self,
+        namespace: str,
+        service_name: str,
+        environment: str,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> list[dict[str, Any]]:
+        """按语句名汇总 Client Span 耗时，最多 40 行。
+
+        带 db.system 的进数据库语句或缓存出站；带 http.method、没有数据库系统的进 HTTP 出站。
+        """
+
+        query = (
+            f"{self._service_span_filters(namespace, service_name, environment)} "
+            f'kind:="3" ({_DB_SYSTEM_NAME_FIELD}:* OR {_DB_SYSTEM_FIELD}:* '
+            f"OR {_HTTP_METHOD_FIELD}:* OR {_HTTP_REQUEST_METHOD_FIELD}:*) "
+            f"| stats by (name, {_DB_SYSTEM_NAME_FIELD}, {_DB_SYSTEM_FIELD}, "
+            f"{_DB_STATEMENT_FIELD}, {_DB_QUERY_TEXT_FIELD}, "
+            f"{_HTTP_METHOD_FIELD}, {_HTTP_REQUEST_METHOD_FIELD}, {_HTTP_ROUTE_FIELD}, {_PEER_SERVICE_FIELD}) "
+            f'sum(duration) as duration_ns, count() as calls, count() if (status_code:="2") as errors '
+            f"| sort by (duration_ns) desc | limit {MAX_CLIENT_ROLLUPS}"
+        )
+        rows = self._query_rows(query, started_at, ended_at, limit=MAX_CLIENT_ROLLUPS)
+        classified: list[dict[str, Any]] = []
+        for row in rows:
+            db_outcome = classify_client_db_rollup(row)
+            if db_outcome is not None:
+                channel, system = db_outcome
+                statement = client_db_statement(row, str(row.get("name") or ""))[:MAX_ENDPOINT_NAME_LENGTH]
+                inferred = True
+            else:
+                http_outcome = classify_client_http_rollup(row, str(row.get("name") or ""))
+                if http_outcome is None:
+                    continue
+                channel, system, statement = http_outcome
+                statement = statement[:MAX_ENDPOINT_NAME_LENGTH]
+                inferred = False
+            if not statement:
+                continue
+            classified.append(
+                {
+                    "channel": channel,
+                    "system": system,
+                    "statement": statement,
+                    "duration_ms": self._nanoseconds_to_ms(_number(row.get("duration_ns"))) or 0.0,
+                    "call_count": int(_number(row.get("calls")) or 0),
+                    "error_count": int(_number(row.get("errors")) or 0),
+                    "inferred": inferred,
+                }
+            )
+        return classified
 
     def _service_span_filters(self, namespace: str, service_name: str, environment: str) -> str:
         return " ".join(
@@ -1018,8 +1058,7 @@ class VictoriaTracesTelemetryStore:
         entry_filters: str,
     ) -> list[dict[str, Any]]:
         final_stats = (
-            'count() as requests, count() if (status_code:="2") as errors, '
-            "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
+            'count() as requests, count() if (status_code:="2") as errors, ' "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
         )
         if exact_dedup:
             endpoint_deduped = self._deduped_entry_query(
@@ -1036,9 +1075,7 @@ class VictoriaTracesTelemetryStore:
                 f"| sort by (requests) desc | limit {MAX_TOP_ENDPOINTS}"
             )
             return self._stats(endpoint_query, query.started_at, query.ended_at)
-        endpoint_query = (
-            f"{entry_filters} | stats by (name) {final_stats} | sort by (requests) desc | limit {MAX_TOP_ENDPOINTS}"
-        )
+        endpoint_query = f"{entry_filters} | stats by (name) {final_stats} | sort by (requests) desc | limit {MAX_TOP_ENDPOINTS}"
         rows = self._stats(endpoint_query, query.started_at, query.ended_at)
         remapped: list[dict[str, Any]] = []
         for row in rows:
@@ -1072,9 +1109,7 @@ class VictoriaTracesTelemetryStore:
             query.ended_at,
             width=RED_EXACT_DEDUP_WINDOW,
         ):
-            values = self._ungrouped_values(
-                self._stats(f"{self._bounded_spans(deduped)} | stats {final}", slice_started_at, slice_ended_at)
-            )
+            values = self._ungrouped_values(self._stats(f"{self._bounded_spans(deduped)} | stats {final}", slice_started_at, slice_ended_at))
             slice_total = values.get("total")
             if slice_total is None or slice_total <= 0:
                 continue

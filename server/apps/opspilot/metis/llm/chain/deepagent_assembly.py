@@ -267,11 +267,23 @@ class DeepAgentAssemblyMixin:
         if not isinstance(candidates, list):
             nested = payload.get("candidates")
             candidates = nested if isinstance(nested, list) else []
-        facts = [
-            "一张盘要混用不同数据源和图表。概览源最多两个 single 或 gauge，其余组件改用 charts 里带 pie、topN、line、table 的其他 dataSource。不要把同一个源的每个数字都做成卡片。不要让用户挑选指标。",
-        ]
+        catalog = data.get("catalog") is True
+        if catalog:
+            intro = "这是数据源目录咨询。按候选的名称、说明、图表和参数直接回答。推荐只写名称，例如「优先用受控监控指标趋势」，禁止写 id=数字。chart_type 为空表示只提供选项、不出图。不要调用 prepare_dashboard_proposal，不要改画布。"
+        else:
+            intro = (
+                "一张盘要混用不同数据源和图表。概览源最多两个 single 或 gauge，其余组件改用 charts 里带 pie、topN、line、table 的其他 dataSource。"
+                "不要把同一个源的每个数字都做成卡片。不要让用户挑选指标。prepare 的 dataSource 必须填下面的数字。回复用户时用名称。"
+                "参数下拉由你按 optionSource 的名称和说明决定，不要按字段名自动配对。"
+            )
+        facts = [intro]
         for row in candidates:
-            if not isinstance(row, dict) or row.get("id") in (None, ""):
+            if not isinstance(row, dict):
+                continue
+            if catalog:
+                if not str(row.get("name") or "").strip():
+                    continue
+            elif row.get("id") in (None, ""):
                 continue
             tags = ",".join(str(tag) for tag in (row.get("tags") or []) if tag not in (None, ""))
             charts = ",".join(str(chart) for chart in (row.get("chart_type") or []) if chart not in (None, ""))
@@ -285,7 +297,10 @@ class DeepAgentAssemblyMixin:
                     fields.append(label)
                 elif isinstance(field, str) and field:
                     fields.append(field)
-            fact = f"dataSource={row.get('id')} name={row.get('name') or ''}"
+            if catalog:
+                fact = f"name={row.get('name') or ''}"
+            else:
+                fact = f"dataSource={row.get('id')} name={row.get('name') or ''}"
             if tags:
                 fact += f" tag={tags}"
             if charts:
@@ -293,6 +308,20 @@ class DeepAgentAssemblyMixin:
             if fields:
                 fact += f" fields={','.join(fields)}"
             facts.append(fact)
+        if not catalog:
+            for row in data.get("optionSources") or []:
+                if not isinstance(row, dict) or row.get("id") in (None, ""):
+                    continue
+                fields = []
+                for field in (row.get("fields") or [])[:6]:
+                    if isinstance(field, dict) and field.get("name"):
+                        fields.append(str(field["name"]))
+                    elif isinstance(field, str) and field:
+                        fields.append(field)
+                fact = f"optionSource={row.get('id')} name={row.get('name') or ''}"
+                if fields:
+                    fact += f" fields={','.join(fields)}"
+                facts.append(fact)
         return facts
 
     @classmethod

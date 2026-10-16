@@ -9,9 +9,15 @@ from apps.core.logger import logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import delete_instance_rules, get_permission_rules
 from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.models import Group
 
 _TEAM_ACCESS_DENIED_FALLBACK = "No permission to access this team"
+
+
+def user_group_id_set(user):
+    """网页登录的组织是 dict，API Key 的组织是整数，统一成 ID 集合。"""
+    return set(normalize_user_group_ids(getattr(user, "group_list", None)))
 
 
 def team_access_denied_message(request=None, loader=None) -> str:
@@ -201,7 +207,7 @@ class GenericViewSetFun(object):
         current_team = cls._parse_current_team_cookie(request)
         # 验证 current_team 权限（超管豁免）
         if not getattr(user, "is_superuser", False):
-            user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
+            user_group_ids = user_group_id_set(user)
 
             if current_team not in user_group_ids:
                 raise PermissionDenied(team_access_denied_message(request))
@@ -337,7 +343,7 @@ class AuthViewSet(MaintainerViewSet):
         if not current_team:
             raise PermissionDenied(team_access_denied_message(request, self.loader))
         if not getattr(request.user, "is_superuser", False):
-            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+            user_group_ids = user_group_id_set(request.user)
             if current_team not in user_group_ids:
                 raise PermissionDenied(team_access_denied_message(request, self.loader))
         return current_team
@@ -382,7 +388,7 @@ class AuthViewSet(MaintainerViewSet):
             return
 
         # 获取用户可管理的组织 ID 集合
-        user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
+        user_group_ids = user_group_id_set(user)
 
         # 检查是否有无权管理的组织
         invalid_group_ids = set(normalized_values) - user_group_ids
@@ -575,7 +581,7 @@ class AuthViewSet(MaintainerViewSet):
             return super().retrieve(request, *args, **kwargs)
         # 验证 current_team 权限
         current_team = self._parse_current_team_cookie(request)
-        user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
+        user_group_ids = user_group_id_set(user)
         if current_team not in user_group_ids:
             raise PermissionDenied(team_access_denied_message(request, getattr(self, "loader", None)))
         if hasattr(self, "permission_key"):
@@ -603,7 +609,7 @@ class AuthViewSet(MaintainerViewSet):
             return None
         # 验证 current_team 权限
         current_team = self._parse_current_team_cookie(request)
-        user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
+        user_group_ids = user_group_id_set(user)
         if current_team not in user_group_ids:
             raise PermissionDenied(team_access_denied_message(request, getattr(self, "loader", None)))
         if hasattr(self, "permission_key"):

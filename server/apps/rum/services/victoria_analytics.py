@@ -113,23 +113,26 @@ class VictoriaAnalytics:
         )
         events = self._load_events(tenant_id, [application], start, end, limit=8000)
         countries: dict[str, dict] = {}
-        devices = {"mobile": 0, "desktop": 0}
         envs: dict[str, dict] = {}
         releases: dict[str, dict] = {}
         country_sessions: dict[str, set[str]] = {}
         env_sessions: dict[str, set[str]] = {}
         rel_sessions: dict[str, set[str]] = {}
+        mobile_sessions: set[str] = set()
+        desktop_sessions: set[str] = set()
         for event in events:
+            session_id = event.get("sessionId") or ""
             if event.get("eventType") == "view":
                 country = event.get("country") or ""
                 countries.setdefault(country, {"country": country, "views": 0, "sessions": 0})
                 countries[country]["views"] += 1
-                country_sessions.setdefault(country, set()).add(event.get("sessionId") or "")
+                country_sessions.setdefault(country, set()).add(session_id)
             ua = (event.get("userAgent") or "").lower()
-            if "mobile" in ua or "android" in ua:
-                devices["mobile"] += 1
-            elif event.get("userAgent"):
-                devices["desktop"] += 1
+            if session_id and ua:
+                if "mobile" in ua or "android" in ua:
+                    mobile_sessions.add(session_id)
+                else:
+                    desktop_sessions.add(session_id)
             if event.get("environment"):
                 key = event["environment"]
                 envs.setdefault(key, {"key": key, "views": 0, "sessions": 0})
@@ -148,6 +151,9 @@ class VictoriaAnalytics:
             row["sessions"] = len({sid for sid in env_sessions.get(key, set()) if sid})
         for key, row in releases.items():
             row["sessions"] = len({sid for sid in rel_sessions.get(key, set()) if sid})
+        # 同一会话只要出现过移动端标识，就只计入移动端，避免一次访问被两边各算一台。
+        desktop_sessions -= mobile_sessions
+        devices = {"mobile": len(mobile_sessions), "desktop": len(desktop_sessions)}
         return {
             "application": application,
             "kpi": kpi,

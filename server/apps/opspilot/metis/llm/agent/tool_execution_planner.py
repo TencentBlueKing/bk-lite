@@ -878,17 +878,60 @@ _DASHBOARD_SEARCH_TOOL = "search_data_sources"
 _DASHBOARD_PREPARE_TOOL = "prepare_dashboard_proposal"
 
 
+def _without_dashboard_choice(plan: ToolExecutionPlan) -> list[ToolExecutionStep]:
+    steps: list[ToolExecutionStep] = []
+    for step in plan.steps:
+        tools = [tool for tool in step.tools if tool != _REQUEST_USER_CHOICE]
+        if not tools:
+            continue
+        if tools != list(step.tools):
+            steps.append(step.model_copy(update={"tools": tools}))
+        else:
+            steps.append(step)
+    return steps
+
+
+def _without_dashboard_prepare(plan: ToolExecutionPlan) -> list[ToolExecutionStep]:
+    steps: list[ToolExecutionStep] = []
+    for step in plan.steps:
+        tools = [tool for tool in step.tools if tool != _DASHBOARD_PREPARE_TOOL and tool != _REQUEST_USER_CHOICE]
+        if not tools:
+            continue
+        if tools != list(step.tools):
+            steps.append(step.model_copy(update={"tools": tools}))
+        else:
+            steps.append(step)
+    return steps
+
+
 def ensure_dashboard_prepare_follows_search(
     plan: ToolExecutionPlan,
     available_names: set[str],
     *,
     max_steps: int,
+    user_message: str = "",
 ) -> ToolExecutionPlan:
-    """检索数据源之后必须搭盘。规划若只留检索，补上应用步骤。"""
+    """搭盘检索之后必须套用方案。目录咨询只检索，不改画布。"""
+    from apps.operation_analysis.services.dashboard_proposal_service import is_datasource_catalog_question
+
+    if is_datasource_catalog_question(user_message):
+        if _DASHBOARD_SEARCH_TOOL not in available_names:
+            return plan
+        steps = _without_dashboard_prepare(plan)
+        if not any(_DASHBOARD_SEARCH_TOOL in step.tools for step in steps):
+            steps.insert(
+                0,
+                ToolExecutionStep(objective="检索当前组织可见的数据源目录", tools=[_DASHBOARD_SEARCH_TOOL]),
+            )
+        if len(steps) > max_steps:
+            steps = steps[:max_steps]
+        return ToolExecutionPlan(goal=plan.goal, steps=steps)
     if _DASHBOARD_SEARCH_TOOL not in available_names or _DASHBOARD_PREPARE_TOOL not in available_names:
         return plan
     planned = {tool for step in plan.steps for tool in (step.tools or [])}
-    if _DASHBOARD_SEARCH_TOOL not in planned or _DASHBOARD_PREPARE_TOOL in planned:
+    if _DASHBOARD_SEARCH_TOOL in planned and _DASHBOARD_PREPARE_TOOL in planned:
+        return ToolExecutionPlan(goal=plan.goal, steps=_without_dashboard_choice(plan))
+    if _DASHBOARD_SEARCH_TOOL not in planned:
         return plan
     steps: list[ToolExecutionStep] = []
     for step in plan.steps:
@@ -2018,7 +2061,12 @@ class ToolExecutionPlanner:
             steps=steps,
         )
         plan = enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
-        plan = ensure_dashboard_prepare_follows_search(plan, available_names, max_steps=self._max_steps)
+        plan = ensure_dashboard_prepare_follows_search(
+            plan,
+            available_names,
+            max_steps=self._max_steps,
+            user_message=user_message,
+        )
         plan = enforce_list_metrics_with_query(plan, available_names, max_tools_per_step=self._max_tools_per_step)
         plan = rewrite_generic_alert_query_to_alerts_center(plan, available_names, user_message=user_message)
         plan = rewrite_cmdb_search_for_declared_model(plan, available_names, user_message=user_message)

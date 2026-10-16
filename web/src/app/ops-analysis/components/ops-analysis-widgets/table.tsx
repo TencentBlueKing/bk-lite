@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, DatePicker, Input, Select, Tooltip, message } from 'antd';
+import { DatePicker, Input, Select, Tooltip } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type {
-  DashboardActionConfig,
   DatasourceItem,
   TableColumnConfigItem,
   TableFilterFieldConfig,
@@ -13,16 +12,18 @@ import {
   applyValueMapping,
   getColorByThreshold,
 } from '@/app/ops-analysis/components/ops-analysis-config-sections';
-import {
-  buildDashboardActionUrl,
-  resolveDashboardActionParams,
-} from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
-import { applySameOriginNavigation } from '@/console-layout';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
-import MoreActionsDropdown from '@/components/more-actions-dropdown';
-import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
-import { useShareMode } from '@/app/ops-analysis/context/shareMode';
+import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
+import { InteractionActionCell, useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import {
+  interactionActionColumnTitle,
+  interactionActionLinkText,
+  isFirstActionColumn,
+  readWidgetInteraction,
+  tableRowLinkPoint,
+  withInteractionActionColumn,
+} from '@/app/ops-analysis/utils/interactionLink';
 import {
   parseTableLikeData,
   resolveTableLikeColumns,
@@ -60,7 +61,10 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
   onQueryChange,
 }) => {
   const { t } = useTranslation();
-  const shareMode = useShareMode();
+  const surface = useInteractionSurface();
+  const { openPoint } = useWidgetDataLink(config);
+  const dataLink = readWidgetInteraction(config);
+  const dataLinkName = dataLink?.kind === 'data' ? dataLink.name : '';
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [keywordDrafts, setKeywordDrafts] = useState<Record<string, string>>({});
@@ -126,71 +130,19 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
   }, [searchableFilterFields, activeKeywordFieldKey]);
 
   const columnConfigs = useMemo((): TableColumnConfigItem[] => {
-    return resolveTableLikeColumns({
+    const visible = resolveTableLikeColumns({
       configuredColumns: config?.tableConfig?.columns,
       schemaFields: dataSource?.field_schema,
       rows: tableData,
     }).filter((col) => col.visible);
-  }, [config?.tableConfig?.columns, dataSource?.field_schema, tableData]);
-
-  const handleActionClick = useCallback(
-    (action: DashboardActionConfig, record: TableDataItem) => {
-      if (shareMode) {
-        message.warning(t('dashboard.shareNavigationDisabled'));
-        return;
-      }
-      const params = resolveDashboardActionParams(action.params, record);
-      const url = buildDashboardActionUrl(action.url, params);
-      if (!url) {
-        message.warning(t('dashboard.actionUrlUnavailable'));
-        return;
-      }
-
-      applySameOriginNavigation(url, {
-        currentSearch: window.location.search,
-        explicitNewWindow: action.openMode === 'newTab',
-      });
-    },
-    [shareMode, t],
-  );
-
-  const renderActionButtons = useCallback(
-    (actions: DashboardActionConfig[], record: TableDataItem) => {
-      if (shareMode || actions.length === 0) {
-        return '-';
-      }
-
-      const visibleActions = actions.slice(0, 2);
-      const dropdownActions = actions.slice(2);
-
-      return (
-        <div className="flex items-center gap-1">
-          {visibleActions.map((action, index) => (
-            <Button
-              key={`${action.columnKey}_${index}_${action.text}`}
-              type="link"
-              size="small"
-              className="p-0"
-              onClick={() => handleActionClick(action, record)}
-            >
-              {action.text}
-            </Button>
-          ))}
-          {dropdownActions.length > 0 && (
-            <MoreActionsDropdown
-              items={dropdownActions.map<MoreActionsDropdownItem>((action, index) => ({
-                key: String(index),
-                label: action.text,
-                onClick: () => handleActionClick(action, record),
-              }))}
-              buttonType="link"
-            />
-          )}
-        </div>
-      );
-    },
-    [handleActionClick, shareMode, t],
-  );
+    return withInteractionActionColumn(visible, dataLink, surface, {
+      key: '__interaction',
+      title: interactionActionColumnTitle(t),
+      columnType: 'actions',
+      visible: true,
+      order: visible.length,
+    });
+  }, [config?.tableConfig?.columns, dataLink, dataSource?.field_schema, surface, t, tableData]);
 
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {
     const colGaugeMax: Record<string, number> = {};
@@ -205,8 +157,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
       }
     });
 
-    return columnConfigs.map((col) => {
-      const columnActions = (config?.actions || []).filter((action) => action.columnKey === col.key);
+    return columnConfigs.map((col, columnIndex) => {
       const column: any = {
         title: col.title,
         dataIndex: col.key,
@@ -214,7 +165,15 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
         ellipsis: { showTitle: false },
         render: (text: any, record: TableDataItem) => {
           if (col.columnType === 'actions') {
-            return renderActionButtons(columnActions, record);
+            return (
+              <InteractionActionCell
+                link={dataLink}
+                surface={surface}
+                isFirst={isFirstActionColumn(columnConfigs, columnIndex)}
+                label={interactionActionLinkText(dataLinkName, t)}
+                onOpen={() => openPoint(tableRowLinkPoint(record))}
+              />
+            );
           }
 
           const mapping = applyValueMapping(text, col.valueMappings);
@@ -283,7 +242,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
 
       return column;
     });
-  }, [columnConfigs, config?.actions, displayedTableData, handleActionClick, renderActionButtons]);
+  }, [columnConfigs, dataLink, dataLinkName, displayedTableData, openPoint, surface, t]);
 
   useEffect(() => {
     if (!onQueryChange) return;

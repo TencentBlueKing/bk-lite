@@ -311,6 +311,15 @@ class MonitorModuleIngestService:
     # ----- 创建场景分流：按来源模块决定是否建资产 / 套用采集模板 -----
 
     @classmethod
+    def _auto_join_after_commit(cls, instance, raw, allowed_org_ids, operator):
+        if instance is None:
+            return
+        from apps.monitor.services.policy_group import PolicyGroupService
+
+        org_ids = cls._normalize_org_ids(raw, allowed_org_ids)
+        PolicyGroupService.apply_best_effort_auto_join(instance, org_ids, operator=operator or "system")
+
+    @classmethod
     def _create_for_source(
         cls,
         *,
@@ -384,6 +393,7 @@ class MonitorModuleIngestService:
                     allowed_org_ids=allowed_org_ids,
                     plugin=plugin,
                 )
+            cls._auto_join_after_commit(created, raw, allowed_org_ids, operator)
             return IngestResult(id=created.id, created=True).as_dict()
 
         created = cls._create_instance(
@@ -393,6 +403,7 @@ class MonitorModuleIngestService:
             operator=operator,
             allowed_org_ids=allowed_org_ids,
         )
+        cls._auto_join_after_commit(created, raw, allowed_org_ids, operator)
         return IngestResult(id=created.id, created=True).as_dict()
 
     @staticmethod
@@ -1427,9 +1438,6 @@ class MonitorModuleIngestService:
         )
         org_ids = cls._normalize_org_ids(raw, allowed_org_ids)
         cls._bind_organizations(instance, org_ids, operator=operator)
-        from apps.monitor.services.policy_group import PolicyGroupService
-
-        PolicyGroupService.consider_auto_join(instance, org_ids, operator=operator)
         instance = cls._notify_host_peers_after_write(
             instance,
             operator=operator,

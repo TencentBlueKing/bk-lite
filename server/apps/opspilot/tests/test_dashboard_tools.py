@@ -210,6 +210,24 @@ def test_search_plan_without_prepare_gets_an_apply_step(caplog):
     ]
     assert not any(record.msg == template for record in caplog.records)
 
+    asked = ensure_dashboard_prepare_follows_search(
+        ToolExecutionPlan(
+            goal="搭建",
+            steps=[
+                ToolExecutionStep(objective="检索", tools=["search_data_sources"]),
+                ToolExecutionStep(objective="向用户澄清", tools=["request_user_choice"]),
+                ToolExecutionStep(objective="套用", tools=["prepare_dashboard_proposal"]),
+            ],
+        ),
+        {"search_data_sources", "prepare_dashboard_proposal", "request_user_choice"},
+        max_steps=4,
+        user_message="帮我搭建一个 CMDB 数据概览的仪表盘",
+    )
+    assert [step.tools for step in asked.steps] == [
+        ["search_data_sources"],
+        ["prepare_dashboard_proposal"],
+    ]
+
 
 def test_search_catalog_stays_in_the_next_step_summary():
     from langchain_core.messages import AIMessage, ToolMessage
@@ -243,6 +261,19 @@ def test_search_catalog_stays_in_the_next_step_summary():
     assert "fields=covered,total" in line
     assert "概览源最多两个 single" in line
     assert "说明说明" not in line
+
+    catalog_facts = DeepAgentAssemblyMixin._dashboard_source_facts(
+        {
+            "data": {
+                "catalog": True,
+                "candidates": [{"name": "监控接口最新指标", "desc": "接口流量", "chart_type": ["table"]}],
+            }
+        }
+    )
+    catalog_line = "\n".join(catalog_facts)
+    assert "name=监控接口最新指标" in catalog_line
+    assert "dataSource=" not in catalog_line
+    assert "禁止写 id=数字" in catalog_line
 
 
 def test_prepare_flattens_nested_rows_before_validation(monkeypatch):
@@ -394,7 +425,7 @@ def test_tool_metadata_and_translations_are_registered():
     assert toolkit["tools"][0]["parameters"]
     proposal = toolkit["tools"][1]
     assert "layout" in proposal["description"]
-    assert "data_source_id" in proposal["description"]
+    assert "schemaVersion" in proposal["description"]
     assert "selectedFields" in proposal["parameters"]["proposal"]["description"]
 
     for language in ("zh-Hans.yaml", "en.yaml"):
@@ -560,3 +591,86 @@ def test_search_rpc_failure_keeps_error_and_omits_it_from_logs(monkeypatch, capl
     assert sentinel not in record.getMessage()
     assert sentinel not in rendered
     assert rendered.count("Traceback") == 1
+
+
+def _catalog_config():
+    config = _config()
+    config["configurable"]["user_message"] = "现在有哪些能监控接口流量的数据源"
+    return config
+
+
+def test_catalog_question_searches_the_directory_and_does_not_apply(monkeypatch):
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, ensure_dashboard_prepare_follows_search
+    from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import prepare_dashboard_proposal, search_data_sources
+
+    calls = []
+
+    def fake_run(method, **kwargs):
+        calls.append((method, kwargs["requirements"]))
+        return {
+            "candidates": [
+                {"id": 58, "name": "监控接口最新指标", "chart_type": ["table"], "fields": [{"name": "ifDescr", "title": "接口名称"}]},
+                {"id": 70, "name": "监控实例列表（选项）", "chart_type": [], "fields": [{"name": "instance_id"}]},
+            ]
+        }
+
+    monkeypatch.setattr("apps.opspilot.metis.llm.tools.ops_analysis_dashboard._run_dashboard_rpc", fake_run)
+    result = search_data_sources.func([{"text": "搭一个盘", "purpose": "visualization", "chartType": "single"}], _catalog_config())
+
+    assert calls == [("search_dashboard_data_sources", [{"text": "现在有哪些能监控接口流量的数据源", "purpose": "catalog"}])]
+    assert result["data"]["catalog"] is True
+    assert "id" not in result["data"]["candidates"][0]
+    assert [item["name"] for item in result["data"]["candidates"]] == ["监控接口最新指标", "监控实例列表（选项）"]
+    assert "禁止写 id=数字" in result["_next_step_hint"]
+    assert "不要调用 prepare_dashboard_proposal" in result["_next_step_hint"]
+    assert "准备套用" not in result["_next_step_hint"]
+
+    def reject_prepare(method, **kwargs):
+        raise AssertionError(method)
+
+    monkeypatch.setattr("apps.opspilot.metis.llm.tools.ops_analysis_dashboard._run_dashboard_rpc", reject_prepare)
+    refused = prepare_dashboard_proposal.func({"schemaVersion": "1.0", "layout": []}, "current", _catalog_config())
+    assert refused["success"] is False
+    assert "数据源目录" in refused["error"]
+
+    consulted = ensure_dashboard_prepare_follows_search(
+        ToolExecutionPlan(
+            goal="列数据源",
+            steps=[
+                ToolExecutionStep(objective="检索", tools=["search_data_sources"]),
+                ToolExecutionStep(objective="套用", tools=["prepare_dashboard_proposal"]),
+            ],
+        ),
+        {"search_data_sources", "prepare_dashboard_proposal"},
+        max_steps=4,
+        user_message="现在有哪些监控的数据源",
+    )
+    assert [step.tools for step in consulted.steps] == [["search_data_sources"]]
+
+    missing_search = ensure_dashboard_prepare_follows_search(
+        ToolExecutionPlan(goal="列数据源", steps=[ToolExecutionStep(objective="直接回答", tools=["prepare_dashboard_proposal"])]),
+        {"search_data_sources", "prepare_dashboard_proposal"},
+        max_steps=4,
+        user_message="现在有哪些监控的数据源",
+    )
+    assert [step.tools for step in missing_search.steps] == [["search_data_sources"]]
+
+
+def test_search_hands_option_lists_to_the_model_without_choosing_one(monkeypatch):
+    from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import search_data_sources
+
+    def fake_run(method, **kwargs):
+        return {
+            "candidates": [{"id": 58, "name": "监控接口最新指标", "chart_type": ["table"], "fields": [{"name": "ifDescr"}]}],
+            "optionSources": [
+                {"id": 70, "name": "监控实例列表（选项）", "desc": "监控实例下拉", "chart_type": [], "fields": [{"name": "instance_id"}, {"name": "display_name"}]},
+                {"id": 71, "name": "K8S集群实例", "chart_type": [], "fields": [{"name": "instance_id"}, {"name": "display_name"}]},
+            ],
+        }
+
+    monkeypatch.setattr("apps.opspilot.metis.llm.tools.ops_analysis_dashboard._run_dashboard_rpc", fake_run)
+    result = search_data_sources.func([{"text": "接口流量"}], _config())
+
+    assert [item["id"] for item in result["data"]["optionSources"]] == [70, 71]
+    assert "由你根据参数别名" in result["_next_step_hint"]
+    assert "服务端不会替你选列表" in result["_next_step_hint"]

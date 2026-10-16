@@ -274,6 +274,8 @@ export interface JsonSchema {
   'x-enum-usernames'?: Record<string, string>;
   'x-enum-metadata'?: Record<string, { scope?: 'personal' | 'team'; default_model?: string }>;
   'x-binding'?: 'literal-only';
+  /** string 文本表面：coerce=任意可序列化转字符串；string-only=仅 string（默认） */
+  'x-text-surface'?: 'coerce' | 'string-only';
 }
 
 export type NodeInputBinding =
@@ -308,6 +310,14 @@ export interface AtomExecutionRecord {
   job_task_id: number | null;
   error_type: string;
   error_message: string;
+}
+
+export interface DownloadableArtifact {
+  id: string;
+  format: 'docx' | 'xlsx';
+  filename: string;
+  size: number;
+  download_url: string;
 }
 
 export interface ExecutionArtifactRecord {
@@ -409,6 +419,7 @@ export interface ExecutionRecord {
   atom_executions: AtomExecutionRecord[];
   artifacts: ExecutionArtifactRecord[];
   artifact_count?: number;
+  downloadable_artifacts?: DownloadableArtifact[];
   pending_approval_count?: number;
   actionable_approval_ids?: string[];
   waiting_node_summary?: string;

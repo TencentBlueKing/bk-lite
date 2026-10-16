@@ -240,6 +240,47 @@ def _widget_height(item: dict) -> int:
     return height
 
 
+_COMPACT_CHARTS = frozenset({"single", "gauge"})
+_COMPACT_HEIGHT = 3
+_CHART_HEIGHT = 4
+_MIN_KEPT_HEIGHT = 2
+_MAX_KEPT_HEIGHT = 20
+
+
+def moderate_widget_heights(layout: list[dict]) -> list[dict]:
+    """没给高度或超出范围时用默认值。范围内的高度保留，方便按用户指定调整。"""
+    items = []
+    for item in layout:
+        if not isinstance(item, dict):
+            items.append(item)
+            continue
+        copied = dict(item)
+        config = copied.get("valueConfig") if isinstance(copied.get("valueConfig"), dict) else {}
+        chart = str(config.get("chartType") or "")
+        height = _layout_int(copied.get("h"))
+        if height is None or height < _MIN_KEPT_HEIGHT or height > _MAX_KEPT_HEIGHT:
+            copied["h"] = _COMPACT_HEIGHT if chart in _COMPACT_CHARTS else _CHART_HEIGHT
+        else:
+            copied["h"] = height
+        items.append(copied)
+    rows: dict[int, list[int]] = {}
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        y = _layout_int(item.get("y"))
+        if y is None or _layout_int(item.get("x")) is None:
+            continue
+        rows.setdefault(y, []).append(index)
+    cursor = 0
+    for y in sorted(rows):
+        indexes = rows[y]
+        row_h = max(int(items[index]["h"]) for index in indexes)
+        for index in indexes:
+            items[index]["y"] = cursor
+        cursor += row_h
+    return items
+
+
 def _spans_overlap(origin: int, size: int, other_origin: int, other_size: int) -> bool:
     return origin < other_origin + other_size and other_origin < origin + size
 

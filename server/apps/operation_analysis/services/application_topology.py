@@ -80,13 +80,13 @@ class ApplicationTopologyService:
     def _fetch_monitor_ids(cls, inst_uuids: list[str], user_info: dict, inst_uuid: str) -> list[dict]:
         items: list[dict] = []
         for chunk in _chunks(inst_uuids, _MONITOR_ID_CHUNK):
-            result = cls._call_source(
+            result = cls._call_overlay(
                 "monitor_ids",
                 inst_uuid,
                 lambda: CMDB().get_monitor_ids_by_inst_uuids(inst_uuids=chunk, user_info=user_info),
             )
-            if not isinstance(result, dict) or result.get("result") is not True:
-                cls._raise_nats_false_result("monitor_ids", inst_uuid)
+            if result is None:
+                break
             data = result.get("data") if isinstance(result.get("data"), dict) else {}
             items.extend(item for item in data.get("items") or [] if isinstance(item, dict))
         return items
@@ -106,7 +106,7 @@ class ApplicationTopologyService:
             monitor_ids.append(monitor_id)
         summaries: list[dict] = []
         for chunk in _chunks(monitor_ids, _MONITOR_ID_CHUNK):
-            result = cls._call_source(
+            result = cls._call_overlay(
                 "active_alerts",
                 inst_uuid,
                 lambda: Monitor().ingest_client.run(
@@ -115,8 +115,8 @@ class ApplicationTopologyService:
                     user_info=user_info,
                 ),
             )
-            if not isinstance(result, dict) or result.get("result") is not True:
-                cls._raise_nats_false_result("active_alerts", inst_uuid)
+            if result is None:
+                break
             data = result.get("data") if isinstance(result.get("data"), dict) else {}
             summaries.extend(item for item in data.get("instance_summaries") or [] if isinstance(item, dict))
         return summaries
@@ -171,13 +171,30 @@ class ApplicationTopologyService:
             raise ApplicationTopologyError("source_failure") from exc
 
     @classmethod
-    def _raise_nats_false_result(cls, failed_stage: str, inst_uuid: str) -> None:
+    def _call_overlay(cls, failed_stage: str, inst_uuid: str, call):
+        """拓扑之后的监控映射和活跃告警失败只记日志，不挡住已经取到的图。"""
+        try:
+            result = call()
+        except Exception as exc:
+            cls._log_source_failure(failed_stage, inst_uuid, exc)
+            return None
+        if not isinstance(result, dict) or result.get("result") is not True:
+            cls._log_nats_false_result(failed_stage, inst_uuid)
+            return None
+        return result
+
+    @classmethod
+    def _log_nats_false_result(cls, failed_stage: str, inst_uuid: str) -> None:
         logger.error(
             "event=application_topology_source_failed failed_stage=%s error_type=%s inst_uuid=%s",
             failed_stage,
             "NatsResultFalse",
             inst_uuid,
         )
+
+    @classmethod
+    def _raise_nats_false_result(cls, failed_stage: str, inst_uuid: str) -> None:
+        cls._log_nats_false_result(failed_stage, inst_uuid)
         raise ApplicationTopologyError("source_failure")
 
     @staticmethod

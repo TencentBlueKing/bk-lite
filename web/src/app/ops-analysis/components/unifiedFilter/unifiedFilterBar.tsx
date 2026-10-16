@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { Input, InputNumber, Button, ConfigProvider } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -10,6 +10,9 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
+import { useFilterOptionLabelStore } from '@/app/ops-analysis/context/filterTemplate';
+import { createFilterOptionLabelStore } from '@/app/ops-analysis/context/filterOptionLabelStore';
+import { mapOptionLabels } from '@/app/ops-analysis/utils/filterTemplate';
 import { normalizeInputConfig, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import { isMultipleSelectInputConfig } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 import type {
@@ -50,6 +53,8 @@ interface UnifiedFilterBarProps {
   popupZIndex?: number;
 }
 
+const EMPTY_LABEL_STORE = createFilterOptionLabelStore();
+
 const toFilterValue = (value: number | number[] | undefined): FilterValue => {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
@@ -73,6 +78,12 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   popupZIndex,
 }) => {
   const { t } = useTranslation();
+  const labelStore = useFilterOptionLabelStore();
+  const labelSnapshot = useSyncExternalStore(
+    labelStore?.subscribe ?? EMPTY_LABEL_STORE.subscribe,
+    labelStore?.getSnapshot ?? EMPTY_LABEL_STORE.getSnapshot,
+    labelStore?.getServerSnapshot ?? EMPTY_LABEL_STORE.getServerSnapshot,
+  );
   const shareMode = useShareMode();
   const shareOrganization = useShareOrganization();
   const organizationSeed = useShareOrganizationSeed();
@@ -93,10 +104,19 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   const enabledDefinitions = definitions
     .filter((d) => d.enabled)
     .sort((a, b) => a.order - b.order);
+  const coveredFilterKey = enabledDefinitions
+    .filter(isDynamicOptionFilter)
+    .map((definition) => definition.id)
+    .join('\0');
 
   useEffect(() => {
     setLocalValues(values);
   }, [values]);
+
+  useLayoutEffect(() => {
+    if (!labelStore) return undefined;
+    return labelStore.claim(coveredFilterKey ? coveredFilterKey.split('\0') : []);
+  }, [coveredFilterKey, labelStore]);
 
   if (enabledDefinitions.length === 0 && !prefixContent) {
     return null;
@@ -315,7 +335,22 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             inputConfig={inputConfig}
             fallback={fallbackInput}
             value={controlValue}
-            onOptionsResolved={(options) => reconcileFilterOptions(definition.id, options)}
+            optionsNotifyKey={
+              isDynamicOptionFilter(definition)
+                ? String(labelSnapshot.revisions[definition.id] ?? 0)
+                : undefined
+            }
+            onOptionsFailed={() => {
+              if (isDynamicOptionFilter(definition)) {
+                labelStore?.publish(definition.id, {});
+              }
+            }}
+            onOptionsResolved={(options) => {
+              if (isDynamicOptionFilter(definition)) {
+                labelStore?.publish(definition.id, mapOptionLabels(options));
+              }
+              reconcileFilterOptions(definition.id, options);
+            }}
             onChange={(nextValue) => {
               if (isMultiple) {
                 if (Array.isArray(nextValue)) {

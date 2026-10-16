@@ -10,7 +10,14 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
-from apps.apm.adapters import SystemMgmtNotificationDispatcher, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore, telemetry_error_payload
+from apps.apm.adapters import (
+    SystemMgmtNotificationDispatcher,
+    TelemetryQueryTooLarge,
+    TelemetryStoreUnavailable,
+    VictoriaTracesTelemetryStore,
+    telemetry_error_payload,
+)
+from apps.apm.adapters.errors import QUERY_TOO_LARGE_CODE, TELEMETRY_UNAVAILABLE_CODE
 from apps.apm.models import (
     ApmAlert,
     ApmAlertOutbox,
@@ -18,8 +25,8 @@ from apps.apm.models import (
     ApmApplicationOrganization,
     ApmEventSnapshot,
     ApmPolicy,
-    ApmPolicyOrganization,
     ApmPolicyNotificationTarget,
+    ApmPolicyOrganization,
     ApmService,
     ApmServiceInstance,
     ApmServiceInstanceOrganization,
@@ -28,7 +35,6 @@ from apps.apm.models import (
 )
 from apps.apm.pagination import ApmCatalogPagination
 from apps.apm.renderers import ApmRenderer
-from apps.apm.utils.locale_text import public_detail, request_text
 from apps.apm.serializers import (
     ApmAlertAssignSerializer,
     ApmAlertQuerySerializer,
@@ -65,12 +71,19 @@ from apps.apm.services import (
     DjangoTelemetryQueryService,
     NotificationChannelDirectory,
 )
+from apps.apm.services.access import (
+    current_organization_id,
+    filter_current_organization,
+    scope_catalog_queryset,
+    validate_assignable_organizations,
+    visible_organization_ids,
+)
 from apps.apm.services.alerts import AlertHandlerConflict, AlertHandlerForbidden, AlertHandlerInvalid
-from apps.apm.services.access import current_organization_id, filter_current_organization, scope_catalog_queryset, validate_assignable_organizations, visible_organization_ids
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS, ProbeArtifactNotFound
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
+from apps.apm.utils.locale_text import public_detail, request_text
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.user_group import normalize_user_group_ids
@@ -179,8 +192,10 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
     service = DjangoApmApplicationService()
 
     def get_queryset(self) -> QuerySet[ApmApplication]:
-        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(service_count=Count("services", distinct=True)).filter(
-            is_builtin=False
+        queryset = (
+            ApmApplication.objects.prefetch_related("organization_links")
+            .annotate(service_count=Count("services", distinct=True))
+            .filter(is_builtin=False)
         )
         return scope_catalog_queryset(
             queryset,
@@ -599,6 +614,50 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
             }
         )
 
+    @action(methods=("get",), detail=True, url_path="client-rollups")
+    @HasPermission("services-View")
+    def client_rollups(self, request, *args, **kwargs):
+        service = self.get_object()
+        serializer = ServiceMetricQuerySerializer(data=request.query_params, context={"request": request})
+        if not serializer.is_valid():
+            return Response(
+                {"code": "invalid_query", "detail": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = serializer.validated_data
+        try:
+            rows = VictoriaTracesTelemetryStore().client_db_rollups(
+                service.namespace,
+                service.name,
+                data["environment"],
+                data["started_at"],
+                data["ended_at"],
+            )
+        except ValueError:
+            return Response(
+                {"code": "invalid_query", "detail": "invalid_query"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except TelemetryQueryTooLarge:
+            return Response(
+                {"code": QUERY_TOO_LARGE_CODE, "detail": "query_too_large"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except TelemetryStoreUnavailable:
+            return Response(
+                {"code": TELEMETRY_UNAVAILABLE_CODE, "detail": "telemetry_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(
+            {
+                "service_id": str(service.id),
+                "environment": data["environment"],
+                "started_at": data["started_at"],
+                "ended_at": data["ended_at"],
+                "rows": rows,
+            }
+        )
+
 
 class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
     renderer_classes = (ApmRenderer,)
@@ -722,12 +781,7 @@ class ApmSloViewSet(viewsets.GenericViewSet):
         service = self._service()
         evaluated_at = timezone.now()
         evaluations = service.evaluate_many(slos, evaluated_at=evaluated_at)
-        return Response(
-            [
-                self._serialize(slo, evaluation=evaluations.get(slo.id), evaluated_at=evaluated_at, service=service)
-                for slo in slos
-            ]
-        )
+        return Response([self._serialize(slo, evaluation=evaluations.get(slo.id), evaluated_at=evaluated_at, service=service) for slo in slos])
 
     @HasPermission("services-View")
     def retrieve(self, request, *args, **kwargs):

@@ -5,6 +5,7 @@ import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { acceptPreviewRawWrite } from '@/app/ops-analysis/utils/interactionSample';
 import {
   extractComparableValue,
   toComparableNumber,
@@ -342,5 +343,49 @@ describe('Cloud cost empty payloads must not fail report render', () => {
       ]),
     );
     expect(signal?.type).toBe('report-ready');
+  });
+
+  it('keeps the fetch ticket on later preview writes after the widget ticket changes', async () => {
+    const payload = [{ name: 'east', value: 1 }];
+    testState.payload = payload;
+    const ticket = { widgetId: 'line-ticket', sequence: 1 };
+    const switched = { widgetId: 'line-ticket', sequence: 2 };
+    const onRawData = vi.fn();
+    const view = render(
+      <WidgetWrapper
+        dashboardId="cloud-cost"
+        widgetId="line-ticket"
+        chartType="line"
+        config={{ dataSource: datasource.id }}
+        dataSource={datasource}
+        sampleTicket={ticket}
+        onRawData={onRawData}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onRawData).toHaveBeenCalledWith(payload, ticket);
+    });
+
+    onRawData.mockClear();
+    const staleWrite = vi.fn();
+    view.rerender(
+      <WidgetWrapper
+        dashboardId="cloud-cost"
+        widgetId="line-ticket"
+        chartType="line"
+        config={{ dataSource: datasource.id }}
+        dataSource={datasource}
+        sampleTicket={switched}
+        onRawData={staleWrite}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(staleWrite).toHaveBeenCalledWith(payload, ticket);
+    });
+    expect(staleWrite.mock.calls.every((call) => call[1] === ticket)).toBe(true);
+    expect(acceptPreviewRawWrite(switched, ticket)).toBe(false);
+    expect(acceptPreviewRawWrite(ticket, ticket)).toBe(true);
   });
 });

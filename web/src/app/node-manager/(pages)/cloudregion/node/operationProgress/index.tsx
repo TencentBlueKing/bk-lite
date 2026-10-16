@@ -6,6 +6,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ClockCircleOutlined,
+  ReloadOutlined,
   SyncOutlined,
   ExclamationCircleFilled
 } from '@ant-design/icons';
@@ -701,6 +702,15 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     }, getPollingInterval(rows));
   };
 
+  const handleManualRefresh = () => {
+    const generation = requestGenerationRef.current;
+    if (!requestGuardRef.current.shouldContinue(generation)) {
+      restartPolling();
+      return;
+    }
+    getNodeList('refresh', generation);
+  };
+
   // 重新启动轮询（重试成功后调用）
   const restartPolling = () => {
     requestGenerationRef.current = requestGuardRef.current.begin();
@@ -1131,7 +1141,17 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
   return (
     <div>
       <div>
-        <div className="mb-[10px] font-bold">{mergedTextConfig.listTitle}</div>
+        <div className="mb-[10px] flex items-center justify-between">
+          <div className="font-bold">{mergedTextConfig.listTitle}</div>
+          <Tooltip title={t('common.refresh')}>
+            <Button
+              type="text"
+              aria-label={t('common.refresh')}
+              icon={<ReloadOutlined spin={pageLoading} />}
+              onClick={handleManualRefresh}
+            />
+          </Tooltip>
+        </div>
         {controllerInstallSummary && (
           <Alert
             className="mb-[12px]"
@@ -1182,7 +1202,12 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           {mergedTextConfig.finishButton}
         </Button>
       </div>
-      <InstallGuidance ref={guidance} onClose={handleGuidanceClose} />
+      <InstallGuidance
+        ref={guidance}
+        refreshing={pageLoading}
+        onRefresh={handleManualRefresh}
+        onClose={handleGuidanceClose}
+      />
       {isInstallController && (
         <>
           <RetryInstallModal

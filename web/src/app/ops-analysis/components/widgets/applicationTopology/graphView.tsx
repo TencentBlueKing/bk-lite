@@ -18,7 +18,6 @@ import { getIconUrl } from '@/app/cmdb/utils/modelIcon';
 import { relatedTopologyCanvasStyle } from '@/app/ops-analysis/components/widgets/relatedTopology/visual';
 import {
   APPLICATION_TOPOLOGY_NODE,
-  applicationTopologyToneColor,
   buildApplicationTopologyLayout,
   resolveApplicationTopologyHover,
   type ApplicationTopologyBandNode,
@@ -37,6 +36,8 @@ import {
   applicationTopologyChromeScale,
   applicationTopologyLabelRailWidth,
   fitApplicationTopologyLayers,
+  resolveApplicationTopologyLaneWidth,
+  resolveApplicationTopologyViewportBox,
   zoomApplicationTopologyAt,
 } from './viewport';
 
@@ -65,6 +66,13 @@ const LAYER_ICON: Record<ApplicationTopologyBandNode['layer'], typeof AppstoreOu
 };
 
 const HOVER_COLOR = 'color-mix(in srgb, var(--color-primary) 72%, var(--color-bg))';
+/** 与 CMDB 应用拓扑的 rounded connector 相同，只圆角、不改走线。 */
+const EDGE_CORNER_RADIUS = 10;
+/**
+ * 大屏把 --color-text-3 / --color-border-3 重写成半透明色。
+ * 沿用 CMDB 的 color-mix 会在深色底上发虚，这里用实色。
+ */
+const SCREEN_EDGE_STROKE = '#A9C3D6';
 /** 悬停时未点亮的节点、线和关系文字只略微退后，仍能辨认。 */
 const HOVER_MUTE_OPACITY = 0.55;
 
@@ -80,7 +88,7 @@ const CATEGORY_LABEL_KEY: Record<string, string> = {
   other: 'dashboard.applicationTopologyGroupOther',
 };
 
-/** 方案 B：节点底色压暗，告警仍染在边框和底色上。 */
+/** 未告警节点保持这套深色；告警才换边框和底色。 */
 const NODE_PALETTE = {
   background: '#18344E',
   border: '#45617E',
@@ -89,18 +97,36 @@ const NODE_PALETTE = {
   selected: '#38BDF8',
 } as const;
 
+/** 图例和节点角标。正常、告警、未接入都用实心圆，不用整块染色。 */
+const STATUS_MARK: Record<ApplicationTopologyTone, string> = {
+  normal: '#22C55E',
+  warning: '#F59E0B',
+  error: '#D97007',
+  critical: '#EF4444',
+  unknown: '#94A3B8',
+};
+
+const ALERT_SURFACE: Record<'warning' | 'error' | 'critical', { borderColor: string; background: string }> = {
+  warning: { borderColor: '#A66A2E', background: '#302B29' },
+  // 图里没有错误档，沿用同一套暗底加色边，角标仍用监控的错误色。
+  error: { borderColor: '#A56A32', background: '#32281F' },
+  critical: { borderColor: '#B84B57', background: '#33252F' },
+};
+
 const toneSurfaceStyle = (tone: ApplicationTopologyTone) => {
-  if (tone === 'unknown') {
+  if (tone === 'normal') {
     return {
       borderColor: NODE_PALETTE.border,
       background: NODE_PALETTE.background,
     };
   }
-  const color = applicationTopologyToneColor(tone);
-  return {
-    borderColor: `color-mix(in srgb, ${color} 72%, ${NODE_PALETTE.border})`,
-    background: `color-mix(in srgb, ${color} 16%, ${NODE_PALETTE.background})`,
-  };
+  if (tone === 'unknown') {
+    return {
+      borderColor: '#485A6C',
+      background: NODE_PALETTE.background,
+    };
+  }
+  return ALERT_SURFACE[tone];
 };
 
 export const applicationTopologySurfaceStyle = (usesScreenTheme: boolean) =>
@@ -114,6 +140,8 @@ interface ApplicationTopologyGraphViewProps {
   links: ApplicationTopologySourceLink[];
   usesScreenTheme: boolean;
   shareMode: boolean;
+  screenScaleX?: number;
+  screenScaleY?: number;
   onRefresh?: () => void;
 }
 
@@ -123,6 +151,8 @@ const ApplicationTopologyGraphView = ({
   links,
   usesScreenTheme,
   shareMode,
+  screenScaleX,
+  screenScaleY,
   onRefresh,
 }: ApplicationTopologyGraphViewProps) => {
   const { t } = useTranslation();
@@ -130,26 +160,66 @@ const ApplicationTopologyGraphView = ({
   const viewportRef = useRef<HTMLDivElement>(null);
   const userAdjustedRef = useRef(false);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
-  const [laneWidth, setLaneWidth] = useState(720);
+  const [viewport, setViewport] = useState(() => resolveApplicationTopologyViewportBox({
+    contentWidth: 720,
+    contentHeight: 480,
+    visualWidth: 720,
+    visualHeight: 480,
+  }));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const [hover, setHover] = useState<ApplicationTopologyHover>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = viewportRef.current;
     if (!element) return;
-    const observer = new ResizeObserver((entries) => {
-      const next = entries[0]?.contentRect.width;
-      if (next && next > 0) setLaneWidth(next);
-    });
+    const measure = () => {
+      const contentWidth = element.clientWidth;
+      const contentHeight = element.clientHeight;
+      if (contentWidth <= 0 || contentHeight <= 0) return;
+      const rect = element.getBoundingClientRect();
+      const next = resolveApplicationTopologyViewportBox({
+        contentWidth,
+        contentHeight,
+        visualWidth: rect.width,
+        visualHeight: rect.height,
+      });
+      setViewport((current) => {
+        if (
+          Math.abs(current.visualWidth - next.visualWidth) < 1
+          && Math.abs(current.visualHeight - next.visualHeight) < 1
+          && Math.abs(current.contentScaleX - next.contentScaleX) < 0.001
+          && Math.abs(current.contentScaleY - next.contentScaleY) < 0.001
+        ) {
+          return current;
+        }
+        userAdjustedRef.current = false;
+        return next;
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [screenScaleX, screenScaleY]);
 
-  const layout = useMemo(
-    () => buildApplicationTopologyLayout({ centerId, nodes, links, laneWidth }),
-    [centerId, nodes, links, laneWidth],
-  );
+  const layout = useMemo(() => {
+    const laneWidth = resolveApplicationTopologyLaneWidth({
+      viewportWidth: viewport.visualWidth,
+      viewportHeight: viewport.visualHeight,
+      labelRailWidth: applicationTopologyLabelRailWidth(1),
+      measure: (nextLane) => {
+        const measured = buildApplicationTopologyLayout({
+          centerId,
+          nodes,
+          links,
+          laneWidth: nextLane,
+        });
+        return { width: measured.width, height: measured.height };
+      },
+    });
+    return buildApplicationTopologyLayout({ centerId, nodes, links, laneWidth });
+  }, [centerId, links, nodes, viewport.visualHeight, viewport.visualWidth]);
   const structureKey = `${centerId}|${layout.nodes.map((node) => node.id).join(',')}`;
   const structureRef = useRef(structureKey);
   if (structureRef.current !== structureKey) {
@@ -165,27 +235,14 @@ const ApplicationTopologyGraphView = ({
   const muteRest = hover !== null;
 
   const fitView = useCallback(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const nodeRight = layout.nodes.reduce(
-      (right, node) => Math.max(right, node.x + APPLICATION_TOPOLOGY_NODE.width),
-      0,
-    );
-    const nodeLeft = layout.nodes.reduce(
-      (left, node) => Math.min(left, node.x),
-      nodeRight,
-    );
-    const clusterPad = 8;
-    const clusterX = Math.max(0, nodeLeft - clusterPad);
-    const clusterWidth = Math.max(1, nodeRight - nodeLeft + clusterPad * 2);
     let rail = applicationTopologyLabelRailWidth(1);
     let next = { scale: 1, x: 0, y: 0 };
     for (let pass = 0; pass < 4; pass += 1) {
       next = fitApplicationTopologyLayers({
-        viewportWidth: viewport.clientWidth,
-        viewportHeight: viewport.clientHeight,
-        clusterX,
-        clusterWidth,
+        viewportWidth: viewport.visualWidth,
+        viewportHeight: viewport.visualHeight,
+        clusterX: 0,
+        clusterWidth: layout.width,
         layerHeight: layout.height,
         labelRailWidth: rail,
         labelGap: APPLICATION_TOPOLOGY_LABEL_GAP,
@@ -204,7 +261,7 @@ const ApplicationTopologyGraphView = ({
       }
       return { scale: next.scale, x: next.x, y: next.y };
     });
-  }, [layout.height, layout.nodes]);
+  }, [layout.height, layout.width, viewport.visualHeight, viewport.visualWidth]);
 
   useLayoutEffect(() => {
     if (userAdjustedRef.current) return;
@@ -234,11 +291,9 @@ const ApplicationTopologyGraphView = ({
   }, []);
 
   const zoomBy = (delta: number) => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
     userAdjustedRef.current = true;
-    const pointerX = viewport.clientWidth / 2;
-    const pointerY = viewport.clientHeight / 2;
+    const pointerX = viewport.visualWidth / 2;
+    const pointerY = viewport.visualHeight / 2;
     setView((current) => zoomApplicationTopologyAt({
       scale: current.scale,
       x: current.x,
@@ -266,7 +321,6 @@ const ApplicationTopologyGraphView = ({
   const chromeScale = applicationTopologyChromeScale(view.scale);
   const labelRail = applicationTopologyLabelRailWidth(view.scale);
   const nodeTitleSize = APPLICATION_TOPOLOGY_NODE_TITLE_FONT * view.scale;
-  const legendFont = nodeTitleSize;
   const layerTitleSize = nodeTitleSize;
   const layerCountSize = 14 * chromeScale;
   const layerIconBox = 28 * chromeScale;
@@ -292,7 +346,7 @@ const ApplicationTopologyGraphView = ({
 
   return (
     <div
-      className="group relative flex h-full min-h-[280px] min-w-0 flex-col"
+      className="group relative flex h-full min-h-[280px] min-w-0 flex-col overflow-hidden"
       style={applicationTopologySurfaceStyle(usesScreenTheme)}
     >
       <div
@@ -300,14 +354,14 @@ const ApplicationTopologyGraphView = ({
           usesScreenTheme ? 'bg-transparent' : 'border-b border-(--color-border-1) bg-(--color-bg)/90'
         }`}
         style={{
-          fontSize: legendFont,
-          paddingLeft: Math.max(12, labelLeft),
+          fontSize: APPLICATION_TOPOLOGY_LEGEND_FONT,
+          paddingLeft: Math.max(12, labelLeft * viewport.contentScaleX),
         }}
       >
-        <Legend tone="critical" label={t('dashboard.applicationTopologyCritical')} scale={legendFont / APPLICATION_TOPOLOGY_LEGEND_FONT} />
-        <Legend tone="warning" label={t('dashboard.applicationTopologyWarning')} scale={legendFont / APPLICATION_TOPOLOGY_LEGEND_FONT} />
-        <Legend tone="normal" label={t('dashboard.applicationTopologyNormal')} scale={legendFont / APPLICATION_TOPOLOGY_LEGEND_FONT} />
-        <Legend tone="unknown" label={t('dashboard.applicationTopologyUnmonitored')} scale={legendFont / APPLICATION_TOPOLOGY_LEGEND_FONT} />
+        <Legend tone="critical" label={t('dashboard.applicationTopologyCritical')} />
+        <Legend tone="warning" label={t('dashboard.applicationTopologyWarning')} />
+        <Legend tone="normal" label={t('dashboard.applicationTopologyNormal')} />
+        <Legend tone="unknown" label={t('dashboard.applicationTopologyUnmonitored')} />
       </div>
       <div className="pointer-events-none absolute top-2.5 right-2.5 z-20 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
         <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-(--color-border-2) bg-[color-mix(in_srgb,var(--color-bg-1)_92%,transparent)] p-1 shadow-sm">
@@ -354,7 +408,43 @@ const ApplicationTopologyGraphView = ({
           ) : null}
         </div>
       </div>
-      <div className="relative flex min-h-0 flex-1">
+      <div
+        ref={viewportRef}
+        className="relative min-h-0 flex-1 overflow-hidden"
+        onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest('button')) return;
+          dragRef.current = {
+            x: event.clientX,
+            y: event.clientY,
+            ox: view.x,
+            oy: view.y,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = dragRef.current;
+          if (!drag) return;
+          userAdjustedRef.current = true;
+          setView((current) => ({
+            ...current,
+            x: drag.ox + event.clientX - drag.x,
+            y: drag.oy + event.clientY - drag.y,
+          }));
+        }}
+        onPointerUp={() => {
+          dragRef.current = null;
+        }}
+      >
+      <div
+        className="absolute top-0 left-0 overflow-hidden"
+        style={{
+          width: viewport.visualWidth,
+          height: viewport.visualHeight,
+          transform: `scale(${viewport.contentScaleX}, ${viewport.contentScaleY})`,
+          transformOrigin: 'top left',
+        }}
+      >
+      <div className="relative h-full w-full">
       <div
         className="pointer-events-none absolute top-0 bottom-0 z-[3]"
         style={{ left: labelLeft, width: labelRail }}
@@ -395,39 +485,17 @@ const ApplicationTopologyGraphView = ({
           );
         })}
       </div>
-      <div
-        ref={viewportRef}
-        className="relative h-full min-w-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
-        onPointerDown={(event) => {
-          if ((event.target as HTMLElement).closest('button')) return;
-          dragRef.current = {
-            x: event.clientX,
-            y: event.clientY,
-            ox: view.x,
-            oy: view.y,
-          };
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }}
-        onPointerMove={(event) => {
-          const drag = dragRef.current;
-          if (!drag) return;
-          userAdjustedRef.current = true;
-          setView((current) => ({
-            ...current,
-            x: drag.ox + event.clientX - drag.x,
-            y: drag.oy + event.clientY - drag.y,
-          }));
-        }}
-        onPointerUp={() => {
-          dragRef.current = null;
-        }}
-      >
+      <div className="relative h-full w-full cursor-grab overflow-hidden active:cursor-grabbing">
         <div
-          className="relative z-[1] origin-top-left"
+          className="absolute z-[1]"
+          style={{ left: view.x, top: view.y }}
+        >
+        <div
+          className="origin-top-left overflow-hidden"
           style={{
             width: layout.width,
             height: layout.height,
-            transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+            zoom: view.scale,
           }}
         >
           {layout.bands.map((band) => (
@@ -439,8 +507,8 @@ const ApplicationTopologyGraphView = ({
                 width: layout.width,
                 top: band.top,
                 height: band.height,
-                background: '#10283E',
-                border: '1px solid rgba(90, 124, 156, 0.38)',
+                background: 'rgba(16, 40, 62, 0.62)',
+                border: '1px solid rgba(90, 124, 156, 0.24)',
               }}
             />
           ))}
@@ -449,7 +517,10 @@ const ApplicationTopologyGraphView = ({
             width={layout.width}
             height={layout.height}
           >
-            <EdgeMarkers markerId={markerId} color="var(--color-text-3)" />
+            <EdgeMarkers
+              markerId={markerId}
+              color={usesScreenTheme ? SCREEN_EDGE_STROKE : 'var(--color-text-3)'}
+            />
             <LineGapMask markerId={markerId} edges={layout.edges} width={layout.width} height={layout.height} />
             {layout.edges.map((edge) => {
               const active = hoverFocus.edgeIds.has(edge.id);
@@ -473,9 +544,13 @@ const ApplicationTopologyGraphView = ({
                   <path
                     d={path}
                     fill="none"
-                    stroke="color-mix(in srgb, var(--color-text-3) 65%, var(--color-border-3))"
+                    stroke={usesScreenTheme
+                      ? SCREEN_EDGE_STROKE
+                      : 'color-mix(in srgb, var(--color-text-3) 65%, var(--color-border-3))'}
                     strokeWidth={1.35}
-                    strokeOpacity={active ? 0.2 : 0.78}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeOpacity={active ? 0.2 : (usesScreenTheme ? 1 : 0.78)}
                     opacity={muteRest && !active ? HOVER_MUTE_OPACITY : 1}
                     mask={`url(#${markerId}-line-gap)`}
                     markerEnd={edge.markerEnd ? `url(#${markerId}-end)` : undefined}
@@ -581,18 +656,14 @@ const ApplicationTopologyGraphView = ({
                     {node.modelId} · {t(CATEGORY_LABEL_KEY[node.category] || CATEGORY_LABEL_KEY.other)}
                   </span>
                 </span>
-                {node.badge ? (
-                  <span
-                    className="absolute -top-2 -right-2 min-w-5 rounded-full px-1 text-center text-[10px] leading-4 text-white"
-                    style={{ backgroundColor: applicationTopologyToneColor(node.tone) }}
-                  >
-                    {node.badge}
-                  </span>
-                ) : null}
+                <StatusMark tone={node.tone} badge={node.badge} />
               </button>
             );
           })}
         </div>
+        </div>
+      </div>
+      </div>
       </div>
       </div>
       {selected ? (
@@ -608,7 +679,40 @@ const ApplicationTopologyGraphView = ({
 };
 
 const edgePath = (edge: ApplicationTopologyEdge) =>
-  edge.points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x} ${point.y}`).join(' ');
+  roundedPolyline(edge.points, EDGE_CORNER_RADIUS);
+
+/** 两点保持直线；折点按给定半径倒角，对应 CMDB 的 rounded connector。 */
+const roundedPolyline = (
+  points: Array<{ x: number; y: number }>,
+  radius: number,
+) => {
+  if (points.length < 2) return '';
+  const [first] = points;
+  let path = `M${first.x} ${first.y}`;
+  if (points.length === 2) {
+    const last = points[1];
+    return `${path} L${last.x} ${last.y}`;
+  }
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const inLength = Math.hypot(current.x - previous.x, current.y - previous.y);
+    const outLength = Math.hypot(next.x - current.x, next.y - current.y);
+    const corner = Math.min(radius, inLength / 2, outLength / 2);
+    if (inLength < 1 || outLength < 1 || corner < 0.5) {
+      path += ` L${current.x} ${current.y}`;
+      continue;
+    }
+    const inX = current.x - ((current.x - previous.x) / inLength) * corner;
+    const inY = current.y - ((current.y - previous.y) / inLength) * corner;
+    const outX = current.x + ((next.x - current.x) / outLength) * corner;
+    const outY = current.y + ((next.y - current.y) / outLength) * corner;
+    path += ` L${inX} ${inY} Q${current.x} ${current.y} ${outX} ${outY}`;
+  }
+  const last = points[points.length - 1];
+  return `${path} L${last.x} ${last.y}`;
+};
 
 const EdgeMarkers = ({ markerId, color }: { markerId: string; color: string }) => (
   <defs>
@@ -761,23 +865,44 @@ const polylineMidpoint = (points: Array<{ x: number; y: number }>) => {
   return points[points.length - 1];
 };
 
+const StatusMark = ({
+  tone,
+  badge,
+}: {
+  tone: ApplicationTopologyTone;
+  badge: string | null;
+}) => {
+  if (badge) {
+    return (
+      <span
+        className="absolute -top-2 -right-2 min-w-5 rounded-full px-1 text-center text-[10px] leading-4 text-white"
+        style={{ backgroundColor: STATUS_MARK[tone] }}
+      >
+        {badge}
+      </span>
+    );
+  }
+  if (tone !== 'normal') return null;
+  return (
+    <span
+      className="pointer-events-none absolute top-1.5 right-1.5 h-2 w-2 rounded-full"
+      style={{ backgroundColor: STATUS_MARK.normal }}
+      aria-hidden
+    />
+  );
+};
+
 const Legend = ({
   tone,
   label,
-  scale,
 }: {
   tone: ApplicationTopologyTone;
   label: string;
-  scale: number;
 }) => (
   <span className="inline-flex items-center gap-1.5">
     <span
-      className="inline-block rounded-sm border-2"
-      style={{
-        ...toneSurfaceStyle(tone),
-        width: 10 * scale,
-        height: 10 * scale,
-      }}
+      className="inline-block h-2 w-2 rounded-full"
+      style={{ backgroundColor: STATUS_MARK[tone] }}
     />
     {label}
   </span>

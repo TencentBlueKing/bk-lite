@@ -281,5 +281,8 @@ export const buildValueConfig = (
       valueConfig.nodeGraphTargetPortField = values.nodeGraphTargetPortField;
     }
   }
+  if (values.interaction) {
+    valueConfig.interaction = values.interaction;
+  }
   return valueConfig;
 };

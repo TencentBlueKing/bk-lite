@@ -1,9 +1,12 @@
 'use client';
 
 import React from 'react';
+import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
+import InteractionTitleIcon from '@/app/ops-analysis/components/interactionTitleIcon';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import type { ScreenWidgetFrame } from '@/app/ops-analysis/types/dashBoard';
 import { resolveScreenWidgetAppearance } from '../utils/layoutUtils';
+import { screenUniformTextProps } from './screenChromeSkins';
 
 interface ScreenWidgetFrameOptions {
   selected?: boolean;
@@ -54,6 +57,7 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   screenUiScale = 1,
   children,
 }) => {
+  const title = useFilterTemplateText(item.title);
   const appearance = resolveScreenWidgetAppearance(
     item.chartType,
     item.valueConfig?.appearance,
@@ -63,11 +67,11 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
 
   return (
     <section
-      className={getScreenWidgetFrameClassName(item, {
+      className={`relative ${getScreenWidgetFrameClassName(item, {
         selected,
         editMode,
         frame,
-      })}
+      })}`}
       style={{
         '--screen-widget-scale': screenDensity,
         '--screen-widget-ui-scale': screenUiScale,
@@ -78,9 +82,12 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
           key="header"
           className="screen-widget-frame__header screen-widget-frame__drag-handle"
         >
-          <span className="screen-widget-frame__title">
-            {item.title || item.chartType}
+          <span
+            {...screenUniformTextProps(undefined, undefined, 'screen-widget-frame__title')}
+          >
+            {title || item.chartType}
           </span>
+          <InteractionTitleIcon config={item.valueConfig} variant="screen" />
         </header>
       )}
       {isBare && editMode && (
