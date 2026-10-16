@@ -34,6 +34,22 @@ def _is_manual_channel(target: dict) -> bool:
     return target.get("deliveryMode") != "alert_event_copy" and target.get("recipientMode") != "none"
 
 
+def _is_alert_center_copy(target: dict) -> bool:
+    return target.get("deliveryMode") == "alert_event_copy"
+
+
+def _unix_seconds(value) -> str:
+    moment = value if isinstance(value, datetime) else parse_dt(value)
+    if moment is None:
+        moment = datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return str(int(moment.astimezone(timezone.utc).timestamp()))
+
+
+_COPY_ACTION = {"triggered": "created", "recovered": "recovery", "closed": "closed"}
+
+
 class RumAlertRuntime:
     def __init__(self, *, policies, alerts, analytics=None, dispatcher=None, now: Callable[[], datetime] | None = None, tenant_id: str = "core"):
         self.policies = policies
@@ -109,7 +125,7 @@ class RumAlertRuntime:
             alert["endedAt"] = stamp
             alert["lastEventAt"] = stamp
             saved = self.alerts.save_alert(alert)
-            self.alerts.add_event(
+            event = self.alerts.add_event(
                 {
                     "eventKey": f"{saved['id']}:closed:{uuid4().hex}",
                     "alertId": saved["id"],
@@ -121,6 +137,7 @@ class RumAlertRuntime:
                     "content": {"actor": operator, "action": "closed", "handlers": list(saved.get("handlers") or [])},
                 }
             )
+            self._enqueue(policy, saved, event, "closed", now, copy_only=True)
             return saved
 
     def deliver_due(self, now: datetime | None = None, limit: int = 100) -> dict:
@@ -306,7 +323,7 @@ class RumAlertRuntime:
         self._enqueue(policy, saved, None, "renotify", evaluated_at, manual_only=True)
         return "renotified"
 
-    def _enqueue(self, policy: dict, alert: dict, event: dict | None, action: str, evaluated_at: datetime, *, manual_only: bool) -> None:
+    def _enqueue(self, policy: dict, alert: dict, event: dict | None, action: str, evaluated_at: datetime, *, manual_only: bool = False, copy_only: bool = False) -> None:
         targets = list(policy.get("notificationTargets") or [])
         if not targets:
             return
@@ -315,6 +332,8 @@ class RumAlertRuntime:
         severity = alert.get("severity") or policy.get("severity") or "warning"
         for target in targets:
             if manual_only and not _is_manual_channel(target):
+                continue
+            if copy_only and not _is_alert_center_copy(target):
                 continue
             channel_id = target.get("channelId")
             if manual_only:
@@ -328,12 +347,14 @@ class RumAlertRuntime:
             recipients = [] if not _is_manual_channel(target) else [str(item) for item in target.get("recipients") or []]
             payload = {
                 "event_key": event_key,
-                "action": "created" if action == "triggered" else action,
+                "external_id": str(alert["id"]),
+                "action": _COPY_ACTION.get(action, action),
                 "severity": severity,
                 "level": LEVEL_TO_ALERT_CENTER.get(severity, "3"),
                 "title": title,
                 "description": body,
                 "value": alert.get("currentValue"),
+                "start_time": _unix_seconds(alert.get("startedAt")),
                 "resource_id": alert.get("application") or "",
                 "resource_type": "rum_application",
                 "resource_name": alert.get("application") or "",
@@ -343,6 +364,8 @@ class RumAlertRuntime:
                 "item": policy.get("metric") or "",
                 "alert_link": f"/rum/alert-events?event={alert['id']}",
             }
+            if action in {"recovered", "closed"}:
+                payload["end_time"] = _unix_seconds(evaluated_at)
             self.alerts.add_delivery(
                 {
                     "deliveryKey": key,

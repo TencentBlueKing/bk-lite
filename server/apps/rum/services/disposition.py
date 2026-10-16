@@ -106,7 +106,7 @@ class AlertDisposition:
             alert["operator"] = getattr(actor, "username", None) or _actor_id(actor)
         alert["lastEventAt"] = stamp
         saved = self.alerts.save_alert(alert)
-        self.alerts.add_event(
+        event = self.alerts.add_event(
             {
                 "eventKey": f"{saved['id']}:{action}:{uuid4().hex}",
                 "alertId": saved["id"],
@@ -118,7 +118,9 @@ class AlertDisposition:
                 "content": {"actor": alert["operator"], "action": action, "handlers": list(saved.get("handlers") or [])},
             }
         )
-        if action in {"assigned", "reassigned"}:
+        if action == "closed":
+            self._notify_alert_center(saved, event, now)
+        elif action in {"assigned", "reassigned"}:
             self._notify(saved, action, now)
         return saved
 
@@ -143,6 +145,14 @@ class AlertDisposition:
         if not resolved:
             raise ControlError("invalid_argument", "至少指定一名处理人")
         return resolved
+
+    def _notify_alert_center(self, alert: dict, event: dict, now: datetime) -> None:
+        policy = self.policies.get(alert.get("policyId") or "")
+        if policy is None:
+            return
+        from apps.rum.services.alert_runtime import RumAlertRuntime
+
+        RumAlertRuntime(policies=self.policies, alerts=self.alerts)._enqueue(policy, alert, event, "closed", now, copy_only=True)
 
     def _notify(self, alert: dict, action: str, now: datetime) -> None:
         policy = self.policies.get(alert.get("policyId") or "")

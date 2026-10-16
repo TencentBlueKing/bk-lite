@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -391,6 +392,10 @@ def test_alert_center_copy_uses_lite_rum_and_is_omitted_without_that_channel():
     assert delivery["payload"]["resource_name"] == "checkout"
     assert delivery["payload"]["level"] == "0"
     assert delivery["payload"]["severity"] == "critical"
+    assert delivery["payload"]["action"] == "created"
+    assert delivery["payload"]["external_id"] == next(iter(events.alerts))
+    assert delivery["payload"]["start_time"] == str(int(start.timestamp()))
+    assert "end_time" not in delivery["payload"]
 
     plain = service.create_monitor(
         "tester",
@@ -411,6 +416,49 @@ def test_alert_center_copy_uses_lite_rum_and_is_omitted_without_that_channel():
     assert client.kwargs["producer"] == "lite-rum"
     assert client.kwargs["internal_caller"] == "lite-rum"
     assert client.kwargs["event_payload"]["resource_type"] == "rum_application"
+
+
+def test_alert_center_copy_closes_on_recovery_manual_close_and_disable():
+    service, policies, events = _service()
+    targets = [
+        _channel(4, recipient_mode="free_text", recipients=["ops@example.test"]),
+        _channel(9, mode="alert_event_copy"),
+    ]
+    created = service.create_monitor("tester", _body(notificationTargets=targets), assignable_orgs={10})
+    start = datetime(2026, 10, 16, 8, 0, tzinfo=timezone.utc)
+    runtime = _runtime(policies, events, [0.5, 0.01])
+    runtime.evaluate_policy(created["id"], start)
+    alert = events.active_for_policy(created["id"])
+    runtime.evaluate_policy(created["id"], start + timedelta(minutes=1))
+    recovered = [
+        item
+        for item in events.list_deliveries(alert["id"])
+        if item["deliveryMode"] == "alert_event_copy" and item["payload"]["action"] == "recovery"
+    ]
+    assert len(recovered) == 1
+    assert recovered[0]["payload"]["external_id"] == alert["id"]
+    assert recovered[0]["payload"]["start_time"] == str(int(start.timestamp()))
+    assert recovered[0]["payload"]["end_time"] == str(int((start + timedelta(minutes=1)).timestamp()))
+
+    active_policy = service.create_monitor("tester", _body(name="still firing", notificationTargets=targets), assignable_orgs={10})
+    _runtime(policies, events, [0.5]).evaluate_policy(active_policy["id"], start)
+    active = events.active_for_policy(active_policy["id"])
+    messages_before = [item for item in events.list_deliveries(active["id"]) if item["deliveryMode"] == "message"]
+    service.close_alert(active["id"], SimpleNamespace(id=11, username="user-11"), visible_orgs={10})
+    deliveries = events.list_deliveries(active["id"])
+    closed = [item for item in deliveries if item["payload"].get("action") == "closed"]
+    assert [item["deliveryMode"] for item in closed] == ["alert_event_copy"]
+    assert closed[0]["payload"]["external_id"] == active["id"]
+    assert int(closed[0]["payload"]["end_time"]) >= int(closed[0]["payload"]["start_time"])
+    assert [item for item in deliveries if item["deliveryMode"] == "message"] == messages_before
+
+    disabled_policy = service.create_monitor("tester", _body(name="to disable", notificationTargets=targets), assignable_orgs={10})
+    _runtime(policies, events, [0.5]).evaluate_policy(disabled_policy["id"], start)
+    disabling = events.active_for_policy(disabled_policy["id"])
+    service.update_monitor("tester", disabled_policy["id"], {"enabled": False}, assignable_orgs={10}, visible_orgs={10})
+    system_closed = [item for item in events.list_deliveries(disabling["id"]) if item["payload"].get("action") == "closed"]
+    assert [item["deliveryMode"] for item in system_closed] == ["alert_event_copy"]
+    assert events.get_alert(disabling["id"])["operator"] == "system"
 
 
 def test_alert_list_filters_status_application_keyword_and_page():
