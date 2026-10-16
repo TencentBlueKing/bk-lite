@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { File as NodeFile } from 'node:buffer';
 import test from 'node:test';
 
 import React from 'react';
@@ -7,6 +8,16 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import type { Message } from '../packages/webchat-core/src/types';
 import { Chat, type ChatProps } from '../packages/webchat-ui/src/Chat';
 import { FloatingButton } from '../packages/webchat-ui/src/FloatingButton';
+
+// Node.js 18 没有全局 File，但该版本的 node:buffer 已提供兼容实现。
+// 仅在测试环境缺失时补齐，避免改变浏览器运行时行为。
+if (typeof globalThis.File === 'undefined') {
+  Object.defineProperty(globalThis, 'File', {
+    configurable: true,
+    value: NodeFile,
+    writable: true,
+  });
+}
 
 interface TestFile {
   arrayBuffer: () => Promise<ArrayBuffer>;
