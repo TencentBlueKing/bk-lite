@@ -1,13 +1,16 @@
 import copy
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import (
     CollectConfig,
     Metric,
     MonitorAlert,
+    MonitorInstance,
     MonitorInstanceOrganization,
     MonitorPolicy,
     PolicyGroup,
@@ -58,6 +61,7 @@ _POLICY_CLONE_FIELDS = (
 )
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.tasks.utils.policy_methods import source_has_dispatch_targets
+from apps.monitor.utils.dimension import normalize_instance_identity
 
 
 class PolicyGroupService:
@@ -194,6 +198,7 @@ class PolicyGroupService:
         membership.save(update_fields=["policy_group", "state", "updated_by", "updated_at"])
         if group:
             PolicyGroupService.sync_coverage(group)
+        PolicyGroupService._clear_instance_baselines(policy_ids, instance_id)
         PolicyGroupService._close_instance_alerts(policy_ids, instance_id, operator, "policy_group_member_left")
 
     @staticmethod
@@ -221,8 +226,19 @@ class PolicyGroupService:
         for rule in group.rules.select_related("policy"):
             after = set((rule.policy.source or {}).get("values") or [])
             if instance.id in before.get(rule.policy_id, set()) and instance.id not in after:
+                PolicyGroupService._clear_instance_baselines([rule.policy_id], instance.id)
                 PolicyGroupService._close_instance_alerts([rule.policy_id], instance.id, operator, "policy_group_member_left")
         return membership
+
+    @staticmethod
+    def _clear_instance_baselines(policy_ids, instance_id):
+        """离开规则覆盖后丢掉该实例的无数据基准，重新加入要重新看到数据才建立。"""
+        if not policy_ids or instance_id in (None, ""):
+            return
+        aliases = PolicyGroupService.instance_id_aliases(instance_id)
+        if not aliases:
+            return
+        PolicyInstanceBaseline.objects.filter(policy_id__in=policy_ids, monitor_instance_id__in=aliases).delete()
 
     @staticmethod
     def apply_access_choice(instance, *, join, group_id=None, operator="system"):
@@ -238,18 +254,27 @@ class PolicyGroupService:
 
     @staticmethod
     def ensure_default(*, organization, monitor_object, operator="system"):
-        with transaction.atomic():
-            pointer = PolicyGroupDefault.objects.select_for_update().filter(organization=organization, monitor_object=monitor_object).first()
-            if pointer:
-                return pointer.policy_group
-            templates = list(
-                PolicyTemplate.objects.filter(
-                    template_type=PolicyTemplate.TYPE_BUILTIN,
-                    monitor_object=monitor_object,
-                ).select_related("plugin")
-            )
-            group = None
-            if templates:
+        """有指针就用它，包括用户删掉默认组后留下的空指针。没有内置模板时不写指针。"""
+        pointer = PolicyGroupDefault.objects.filter(organization=organization, monitor_object=monitor_object).first()
+        if pointer:
+            return pointer.policy_group
+        templates = list(
+            PolicyTemplate.objects.filter(
+                template_type=PolicyTemplate.TYPE_BUILTIN,
+                monitor_object=monitor_object,
+            ).select_related("plugin")
+        )
+        if not templates:
+            return None
+        try:
+            with transaction.atomic():
+                pointer = (
+                    PolicyGroupDefault.objects.select_for_update()
+                    .filter(organization=organization, monitor_object=monitor_object)
+                    .first()
+                )
+                if pointer:
+                    return pointer.policy_group
                 group = PolicyGroupService.create_from_templates(
                     organization=organization,
                     monitor_object=monitor_object,
@@ -258,14 +283,130 @@ class PolicyGroupService:
                     operator=operator,
                     origin=PolicyGroup.ORIGIN_SYSTEM,
                 )
-            PolicyGroupDefault.objects.create(
-                organization=organization,
-                monitor_object=monitor_object,
-                policy_group=group,
-                created_by=operator,
-                updated_by=operator,
+                PolicyGroupDefault.objects.create(
+                    organization=organization,
+                    monitor_object=monitor_object,
+                    policy_group=group,
+                    created_by=operator,
+                    updated_by=operator,
+                )
+                return group
+        except IntegrityError:
+            pointer = PolicyGroupDefault.objects.filter(organization=organization, monitor_object=monitor_object).first()
+            return pointer.policy_group if pointer else None
+
+    @staticmethod
+    def join_failure_reason(exc):
+        if isinstance(exc, BaseAppException) and exc.message:
+            return str(exc.message)[:80]
+        return "策略组加入失败，可在实例页重新加入"
+
+    @staticmethod
+    def remember_join_failure(instance, operator="system"):
+        """记下加入失败，方便实例页区分「没选过」和「选了没加上」。写入失败只记日志。"""
+        try:
+            with transaction.atomic():
+                membership = PolicyGroupMembership.objects.select_for_update().filter(monitor_instance=instance).first()
+                if membership and membership.state == PolicyGroupMembership.STATE_MEMBER:
+                    return membership
+                if membership is None:
+                    membership = PolicyGroupMembership(monitor_instance=instance, created_by=operator)
+                membership.state = PolicyGroupMembership.STATE_FAILED
+                membership.policy_group = None
+                membership.updated_by = operator
+                membership.save()
+                return membership
+        except Exception as exc:
+            logger.exception(
+                "event=policy_group_failure_record_failed instance_id=%s failed_stage=record_failure error_type=%s",
+                instance.id,
+                type(exc).__name__,
             )
-            return group
+            return None
+
+    @staticmethod
+    def _outcome(instance_id, membership):
+        if membership is None:
+            return {"instance_id": instance_id, "outcome": "failed", "reason": "策略组加入失败，可在实例页重新加入"}
+        state = membership.state
+        if state == PolicyGroupMembership.STATE_MEMBER:
+            group = membership.policy_group
+            return {"instance_id": instance_id, "outcome": "joined", "group_id": membership.policy_group_id, "group_name": group.name if group else ""}
+        if state == PolicyGroupMembership.STATE_DECLINED:
+            return {"instance_id": instance_id, "outcome": "declined", "reason": "已关闭加入"}
+        if state == PolicyGroupMembership.STATE_SKIPPED:
+            return {"instance_id": instance_id, "outcome": "skipped", "reason": "未入组"}
+        if state == PolicyGroupMembership.STATE_FAILED:
+            return {"instance_id": instance_id, "outcome": "failed", "reason": "策略组加入失败，可在实例页重新加入"}
+        return {"instance_id": instance_id, "outcome": state or "failed", "reason": "策略组加入失败，可在实例页重新加入"}
+
+    @staticmethod
+    def apply_best_effort_auto_join(instance, organization_ids, operator="system"):
+        """自动加入失败不向外抛。失败记成可在实例页看到的加入失败，不回滚实例。"""
+        try:
+            with transaction.atomic():
+                return PolicyGroupService.consider_auto_join(instance, organization_ids, operator=operator)
+        except Exception as exc:
+            logger.exception(
+                "event=policy_group_auto_join_failed instance_id=%s failed_stage=auto_join error_type=%s",
+                instance.id,
+                type(exc).__name__,
+            )
+            return PolicyGroupService.remember_join_failure(instance, operator)
+
+    @staticmethod
+    def apply_onboarding_memberships(*, new_instances, existing_instances, created_ids, choice, operator="system"):
+        """接入事务提交后再写策略组。单条失败只记日志和实例上的失败状态，不中断其余实例。"""
+        explicit_choice = isinstance(choice, dict) and "join" in choice
+        results = []
+        for raw in new_instances or []:
+            instance_id = raw.get("instance_id")
+            if instance_id not in created_ids:
+                continue
+            instance = MonitorInstance.objects.filter(id=instance_id).first()
+            if instance is None:
+                results.append({"instance_id": instance_id, "outcome": "failed", "reason": "实例不存在"})
+                continue
+            existing = PolicyGroupMembership.objects.filter(monitor_instance=instance).first()
+            if existing is not None:
+                results.append(PolicyGroupService._outcome(instance_id, existing))
+                continue
+            try:
+                with transaction.atomic():
+                    if explicit_choice:
+                        membership = PolicyGroupService.apply_access_choice(
+                            instance,
+                            join=bool(choice.get("join")),
+                            group_id=choice.get("group_id"),
+                            operator=operator,
+                        )
+                    else:
+                        membership = PolicyGroupService.consider_auto_join(instance, raw.get("group_ids") or [], operator=operator)
+                results.append(PolicyGroupService._outcome(instance_id, membership))
+            except Exception as exc:
+                logger.exception(
+                    "event=policy_group_onboarding_failed instance_id=%s failed_stage=onboarding_join error_type=%s",
+                    instance_id,
+                    type(exc).__name__,
+                )
+                PolicyGroupService.remember_join_failure(instance, operator)
+                results.append({"instance_id": instance_id, "outcome": "failed", "reason": PolicyGroupService.join_failure_reason(exc)})
+        for raw in existing_instances or []:
+            instance = MonitorInstance.objects.filter(id=raw.get("instance_id")).first()
+            if instance is None:
+                continue
+            try:
+                with transaction.atomic():
+                    PolicyGroupService.refresh_collect_coverage(instance, operator=operator)
+                results.append({"instance_id": instance.id, "outcome": "refreshed", "reason": "已接入实例保持原策略组"})
+            except Exception as exc:
+                logger.exception(
+                    "event=policy_group_coverage_refresh_failed instance_id=%s failed_stage=refresh_coverage error_type=%s",
+                    instance.id,
+                    type(exc).__name__,
+                )
+                results.append({"instance_id": instance.id, "outcome": "refresh_failed", "reason": "策略组覆盖未刷新，可在实例页重新加入"})
+        return results
 
     @staticmethod
     def consider_auto_join(instance, organization_ids, operator="system"):
@@ -297,13 +438,64 @@ class PolicyGroupService:
         return membership
 
     @staticmethod
+    def instance_id_aliases(instance_id):
+        if instance_id in (None, ""):
+            return set()
+        aliases = {str(instance_id)}
+        try:
+            identity = normalize_instance_identity(instance_id)
+        except ValueError:
+            return aliases
+        for key in ("storage_instance_key", "logical_instance_value"):
+            value = identity.get(key)
+            if value not in (None, ""):
+                aliases.add(str(value))
+        return aliases
+
+    @staticmethod
+    def source_covers_instance(source_values, instance_id):
+        aliases = PolicyGroupService.instance_id_aliases(instance_id)
+        if not aliases:
+            return False
+        for value in source_values or []:
+            if PolicyGroupService.instance_id_aliases(value) & aliases:
+                return True
+        return False
+
+    @staticmethod
     def _has_legacy_policy(instance):
         policies = MonitorPolicy.objects.filter(monitor_object=instance.monitor_object, group_rule__isnull=True).only("source")
         for policy in policies:
             values = (policy.source or {}).get("values") or []
-            if instance.id in values:
+            if PolicyGroupService.source_covers_instance(values, instance.id):
                 return True
         return False
+
+    @staticmethod
+    def legacy_policies(instance):
+        found = []
+        policies = MonitorPolicy.objects.filter(monitor_object_id=instance.monitor_object_id, group_rule__isnull=True).only("id", "name", "enable", "source")
+        for policy in policies:
+            values = (policy.source or {}).get("values") or []
+            if PolicyGroupService.source_covers_instance(values, instance.id):
+                found.append({"id": policy.id, "name": policy.name, "enable": policy.enable})
+        return found
+
+    @staticmethod
+    def open_alert_counts(policy_ids):
+        if not policy_ids:
+            return {}
+        rows = MonitorAlert.objects.filter(policy_id__in=list(policy_ids), status="new").values("policy_id").annotate(total=Count("id"))
+        return {row["policy_id"]: row["total"] for row in rows}
+
+    @staticmethod
+    def retire_policies_for_plugins(plugin_ids, operator="system"):
+        """插件删除前收掉组内规则对应的策略，避免规则行消失后策略还在扫描。"""
+        rules = list(PolicyGroupRule.objects.filter(plugin_id__in=list(plugin_ids)).select_related("policy"))
+        for rule in rules:
+            policy = rule.policy
+            if policy is not None and MonitorPolicy.objects.filter(id=policy.id).exists():
+                PolicyGroupService._retire_policy(policy, operator)
 
     @staticmethod
     def has_reported_baseline(policy, instance_id):

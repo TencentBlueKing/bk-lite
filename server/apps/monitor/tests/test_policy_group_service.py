@@ -155,6 +155,9 @@ def test_leave_closes_open_alerts_and_blocks_auto_rejoin_state():
     PolicyGroupService.join(instance=host, group=group)
     policy = group.rules.get().policy
     alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new", alert_type="alert")
+    PolicyInstanceBaseline.objects.create(policy=policy, monitor_instance_id=host.id, metric_instance_id=f"cpu-{host.id}")
+    other = _instance(monitor_object, "web-02", 1)
+    PolicyInstanceBaseline.objects.create(policy=policy, monitor_instance_id=other.id, metric_instance_id=f"cpu-{other.id}")
 
     PolicyGroupService.leave(instance=host)
 
@@ -166,6 +169,8 @@ def test_leave_closes_open_alerts_and_blocks_auto_rejoin_state():
     assert host.policy_group_membership.policy_group_id is None
     assert alert.status == "closed"
     assert policy.source["values"] == []
+    assert not PolicyInstanceBaseline.objects.filter(policy=policy, monitor_instance_id=host.id).exists()
+    assert PolicyInstanceBaseline.objects.filter(policy=policy, monitor_instance_id=other.id).exists()
 
 
 def test_join_does_not_create_no_data_baseline_for_a_silent_instance():
@@ -327,6 +332,9 @@ def test_changing_collect_plugin_keeps_membership_and_closes_old_alerts():
     PolicyGroupService.join(instance=host, group=group)
     wmi_policy = group.rules.get(plugin=wmi).policy
     alert = MonitorAlert.objects.create(policy_id=wmi_policy.id, monitor_instance_id=host.id, status="new", alert_type="alert")
+    PolicyInstanceBaseline.objects.create(policy=wmi_policy, monitor_instance_id=host.id, metric_instance_id="wmi-cpu")
+    ssh_policy = group.rules.get(plugin=ssh).policy
+    PolicyInstanceBaseline.objects.create(policy=ssh_policy, monitor_instance_id=host.id, metric_instance_id="ssh-cpu")
 
     config.monitor_plugin = ssh
     config.save(update_fields=["monitor_plugin"])
@@ -341,6 +349,8 @@ def test_changing_collect_plugin_keeps_membership_and_closes_old_alerts():
     assert wmi_policy.source["values"] == []
     assert ssh_policy.source["values"] == [host.id]
     assert alert.status == "closed"
+    assert not PolicyInstanceBaseline.objects.filter(policy=wmi_policy, monitor_instance_id=host.id).exists()
+    assert PolicyInstanceBaseline.objects.filter(policy=ssh_policy, monitor_instance_id=host.id).exists()
 
 
 def test_access_choice_applies_only_to_instances_without_a_decision():
@@ -761,3 +771,141 @@ def test_update_enable_stops_the_group_and_resumes_from_now():
     PolicyGroupService.update_enable(group, enable=True)
     wmi_policy.refresh_from_db()
     assert wmi_policy.last_run_time == started
+
+
+def test_missing_templates_do_not_burn_the_default_pointer():
+    monitor_object = _object()
+    early = _instance(monitor_object, "early", 1)
+    skipped = PolicyGroupService.consider_auto_join(early, [1])
+
+    assert skipped.state == "skipped"
+    assert not PolicyGroupDefault.objects.filter(organization=1, monitor_object=monitor_object).exists()
+
+    wmi = _plugin(monitor_object, "WMI")
+    _template(monitor_object, wmi, "WMI CPU")
+    group = PolicyGroupService.ensure_default(organization=1, monitor_object=monitor_object)
+    early.policy_group_membership.refresh_from_db()
+    later = _instance(monitor_object, "later", 1)
+    _collect(later, wmi)
+    joined = PolicyGroupService.consider_auto_join(later, [1])
+
+    assert group is not None
+    assert early.policy_group_membership.state == "skipped"
+    assert joined.state == "member"
+    assert joined.policy_group_id == group.id
+
+
+def test_legacy_policy_matches_storage_key_and_logical_id():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    _template(monitor_object, wmi, "WMI CPU")
+    host = _instance(monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    MonitorPolicy.objects.create(
+        monitor_object=monitor_object,
+        name="旧策略",
+        algorithm="avg",
+        source={"type": "instance", "values": ["web-01"]},
+    )
+
+    assert PolicyGroupService.consider_auto_join(host, [1]).state == "skipped"
+
+
+def test_auto_join_failure_leaves_no_membership(monkeypatch, caplog):
+    monitor_object = _object()
+    host = _instance(monitor_object, "web-01", 1)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("pointer down")
+
+    monkeypatch.setattr(PolicyGroupService, "consider_auto_join", boom)
+    with caplog.at_level("ERROR", logger="monitor"):
+        result = PolicyGroupService.apply_best_effort_auto_join(host, [1])
+
+    assert result is not None
+    assert result.state == "failed"
+    host.policy_group_membership.refresh_from_db()
+    assert host.policy_group_membership.state == "failed"
+    assert host.policy_group_membership.policy_group_id is None
+    records = [record for record in caplog.records if record.name == "monitor" and record.levelname == "ERROR"]
+    assert len(records) == 1
+    assert records[0].getMessage() == "event=policy_group_auto_join_failed instance_id=('web-01',) failed_stage=auto_join error_type=RuntimeError"
+    assert records[0].exc_info is not None
+    assert "pointer down" not in records[0].getMessage()
+
+
+def test_onboarding_membership_failure_does_not_raise(monkeypatch, caplog):
+    monitor_object = _object()
+    host = _instance(monitor_object, "web-01", 1)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("join down")
+
+    monkeypatch.setattr(PolicyGroupService, "apply_access_choice", boom)
+    with caplog.at_level("ERROR", logger="monitor"):
+        results = PolicyGroupService.apply_onboarding_memberships(
+            new_instances=[{"instance_id": host.id}],
+            existing_instances=[],
+            created_ids={host.id},
+            choice={"join": True, "group_id": 1},
+        )
+
+    assert results == [{"instance_id": host.id, "outcome": "failed", "reason": "策略组加入失败，可在实例页重新加入"}]
+    host.policy_group_membership.refresh_from_db()
+    assert host.policy_group_membership.state == "failed"
+    records = [record for record in caplog.records if record.name == "monitor" and record.levelname == "ERROR"]
+    assert len(records) == 1
+    assert "failed_stage=onboarding_join" in records[0].getMessage()
+    assert records[0].exc_info is not None
+
+
+def test_group_rule_without_baseline_does_not_use_instance_ids_as_no_data_keys():
+    from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
+
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU")],
+    )
+    host = _instance(monitor_object, "web-01", 1)
+    policy = group.rules.get().policy
+    grouped = AlertDetector(policy, {host.id: host.name}, {}, [], None)
+    assert grouped._get_baseline_keys() == set()
+
+    lone = MonitorPolicy.objects.create(
+        monitor_object=monitor_object,
+        name="单策略",
+        algorithm="avg",
+        source={"type": "instance", "values": [host.id]},
+    )
+    standalone = AlertDetector(lone, {host.id: host.name}, {}, [], None)
+    assert standalone._get_baseline_keys() == {host.id}
+
+
+def test_retiring_plugin_closes_group_policy_alerts_and_scan():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU")],
+    )
+    host = _instance(monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    policy = group.rules.get().policy
+    alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new")
+
+    PolicyGroupService.retire_policies_for_plugins([wmi.id], operator="tester")
+
+    alert.refresh_from_db()
+    assert alert.status == "closed"
+    assert not MonitorPolicy.objects.filter(id=policy.id).exists()
+    assert not PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").exists()
+    assert group.rules.count() == 0
+    host.policy_group_membership.refresh_from_db()
+    assert host.policy_group_membership.state == "member"
