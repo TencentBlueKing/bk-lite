@@ -57,6 +57,7 @@ dependencies = [
     "uvicorn==0.32.0",
     "whitenoise==6.5.0",
     "wechatpy==1.8.18",
+    "wecom-aibot-python-sdk==1.0.1",
     "websockets>=13.0",
     "dingtalk-stream==0.24.3",
     "pyotp==2.9.0",

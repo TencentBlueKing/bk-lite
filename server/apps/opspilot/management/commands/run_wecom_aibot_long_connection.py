@@ -12,10 +12,10 @@ from apps.opspilot.services.skill_channel_aibot_long_connection import (
     LeaderLock,
     WecomAibotLongConnectionLeader,
     load_long_connection_channels,
-    open_wecom_websocket,
     redis_client_from_env,
 )
 from apps.opspilot.services.skill_channel_aibot_long_connection_agent import run_long_connection_answer
+from apps.opspilot.services.skill_channel_aibot_long_connection_sdk import open_wecom_sdk_transport
 
 POLL_SECONDS = 1
 
@@ -26,12 +26,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         redis = redis_client_from_env()
         if redis is None:
-            logger.warning(
-                "event=wecom_aibot_long_connection_lock_unavailable failed_stage=lock error_type=RedisUnavailable"
-            )
+            logger.warning("event=wecom_aibot_long_connection_lock_unavailable failed_stage=lock error_type=RedisUnavailable")
         leader = WecomAibotLongConnectionLeader(
             lock=LeaderLock(redis, token=uuid.uuid4().hex),
-            opener=open_wecom_websocket,
+            opener=open_wecom_sdk_transport,
             agent_runner=run_long_connection_answer,
         )
         logger.info("event=wecom_aibot_long_connection_process_started")

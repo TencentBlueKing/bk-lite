@@ -463,9 +463,15 @@ class WecomAibotLongConnectionLeader:
         elif not self.lock.held():
             self.stop_all()
 
+    def _open_transport(self, bot_id: str, secret: str):
+        try:
+            return self.opener(self.url, bot_id, secret)
+        except TypeError:
+            return self.opener(self.url)
+
     def _connect(self, channel, bot_id: str, secret: str) -> None:
         try:
-            transport = self.opener(self.url)
+            transport = self._open_transport(bot_id, secret)
         except Exception as exc:
             logger.warning(CONNECT_FAILED_LOG_TEMPLATE, channel.id, type(exc).__name__)
             return
@@ -492,6 +498,8 @@ class WecomAibotLongConnectionLeader:
         _close_transport(live.transport)
 
     def _maybe_ping(self, live: LiveConnection, now: float) -> None:
+        if getattr(live.transport, "owns_heartbeat", False):
+            return
         if now - live.last_ping_at < HEARTBEAT_SECONDS:
             return
         try:
@@ -501,34 +509,6 @@ class WecomAibotLongConnectionLeader:
             self._on_connection_lost(live.bot_id)
             return
         live.last_ping_at = now
-
-
-def open_wecom_websocket(url: str):
-    from websockets.sync.client import connect
-
-    # 企微只认应用层 cmd=ping。库默认的协议层 ping 约 40 秒无 pong 就会把连接拆掉。
-    socket = connect(url, open_timeout=10, close_timeout=5, ping_interval=None)
-    return _WebSocketTransport(socket)
-
-
-class _WebSocketTransport:
-    def __init__(self, socket):
-        self.socket = socket
-
-    def send_json(self, payload: dict) -> None:
-        self.socket.send(json.dumps(payload, ensure_ascii=False))
-
-    def recv_json(self, timeout: float):
-        try:
-            raw = self.socket.recv(timeout=timeout)
-        except TimeoutError:
-            return None
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8")
-        return json.loads(raw)
-
-    def close(self) -> None:
-        self.socket.close()
 
 
 def load_long_connection_channels():

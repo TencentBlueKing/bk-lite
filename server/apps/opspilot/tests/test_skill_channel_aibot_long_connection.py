@@ -25,7 +25,6 @@ from apps.opspilot.services.skill_channel_aibot_long_connection import (
     WecomAibotLongConnectionLeader,
     long_connection_credentials,
     long_connection_url,
-    open_wecom_websocket,
     visible_answer_delta,
 )
 
@@ -147,18 +146,61 @@ def test_private_address_comes_from_environment(monkeypatch):
     assert long_connection_url() == "wss://wecom.internal.example/ws"
 
 
-def test_socket_uses_application_ping_only(monkeypatch):
-    captured = {}
+def test_sdk_transport_uses_official_client_for_reply_and_heartbeat():
+    from apps.opspilot.services.skill_channel_aibot_long_connection_sdk import WecomSdkTransport
 
-    def connect(url, **kwargs):
-        captured["url"] = url
-        captured["kwargs"] = kwargs
-        return object()
+    clients = []
 
-    monkeypatch.setattr("websockets.sync.client.connect", connect)
-    open_wecom_websocket("wss://openws.work.weixin.qq.com")
-    assert captured["url"] == "wss://openws.work.weixin.qq.com"
-    assert captured["kwargs"]["ping_interval"] is None
+    class FakeClient:
+        def __init__(self, options):
+            self.options = options
+            self.handlers = {}
+            self.replies = []
+            self.disconnected = False
+            clients.append(self)
+
+        def on(self, name, callback):
+            self.handlers.setdefault(name, []).append(callback)
+
+        async def connect(self):
+            for callback in self.handlers.get("authenticated", []):
+                callback()
+
+        def disconnect(self):
+            self.disconnected = True
+
+        async def reply_stream(self, frame, stream_id, content, finish=False, msg_item=None, feedback=None):
+            self.replies.append({"req_id": (frame.get("headers") or {}).get("req_id"), "stream_id": stream_id, "content": content, "finish": finish})
+            return {}
+
+    transport = WecomSdkTransport(
+        "wss://openws.work.weixin.qq.com",
+        "bot-1",
+        "secret-1",
+        client_factory=FakeClient,
+    )
+    try:
+        client = clients[0]
+        assert client.options.bot_id == "bot-1"
+        assert client.options.secret == "secret-1"
+        assert client.options.ws_url == "wss://openws.work.weixin.qq.com"
+        assert client.options.heartbeat_interval == 30_000
+        assert transport.owns_heartbeat is True
+        transport.send_json({"cmd": "aibot_subscribe", "headers": {"req_id": "sub"}, "body": {}})
+        transport.send_json({"cmd": "ping", "headers": {"req_id": "ping"}})
+        assert client.replies == []
+        client.handlers["message"][0](_text_frame("req-1", "你好"))
+        assert transport.recv_json(0.2)["headers"]["req_id"] == "req-1"
+        transport.send_json(
+            {
+                "cmd": "aibot_respond_msg",
+                "headers": {"req_id": "req-1"},
+                "body": {"msgtype": "stream", "stream": {"id": "stream-1", "finish": False, "content": "正在处理"}},
+            }
+        )
+        assert client.replies == [{"req_id": "req-1", "stream_id": "stream-1", "content": "正在处理", "finish": False}]
+    finally:
+        transport.close()
 
 
 def test_visible_answer_keeps_final_text_only():
