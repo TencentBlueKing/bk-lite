@@ -105,12 +105,19 @@ def _bounded_dashboard_proposal(proposal):
 
 @nats_client.register
 def search_dashboard_data_sources(requirements, team_id, user_info=None, _internal_auth=None):
-    from apps.operation_analysis.services.dashboard_proposal_service import list_visible_briefs, search_briefs
+    from apps.operation_analysis.services.dashboard_proposal_service import list_visible_briefs, option_list_briefs, search_briefs
 
     verified_team = verify_dashboard_request(_internal_auth, team_id, "search_dashboard_data_sources", user_info)
     items = _dashboard_requirements(requirements)
     group_ids = _dashboard_group_ids(verified_team, user_info)
-    return {"candidates": search_briefs(items, list_visible_briefs(verified_team, group_ids))}
+    briefs = list_visible_briefs(verified_team, group_ids)
+    catalog = bool(items) and all(isinstance(item, dict) and item.get("purpose") == "catalog" for item in items)
+    payload = {"candidates": search_briefs(items, briefs)}
+    if not catalog:
+        option_sources = option_list_briefs(briefs)
+        if option_sources:
+            payload["optionSources"] = option_sources
+    return payload
 
 
 @nats_client.register

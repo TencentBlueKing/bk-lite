@@ -138,6 +138,7 @@ def brief_from_source(source: dict) -> dict | None:
         ],
         "fields": fields,
         "option_ready": option_ready,
+        **({"rest_api": str(source.get("rest_api")).strip()} if str(source.get("rest_api") or "").strip() else {}),
     }
 
 
@@ -181,8 +182,13 @@ def _canonical_tag(tag: object) -> str:
 
 
 def _domain_terms(tag: str) -> set[str]:
+    """标签和问句可以互相反查。库里的「监控」和问句里的 monitor 算同一个领域。"""
     canonical = _canonical_tag(tag)
-    return {canonical, *(_DOMAIN_ALIASES.get(canonical) or ())}
+    for key, aliases in _DOMAIN_ALIASES.items():
+        group = {_canonical_tag(key), *(_canonical_tag(item) for item in aliases)}
+        if canonical in group:
+            return group
+    return {canonical}
 
 
 def _requested_domains(requirement: dict, briefs: list[dict]) -> set[str]:
@@ -291,11 +297,15 @@ def search_briefs(requirements: list[dict], briefs: list[dict], *, limit_per_req
     seen: set[int] = set()
     for requirement in requirements:
         purpose = requirement.get("purpose") or "visualization"
+        catalog = purpose == "catalog"
         query = " ".join(str(requirement.get(key) or "") for key in ("text", "chartType", "description", "metric", "dimension"))
         needles = {item for item in _tokens(query) if item not in _GENERIC_QUERY_TOKENS}
-        requested_domains = _requested_domains(requirement, briefs) if purpose == "visualization" else set()
-        subject_tokens = _requested_subject_tokens(requirement, requested_domains) if purpose == "visualization" else set()
-        chart_type = str(requirement.get("chartType") or "")
+        requested_domains = _requested_domains(requirement, briefs) if purpose in {"visualization", "catalog"} else set()
+        if catalog or purpose != "visualization":
+            subject_tokens = set()
+        else:
+            subject_tokens = _requested_subject_tokens(requirement, requested_domains)
+        chart_type = "" if catalog else str(requirement.get("chartType") or "")
         overview = _is_overview(requirement)
         ranked = []
         for brief in briefs:
@@ -337,11 +347,14 @@ def search_briefs(requirements: list[dict], briefs: list[dict], *, limit_per_req
                 )
                 score += min(number_fields, 6)
             ranked.append((score, brief))
+        if catalog and not ranked and not requested_domains:
+            ranked = [(1, brief) for brief in briefs if isinstance(brief, dict)]
         ranked.sort(key=lambda item: (-item[0], item[1].get("id") or 0))
-        if overview and not chart_type:
+        if overview and not chart_type and not catalog:
             picked = _prefer_chart_families(ranked, min(8, max(limit_per_requirement, 8)))
         else:
-            picked = [brief for _, brief in ranked[:limit_per_requirement]]
+            cap = total_limit if catalog else limit_per_requirement
+            picked = [brief for _, brief in ranked[:cap]]
         for brief in picked:
             source_id = brief.get("id")
             if source_id in seen:
@@ -705,6 +718,16 @@ def _page_settings(proposal: dict) -> dict:
     return settings
 
 
+OPTION_LIST_LIMIT = 40
+
+
+def option_list_briefs(briefs: list[dict], *, limit: int = OPTION_LIST_LIMIT) -> list[dict]:
+    """不出图、至少两个字段的列表。交给模型按语义决定要不要当作参数下拉，服务端不挑选。"""
+    rows = [brief for brief in briefs if isinstance(brief, dict) and not brief.get("chart_type") and brief.get("option_ready")]
+    rows.sort(key=lambda brief: brief.get("id") or 0)
+    return rows[:limit]
+
+
 def prepare_dashboard_proposal(proposal: dict, briefs: list[dict]) -> dict:
     """补全固定参数并校验方案。不加载选项全量，也不预览数据。"""
     if not isinstance(proposal, dict) or proposal.get("schemaVersion") != SCHEMA_VERSION:
@@ -780,17 +803,17 @@ def prepare_dashboard_proposal(proposal: dict, briefs: list[dict]) -> dict:
         config["dataSourceParams"] = params
         _normalize_table_columns(config)
         for param in params:
-            options_error = _dynamic_source_error(param.get("inputConfig"), by_id)
-            if options_error:
-                return {"ok": False, "reason": options_error, "pending": [{"index": index, "name": param.get("name")}]}
+            if _dynamic_source_error(param.get("inputConfig"), by_id):
+                param.pop("inputConfig", None)
         layout.append(_label_widget({**item, "valueConfig": config}, config, source))
     for filt in proposal.get("filters") or []:
         if not isinstance(filt, dict):
             return {"ok": False, "reason": "filter", "pending": []}
-        options_error = _dynamic_source_error(filt.get("inputConfig"), by_id)
-        if options_error:
-            return {"ok": False, "reason": options_error, "pending": [{"id": filt.get("id")}]}
-    packed = preserve_placed_widgets(layout)
+        if _dynamic_source_error(filt.get("inputConfig"), by_id):
+            filt.pop("inputConfig", None)
+    from apps.operation_analysis.services.dashboard_widget_draft import moderate_widget_heights
+
+    packed = preserve_placed_widgets(moderate_widget_heights(layout))
     if pending:
         payload = {"ok": False, "reason": "pending", "pending": pending, "proposal": {**proposal, "layout": packed}}
         if any(isinstance(item, dict) and item.get("reason") == "datasource_not_found" for item in pending):
@@ -1014,7 +1037,7 @@ def list_visible_briefs(team_id: int, group_ids: list[int] | None = None) -> lis
     visible = expand_datasource_org_query(membership, include_all_builtins=False)
     queryset = (
         DataSourceAPIModel.objects.filter(visible)
-        .only("id", "name", "desc", "chart_type", "params", "field_schema")
+        .only("id", "name", "desc", "chart_type", "params", "field_schema", "rest_api")
         .prefetch_related("tag")
         .order_by("id")[:VISIBLE_BRIEF_LIMIT]
     )
@@ -1028,6 +1051,7 @@ def list_visible_briefs(team_id: int, group_ids: list[int] | None = None) -> lis
                 "chart_type": source.chart_type or [],
                 "params": source.params or [],
                 "field_schema": source.field_schema or [],
+                "rest_api": source.rest_api or "",
             }
         )
         if brief:
@@ -1188,6 +1212,19 @@ def _creates_new_dashboard(utterance: str) -> bool:
     if re.search(r"(?:当前|这个|现有|已有).{0,12}(?:仪表盘|看板|大屏)|(?:仪表盘|看板|大屏)(?:上|里|中)", utterance):
         return False
     return True
+
+
+_CATALOG_QUESTION_RE = re.compile(r"(?:有哪些|哪些|列出|罗列|都有什么|有什么|找一下|查一下).{0,40}数据源|" r"(?:能|可以|用于|用来).{0,24}数据源|" r"数据源(?:都)?有哪些(?!字段|参数|指标)")
+
+
+def is_datasource_catalog_question(message: str) -> bool:
+    """问有哪些数据源时只列目录。搭盘、改盘和问某个源的字段都不是目录咨询。"""
+    utterance = user_utterance(message)
+    if not utterance or classify_dashboard_request(utterance) != "none":
+        return False
+    if re.search(r"数据源的?(?:字段|参数|指标|返回)", utterance):
+        return False
+    return bool(_CATALOG_QUESTION_RE.search(utterance))
 
 
 def classify_dashboard_request(message: str) -> str:

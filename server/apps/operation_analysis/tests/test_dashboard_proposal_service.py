@@ -600,6 +600,7 @@ def test_list_visible_briefs_keeps_only_current_org(monkeypatch):
             self.chart_type = ["single"]
             self.params = [{"name": "organization_id", "filterType": "fixed", "value": "org-001", "required": True}]
             self.field_schema = [{"name": "value"}]
+            self.rest_api = ""
             self.groups = groups
             self.is_build_in = False
             self.tag = Tags()
@@ -624,7 +625,7 @@ def test_list_visible_briefs_keeps_only_current_org(monkeypatch):
             return self
 
         def only(self, *fields):
-            assert fields == ("id", "name", "desc", "chart_type", "params", "field_schema")
+            assert fields == ("id", "name", "desc", "chart_type", "params", "field_schema", "rest_api")
             return self
 
         def prefetch_related(self, *_args):
@@ -1096,6 +1097,47 @@ def test_revise_renames_keeps_position_and_reflows_width():
     assert chart["layout"][0]["valueConfig"]["chartType"] == "bar"
 
 
+def test_prepare_defaults_extreme_heights_and_keeps_a_requested_height():
+    from apps.operation_analysis.services.dashboard_proposal_service import prepare_dashboard_proposal
+
+    briefs = [
+        {"id": 2, "name": "模型总数", "chart_type": ["single"], "fields": [{"name": "value"}], "params": []},
+        {"id": 3, "name": "实例趋势", "chart_type": ["line"], "fields": [{"name": "value"}], "params": []},
+        {"id": 4, "name": "模型明细", "chart_type": ["table"], "fields": [{"name": "name"}], "params": []},
+    ]
+
+    def widget(name, source_id, chart, x, y, height):
+        return {
+            "i": name,
+            "name": name,
+            "x": x,
+            "y": y,
+            "w": 4,
+            "h": height,
+            "valueConfig": {"chartType": chart, "dataSource": source_id, "selectedFields": ["value"] if chart != "table" else ["name"]},
+        }
+
+    prepared = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [
+                widget("模型总数", 2, "single", 0, 0, 1),
+                widget("实例趋势", 3, "line", 0, 8, 1),
+                widget("模型明细", 4, "table", 6, 8, 8),
+            ],
+            "filters": [],
+        },
+        briefs,
+    )
+
+    assert prepared["ok"] is True
+    assert [(item["name"], item["y"], item["h"]) for item in prepared["proposal"]["layout"]] == [
+        ("模型总数", 0, 3),
+        ("实例趋势", 3, 4),
+        ("模型明细", 3, 8),
+    ]
+
+
 def test_overflowing_model_widths_snap_to_the_row_count_and_valid_rows_stay():
     from apps.operation_analysis.services.dashboard_proposal_service import prepare_dashboard_proposal
     from apps.operation_analysis.services.dashboard_widget_draft import fit_layout_to_grid
@@ -1408,3 +1450,197 @@ def test_prepare_uses_first_static_option_and_keeps_display_and_page_settings():
     assert "thresholdColors" not in dropped_config
     assert "otherConfig" not in dropped["proposal"]
     assert "refreshInterval" not in dropped["proposal"]
+
+
+def _interface_chart_brief():
+    return brief_from_source(
+        {
+            "id": 58,
+            "name": "监控接口最新指标",
+            "desc": "按监控实例批量查询接口最新指标",
+            "chart_type": ["table"],
+            "field_schema": [{"key": "instance_id"}, {"key": "ifDescr"}],
+            "params": [{"name": "instance_ids", "type": "string", "alias_name": "实例ID列表", "filterType": "params"}],
+        }
+    )
+
+
+def _instance_option_brief(
+    *,
+    source_id=70,
+    rest_api="monitor/get_monitor_instance_list",
+    name="监控实例列表（选项）",
+    desc="监控实例下拉",
+):
+    return brief_from_source(
+        {
+            "id": source_id,
+            "name": name,
+            "desc": desc,
+            "rest_api": rest_api,
+            "chart_type": [],
+            "field_schema": [
+                {"key": "instance_id", "title": "实例ID"},
+                {"key": "display_name", "title": "设备"},
+            ],
+            "params": [],
+        }
+    )
+
+
+def _table_proposal():
+    return {
+        "schemaVersion": "1.0",
+        "layout": [
+            {
+                "valueConfig": {
+                    "chartType": "table",
+                    "dataSource": 58,
+                    "tableConfig": {"columns": [{"key": "instance_id"}]},
+                }
+            }
+        ],
+        "filters": [],
+    }
+
+
+def test_prepare_does_not_guess_an_option_source_from_field_names():
+    from apps.operation_analysis.services.dashboard_proposal_service import option_list_briefs
+
+    briefs = [
+        _interface_chart_brief(),
+        _instance_option_brief(),
+        _instance_option_brief(source_id=71, name="K8S集群实例", desc="K8S Cluster 实例"),
+    ]
+    prepared = prepare_dashboard_proposal(_table_proposal(), briefs)
+
+    param = prepared["proposal"]["layout"][0]["valueConfig"]["dataSourceParams"][0]
+    assert prepared["ok"] is True
+    assert "inputConfig" not in param
+    assert [item["id"] for item in option_list_briefs(briefs)] == [70, 71]
+
+
+def test_prepare_keeps_the_option_source_the_model_chose_and_rejects_unknown_fields():
+    proposal = _table_proposal()
+    proposal["layout"][0]["valueConfig"]["dataSourceParams"] = [
+        {
+            "name": "instance_ids",
+            "inputConfig": {
+                "control": "select",
+                "multiple": True,
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceId": 71,
+                    "valueField": "instance_id",
+                    "labelField": "display_name",
+                },
+            },
+        }
+    ]
+    briefs = [
+        _interface_chart_brief(),
+        _instance_option_brief(),
+        _instance_option_brief(source_id=71, name="K8S集群实例", desc="K8S Cluster 实例"),
+    ]
+    prepared = prepare_dashboard_proposal(proposal, briefs)
+    chosen = prepared["proposal"]["layout"][0]["valueConfig"]["dataSourceParams"][0]["inputConfig"]["optionsSource"]
+    assert prepared["ok"] is True
+    assert chosen["sourceId"] == 71
+
+    proposal["layout"][0]["valueConfig"]["dataSourceParams"][0]["inputConfig"]["optionsSource"]["valueField"] = "missing"
+    kept = prepare_dashboard_proposal(proposal, briefs)
+    kept_param = kept["proposal"]["layout"][0]["valueConfig"]["dataSourceParams"][0]
+    assert kept["ok"] is True
+    assert "inputConfig" not in kept_param
+
+
+def test_prepare_keeps_a_declared_option_source():
+    declared = brief_from_source(
+        {
+            "id": 58,
+            "name": "监控接口最新指标",
+            "chart_type": ["table"],
+            "field_schema": [{"key": "instance_id"}],
+            "params": [
+                {
+                    "name": "instance_ids",
+                    "type": "string",
+                    "filterType": "params",
+                    "inputConfig": {
+                        "control": "select",
+                        "multiple": True,
+                        "optionsSource": {
+                            "type": "dynamic",
+                            "sourceRef": {"type": "rest_api", "value": "monitor/get_monitor_instance_list"},
+                            "valueField": "instance_id",
+                            "labelField": "display_name",
+                        },
+                    },
+                }
+            ],
+        }
+    )
+    prepared = prepare_dashboard_proposal(_table_proposal(), [declared, _instance_option_brief(rest_api="other/list")])
+    source = prepared["proposal"]["layout"][0]["valueConfig"]["dataSourceParams"][0]["inputConfig"]["optionsSource"]
+    assert source["sourceRef"]["value"] == "monitor/get_monitor_instance_list"
+
+
+def test_catalog_search_lists_monitor_sources_including_option_only():
+    briefs = [
+        brief_from_source(
+            {
+                "id": 58,
+                "name": "监控接口最新指标",
+                "tags": ["监控"],
+                "chart_type": ["table"],
+                "field_schema": [{"key": "instance_id"}, {"key": "ifDescr"}],
+            }
+        ),
+        brief_from_source(
+            {
+                "id": 70,
+                "name": "监控实例列表（选项）",
+                "tags": ["monitor"],
+                "chart_type": [],
+                "field_schema": [{"key": "instance_id"}, {"key": "display_name"}],
+            }
+        ),
+        brief_from_source(
+            {
+                "id": 3,
+                "name": "资产统计",
+                "tags": ["CMDB"],
+                "chart_type": ["single"],
+                "field_schema": [{"key": "value"}],
+            }
+        ),
+    ]
+
+    found = search_briefs([{"text": "现在有哪些监控的数据源", "purpose": "catalog"}], briefs)
+    assert {item["id"] for item in found} == {58, 70}
+
+    visual = search_briefs([{"text": "现在有哪些监控的数据源", "purpose": "visualization"}], briefs)
+    assert [item["id"] for item in visual] == [58]
+
+
+def test_bare_catalog_question_lists_visible_sources():
+    from apps.operation_analysis.services.dashboard_proposal_service import is_datasource_catalog_question
+
+    briefs = [
+        brief_from_source({"id": 1, "name": "资产统计", "chart_type": ["single"], "field_schema": [{"key": "value"}]}),
+        brief_from_source(
+            {
+                "id": 2,
+                "name": "机房列表",
+                "chart_type": [],
+                "field_schema": [{"key": "id"}, {"key": "name"}],
+            }
+        ),
+    ]
+    found = search_briefs([{"text": "现在有哪些数据源", "purpose": "catalog"}], briefs)
+    assert {item["id"] for item in found} == {1, 2}
+    assert is_datasource_catalog_question("现在有哪些监控的数据源") is True
+    assert is_datasource_catalog_question("现在有哪些能监控接口流量的数据源") is True
+    assert is_datasource_catalog_question("帮我搭建一个监控仪表盘") is False
+    assert is_datasource_catalog_question("加一张接口流量表") is False
+    assert is_datasource_catalog_question("这个数据源有哪些字段") is False
