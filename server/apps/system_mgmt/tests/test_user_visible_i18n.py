@@ -13,6 +13,12 @@ from apps.system_mgmt.utils.i18n import system_mgmt_message
         ("error.otp_whitelist_must_be_user_ids", {}, "OTP 白名单必须是用户 ID 列表", "OTP allowlist must be a list of user IDs"),
         ("error.no_permission_access_team", {}, "无权访问该团队数据", "You do not have permission to access this organization's data"),
         ("error.builtin_entry_immutable", {"label": "10.0.0.0/8"}, "内置条目不可修改或删除: 10.0.0.0/8", "Built-in entries cannot be modified or deleted: 10.0.0.0/8"),
+        (
+            "error.forbidden_network_supernet",
+            {},
+            "禁止添加 0.0.0.0/0 或 ::/0（等于关闭全部防护）",
+            "Adding 0.0.0.0/0 or ::/0 is forbidden because it disables all protection",
+        ),
         ("error.opspilot_channel_readonly", {}, "OpsPilot 工作流自动创建的通道不可编辑或删除", "Channels created by an OpsPilot workflow cannot be edited or deleted"),
         ("error.email_recipient_missing_or_unknown", {}, "用户邮箱为空或用户不存在", "The user has no email address or does not exist"),
         ("error.password_strength_insufficient", {}, "密码强度不够", "Password does not meet the strength requirements"),
