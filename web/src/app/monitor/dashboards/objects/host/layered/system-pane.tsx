@@ -132,50 +132,77 @@ interface ComposeSlice {
   reading: string;
 }
 
-const RING_RADIUS = 16;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+const PIE_CX = 50;
+const PIE_CY = 50;
+const PIE_R = 34;
+/** viewBox 100 配 120px 宽时，8 个单位约 9.6px。 */
+const PIE_EXPLODE = 8;
+/** 与次高相差不足 0.5 个百分点时，只强调序列里先出现的那一段。 */
+const PIE_TIE_GAP = 0.005;
 
-/** 左环右图例。环心不写字。单段画满环，多段之间留一条缝。 */
+const piePoint = (cx: number, cy: number, radius: number, angle: number) => ({
+  x: cx + radius * Math.cos(angle),
+  y: cy + radius * Math.sin(angle)
+});
+
+const pieSlicePath = (start: number, sweep: number, offset: number) => {
+  const mid = start + sweep / 2;
+  const cx = PIE_CX + Math.cos(mid) * offset;
+  const cy = PIE_CY + Math.sin(mid) * offset;
+  const from = piePoint(cx, cy, PIE_R, start);
+  const to = piePoint(cx, cy, PIE_R, start + sweep);
+  const large = sweep > Math.PI ? 1 : 0;
+  return `M ${cx} ${cy} L ${from.x} ${from.y} A ${PIE_R} ${PIE_R} 0 ${large} 1 ${to.x} ${to.y} Z`;
+};
+
+/**
+ * 左实心饼、右图例。饼心不写字。
+ * 占比最高的一片沿角平分线外移；满圆不外移。
+ * 并列最大时只强调先出现的一段，不把多片一起炸开。
+ */
 function CompositionDonut({ slices }: { slices: ComposeSlice[] }) {
   const total = slices.reduce((sum, slice) => sum + slice.amount, 0);
-  const gap = slices.length > 1 ? 1.2 : 0;
-  let cursor = 0;
+  let leadIndex = 0;
+  slices.forEach((slice, index) => {
+    if (slice.amount > slices[leadIndex].amount) leadIndex = index;
+  });
+  const secondAmount = slices.reduce((best, slice, index) => (
+    index === leadIndex ? best : Math.max(best, slice.amount)
+  ), 0);
+  const tied = slices.length > 1 && total > 0 && (slices[leadIndex].amount - secondAmount) / total < PIE_TIE_GAP;
+  const emphasizeIndex = tied ? slices.findIndex((slice) => slice.amount === slices[leadIndex].amount) : leadIndex;
+  let cursor = -Math.PI / 2;
+  const wedges = slices.map((slice, index) => {
+    const sweep = total > 0 ? (slice.amount / total) * Math.PI * 2 : 0;
+    const full = slices.length === 1 || sweep >= Math.PI * 2 - 0.001;
+    const explode = index === emphasizeIndex && !full;
+    const start = cursor;
+    cursor += sweep;
+    return { slice, start, sweep, explode, lead: index === emphasizeIndex };
+  });
   return (
     <div className={styles.composeBody}>
-      <svg className={styles.composeRing} viewBox="0 0 42 42" aria-hidden="true">
-        {slices.map((slice) => {
-          if (slices.length === 1) {
-            return (
-              <circle key={slice.key} cx="21" cy="21" r={RING_RADIUS} fill="none" stroke={slice.color} strokeWidth="7" />
-            );
-          }
-          const span = total > 0 ? (slice.amount / total) * RING_CIRCUMFERENCE : 0;
-          const seam = Math.min(gap, span * 0.2);
-          const length = Math.max(span - seam, 0);
-          const node = (
-            <circle
-              key={slice.key}
-              cx="21"
-              cy="21"
-              r={RING_RADIUS}
-              fill="none"
-              stroke={slice.color}
-              strokeWidth="7"
-              strokeDasharray={`${length} ${RING_CIRCUMFERENCE - length}`}
-              strokeDashoffset={-cursor}
-              transform="rotate(-90 21 21)"
+      <svg className={styles.composePie} viewBox="0 0 100 100" aria-hidden="true">
+        {wedges.map((wedge) => (
+          wedge.sweep >= Math.PI * 2 - 0.001 ? (
+            <circle key={wedge.slice.key} cx={PIE_CX} cy={PIE_CY} r={PIE_R} fill={wedge.slice.color} />
+          ) : (
+            <path
+              key={wedge.slice.key}
+              d={pieSlicePath(wedge.start, wedge.sweep, wedge.explode ? PIE_EXPLODE : 0)}
+              fill={wedge.slice.color}
+              stroke="var(--color-bg)"
+              strokeWidth="1"
             />
-          );
-          cursor += span;
-          return node;
-        })}
+          )
+        ))}
       </svg>
       <ul className={styles.composeLegend}>
-        {slices.map((slice) => (
-          <li key={slice.key}>
-            <span className={styles.legendSwatch} style={{ background: slice.color }} />
-            <span className={styles.composeName}>{slice.label}</span>
-            <span className={styles.composeReading}>{slice.reading}</span>
+        {wedges.map((wedge) => (
+          <li key={wedge.slice.key} className={wedge.lead ? styles.leadRow : undefined}>
+            <span className={styles.legendSwatch} style={{ background: wedge.slice.color }} />
+            <span className={styles.composeName}>{wedge.slice.label}</span>
+            <span className={styles.composeReading}>{wedge.slice.reading}</span>
           </li>
         ))}
       </ul>

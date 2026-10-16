@@ -108,6 +108,21 @@ export default function ThinTimeSeries({
   const splitAxes = independentAxes && keys.length > 1;
   const option = useMemo(() => {
     if (!data.length || !keys.length) return null;
+    let minTime = Number.POSITIVE_INFINITY;
+    let maxTime = Number.NEGATIVE_INFINITY;
+    data.forEach((point) => {
+      const time = Number(point.time);
+      if (!Number.isFinite(time)) return;
+      if (time < minTime) minTime = time;
+      if (time > maxTime) maxTime = time;
+    });
+    const timeSpan = Number.isFinite(minTime) && Number.isFinite(maxTime) ? maxTime - minTime : 0;
+    const formatAxisTime = (value: number) => {
+      const stamp = dayjs(value * 1000);
+      if (!stamp.isValid()) return '';
+      if (timeSpan <= 36 * 3600) return stamp.format('HH:mm');
+      return stamp.format('MM-DD');
+    };
     const axisLabel = {
       fontSize: 10,
       formatter: (value: number) => {
@@ -119,13 +134,21 @@ export default function ThinTimeSeries({
       animation: false,
       backgroundColor: 'transparent',
       color: seriesColors,
-      grid: { top: 8, right: splitAxes ? 48 : 10, bottom: 22, left: 44, containLabel: false },
+      grid: { top: 8, right: splitAxes ? 48 : 10, bottom: 28, left: 44, containLabel: false },
       xAxis: {
         type: 'value' as const,
         min: 'dataMin' as const,
         max: 'dataMax' as const,
-        axisLabel: { show: false },
-        axisTick: { show: false },
+        splitNumber: 3,
+        axisLabel: {
+          show: true,
+          color: mutedColor,
+          fontSize: 10,
+          hideOverlap: true,
+          margin: 6,
+          formatter: (value: number) => formatAxisTime(Number(value))
+        },
+        axisTick: { show: true, length: 3, lineStyle: { color: axisColor } },
         axisLine: { lineStyle: { color: axisColor } },
         splitLine: { show: false }
       },
