@@ -15,6 +15,7 @@ import {
   ValueConfig,
 } from "@/app/ops-analysis/types/dashBoard";
 import { DatasourceItem } from "@/app/ops-analysis/types/dataSource";
+import type { InteractionSampleTicket } from "@/app/ops-analysis/utils/interactionSample";
 import {
   buildWidgetExtraParams,
   buildWidgetRequestParams,
@@ -207,7 +208,9 @@ export interface WidgetWrapperProps {
     next: NonNullable<ValueConfig['networkStatusTopology']>,
   ) => void;
   /** 预览等旁路需要同一份取数结果时使用；不影响画布渲染。 */
-  onRawData?: (data: unknown) => void;
+  onRawData?: (data: unknown, ticket?: InteractionSampleTicket) => void;
+  /** 和样本请求同一张票据。预览回写时原样带上，切换组件后旧结果不能再写。 */
+  sampleTicket?: InteractionSampleTicket;
   /** 字段刷新已经拿到的样本。版本增加时直接画这批数据，不再请求一次。 */
   suppliedRawData?: unknown;
   suppliedRawDataVersion?: number;
@@ -235,6 +238,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   surface = 'dashboard',
   onTopologyLayoutChange,
   onRawData,
+  sampleTicket,
   suppliedRawData,
   suppliedRawDataVersion = 0,
 }) => {
@@ -266,18 +270,22 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     config?.sceneWidgetType || chartType,
   );
   const appliedSupplyVersionRef = useRef(0);
+  const sampleTicketRef = useRef(sampleTicket);
+  sampleTicketRef.current = sampleTicket;
+  const rawDataTicketRef = useRef<InteractionSampleTicket | undefined>(undefined);
   useEffect(() => {
     if (!suppliedRawDataVersion || suppliedRawDataVersion === appliedSupplyVersionRef.current) {
       return;
     }
     appliedSupplyVersionRef.current = suppliedRawDataVersion;
+    rawDataTicketRef.current = sampleTicketRef.current;
     setRawData(suppliedRawData);
     setLoading(false);
   }, [suppliedRawData, suppliedRawDataVersion]);
   useEffect(() => {
     if (isSceneWidget) return;
     if (loading || tableLoading) return;
-    onRawData?.(rawData);
+    onRawData?.(rawData, rawDataTicketRef.current);
   }, [isSceneWidget, onRawData, rawData, loading, tableLoading]);
   const effectiveComponentParams = useMemo(() => {
     const overrides = config?.dataSourceParams || [];
@@ -767,6 +775,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     }
     const currentFetchId = gate.generation;
     fetchIdRef.current = currentFetchId;
+    const fetchTicket = sampleTicketRef.current;
     inflightCountRef.current += 1;
     runtimeScheduler?.cancelQueuedForOwner(widgetId);
     const hasSuccessfulPayload =
@@ -867,6 +876,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         inflightCount: inflightCountRef.current,
       }).inflightCount;
       if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
+      rawDataTicketRef.current = fetchTicket;
       hasSettledRequestRef.current = true;
       setHasSettledRequest(true);
       if (isTableLikeChart) {
@@ -1234,7 +1244,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           runtimeActive={runtimeActive}
           runtimePriority={runtimePriority}
           surface={surface}
-          onRawData={onRawData}
+          onRawData={(data) => {
+            onRawData?.(data, sampleTicketRef.current);
+          }}
           unifiedFilterValues={unifiedFilterValues}
           filterDefinitions={filterDefinitions}
           fallback={renderError(

@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.alerts.constants.constants import AlertOperate, AlertStatus, LogAction, LogTargetType
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
+from apps.alerts.notification_templates.timefmt import format_template_datetime, resolve_display_timezone
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.operator_scope import validate_alert_assignees, validate_usernames_in_groups
 from apps.core.logger import alert_logger as logger
@@ -685,9 +686,7 @@ class AlertOperator(object):
             action_summary = f"该告警已由 {actor_name} 分派给 {receiver_names}，请及时认领并处理。"
         action_time = getattr(alert, "updated_at", None)
         if action_time:
-            if timezone.is_aware(action_time):
-                action_time = timezone.localtime(action_time)
-            action_time = action_time.strftime("%Y-%m-%d %H:%M:%S")
+            action_time = format_template_datetime(action_time, resolve_display_timezone(assignee))
         return build_channel_params(
             list(assignee),
             [selected_channel],

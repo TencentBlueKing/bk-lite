@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { Empty } from "antd";
 import { Rnd } from "react-rnd";
+import {
+  FilterTemplateProvider,
+  FilterTemplateTextBridge,
+  FilterTemplateTitleGate,
+} from "@/app/ops-analysis/context/filterTemplate";
 import { useTranslation } from "@/utils/i18n";
 import type {
   FilterValue,
@@ -23,6 +28,7 @@ import { getScreenRndNodeClassName } from "../utils/classNames";
 import { calculateScreenVisualMetrics } from "../utils/metrics";
 import { resolveScreenCanvasBackgroundStyle } from "../utils/screenBackground";
 import {
+  collectScreenFilterTemplateTexts,
   isScreenDecorationItem,
   isScreenWidgetItem,
   readScreenChromeDrag,
@@ -78,6 +84,8 @@ interface ScreenCanvasProps {
     >,
   ) => void;
   onDismissInspector?: () => void;
+  onFilterTemplateSettled?: () => void;
+  resolveFilterTextRef?: MutableRefObject<(text?: string | null) => string>;
 }
 
 interface CanvasSize {
@@ -597,6 +605,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   onDropChrome,
   onTopologyLayoutChange,
   onDismissInspector,
+  onFilterTemplateSettled,
+  resolveFilterTextRef,
   forceContain = false,
 }) => {
   const { t } = useTranslation();
@@ -670,6 +680,12 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
   const scale = screenMetrics.scaleX;
   const resolveDataSource = dataSourceResolver ?? unresolvedDataSource;
+  const filterTemplateTexts = useMemo(
+    () => collectScreenFilterTemplateTexts(viewSets.items),
+    [viewSets.items],
+  );
+  const resolveEnabled = !editMode || fullscreen || Boolean(shareMode);
+  const canvasKey = screenId == null ? '' : String(screenId);
   const editable = Boolean(editMode && !fullscreen);
   const workbenchAlign =
     displayAdapter === "fitHeight"
@@ -679,6 +695,20 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         : "items-center justify-center overflow-hidden";
 
   return (
+    <FilterTemplateProvider
+      definitions={filterDefinitions ?? []}
+      appliedValues={unifiedFilterValues ?? {}}
+      resolveEnabled={resolveEnabled}
+      canvasId={canvasKey}
+    >
+    <FilterTemplateTitleGate
+      texts={filterTemplateTexts}
+      active={resolveEnabled}
+      onSettled={() => onFilterTemplateSettled?.()}
+    />
+    {resolveFilterTextRef ? (
+      <FilterTemplateTextBridge textRef={resolveFilterTextRef} />
+    ) : null}
     <div
       ref={containerRef}
       className={`screen-canvas-workbench flex h-full min-h-0 w-full ${workbenchAlign} ${
@@ -1104,6 +1134,44 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           text-shadow: var(--screen-widget-title-shadow);
         }
 
+        .screen-widget-frame__title-row {
+          display: flex;
+          align-items: center;
+          gap: calc(6px * var(--screen-widget-ui-scale));
+          min-width: 0;
+          width: 100%;
+        }
+
+        .screen-widget-frame__header:has(.screen-widget-frame__title-link) .screen-widget-frame__title {
+          width: auto;
+          flex: 0 1 auto;
+        }
+
+        .screen-widget-frame__title-link {
+          display: inline-flex;
+          flex-shrink: 0;
+          align-items: center;
+          justify-content: center;
+          width: calc(14px * var(--screen-widget-ui-scale));
+          height: calc(14px * var(--screen-widget-ui-scale));
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: color-mix(in srgb, var(--screen-chrome-accent) 68%, var(--screen-widget-title-color));
+          font-size: calc(14px * var(--screen-widget-ui-scale));
+          line-height: 1;
+          cursor: pointer;
+        }
+
+        .screen-widget-frame__title-link .anticon {
+          font-size: 1em;
+        }
+
+        .screen-widget-frame__title-link:hover {
+          color: var(--screen-chrome-accent);
+          filter: drop-shadow(0 0 calc(6px * var(--screen-widget-ui-scale)) var(--screen-chrome-glow));
+        }
+
         .screen-widget-frame__body {
           position: relative;
           z-index: 1;
@@ -1260,6 +1328,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         }
       `}</style>
     </div>
+    </FilterTemplateProvider>
   );
 };
 

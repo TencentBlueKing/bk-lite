@@ -6,6 +6,7 @@ import {
   Form,
   Input,
   Popconfirm,
+  Radio,
   Select,
   Skeleton,
   Space,
@@ -169,7 +170,7 @@ const CHANNEL_META: Record<string, { icon: string; color: string }> = {
 
 const CONFIG_FIELDS: Record<string, string[]> = {
   enterprise_wechat: ['token', 'secret', 'aes_key', 'corp_id', 'agent_id'],
-  enterprise_wechat_aibot: ['token', 'encodingAESKey'],
+  enterprise_wechat_aibot: [],
   dingtalk: ['client_id', 'client_secret'],
   feishu: ['app_id', 'app_secret', 'encrypt_key', 'verification_token'],
   wechat_official: ['token', 'secret', 'aes_key', 'app_id'],
@@ -221,7 +222,10 @@ const SkillChannelPage: React.FC = () => {
   const [switchLoading, setSwitchLoading] = useState<Record<number, boolean>>({});
   const [form] = Form.useForm();
   const watchedType = Form.useWatch('channel_type', form);
+  const watchedConnectionMode = Form.useWatch('connectionMode', form);
   const activeType = editing?.channel_type || watchedType;
+  const aibotConnectionMode = watchedConnectionMode === 'websocket' ? 'websocket' : 'webhook';
+  const aibotLongConnection = activeType === 'enterprise_wechat_aibot' && aibotConnectionMode === 'websocket';
   const publicRef = (editing?.public_id || draftPublicId || '').toString();
   const callbackUrl =
     activeType && IM_CALLBACK_TYPES.has(activeType) && (editing || publicRef)
@@ -306,11 +310,17 @@ const SkillChannelPage: React.FC = () => {
     setEditing(item);
     const cfg = item.channel_config || {};
     const flat = { ...cfg, ...(cfg.webhook || {}) };
+    const websocket = cfg.websocket || {};
     form.setFieldsValue({
       channel_type: item.channel_type,
       name: item.name,
       enabled: item.enabled,
+      connectionMode: cfg.connectionMode === 'websocket' ? 'websocket' : 'webhook',
+      botId: websocket.botId || '',
+      secret: websocket.secret || '',
       ...Object.fromEntries((CONFIG_FIELDS[item.channel_type] || []).map((k) => [k, flat[k]])),
+      token: flat.token,
+      encodingAESKey: flat.encodingAESKey,
     });
     setModalOpen(true);
   };
@@ -341,11 +351,16 @@ const SkillChannelPage: React.FC = () => {
         }
       }
       if (values.channel_type === 'enterprise_wechat_aibot') {
+        const connectionMode = values.connectionMode === 'websocket' ? 'websocket' : 'webhook';
         channel_config = {
-          connectionMode: 'webhook',
+          connectionMode,
           webhook: {
             token: (values.token || '').trim(),
             encodingAESKey: (values.encodingAESKey || '').trim(),
+          },
+          websocket: {
+            botId: (values.botId || '').trim(),
+            secret: (values.secret || '').trim(),
           },
         };
       }
@@ -774,7 +789,19 @@ const SkillChannelPage: React.FC = () => {
           >
             <Switch />
           </Form.Item>
-          {activeType && IM_CALLBACK_TYPES.has(activeType) ? (
+          {activeType === 'enterprise_wechat_aibot' ? (
+            <Form.Item
+              name="connectionMode"
+              label={t('skill.channel.aibotLongConnection', '连接方式')}
+              initialValue="webhook"
+            >
+              <Radio.Group>
+                <Radio value="websocket">{t('skill.channel.aibotLong', '使用长连接')}</Radio>
+                <Radio value="webhook">{t('skill.channel.aibotShort', '使用 URL 回调')}</Radio>
+              </Radio.Group>
+            </Form.Item>
+          ) : null}
+          {activeType && IM_CALLBACK_TYPES.has(activeType) && !aibotLongConnection ? (
             <Form.Item
               label={t('skill.channel.callbackUrl', '回调地址')}
               extra={t(
@@ -832,6 +859,36 @@ const SkillChannelPage: React.FC = () => {
                 {t('skill.channel.viewApiDocs', '接入文档 →')}
               </Link>
             </div>
+          ) : null}
+          {activeType === 'enterprise_wechat_aibot' && aibotLongConnection ? (
+            <>
+              <Form.Item
+                name="botId"
+                preserve
+                label={channelFieldLabel(t, 'botId')}
+                rules={[{ required: true, message: t('common.required', '此项必填'), whitespace: true }]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item
+                name="secret"
+                preserve
+                label={channelFieldLabel(t, 'secret')}
+                rules={[{ required: true, message: t('common.required', '此项必填'), whitespace: true }]}
+              >
+                <Input.Password visibilityToggle />
+              </Form.Item>
+            </>
+          ) : null}
+          {activeType === 'enterprise_wechat_aibot' && !aibotLongConnection ? (
+            <>
+              <Form.Item name="token" preserve label={channelFieldLabel(t, 'token')}>
+                <Input.Password visibilityToggle />
+              </Form.Item>
+              <Form.Item name="encodingAESKey" preserve label={channelFieldLabel(t, 'encodingAESKey')}>
+                <Input.Password visibilityToggle />
+              </Form.Item>
+            </>
           ) : null}
           {configFields.map((field) => (
             <React.Fragment key={field}>

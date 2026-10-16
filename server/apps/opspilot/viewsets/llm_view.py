@@ -43,6 +43,7 @@ from apps.opspilot.serializers.llm_serializer import (
     SkillRequestLogSerializer,
     SkillToolsSerializer,
 )
+from apps.opspilot.services.asset_tags import apply_fallback_tool_tags
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
     BUILTIN_ALERTS_TOOL_NAME,
@@ -145,6 +146,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "force_wiki_grounded",
             "memory_space_id",
             "memory_write_rounds",
+            "run_model_call_limit",
         }
     )
 
@@ -258,6 +260,20 @@ class LLMViewSet(PinMixin, AuthViewSet):
             log_operation(request, "update", "opspilot", f"编辑智能体技能包参数: {instance.name} 变量: {','.join(param_names)}")
         return None
 
+    def _normalize_run_model_call_limit(self, params):
+        """校验每步调用次数；失败返回 JsonResponse，成功返回 None。"""
+        if "run_model_call_limit" not in params:
+            return None
+        try:
+            run_model_call_limit = int(params.get("run_model_call_limit"))
+        except (TypeError, ValueError):
+            run_model_call_limit = 0
+        if not 1 <= run_model_call_limit <= 100:
+            message = self.loader.get("error.run_model_call_limit_range") if self.loader else "每步调用次数须在 1 到 100 之间"
+            return JsonResponse({"result": False, "message": message or "每步调用次数须在 1 到 100 之间"})
+        params["run_model_call_limit"] = run_model_call_limit
+        return None
+
     @HasPermission("skill_setting-Edit")
     def update(self, request, *args, **kwargs):
         instance: LLMSkill = self.get_object()
@@ -315,6 +331,9 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 params["memory_write_rounds"] = normalize_write_rounds(params.get("memory_write_rounds"))
             except SkillMemoryConfigError as exc:
                 return JsonResponse({"result": False, "message": str(exc)})
+        limit_error = self._normalize_run_model_call_limit(params)
+        if limit_error is not None:
+            return limit_error
         for tool in params.get("tools", []):
             for i in tool.get("kwargs", []):
                 if i.get("type") == "password":
@@ -431,7 +450,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["enable_query_rewrite"] = False
             params["show_think"] = False
             params["temperature"] = DEFAULT_CHAT_TEMPERATURE
-            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            params["locale"] = self.loader.default_lang if self.loader else (getattr(request.user, "locale", "en") or "en")
             params["user_timezone"] = getattr(request.user, "timezone", "") or ""
             # 透传技能绑定的 Wiki 知识库,触发 format_chat_server_kwargs 的检索增强;
             # 否则智能体对话不会引用知识库内容,易凭 LLM 自身知识作答(幻觉)。
@@ -517,7 +536,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["enable_query_rewrite"] = False
             params["show_think"] = False
             params["temperature"] = DEFAULT_CHAT_TEMPERATURE
-            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            params["locale"] = self.loader.default_lang if self.loader else (getattr(request.user, "locale", "en") or "en")
             params["user_timezone"] = getattr(request.user, "timezone", "") or ""
             params["browser_use_force_task"] = True
             # 同 execute:透传 Wiki 知识库以触发检索增强,避免智能体不查知识库而凭空作答。
@@ -1209,6 +1228,9 @@ class SkillToolsViewSet(AuthViewSet):
                 response.data.append(build_builtin_mssql_tool(loader))
             if not any(item.get("name") == BUILTIN_ACTIVEDIRECTORY_TOOL_NAME for item in response.data):
                 response.data.append(build_builtin_activedirectory_tool(loader))
+            for item in response.data:
+                if isinstance(item, dict) and isinstance(item.get("id"), int) and item["id"] < 0:
+                    apply_fallback_tool_tags(item)
         return response
 
     @HasPermission("tool_list-Add")

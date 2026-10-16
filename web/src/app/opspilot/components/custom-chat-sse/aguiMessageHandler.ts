@@ -311,7 +311,7 @@ export class AGUIMessageHandler {
     const flushToolCalls = () => {
       if (pendingToolCalls.size > 0) {
         // 传入 isStreaming 状态，控制工具列表是否展开
-        const toolCallsHtml = renderAllToolCalls(pendingToolCalls, this.isStreaming);
+        const toolCallsHtml = renderAllToolCalls(pendingToolCalls, this.isStreaming, getOpspilotTranslate());
         if (parts.length > 0) {
           parts.push('\n\n' + toolCallsHtml);
         } else {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
+import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
 import type {
   ScreenDecorationItem,
   ScreenPanelFramePresetId,
@@ -303,7 +304,8 @@ export const TitleFrameSkin: React.FC<{
   item: Pick<ScreenTitleFrameItem, 'preset' | 'content' | 'textStyle'>;
 }> = ({ item }) => {
   const preset: ScreenTitleFramePresetId = item.preset;
-  const frame = item as ScreenTitleFrameItem;
+  const content = useFilterTemplateText(item.content);
+  const frame = { ...item, content } as ScreenTitleFrameItem;
   if (preset === 'hero-2') return <HeroTitle item={frame} src={title02} fontSize={24} />;
   if (preset === 'hero-3') return <HeroTitle item={frame} src={title04} fontSize={22} />;
   if (preset === 'hero-4') return <HeroTitle item={frame} src={title05} fontSize={22} />;

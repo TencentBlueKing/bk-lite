@@ -172,7 +172,9 @@ export interface ValueConfig {
     arrayValueField?: string;
   };
   cardList?: CardListConfig;
+  /** 旧表格操作列。读取时迁成 interaction，保存不再写回。 */
   actions?: DashboardActionConfig[];
+  interaction?: WidgetInteractionLink;
   appearance?: ScreenWidgetAppearance;
 }
 
@@ -194,6 +196,7 @@ export interface ScreenRenderContext {
   widgetUiScale: number;
 }
 
+/** 旧操作列参数映射。只在读取时转成 interaction，配置界面不再编辑。 */
 export interface DashboardActionParamMapping {
   key: string;
   source: 'rowField' | 'fixed';
@@ -201,12 +204,25 @@ export interface DashboardActionParamMapping {
   value?: string | number | boolean | null;
 }
 
+/** 旧操作列。读取时只保留第一条并迁成 interaction，保存时删除。 */
 export interface DashboardActionConfig {
   columnKey: string;
   text: string;
   url?: string;
   openMode?: 'sameTab' | 'newTab';
   params?: DashboardActionParamMapping[];
+}
+
+/** 组件只保留一条交互链接：标题旁图标，或点击数据。 */
+export type WidgetInteractionKind = 'title' | 'data';
+
+export type WidgetInteractionOpenMode = 'sameTab' | 'newTab';
+
+export interface WidgetInteractionLink {
+  kind: WidgetInteractionKind;
+  name: string;
+  url: string;
+  openMode: WidgetInteractionOpenMode;
 }
 
 export interface WidgetConfig extends ValueConfig {
@@ -257,7 +273,15 @@ export interface ViewConfigProps {
   builtinNamespaceId?: number;
   showChartThemeMode?: boolean;
   surface?: OpsAnalysisWidgetSurface;
+  /** 拓扑不插入统一筛选变量，名称和描述保持普通输入框。 */
+  filterTemplateTokens?: boolean;
   variant?: 'drawer' | 'panel';
+  /** 大屏检查器切换数据/交互时复用同一份表单。 */
+  configSection?: 'data' | 'interaction';
+  /** 面板模式的页签在外部，交互校验失败时切回交互页。 */
+  onConfigSectionChange?: (section: 'data' | 'interaction') => void;
+  /** 大屏当前容器样式。样式页切换时单独传入，避免整表重开。 */
+  screenFrame?: ScreenWidgetFrame;
   onDirtyChange?: (dirty: boolean) => void;
 }
 

@@ -1,14 +1,20 @@
 import React from 'react';
 import { Form, Input, Select } from 'antd';
+import { FilterTokenInput } from '@/app/ops-analysis/components/filterTokenInput';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import { ConfigSectionTitle } from '../configTitles';
 
 interface WidgetConfigBasicFieldsProps {
-  t: (key: string, defaultValue?: string) => string;
+  t: (
+    key: string,
+    defaultValue?: string,
+    values?: Record<string, string | number>,
+  ) => string;
   chartType: string;
   showChartThemeMode: boolean;
   isNetworkStatusTopology: boolean;
   surface?: OpsAnalysisWidgetSurface;
+  filterTemplateTokens?: boolean;
 }
 
 export const WidgetConfigBasicFields: React.FC<WidgetConfigBasicFieldsProps> = ({
@@ -16,6 +22,7 @@ export const WidgetConfigBasicFields: React.FC<WidgetConfigBasicFieldsProps> = (
   showChartThemeMode,
   isNetworkStatusTopology,
   surface,
+  filterTemplateTokens = true,
 }) => (
   <section>
     <ConfigSectionTitle>
@@ -27,15 +34,28 @@ export const WidgetConfigBasicFields: React.FC<WidgetConfigBasicFieldsProps> = (
       name="name"
       rules={[{ required: true, message: t('dashboard.inputName') }]}
     >
-      <Input placeholder={t('dashboard.inputName')} />
+      {filterTemplateTokens ? (
+        <FilterTokenInput t={t} placeholder={t('dashboard.inputName')} />
+      ) : (
+        <Input placeholder={t('dashboard.inputName')} />
+      )}
     </Form.Item>
 
     {surface === 'screen' ? null : (
       <Form.Item label={t('dataSource.describe')} name="description">
-        <Input.TextArea
-          placeholder={t('common.inputMsg')}
-          autoSize={{ minRows: 2, maxRows: 3 }}
-        />
+        {filterTemplateTokens ? (
+          <FilterTokenInput
+            t={t}
+            multiline
+            placeholder={t('common.inputMsg')}
+            autoSize={{ minRows: 2, maxRows: 3 }}
+          />
+        ) : (
+          <Input.TextArea
+            placeholder={t('common.inputMsg')}
+            autoSize={{ minRows: 2, maxRows: 3 }}
+          />
+        )}
       </Form.Item>
     )}
 

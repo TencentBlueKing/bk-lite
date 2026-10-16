@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Upload, Input, Select } from 'antd';
+import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Upload, Input, Tag, Select } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
 import type { UploadFile } from 'antd/es/upload/interface';
@@ -11,7 +11,7 @@ import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
-import { Tool, TagOption, ToolPayload } from '@/app/opspilot/types/tool';
+import { Tool, ToolPayload } from '@/app/opspilot/types/tool';
 import PermissionWrapper from "@/components/permission";
 import styles from '@/app/opspilot/styles/common.module.scss';
 import { useToolApi } from '@/app/opspilot/api/tool';
@@ -20,24 +20,25 @@ import type { SkillPackage } from '@/app/opspilot/types/skill';
 import VariableList from '@/app/opspilot/components/tool/variableList';
 import UrlInputWithButton from '@/app/opspilot/components/tool/urlInputWithButton';
 import SkillPackageDetailDrawer from '@/app/opspilot/components/tool/SkillPackageDetailDrawer';
+import AssetTagFilterBar from '@/app/opspilot/components/tool/assetTagFilterBar';
 import Icon from '@/components/icon';
 import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
 import ListPageHeader from '@/components/list-page-header';
 import CardGridSkeleton from '@/components/card-grid-skeleton';
+import { collectTagChips, filterTaggedAssets, normalizeUserTags } from '@/app/opspilot/utils/assetTagFilter';
 
 const ToolListPage: React.FC = () => {
   const { useForm } = Form;
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
   const { fetchTools, createTool, updateTool, deleteTool, fetchAvailableTools } = useToolApi();
-  const { fetchSkillPackages, importSkillPackageZip, deleteSkillPackage } = useSkillApi();
+  const { fetchSkillPackages, importSkillPackageZip, deleteSkillPackage, updateSkillPackage } = useSkillApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
   const [toolData, setToolData] = useState<Tool[]>([]);
-  const [filteredToolData, setFilteredToolData] = useState<Tool[]>([]);
-  const [allTags, setAllTags] = useState<TagOption[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedToolForDetail, setSelectedToolForDetail] = useState<Tool | null>(null);
   const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [fetchingTools, setFetchingTools] = useState<boolean>(false);
@@ -48,6 +49,7 @@ const ToolListPage: React.FC = () => {
   const [skillSearchKeyword, setSkillSearchKeyword] = useState('');
   const [toolSearchKeyword, setToolSearchKeyword] = useState('');
   const [selectedSkillAssetForDetail, setSelectedSkillAssetForDetail] = useState<SkillPackage | null>(null);
+  const [editingSkillAsset, setEditingSkillAsset] = useState<SkillPackage | null>(null);
   const [isImportSkillModalVisible, setIsImportSkillModalVisible] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [skillPackageFileList, setSkillPackageFileList] = useState<UploadFile[]>([]);
@@ -59,6 +61,26 @@ const ToolListPage: React.FC = () => {
   };
 
   const [form] = useForm();
+  const [skillForm] = useForm();
+
+  const labelForTag = (value: string, kind: 'system' | 'user') => {
+    if (kind === 'system') return t(`tool.systemTags.${value}`, value);
+    const legacy: Record<string, string> = {
+      search: t('common.search'),
+      general: t('tool.general'),
+      maintenance: t('tool.maintenance'),
+      media: t('tool.media'),
+      collaboration: t('tool.collaboration'),
+      other: t('tool.other'),
+    };
+    return legacy[value] || value;
+  };
+
+  const userTagOptions = (tools: Tool[]) => {
+    const words = new Set<string>();
+    tools.forEach((tool) => (tool.user_tags || []).forEach((tag) => words.add(tag)));
+    return Array.from(words).map((tag) => ({ value: tag, label: labelForTag(tag, 'user') }));
+  };
 
   const handleFetchTools = async () => {
     const url = form.getFieldValue('url');
@@ -127,22 +149,27 @@ const ToolListPage: React.FC = () => {
       rules: [{ required: true, message: `${t('common.inputMsg')}${t('common.name')}` }],
       disabled: isBuiltIn,
     },
+    ...(isBuiltIn ? [{
+      name: 'system_tags_view',
+      type: 'custom',
+      label: t('tool.systemTagsReadonly'),
+      component: (
+        <div className="flex flex-wrap gap-2">
+          {(selectedTool?.system_tags || []).length
+            ? (selectedTool?.system_tags || []).map((tag) => (
+              <Tag key={tag}>{labelForTag(tag, 'system')}</Tag>
+            ))
+            : <span className="text-xs text-[var(--color-text-4)]">{t('common.noData')}</span>}
+        </div>
+      ),
+    }] : []),
     {
-      name: 'tags',
+      name: 'user_tags',
       type: 'select',
-      label: t('tool.label'),
-      placeholder: `${t('common.selectMsg')}${t('tool.label')}`,
-      options: [
-        { value: 'search', label: `${t('common.search')} ${t('tool.title')}` },
-        { value: 'general', label: `${t('tool.general')} ${t('tool.title')}` },
-        { value: 'maintenance', label: `${t('tool.maintenance')} ${t('tool.title')}` },
-        { value: 'media', label: `${t('tool.media')} ${t('tool.title')}` },
-        { value: 'collaboration', label: `${t('tool.collaboration')} ${t('tool.title')}` },
-        { value: 'other', label: `${t('tool.other')} ${t('tool.title')}` },
-      ],
-      mode: 'multiple',
-      rules: [{ required: true, message: `${t('common.selectMsg')}${t('tool.label')}` }],
-      disabled: isBuiltIn,
+      label: isBuiltIn ? t('tool.userTags') : t('tool.label'),
+      placeholder: `${t('common.inputMsg')}${t('tool.label')}`,
+      options: userTagOptions(toolData.filter((tool) => Boolean(tool.is_build_in) === isBuiltIn)),
+      mode: 'tags',
     },
     {
       name: 'transport',
@@ -265,22 +292,21 @@ const ToolListPage: React.FC = () => {
     setLoading(true);
     try {
       const data = await fetchTools();
-      const uniqueTags = Array.from(
-        new Set(data.filter((tool: any) => !tool.is_build_in).flatMap((tool: any) => tool.tags))
-      ) as string[];
-      setAllTags(uniqueTags.map((tag: string) => ({ value: tag, label: t(`tool.${tag}`) })));
-
       const tools = data.map((tool: any) => ({
         ...tool,
         display_name: tool.display_name || tool.name,
         description: tool.description_tr,
         icon: tool.icon || 'gongjuji',
-        tags: tool.tags,
-        tagList: tool.tags.map((key: string) => t(`tool.${key}`))
+        system_tags: tool.system_tags || [],
+        user_tags: tool.user_tags || [],
+        tags: [...(tool.system_tags || []), ...(tool.user_tags || [])],
+        tagList: [
+          ...(tool.system_tags || []).map((key: string) => labelForTag(key, 'system')),
+          ...(tool.user_tags || []).map((key: string) => labelForTag(key, 'user')),
+        ],
       }));
 
       setToolData(tools);
-      setFilteredToolData(tools.filter((tool: Tool) => !tool.is_build_in));
     } catch (error) {
       console.error(t('common.fetchFailed'), error);
     } finally {
@@ -304,25 +330,37 @@ const ToolListPage: React.FC = () => {
             ...variable,
             value: '',
           }));
-          const { enable_auth, auth_token, transport, ...restValues } = values;
-          const queryParams: ToolPayload = {
-            ...restValues,
-            name: values.name,
-            icon: 'gongjuji',
-            params: {
-              name: values.name,
-              url: values.url,
-              transport: transport || 'streamable_http',
-              kwargs,
-              enable_auth: enable_auth || false,
-              auth_token: auth_token || '',
-            },
-            tools: availableTools,
-          };
-          if (!selectedTool?.id) {
-            await createTool(queryParams);
+          const { enable_auth, auth_token, transport, user_tags, ...restValues } = values;
+          const normalizedUserTags = normalizeUserTags(user_tags || []);
+          if (selectedTool?.is_build_in) {
+            await updateTool(selectedTool.id, {
+              name: selectedTool.name,
+              description: selectedTool.description,
+              team: values.team,
+              user_tags: normalizedUserTags,
+              system_tags: selectedTool.system_tags || [],
+            });
           } else {
-            await updateTool(selectedTool.id, queryParams);
+            const queryParams: ToolPayload = {
+              ...restValues,
+              name: values.name,
+              icon: 'gongjuji',
+              user_tags: normalizedUserTags,
+              params: {
+                name: values.name,
+                url: values.url,
+                transport: transport || 'streamable_http',
+                kwargs,
+                enable_auth: enable_auth || false,
+                auth_token: auth_token || '',
+              },
+              tools: availableTools,
+            };
+            if (!selectedTool?.id) {
+              await createTool(queryParams);
+            } else {
+              await updateTool(selectedTool.id, queryParams);
+            }
           }
           form.resetFields();
           setIsModalVisible(false);
@@ -396,6 +434,7 @@ const ToolListPage: React.FC = () => {
         url: tool?.params?.url,
         transport: transportValue,
         team: tool ? tool.team : [selectedGroup?.id],
+        user_tags: tool?.user_tags || [],
         variables: tool?.params?.kwargs,
         enable_auth: enableAuthValue,
         auth_token: tool?.params?.auth_token || '',
@@ -418,37 +457,47 @@ const ToolListPage: React.FC = () => {
     });
   }
 
-  const changeFilter = (selectedTags: string[]) => {
-    const externalTools = toolData.filter((tool) => !tool.is_build_in);
-    if (selectedTags.length === 0) {
-      setFilteredToolData(externalTools);
-    } else {
-      const filteredData = externalTools.filter((tool) =>
-        tool.tags.some((tag: string) => selectedTags.includes(tag))
-      );
-      setFilteredToolData(filteredData);
-    }
+  const switchAssetView = (value: 'builtin' | 'mcp' | 'skills') => {
+    setAssetView(value);
+    setSelectedTags([]);
+    setToolSearchKeyword('');
+    setSkillSearchKeyword('');
   };
 
   const handleCardClick = (tool: Tool) => {
     setSelectedToolForDetail(tool);
   };
 
-  const filteredSkillAssets = skillAssets
-    .filter((asset) => {
-      const keyword = skillSearchKeyword.trim().toLowerCase();
-      const matchesKeyword = !keyword || [
-        asset.display_name || asset.name,
-        asset.name,
-        asset.package_id,
-        asset.category || '',
-        asset.description_tr || asset.description || '',
-        (asset.required_tools || []).join(' '),
-        (asset.triggers || []).join(' '),
-      ].some((value) => value.toLowerCase().includes(keyword));
-      return matchesKeyword;
-    })
-    .sort((left, right) => Number(Boolean(right.is_build_in) || right.source_type === 'builtin') - Number(Boolean(left.is_build_in) || left.source_type === 'builtin'));
+  const currentToolItems = assetView === 'builtin'
+    ? toolData.filter((tool) => tool.is_build_in)
+    : toolData.filter((tool) => !tool.is_build_in);
+
+  const toolChips = collectTagChips(
+    currentToolItems.map((tool) => ({ systemTags: tool.system_tags || [], userTags: tool.user_tags || [] })),
+    labelForTag,
+  );
+
+  const skillChips = collectTagChips(
+    skillAssets.map((asset) => ({ systemTags: asset.system_tags || [], userTags: asset.user_tags || [] })),
+    labelForTag,
+  );
+
+  const filteredSkillAssets = filterTaggedAssets(skillAssets, {
+    selectedTags,
+    keyword: skillSearchKeyword,
+    chips: skillChips,
+    systemTags: (asset) => asset.system_tags || [],
+    userTags: (asset) => asset.user_tags || [],
+    name: (asset) => asset.display_name || asset.name,
+    description: (asset) => asset.description_tr || asset.description || '',
+    extraKeyword: (asset) => [
+      asset.name,
+      asset.package_id,
+      asset.category || '',
+      (asset.required_tools || []).join(' '),
+      (asset.triggers || []).join(' '),
+    ].join(' '),
+  }).sort((left, right) => Number(Boolean(right.is_build_in) || right.source_type === 'builtin') - Number(Boolean(left.is_build_in) || left.source_type === 'builtin'));
 
   const handleImportSkillOk = async () => {
     const file = (skillPackageFileList[0]?.originFileObj || skillPackageFileList[0]) as File | undefined;
@@ -483,8 +532,9 @@ const ToolListPage: React.FC = () => {
 
   const renderAssetSwitcher = () => (
     <Segmented
+      className="self-start"
       value={assetView}
-      onChange={(value) => setAssetView(value as 'builtin' | 'mcp' | 'skills')}
+      onChange={(value) => switchAssetView(value as 'builtin' | 'mcp' | 'skills')}
       options={[
         { label: t('tool.categoryBuiltin'), value: 'builtin' },
         { label: t('tool.categorySkills'), value: 'skills' },
@@ -494,17 +544,16 @@ const ToolListPage: React.FC = () => {
   );
 
   const displayedTools = useMemo(() => {
-    const base =
-      assetView === 'builtin'
-        ? toolData.filter((tool) => tool.is_build_in)
-        : filteredToolData;
-    const keyword = toolSearchKeyword.trim().toLowerCase();
-    if (!keyword) return base;
-    return base.filter((tool) =>
-      (tool.display_name || tool.name || '').toLowerCase().includes(keyword)
-      || (tool.description || '').toLowerCase().includes(keyword),
-    );
-  }, [assetView, toolData, filteredToolData, toolSearchKeyword]);
+    return filterTaggedAssets(currentToolItems, {
+      selectedTags,
+      keyword: toolSearchKeyword,
+      chips: toolChips,
+      systemTags: (tool) => tool.system_tags || [],
+      userTags: (tool) => tool.user_tags || [],
+      name: (tool) => tool.display_name || tool.name || '',
+      description: (tool) => tool.description || '',
+    });
+  }, [currentToolItems, selectedTags, toolSearchKeyword, toolChips]);
 
   const headerSearch = (
     <Input.Search
@@ -549,7 +598,10 @@ const ToolListPage: React.FC = () => {
 
   const renderSkillAssetView = () => (
     <div className="w-full" aria-label={t('tool.assetsLabel')}>
-      <div className="mb-4">{renderAssetSwitcher()}</div>
+      <div className="mb-4 flex flex-col gap-3">
+        {renderAssetSwitcher()}
+        <AssetTagFilterBar chips={skillChips} selected={selectedTags} onChange={setSelectedTags} />
+      </div>
       {skillAssetsLoading ? (
         <CardGridSkeleton count={6} />
       ) : filteredSkillAssets.length ? (
@@ -559,18 +611,35 @@ const ToolListPage: React.FC = () => {
             const canDeleteSkillAsset = !asset.is_build_in && asset.source_type !== 'builtin';
             const displayName = asset.display_name || asset.name;
             const displayDescription = asset.description_tr || asset.description || '';
-            const deleteMenu = canDeleteSkillAsset ? (
+            const skillMenu = (
               <Menu>
-                <Menu.Item key="delete" danger>
-                  <span
-                    className="block"
-                    onClick={() => handleDeleteSkillAsset(asset)}
-                  >
-                    {t('common.delete')}
-                  </span>
+                <Menu.Item key="edit">
+                  <PermissionWrapper requiredPermissions={['Edit']} instPermissions={asset.permissions}>
+                    <span
+                      className="block w-full"
+                      onClick={() => {
+                        setEditingSkillAsset(asset);
+                        Promise.resolve().then(() => {
+                          skillForm.setFieldsValue({
+                            team: asset.team || [],
+                            user_tags: asset.user_tags || [],
+                          });
+                        });
+                      }}
+                    >
+                      {t('common.edit')}
+                    </span>
+                  </PermissionWrapper>
                 </Menu.Item>
+                {canDeleteSkillAsset ? (
+                  <Menu.Item key="delete" danger>
+                    <span className="block" onClick={() => handleDeleteSkillAsset(asset)}>
+                      {t('common.delete')}
+                    </span>
+                  </Menu.Item>
+                ) : null}
               </Menu>
-            ) : undefined;
+            );
 
             return (
               <UnifiedOpsCard
@@ -580,11 +649,13 @@ const ToolListPage: React.FC = () => {
                 icon="jinengpeixun"
                 meta={[
                   asset.is_build_in || asset.source_type === 'builtin' ? t('common.builtin') : null,
+                  ...(asset.system_tags || []).map((tag) => labelForTag(tag, 'system')),
+                  ...(asset.user_tags || []).map((tag) => labelForTag(tag, 'user')),
                   asset.category,
                   asset.version,
                 ].filter(Boolean) as string[]}
                 footer="none"
-                menuOverlay={deleteMenu}
+                menuOverlay={skillMenu}
                 onClick={() => setSelectedSkillAssetForDetail(asset)}
               />
             );
@@ -605,21 +676,9 @@ const ToolListPage: React.FC = () => {
       />
       {assetView === 'skills' ? renderSkillAssetView() : (
         <>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-4 flex flex-col gap-3">
             {renderAssetSwitcher()}
-            {assetView === 'mcp' ? (
-              <Select
-                allowClear
-                mode="multiple"
-                maxTagCount="responsive"
-                className="w-[170px]"
-                placeholder={`${t('common.select')}...`}
-                options={allTags}
-                disabled={loading}
-                loading={loading}
-                onChange={changeFilter}
-              />
-            ) : null}
+            <AssetTagFilterBar chips={toolChips} selected={selectedTags} onChange={setSelectedTags} />
           </div>
           <EntityList<Tool>
             data={displayedTools}
@@ -638,10 +697,7 @@ const ToolListPage: React.FC = () => {
             onCardClick={handleCardClick}
             renderCard={(tool) => {
               const title = tool.display_name || tool.name;
-              const meta = [
-                ...(tool.tagList || []),
-                tool.is_build_in ? t('common.builtin') : t('common.externalApp'),
-              ].filter(Boolean);
+              const meta = [...(tool.tagList || [])].filter(Boolean);
               const menu =
                 assetView === 'mcp'
                   ? menuActions(tool)
@@ -707,7 +763,7 @@ const ToolListPage: React.FC = () => {
               {fetchingTools ? (
                 <>
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="p-3 bg-[var(--color-fill-1)] border border-[var(--color-border)] rounded-lg animate-pulse">
+                    <div key={i} className="p-3 bg-[var(--color-fill-1)] border border-[var(--color-border)] rounded-lg animate-neutral-pulse">
                       <div className="flex items-start gap-3">
                         <div className="flex-shrink-0 w-8 h-8 bg-[var(--color-fill-3)] rounded-lg"></div>
                         <div className="flex-1 space-y-2">
@@ -776,6 +832,55 @@ const ToolListPage: React.FC = () => {
             <p className="ant-upload-hint">{t('tool.uploadHint')}</p>
           </Upload.Dragger>
         </div>
+      </Modal>
+      <Modal
+        title={t('common.edit')}
+        open={!!editingSkillAsset}
+        onCancel={() => setEditingSkillAsset(null)}
+        onOk={async () => {
+          if (!editingSkillAsset) return;
+          const values = await skillForm.validateFields();
+          await updateSkillPackage(editingSkillAsset.id, {
+            package_id: editingSkillAsset.package_id,
+            name: editingSkillAsset.name,
+            version: editingSkillAsset.version,
+            description: editingSkillAsset.description,
+            team: values.team,
+            user_tags: normalizeUserTags(values.user_tags || []),
+            system_tags: editingSkillAsset.system_tags || [],
+          });
+          await fetchSkillPackageData();
+          setEditingSkillAsset(null);
+          message.success(t('common.saveSuccess'));
+        }}
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
+      >
+        <Form form={skillForm} layout="vertical">
+          {editingSkillAsset?.is_build_in || editingSkillAsset?.source_type === 'builtin' ? (
+            <Form.Item label={t('tool.systemTagsReadonly')}>
+              <div className="flex flex-wrap gap-2">
+                {(editingSkillAsset.system_tags || []).length
+                  ? (editingSkillAsset.system_tags || []).map((tag) => (
+                    <Tag key={tag}>{labelForTag(tag, 'system')}</Tag>
+                  ))
+                  : <span className="text-xs text-[var(--color-text-4)]">{t('common.noData')}</span>}
+              </div>
+            </Form.Item>
+          ) : null}
+          <Form.Item name="user_tags" label={editingSkillAsset?.is_build_in ? t('tool.userTags') : t('tool.label')}>
+            <Select
+              mode="tags"
+              options={Array.from(new Set(skillAssets.flatMap((asset) => asset.user_tags || []))).map((tag) => ({
+                value: tag,
+                label: labelForTag(tag, 'user'),
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="team" label={t('common.group')} rules={[{ required: true, message: `${t('common.selectMsg')}${t('common.group')}` }]}>
+            <GroupTreeSelect multiple placeholder={`${t('common.selectMsg')}${t('common.group')}`} />
+          </Form.Item>
+        </Form>
       </Modal>
       <SkillPackageDetailDrawer
         asset={selectedSkillAssetForDetail}

@@ -234,3 +234,9 @@ def test_planned_step_logs_step_and_run_timing(monkeypatch, caplog):
     assert stages["planned_run"].args[3] >= 1
     assert stages["planned_run"].args[9] == 1
     assert stages["planned_run"].args[2] == "thread-cmdb"
+
+
+def test_planner_objective_language_follows_locale():
+    planner = ToolExecutionPlanner(None)
+    assert "objective in English" in planner._system_prompt("en")
+    assert "简体中文" in planner._system_prompt("zh-Hans")

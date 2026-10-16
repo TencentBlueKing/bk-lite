@@ -15,17 +15,13 @@ import time
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
-from apps.core.logger import openapi_logger as logger, safe_exception_info, safe_log_value
+from apps.core.logger import openapi_logger as logger
+from apps.core.logger import safe_exception_info, safe_log_value
 from apps.core.openapi.call_audit import ENTRY_FORWARD_AUTH, ENTRY_INVOKE, persist_call_log
+from apps.core.openapi.catalog import build_docs_catalog
 from apps.core.openapi.dispatcher import dispatch
 from apps.core.openapi.envelope import ErrorCode, fail, ok
-from apps.core.openapi.identity import (
-    CREDENTIAL_API_TOKEN,
-    CREDENTIAL_JWT,
-    CREDENTIAL_SYSTEM_TOKEN,
-    AuthenticationFailed,
-    authenticate_request,
-)
+from apps.core.openapi.identity import CREDENTIAL_API_TOKEN, CREDENTIAL_JWT, CREDENTIAL_SYSTEM_TOKEN, AuthenticationFailed, authenticate_request
 from apps.core.openapi.registry import default_registry
 from apps.core.openapi.token_scope import allows_external
 from apps.core.utils.exempt import api_exempt
@@ -154,26 +150,6 @@ def me_view(request):
 _FORWARDED_URI_RE = re.compile(r"^/openapi/(?P<version>[a-z0-9]+)/(?P<service>[a-z][a-z0-9-]*)(?:/|$)")
 
 
-def _field_spec(field):
-    """DRF serializer 字段 → 机器可读描述（_docs 最小可行版本，additive-only）。"""
-    from rest_framework.fields import empty
-
-    spec = {
-        "type": type(field).__name__.removesuffix("Field").lower() or "field",
-        "required": bool(field.required),
-    }
-    if field.default is not empty and not callable(field.default):
-        spec["default"] = field.default
-    choices = getattr(field, "choices", None)
-    if choices:
-        spec["choices"] = list(choices)
-    for attr in ("min_value", "max_value"):
-        value = getattr(field, attr, None)
-        if value is not None:
-            spec[attr] = value
-    return spec
-
-
 @api_exempt
 @require_http_methods(["GET"])
 def docs_view(request):
@@ -186,34 +162,7 @@ def docs_view(request):
         if response is not None:
             return response
 
-        from apps.core.openapi.renderer import get_external_catalog
-
-        internal = {}
-        for endpoint in default_registry.endpoints():
-            internal.setdefault(endpoint.service, []).append(
-                {
-                    "path": endpoint.path,
-                    "method": endpoint.method,
-                    "summary": endpoint.summary,
-                    "inject": endpoint.inject,
-                    "permission": endpoint.permission,
-                    "request_schema": {
-                        name: _field_spec(field)
-                        for name, field in endpoint.serializer_class().fields.items()
-                    },
-                }
-            )
-
-        services = [
-            {"name": name, "kind": "internal", "endpoints": sorted(
-                endpoints, key=lambda item: (item["path"], item["method"])
-            )}
-            for name, endpoints in sorted(internal.items())
-        ] + [
-            {"name": item["name"], "kind": "external", "doc_url": item["doc_url"]}
-            for item in get_external_catalog()
-        ]
-        response = ok({"services": services})
+        response = ok(build_docs_catalog())
         return response
     finally:
         _audit(request, identity, response, started_at)
@@ -269,9 +218,7 @@ def forward_auth_view(request):
             response = fail(ErrorCode.ROLE_REQUIRED, "service role required")
             return response
 
-        if identity.credential_type != CREDENTIAL_JWT and not allows_external(
-            identity.token_scope, matched.group("service")
-        ):
+        if identity.credential_type != CREDENTIAL_JWT and not allows_external(identity.token_scope, matched.group("service")):
             response = fail(ErrorCode.SCOPE_DENIED, "endpoint not in token scope")
             return response
 
@@ -308,13 +255,8 @@ def _build_me_payload(identity):
     if identity.groups is not None:
         groups = identity.groups
     else:
-        name_map = dict(
-            Group.objects.filter(id__in=identity.team_ids).values_list("id", "name")
-        )
-        groups = [
-            {"id": team_id, "name": name_map.get(team_id, "")}
-            for team_id in identity.team_ids
-        ]
+        name_map = dict(Group.objects.filter(id__in=identity.team_ids).values_list("id", "name"))
+        groups = [{"id": team_id, "name": name_map.get(team_id, "")} for team_id in identity.team_ids]
 
     anchor_scopes = []
     for team_id in identity.team_ids:
@@ -336,9 +278,7 @@ def _build_me_payload(identity):
 
     from apps.core.openapi.renderer import get_external_services
 
-    services = [
-        {"name": name, "kind": "internal"} for name in default_registry.services()
-    ] + [
+    services = [{"name": name, "kind": "internal"} for name in default_registry.services()] + [
         {"name": name, "kind": "external"} for name in get_external_services()
     ]
 

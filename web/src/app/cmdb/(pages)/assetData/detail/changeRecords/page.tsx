@@ -359,7 +359,7 @@ const ChangeRecords: React.FC = () => {
               {Array.from({ length: 8 }).map((_, index) => (
                 <div
                   key={index}
-                  className="h-12 animate-pulse rounded-md bg-[var(--color-fill-2)]"
+                  className="h-12 animate-neutral-pulse rounded-md bg-[var(--color-fill-2)]"
                 />
               ))}
             </div>

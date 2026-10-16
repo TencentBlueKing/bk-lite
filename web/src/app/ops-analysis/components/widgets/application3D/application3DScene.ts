@@ -10,6 +10,7 @@ import type {
   Application3DWallItem,
 } from '@/app/ops-analysis/types/sceneWidget';
 import type { Application3DPageEffect } from '@/app/ops-analysis/utils/application3DWallConfig';
+import { createRightClickGesture } from '@/app/ops-analysis/utils/interactionBehavior';
 import {
   APPLICATION3D_CAMERA_FOV,
   buildApplication3DLayout,
@@ -504,6 +505,13 @@ export const createApplication3DScene = (
     onBackgroundClick?: () => void;
     onArchitectureHostSelect?: (selection: ArchitectureHostSelection | null) => void;
     onFirstRender?: () => void;
+    onLinkContextMenu?: (hit: {
+      x: number;
+      y: number;
+      system?: { id: string; name: string; modelId?: string };
+      host?: { id: string; name: string; ip?: string; os?: string; modelId?: string };
+      application?: { id: string; name: string; modelId?: string };
+    } | null) => void;
   },
 ): Application3DSceneController => {
   const reducedMotion = prefersReducedMotion();
@@ -2465,8 +2473,54 @@ export const createApplication3DScene = (
     requestRender();
   };
 
-  const handleContextMenu = (event: Event) => {
+  const rightClickGesture = createRightClickGesture();
+  const handleRightPointerDown = (event: PointerEvent) => {
+    rightClickGesture.pointerDown(event);
+  };
+  const handleContextMenu = (event: MouseEvent) => {
     event.preventDefault();
+    const point = { x: event.clientX, y: event.clientY };
+    let payload: {
+      x: number;
+      y: number;
+      host?: { id: string; name: string; ip?: string; os?: string; modelId?: string };
+      system?: { id: string; name: string; modelId?: string };
+      application?: { id: string; name: string; modelId?: string };
+    } | null = null;
+    if (phase === 'architecture') {
+      const node = pickArchitectureNode(event.clientX, event.clientY);
+      if (node?.kind === 'host') {
+        payload = {
+          ...point,
+          host: {
+            id: node.id,
+            name: node.name,
+            ip: node.ip_addr,
+            os: node.os_name,
+            modelId: node.model_id,
+          },
+        };
+      } else if (node?.kind === 'system') {
+        payload = { ...point, system: { id: node.id, name: node.name, modelId: node.model_id } };
+      } else if (node?.kind === 'application') {
+        payload = { ...point, application: { id: node.id, name: node.name, modelId: node.model_id } };
+      }
+    } else {
+      const applicationId = pickApplicationId(event.clientX, event.clientY);
+      const item = applicationId ? visuals.get(applicationId)?.item : undefined;
+      if (item) {
+        payload = { ...point, system: { id: item.id, name: item.name, modelId: item.model_id } };
+      }
+    }
+    const decision = rightClickGesture.decide(event, Boolean(payload));
+    if (!options.onLinkContextMenu || !decision.open || !payload) {
+      if (options.onLinkContextMenu && !decision.dragged && !payload) {
+        options.onLinkContextMenu(null);
+      }
+      return;
+    }
+    event.stopImmediatePropagation();
+    options.onLinkContextMenu(payload);
   };
 
   const handleWheel = () => {
@@ -2609,6 +2663,7 @@ export const createApplication3DScene = (
     pixelRatioMediaQuery?.addEventListener('change', handlePixelRatioChange);
   }
 
+  renderer.domElement.addEventListener('pointerdown', handleRightPointerDown, true);
   renderer.domElement.addEventListener('contextmenu', handleContextMenu);
   if (options.interactive) {
     renderer.domElement.addEventListener('pointerdown', handlePointerDown);
@@ -2661,6 +2716,7 @@ export const createApplication3DScene = (
       if (resizeRaf !== null) window.cancelAnimationFrame(resizeRaf);
       resizeObserver.disconnect();
       pixelRatioMediaQuery?.removeEventListener('change', handlePixelRatioChange);
+      renderer.domElement.removeEventListener('pointerdown', handleRightPointerDown, true);
       renderer.domElement.removeEventListener('contextmenu', handleContextMenu);
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
       renderer.domElement.removeEventListener('pointermove', handlePointerMove);

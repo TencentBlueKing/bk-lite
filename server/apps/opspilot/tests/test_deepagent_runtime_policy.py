@@ -2277,6 +2277,33 @@ async def test_planner_drops_use_skills_without_packages():
     assert plan.steps == []
 
 
+def test_attachment_step_produced_file_requires_download_url():
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import attachment_step_produced_file, looks_like_attachment_file_task
+
+    prose = [AIMessage(content="已完成 v1.1 重新生成：主机磁盘资源_v1.1.docx")]
+    skipped = [
+        ToolMessage(
+            content='{"skipped": true, "message": "本轮已生成文件"}',
+            name="generate_attachment_file",
+            tool_call_id="1",
+        )
+    ]
+    created = [
+        ToolMessage(
+            content='{"filename": "主机磁盘资源_v1.1.docx", "file_url": "/api/v1/workflow_attachment/download/x"}',
+            name="generate_attachment_file",
+            tool_call_id="2",
+        )
+    ]
+    history = [{"role": "assistant", "content": "报告已写好。\n已生成文件：主机磁盘资源_v1.0.docx"}]
+    assert looks_like_attachment_file_task("文档没有论据，需加入表格展示所有主机的均值和预测峰值", conversation_messages=history) is True
+    assert attachment_step_produced_file(prose) is False
+    assert attachment_step_produced_file(skipped) is False
+    assert attachment_step_produced_file(created) is True
+
+
 def test_enforce_generate_attachment_file_injects_when_empty_plan():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import (
         GENERATE_ATTACHMENT_FILE_TOOL_NAME,

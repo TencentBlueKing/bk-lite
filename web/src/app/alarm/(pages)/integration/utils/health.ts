@@ -59,10 +59,3 @@ export function formatEventCount(n: number | null | undefined | string): string 
   return String(num);
 }
 
-export function formatTimestamp(ts: string | null | undefined): string {
-  if (!ts) return '--';
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return '--';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}

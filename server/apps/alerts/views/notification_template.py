@@ -25,6 +25,7 @@ from apps.alerts.notification_templates.events import (
 )
 from apps.alerts.notification_templates.operation import ensure_alert_operation_template, is_managed_nats_channel
 from apps.alerts.notification_templates.renderer import TemplateValidationError, normalize_level_color, render_source
+from apps.alerts.notification_templates.timefmt import format_template_datetime, resolve_display_timezone
 from apps.alerts.serializers.notification_template import NotificationTemplateSerializer
 from apps.alerts.utils.i18n import alerts_message, serializer_message
 from apps.alerts.utils.permission_scope import (
@@ -51,8 +52,8 @@ def _preview_events():
         "resource_name": "生产主机 01",
         "resource_type": "host",
         "source_name": "Prometheus",
-        "start_time": "2026-09-08 10:05:00+08:00",
-        "received_at": "2026-09-08 10:05:12+08:00",
+        "start_time": "2026-09-08 10:05:00",
+        "received_at": "2026-09-08 10:05:12",
         "tags": {"alert": "CpuHigh"},
         "labels": {"env": "prod"},
         "enrichment": {"cmdb": {"owner": "张三"}},
@@ -67,8 +68,8 @@ def _preview_events():
         "resource_name": "生产主机 01",
         "resource_type": "host",
         "source_name": "Prometheus",
-        "start_time": "2026-09-08 10:00:00+08:00",
-        "received_at": "2026-09-08 10:00:08+08:00",
+        "start_time": "2026-09-08 10:00:00",
+        "received_at": "2026-09-08 10:00:08",
         "tags": {"alert": "CpuHigh"},
         "labels": {"env": "prod"},
         "enrichment": {"cmdb": {"owner": "张三"}},
@@ -101,9 +102,9 @@ def _preview_context(sample):
         "resource_name": "生产主机 01",
         "resource_type": "host",
         "item": "cpu_usage",
-        "created_at": "2026-09-08 10:00:00+08:00",
-        "first_event_time": "2026-09-08 10:00:00+08:00",
-        "last_event_time": "2026-09-08 10:05:00+08:00",
+        "created_at": "2026-09-08 10:00:00",
+        "first_event_time": "2026-09-08 10:00:00",
+        "last_event_time": "2026-09-08 10:05:00",
         "operators": ["zhangsan"],
         "owners": ["zhangsan"],
         "team": [1],
@@ -124,11 +125,11 @@ def _preview_context(sample):
             "scene_name": "测试发送",
             "receivers": receivers,
             "receiver_names": receiver_names,
-            "generated_at": "2026-09-08 10:06:00+08:00",
+            "generated_at": "2026-09-08 10:06:00",
             "action_summary": "该告警已由 admin 分派给 zhangsan，请及时认领并处理。",
             "actor_name": "admin",
             "previous_receiver_names": "lisi",
-            "action_time": "2026-09-08 10:06:00+08:00",
+            "action_time": "2026-09-08 10:06:00",
         },
         "summary": sample.get("summary", {"total": 2, "displayed": 2, "omitted": 0, "alerts": []}),
         "events": sample.get("events") if isinstance(sample.get("events"), dict) else _preview_events(),
@@ -263,8 +264,9 @@ class NotificationTemplateViewSet(ModelViewSet):
     @staticmethod
     def _build_test_context(request, alert, scope, receivers, sources=()):
         notification_context = None
+        display_timezone = resolve_display_timezone(receivers)
         if scope == NotificationTemplate.SCOPE_ALERT_OPERATION:
-            action_time = timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M:%S")
+            action_time = format_template_datetime(timezone.now(), display_timezone)
             notification_context = {
                 "action_summary": (f"这是由 {request.user.username} 使用告警 {alert.alert_id} 发起的测试发送，" "请勿作为真实分派处理。"),
                 "actor_name": request.user.username,
@@ -276,6 +278,7 @@ class NotificationTemplateViewSet(ModelViewSet):
             receivers,
             "test",
             notification_context,
+            display_timezone=display_timezone,
         )
         if inspect_event_usage(sources).used:
             context["events"] = load_event_context(alert, sources)

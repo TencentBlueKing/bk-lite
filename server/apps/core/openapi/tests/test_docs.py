@@ -24,18 +24,21 @@ def test_docs_lists_internal_endpoints_with_schema(client):
 
     patch_service = services["patch-mgmt"]
     assert patch_service["kind"] == "internal"
-    endpoint = next(
-        e for e in patch_service["endpoints"] if e["path"] == "patch-mgmt/module-data"
-    )
+    endpoint = next(e for e in patch_service["endpoints"] if e["path"] == "patch-mgmt/module-data")
     assert endpoint["method"] == "GET"
     assert endpoint["inject"] == "team_list"
     schema = endpoint["request_schema"]
-    assert schema["module"]["required"] is True
-    assert schema["module"]["choices"] == ["patch_target"]
-    assert schema["group_id"]["type"] == "integer"
-    assert schema["page"]["required"] is False
+    assert schema["$schema"] == "http://json-schema.org/draft-07/schema#"
+    assert schema["type"] == "object"
+    assert schema["additionalProperties"] is False
+    assert "module" in schema["required"]
+    assert schema["properties"]["module"]["enum"] == ["patch_target"]
+    assert schema["properties"]["group_id"]["type"] == "integer"
+    assert schema["properties"]["page"]["default"] == 1
     # 身份字段绝不出现在对外 schema 中
-    assert "team" not in schema
+    assert "team" not in schema["properties"]
+    # 尚未迁移的响应契约明确为 null，不能根据运行结果猜测字段。
+    assert endpoint["response_schema"] is None
 
 
 def test_docs_includes_external_services(client, monkeypatch):

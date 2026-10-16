@@ -6,8 +6,15 @@ import pytest
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import NetworkWhiteList
 from apps.system_mgmt.serializers.network_white_list_serializer import NetworkWhiteListSerializer
+
+_FORBIDDEN_SUPERNET_KEY = "error.forbidden_network_supernet"
+_FORBIDDEN_SUPERNET_MESSAGES = {
+    "zh-Hans": "禁止添加 0.0.0.0/0 或 ::/0（等于关闭全部防护）",
+    "en": "Adding 0.0.0.0/0 or ::/0 is forbidden because it disables all protection",
+}
 
 
 def test_validate_network_normalizes_bare_ip():
@@ -41,12 +48,18 @@ def test_validate_network_rejects_supernet_v6():
 @pytest.mark.django_db
 @pytest.mark.parametrize("network", ["0.0.0.0/0", "::/0"])
 def test_model_rejects_forbidden_supernets(network):
+    loaded = {
+        lang: LanguageLoader(app="system_mgmt", default_lang=lang).get(_FORBIDDEN_SUPERNET_KEY)
+        for lang in ("zh-Hans", "en")
+    }
+    assert loaded == _FORBIDDEN_SUPERNET_MESSAGES
+
     entry = NetworkWhiteList(network=network, domain_name="", created_by="review", updated_by="review")
 
-    with pytest.raises(DjangoValidationError):
-        entry.full_clean()
-    with pytest.raises(DjangoValidationError):
-        entry.save()
+    for reject in (entry.full_clean, entry.save):
+        with pytest.raises(DjangoValidationError) as exc:
+            reject()
+        assert exc.value.message_dict["network"] == [loaded["en"]]
 
 
 # ---- validate_domain_name ----

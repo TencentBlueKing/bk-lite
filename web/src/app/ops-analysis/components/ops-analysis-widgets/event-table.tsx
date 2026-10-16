@@ -22,6 +22,16 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
 import { useTableBodyScrollY } from '@/app/ops-analysis/components/widgets/shared/useTableBodyScrollY';
+import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
+import { InteractionActionCell, useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import {
+  interactionActionColumnTitle,
+  interactionActionLinkText,
+  isFirstActionColumn,
+  readWidgetInteraction,
+  tableRowLinkPoint,
+  withInteractionActionColumn,
+} from '@/app/ops-analysis/utils/interactionLink';
 
 const DEFAULT_CELL_MAX_WIDTH = 260;
 
@@ -47,6 +57,10 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
   onQueryChange,
 }) => {
   const { t } = useTranslation();
+  const surface = useInteractionSurface();
+  const { openPoint } = useWidgetDataLink(config);
+  const dataLink = readWidgetInteraction(config);
+  const dataLinkName = dataLink?.kind === 'data' ? dataLink.name : '';
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
   const [queryPagination, setQueryPagination] =
@@ -102,27 +116,50 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
     onQueryChange(queryParams);
   }, [onQueryChange, queryPagination, supportsPaginationParams]);
 
+  const columnConfigs = useMemo(() => {
+    return withInteractionActionColumn(configuredColumns, dataLink, surface, {
+      key: '__interaction',
+      title: interactionActionColumnTitle(t),
+      columnType: 'actions',
+      visible: true,
+      order: configuredColumns.length,
+    });
+  }, [configuredColumns, dataLink, surface, t]);
+
   const columns = useMemo((): ColumnsType<EventTableRow> => {
-    return configuredColumns.map((col) => {
+    return columnConfigs.map((col, columnIndex) => {
       const column: any = {
         title: col.title,
         dataIndex: col.key,
         key: col.key,
         ellipsis: { showTitle: false },
-        render: (text: any) => (
-          <Tooltip placement="topLeft" title={text?.toString()}>
-            <div
-              style={{
-                maxWidth: col.width || DEFAULT_CELL_MAX_WIDTH,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {text?.toString() ?? '-'}
-            </div>
-          </Tooltip>
-        ),
+        render: (text: any, record: EventTableRow) => {
+          if (col.columnType === 'actions') {
+            return (
+              <InteractionActionCell
+                link={dataLink}
+                surface={surface}
+                isFirst={isFirstActionColumn(columnConfigs, columnIndex)}
+                label={interactionActionLinkText(dataLinkName, t)}
+                onOpen={() => openPoint(tableRowLinkPoint(record))}
+              />
+            );
+          }
+          return (
+            <Tooltip placement="topLeft" title={text?.toString()}>
+              <div
+                style={{
+                  maxWidth: col.width || DEFAULT_CELL_MAX_WIDTH,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {text?.toString() ?? '-'}
+              </div>
+            </Tooltip>
+          );
+        },
       };
 
       if (col.width) {
@@ -131,7 +168,7 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
 
       return column;
     });
-  }, [configuredColumns]);
+  }, [columnConfigs, dataLink, dataLinkName, openPoint, surface, t]);
 
   const handleTableChange = useCallback((pageConfig: any) => {
     setQueryPagination({

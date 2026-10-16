@@ -11,6 +11,17 @@ vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => ke
 vi.mock('@/app/cmdb/api/transfer', () => ({ useTransferApi: () => ({ cancel, download }) }));
 Object.defineProperty(window, 'matchMedia', { value: () => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }), writable: true });
 
+it('renders neutral task-shaped skeletons while the first refresh is loading', () => {
+  render(
+    <TransferDrawer open onClose={() => undefined} tasks={[]} error="" loading onRefresh={async () => undefined} />
+  );
+
+  expect(document.querySelector('[aria-busy="true"][aria-label="loading"]')).toBeTruthy();
+  expect(document.querySelectorAll('article')).toHaveLength(2);
+  expect(document.querySelector('.animate-pulse')).toBeNull();
+  expect(document.querySelectorAll('.ant-skeleton')).not.toHaveLength(0);
+});
+
 it('renders accepted jobs as queued and cancels through the API before refreshing', async () => {
   const refresh = vi.fn().mockResolvedValue(undefined);
   const task: TransferTask = {

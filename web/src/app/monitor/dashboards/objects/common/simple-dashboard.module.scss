@@ -5,14 +5,19 @@
   // min-height:100% 保证内容不足时背景铺满,内容超出时由 .content 单一滚动条接管。
   min-height: 100%;
   width: 100%;
-  background: var(--color-background-body);
+  background: #f0f2f5;
   color: var(--color-text-1);
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
+:global(html.dark) .page {
+  background: var(--color-background-body);
+}
+
 .shell {
+  --page-gutter: 20px;
   width: 100%;
-  padding: 16px 20px 24px;
+  padding: 16px var(--page-gutter) 24px;
   box-sizing: border-box;
 }
 
@@ -50,18 +55,81 @@
 .pageHeader {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   margin-bottom: 16px;
-  padding: 16px 20px 14px;
+  padding: 0;
   background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.03), 0 1px 2px -1px rgba(15, 23, 42, 0.02);
-  transition: border-color 0.15s ease;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
 }
 
 .pageHeader:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
+  border-color: #e8e8e8;
+}
+
+.pageHeader > .pageTitleRow {
+  padding: 8px 16px 14px;
+}
+
+.pageHeader > .instanceCard {
+  padding: 14px 16px;
+  border-top: 1px solid #e8e8e8;
+  border-bottom: none;
+}
+
+// 各对象顶栏与主机同一白卡：头与内容都是 .shell 的 100% 子块，左右只由 --page-gutter 决定。
+.pageIntro {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.pageIntro .breadcrumb,
+.pageIntro .titleControlsRow {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.pageIntro .breadcrumb :global(ol) {
+  margin: 0;
+  padding: 0;
+}
+
+.unifiedShell {
+  width: 100%;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+  background: var(--color-bg);
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.unifiedHostBar {
+  .instanceCard {
+    padding: 14px 16px;
+    border-top: 1px solid #e8e8e8;
+    border-bottom: none;
+  }
+}
+
+.unifiedBelow {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.unifiedBody {
+  padding: 14px 0 16px;
+}
+
+.unifiedCategoryBody {
+  min-width: 0;
 }
 
 .protocolBar {
@@ -117,12 +185,32 @@
   color: var(--color-text-1);
 }
 
+.headerCrumb {
+  padding: 10px 16px 0;
+  min-width: 0;
+}
+
+.headerCrumb :global(.ant-breadcrumb),
+.headerCrumb :global(.ant-breadcrumb a),
+.headerCrumb :global(.ant-breadcrumb-link),
+.headerCrumb :global(.ant-breadcrumb li),
+.headerCrumb :global(.ant-breadcrumb-separator) {
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.headerCrumb :global(.ant-breadcrumb a:hover) {
+  color: #1677ff;
+}
+
 .pageTitleRow {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
   min-width: 0;
+  padding: 8px 16px 14px;
 }
 
 .titleBlock {
@@ -139,6 +227,98 @@
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
+}
+
+.titleLead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.titleLead .title {
+  flex: 0 1 auto;
+}
+
+.pageTitleRowPill {
+  .titleLead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .titleLead .title {
+    flex: 0 1 auto;
+  }
+}
+
+.viewModePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid #1677ff;
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: #1677ff;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.viewModePill:hover {
+  background: color-mix(in srgb, #1677ff 8%, var(--color-bg));
+}
+
+.viewModeCaret {
+  font-size: 10px;
+  color: #1677ff;
+}
+
+.backLink {
+  height: auto !important;
+  min-height: 0 !important;
+  margin-inline: 0;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #1677ff !important;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+.backLink:hover,
+.backLink:focus,
+.backLink:active {
+  color: #1677ff !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.backLink :global(.anticon) {
+  color: #1677ff;
+}
+
+:global(html.dark) .backLink,
+:global(html.dark) .backLink:hover,
+:global(html.dark) .backLink:focus,
+:global(html.dark) .backLink:active {
+  background: transparent !important;
+  border: none !important;
+  color: #1677ff !important;
 }
 
 .breadcrumb {
@@ -166,34 +346,8 @@
   justify-content: flex-end;
 }
 
-// 视图模式切换：Ant Design Segmented，单层边框，不与下方控件叠套。
-.modeSegmented {
-  height: 32px;
-  padding: 2px !important;
-  border-radius: 8px !important;
-  border: 1px solid var(--color-border);
-  background: var(--color-fill-1) !important;
-}
-
-.modeSegmented :global(.ant-segmented-item) {
-  min-height: 26px;
-  line-height: 26px;
-  border-radius: 6px !important;
-  color: var(--color-text-3);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.modeSegmented :global(.ant-segmented-item-selected) {
-  color: var(--color-text-1) !important;
-  background: var(--color-bg) !important;
-  box-shadow: none;
-}
-
-.modeSegmented :global(.ant-segmented-thumb) {
-  border-radius: 6px !important;
-  background: var(--color-bg) !important;
-  box-shadow: none;
+.modeSelect {
+  min-width: 280px;
 }
 
 .toolbarTimeSelector {
@@ -332,9 +486,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-top: 12px;
-  padding-bottom: 0;
-  border-top: 1px solid var(--color-border-1);
+  padding: 14px 16px;
+  border-top: 1px solid #e8e8e8;
   border-bottom: none;
   min-width: 0;
 }
@@ -373,17 +526,37 @@
 
 .instanceName {
   color: var(--color-text-1);
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
   letter-spacing: -0.01em;
   word-break: break-word;
-  margin-right: 4px;
+  margin-right: 0;
 }
 
 .instanceInfo {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
   min-width: 0;
   flex: 1;
+}
+
+.instanceMetaLine {
+  margin-top: 0;
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.instanceMetaLine .instanceMetaInline,
+.instanceMetaLine .instanceMetaInline:first-of-type {
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
 }
 
 .instanceActions {
@@ -1868,7 +2041,17 @@
 
 @media (max-width: 768px) {
   .shell {
-    padding: 14px 12px 22px;
+    --page-gutter: 12px;
+    padding: 14px var(--page-gutter) 22px;
+  }
+
+  .pageTitleRowPill .titleControlsRow {
+    align-items: stretch;
+  }
+
+  .pageTitleRowPill .controlsWrap {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .pageTitleRow,
@@ -1882,7 +2065,12 @@
   }
 
   .controlsWrap {
-    justify-content: flex-start;
+    justify-content: flex-end;
+  }
+
+  .modeSelect {
+    width: 100%;
+    min-width: 0;
   }
 
   .primaryGrid {
@@ -1963,21 +2151,6 @@
 }
 
 // 暗色：表面色已走语义 token，此处只补仍依赖硬编码/混色的局部。
-:global(html.dark) .modeSegmented {
-  background: var(--color-fill-1) !important;
-  border-color: var(--color-border);
-}
-
-:global(html.dark) .modeSegmented :global(.ant-segmented-item) {
-  color: var(--color-text-3);
-}
-
-:global(html.dark) .modeSegmented :global(.ant-segmented-item-selected),
-:global(html.dark) .modeSegmented :global(.ant-segmented-thumb) {
-  color: var(--color-text-1) !important;
-  background: var(--color-bg) !important;
-}
-
 :global(html.dark) .inlineInstanceSelector,
 :global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selector),
 :global(html.dark) .toolbarTimeSelector > div > div:last-child,

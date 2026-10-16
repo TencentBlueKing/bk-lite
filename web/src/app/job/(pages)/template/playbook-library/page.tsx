@@ -38,6 +38,7 @@ import TopSection from '@/components/top-section';
 import { useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/markdown';
 import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
+import Permission from '@/components/permission';
 
 const { Dragger } = Upload;
 
@@ -529,36 +530,42 @@ const PlaybookLibraryPage = () => {
           >
             {t('job.viewScript')}
           </a>
-          <a
-            className="text-[var(--color-primary)] cursor-pointer"
-            onClick={() => openEditModal(record)}
-          >
-            {t('job.editRule')}
-          </a>
-          <a
-            className="text-[var(--color-primary)] cursor-pointer"
-            onClick={() => router.push(`/job/execution/quick-exec?playbook_id=${record.id}`)}
-          >
-            {t('job.executeScript')}
-          </a>
+          <Permission requiredPermissions={['Edit']}>
+            <a
+              className="text-[var(--color-primary)] cursor-pointer"
+              onClick={() => openEditModal(record)}
+            >
+              {t('job.editRule')}
+            </a>
+          </Permission>
+          <Permission requiredPermissions={['Add']} permissionPath="/job/execution/quick-exec">
+            <a
+              className="text-[var(--color-primary)] cursor-pointer"
+              onClick={() => router.push(`/job/execution/quick-exec?playbook_id=${record.id}`)}
+            >
+              {t('job.executeScript')}
+            </a>
+          </Permission>
           <a
             className="text-[var(--color-primary)] cursor-pointer"
             onClick={() => setVersionPlaybookId(record.id)}
           >
             {t('job.version')}
           </a>
-          <Popconfirm
-            title={t('job.deletePlaybook')}
-            description={t('job.deletePlaybookConfirm')}
-            okText={t('job.confirm')}
-            cancelText={t('job.cancel')}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => handleDelete(record)}
-          >
-            <a className="text-red-500 cursor-pointer">
-              {t('job.deletePlaybook')}
-            </a>
-          </Popconfirm>
+          <Permission requiredPermissions={['Delete']}>
+            <Popconfirm
+              title={t('job.deletePlaybook')}
+              description={t('job.deletePlaybookConfirm')}
+              okText={t('job.confirm')}
+              cancelText={t('job.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => handleDelete(record)}
+            >
+              <a className="text-red-500 cursor-pointer">
+                {t('job.deletePlaybook')}
+              </a>
+            </Popconfirm>
+          </Permission>
         </div>
       ),
     },
@@ -583,13 +590,15 @@ const PlaybookLibraryPage = () => {
             onSearch: handleSearch,
           }}
           actions={(
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openUploadModal}
-            >
-              {t('common.new')}
-            </Button>
+            <Permission requiredPermissions={['Add']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openUploadModal}
+              >
+                {t('common.new')}
+              </Button>
+            </Permission>
           )}
         />
 
@@ -737,13 +746,15 @@ const PlaybookLibraryPage = () => {
               >
                 {t('job.download')}
               </Button>
-              <Button
-                type="primary"
-                className="!border-[var(--color-success)] !bg-[var(--color-success)]"
-                onClick={() => openUpgradeModal(viewingPlaybook.id)}
-              >
-                {t('job.upgradeVersion')}
-              </Button>
+              <Permission requiredPermissions={['Edit']}>
+                <Button
+                  type="primary"
+                  className="!border-[var(--color-success)] !bg-[var(--color-success)]"
+                  onClick={() => openUpgradeModal(viewingPlaybook.id)}
+                >
+                  {t('job.upgradeVersion')}
+                </Button>
+              </Permission>
             </div>
           ) : null
         }

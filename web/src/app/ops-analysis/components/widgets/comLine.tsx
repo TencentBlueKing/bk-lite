@@ -3,6 +3,9 @@ import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { withChartLinkPoints, type ChartClickParams } from '@/app/ops-analysis/utils/interactionLink';
+import { createDelayedClickScheduler } from '@/app/ops-analysis/utils/interactionBehavior';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { useTranslation } from '@/utils/i18n';
 import {
   getOpsChartColorsByMode,
@@ -117,6 +120,8 @@ const TrendLine: React.FC<TrendLineProps> = ({
   const yAxisName = getLineBarYAxisName(config);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
   const [zoomRange, setZoomRange] = useState<{ start: number; end: number }>({ start: 0, end: 100 });
+  const { onChartClick } = useWidgetDataLink(config);
+  const clickSchedulerRef = useRef(createDelayedClickScheduler());
 
   const isZoomed = zoomRange.start !== 0 || zoomRange.end !== 100;
 
@@ -170,7 +175,14 @@ const TrendLine: React.FC<TrendLineProps> = ({
     scheduleActivateDataZoomSelect();
   }, [legendSelected, rawData, zoomRange, isDataReady, scheduleActivateDataZoomSelect]);
 
+  useEffect(() => () => clickSchedulerRef.current.dispose(), []);
+
+  const handleLineClick = useCallback((params: ChartClickParams) => {
+    clickSchedulerRef.current.schedule(() => onChartClick(params));
+  }, [onChartClick]);
+
   const handleDataZoom = useCallback(() => {
+    clickSchedulerRef.current.cancel();
     const instance = chartRef.current?.getEchartsInstance();
     if (!instance) return;
     const opt = instance.getOption?.();
@@ -190,6 +202,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   }, []);
 
   const handleDblClick = useCallback(() => {
+    clickSchedulerRef.current.cancel();
     if (isZoomed) {
       setZoomRange({ start: 0, end: 100 });
     }
@@ -434,7 +447,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
     option.series = chartData.series.map((item: any, index: number) => ({
       name: item.name,
       type: 'line',
-      data: item.data,
+      data: withChartLinkPoints(item.data, item.points),
       smooth: LINE_SMOOTHNESS,
       smoothMonotone: 'x',
       ...linePointMark(item.data, screenRenderContext),
@@ -481,7 +494,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
       {
         name: t('topology.treeValueTitle'),
         type: 'line',
-        data: chartData && chartData.values ? chartData.values : [],
+        data: withChartLinkPoints(
+          chartData && chartData.values ? chartData.values : [],
+          chartData?.points,
+        ),
         smooth: LINE_SMOOTHNESS,
         smoothMonotone: 'x',
         ...linePointMark(chartData?.values, screenRenderContext),
@@ -606,7 +622,11 @@ const TrendLine: React.FC<TrendLineProps> = ({
           notMerge={true}
           style={{ height: '100%', width: '100%' }}
           onChartReady={handleChartReady}
-          onEvents={{ datazoom: handleDataZoom, dblclick: handleDblClick }}
+          onEvents={{
+            datazoom: handleDataZoom,
+            dblclick: handleDblClick,
+            click: handleLineClick,
+          }}
         />
       </div>
 

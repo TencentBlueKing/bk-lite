@@ -16,6 +16,8 @@ import type {
   GridStackWidget,
 } from 'gridstack';
 
+import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
+import InteractionTitleIcon from '@/app/ops-analysis/components/interactionTitleIcon';
 import { useTranslation } from '@/utils/i18n';
 import type {
   DashboardLayoutItem,
@@ -54,7 +56,7 @@ import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasR
 import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
 import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
 import WidgetCsvHoverButton from '@/app/ops-analysis/components/widgetCsvHoverButton';
-import { notifyWidgetCsvExportNotStarted, useWidgetCsvExportRegistry, WidgetCsvExportRegistryProvider } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
+import { notifyWidgetCsvExportNotStarted, useWidgetCsvExportRegistry, useWidgetCsvExportRegistryState, WidgetCsvExportRegistryProvider } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
 import { buildAnalysisWidgetMenuItems, buildDashboardWidgetMenuKeys, resolveWidgetCsvExportEntry } from '@/app/ops-analysis/utils/widgetCsvMenu';
 import { DashboardRuntimeSchedulerProvider, useDashboardRuntimeScheduler } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
 import type { DashboardRuntimeScheduler, RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
@@ -152,6 +154,8 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
   pdfExportPreparing = false,
 }: DashboardWidgetCardProps) {
   const { t } = useTranslation();
+  const title = useFilterTemplateText(item.name);
+  const description = useFilterTemplateText(item.description);
   const csvExportRegistry = useWidgetCsvExportRegistry();
   const [exportRawData, setExportRawData] = useState<unknown>(undefined);
   const chartType = item.valueConfig?.chartType;
@@ -177,7 +181,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
     rawData: exportRawData,
   }) === 'hover';
   const exportCsv = () => {
-    void csvExportRegistry?.run(item.i, { title: item.name || '' }).then((started) => {
+    void csvExportRegistry?.run(item.i, { title: title || '' }).then((started) => {
       notifyWidgetCsvExportNotStarted(started, t);
     });
   };
@@ -202,12 +206,15 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
         >
           <div className="widget-header mb-2 flex min-w-0 items-start gap-2">
             <div className="min-w-0 flex-1">
-              <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
-                {item.name}
-              </h4>
+              <div className="flex min-w-0 items-center gap-1">
+                <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
+                  {title}
+                </h4>
+                <InteractionTitleIcon config={item.valueConfig} />
+              </div>
               {item.description?.trim() && (
                 <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
-                  {item.description}
+                  {description}
                 </p>
               )}
             </div>
@@ -354,6 +361,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   onWidgetRenderStatus,
 }) => {
   const { t } = useTranslation();
+  const parentCsvRegistry = useWidgetCsvExportRegistry();
+  const ownedCsvRegistry = useWidgetCsvExportRegistryState();
+  const csvRegistry = parentCsvRegistry ?? ownedCsvRegistry;
   const gridRootRef = useRef<HTMLDivElement>(null);
   const rootGridRef = useRef<GridStackInstance | null>(null);
   const subGridRefs = useRef<Map<string, GridStackInstance>>(new Map());
@@ -1293,7 +1303,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   });
 
   return (
-    <WidgetCsvExportRegistryProvider>
+    <WidgetCsvExportRegistryProvider registry={csvRegistry}>
     <DashboardRuntimeSchedulerProvider>
       <SchedulerRefBinder schedulerRef={runtimeSchedulerRef} />
       <div

@@ -169,6 +169,8 @@ export interface CardListCard {
   badge?: string;
   trailingPrimary?: string;
   trailingSecondary?: string;
+  /** 与这张卡片同一行的原始记录，供同一次解析结果生成点击点。 */
+  source?: Record<string, unknown>;
 }
 
 export interface CardListParseResult {
@@ -244,7 +246,7 @@ const mapRecordToCard = (
     return null;
   }
 
-  const card: CardListCard = { primary };
+  const card: CardListCard = { primary, source: row };
   const secondary = formatDisplayableScalar(
     getValueByPath(row, config.descriptionField),
   );

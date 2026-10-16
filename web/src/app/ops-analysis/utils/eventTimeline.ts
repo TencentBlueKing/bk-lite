@@ -13,6 +13,8 @@ export interface EventTimelineItem {
   category?: string;
   status?: EventTimelineStatus;
   link?: string;
+  /** 原始行，供数据链接读取字段。 */
+  source?: Record<string, unknown>;
 }
 
 export interface EventTimelineParseResult {
@@ -124,6 +126,7 @@ const toEventItem = (
       ...(category ? { category } : {}),
       ...(status ? { status } : {}),
       ...(link ? { link } : {}),
+      source: row,
     };
   }
 
@@ -146,6 +149,7 @@ const toEventItem = (
     ...(category ? { category } : {}),
     ...(status ? { status } : {}),
     ...(link ? { link } : {}),
+    source: row,
   };
 };
 

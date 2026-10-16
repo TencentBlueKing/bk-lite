@@ -21,7 +21,10 @@ def event_levels(db):
 @pytest.fixture
 def prom_source(db):
     return AlertSource.objects.create(
-        name="prom", source_id="prom", source_type="prometheus", secret="sec",
+        name="prom",
+        source_id="prom",
+        source_type="prometheus",
+        secret="sec",
         config={"event_fields_mapping": {}, "base_url": "http://prom:9090"},
     )
 
@@ -55,6 +58,7 @@ def test_iso_to_timestamp(event_levels, prom_source):
     assert a._iso_to_timestamp("not-a-date") is None
     ts = a._iso_to_timestamp("2026-01-01T00:00:00Z")
     assert ts is not None and ts.isdigit()
+    assert a._iso_to_timestamp("2026-01-01T00:00:00") == ts
 
 
 @pytest.mark.django_db

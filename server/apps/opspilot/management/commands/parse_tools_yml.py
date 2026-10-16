@@ -10,6 +10,7 @@ from django.core.management import BaseCommand, CommandError
 
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.models import SkillTools
+from apps.opspilot.services.asset_tags import system_tags_for_tool
 
 
 class Command(BaseCommand):
@@ -148,7 +149,7 @@ class Command(BaseCommand):
                     "description": toolkit_description,
                     "params": params_data,
                     "tools": tools,
-                    "tags": ["other"],
+                    "system_tags": system_tags_for_tool(toolkit_id),
                 },
             )
             if not skill_tool.team:

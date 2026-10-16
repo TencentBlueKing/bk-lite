@@ -443,6 +443,12 @@ def build_health_inspection_showcase_workflow(
         "report": f"生成{label}报告",
         "notify": "发送巡检通知",
     }
+    metadata["positions"] = {
+        "trigger_form": {"x": 20, "y": 260},
+        "scan": {"x": 260, "y": 260},
+        "report": {"x": 480, "y": 260},
+        "notify": {"x": 700, "y": 260},
+    }
     metadata["risk_summary"] = {
         "level": "low",
         "description": f"在授权 {os_label} 主机上执行只读健康采集并生成 {label} 巡检报告。",
