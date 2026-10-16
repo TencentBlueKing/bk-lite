@@ -56,11 +56,6 @@ def _validate_catalog_path(raw: str) -> str:
     return "/" + "/".join(parts)
 
 
-def _origin(base_url: str) -> str:
-    parsed = urlsplit(base_url)
-    return f"{parsed.scheme}://{parsed.netloc}"
-
-
 def _is_excluded_cloud(plugin_id: str, name: str, cn_name: str) -> bool:
     identity = plugin_id.lower()
     if identity == "tcp" or any(marker in identity for marker in _EXCLUDED_ID_MARKERS):
@@ -84,7 +79,8 @@ def _catalog_locale(raw: str | None) -> str:
     return "en"
 
 
-def _resolve_deep_link(raw: str, plugin_id: str, origin: str) -> str:
+def _resolve_deep_link(raw: str, plugin_id: str) -> str:
+    """Keep same-origin relative paths; do not join the catalog API origin."""
     fallback = DEFAULT_DEEP_LINK_TEMPLATE.format(id=plugin_id)
     link = _as_text(raw) or fallback
     if len(link) > MAX_DEEP_LINK_LEN:
@@ -96,7 +92,7 @@ def _resolve_deep_link(raw: str, plugin_id: str, origin: str) -> str:
         link = fallback
     if not link.startswith("/"):
         link = f"/{link}"
-    return f"{origin}{link}"
+    return link
 
 
 def _extract_items(payload) -> list:
@@ -115,7 +111,7 @@ def _extract_items(payload) -> list:
     return []
 
 
-def normalize_weopsx_catalog_items(payload, *, origin: str) -> list[dict]:
+def normalize_weopsx_catalog_items(payload) -> list[dict]:
     normalized = []
     seen = set()
     for raw in _extract_items(payload):
@@ -145,7 +141,7 @@ def normalize_weopsx_catalog_items(payload, *, origin: str) -> list[dict]:
                 "cn_name": cn_name,
                 "account_obj_id": _as_text(raw.get("account_obj_id")) or f"{plugin_id}_account",
                 "children_count": count,
-                "deep_link": _resolve_deep_link(_as_text(raw.get("deep_link")), plugin_id, origin),
+                "deep_link": _resolve_deep_link(_as_text(raw.get("deep_link")), plugin_id),
             }
         )
     return normalized
@@ -184,7 +180,6 @@ def fetch_weopsx_cloud_catalog(*, locale: str | None = None, authorization: str 
         params["locale"] = locale_text
 
     url = f"{base_url}{catalog_path}"
-    origin = _origin(base_url)
     try:
         timeout_raw = _env("WEOPSX_CLOUD_CATALOG_TIMEOUT", str(CATALOG_TIMEOUT_SECONDS))
         try:
@@ -230,6 +225,6 @@ def fetch_weopsx_cloud_catalog(*, locale: str | None = None, authorization: str 
         )
         return {"items": [], "degraded": True, "error_type": "invalid_json"}
 
-    items = normalize_weopsx_catalog_items(payload, origin=origin)
+    items = normalize_weopsx_catalog_items(payload)
     logger.info(LOG_FETCHED, len(items))
     return {"items": items, "degraded": False}

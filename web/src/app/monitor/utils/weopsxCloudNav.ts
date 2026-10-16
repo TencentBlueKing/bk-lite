@@ -124,24 +124,11 @@ export const findTreeNodeByKey = <T extends TreeNodeLike>(
   return undefined;
 };
 
-const weopsxPublicOrigin = (): string => {
-  const raw = asText(
-    typeof process !== 'undefined'
-      ? process.env?.NEXT_PUBLIC_WEOPSX_BASE_URL
-      : ''
-  );
-  return raw.replace(/\/$/, '');
-};
-
-export const resolveWeopsxDeepLink = (
-  deepLink: string,
-  origin = weopsxPublicOrigin()
-): string => {
+export const resolveWeopsxDeepLink = (deepLink: string): string => {
   const link = asText(deepLink);
   if (!link) return '';
   if (/^https?:\/\//i.test(link)) return link;
-  const path = link.startsWith('/') ? link : `/${link}`;
-  return origin ? `${origin}${path}` : path;
+  return link.startsWith('/') ? link : `/${link}`;
 };
 
 export const tryOpenWeopsxCloudNav = (
