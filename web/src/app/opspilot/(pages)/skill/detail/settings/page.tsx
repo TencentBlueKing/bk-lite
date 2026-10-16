@@ -612,9 +612,9 @@ const SkillSettingsPage: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {filteredAvailableSkillAssets.map((asset) => {
-            const assetKey = getPackageKey(asset);
-            const checked = draftSkillAssetKeys.includes(assetKey);
-            return (
+              const assetKey = getPackageKey(asset);
+              const checked = draftSkillAssetKeys.includes(assetKey);
+              return (
               <div
                 key={assetKey}
                 role="button"
@@ -665,7 +665,7 @@ const SkillSettingsPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-            );
+              );
             })}
           </div>
         )}

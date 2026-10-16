@@ -193,9 +193,9 @@ const OpspilotSelectorOperateModal: React.FC<
               ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {filteredOptions.map((option) => {
-                  const isSelected = tempSelectedOptions.includes(option.id);
-                  const resolvedIcon = resolveOptionIcon(option.name, option.icon);
-                  return (
+                    const isSelected = tempSelectedOptions.includes(option.id);
+                    const resolvedIcon = resolveOptionIcon(option.name, option.icon);
+                    return (
                     <div
                       key={option.id}
                       role="button"
@@ -256,8 +256,8 @@ const OpspilotSelectorOperateModal: React.FC<
                         </div>
                       )}
                     </div>
-                  );
-                })}
+                    );
+                  })}
                 </div>
               )}
             </div>
