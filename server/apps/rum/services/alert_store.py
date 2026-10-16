@@ -111,6 +111,7 @@ class MemoryEventStore:
         self.alerts: dict[str, dict] = {}
         self.events: dict[str, dict] = {}
         self.deliveries: dict[str, dict] = {}
+        self.retries: dict[str, list] = {}
         self._seq = 0
 
     def _next(self, prefix: str) -> str:
@@ -260,10 +261,23 @@ class MemoryEventStore:
         item["claimedAt"] = fmt_dt(now)
         return dict(item)
 
+    def get_delivery(self, delivery_id: str) -> dict | None:
+        item = self.deliveries.get(delivery_id)
+        return dict(item) if item is not None else None
+
     def save_delivery(self, delivery: dict) -> dict:
         item = dict(delivery)
         self.deliveries[item["id"]] = item
         return dict(item)
+
+    def add_retry(self, retry: dict) -> dict:
+        item = dict(retry)
+        item["id"] = item.get("id") or self._next("retry")
+        self.retries.setdefault(item["deliveryId"], []).append(item)
+        return dict(item)
+
+    def list_retries(self, delivery_id: str) -> list[dict]:
+        return [dict(item) for item in self.retries.get(delivery_id, [])]
 
 
 def _serialize_target(item) -> dict:
@@ -701,6 +715,14 @@ class DjangoEventStore:
             item.save(update_fields=("claimed_at",))
             return _serialize_delivery(item)
 
+    def get_delivery(self, delivery_id: str) -> dict | None:
+        from apps.rum.models import RumAlertDelivery
+
+        try:
+            return _serialize_delivery(RumAlertDelivery.objects.get(pk=delivery_id))
+        except RumAlertDelivery.DoesNotExist:
+            return None
+
     def save_delivery(self, delivery: dict) -> dict:
         from apps.rum.models import RumAlertDelivery
 
@@ -715,6 +737,42 @@ class DjangoEventStore:
         item.failed_at = parse_dt(delivery.get("failedAt"))
         item.save()
         return _serialize_delivery(item)
+
+    def add_retry(self, retry: dict) -> dict:
+        from apps.rum.models import RumAlertDelivery, RumAlertDeliveryRetry
+
+        delivery = RumAlertDelivery.objects.get(pk=retry["deliveryId"])
+        item = RumAlertDeliveryRetry(
+            delivery=delivery,
+            requested_by=retry.get("requestedBy") or "",
+            previous_attempts=int(retry.get("previousAttempts") or 0),
+            previous_error_code=retry.get("previousErrorCode") or "",
+            previous_error_message=retry.get("previousErrorMessage") or "",
+        )
+        item.save()
+        return {
+            "id": item.id,
+            "deliveryId": delivery.id,
+            "requestedBy": item.requested_by,
+            "previousAttempts": item.previous_attempts,
+            "previousErrorCode": item.previous_error_code,
+            "previousErrorMessage": item.previous_error_message,
+        }
+
+    def list_retries(self, delivery_id: str) -> list[dict]:
+        from apps.rum.models import RumAlertDeliveryRetry
+
+        return [
+            {
+                "id": item.id,
+                "deliveryId": item.delivery_id,
+                "requestedBy": item.requested_by,
+                "previousAttempts": item.previous_attempts,
+                "previousErrorCode": item.previous_error_code,
+                "previousErrorMessage": item.previous_error_message,
+            }
+            for item in RumAlertDeliveryRetry.objects.filter(delivery_id=delivery_id).order_by("created_at", "id")
+        ]
 
 
 _policy_store: Any = None

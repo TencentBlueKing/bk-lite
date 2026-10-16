@@ -86,6 +86,7 @@ export default function MonitorFormDrawer({
   const [durationMinutes, setDurationMinutes] = useState('5');
   const [noDataAfter, setNoDataAfter] = useState('3');
   const [renotify, setRenotify] = useState('');
+  const [handlers, setHandlers] = useState<string[]>([]);
   const [targets, setTargets] = useState<RumNotificationTarget[]>([]);
   const [channels, setChannels] = useState<RumNotificationChannel[]>([]);
   const [recipients, setRecipients] = useState<RumNotificationRecipient[]>([]);
@@ -108,6 +109,7 @@ export default function MonitorFormDrawer({
       setDurationMinutes(String(Math.max(0, Math.round((initial.forDurationSec ?? 300) / 60))));
       setNoDataAfter(String(initial.noDataAfter ?? 3));
       setRenotify(initial.renotifyMinutes ? String(initial.renotifyMinutes) : '');
+      setHandlers((initial.handlers || []).map(String));
       setTargets(initial.notificationTargets ?? []);
       setError('');
     } else {
@@ -116,6 +118,7 @@ export default function MonitorFormDrawer({
       setWindowMinutes(15);
       setDurationMinutes('5');
       setNoDataAfter('3');
+      setHandlers([]);
       setTargets([]);
       setMetric('error_rate');
       setSeverity('warning');
@@ -190,6 +193,7 @@ export default function MonitorFormDrawer({
         noDataAfter: Number.isFinite(noDataCount) ? Math.max(0, Math.round(noDataCount)) : 3,
         renotifyMinutes: Number.isFinite(renotifyValue) ? renotifyValue : undefined,
         enabled: initial?.enabled ?? true,
+        handlers: handlers.map((item) => (/^\d+$/.test(item) ? Number(item) : item)),
         notificationTargets: targets,
       };
       if (initial) await updateMonitor(initial.id, body);
@@ -356,6 +360,20 @@ export default function MonitorFormDrawer({
               onChange={(e) => setRenotify(e.target.value)}
               inputMode="numeric"
               placeholder="30"
+            />
+          </Form.Item>
+
+          <Form.Item label={t('rum.monitors.handlers', '处理人')} className="mb-4">
+            <Select
+              mode="multiple"
+              className="w-full"
+              value={handlers}
+              onChange={setHandlers}
+              options={recipients.map((item) => ({
+                value: String(item.id),
+                label: item.display_name ? `${item.display_name} (${item.username})` : item.username,
+              }))}
+              placeholder={t('rum.monitors.handlersPlaceholder', '可选，告警产生时快照这些处理人')}
             />
           </Form.Item>
 

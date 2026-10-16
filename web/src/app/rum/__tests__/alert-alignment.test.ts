@@ -10,6 +10,7 @@ describe('rum alert alignment page skeleton', () => {
   const policies = readFileSync(join(ROOT, 'monitors/page.tsx'), 'utf8');
   const form = readFileSync(join(ROOT, 'monitors/ui/monitor-form-drawer.tsx'), 'utf8');
   const channels = readFileSync(join(ROOT, 'monitors/ui/notification-target-fields.tsx'), 'utf8');
+  const actions = readFileSync(join(ROOT, 'alert-events/alert-handler-actions.tsx'), 'utf8');
 
   it('locks alert tabs, filters, columns, empty headers, and the event query', () => {
     expect(alerts).toContain("t('rum.alertEvents.tabActive', '活跃告警')");
@@ -26,11 +27,22 @@ describe('rum alert alignment page skeleton', () => {
     expect(alerts).toContain("<CustomTable");
     expect(alerts).toContain("searchParams.get('event')");
     expect(alerts).toContain('href="/alarm/alarms"');
+    expect(alerts).toContain("t('rum.alertEvents.handlers', '处理人')");
+    expect(alerts).toContain("t('rum.alertEvents.notification', '通知')");
+    expect(alerts).toContain("t('rum.alertEvents.myAlert', '我的告警')");
+    expect(alerts).toContain('AlertHandlerActions');
+    expect(actions).toContain('canClaimOrAssign');
+    expect(actions).toContain('canReassign');
+    expect(actions).toContain('canClose');
+    expect(actions).toContain("alert.status === 'active'");
+    expect(alerts).toContain("t('rum.alertEvents.retry', '重投')");
     expect(alerts).not.toContain('Segmented');
   });
 
   it('locks policy columns and the channel selector fields', () => {
+    expect(policies).toContain("t('rum.monitors.handlers', '处理人')");
     expect(policies).toContain("t('rum.monitors.organizations', '组织')");
+    expect(form).toContain("t('rum.monitors.handlers', '处理人')");
     expect(policies).toContain("t('rum.monitors.lastEvaluation', '最近判定')");
     expect(policies).toContain('emptyText');
     expect(form).toContain('GroupTreeSelect');

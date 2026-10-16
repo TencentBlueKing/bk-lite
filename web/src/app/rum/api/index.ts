@@ -383,6 +383,7 @@ export interface RumAlertItem {
   currentValue?: number | null;
   organizations?: number[];
   handlers?: Array<string | number>;
+  notification?: { pending: number; delivered: number; failed: number };
   startedAt?: string;
   endedAt?: string | null;
   lastEventAt?: string;
@@ -415,6 +416,7 @@ export interface RumAlertQuery {
   application?: string;
   keyword?: string;
   handler?: string;
+  myAlert?: boolean;
 }
 
 export interface RumAlertEventPage {
@@ -939,6 +941,7 @@ export function useRumQueries() {
     if (query.application) params.application = query.application;
     if (query.keyword) params.keyword = query.keyword;
     if (query.handler) params.handler = query.handler;
+    if (query.myAlert) params.my_alert = '1';
     const data = await api.get<RumAlertEventPage>('/alert-events/', { params });
     return {
       items: Array.isArray(data?.items) ? data.items : [],
@@ -958,6 +961,34 @@ export function useRumQueries() {
         trend: Array.isArray(data?.trend) ? data.trend : [],
       };
     },
+    [api],
+  );
+
+  const claimAlert = useCallback(
+    async (id: string) => api.post<RumAlertItem>(`/alert-events/${encodeURIComponent(id)}/claim/`, {}),
+    [api],
+  );
+
+  const assignAlert = useCallback(
+    async (id: string, handlers: Array<string | number>) =>
+      api.post<RumAlertItem>(`/alert-events/${encodeURIComponent(id)}/assign/`, { handlers }),
+    [api],
+  );
+
+  const reassignAlert = useCallback(
+    async (id: string, handlers: Array<string | number>) =>
+      api.post<RumAlertItem>(`/alert-events/${encodeURIComponent(id)}/reassign/`, { handlers }),
+    [api],
+  );
+
+  const closeAlert = useCallback(
+    async (id: string) => api.post<RumAlertItem>(`/alert-events/${encodeURIComponent(id)}/close/`, {}),
+    [api],
+  );
+
+  const retryAlertDelivery = useCallback(
+    async (alertId: string, deliveryId: string) =>
+      api.post(`/alert-events/${encodeURIComponent(alertId)}/deliveries/${encodeURIComponent(deliveryId)}/retry/`, {}),
     [api],
   );
 
@@ -1057,6 +1088,11 @@ export function useRumQueries() {
     deleteMonitor,
     listAlertEvents,
     getAlertEvent,
+    claimAlert,
+    assignAlert,
+    reassignAlert,
+    closeAlert,
+    retryAlertDelivery,
     listNotificationChannels,
     searchNotificationRecipients,
     listEraseJobs,

@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { BellOutlined, ExportOutlined, SearchOutlined } from '@ant-design/icons';
-import { Drawer, Empty, Input, Select, Tabs, Timeline, type TableColumnsType } from 'antd';
+import { Button, Checkbox, Drawer, Empty, Input, Select, Tabs, Timeline, type TableColumnsType } from 'antd';
 
 import {
   useRumQueries,
@@ -13,6 +13,7 @@ import {
   type RumAlertItem,
   type RumAlertTimelineEvent,
 } from '@/app/rum/api';
+import AlertHandlerActions from '@/app/rum/alert-events/alert-handler-actions';
 import CustomTable from '@/components/custom-table';
 import Sparkline from '@/app/apm/components/home/sparkline';
 import RumIconAction from '@/app/rum/components/rum-icon-action';
@@ -57,8 +58,9 @@ export default function RumAlertEventsPage() {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const eventId = searchParams.get('event')?.trim() || '';
-  const { listAlertEvents, getAlertEvent, listApplications, authReady } = useRumQueries();
+  const { listAlertEvents, getAlertEvent, listApplications, retryAlertDelivery, authReady } = useRumQueries();
   const [tab, setTab] = useState<'active' | 'history'>('active');
+  const [myAlert, setMyAlert] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [application, setApplication] = useState('');
   const [apps, setApps] = useState<string[]>([]);
@@ -77,6 +79,7 @@ export default function RumAlertEventsPage() {
         status: tab,
         application,
         keyword: keyword.trim(),
+        myAlert,
         page,
         limit: pageSize,
       });
@@ -88,7 +91,7 @@ export default function RumAlertEventsPage() {
     } finally {
       setPending(false);
     }
-  }, [application, keyword, listAlertEvents, page, pageSize, tab]);
+  }, [application, keyword, listAlertEvents, myAlert, page, pageSize, tab]);
 
   useRumAuthedEffect(
     authReady,
@@ -98,6 +101,7 @@ export default function RumAlertEventsPage() {
         status: tab,
         application,
         keyword: keyword.trim(),
+        myAlert,
         page,
         limit: pageSize,
       })
@@ -116,7 +120,7 @@ export default function RumAlertEventsPage() {
           if (!isCancelled()) setPending(false);
         });
     },
-    [application, keyword, listAlertEvents, page, pageSize, tab],
+    [application, keyword, listAlertEvents, myAlert, page, pageSize, tab],
   );
 
   useRumAuthedEffect(
@@ -204,6 +208,29 @@ export default function RumAlertEventsPage() {
         ),
       },
       {
+        title: t('rum.alertEvents.handlers', '处理人'),
+        key: 'handlers',
+        width: 140,
+        ellipsis: true,
+        render: (_: unknown, ev: RumAlertItem) => (
+          <span className="truncate">{(ev.handlers || []).map(String).join(', ') || '—'}</span>
+        ),
+      },
+      {
+        title: t('rum.alertEvents.notification', '通知'),
+        key: 'notification',
+        width: 140,
+        render: (_: unknown, ev: RumAlertItem) => {
+          const note = ev.notification;
+          if (!note) return '—';
+          return (
+            <span className="tabular-nums">
+              {t('rum.alertEvents.deliveryStatus.delivered', '已投递')} {note.delivered} · {t('rum.alertEvents.deliveryStatus.failed', '失败')} {note.failed}
+            </span>
+          );
+        },
+      },
+      {
         title: t('rum.applications.application', '应用'),
         key: 'application',
         width: 140,
@@ -221,19 +248,20 @@ export default function RumAlertEventsPage() {
       {
         title: t('rum.common.actions', '操作'),
         key: 'actions',
-        width: 72,
+        width: 220,
         fixed: 'right',
         render: (_: unknown, ev: RumAlertItem) => (
-          <div onClick={(event) => event.stopPropagation()}>
+          <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
             <RumIconAction
               title={t('rum.alertEvents.viewDetail', '详情')}
               onClick={() => void openDetail(ev.id)}
             />
+            <AlertHandlerActions alert={ev} onDone={() => void load()} />
           </div>
         ),
       },
     ],
-    [openDetail, t],
+    [load, openDetail, t],
   );
 
   return (
@@ -258,6 +286,15 @@ export default function RumAlertEventsPage() {
             }
             trailing={
               <>
+                <Checkbox
+                  checked={myAlert}
+                  onChange={(event) => {
+                    setMyAlert(event.target.checked);
+                    setPage(1);
+                  }}
+                >
+                  {t('rum.alertEvents.myAlert', '我的告警')}
+                </Checkbox>
                 <Select
                   allowClear
                   placeholder={t('rum.filter.allApps', '全部应用')}
@@ -344,7 +381,18 @@ export default function RumAlertEventsPage() {
         width={560}
         title={detail?.alert.policyName || t('rum.alertEvents.title', '告警')}
       >
-        {detail ? <AlertEventDetailView detail={detail} t={t} /> : <RumAlertDetailSkeleton />}
+        {detail ? (
+          <AlertEventDetailView
+            detail={detail}
+            t={t}
+            onRetry={async (deliveryId) => {
+              await retryAlertDelivery(detail.alert.id, deliveryId);
+              setDetail(await getAlertEvent(detail.alert.id));
+            }}
+          />
+        ) : (
+          <RumAlertDetailSkeleton />
+        )}
       </Drawer>
     </div>
   );
@@ -353,9 +401,11 @@ export default function RumAlertEventsPage() {
 function AlertEventDetailView({
   detail,
   t,
+  onRetry,
 }: {
   detail: RumAlertEventDetail;
   t: (key: string, fallback?: string, values?: Record<string, unknown>) => string;
+  onRetry: (deliveryId: string) => Promise<void>;
 }) {
   const alert = detail.alert;
   return (
@@ -418,7 +468,7 @@ function AlertEventDetailView({
         ) : (
           <ul className="space-y-2">
             {detail.deliveries.map((item) => (
-              <DeliveryRow key={item.id} item={item} t={t} />
+              <DeliveryRow key={item.id} item={item} t={t} onRetry={onRetry} />
             ))}
           </ul>
         )}
@@ -450,16 +500,23 @@ function TimelineNode({
 function DeliveryRow({
   item,
   t,
+  onRetry,
 }: {
   item: RumAlertDeliveryItem;
   t: (key: string, fallback?: string) => string;
+  onRetry: (deliveryId: string) => Promise<void>;
 }) {
   return (
     <li className="flex items-center justify-between gap-3">
       <span className="truncate">{item.channelName || '—'}</span>
-      <span className="shrink-0 tabular-nums text-[var(--color-text-3)]">
+      <span className="flex shrink-0 items-center gap-2 tabular-nums text-[var(--color-text-3)]">
         {t(`rum.alertEvents.deliveryStatus.${item.status}`, item.status)} · {item.attempts || 0}
         {item.lastErrorMessage ? ` · ${item.lastErrorMessage}` : ''}
+        {item.status === 'failed' ? (
+          <Button type="link" size="small" className="px-0" onClick={() => void onRetry(item.id).catch(() => undefined)}>
+            {t('rum.alertEvents.retry', '重投')}
+          </Button>
+        ) : null}
       </span>
     </li>
   );

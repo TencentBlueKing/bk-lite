@@ -86,7 +86,10 @@ class RumAlertEventViewSet(viewsets.ViewSet):
 
     @HasPermission("alert_events-View")
     def list(self, request):
-        return Response(_service().list_alert_events(request.query_params, visible_orgs=_visible_orgs(request)))
+        params = request.query_params.dict()
+        if str(params.get("my_alert") or "") in {"1", "true", "yes"}:
+            params["handler"] = str(getattr(request.user, "id", "") or getattr(request.user, "pk", "") or "")
+        return Response(_service().list_alert_events(params, visible_orgs=_visible_orgs(request)))
 
     @HasPermission("alert_events-View")
     def retrieve(self, request, pk=None):
@@ -94,6 +97,55 @@ class RumAlertEventViewSet(viewsets.ViewSet):
             return Response(_service().get_alert_event(pk, visible_orgs=_visible_orgs(request)))
         except ControlError as exc:
             return control_error_response(exc)
+
+
+class RumAlertClaimView(APIView):
+    @HasPermission("alert_events-Operate")
+    def post(self, request, pk):
+        return _disposition_response(lambda service: service.claim_alert(pk, _actor(request), visible_orgs=_visible_orgs(request)))
+
+
+class RumAlertAssignView(APIView):
+    @HasPermission("alert_events-Operate")
+    def post(self, request, pk):
+        return _disposition_response(
+            lambda service: service.assign_alert(pk, _actor(request), request.data.get("handlers") or [], visible_orgs=_visible_orgs(request))
+        )
+
+
+class RumAlertReassignView(APIView):
+    @HasPermission("alert_events-Operate")
+    def post(self, request, pk):
+        return _disposition_response(
+            lambda service: service.reassign_alert(pk, _actor(request), request.data.get("handlers") or [], visible_orgs=_visible_orgs(request))
+        )
+
+
+class RumAlertCloseView(APIView):
+    @HasPermission("alert_events-Operate")
+    def post(self, request, pk):
+        return _disposition_response(lambda service: service.close_alert(pk, _actor(request), visible_orgs=_visible_orgs(request)))
+
+
+class RumAlertDeliveryRetryView(APIView):
+    @HasPermission("alert_events-Operate")
+    def post(self, request, pk, delivery_id):
+        return _disposition_response(
+            lambda service: service.retry_alert_delivery(pk, delivery_id, _actor(request), visible_orgs=_visible_orgs(request))
+        )
+
+
+def _actor(request):
+    from apps.rum.services.disposition import actor_from_user
+
+    return actor_from_user(request.user)
+
+
+def _disposition_response(call):
+    try:
+        return Response(call(_service()))
+    except ControlError as exc:
+        return control_error_response(exc)
 
 
 class RumNotificationChannelView(APIView):

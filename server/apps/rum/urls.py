@@ -2,7 +2,12 @@ from django.urls import path
 from rest_framework import routers
 
 from apps.rum.views import (
+    RumAlertAssignView,
+    RumAlertClaimView,
+    RumAlertCloseView,
+    RumAlertDeliveryRetryView,
     RumAlertEventViewSet,
+    RumAlertReassignView,
     RumAnalyticsApplicationsView,
     RumApplicationViewSet,
     RumComplianceViewSet,
@@ -68,5 +73,14 @@ urlpatterns = [
         name="rum-sourcemap-credential-rotate",
     ),
     *urlpatterns_notifications,
+    path("alert-events/<str:pk>/claim/", RumAlertClaimView.as_view(), name="rum-alert-claim"),
+    path("alert-events/<str:pk>/assign/", RumAlertAssignView.as_view(), name="rum-alert-assign"),
+    path("alert-events/<str:pk>/reassign/", RumAlertReassignView.as_view(), name="rum-alert-reassign"),
+    path("alert-events/<str:pk>/close/", RumAlertCloseView.as_view(), name="rum-alert-close"),
+    path(
+        "alert-events/<str:pk>/deliveries/<str:delivery_id>/retry/",
+        RumAlertDeliveryRetryView.as_view(),
+        name="rum-alert-delivery-retry",
+    ),
     *router.urls,
 ]

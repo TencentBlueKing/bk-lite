@@ -166,7 +166,9 @@ class MonitorsService:
         policies=None,
         events=None,
         runtime: RumAlertRuntime | None = None,
+        users=None,
     ):
+        self.users = users
         self.control = control or get_control_plane()
         self.analytics = analytics or get_analytics()
         self.policies = policies or get_policy_store()
@@ -259,7 +261,34 @@ class MonitorsService:
             keyword=keyword,
             handler=handler,
         )
+        for item in items:
+            deliveries = self.events.list_deliveries(item["id"])
+            item["notification"] = {
+                "pending": sum(1 for row in deliveries if row.get("status") == "pending"),
+                "delivered": sum(1 for row in deliveries if row.get("status") == "delivered"),
+                "failed": sum(1 for row in deliveries if row.get("status") == "failed"),
+            }
         return {"items": items, "total": total, "page": page, "limit": limit}
+
+    def claim_alert(self, alert_id: str, actor, *, visible_orgs: set[int]) -> dict:
+        return self._disposition().claim(alert_id, actor, visible_orgs=visible_orgs)
+
+    def assign_alert(self, alert_id: str, actor, handlers, *, visible_orgs: set[int]) -> dict:
+        return self._disposition().assign(alert_id, actor, handlers, visible_orgs=visible_orgs)
+
+    def reassign_alert(self, alert_id: str, actor, handlers, *, visible_orgs: set[int]) -> dict:
+        return self._disposition().reassign(alert_id, actor, handlers, visible_orgs=visible_orgs)
+
+    def close_alert(self, alert_id: str, actor, *, visible_orgs: set[int]) -> dict:
+        return self._disposition().close(alert_id, actor, visible_orgs=visible_orgs)
+
+    def retry_alert_delivery(self, alert_id: str, delivery_id: str, actor, *, visible_orgs: set[int]) -> dict:
+        return self._disposition().retry_delivery(alert_id, delivery_id, actor, visible_orgs=visible_orgs)
+
+    def _disposition(self):
+        from apps.rum.services.disposition import AlertDisposition
+
+        return AlertDisposition(policies=self.policies, alerts=self.events, users=self.users)
 
     def get_alert_event(self, alert_id: str, *, visible_orgs: set[int]) -> dict:
         alert = self.events.get_alert(alert_id, visible_orgs)

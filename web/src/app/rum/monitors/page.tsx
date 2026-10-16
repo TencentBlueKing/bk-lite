@@ -170,6 +170,15 @@ export default function RumMonitorsPage() {
         ),
       },
       {
+        title: t('rum.monitors.handlers', '处理人'),
+        key: 'handlers',
+        width: 140,
+        ellipsis: true,
+        render: (_: unknown, m: RumMonitorItem) => (
+          <span className="truncate">{(m.handlers || []).map(String).join(', ') || '—'}</span>
+        ),
+      },
+      {
         title: t('rum.monitors.lastEvaluation', '最近判定'),
         key: 'lastEvaluation',
         width: 160,
