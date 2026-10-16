@@ -1945,7 +1945,7 @@
     "chatHistoryEnabledSuffix": "turns",
     "chatHistoryDisabledHint": "Single-turn only (no context)",
     "runModelCallLimit": "Calls per step",
-    "runModelCallLimitTip": "How many times the model may call within one execution step. The step stops when this limit is reached.",
+    "runModelCallLimitTip": "How many times the model may call within one execution step. When the limit is reached, you are asked whether to continue.",
     "chatEnhancement": "Chat Enhancement",
     "capabilityExpand": "Capabilities",
     "useTemp": "Use This Template",

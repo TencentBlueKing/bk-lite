@@ -146,6 +146,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "force_wiki_grounded",
             "memory_space_id",
             "memory_write_rounds",
+            "run_model_call_limit",
         }
     )
 
@@ -259,6 +260,20 @@ class LLMViewSet(PinMixin, AuthViewSet):
             log_operation(request, "update", "opspilot", f"编辑智能体技能包参数: {instance.name} 变量: {','.join(param_names)}")
         return None
 
+    def _normalize_run_model_call_limit(self, params):
+        """校验每步调用次数；失败返回 JsonResponse，成功返回 None。"""
+        if "run_model_call_limit" not in params:
+            return None
+        try:
+            run_model_call_limit = int(params.get("run_model_call_limit"))
+        except (TypeError, ValueError):
+            run_model_call_limit = 0
+        if not 1 <= run_model_call_limit <= 100:
+            message = self.loader.get("error.run_model_call_limit_range") if self.loader else "每步调用次数须在 1 到 100 之间"
+            return JsonResponse({"result": False, "message": message or "每步调用次数须在 1 到 100 之间"})
+        params["run_model_call_limit"] = run_model_call_limit
+        return None
+
     @HasPermission("skill_setting-Edit")
     def update(self, request, *args, **kwargs):
         instance: LLMSkill = self.get_object()
@@ -316,6 +331,9 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 params["memory_write_rounds"] = normalize_write_rounds(params.get("memory_write_rounds"))
             except SkillMemoryConfigError as exc:
                 return JsonResponse({"result": False, "message": str(exc)})
+        limit_error = self._normalize_run_model_call_limit(params)
+        if limit_error is not None:
+            return limit_error
         for tool in params.get("tools", []):
             for i in tool.get("kwargs", []):
                 if i.get("type") == "password":

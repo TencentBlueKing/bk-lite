@@ -46,6 +46,8 @@ class WecomSdkTransport:
         self._ready = threading.Event()
         self._authenticated = threading.Event()
         self._error: BaseException | None = None
+        self._closed = threading.Event()
+        self._post_auth_error_pending = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._client = None
         self._stopped: asyncio.Event | None = None
@@ -80,10 +82,22 @@ class WecomSdkTransport:
         )
         future.result(timeout=_REPLY_TIMEOUT_SECONDS)
 
+    @property
+    def closed(self) -> bool:
+        return self._closed.is_set()
+
+    def _raise_if_unusable(self) -> None:
+        if self._closed.is_set():
+            raise ConnectionError("WecomSdkClosed")
+        if self._authenticated.is_set() and not self._thread.is_alive():
+            raise ConnectionError("WecomSdkThreadStopped")
+
     def recv_json(self, timeout: float):
+        self._raise_if_unusable()
         try:
             return self._frames.get(timeout=timeout)
         except queue.Empty:
+            self._raise_if_unusable()
             raise TimeoutError()
 
     def close(self) -> None:
@@ -115,8 +129,29 @@ class WecomSdkTransport:
         def on_authenticated():
             self._authenticated.set()
 
+        def on_disconnected(reason):
+            # 常规断线走 SDK disconnected + 内置重连（max_reconnect_attempts=-1），勿置 closed。
+            logger.info(
+                "WecomSdkDisconnected bot_id=%s reason=%s",
+                self.bot_id,
+                str(reason)[:200],
+            )
+
+        def on_reconnecting(attempt):
+            # connect() 失败会先 error 再 _schedule_reconnect。清掉待关闭，避免拆掉 SDK 退避。
+            self._post_auth_error_pending = False
+            logger.info("WecomSdkReconnecting bot_id=%s attempt=%s", self.bot_id, attempt)
+
         def on_error(error):
             if self._authenticated.is_set():
+                logger.warning(
+                    "WecomSdkErrorAfterAuth bot_id=%s error_type=%s",
+                    self.bot_id,
+                    type(error).__name__ if isinstance(error, BaseException) else "RuntimeError",
+                )
+                self._post_auth_error_pending = True
+                if self._loop is not None:
+                    self._loop.call_soon(self._close_if_reconnect_not_scheduled)
                 return
             self._error = error if isinstance(error, BaseException) else RuntimeError(str(error))
             self._authenticated.set()
@@ -124,6 +159,8 @@ class WecomSdkTransport:
         client.on("message", enqueue)
         client.on("event", enqueue)
         client.on("authenticated", on_authenticated)
+        client.on("disconnected", on_disconnected)
+        client.on("reconnecting", on_reconnecting)
         client.on("error", on_error)
         try:
             await client.connect()
@@ -132,8 +169,20 @@ class WecomSdkTransport:
             self._error = self._error or exc
         self._ready.set()
         if self._error is not None:
+            self._closed.set()
             return
-        await self._stopped.wait()
+        try:
+            await self._stopped.wait()
+        finally:
+            self._closed.set()
+
+    def _close_if_reconnect_not_scheduled(self) -> None:
+        """error 之后若同一轮没有 reconnecting，SDK 不会再连，交给 Leader 重建。"""
+        if not self._post_auth_error_pending:
+            return
+        self._post_auth_error_pending = False
+        logger.warning("WecomSdkUnrecoverable bot_id=%s", self.bot_id)
+        self._closed.set()
 
     async def _wait_authenticated(self) -> None:
         while not self._authenticated.is_set():
