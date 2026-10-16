@@ -1,4 +1,4 @@
-# BK-Lite OpenAPI 接口编写规范与开发指南
+# BK-Lite OpenAPI 接口编写指引规范
 
 本文是新增或修改 BK-Lite 内部对外接口的代码级入口，按当前统一网关实现编写。
 长期契约以 [OpenAPI capability](../../../../specs/capabilities/openapi-gateway.md) 和
