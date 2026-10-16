@@ -177,5 +177,5 @@ receivers:
                 return None
 
         if timezone.is_naive(parsed):
-            parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+            parsed = timezone.make_aware(parsed, timezone.utc)
         return str(int(parsed.timestamp()))

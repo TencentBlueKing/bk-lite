@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.alerts.notification_templates.timefmt import DEFAULT_DISPLAY_TIMEZONE, coerce_display_timezone
 from apps.core.logger import alert_logger as logger
 
 
@@ -30,7 +31,7 @@ class TimeRangeChecker:
     支持一次性时间范围、每日、每周、每月时间范围。
     """
 
-    def __init__(self, config: Dict[str, Any], check_time: Optional[datetime.datetime] = None):
+    def __init__(self, config: Dict[str, Any], check_time: Optional[datetime.datetime] = None, timezone_name: str | None = None):
         """
         初始化时间范围检查器
 
@@ -44,15 +45,16 @@ class TimeRangeChecker:
         """
         self.config = config or {}
         self.check_time = check_time if check_time else timezone.now()
+        self.display_timezone = coerce_display_timezone(timezone_name or DEFAULT_DISPLAY_TIMEZONE)
+
+    def _aware_wall(self, value: datetime.datetime) -> datetime.datetime:
+        """把配置里的无时区钟面解释成策略时区。"""
+        return timezone.make_aware(value, self.display_timezone)
 
     def _local_check_time(self) -> datetime.datetime:
-        """将待检查时间转换为项目本地时区（settings.TIME_ZONE）。
-
-        循环型窗口（每日/每周/每月）按本地时区的"墙上时间"判断，
-        否则当 TIME_ZONE 非 UTC 时会整体偏移时区差。naive 时间原样返回。
-        """
+        """把待检查时间换成策略时区的钟面。naive 时间原样返回。"""
         if timezone.is_aware(self.check_time):
-            return timezone.localtime(self.check_time)
+            return timezone.localtime(self.check_time, self.display_timezone)
         return self.check_time
 
     def to_orm_filter(self, field_name: str = "created_at") -> Optional[Q]:
@@ -81,15 +83,8 @@ class TimeRangeChecker:
             return None  # 配置不完整，退安全，让 Python 层处理
 
         try:
-            # TODO(timezone): 一次性时段的 make_aware 未指定时区，解释结果取决于调用线程的激活时区。
-            # 摄入链路（NATS/celery，默认 UTC）与 web 请求线程（用户时区）下，同一规则的窗口解释不同。
-            # 需要产品确认：一次性时段配置的时区契约（统一按 UTC？按用户时区？按配置时区？）
-            start_time = timezone.make_aware(
-                datetime.datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
-            )
-            end_time = timezone.make_aware(
-                datetime.datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
-            )
+            start_time = self._aware_wall(datetime.datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S"))
+            end_time = self._aware_wall(datetime.datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S"))
         except ValueError:
             return None  # 格式异常，退到 Python 过滤
 
@@ -140,8 +135,8 @@ class TimeRangeChecker:
         end_time = datetime.datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
 
         # 转换为带时区的时间
-        start_time = timezone.make_aware(start_time)
-        end_time = timezone.make_aware(end_time)
+        start_time = self._aware_wall(start_time)
+        end_time = self._aware_wall(end_time)
 
         return start_time <= self.check_time <= end_time
 
@@ -244,10 +239,7 @@ class TimeRangeChecker:
         return time_str
 
 
-def check_time_range(
-    config: Dict[str, Any],
-    check_time: Optional[datetime.datetime] = None
-) -> bool:
+def check_time_range(config: Dict[str, Any], check_time: Optional[datetime.datetime] = None) -> bool:
     """
     检查指定时间是否在配置的时间范围内
 

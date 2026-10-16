@@ -15,6 +15,7 @@ from apps.alerts.constants.constants import AlertShieldMatchType, EventStatus
 from apps.alerts.error import EventNotFoundError, ShieldNotFoundError
 from apps.alerts.models.alert_operator import AlertShield
 from apps.alerts.models.models import Event
+from apps.alerts.notification_templates.timefmt import resolve_display_timezone
 from apps.alerts.utils.monitor_source_rules import MonitorSourceRuleMatcher
 from apps.alerts.utils.rule_catalog import model_fields
 from apps.alerts.utils.time_range_checker import TimeRangeChecker
@@ -136,7 +137,7 @@ class EventShieldOperator(object):
 
         time_matched_shields = []
         for shield in self.active_shields:
-            checker = TimeRangeChecker(shield.suppression_time, check_time)
+            checker = TimeRangeChecker(shield.suppression_time, check_time, resolve_display_timezone([getattr(shield, "created_by", None)]))
             if checker.is_in_range():
                 time_matched_shields.append(shield)
             else:

@@ -1,5 +1,4 @@
-from django.utils import timezone
-
+from apps.alerts.notification_templates.timefmt import format_template_datetime
 from apps.alerts.open_api.errors import AlertsOpenAPIError
 from apps.alerts.serializers.alert import AlertModelSerializer
 
@@ -44,10 +43,10 @@ def parse_ordering(query_params) -> str:
     return ordering
 
 
-def _format_datetime(dt):
+def _format_datetime(dt, timezone_name=None):
     if dt is None:
         return None
-    return timezone.localtime(dt).strftime("%Y-%m-%d %H:%M:%S")
+    return format_template_datetime(dt, timezone_name)
 
 
 def _get_event_count(alert) -> int:
@@ -60,7 +59,7 @@ def _get_event_count(alert) -> int:
     return 0
 
 
-def serialize_alert(alert, *, detail: bool = False) -> dict:
+def serialize_alert(alert, *, detail: bool = False, timezone_name=None) -> dict:
     data = {
         "alert_id": alert.alert_id,
         "title": alert.title,
@@ -77,11 +76,11 @@ def serialize_alert(alert, *, detail: bool = False) -> dict:
         "rule_id": alert.rule_id,
         "fingerprint": alert.fingerprint,
         "dimensions": alert.dimensions or {},
-        "first_event_time": _format_datetime(alert.first_event_time),
-        "last_event_time": _format_datetime(alert.last_event_time),
-        "closed_at": _format_datetime(getattr(alert, "closed_at", None)),
-        "created_at": _format_datetime(alert.created_at),
-        "updated_at": _format_datetime(alert.updated_at),
+        "first_event_time": _format_datetime(alert.first_event_time, timezone_name),
+        "last_event_time": _format_datetime(alert.last_event_time, timezone_name),
+        "closed_at": _format_datetime(getattr(alert, "closed_at", None), timezone_name),
+        "created_at": _format_datetime(alert.created_at, timezone_name),
+        "updated_at": _format_datetime(alert.updated_at, timezone_name),
         "event_count": _get_event_count(alert),
         "duration": AlertModelSerializer.get_duration(alert),
     }
@@ -115,7 +114,7 @@ def serialize_shield(shield) -> dict:
     }
 
 
-def serialize_event(event) -> dict:
+def serialize_event(event, timezone_name=None) -> dict:
     return {
         "event_id": event.event_id,
         "title": event.title,
@@ -130,9 +129,9 @@ def serialize_event(event) -> dict:
         "resource_name": event.resource_name,
         "item": event.item,
         "value": event.value,
-        "start_time": _format_datetime(event.start_time),
-        "end_time": _format_datetime(event.end_time),
-        "received_at": _format_datetime(event.received_at),
+        "start_time": _format_datetime(event.start_time, timezone_name),
+        "end_time": _format_datetime(event.end_time, timezone_name),
+        "received_at": _format_datetime(event.received_at, timezone_name),
     }
 
 
