@@ -6,7 +6,8 @@ import useMonitorApi from '@/app/monitor/api';
 import { DashboardShell } from '../common/dashboard-components';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import { HOST_DASHBOARD_CONFIG } from './config';
-import { HOST_PERFORMANCE_METRIC_NAMES } from './layered/performance-scope';
+import { HOST_CATEGORY_TAB_METRIC_NAMES } from './layered/performance-scope';
+import type { HostCategoryTab } from './layered/tab-level';
 import {
   HOST_DISK_ENTITY_QUERIES,
   HOST_NET_ENTITY_QUERIES,
@@ -33,10 +34,12 @@ export default function HostDashboardPage() {
   const [processReady, setProcessReady] = useState(false);
   const [categoryTab, setCategoryTab] = useState('overview');
   const layout = readHostDetailLayout(new URLSearchParams(searchParams.toString()));
+  const categoryMetricNames = HOST_CATEGORY_TAB_METRIC_NAMES[categoryTab as HostCategoryTab]
+    ?? HOST_CATEGORY_TAB_METRIC_NAMES.overview;
   const dashboard = useSimpleDashboardData(
     HOST_DASHBOARD_CONFIG,
-    layout === 'category' && categoryTab === 'system'
-      ? { metricNames: HOST_PERFORMANCE_METRIC_NAMES }
+    layout === 'category'
+      ? { metricNames: categoryMetricNames, reuseLoadedSeries: true }
       : undefined
   );
   const instanceIdKeys = useMemo(
