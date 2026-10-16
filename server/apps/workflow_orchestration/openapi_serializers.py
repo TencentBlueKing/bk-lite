@@ -7,7 +7,7 @@ from apps.workflow_orchestration.services.validation_messages import render_know
 class WorkflowTriggerInvokeRequestSerializer(OpenAPIRequestSerializer):
     trigger_id = serializers.UUIDField()
     idempotency_key = serializers.CharField(max_length=128)
-    inputs = serializers.JSONField(required=False, default=dict)
+    inputs = serializers.DictField(required=False, default=dict)
 
     def validate_inputs(self, value):
         if not isinstance(value, dict):
@@ -17,7 +17,7 @@ class WorkflowTriggerInvokeRequestSerializer(OpenAPIRequestSerializer):
 
 class WorkflowWebhookTestRequestSerializer(OpenAPIRequestSerializer):
     token = serializers.CharField(max_length=2048, trim_whitespace=True)
-    body = serializers.JSONField(required=False, default=dict)
+    body = serializers.DictField(required=False, default=dict)
 
     def validate_body(self, value):
         if not isinstance(value, dict):

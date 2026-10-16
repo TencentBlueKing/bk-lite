@@ -181,7 +181,7 @@ class ApmConfig(AppConfig):
 | --- | --- |
 | Serializer | object/properties/required，递归处理 |
 | ListSerializer、ListField | array/items、minItems/maxItems |
-| DictField | object，additionalProperties 为 child Schema 或 true |
+| DictField | object，声明空 properties，additionalProperties 为 child Schema 或 true |
 | JSONField | 任意 JSON 值；不允许 null 时用 not 排除 null |
 | ChoiceField | enum，可推断时给出单一基础 type |
 | Boolean、Integer、Float | boolean/integer/number，保留显式数值范围 |

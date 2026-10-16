@@ -54,7 +54,7 @@ def test_serializer_to_schema_emits_draft7_object_contract():
                 "minItems": 1,
                 "maxItems": 3,
             },
-            "metadata": {"type": "object", "additionalProperties": True, "default": {}},
+            "metadata": {"type": "object", "properties": {}, "additionalProperties": True, "default": {}},
             "children": {
                 "type": "array",
                 "items": {

@@ -90,8 +90,11 @@ def _field_to_schema(field, path: str, *, allow_additional_properties: bool) -> 
         }
         _apply_array_limits(schema, field)
     elif isinstance(field, serializers.DictField):
+        # 空 properties 仍表示没有固定键；additionalProperties 保留开放值。
+        # 缺 properties 的 object 不是可发布的对象 Schema，会让同级固定字段一起无法加载。
         schema = {
             "type": "object",
+            "properties": {},
             "additionalProperties": _dict_value_schema(
                 field.child,
                 f"{path}.*",
