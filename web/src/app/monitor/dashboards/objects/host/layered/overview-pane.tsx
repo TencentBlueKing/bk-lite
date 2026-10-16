@@ -276,6 +276,9 @@ export default function OverviewPane({
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>健康概览</div>
       </div>
       <KpiStrip items={cards} />
+      <div className={styles.sectionHead}>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'events')}</div>
+      </div>
       <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
 
       <div className={styles.sectionHead}>
@@ -383,9 +386,6 @@ export default function OverviewPane({
         />
         <ThinTimeSeries
           title={hostCategoryText(t, 'memoryUtilization')}
-          hint={memoryUsage.complementary
-            ? '已用占比 = 100% − 可用 / 总量，与性能页同一口径。'
-            : undefined}
           loading={loading}
           unit="percent"
           data={memTrend}
@@ -393,6 +393,7 @@ export default function OverviewPane({
         />
         <ThinTimeSeries
           title="磁盘使用率"
+          hint="总使用率 = 100% × 各挂载已用之和 / 总量之和，与挂载表已用容量同一口径。不是单个挂载。"
           loading={diskLoading}
           unit="percent"
           emptyText="暂无挂载数据"

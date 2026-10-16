@@ -134,7 +134,7 @@ export default function LayeredEntityTable({
     <div className={`${classic.panel} ${styles.tableWrap} ${cardAlertClass(alertLevel)}`}>
       <CardAlertDot level={alertLevel} />
       {toolbar ? (
-        <div className={`mb-1 flex justify-end ${alertLevel && alertLevel !== 'none' ? styles.cardAlertPad : ''}`}>
+        <div className={`mb-1 flex w-full justify-end ${alertLevel && alertLevel !== 'none' ? styles.cardAlertPad : ''}`}>
           {toolbar}
         </div>
       ) : null}

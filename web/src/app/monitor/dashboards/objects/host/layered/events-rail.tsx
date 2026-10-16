@@ -191,7 +191,6 @@ export default function EventsRail({
   if (!events.length) {
     return (
       <div className={styles.eventsRail} data-events-rail="" data-events-empty="">
-        <span className={styles.eventsLabel}>{hostCategoryText(t, 'events')}</span>
         <div className={styles.eventsRow}>
           <span className={styles.eventsEmpty}>{hostCategoryText(t, 'noEvents')}</span>
         </div>
@@ -216,7 +215,6 @@ export default function EventsRail({
 
   return (
     <div className={styles.eventsRail} data-events-rail="">
-      <span className={styles.eventsLabel}>{hostCategoryText(t, 'events')}</span>
       <div ref={measureRef} className={styles.eventsMeasure} aria-hidden="true">
         {events.map((event) => (
           <span key={event.id} data-event-chip="" className={styles.eventsChip}>
