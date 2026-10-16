@@ -1134,9 +1134,12 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           text-shadow: var(--screen-widget-title-shadow);
         }
 
-        .screen-widget-frame__header:has(.screen-widget-frame__title-link) {
-          justify-content: flex-start;
+        .screen-widget-frame__title-row {
+          display: flex;
+          align-items: center;
           gap: calc(6px * var(--screen-widget-ui-scale));
+          min-width: 0;
+          width: 100%;
         }
 
         .screen-widget-frame__header:has(.screen-widget-frame__title-link) .screen-widget-frame__title {

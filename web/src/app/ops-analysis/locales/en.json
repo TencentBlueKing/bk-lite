@@ -942,6 +942,7 @@
     "interactionTimeEnd": "{name} end",
     "interactionUrlBlocked": "This link protocol is not allowed",
     "interactionOpen": "Open link",
+    "interactionViewModeOnly": "Available in view mode",
     "interactionUrlRequired": "Enter a URL",
     "interactionActionColumn": "Actions",
     "eventTableStructureMismatch": "Data structure mismatch: an event table expects an array, or a paged object with an items array.",

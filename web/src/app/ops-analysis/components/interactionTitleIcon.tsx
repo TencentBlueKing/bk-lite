@@ -2,7 +2,7 @@
 
 import React, { useCallback } from 'react';
 import { LinkOutlined } from '@ant-design/icons';
-import { Button, message } from 'antd';
+import { Button, Tooltip, message } from 'antd';
 
 import { useFilterTemplateSnapshot } from '@/app/ops-analysis/context/filterTemplate';
 import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
@@ -82,29 +82,33 @@ const InteractionTitleIcon: React.FC<InteractionTitleIconProps> = ({
   const titleLink = link?.kind === 'title' ? link : undefined;
   if (!shouldShowInteractionEntry(surface, Boolean(titleLink))) return null;
   const label = titleLink?.name || t('dashboard.interactionOpen', '打开链接');
+  const hint = shouldNavigateInteraction(surface)
+    ? label
+    : t('dashboard.interactionViewModeOnly', '查看模式下可跳转');
   const layoutClass = variant === 'screen'
     ? 'screen-widget-frame__title-link'
-    : `inline-flex shrink-0 items-center justify-center text-(--color-text-2) hover:text-(--color-text-1) ${
+    : `inline-flex shrink-0 cursor-pointer items-center justify-center text-(--color-text-2) transition-colors hover:text-(--color-primary) ${
       floating
         ? 'absolute right-2 top-2 z-20 h-6 w-6 rounded-full bg-(--color-bg-1)/80 shadow-sm'
-        : 'h-5 w-5'
+        : 'h-5 w-5 rounded hover:bg-(--color-fill-2)'
     }`;
 
   return (
-    <button
-      type="button"
-      data-export-hidden="true"
-      aria-label={label}
-      title={label}
-      className={`no-drag ${layoutClass}`}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        open();
-      }}
-    >
-      <LinkOutlined aria-hidden />
-    </button>
+    <Tooltip title={hint}>
+      <button
+        type="button"
+        data-export-hidden="true"
+        aria-label={label}
+        className={`no-drag ${layoutClass}`}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          open();
+        }}
+      >
+        <LinkOutlined aria-hidden />
+      </button>
+    </Tooltip>
   );
 };
 
@@ -121,13 +125,19 @@ export const InteractionActionCell = ({
   label: string;
   onOpen: () => void;
 }) => {
+  const { t } = useTranslation();
   if (!shouldRenderInteractionActionButton(link, surface, isFirst)) {
     return <>-</>;
   }
+  const hint = shouldNavigateInteraction(surface)
+    ? undefined
+    : t('dashboard.interactionViewModeOnly', '查看模式下可跳转');
   return (
-    <Button type="link" size="small" className="p-0" onClick={onOpen}>
-      {label}
-    </Button>
+    <Tooltip title={hint}>
+      <Button type="link" size="small" className="p-0" onClick={onOpen}>
+        {label}
+      </Button>
+    </Tooltip>
   );
 };
 
