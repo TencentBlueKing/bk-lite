@@ -7,7 +7,6 @@ import { hostCategoryText } from './category-copy';
 import { HOST_SERIES_COLOR } from '../config';
 import {
   latestPreferSignal,
-  maxFinite,
   pointsToChartData,
   sumPoints,
   type EntityTableRow
@@ -56,12 +55,6 @@ const latestOfRow = (row: EntityTableRow | undefined, key: string) => {
 /** 快捷卡：优先用序列防末段掉零；无序列时回退 values。 */
 const readingOfRow = (row: EntityTableRow | undefined, key: string) => {
   const fromSeries = latestPreferSignal(row?.series[key]);
-  if (fromSeries != null) return fromSeries;
-  return latestOfRow(row, key);
-};
-
-const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
-  const fromSeries = maxFinite(row?.series[key]);
   if (fromSeries != null) return fromSeries;
   return latestOfRow(row, key);
 };
@@ -154,7 +147,10 @@ export default function OverviewPane({
   const load = latestNumber(metrics.system_load1);
   const uptime = latestNumber(metrics.system_uptime);
   const showLoad = metricHasPoints(metrics.system_load1);
-  const diskValue = peakOfRow(worst, 'disk_used_percent');
+  const diskUsagePoints = useMemo(() => hostDiskUsagePoints(diskRows), [diskRows]);
+  const diskUsageLatest = diskUsagePoints.length
+    ? diskUsagePoints[diskUsagePoints.length - 1].value
+    : null;
   const diskCurrent = readingOfRow(worst, 'disk_used_percent');
   const mountName = worst?.labels.path || worst?.labels.mount || '';
 
@@ -186,11 +182,9 @@ export default function OverviewPane({
     }
     items.push({
       key: 'disk',
-      label: hostCategoryText(t, 'diskPeak'),
-      hint: hostCategoryText(t, 'diskUtilizationPeak'),
-      value: formatPercent(diskValue),
+      label: hostCategoryText(t, 'diskTotalUsage'),
+      value: formatPercent(diskUsageLatest),
       tone: HOST_SERIES_COLOR.diskUsed,
-      subtitle: mountName ? `挂载 ${mountName}` : undefined,
       alertLevel: alerts.disk
     });
     const alertTone = alertCount == null
@@ -217,11 +211,10 @@ export default function OverviewPane({
     alertCount,
     alertsOpen,
     cpu,
-    diskValue,
+    diskUsageLatest,
     load,
     mem,
     alerts,
-    mountName,
     onOpenAlerts,
     showLoad,
     uptime,
@@ -244,8 +237,8 @@ export default function OverviewPane({
     [worst]
   );
   const diskUsageTrend = useMemo(
-    () => pointsToChartData([{ points: hostDiskUsagePoints(diskRows) }]),
-    [diskRows]
+    () => pointsToChartData([{ points: diskUsagePoints }]),
+    [diskUsagePoints]
   );
   const nicThroughput = busiest == null
     ? null
@@ -374,7 +367,7 @@ export default function OverviewPane({
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>本机趋势</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'viewTrend')}</div>
       </div>
       <div className={styles.chartGrid4}>
         <ThinTimeSeries

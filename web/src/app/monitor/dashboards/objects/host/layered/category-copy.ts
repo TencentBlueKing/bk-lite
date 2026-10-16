@@ -34,6 +34,8 @@ export const HOST_CATEGORY_COPY = {
   filesystemType: [textId('hostCategoryFilesystemType'), '文件系统类型'],
   diskPeak: [textId('hostCategoryDiskPeak'), '磁盘峰值'],
   diskUtilizationPeak: [textId('hostCategoryDiskUtilizationPeak'), '磁盘利用率（最高）'],
+  diskTotalUsage: [textId('hostCategoryDiskTotalUsage'), '总使用率'],
+  gpuMemoryUsed: [textId('hostCategoryGpuMemoryUsed'), 'GPU已使用显存'],
   noData: [textId('noData'), '无数据'],
   cpuTimeBreakdown: [textId('hostCategoryCpuTimeBreakdown'), 'CPU 时间构成'],
   diskReadThroughput: [textId('hostCategoryDiskReadThroughput'), '磁盘读吞吐'],

@@ -3935,6 +3935,8 @@
         "hostCategoryFilesystemType": "文件系统类型",
         "hostCategoryDiskPeak": "磁盘峰值",
         "hostCategoryDiskUtilizationPeak": "磁盘利用率（最高）",
+        "hostCategoryDiskTotalUsage": "总使用率",
+        "hostCategoryGpuMemoryUsed": "GPU已使用显存",
         "hostCategoryReadThroughput": "读吞吐",
         "hostCategoryWriteThroughput": "写吞吐",
         "hostCategoryReadThroughputNamed": "读吞吐 · {name}",

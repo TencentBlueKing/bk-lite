@@ -282,7 +282,7 @@ export default function DiskPane({
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>
-          {hostCategoryText(t, sub === 'mount' ? 'mounts' : 'blockDevices')}
+          {hostCategoryText(t, 'viewTrend')}
         </div>
       </div>
 

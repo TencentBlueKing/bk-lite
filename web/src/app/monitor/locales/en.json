@@ -3935,6 +3935,8 @@
         "hostCategoryFilesystemType": "Filesystem type",
         "hostCategoryDiskPeak": "Disk peak",
         "hostCategoryDiskUtilizationPeak": "Disk utilization (peak)",
+        "hostCategoryDiskTotalUsage": "Total usage",
+        "hostCategoryGpuMemoryUsed": "GPU memory used",
         "hostCategoryReadThroughput": "Read throughput",
         "hostCategoryWriteThroughput": "Write throughput",
         "hostCategoryReadThroughputNamed": "Read throughput · {name}",

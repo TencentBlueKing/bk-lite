@@ -57,7 +57,7 @@ const MEM_COMPOSITION = [
 
 const GPU_SERIES = [
   { key: 'nvidia_smi_utilization_gpu', title: 'GPU 使用率', unit: 'percent' as const },
-  { key: 'nvidia_smi_memory_used', title: 'GPU 显存', unit: 'mebibytes' as const },
+  { key: 'nvidia_smi_memory_used', title: 'GPU已使用显存', unit: 'mebibytes' as const },
   { key: 'nvidia_smi_temperature_gpu', title: 'GPU 温度', unit: 'celsius' as const }
 ] as const;
 
@@ -573,25 +573,30 @@ export default function SystemPane({
         <div className={styles.gpuBandTitle}>GPU</div>
         {gpuCharts.length ? (
           <div className={styles.gpuRow}>
-            {GPU_SERIES.map((item) => (
-              <ThinTimeSeries
-                key={item.key}
-                className={styles.detailCard}
-                title={item.title}
-                unit={item.unit}
-                data={primaryChartSeries(metrics[item.key]?.viewData)}
-                emptyText="暂无数据"
-                reading={item.key === 'nvidia_smi_memory_used' ? gpuMemReading : undefined}
-                legends={[{
-                  label: item.title,
-                  color: item.key === 'nvidia_smi_temperature_gpu'
-                    ? HOST_PALETTE.orange
-                    : item.key === 'nvidia_smi_memory_used'
-                      ? HOST_PALETTE.blue
-                      : HOST_PALETTE.emerald
-                }]}
-              />
-            ))}
+            {GPU_SERIES.map((item) => {
+              const title = item.key === 'nvidia_smi_memory_used'
+                ? hostCategoryText(t, 'gpuMemoryUsed')
+                : item.title;
+              return (
+                <ThinTimeSeries
+                  key={item.key}
+                  className={styles.detailCard}
+                  title={title}
+                  unit={item.unit}
+                  data={primaryChartSeries(metrics[item.key]?.viewData)}
+                  emptyText="暂无数据"
+                  reading={item.key === 'nvidia_smi_memory_used' ? gpuMemReading : undefined}
+                  legends={[{
+                    label: title,
+                    color: item.key === 'nvidia_smi_temperature_gpu'
+                      ? HOST_PALETTE.orange
+                      : item.key === 'nvidia_smi_memory_used'
+                        ? HOST_PALETTE.blue
+                        : HOST_PALETTE.emerald
+                  }]}
+                />
+              );
+            })}
           </div>
         ) : (
           <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.gpuBand}`}>

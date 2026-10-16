@@ -40,18 +40,6 @@ export const latestFinite = (points: RangePoint[] | undefined): number | null =>
   return null;
 };
 
-/** 窗口内最大 finite，供「磁盘峰值」等 KPI。 */
-export const maxFinite = (points: RangePoint[] | undefined): number | null => {
-  if (!points?.length) return null;
-  let max: number | null = null;
-  for (const point of points) {
-    const value = point?.value;
-    if (!Number.isFinite(value)) continue;
-    if (max == null || value > max) max = value;
-  }
-  return max;
-};
-
 /**
  * 概览快捷卡读数：末点为 0 且窗内存在更高值时取窗内末个非 0（抗 scrape 末段掉零），
  * 否则与 latestFinite 相同。真实长期为 0 的序列仍显示 0。
