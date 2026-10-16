@@ -8,7 +8,7 @@ export const HOST_CATEGORY_COPY = {
   detailedMetrics: [textId('hostCategoryDetailedMetrics'), '构成与交换'],
   swapSpaceUsage: [textId('hostCategorySwapSpaceUsage'), '交换空间使用率'],
   swapSpaceUsageSubtitle: [textId('hostCategorySwapSpaceUsageSubtitle'), '已用占交换总量的比例'],
-  swapSpaceUsageHint: [textId('hostCategorySwapSpaceUsageHint'), '内存紧张时，系统会把部分内存内容暂存到磁盘（交换分区）。本图看该占比随时间变化；越高通常表示内存越紧。'],
+  swapSpaceUsageHint: [textId('hostCategorySwapSpaceUsageHint'), '内存紧张时，系统会把部分内存内容暂存到磁盘（交换分区）。主值是已用/总量，曲线是已用容量；副行是已用占比。越高通常表示内存越紧。'],
   memoryComposition: [textId('hostCategoryMemoryComposition'), '内存构成'],
   noGpu: [textId('hostCategoryNoGpu'), '无 GPU'],
   swapUtilization: [textId('hostCategorySwapUtilization'), '交换已用'],

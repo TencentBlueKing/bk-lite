@@ -96,6 +96,24 @@ export const formatBytesPair = (used: number | null | undefined, total: number |
   return '—';
 };
 
+const SHARED_BYTE_LABELS = ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'] as const;
+
+/** 已用/总量共用一个二进制单位，两边都留一位小数，例如 `1.2 / 4.0 GiB`。 */
+export const formatSharedBytePair = (used: number, total: number | null) => {
+  if (!Number.isFinite(used)) return '--';
+  if (total == null || !Number.isFinite(total)) return formatUnit(used, 'bytes');
+  const basis = Math.max(Math.abs(used), Math.abs(total), 1);
+  let index = 0;
+  let scaled = basis;
+  while (scaled >= 1024 && index < SHARED_BYTE_LABELS.length - 1) {
+    scaled /= 1024;
+    index += 1;
+  }
+  const divisor = 1024 ** index;
+  const side = (value: number) => (value / divisor).toFixed(1);
+  return `${side(used)} / ${side(total)} ${SHARED_BYTE_LABELS[index]}`;
+};
+
 /** 序列里时间最晚的一个数值。无点或全空返回 null。 */
 export const latestChartNumber = (points: ChartData[] | undefined): number | null => {
   if (!points?.length) return null;

@@ -11,11 +11,11 @@ import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import { CardAlertDot, cardAlertClass } from './card-alert';
 import ThinTimeSeries from './thin-time-series';
-import type { HostSurfaceAlerts } from './tab-level';
+import { swapUsedPercent, type HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
-  deriveRatioPercent,
   formatPlain,
+  formatSharedBytePair,
   latestNumber,
   metricHasPoints,
   numericValue,
@@ -416,19 +416,24 @@ export default function SystemPane({
   ].filter(Boolean);
   const gridClass = charts.length >= 3 ? styles.chartGrid3 : charts.length === 2 ? styles.chartGrid2 : styles.chartGrid;
   const swapNames = ['host_mem_swap_used_bytes', 'host_mem_swap_total_bytes', 'mem_swap_free'] as const;
-  const swapTrend = useMemo(() => {
-    const total = metrics.host_mem_swap_total_bytes?.viewData;
+  const swapUsedSeries = useMemo(() => {
     const used = primaryChartSeries(metrics.host_mem_swap_used_bytes?.viewData);
-    const fromUsed = used.length ? deriveRatioPercent(used, total) : [];
-    if (fromUsed.length) return fromUsed;
-    const derivedUsed = subtractAligned(total, metrics.mem_swap_free?.viewData);
-    return deriveRatioPercent(derivedUsed, total);
+    if (used.length) return used;
+    return subtractAligned(metrics.host_mem_swap_total_bytes?.viewData, metrics.mem_swap_free?.viewData);
   }, [
     metrics.host_mem_swap_total_bytes?.viewData,
     metrics.host_mem_swap_used_bytes?.viewData,
     metrics.mem_swap_free?.viewData
   ]);
-  const swapPhase = phaseFor(swapNames, swapTrend.length > 0);
+  const swapPhase = phaseFor(swapNames, swapUsedSeries.length > 0);
+  const swapUsedNow = latestSeriesValue(swapUsedSeries);
+  const swapTotalNow = latestNumber(metrics.host_mem_swap_total_bytes);
+  const swapPercentNow = swapUsedPercent(
+    swapUsedNow,
+    swapTotalNow,
+    latestNumber(metrics.mem_swap_free)
+  );
+  const swapReading = swapUsedNow == null ? undefined : formatSharedBytePair(swapUsedNow, swapTotalNow);
   const memoryParts = useMemo(() => {
     const total = metrics.mem_total?.viewData;
     const usedBytes = metricHasPoints(metrics.mem_used)
@@ -558,14 +563,17 @@ export default function SystemPane({
         <ThinTimeSeries
           className={styles.detailCard}
           title={hostCategoryText(t, 'swapSpaceUsage')}
-          subtitle={hostCategoryText(t, 'swapSpaceUsageSubtitle')}
+          subtitle={swapPercentNow == null
+            ? hostCategoryText(t, 'swapSpaceUsageSubtitle')
+            : formatPercent(swapPercentNow)}
           hint={hostCategoryText(t, 'swapSpaceUsageHint')}
+          reading={swapReading}
           loading={swapPhase === 'loading'}
-          unit="percent"
-          data={swapTrend}
+          unit="bytes"
+          data={swapUsedSeries}
           emptyText={swapPhase === 'error' ? '加载失败' : '暂无数据'}
           onRetry={swapPhase === 'error' ? retry(swapNames) : undefined}
-          legends={[{ label: '已用占比', color: SWAP_SERIES_COLOR }]}
+          legends={[{ label: '已用', color: SWAP_SERIES_COLOR }]}
         />
       </div>
       <div className={styles.detailFull} data-surface="gpu">
