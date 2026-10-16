@@ -1396,6 +1396,80 @@ describe('application3D architecture host pick', () => {
     controller.dispose();
   });
 
+  it('opens the link menu for hosts and application models without changing select or hover', () => {
+    const onLinkContextMenu = vi.fn();
+    const onArchitectureHostSelect = vi.fn();
+    const onSelect = vi.fn();
+    const data: Application3DArchitectureData = {
+      ...architectureAlarms,
+      nodes: architectureAlarms.nodes.map((node) => (
+        node.id === 'host-alarm'
+          ? { ...node, ip_addr: '10.0.0.8', os_name: 'Linux', model_id: 'vmware_vm' }
+          : node.id === 'app-1'
+            ? { ...node, model_id: 'custom_app' }
+            : node
+      )),
+    };
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect,
+      onArchitectureHostSelect,
+      onLinkContextMenu,
+    });
+    controller.reconcile([wallItem], { playIntro: false });
+    flushFrames();
+    controller.showArchitecture(data);
+    for (let step = 0; step < 40; step += 1) flushFrames(20);
+    const canvas = mount.querySelector('canvas');
+    const hostMesh = findRackMesh('host-alarm');
+    const appMesh = findRackMesh('app-1');
+    expect(hostMesh).toBeTruthy();
+    expect(appMesh).toBeTruthy();
+
+    const rightClick = () => {
+      canvas?.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 2 }));
+      canvas?.dispatchEvent(new MouseEvent('contextmenu', { ...point, cancelable: true }));
+    };
+
+    mockHit(hostMesh);
+    canvas?.dispatchEvent(new PointerEvent('pointermove', point));
+    expect(canvas).toHaveProperty('style.cursor', 'pointer');
+    rightClick();
+    expect(onLinkContextMenu).toHaveBeenCalledTimes(1);
+    expect(onLinkContextMenu.mock.calls[0][0]).toMatchObject({
+      host: { id: 'host-alarm', name: 'web-alarm', ip: '10.0.0.8', os: 'Linux', modelId: 'vmware_vm' },
+    });
+    expect(onLinkContextMenu.mock.calls[0][0].system).toBeUndefined();
+    expect(onLinkContextMenu.mock.calls[0][0].application).toBeUndefined();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onArchitectureHostSelect).not.toHaveBeenCalled();
+
+    click(canvas);
+    expect(onArchitectureHostSelect).toHaveBeenCalledTimes(1);
+    expect(onArchitectureHostSelect.mock.calls[0][0]?.node.id).toBe('host-alarm');
+    expect(onSelect).not.toHaveBeenCalled();
+
+    onLinkContextMenu.mockClear();
+    mockHit(appMesh);
+    canvas?.dispatchEvent(new PointerEvent('pointermove', point));
+    expect(canvas).toHaveProperty('style.cursor', 'pointer');
+    rightClick();
+    expect(onLinkContextMenu).toHaveBeenCalledTimes(1);
+    expect(onLinkContextMenu.mock.calls[0][0]).toMatchObject({
+      application: { id: 'app-1', name: '门户', modelId: 'custom_app' },
+    });
+    expect(onLinkContextMenu.mock.calls[0][0].host).toBeUndefined();
+    expect(onLinkContextMenu.mock.calls[0][0].system).toBeUndefined();
+
+    click(canvas);
+    expect(onArchitectureHostSelect.mock.calls.at(-1)?.[0]).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onLinkContextMenu).toHaveBeenCalledTimes(1);
+
+    controller.dispose();
+  });
+
   it('uses a pointer cursor on host and application nodes in architecture', () => {
     const { controller, canvas } = mountArchitecture();
     mockHit(findRackMesh('host-alarm'));

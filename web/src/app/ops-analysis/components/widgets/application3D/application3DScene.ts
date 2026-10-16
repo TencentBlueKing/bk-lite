@@ -508,8 +508,9 @@ export const createApplication3DScene = (
     onLinkContextMenu?: (hit: {
       x: number;
       y: number;
-      system?: { id: string; name: string };
-      host?: { id: string; name: string };
+      system?: { id: string; name: string; modelId?: string };
+      host?: { id: string; name: string; ip?: string; os?: string; modelId?: string };
+      application?: { id: string; name: string; modelId?: string };
     } | null) => void;
   },
 ): Application3DSceneController => {
@@ -2482,20 +2483,34 @@ export const createApplication3DScene = (
     let payload: {
       x: number;
       y: number;
-      host?: { id: string; name: string };
-      system?: { id: string; name: string };
+      host?: { id: string; name: string; ip?: string; os?: string; modelId?: string };
+      system?: { id: string; name: string; modelId?: string };
+      application?: { id: string; name: string; modelId?: string };
     } | null = null;
     if (phase === 'architecture') {
       const node = pickArchitectureNode(event.clientX, event.clientY);
       if (node?.kind === 'host') {
-        payload = { ...point, host: { id: node.id, name: node.name } };
+        payload = {
+          ...point,
+          host: {
+            id: node.id,
+            name: node.name,
+            ip: node.ip_addr,
+            os: node.os_name,
+            modelId: node.model_id,
+          },
+        };
       } else if (node?.kind === 'system') {
-        payload = { ...point, system: { id: node.id, name: node.name } };
+        payload = { ...point, system: { id: node.id, name: node.name, modelId: node.model_id } };
+      } else if (node?.kind === 'application') {
+        payload = { ...point, application: { id: node.id, name: node.name, modelId: node.model_id } };
       }
     } else {
       const applicationId = pickApplicationId(event.clientX, event.clientY);
       const item = applicationId ? visuals.get(applicationId)?.item : undefined;
-      if (item) payload = { ...point, system: { id: item.id, name: item.name } };
+      if (item) {
+        payload = { ...point, system: { id: item.id, name: item.name, modelId: item.model_id } };
+      }
     }
     const decision = rightClickGesture.decide(event, Boolean(payload));
     if (!options.onLinkContextMenu || !decision.open || !payload) {

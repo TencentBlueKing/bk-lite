@@ -90,8 +90,9 @@ export default function Application3D({
   const linkMenuRef = useRef<(hit: {
     x: number;
     y: number;
-    system?: { id: string; name: string };
-    host?: { id: string; name: string };
+    system?: { id: string; name: string; modelId?: string };
+    host?: { id: string; name: string; ip?: string; os?: string; modelId?: string };
+    application?: { id: string; name: string; modelId?: string };
   } | null) => void>(() => undefined);
   linkMenuRef.current = (hit) => {
     if (!dataLinkActive || !hit) {
@@ -101,7 +102,11 @@ export default function Application3D({
     setLinkMenu({
       x: hit.x,
       y: hit.y,
-      point: sceneLinkPoint({ system: hit.system, host: hit.host }),
+      point: sceneLinkPoint({
+        system: hit.system,
+        host: hit.host,
+        application: hit.application,
+      }),
     });
   };
   const translateRef = useRef(t);
@@ -738,6 +743,8 @@ export default function Application3D({
         label={dataLink?.name || t('dashboard.interactionOpen', '打开链接')}
         onSelect={() => openPoint(linkMenu?.point)}
         onClose={() => setLinkMenu(null)}
+        variant="scene"
+        anchorRef={mountRef}
       />
       {!allowedOnSurface && (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-6">

@@ -85,12 +85,33 @@ const TITLE_ONLY = new Set([
 const RESERVED_FIELD_TOKENS = {
   cabinetId: '__data.fields.cabinet.id',
   cabinetName: '__data.fields.cabinet.name',
+  cabinetLocation: '__data.fields.cabinet.location',
+  cabinetType: '__data.fields.cabinet.type',
+  cabinetState: '__data.fields.cabinet.state',
   deviceId: '__data.fields.device.id',
   deviceName: '__data.fields.device.name',
+  deviceModel: '__data.fields.device.model_id',
+  deviceUStart: '__data.fields.device.u_start',
   systemId: '__data.fields.system.id',
   systemName: '__data.fields.system.name',
   hostId: '__data.fields.host.id',
   hostName: '__data.fields.host.name',
+  hostIp: '__data.fields.host.ip',
+  hostOs: '__data.fields.host.os',
+  applicationId: '__data.fields.application.id',
+  applicationName: '__data.fields.application.name',
+  objectType: '__data.fields.object.type',
+  objectId: '__data.fields.object.id',
+  objectName: '__data.fields.object.name',
+  objectModel: '__data.fields.object.model_id',
+} as const;
+
+/** CMDB model_id。application3D 场景载荷没有该字段时用这些内置模型。 */
+const SCENE_OBJECT_MODEL_ID = {
+  cabinet: 'rack',
+  host: 'host',
+  system: 'system',
+  application: 'application',
 } as const;
 
 export const interactionCapability = (
@@ -585,9 +606,6 @@ export const interactionKindForChartType = (
   return currentKind === 'data' && interactionCapability(chartType).data ? 'data' : 'title';
 };
 
-const hasOwn = (row: Record<string, unknown>, key: string) =>
-  Object.prototype.hasOwnProperty.call(row, key);
-
 const pushFieldVariable = (
   variables: InteractionVariable[],
   tokenBody: string,
@@ -713,22 +731,13 @@ const rowsOf = (data: unknown): Record<string, unknown>[] => {
 export const listPresentDataVariables = (
   chartType: string | undefined,
   rawData: unknown,
-  labels: DataVariableLabels & {
-    cabinetId?: string;
-    cabinetName?: string;
-    deviceId?: string;
-    deviceName?: string;
-    systemId?: string;
-    systemName?: string;
-    hostId?: string;
-    hostName?: string;
-  },
+  labels: DataVariableLabels & SceneVariableLabels,
   points: ChartLinkPoint[] = [],
 ): InteractionVariable[] => {
   const capability = interactionCapability(chartType);
   if (!capability.data) return [];
   if (chartType === 'room3D' || chartType === 'application3D') {
-    return listSceneVariables(chartType, rawData, labels);
+    return listSceneVariables(chartType, labels);
   }
   const profile = POINT_PROFILES[chartType || ''];
   if (!profile) return [];
@@ -808,116 +817,208 @@ export const listPresentDataVariables = (
   return variables;
 };
 
+interface SceneVariableLabels {
+  cabinetGroup?: string;
+  deviceGroup?: string;
+  systemGroup?: string;
+  hostGroup?: string;
+  applicationGroup?: string;
+  objectGroup?: string;
+  cabinetId?: string;
+  cabinetName?: string;
+  cabinetLocation?: string;
+  cabinetType?: string;
+  cabinetState?: string;
+  deviceId?: string;
+  deviceName?: string;
+  deviceModel?: string;
+  deviceUStart?: string;
+  systemId?: string;
+  systemName?: string;
+  hostId?: string;
+  hostName?: string;
+  hostIp?: string;
+  hostOs?: string;
+  applicationId?: string;
+  applicationName?: string;
+  objectType?: string;
+  objectId?: string;
+  objectName?: string;
+  objectModelId?: string;
+}
+
 const listSceneVariables = (
   chartType: string,
-  rawData: unknown,
-  labels: {
-    fieldGroup: string;
-    cabinetId?: string;
-    cabinetName?: string;
-    deviceId?: string;
-    deviceName?: string;
-    systemId?: string;
-    systemName?: string;
-    hostId?: string;
-    hostName?: string;
-  },
+  labels: SceneVariableLabels,
 ): InteractionVariable[] => {
   const variables: InteractionVariable[] = [];
   const seen = new Set<string>();
-  const add = (body: string, label: string, example?: unknown) => {
+  const add = (
+    body: string,
+    label: string | undefined,
+    fallback: string,
+    group: string | undefined,
+    groupFallback: string,
+    valueType = 'text',
+  ) => {
     const before = variables.length;
-    pushFieldVariable(variables, body, label, labels.fieldGroup, seen);
-    if (variables.length === before || example == null || example === '') return;
-    variables[variables.length - 1].example = scalarText(example);
+    pushFieldVariable(variables, body, label || fallback, group || groupFallback, seen);
+    if (variables.length === before) return;
+    variables[variables.length - 1].valueType = valueType;
   };
-  if (chartType === 'room3D' && isRecord(rawData)) {
-    const racks = Array.isArray(rawData.racks) ? rawData.racks.filter(isRecord) : [];
-    const rackWithId = racks.find((rack) => hasOwn(rack, 'rack_id') || hasOwn(rack, 'id'));
-    const rackWithName = racks.find((rack) => hasOwn(rack, 'rack_name') || hasOwn(rack, 'name'));
-    if (rackWithId) {
-      add(RESERVED_FIELD_TOKENS.cabinetId, labels.cabinetId || 'cabinet.id', rackWithId.rack_id ?? rackWithId.id);
-    }
-    if (rackWithName) {
-      add(RESERVED_FIELD_TOKENS.cabinetName, labels.cabinetName || 'cabinet.name', rackWithName.rack_name ?? rackWithName.name);
-    }
-    const devices = racks.flatMap((rack) =>
-      Array.isArray(rack.devices) ? rack.devices.filter(isRecord) : [],
-    );
-    const deviceWithId = devices.find((device) => hasOwn(device, 'device_id') || hasOwn(device, 'id'));
-    const deviceWithName = devices.find((device) => hasOwn(device, 'device_name') || hasOwn(device, 'name'));
-    if (deviceWithId) {
-      add(RESERVED_FIELD_TOKENS.deviceId, labels.deviceId || 'device.id', deviceWithId.device_id ?? deviceWithId.id);
-    }
-    if (deviceWithName) {
-      add(RESERVED_FIELD_TOKENS.deviceName, labels.deviceName || 'device.name', deviceWithName.device_name ?? deviceWithName.name);
-    }
+  const addObject = () => {
+    add(RESERVED_FIELD_TOKENS.objectType, labels.objectType, 'object.type', labels.objectGroup, 'object');
+    add(RESERVED_FIELD_TOKENS.objectId, labels.objectId, 'object.id', labels.objectGroup, 'object');
+    add(RESERVED_FIELD_TOKENS.objectName, labels.objectName, 'object.name', labels.objectGroup, 'object');
+    add(RESERVED_FIELD_TOKENS.objectModel, labels.objectModelId, 'object.model_id', labels.objectGroup, 'object');
+  };
+  if (chartType === 'room3D') {
+    addObject();
+    add(RESERVED_FIELD_TOKENS.cabinetId, labels.cabinetId, 'cabinet.id', labels.cabinetGroup, 'cabinet');
+    add(RESERVED_FIELD_TOKENS.cabinetName, labels.cabinetName, 'cabinet.name', labels.cabinetGroup, 'cabinet');
+    add(RESERVED_FIELD_TOKENS.cabinetLocation, labels.cabinetLocation, 'cabinet.location', labels.cabinetGroup, 'cabinet');
+    add(RESERVED_FIELD_TOKENS.cabinetType, labels.cabinetType, 'cabinet.type', labels.cabinetGroup, 'cabinet');
+    add(RESERVED_FIELD_TOKENS.cabinetState, labels.cabinetState, 'cabinet.state', labels.cabinetGroup, 'cabinet');
+    add(RESERVED_FIELD_TOKENS.deviceId, labels.deviceId, 'device.id', labels.deviceGroup, 'device');
+    add(RESERVED_FIELD_TOKENS.deviceName, labels.deviceName, 'device.name', labels.deviceGroup, 'device');
+    add(RESERVED_FIELD_TOKENS.deviceModel, labels.deviceModel, 'device.model_id', labels.deviceGroup, 'device');
+    add(RESERVED_FIELD_TOKENS.deviceUStart, labels.deviceUStart, 'device.u_start', labels.deviceGroup, 'device', 'number');
   }
   if (chartType === 'application3D') {
-    const systems = [
-      ...sceneNodes(rawData, 'system'),
-      ...unlabeledWallItems(rawData),
-    ];
-    const hosts = sceneNodes(rawData, 'host');
-    const systemWithId = systems.find((node) => hasOwn(node, 'id'));
-    const systemWithName = systems.find((node) => hasOwn(node, 'name'));
-    const hostWithId = hosts.find((node) => hasOwn(node, 'id'));
-    const hostWithName = hosts.find((node) => hasOwn(node, 'name'));
-    if (systemWithId) {
-      add(RESERVED_FIELD_TOKENS.systemId, labels.systemId || 'system.id', systemWithId.id);
-    }
-    if (systemWithName) {
-      add(RESERVED_FIELD_TOKENS.systemName, labels.systemName || 'system.name', systemWithName.name);
-    }
-    if (hostWithId) {
-      add(RESERVED_FIELD_TOKENS.hostId, labels.hostId || 'host.id', hostWithId.id);
-    }
-    if (hostWithName) {
-      add(RESERVED_FIELD_TOKENS.hostName, labels.hostName || 'host.name', hostWithName.name);
-    }
+    addObject();
+    add(RESERVED_FIELD_TOKENS.systemId, labels.systemId, 'system.id', labels.systemGroup, 'system');
+    add(RESERVED_FIELD_TOKENS.systemName, labels.systemName, 'system.name', labels.systemGroup, 'system');
+    add(RESERVED_FIELD_TOKENS.hostId, labels.hostId, 'host.id', labels.hostGroup, 'host');
+    add(RESERVED_FIELD_TOKENS.hostName, labels.hostName, 'host.name', labels.hostGroup, 'host');
+    add(RESERVED_FIELD_TOKENS.hostIp, labels.hostIp, 'host.ip', labels.hostGroup, 'host');
+    add(RESERVED_FIELD_TOKENS.hostOs, labels.hostOs, 'host.os', labels.hostGroup, 'host');
+    add(RESERVED_FIELD_TOKENS.applicationId, labels.applicationId, 'application.id', labels.applicationGroup, 'application');
+    add(RESERVED_FIELD_TOKENS.applicationName, labels.applicationName, 'application.name', labels.applicationGroup, 'application');
   }
   return variables;
 };
 
-const unlabeledWallItems = (rawData: unknown) => {
-  if (!isRecord(rawData) || !Array.isArray(rawData.items)) return [];
-  return rawData.items.filter(
-    (item) => isRecord(item)
-      && item.kind == null
-      && (hasOwn(item, 'id') || hasOwn(item, 'name')),
-  );
+const sceneText = (value: unknown): string | undefined => {
+  if (typeof value !== 'string' || value.trim() === '') return undefined;
+  return value;
 };
 
-const sceneNodes = (rawData: unknown, kind: 'system' | 'host') => {
-  if (!isRecord(rawData)) return [];
-  const buckets = [
-    rawData.items,
-    rawData.nodes,
-    rawData.applications,
-    isRecord(rawData.architecture) ? rawData.architecture.nodes : undefined,
-  ];
-  return buckets.flatMap((bucket) =>
-    Array.isArray(bucket)
-      ? bucket.filter((item) => isRecord(item) && item.kind === kind)
-      : [],
-  );
+const firstSceneText = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = sceneText(value);
+    if (text !== undefined) return text;
+  }
+  return undefined;
+};
+
+const firstSceneNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
 };
 
 export const sceneLinkPoint = (hit: {
-  cabinet?: { id?: string; name?: string };
-  device?: { id?: string; name?: string };
-  system?: { id?: string; name?: string };
-  host?: { id?: string; name?: string };
+  cabinet?: {
+    id?: string;
+    name?: string;
+    rack_id?: string;
+    rack_name?: string;
+    location?: string | null;
+    type?: string | null;
+    rack_type?: string | null;
+    rack_type_name?: string | null;
+    state?: string | null;
+    rack_state?: string | null;
+    rack_state_name?: string | null;
+  };
+  device?: {
+    id?: string;
+    name?: string;
+    device_id?: string;
+    device_name?: string;
+    model_id?: string | null;
+    rack_u_start?: number | null;
+  };
+  system?: { id?: string; name?: string; model_id?: string | null; modelId?: string | null };
+  host?: {
+    id?: string;
+    name?: string;
+    ip?: string | null;
+    os?: string | null;
+    ip_addr?: string | null;
+    os_name?: string | null;
+    model_id?: string | null;
+    modelId?: string | null;
+  };
+  application?: { id?: string; name?: string; model_id?: string | null; modelId?: string | null };
 }): ChartLinkPoint => {
   const fields: Record<string, unknown> = {};
-  if (hit.cabinet?.id) fields['cabinet.id'] = hit.cabinet.id;
-  if (hit.cabinet?.name) fields['cabinet.name'] = hit.cabinet.name;
-  if (hit.device?.id) fields['device.id'] = hit.device.id;
-  if (hit.device?.name) fields['device.name'] = hit.device.name;
-  if (hit.system?.id) fields['system.id'] = hit.system.id;
-  if (hit.system?.name) fields['system.name'] = hit.system.name;
-  if (hit.host?.id) fields['host.id'] = hit.host.id;
-  if (hit.host?.name) fields['host.name'] = hit.host.name;
+  const writeText = (key: string, value: string | undefined) => {
+    if (value === undefined) return;
+    fields[key] = value;
+  };
+  const cabinetId = firstSceneText(hit.cabinet?.rack_id, hit.cabinet?.id);
+  const cabinetName = firstSceneText(hit.cabinet?.rack_name, hit.cabinet?.name);
+  writeText('cabinet.id', cabinetId);
+  writeText('cabinet.name', cabinetName);
+  writeText('cabinet.location', firstSceneText(hit.cabinet?.location));
+  writeText('cabinet.type', firstSceneText(hit.cabinet?.rack_type, hit.cabinet?.type));
+  writeText('cabinet.state', firstSceneText(hit.cabinet?.rack_state, hit.cabinet?.state));
+
+  const deviceId = firstSceneText(hit.device?.device_id, hit.device?.id);
+  const deviceName = firstSceneText(hit.device?.device_name, hit.device?.name);
+  writeText('device.id', deviceId);
+  writeText('device.name', deviceName);
+  writeText('device.model_id', firstSceneText(hit.device?.model_id));
+  const uStart = firstSceneNumber(hit.device?.rack_u_start);
+  if (uStart !== undefined) fields['device.u_start'] = uStart;
+
+  const systemId = firstSceneText(hit.system?.id);
+  const systemName = firstSceneText(hit.system?.name);
+  writeText('system.id', systemId);
+  writeText('system.name', systemName);
+
+  const hostId = firstSceneText(hit.host?.id);
+  const hostName = firstSceneText(hit.host?.name);
+  writeText('host.id', hostId);
+  writeText('host.name', hostName);
+  writeText('host.ip', firstSceneText(hit.host?.ip, hit.host?.ip_addr));
+  writeText('host.os', firstSceneText(hit.host?.os, hit.host?.os_name));
+
+  const applicationId = firstSceneText(hit.application?.id);
+  const applicationName = firstSceneText(hit.application?.name);
+  writeText('application.id', applicationId);
+  writeText('application.name', applicationName);
+
+  const clicked = hit.device
+    ? { type: 'device', id: deviceId, name: deviceName }
+    : hit.cabinet
+      ? { type: 'cabinet', id: cabinetId, name: cabinetName }
+      : hit.host
+        ? { type: 'host', id: hostId, name: hostName }
+        : hit.application
+          ? { type: 'application', id: applicationId, name: applicationName }
+          : hit.system
+            ? { type: 'system', id: systemId, name: systemName }
+            : undefined;
+  if (clicked) {
+    fields['object.type'] = clicked.type;
+    writeText('object.id', clicked.id);
+    writeText('object.name', clicked.name);
+    const modelOn = (node?: { model_id?: string | null; modelId?: string | null }) =>
+      firstSceneText(node?.model_id, node?.modelId);
+    const objectModelId = clicked.type === 'device'
+      ? firstSceneText(hit.device?.model_id)
+      : clicked.type === 'cabinet'
+        ? SCENE_OBJECT_MODEL_ID.cabinet
+        : clicked.type === 'host'
+          ? modelOn(hit.host) ?? SCENE_OBJECT_MODEL_ID.host
+          : clicked.type === 'system'
+            ? modelOn(hit.system) ?? SCENE_OBJECT_MODEL_ID.system
+            : modelOn(hit.application) ?? SCENE_OBJECT_MODEL_ID.application;
+    writeText('object.model_id', objectModelId);
+  }
   return { fields };
 };
 

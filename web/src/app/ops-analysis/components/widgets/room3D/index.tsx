@@ -31,6 +31,7 @@ import type {
 } from "@/app/ops-analysis/types/dashBoard";
 import {
   aggregateRackAlarmSummary,
+  canOpenRoom3DRackLink,
   formatRoom3DDeviceAlarmCountValue,
   formatRoom3DSeverityLabel,
   getRoom3DDisplayOptions,
@@ -104,12 +105,12 @@ const Room3D: React.FC<Room3DProps> = ({
   } | null>(null);
   const linkMenuRef = useRef<(hit: {
     rack: Room3DRack;
-    device?: { device_id: string; device_name: string };
+    device?: Room3DRenderableDevice;
     x: number;
     y: number;
   } | null) => void>(() => undefined);
   linkMenuRef.current = (hit) => {
-    if (!dataLinkActive || !hit) {
+    if (!dataLinkActive || !hit || !canOpenRoom3DRackLink(hit.rack)) {
       setLinkMenu(null);
       return;
     }
@@ -117,10 +118,8 @@ const Room3D: React.FC<Room3DProps> = ({
       x: hit.x,
       y: hit.y,
       point: sceneLinkPoint({
-        cabinet: { id: hit.rack.rack_id, name: hit.rack.rack_name },
-        device: hit.device
-          ? { id: hit.device.device_id, name: hit.device.device_name }
-          : undefined,
+        cabinet: hit.rack,
+        device: hit.device,
       }),
     });
   };
@@ -647,6 +646,8 @@ const Room3D: React.FC<Room3DProps> = ({
         label={dataLink?.name || t("dashboard.interactionOpen", "打开链接")}
         onSelect={() => openPoint(linkMenu?.point)}
         onClose={() => setLinkMenu(null)}
+        variant="scene"
+        anchorRef={roomRef}
       />
       <div className={styles.topBar}>
         <div className={styles.roomTitle} title={roomSummaryText}>
