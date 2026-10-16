@@ -43,6 +43,7 @@ from apps.opspilot.serializers.llm_serializer import (
     SkillRequestLogSerializer,
     SkillToolsSerializer,
 )
+from apps.opspilot.services.asset_tags import apply_fallback_tool_tags
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
     BUILTIN_ALERTS_TOOL_NAME,
@@ -431,7 +432,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["enable_query_rewrite"] = False
             params["show_think"] = False
             params["temperature"] = DEFAULT_CHAT_TEMPERATURE
-            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            params["locale"] = self.loader.default_lang if self.loader else (getattr(request.user, "locale", "en") or "en")
             params["user_timezone"] = getattr(request.user, "timezone", "") or ""
             # 透传技能绑定的 Wiki 知识库,触发 format_chat_server_kwargs 的检索增强;
             # 否则智能体对话不会引用知识库内容,易凭 LLM 自身知识作答(幻觉)。
@@ -517,7 +518,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["enable_query_rewrite"] = False
             params["show_think"] = False
             params["temperature"] = DEFAULT_CHAT_TEMPERATURE
-            params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            params["locale"] = self.loader.default_lang if self.loader else (getattr(request.user, "locale", "en") or "en")
             params["user_timezone"] = getattr(request.user, "timezone", "") or ""
             params["browser_use_force_task"] = True
             # 同 execute:透传 Wiki 知识库以触发检索增强,避免智能体不查知识库而凭空作答。
@@ -1209,6 +1210,9 @@ class SkillToolsViewSet(AuthViewSet):
                 response.data.append(build_builtin_mssql_tool(loader))
             if not any(item.get("name") == BUILTIN_ACTIVEDIRECTORY_TOOL_NAME for item in response.data):
                 response.data.append(build_builtin_activedirectory_tool(loader))
+            for item in response.data:
+                if isinstance(item, dict) and isinstance(item.get("id"), int) and item["id"] < 0:
+                    apply_fallback_tool_tags(item)
         return response
 
     @HasPermission("tool_list-Add")

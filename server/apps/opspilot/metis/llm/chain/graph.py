@@ -54,6 +54,7 @@ from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
     classify_llm_error,
     format_llm_empty_response_log,
     format_llm_failure_log,
+    localized_llm_user_message,
     summarize_llm_endpoint,
 )
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
@@ -2149,7 +2150,9 @@ class BasicGraph(ABC):
             yield encoder.encode(
                 RunErrorEvent(
                     type=EventType.RUN_ERROR,
-                    message=f"{classification['user_message']}: {classification['detail']}"[:1000],
+                    message=(f"{localized_llm_user_message(classification, getattr(request, 'locale', None))}: " f"{classification['detail']}")[
+                        :1000
+                    ],
                     code=str(classification["code"]),
                     timestamp=int(time.time() * 1000),
                 )

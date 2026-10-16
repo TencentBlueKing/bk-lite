@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.services.asset_tags import system_tags_from_manifest
 from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT, SkillPackageImporter
+from apps.system_mgmt.models.user import Group
 
 BUILTIN_ORG_ID = "builtin"
 BUILTIN_DOMAIN = "domain.com"
@@ -21,6 +23,14 @@ class BuiltinSeedResult:
     version: str
     created: bool
     storage_path: Path
+
+
+def _default_team() -> list[int]:
+    """内置技能包没有分组时归到名为 Default 的根组织。"""
+    group = Group.objects.filter(name="Default", parent_id=0).only("id").first()
+    if group is None:
+        return [1]
+    return [group.id]
 
 
 def list_builtin_package_dirs(support_root: Path | None = None) -> list[Path]:
@@ -73,6 +83,7 @@ def _parse_package_dir(source_dir: Path) -> dict[str, Any]:
         "name": name,
         "description": description,
         "category": _resolve_category(manifest),
+        "system_tags": system_tags_from_manifest(manifest),
         "manifest": manifest,
         "skill_markdown": skill_body,
         "required_tools": SkillPackageImporter._string_list(manifest.get("required_tools")),
@@ -121,6 +132,7 @@ def seed_builtin_skill_package(
             "name": parsed["name"],
             "description": parsed["description"],
             "category": parsed["category"],
+            "system_tags": parsed["system_tags"],
             "source_type": "builtin",
             "source_url": "",
             "storage_path": str(storage_path),
@@ -128,7 +140,6 @@ def seed_builtin_skill_package(
             "skill_markdown": parsed["skill_markdown"],
             "required_tools": parsed["required_tools"],
             "triggers": parsed["triggers"],
-            "team": [],
             "is_enabled": True,
             "is_build_in": True,
             "updated_by": "system",
@@ -139,6 +150,9 @@ def seed_builtin_skill_package(
         package.created_by = "system"
         package.domain = domain
         package.save(update_fields=["created_by", "domain"])
+    if not package.team:
+        package.team = _default_team()
+        package.save(update_fields=["team"])
 
     logger.info(
         "builtin skill package seeded package_id=%s version=%s created=%s",

@@ -161,5 +161,10 @@ else:
 
 INSTALLED_APPS += tuple(f"apps.{app}" for app in app_folders if f"apps.{app}" not in INSTALLED_APPS)
 
+# optional：与 license_mgmt 一样条件追加。opspilot 未装入时不得引用其模块。
+_RETURNED_MESSAGE_LOCALE_MIDDLEWARE = "apps.opspilot.middlewares.returned_message_middleware.ReturnedMessageLocaleMiddleware"
+if "apps.opspilot" in INSTALLED_APPS and _RETURNED_MESSAGE_LOCALE_MIDDLEWARE not in MIDDLEWARE:
+    MIDDLEWARE += (_RETURNED_MESSAGE_LOCALE_MIDDLEWARE,)
+
 # 文件上传数量限制
 DATA_UPLOAD_MAX_NUMBER_FILES = 100

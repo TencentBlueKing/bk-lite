@@ -677,10 +677,12 @@ class DeepAgentAssemblyMixin:
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
         from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
+        from apps.opspilot.metis.llm.middleware.tool_result_locale import ToolResultLocaleMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import ToolTimeoutMiddleware
 
         isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
         legacy_middleware = [
+            ToolResultLocaleMiddleware(),
             ToolTimeoutMiddleware(),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
             TerminalUserChoiceMiddleware(),
@@ -731,6 +733,7 @@ class DeepAgentAssemblyMixin:
         )
         from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
+        from apps.opspilot.metis.llm.middleware.tool_result_locale import ToolResultLocaleMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import (
             SkillExecutionGuardMiddleware,
             ToolExceptionAsResultMiddleware,
@@ -758,6 +761,7 @@ class DeepAgentAssemblyMixin:
         skill_guard = SkillExecutionGuardMiddleware(enabled=skills_only_plan)
         isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
         runtime_middleware = [
+            ToolResultLocaleMiddleware(),
             visibility_middleware,
             skill_guard,
             ToolTimeoutMiddleware(),

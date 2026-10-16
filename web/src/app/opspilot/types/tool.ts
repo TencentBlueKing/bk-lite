@@ -29,6 +29,8 @@ export interface ToolPayload {
   name: string;
   description?: string;
   tags?: string[];
+  system_tags?: string[];
+  user_tags?: string[];
   team?: string[];
   url?: string;
   icon?: string;
@@ -48,6 +50,8 @@ export interface Tool {
   icon: string;
   team: string[];
   tags: string[];
+  system_tags?: string[];
+  user_tags?: string[];
   tagList: string[];
   is_build_in: boolean;
   params: ToolParams;
@@ -71,6 +75,8 @@ export interface SelectTool {
   rawName?: string;
   icon: string;
   description?: string;
+  systemTags?: string[];
+  userTags?: string[];
   kwargs?: ToolVariable[];
   /** false 表示外部 MCP；缺省或 true 表示内置工具 */
   isBuildIn?: boolean;
