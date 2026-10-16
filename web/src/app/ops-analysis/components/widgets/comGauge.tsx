@@ -1,4 +1,6 @@
 import React, { useMemo } from 'react';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
@@ -92,12 +94,21 @@ const ComGauge: React.FC<ComGaugeProps> = ({
       ],
       axisLineWidth,
     });
-  const { onEvents } = useEchartsFinishedReady({
+  const { onEvents: finishedEvents } = useEchartsFinishedReady({
     loading,
     isDataReady: hasData,
     canReportReady: hasValidContainerSize,
     onReady,
   });
+  const { onChartClick } = useWidgetDataLink(config);
+  const gaugePoint = useMemo(
+    () => buildInteractionPoints('gauge', rawData, config)[0],
+    [config, rawData],
+  );
+  const onEvents = useMemo(
+    () => ({ ...finishedEvents, click: onChartClick }),
+    [finishedEvents, onChartClick],
+  );
 
   const option = useMemo(() => {
     const currentValue = clamp(numericValue ?? safeMin, safeMin, safeMax);
@@ -199,12 +210,16 @@ const ComGauge: React.FC<ComGaugeProps> = ({
             color,
             formatter: () => displayValue,
           },
-          data: [{ value: currentValue }],
+          data: [{
+            value: currentValue,
+            ...(gaugePoint ? { __link: gaugePoint } : {}),
+          }],
         },
       ],
     };
   }, [
     color,
+    gaugePoint,
     chartTheme.axisLineColor,
     chartTheme.singleValueMetaColor,
     chartTheme.splitLineColor,

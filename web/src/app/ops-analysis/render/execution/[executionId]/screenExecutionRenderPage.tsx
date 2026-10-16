@@ -15,7 +15,8 @@ import {
 import type { DashboardExecutionRenderInput } from '@/app/ops-analysis/types/dashboardSubscription';
 import type { FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import { collectScreenDataSourceIds, collectWidgetManifestDataSourceIds } from '@/app/ops-analysis/utils/canvasResources';
-import { isScreenWidgetItem } from '@/app/ops-analysis/(pages)/view/screen/utils/screenItems';
+import { collectScreenFilterTemplateTexts, isScreenWidgetItem } from '@/app/ops-analysis/(pages)/view/screen/utils/screenItems';
+import { filterTemplateAsyncDependencies } from '@/app/ops-analysis/utils/filterTemplate';
 import { prepareScreenPrintLayout } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 
 interface ScreenExecutionRenderPageContentProps {
@@ -93,11 +94,30 @@ export const ScreenExecutionRenderPageContent = ({
     >;
   }, [renderInput]);
 
+  const titleTemplateTexts = useMemo(
+    () => collectScreenFilterTemplateTexts(viewSets?.items ?? []),
+    [viewSets?.items],
+  );
+  const titleLabelDependencies = useMemo(
+    () => filterTemplateAsyncDependencies(titleTemplateTexts, viewSets?.filters ?? []),
+    [titleTemplateTexts, viewSets?.filters],
+  );
+  const titleLabelsPending = titleLabelDependencies.dynamicFilterIds.length > 0
+    || titleLabelDependencies.needsOrganization;
+  const titleLabelsSettledRef = useRef(!titleLabelsPending);
+  const titleLabelsKeyRef = useRef('');
+  const titleLabelsKey = `${executionId}\0${titleTemplateTexts.join('\0')}`;
+  if (titleLabelsKeyRef.current !== titleLabelsKey) {
+    titleLabelsKeyRef.current = titleLabelsKey;
+    titleLabelsSettledRef.current = !titleLabelsPending;
+  }
+
   const tryEmitReady = useCallback(() => {
     if (emittedRef.current || failedRef.current || !dataSourcesReady) {
       return;
     }
     if (widgetIds.length === 0) {
+      if (titleLabelsPending && !titleLabelsSettledRef.current) return;
       emittedRef.current = true;
       emitDashboardRenderSignal({
         type: 'report-ready',
@@ -112,6 +132,9 @@ export const ScreenExecutionRenderPageContent = ({
       renderResultsRef.current,
     );
     if (!signal) return;
+    if (signal.type === 'report-ready' && titleLabelsPending && !titleLabelsSettledRef.current) {
+      return;
+    }
     emittedRef.current = true;
     void (async () => {
       if (signal.type === 'report-ready') {
@@ -132,7 +155,7 @@ export const ScreenExecutionRenderPageContent = ({
       }
       emitDashboardRenderSignal(signal);
     })();
-  }, [dataSourcesReady, executionId, widgetIds]);
+  }, [dataSourcesReady, executionId, titleLabelsPending, widgetIds]);
 
   const handleWidgetRenderStatus = useCallback(
     (result: DashboardWidgetRenderResult) => {
@@ -219,6 +242,10 @@ export const ScreenExecutionRenderPageContent = ({
         }
         dataSourceResolver={dataSourceResolver}
         onWidgetRenderStatus={handleWidgetRenderStatus}
+        onFilterTemplateSettled={() => {
+          titleLabelsSettledRef.current = true;
+          tryEmitReady();
+        }}
         filterDefinitions={viewSets.filters ?? []}
         unifiedFilterValues={filterValues}
         filterSearchVersion={0}

@@ -7,6 +7,9 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
 import { HandledRequestError } from '@/utils/request';
+import { FilterTemplateProvider, FilterTemplateTitleGate } from '@/app/ops-analysis/context/filterTemplate';
+import { InteractionSurfaceProvider } from '@/app/ops-analysis/context/interactionSurface';
+import { filterTemplateAsyncDependencies } from '@/app/ops-analysis/utils/filterTemplate';
 import { useTranslation } from '@/utils/i18n';
 import useBtnPermissions from '@/hooks/usePermissions';
 import { useReportApi } from '@/app/ops-analysis/api/report';
@@ -612,6 +615,51 @@ const Report = forwardRef<ReportRef, ReportProps>(({
     [],
   );
 
+  const titleTemplateTexts = useMemo(
+    () => visibleViewSets.sections.flatMap((section) => [
+      section.valueConfig.name,
+      section.valueConfig.description ?? '',
+    ]),
+    [visibleViewSets.sections],
+  );
+  const titleLabelDependencies = useMemo(
+    () => filterTemplateAsyncDependencies(titleTemplateTexts, appliedFilterDefinitions),
+    [appliedFilterDefinitions, titleTemplateTexts],
+  );
+  const titleLabelsPending = Boolean(
+    renderMode && (
+      titleLabelDependencies.dynamicFilterIds.length > 0
+      || titleLabelDependencies.needsOrganization
+    ),
+  );
+  const titleLabelsSettledRef = useRef(!titleLabelsPending);
+  const titleLabelsKeyRef = useRef('');
+  const titleLabelsKey = `${selectedReport?.data_id ?? ''}\0${titleTemplateTexts.join('\0')}`;
+  if (titleLabelsKeyRef.current !== titleLabelsKey) {
+    titleLabelsKeyRef.current = titleLabelsKey;
+    titleLabelsSettledRef.current = !titleLabelsPending;
+  }
+
+  const flushRenderSignal = useCallback(() => {
+    if (!renderMode || emittedRenderSignalRef.current) return;
+    const signal = buildDashboardRenderSignal(
+      selectedReport?.data_id || 'unknown',
+      sectionIds,
+      renderResultsRef.current,
+    );
+    if (!signal) return;
+    if (signal.type === 'report-ready' && titleLabelsPending && !titleLabelsSettledRef.current) {
+      return;
+    }
+    void emitPreparedRenderSignal(signal);
+  }, [
+    emitPreparedRenderSignal,
+    renderMode,
+    sectionIds,
+    selectedReport?.data_id,
+    titleLabelsPending,
+  ]);
+
   const handleWidgetRenderStatus = useCallback(
     (result: DashboardWidgetRenderResult) => {
       if (pdfExportPreparingRef.current) {
@@ -619,23 +667,22 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       }
       if (!renderMode || emittedRenderSignalRef.current) return;
       renderResultsRef.current.set(result.widgetId, result);
-      const signal = buildDashboardRenderSignal(
-        selectedReport?.data_id || 'unknown',
-        sectionIds,
-        renderResultsRef.current,
-      );
-      if (signal) {
-        void emitPreparedRenderSignal(signal);
-      }
+      flushRenderSignal();
     },
-    [emitPreparedRenderSignal, renderMode, sectionIds, selectedReport?.data_id],
+    [flushRenderSignal, renderMode],
   );
+
+  const handleTitleLabelsSettled = useCallback(() => {
+    titleLabelsSettledRef.current = true;
+    flushRenderSignal();
+  }, [flushRenderSignal]);
 
   useEffect(() => {
     if (!renderMode || emittedRenderSignalRef.current || loading) return;
     if (sectionIds.length > 0) return;
     const frame = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        if (titleLabelsPending && !titleLabelsSettledRef.current) return;
         void emitPreparedRenderSignal({
           type: 'report-ready',
           dashboardId: String(selectedReport?.data_id || 'unknown'),
@@ -644,7 +691,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [emitPreparedRenderSignal, loading, renderMode, sectionIds.length, selectedReport?.data_id]);
+  }, [emitPreparedRenderSignal, loading, renderMode, sectionIds.length, selectedReport?.data_id, titleLabelsPending]);
 
   const filterLayoutItems = useMemo<LayoutItem[]>(
     () => draftViewSets.sections.map((section, index) => ({
@@ -794,6 +841,19 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   );
 
   return (
+    <FilterTemplateProvider
+      definitions={visibleViewSets.filters}
+      resolveDefinitions={appliedFilterDefinitions}
+      appliedValues={appliedFilterValues}
+      resolveEnabled={!editing || isFullscreen || exporting || pdfExportPreparing || renderMode}
+      canvasId={selectedReport?.data_id}
+    >
+    <InteractionSurfaceProvider editing={editing && !shareMode}>
+    <FilterTemplateTitleGate
+      texts={titleTemplateTexts}
+      active={Boolean(renderMode)}
+      onSettled={handleTitleLabelsSettled}
+    />
     <WidgetCsvExportRegistryProvider>
       <div
         className={`flex flex-col ${
@@ -851,6 +911,8 @@ const Report = forwardRef<ReportRef, ReportProps>(({
         )}
       </div>
     </WidgetCsvExportRegistryProvider>
+    </InteractionSurfaceProvider>
+    </FilterTemplateProvider>
   );
 });
 

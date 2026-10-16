@@ -2,11 +2,9 @@ import React, { useState } from 'react';
 import {
   AutoComplete,
   Button,
-  Dropdown,
   Input,
   Select,
   Switch,
-  Tag,
   Tooltip,
 } from 'antd';
 import {
@@ -14,18 +12,15 @@ import {
   MinusCircleOutlined,
   ExclamationCircleOutlined,
   SettingOutlined,
-  DownOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import type {
-  DashboardActionConfig,
   TableFilterFieldConfig,
   TableColumnConfigItem,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DisplayColumnRow } from '../utils/columnProbing';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { ConfigGroupTitle } from '../configTitles';
-import { ActionInteractionModal } from './actionInteractionModal';
 import { ColumnCellStyleModal } from './columnCellStyleModal';
 
 type FilterFieldRow = TableFilterFieldConfig & { id: string };
@@ -43,7 +38,6 @@ interface TableSettingsSectionProps {
   ) => string;
   displayColumns: DisplayColumnRow[];
   displayColumnOptions: FilterFieldOption[];
-  actions: DashboardActionConfig[];
   filterFields: FilterFieldRow[];
   filterFieldOptions: FilterFieldOption[];
   showFilterFields: boolean;
@@ -78,15 +72,13 @@ interface TableSettingsSectionProps {
   onDisplayColumnDragEnd: (targetTableData: DisplayColumnRow[]) => void;
   onReProbeColumns: () => void;
   onAddNewFilterField: () => void;
-  onAddNewDisplayColumn: (columnType?: 'data' | 'actions') => void;
-  onActionsChange: (actions: DashboardActionConfig[]) => void;
+  onAddNewDisplayColumn: (columnType: 'data') => void;
 }
 
 export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   t,
   displayColumns,
   displayColumnOptions,
-  actions,
   filterFields,
   filterFieldOptions,
   showFilterFields,
@@ -107,17 +99,11 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   onReProbeColumns,
   onAddNewFilterField,
   onAddNewDisplayColumn,
-  onActionsChange,
 }) => {
-  const [interactionColumn, setInteractionColumn] =
-    useState<DisplayColumnRow | null>(null);
   const [styleColumnId, setStyleColumnId] = useState<string | null>(null);
 
   const styleColumn =
-    displayColumns.find(
-      (column) =>
-        column.id === styleColumnId && column.columnType !== 'actions',
-    ) || null;
+    displayColumns.find((column) => column.id === styleColumnId) || null;
 
   const hasColumnCellStyle = (column: DisplayColumnRow) =>
     column.cellType === 'colorBackground' ||
@@ -216,26 +202,23 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
       dataIndex: 'key',
       key: 'key',
       width: 180,
-      render: (_: unknown, record: DisplayColumnRow) =>
-        record.columnType === 'actions' ? (
-          <Tag className="m-0">{t('dashboard.operationColumn')}</Tag>
-        ) : (
-          <AutoComplete
-            value={record.key}
-            placeholder={t('dashboard.selectOrInputField')}
-            className="w-full"
-            options={displayColumnOptions}
-            filterOption={(inputValue, option) => {
-              const query = inputValue.toLowerCase();
-              return (
-                (option?.label || '').toString().toLowerCase().includes(query) ||
-                (option?.value || '').toString().toLowerCase().includes(query)
-              );
-            }}
-            onChange={(value) => onDisplayColumnChange(record.id, 'key', value)}
-            onBlur={() => onDisplayColumnKeyBlur(record.id)}
-          />
-        ),
+      render: (_: unknown, record: DisplayColumnRow) => (
+        <AutoComplete
+          value={record.key}
+          placeholder={t('dashboard.selectOrInputField')}
+          className="w-full"
+          options={displayColumnOptions}
+          filterOption={(inputValue, option) => {
+            const query = inputValue.toLowerCase();
+            return (
+              (option?.label || '').toString().toLowerCase().includes(query) ||
+              (option?.value || '').toString().toLowerCase().includes(query)
+            );
+          }}
+          onChange={(value) => onDisplayColumnChange(record.id, 'key', value)}
+          onBlur={() => onDisplayColumnKeyBlur(record.id)}
+        />
+      ),
     },
     {
       title: t('dashboard.filterFieldLabel'),
@@ -290,19 +273,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
             }}
             className="border-none p-1"
           />
-          {record.columnType === 'actions' && (
-            <Tooltip title={t('dashboard.interactionConfig')}>
-              <Button
-                type="text"
-                size="small"
-                icon={<SettingOutlined aria-hidden />}
-                aria-label={t('dashboard.interactionConfig')}
-                onClick={() => setInteractionColumn(record)}
-                className="border-none p-1"
-              />
-            </Tooltip>
-          )}
-          {showColumnCellStyle && record.columnType !== 'actions' && (
+          {showColumnCellStyle && (
             <Tooltip title={t('dashboard.columnCellStyleConfig')}>
               <Button
                 type="text"
@@ -352,30 +323,14 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
                   {t('dashboard.reProbeColumns')}
                 </Button>
               </Tooltip>
-              <Dropdown
-                trigger={['click']}
-                menu={{
-                  items: [
-                    {
-                      key: 'data',
-                      label: t('dashboard.addDataColumn'),
-                    },
-                    {
-                      key: 'actions',
-                      label: t('dashboard.addOperationColumn'),
-                    },
-                  ],
-                  onClick: ({ key }) =>
-                    onAddNewDisplayColumn(
-                      key === 'actions' ? 'actions' : 'data',
-                    ),
-                }}
+              <Button
+                type="dashed"
+                size="small"
+                icon={<PlusCircleOutlined />}
+                onClick={() => onAddNewDisplayColumn('data')}
               >
-                <Button type="dashed" size="small" icon={<PlusCircleOutlined />}>
-                  {t('common.add')}
-                  <DownOutlined />
-                </Button>
-              </Dropdown>
+                {t('common.add')}
+              </Button>
             </div>
           }
         >
@@ -450,18 +405,6 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
           )}
         </div>
       )}
-      <ActionInteractionModal
-        open={!!interactionColumn}
-        column={interactionColumn}
-        actions={actions}
-        fieldOptions={displayColumnOptions}
-        t={t}
-        onCancel={() => setInteractionColumn(null)}
-        onConfirm={(nextActions) => {
-          onActionsChange(nextActions);
-          setInteractionColumn(null);
-        }}
-      />
       <ColumnCellStyleModal
         open={!!styleColumn}
         column={styleColumn}

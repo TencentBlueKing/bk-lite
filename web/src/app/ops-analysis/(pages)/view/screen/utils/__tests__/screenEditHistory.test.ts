@@ -230,6 +230,19 @@ describe('screen edit history', () => {
     expect(undoScreenEdit(saved).document.viewSets.items[0]?.x).toBe(10);
   });
 
+  it('keeps the interaction inspector tab when the same item stays selected', () => {
+    const session = createScreenEditSession(documentWith('标题', 10), {
+      selectedItemId: 'title',
+      inspectorTab: 'interaction',
+      dataConfigOpen: true,
+    });
+    const moved = commitScreenEdit(session, {
+      document: documentWith('标题', 40),
+      itemId: 'title',
+    });
+    expect(undoScreenEdit(moved).inspector.inspectorTab).toBe('interaction');
+  });
+
   it('selects the item a step touched and keeps the inspector tab when it was already selected', () => {
     const session = createScreenEditSession(documentWith('标题', 10), {
       selectedItemId: 'title',

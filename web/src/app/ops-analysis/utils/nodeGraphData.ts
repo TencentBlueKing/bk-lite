@@ -260,6 +260,38 @@ export const layoutNodeGraphBipartite = (
   };
 };
 
+const undirectedPairKey = (source: string, target: string) =>
+  [source, target].sort().join('\0');
+
+export const withNodeGraphParallelIndex = <T extends { source: string; target: string }>(
+  edges: T[],
+): Array<T & { parallelIndex: number }> => {
+  const pairIndex = new Map<string, number>();
+  return edges.map((edge) => {
+    const key = undirectedPairKey(edge.source, edge.target);
+    const parallelIndex = pairIndex.get(key) || 0;
+    pairIndex.set(key, parallelIndex + 1);
+    return { ...edge, parallelIndex };
+  });
+};
+
+export const nodeGraphEdgeFields = (
+  edge: { source: string; target: string; value: number; parallelIndex: number },
+  identityMode?: NodeGraphIdentityMode,
+): Record<string, unknown> => {
+  const fields: Record<string, unknown> = {
+    source: edge.source,
+    target: edge.target,
+    value: edge.value,
+    parallelIndex: edge.parallelIndex,
+  };
+  if (identityMode === 'service') {
+    const marker = edge.target.lastIndexOf(':');
+    if (marker > 0) fields.port = edge.target.slice(marker + 1);
+  }
+  return fields;
+};
+
 export const assignNodeGraphParallelOffsets = <T extends { source: string; target: string }>(
   edges: T[],
   step = NODE_GRAPH_PARALLEL_OFFSET_STEP,

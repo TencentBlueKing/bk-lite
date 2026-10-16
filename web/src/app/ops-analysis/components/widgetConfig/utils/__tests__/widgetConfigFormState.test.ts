@@ -128,8 +128,41 @@ describe('opened widget hydrate', () => {
     assert.equal(values.name, 'CPU');
     assert.equal(values.description, 'desc');
     assert.equal(values.chartType, 'nodeGraph');
+    assert.equal(values.interaction?.kind, 'none');
+    assert.equal(values.interaction?.url, '');
     assert.deepEqual(values.params, {});
     assert.equal(values.chartThemeMode, undefined);
+  });
+
+  it('shows the stored link type when a url exists and none when it does not', () => {
+    const stored = buildOpenedWidgetFormValues({
+      ...item,
+      valueConfig: {
+        ...item.valueConfig,
+        interaction: {
+          kind: 'data',
+          name: '详情',
+          url: '/ops',
+          openMode: 'newTab',
+        },
+      },
+    }, { showChartThemeMode: false });
+    assert.equal(stored.interaction?.kind, 'data');
+    assert.equal(stored.interaction?.url, '/ops');
+
+    const blank = buildOpenedWidgetFormValues({
+      ...item,
+      valueConfig: {
+        ...item.valueConfig,
+        interaction: {
+          kind: 'title',
+          name: '详情',
+          url: '  ',
+          openMode: 'sameTab',
+        },
+      },
+    }, { showChartThemeMode: false });
+    assert.equal(blank.interaction?.kind, 'none');
   });
 
   it('fills theme only when the surface asks for it', () => {
