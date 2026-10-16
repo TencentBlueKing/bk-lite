@@ -36,13 +36,6 @@ const formatLatencyPair = (row: EntityTableRow) => {
   return `${hasRead ? formatUnit(read, 'ms') : '—'} / ${hasWrite ? formatUnit(write, 'ms') : '—'}`;
 };
 
-const diskTableBar = (title: string, action: React.ReactNode) => (
-  <div className={`${styles.sectionHead} w-full`}>
-    <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{title}</div>
-    {action}
-  </div>
-);
-
 const relatedMounts = (mountRows: EntityTableRow[], deviceName: string) => (
   mountRows
     .filter((row) => row.labels.io_device === deviceName)
@@ -308,6 +301,11 @@ export default function DiskPane({
               }]}
             />
           </div>
+          <div className={styles.sectionHead}>
+            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>
+              {hostCategoryText(t, 'mountList')}
+            </div>
+          </div>
           {showMountBody ? (
             <LayeredEntityTable
               rows={mountRows}
@@ -316,17 +314,13 @@ export default function DiskPane({
               onSelect={onSelectMount}
               emptyText={hostCategoryText(t, 'noMountPoints')}
               columns={mountColumns}
-              toolbar={diskTableBar(
-                hostCategoryText(t, 'mountList'),
-                <TableCsvExportButton host={hostLabel} slug="mounts" columns={mountColumns} rows={mountRows} />
-              )}
+              toolbar={<TableCsvExportButton host={hostLabel} slug="mounts" columns={mountColumns} rows={mountRows} />}
             />
           ) : (
             <div className={`${classic.panel} ${styles.tableWrap}`}>
-              {diskTableBar(
-                hostCategoryText(t, 'mountList'),
+              <div className="flex justify-end">
                 <TableCsvExportButton host={hostLabel} slug="mounts" columns={mountColumns} rows={mountRows} />
-              )}
+              </div>
               <div className={styles.note}>{hostCategoryText(t, 'noMountPoints')}</div>
             </div>
           )}
@@ -361,6 +355,11 @@ export default function DiskPane({
               );
             })}
           </div>
+          <div className={styles.sectionHead}>
+            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>
+              {hostCategoryText(t, 'blockDeviceList')}
+            </div>
+          </div>
           {showDeviceBody ? (
             <LayeredEntityTable
               rows={deviceRows}
@@ -369,17 +368,13 @@ export default function DiskPane({
               onSelect={onSelectDevice}
               emptyText={hostCategoryText(t, 'noBlockDevices')}
               columns={deviceColumns}
-              toolbar={diskTableBar(
-                hostCategoryText(t, 'blockDeviceList'),
-                <TableCsvExportButton host={hostLabel} slug="devices" columns={deviceColumns} rows={deviceRows} />
-              )}
+              toolbar={<TableCsvExportButton host={hostLabel} slug="devices" columns={deviceColumns} rows={deviceRows} />}
             />
           ) : (
             <div className={`${classic.panel} ${styles.tableWrap}`}>
-              {diskTableBar(
-                hostCategoryText(t, 'blockDeviceList'),
+              <div className="flex justify-end">
                 <TableCsvExportButton host={hostLabel} slug="devices" columns={deviceColumns} rows={deviceRows} />
-              )}
+              </div>
               <div className={styles.note}>{hostCategoryText(t, 'noBlockDevices')}</div>
             </div>
           )}
