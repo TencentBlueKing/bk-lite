@@ -81,9 +81,14 @@ export const parseRangeSeries = (raw: unknown): LabeledSeries[] => {
         metric?: Record<string, string>;
         values?: Array<[number, string | number | null]>;
       };
-      const points = (series.values || [])
-        .map(([time, value]) => ({ time: Number(time), value: Number(value) }))
-        .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value));
+      const points = (series.values || []).flatMap(([time, value]) => {
+        // fill_missing_points 的 null/'' 与真点交替。Number(null)===0 会画成密齿。与 renderChart 一样丢掉。
+        if (value == null || value === '') return [];
+        const parsedTime = Number(time);
+        const parsedValue = typeof value === 'number' ? value : Number.parseFloat(value);
+        if (!Number.isFinite(parsedTime) || !Number.isFinite(parsedValue)) return [];
+        return [{ time: parsedTime, value: parsedValue }];
+      });
       return {
         labels: series.metric || {},
         points
