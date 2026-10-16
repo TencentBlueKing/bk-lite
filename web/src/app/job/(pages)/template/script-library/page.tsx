@@ -38,6 +38,7 @@ import ScriptEditor from '@/app/job/components/script-editor';
 import TemplateVersionDrawer from '@/app/job/components/template-version-drawer';
 import VersionBadge from '@/components/version-badge';
 import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
+import Permission from '@/components/permission';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.scss';
 
@@ -626,36 +627,42 @@ const ScriptLibraryPage = () => {
           >
             {t('job.viewScript')}
           </a>
-          <a
-            className="text-[var(--color-primary)] cursor-pointer"
-            onClick={() => openEditModal(record)}
-          >
-            {t('job.editRule')}
-          </a>
-          <a
-            className="text-[var(--color-primary)] cursor-pointer"
-            onClick={() => router.push(`/job/execution/quick-exec?script_id=${record.id}`)}
-          >
-            {t('job.executeScript')}
-          </a>
+          <Permission requiredPermissions={['Edit']}>
+            <a
+              className="text-[var(--color-primary)] cursor-pointer"
+              onClick={() => openEditModal(record)}
+            >
+              {t('job.editRule')}
+            </a>
+          </Permission>
+          <Permission requiredPermissions={['Add']} permissionPath="/job/execution/quick-exec">
+            <a
+              className="text-[var(--color-primary)] cursor-pointer"
+              onClick={() => router.push(`/job/execution/quick-exec?script_id=${record.id}`)}
+            >
+              {t('job.executeScript')}
+            </a>
+          </Permission>
           <a
             className="text-[var(--color-primary)] cursor-pointer"
             onClick={() => setVersionScriptId(record.id)}
           >
             {t('job.version')}
           </a>
-          <Popconfirm
-            title={t('job.deleteScript')}
-            description={t('job.deleteScriptConfirm')}
-            okText={t('job.confirm')}
-            cancelText={t('job.cancel')}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => handleDelete(record)}
-          >
-            <a className="text-[var(--color-primary)] cursor-pointer">
-              {t('job.deleteScript')}
-            </a>
-          </Popconfirm>
+          <Permission requiredPermissions={['Delete']}>
+            <Popconfirm
+              title={t('job.deleteScript')}
+              description={t('job.deleteScriptConfirm')}
+              okText={t('job.confirm')}
+              cancelText={t('job.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => handleDelete(record)}
+            >
+              <a className="text-[var(--color-primary)] cursor-pointer">
+                {t('job.deleteScript')}
+              </a>
+            </Popconfirm>
+          </Permission>
         </div>
       ),
     },
@@ -688,16 +695,20 @@ const ScriptLibraryPage = () => {
               <Button icon={<ExportOutlined />} onClick={handleExportScripts}>
                 {t('job.batchExportScripts')}
               </Button>
-              <Button icon={<ImportOutlined />} onClick={openImportModal}>
-                {t('job.batchImportScripts')}
-              </Button>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={openAddModal}
-              >
-                {t('common.new')}
-              </Button>
+              <Permission requiredPermissions={['Add']}>
+                <Button icon={<ImportOutlined />} onClick={openImportModal}>
+                  {t('job.batchImportScripts')}
+                </Button>
+              </Permission>
+              <Permission requiredPermissions={['Add']}>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={openAddModal}
+                >
+                  {t('common.new')}
+                </Button>
+              </Permission>
             </>
           )}
         />

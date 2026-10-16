@@ -123,11 +123,16 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
             return TargetTestConnectionSerializer
         return TargetSerializer
 
+    @HasPermission("target-Edit")
     def update(self, request, *args, **kwargs):
         try:
             return super().update(request, *args, **kwargs)
         except TargetTeamConcurrentUpdateError as error:
             return exception_to_response(error, context="[target.update]", request=request)
+
+    @HasPermission("target-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
     @HasPermission("target-View")
     def list(self, request, *args, **kwargs):

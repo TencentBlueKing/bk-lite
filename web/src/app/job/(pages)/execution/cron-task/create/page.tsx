@@ -27,6 +27,9 @@ import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/
 import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
 import { buildScheduledTaskTemplatePayload, resolveScheduledTaskConcurrencyPolicy } from '@/app/job/utils/scheduledTaskPayload';
 import { useUserInfoContext } from '@/context/userInfo';
+import Permission from '@/components/permission';
+
+const CRON_TASK_PERMISSION_PATH = '/job/execution/cron-task';
 
 const CreateCronTaskPage = () => {
   const { t } = useTranslation();
@@ -535,12 +538,16 @@ const CreateCronTaskPage = () => {
 
           <Form.Item className="mb-0">
             <div className="border-(--color-border) flex gap-3 border-t pt-4">
-              <Button type="primary" loading={submitting} onClick={() => handleSubmit(true)}>
-                {t('job.saveAndEnable')}
-              </Button>
-              <Button loading={submitting} onClick={() => handleSubmit(false)}>
-                {t('job.saveOnly')}
-              </Button>
+              <Permission requiredPermissions={['Add']} permissionPath={CRON_TASK_PERMISSION_PATH}>
+                <Button type="primary" loading={submitting} onClick={() => handleSubmit(true)}>
+                  {t('job.saveAndEnable')}
+                </Button>
+              </Permission>
+              <Permission requiredPermissions={['Add']} permissionPath={CRON_TASK_PERMISSION_PATH}>
+                <Button loading={submitting} onClick={() => handleSubmit(false)}>
+                  {t('job.saveOnly')}
+                </Button>
+              </Permission>
               <Button onClick={() => router.back()}>
                 {t('job.cancel')}
               </Button>

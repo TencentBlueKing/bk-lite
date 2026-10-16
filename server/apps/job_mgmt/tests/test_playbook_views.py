@@ -66,6 +66,55 @@ class TestPlaybookSimpleActions:
         assert resp.data["deleted_count"] == 2
         assert not Playbook.objects.filter(id__in=[p1.id, p2.id]).exists()
 
+    def test_view_only_user_cannot_update_or_delete_playbook(self, api_client, authenticated_user):
+        """只授予 Playbook 库 View 时，单条编辑和删除必须被拒绝。"""
+        playbook = _make(name="view-only")
+        authenticated_user.is_superuser = False
+        authenticated_user.permission = {"job": {"playbook_library-View"}}
+        authenticated_user.group_list = [{"id": 1, "name": "Default"}]
+        api_client.cookies["current_team"] = "1"
+        rules = {"team": [1], "instance": []}
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            update_resp = api_client.patch(
+                f"{URL}{playbook.id}/",
+                {"name": "hacked", "description": "changed", "team": [1]},
+                format="json",
+            )
+            delete_resp = api_client.delete(f"{URL}{playbook.id}/")
+            batch_resp = api_client.post(f"{URL}batch_delete/", {"ids": [playbook.id]}, format="json")
+
+        assert update_resp.status_code == 403
+        assert delete_resp.status_code == 403
+        assert batch_resp.status_code == 403
+        playbook.refresh_from_db()
+        assert playbook.name == "view-only"
+
+    def test_edit_and_delete_permissions_allow_single_update_and_delete(self, api_client, authenticated_user):
+        playbook = _make(name="editable")
+        authenticated_user.is_superuser = False
+        authenticated_user.permission = {"job": {"playbook_library-View", "playbook_library-Edit", "playbook_library-Delete"}}
+        authenticated_user.group_list = [{"id": 1, "name": "Default"}]
+        api_client.cookies["current_team"] = "1"
+        rules = {"team": [1], "instance": []}
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            update_resp = api_client.patch(
+                f"{URL}{playbook.id}/",
+                {"name": "renamed", "description": "kept", "team": [1]},
+                format="json",
+            )
+
+        assert update_resp.status_code == 200
+        playbook.refresh_from_db()
+        assert playbook.name == "renamed"
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            delete_resp = api_client.delete(f"{URL}{playbook.id}/")
+
+        assert delete_resp.status_code in (200, 204)
+        assert not Playbook.objects.filter(id=playbook.id).exists()
+
     def test_download_template_returns_zip(self, su_client):
         resp = su_client.get(f"{URL}download_template/")
         assert resp.status_code == 200
