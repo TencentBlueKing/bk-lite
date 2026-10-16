@@ -122,6 +122,20 @@ class TestTargetCrud:
         target.refresh_from_db()
         assert target.name == "view-only"
 
+    def test_api_key_integer_group_list_can_list_targets(self, api_client, authenticated_user):
+        Target.objects.create(name="api-key-host", ip="10.0.0.9", team=[1])
+        authenticated_user.is_superuser = False
+        authenticated_user.permission = {"job": {"target-View"}}
+        authenticated_user.group_list = [1]
+        api_client.cookies["current_team"] = "1"
+        rules = {"team": [1], "instance": []}
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            resp = api_client.get(URL)
+
+        assert resp.status_code == 200
+        assert "api-key-host" in str(resp.data)
+
     @pytest.mark.parametrize(
         ("submitted_value", "expected_value"),
         [

@@ -98,6 +98,11 @@ class TestValidateOrgFieldPermission:
         # 1,2 都在用户组内 -> 不报错
         vs._validate_org_field_permission(req, [1, "2"])
 
+    def test_integer_group_list_within_org_ok(self):
+        vs = _auth_vs()
+        req = SimpleNamespace(user=SimpleNamespace(is_superuser=False, group_list=[1, 2]))
+        vs._validate_org_field_permission(req, [1])
+
     @pytest.mark.django_db
     def test_invalid_org_raises_with_group_name(self):
         from apps.system_mgmt.models import Group
@@ -310,6 +315,28 @@ class TestFilterByGroup:
                 AuthViewSet.filter_by_group(Group.objects.all(), req, user)
 
     @pytest.mark.django_db
+    @pytest.mark.django_db
+    def test_integer_group_list_is_authorized(self):
+        from apps.system_mgmt.models import Group
+
+        user = SimpleNamespace(is_superuser=False, group_list=[1], group_tree=[])
+        req = SimpleNamespace(user=user, COOKIES={"include_children": "0"})
+        with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
+            current_team, include_children, org_field, query = AuthViewSet.filter_by_group(Group.objects.all(), req, user)
+        assert current_team == 1
+        assert include_children is False
+
+    @pytest.mark.django_db
+    def test_integer_group_list_unauthorized_team_raises(self):
+        from apps.system_mgmt.models import Group
+
+        user = SimpleNamespace(is_superuser=False, group_list=[1], group_tree=[])
+        req = SimpleNamespace(user=user, COOKIES={"include_children": "0"})
+        with patch("apps.core.utils.viewset_utils.get_current_team", return_value="999"):
+            with pytest.raises(PermissionDenied):
+                AuthViewSet.filter_by_group(Group.objects.all(), req, user)
+
+    @pytest.mark.django_db
     def test_include_children_expands_subgroups(self):
         from apps.system_mgmt.models import Group
 
@@ -324,3 +351,23 @@ class TestFilterByGroup:
         assert include_children is True
         # org_field "team" 不在 Group 字段中 -> query 为空 Q（走 else 分支也可），仅断言不抛异常
         assert current_team == 1
+
+
+class TestIntegerGroupListAccess:
+    def test_current_team_permission_accepts_integer_group_list(self):
+        vs = _auth_vs()
+        req = SimpleNamespace(user=SimpleNamespace(is_superuser=False, group_list=[1]), COOKIES={})
+        with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
+            assert vs._validate_current_team_permission(req) == 1
+
+    def test_detail_and_destroy_accept_integer_group_list(self):
+        vs = _auth_vs()
+        instance = SimpleNamespace(id=8)
+        serializer = SimpleNamespace(data={"id": 8})
+        vs.get_object = lambda: instance
+        vs.get_serializer = lambda obj: serializer
+        user = SimpleNamespace(is_superuser=False, group_list=[1])
+        req = SimpleNamespace(user=user, COOKIES={})
+        with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
+            assert vs.get_detail(req) is serializer
+            assert vs._validate_destroy_access(req, instance) is None
