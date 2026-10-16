@@ -224,6 +224,7 @@ class TrainJobConfigSyncMixin:
         from django.db import router, transaction
 
         from apps.core.logger import mlops_logger as logger
+        from apps.mlops.utils.i18n import mlops_message_for_active_language
 
         # If only updating non-config fields, skip file sync
         update_fields = kwargs.get("update_fields")
@@ -278,7 +279,12 @@ class TrainJobConfigSyncMixin:
                         .update(config_url=self.config_url)
                     )
                     if updated != 1:
-                        raise ConfigSyncError(f"训练配置数据库指针更新失败: TrainJob {self.pk} 不存在")
+                        raise ConfigSyncError(
+                            mlops_message_for_active_language(
+                                "error.train_job_config_pointer_update_failed",
+                                pk=self.pk,
+                            )
+                        )
             except Exception:
                 if uploaded_file_name and uploaded_file_name != old_file_name:
                     try:
@@ -330,6 +336,7 @@ class TrainJobConfigSyncMixin:
         from django.core.files.base import ContentFile
 
         from apps.core.logger import mlops_logger as logger
+        from apps.mlops.utils.i18n import mlops_message_for_active_language
 
         # Build and upload new config file — failure MUST propagate
         try:
@@ -346,7 +353,12 @@ class TrainJobConfigSyncMixin:
             logger.info(f"Synced config to MinIO for TrainJob {self.pk}: {filename}")
         except Exception as e:
             logger.error(f"Failed to sync config to MinIO: {e}", exc_info=True)
-            raise ConfigSyncError(f"训练配置同步到 MinIO 失败，数据库变更已回滚: {e}") from e
+            raise ConfigSyncError(
+                mlops_message_for_active_language(
+                    "error.train_job_config_minio_sync_failed",
+                    detail=e,
+                )
+            ) from e
 
     def _build_complete_config(self):
         """Build complete config file (add model, mlflow, and max_evals sections)."""
