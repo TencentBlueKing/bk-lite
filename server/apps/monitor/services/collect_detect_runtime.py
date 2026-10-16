@@ -1,4 +1,5 @@
 import base64
+import os
 import re
 import shlex
 
@@ -7,6 +8,14 @@ from apps.monitor.utils.plugin_controller import Controller
 DEFAULT_OUTPUT_LIMIT = 8192
 _OUTPUT_BLOCK_PATTERN = re.compile(r"(?ms)^\s*\[\[outputs\.[^\]]+\]\].*?(?=^\s*\[\[|\Z)")
 _SECRET_ASSIGNMENT_PATTERN = re.compile(r"(?i)\b(password|passwd|token|secret|private_key|passphrase)\s*=\s*([^\s,;]+)")
+
+
+def _collect_detect_output_limit() -> int:
+    try:
+        value = int(os.getenv("COLLECT_DETECT_OUTPUT_LIMIT", str(DEFAULT_OUTPUT_LIMIT)))
+    except (TypeError, ValueError):
+        return DEFAULT_OUTPUT_LIMIT
+    return value if value > 0 else DEFAULT_OUTPUT_LIMIT
 
 
 def sidecar_node_render_variables(node) -> dict:
@@ -117,8 +126,10 @@ def build_telegraf_detect_execution(
     raise ValueError(f"不支持的节点操作系统: {operating_system}")
 
 
-def sanitize_execution_result(raw_result, sensitive_values=None, output_limit=DEFAULT_OUTPUT_LIMIT) -> dict:
+def sanitize_execution_result(raw_result, sensitive_values=None, output_limit=None) -> dict:
     """成功判定只信任执行器返回的 success / exit_code，不做 stdout/stderr 文案推断。"""
+    if output_limit is None:
+        output_limit = _collect_detect_output_limit()
     sensitive_values = [str(item) for item in (sensitive_values or []) if item not in (None, "")]
     if not isinstance(raw_result, dict):
         stdout, stdout_truncated = _redact_and_truncate(raw_result, sensitive_values, output_limit)

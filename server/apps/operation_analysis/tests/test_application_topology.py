@@ -174,3 +174,105 @@ def test_application_topology_source_failure_logs_once_without_payload(monkeypat
     rendered = f"{rendered}\n{logging.Formatter().formatException(record.exc_info)}"
     assert SECRET not in rendered
     assert SECRET not in caplog.text
+
+
+def test_application_topology_alert_failure_still_returns_graph(monkeypatch, caplog):
+    class FalseMonitor(_Monitor):
+        def run(self, name, query_data=None, user_info=None):
+            assert name == "query_latest_active_alerts"
+            return {"result": False, "message": SECRET, "data": {"secret": SECRET}}
+
+    monkeypatch.setattr("apps.operation_analysis.services.application_topology.CMDB", lambda: _Cmdb())
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application_topology.Monitor",
+        lambda: FalseMonitor([]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application_topology.build_nats_user_info",
+        lambda request: {"user": "alice", "token": SECRET},
+    )
+
+    with caplog.at_level(logging.ERROR, logger="operation_analysis"):
+        result = ApplicationTopologyService.build(SimpleNamespace(), CENTER_UUID, 3)
+
+    by_id = {node["id"]: node for node in result["nodes"]}
+    assert result["links"][0]["id"] == "edge-1"
+    assert by_id[CENTER_UUID]["name"] == "系统甲"
+    assert by_id[HOST_UUID]["monitor_id"] == MONITOR_ID
+    assert by_id[HOST_UUID]["alert_count"] is None
+    assert by_id[HOST_UUID]["max_level"] is None
+    error_records = [record for record in caplog.records if record.levelno >= logging.ERROR]
+    assert len(error_records) == 1
+    record = error_records[0]
+    assert record.msg == "event=application_topology_source_failed failed_stage=%s error_type=%s inst_uuid=%s"
+    assert record.args == ("active_alerts", "NatsResultFalse", CENTER_UUID)
+    assert record.exc_info in (None, (None, None, None))
+    assert SECRET not in record.getMessage()
+    assert SECRET not in caplog.text
+    assert SECRET not in json.dumps(result)
+
+
+def test_application_topology_alert_exception_still_returns_graph(monkeypatch, caplog):
+    original = RuntimeError(f"monitor down {SECRET}")
+
+    class BoomMonitor(_Monitor):
+        def run(self, name, query_data=None, user_info=None):
+            raise original
+
+    monkeypatch.setattr("apps.operation_analysis.services.application_topology.CMDB", lambda: _Cmdb())
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application_topology.Monitor",
+        lambda: BoomMonitor([]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application_topology.build_nats_user_info",
+        lambda request: {"user": "alice", "token": SECRET},
+    )
+
+    with caplog.at_level(logging.ERROR, logger="operation_analysis"):
+        result = ApplicationTopologyService.build(SimpleNamespace(), CENTER_UUID, 3)
+
+    host = next(node for node in result["nodes"] if node["id"] == HOST_UUID)
+    assert host["name"] == "host-01"
+    assert host["monitor_id"] == MONITOR_ID
+    assert host["alert_count"] is None
+    error_records = [record for record in caplog.records if record.levelno >= logging.ERROR]
+    assert len(error_records) == 1
+    record = error_records[0]
+    assert record.msg == "event=application_topology_source_failed failed_stage=%s error_type=%s inst_uuid=%s"
+    assert record.args == ("active_alerts", "RuntimeError", CENTER_UUID)
+    assert record.exc_info[0] is SafeLogException
+    assert str(record.exc_info[1]) == "RuntimeError"
+    assert record.exc_info[2] is original.__traceback__
+    rendered = f"{record.getMessage()}\n{logging.Formatter().formatException(record.exc_info)}"
+    assert SECRET not in rendered
+    assert SECRET not in caplog.text
+    assert SECRET not in json.dumps(result)
+
+
+def test_application_topology_monitor_id_failure_still_returns_graph(monkeypatch, caplog):
+    class FalseCmdb(_Cmdb):
+        def get_monitor_ids_by_inst_uuids(self, **kwargs):
+            return {"result": False, "message": SECRET}
+
+    monkeypatch.setattr("apps.operation_analysis.services.application_topology.CMDB", lambda: FalseCmdb())
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application_topology.Monitor",
+        lambda: _Monitor([{"instance_id": MONITOR_ID, "count": 3, "max_level": "critical"}]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application_topology.build_nats_user_info",
+        lambda request: {"user": "alice", "token": SECRET},
+    )
+
+    with caplog.at_level(logging.ERROR, logger="operation_analysis"):
+        result = ApplicationTopologyService.build(SimpleNamespace(), CENTER_UUID, 3)
+
+    assert [node["name"] for node in result["nodes"]] == ["系统甲", "host-01"]
+    assert all(node["alert_count"] is None and node["monitor_id"] == "" for node in result["nodes"])
+    error_records = [record for record in caplog.records if record.levelno >= logging.ERROR]
+    assert len(error_records) == 1
+    record = error_records[0]
+    assert record.args == ("monitor_ids", "NatsResultFalse", CENTER_UUID)
+    assert SECRET not in record.getMessage()
+    assert SECRET not in caplog.text

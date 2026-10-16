@@ -1,8 +1,8 @@
 'use client';
 
 import { CloseCircleOutlined, DeleteOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons';
-import { Alert, Button, Collapse, Form, Input, InputNumber, Select, Switch } from 'antd';
-import { useEffect, useState, type DragEvent, type ReactNode } from 'react';
+import { Alert, App, Button, Collapse, Form, Input, InputNumber, Select, Switch } from 'antd';
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 
 import CodeEditor from '@/components/code-editor';
 import { useTranslation } from '@/utils/i18n';
@@ -11,11 +11,17 @@ import { JsonValueInput } from './json-value-input';
 import {
   compileNodeInputBinding,
   compatibleDataReferences,
+  dataReferenceCompatibility,
   parseNodeInputBinding,
   type DataReferenceOption,
 } from '../lib/data-references';
 import type { JsonSchema } from '../lib/types';
+import { ReferenceDropGuard, isWorkflowReferenceDrag } from './reference-drop-guard';
+import { WORKFLOW_REFERENCE_MIME, WorkflowTemplateTextField } from './workflow-template-text-field';
+import { WorkflowNodeTitleField } from './workflow-node-title-field';
 import { WorkflowPermission } from './workflow-permission';
+
+export { WORKFLOW_REFERENCE_MIME };
 
 interface Props {
   schema?: JsonSchema;
@@ -30,7 +36,12 @@ interface Props {
   onNodeTitleChange?: (value: string) => void;
 }
 
-export const WORKFLOW_REFERENCE_MIME = 'application/x-bklite-workflow-reference';
+function isStringTemplateSurface(schema: JsonSchema) {
+  return schema.type === 'string'
+    && schema['x-binding'] !== 'literal-only'
+    && schema['x-widget'] !== 'code'
+    && !schema.enum;
+}
 
 function defaultLiteral(schema: JsonSchema): unknown {
   if ('default' in schema) return schema.default;
@@ -120,7 +131,14 @@ function KeyValueField({ schema, value, references, onChange }: { schema: JsonSc
   return <div className="flex flex-col gap-3">
     {entries.map(([key, item], index) => <section key={index} className="rounded-md border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-3">
       <div className="mb-3 flex items-center gap-2">
-        <Input aria-label={t('workflowOrchestration.editor.mappingKey', '映射字段名')} value={key} onChange={(event) => rename(key, event.target.value.trim())} />
+        <div className="min-w-0 flex-1">
+          <WorkflowTemplateTextField
+            value={key}
+            references={compatibleDataReferences(references, { type: 'string', 'x-text-surface': 'string-only' })}
+            placeholder={t('workflowOrchestration.editor.mappingKey', '映射字段名')}
+            onChange={(next) => rename(key, next.trim())}
+          />
+        </div>
         <WorkflowPermission operation="Edit"><Button type="text" danger aria-label={t('workflowOrchestration.editor.deleteMappingField', '删除映射字段 {number}', { number: index + 1 })} icon={<DeleteOutlined />} onClick={() => remove(key)} /></WorkflowPermission>
       </div>
       <BindingEditor schema={valueSchema} value={item} references={references} onChange={(next) => onChange({ ...objectValue, [key]: next })} />
@@ -248,39 +266,61 @@ function BindingEditor({
   onChange: (value: unknown) => void;
 }) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const binding = parseNodeInputBinding(value);
   const compatibleReferences = compatibleDataReferences(references, field);
   const incomingLiteral = binding.kind === 'template' ? binding.template : binding.kind === 'literal' ? binding.value : undefined;
   const incomingReference = binding.kind === 'reference' ? binding.expression : undefined;
   const [literalDraft, setLiteralDraft] = useState<unknown>(incomingLiteral);
   const [isDragOver, setIsDragOver] = useState(false);
+  const rejectWarnedRef = useRef(false);
   useEffect(() => {
     const next = parseNodeInputBinding(value);
     if (next.kind !== 'reference') setLiteralDraft(next.kind === 'template' ? next.template : next.value);
   }, [value]);
   const hasBrokenReference = Boolean(incomingReference) && !compatibleReferences.some((item) => item.value === incomingReference);
+  const rejectReason = (expression: string) => {
+    const reference = references.find((item) => item.value === expression);
+    if (!reference) return t('workflowOrchestration.editor.unknownReferenceDrop', '无法识别拖入的上游字段');
+    return dataReferenceCompatibility(reference, field).reason
+      || t('workflowOrchestration.editor.incompatibleReferenceDrop', '当前字段不能接收该类型的上游数据');
+  };
+  const warnRejectedDrop = (expression: string) => {
+    if (rejectWarnedRef.current) return;
+    rejectWarnedRef.current = true;
+    message.warning(rejectReason(expression));
+  };
   const acceptDrop = (event: DragEvent<HTMLDivElement>) => {
     const expression = event.dataTransfer.getData(WORKFLOW_REFERENCE_MIME);
     setIsDragOver(false);
-    if (!compatibleReferences.some((item) => item.value === expression)) return;
+    if (!expression) return;
     event.preventDefault();
+    if (!compatibleReferences.some((item) => item.value === expression)) {
+      warnRejectedDrop(expression);
+      return;
+    }
+    rejectWarnedRef.current = false;
     onChange(compileNodeInputBinding({ kind: 'reference', expression }));
   };
   const allowDrop = (event: DragEvent<HTMLDivElement>) => {
-    const types = Array.from(event.dataTransfer.types || []);
+    if (!isWorkflowReferenceDrag(event)) return;
+    event.preventDefault();
     const expression = event.dataTransfer.getData(WORKFLOW_REFERENCE_MIME);
-    if (types.includes(WORKFLOW_REFERENCE_MIME) || compatibleReferences.some((item) => item.value === expression)) {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'copy';
-      setIsDragOver(true);
+    // dragover 时常读不到 payload：有表达式则严格判断，否则先允许悬停，松手再校验。
+    if (expression && !compatibleReferences.some((item) => item.value === expression)) {
+      event.dataTransfer.dropEffect = 'none';
+      setIsDragOver(false);
+      return;
     }
+    event.dataTransfer.dropEffect = 'copy';
+    setIsDragOver(true);
   };
   const dropSurface = (children: ReactNode) => (
     <div
       data-testid="workflow-reference-dropzone"
       className={`w-full rounded-md outline-none transition focus-within:ring-2 focus-within:ring-[var(--color-primary)]/15 ${isDragOver ? 'ring-2 ring-[var(--color-primary)]/35' : ''}`}
       onDragEnter={allowDrop}
-      onDragLeave={() => setIsDragOver(false)}
+      onDragLeave={() => { setIsDragOver(false); rejectWarnedRef.current = false; }}
       onDragOverCapture={allowDrop}
       onDropCapture={acceptDrop}
     >
@@ -289,7 +329,34 @@ function BindingEditor({
   );
 
   if (field['x-binding'] === 'literal-only') {
-    return <LiteralField schema={field} value={incomingLiteral ?? defaultLiteral(field)} references={references} valueLabels={valueLabels} onChange={(next) => onChange(compileNodeInputBinding({ kind: 'literal', value: next }))} />;
+    return (
+      <ReferenceDropGuard>
+        <LiteralField schema={field} value={incomingLiteral ?? defaultLiteral(field)} references={references} valueLabels={valueLabels} onChange={(next) => onChange(compileNodeInputBinding({ kind: 'literal', value: next }))} />
+      </ReferenceDropGuard>
+    );
+  }
+
+  if (!referenceOnly && isStringTemplateSurface(field)) {
+    const textValue = typeof value === 'string' ? value : String(value ?? '');
+    return (
+      <WorkflowTemplateTextField
+        value={textValue}
+        references={compatibleReferences}
+        rows={field['x-widget'] === 'textarea' ? (field['x-rows'] || 4) : 1}
+        disabled={disabled}
+        placeholder={typeof field['x-placeholder'] === 'string' ? field['x-placeholder'] : undefined}
+        isDragOver={isDragOver}
+        onDragStateChange={(state) => {
+          setIsDragOver(state === 'accept');
+          if (state !== 'reject') rejectWarnedRef.current = false;
+        }}
+        onRejectDrop={(expression) => warnRejectedDrop(expression)}
+        onChange={(next) => {
+          setLiteralDraft(next);
+          onChange(next);
+        }}
+      />
+    );
   }
 
   if (incomingReference) {
@@ -352,9 +419,9 @@ export function SchemaNodeField({
 
 export function SchemaNodeForm({ schema, uiSchema, value, onChange, references = [], fieldActions = {}, nodeTitle, readOnly = false, atomKey, onNodeTitleChange }: Props) {
   const { t } = useTranslation();
-  const nodeNameField = onNodeTitleChange ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
-    <Input disabled={readOnly} value={nodeTitle} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => onNodeTitleChange(event.target.value)} />
-  </Form.Item> : null;
+  const nodeNameField = onNodeTitleChange
+    ? <WorkflowNodeTitleField value={nodeTitle || ''} disabled={readOnly} onChange={onNodeTitleChange} />
+    : null;
   const effectiveSchema = resolveSchemaForNodeInput(schema, uiSchema, value);
   const selector = capabilitySelector(uiSchema);
   const isVisible = (key: string) => {

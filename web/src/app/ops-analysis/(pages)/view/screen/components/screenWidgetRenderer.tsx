@@ -20,6 +20,8 @@ interface ScreenWidgetRendererProps {
   refreshCause?: CanvasRuntimeRefreshCause;
   screenId?: string | number;
   fitScale: number;
+  scaleX: number;
+  scaleY: number;
   screenDensity: number;
   screenUiScale: number;
   chartThemeMode: OpsChartThemeMode;
@@ -48,6 +50,8 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
   refreshCause = 'manual',
   screenId,
   fitScale,
+  scaleX,
+  scaleY,
   screenDensity,
   screenUiScale,
   chartThemeMode,
@@ -69,12 +73,14 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
     () => ({
       enabled: true,
       fitScale,
+      scaleX,
+      scaleY,
       screenDensity,
       screenUiScale,
       widgetDensity: screenDensity,
       widgetUiScale: screenUiScale,
     }),
-    [fitScale, screenDensity, screenUiScale],
+    [fitScale, scaleX, scaleY, screenDensity, screenUiScale],
   );
   const dataSource = dataSourceResolver(widgetConfig.dataSource);
 

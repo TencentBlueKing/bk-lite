@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Input, Modal, Select, Space } from 'antd';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Input, Space } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
@@ -13,7 +12,6 @@ import {
 } from '@/app/opspilot/types/skill';
 
 const { TextArea } = Input;
-const PARAM_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const isFilled = (item?: SkillPackageParam) => Boolean(item?.key && String(item.value || '').trim());
 
@@ -60,6 +58,9 @@ export const withResolvedVariables = (pkg: SkillPackage): SkillPackage => ({
   ...pkg,
   variables: resolvePackageVariables(pkg),
 });
+
+/** 技能包只有声明了变量才需要打开配置；未声明时没有可填参数。 */
+export const packageHasDeclaredParams = (pkg?: SkillPackage | null) => resolvePackageVariables(pkg).length > 0;
 
 export const getDeclaredMap = (pkg?: SkillPackage | null) => {
   const map = new Map<string, SkillPackageVariableDecl>();
@@ -110,10 +111,6 @@ interface DraftRow extends SkillPackageParam {
 
 let draftUid = 0;
 const nextDraftUid = () => `skill-param-${++draftUid}`;
-
-const CUSTOM_NAME_COL = 'w-[168px]';
-const CUSTOM_TYPE_COL = 'w-[120px]';
-const CUSTOM_ACTION_COL = 'w-8';
 
 const ValueControl = ({
   type,
@@ -193,9 +190,10 @@ const SkillPackageParamsModal: React.FC<SkillPackageParamsModalProps> = ({
 
   const handleOk = () => {
     const normalized = draft
+      .filter((row) => row.declared)
       .map((row) => {
         const key = String(row.key || '').trim();
-        const type = row.declared ? resolveDeclType(declared.get(row.key)) : normalizeParamType(row.type);
+        const type = resolveDeclType(declared.get(row.key));
         return {
           key,
           value: row.value || '',
@@ -204,42 +202,23 @@ const SkillPackageParamsModal: React.FC<SkillPackageParamsModalProps> = ({
         };
       })
       .filter((row) => row.key);
-    const invalid = normalized.find((row) => !PARAM_KEY_RE.test(row.key));
-    if (invalid) {
-      Modal.error({
-        title: t('skill.skillPackageParams.nameRule'),
+    const keptCustom = (items || [])
+      .filter((item) => item?.key && !declared.has(item.key))
+      .map((item) => {
+        const type = normalizeParamType(item.type);
+        return {
+          key: item.key,
+          value: item.value || '',
+          type,
+          multiline: type === 'textarea',
+        };
       });
-      return;
-    }
-    const seen = new Set<string>();
-    for (const row of normalized) {
-      if (seen.has(row.key)) {
-        Modal.error({
-          title: t('skill.skillPackageParams.nameRule'),
-        });
-        return;
-      }
-      seen.add(row.key);
-    }
-    onOk(normalized);
+    onOk([...normalized, ...keptCustom]);
   };
 
   const declaredRows = draft.filter((row) => row.declared);
-  const customRows = draft.filter((row) => !row.declared);
   const requiredRows = declaredRows.filter((row) => declared.get(row.key)?.required);
   const missingRequiredCount = requiredRows.filter((row) => !isFilled(row)).length;
-  const typeOptions = [
-    { value: 'text', label: t('skill.skillPackageParams.text') },
-    { value: 'password', label: t('skill.skillPackageParams.password') },
-    { value: 'textarea', label: t('skill.skillPackageParams.textarea') },
-  ];
-
-  const addCustomRow = () => {
-    setDraft((prev) => [
-      ...prev,
-      { uid: nextDraftUid(), declared: false, key: '', value: '', type: 'text', multiline: false },
-    ]);
-  };
 
   const valuePlaceholderOf = (type: SkillPackageParam['type']) => {
     if (type === 'password') return t('skill.skillPackageParams.passwordPlaceholder');
@@ -247,13 +226,11 @@ const SkillPackageParamsModal: React.FC<SkillPackageParamsModalProps> = ({
     return t('skill.skillPackageParams.valuePlaceholder');
   };
 
-  const footerStatus = requiredRows.length > 0
-    ? missingRequiredCount > 0
+  const footerStatus = requiredRows.length === 0
+    ? ''
+    : missingRequiredCount > 0
       ? t('skill.skillPackageParams.footerMissingRequired', '还有 {count} 项必填未填', { count: missingRequiredCount })
-      : t('skill.skillPackageParams.footerRequiredDone', '必填已全部填写')
-    : customRows.some(isFilled)
-      ? t('skill.skillPackageParams.footerFilled', '已填 {count} 项', { count: customRows.filter(isFilled).length })
-      : '';
+      : t('skill.skillPackageParams.footerRequiredDone', '必填已全部填写');
 
   return (
     <OperateModal
@@ -328,82 +305,6 @@ const SkillPackageParamsModal: React.FC<SkillPackageParamsModalProps> = ({
           </section>
         )}
 
-        <section>
-          {declaredRows.length > 0 && (
-            <div className="mb-2 text-[13px] font-medium text-[var(--color-text-1)]">
-              {t('skill.skillPackageParams.customSection', '自定义变量')}
-            </div>
-          )}
-          {declaredRows.length === 0 && (
-            <p className="mb-3 mt-0 text-xs leading-5 text-[var(--color-text-4)]">
-              {t('skill.skillPackageParams.emptyHint', '该技能包未声明变量，需要时可以添加自定义变量')}
-            </p>
-          )}
-
-          {customRows.length === 0 && declaredRows.length > 0 ? (
-            <p className="m-0 py-1 text-xs text-[var(--color-text-4)]">
-              {t('skill.skillPackageParams.customEmpty', '还没有自定义变量')}
-            </p>
-          ) : null}
-
-          {customRows.length > 0 && (
-            <>
-              <div className="mb-1 flex gap-2 px-0.5 text-[11px] text-[var(--color-text-4)]">
-                <span className={`${CUSTOM_NAME_COL} shrink-0`}>{t('skill.skillPackageParams.paramName')}</span>
-                <span className="min-w-0 flex-1">{t('skill.skillPackageParams.paramValue')}</span>
-                <span className={`${CUSTOM_TYPE_COL} shrink-0`}>{t('skill.skillPackageParams.paramType')}</span>
-                <span className={`${CUSTOM_ACTION_COL} shrink-0`} />
-              </div>
-              <div className="divide-y divide-[var(--color-fill-2)]">
-                {customRows.map((row) => {
-                  const paramType = normalizeParamType(row.type);
-                  return (
-                    <div key={row.uid} className="flex items-start gap-2 py-2">
-                      <Input
-                        className={`${CUSTOM_NAME_COL} shrink-0`}
-                        value={row.key}
-                        placeholder={t('skill.skillPackageParams.namePlaceholder')}
-                        onChange={(event) => updateRow(row.uid, { key: event.target.value })}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <ValueControl
-                          type={paramType}
-                          value={row.value}
-                          placeholder={valuePlaceholderOf(paramType)}
-                          onChange={(value) => updateRow(row.uid, { value })}
-                        />
-                      </div>
-                      <Select
-                        className={`${CUSTOM_TYPE_COL} shrink-0`}
-                        value={paramType}
-                        options={typeOptions}
-                        onChange={(type) => updateRow(row.uid, { type: normalizeParamType(type), value: '' })}
-                      />
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<DeleteOutlined />}
-                        className={`${CUSTOM_ACTION_COL} text-[var(--color-text-4)] hover:!text-[var(--color-fail)]`}
-                        aria-label={t('common.delete')}
-                        onClick={() => setDraft((prev) => prev.filter((item) => item.uid !== row.uid))}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          <Button
-            type="link"
-            size="small"
-            className="mt-1 h-6 px-1"
-            icon={<PlusOutlined />}
-            onClick={addCustomRow}
-          >
-            {t('skill.skillPackageParams.add')}
-          </Button>
-        </section>
       </div>
     </OperateModal>
   );

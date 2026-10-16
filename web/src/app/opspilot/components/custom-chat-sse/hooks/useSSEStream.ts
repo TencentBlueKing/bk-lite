@@ -115,6 +115,8 @@ export const useSSEStream = ({
       isStreamActiveRef.current = true;
       let handler: AGUIMessageHandler | null = null;
       let streamCloseReason = t('chat.connectionError');
+      let streamTerminal: 'open' | 'complete' | 'abort' | 'error' = 'open';
+      let accumulatedContent = '';
 
       try {
         const headers: Record<string, string> = {
@@ -159,9 +161,6 @@ export const useSSEStream = ({
           (usage) => onContextUsageRef.current?.(usage)
         );
         
-        // OpenAI SSE 格式的累积内容
-        let accumulatedContent = '';
-
         while (true) {
           const { done, value } = await reader.read();
 
@@ -183,6 +182,7 @@ export const useSSEStream = ({
               const dataStr = trimmedLine.slice(6).trim();
 
               if (dataStr === '[DONE]') {
+                streamTerminal = 'complete';
                 isStreamActiveRef.current = false;
                 setLoading(false);
                 return;
@@ -202,6 +202,7 @@ export const useSSEStream = ({
                   const shouldStop = handler.handle(aguiData);
 
                   if (shouldStop) {
+                    streamTerminal = 'complete';
                     toolCallsRef.current.clear();
                     isStreamActiveRef.current = false;
                     setLoading(false);
@@ -215,6 +216,7 @@ export const useSSEStream = ({
                     const choice = sseData.choices[0];
 
                     if (choice.finish_reason === 'stop') {
+                      streamTerminal = 'complete';
                       setLoading(false);
                       return;
                     }
@@ -245,23 +247,35 @@ export const useSSEStream = ({
         }
       } catch (error: any) {
         if (error.name === 'AbortError') {
-          streamCloseReason = '已停止';
+          streamTerminal = 'abort';
           return;
         }
 
         console.error('SSE stream error:', error);
+        streamTerminal = 'error';
         streamCloseReason = `${t('chat.connectionError')}: ${error.message}`;
         if (!handler) {
           updateMessages(prevMessages =>
             prevMessages.map(msgItem =>
               msgItem.id === botMessage.id
-                ? { ...msgItem, content: streamCloseReason }
+                ? { ...msgItem, content: streamCloseReason, isStreamingTools: false }
                 : msgItem
             )
           );
         }
       } finally {
-        handler?.handleStreamClosed(streamCloseReason);
+        if (handler) {
+          if (!useAGUIProtocol && accumulatedContent) {
+            handler.seedPlainText(accumulatedContent);
+          }
+          if (streamTerminal === 'complete') {
+            handler.completeStream();
+          } else if (streamTerminal === 'abort') {
+            handler.abortStream();
+          } else {
+            handler.handleStreamClosed(streamCloseReason);
+          }
+        }
         isStreamActiveRef.current = false;
         setLoading(false);
         abortControllerRef.current = null;

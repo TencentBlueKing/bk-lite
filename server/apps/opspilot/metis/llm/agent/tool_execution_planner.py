@@ -359,6 +359,10 @@ _GENERATED_ATTACHMENT_NAME_RE = re.compile(
     r"[\w\u4e00-\u9fff][\w\u4e00-\u9fff ._-]{0,80}\.(?:docx|xlsx|pptx|pdf|csv|txt|md)\b",
     re.IGNORECASE,
 )
+_ASSISTANT_GENERATED_ROLES = frozenset({"ai", "aimessage", "assistant", "bot"})
+# 举例紧挨文件名时不当成已生成。下一轮历史只有可见正文，真正的「已生成 …报告.docx」仍要认。
+_ATTACHMENT_EXAMPLE_CUE_RE = re.compile(r"例如|比如|譬如|举例|样例|示例|比方|e\.g\.|for example", re.IGNORECASE)
+_EXAMPLE_CUE_LOOKBEHIND = 32
 # chat_service 注入的强制规则模板含「附件/generate_attachment_file」字样，匹配前需剥离。
 _ATTACHMENT_FORCE_RULE_BLOCK_RE = re.compile(
     r"【附件生成强制规则[\s\S]*?(?=【|$)",
@@ -1436,24 +1440,54 @@ def _history_message_parts(message: Any) -> tuple[str, str, list[Any], str]:
     return role, name, tool_calls, content
 
 
+def _tool_call_name(call: Any) -> str:
+    if isinstance(call, dict):
+        return str(call.get("name") or "")
+    return str(getattr(call, "name", "") or "")
+
+
+def _message_records_generated_attachment(name: str, tool_calls: list[Any], content: str) -> bool:
+    """工具消息、下载链接，或同时带 file_url 与 filename 的结果。"""
+    if name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
+        return True
+    if any(_tool_call_name(call) == GENERATE_ATTACHMENT_FILE_TOOL_NAME for call in tool_calls):
+        return True
+    if "workflow_attachment/download/" in content:
+        return True
+    return "file_url" in content and "filename" in content
+
+
+def _assistant_generated_filenames(content: str) -> list[str]:
+    """助手可见正文里的已生成文件名。紧挨「例如/比如」的举例不算。
+
+    文件名正则会吃进前面的汉字和空格，举例用语可能落在匹配串内部，不能只看匹配起点之前。
+    """
+    names: list[str] = []
+    for match in _GENERATED_ATTACHMENT_NAME_RE.finditer(content or ""):
+        prefix_start = max(0, match.start() - _EXAMPLE_CUE_LOOKBEHIND)
+        prefix = content[prefix_start : match.start()]
+        if _ATTACHMENT_EXAMPLE_CUE_RE.search(prefix) or _ATTACHMENT_EXAMPLE_CUE_RE.search(match.group(0)):
+            continue
+        name = match.group(0).strip()
+        if name:
+            names.append(name)
+    return names
+
+
 def conversation_has_generated_attachment(messages: Sequence[Any] | None) -> bool:
     """本会话是否已经生成过附件。
 
-    下一轮历史通常只剩用户/助手原文，没有工具消息，所以也认助手回复里的报告文件名。
+    下一轮进规划器的历史经过 visible_assistant_text，工具事件和 file_url 会被丢掉，
+    只剩「已生成 Word 报告：xxx.docx」这类正文。助手正文里的文件名因此要算已生成；
+    紧挨举例用语的文件名不算。同轮仍留在状态里的工具消息和下载链接也算。
     """
     for message in messages or []:
         role, name, tool_calls, content = _history_message_parts(message)
         if "system" in role:
             continue
-        if name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
+        if _message_records_generated_attachment(name, tool_calls, content):
             return True
-        for call in tool_calls:
-            call_name = call.get("name") if isinstance(call, dict) else getattr(call, "name", "")
-            if call_name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
-                return True
-        if GENERATE_ATTACHMENT_FILE_TOOL_NAME in content and ("file_url" in content or "filename" in content):
-            return True
-        if role in {"ai", "aimessage", "assistant", "bot"} and _GENERATED_ATTACHMENT_NAME_RE.search(content):
+        if role in _ASSISTANT_GENERATED_ROLES and _assistant_generated_filenames(content):
             return True
     return False
 
@@ -1465,11 +1499,11 @@ def collect_generated_attachment_filenames(messages: Sequence[Any] | None) -> li
         role, name, tool_calls, content = _history_message_parts(message)
         if "system" in role or role in {"human", "humanmessage", "user"}:
             continue
-        tool_hit = name == GENERATE_ATTACHMENT_FILE_TOOL_NAME or any(
-            (call.get("name") if isinstance(call, dict) else getattr(call, "name", "")) == GENERATE_ATTACHMENT_FILE_TOOL_NAME for call in tool_calls
-        )
-        if tool_hit or role in {"ai", "aimessage", "assistant", "bot", "tool", "toolmessage"}:
+        if _message_records_generated_attachment(name, tool_calls, content) or role in {"tool", "toolmessage"}:
             found.extend(_GENERATED_ATTACHMENT_NAME_RE.findall(content))
+            continue
+        if role in _ASSISTANT_GENERATED_ROLES:
+            found.extend(_assistant_generated_filenames(content))
     deduped: list[str] = []
     seen: set[str] = set()
     for name in found:

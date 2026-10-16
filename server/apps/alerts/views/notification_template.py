@@ -192,7 +192,7 @@ class NotificationTemplateViewSet(ModelViewSet):
         get_query_group_ids(request)
         current_team = get_current_team_from_request(request, required=True)
         if current_team:
-            ensure_alert_operation_template(current_team, request.user)
+            ensure_alert_operation_template(current_team, request.user, request)
         return super().list(request, *args, **kwargs)
 
     @HasPermission("notification_templates-View")
@@ -440,6 +440,9 @@ class NotificationTemplateViewSet(ModelViewSet):
                         "scopes": [NotificationTemplate.SCOPE_ALERT_OPERATION],
                     },
                     {"path": "labels.env", "label": alerts_message(request, "catalog.label_example")},
+                    {"path": "labels.ip", "label": alerts_message(request, "catalog.label_ip")},
+                    {"path": "labels.probe.target", "label": alerts_message(request, "catalog.label_probe_target")},
+                    {"path": "labels.collector.nodes", "label": alerts_message(request, "catalog.label_probe_nodes")},
                     {"path": "dimensions.instance", "label": alerts_message(request, "catalog.dimension_example")},
                     {"path": "enrichment.cmdb.owner", "label": alerts_message(request, "catalog.enrichment_example")},
                     {"path": "events.count", "label": alerts_message(request, "catalog.event_count")},

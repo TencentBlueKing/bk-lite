@@ -84,6 +84,8 @@
     "batchDelete": "Batch delete",
     "batchDeleteImpact": "Batch delete impact",
     "batchDeleteCount": "Delete {count} materials",
+    "batchDeletePartial": "Deleted {deleted}. Not finished: {failed}. {notAttempted} not processed: {notAttemptedNames}",
+    "batchDeleteFailed": "Deleted {deleted}. Not finished: {failed}",
     "buildNeedParse": "Parse the material first",
     "statusPending": "Not built",
     "statusQueued": "Queued",

@@ -9,6 +9,8 @@ export interface EllipsisWithTooltipProps {
   /** 溢出时的提示；自定义渲染时传纯文本，避免把截断节点再当标题。 */
   tooltip?: React.ReactNode;
   getPopupContainer?: (node: HTMLElement) => HTMLElement;
+  /** 溢出提示的最大宽度。默认沿用组件自带宽度。 */
+  tooltipMaxWidth?: number;
   /**
    * `hover` 保持原有行为；`interactive` 让实际溢出的文本也可通过
    * 键盘聚焦和点击查看完整内容。
@@ -21,6 +23,7 @@ const EllipsisWithTooltip: React.FC<EllipsisWithTooltipProps> = ({
   className = '',
   tooltip,
   getPopupContainer,
+  tooltipMaxWidth,
   disclosure = 'hover',
 }) => {
   const textRef = useRef<HTMLDivElement>(null);
@@ -63,6 +66,7 @@ const EllipsisWithTooltip: React.FC<EllipsisWithTooltipProps> = ({
       {isOverflow ? (
         <Tooltip
           title={tooltip ?? text}
+          styles={tooltipMaxWidth ? { root: { maxWidth: tooltipMaxWidth } } : undefined}
           getPopupContainer={getPopupContainer}
           // 可聚焦元素在鼠标点击时会触发 focus；不再叠加 click trigger，
           // 避免同一次点击先打开又被 click toggle 关闭。

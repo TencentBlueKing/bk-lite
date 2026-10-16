@@ -100,6 +100,7 @@ import {
 import { copyScreenChromeItem } from "./utils/copyScreenItem";
 import { copyScreenWidget } from "@/app/ops-analysis/utils/widgetCopy";
 import { relabelBuiltinRoom3DFilter } from "@/app/ops-analysis/utils/room3DScreenFilter";
+import { relabelApplicationTopologyFilters } from "@/app/ops-analysis/utils/applicationTopologyCanvasFilter";
 import {
   closeScreenFieldEdit,
   commitScreenEdit,
@@ -211,6 +212,17 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     };
   }, []);
   const { t } = useTranslation();
+  const labelSceneFilters = useCallback(
+    <T extends { filters?: UnifiedFilterDefinition[] }>(viewSets: T) =>
+      relabelApplicationTopologyFilters(
+        relabelBuiltinRoom3DFilter(viewSets, t("dashboard.room3DFilterName")),
+        {
+          system: t("dashboard.applicationTopologyFilterName"),
+          depth: t("dashboard.applicationTopologyDepth"),
+        },
+      ),
+    [t],
+  );
   const csvExportRegistry = useWidgetCsvExportRegistryState();
   const { getScreenDetail, saveScreen } = useScreenApi();
   const { updateItem } = useDirectoryApi();
@@ -419,9 +431,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const applyScreenDraftPayload = useCallback(
     (payload: CanvasDraftPayload) => {
       restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
-      const normalized = relabelBuiltinRoom3DFilter(
+      const normalized = labelSceneFilters(
         normalizeScreenViewSets(payload.view_sets),
-        t("dashboard.room3DFilterName"),
       );
       const loadedDefinitions = normalized.filters ?? [];
       historyCommitRef.current({
@@ -437,7 +448,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setRefreshCause("manual");
       void syncScreenCanvasResources(normalized);
     },
-    [queryState, setSavedRefreshInterval, shareOrganizationSeed, syncScreenCanvasResources, t],
+    [labelSceneFilters, queryState, setSavedRefreshInterval, shareOrganizationSeed, syncScreenCanvasResources],
   );
   const screenDraft = useCanvasDraft({
     resourceType: "screen",
@@ -488,9 +499,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         const data = await getScreenDetail(screenId);
         if (cancelled) return;
 
-        const normalized = relabelBuiltinRoom3DFilter(
+        const normalized = labelSceneFilters(
           normalizeScreenViewSets(data?.view_sets),
-          t("dashboard.room3DFilterName"),
         );
         await syncScreenCanvasResources(normalized);
         if (cancelled) return;
@@ -538,8 +548,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     };
   }, [
     getScreenDetail,
+    labelSceneFilters,
     queryState.resetQueryState,
-    t,
     selectedScreen?.data_id,
     shareOrganizationSeed,
     syncScreenCanvasResources,
@@ -580,21 +590,18 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   ]);
 
   const projectDocument = useCallback((viewSets: ScreenViewSets): ScreenEditDocument => {
-    const filters = relabelBuiltinRoom3DFilter(
-      {
-        filters: buildFiltersFromScreenItems({
-          viewSets,
-          previousDefinitions: filtersRef.current,
-          dataSources,
-        }),
-      },
-      t("dashboard.room3DFilterName"),
-    ).filters ?? [];
+    const filters = labelSceneFilters({
+      filters: buildFiltersFromScreenItems({
+        viewSets,
+        previousDefinitions: filtersRef.current,
+        dataSources,
+      }),
+    }).filters ?? [];
     return {
       filters,
       viewSets: syncScreenFilterBindings(viewSets, filters, dataSources),
     };
-  }, [dataSources, t]);
+  }, [dataSources, labelSceneFilters]);
 
   const rememberSession = useCallback((next: ScreenEditSession) => {
     sessionRef.current = next;
@@ -1333,12 +1340,12 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       definitions={queryState.definitions}
       values={queryState.filterValues}
       onChange={queryState.setFilterValues}
-      onSearch={(values) =>
-        queryState.applyQuery(values, queryState.namespaceDraftId)
-      }
-      onReset={(values) =>
-        queryState.applyQuery(values, queryState.namespaceDraftId)
-      }
+      onSearch={(values) => {
+        queryState.applyQuery(values, queryState.namespaceDraftId);
+      }}
+      onReset={(values) => {
+        queryState.applyQuery(values, queryState.namespaceDraftId);
+      }}
       prefixContent={namespaceSelectorElement}
     />
   ) : null;
@@ -1378,7 +1385,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           emptyDescription={t("opsAnalysis.screen.selectFirst")}
           headerVisible={!isFullscreen}
           filterBarVisible={!isFullscreen}
-          compactHeader
           flushContent
           contentClassName={isFullscreen ? "bg-slate-950" : undefined}
           toolbar={

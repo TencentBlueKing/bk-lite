@@ -22,6 +22,7 @@ import type {
   ApmServiceInstance,
   ApmServiceRed,
   ApmServiceRedBatchItem,
+  ApmClientRollups,
   ApmServiceErrorBreakdown,
   ApmSlo,
   ApmSloInput,
@@ -195,6 +196,12 @@ const useApmApi = () => {
       targets: Array<{ service_id: string; environment: string }>;
     }) => post<{ items: ApmServiceRedBatchItem[] }>('/apm/services/metrics/batch/', payload),
     [post]
+  );
+
+  const getServiceClientRollups = useCallback(
+    (serviceId: string, params: { environment: string; started_at?: string; ended_at?: string }) =>
+      get<ApmClientRollups>(`/apm/services/${serviceId}/client-rollups/`, { params }),
+    [get]
   );
 
   const getServiceErrorBreakdown = useCallback(
@@ -398,6 +405,7 @@ const useApmApi = () => {
     getDashboard,
     getServiceRed,
     getServiceRedBatch,
+    getServiceClientRollups,
     getServiceErrorBreakdown,
     getSlos,
     createSlo,

@@ -36,6 +36,14 @@ def test_resolve_splits_model_keyword_when_user_text_missing():
     assert resolve_search_terms("", "商城 502") == ["商城", "502"]
 
 
+def test_inventory_question_does_not_become_search_terms():
+    assert build_search_terms("当前告警有哪些") == []
+    terms = build_search_terms("有哪些磁盘告警")
+    assert "磁盘" in terms
+    assert "有哪些" not in terms
+    assert "哪些" not in terms
+
+
 def test_error_log_question_keeps_ascii_keyword():
     terms = build_search_terms("查询最近24小时的error日志")
     assert "error" in terms

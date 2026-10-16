@@ -234,7 +234,7 @@ describe('APM 调用链探索', () => {
     ]);
   });
 
-  it('Spans 明细行不可点击进入详情', async () => {
+  it('Spans 明细行进入 Trace 详情并带上 span_id', async () => {
     search = '';
     api.getSpans.mockResolvedValue({
       items: [spanItem({ span_id: 's1', service_name: 'checkout', name: 'GET /products', kind: 'server' })],
@@ -242,10 +242,9 @@ describe('APM 调用链探索', () => {
     });
     renderWithApmIntl(<ApmTracesPage />);
 
-    expect(await screen.findByText('GET /products')).not.toBeNull();
-    expect(screen.queryByRole('button', { name: '详情' })).toBeNull();
-    expect(screen.queryByRole('link', { name: '详情' })).toBeNull();
-    expect(screen.queryByRole('link', { name: /查看 Span/ })).toBeNull();
+    const href = '/apm/explore/traces/trace-1?span_id=s1';
+    expect((await screen.findByRole('link', { name: 'GET /products' })).getAttribute('href')).toBe(href);
+    expect(screen.getByRole('link', { name: '详情' }).getAttribute('href')).toBe(href);
   });
 
   it('快速筛选按当前命中收窄，不会重新填满查询窗口', async () => {

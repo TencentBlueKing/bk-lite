@@ -394,7 +394,7 @@ def test_tool_metadata_and_translations_are_registered():
     assert toolkit["tools"][0]["parameters"]
     proposal = toolkit["tools"][1]
     assert "layout" in proposal["description"]
-    assert "data_source_id" in proposal["description"]
+    assert "schemaVersion" in proposal["description"]
     assert "selectedFields" in proposal["parameters"]["proposal"]["description"]
 
     for language in ("zh-Hans.yaml", "en.yaml"):

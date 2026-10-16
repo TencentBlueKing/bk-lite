@@ -103,10 +103,7 @@ import {
 import WidgetConfigPreview from './widgetConfig/widgetConfigPreview';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
 import { RelatedTopologyAssetField } from './widgetConfig/sections/relatedTopologyAssetField';
-import {
-  ApplicationTopologyDepthField,
-  ApplicationTopologyFilterLinkage,
-} from './widgetConfig/sections/applicationTopologyAssetField';
+import { ApplicationTopologyFilterLinkage } from './widgetConfig/sections/applicationTopologyAssetField';
 import { Application3DWallFields } from './widgetConfig/sections/application3DWallFields';
 import { Room3DRackTopFields } from './widgetConfig/sections/room3DRackTopFields';
 import Room3DFilterLinkage from './widgetConfig/sections/room3DFilterLinkage';
@@ -1364,7 +1361,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               </ConfigGroupTitle>
               <ApplicationTopologyFilterLinkage definitions={previewFilterDefinitions} />
             </div>
-            <ApplicationTopologyDepthField />
           </section>
         ) : isRoom3D ? (
           <section>

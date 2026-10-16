@@ -1248,6 +1248,13 @@ export default function ApplicationResourceOverview({
                   aria-label={t('ApplicationResourceOverview.nodeSearchPlaceholder')}
                 />
               </AutoComplete>
+              <ExpandDepthControl
+                value={expandDepth}
+                onChange={(depth) => {
+                  setExpandDepth(depth);
+                  writeAppTopoExpandDepth(window.localStorage, depth);
+                }}
+              />
             </>
           )}
         </div>
@@ -1335,15 +1342,6 @@ export default function ApplicationResourceOverview({
                               exportImage: t('Model.exportImage'),
                               refresh: t('ApplicationResourceOverview.refresh'),
                             },
-                            leading: (
-                              <ExpandDepthControl
-                                value={expandDepth}
-                                onChange={(depth) => {
-                                  setExpandDepth(depth);
-                                  writeAppTopoExpandDepth(window.localStorage, depth);
-                                }}
-                              />
-                            ),
                             prefix: (
                               <div className={styles.toolbarActions}>
                                 {!relationsOpen && (

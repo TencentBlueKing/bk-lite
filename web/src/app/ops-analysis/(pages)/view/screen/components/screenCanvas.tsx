@@ -460,6 +460,7 @@ interface ScreenCanvasNodeProps {
   editable: boolean;
   selected: boolean;
   scale: number;
+  scaleY: number;
   fitScale: number;
   screenDensity: number;
   screenUiScale: number;
@@ -490,6 +491,7 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
   editable,
   selected,
   scale,
+  scaleY,
   fitScale,
   screenDensity,
   screenUiScale,
@@ -522,6 +524,8 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
       refreshCause={refreshCause}
       screenId={screenId}
       fitScale={fitScale}
+      scaleX={scale}
+      scaleY={scaleY}
       screenDensity={screenDensity}
       screenUiScale={screenUiScale}
       dataSourceResolver={dataSourceResolver}
@@ -714,6 +718,10 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         <div
           className={`screen-tech-canvas relative overflow-hidden ${
             editMode && !fullscreen ? "screen-tech-canvas--editing" : ""
+          } ${
+            Math.abs(screenMetrics.scaleX - screenMetrics.scaleY) > 0.001
+              ? "screen-tech-canvas--stretched"
+              : ""
           }`}
           data-screen-theme={screenTheme.id}
           onClick={() => editMode && onSelectItem?.(null)}
@@ -746,6 +754,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
             transform: `scale(${screenMetrics.scaleX}, ${screenMetrics.scaleY})`,
             ...canvasBackground,
             "--screen-fit-scale": screenMetrics.fitScale,
+            "--screen-scale-x": screenMetrics.scaleX,
+            "--screen-scale-y": screenMetrics.scaleY,
             "--screen-density": screenMetrics.screenDensity,
             "--screen-ui-scale": screenMetrics.screenUiScale,
           } as React.CSSProperties}
@@ -770,6 +780,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
                 editable={editable}
                 selected={selectedItemId === item.id}
                 scale={scale}
+                scaleY={screenMetrics.scaleY}
                 fitScale={screenMetrics.fitScale}
                 screenDensity={screenMetrics.screenDensity}
                 screenUiScale={screenMetrics.screenUiScale}
@@ -818,6 +829,22 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           border-radius: 0;
           background: var(--screen-stage-bg);
           box-shadow: var(--screen-stage-shadow);
+        }
+
+        .screen-tech-canvas--stretched .screen-uniform-text {
+          transform: scale(
+            calc(var(--screen-fit-scale) / var(--screen-scale-x)),
+            calc(var(--screen-fit-scale) / var(--screen-scale-y))
+          );
+          transform-origin: left center;
+        }
+
+        .screen-tech-canvas--stretched .screen-uniform-text[data-align="center"] {
+          transform-origin: center center;
+        }
+
+        .screen-tech-canvas--stretched .screen-uniform-text[data-align="right"] {
+          transform-origin: right center;
         }
 
         .screen-tech-canvas {

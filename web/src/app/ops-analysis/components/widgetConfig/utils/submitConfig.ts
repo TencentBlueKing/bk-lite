@@ -28,7 +28,10 @@ import {
 import { buildPersistedNetworkStatusTopologyConfig } from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 import { validateComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { persistRoom3DConfig } from '@/app/ops-analysis/utils/room3DConfig';
-import { APPLICATION_TOPOLOGY_FILTER_ID } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
+import {
+  APPLICATION_TOPOLOGY_DEPTH_FILTER_ID,
+  APPLICATION_TOPOLOGY_FILTER_ID,
+} from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 import { ROOM3D_FILTER_ID } from '@/app/ops-analysis/utils/room3DScreenFilter';
 import { resolveOpsTableColumnWidth } from '@/app/ops-analysis/utils/opsTableColumn';
 import {
@@ -201,7 +204,10 @@ const buildSceneWidgetConfig = (
       chartType: 'applicationTopology',
       sceneWidgetType: 'applicationTopology',
       applicationTopology: persistApplicationTopologyConfig(values.applicationTopology),
-      filterBindings: { [APPLICATION_TOPOLOGY_FILTER_ID]: true },
+      filterBindings: {
+        [APPLICATION_TOPOLOGY_FILTER_ID]: true,
+        [APPLICATION_TOPOLOGY_DEPTH_FILTER_ID]: true,
+      },
       appearance: values.appearance,
     };
   }
