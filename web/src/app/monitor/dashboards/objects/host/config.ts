@@ -26,8 +26,8 @@ export const HOST_SERIES_COLOR = {
   load5: '#3491FA',
   load15: '#14C9C9',
   diskUsed: '#722ED1',
-  diskRead: '#9254DE',
-  diskWrite: '#B37FEB',
+  diskRead: '#3491FA',
+  diskWrite: '#EB2F96',
   netIn: '#13C2C2',
   netOut: '#2F54EB'
 } as const;

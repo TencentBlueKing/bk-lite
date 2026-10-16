@@ -35,10 +35,12 @@ const KpiLabel = ({ item }: { item: KpiCardModel }) => (
 const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
   <>
     <KpiLabel item={item} />
-    <div className={styles.kpiValue} style={item.tone ? { color: item.tone } : undefined}>
-      {item.value}
+    <div className={item.subtitle ? styles.kpiValueRow : undefined}>
+      <div className={styles.kpiValue} style={item.tone ? { color: item.tone } : undefined}>
+        {item.value}
+      </div>
+      {item.subtitle ? <div className={styles.kpiAside}>{item.subtitle}</div> : null}
     </div>
-    {item.subtitle ? <div className={styles.kpiMeta}>{item.subtitle}</div> : null}
     {item.detail ? <div className={styles.kpiMeta}>{item.detail}</div> : null}
     {item.extra}
   </>

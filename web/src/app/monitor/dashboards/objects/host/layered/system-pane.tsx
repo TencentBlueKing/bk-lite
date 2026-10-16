@@ -484,7 +484,6 @@ export default function SystemPane({
           data={swapTrend}
           emptyText={swapPhase === 'error' ? '加载失败' : '暂无数据'}
           onRetry={swapPhase === 'error' ? retry(swapNames) : undefined}
-          showSeriesName
           legends={[{ label: '已用占比', color: SWAP_SERIES_COLOR }]}
         />
         <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.detailSlot}`} data-surface="memory">

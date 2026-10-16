@@ -44,7 +44,9 @@ interface ThinTimeSeriesProps {
   bare?: boolean;
   /** 每条序列一根 Y 轴。进程 CPU 可超过 100%，与内存共轴时会把内存压扁。 */
   independentAxes?: boolean;
-  /** 单序列且无当前读数时也展示系列名。默认此时藏图例，避免和标题重复。 */
+  /**
+   * 已不再打开图例。可见序列数等于 1 时整段图例不渲染，本开关和 reading 都不能把它打开。
+   */
   showSeriesName?: boolean;
   /** 本图达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
@@ -83,7 +85,6 @@ export default function ThinTimeSeries({
   className,
   bare = false,
   independentAxes = false,
-  showSeriesName = false,
   alertLevel,
   onRetry
 }: ThinTimeSeriesProps) {
@@ -198,7 +199,11 @@ export default function ThinTimeSeries({
     };
   }, [axisColor, data, keys, legendKey, mutedColor, panelColor, seriesColors, splitAxes, textColor, unit]);
   const { containerRef } = useECharts(option);
-  const showLegend = showSeriesName || legends.length > 1 || legends.some((item) => item.reading);
+  const drawnSeriesCount = keys.filter((key) => data.some((point) => {
+    const value = point[key];
+    return typeof value === 'number' && Number.isFinite(value);
+  })).length;
+  const showLegend = drawnSeriesCount >= 2;
   const chart = (
     <>
       {title || reading || showLegend ? (

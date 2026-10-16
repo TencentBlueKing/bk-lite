@@ -154,11 +154,24 @@
 }
 
 .gpuBandTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
   color: var(--color-text-1);
+
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--color-primary);
+    flex-shrink: 0;
+  }
 }
 
 .gpuRow {
@@ -291,6 +304,15 @@ button.kpiCard {
   text-overflow: ellipsis;
 }
 
+.kpiValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .kpiValue {
   margin-top: 4px;
   max-width: 100%;
@@ -301,6 +323,24 @@ button.kpiCard {
   line-height: 26px;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kpiValueRow .kpiValue {
+  flex: 0 1 auto;
+  margin-top: 0;
+  min-width: 0;
+}
+
+.kpiAside {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
