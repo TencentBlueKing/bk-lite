@@ -45,6 +45,8 @@ import {
   loadSkillSettingsAuxiliary,
   mergeSkillPackageCatalog,
 } from '@/app/opspilot/utils/skillSettingsBootstrap';
+import AssetTagFilterBar from '@/app/opspilot/components/tool/assetTagFilterBar';
+import { collectTagChips, filterTaggedAssets } from '@/app/opspilot/utils/assetTagFilter';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -86,6 +88,7 @@ const SkillSettingsPage: React.FC = () => {
   const [selectedSkillAssetKeys, setSelectedSkillAssetKeys] = useState<string[]>([]);
   const [isSkillPickerOpen, setIsSkillPickerOpen] = useState(false);
   const [skillPickerKeyword, setSkillPickerKeyword] = useState('');
+  const [skillPickerTags, setSkillPickerTags] = useState<string[]>([]);
   const [draftSkillAssetKeys, setDraftSkillAssetKeys] = useState<string[]>([]);
   const [skillPackageParams, setSkillPackageParams] = useState<Record<string, SkillPackageParam[]>>({});
   const [editingSkillPackage, setEditingSkillPackage] = useState<SkillPackage | null>(null);
@@ -364,24 +367,40 @@ const SkillSettingsPage: React.FC = () => {
       .filter((asset): asset is SkillPackage => !!asset);
   }, [availableSkillAssets, selectedSkillAssetKeys]);
 
-  const filteredAvailableSkillAssets = useMemo(() => {
-    const keyword = skillPickerKeyword.trim().toLowerCase();
-    if (!keyword) return availableSkillAssets;
+  const skillPickerChips = useMemo(
+    () => collectTagChips(
+      availableSkillAssets.map((asset) => ({
+        systemTags: asset.system_tags || [],
+        userTags: asset.user_tags || [],
+      })),
+      (value, kind) => (kind === 'system' ? t(`tool.systemTags.${value}`, value) : value),
+    ),
+    [availableSkillAssets, t],
+  );
 
-    return availableSkillAssets.filter((asset) => [
-      asset.display_name || asset.name,
-      asset.name,
-      asset.category,
-      asset.description_tr || asset.description,
-      asset.package_id,
-      ...(asset.triggers || []),
-      ...getPackageRequiredTools(asset),
-    ].join(' ').toLowerCase().includes(keyword));
-  }, [availableSkillAssets, skillPickerKeyword]);
+  const filteredAvailableSkillAssets = useMemo(() => {
+    return filterTaggedAssets(availableSkillAssets, {
+      selectedTags: skillPickerTags,
+      keyword: skillPickerKeyword,
+      chips: skillPickerChips,
+      systemTags: (asset) => asset.system_tags || [],
+      userTags: (asset) => asset.user_tags || [],
+      name: (asset) => asset.display_name || asset.name,
+      description: (asset) => asset.description_tr || asset.description || '',
+      extraKeyword: (asset) => [
+        asset.name,
+        asset.category || '',
+        asset.package_id,
+        ...(asset.triggers || []),
+        ...getPackageRequiredTools(asset),
+      ].join(' '),
+    });
+  }, [availableSkillAssets, skillPickerKeyword, skillPickerTags, skillPickerChips]);
 
   const openSkillPicker = () => {
     setDraftSkillAssetKeys(selectedSkillAssetKeys);
     setSkillPickerKeyword('');
+    setSkillPickerTags([]);
     setIsSkillPickerOpen(true);
   };
 
@@ -534,6 +553,15 @@ const SkillSettingsPage: React.FC = () => {
       open={isSkillPickerOpen}
       onCancel={() => setIsSkillPickerOpen(false)}
       width={720}
+      styles={{
+        body: {
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'calc(80vh - 108px)',
+          maxHeight: 'calc(80vh - 108px)',
+        },
+      }}
       footer={
         <div className="flex w-full items-center justify-between">
           <div className="text-xs text-[var(--color-text-3)]">
@@ -551,7 +579,8 @@ const SkillSettingsPage: React.FC = () => {
         </div>
       }
     >
-      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-3.5 flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="text-xs text-[var(--color-text-3)]">
             {t('skill.settings.totalItems', '共 {count} 项', { count: filteredAvailableSkillAssets.length })}
@@ -571,14 +600,18 @@ const SkillSettingsPage: React.FC = () => {
           onChange={(event) => setSkillPickerKeyword(event.target.value)}
         />
       </div>
+      <div className="mb-3 shrink-0">
+        <AssetTagFilterBar chips={skillPickerChips} selected={skillPickerTags} onChange={setSkillPickerTags} />
+      </div>
 
-      {filteredAvailableSkillAssets.length === 0 ? (
-        <div className="py-8">
-          <CompactEmptyState description={t('skill.settings.noMatch')} />
-        </div>
-      ) : (
-        <div className="grid max-h-[440px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-          {filteredAvailableSkillAssets.map((asset) => {
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {filteredAvailableSkillAssets.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <CompactEmptyState description={t('skill.settings.noMatch')} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {filteredAvailableSkillAssets.map((asset) => {
             const assetKey = getPackageKey(asset);
             const checked = draftSkillAssetKeys.includes(assetKey);
             return (
@@ -633,9 +666,11 @@ const SkillSettingsPage: React.FC = () => {
                 </div>
               </div>
             );
-          })}
-        </div>
-      )}
+            })}
+          </div>
+        )}
+      </div>
+      </div>
     </OperateModal>
   );
 

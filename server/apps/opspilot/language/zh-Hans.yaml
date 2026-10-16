@@ -198,6 +198,7 @@ error:
   knowledge_base_build_running_wait: 知识库存在运行中的构建任务，请等待完成后再操作
   knowledge_base_build_running_retry: 知识库存在运行中的构建任务，请等待完成后再重试
   builtin_skill_package_not_deletable: 内置技能包不可删除
+  system_tags_not_removable: 系统标签不能删除
   skill_package_zip_required: 请上传技能包 ZIP 文件
   skill_package_must_be_zip: 技能包必须是 ZIP 文件
   skill_package_file_missing: 技能包文件不存在

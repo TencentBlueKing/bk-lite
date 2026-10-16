@@ -135,6 +135,8 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           icon: tool.icon || 'gongjuji',
           description: tool.description_tr || tool.description || '',
           isBuildIn: tool.is_build_in !== false,
+          systemTags: tool.system_tags || [],
+          userTags: tool.user_tags || [],
           kwargs,
         });
       });

@@ -203,6 +203,7 @@ error:
   knowledge_base_build_running_wait: A build is still running for this knowledge base. Wait for it to finish before continuing.
   knowledge_base_build_running_retry: A build is still running for this knowledge base. Wait for it to finish before retrying.
   builtin_skill_package_not_deletable: Built-in skill packages cannot be deleted
+  system_tags_not_removable: System tags cannot be removed
   skill_package_zip_required: Upload a skill package ZIP file
   skill_package_must_be_zip: The skill package must be a ZIP file
   skill_package_file_missing: The skill package file does not exist

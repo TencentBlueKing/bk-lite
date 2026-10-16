@@ -43,6 +43,7 @@ from apps.opspilot.serializers.llm_serializer import (
     SkillRequestLogSerializer,
     SkillToolsSerializer,
 )
+from apps.opspilot.services.asset_tags import apply_fallback_tool_tags
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
     BUILTIN_ALERTS_TOOL_NAME,
@@ -1209,6 +1210,9 @@ class SkillToolsViewSet(AuthViewSet):
                 response.data.append(build_builtin_mssql_tool(loader))
             if not any(item.get("name") == BUILTIN_ACTIVEDIRECTORY_TOOL_NAME for item in response.data):
                 response.data.append(build_builtin_activedirectory_tool(loader))
+            for item in response.data:
+                if isinstance(item, dict) and isinstance(item.get("id"), int) and item["id"] < 0:
+                    apply_fallback_tool_tags(item)
         return response
 
     @HasPermission("tool_list-Add")
