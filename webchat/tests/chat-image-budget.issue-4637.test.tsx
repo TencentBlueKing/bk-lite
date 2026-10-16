@@ -580,7 +580,7 @@ test('文档上传后按间隔查询解析状态，完成后不再显示解析�
       await Promise.resolve();
       await Promise.resolve();
     });
-    assert.ok(calls.some((url) => url.endsWith('/skill_channel/chat_attachment/9')));
+    assert.ok(calls.some((url) => url.endsWith('/skill_channel/chat_attachment/9/')));
     assert.match(chipText(renderer.root), /广州旅游介绍\.pptx · 解析中/);
 
     await act(async () => {
@@ -590,6 +590,51 @@ test('文档上传后按间隔查询解析状态，完成后不再显示解析�
     });
     assert.doesNotMatch(chipText(renderer.root), /解析中/);
     assert.match(chipText(renderer.root), /广州旅游介绍\.pptx/);
+    renderer.unmount();
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test('文档解析状态连续查询失败时标记为失败', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  const timers: Array<() => void> = [];
+  globalThis.setInterval = ((handler: TimerHandler) => {
+    if (typeof handler === 'function') timers.push(() => handler());
+    return 1 as unknown as ReturnType<typeof setInterval>;
+  }) as unknown as typeof setInterval;
+  globalThis.clearInterval = (() => undefined) as unknown as typeof clearInterval;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/chat_attachment/upload/')) {
+      return new Response(JSON.stringify({
+        result: true,
+        data: { id: 11, name: 'report.pdf', mime: 'application/pdf', size: 20, status: 'pending' },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ result: false, message: 'down' }), { status: 500, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+
+  const chipText = (root: ReactTestInstance) => root.findAllByType('span')
+    .map((node) => node.children.filter((child): child is string => typeof child === 'string').join(''))
+    .join('\n');
+
+  try {
+    const renderer = renderChat({ apiKey: 'token', sseUrl: SSE_URL });
+    const file = new File([new Uint8Array([1])], 'report.pdf', { type: 'application/pdf' });
+    await selectFiles(renderer.root, [file]);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await act(async () => {
+        timers[0]();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+    assert.match(chipText(renderer.root), /无法获取解析状态/);
     renderer.unmount();
   } finally {
     globalThis.fetch = originalFetch;

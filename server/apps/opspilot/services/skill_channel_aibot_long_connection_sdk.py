@@ -46,6 +46,7 @@ class WecomSdkTransport:
         self._ready = threading.Event()
         self._authenticated = threading.Event()
         self._error: BaseException | None = None
+        self._closed = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._client = None
         self._stopped: asyncio.Event | None = None
@@ -80,7 +81,15 @@ class WecomSdkTransport:
         )
         future.result(timeout=_REPLY_TIMEOUT_SECONDS)
 
+    @property
+    def closed(self) -> bool:
+        return self._closed.is_set()
+
     def recv_json(self, timeout: float):
+        if self._closed.is_set():
+            raise ConnectionError("WecomSdkClosed")
+        if self._authenticated.is_set() and not self._thread.is_alive():
+            raise ConnectionError("WecomSdkThreadStopped")
         try:
             return self._frames.get(timeout=timeout)
         except queue.Empty:
@@ -117,6 +126,12 @@ class WecomSdkTransport:
 
         def on_error(error):
             if self._authenticated.is_set():
+                logger.warning(
+                    "WecomSdkErrorAfterAuth bot_id=%s error_type=%s",
+                    self.bot_id,
+                    type(error).__name__ if isinstance(error, BaseException) else "RuntimeError",
+                )
+                self._closed.set()
                 return
             self._error = error if isinstance(error, BaseException) else RuntimeError(str(error))
             self._authenticated.set()
@@ -132,8 +147,12 @@ class WecomSdkTransport:
             self._error = self._error or exc
         self._ready.set()
         if self._error is not None:
+            self._closed.set()
             return
-        await self._stopped.wait()
+        try:
+            await self._stopped.wait()
+        finally:
+            self._closed.set()
 
     async def _wait_authenticated(self) -> None:
         while not self._authenticated.is_set():
