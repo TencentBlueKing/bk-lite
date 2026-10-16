@@ -22,7 +22,26 @@ vi.mock('../../../shared/utils/content-i18n', () => ({
 }));
 
 vi.mock('./thin-time-series', () => ({
-  default: () => null
+  default: (props: {
+    title?: string;
+    unit?: string;
+    bare?: boolean;
+    className?: string;
+    data?: unknown[];
+    legends?: Array<{ label: string; color: string }>;
+  }) => (
+    <div
+      data-chart="1"
+      data-title={props.title || ''}
+      data-unit={props.unit || ''}
+      data-bare={props.bare ? '1' : '0'}
+      data-class={props.className || ''}
+      data-points={String(props.data?.length || 0)}
+      data-legends={String(props.legends?.length || 0)}
+      data-color={props.legends?.[0]?.color || ''}
+      data-label={props.legends?.[0]?.label || ''}
+    />
+  )
 }));
 
 vi.mock('./events-rail', () => ({
@@ -96,17 +115,48 @@ describe('overview focus sparks', () => {
     expect(view.getByText('eth0')).toBeTruthy();
     expect(view.getByText('java')).toBeTruthy();
 
-    const sparks = view.container.querySelectorAll('svg.focusSpark');
-    expect(sparks).toHaveLength(3);
-    expect(Array.from(sparks).map((node) => node.getAttribute('width'))).toEqual(['110', '110', '110']);
-    expect(Array.from(sparks).map((node) => node.querySelector('polyline')?.getAttribute('stroke'))).toEqual([
+    const charts = Array.from(view.container.querySelectorAll('[data-class="focusChart"]'));
+    expect(charts).toHaveLength(3);
+    expect(charts.map((node) => node.getAttribute('data-bare'))).toEqual(['1', '1', '1']);
+    expect(charts.map((node) => node.getAttribute('data-title'))).toEqual(['', '', '']);
+    expect(charts.map((node) => node.getAttribute('data-legends'))).toEqual(['1', '1', '1']);
+    expect(charts.map((node) => node.getAttribute('data-unit'))).toEqual(['percent', 'byteps', 'percent']);
+    expect(charts.map((node) => node.getAttribute('data-color'))).toEqual([
       '#722ED1',
       '#13C2C2',
       '#00B42A'
     ]);
-    sparks.forEach((node) => {
-      expect(node.querySelector('polyline')?.getAttribute('points')?.split(' ').length).toBeGreaterThan(1);
+    charts.forEach((node) => {
+      expect(Number(node.getAttribute('data-points'))).toBe(5);
     });
-    expect(view.container.querySelectorAll('.shortcutCard svg')).toHaveLength(3);
+    expect(view.container.querySelector('svg')).toBeNull();
+  });
+
+  it('passes the object series through to the line chart', () => {
+    const dense = Array.from({ length: 240 }, (_, index) => ({
+      time: index,
+      value: index % 2 === 0 ? 10 : 90
+    }));
+    const disk = row('mount-root', { path: '/' }, { disk_used_percent: 90 }, {
+      disk_used_percent: dense
+    });
+    const view = render(
+      <OverviewPane
+        metrics={{}}
+        loading={false}
+        diskRows={[disk]}
+        diskLoading={false}
+        netRows={[]}
+        processRows={[]}
+        processReady={false}
+        alertCount={0}
+        onJump={() => undefined}
+        alerts={{ cpu: 'none', mem: 'none', disk: 'none', load: 'none', uptime: 'none' }}
+      />
+    );
+    const chart = view.container.querySelector('[data-class="focusChart"]');
+    expect(chart?.getAttribute('data-points')).toBe('240');
+    expect(chart?.getAttribute('data-color')).toBe('#722ED1');
+    expect(chart?.getAttribute('data-legends')).toBe('1');
   });
 });

@@ -513,18 +513,6 @@ export default function SystemPane({
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
       </div>
       <div className={styles.detailTrio}>
-        <ThinTimeSeries
-          className={styles.detailCard}
-          title={hostCategoryText(t, 'swapSpaceUsage')}
-          subtitle={hostCategoryText(t, 'swapSpaceUsageSubtitle')}
-          hint={hostCategoryText(t, 'swapSpaceUsageHint')}
-          loading={swapPhase === 'loading'}
-          unit="percent"
-          data={swapTrend}
-          emptyText={swapPhase === 'error' ? '加载失败' : '暂无数据'}
-          onRetry={swapPhase === 'error' ? retry(swapNames) : undefined}
-          legends={[{ label: '已用占比', color: SWAP_SERIES_COLOR }]}
-        />
         <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.detailSlot}`} data-surface="memory">
           <div className={styles.chartHead}>
             <div className={styles.chartTitle}>{hostCategoryText(t, 'memoryComposition')}</div>
@@ -567,6 +555,18 @@ export default function SystemPane({
             <div className={styles.chartEmpty}>暂无数据</div>
           )}
         </section>
+        <ThinTimeSeries
+          className={styles.detailCard}
+          title={hostCategoryText(t, 'swapSpaceUsage')}
+          subtitle={hostCategoryText(t, 'swapSpaceUsageSubtitle')}
+          hint={hostCategoryText(t, 'swapSpaceUsageHint')}
+          loading={swapPhase === 'loading'}
+          unit="percent"
+          data={swapTrend}
+          emptyText={swapPhase === 'error' ? '加载失败' : '暂无数据'}
+          onRetry={swapPhase === 'error' ? retry(swapNames) : undefined}
+          legends={[{ label: '已用占比', color: SWAP_SERIES_COLOR }]}
+        />
       </div>
       <div className={styles.detailFull} data-surface="gpu">
         <div className={styles.gpuBandTitle}>GPU</div>

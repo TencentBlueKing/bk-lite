@@ -310,7 +310,7 @@ export default function ThinTimeSeries({
     </>
   );
 
-  if (bare) return <div className="min-w-0">{chart}</div>;
+  if (bare) return <div className={`min-w-0 ${className || ''}`}>{chart}</div>;
   return (
     <section className={`${classic.panel} ${styles.chartPanel} ${cardAlertClass(alertLevel)} ${className || ''}`}>
       <CardAlertDot level={alertLevel} />

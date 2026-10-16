@@ -531,10 +531,14 @@ button.kpiCard {
   min-width: 0;
 }
 
-.focusSpark {
-  flex: 0 0 110px;
-  width: 110px;
-  height: 48px;
+.focusChart {
+  flex: 1 1 240px;
+  min-width: 200px;
+  max-width: 320px;
+}
+
+.focusChart .chartBody {
+  height: 120px;
 }
 
 .shortcutLabel {
