@@ -3912,6 +3912,8 @@
         "riskSignals": "Risk Signals",
         "hostProcessListProcstatScope": "This list only shows processes that Telegraf `procstat` is configured to monitor; processes on the host that are not collected do not appear.",
         "hostCategoryDetailedMetrics": "Composition and Swap",
+        "hostCategoryComposePie": "Pie",
+        "hostCategoryComposeLine": "Line",
         "hostCategorySwapUtilization": "Swap used",
         "hostCategorySwapUsedHint": "Swap used: current used swap relative to total. The main value shows used/total (GiB); the line is the used-capacity trend. A rise usually means physical memory is tight.",
         "hostCategorySwapAbsentHint": "Swap used: this host has no swap configured, or nothing has been collected. The card stays; once data arrives it shows used/total and the capacity trend.",

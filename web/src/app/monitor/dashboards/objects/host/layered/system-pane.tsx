@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { ChartData } from '@/app/monitor/types';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
@@ -137,6 +137,42 @@ interface ComposeSlice {
   reading: string;
 }
 
+type ComposeView = 'pie' | 'line';
+
+function ComposeViewSwitch({
+  value,
+  onChange,
+  pieLabel,
+  lineLabel
+}: {
+  value: ComposeView;
+  onChange: (next: ComposeView) => void;
+  pieLabel: string;
+  lineLabel: string;
+}) {
+  const option = (mode: ComposeView, label: string) => (
+    <button
+      type="button"
+      aria-pressed={value === mode}
+      className={value === mode
+        ? 'rounded px-2 py-0.5 text-[12px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
+        : 'rounded px-2 py-0.5 text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-text-2)]'}
+      onClick={() => onChange(mode)}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div
+      className="inline-flex shrink-0 items-center rounded-md border border-[var(--color-border)] p-0.5"
+      role="group"
+    >
+      {option('pie', pieLabel)}
+      {option('line', lineLabel)}
+    </div>
+  );
+}
+
 const PIE_CX = 50;
 const PIE_CY = 50;
 const PIE_R = 34;
@@ -227,6 +263,8 @@ export default function SystemPane({
   alerts: HostSurfaceAlerts['system'];
 }) {
   const { t } = useDashboardText();
+  const [memoryView, setMemoryView] = useState<ComposeView>('pie');
+  const [cpuView, setCpuView] = useState<ComposeView>('pie');
 
   const breakdown = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
   const loadItems = LOAD_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
@@ -430,7 +468,7 @@ export default function SystemPane({
   const swapTotalNow = latestNumber(metrics.host_mem_swap_total_bytes);
   const swapHasSeries = swapUsedSeries.length > 0;
   const swapReading = swapUsedNow == null ? '--' : formatSharedBytePair(swapUsedNow, swapTotalNow);
-  const memoryParts = useMemo(() => {
+  const memoryCompose = useMemo(() => {
     const total = metrics.mem_total?.viewData;
     const usedBytes = metricHasPoints(metrics.mem_used)
       ? primaryChartSeries(metrics.mem_used?.viewData)
@@ -441,11 +479,23 @@ export default function SystemPane({
       mem_buffered: primaryChartSeries(metrics.mem_buffered?.viewData),
       mem_shared: primaryChartSeries(metrics.mem_shared?.viewData)
     };
-    return MEM_COMPOSITION.flatMap((item) => {
-      const bytes = latestSeriesValue(raw[item.key]);
+    const series = MEM_COMPOSITION.flatMap((item) => {
+      const data = raw[item.key] || [];
+      if (!data.length) return [];
+      return [{ ...item, data }];
+    });
+    const parts = series.flatMap((item) => {
+      const bytes = latestSeriesValue(item.data);
       if (bytes == null || bytes <= 0) return [];
       return [{ ...item, bytes }];
     });
+    return {
+      parts,
+      series,
+      trend: series.length
+        ? mergeChartSeries(series.map((item) => ({ key: item.key, label: item.label, data: item.data })))
+        : []
+    };
   }, [
     metrics.mem_available?.viewData,
     metrics.mem_available?.loadState,
@@ -460,7 +510,26 @@ export default function SystemPane({
     metrics.mem_used?.viewData,
     metrics.mem_used?.loadState
   ]);
-  const memoryBytes = memoryParts.reduce((sum, item) => sum + item.bytes, 0);
+  const memoryBytes = memoryCompose.parts.reduce((sum, item) => sum + item.bytes, 0);
+  const cpuCompose = useMemo(() => {
+    const series = CPU_BREAKDOWN.flatMap((item) => {
+      const data = primaryChartSeries(metrics[item.key]?.viewData);
+      if (!data.length) return [];
+      return [{ ...item, data }];
+    });
+    return {
+      series,
+      trend: series.length
+        ? mergeChartSeries(series.map((item) => ({ key: item.key, label: item.label, data: item.data })))
+        : []
+    };
+  }, [
+    metrics.cpu_usage_user_total?.viewData,
+    metrics.cpu_usage_system_total?.viewData,
+    metrics.cpu_usage_iowait_total?.viewData,
+    metrics.cpu_usage_irq_total?.viewData,
+    metrics.cpu_usage_steal_total?.viewData
+  ]);
   const gpuCharts = GPU_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
   const gpuMemUsed = latestNumber(metrics.nvidia_smi_memory_used);
   const gpuMemTotal = latestNumber(metrics.nvidia_smi_memory_total);
@@ -517,10 +586,25 @@ export default function SystemPane({
         <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.detailSlot}`} data-surface="memory">
           <div className={styles.chartHead}>
             <div className={styles.chartTitle}>{hostCategoryText(t, 'memoryComposition')}</div>
+            <ComposeViewSwitch
+              value={memoryView}
+              onChange={setMemoryView}
+              pieLabel={hostCategoryText(t, 'composePie')}
+              lineLabel={hostCategoryText(t, 'composeLine')}
+            />
           </div>
-          {memoryBytes > 0 ? (
+          {memoryView === 'line' ? (
+            <ThinTimeSeries
+              bare
+              title=""
+              unit="bytes"
+              data={memoryCompose.trend}
+              emptyText="暂无数据"
+              legends={memoryCompose.series.map((item) => ({ label: item.label, color: item.color }))}
+            />
+          ) : memoryBytes > 0 ? (
             <CompositionDonut
-              slices={memoryParts.map((item) => ({
+              slices={memoryCompose.parts.map((item) => ({
                 key: item.key,
                 label: item.label,
                 color: item.color,
@@ -535,6 +619,12 @@ export default function SystemPane({
         <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.detailSlot}`} data-surface="cpu-time">
           <div className={styles.chartHead}>
             <div className={styles.chartTitle}>{hostCategoryText(t, 'cpuTimeBreakdown')}</div>
+            <ComposeViewSwitch
+              value={cpuView}
+              onChange={setCpuView}
+              pieLabel={hostCategoryText(t, 'composePie')}
+              lineLabel={hostCategoryText(t, 'composeLine')}
+            />
           </div>
           {breakdownPhase === 'loading' ? (
             <span
@@ -550,6 +640,15 @@ export default function SystemPane({
             >
               加载失败，重试
             </button>
+          ) : cpuView === 'line' ? (
+            <ThinTimeSeries
+              bare
+              title=""
+              unit="percent"
+              data={cpuCompose.trend}
+              emptyText="暂无数据"
+              legends={cpuCompose.series.map((item) => ({ label: item.label, color: item.color }))}
+            />
           ) : cpuSlices.length ? (
             <CompositionDonut slices={cpuSlices} />
           ) : (

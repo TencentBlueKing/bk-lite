@@ -10,6 +10,8 @@ export const HOST_CATEGORY_COPY = {
   swapSpaceUsageSubtitle: [textId('hostCategorySwapSpaceUsageSubtitle'), '已用占交换总量的比例'],
   swapSpaceUsageHint: [textId('hostCategorySwapSpaceUsageHint'), '交换已用：交换分区当前已用相对总量。主值展示已用/总量（GiB）；折线为已用容量趋势。升高通常表示物理内存紧张。'],
   memoryComposition: [textId('hostCategoryMemoryComposition'), '内存构成'],
+  composePie: [textId('hostCategoryComposePie'), '饼图'],
+  composeLine: [textId('hostCategoryComposeLine'), '折线'],
   noGpu: [textId('hostCategoryNoGpu'), '无 GPU'],
   swapUtilization: [textId('hostCategorySwapUtilization'), '交换已用'],
   swapUsedHint: [textId('hostCategorySwapUsedHint'), '交换已用：交换分区当前已用相对总量。主值展示已用/总量（GiB）；折线为已用容量趋势。升高通常表示物理内存紧张。'],

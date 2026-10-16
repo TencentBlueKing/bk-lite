@@ -3912,6 +3912,8 @@
         "riskSignals": "风险信号",
         "hostProcessListProcstatScope": "列表仅展示 Telegraf `procstat` 已配置监控的进程；主机上未纳入采集的进程不会出现。",
         "hostCategoryDetailedMetrics": "构成与交换",
+        "hostCategoryComposePie": "饼图",
+        "hostCategoryComposeLine": "折线",
         "hostCategorySwapUtilization": "交换已用",
         "hostCategorySwapUsedHint": "交换已用：交换分区当前已用相对总量。主值展示已用/总量（GiB）；折线为已用容量趋势。升高通常表示物理内存紧张。",
         "hostCategorySwapAbsentHint": "交换已用：当前主机未配置交换分区，或暂无采集。卡片保留；有数据后显示已用/总量与容量趋势。",
