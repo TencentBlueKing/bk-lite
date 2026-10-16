@@ -1412,6 +1412,8 @@ def execute_skill_channel_im_sync(
 
     request_user = type("IMUser", (), {"username": external_user_id or "", "id": None, "locale": "en"})()
     params = build_skill_chat_params(skill, user_message, request_user)
+    if getattr(channel, "channel_type", "") == "enterprise_wechat_aibot":
+        params["reply_language"] = "match_user"
     inject_skill_memory_prompt(params, skill, external_user_id, user_message)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
     params["skill_session_id"] = conversation.session_id

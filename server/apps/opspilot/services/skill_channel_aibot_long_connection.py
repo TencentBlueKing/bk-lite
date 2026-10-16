@@ -33,12 +33,8 @@ HEARTBEAT_SECONDS = 30
 NON_TEXT_MSGTYPES = frozenset({"image", "file", "voice", "video", "mixed"})
 
 SUBSCRIBE_LOG_TEMPLATE = "event=wecom_aibot_long_connection_subscribed channel_id=%s"
-CONNECT_FAILED_LOG_TEMPLATE = (
-    "event=wecom_aibot_long_connection_connect_failed channel_id=%s failed_stage=connect error_type=%s"
-)
-TRANSPORT_FAILED_LOG_TEMPLATE = (
-    "event=wecom_aibot_long_connection_transport_failed channel_id=%s failed_stage=read error_type=%s"
-)
+CONNECT_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_connect_failed channel_id=%s failed_stage=connect error_type=%s"
+TRANSPORT_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_transport_failed channel_id=%s failed_stage=read error_type=%s"
 REPLY_FINISHED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_reply_finished channel_id=%s outcome=%s"
 
 _RENEW_LOCK_SCRIPT = """
@@ -363,8 +359,8 @@ class WecomAibotConnection:
         )
 
     def _persist_user(self, turn: Turn) -> None:
-        from apps.opspilot.services.skill_channel_chat_service import append_message, get_or_create_conversation
         from apps.opspilot.models import SkillConversationMessage
+        from apps.opspilot.services.skill_channel_chat_service import append_message, get_or_create_conversation
 
         conversation = get_or_create_conversation(self.channel, turn.external_user_id, turn.session_id or None)
         append_message(conversation, SkillConversationMessage.ROLE_USER, turn.user_message)
@@ -382,7 +378,9 @@ class WecomAibotConnection:
 class WecomAibotLongConnectionLeader:
     """一个进程维护全部长连接。未持锁时不建立连接。"""
 
-    def __init__(self, lock: LeaderLock, opener: Callable[[str], Any], agent_runner: Callable[[AnswerRequest], None], clock=None, url: str | None = None):
+    def __init__(
+        self, lock: LeaderLock, opener: Callable[[str], Any], agent_runner: Callable[[AnswerRequest], None], clock=None, url: str | None = None
+    ):
         self.lock = lock
         self.opener = opener
         self.agent_runner = agent_runner
@@ -508,7 +506,8 @@ class WecomAibotLongConnectionLeader:
 def open_wecom_websocket(url: str):
     from websockets.sync.client import connect
 
-    socket = connect(url, open_timeout=10, close_timeout=5)
+    # 企微只认应用层 cmd=ping。库默认的协议层 ping 约 40 秒无 pong 就会把连接拆掉。
+    socket = connect(url, open_timeout=10, close_timeout=5, ping_interval=None)
     return _WebSocketTransport(socket)
 
 

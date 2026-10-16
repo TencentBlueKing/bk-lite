@@ -9,9 +9,7 @@ from apps.opspilot.services.skill_channel_aibot_long_connection import AnswerReq
 
 _CANCEL_POLL_SECONDS = 0.05
 
-ANSWER_FAILED_LOG_TEMPLATE = (
-    "event=wecom_aibot_long_connection_answer_failed channel_id=%s failed_stage=run_agent error_type=%s"
-)
+ANSWER_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_answer_failed channel_id=%s failed_stage=run_agent error_type=%s"
 
 
 def run_long_connection_answer(request: AnswerRequest) -> None:
@@ -83,6 +81,7 @@ def _run(request: AnswerRequest) -> None:
     request_user = type("IMUser", (), {"username": request.external_user_id or "", "id": None, "locale": "en"})()
     params = build_skill_chat_params(skill, request.user_message, request_user)
     inject_skill_memory_prompt(params, skill, request.external_user_id, request.user_message)
+    params["reply_language"] = "match_user"
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
     params["skill_session_id"] = conversation.session_id
     params["show_think"] = False

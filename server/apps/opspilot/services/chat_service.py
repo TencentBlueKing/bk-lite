@@ -55,10 +55,13 @@ _REPLY_LANGUAGE_EN = (
     "the user-facing answer must still be English."
 )
 _REPLY_LANGUAGE_ZH = "\n\n【回复语言】当前界面语言是简体中文。请用简体中文回复。" "技能说明、引导语和工具结果即使是其他语言，面向用户的回答也必须使用简体中文。"
+_REPLY_LANGUAGE_MATCH_USER = "\n\n【回复语言】这是企业微信对话。请按用户本轮消息的语言回复：" "消息中有中文就用简体中文；没有中文就用用户这句本身的语言。" "技能说明、引导语和工具结果即使是其他语言，面向用户的回答也必须与用户这句的语言一致。"
 
 
-def append_reply_language(prompt: str, locale: str | None) -> str:
-    """按当前页面语言要求智能体回复，不改技能里保存的提示词原文。"""
+def append_reply_language(prompt: str, locale: str | None, *, match_user_message: bool = False) -> str:
+    """按当前页面语言要求智能体回复，不改技能里保存的提示词原文。企微改为跟随用户这句的语言。"""
+    if match_user_message:
+        return f"{prompt or ''}{_REPLY_LANGUAGE_MATCH_USER}"
     normalized = (locale or "en").replace("_", "-").lower()
     suffix = _REPLY_LANGUAGE_ZH if normalized.startswith("zh") else _REPLY_LANGUAGE_EN
     return f"{prompt or ''}{suffix}"
@@ -645,7 +648,11 @@ class ChatService:
         memory_block = kwargs.get("skill_memory_block") or ""
         if memory_block:
             resolved_prompt = append_skill_memory_block(resolved_prompt, memory_block)
-        resolved_prompt = append_reply_language(resolved_prompt, kwargs.get("locale"))
+        resolved_prompt = append_reply_language(
+            resolved_prompt,
+            kwargs.get("locale"),
+            match_user_message=kwargs.get("reply_language") == "match_user",
+        )
 
         vendor_type = llm_model.vendor.vendor_type if llm_model.vendor_id else ""
         # 对话温度固定 1；技能表与请求里的旧滑条值忽略。

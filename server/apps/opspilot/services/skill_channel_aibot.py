@@ -20,8 +20,20 @@ SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE = (
 
 
 def normalize_aibot_channel_config(config: dict[str, Any] | None) -> dict[str, Any]:
-    """将 SkillChannel.channel_config 规范为 Bot aibot 节点 webhook 形态。"""
+    """保留渠道上已选择的连接方式；缺省仍是短连接 webhook。"""
     config = dict(config or {})
+    if config.get("connectionMode") == "websocket" or (config.get("websocket") and config.get("connectionMode") != "webhook"):
+        out = dict(config)
+        out["connectionMode"] = "websocket"
+        websocket = dict(out.get("websocket") or {})
+        bot_id = websocket.get("botId")
+        secret = websocket.get("secret")
+        if isinstance(bot_id, str):
+            websocket["botId"] = bot_id.strip()
+        if isinstance(secret, str):
+            websocket["secret"] = secret.strip()
+        out["websocket"] = websocket
+        return out
     if config.get("webhook") or config.get("connectionMode"):
         out = dict(config)
         out.setdefault("connectionMode", "webhook")

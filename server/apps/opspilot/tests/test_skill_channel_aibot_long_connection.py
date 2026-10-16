@@ -10,21 +10,22 @@ from unittest.mock import patch
 import pytest
 
 from apps.opspilot.services.skill_channel_aibot_long_connection import (
-    TRANSPORT_FAILED_LOG_TEMPLATE,
     DEFAULT_LONG_CONNECTION_URL,
     EMPTY_ANSWER_TEXT,
     FAILURE_TEXT,
     PROCESSING_TEXT,
-    SUBSCRIBE_LOG_TEMPLATE,
     STREAM_DEADLINE_SECONDS,
     STREAM_FINISH_LEAD_SECONDS,
+    SUBSCRIBE_LOG_TEMPLATE,
     TIMEOUT_TEXT,
+    TRANSPORT_FAILED_LOG_TEMPLATE,
     UNSUPPORTED_TEXT,
     LeaderLock,
     WecomAibotConnection,
     WecomAibotLongConnectionLeader,
     long_connection_credentials,
     long_connection_url,
+    open_wecom_websocket,
     visible_answer_delta,
 )
 
@@ -144,6 +145,20 @@ def test_private_address_comes_from_environment(monkeypatch):
     assert long_connection_url() == DEFAULT_LONG_CONNECTION_URL
     monkeypatch.setenv("WECOM_AIBOT_LONG_CONNECTION_URL", "wss://wecom.internal.example/ws")
     assert long_connection_url() == "wss://wecom.internal.example/ws"
+
+
+def test_socket_uses_application_ping_only(monkeypatch):
+    captured = {}
+
+    def connect(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr("websockets.sync.client.connect", connect)
+    open_wecom_websocket("wss://openws.work.weixin.qq.com")
+    assert captured["url"] == "wss://openws.work.weixin.qq.com"
+    assert captured["kwargs"]["ping_interval"] is None
 
 
 def test_visible_answer_keeps_final_text_only():
@@ -328,6 +343,47 @@ def test_answer_failure_owns_one_traceback_and_omits_exception_text(caplog):
     assert SECRET_SENTINEL not in rendered
     assert SECRET_SENTINEL not in formatted
     assert SECRET_SENTINEL not in caplog.text
+
+
+def test_wecom_answer_follows_the_user_message_language(monkeypatch):
+    from apps.opspilot.services.skill_channel_aibot_long_connection_agent import _run
+
+    captured = {}
+
+    async def fake_stream(params, *args, **kwargs):
+        captured["reply_language"] = params.get("reply_language")
+        if False:
+            yield ""
+
+    monkeypatch.setattr("apps.opspilot.utils.agui_chat._generate_agui_stream", fake_stream)
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.get_or_create_conversation",
+        lambda *args, **kwargs: SimpleNamespace(session_id="session-1"),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.build_skill_chat_params",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service._history_from_conversation",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_memory_service.inject_skill_memory_prompt",
+        lambda *args, **kwargs: None,
+    )
+    request = SimpleNamespace(
+        channel=SimpleNamespace(id=7, skill=SimpleNamespace(id=1, name="skill", skill_type=1, conversation_window_size=10)),
+        external_user_id="user-1",
+        session_id="room-1",
+        user_message="你好",
+        cancelled=False,
+        publish=lambda text: None,
+        finish=lambda: None,
+        fail=lambda message=None: None,
+    )
+    _run(request)
+    assert captured["reply_language"] == "match_user"
 
 
 def test_cancelling_a_turn_stops_the_blocked_agent_stream(monkeypatch):

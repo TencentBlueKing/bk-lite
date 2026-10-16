@@ -792,12 +792,12 @@ const SkillChannelPage: React.FC = () => {
           {activeType === 'enterprise_wechat_aibot' ? (
             <Form.Item
               name="connectionMode"
-              label={t('skill.channel.aibotLongConnection', '是否长连接')}
+              label={t('skill.channel.aibotLongConnection', '连接方式')}
               initialValue="webhook"
             >
               <Radio.Group>
-                <Radio value="webhook">{t('skill.channel.aibotShort', '否，短连接')}</Radio>
-                <Radio value="websocket">{t('skill.channel.aibotLong', '是，长连接')}</Radio>
+                <Radio value="websocket">{t('skill.channel.aibotLong', '使用长连接')}</Radio>
+                <Radio value="webhook">{t('skill.channel.aibotShort', '使用 URL 回调')}</Radio>
               </Radio.Group>
             </Form.Item>
           ) : null}
