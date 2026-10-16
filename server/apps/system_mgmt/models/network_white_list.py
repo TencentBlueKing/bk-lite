@@ -4,6 +4,7 @@ from django.db import models
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.core.utils.database_constraints import ConstraintValidatedQuerySet
+from apps.core.utils.loader import LanguageLoader
 
 
 class NetworkWhiteListQuerySet(ConstraintValidatedQuerySet):
@@ -53,7 +54,8 @@ class NetworkWhiteList(MaintainerInfo, TimeInfo):
 
     def _validate_database_constraints(self):
         if self.network in {"0.0.0.0/0", "::/0"}:
-            raise ValidationError({"network": "不允许配置全网段白名单"})
+            message = LanguageLoader(app="system_mgmt", default_lang="en").get("error.forbidden_network_supernet")
+            raise ValidationError({"network": message})
 
     def save(self, *args, **kwargs):
         self._validate_database_constraints()
