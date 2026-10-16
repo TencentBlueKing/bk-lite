@@ -491,7 +491,8 @@ export default function K3sClusterDashboardPage() {
   return (
     <div className={styles.page}>
       <div className={styles.shell}>
-        <div className={styles.pageHeader}>
+        <div className={styles.unifiedShell} data-dashboard-shell="unified">
+          <div className={styles.pageIntro}>
           <DashboardPageHeader
             title={displayMode === 'metrics' ? `${objectFallbackName} 全量指标` : 'K3s 集群监控仪表盘'}
             displayMode={displayMode}
@@ -503,6 +504,8 @@ export default function K3sClusterDashboardPage() {
             showTimeSelector={false}
             styles={styles}
           />
+          </div>
+          <div className={styles.unifiedHostBar}>
           <DashboardInstanceCard
             instanceName={resolvedInstanceName}
             metaItems={['VMAgent', 'k3s'].map((item, i) => (
@@ -519,8 +522,10 @@ export default function K3sClusterDashboardPage() {
             timeSelectorProps={{ timeDefaultValue, onTimeChange, onFrequenceChange: setFrequence, onRefresh }}
             styles={styles}
           />
+          </div>
         </div>
 
+        <div className={styles.unifiedBelow}>
         {displayMode === 'metrics' ? (
           <div className={styles.metricsMode}>
             <div className={`${styles.panel} ${styles.fullPanel}`}>
@@ -711,6 +716,7 @@ export default function K3sClusterDashboardPage() {
             </section>
           </>
         )}
+        </div>
       </div>
     </div>
   );

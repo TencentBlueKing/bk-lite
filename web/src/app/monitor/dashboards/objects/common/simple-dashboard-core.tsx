@@ -374,7 +374,15 @@ const formatMappedEnum = (value: number, enumMap?: MetricEnumMap) => {
   return { value: formatted.value, unit: '', color: formatted.color };
 };
 
-export function useSimpleDashboardData(config: SimpleDashboardConfig) {
+export interface SimpleDashboardLoadOptions {
+  /** 只拉这些指标，并在每条返回时写入序列。未传则保持原整页加载。 */
+  metricNames?: readonly string[];
+}
+
+export function useSimpleDashboardData(
+  config: SimpleDashboardConfig,
+  options?: SimpleDashboardLoadOptions
+) {
   const viewApi = useViewApi();
   const monitorApi = useMonitorApi();
   const router = useRouter();
@@ -405,6 +413,12 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [pendingMetricNames, setPendingMetricNames] = useState<ReadonlySet<string>>(() => new Set());
+  const metricScopeKey = options?.metricNames?.join('\n') ?? '';
+  const inflightRef = useRef<AbortController | null>(null);
+  const seriesIdentityRef = useRef('');
+  const epochRef = useRef(0);
+  const nameEpochRef = useRef<Map<string, number>>(new Map());
   const [displayMode, setDisplayModeState] = useState<DashboardDisplayMode>(() =>
     getDashboardDisplayModeFromParams(new URLSearchParams(searchParams.toString()))
   );
@@ -648,18 +662,89 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const loadMetrics = useCallback(async (silent = false) => {
     const loadSeq = loadSequence.begin();
     setLoadTick((value) => value + 1);
+    inflightRef.current?.abort();
+    const controller = new AbortController();
+    inflightRef.current = controller;
+    const signal = controller.signal;
+    const scoped = metricScopeKey.length > 0;
 
-    if (!silent) setLoading(true);
+    if (!silent && !scoped) setLoading(true);
+    if (scoped) setLoading(false);
     try {
       if (displayMode === 'dashboard') {
         // 侧栏切换对象时 URL 会短暂缺少 instance_id；身份未就绪前不发指标请求，避免空打与刷屏。
         if (!idValues.length) {
+          seriesIdentityRef.current = '';
           setSeries({});
           setPreviousSeries({});
           setCollectionStatusMetric(null);
+          setPendingMetricNames(new Set());
           if (!silent) setLoading(false);
           return;
         }
+        const seriesIdentity = `${String(instanceId)}|${idValuesKey}`;
+        const keepSeries = seriesIdentityRef.current === seriesIdentity;
+        seriesIdentityRef.current = seriesIdentity;
+        if (!keepSeries) {
+          setSeries({});
+          setPreviousSeries({});
+        }
+        if (scoped) {
+          const wanted = new Set(metricScopeKey.split('\n'));
+          const metricsForLoad = activeMetrics.filter((metric) => wanted.has(metric.name));
+          const names = metricsForLoad.map((metric) => metric.name);
+          const epochs = new Map<string, number>();
+          names.forEach((name) => {
+            const epoch = epochRef.current + 1;
+            epochRef.current = epoch;
+            nameEpochRef.current.set(name, epoch);
+            epochs.set(name, epoch);
+          });
+          if (!silent) {
+            setPendingMetricNames(new Set(names));
+          } else if (names.length) {
+            setPendingMetricNames((prev) => (prev.size ? new Set() : prev));
+          }
+          if (!names.length) {
+            setPendingMetricNames(new Set());
+            return;
+          }
+          const frozenTimeValues = freezeTimeValues(timeValues);
+          await runWithConcurrency(metricsForLoad, METRIC_QUERY_CONCURRENCY, async (metric) => {
+            const epoch = epochs.get(metric.name);
+            let series: MetricSeries;
+            try {
+              const result = await getInstanceQuery(
+                buildSearchParams(
+                  metric.query,
+                  metric.unit,
+                  idValues,
+                  instanceIdKeys,
+                  frozenTimeValues,
+                  undefined,
+                  false,
+                  currentInstanceInterval,
+                  { monitorObjectId, instanceId }
+                ),
+                { signal }
+              );
+              if (signal.aborted || nameEpochRef.current.get(metric.name) !== epoch || !loadSequence.isCurrent(loadSeq)) return;
+              series = toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys);
+            } catch {
+              if (signal.aborted || nameEpochRef.current.get(metric.name) !== epoch || !loadSequence.isCurrent(loadSeq)) return;
+              series = { ...metric, viewData: [], loadState: 'error' };
+            }
+            setSeries((prev) => ({ ...prev, [metric.name]: series }));
+            setPendingMetricNames((prev) => {
+              if (!prev.has(metric.name)) return prev;
+              const next = new Set(prev);
+              next.delete(metric.name);
+              return next;
+            });
+          });
+          return;
+        }
+        setPendingMetricNames((prev) => (prev.size ? new Set() : prev));
         // 本次刷新冻结一个绝对时间窗,所有序列(含 KPI/采集状态/趋势/对比)复用,
         // 避免每条序列各自现算 now 导致时间戳网格错位、多序列面板 tooltip 只显示一条。
         const frozenTimeValues = freezeTimeValues(timeValues);
@@ -745,17 +830,26 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
 
         if (!loadSequence.isCurrent(loadSeq)) return;
 
-        setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
+        setSeries((prev) => ({ ...prev, ...Object.fromEntries(summaryResults) }));
         setCollectionStatusMetric(collectionStatus);
         if (!silent) setLoading(false);
 
         // ── Group 2: trend/chart metrics — loaded async in background ──
+        // 同一实例刷新先留着旧曲线，全部返回后再换成这一轮的结果，避免中途被清空。
         if (trendMetrics.length > 0) {
           runWithConcurrency(trendMetrics, METRIC_QUERY_CONCURRENCY, (metric) => loadSingleMetric(metric, frozenTimeValues))
             .then((trendResults) => {
               if (!loadSequence.isCurrent(loadSeq)) return;
-              setSeries((prev) => ({ ...prev, ...Object.fromEntries(trendResults) }));
+              const summaryMap = Object.fromEntries(summaryResults);
+              const trendMap = Object.fromEntries(trendResults);
+              if (keepSeries) {
+                setSeries({ ...summaryMap, ...trendMap });
+                return;
+              }
+              setSeries((prev) => ({ ...prev, ...trendMap }));
             });
+        } else if (keepSeries) {
+          setSeries(Object.fromEntries(summaryResults));
         }
       } else {
         setSeries({});
@@ -766,12 +860,75 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     } catch {
       if (loadSequence.isCurrent(loadSeq) && !silent) setLoading(false);
     }
-  }, [activeMetrics, config, currentInstanceInterval, displayMode, getInstanceQuery, idValues, idValuesKey, instanceId, instanceIdKeys, loadSequence, loadSingleMetric, resolvedInstanceName, summaryMetricNames, timeValues, visibleSummaryCards]);
+  }, [activeMetrics, config, currentInstanceInterval, displayMode, getInstanceQuery, idValues, idValuesKey, instanceId, instanceIdKeys, loadSequence, loadSingleMetric, metricScopeKey, resolvedInstanceName, summaryMetricNames, timeValues, visibleSummaryCards]);
+
+  const refetchMetricNames = useCallback((names: string[]) => {
+    const wanted = names
+      .map((name) => activeMetricByName[name])
+      .filter((metric): metric is SimpleMetricConfig => Boolean(metric));
+    if (!wanted.length || !idValues.length) return;
+    const signal = inflightRef.current?.signal;
+    if (signal?.aborted) return;
+    const epochs = new Map<string, number>();
+    wanted.forEach((metric) => {
+      const epoch = epochRef.current + 1;
+      epochRef.current = epoch;
+      nameEpochRef.current.set(metric.name, epoch);
+      epochs.set(metric.name, epoch);
+    });
+    setPendingMetricNames((prev) => {
+      const next = new Set(prev);
+      wanted.forEach((metric) => next.add(metric.name));
+      return next;
+    });
+    setSeries((prev) => {
+      const next = { ...prev };
+      wanted.forEach((metric) => {
+        delete next[metric.name];
+      });
+      return next;
+    });
+    const frozenTimeValues = freezeTimeValues(timeValues);
+    runWithConcurrency(wanted, METRIC_QUERY_CONCURRENCY, async (metric) => {
+      const epoch = epochs.get(metric.name);
+      let series: MetricSeries;
+      try {
+        const result = await getInstanceQuery(
+          buildSearchParams(
+            metric.query,
+            metric.unit,
+            idValues,
+            instanceIdKeys,
+            frozenTimeValues,
+            undefined,
+            false,
+            currentInstanceInterval,
+            { monitorObjectId, instanceId }
+          ),
+          signal ? { signal } : undefined
+        );
+        if (signal?.aborted || nameEpochRef.current.get(metric.name) !== epoch) return;
+        series = toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys);
+      } catch {
+        if (signal?.aborted || nameEpochRef.current.get(metric.name) !== epoch) return;
+        series = { ...metric, viewData: [], loadState: 'error' };
+      }
+      setSeries((prev) => ({ ...prev, [metric.name]: series }));
+      setPendingMetricNames((prev) => {
+        if (!prev.has(metric.name)) return prev;
+        const next = new Set(prev);
+        next.delete(metric.name);
+        return next;
+      });
+    });
+  }, [activeMetricByName, currentInstanceInterval, getInstanceQuery, idValues, instanceId, instanceIdKeys, monitorObjectId, resolvedInstanceName, timeValues]);
 
   useEffect(() => {
     if (displayMode === 'dashboard') {
       loadMetrics();
-      return;
+      return () => {
+        inflightRef.current?.abort();
+      };
     }
     setLoading(false);
     // loadMetrics already captures displayMode, idValuesKey, instanceId, timeValues internally.
@@ -1224,6 +1381,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     clusterFilterValue: activeCluster,
     clusterFilterOptions,
     currentInstanceInterval,
+    operatingSystem: currentOperatingSystem,
     currentInstanceLabel: currentInstanceOption?.label || normalizedInstanceName || resolvedInstanceName,
     isDashboardMode,
     summaryCards,
@@ -1238,5 +1396,8 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     onInstanceChange,
     onClusterFilterChange,
     routeKey: config.routeKey,
+    metricSeries: metricMap,
+    pendingMetricNames,
+    refetchMetricNames
   };
 }
