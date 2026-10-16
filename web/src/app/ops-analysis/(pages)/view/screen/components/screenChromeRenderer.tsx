@@ -20,6 +20,7 @@ import {
   DecorationSkin,
   TitleFrameSkin,
   screenChromeTextStyle,
+  screenUniformTextProps,
 } from './screenChromeSkins';
 
 const ClockSkin: React.FC<{
@@ -39,13 +40,16 @@ const ClockSkin: React.FC<{
     fontWeight: 600,
     color: 'canvas',
   });
-
   const partClassName =
     'mr-2 leading-none tabular-nums tracking-[0.08em] last:mr-0';
 
   return (
     <div
-      className="flex h-full w-full flex-wrap items-center"
+      {...screenUniformTextProps(
+        textStyle,
+        undefined,
+        'flex h-full w-full flex-wrap items-center',
+      )}
       data-screen-clock
       style={{
         fontSize: style.fontSize,
@@ -73,7 +77,14 @@ const ScreenChromeRenderer: React.FC<ScreenChromeRendererProps> = ({
   let body: React.ReactNode = null;
   if (isScreenTextItem(item)) {
     body = (
-      <div className="h-full w-full px-1 py-1" style={screenChromeTextStyle(item.textStyle)}>
+      <div
+        {...screenUniformTextProps(
+          item.textStyle,
+          undefined,
+          'h-full w-full px-1 py-1',
+        )}
+        style={screenChromeTextStyle(item.textStyle)}
+      >
         {textContent}
       </div>
     );

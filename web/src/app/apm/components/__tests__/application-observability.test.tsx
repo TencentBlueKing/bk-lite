@@ -12,6 +12,7 @@ const api = {
   getServices: vi.fn(),
   getServiceRedBatch: vi.fn(),
   getTopology: vi.fn(),
+  getTraces: vi.fn(),
   getEvents: vi.fn(),
   getSlos: vi.fn(),
   setServiceArchived: vi.fn(),
@@ -46,18 +47,28 @@ vi.mock('@/components/permission', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('@/app/apm/services/topology/topology-canvas', () => ({
+  topologyHealthColors: {
+    healthy: 'var(--color-success)',
+    warning: 'var(--theme-color-status-warning)',
+    critical: 'var(--color-fail)',
+    unknown: 'var(--color-text-4)',
+  },
   default: ({
     nodes,
     edges,
     focusNamespace,
     layout,
     fillHeight,
+    selected,
+    onSelect,
   }: {
     nodes: Array<{ id: string }>;
     edges: Array<{ source: string; target: string }>;
     focusNamespace?: string;
     layout?: string;
     fillHeight?: boolean;
+    selected?: { kind: 'node'; id: string } | { kind: 'edge'; source: string; target: string } | null;
+    onSelect?: (selection: { kind: 'node'; id: string } | null) => void;
   }) => (
     <div
       data-testid="application-topology"
@@ -66,7 +77,23 @@ vi.mock('@/app/apm/services/topology/topology-canvas', () => ({
       data-focus={focusNamespace ?? ''}
       data-layout={layout ?? 'layered'}
       data-fill-height={fillHeight ? 'true' : 'false'}
-    />
+      data-selected={selected?.kind === 'node' ? selected.id : ''}
+    >
+      <button
+        type="button"
+        data-testid="mock-click-node"
+        onClick={() => onSelect?.({ kind: 'node', id: 'shop-node' })}
+      >
+        选中 shop-node
+      </button>
+      <button
+        type="button"
+        data-testid="mock-clear-selection"
+        onClick={() => onSelect?.(null)}
+      >
+        清除选择
+      </button>
+    </div>
   ),
 }));
 
@@ -140,6 +167,7 @@ beforeEach(() => {
   });
   api.getEvents.mockResolvedValue([]);
   api.getSlos.mockResolvedValue([]);
+  api.getTraces.mockResolvedValue({ items: [] });
 });
 
 afterEach(() => {
@@ -460,5 +488,24 @@ describe('APM 应用观测详情', () => {
     await waitFor(() => {
       expect(document.querySelector('[data-key-info="alerts"]')?.textContent).toMatch(/告警数\s*1/);
     });
+  });
+
+  it('点击拓扑节点后在右侧展示服务概况，可查看详情/隔离一跳/样本并支持关闭恢复关键信息', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    await waitFor(() => expect(screen.getByTestId('application-topology')).not.toBeNull());
+    expect(screen.getByText('关键信息')).not.toBeNull();
+
+    // 点击节点
+    await user.click(screen.getByTestId('mock-click-node'));
+    expect(await screen.findByRole('complementary', { name: '服务概况' })).not.toBeNull();
+    expect(screen.getByText('checkout')).not.toBeNull();
+    expect(screen.getByRole('button', { name: '隔离一跳' })).not.toBeNull();
+
+    // 关闭概况面板，恢复关键信息
+    await user.click(screen.getByRole('button', { name: '关闭' }));
+    expect(await screen.findByText('关键信息')).not.toBeNull();
+    expect(screen.queryByRole('complementary', { name: '服务概况' })).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  coerceResolvedValueForSchema,
   buildDataReferenceOptions,
   compileNodeInputBinding,
   resolveTriggerGroupLabel,
@@ -157,10 +158,21 @@ describe('节点数据选择器', () => {
     const references = [
       { label: '数量', value: '${before.output.count}', type: 'integer', source: 'before' },
       { label: '主机', value: '${before.output.hosts}', type: 'array', source: 'before' },
+      { label: '全部输出', value: '${before.output}', type: 'object', source: 'before' },
     ];
 
     expect(compatibleDataReferences(references, { type: 'number' }).map((item) => item.value)).toEqual(['${before.output.count}']);
     expect(compatibleDataReferences([{ ...references[0], type: 'number' }], { type: 'integer' })).toEqual([]);
+    expect(compatibleDataReferences(references, { type: 'string' }).map((item) => item.value)).toEqual([]);
+    expect(compatibleDataReferences(
+      [...references, { label: '主机名', value: '${before.output.host}', type: 'string', source: 'before' }],
+      { type: 'string' },
+    ).map((item) => item.value)).toEqual(['${before.output.host}']);
+    expect(compatibleDataReferences(references, { type: 'string', 'x-text-surface': 'coerce' }).map((item) => item.value)).toEqual([
+      '${before.output.count}',
+      '${before.output.hosts}',
+      '${before.output}',
+    ]);
   });
 
   it('敏感引用只能绑定到声明兼容的字段', () => {
@@ -313,5 +325,11 @@ describe('节点数据选择器', () => {
       runtimeActor: '${workflow.input.actor}',
     });
     expect(resolved.unresolved).toEqual(['${unknown.output.value}']);
+  });
+
+  it('string 目标字段会把非字符串解析结果强制成 JSON 文本', () => {
+    expect(coerceResolvedValueForSchema({ metrics: { cpu: 42 } }, { type: 'string' })).toBe('{"metrics":{"cpu":42}}');
+    expect(coerceResolvedValueForSchema(12, { type: 'string' })).toBe('12');
+    expect(coerceResolvedValueForSchema({ metrics: { cpu: 42 } }, { type: 'object' })).toEqual({ metrics: { cpu: 42 } });
   });
 });

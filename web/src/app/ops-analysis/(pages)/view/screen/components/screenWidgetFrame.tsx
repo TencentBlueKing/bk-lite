@@ -6,6 +6,7 @@ import InteractionTitleIcon from '@/app/ops-analysis/components/interactionTitle
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import type { ScreenWidgetFrame } from '@/app/ops-analysis/types/dashBoard';
 import { resolveScreenWidgetAppearance } from '../utils/layoutUtils';
+import { screenUniformTextProps } from './screenChromeSkins';
 
 interface ScreenWidgetFrameOptions {
   selected?: boolean;
@@ -81,7 +82,9 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
           key="header"
           className="screen-widget-frame__header screen-widget-frame__drag-handle"
         >
-          <span className="screen-widget-frame__title">
+          <span
+            {...screenUniformTextProps(undefined, undefined, 'screen-widget-frame__title')}
+          >
             {title || item.chartType}
           </span>
           <InteractionTitleIcon config={item.valueConfig} variant="screen" />

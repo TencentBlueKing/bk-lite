@@ -4,7 +4,8 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.workflow_orchestration.models import Workflow, WorkflowExecution, WorkflowInteraction
+from apps.workflow_orchestration.models import AtomExecution, Workflow, WorkflowExecution, WorkflowInteraction
+from apps.workflow_orchestration.services.execution_details import build_execution_node_detail
 from apps.workflow_orchestration.views import WorkflowExecutionViewSet
 
 
@@ -337,3 +338,38 @@ def test_running_execution_keeps_inflight_node_running(viewer):
     by_reference = {item["reference"]: item for item in summary.data["nodes"]}
     assert by_reference["report"]["state"] == "RUNNING"
     assert by_reference["report"]["state_counts"] == {"RUNNING": 1}
+
+
+@pytest.mark.django_db
+def test_node_detail_shows_atom_error_when_worker_reason_is_generic():
+    workflow = Workflow.objects.create(name="巡检", team=[7], definition={})
+    execution = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        status=WorkflowExecution.Status.FAILED,
+        team=[7],
+        definition_snapshot={"tasks": [{"name": "bklite_notification", "taskReferenceName": "notify", "type": "SIMPLE"}]},
+        tasks=[
+            {
+                "task_id": "notify-1",
+                "reference": "notify",
+                "status": "FAILED",
+                "reason": "ValueError: atom execution failed",
+                "input": {},
+                "output": {},
+            }
+        ],
+    )
+    AtomExecution.objects.create(
+        execution=execution,
+        conductor_task_id="notify-1",
+        task_reference="notify",
+        atom_key="bklite_notification",
+        status=AtomExecution.Status.FAILED,
+        error_message="通知渠道投递失败",
+    )
+
+    detail = build_execution_node_detail(execution, node_reference="notify", username="alice")
+
+    assert detail is not None
+    assert detail["error"]["message"] == "通知渠道投递失败"

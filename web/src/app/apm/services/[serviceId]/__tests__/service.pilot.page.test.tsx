@@ -10,6 +10,7 @@ import ApmServiceDetailPage from '../page';
 const api = {
   getService: vi.fn(),
   getServiceRed: vi.fn(),
+  getServiceClientRollups: vi.fn(),
   getServiceErrorBreakdown: vi.fn(),
   getTraces: vi.fn(),
   getTopology: vi.fn(),
@@ -108,6 +109,7 @@ beforeEach(() => {
       p99_ms: 380,
     }],
   });
+  api.getServiceClientRollups.mockResolvedValue({ rows: [] });
   api.getTraces.mockResolvedValue({
     items: [{
       trace_id: TRACE_ID,

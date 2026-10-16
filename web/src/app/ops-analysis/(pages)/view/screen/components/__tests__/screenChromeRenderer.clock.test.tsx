@@ -24,6 +24,8 @@ describe('screen chrome clock style', () => {
     const clock = container.querySelector('[data-screen-clock]') as HTMLElement;
     expect(clock).toBeTruthy();
     expect(clock.style.fontSize).toBe('28px');
+    expect(clock.classList.contains('screen-uniform-text')).toBe(true);
+    expect(clock.getAttribute('data-align')).toBe('left');
     expect(clock.style.color).toBe('var(--screen-chrome-accent)');
     expect(clock.style.textShadow).toBe('');
     expect(clock.textContent).toContain('16:07:09');

@@ -197,7 +197,7 @@ def test_builtin_room3d_screen_yaml_is_self_fetch_scene():
     assert viewport["width"] == 1920
     assert viewport["height"] == 1080
     assert viewport["adapter"] == "fill"
-    assert viewport["background"] == {"type": "color", "color": "#071829"}
+    assert viewport["background"] == {"type": "color", "color": "#09233C"}
     assert screen["view_sets"]["decorations"] == {"title": "机房运行总览", "showClock": False, "showTitle": False}
     assert screen["refs"]["namespace_keys"] == []
     assert set(screen["refs"]["datasource_keys"]) == {
