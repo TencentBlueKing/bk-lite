@@ -1,11 +1,16 @@
 import { toCanvas } from 'html-to-image';
 import jsPDF from 'jspdf';
-import type { OpenAPIFieldSpec } from '@/app/system-manager/api/settings';
+import type { OpenAPIJsonSchema } from '@/app/system-manager/api/settings';
 import {
   fieldHasRange,
+  flattenSchemaFields,
   formatChoices,
   formatFieldRange,
+  formatSchemaType,
+  formatSchemaValue,
   generateCurlCommand,
+  generateSchemaExample,
+  schemaHasDefault,
   type OpenAPIDocRow,
 } from '@/app/system-manager/utils/openapiDocs';
 
@@ -32,6 +37,11 @@ export interface OpenApiDocsPdfLabels {
   yes: string;
   no: string;
   noParams: string;
+  requestSchema: string;
+  responseSchema: string;
+  responseExample: string;
+  noResponseSchema: string;
+  noResponseFields: string;
   entryPrefix: string;
   docUrl: string;
   noDocUrl: string;
@@ -64,11 +74,8 @@ const escapeHtml = (value: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const fieldHasDefault = (spec: OpenAPIFieldSpec): boolean =>
-  spec.default !== undefined && spec.default !== null;
-
-const fieldHasChoices = (spec: OpenAPIFieldSpec): boolean => {
-  const text = formatChoices(spec.choices);
+const fieldHasChoices = (schema: OpenAPIJsonSchema): boolean => {
+  const text = formatChoices(schema.enum);
   return Boolean(text);
 };
 
@@ -78,18 +85,19 @@ const kindLabel = (row: OpenAPIDocRow, labels: OpenApiDocsPdfLabels): string =>
 const methodLabel = (row: OpenAPIDocRow): string =>
   row.kind === 'external' ? 'EXT' : row.method.toUpperCase() || '--';
 
-const schemaEntries = (row: OpenAPIDocRow): Array<[string, OpenAPIFieldSpec]> =>
-  Object.entries(row.requestSchema || {});
-
-const renderSchemaTable = (row: OpenAPIDocRow, labels: OpenApiDocsPdfLabels): string => {
-  const entries = schemaEntries(row);
-  if (!entries.length) {
-    return `<p class="hint">${escapeHtml(labels.noParams)}</p>`;
+const renderSchemaTable = (
+  schema: OpenAPIJsonSchema,
+  labels: OpenApiDocsPdfLabels,
+  emptyText: string,
+): string => {
+  const rows = flattenSchemaFields(schema);
+  if (!rows.length) {
+    return `<p class="hint">${escapeHtml(emptyText)}</p>`;
   }
 
-  const showDefault = entries.some(([, spec]) => fieldHasDefault(spec));
-  const showChoices = entries.some(([, spec]) => fieldHasChoices(spec));
-  const showRange = entries.some(([, spec]) => fieldHasRange(spec));
+  const showDefault = rows.some((row) => schemaHasDefault(row.schema));
+  const showChoices = rows.some((row) => fieldHasChoices(row.schema));
+  const showRange = rows.some((row) => fieldHasRange(row.schema));
 
   const head = [
     `<th>${escapeHtml(labels.fieldName)}</th>`,
@@ -100,20 +108,20 @@ const renderSchemaTable = (row: OpenAPIDocRow, labels: OpenApiDocsPdfLabels): st
     showChoices ? `<th>${escapeHtml(labels.choices)}</th>` : '',
   ].join('');
 
-  const body = entries
-    .map(([name, spec]) => {
+  const body = rows
+    .map((row) => {
       const cells = [
-        `<td><code>${escapeHtml(name)}</code></td>`,
-        `<td>${escapeHtml(spec.type || '--')}</td>`,
-        `<td>${escapeHtml(spec.required ? labels.yes : labels.no)}</td>`,
+        `<td><code>${escapeHtml(row.name)}</code></td>`,
+        `<td>${escapeHtml(formatSchemaType(row.schema))}</td>`,
+        `<td>${escapeHtml(row.required ? labels.yes : labels.no)}</td>`,
         showRange
-          ? `<td>${escapeHtml(formatFieldRange(spec.min_value, spec.max_value) || '--')}</td>`
+          ? `<td>${escapeHtml(formatFieldRange(row.schema) || '--')}</td>`
           : '',
         showDefault
-          ? `<td>${escapeHtml(fieldHasDefault(spec) ? spec.default : '--')}</td>`
+          ? `<td>${escapeHtml(schemaHasDefault(row.schema) ? formatSchemaValue(row.schema.default) : '--')}</td>`
           : '',
         showChoices
-          ? `<td>${escapeHtml(formatChoices(spec.choices) || '--')}</td>`
+          ? `<td>${escapeHtml(formatChoices(row.schema.enum) || '--')}</td>`
           : '',
       ];
       return `<tr>${cells.join('')}</tr>`;
@@ -198,13 +206,23 @@ const renderEndpointBlock = (row: OpenAPIDocRow, labels: OpenApiDocsPdfLabels): 
   const systemCurl = generateCurlCommand(row, 'system', labels.origin);
   const permission = row.permission || labels.unrestricted;
   const inject = row.inject ? labels.inject(row.inject) : '--';
+  const responseSection = row.responseSchema
+    ? `
+      <p><strong>${escapeHtml(labels.responseSchema)}</strong></p>
+      ${renderSchemaTable(row.responseSchema, labels, labels.noResponseFields)}
+      <p><strong>${escapeHtml(labels.responseExample)}</strong></p>
+      ${renderPre(JSON.stringify(generateSchemaExample(row.responseSchema), null, 2) ?? 'null')}
+    `
+    : `<p><strong>${escapeHtml(labels.responseSchema)}</strong> <span class="hint">${escapeHtml(labels.noResponseSchema)}</span></p>`;
 
   return `
     <section data-pdf-block>
       <h2>${escapeHtml(heading)}</h2>
       <p class="meta">${escapeHtml(labels.service)}：${escapeHtml(row.service)} · ${escapeHtml(kindLabel(row, labels))}</p>
       ${row.summary ? `<p>${escapeHtml(row.summary)}</p>` : ''}
-      ${renderSchemaTable(row, labels)}
+      <p><strong>${escapeHtml(labels.requestSchema)}</strong></p>
+      ${renderSchemaTable(row.requestSchema, labels, labels.noParams)}
+      ${responseSection}
       <p><strong>${escapeHtml(labels.tabExample)}</strong></p>
       <p><strong>${escapeHtml(labels.examplePersonal)}</strong></p>
       ${renderPre(personalCurl)}
