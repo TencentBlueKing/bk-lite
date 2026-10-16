@@ -127,6 +127,14 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
         log_operation(request, "create", "job", f"新增作业: {instance.name}")
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
+    @HasPermission("playbook_library-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("playbook_library-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=["post"])
     @HasPermission("playbook_library-Delete")
     def batch_delete(self, request):

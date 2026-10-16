@@ -154,6 +154,10 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
             log_operation(request, "update", "job", f"编辑脚本: {response.data.get('name')}")
         return response
 
+    @HasPermission("script_library-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=["post"])
     @HasPermission("script_library-Delete")
     def batch_delete(self, request):

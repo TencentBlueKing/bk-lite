@@ -17,6 +17,7 @@ import { ScheduledTask } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import SearchActionBar from '@/components/search-action-bar';
 import TopSection from '@/components/top-section';
+import Permission from '@/components/permission';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 
@@ -173,13 +174,15 @@ const CronTaskPage = () => {
       key: 'is_enabled',
       width: 80,
       render: (value: boolean, record: ScheduledTask) => (
-        <Switch
-          checked={value}
-          onChange={() => handleToggleStatus(record)}
-          size="small"
-          loading={togglingIds.has(record.id)}
-          disabled={togglingIds.has(record.id)}
-        />
+        <Permission requiredPermissions={['Edit']}>
+          <Switch
+            checked={value}
+            onChange={() => handleToggleStatus(record)}
+            size="small"
+            loading={togglingIds.has(record.id)}
+            disabled={togglingIds.has(record.id)}
+          />
+        </Permission>
       ),
     },
     {
@@ -200,32 +203,38 @@ const CronTaskPage = () => {
       fixed: 'right',
       render: (_: unknown, record: ScheduledTask) => (
         <div className="flex items-center gap-3">
-          <a
-            className="text-[var(--color-primary)] cursor-pointer"
-            onClick={() => handleEdit(record)}
-          >
-            {t('job.editRule')}
-          </a>
-          {record.is_enabled && (
+          <Permission requiredPermissions={['Edit']}>
             <a
               className="text-[var(--color-primary)] cursor-pointer"
-              onClick={() => handleRunNow(record.id)}
+              onClick={() => handleEdit(record)}
             >
-              {t('job.runNow')}
+              {t('job.editRule')}
             </a>
+          </Permission>
+          {record.is_enabled && (
+            <Permission requiredPermissions={['Edit']}>
+              <a
+                className="text-[var(--color-primary)] cursor-pointer"
+                onClick={() => handleRunNow(record.id)}
+              >
+                {t('job.runNow')}
+              </a>
+            </Permission>
           )}
-          <Popconfirm
-            title={t('job.scheduledTask')}
-            description={t('job.deleteTaskConfirm')}
-            okText={t('job.confirm')}
-            cancelText={t('job.cancel')}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => handleDelete(record)}
-          >
-            <a className="text-red-500 cursor-pointer">
-              {t('job.deleteRule')}
-            </a>
-          </Popconfirm>
+          <Permission requiredPermissions={['Delete']}>
+            <Popconfirm
+              title={t('job.scheduledTask')}
+              description={t('job.deleteTaskConfirm')}
+              okText={t('job.confirm')}
+              cancelText={t('job.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => handleDelete(record)}
+            >
+              <a className="text-red-500 cursor-pointer">
+                {t('job.deleteRule')}
+              </a>
+            </Popconfirm>
+          </Permission>
         </div>
       ),
     },
@@ -250,13 +259,15 @@ const CronTaskPage = () => {
             onSearch: handleSearch,
           }}
           actions={(
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleCreate}
-            >
-              {t('common.new')}
-            </Button>
+            <Permission requiredPermissions={['Add']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleCreate}
+              >
+                {t('common.new')}
+              </Button>
+            </Permission>
           )}
         />
 

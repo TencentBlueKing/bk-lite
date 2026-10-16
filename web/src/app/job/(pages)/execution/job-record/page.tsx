@@ -33,6 +33,7 @@ import {
   StopOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import Permission from '@/components/permission';
 import MarkdownRenderer from '@/components/markdown';
 import ExecutionStatusBadge from '@/components/execution-status-badge';
 import VersionBadge from '@/components/version-badge';
@@ -834,21 +835,25 @@ const JobRecordPage = () => {
             </div>
             <div className="flex items-center gap-2">
               {['pending', 'running', 'cancelling'].includes(detail.status) && (
-                <Button
-                  danger
-                  icon={<StopOutlined />}
-                  disabled={detail.status === 'cancelling'}
-                  onClick={handleCancelExecution}
-                >
-                  {detail.status === 'cancelling' ? t('job.statusCancelling') : t('job.cancelExecution')}
-                </Button>
+                <Permission requiredPermissions={['Edit']}>
+                  <Button
+                    danger
+                    icon={<StopOutlined />}
+                    disabled={detail.status === 'cancelling'}
+                    onClick={handleCancelExecution}
+                  >
+                    {detail.status === 'cancelling' ? t('job.statusCancelling') : t('job.cancelExecution')}
+                  </Button>
+                </Permission>
               )}
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleReExecute}
-              >
-                {t('job.reExecute')}
-              </Button>
+              <Permission requiredPermissions={['Edit']}>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={handleReExecute}
+                >
+                  {t('job.reExecute')}
+                </Button>
+              </Permission>
             </div>
           </div>
 
