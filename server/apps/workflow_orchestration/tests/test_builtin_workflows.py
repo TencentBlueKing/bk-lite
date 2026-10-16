@@ -92,6 +92,9 @@ def test_ensure_builtin_health_workflows_are_idempotent(builtin_user, builtin_ch
     notify = first[0].definition["tasks"][2]["inputParameters"]
     assert notify["channel_id"] == builtin_channels["email_first"].id
     assert notify["recipients"] == [BUILTIN_EXECUTOR_RECIPIENT]
+    for workflow in first:
+        positions = workflow.canvas_metadata["positions"]
+        assert {positions[key]["y"] for key in ("trigger_form", "scan", "report", "notify")} == {260}
 
 
 @pytest.mark.django_db
