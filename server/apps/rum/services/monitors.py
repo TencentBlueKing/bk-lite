@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from apps.core.utils.user_display import build_user_display_map, format_user_identifiers
 from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.alert_runtime import RumAlertRuntime
 from apps.rum.services.alert_store import (  # noqa: F401
@@ -200,7 +201,14 @@ class MonitorsService:
 
     def list_monitors(self, *, visible_orgs: set[int]) -> list[dict]:
         firing = self.events.active_policy_ids()
-        return [_as_monitor_view(item, item["id"] in firing) for item in self.policies.list(visible_orgs)]
+        policies = self.policies.list(visible_orgs)
+        user_map = build_user_display_map([handler for item in policies for handler in (item.get("handlers") or [])])
+        views = []
+        for item in policies:
+            view = _as_monitor_view(item, item["id"] in firing)
+            view["handlersDisplay"] = format_user_identifiers(item.get("handlers") or [], user_map)
+            views.append(view)
+        return views
 
     def create_monitor(self, actor: str, body: dict, *, assignable_orgs: set[int]) -> dict:
         normalized = normalize_alert_policy(body)
@@ -261,7 +269,9 @@ class MonitorsService:
             keyword=keyword,
             handler=handler,
         )
+        user_map = build_user_display_map([handler for item in items for handler in (item.get("handlers") or [])])
         for item in items:
+            item["handlersDisplay"] = format_user_identifiers(item.get("handlers") or [], user_map)
             deliveries = self.events.list_deliveries(item["id"])
             item["notification"] = {
                 "pending": sum(1 for row in deliveries if row.get("status") == "pending"),
@@ -294,6 +304,7 @@ class MonitorsService:
         alert = self.events.get_alert(alert_id, visible_orgs)
         if alert is None:
             raise ControlError("not_found", "alert event not found")
+        alert["handlersDisplay"] = format_user_identifiers(alert.get("handlers") or [])
         return {
             "alert": alert,
             "events": self.events.list_events(alert_id),

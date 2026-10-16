@@ -362,6 +362,7 @@ export interface RumMonitorItem {
   noDataAfter?: number;
   renotifyMinutes?: number | null;
   handlers?: Array<string | number>;
+  handlersDisplay?: string[];
   notificationTargets?: RumNotificationTarget[];
   enabled: boolean;
   firing: boolean;
@@ -383,6 +384,7 @@ export interface RumAlertItem {
   currentValue?: number | null;
   organizations?: number[];
   handlers?: Array<string | number>;
+  handlersDisplay?: string[];
   notification?: { pending: number; delivered: number; failed: number };
   startedAt?: string;
   endedAt?: string | null;

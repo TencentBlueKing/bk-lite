@@ -617,6 +617,7 @@
       "message": "Message",
       "firedAt": "Fired at",
       "resolvedAt": "Resolved at",
+      "lastEventAt": "Last event",
       "trend": "Metric trend",
       "trendEmpty": "No samples in this window",
       "trendHover": "Hover to inspect values",

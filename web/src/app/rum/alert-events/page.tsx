@@ -213,7 +213,7 @@ export default function RumAlertEventsPage() {
         width: 140,
         ellipsis: true,
         render: (_: unknown, ev: RumAlertItem) => (
-          <span className="truncate">{(ev.handlers || []).map(String).join(', ') || '—'}</span>
+          <span className="truncate">{(ev.handlersDisplay || ev.handlers || []).map(String).join(', ') || '—'}</span>
         ),
       },
       {
@@ -422,7 +422,7 @@ function AlertEventDetailView({
         <span className="ml-auto">{alert.application}</span>
       </div>
       <RumMetricGrid
-        className="!grid-cols-2"
+        className="!grid-cols-3"
         cells={[
           {
             label: t('rum.alertEvents.metricValue', '指标 / 值'),
@@ -431,6 +431,11 @@ function AlertEventDetailView({
           { label: t('rum.alertEvents.firedAt', '触发时间'), value: formatWhen(alert.startedAt) },
           { label: t('rum.alertEvents.resolvedAt', '恢复时间'), value: formatWhen(alert.endedAt) },
           { label: t('rum.applications.application', '应用'), value: alert.application || '—' },
+          {
+            label: t('rum.alertEvents.handlers', '处理人'),
+            value: (alert.handlersDisplay || alert.handlers || []).map(String).join(', ') || '—',
+          },
+          { label: t('rum.alertEvents.lastEventAt', '最后事件'), value: formatWhen(alert.lastEventAt) },
         ]}
       />
       <div className="space-y-2">

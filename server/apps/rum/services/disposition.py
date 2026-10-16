@@ -46,32 +46,35 @@ class AlertDisposition:
         return self._mutate(alert_id, actor, visible_orgs=visible_orgs, action="closed", handlers=None)
 
     def retry_delivery(self, alert_id: str, delivery_id: str, actor, *, visible_orgs: set[int] | None = None) -> dict:
-        alert = self.alerts.get_alert(alert_id, visible_orgs)
-        if alert is None:
-            raise ControlError("not_found", "alert event not found")
-        delivery = self.alerts.get_delivery(delivery_id)
-        if delivery is None or delivery.get("alertId") != alert_id:
-            raise ControlError("not_found", "delivery not found")
-        if delivery.get("status") != "failed":
-            raise ControlError("conflict", "只有终止失败的投递可以重投")
-        self.alerts.add_retry(
-            {
-                "deliveryId": delivery_id,
-                "requestedBy": getattr(actor, "username", None) or _actor_id(actor),
-                "previousAttempts": int(delivery.get("attempts") or 0),
-                "previousErrorCode": delivery.get("lastErrorCode") or "",
-                "previousErrorMessage": delivery.get("lastErrorMessage") or "",
-            }
-        )
-        delivery["status"] = "pending"
-        delivery["attempts"] = 0
-        delivery["nextRetryAt"] = None
-        delivery["claimedAt"] = None
-        delivery["failedAt"] = None
-        return self.alerts.save_delivery(delivery)
+        with self.alerts.locked_alert(alert_id, visible_orgs) as alert:
+            if alert is None:
+                raise ControlError("not_found", "alert event not found")
+            delivery = self.alerts.get_delivery(delivery_id)
+            if delivery is None or delivery.get("alertId") != alert_id:
+                raise ControlError("not_found", "delivery not found")
+            if delivery.get("status") != "failed":
+                raise ControlError("conflict", "只有终止失败的投递可以重投")
+            self.alerts.add_retry(
+                {
+                    "deliveryId": delivery_id,
+                    "requestedBy": getattr(actor, "username", None) or _actor_id(actor),
+                    "previousAttempts": int(delivery.get("attempts") or 0),
+                    "previousErrorCode": delivery.get("lastErrorCode") or "",
+                    "previousErrorMessage": delivery.get("lastErrorMessage") or "",
+                }
+            )
+            delivery["status"] = "pending"
+            delivery["attempts"] = 0
+            delivery["nextRetryAt"] = None
+            delivery["claimedAt"] = None
+            delivery["failedAt"] = None
+            return self.alerts.save_delivery(delivery)
 
     def _mutate(self, alert_id: str, actor, *, visible_orgs, action: str, handlers) -> dict:
-        alert = self.alerts.get_alert(alert_id, visible_orgs)
+        with self.alerts.locked_alert(alert_id, visible_orgs) as alert:
+            return self._mutate_locked(alert, actor, action=action, handlers=handlers)
+
+    def _mutate_locked(self, alert: dict | None, actor, *, action: str, handlers) -> dict:
         if alert is None:
             raise ControlError("not_found", "alert event not found")
         if alert.get("status") != "active":

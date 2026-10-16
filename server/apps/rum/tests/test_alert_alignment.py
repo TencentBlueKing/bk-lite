@@ -452,6 +452,70 @@ def test_django_store_same_minute_does_not_open_a_second_alert():
     assert RumAlert.objects.filter(policy_id_snapshot=saved["id"], status="active").count() == 1
 
 
+@pytest.mark.django_db(transaction=True)
+def test_django_store_row_locks_stay_inside_transactions(monkeypatch):
+    """sqlite 不校验 select_for_update 的事务边界，Postgres 会直接抛错；这里显式守住每个写路径。"""
+
+    from types import SimpleNamespace
+
+    from django.db import connection
+    from django.db.models import QuerySet
+
+    from apps.rum.models import RumAlertDelivery
+    from apps.system_mgmt.models import User
+
+    original = QuerySet.select_for_update
+    outside: list[str] = []
+
+    def guarded(self, *args, **kwargs):
+        if not connection.in_atomic_block:
+            outside.append(self.model.__name__)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(QuerySet, "select_for_update", guarded)
+
+    control = MemoryControl()
+    ApplicationsService(control, _settings()).create_application(
+        "tester",
+        {"application": "checkout", "origins": ["https://shop.example.test"]},
+    )
+    policies = DjangoPolicyStore()
+    events = DjangoEventStore()
+    db_user = User.objects.create(username="user-11", display_name="值班甲", domain="domain.com")
+    user = SimpleNamespace(id=db_user.id, username="user-11", disabled=False, group_list=[{"id": 10}])
+    service = MonitorsService(control=control, policies=policies, events=events, users=lambda raw: user)
+    created = service.create_monitor(
+        "tester",
+        _body(notificationTargets=[_channel(4, recipient_mode="free_text", recipients=["ops@example.test"])]),
+        assignable_orgs={10},
+    )
+    start = datetime(2026, 10, 16, 8, 0, tzinfo=timezone.utc)
+    dispatcher = RecordingDispatcher([{"delivered": False, "retryable": False, "code": "channel_missing", "message": "渠道不存在"}])
+    runtime = _runtime(policies, events, [0.5], dispatcher=dispatcher)
+    assert runtime.evaluate_policy(created["id"], start) == "fired"
+    assert runtime.deliver_due(start)["failed"] == 1
+
+    alert = events.active_for_policy(created["id"])
+    delivery = RumAlertDelivery.objects.get(alert_id=alert["id"])
+    assert delivery.status == "failed"
+    assert delivery.last_error_code == "channel_missing"
+
+    service.update_monitor("tester", created["id"], {"severity": "critical"}, assignable_orgs={10}, visible_orgs={10})
+    service.retry_alert_delivery(alert["id"], str(delivery.id), user, visible_orgs={10})
+    assert RumAlertDelivery.objects.get(pk=delivery.id).status == "pending"
+    service.claim_alert(alert["id"], user, visible_orgs={10})
+    mine = service.list_alert_events({"handler": str(db_user.id), "status": "active"}, visible_orgs={10})
+    assert [item["id"] for item in mine["items"]] == [alert["id"]]
+    assert mine["items"][0]["handlersDisplay"] == ["值班甲(user-11)"]
+    assert service.get_alert_event(alert["id"], visible_orgs={10})["alert"]["handlersDisplay"] == ["值班甲(user-11)"]
+    assert service.list_alert_events({"handler": "999999"}, visible_orgs={10})["total"] == 0
+    assert service.list_alert_events({}, visible_orgs={20})["total"] == 0
+    closed = service.close_alert(alert["id"], user, visible_orgs={10})
+
+    assert closed["status"] == "closed"
+    assert outside == []
+
+
 class _FakeClient:
     def __init__(self):
         self.kwargs = None

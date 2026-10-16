@@ -164,6 +164,10 @@ class MemoryEventStore:
     def get(self, alert_id: str) -> dict | None:
         return self.get_alert(alert_id)
 
+    @contextmanager
+    def locked_alert(self, alert_id: str, visible_orgs: set[int] | None = None) -> Iterator[dict | None]:
+        yield self.get_alert(alert_id, visible_orgs)
+
     def active_for_policy(self, policy_id: str) -> dict | None:
         rows = [
             item
@@ -526,7 +530,7 @@ class DjangoEventStore:
         if visible_orgs is not None:
             if not visible_orgs:
                 return [], 0
-            qs = build_json_membership_query(qs, "organizations", list(visible_orgs))
+            qs = qs.filter(build_json_membership_query(qs, "organizations", list(visible_orgs)))
         if status_group == "active":
             qs = qs.filter(status="active")
         elif status_group == "history":
@@ -536,7 +540,7 @@ class DjangoEventStore:
         if keyword:
             qs = qs.filter(Q(policy_name__icontains=keyword) | Q(application__icontains=keyword) | Q(metric__icontains=keyword))
         if handler:
-            qs = build_json_membership_query(qs, "handlers", [handler])
+            qs = qs.filter(build_json_membership_query(qs, "handlers", [handler]))
         qs = qs.order_by("-last_event_at", "-id")
         total = qs.count()
         start = (page - 1) * limit
@@ -560,16 +564,31 @@ class DjangoEventStore:
     def get(self, alert_id: str) -> dict | None:
         return self.get_alert(alert_id)
 
+    @contextmanager
+    def locked_alert(self, alert_id: str, visible_orgs: set[int] | None = None) -> Iterator[dict | None]:
+        """锁住一条告警直到调用方完成检查与写入，处置的读-判-写在同一事务内。"""
+
+        from apps.rum.models import RumAlert
+
+        with transaction.atomic():
+            item = RumAlert.objects.select_for_update().filter(pk=alert_id).first()
+            if item is None:
+                yield None
+                return
+            alert = _serialize_alert(item)
+            yield alert if overlaps_orgs(alert.get("organizations"), visible_orgs) else None
+
     def active_for_policy(self, policy_id: str) -> dict | None:
         from apps.rum.models import RumAlert
 
-        item = (
-            RumAlert.objects.select_for_update()
-            .filter(policy_id_snapshot=policy_id, status="active")
-            .order_by("-started_at")
-            .first()
-        )
-        return _serialize_alert(item) if item else None
+        with transaction.atomic():
+            item = (
+                RumAlert.objects.select_for_update()
+                .filter(policy_id_snapshot=policy_id, status="active")
+                .order_by("-started_at")
+                .first()
+            )
+            return _serialize_alert(item) if item else None
 
     def latest_open(self, policy_id: str) -> dict | None:
         return self.active_for_policy(policy_id)
@@ -615,21 +634,22 @@ class DjangoEventStore:
     def save_alert(self, alert: dict) -> dict:
         from apps.rum.models import RumAlert
 
-        try:
-            item = RumAlert.objects.select_for_update().get(pk=alert["id"])
-        except RumAlert.DoesNotExist:
-            return self.create_alert(alert)
-        item.status = alert.get("status") or item.status
-        item.severity = alert.get("severity") or item.severity
-        item.current_value = alert.get("currentValue")
-        item.handlers = list(alert.get("handlers") or [])
-        item.operator = alert.get("operator") or ""
-        item.renotify_count = int(alert.get("renotifyCount") or 0)
-        item.ended_at = parse_dt(alert.get("endedAt"))
-        item.last_event_at = parse_dt(alert.get("lastEventAt"))
-        item.last_notified_at = parse_dt(alert.get("lastNotifiedAt"))
-        item.save()
-        return _serialize_alert(item)
+        with transaction.atomic():
+            try:
+                item = RumAlert.objects.select_for_update().get(pk=alert["id"])
+            except RumAlert.DoesNotExist:
+                return self.create_alert(alert)
+            item.status = alert.get("status") or item.status
+            item.severity = alert.get("severity") or item.severity
+            item.current_value = alert.get("currentValue")
+            item.handlers = list(alert.get("handlers") or [])
+            item.operator = alert.get("operator") or ""
+            item.renotify_count = int(alert.get("renotifyCount") or 0)
+            item.ended_at = parse_dt(alert.get("endedAt"))
+            item.last_event_at = parse_dt(alert.get("lastEventAt"))
+            item.last_notified_at = parse_dt(alert.get("lastNotifiedAt"))
+            item.save()
+            return _serialize_alert(item)
 
     def save(self, alert: dict) -> dict:
         return self.save_alert(alert)
@@ -726,17 +746,18 @@ class DjangoEventStore:
     def save_delivery(self, delivery: dict) -> dict:
         from apps.rum.models import RumAlertDelivery
 
-        item = RumAlertDelivery.objects.select_for_update().get(pk=delivery["id"])
-        item.status = delivery.get("status") or item.status
-        item.attempts = int(delivery.get("attempts") or 0)
-        item.next_retry_at = parse_dt(delivery.get("nextRetryAt"))
-        item.claimed_at = parse_dt(delivery.get("claimedAt"))
-        item.last_error_code = (delivery.get("lastErrorCode") or "")[:128]
-        item.last_error_message = (delivery.get("lastErrorMessage") or "")[:512]
-        item.delivered_at = parse_dt(delivery.get("deliveredAt"))
-        item.failed_at = parse_dt(delivery.get("failedAt"))
-        item.save()
-        return _serialize_delivery(item)
+        with transaction.atomic():
+            item = RumAlertDelivery.objects.select_for_update().get(pk=delivery["id"])
+            item.status = delivery.get("status") or item.status
+            item.attempts = int(delivery.get("attempts") or 0)
+            item.next_retry_at = parse_dt(delivery.get("nextRetryAt"))
+            item.claimed_at = parse_dt(delivery.get("claimedAt"))
+            item.last_error_code = (delivery.get("lastErrorCode") or "")[:128]
+            item.last_error_message = (delivery.get("lastErrorMessage") or "")[:512]
+            item.delivered_at = parse_dt(delivery.get("deliveredAt"))
+            item.failed_at = parse_dt(delivery.get("failedAt"))
+            item.save()
+            return _serialize_delivery(item)
 
     def add_retry(self, retry: dict) -> dict:
         from apps.rum.models import RumAlertDelivery, RumAlertDeliveryRetry

@@ -26,6 +26,7 @@ function metricLabel(t: (key: string, fallback?: string) => string, metric: stri
 function formatThreshold(metric: string, value: number): string {
   if (metric === 'error_rate') return `${(value * 100).toFixed(1)}%`;
   if (metric === 'cls_p75') return value.toFixed(3);
+  if (metric === 'session_count') return String(Math.round(value));
   return `${Math.round(value)}ms`;
 }
 
@@ -175,7 +176,7 @@ export default function RumMonitorsPage() {
         width: 140,
         ellipsis: true,
         render: (_: unknown, m: RumMonitorItem) => (
-          <span className="truncate">{(m.handlers || []).map(String).join(', ') || '—'}</span>
+          <span className="truncate">{(m.handlersDisplay || m.handlers || []).map(String).join(', ') || '—'}</span>
         ),
       },
       {
@@ -207,12 +208,14 @@ export default function RumMonitorsPage() {
             <span className="font-mono tabular-nums">
               {m.comparator || '>='} {formatThreshold(m.metric, m.criticalThreshold)}
             </span>
-            <span className="text-xs text-[var(--color-text-3)]">
-              ·{' '}
-              {t('rum.monitors.forMinutes', '持续 {n} 分钟', {
-                n: Math.max(1, Math.round(m.forDurationSec / 60)),
-              })}
-            </span>
+            {m.forDurationSec > 0 ? (
+              <span className="text-xs text-[var(--color-text-3)]">
+                ·{' '}
+                {t('rum.monitors.forMinutes', '持续 {n} 分钟', {
+                  n: Math.max(1, Math.round(m.forDurationSec / 60)),
+                })}
+              </span>
+            ) : null}
           </div>
         ),
       },

@@ -36,6 +36,8 @@ describe('rum alert alignment page skeleton', () => {
     expect(actions).toContain('canClose');
     expect(actions).toContain("alert.status === 'active'");
     expect(alerts).toContain("t('rum.alertEvents.retry', '重投')");
+    expect(alerts).toContain('ev.handlersDisplay || ev.handlers');
+    expect(alerts).toContain('alert.handlersDisplay || alert.handlers');
     expect(alerts).not.toContain('Segmented');
   });
 
@@ -44,6 +46,9 @@ describe('rum alert alignment page skeleton', () => {
     expect(policies).toContain("t('rum.monitors.organizations', '组织')");
     expect(form).toContain("t('rum.monitors.handlers', '处理人')");
     expect(policies).toContain("t('rum.monitors.lastEvaluation', '最近判定')");
+    expect(policies).toContain('m.handlersDisplay || m.handlers');
+    expect(policies).toContain("if (metric === 'session_count') return String(Math.round(value));");
+    expect(policies).toContain('m.forDurationSec > 0 ?');
     expect(policies).toContain('emptyText');
     expect(form).toContain('GroupTreeSelect');
     expect(form).toContain('evaluationWindowMinutes');

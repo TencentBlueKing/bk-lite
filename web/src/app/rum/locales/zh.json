@@ -617,6 +617,7 @@
       "message": "说明",
       "firedAt": "触发时间",
       "resolvedAt": "恢复时间",
+      "lastEventAt": "最后事件",
       "trend": "指标趋势",
       "trendEmpty": "该时间窗内暂无样本",
       "trendHover": "移入查看数值",
