@@ -1,3 +1,4 @@
+import ipaddress
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -9,6 +10,7 @@ from typing import Optional
 
 from django.db import transaction
 from django.db.models import Count, F, Q
+from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -17,8 +19,7 @@ from apps.cmdb.services.monitored_host import normalize_zombie_whitelist
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as monitor_logger
 from apps.core.logger import nats_logger as logger
-from apps.core.logger import safe_exception_info
-from apps.core.logger import safe_log_value
+from apps.core.logger import safe_exception_info, safe_log_value
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
@@ -115,7 +116,7 @@ from apps.monitor.services.zombie_host_report import (
     validate_inst_uuids,
     wrap_max_over_time,
 )
-from apps.monitor.utils.alert_name_variables import resolve_resource_ip
+from apps.monitor.utils.alert_name_variables import ASSET_IP_FACT, resolve_resource_ip
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
@@ -587,10 +588,50 @@ def _get_global_monitor_instance_permissions(user_info: dict, scope_ids):
     return permission_data, list(scope_ids), None
 
 
+_REQUESTED_ASSET_IP = "requested_asset_ip"
+
+
+def _requested_monitor_instance_q(instance_ids: list[str]) -> Q | None:
+    """把实例定位收窄到这批 ID、名称、IP 和 CMDB ID，别名仍由后续解析完成。"""
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for raw in instance_ids:
+        text = str(raw or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        tokens.append(text)
+    if not tokens:
+        return None
+
+    query = Q()
+    ip_tokens: list[str] = []
+    asset_ip_lookup = f"{_REQUESTED_ASSET_IP}__iexact"
+    for token in tokens:
+        query |= Q(id__iexact=token) | Q(name__iexact=token) | Q(cmdb_id__iexact=token) | Q(id__contains=token)
+        query |= Q(**{asset_ip_lookup: token})
+        try:
+            ipaddress.ip_address(token)
+        except ValueError:
+            continue
+        ip_tokens.append(token)
+    if ip_tokens:
+        query |= Q(ip__in=ip_tokens)
+    return query
+
+
+def _limit_queryset_to_requested_instances(queryset, instance_ids: list[str]):
+    query = _requested_monitor_instance_q(instance_ids)
+    if query is None:
+        return queryset
+    return queryset.annotate(**{_REQUESTED_ASSET_IP: KeyTextTransform(ASSET_IP_FACT, "summary_facts")}).filter(query)
+
+
 def _get_authorized_monitor_instances(
     user_info: dict,
     scope_ids,
     monitor_obj_id: Optional[str] = None,
+    requested_ids: list[str] | None = None,
 ):
     instance_permissions, cur_team, error = _get_global_monitor_instance_permissions(
         user_info,
@@ -599,18 +640,16 @@ def _get_authorized_monitor_instances(
     if error:
         return {}, error
 
-    instance_queryset = (
-        MonitorInstance.objects.filter(
-            is_deleted=False,
-            is_active=True,
-            monitorinstanceorganization__organization__in=list(scope_ids),
-        )
-        .select_related("monitor_object")
-        .prefetch_related("monitorinstanceorganization_set")
-        .distinct()
+    instance_queryset = MonitorInstance.objects.filter(
+        is_deleted=False,
+        is_active=True,
+        monitorinstanceorganization__organization__in=list(scope_ids),
     )
     if monitor_obj_id:
         instance_queryset = instance_queryset.filter(monitor_object_id=monitor_obj_id)
+    if requested_ids:
+        instance_queryset = _limit_queryset_to_requested_instances(instance_queryset, requested_ids)
+    instance_queryset = instance_queryset.select_related("monitor_object").prefetch_related("monitorinstanceorganization_set").distinct()
 
     authorized_instances = {}
     for instance in instance_queryset:
@@ -827,13 +866,9 @@ def _license_monitor_instance_labels(data, kwargs):
     try:
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=language)
         stored_names = {
-            name: display_name
-            for name, display_name in MonitorObject.objects.filter(name__in=list(data)).values_list("name", "display_name")
+            name: display_name for name, display_name in MonitorObject.objects.filter(name__in=list(data)).values_list("name", "display_name")
         }
-        return {
-            name: lan.get(f"{LanguageConstants.MONITOR_OBJECT}.{name}") or stored_names.get(name) or name
-            for name in data
-        }
+        return {name: lan.get(f"{LanguageConstants.MONITOR_OBJECT}.{name}") or stored_names.get(name) or name for name in data}
     except Exception as exc:
         monitor_logger.warning(
             "event=license_monitor_labels_skipped failed_stage=%s error_type=%s",
@@ -1510,7 +1545,7 @@ def _parse_latest_active_alerts_query(query_data):
     )
 
 
-def _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids):
+def _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids, requested_ids=None):
     if monitor_obj_id:
         try:
             MonitorObject.objects.get(id=monitor_obj_id)
@@ -1528,8 +1563,10 @@ def _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids)
             )
             .select_related("monitor_object")
         )
+        if requested_ids:
+            authorized_qs = _limit_queryset_to_requested_instances(authorized_qs, requested_ids)
         return {str(instance.id): instance for instance in authorized_qs}, None
-    return _get_authorized_monitor_instances(user_info, scope_ids)
+    return _get_authorized_monitor_instances(user_info, scope_ids, requested_ids=requested_ids or None)
 
 
 def _filter_requested_alert_instances(authorized_instances, instance_ids):
@@ -1612,7 +1649,12 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     if scope_error:
         return scope_error
 
-    authorized_instances, error = _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids)
+    authorized_instances, error = _resolve_latest_active_alert_instances(
+        monitor_obj_id,
+        user_info,
+        scope_ids,
+        requested_ids=instance_ids or None,
+    )
     if error:
         return error
 
