@@ -1,3 +1,22 @@
+import type { HostCategoryTab } from './tab-level';
+
+/**
+ * 概览 KPI、本机趋势、页签色点用到的主机级查询。
+ * 磁盘总使用率图走实体挂载序列；这里的 disk_used_percent 只给概览页签/卡气味。
+ */
+export const HOST_OVERVIEW_METRIC_NAMES = [
+  'cpu_usage_total',
+  'mem_used_percent',
+  'mem_available',
+  'mem_total',
+  'system_load1',
+  'cpu_n',
+  'system_uptime',
+  'disk_used_percent',
+  'net_bytes_recv_rate',
+  'net_bytes_sent_rate'
+] as const;
+
 /** 性能页 KPI、趋势、详细指标用到的主机级查询。不含磁盘、网络、进程。 */
 export const HOST_PERFORMANCE_METRIC_NAMES = [
   'cpu_usage_total',
@@ -26,6 +45,28 @@ export const HOST_PERFORMANCE_METRIC_NAMES = [
   'nvidia_smi_memory_total',
   'nvidia_smi_temperature_gpu'
 ] as const;
+
+/** 磁盘页主机级查询。挂载/块设备走实体 hook，这里不拉主机指标。 */
+export const HOST_DISK_METRIC_NAMES: readonly string[] = [];
+
+/** 网络页主机级查询。网卡走实体 hook，这里不拉主机指标。 */
+export const HOST_NET_METRIC_NAMES: readonly string[] = [];
+
+/** 进程页状态计数。列表 CPU/内存走实体 hook。 */
+export const HOST_PROCESS_METRIC_NAMES = [
+  'processes_running',
+  'processes_sleeping',
+  'processes_blocked',
+  'processes_zombies'
+] as const;
+
+export const HOST_CATEGORY_TAB_METRIC_NAMES: Record<HostCategoryTab, readonly string[]> = {
+  overview: HOST_OVERVIEW_METRIC_NAMES,
+  system: HOST_PERFORMANCE_METRIC_NAMES,
+  disk: HOST_DISK_METRIC_NAMES,
+  net: HOST_NET_METRIC_NAMES,
+  process: HOST_PROCESS_METRIC_NAMES
+};
 
 export type MetricBlockPhase = 'loading' | 'error' | 'ready';
 
