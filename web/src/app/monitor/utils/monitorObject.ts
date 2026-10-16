@@ -13,6 +13,10 @@
  */
 
 import { ObjectItem } from '@/app/monitor/types';
+import {
+  WEOPSX_CLOUD_KEY_PREFIX,
+  WEOPSX_CLOUD_NAV_SOURCE
+} from '@/app/monitor/utils/weopsxCloudNav';
 
 const objectLevel = (obj: ObjectItem): 'base' | 'derivative' =>
   obj.level === 'derivative' ? 'derivative' : 'base';
@@ -413,13 +417,19 @@ interface SidebarTreeNode {
   title?: unknown;
   label?: string;
   key?: string | number;
+  source?: string;
   children: SidebarTreeNode[];
 }
+
+const isWeopsxCloudNavNode = <T extends SidebarTreeNode>(node: T): boolean =>
+  node.source === WEOPSX_CLOUD_NAV_SOURCE ||
+  String(node.key ?? '').startsWith(WEOPSX_CLOUD_KEY_PREFIX);
 
 const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
   cloudFamilyItems: ObjectItem[],
   objects: ObjectItem[],
-  toNode: (item: ObjectItem) => T
+  toNode: (item: ObjectItem) => T,
+  weopsxNodes: SidebarTreeNode[] = []
 ): T => {
   const platforms = cloudFamilyItems.filter(
     (item) => !isCloudFamilySidebarDerivative(item, objects)
@@ -460,23 +470,26 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
   }
 
   platformNodes.push(...unattached.map(toNode));
+  platformNodes.push(...(weopsxNodes.filter(isWeopsxCloudNavNode) as T[]));
 
   return {
     title: resolveUnifiedCloudRootTitle(objects),
     key: UNIFIED_CLOUD_ROOT_TYPE,
     children: platformNodes
-  } as T;
+  } as unknown as T;
 };
 
 /**
  * 视图 / 专业大盘对象树：
  * - type=Cloud（及历史 Tencent Cloud / Aliyun Cloud 别名）挂到唯一「云」根下，派生挂父；
+ * - WeOpsX 已装云（key=`weopsx:{id}`）接在同层后，不另套分组根，也不进入非云 type；
  * - Meraki 维持挂父；
  * - 其余 type 仍按 #6351 隐藏派生，禁止全局去掉 isDerivativeObject。
  */
 export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
   objects: ObjectItem[],
-  toNode: (item: ObjectItem) => T
+  toNode: (item: ObjectItem) => T,
+  weopsxNodes: SidebarTreeNode[] = []
 ): T[] => {
   const groups: Record<string, T> = {};
   const typeOrder: string[] = [];
@@ -489,7 +502,7 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
         title: item.display_type || '--',
         key: item.type,
         children: []
-      } as T;
+      } as unknown as T;
       typeOrder.push(item.type);
     }
     return groups[item.type];
@@ -516,11 +529,15 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
 
   attachMerakiSidebarChildren(groups, merakiDerivatives, toNode);
 
-  if (cloudFamilyItems.length) {
+  if (cloudFamilyItems.length || weopsxNodes.length) {
+    if (!typeOrder.includes(UNIFIED_CLOUD_ROOT_TYPE)) {
+      typeOrder.push(UNIFIED_CLOUD_ROOT_TYPE);
+    }
     groups[UNIFIED_CLOUD_ROOT_TYPE] = buildUnifiedCloudRoot(
       cloudFamilyItems,
       objects,
-      toNode
+      toNode,
+      weopsxNodes
     );
   }
 
