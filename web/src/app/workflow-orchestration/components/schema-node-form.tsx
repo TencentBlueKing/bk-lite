@@ -16,7 +16,9 @@ import {
   type DataReferenceOption,
 } from '../lib/data-references';
 import type { JsonSchema } from '../lib/types';
+import { ReferenceDropGuard, isWorkflowReferenceDrag } from './reference-drop-guard';
 import { WORKFLOW_REFERENCE_MIME, WorkflowTemplateTextField } from './workflow-template-text-field';
+import { WorkflowNodeTitleField } from './workflow-node-title-field';
 import { WorkflowPermission } from './workflow-permission';
 
 export { WORKFLOW_REFERENCE_MIME };
@@ -129,7 +131,14 @@ function KeyValueField({ schema, value, references, onChange }: { schema: JsonSc
   return <div className="flex flex-col gap-3">
     {entries.map(([key, item], index) => <section key={index} className="rounded-md border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-3">
       <div className="mb-3 flex items-center gap-2">
-        <Input aria-label={t('workflowOrchestration.editor.mappingKey', '映射字段名')} value={key} onChange={(event) => rename(key, event.target.value.trim())} />
+        <div className="min-w-0 flex-1">
+          <WorkflowTemplateTextField
+            value={key}
+            references={compatibleDataReferences(references, { type: 'string', 'x-text-surface': 'string-only' })}
+            placeholder={t('workflowOrchestration.editor.mappingKey', '映射字段名')}
+            onChange={(next) => rename(key, next.trim())}
+          />
+        </div>
         <WorkflowPermission operation="Edit"><Button type="text" danger aria-label={t('workflowOrchestration.editor.deleteMappingField', '删除映射字段 {number}', { number: index + 1 })} icon={<DeleteOutlined />} onClick={() => remove(key)} /></WorkflowPermission>
       </div>
       <BindingEditor schema={valueSchema} value={item} references={references} onChange={(next) => onChange({ ...objectValue, [key]: next })} />
@@ -294,10 +303,10 @@ function BindingEditor({
     onChange(compileNodeInputBinding({ kind: 'reference', expression }));
   };
   const allowDrop = (event: DragEvent<HTMLDivElement>) => {
-    const types = Array.from(event.dataTransfer.types || []);
-    if (!types.includes(WORKFLOW_REFERENCE_MIME)) return;
+    if (!isWorkflowReferenceDrag(event)) return;
     event.preventDefault();
     const expression = event.dataTransfer.getData(WORKFLOW_REFERENCE_MIME);
+    // dragover 时常读不到 payload：有表达式则严格判断，否则先允许悬停，松手再校验。
     if (expression && !compatibleReferences.some((item) => item.value === expression)) {
       event.dataTransfer.dropEffect = 'none';
       setIsDragOver(false);
@@ -320,7 +329,11 @@ function BindingEditor({
   );
 
   if (field['x-binding'] === 'literal-only') {
-    return <LiteralField schema={field} value={incomingLiteral ?? defaultLiteral(field)} references={references} valueLabels={valueLabels} onChange={(next) => onChange(compileNodeInputBinding({ kind: 'literal', value: next }))} />;
+    return (
+      <ReferenceDropGuard>
+        <LiteralField schema={field} value={incomingLiteral ?? defaultLiteral(field)} references={references} valueLabels={valueLabels} onChange={(next) => onChange(compileNodeInputBinding({ kind: 'literal', value: next }))} />
+      </ReferenceDropGuard>
+    );
   }
 
   if (!referenceOnly && isStringTemplateSurface(field)) {
@@ -406,9 +419,9 @@ export function SchemaNodeField({
 
 export function SchemaNodeForm({ schema, uiSchema, value, onChange, references = [], fieldActions = {}, nodeTitle, readOnly = false, atomKey, onNodeTitleChange }: Props) {
   const { t } = useTranslation();
-  const nodeNameField = onNodeTitleChange ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
-    <Input disabled={readOnly} value={nodeTitle} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => onNodeTitleChange(event.target.value)} />
-  </Form.Item> : null;
+  const nodeNameField = onNodeTitleChange
+    ? <WorkflowNodeTitleField value={nodeTitle || ''} disabled={readOnly} onChange={onNodeTitleChange} />
+    : null;
   const effectiveSchema = resolveSchemaForNodeInput(schema, uiSchema, value);
   const selector = capabilitySelector(uiSchema);
   const isVisible = (key: string) => {

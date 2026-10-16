@@ -43,18 +43,17 @@ describe('原子 Schema 参数表单', () => {
     expect(screen.queryByRole('button', { name: '清除字段引用' })).toBeNull();
   });
 
-  it('string 字段允许拖入 object 引用，并在光标处插入表达式', () => {
-    function ObjectHarness() {
+  it('宽收文本表面允许拖入 object；仅 string 表面会拒绝', () => {
+    function ObjectHarness({ surface }: { surface: 'coerce' | 'string-only' }) {
       const [value, setValue] = useState<Record<string, unknown>>({ body: '生成内容：' });
       return <App><SchemaNodeForm
-        schema={{ type: 'object', properties: { body: { type: 'string', title: '通知内容', 'x-widget': 'textarea' } } }}
+        schema={{ type: 'object', properties: { body: { type: 'string', title: '通知内容', 'x-widget': 'textarea', 'x-text-surface': surface } } }}
         value={value}
         references={[{ label: '作业 · 全部输出', value: '${job.output}', source: '作业', type: 'object', displayName: '全部输出' }]}
         onChange={setValue}
       /></App>;
     }
-    render(<ObjectHarness />);
-
+    const { unmount } = render(<ObjectHarness surface="coerce" />);
     const dataTransfer = {
       dropEffect: 'none',
       types: [WORKFLOW_REFERENCE_MIME],
@@ -62,6 +61,11 @@ describe('原子 Schema 参数表单', () => {
     };
     fireEvent.drop(screen.getByTestId('workflow-reference-dropzone'), { dataTransfer });
     expect(screen.getByDisplayValue('生成内容：${job.output}')).not.toBeNull();
+    unmount();
+
+    render(<ObjectHarness surface="string-only" />);
+    fireEvent.drop(screen.getByTestId('workflow-reference-dropzone'), { dataTransfer });
+    expect(screen.getByDisplayValue('生成内容：')).not.toBeNull();
   });
 
   it('布尔开关保持原生宽度并左对齐', () => {

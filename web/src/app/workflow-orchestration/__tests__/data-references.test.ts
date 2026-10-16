@@ -163,7 +163,12 @@ describe('节点数据选择器', () => {
 
     expect(compatibleDataReferences(references, { type: 'number' }).map((item) => item.value)).toEqual(['${before.output.count}']);
     expect(compatibleDataReferences([{ ...references[0], type: 'number' }], { type: 'integer' })).toEqual([]);
-    expect(compatibleDataReferences(references, { type: 'string' }).map((item) => item.value)).toEqual([
+    expect(compatibleDataReferences(references, { type: 'string' }).map((item) => item.value)).toEqual([]);
+    expect(compatibleDataReferences(
+      [...references, { label: '主机名', value: '${before.output.host}', type: 'string', source: 'before' }],
+      { type: 'string' },
+    ).map((item) => item.value)).toEqual(['${before.output.host}']);
+    expect(compatibleDataReferences(references, { type: 'string', 'x-text-surface': 'coerce' }).map((item) => item.value)).toEqual([
       '${before.output.count}',
       '${before.output.hosts}',
       '${before.output}',

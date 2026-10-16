@@ -212,6 +212,32 @@ def test_notification_atom_uses_fixed_platform_interface(mocker):
 
 
 @pytest.mark.django_db
+def test_notification_atom_stringifies_object_body_as_json(mocker):
+    from apps.system_mgmt.models import User
+
+    User.objects.create(
+        username="alice",
+        display_name="Alice",
+        email="alice@example.com",
+        password="x",
+        group_list=[{"id": 7, "name": "Current"}],
+    )
+    system = mocker.patch("apps.workflow_orchestration.atom_packages.bklite_notification.runtime.handler.SystemMgmt").return_value
+    system.dispatch_notification.return_value = {"result": True, "code": "delivered", "message": "success"}
+    notification_atom(
+        {
+            "team": 7,
+            "execution_id": "execution-1",
+            "channel_id": 3,
+            "recipients": ["alice"],
+            "title": "作业结果",
+            "body": {"ok": True, "count": 2},
+        }
+    )
+    assert system.dispatch_notification.call_args.kwargs["body"] == '{"ok": true, "count": 2}'
+
+
+@pytest.mark.django_db
 def test_notification_atom_fails_when_the_channel_rejects_delivery(mocker):
     system = mocker.patch("apps.workflow_orchestration.atom_packages.bklite_notification.runtime.handler.SystemMgmt").return_value
     system.dispatch_notification.return_value = {

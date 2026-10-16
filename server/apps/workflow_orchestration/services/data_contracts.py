@@ -249,6 +249,13 @@ def _validate_binding(
             )
             source_type, target_type = _schema_type(source_schema), _schema_type(target_schema)
             compatible = source_type == target_type or (source_type == "integer" and target_type == "number")
+            # string 字段按文本消费：整值引用也可强制转为字符串（对象/数组运行时 JSON 序列化）
+            if target_type == "string" and source_type:
+                if sensitive and not target_schema.get("secretCompatible"):
+                    raise DefinitionValidationError(f"节点 {current_reference} 的目标字段不允许接收敏感值")
+                if _nullable(source_schema):
+                    raise DefinitionValidationError(f"节点 {current_reference} 的文本模板不能使用可为 null 的值")
+                return
             if target_type and not compatible:
                 raise DefinitionValidationError(f"节点 {current_reference} 的引用类型 {source_type or 'unknown'} 不能绑定到 {target_type}")
             if sensitive and not target_schema.get("secretCompatible"):

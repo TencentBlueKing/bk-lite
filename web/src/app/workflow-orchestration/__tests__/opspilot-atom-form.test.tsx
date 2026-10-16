@@ -465,6 +465,13 @@ describe('OpsPilot 风格原子表单', () => {
     expect(screen.getAllByText('str')).toHaveLength(2);
     expect(screen.getAllByPlaceholderText('输入或引用参数值')).toHaveLength(2);
     expect(screen.getAllByPlaceholderText('输入参数名')).toHaveLength(2);
+    // method 旁的 drop-guard 不得 w-full，否则会挤扁 URL 输入框
+    const apiLabel = screen.getByText('API');
+    const apiRow = apiLabel.closest('.ant-form-item')?.querySelector('.flex.w-full.items-center');
+    const methodGuard = apiRow?.querySelector('[data-testid="workflow-reference-drop-guard"]');
+    expect(methodGuard?.className).toContain('shrink-0');
+    expect(methodGuard?.className).not.toContain('w-full');
+    expect(apiRow?.querySelector('.min-w-0.flex-1')).not.toBeNull();
 
     const removeButtons = screen.getAllByRole('button', { name: '删除参数' });
     expect(removeButtons[0].hasAttribute('disabled')).toBe(true);
@@ -472,5 +479,65 @@ describe('OpsPilot 风格原子表单', () => {
     await user.click(screen.getAllByRole('button', { name: '添加参数' })[0]);
     expect(screen.getAllByPlaceholderText('输入参数名').length).toBeGreaterThan(2);
     expect(screen.getAllByRole('button', { name: '删除参数' })[0].hasAttribute('disabled')).toBe(false);
+  });
+
+  it('节点名称不支持 $ 提示；HTTP 参数名仅 string 且支持 $', async () => {
+    const user = userEvent.setup();
+    const references = [
+      { label: '触发输入 · message', value: '${workflow.input.message}', source: '触发输入', type: 'string', displayName: 'message' },
+      { label: '通知 · 全部输出', value: '${notification.output}', source: '通知', type: 'object', displayName: '全部输出' },
+    ];
+    function HttpHarness() {
+      const [value, setValue] = useState<Record<string, unknown>>({ method: 'GET', url: 'https://example.com', query: {}, headers: {} });
+      const [title, setTitle] = useState('HTTP 请求');
+      return <App><OpsPilotAtomForm
+        atomKey="bklite_http_request"
+        schema={{
+          type: 'object',
+          properties: {
+            method: { type: 'string', enum: ['GET'], default: 'GET' },
+            url: { type: 'string', title: 'URL' },
+            query: { type: 'object', title: '查询参数' },
+            headers: { type: 'object', title: '请求头' },
+          },
+        }}
+        value={value}
+        references={references}
+        workflowId={1}
+        nodeTitle={title}
+        readOnly={false}
+        onChange={setValue}
+        onNodeTitleChange={setTitle}
+      /></App>;
+    }
+    render(<HttpHarness />);
+
+    const titleInput = screen.getByDisplayValue('HTTP 请求');
+    await user.click(titleInput);
+    await user.type(titleInput, '$');
+    expect(screen.queryByTestId('workflow-template-suggestions')).toBeNull();
+    expect(screen.getByDisplayValue('HTTP 请求$')).not.toBeNull();
+
+    const titleGuard = titleInput.closest('[data-testid="workflow-reference-drop-guard"]');
+    expect(titleGuard).not.toBeNull();
+    fireEvent.drop(titleGuard!, {
+      dataTransfer: {
+        dropEffect: 'copy',
+        types: ['application/x-bklite-workflow-reference'],
+        getData: vi.fn().mockReturnValue('${workflow.input.message}'),
+      },
+    });
+    expect(screen.getByDisplayValue('HTTP 请求$')).not.toBeNull();
+    await waitFor(() => {
+      expect(document.body.textContent).toMatch(/节点名称只用于画布展示/);
+    });
+
+    const paramName = screen.getAllByPlaceholderText('输入参数名')[0];
+    await user.click(paramName);
+    await user.clear(paramName);
+    await user.type(paramName, '$');
+    expect(await screen.findByTestId('workflow-template-suggestions')).not.toBeNull();
+    expect(screen.getByText('${workflow.input.message}')).not.toBeNull();
+    expect(screen.queryByText('${notification.output}')).toBeNull();
   });
 });
