@@ -11,6 +11,8 @@ from apps.rum.views import (
     RumHealthView,
     RumMetaView,
     RumMonitorViewSet,
+    RumNotificationChannelView,
+    RumNotificationRecipientView,
     RumReleaseViewSet,
     RumReplayGrantView,
     RumReplayManifestView,
@@ -34,6 +36,10 @@ router.register(r"saved-views", RumSavedViewViewSet, basename="rum-saved-view")
 router.register(r"funnels", RumFunnelViewSet, basename="rum-funnel")
 router.register(r"releases", RumReleaseViewSet, basename="rum-release")
 router.register(r"monitors", RumMonitorViewSet, basename="rum-monitor")
+urlpatterns_notifications = [
+    path("notification-channels/", RumNotificationChannelView.as_view(), name="rum-notification-channels"),
+    path("notification-recipients/", RumNotificationRecipientView.as_view(), name="rum-notification-recipients"),
+]
 router.register(r"alert-events", RumAlertEventViewSet, basename="rum-alert-event")
 router.register(r"compliance/erase", RumComplianceViewSet, basename="rum-compliance-erase")
 
@@ -61,5 +67,6 @@ urlpatterns = [
         RumSourcemapCredentialRotateView.as_view(),
         name="rum-sourcemap-credential-rotate",
     ),
+    *urlpatterns_notifications,
     *router.urls,
 ]

@@ -3,7 +3,12 @@ from apps.rum.views.compliance import RumComplianceViewSet
 from apps.rum.views.cwv import RumSavedViewViewSet, RumViewViewSet
 from apps.rum.views.errors import RumErrorViewSet, RumSourcemapRestoreView
 from apps.rum.views.funnels import RumFunnelViewSet
-from apps.rum.views.monitors import RumAlertEventViewSet, RumMonitorViewSet
+from apps.rum.views.monitors import (
+    RumAlertEventViewSet,
+    RumMonitorViewSet,
+    RumNotificationChannelView,
+    RumNotificationRecipientView,
+)
 from apps.rum.views.releases import RumReleaseViewSet, RumSourcemapCredentialRotateView, RumSourcemapIngestView, RumSourcemapView
 from apps.rum.views.sessions import RumReplayGrantView, RumReplayManifestView, RumReplaySegmentView, RumSessionViewSet
 
@@ -17,6 +22,8 @@ __all__ = [
     "RumHealthView",
     "RumMetaView",
     "RumMonitorViewSet",
+    "RumNotificationChannelView",
+    "RumNotificationRecipientView",
     "RumReleaseViewSet",
     "RumReplayGrantView",
     "RumReplayManifestView",

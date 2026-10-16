@@ -322,48 +322,113 @@ export interface RumSourceMapItem {
   createdAt: string;
 }
 
+export interface RumNotificationTarget {
+  channelId: number;
+  channelName?: string;
+  channelType?: string;
+  deliveryMode: 'message' | 'alert_event_copy' | string;
+  recipientMode: 'none' | 'system_user' | 'free_text' | string;
+  recipients: string[];
+}
+
+export interface RumNotificationChannel {
+  id: number;
+  name: string;
+  channel_type: string;
+  description?: string;
+  delivery_mode: 'message' | 'alert_event_copy' | string;
+  recipient_mode: 'none' | 'system_user' | 'free_text' | string;
+  availability?: 'available' | 'unavailable' | string;
+}
+
+export interface RumNotificationRecipient {
+  id: number;
+  username: string;
+  display_name?: string;
+}
+
 export interface RumMonitorItem {
   id: string;
   name: string;
   application: string;
+  organizations?: number[];
   metric: string;
   severity: string;
   comparator?: string;
   warnThreshold: number;
   criticalThreshold: number;
+  evaluationWindowMinutes?: number;
   forDurationSec: number;
-  noData?: boolean;
-  renotifyMinutes?: number;
+  noDataAfter?: number;
+  renotifyMinutes?: number | null;
+  handlers?: Array<string | number>;
+  notificationTargets?: RumNotificationTarget[];
   enabled: boolean;
   firing: boolean;
-  notifyChannels?: string[];
+  lastSucceededAt?: string | null;
+  lastFailedAt?: string | null;
+  lastEvaluationResult?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface RumAlertEventItem {
+export interface RumAlertItem {
   id: string;
   policyId: string;
+  policyName?: string;
+  application?: string;
+  metric?: string;
+  severity?: string;
   status: string;
-  metricValue: number;
-  message: string;
-  firedAt?: string;
-  resolvedAt?: string;
+  currentValue?: number | null;
+  organizations?: number[];
+  handlers?: Array<string | number>;
+  startedAt?: string;
+  endedAt?: string | null;
+  lastEventAt?: string;
   createdAt: string;
 }
 
+export interface RumAlertTimelineEvent {
+  id: string;
+  action: string;
+  occurredAt?: string;
+  severity?: string;
+  value?: number | null;
+  content?: Record<string, unknown>;
+}
+
+export interface RumAlertDeliveryItem {
+  id: string;
+  channelName?: string;
+  deliveryMode?: string;
+  status: string;
+  attempts?: number;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+}
+
+export interface RumAlertQuery {
+  page?: number;
+  limit?: number;
+  status?: 'active' | 'history' | '';
+  application?: string;
+  keyword?: string;
+  handler?: string;
+}
+
 export interface RumAlertEventPage {
-  items: RumAlertEventItem[];
+  items: RumAlertItem[];
   total: number;
   page: number;
   limit: number;
 }
 
 export interface RumAlertEventDetail {
-  event: RumAlertEventItem;
-  policy: RumMonitorItem;
+  alert: RumAlertItem;
+  events: RumAlertTimelineEvent[];
+  deliveries: RumAlertDeliveryItem[];
   trend: { atMs: number; value: number }[];
-  timeline: { kind: string; at: string; note?: string }[];
 }
 
 export interface RumEraseJob {
@@ -862,15 +927,24 @@ export function useRumQueries() {
     [api],
   );
 
-  const listAlertEvents = useCallback(async (page = 1, limit = 20) => {
-    const data = await api.get<RumAlertEventPage>('/alert-events/', {
-      params: { page: String(page), limit: String(limit) },
-    });
+  const listAlertEvents = useCallback(async (pageOrQuery: number | RumAlertQuery = 1, limit = 20) => {
+    const query: RumAlertQuery = typeof pageOrQuery === 'number' ? { page: pageOrQuery, limit } : pageOrQuery;
+    const page = query.page || 1;
+    const pageLimit = query.limit || limit;
+    const params: Record<string, string> = {
+      page: String(page),
+      limit: String(pageLimit),
+    };
+    if (query.status) params.status = query.status;
+    if (query.application) params.application = query.application;
+    if (query.keyword) params.keyword = query.keyword;
+    if (query.handler) params.handler = query.handler;
+    const data = await api.get<RumAlertEventPage>('/alert-events/', { params });
     return {
       items: Array.isArray(data?.items) ? data.items : [],
       total: Number(data?.total) || 0,
       page: Number(data?.page) || page,
-      limit: Number(data?.limit) || limit,
+      limit: Number(data?.limit) || pageLimit,
     };
   }, [api]);
 
@@ -878,11 +952,31 @@ export function useRumQueries() {
     async (id: string) => {
       const data = await api.get<RumAlertEventDetail>(`/alert-events/${encodeURIComponent(id)}/`);
       return {
-        event: data?.event ?? ({} as RumAlertEventItem),
-        policy: data?.policy ?? ({} as RumMonitorItem),
+        alert: data?.alert ?? ({} as RumAlertItem),
+        events: Array.isArray(data?.events) ? data.events : [],
+        deliveries: Array.isArray(data?.deliveries) ? data.deliveries : [],
         trend: Array.isArray(data?.trend) ? data.trend : [],
-        timeline: Array.isArray(data?.timeline) ? data.timeline : [],
       };
+    },
+    [api],
+  );
+
+  const listNotificationChannels = useCallback(
+    async (organizationIds: number[]) => {
+      const data = await api.get<RumNotificationChannel[]>('/notification-channels/', {
+        params: { organization_ids: organizationIds.join(',') },
+      });
+      return Array.isArray(data) ? data : [];
+    },
+    [api],
+  );
+
+  const searchNotificationRecipients = useCallback(
+    async (organizationIds: number[], search = '') => {
+      const data = await api.get<RumNotificationRecipient[]>('/notification-recipients/', {
+        params: { organization_ids: organizationIds.join(','), search },
+      });
+      return Array.isArray(data) ? data : [];
     },
     [api],
   );
@@ -963,6 +1057,8 @@ export function useRumQueries() {
     deleteMonitor,
     listAlertEvents,
     getAlertEvent,
+    listNotificationChannels,
+    searchNotificationRecipients,
     listEraseJobs,
     eraseCompliance,
     listSavedViews,

@@ -2,10 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { BellOutlined } from '@ant-design/icons';
-import { Alert, Button, Drawer, Form, Input, Select, Switch } from 'antd';
+import { Alert, Button, Drawer, Form, Input, Select } from 'antd';
 
-import { useRumQueries, type RumMonitorItem } from '@/app/rum/api';
+import {
+  useRumQueries,
+  type RumMonitorItem,
+  type RumNotificationChannel,
+  type RumNotificationRecipient,
+  type RumNotificationTarget,
+} from '@/app/rum/api';
 import { rumErrorMessage } from '@/app/rum/lib/error-message';
+import NotificationTargetFields from '@/app/rum/monitors/ui/notification-target-fields';
+import GroupTreeSelect from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 
 const METRICS = [
@@ -64,7 +72,7 @@ export default function MonitorFormDrawer({
   initial?: RumMonitorItem | null;
 }) {
   const { t } = useTranslation();
-  const { createMonitor, updateMonitor, listApplications } = useRumQueries();
+  const { createMonitor, updateMonitor, listApplications, listNotificationChannels, searchNotificationRecipients } = useRumQueries();
   const [name, setName] = useState('');
   const [application, setApplication] = useState('');
   const [apps, setApps] = useState<string[]>([]);
@@ -73,9 +81,14 @@ export default function MonitorFormDrawer({
   const [comparator, setComparator] = useState('>=');
   const [critical, setCritical] = useState('5');
   const [warn, setWarn] = useState('3');
-  const [noData, setNoData] = useState(false);
+  const [organizations, setOrganizations] = useState<number[]>([]);
+  const [windowMinutes, setWindowMinutes] = useState(15);
+  const [durationMinutes, setDurationMinutes] = useState('5');
+  const [noDataAfter, setNoDataAfter] = useState('3');
   const [renotify, setRenotify] = useState('');
-  const [notifyChannels, setNotifyChannels] = useState<string[]>([]);
+  const [targets, setTargets] = useState<RumNotificationTarget[]>([]);
+  const [channels, setChannels] = useState<RumNotificationChannel[]>([]);
+  const [recipients, setRecipients] = useState<RumNotificationRecipient[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
 
@@ -90,20 +103,26 @@ export default function MonitorFormDrawer({
       const isErrRate = initial.metric === 'error_rate';
       setCritical(isErrRate ? String(initial.criticalThreshold * 100) : String(initial.criticalThreshold));
       setWarn(isErrRate ? String(initial.warnThreshold * 100) : String(initial.warnThreshold));
-      setNoData(Boolean(initial.noData));
+      setOrganizations(initial.organizations ?? []);
+      setWindowMinutes(initial.evaluationWindowMinutes || 15);
+      setDurationMinutes(String(Math.max(0, Math.round((initial.forDurationSec ?? 300) / 60))));
+      setNoDataAfter(String(initial.noDataAfter ?? 3));
       setRenotify(initial.renotifyMinutes ? String(initial.renotifyMinutes) : '');
-      setNotifyChannels(initial.notifyChannels ?? []);
+      setTargets(initial.notificationTargets ?? []);
       setError('');
     } else {
       setName('');
+      setOrganizations([]);
+      setWindowMinutes(15);
+      setDurationMinutes('5');
+      setNoDataAfter('3');
+      setTargets([]);
       setMetric('error_rate');
       setSeverity('warning');
       setComparator('>=');
       setCritical('5');
       setWarn('3');
-      setNoData(false);
       setRenotify('');
-      setNotifyChannels([]);
       setError('');
     }
     void listApplications()
@@ -116,6 +135,16 @@ export default function MonitorFormDrawer({
       })
       .catch(() => setApps([]));
   }, [open, initial, listApplications]);
+
+  useEffect(() => {
+    if (!open || organizations.length === 0) {
+      setChannels([]);
+      setRecipients([]);
+      return;
+    }
+    void listNotificationChannels(organizations).then(setChannels).catch(() => setChannels([]));
+    void searchNotificationRecipients(organizations, '').then(setRecipients).catch(() => setRecipients([]));
+  }, [open, organizations, listNotificationChannels, searchNotificationRecipients]);
 
   function handleMetricChange(nextMetric: string) {
     setMetric(nextMetric);
@@ -130,8 +159,8 @@ export default function MonitorFormDrawer({
     setPending(true);
     setError('');
     try {
-      if (!name.trim() || !application.trim()) {
-        setError(t('rum.monitors.required', '请填写名称与应用'));
+      if (!name.trim() || !application.trim() || organizations.length === 0) {
+        setError(t('rum.monitors.required', '请填写名称、应用与所属组织'));
         return;
       }
       let criticalValue = Number(critical);
@@ -145,19 +174,23 @@ export default function MonitorFormDrawer({
         warnValue /= 100;
       }
       const renotifyValue = renotify.trim() === '' ? undefined : Number(renotify);
+      const duration = Number(durationMinutes);
+      const noDataCount = Number(noDataAfter);
       const body = {
         name: name.trim(),
         application: application.trim(),
+        organizations,
         metric,
         severity,
         comparator,
         criticalThreshold: criticalValue,
         warnThreshold: warnValue,
-        forDurationSec: 300,
-        noData,
+        evaluationWindowMinutes: windowMinutes,
+        forDurationSec: Number.isFinite(duration) ? Math.max(0, Math.round(duration * 60)) : 300,
+        noDataAfter: Number.isFinite(noDataCount) ? Math.max(0, Math.round(noDataCount)) : 3,
         renotifyMinutes: Number.isFinite(renotifyValue) ? renotifyValue : undefined,
         enabled: initial?.enabled ?? true,
-        notifyChannels,
+        notificationTargets: targets,
       };
       if (initial) await updateMonitor(initial.id, body);
       else await createMonitor(body);
@@ -199,6 +232,17 @@ export default function MonitorFormDrawer({
               onChange={(e) => setName(e.target.value)}
               placeholder={t('rum.monitors.namePlaceholder', '例如：核心交易页面错误率过高')}
               autoFocus
+            />
+          </Form.Item>
+
+          <Form.Item label={t('rum.monitors.organizations', '所属组织')} className="mb-4">
+            <GroupTreeSelect
+              multiple
+              mode="ownership"
+              showSearch
+              value={organizations}
+              onChange={(value) => setOrganizations(Array.isArray(value) ? value : value == null ? [] : [value])}
+              placeholder={t('rum.monitors.organizationsPlaceholder', '选择所属组织')}
             />
           </Form.Item>
 
@@ -273,13 +317,34 @@ export default function MonitorFormDrawer({
             </Form.Item>
           </div>
 
-          <Form.Item
-            label={t('rum.monitors.noDataLabel', '无数据告警')}
-            className="mb-4"
-            extra={t('rum.monitors.noDataHint', '窗口内无样本时也触发。')}
-          >
-            <Switch checked={noData} onChange={setNoData} />
-          </Form.Item>
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            <Form.Item label={t('rum.monitors.window', '判定窗口')} className="mb-0">
+              <Select
+                value={windowMinutes}
+                onChange={setWindowMinutes}
+                options={[5, 15, 60].map((minutes) => ({
+                  value: minutes,
+                  label: t('rum.monitors.windowMinutes', '{n} 分钟', { n: minutes }),
+                }))}
+                className="w-full"
+              />
+            </Form.Item>
+            <Form.Item label={t('rum.monitors.duration', '持续时长')} className="mb-0">
+              <Input
+                value={durationMinutes}
+                onChange={(e) => setDurationMinutes(e.target.value)}
+                inputMode="numeric"
+                suffix={<span className="text-[var(--color-text-3)]">{t('rum.monitors.minutes', '分钟')}</span>}
+              />
+            </Form.Item>
+            <Form.Item
+              label={t('rum.monitors.noDataAfter', '无数据次数')}
+              className="mb-0"
+              extra={t('rum.monitors.noDataAfterHint', '连续无数据达到该次数后告警，0 表示关闭。')}
+            >
+              <Input value={noDataAfter} onChange={(e) => setNoDataAfter(e.target.value)} inputMode="numeric" />
+            </Form.Item>
+          </div>
 
           <Form.Item
             label={t('rum.monitors.renotifyLabel', '重复通知（分钟）')}
@@ -294,18 +359,15 @@ export default function MonitorFormDrawer({
             />
           </Form.Item>
 
-          <Form.Item
-            label={t('rum.monitors.methods', '通知渠道')}
-            className="mb-4"
-            extra={t('rum.monitors.methodsHint', '填写 SystemMgmt 通知渠道 ID，可多个。')}
-          >
-            <Select
-              mode="tags"
-              value={notifyChannels}
-              onChange={(value) => setNotifyChannels(value)}
-              placeholder={t('rum.monitors.methodsPlaceholder', '渠道 ID')}
-              className="w-full"
-              tokenSeparators={[',', ' ']}
+          <Form.Item label={t('rum.monitors.methods', '通知渠道')} className="mb-4">
+            <NotificationTargetFields
+              targets={targets}
+              channels={channels}
+              recipients={recipients}
+              onChange={setTargets}
+              onSearchRecipients={(search) => {
+                void searchNotificationRecipients(organizations, search).then(setRecipients).catch(() => setRecipients([]));
+              }}
             />
           </Form.Item>
 

@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Protocol
+from typing import Any
 
 from apps.rum.constants import SUBJECT_APPLICATION_LIST
+from apps.rum.services.alert_runtime import RumAlertRuntime
+from apps.rum.services.alert_store import (  # noqa: F401
+    MemoryEventStore,
+    MemoryPolicyStore,
+    get_event_store,
+    get_policy_store,
+    org_ids,
+    parse_dt,
+)
 from apps.rum.services.analytics import Analytics, get_analytics
 from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
+from apps.rum.services.settings import load_rum_settings
 from apps.rum.services.validation import ValidationError, valid_application
 
 _ALLOWED_METRICS = {
@@ -19,23 +29,48 @@ _ALLOWED_METRICS = {
 }
 _ALLOWED_COMPARATORS = {">", ">=", "<", "<="}
 _ALLOWED_SEVERITIES = {"info", "warning", "critical"}
+_ALLOWED_WINDOWS = {5, 15, 60}
+_DELIVERY_MODES = {"message", "alert_event_copy"}
+_RECIPIENT_MODES = {"none", "system_user", "free_text"}
 
 
-def normalize_channels(raw: Any) -> list[str]:
+def normalize_targets(raw: Any, handlers: list) -> list[dict]:
     if raw is None:
         return []
-    if isinstance(raw, str):
-        raw = [part.strip() for part in raw.split(",") if part.strip()]
     if not isinstance(raw, list):
-        raise ValidationError("notifyChannels must be an array")
-    out: list[str] = []
-    seen: set[str] = set()
+        raise ValidationError("notificationTargets must be an array")
+    out: list[dict] = []
+    seen: set[int] = set()
     for item in raw:
-        value = str(item).strip()
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        out.append(value)
+        if not isinstance(item, dict):
+            raise ValidationError("notificationTargets must be objects")
+        try:
+            channel_id = int(item.get("channelId"))
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("invalid channelId") from exc
+        if channel_id <= 0 or channel_id in seen:
+            raise ValidationError("invalid channelId")
+        seen.add(channel_id)
+        delivery_mode = str(item.get("deliveryMode") or "message")
+        recipient_mode = str(item.get("recipientMode") or "none")
+        if delivery_mode not in _DELIVERY_MODES or recipient_mode not in _RECIPIENT_MODES:
+            raise ValidationError("invalid notification target")
+        if delivery_mode == "alert_event_copy" or recipient_mode == "none":
+            recipients: list[str] = []
+        elif "recipients" in item:
+            recipients = [str(value).strip() for value in item.get("recipients") or [] if str(value).strip()]
+        else:
+            recipients = [str(value) for value in handlers]
+        out.append(
+            {
+                "channelId": channel_id,
+                "channelName": str(item.get("channelName") or "")[:100],
+                "channelType": str(item.get("channelType") or "")[:30],
+                "deliveryMode": delivery_mode,
+                "recipientMode": recipient_mode,
+                "recipients": recipients,
+            }
+        )
     return out
 
 
@@ -47,17 +82,24 @@ def normalize_alert_policy(body: dict, *, partial: bool = False) -> dict:
     comparator = (body.get("comparator") or "").strip() or ">="
     warn = float(body.get("warnThreshold") if body.get("warnThreshold") is not None else 0)
     critical = float(body.get("criticalThreshold") if body.get("criticalThreshold") is not None else 0)
-    for_duration = int(body.get("forDurationSec") if body.get("forDurationSec") is not None else 0)
-    no_data = bool(body.get("noData") or False)
+    for_duration = int(body.get("forDurationSec") if body.get("forDurationSec") is not None else 300)
+    window = int(body.get("evaluationWindowMinutes") if body.get("evaluationWindowMinutes") is not None else 15)
+    no_data_after = int(body.get("noDataAfter") if body.get("noDataAfter") is not None else 3)
     enabled = bool(body.get("enabled") if body.get("enabled") is not None else True)
     renotify = body.get("renotifyMinutes")
     if renotify is not None and renotify != "":
         renotify = int(renotify)
     else:
         renotify = None
+    organizations = org_ids(body.get("organizations"))
+    handlers = body.get("handlers") or []
+    if not isinstance(handlers, list):
+        raise ValidationError("handlers must be an array")
 
     if not name or len(name) > 120 or not application:
         raise ValidationError("name and application are required")
+    if not organizations:
+        raise ValidationError("organizations are required")
     if not valid_application(application):
         raise ValidationError("invalid application")
     if metric not in _ALLOWED_METRICS:
@@ -66,11 +108,14 @@ def normalize_alert_policy(body: dict, *, partial: bool = False) -> dict:
         raise ValidationError("invalid severity")
     if comparator not in _ALLOWED_COMPARATORS:
         raise ValidationError("invalid comparator")
+    if window not in _ALLOWED_WINDOWS:
+        raise ValidationError("invalid evaluationWindowMinutes")
     if for_duration < 0 or for_duration > 86400:
         raise ValidationError("invalid forDurationSec")
+    if no_data_after < 0 or no_data_after > 1440:
+        raise ValidationError("invalid noDataAfter")
     if renotify is not None and renotify < 0:
         raise ValidationError("invalid renotifyMinutes")
-
     if metric == "error_rate":
         if warn < 0 or critical <= 0 or warn > 1 or critical > 1:
             raise ValidationError("invalid error_rate thresholds")
@@ -80,7 +125,6 @@ def normalize_alert_policy(body: dict, *, partial: bool = False) -> dict:
     else:
         if warn < 0 or critical <= 0:
             raise ValidationError("invalid thresholds")
-
     if comparator in {">", ">="}:
         if warn > 0 and warn > critical:
             raise ValidationError("warnThreshold must not exceed criticalThreshold")
@@ -88,350 +132,30 @@ def normalize_alert_policy(body: dict, *, partial: bool = False) -> dict:
         if warn > 0 and warn < critical:
             raise ValidationError("warnThreshold must not be below criticalThreshold")
 
-    channels = normalize_channels(body.get("notifyChannels")) if "notifyChannels" in body or not partial else None
     result = {
         "name": name,
         "application": application,
+        "organizations": organizations,
         "metric": metric,
         "severity": severity,
         "comparator": comparator,
         "warnThreshold": warn,
         "criticalThreshold": critical,
+        "evaluationWindowMinutes": window,
         "forDurationSec": for_duration,
-        "noData": no_data,
+        "noDataAfter": no_data_after,
         "renotifyMinutes": renotify,
+        "handlers": handlers,
         "enabled": enabled,
-        "signal": (body.get("signal") or "").strip(),
     }
-    if channels is not None:
-        result["notifyChannels"] = channels
+    if "notificationTargets" in body or not partial:
+        result["notificationTargets"] = normalize_targets(body.get("notificationTargets"), handlers)
     return result
 
 
-class PolicyStore(Protocol):
-    def list(self) -> list[dict]:
-        ...
-
-    def list_enabled(self) -> list[dict]:
-        ...
-
-    def get(self, policy_id: str) -> dict | None:
-        ...
-
-    def save(self, policy: dict) -> dict:
-        ...
-
-    def delete(self, policy_id: str) -> None:
-        ...
-
-
-class EventStore(Protocol):
-    def list_page(self, page: int, limit: int) -> tuple[list[dict], int]:
-        ...
-
-    def list_recent(self, limit: int = 500) -> list[dict]:
-        ...
-
-    def get(self, event_id: str) -> dict | None:
-        ...
-
-    def latest_open(self, policy_id: str) -> dict | None:
-        ...
-
-    def create(self, event: dict) -> dict:
-        ...
-
-    def save(self, event: dict) -> dict:
-        ...
-
-
-class MemoryPolicyStore:
-    def __init__(self):
-        self._items: dict[str, dict] = {}
-        self._seq = 0
-
-    def list(self) -> list[dict]:
-        return [dict(item) for item in self._items.values()]
-
-    def list_enabled(self) -> list[dict]:
-        return [dict(item) for item in self._items.values() if item.get("enabled")]
-
-    def get(self, policy_id: str) -> dict | None:
-        item = self._items.get(policy_id)
-        return dict(item) if item else None
-
-    def save(self, policy: dict) -> dict:
-        item = dict(policy)
-        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        if not item.get("id"):
-            self._seq += 1
-            item["id"] = f"policy-{self._seq}"
-            item["createdAt"] = now
-        item["updatedAt"] = now
-        item.setdefault("notifyChannels", [])
-        self._items[item["id"]] = item
-        return dict(item)
-
-    def delete(self, policy_id: str) -> None:
-        if policy_id not in self._items:
-            raise ControlError("not_found", "monitor not found")
-        del self._items[policy_id]
-
-
-class MemoryEventStore:
-    def __init__(self):
-        self._items: dict[str, dict] = {}
-        self._seq = 0
-
-    def list_page(self, page: int, limit: int) -> tuple[list[dict], int]:
-        rows = sorted(self._items.values(), key=lambda row: row.get("createdAt") or "", reverse=True)
-        total = len(rows)
-        start = (page - 1) * limit
-        return [dict(row) for row in rows[start : start + limit]], total
-
-    def list_recent(self, limit: int = 500) -> list[dict]:
-        rows = sorted(self._items.values(), key=lambda row: row.get("createdAt") or "", reverse=True)
-        return [dict(row) for row in rows[:limit]]
-
-    def get(self, event_id: str) -> dict | None:
-        item = self._items.get(event_id)
-        return dict(item) if item else None
-
-    def latest_open(self, policy_id: str) -> dict | None:
-        open_events = [item for item in self._items.values() if item.get("policyId") == policy_id and item.get("status") == "firing"]
-        if not open_events:
-            return None
-        open_events.sort(key=lambda row: row.get("createdAt") or "", reverse=True)
-        return dict(open_events[0])
-
-    def create(self, event: dict) -> dict:
-        self._seq += 1
-        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        item = {
-            **event,
-            "id": event.get("id") or f"event-{self._seq}",
-            "createdAt": event.get("createdAt") or now,
-        }
-        self._items[item["id"]] = item
-        return dict(item)
-
-    def save(self, event: dict) -> dict:
-        item = dict(event)
-        if not item.get("id") or item["id"] not in self._items:
-            return self.create(item)
-        self._items[item["id"]] = item
-        return dict(item)
-
-
-_policy_store: PolicyStore | None = None
-_event_store: EventStore | None = None
-
-
-def get_policy_store() -> PolicyStore:
-    global _policy_store
-    if _policy_store is None:
-        _policy_store = DjangoPolicyStore()
-    return _policy_store
-
-
-def get_event_store() -> EventStore:
-    global _event_store
-    if _event_store is None:
-        _event_store = DjangoEventStore()
-    return _event_store
-
-
-def set_policy_store(store: PolicyStore | None) -> None:
-    """Test seam."""
-    global _policy_store
-    _policy_store = store
-
-
-def set_event_store(store: EventStore | None) -> None:
-    """Test seam."""
-    global _event_store
-    _event_store = store
-
-
-class DjangoPolicyStore:
-    def list(self) -> list[dict]:
-        from apps.rum.models import RumAlertPolicy
-
-        return [_serialize_policy(item) for item in RumAlertPolicy.objects.all().order_by("-updated_at")]
-
-    def list_enabled(self) -> list[dict]:
-        from apps.rum.models import RumAlertPolicy
-
-        return [_serialize_policy(item) for item in RumAlertPolicy.objects.filter(enabled=True).order_by("-updated_at")]
-
-    def get(self, policy_id: str) -> dict | None:
-        from apps.rum.models import RumAlertPolicy
-
-        try:
-            return _serialize_policy(RumAlertPolicy.objects.get(pk=policy_id))
-        except RumAlertPolicy.DoesNotExist:
-            return None
-
-    def save(self, policy: dict) -> dict:
-        from apps.rum.models import RumAlertPolicy
-
-        if policy.get("id"):
-            try:
-                item = RumAlertPolicy.objects.get(pk=policy["id"])
-            except RumAlertPolicy.DoesNotExist as exc:
-                raise ControlError("not_found", "monitor not found") from exc
-        else:
-            item = RumAlertPolicy()
-        item.name = policy["name"]
-        item.application = policy["application"]
-        item.metric = policy["metric"]
-        item.severity = policy["severity"]
-        item.comparator = policy["comparator"]
-        item.warn_threshold = policy["warnThreshold"]
-        item.critical_threshold = policy["criticalThreshold"]
-        item.for_duration_sec = policy["forDurationSec"]
-        item.no_data = policy["noData"]
-        item.renotify_minutes = policy.get("renotifyMinutes")
-        item.enabled = policy["enabled"]
-        item.signal = policy.get("signal") or ""
-        if "notifyChannels" in policy:
-            item.notify_channels = list(policy["notifyChannels"] or [])
-        item.pending_since = _parse_dt(policy.get("pendingSince"))
-        item.recovering_since = _parse_dt(policy.get("recoveringSince"))
-        item.save()
-        return _serialize_policy(item)
-
-    def delete(self, policy_id: str) -> None:
-        from apps.rum.models import RumAlertPolicy
-
-        deleted, _ = RumAlertPolicy.objects.filter(pk=policy_id).delete()
-        if not deleted:
-            raise ControlError("not_found", "monitor not found")
-
-
-class DjangoEventStore:
-    def list_page(self, page: int, limit: int) -> tuple[list[dict], int]:
-        from apps.rum.models import RumAlertEvent
-
-        qs = RumAlertEvent.objects.all().order_by("-created_at")
-        total = qs.count()
-        start = (page - 1) * limit
-        return [_serialize_event(item) for item in qs[start : start + limit]], total
-
-    def list_recent(self, limit: int = 500) -> list[dict]:
-        from apps.rum.models import RumAlertEvent
-
-        return [_serialize_event(item) for item in RumAlertEvent.objects.all().order_by("-created_at")[:limit]]
-
-    def get(self, event_id: str) -> dict | None:
-        from apps.rum.models import RumAlertEvent
-
-        try:
-            return _serialize_event(RumAlertEvent.objects.get(pk=event_id))
-        except RumAlertEvent.DoesNotExist:
-            return None
-
-    def latest_open(self, policy_id: str) -> dict | None:
-        from apps.rum.models import RumAlertEvent
-
-        item = RumAlertEvent.objects.filter(policy_id=policy_id, status="firing").order_by("-created_at").first()
-        return _serialize_event(item) if item else None
-
-    def create(self, event: dict) -> dict:
-        from apps.rum.models import RumAlertEvent
-
-        item = RumAlertEvent(
-            policy_id=event["policyId"],
-            status=event.get("status") or "firing",
-            severity=event.get("severity") or "",
-            metric_value=float(event.get("metricValue") or 0),
-            message=event.get("message") or "",
-            fired_at=_parse_dt(event.get("firedAt")),
-            resolved_at=_parse_dt(event.get("resolvedAt")),
-            last_notified_at=_parse_dt(event.get("lastNotifiedAt")),
-        )
-        if event.get("id"):
-            item.id = event["id"]
-        item.save()
-        return _serialize_event(item)
-
-    def save(self, event: dict) -> dict:
-        from apps.rum.models import RumAlertEvent
-
-        try:
-            item = RumAlertEvent.objects.get(pk=event["id"])
-        except RumAlertEvent.DoesNotExist:
-            return self.create(event)
-        item.status = event.get("status") or item.status
-        item.severity = event.get("severity") or item.severity
-        if event.get("metricValue") is not None:
-            item.metric_value = float(event["metricValue"])
-        if "message" in event:
-            item.message = event["message"] or ""
-        item.fired_at = _parse_dt(event.get("firedAt")) if "firedAt" in event else item.fired_at
-        item.resolved_at = _parse_dt(event.get("resolvedAt")) if "resolvedAt" in event else item.resolved_at
-        item.last_notified_at = _parse_dt(event.get("lastNotifiedAt")) if "lastNotifiedAt" in event else item.last_notified_at
-        item.save()
-        return _serialize_event(item)
-
-
-def _parse_dt(value) -> datetime | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, datetime):
-        return value
-    text = str(value).replace("Z", "+00:00")
-    return datetime.fromisoformat(text)
-
-
-def _fmt_dt(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _serialize_policy(item) -> dict:
-    return {
-        "id": item.id,
-        "name": item.name,
-        "application": item.application,
-        "metric": item.metric,
-        "severity": item.severity,
-        "comparator": item.comparator,
-        "warnThreshold": item.warn_threshold,
-        "criticalThreshold": item.critical_threshold,
-        "forDurationSec": item.for_duration_sec,
-        "noData": item.no_data,
-        "renotifyMinutes": item.renotify_minutes,
-        "enabled": item.enabled,
-        "signal": item.signal,
-        "notifyChannels": list(item.notify_channels or []),
-        "pendingSince": _fmt_dt(item.pending_since),
-        "recoveringSince": _fmt_dt(item.recovering_since),
-        "createdAt": _fmt_dt(item.created_at),
-        "updatedAt": _fmt_dt(item.updated_at),
-    }
-
-
-def _serialize_event(item) -> dict:
-    return {
-        "id": item.id,
-        "policyId": item.policy_id,
-        "status": item.status,
-        "severity": item.severity,
-        "metricValue": item.metric_value,
-        "message": item.message,
-        "firedAt": _fmt_dt(item.fired_at),
-        "resolvedAt": _fmt_dt(item.resolved_at),
-        "lastNotifiedAt": _fmt_dt(item.last_notified_at),
-        "createdAt": _fmt_dt(item.created_at),
-    }
-
-
-def _as_monitor_view(policy: dict, firing: bool) -> dict:
-    return {**policy, "firing": firing, "notifyChannels": list(policy.get("notifyChannels") or [])}
+def _require_assignable(organizations: list[int], assignable_orgs: set[int]) -> None:
+    if not set(organizations).issubset(set(assignable_orgs)):
+        raise ControlError("forbidden", "organization is not assignable")
 
 
 class MonitorsService:
@@ -439,13 +163,21 @@ class MonitorsService:
         self,
         control: ControlPlane | None = None,
         analytics: Analytics | None = None,
-        policies: PolicyStore | None = None,
-        events: EventStore | None = None,
+        policies=None,
+        events=None,
+        runtime: RumAlertRuntime | None = None,
     ):
         self.control = control or get_control_plane()
         self.analytics = analytics or get_analytics()
         self.policies = policies or get_policy_store()
         self.events = events or get_event_store()
+        settings = load_rum_settings()
+        self.runtime = runtime or RumAlertRuntime(
+            policies=self.policies,
+            alerts=self.events,
+            analytics=self.analytics,
+            tenant_id=settings.tenant_id,
+        )
 
     def _list_enabled_apps(self, actor: str) -> tuple[list[str], str | None]:
         try:
@@ -464,56 +196,48 @@ class MonitorsService:
         if application not in enabled:
             raise ControlError("not_found", "application not found")
 
-    def list_monitors(self) -> list[dict]:
-        firing: set[str] = set()
-        for event in self.events.list_recent(500):
-            if event.get("status") == "firing" and event.get("policyId"):
-                firing.add(event["policyId"])
-        return [_as_monitor_view(item, item["id"] in firing) for item in self.policies.list()]
+    def list_monitors(self, *, visible_orgs: set[int]) -> list[dict]:
+        firing = self.events.active_policy_ids()
+        return [_as_monitor_view(item, item["id"] in firing) for item in self.policies.list(visible_orgs)]
 
-    def create_monitor(self, actor: str, body: dict) -> dict:
+    def create_monitor(self, actor: str, body: dict, *, assignable_orgs: set[int]) -> dict:
         normalized = normalize_alert_policy(body)
+        _require_assignable(normalized["organizations"], assignable_orgs)
         self._require_application(actor, normalized["application"])
         normalized["enabled"] = True
-        if "notifyChannels" not in normalized:
-            normalized["notifyChannels"] = []
+        normalized.setdefault("notificationTargets", [])
+        normalized.setdefault("handlers", [])
         saved = self.policies.save(normalized)
         return _as_monitor_view(saved, False)
 
-    def update_monitor(self, actor: str, policy_id: str, body: dict) -> dict:
-        existing = self.policies.get(policy_id)
+    def update_monitor(self, actor: str, policy_id: str, body: dict, *, assignable_orgs: set[int], visible_orgs: set[int]) -> dict:
+        existing = self.policies.get(policy_id, visible_orgs)
         if existing is None:
             raise ControlError("not_found", "monitor not found")
-        normalized = normalize_alert_policy({**existing, **body})
+        merged_body = {**existing, **body}
+        if "notificationTargets" not in body:
+            merged_body["notificationTargets"] = existing.get("notificationTargets") or []
+        normalized = normalize_alert_policy(merged_body)
+        _require_assignable(normalized["organizations"], assignable_orgs)
         self._require_application(actor, normalized["application"])
-        if "notifyChannels" not in body:
-            normalized["notifyChannels"] = list(existing.get("notifyChannels") or [])
+        if set(normalized["organizations"]) != set(org_ids(existing.get("organizations"))):
+            _drop_out_of_scope(normalized)
         merged = {**existing, **normalized, "id": policy_id}
-        if not merged.get("enabled"):
-            merged["pendingSince"] = None
-            merged["recoveringSince"] = None
+        was_enabled = bool(existing.get("enabled"))
         saved = self.policies.save(merged)
-        if not saved.get("enabled"):
-            open_event = self.events.latest_open(policy_id)
-            if open_event is not None:
-                now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-                open_event["status"] = "resolved"
-                open_event["resolvedAt"] = now
-                self.events.save(open_event)
-        open_event = self.events.latest_open(policy_id)
-        firing = open_event is not None and open_event.get("status") == "firing"
-        return _as_monitor_view(saved, firing)
+        if was_enabled and not saved.get("enabled"):
+            self.runtime.close_active(saved)
+        firing = self.events.active_for_policy(policy_id) is not None
+        return _as_monitor_view(self.policies.get(policy_id) or saved, firing)
 
-    def delete_monitor(self, policy_id: str) -> None:
-        open_event = self.events.latest_open(policy_id)
-        if open_event is not None:
-            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            open_event["status"] = "resolved"
-            open_event["resolvedAt"] = now
-            self.events.save(open_event)
+    def delete_monitor(self, policy_id: str, *, visible_orgs: set[int]) -> None:
+        existing = self.policies.get(policy_id, visible_orgs)
+        if existing is None:
+            raise ControlError("not_found", "monitor not found")
+        self.runtime.close_active(existing)
         self.policies.delete(policy_id)
 
-    def list_alert_events(self, params: dict[str, Any]) -> dict:
+    def list_alert_events(self, params: dict[str, Any], *, visible_orgs: set[int]) -> dict:
         page = int(params.get("page") or 1)
         limit = int(params.get("limit") or 15)
         if page < 1:
@@ -522,49 +246,104 @@ class MonitorsService:
             limit = 15
         if limit > 200:
             limit = 200
-        items, total = self.events.list_page(page, limit)
+        status_group = str(params.get("status") or params.get("status_group") or "")
+        application = str(params.get("application") or "").strip()
+        keyword = str(params.get("keyword") or params.get("q") or "").strip()
+        handler = str(params.get("handler") or "").strip()
+        items, total = self.events.list_alerts(
+            page,
+            limit,
+            visible_orgs=visible_orgs,
+            status_group=status_group,
+            application=application,
+            keyword=keyword,
+            handler=handler,
+        )
         return {"items": items, "total": total, "page": page, "limit": limit}
 
-    def get_alert_event(self, event_id: str) -> dict:
-        event = self.events.get(event_id)
-        if event is None:
+    def get_alert_event(self, alert_id: str, *, visible_orgs: set[int]) -> dict:
+        alert = self.events.get_alert(alert_id, visible_orgs)
+        if alert is None:
             raise ControlError("not_found", "alert event not found")
-        policy = self.policies.get(event.get("policyId") or "") or {}
-        timeline = []
-        if event.get("firedAt"):
-            timeline.append({"kind": "fired", "at": event["firedAt"], "note": "threshold breached"})
-        if event.get("resolvedAt"):
-            timeline.append({"kind": "resolved", "at": event["resolvedAt"], "note": "metric recovered"})
-        trend: list[dict] = []
-        if self.analytics.available() and policy.get("application") and policy.get("metric"):
-            from apps.rum.services.settings import load_rum_settings
+        return {
+            "alert": alert,
+            "events": self.events.list_events(alert_id),
+            "deliveries": self.events.list_deliveries(alert_id),
+            "trend": self._trend(alert),
+        }
 
-            now = datetime.now(timezone.utc)
-            end = now
-            # Sparse RUM traffic needs a wide window; a 15m pre-fire slice often paints
-            # an all-zero flat sparkline that looks identical across alerts.
-            start = now - timedelta(hours=6)
-            if event.get("firedAt"):
-                fired = _parse_dt(event["firedAt"])
-                if fired is not None:
-                    start = min(start, fired - timedelta(hours=1))
-                    if event.get("resolvedAt"):
-                        resolved = _parse_dt(event["resolvedAt"])
-                        if resolved is not None:
-                            end = max(end, resolved + timedelta(minutes=15))
-            week_ago = now - timedelta(days=7)
-            if start < week_ago:
-                start = week_ago
-            if end <= start:
-                end = start + timedelta(hours=1)
-            trend = self.analytics.metric_series(
-                load_rum_settings().tenant_id,
-                {
-                    "application": policy["application"],
-                    "metric": policy["metric"],
-                    "from": start,
-                    "to": end,
-                    "points": 24,
-                },
-            )
-        return {"event": event, "policy": policy, "trend": trend, "timeline": timeline}
+    def _trend(self, alert: dict) -> list[dict]:
+        if not self.analytics.available() or not alert.get("application") or not alert.get("metric"):
+            return []
+        now = datetime.now(timezone.utc)
+        end = now
+        start = now - timedelta(hours=6)
+        fired = parse_dt(alert.get("startedAt"))
+        if fired is not None:
+            start = min(start, fired - timedelta(hours=1))
+            ended = parse_dt(alert.get("endedAt"))
+            if ended is not None:
+                end = max(end, ended + timedelta(minutes=15))
+        week_ago = now - timedelta(days=7)
+        if start < week_ago:
+            start = week_ago
+        if end <= start:
+            end = start + timedelta(hours=1)
+        return self.analytics.metric_series(
+            load_rum_settings().tenant_id,
+            {
+                "application": alert["application"],
+                "metric": alert["metric"],
+                "from": start,
+                "to": end,
+                "points": 24,
+            },
+        )
+
+
+def _drop_out_of_scope(policy: dict) -> None:
+    from apps.core.utils.user_lookup import find_user
+
+    allowed = set(org_ids(policy.get("organizations")))
+    kept = []
+    for handler in policy.get("handlers") or []:
+        user = find_user(handler)
+        if user is None or getattr(user, "disabled", False):
+            continue
+        if _user_in_orgs(user, allowed):
+            kept.append(user.id)
+    policy["handlers"] = kept
+    for target in policy.get("notificationTargets") or []:
+        if target.get("recipientMode") != "system_user":
+            continue
+        recipients = []
+        for recipient in target.get("recipients") or []:
+            user = find_user(recipient)
+            if user is None or getattr(user, "disabled", False):
+                continue
+            if _user_in_orgs(user, allowed):
+                recipients.append(str(user.id))
+        target["recipients"] = recipients
+
+
+def _user_in_orgs(user, allowed: set[int]) -> bool:
+    if not allowed:
+        return False
+    for item in getattr(user, "group_list", None) or []:
+        group_id = item.get("id") if isinstance(item, dict) else item
+        try:
+            if int(group_id) in allowed:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def _as_monitor_view(policy: dict, firing: bool) -> dict:
+    return {
+        **policy,
+        "firing": firing,
+        "organizations": list(policy.get("organizations") or []),
+        "notificationTargets": list(policy.get("notificationTargets") or []),
+        "handlers": list(policy.get("handlers") or []),
+    }
