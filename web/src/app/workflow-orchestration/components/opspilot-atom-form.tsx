@@ -11,8 +11,10 @@ import { useTranslation } from '@/utils/i18n';
 
 import type { DataReferenceOption } from '../lib/data-references';
 import type { JsonSchema } from '../lib/types';
-import { WorkflowPermission } from './workflow-permission';
+import { ReferenceDropGuard } from './reference-drop-guard';
 import { SchemaNodeField } from './schema-node-form';
+import { WorkflowNodeTitleField } from './workflow-node-title-field';
+import { WorkflowPermission } from './workflow-permission';
 
 const API = '/workflow_orchestration/api';
 export const OPSPILOT_ATOM_KEYS = new Set([
@@ -57,14 +59,11 @@ function ResourceSelect({ schema, value, placeholder, disabled, onChange }: { sc
       label: metadata?.scope ? <div className="flex items-center justify-between gap-3"><span>{name}</span><span className="text-xs text-[var(--color-text-4)]">{metadata.scope === 'personal' ? t('workflowOrchestration.editor.personalScope', '个人') : t('workflowOrchestration.editor.teamScope', '团队')}</span></div> : name,
     };
   });
-  return <Select className="w-full" showSearch optionFilterProp="title" allowClear disabled={disabled} value={value as string | number | undefined} options={options} placeholder={options.length ? placeholder : `${placeholder}${t('workflowOrchestration.editor.noAvailableOptions', '（暂无可用项）')}`} onChange={onChange} />;
-}
-
-function NodeNameField({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (value: string) => void }) {
-  const { t } = useTranslation();
-  return <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
-    <Input disabled={disabled} value={value} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => onChange(event.target.value)} />
-  </Form.Item>;
+  return (
+    <ReferenceDropGuard>
+      <Select className="w-full" showSearch optionFilterProp="title" allowClear disabled={disabled} value={value as string | number | undefined} options={options} placeholder={options.length ? placeholder : `${placeholder}${t('workflowOrchestration.editor.noAvailableOptions', '（暂无可用项）')}`} onChange={onChange} />
+    </ReferenceDropGuard>
+  );
 }
 
 interface KeyValueRow {
@@ -123,19 +122,21 @@ function OpsPilotKeyValueRows({ label, value, references, disabled, onChange }: 
         </div>
         {rows.map((row, index) => (
           <div key={index} className="grid grid-cols-[1fr_1fr_60px] items-center gap-2">
-            <Input
-              disabled={disabled}
+            <SchemaNodeField
+              schema={{ type: 'string', 'x-text-surface': 'string-only', 'x-placeholder': t('workflowOrchestration.editor.enterParameterName', '输入参数名') }}
               value={row.key}
-              placeholder={t('workflowOrchestration.editor.enterParameterName', '输入参数名')}
-              onChange={(event) => update(index, { key: event.target.value })}
+              references={references}
+              disabled={disabled}
+              onChange={(next) => update(index, { key: String(next ?? '') })}
             />
             <div className="flex min-w-0 items-center gap-1">
               <span className="shrink-0 rounded bg-[var(--color-fill-1)] px-1 text-xs text-[var(--color-text-3)]">str</span>
               <div className="min-w-0 flex-1">
                 <SchemaNodeField
-                  schema={{ type: 'string', 'x-placeholder': t('workflowOrchestration.editor.enterOrReferenceParameterValue', '输入或引用参数值') }}
+                  schema={{ type: 'string', 'x-text-surface': 'string-only', 'x-placeholder': t('workflowOrchestration.editor.enterOrReferenceParameterValue', '输入或引用参数值') }}
                   value={row.value}
                   references={references}
+                  disabled={disabled}
                   onChange={(next) => update(index, { value: next })}
                 />
               </div>
@@ -159,17 +160,19 @@ function HttpRequestFields({ schema, value, references, readOnly, onChange }: Pi
   return <>
     <Form.Item className="mb-0" label="API" required>
       <div className="flex w-full items-center gap-2">
-        <Select
-          className="shrink-0"
-          style={{ width: 104 }}
-          disabled={readOnly}
-          value={value.method as string | undefined}
-          options={(methodSchema.enum || ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).map((item) => ({ value: String(item), label: String(item) }))}
-          onChange={(next) => setField('method', next)}
-        />
+        <ReferenceDropGuard className="shrink-0">
+          <Select
+            className="shrink-0"
+            style={{ width: 104 }}
+            disabled={readOnly}
+            value={value.method as string | undefined}
+            options={(methodSchema.enum || ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).map((item) => ({ value: String(item), label: String(item) }))}
+            onChange={(next) => setField('method', next)}
+          />
+        </ReferenceDropGuard>
         <div className="min-w-0 flex-1">
           <SchemaNodeField
-            schema={{ type: 'string', 'x-placeholder': t('workflowOrchestration.editor.enterUrl', '输入URL') }}
+            schema={{ type: 'string', 'x-text-surface': 'string-only', 'x-placeholder': t('workflowOrchestration.editor.enterUrl', '输入URL') }}
             value={value.url}
             references={references}
             disabled={readOnly}
@@ -180,8 +183,21 @@ function HttpRequestFields({ schema, value, references, readOnly, onChange }: Pi
     </Form.Item>
     {schema?.properties?.query ? <OpsPilotKeyValueRows label={t('workflowOrchestration.editor.requestParameters', '请求参数')} value={value.query} references={references} disabled={readOnly} onChange={(next) => setField('query', next)} /> : null}
     {schema?.properties?.headers ? <OpsPilotKeyValueRows label={t('workflowOrchestration.editor.requestHeaders', '请求头')} value={value.headers} references={references} disabled={readOnly} onChange={(next) => setField('headers', next)} /> : null}
-    {schema?.properties?.body ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.requestBody', '请求体')}><SchemaNodeField schema={{ ...field(schema, 'body'), 'x-widget': 'json', 'x-rows': 6, jsonEditorAllowed: true }} value={value.body} references={references} onChange={(next) => setField('body', next)} /></Form.Item> : null}
-    {schema?.properties?.timeout ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.timeoutSeconds', '超时设置（秒）')}><InputNumber className="w-full" min={field(schema, 'timeout').minimum || 1} max={field(schema, 'timeout').maximum || 60} disabled={readOnly} value={typeof value.timeout === 'number' ? value.timeout : Number(field(schema, 'timeout').default || 30)} onChange={(next) => setField('timeout', next)} /></Form.Item> : null}
+    {schema?.properties?.body ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.requestBody', '请求体')}><SchemaNodeField schema={{ ...field(schema, 'body'), type: 'object', 'x-widget': 'json', 'x-rows': 6, jsonEditorAllowed: true }} value={value.body} references={references} onChange={(next) => setField('body', next)} /></Form.Item> : null}
+    {schema?.properties?.timeout ? (
+      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.timeoutSeconds', '超时设置（秒）')}>
+        <ReferenceDropGuard>
+          <InputNumber
+            className="w-full"
+            min={field(schema, 'timeout').minimum || 1}
+            max={field(schema, 'timeout').maximum || 60}
+            disabled={readOnly}
+            value={typeof value.timeout === 'number' ? value.timeout : undefined}
+            onChange={(next) => setField('timeout', typeof next === 'number' ? next : undefined)}
+          />
+        </ReferenceDropGuard>
+      </Form.Item>
+    ) : null}
   </>;
 }
 
@@ -331,19 +347,40 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
   const emailRequired = notificationType === 'EMAIL';
 
   return <>
-    <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationCategory', '通知类别')} required><Radio.Group disabled={readOnly} value={notificationType} options={typeOptions} onChange={(event) => {
-      channelClearedRef.current = false;
-      onChange({ ...value, notification_type: event.target.value, channel_id: undefined });
-    }} /></Form.Item>
+    <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationCategory', '通知类别')} required>
+      <ReferenceDropGuard>
+        <Radio.Group disabled={readOnly} value={notificationType} options={typeOptions} onChange={(event) => {
+          channelClearedRef.current = false;
+          onChange({ ...value, notification_type: event.target.value, channel_id: undefined });
+        }} />
+      </ReferenceDropGuard>
+    </Form.Item>
     <div className="relative">
-      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationMethod', '通知方式')} required={emailRequired || schema.required?.includes('channel_id')}><Select showSearch optionFilterProp="label" allowClear disabled={readOnly} value={channelValue} options={channelOptions} placeholder={channelOptions.length ? t('workflowOrchestration.editor.selectNotificationMethod', '请选择通知方式') : t('workflowOrchestration.editor.noNotificationChannels', '暂无可用通知渠道')} onChange={(next) => {
-        channelClearedRef.current = next == null;
-        setField('channel_id', next);
-      }} /></Form.Item>
+      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationMethod', '通知方式')} required={emailRequired || schema.required?.includes('channel_id')}>
+        <ReferenceDropGuard>
+          <Select showSearch optionFilterProp="label" allowClear disabled={readOnly} value={channelValue} options={channelOptions} placeholder={channelOptions.length ? t('workflowOrchestration.editor.selectNotificationMethod', '请选择通知方式') : t('workflowOrchestration.editor.noNotificationChannels', '暂无可用通知渠道')} onChange={(next) => {
+            channelClearedRef.current = next == null;
+            setField('channel_id', next);
+          }} />
+        </ReferenceDropGuard>
+      </Form.Item>
       {!readOnly ? <Button className="absolute right-0 top-0 h-auto px-0 text-xs" type="link" size="small" icon={<PlusOutlined />} href="/system-manager/channel" target="_blank">{t('workflowOrchestration.editor.addNotificationChannel', '新增通知渠道')}</Button> : null}
     </div>
-    {notificationType === 'EMAIL' && schema?.properties?.recipients ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationPeople', '通知人')} required><SchemaNodeField schema={recipientSchema} value={displayedRecipients} references={references} onChange={(next) => setField('recipients', storedRecipientsFromDisplay(normalizeRecipientIds(next, recipientItems), normalizedRecipients, actorRecipientId))} /></Form.Item> : null}
-    {notificationType === 'EMAIL' && schema?.properties?.title ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationTitle', '通知标题')} required><SchemaNodeField schema={field(schema, 'title')} value={value.title} references={references} onChange={(next) => setField('title', next)} /></Form.Item> : null}
+    {notificationType === 'EMAIL' && schema?.properties?.recipients ? (
+      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationPeople', '通知人')} required>
+        <SchemaNodeField
+          schema={{ ...recipientSchema, 'x-binding': 'literal-only' }}
+          value={displayedRecipients}
+          references={references}
+          onChange={(next) => setField('recipients', storedRecipientsFromDisplay(normalizeRecipientIds(next, recipientItems), normalizedRecipients, actorRecipientId))}
+        />
+      </Form.Item>
+    ) : null}
+    {notificationType === 'EMAIL' && schema?.properties?.title ? (
+      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationTitle', '通知标题')} required>
+        <SchemaNodeField schema={{ ...field(schema, 'title'), 'x-text-surface': 'coerce' }} value={value.title} references={references} onChange={(next) => setField('title', next)} />
+      </Form.Item>
+    ) : null}
     {notificationType === 'EMAIL' && schema?.properties?.report_artifact ? (
       <Form.Item
         className="mb-0"
@@ -359,11 +396,31 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
         />
       </Form.Item>
     ) : null}
-    {schema?.properties?.body ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationContent', '通知内容')} required={schema.required?.includes('body')}><SchemaNodeField schema={{ ...field(schema, 'body'), 'x-widget': 'textarea', 'x-rows': 6 }} value={value.body} references={references} onChange={(next) => setField('body', next)} /></Form.Item> : null}
+    {schema?.properties?.body ? (
+      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationContent', '通知内容')} required={schema.required?.includes('body')}>
+        <SchemaNodeField schema={{ ...field(schema, 'body'), 'x-widget': 'textarea', 'x-rows': 6, 'x-text-surface': 'coerce' }} value={value.body} references={references} onChange={(next) => setField('body', next)} />
+      </Form.Item>
+    ) : null}
   </>;
 }
 
-function RuntimeFields({ keys, schema, value, references, onChange }: { keys: string[]; schema?: JsonSchema; value: Record<string, unknown>; references: DataReferenceOption[]; onChange: (value: Record<string, unknown>) => void }) {
+function RuntimeFields({
+  keys,
+  schema,
+  value,
+  references,
+  onChange,
+  surface = 'string-only',
+  surfaceByKey,
+}: {
+  keys: string[];
+  schema?: JsonSchema;
+  value: Record<string, unknown>;
+  references: DataReferenceOption[];
+  onChange: (value: Record<string, unknown>) => void;
+  surface?: 'coerce' | 'string-only';
+  surfaceByKey?: Record<string, 'coerce' | 'string-only'>;
+}) {
   const { t } = useTranslation();
   return <Collapse ghost items={[{
     key: 'runtime-data',
@@ -373,7 +430,12 @@ function RuntimeFields({ keys, schema, value, references, onChange }: { keys: st
       {keys.map((key) => {
         const item = field(schema, key);
         return <Form.Item className="mb-0" key={key} label={item.title || key} required={schema?.required?.includes(key)}>
-          <SchemaNodeField schema={item} value={value[key]} references={references} onChange={(next) => onChange({ ...value, [key]: next })} />
+          <SchemaNodeField
+            schema={{ ...item, 'x-text-surface': surfaceByKey?.[key] || surface }}
+            value={value[key]}
+            references={references}
+            onChange={(next) => onChange({ ...value, [key]: next })}
+          />
         </Form.Item>;
       })}
     </div>,
@@ -437,34 +499,40 @@ function KnowledgeUpload({ workflowId, value, disabled, onChange }: { workflowId
 
 function IntentList({ value, disabled, onChange }: { value: unknown; disabled: boolean; onChange: (value: string[]) => void }) {
   const { t } = useTranslation();
-  const intents = Array.isArray(value) && value.length ? value.map(String) : [t('workflowOrchestration.editor.defaultIntent', '默认意图')];
-  const duplicate = new Set(intents.filter((item, index) => item.trim() && intents.findIndex((candidate) => candidate.trim() === item.trim()) !== index));
+  const intents = Array.isArray(value) ? value.map(String) : [];
+  const rows = intents.length ? intents : [''];
+  const duplicate = new Set(rows.filter((item, index) => item.trim() && rows.findIndex((candidate) => candidate.trim() === item.trim()) !== index));
   return <section>
     <div className="mb-3 flex items-center justify-between border-b border-[var(--color-border-1)] pb-2">
       <span className="text-sm font-medium text-[var(--color-text-2)]">{t('workflowOrchestration.editor.intentClassification', '意图分类')}</span>
-      <WorkflowPermission operation="Edit"><Button type="dashed" size="small" icon={<PlusOutlined />} disabled={disabled || intents.length >= 20} onClick={() => onChange([...intents, ''])}>{t('workflowOrchestration.editor.addIntent', '添加意图')}</Button></WorkflowPermission>
+      <WorkflowPermission operation="Edit"><Button type="dashed" size="small" icon={<PlusOutlined />} disabled={disabled || rows.length >= 20} onClick={() => onChange([...(intents.length ? intents : ['']), ''])}>{t('workflowOrchestration.editor.addIntent', '添加意图')}</Button></WorkflowPermission>
     </div>
-    <div className="flex flex-col gap-3">
-      {intents.map((intent, index) => {
-        const invalid = !intent.trim() || duplicate.has(intent);
-        return <div key={index} className="group relative">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-primary)] text-xs font-semibold text-white">{index + 1}</span>
-            <span className="text-xs font-medium text-[var(--color-text-3)]">{t('workflowOrchestration.editor.intentNumber', '分类 {number}', { number: index + 1 })}</span>
-          </div>
-          <Input.TextArea
-            rows={3}
-            disabled={disabled}
-            status={invalid ? 'error' : undefined}
-            value={intent}
-            placeholder={t('workflowOrchestration.editor.intentPlaceholder', '描述这个意图，例如：告警处理')}
-            onChange={(event) => onChange(intents.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
-          />
-          {!disabled ? <WorkflowPermission operation="Edit"><Button className="absolute right-2 top-9 opacity-0 transition-opacity group-hover:opacity-100" type="text" danger size="small" aria-label={t('workflowOrchestration.editor.removeIntent', '删除意图')} icon={<DeleteOutlined />} disabled={intents.length === 1} onClick={() => onChange(intents.filter((_, itemIndex) => itemIndex !== index))} /></WorkflowPermission> : null}
-          {invalid ? <div className="mt-1 text-xs text-[var(--color-fail)]">{!intent.trim() ? t('workflowOrchestration.editor.intentRequired', '请输入意图内容') : t('workflowOrchestration.editor.intentDuplicate', '意图内容不能重复')}</div> : null}
-        </div>;
-      })}
-    </div>
+    <ReferenceDropGuard>
+      <div className="flex flex-col gap-3">
+        {rows.map((intent, index) => {
+          const invalid = !intent.trim() || duplicate.has(intent);
+          return <div key={index} className="group relative">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-primary)] text-xs font-semibold text-white">{index + 1}</span>
+              <span className="text-xs font-medium text-[var(--color-text-3)]">{t('workflowOrchestration.editor.intentNumber', '分类 {number}', { number: index + 1 })}</span>
+            </div>
+            <Input.TextArea
+              rows={3}
+              disabled={disabled}
+              status={invalid ? 'error' : undefined}
+              value={intent}
+              placeholder={t('workflowOrchestration.editor.intentPlaceholder', '描述这个意图，例如：告警处理')}
+              onChange={(event) => {
+                const next = rows.map((item, itemIndex) => itemIndex === index ? event.target.value : item);
+                onChange(next);
+              }}
+            />
+            {!disabled ? <WorkflowPermission operation="Edit"><Button className="absolute right-2 top-9 opacity-0 transition-opacity group-hover:opacity-100" type="text" danger size="small" aria-label={t('workflowOrchestration.editor.removeIntent', '删除意图')} icon={<DeleteOutlined />} disabled={rows.length === 1} onClick={() => onChange(rows.filter((_, itemIndex) => itemIndex !== index))} /></WorkflowPermission> : null}
+            {invalid ? <div className="mt-1 text-xs text-[var(--color-fail)]">{!intent.trim() ? t('workflowOrchestration.editor.intentRequired', '请输入意图内容') : t('workflowOrchestration.editor.intentDuplicate', '意图内容不能重复')}</div> : null}
+          </div>;
+        })}
+      </div>
+    </ReferenceDropGuard>
   </section>;
 }
 
@@ -479,29 +547,48 @@ export function OpsPilotAtomForm({ atomKey, schema, value, references, workflowI
   </div>;
 
   return <Form className="flex flex-col gap-5" layout="vertical">
-    <NodeNameField value={nodeTitle} disabled={readOnly} onChange={onNodeTitleChange} />
+    <WorkflowNodeTitleField value={nodeTitle} disabled={readOnly} onChange={onNodeTitleChange} />
     {atomKey === 'bklite_agent' ? <>
       {resourceField('agent_id', t('workflowOrchestration.editor.selectAgent', '选择智能体'), t('workflowOrchestration.editor.pleaseSelectAgent', '请选择智能体'), t('workflowOrchestration.editor.addAgent', '新增智能体'), '/opspilot/skill')}
       <Form.Item className="mb-0" label={field(schema, 'prompt').title || t('workflowOrchestration.editor.prompt', 'Prompt')} tooltip={t('workflowOrchestration.editor.promptAppendTooltip', '这段提示词会附加到本次输入之前。')}>
-        <SchemaNodeField schema={field(schema, 'prompt')} value={value.prompt} references={references} onChange={(next) => setField('prompt', next)} />
+        <SchemaNodeField schema={{ ...field(schema, 'prompt'), 'x-text-surface': 'string-only' }} value={value.prompt} references={references} onChange={(next) => setField('prompt', next)} />
       </Form.Item>
-      <KnowledgeUpload workflowId={workflowId} value={value.knowledge_files} disabled={readOnly} onChange={(next) => setField('knowledge_files', next)} />
-      <RuntimeFields keys={['message', 'memory_context']} schema={schema} value={value} references={references} onChange={onChange} />
+      <ReferenceDropGuard>
+        <KnowledgeUpload workflowId={workflowId} value={value.knowledge_files} disabled={readOnly} onChange={(next) => setField('knowledge_files', next)} />
+      </ReferenceDropGuard>
+      <RuntimeFields keys={['message', 'memory_context']} schema={schema} value={value} references={references} onChange={onChange} surface="string-only" />
     </> : null}
 
     {atomKey === 'bklite_intent_classification' ? <>
       {resourceField('model_id', t('workflowOrchestration.editor.llmModel', 'LLM 模型'), t('workflowOrchestration.editor.pleaseSelectLlmModel', '请选择 LLM 模型'))}
       <Form.Item className="mb-0" label={field(schema, 'classification_rules').title || t('workflowOrchestration.editor.classificationRules', '分类规则')} tooltip={t('workflowOrchestration.editor.classificationRulesTooltip', '补充分类判断原则；留空时由模型根据意图描述判断。')}>
-        <SchemaNodeField schema={field(schema, 'classification_rules')} value={value.classification_rules} references={references} onChange={(next) => setField('classification_rules', next)} />
+        <SchemaNodeField schema={{ ...field(schema, 'classification_rules'), 'x-text-surface': 'string-only' }} value={value.classification_rules} references={references} onChange={(next) => setField('classification_rules', next)} />
       </Form.Item>
       <IntentList value={value.intents} disabled={readOnly} onChange={(next) => setField('intents', next)} />
-      <RuntimeFields keys={['text']} schema={schema} value={value} references={references} onChange={onChange} />
+      <RuntimeFields keys={['text']} schema={schema} value={value} references={references} onChange={onChange} surface="string-only" />
     </> : null}
 
     {atomKey === 'bklite_memory_read' ? <>
       {resourceField('memory_space_id', t('workflowOrchestration.editor.selectMemorySpace', '选择记忆空间'), t('workflowOrchestration.editor.pleaseSelectMemorySpace', '请选择记忆空间'), t('workflowOrchestration.editor.addMemorySpace', '新增记忆空间'), '/opspilot/memory')}
-      <Collapse ghost items={[{ key: 'memory-read-settings', label: t('workflowOrchestration.editor.advancedSettings', '高级设置'), children: <Form.Item className="mb-0" label={field(schema, 'top_k').title || t('workflowOrchestration.editor.resultCount', '返回条数')}><InputNumber className="w-full" min={field(schema, 'top_k').minimum} max={field(schema, 'top_k').maximum} disabled={readOnly} value={typeof value.top_k === 'number' ? value.top_k : 5} onChange={(next) => setField('top_k', next)} /></Form.Item> }]} />
-      <RuntimeFields keys={['query']} schema={schema} value={value} references={references} onChange={onChange} />
+      <Collapse ghost items={[{
+        key: 'memory-read-settings',
+        label: t('workflowOrchestration.editor.advancedSettings', '高级设置'),
+        children: (
+          <Form.Item className="mb-0" label={field(schema, 'top_k').title || t('workflowOrchestration.editor.resultCount', '返回条数')}>
+            <ReferenceDropGuard>
+              <InputNumber
+                className="w-full"
+                min={field(schema, 'top_k').minimum}
+                max={field(schema, 'top_k').maximum}
+                disabled={readOnly}
+                value={typeof value.top_k === 'number' ? value.top_k : undefined}
+                onChange={(next) => setField('top_k', typeof next === 'number' ? next : undefined)}
+              />
+            </ReferenceDropGuard>
+          </Form.Item>
+        ),
+      }]} />
+      <RuntimeFields keys={['query']} schema={schema} value={value} references={references} onChange={onChange} surface="string-only" />
     </> : null}
 
     {atomKey === 'bklite_memory_write' ? <>
@@ -512,9 +599,26 @@ export function OpsPilotAtomForm({ atomKey, schema, value, references, workflowI
       })}
       {resourceField('model_id', t('workflowOrchestration.editor.llmModel', 'LLM 模型'), t('workflowOrchestration.editor.pleaseSelectLlmModel', '请选择 LLM 模型'))}
       <Form.Item className="mb-0" label={field(schema, 'write_batch_size').title || t('workflowOrchestration.editor.memoryWriteBatchSize', '累积写入条数')} tooltip={t('workflowOrchestration.editor.memoryWriteBatchSizeTooltip', '用于控制记忆写入的分批大小，范围 1–500。')} required>
-        <InputNumber className="w-full" min={1} max={500} precision={0} disabled={readOnly} value={typeof value.write_batch_size === 'number' ? value.write_batch_size : 30} onChange={(next) => setField('write_batch_size', next)} />
+        <ReferenceDropGuard>
+          <InputNumber
+            className="w-full"
+            min={1}
+            max={500}
+            precision={0}
+            disabled={readOnly}
+            value={typeof value.write_batch_size === 'number' ? value.write_batch_size : undefined}
+            onChange={(next) => setField('write_batch_size', typeof next === 'number' ? next : undefined)}
+          />
+        </ReferenceDropGuard>
       </Form.Item>
-      <RuntimeFields keys={['content', 'title']} schema={schema} value={value} references={references} onChange={onChange} />
+      <RuntimeFields
+        keys={['content', 'title']}
+        schema={schema}
+        value={value}
+        references={references}
+        onChange={onChange}
+        surfaceByKey={{ content: 'string-only', title: 'coerce' }}
+      />
     </> : null}
 
     {atomKey === 'bklite_http_request' ? <HttpRequestFields schema={schema} value={value} references={references} readOnly={readOnly} onChange={onChange} /> : null}

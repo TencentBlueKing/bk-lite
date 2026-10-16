@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Button, Progress, Segmented, Tooltip, Typography } from 'antd';
+import { Alert, Button, Progress, Segmented, Tooltip, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmPageBreadcrumb from '@/app/apm/components/apm-page-breadcrumb';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -30,9 +30,23 @@ import {
   timeWindowRange,
   type TimeWindow,
 } from '@/app/apm/components/service-catalog-model';
-import TopologyCanvas from '@/app/apm/services/topology/topology-canvas';
-import { focusApplicationTopology } from '@/app/apm/services/topology/topology-layout';
-import type { ApmApplication, ApmEvent, ApmService, ApmServiceRed, ApmSlo, ApmTopologyGraph } from '@/app/apm/types';
+import TopologyCanvas, {
+  type TopologyCanvasSelection,
+} from '@/app/apm/services/topology/topology-canvas';
+import TopologyInspectPanel from '@/app/apm/services/topology/topology-inspect-panel';
+import {
+  focusApplicationTopology,
+  isolateTopologyNeighborhood,
+} from '@/app/apm/services/topology/topology-layout';
+import type {
+  ApmApplication,
+  ApmEvent,
+  ApmService,
+  ApmServiceRed,
+  ApmSlo,
+  ApmTopologyGraph,
+  ApmTraceSummary,
+} from '@/app/apm/types';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
@@ -152,14 +166,20 @@ export default function ApplicationObservability({
     getServices,
     getServiceRedBatch,
     getTopology,
+    getTraces,
     getEvents,
     getSlos,
     isLoading,
   } = useApmApi();
   const [application, setApplication] = useState<ApmApplication>();
   const [services, setServices] = useState<ApmService[]>([]);
+  const [serviceIds, setServiceIds] = useState<Map<string, string>>(new Map());
   const [state, setState] = useState<PageState>('loading');
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
+  const [selection, setSelection] = useState<TopologyCanvasSelection | null>(null);
+  const [isolatedNodeId, setIsolatedNodeId] = useState<string | null>(null);
+  const [traces, setTraces] = useState<ApmTraceSummary[]>([]);
+  const [tracesLoading, setTracesLoading] = useState(false);
   const [topologyState, setTopologyState] = useState<TopologySurfaceState>('loading');
   const [topologyError, setTopologyError] = useState<unknown>();
   const [topologyRefreshKey, setTopologyRefreshKey] = useState(0);
@@ -173,6 +193,13 @@ export default function ApplicationObservability({
   });
   const [metricRefreshKey, setMetricRefreshKey] = useState(0);
 
+  const { startedAt, endedAt } = useMemo(() => timeWindowRange(timeWindow), [timeWindow]);
+
+  useEffect(() => {
+    setSelection(null);
+    setIsolatedNodeId(null);
+  }, [applicationId, timeWindow]);
+
   useEffect(() => {
     if (isLoading || !applicationId) return;
     setState('loading');
@@ -185,6 +212,7 @@ export default function ApplicationObservability({
       .then(([item, allServices, eventItems, sloItems]) => {
         setApplication(item);
         setServices(allServices.filter((service) => service.application_id === item.application_id));
+        setServiceIds(new Map(allServices.map((service) => [`${service.namespace}::${service.name}`, service.id])));
         setEvents(eventItems);
         setSlos(sloItems);
         setState('ready');
@@ -194,7 +222,6 @@ export default function ApplicationObservability({
 
   useEffect(() => {
     if (!application) return;
-    const { startedAt, endedAt } = timeWindowRange(timeWindow);
     setTopologyState((current) => (current === 'ready' ? current : 'loading'));
     let active = true;
     getTopology({
@@ -220,7 +247,63 @@ export default function ApplicationObservability({
     return () => {
       active = false;
     };
-  }, [application, getTopology, timeWindow, topologyRefreshKey]);
+  }, [application, endedAt, getTopology, startedAt, topologyRefreshKey]);
+
+  const visibleGraph = useMemo(() => {
+    if (!isolatedNodeId) return graph;
+    return isolateTopologyNeighborhood(graph.nodes, graph.edges, isolatedNodeId);
+  }, [graph, isolatedNodeId]);
+
+  const selectedSamples = useMemo(() => {
+    if (selection?.kind === 'node') {
+      return visibleGraph.nodes.find((node) => node.id === selection.id)?.sample_traces ?? [];
+    }
+    if (selection?.kind === 'edge') {
+      return visibleGraph.edges.find((edge) => edge.source === selection.source && edge.target === selection.target)?.sample_traces ?? [];
+    }
+    return [];
+  }, [selection, visibleGraph.edges, visibleGraph.nodes]);
+
+  const sampleNode = useMemo(() => {
+    if (selection?.kind === 'node') return visibleGraph.nodes.find((node) => node.id === selection.id);
+    if (selection?.kind === 'edge') return visibleGraph.nodes.find((node) => node.id === selection.target);
+    return undefined;
+  }, [selection, visibleGraph.nodes]);
+
+  useEffect(() => {
+    if (!sampleNode || selectedSamples.length) {
+      setTraces([]);
+      setTracesLoading(false);
+      return;
+    }
+    if (sampleNode.kind === 'inferred') {
+      setTraces([]);
+      setTracesLoading(false);
+      return;
+    }
+    let active = true;
+    setTracesLoading(true);
+    getTraces({
+      service_namespace: sampleNode.service_namespace,
+      service_name: sampleNode.service_name,
+      environment: sampleNode.environment,
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      limit: 5,
+    })
+      .then((page) => {
+        if (active) setTraces(page.items);
+      })
+      .catch(() => {
+        if (active) setTraces([]);
+      })
+      .finally(() => {
+        if (active) setTracesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [endedAt, getTraces, sampleNode, selectedSamples.length, startedAt]);
 
   const rows = useMemo(() => expandServiceRows(services), [services]);
 
@@ -404,7 +487,7 @@ export default function ApplicationObservability({
     >
       {state === 'ready' && application ? (
         <div className="flex flex-col gap-3 xl:h-full xl:min-h-0">
-          <div className="grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_320px]">
             <ApmSurface className="flex min-h-[440px] min-w-0 flex-col overflow-hidden !rounded-xl shadow-2xs xl:min-h-0" padding="none">
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-3">
                 <div className="min-w-0">
@@ -441,15 +524,26 @@ export default function ApplicationObservability({
                   ) : null}
                 </div>
               </div>
+              {isolatedNodeId ? (
+                <Alert
+                  showIcon
+                  type="info"
+                  className="!rounded-none border-x-0 border-t-0 border-b border-[var(--color-border)] px-4 py-2"
+                  message={t('apm.topology.isolateBanner', '正在隔离查看一个服务及其直接依赖。')}
+                  action={<Button type="link" size="small" onClick={() => setIsolatedNodeId(null)}>{t('apm.topology.showFullMap', '显示全图')}</Button>}
+                />
+              ) : null}
               {topologyState === 'ready' ? (
                 <TopologyCanvas
-                  edges={graph.edges}
+                  edges={visibleGraph.edges}
                   fillHeight
                   focusNamespace={application.application_id}
                   keyword=""
                   layout="layered"
-                  nodes={graph.nodes}
+                  nodes={visibleGraph.nodes}
+                  selected={selection}
                   zoom={1}
+                  onSelect={setSelection}
                 />
               ) : (
                 <div className="flex min-h-[320px] flex-1 basis-0 items-center">
@@ -464,52 +558,71 @@ export default function ApplicationObservability({
                 </div>
               )}
             </ApmSurface>
-            <ApmSurface className="flex min-w-0 flex-col gap-3 !rounded-xl shadow-2xs xl:min-h-0 xl:overflow-auto" padding="compact">
-              <Typography.Text strong className="text-sm">{t('apm.applications.keyInfo', '关键信息')}</Typography.Text>
-              <div className="grid grid-cols-3 gap-2">
-                {keyInfo.map((item) => {
-                  const card = (
-                    <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 px-2.5 py-2" data-key-info={item.key}>
-                      <Typography.Text type="secondary" className="truncate !text-[11px]">{item.label}</Typography.Text>
-                      <div className={`text-lg font-semibold tabular-nums leading-tight ${item.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>{item.value}</div>
+            {selection ? (
+              <TopologyInspectPanel
+                className="flex min-w-0 flex-col overflow-hidden !rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] shadow-2xs xl:h-full"
+                edges={visibleGraph.edges}
+                isolated={Boolean(isolatedNodeId)}
+                nodes={visibleGraph.nodes}
+                selection={selection}
+                serviceIds={serviceIds}
+                startedAt={startedAt.toISOString()}
+                endedAt={endedAt.toISOString()}
+                traces={selectedSamples.length ? [] : traces}
+                tracesLoading={tracesLoading}
+                onClose={() => setSelection(null)}
+                onIsolate={setIsolatedNodeId}
+                onSelectNode={(nodeId) => setSelection({ kind: 'node', id: nodeId })}
+                onShowFullMap={() => setIsolatedNodeId(null)}
+              />
+            ) : (
+              <ApmSurface className="flex min-w-0 flex-col gap-3 !rounded-xl shadow-2xs xl:min-h-0 xl:overflow-auto" padding="compact">
+                <Typography.Text strong className="text-sm">{t('apm.applications.keyInfo', '关键信息')}</Typography.Text>
+                <div className="grid grid-cols-3 gap-2">
+                  {keyInfo.map((item) => {
+                    const card = (
+                      <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)]/40 px-2.5 py-2" data-key-info={item.key}>
+                        <Typography.Text type="secondary" className="truncate !text-[11px]">{item.label}</Typography.Text>
+                        <div className={`text-lg font-semibold tabular-nums leading-tight ${item.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>{item.value}</div>
+                      </div>
+                    );
+                    return item.hint ? <Tooltip key={item.key} title={item.hint}>{card}</Tooltip> : <div key={item.key}>{card}</div>;
+                  })}
+                </div>
+                {!rows.length ? (
+                  <CatalogState
+                    kind="empty"
+                    description={t('apm.applications.noServices', '该应用还没有观测到服务。')}
+                    action={showAddIngest ? (
+                      <Link href={addIngestHref}>
+                        <Button type="primary" size="small">{t('apm.applications.addIngest', '添加接入')}</Button>
+                      </Link>
+                    ) : undefined}
+                  />
+                ) : (
+                  <>
+                    <div className={panelClass}>
+                      <Typography.Text strong className="!text-xs">{t('apm.applications.slowestEndpoints', '最慢端点')}</Typography.Text>
+                      <EndpointRankList
+                        rows={slowestEndpoints}
+                        emptyText={t('apm.serviceDetail.noEndpoints', '当前时间窗暂无端点指标')}
+                        metricOf={(row) => formatLatency(row.p99_ms, false, t)}
+                        strokeColor="var(--color-primary)"
+                      />
                     </div>
-                  );
-                  return item.hint ? <Tooltip key={item.key} title={item.hint}>{card}</Tooltip> : <div key={item.key}>{card}</div>;
-                })}
-              </div>
-              {!rows.length ? (
-                <CatalogState
-                  kind="empty"
-                  description={t('apm.applications.noServices', '该应用还没有观测到服务。')}
-                  action={showAddIngest ? (
-                    <Link href={addIngestHref}>
-                      <Button type="primary" size="small">{t('apm.applications.addIngest', '添加接入')}</Button>
-                    </Link>
-                  ) : undefined}
-                />
-              ) : (
-                <>
-                  <div className={panelClass}>
-                    <Typography.Text strong className="!text-xs">{t('apm.applications.slowestEndpoints', '最慢端点')}</Typography.Text>
-                    <EndpointRankList
-                      rows={slowestEndpoints}
-                      emptyText={t('apm.serviceDetail.noEndpoints', '当前时间窗暂无端点指标')}
-                      metricOf={(row) => formatLatency(row.p99_ms, false, t)}
-                      strokeColor="var(--color-primary)"
-                    />
-                  </div>
-                  <div className={panelClass}>
-                    <Typography.Text strong className="!text-xs">{t('apm.applications.errorEndpoints', '错误端点')}</Typography.Text>
-                    <EndpointRankList
-                      rows={errorEndpoints}
-                      emptyText={t('apm.applications.noErrorEndpoints', '当前时间窗没有出错的端点')}
-                      metricOf={(row) => formatErrorRate(row.error_rate, false, t)}
-                      strokeColor="var(--color-fail)"
-                    />
-                  </div>
-                </>
-              )}
-            </ApmSurface>
+                    <div className={panelClass}>
+                      <Typography.Text strong className="!text-xs">{t('apm.applications.errorEndpoints', '错误端点')}</Typography.Text>
+                      <EndpointRankList
+                        rows={errorEndpoints}
+                        emptyText={t('apm.applications.noErrorEndpoints', '当前时间窗没有出错的端点')}
+                        metricOf={(row) => formatErrorRate(row.error_rate, false, t)}
+                        strokeColor="var(--color-fail)"
+                      />
+                    </div>
+                  </>
+                )}
+              </ApmSurface>
+            )}
           </div>
           <div className="shrink-0" aria-label={t('apm.applications.keyMetrics', '重点指标')}>
             {metricFailureKeys.length ? (

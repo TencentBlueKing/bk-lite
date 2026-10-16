@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import OperateOid from './components/operateOid';
 import CustomTable from '@/components/custom-table';
-import TopSection from '@/components/top-section';
 import SearchActionBar from '@/components/search-action-bar';
 import PermissionWrapper from '@/components/permission';
 import { PlusOutlined } from '@ant-design/icons';
@@ -319,11 +318,13 @@ const OidLibrary: React.FC = () => {
 
   return (
     <div className="oid-library-container flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="shrink-0 overflow-x-auto">
-        <TopSection
-          title={t('OidLibrary.soidTitle')}
-          content={t('OidLibrary.soidMessage')}
-        />
+      <div className="shrink-0 px-4 pb-3 pt-4">
+        <h2 className="m-0 text-base font-semibold text-[var(--color-text-1)]">
+          {t('OidLibrary.soidTitle')}
+        </h2>
+        <p className="mb-0 mt-1 text-xs text-[var(--color-text-3)]">
+          {t('OidLibrary.soidMessage')}
+        </p>
       </div>
       <SearchActionBar
         filters={(

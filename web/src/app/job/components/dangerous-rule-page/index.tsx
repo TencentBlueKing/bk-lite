@@ -18,6 +18,7 @@ import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { AxiosRequestConfig } from 'axios';
 import JobListWorkspaceShell from '@/app/job/components/list-workspace-shell';
+import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
 
 export interface DangerousRuleApiMethods {
@@ -340,13 +341,15 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
       key: 'is_enabled',
       width: 100,
       render: (_: unknown, record: DangerousRule) => (
-        <Switch
-          size="small"
-          checked={record.is_enabled}
-          loading={togglingIds.has(record.id)}
-          disabled={togglingIds.has(record.id) || (record.is_builtin && !isSuperUser)}
-          onChange={() => handleToggleEnabled(record)}
-        />
+        <Permission requiredPermissions={['Edit']}>
+          <Switch
+            size="small"
+            checked={record.is_enabled}
+            loading={togglingIds.has(record.id)}
+            disabled={togglingIds.has(record.id) || (record.is_builtin && !isSuperUser)}
+            onChange={() => handleToggleEnabled(record)}
+          />
+        </Permission>
       ),
     },
     {
@@ -373,31 +376,35 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
       fixed: 'right',
       render: (_: unknown, record: DangerousRule) => (
         <div className="flex items-center gap-[10px]">
-          <Button
-            type="link"
-            className="px-0"
-            disabled={record.is_builtin && !isSuperUser}
-            onClick={() => openEditModal(record)}
-          >
-            {t('job.editRule')}
-          </Button>
-          <Popconfirm
-            title={t('job.deleteRule')}
-            description={t('job.deleteRuleConfirm')}
-            okText={t('job.confirm')}
-            cancelText={t('job.cancel')}
-            okButtonProps={{ danger: true }}
-            disabled={record.is_builtin && !isSuperUser}
-            onConfirm={() => handleDelete(record)}
-          >
+          <Permission requiredPermissions={['Edit']}>
             <Button
               type="link"
               className="px-0"
               disabled={record.is_builtin && !isSuperUser}
+              onClick={() => openEditModal(record)}
             >
-              {t('job.deleteRule')}
+              {t('job.editRule')}
             </Button>
-          </Popconfirm>
+          </Permission>
+          <Permission requiredPermissions={['Delete']}>
+            <Popconfirm
+              title={t('job.deleteRule')}
+              description={t('job.deleteRuleConfirm')}
+              okText={t('job.confirm')}
+              cancelText={t('job.cancel')}
+              okButtonProps={{ danger: true }}
+              disabled={record.is_builtin && !isSuperUser}
+              onConfirm={() => handleDelete(record)}
+            >
+              <Button
+                type="link"
+                className="px-0"
+                disabled={record.is_builtin && !isSuperUser}
+              >
+                {t('job.deleteRule')}
+              </Button>
+            </Popconfirm>
+          </Permission>
         </div>
       ),
     },
@@ -416,9 +423,11 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
           onSearch: handleSearch,
         }}
         actions={(
-          <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
-            {t('common.new')}
-          </Button>
+          <Permission requiredPermissions={['Add']}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
+              {t('common.new')}
+            </Button>
+          </Permission>
         )}
         contentClassName="flex-1 overflow-hidden"
         tableColumns={columns}

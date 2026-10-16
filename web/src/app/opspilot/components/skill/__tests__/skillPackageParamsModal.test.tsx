@@ -6,6 +6,7 @@ import SkillPackageParamsModal, {
   listMissingRequiredParams,
   mergeDeclaredParams,
   packageHasDeclaredParams,
+  skillPackageParamsForSubmit,
 } from '../skillPackageParamsModal';
 import type { SkillPackage } from '@/app/opspilot/types/skill';
 
@@ -42,6 +43,33 @@ describe('mergeDeclaredParams', () => {
   it('treats packages without declared variables as having nothing to configure', () => {
     expect(packageHasDeclaredParams(pkg)).toBe(true);
     expect(packageHasDeclaredParams({ ...pkg, variables: [] })).toBe(false);
+  });
+
+  it('drops undeclared keys when the variable list is resolved, and keeps stored params until then', () => {
+    const stored = {
+      atuin: [
+        { key: 'ATUIN_KEY', value: 'secret', type: 'password' as const },
+        { key: 'ATUIN_HOST', value: 'https://example.com', type: 'text' as const },
+        { key: 'CUSTOM_FLAG', value: '1', type: 'text' as const },
+      ],
+      other: [{ key: 'KEEP', value: 'yes', type: 'text' as const }],
+    };
+    const cleared = skillPackageParamsForSubmit([{ ...pkg, variables: [] }], stored);
+    expect(cleared.atuin).toEqual([]);
+    expect(cleared.other).toEqual(stored.other);
+
+    const filtered = skillPackageParamsForSubmit([pkg], stored);
+    expect(filtered.atuin.map((item) => item.key)).toEqual(['ATUIN_KEY', 'ATUIN_HOST']);
+
+    const unresolved = { ...pkg, variables: undefined, manifest: undefined };
+    expect(skillPackageParamsForSubmit([unresolved], stored).atuin).toEqual(stored.atuin);
+
+    const manifestOnly = {
+      ...pkg,
+      variables: undefined,
+      manifest: { variables: [{ name: 'ATUIN_HOST', type: 'text' as const }] },
+    };
+    expect(skillPackageParamsForSubmit([manifestOnly], stored).atuin.map((item) => item.key)).toEqual(['ATUIN_HOST']);
   });
 
   it('lists missing required declared params', () => {
@@ -88,7 +116,7 @@ describe('SkillPackageParamsModal', () => {
     expect(screen.queryByDisplayValue('1')).toBeNull();
   });
 
-  it('keeps stored custom values when confirming declared params', () => {
+  it('drops stored custom values when confirming declared params', () => {
     const onOk = vi.fn();
     render(
       <SkillPackageParamsModal
@@ -104,7 +132,6 @@ describe('SkillPackageParamsModal', () => {
     expect(onOk).toHaveBeenCalledWith([
       expect.objectContaining({ key: 'ATUIN_KEY', value: '' }),
       expect.objectContaining({ key: 'ATUIN_HOST', value: '' }),
-      expect.objectContaining({ key: 'CUSTOM_FLAG', value: '1' }),
     ]);
   });
 });

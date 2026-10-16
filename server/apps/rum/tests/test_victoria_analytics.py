@@ -627,7 +627,72 @@ def test_list_error_issues_filters_by_release():
         assert issues[0]["count"] == 2
         assert issues[0]["affectedSessions"] == 2
         assert '"rum.release":"1.0.0"' in _VLHandler.got_query
-        assert "stats by (`rum.error.fingerprint`)" in _VLHandler.got_query
+        assert "stats by (`rum.error.fingerprint`, `rum.error.group_key`)" in _VLHandler.got_query
+    finally:
+        server.shutdown()
+
+
+def test_list_error_issues_keeps_group_key_when_client_fingerprint_is_absent():
+    now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
+    group_key = "a" * 64
+    _VLHandler.rows = [
+        {
+            "rum.error.fingerprint": "",
+            "rum.error.group_key": group_key,
+            "message": "TypeError: failed",
+            "error_type": "TypeError",
+            "application": "storefront",
+            "count": "3",
+            "sessions": "2",
+            "users": "1",
+            "start_time": now.isoformat().replace("+00:00", "Z"),
+            "end_time": now.isoformat().replace("+00:00", "Z"),
+        }
+    ]
+    server, base = _serve(_VLHandler.rows)
+    try:
+        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        page = analytics.list_error_issues(
+            "core",
+            {
+                "from": now - timedelta(hours=1),
+                "to": now + timedelta(minutes=1),
+                "applications": ["storefront"],
+                "traffic": "all",
+                "limit": 100,
+            },
+        )
+        assert len(page["issues"]) == 1
+        assert page["issues"][0]["fingerprint"] == group_key
+        assert page["issues"][0]["count"] == 3
+    finally:
+        server.shutdown()
+
+
+def test_application_overview_counts_devices_by_session():
+    now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
+    stamp = now.isoformat().replace("+00:00", "Z")
+    desktop = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+    phone = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148"
+    events = [
+        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "desk", "rum.event.type": "view", "user_agent.original": desktop},
+        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "desk", "rum.event.type": "resource", "user_agent.original": desktop},
+        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "desk", "rum.event.type": "vital", "user_agent.original": desktop},
+        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "phone", "rum.event.type": "view", "user_agent.original": phone},
+        {"_time": stamp, "rum.application": "storefront", "rum.session.id": "phone", "rum.event.type": "error", "user_agent.original": desktop},
+    ]
+
+    def choose(query: str):
+        if "stats" in query:
+            return []
+        return events
+
+    server, base = _serve([])
+    _VLHandler.choose = choose
+    try:
+        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        overview = analytics.application_overview("core", "storefront", now - timedelta(hours=1), now + timedelta(minutes=1))
+        assert overview["devices"] == {"mobile": 1, "desktop": 1}
     finally:
         server.shutdown()
 

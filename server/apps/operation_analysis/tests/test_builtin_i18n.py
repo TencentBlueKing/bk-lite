@@ -34,7 +34,7 @@ CATALOG = {
                     "description": "Model count",
                     "columns": {"model": "Model Name"},
                     "params": {"model_id": "Model ID"},
-                    "actions": {"__actions__": "View"},
+                    "actions": {"__actions__": "View", "查看详情": "View details"},
                 },
                 "group-overview": {"name": "Overview", "description": "Resource overview"},
             },
@@ -149,6 +149,12 @@ def test_overlay_filter_options_and_widget_actions():
                 "name": "模型数",
                 "valueConfig": {
                     "actions": [{"columnKey": "__actions__", "text": "查看", "url": "/cmdb/assetData"}],
+                    "interaction": {
+                        "kind": "data",
+                        "name": "查看详情",
+                        "url": "/cmdb/assetData",
+                        "openMode": "sameTab",
+                    },
                     "dataSourceParams": [
                         {
                             "name": "model_id",
@@ -172,6 +178,7 @@ def test_overlay_filter_options_and_widget_actions():
     assert result["filters"][0]["options"][1]["label"] == "Organization"
     widget = result["view_sets"][0]
     assert widget["valueConfig"]["actions"][0]["text"] == "View"
+    assert widget["valueConfig"]["interaction"]["name"] == "View details"
     assert widget["valueConfig"]["dataSourceParams"][0]["alias_name"] == "Model ID"
 
 

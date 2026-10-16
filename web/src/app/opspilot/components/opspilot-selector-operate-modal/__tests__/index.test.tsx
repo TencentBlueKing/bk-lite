@@ -90,4 +90,38 @@ describe('OpspilotSelectorOperateModal', () => {
     expect(screen.queryByText('MySQL')).toBeNull();
     expect(screen.queryByText('Redis')).toBeNull();
   });
+
+  it('keeps a hidden selected tool in the selected count', () => {
+    render(
+      <OpspilotSelectorOperateModal
+        visible
+        title="选择工具"
+        options={[
+          { id: 1, name: 'MySQL', description: '数据库', systemTags: ['database'], userTags: [] },
+          { id: 2, name: 'Clock', description: '时间', systemTags: [], userTags: [] },
+        ]}
+        selectedOptions={[2]}
+        onOk={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'database' }));
+
+    expect(screen.queryByText('Clock')).toBeNull();
+    expect(screen.getByText('MySQL')).toBeTruthy();
+    expect(screen.getByText('已选 {count} 项')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '全部' }).getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: '全部' }));
+
+    expect(screen.getByRole('button', { name: '全部' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Clock')).toBeTruthy();
+    expect(screen.getByText('MySQL')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '全部' }));
+
+    expect(screen.getByRole('button', { name: '全部' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Clock')).toBeTruthy();
+  });
 });

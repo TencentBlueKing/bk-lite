@@ -74,7 +74,7 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
   return (
     <LocaleContext.Provider value={{ locale, setLocale: changeLocale }}>
       {isLoading ? (
-        <Spin></Spin>
+        <Spin fullscreen />
       ) : (
         <IntlProvider
           locale={locale}

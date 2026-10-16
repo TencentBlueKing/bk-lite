@@ -17,6 +17,7 @@ import type {
   WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
+import type { InteractionSampleTicket } from '@/app/ops-analysis/utils/interactionSample';
 const WidgetDataRenderer = React.lazy(
   () => import('@/app/ops-analysis/components/widgetDataRenderer'),
 );
@@ -42,7 +43,8 @@ interface WidgetConfigPreviewProps {
   suppliedRawData?: unknown;
   suppliedRawDataVersion?: number;
   loading?: boolean;
-  onRawData: (data: unknown) => void;
+  sampleTicket?: InteractionSampleTicket;
+  onRawData: (data: unknown, ticket?: InteractionSampleTicket) => void;
   liveName?: string;
   liveDescription?: string;
   onRefresh?: () => void;
@@ -74,6 +76,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
   suppliedRawData,
   suppliedRawDataVersion = 0,
   loading = false,
+  sampleTicket,
   onRawData,
   liveName,
   liveDescription,
@@ -265,8 +268,10 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                       <div className="h-full min-h-0 flex-1">
                         <React.Suspense fallback={null}>
                           <WidgetDataRenderer
+                            key={widgetId}
                             widgetId={widgetId}
                             chartType={config.chartType}
+                            sampleTicket={sampleTicket}
                             config={config}
                             dataSource={dataSource}
                             unifiedFilterValues={unifiedFilterValues}

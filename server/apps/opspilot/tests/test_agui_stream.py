@@ -122,6 +122,25 @@ def test_late_tool_events_keep_the_step_that_ran_them():
     assert results[1]["toolCallId"] == "call-monitor"
 
 
+def test_replayed_choice_marker_is_not_shown_as_a_tool_call():
+    graph = _FakeBasicGraph([])
+    backfill, _, _ = graph._emit_tool_result_events_from_messages(
+        [
+            ToolMessage(
+                content="已向用户发出选择，本轮结束。用户回答后会在新一轮带着已有结果继续。",
+                tool_call_id="choice-marker",
+                name="request_user_choice",
+            ),
+            ToolMessage(content="instances", tool_call_id="call-monitor", name="monitor_list_objects"),
+        ],
+        EventEncoder(),
+        {},
+    )
+    payloads = _parse_sse_payloads(backfill)
+    names = [item.get("toolCallName") for item in payloads if item["type"] == "TOOL_CALL_START"]
+    assert names == ["monitor_list_objects"]
+
+
 def test_two_graphs_do_not_share_planned_step_lookup():
     graph_a = _FakeBasicGraph([])
     graph_b = _FakeBasicGraph([])

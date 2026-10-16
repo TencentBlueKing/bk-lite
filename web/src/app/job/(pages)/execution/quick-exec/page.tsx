@@ -22,6 +22,7 @@ import { Script, Playbook, ScriptParam } from '@/app/job/types';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import ScriptEditor from '@/app/job/components/script-editor';
+import Permission from '@/components/permission';
 import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
 import {
   parseCommandLineArgs,
@@ -724,9 +725,11 @@ const QuickExecPage = () => {
 
           <Divider />
 
-          <Button type="primary" loading={executeLoading} onClick={handleExecute}>
-            {t('job.executeNow')}
-          </Button>
+          <Permission requiredPermissions={['Add']}>
+            <Button type="primary" loading={executeLoading} onClick={handleExecute}>
+              {t('job.executeNow')}
+            </Button>
+          </Permission>
         </Form>
       </div>
 

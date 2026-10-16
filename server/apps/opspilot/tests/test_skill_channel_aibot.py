@@ -53,6 +53,12 @@ class TestNormalizeConfig:
         cfg = {"connectionMode": "webhook", "webhook": {"token": "t", "encodingAESKey": "k"}}
         assert normalize_aibot_channel_config(cfg)["webhook"]["token"] == "t"
 
+    def test_keeps_long_connection_credentials(self):
+        cfg = {"connectionMode": "websocket", "websocket": {"botId": " bot-1 ", "secret": " sec "}}
+        normalized = normalize_aibot_channel_config(cfg)
+        assert normalized["connectionMode"] == "websocket"
+        assert normalized["websocket"] == {"botId": "bot-1", "secret": "sec"}
+
 
 class TestAibotHttp:
     def test_wecom_callback_skips_login_token(self):
@@ -356,7 +362,7 @@ class TestAibotTasks:
 
         skill = _skill()
         ch = _aibot_channel(skill)
-        with patch("apps.opspilot.services.chat_service.chat_service.chat", return_value={"content": "答"}):
+        with patch("apps.opspilot.services.chat_service.chat_service.chat", return_value={"content": "答"}) as chat:
             text = execute_skill_channel_im_sync(
                 channel=ch,
                 user_message="问",
@@ -364,6 +370,7 @@ class TestAibotTasks:
                 session_id="chat-1",
             )
         assert text == "答"
+        assert chat.call_args.args[0]["reply_language"] == "match_user"
         conv = SkillConversation.objects.get(channel=ch, external_user_id="user-1")
         roles = list(conv.messages.order_by("id").values_list("role", flat=True))
         assert roles == ["user", "assistant"]

@@ -7,6 +7,7 @@ import type {
 } from "./room3DData";
 import { getRoom3DSceneRacks } from "./room3DData";
 import type { Room3DRackTopLines } from "@/app/ops-analysis/types/sceneWidget";
+import { createRightClickGesture } from "@/app/ops-analysis/utils/interactionBehavior";
 import {
   ROOM3D_COL_GAP,
   ROOM3D_FRONT_AISLE_EXTRA,
@@ -35,6 +36,14 @@ export interface Room3DSceneCallbacks {
   onFirstRender?: () => void;
   onDeviceSelect?: (
     state: { rack: Room3DRack; device: Room3DRenderableDevice } | null,
+  ) => void;
+  onContextMenu?: (
+    hit: {
+      rack: Room3DRack;
+      device?: Room3DRenderableDevice;
+      x: number;
+      y: number;
+    } | null,
   ) => void;
 }
 
@@ -768,9 +777,32 @@ export const createRoom3DScene = (
     updateVisualStates();
   };
 
+  const rightClickGesture = createRightClickGesture();
+  const handleRightPointerDown = (event: PointerEvent) => {
+    rightClickGesture.pointerDown(event);
+  };
+  const handleContextMenu = (event: MouseEvent) => {
+    event.preventDefault();
+    const picked = pickRack(event);
+    const decision = rightClickGesture.decide(event, Boolean(picked));
+    if (!decision.open || !picked) {
+      if (!decision.dragged) callbacks.onContextMenu?.(null);
+      return;
+    }
+    event.stopImmediatePropagation();
+    callbacks.onContextMenu?.({
+      rack: picked.rack,
+      device: picked.device,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  renderer.domElement.addEventListener("pointerdown", handleRightPointerDown, true);
   renderer.domElement.addEventListener("pointermove", handlePointerMove);
   renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
   renderer.domElement.addEventListener("click", handleClick);
+  renderer.domElement.addEventListener("contextmenu", handleContextMenu);
 
   const handlePreparePrint = () => {
     if (disposed) {
@@ -803,12 +835,14 @@ export const createRoom3DScene = (
         "change",
         handlePixelRatioChange,
       );
+      renderer.domElement.removeEventListener("pointerdown", handleRightPointerDown, true);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener(
         "pointerleave",
         handlePointerLeave,
       );
       renderer.domElement.removeEventListener("click", handleClick);
+      renderer.domElement.removeEventListener("contextmenu", handleContextMenu);
       controls.removeEventListener("start", handleControlsStart);
       controls.removeEventListener("change", requestRender);
       controls.dispose();

@@ -1,5 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import ReactEcharts from 'echarts-for-react';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
+import { readRadarClickGeometry } from '@/app/ops-analysis/utils/interactionBehavior';
+import type { ChartClickParams } from '@/app/ops-analysis/utils/interactionLink';
 import ChartSurface from '@/components/chart-surface';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import { randomColorForLegend } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
@@ -38,11 +42,28 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
     [config?.selectedFields, radarConfig, rawData],
   );
   const hasData = radarSeries.indicatorLabels.length > 0;
-  const { onEvents } = useEchartsFinishedReady({
+  const { onEvents: finishedEvents } = useEchartsFinishedReady({
     loading,
     isDataReady: hasData,
     onReady,
   });
+  const { onChartClick } = useWidgetDataLink(config);
+  const chartRef = useRef<ReactEcharts>(null);
+  const radarPoints = useMemo(
+    () => buildInteractionPoints('radar', rawData, config),
+    [config, rawData],
+  );
+  const onRadarClick = useCallback((params: ChartClickParams) => {
+    const radar = readRadarClickGeometry(
+      chartRef.current?.getEchartsInstance?.(),
+      radarPoints.length,
+    );
+    onChartClick(radar ? { ...params, radar } : params);
+  }, [onChartClick, radarPoints.length]);
+  const onEvents = useMemo(
+    () => ({ ...finishedEvents, click: onRadarClick }),
+    [finishedEvents, onRadarClick],
+  );
 
   const option = useMemo(
     () => ({
@@ -71,6 +92,7 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
           data: [
             {
               value: radarSeries.indicatorValues,
+              __links: radarPoints,
               areaStyle: {
                 color: seriesColor,
                 opacity: chartTheme.lineAreaOpacity,
@@ -97,6 +119,7 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
       chartTheme.tooltipBorderColor,
       chartTheme.tooltipShadow,
       chartTheme.tooltipTextColor,
+      radarPoints,
       radarSeries.indicatorLabels,
       radarSeries.indicatorValues,
       range.max,
@@ -122,6 +145,7 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
       ) : null}
       <div className="min-h-0 flex-1">
         <ReactEcharts
+          ref={chartRef}
           option={option}
           onEvents={onEvents}
           style={{ height: '100%', width: '100%' }}

@@ -106,6 +106,23 @@ def test_compiled_system_context_reference_can_be_published():
         )
 
 
+def test_string_fields_accept_object_reference_for_text_coercion():
+    validate_and_compile_workflow_data_contract(
+        definition({"label": "${source_1.output}", "value": "${source_1.output.count}"}),
+        {"data_contract": contract()},
+        atom_catalog=CATALOG,
+        strict=True,
+    )
+
+    with pytest.raises(DefinitionValidationError, match="不能绑定到 number"):
+        validate_and_compile_workflow_data_contract(
+            definition({"value": "${source_1.output}"}),
+            {"data_contract": contract()},
+            atom_catalog=CATALOG,
+            strict=True,
+        )
+
+
 def test_draft_keeps_broken_reference_but_strict_validation_blocks_it():
     broken = definition({"value": "${missing.output.value}"})
     validate_and_compile_workflow_data_contract(broken, {"data_contract": contract()}, atom_catalog=CATALOG, strict=False)

@@ -35,6 +35,14 @@ _REDACTED_CONFIG_KEYS = {"community"}
 _REDACTED_CONFIG_PLACEHOLDER = "***"
 
 
+class _OnboardingInstanceIds(list):
+    """实例 ID 列表，附带策略组结果。按列表使用的调用方不受影响。"""
+
+    def __init__(self, instance_ids, policy_group_results):
+        super().__init__(instance_ids)
+        self.policy_group_results = list(policy_group_results or [])
+
+
 def _redact_config_secrets(value):
     if isinstance(value, dict):
         redacted = {}
@@ -1137,6 +1145,7 @@ class InstanceConfigService:
         processed_instance_ids = []
         created_instance_ids = []
         existing_instances = []
+        policy_group_context = None
         try:
             with transaction.atomic():
                 new_instances, existing_instances, reclaimable_ids = InstanceConfigService._prepare_instances_for_creation(
@@ -1193,30 +1202,12 @@ class InstanceConfigService:
                     collect_type,
                 )
                 logger.info("采集配置创建成功")
-                from apps.monitor.services.policy_group import PolicyGroupService
-
-                created_ids = set(created_instance_ids)
-                choice = data.get("policy_group")
-                explicit_choice = isinstance(choice, dict) and "join" in choice
-                for raw in new_instances:
-                    instance_id = raw.get("instance_id")
-                    if instance_id not in created_ids:
-                        continue
-                    instance = MonitorInstance.objects.filter(id=instance_id).first()
-                    if instance is None:
-                        continue
-                    if explicit_choice:
-                        PolicyGroupService.apply_access_choice(
-                            instance,
-                            join=bool(choice.get("join")),
-                            group_id=choice.get("group_id"),
-                        )
-                    else:
-                        PolicyGroupService.consider_auto_join(instance, raw.get("group_ids") or [])
-                for raw in existing_instances:
-                    instance = MonitorInstance.objects.filter(id=raw.get("instance_id")).first()
-                    if instance is not None:
-                        PolicyGroupService.refresh_collect_coverage(instance)
+                policy_group_context = {
+                    "new_instances": new_instances,
+                    "existing_instances": existing_instances,
+                    "created_ids": set(created_instance_ids),
+                    "choice": data.get("policy_group"),
+                }
                 processed_instance_ids = [
                     str(instance["instance_id"]) for instance in new_instances + existing_instances if instance.get("instance_id") not in (None, "")
                 ]
@@ -1240,6 +1231,13 @@ class InstanceConfigService:
             # 系统异常包装后抛出（事务已自动回滚）
             logger.error(f"创建监控实例失败: {e}", exc_info=True)
             raise BaseAppException("创建监控实例失败，请稍后重试") from e
+
+        policy_group_results = []
+        if policy_group_context is not None:
+            from apps.monitor.services.policy_group import PolicyGroupService
+
+            policy_group_results = PolicyGroupService.apply_onboarding_memberships(**policy_group_context) or []
+        processed_instance_ids = _OnboardingInstanceIds(processed_instance_ids, policy_group_results)
 
         logger.info(f"创建监控实例成功,共 {len(created_instance_ids)} 个新实例,{len(existing_instances)} 个复用实例")
         if processed_instance_ids and parent_has_child_objects(monitor_object_id):

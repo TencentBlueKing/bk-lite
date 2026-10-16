@@ -1,0 +1,10 @@
+flask==3.1.2
+requests==2.32.5
+psycopg2-binary==2.9.11
+redis==6.4.0
+opentelemetry-distro==0.65b0
+opentelemetry-exporter-otlp==1.44.0
+opentelemetry-instrumentation-flask==0.65b0
+opentelemetry-instrumentation-requests==0.65b0
+opentelemetry-instrumentation-psycopg2==0.65b0
+opentelemetry-instrumentation-redis==0.65b0

@@ -266,3 +266,5 @@ export const FloatingButton = React.forwardRef<HTMLDivElement, FloatingButtonPro
     <FloatingButtonInner {...props} ref={ref} />
   </WebChatLocaleProvider>
 ));
+
+FloatingButton.displayName = 'FloatingButton';

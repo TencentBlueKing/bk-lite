@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Empty, Modal, Popconfirm, Table } from 'antd';
+import { Alert, Button, Drawer, Empty, Modal, Popconfirm, Skeleton, Table } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useTransferApi } from '@/app/cmdb/api/transfer';
 import type { TransferTask } from '@/app/cmdb/types/transfer';
@@ -70,12 +70,22 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
       <Alert type="info" showIcon message={t('Transfer.retention')} className="mb-4" />
       {(error || actionError) && <Alert type="error" showIcon message={error || actionError} className="mb-4" />}
       {loading && tasks.length === 0 ? (
-        <div className="space-y-4" aria-busy="true" aria-label="loading">
+        <div className="space-y-3" aria-busy="true" aria-label="loading">
           {[0, 1].map((index) => (
-            <div
+            <article
               key={index}
-              className="h-24 animate-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]"
-            />
+              className="rounded-lg border border-[var(--color-border-1)] p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <Skeleton.Input active size="small" className="!h-4 !w-40 !min-w-0" />
+                <Skeleton.Input active size="small" className="!h-5 !w-16 !min-w-0 !rounded-full" />
+              </div>
+              <div className="mt-3 space-y-2">
+                <Skeleton.Input active size="small" className="!h-3 !w-2/3 !min-w-0" />
+                <Skeleton.Input active size="small" className="!h-3 !w-1/2 !min-w-0" />
+              </div>
+              <Skeleton.Button active size="small" className="mt-3 !h-7 !w-16" />
+            </article>
           ))}
         </div>
       ) : (

@@ -68,6 +68,100 @@ def test_save_to_database_creates_and_updates_builtin_tools():
     assert obj.description == "Redis 更新"
 
 
+def test_sync_sets_system_tags_and_keeps_user_tags():
+    cmd = Command()
+    SkillTools.objects.create(
+        name="cmdb",
+        description="old",
+        is_build_in=True,
+        tags=["other", "search"],
+        user_tags=["机房"],
+        system_tags=["stale"],
+        team=[1],
+    )
+    cmd.save_to_database(
+        [
+            {
+                "id": name,
+                "name": name,
+                "description": name,
+                "tools": [],
+                "params": {},
+            }
+            for name in (
+                "monitor",
+                "alerts",
+                "log",
+                "cmdb",
+                "mysql",
+                "oracle",
+                "mssql",
+                "postgres",
+                "redis",
+                "elasticsearch",
+                "kubernetes",
+                "kubernetes_data_collection",
+                "jenkins",
+                "ssh",
+                "shell",
+                "activedirectory",
+                "duckduckgo",
+                "fetch",
+                "github",
+                "browser_use",
+                "agent_browser",
+                "current_time",
+                "python",
+                "attachment_file",
+                "ops_analysis_dashboard",
+            )
+        ]
+    )
+    expected = {
+        "monitor": ["monitoring_alert", "platform_app"],
+        "alerts": ["monitoring_alert", "platform_app"],
+        "log": ["log", "platform_app"],
+        "cmdb": ["asset", "platform_app"],
+        "mysql": ["database"],
+        "oracle": ["database"],
+        "mssql": ["database"],
+        "postgres": ["database"],
+        "redis": ["database"],
+        "elasticsearch": ["database"],
+        "kubernetes": ["container"],
+        "kubernetes_data_collection": ["container"],
+        "jenkins": ["release"],
+        "ssh": ["host_identity"],
+        "shell": ["host_identity"],
+        "activedirectory": ["host_identity"],
+        "duckduckgo": ["retrieval"],
+        "fetch": ["retrieval"],
+        "github": ["retrieval"],
+        "browser_use": ["retrieval"],
+        "agent_browser": ["retrieval"],
+        "current_time": ["general"],
+        "python": ["general"],
+        "attachment_file": ["general"],
+        "ops_analysis_dashboard": ["general", "platform_app"],
+    }
+    for name, system_tags in expected.items():
+        obj = SkillTools.objects.get(name=name, is_build_in=True)
+        assert obj.system_tags == system_tags
+        if name != "cmdb":
+            assert obj.user_tags == []
+    cmdb = SkillTools.objects.get(name="cmdb", is_build_in=True)
+    assert cmdb.user_tags == ["机房"]
+    assert "other" not in cmdb.user_tags
+    assert "search" not in cmdb.user_tags
+
+    cmdb.system_tags = ["stale"]
+    cmdb.save(update_fields=["system_tags"])
+    cmd.save_to_database([{"id": "cmdb", "name": "cmdb", "description": "CMDB", "tools": [], "params": {}}])
+    cmdb.refresh_from_db()
+    assert cmdb.system_tags == ["asset", "platform_app"]
+    assert cmdb.user_tags == ["机房"]
+
+
 def test_handle_writes_tools_and_raises_on_loader_failure():
     toolkit_id = f"k8s-{uuid.uuid4().hex[:8]}"
     metadata = [{"name": toolkit_id, "description": "k", "tools": [], "constructor_parameters": []}]

@@ -316,6 +316,8 @@
     "reindexPage": "Reindex",
     "reindexPageDone": "Reindex complete",
     "importOkf": "Import OKF",
+    "okfImportProgress": "Importing {progress}%",
+    "okfImportEnriching": "Enriching search",
     "exportOkf": "Export OKF",
     "reindexKnowledgeBase": "Reindex",
     "reindexKnowledgeBaseTip": "Rebuild page and chunk indexes for all active pages in this knowledge base, with a build record for diagnostics.",
@@ -323,6 +325,7 @@
     "reindexKnowledgeBaseDone": "Knowledge base index rebuild completed",
     "operator": "Operator",
     "detail": "Detail",
+    "detailTitle": "Knowledge base details",
     "refreshSnapshot": "Refresh Snapshot",
     "original": "Original",
     "parsedMarkdown": "Parsed markdown",
@@ -794,6 +797,9 @@
     "batchFailureCount": "{count} items"
   },
   "studio": {
+    "detail": {
+      "title": "App details"
+    },
     "pageTitle": "Workbench",
     "pageDescription": "Manage bot apps, channel publishing, and conversation capabilities",
     "settings": {
@@ -909,6 +915,23 @@
     "mcpUrl": "URL",
     "transport": "Transport",
     "label": "Label",
+    "systemTags": {
+      "monitoring_alert": "Monitoring",
+      "log": "Logs",
+      "asset": "Assets",
+      "database": "Database",
+      "container": "Containers",
+      "release": "Release",
+      "host_identity": "Hosts and identity",
+      "retrieval": "Retrieval",
+      "general": "General",
+      "platform_app": "Platform apps"
+    },
+    "userTags": "Custom labels",
+    "allTags": "All",
+    "moreTags": "More {count}",
+    "collapseTags": "Collapse",
+    "systemTagsReadonly": "System labels",
     "maintenance": "Maintenance",
     "subTools": "Sub Tools",
     "other": "Other",
@@ -1647,6 +1670,9 @@
     }
   },
   "skill": {
+    "detail": {
+      "title": "Agent details"
+    },
     "pageTitle": "Agents",
     "toolDescriptionDefault": "Calls external interfaces and runs automation for the agent",
     "pageDescription": "Configure LLMs, knowledge bases, and tools for Q&A and automation",
@@ -1718,6 +1744,9 @@
       "copyLink": "Link",
       "copyCallback": "Callback",
       "viewDocs": "Docs",
+      "aibotLongConnection": "Connection method",
+      "aibotShort": "Use URL callback",
+      "aibotLong": "Use long connection",
       "embeddedApiInfo": "This endpoint can be embedded on a web page via WebChat. After the channel is saved, copy the URL below.",
       "embeddedSaveHint": "After saving this channel, you can copy the integration URL from the list.",
       "callbackUrl": "Callback URL",
@@ -1754,6 +1783,7 @@
         "corp_id": "Corp ID",
         "agent_id": "Agent ID",
         "encodingAESKey": "EncodingAESKey",
+        "botId": "BotID",
         "client_id": "Client ID",
         "client_secret": "Client Secret",
         "app_id": "App ID",
@@ -1914,6 +1944,8 @@
     "chatHistoryEnabledPrefix": "Include last",
     "chatHistoryEnabledSuffix": "turns",
     "chatHistoryDisabledHint": "Single-turn only (no context)",
+    "runModelCallLimit": "Calls per step",
+    "runModelCallLimitTip": "How many times the model may call within one execution step. When the limit is reached, you are asked whether to continue.",
     "chatEnhancement": "Chat Enhancement",
     "capabilityExpand": "Capabilities",
     "useTemp": "Use This Template",

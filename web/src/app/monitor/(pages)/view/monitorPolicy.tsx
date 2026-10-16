@@ -224,7 +224,9 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
         ? '不自动入组'
         : membership?.state === 'skipped'
           ? '未入组'
-          : '无记录';
+          : membership?.state === 'failed'
+            ? '加入失败，采集已完成，可在此重新加入'
+            : '无记录';
 
   const refreshMembership = () => {
     const instanceId = String(form.instance_id || '').trim();

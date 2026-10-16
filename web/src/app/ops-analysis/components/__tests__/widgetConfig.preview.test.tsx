@@ -2,6 +2,7 @@ import React from 'react';
 import '@ant-design/v5-patch-for-react-19';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { message } from 'antd';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { LayoutItem } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
@@ -37,7 +38,7 @@ vi.mock('@/hooks/useUnsavedConfirm', () => ({
 
 vi.mock('@/app/ops-analysis/api/dataSource', () => ({
   useDataSourceApi: () => ({
-    getSourceDataByApiId: vi.fn(),
+    getSourceDataByApiId: vi.fn(async () => ({ data: [] })),
     getDataSourceDetail: vi.fn(),
   }),
 }));
@@ -167,6 +168,29 @@ const buildManager = (dataSource?: DatasourceItem) => {
 };
 
 describe('ViewConfig preview drawer', () => {
+  it('switches data and interaction with underline tabs', async () => {
+    const user = userEvent.setup();
+    render(
+      <ViewConfig
+        open
+        item={lineItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+
+    const interactionTab = await screen.findByRole('tab', { name: 'dashboard.interactionTab' });
+    const dataTab = screen.getByRole('tab', { name: 'dashboard.interactionDataTab' });
+    expect(interactionTab.closest('.ant-tabs-nav')).toBeTruthy();
+    expect(dataTab.getAttribute('aria-selected')).toBe('true');
+
+    await user.click(interactionTab);
+    expect(interactionTab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText('dashboard.interactionLinkType')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'dashboard.interactionSection' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '交互' })).toBeNull();
+  });
+
   it('opens a preview pane keyed by the widget, then collapses it', async () => {
     const user = userEvent.setup();
     render(
@@ -323,5 +347,81 @@ describe('ViewConfig screen panel', () => {
     await waitFor(() => {
       expect(ensureDataSource).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+const waitForOpenedWidget = async () => {
+  await waitFor(() => {
+    expect(screen.getByDisplayValue('CPU')).toBeTruthy();
+  });
+};
+
+describe('ViewConfig interaction validation', () => {
+  it('数据页保存时缺 URL，切回交互页并显示错误', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(() => ({}) as never);
+    render(
+      <ViewConfig
+        open
+        item={lineItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+
+    await waitForOpenedWidget();
+    await user.click(screen.getByRole('tab', { name: 'dashboard.interactionTab' }));
+    await user.click(screen.getByText('dashboard.interactionTitleLink'));
+    await user.click(screen.getByRole('tab', { name: 'dashboard.interactionDataTab' }));
+    await user.click(screen.getByRole('button', { name: 'common.confirm' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('tab', { name: 'dashboard.interactionTab' }).getAttribute('aria-selected'),
+      ).toBe('true');
+    });
+    expect(await screen.findByText('dashboard.interactionUrlRequired')).toBeTruthy();
+    expect(errorSpy.mock.calls.map((call) => call[0])).not.toContain('common.saveFailed');
+    errorSpy.mockRestore();
+  });
+
+  it('大屏样式或数据页保存失败时切到交互页', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(() => ({}) as never);
+    const onConfigSectionChange = vi.fn();
+    const view = render(
+      <ViewConfig
+        open
+        variant="panel"
+        configSection="interaction"
+        onConfigSectionChange={onConfigSectionChange}
+        item={lineItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+        surface="screen"
+      />,
+    );
+
+    await waitForOpenedWidget();
+    await user.click(screen.getByText('dashboard.interactionTitleLink'));
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        configSection="data"
+        onConfigSectionChange={onConfigSectionChange}
+        item={lineItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+        surface="screen"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'common.confirm' }));
+
+    await waitFor(() => {
+      expect(onConfigSectionChange).toHaveBeenCalledWith('interaction');
+    });
+    expect(errorSpy.mock.calls.map((call) => call[0])).not.toContain('common.saveFailed');
+    errorSpy.mockRestore();
   });
 });

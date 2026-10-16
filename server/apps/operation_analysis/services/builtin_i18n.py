@@ -112,6 +112,15 @@ def _overlay_actions(actions: Any, action_map: dict) -> None:
             action["text"] = translated
 
 
+def _overlay_interaction(value_config: dict, action_map: dict) -> None:
+    interaction = value_config.get("interaction")
+    if not isinstance(interaction, dict) or not action_map:
+        return
+    translated = action_map.get(interaction.get("name"))
+    if translated:
+        interaction["name"] = translated
+
+
 def _overlay_node(node: dict, widgets: dict) -> None:
     entry = _widget_entry(widgets, node)
     if entry:
@@ -129,6 +138,7 @@ def _overlay_node(node: dict, widgets: dict) -> None:
                 _overlay_columns(table_config.get("columns"), entry.get("columns") or {})
             _overlay_params(value_config.get("dataSourceParams"), entry.get("params") or {})
             _overlay_actions(value_config.get("actions"), entry.get("actions") or {})
+            _overlay_interaction(value_config, entry.get("actions") or {})
 
     children = None
     sub_grid = node.get("subGridOpts")

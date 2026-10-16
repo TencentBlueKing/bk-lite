@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import { Spin, Tooltip } from 'antd';
 import type { ScreenRenderContext, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { useTranslation } from '@/utils/i18n';
@@ -24,6 +26,11 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
+  const { active: dataLinkActive, openPoint } = useWidgetDataLink(config);
+  const points = useMemo(
+    () => buildInteractionPoints('multiValue', rawData, config),
+    [config, rawData],
+  );
   const theme = getOpsChartThemeByMode(config?.chartThemeMode);
   const errorMessage = t('dashboard.dataFormatMismatch');
   const result = useMemo(
@@ -61,7 +68,8 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
           return (
           <div
             key={`${index}-${item.label}`}
-            className="flex min-w-0 items-center justify-between gap-3 rounded px-2 py-1"
+            className={`flex min-w-0 items-center justify-between gap-3 rounded px-2 py-1 ${dataLinkActive ? 'cursor-pointer' : ''}`}
+            onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
           >
             <Tooltip title={item.label}>
               <span

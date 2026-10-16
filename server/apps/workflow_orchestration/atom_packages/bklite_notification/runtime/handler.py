@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from apps.rpc.system_mgmt import SystemMgmt
@@ -11,6 +12,16 @@ from apps.workflow_orchestration.services.report_links import build_report_downl
 
 def _is_absolute_http_url(value: str) -> bool:
     return value.startswith(("http://", "https://"))
+
+
+def _as_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
 
 
 def _report_link(inputs: dict[str, Any], team: int, execution_id: str) -> str:
@@ -77,8 +88,8 @@ def execute(inputs: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("邮件通知必须选择收件人")
     if notification_type == "EMAIL" and (inputs.get("channel_id") in (None, "")):
         raise ValueError("邮件通知必须选择通知方式")
-    title = str(inputs.get("title") or "").strip()
-    body = str(inputs.get("body") or "").strip()
+    title = _as_text(inputs.get("title")).strip()
+    body = _as_text(inputs.get("body")).strip()
     report_link = _report_link(inputs, team, execution_id)
     if report_link and notification_type != "EMAIL":
         body = f"{body}\n报告下载（24 小时内有效）：{report_link}"

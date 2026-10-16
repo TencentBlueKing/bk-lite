@@ -15,7 +15,12 @@ import DashboardCanvas from './components/dashboardCanvas';
 import DashboardToolbar from './components/dashboardToolbar';
 import DashboardSubscriptionModal from '@/app/ops-analysis/components/dashboardSubscriptionModal';
 import ViewWorkspace from '../components/viewWorkspace';
-import { Input, Modal, message, Select } from 'antd';
+import { Modal, message, Select } from 'antd';
+import { FilterTokenInput } from '@/app/ops-analysis/components/filterTokenInput';
+import { FilterTemplateProvider, FilterTemplateTitleGate } from '@/app/ops-analysis/context/filterTemplate';
+import { InteractionSurfaceProvider } from '@/app/ops-analysis/context/interactionSurface';
+import { WidgetCsvExportRegistryProvider } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
+import { filterTemplateAsyncDependencies } from '@/app/ops-analysis/utils/filterTemplate';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useCanvasResources } from '@/app/ops-analysis/hooks/useCanvasResources';
@@ -413,26 +418,61 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       [],
     );
 
+    const titleTemplateTexts = useMemo(
+      () => layout.flatMap((item) => [item.name, item.description ?? '']),
+      [layout],
+    );
+    const titleLabelDependencies = useMemo(
+      () => filterTemplateAsyncDependencies(titleTemplateTexts, appliedFilterDefinitions),
+      [appliedFilterDefinitions, titleTemplateTexts],
+    );
+    const titleLabelsPending = Boolean(
+      renderMode && (
+        titleLabelDependencies.dynamicFilterIds.length > 0
+        || titleLabelDependencies.needsOrganization
+      ),
+    );
+    const titleLabelsSettledRef = useRef(!titleLabelsPending);
+    const titleLabelsKeyRef = useRef('');
+    const titleLabelsKey = `${selectedDashboard?.data_id ?? ''}\0${titleTemplateTexts.join('\0')}`;
+    if (titleLabelsKeyRef.current !== titleLabelsKey) {
+      titleLabelsKeyRef.current = titleLabelsKey;
+      titleLabelsSettledRef.current = !titleLabelsPending;
+    }
+
+    const flushRenderSignal = useCallback(() => {
+      if (!renderMode || emittedRenderSignalRef.current) return;
+      const signal = buildDashboardRenderSignal(
+        selectedDashboard?.data_id || 'unknown',
+        widgetLayoutItems.map((item) => item.i),
+        renderResultsRef.current,
+      );
+      if (!signal) return;
+      if (signal.type === 'report-ready' && titleLabelsPending && !titleLabelsSettledRef.current) {
+        return;
+      }
+      void emitPreparedRenderSignal(signal);
+    }, [
+      emitPreparedRenderSignal,
+      renderMode,
+      selectedDashboard?.data_id,
+      titleLabelsPending,
+      widgetLayoutItems,
+    ]);
+
     const handleWidgetRenderStatus = useCallback(
       (result: DashboardWidgetRenderResult) => {
         if (!renderMode || emittedRenderSignalRef.current) return;
         renderResultsRef.current.set(result.widgetId, result);
-        const signal = buildDashboardRenderSignal(
-          selectedDashboard?.data_id || 'unknown',
-          widgetLayoutItems.map((item) => item.i),
-          renderResultsRef.current,
-        );
-        if (signal) {
-          void emitPreparedRenderSignal(signal);
-        }
+        flushRenderSignal();
       },
-      [
-        emitPreparedRenderSignal,
-        renderMode,
-        selectedDashboard?.data_id,
-        widgetLayoutItems,
-      ],
+      [flushRenderSignal, renderMode],
     );
+
+    const handleTitleLabelsSettled = useCallback(() => {
+      titleLabelsSettledRef.current = true;
+      flushRenderSignal();
+    }, [flushRenderSignal]);
 
     const groupIds = useMemo(
       () => new Set(layout.filter(isDashboardGroupItem).map((item) => item.i)),
@@ -1219,6 +1259,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             gaugeShape: config.gaugeShape,
             cardList: config.cardList,
             compare: config.compare,
+            interaction: config.interaction,
             actions: config.actions,
           },
           config.chartType || '',
@@ -1745,6 +1786,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   cardList: values.cardList,
                   compare: values.compare,
                   compareMode: values.compareMode,
+                  interaction: values.interaction,
                   actions: values.actions,
                 },
                 nextChartType,
@@ -2000,6 +2042,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
 
     return (
+      <WidgetCsvExportRegistryProvider>
+      <FilterTemplateProvider
+        definitions={definitions}
+        resolveDefinitions={appliedFilterDefinitions}
+        appliedValues={appliedFilterValues}
+        resolveEnabled={!isEditMode || isFullscreen || exporting || renderMode}
+        canvasId={selectedDashboard?.data_id}
+      >
+      <InteractionSurfaceProvider editing={isEditMode && !shareMode}>
+      <FilterTemplateTitleGate
+        texts={titleTemplateTexts}
+        active={Boolean(renderMode)}
+        onSettled={handleTitleLabelsSettled}
+      />
       <div
         className={`flex flex-col ${
           isFullscreen
@@ -2086,14 +2142,18 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           okButtonProps={{ disabled: !groupNameDraft.trim() }}
           centered
         >
-          <Input
+          <FilterTokenInput
+            t={t}
             value={groupNameDraft}
-            onChange={(event) => setGroupNameDraft(event.target.value)}
+            onChange={setGroupNameDraft}
             placeholder={t('dashboard.groupNamePlaceholder')}
             maxLength={50}
           />
         </Modal>
       </div>
+      </InteractionSurfaceProvider>
+      </FilterTemplateProvider>
+      </WidgetCsvExportRegistryProvider>
     );
   },
 );
