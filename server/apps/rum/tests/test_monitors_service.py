@@ -4,7 +4,7 @@ import pytest
 
 pytestmark = pytest.mark.django_db
 
-from apps.rum.services.alerteval import EVAL_FIRE, EVAL_NONE, EVAL_RESOLVE, EvalState, advance, breached, should_renotify
+from apps.rum.services.alerteval import breached, should_renotify
 from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl
@@ -58,6 +58,7 @@ def test_normalize_alert_policy_rejects_bad_metric():
             {
                 "name": "High errors",
                 "application": "checkout",
+                "organizations": [10],
                 "metric": "nope",
                 "criticalThreshold": 0.1,
             }
@@ -67,18 +68,10 @@ def test_normalize_alert_policy_rejects_bad_metric():
         pass
 
 
-def test_breached_and_advance_debounce():
+def test_breached_and_renotify_window():
     assert breached(">=", 0.2, 0.1, 0.15) == "critical"
     assert breached(">=", 0.05, 0.1, 0.15) == ""
     now = datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
-    state = EvalState()
-    assert advance(state, True, False, timedelta(minutes=1), now) == EVAL_NONE
-    assert state.breaching_since == now
-    assert advance(state, True, False, timedelta(minutes=1), now + timedelta(seconds=61)) == EVAL_FIRE
-    state = EvalState()
-    assert advance(state, True, False, timedelta(0), now) == EVAL_FIRE
-    state = EvalState()
-    assert advance(state, False, True, timedelta(0), now) == EVAL_RESOLVE
     assert should_renotify(None, 5, now) is True
     assert should_renotify(now, 5, now + timedelta(minutes=4)) is False
 
@@ -105,16 +98,27 @@ def test_monitor_crud_and_alert_events():
         {
             "name": "Checkout errors",
             "application": "checkout",
+            "organizations": [10],
             "metric": "error_rate",
             "warnThreshold": 0.05,
             "criticalThreshold": 0.1,
-            "notifyChannels": ["channel-1"],
+            "notificationTargets": [
+                {
+                    "channelId": 1,
+                    "channelName": "mail",
+                    "channelType": "email",
+                    "deliveryMode": "message",
+                    "recipientMode": "free_text",
+                    "recipients": ["ops@example.test"],
+                }
+            ],
         },
+        assignable_orgs={10},
     )
     assert created["id"]
     assert created["firing"] is False
-    assert created["notifyChannels"] == ["channel-1"]
-    assert len(service.list_monitors()) == 1
+    assert created["notificationTargets"][0]["channelId"] == 1
+    assert len(service.list_monitors(visible_orgs={10})) == 1
 
     updated = service.update_monitor(
         "tester",
@@ -122,20 +126,23 @@ def test_monitor_crud_and_alert_events():
         {
             "name": "Checkout errors",
             "application": "checkout",
+            "organizations": [10],
             "metric": "error_rate",
             "warnThreshold": 0.05,
             "criticalThreshold": 0.2,
             "enabled": True,
         },
+        assignable_orgs={10},
+        visible_orgs={10},
     )
     assert updated["criticalThreshold"] == 0.2
 
-    page = service.list_alert_events({"page": 1, "limit": 15})
+    page = service.list_alert_events({"page": 1, "limit": 15}, visible_orgs={10})
     assert page["items"] == []
     assert page["total"] == 0
 
-    service.delete_monitor(created["id"])
-    assert service.list_monitors() == []
+    service.delete_monitor(created["id"], visible_orgs={10})
+    assert service.list_monitors(visible_orgs={10}) == []
 
 
 def test_evaluator_fires_and_notifies():
@@ -150,12 +157,24 @@ def test_evaluator_fires_and_notifies():
         {
             "name": "Checkout errors",
             "application": "checkout",
+            "organizations": [10],
             "metric": "error_rate",
             "warnThreshold": 0.05,
             "criticalThreshold": 0.1,
             "forDurationSec": 0,
-            "notifyChannels": ["ch-1"],
+            "noDataAfter": 0,
+            "notificationTargets": [
+                {
+                    "channelId": 7,
+                    "channelName": "mail",
+                    "channelType": "email",
+                    "deliveryMode": "message",
+                    "recipientMode": "free_text",
+                    "recipients": ["ops@example.test"],
+                }
+            ],
         },
+        assignable_orgs={10},
     )
     now = datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
     result = AlertEvaluator(
@@ -166,9 +185,12 @@ def test_evaluator_fires_and_notifies():
         now=lambda: now,
     ).evaluate_all()
     assert result["fired"] == 1
-    assert events.latest_open(policy["id"])["status"] == "firing"
-    assert len(notifier.sent) == 1
-    assert "Checkout errors" in notifier.sent[0]["body"]
+    assert events.latest_open(policy["id"])["status"] == "active"
+    opened = events.latest_open(policy["id"])
+    deliveries = events.list_deliveries(opened["id"])
+    assert len(deliveries) == 1
+    assert "Checkout errors" in deliveries[0]["body"]
+    assert deliveries[0]["payload"]["alert_link"] == f"/rum/alert-events?event={opened['id']}"
 
     result = AlertEvaluator(
         policies=policies,
@@ -179,7 +201,7 @@ def test_evaluator_fires_and_notifies():
     ).evaluate_all()
     assert result["resolved"] == 1
     assert events.latest_open(policy["id"]) is None
-    assert len(notifier.sent) == 2
+    assert events.get_alert(opened["id"])["status"] == "recovered"
 
 
 def test_evaluator_skips_without_analytics():
