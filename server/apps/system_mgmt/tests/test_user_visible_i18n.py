@@ -12,6 +12,11 @@ from apps.system_mgmt.utils.i18n import system_mgmt_message
         ("error.initial_password_required", {}, "请设置初始密码", "Set an initial password"),
         ("error.otp_whitelist_must_be_user_ids", {}, "OTP 白名单必须是用户 ID 列表", "OTP allowlist must be a list of user IDs"),
         ("error.no_permission_access_team", {}, "无权访问该团队数据", "You do not have permission to access this organization's data"),
+        ("error.im_group_channel_unavailable", {}, "IM 群协作渠道不存在或已禁用", "IM collaboration channel does not exist or is disabled"),
+        ("error.im_group_channel_not_ready", {}, "IM 群协作渠道尚未就绪", "IM collaboration channel is not ready"),
+        ("error.im_group_provider_unsupported", {}, "当前 IM 平台不支持群协作", "This IM platform does not support group collaboration"),
+        ("error.im_group_instance_not_ready", {}, "IM 群协作集成实例尚未就绪", "IM collaboration integration instance is not ready"),
+        ("error.im_group_capability_not_ready", {}, "IM 群协作能力尚未就绪", "IM collaboration capability is not ready"),
         ("error.builtin_entry_immutable", {"label": "10.0.0.0/8"}, "内置条目不可修改或删除: 10.0.0.0/8", "Built-in entries cannot be modified or deleted: 10.0.0.0/8"),
         (
             "error.forbidden_network_supernet",
