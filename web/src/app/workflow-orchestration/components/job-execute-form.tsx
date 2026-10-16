@@ -1,22 +1,21 @@
 'use client';
 
-import { Form, Input, InputNumber, Select } from 'antd';
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { Form, InputNumber, Select } from 'antd';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import ScriptEditor from '@/app/job/components/script-editor';
 import { useTranslation } from '@/utils/i18n';
 import type { DataReferenceOption } from '../lib/data-references';
-import { compatibleDataReferences } from '../lib/data-references';
 import type { JsonSchema, NodeTarget } from '../lib/types';
 import { fallbackTargetLabel, targetSourceOf, useResolvedTargets } from './job-selected-targets';
+import { ReferenceDropGuard } from './reference-drop-guard';
 import { ReportContractGuideDrawer } from './report-contract-guide-drawer';
-import { SchemaNodeField, WORKFLOW_REFERENCE_MIME } from './schema-node-form';
+import { SchemaNodeField } from './schema-node-form';
+import { WorkflowNodeTitleField } from './workflow-node-title-field';
 
 type ScriptLang = 'shell' | 'bat' | 'python' | 'powershell';
 
 const SCRIPT_LANGS: ScriptLang[] = ['shell', 'bat', 'python', 'powershell'];
-const PARAMS_SCHEMA: JsonSchema = { type: 'array', items: { type: 'string' } };
-const PARAM_ITEM_SCHEMA: JsonSchema = { type: 'string' };
 
 function scriptLang(value: unknown): ScriptLang {
   return SCRIPT_LANGS.includes(value as ScriptLang) ? value as ScriptLang : 'shell';
@@ -46,71 +45,33 @@ function joinParams(values: string[]): string {
   return values.map((item) => item.trim()).filter(Boolean).join(' ');
 }
 
-function compatibleExecutionParamReferences(references: DataReferenceOption[]) {
-  const seen = new Set<string>();
-  return [...compatibleDataReferences(references, PARAMS_SCHEMA), ...compatibleDataReferences(references, PARAM_ITEM_SCHEMA)]
-    .filter((item) => {
-      if (seen.has(item.value)) return false;
-      seen.add(item.value);
-      return true;
-    });
-}
-
 function ExecutionParamsField({
   value,
-  references,
   disabled,
   onChange,
 }: {
   value: unknown;
-  references: DataReferenceOption[];
   disabled: boolean;
   onChange: (next: string) => void;
 }) {
   const { t } = useTranslation();
   const tags = splitParams(value);
-  const compatible = compatibleExecutionParamReferences(references);
-  const [isDragOver, setIsDragOver] = useState(false);
 
-  const allowDrop = (event: DragEvent<HTMLDivElement>) => {
-    const types = Array.from(event.dataTransfer.types || []);
-    const expression = event.dataTransfer.getData(WORKFLOW_REFERENCE_MIME);
-    if (types.includes(WORKFLOW_REFERENCE_MIME) || compatible.some((item) => item.value === expression)) {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'copy';
-      setIsDragOver(true);
-    }
-  };
-
-  const acceptDrop = (event: DragEvent<HTMLDivElement>) => {
-    const expression = event.dataTransfer.getData(WORKFLOW_REFERENCE_MIME);
-    setIsDragOver(false);
-    if (!compatible.some((item) => item.value === expression)) return;
-    event.preventDefault();
-    if (tags.includes(expression)) return;
-    onChange(joinParams([...tags, expression]));
-  };
-
-  return <div
-    data-testid="workflow-reference-dropzone"
-    className={`rounded-md outline-none transition focus-within:ring-2 focus-within:ring-[var(--color-primary)]/15 ${isDragOver ? 'ring-2 ring-[var(--color-primary)]/35' : ''}`}
-    onDragEnter={allowDrop}
-    onDragLeave={() => setIsDragOver(false)}
-    onDragOverCapture={allowDrop}
-    onDropCapture={acceptDrop}
-  >
-    <Select
-      mode="tags"
-      className="w-full"
-      disabled={disabled}
-      open={false}
-      suffixIcon={null}
-      tokenSeparators={[' ']}
-      value={tags}
-      placeholder={t('workflowOrchestration.editor.enterAndPressReturn', '输入后按回车添加')}
-      onChange={(next) => onChange(joinParams(next.map(String)))}
-    />
-  </div>;
+  return (
+    <ReferenceDropGuard>
+      <Select
+        mode="tags"
+        className="w-full"
+        disabled={disabled}
+        open={false}
+        suffixIcon={null}
+        tokenSeparators={[' ']}
+        value={tags}
+        placeholder={t('workflowOrchestration.editor.enterAndPressReturn', '输入后按回车添加')}
+        onChange={(next) => onChange(joinParams(next.map(String)))}
+      />
+    </ReferenceDropGuard>
+  );
 }
 
 export function JobExecuteForm({
@@ -191,9 +152,9 @@ export function JobExecuteForm({
   />;
 
   return <Form className="flex flex-col gap-5" layout="vertical">
-    {onNodeTitleChange ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
-      <Input disabled={readOnly} value={nodeTitle} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => onNodeTitleChange(event.target.value)} />
-    </Form.Item> : null}
+    {onNodeTitleChange
+      ? <WorkflowNodeTitleField value={nodeTitle || ''} disabled={readOnly} onChange={onNodeTitleChange} />
+      : null}
     <Form.Item
       className="mb-0"
       label={t('workflowOrchestration.editor.targetHosts', String(targetSchema.title || '目标主机'))}
@@ -232,17 +193,25 @@ export function JobExecuteForm({
     <Form.Item
       className="mb-0"
       label={t('workflowOrchestration.editor.executionParams', '执行参数')}
-      tooltip={t('workflowOrchestration.editor.executionParamsHint', '回车添加参数，也可从左侧拖入字段')}
+      tooltip={t('workflowOrchestration.editor.executionParamsManualHint', '回车添加参数；不支持从左侧拖入上游字段')}
     >
       <ExecutionParamsField
         value={value.execution_params}
-        references={references}
         disabled={readOnly}
         onChange={(next) => setField('execution_params', next)}
       />
     </Form.Item>
     <Form.Item className="mb-0" label={t('workflowOrchestration.editor.timeoutSeconds', '超时（秒）')}>
-      <InputNumber disabled={readOnly} className="w-full" min={30} max={3600} value={Number(value.timeout_seconds || 600)} onChange={(next) => setField('timeout_seconds', Number(next || 600))} />
+      <ReferenceDropGuard>
+        <InputNumber
+          disabled={readOnly}
+          className="w-full"
+          min={30}
+          max={3600}
+          value={typeof value.timeout_seconds === 'number' ? value.timeout_seconds : undefined}
+          onChange={(next) => setField('timeout_seconds', typeof next === 'number' ? next : undefined)}
+        />
+      </ReferenceDropGuard>
     </Form.Item>
   </Form>;
 }

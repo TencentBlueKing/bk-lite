@@ -87,12 +87,19 @@ export function WorkflowTemplateTextField({
   const [activeIndex, setActiveIndex] = useState(0);
   const [trigger, setTrigger] = useState<{ start: number; query: string } | null>(null);
   const [menuPos, setMenuPos] = useState<ReturnType<typeof computeSuggestionMenuPosition> | null>(null);
+  const [localDragOver, setLocalDragOver] = useState(false);
   const text = value ?? '';
   const allowed = new Set(references.map((item) => item.value));
+  const showDragOver = isDragOver || localDragOver;
   const filtered = useMemo(
     () => filterReferences(references, trigger?.query || ''),
     [references, trigger?.query],
   );
+
+  const setDragState = (state: 'accept' | 'reject' | null) => {
+    setLocalDragOver(state === 'accept');
+    onDragStateChange?.(state);
+  };
 
   const updateMenuPosition = () => {
     if (!inputRef.current) {
@@ -147,20 +154,20 @@ export function WorkflowTemplateTextField({
 
   const allowDrop = (event: DragEvent<HTMLDivElement>) => {
     const { types, expression } = resolveExpression(event);
-    if (!types.includes(WORKFLOW_REFERENCE_MIME) && !expression) return;
+    if (!types.includes(WORKFLOW_REFERENCE_MIME)) return;
     event.preventDefault();
     if (expression && !allowed.has(expression)) {
       event.dataTransfer.dropEffect = 'none';
-      onDragStateChange?.('reject');
+      setDragState('reject');
       return;
     }
     event.dataTransfer.dropEffect = 'copy';
-    onDragStateChange?.('accept');
+    setDragState('accept');
   };
 
   const acceptDrop = (event: DragEvent<HTMLDivElement>) => {
     const { expression } = resolveExpression(event);
-    onDragStateChange?.(null);
+    setDragState(null);
     if (!expression) return;
     event.preventDefault();
     if (!allowed.has(expression)) {
@@ -282,9 +289,9 @@ export function WorkflowTemplateTextField({
   return (
     <div
       data-testid="workflow-reference-dropzone"
-      className={`w-full rounded-md outline-none transition focus-within:ring-2 focus-within:ring-[var(--color-primary)]/15 ${isDragOver ? 'ring-2 ring-[var(--color-primary)]/35' : ''}`}
+      className={`w-full rounded-md outline-none transition focus-within:ring-2 focus-within:ring-[var(--color-primary)]/15 ${showDragOver ? 'ring-2 ring-[var(--color-primary)]/35' : ''}`}
       onDragEnter={allowDrop}
-      onDragLeave={() => onDragStateChange?.(null)}
+      onDragLeave={() => setDragState(null)}
       onDragOverCapture={allowDrop}
       onDropCapture={acceptDrop}
     >

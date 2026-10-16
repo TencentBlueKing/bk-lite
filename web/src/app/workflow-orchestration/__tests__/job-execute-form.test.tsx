@@ -141,7 +141,7 @@ describe('作业执行脚本本地暂存', () => {
     const paramsHelp = paramsItem?.querySelector('[aria-label="question-circle"]');
     expect(paramsHelp).not.toBeNull();
     await userEvent.hover(paramsHelp!);
-    expect((await screen.findByRole('tooltip')).textContent).toContain('回车添加参数，也可从左侧拖入字段');
+    expect((await screen.findByRole('tooltip')).textContent).toContain('回车添加参数；不支持从左侧拖入上游字段');
     expect(screen.queryByText(/Shell \/ Python 仅能选择/)).toBeNull();
   });
 
@@ -177,10 +177,11 @@ describe('作业执行脚本本地暂存', () => {
       getData: vi.fn().mockImplementation((format: string) => format === WORKFLOW_REFERENCE_MIME ? '${system.workflow_id}' : ''),
     };
     const paramsItem = screen.getByText('执行参数').closest('.ant-form-item');
-    const dropzone = paramsItem?.querySelector('[data-testid="workflow-reference-dropzone"]');
-    expect(dropzone).not.toBeNull();
-    fireEvent.dragOver(dropzone!, { dataTransfer });
-    fireEvent.drop(dropzone!, { dataTransfer });
-    expect(value.execution_params).toBe('a ${system.workflow_id}');
+    const guard = paramsItem?.querySelector('[data-testid="workflow-reference-drop-guard"]');
+    expect(guard).not.toBeNull();
+    fireEvent.dragOver(guard!, { dataTransfer });
+    fireEvent.drop(guard!, { dataTransfer });
+    expect(value.execution_params).toBe('a');
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

@@ -103,4 +103,18 @@ describe('文本模板输入', () => {
     fireEvent.drop(screen.getByTestId('workflow-reference-dropzone'), { dataTransfer });
     expect(screen.getByDisplayValue('你好 ${job_execute.output}')).not.toBeNull();
   });
+
+  it('拖入悬停时自行高亮，无需外部 isDragOver', () => {
+    render(<Harness />);
+    const zone = screen.getByTestId('workflow-reference-dropzone');
+    const dataTransfer = {
+      dropEffect: 'none',
+      types: [WORKFLOW_REFERENCE_MIME],
+      getData: vi.fn().mockReturnValue(''),
+    };
+    fireEvent.dragEnter(zone, { dataTransfer });
+    expect(zone.className).toContain('ring-[var(--color-primary)]/35');
+    fireEvent.dragLeave(zone, { dataTransfer });
+    expect(zone.className).not.toContain('ring-[var(--color-primary)]/35');
+  });
 });
