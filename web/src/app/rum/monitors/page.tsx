@@ -167,7 +167,7 @@ export default function RumMonitorsPage() {
         width: 140,
         ellipsis: true,
         render: (_: unknown, m: RumMonitorItem) => (
-          <span className="truncate">{(m.organizations || []).join(', ') || '—'}</span>
+          <span className="truncate">{(m.organizationsDisplay || m.organizations || []).map(String).join(', ') || '—'}</span>
         ),
       },
       {

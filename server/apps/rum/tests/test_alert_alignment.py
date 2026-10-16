@@ -131,8 +131,13 @@ def test_create_policy_requires_organization_and_hides_other_orgs():
         service.create_monitor("tester", _body(organizations=[99]), assignable_orgs={10})
     assert forbidden.value.code == "forbidden"
 
+    from apps.system_mgmt.models import Group
+
+    Group.objects.create(id=10, name="研发组", parent_id=0)
     created = service.create_monitor("tester", _body(), assignable_orgs={10})
+    assert created["organizationsDisplay"] == ["研发组"]
     assert service.list_monitors(visible_orgs={10})[0]["id"] == created["id"]
+    assert service.list_monitors(visible_orgs={10})[0]["organizationsDisplay"] == ["研发组"]
     assert service.list_monitors(visible_orgs={20}) == []
     with pytest.raises(ControlError) as missing:
         service.update_monitor("tester", created["id"], {"name": "hidden"}, assignable_orgs={10}, visible_orgs={20})

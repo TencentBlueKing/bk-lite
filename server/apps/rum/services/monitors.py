@@ -196,7 +196,7 @@ class MonitorsService:
             view = _as_monitor_view(item, item["id"] in firing)
             view["handlersDisplay"] = format_user_identifiers(item.get("handlers") or [], user_map)
             views.append(view)
-        return views
+        return _with_organization_display(views)
 
     def create_monitor(self, actor: str, body: dict, *, assignable_orgs: set[int]) -> dict:
         normalized = normalize_alert_policy(body)
@@ -206,7 +206,7 @@ class MonitorsService:
         normalized.setdefault("notificationTargets", [])
         normalized.setdefault("handlers", [])
         saved = self.policies.save(normalized)
-        return _as_monitor_view(saved, False)
+        return _with_organization_display([_as_monitor_view(saved, False)])[0]
 
     def update_monitor(self, actor: str, policy_id: str, body: dict, *, assignable_orgs: set[int], visible_orgs: set[int]) -> dict:
         existing = self.policies.get(policy_id, visible_orgs)
@@ -226,7 +226,7 @@ class MonitorsService:
         if was_enabled and not saved.get("enabled"):
             self.runtime.close_active(saved)
         firing = self.events.active_for_policy(policy_id) is not None
-        return _as_monitor_view(self.policies.get(policy_id) or saved, firing)
+        return _with_organization_display([_as_monitor_view(self.policies.get(policy_id) or saved, firing)])[0]
 
     def delete_monitor(self, policy_id: str, *, visible_orgs: set[int]) -> None:
         existing = self.policies.get(policy_id, visible_orgs)
@@ -365,6 +365,26 @@ def _user_in_orgs(user, allowed: set[int]) -> bool:
         except (TypeError, ValueError):
             continue
     return False
+
+
+def _organization_name_map(organizations) -> dict[int, str]:
+    from apps.system_mgmt.models import Group
+
+    ids = org_ids(organizations)
+    if not ids:
+        return {}
+    return {row["id"]: row["name"] for row in Group.objects.filter(id__in=ids).values("id", "name")}
+
+
+def _organizations_display(organizations, name_map: dict[int, str]) -> list[str]:
+    return [name_map.get(org_id) or str(org_id) for org_id in org_ids(organizations)]
+
+
+def _with_organization_display(views: list[dict]) -> list[dict]:
+    name_map = _organization_name_map([org_id for view in views for org_id in view.get("organizations") or []])
+    for view in views:
+        view["organizationsDisplay"] = _organizations_display(view.get("organizations"), name_map)
+    return views
 
 
 def _as_monitor_view(policy: dict, firing: bool) -> dict:

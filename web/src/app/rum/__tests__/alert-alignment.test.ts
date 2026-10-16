@@ -49,6 +49,7 @@ describe('rum alert alignment page skeleton', () => {
     expect(form).toContain("t('rum.monitors.handlers', '处理人')");
     expect(policies).toContain("t('rum.monitors.lastEvaluation', '最近判定')");
     expect(policies).toContain('m.handlersDisplay || m.handlers');
+    expect(policies).toContain('m.organizationsDisplay || m.organizations');
     expect(policies).toContain("if (metric === 'session_count') return String(Math.round(value));");
     expect(policies).toContain('m.forDurationSec > 0 ?');
     expect(policies).toContain('emptyText');

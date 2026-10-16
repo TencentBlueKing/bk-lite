@@ -352,6 +352,7 @@ export interface RumMonitorItem {
   name: string;
   application: string;
   organizations?: number[];
+  organizationsDisplay?: string[];
   metric: string;
   severity: string;
   comparator?: string;
