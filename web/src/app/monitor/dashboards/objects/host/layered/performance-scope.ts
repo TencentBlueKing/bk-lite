@@ -22,7 +22,8 @@ export const HOST_PERFORMANCE_METRIC_NAMES = [
   'host_mem_swap_total_bytes',
   'mem_swap_free',
   'nvidia_smi_utilization_gpu',
-  'nvidia_smi_utilization_memory',
+  'nvidia_smi_memory_used',
+  'nvidia_smi_memory_total',
   'nvidia_smi_temperature_gpu'
 ] as const;
 

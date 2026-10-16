@@ -246,6 +246,22 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: HOST_PALETTE.blue
     },
     {
+      name: 'nvidia_smi_memory_used',
+      display_name: 'GPU 显存已用',
+      description: 'GPU 已用显存。采集单位是 MiB。多卡时取最高已用。',
+      unit: 'mebibytes',
+      query: 'max by (instance_id) (nvidia_smi_memory_used{instance_type="os", __$labels__})',
+      color: HOST_PALETTE.blue
+    },
+    {
+      name: 'nvidia_smi_memory_total',
+      display_name: 'GPU 显存总量',
+      description: 'GPU 显存总量。采集单位是 MiB。多卡时取最高总量。',
+      unit: 'mebibytes',
+      query: 'max by (instance_id) (nvidia_smi_memory_total{instance_type="os", __$labels__})',
+      color: HOST_PALETTE.blue
+    },
+    {
       name: 'nvidia_smi_temperature_gpu',
       display_name: 'GPU 温度',
       description: 'GPU 核心温度。多卡时取最高。',
