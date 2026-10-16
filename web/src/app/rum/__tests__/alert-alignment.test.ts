@@ -34,6 +34,8 @@ describe('rum alert alignment page skeleton', () => {
     expect(actions).toContain('canClaimOrAssign');
     expect(actions).toContain('canReassign');
     expect(actions).toContain('canClose');
+    expect(actions).toContain("usePermissions('/rum/alert-events')");
+    expect(actions).not.toContain('zIndex={99999}');
     expect(actions).toContain("alert.status === 'active'");
     expect(alerts).toContain("t('rum.alertEvents.retry', '重投')");
     expect(alerts).toContain('ev.handlersDisplay || ev.handlers');
