@@ -6,14 +6,14 @@ const textId = (suffix: string) => `monitor.dashboards.text.${suffix}`;
 /** 专业仪表盘文案。中文是缺词条时的回退，与 locales 中同 key 保持一致。 */
 export const HOST_CATEGORY_COPY = {
   detailedMetrics: [textId('hostCategoryDetailedMetrics'), '构成与交换'],
-  swapSpaceUsage: [textId('hostCategorySwapSpaceUsage'), '交换空间使用率'],
+  swapSpaceUsage: [textId('hostCategorySwapSpaceUsage'), '交换已用'],
   swapSpaceUsageSubtitle: [textId('hostCategorySwapSpaceUsageSubtitle'), '已用占交换总量的比例'],
-  swapSpaceUsageHint: [textId('hostCategorySwapSpaceUsageHint'), '内存紧张时，系统会把部分内存内容暂存到磁盘（交换分区）。主值是已用/总量，曲线是已用容量；副行是已用占比。越高通常表示内存越紧。'],
+  swapSpaceUsageHint: [textId('hostCategorySwapSpaceUsageHint'), '交换已用：交换分区当前已用相对总量。主值展示已用/总量（GiB）；折线为已用容量趋势。升高通常表示物理内存紧张。'],
   memoryComposition: [textId('hostCategoryMemoryComposition'), '内存构成'],
   noGpu: [textId('hostCategoryNoGpu'), '无 GPU'],
   swapUtilization: [textId('hostCategorySwapUtilization'), '交换已用'],
-  swapUsedHint: [textId('hostCategorySwapUsedHint'), '交换已用：交换分区当前已用容量相对总容量。主值展示已用/总量；趋势为已用占比。升高通常表示物理内存紧张，进程匿名页可能被换出到磁盘。'],
-  swapAbsentHint: [textId('hostCategorySwapAbsentHint'), '交换已用：当前主机未配置交换分区，或暂无采集数据。卡片保留以便发现配置与采集缺口；有数据后将显示已用/总量及占比趋势。'],
+  swapUsedHint: [textId('hostCategorySwapUsedHint'), '交换已用：交换分区当前已用相对总量。主值展示已用/总量（GiB）；折线为已用容量趋势。升高通常表示物理内存紧张。'],
+  swapAbsentHint: [textId('hostCategorySwapAbsentHint'), '交换已用：当前主机未配置交换分区，或暂无采集。卡片保留；有数据后显示已用/总量与容量趋势。'],
   loadOneMinute: [textId('hostCategoryLoadOneMinute'), '1 分钟负载'],
   utilization: [textId('hostCategoryUtilization'), '使用率'],
   cpuUtilization: [textId('hostCategoryCpuUtilization'), 'CPU 使用率'],

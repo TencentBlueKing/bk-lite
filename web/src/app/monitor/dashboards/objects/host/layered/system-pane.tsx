@@ -11,7 +11,7 @@ import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import { CardAlertDot, cardAlertClass } from './card-alert';
 import ThinTimeSeries from './thin-time-series';
-import { swapUsedPercent, type HostSurfaceAlerts } from './tab-level';
+import type { HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
   formatPlain,
@@ -428,12 +428,8 @@ export default function SystemPane({
   const swapPhase = phaseFor(swapNames, swapUsedSeries.length > 0);
   const swapUsedNow = latestSeriesValue(swapUsedSeries);
   const swapTotalNow = latestNumber(metrics.host_mem_swap_total_bytes);
-  const swapPercentNow = swapUsedPercent(
-    swapUsedNow,
-    swapTotalNow,
-    latestNumber(metrics.mem_swap_free)
-  );
-  const swapReading = swapUsedNow == null ? undefined : formatSharedBytePair(swapUsedNow, swapTotalNow);
+  const swapHasSeries = swapUsedSeries.length > 0;
+  const swapReading = swapUsedNow == null ? '--' : formatSharedBytePair(swapUsedNow, swapTotalNow);
   const memoryParts = useMemo(() => {
     const total = metrics.mem_total?.viewData;
     const usedBytes = metricHasPoints(metrics.mem_used)
@@ -562,11 +558,8 @@ export default function SystemPane({
         </section>
         <ThinTimeSeries
           className={styles.detailCard}
-          title={hostCategoryText(t, 'swapSpaceUsage')}
-          subtitle={swapPercentNow == null
-            ? hostCategoryText(t, 'swapSpaceUsageSubtitle')
-            : formatPercent(swapPercentNow)}
-          hint={hostCategoryText(t, 'swapSpaceUsageHint')}
+          title={hostCategoryText(t, 'swapUtilization')}
+          hint={hostCategoryText(t, swapHasSeries ? 'swapUsedHint' : 'swapAbsentHint')}
           reading={swapReading}
           loading={swapPhase === 'loading'}
           unit="bytes"
