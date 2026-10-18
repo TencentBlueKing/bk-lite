@@ -2341,6 +2341,37 @@ def test_summarize_planned_step_for_limit_continue_keeps_carry_over():
     assert "暂时停止" not in summary
 
 
+def test_summarize_planned_step_for_limit_continue_stitches_carry_over_on_tool_bits_path():
+    """无结论文案且工具原文超过 400 字时，tool_bits 路径也必须带上结构化 carry-over。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from apps.opspilot.metis.llm.chain.deepagent_assembly import _CARRY_OVER_MARKER
+    from apps.opspilot.metis.llm.middleware.planned_execution_limits import build_limit_exceeded_message
+
+    instance_id = "9a8b7c6d-5e4f-3a2b-1c0d-ef9876543210"
+    padding = "x" * 500
+    instances = json.dumps(
+        {
+            "success": True,
+            "padding": padding,
+            "data": [{"instance_id": instance_id, "name": "host-far"}],
+        },
+        ensure_ascii=False,
+    )
+    assert instance_id not in instances[:400]
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "monitor_list_object_instances", "args": {}}]),
+        ToolMessage(content=instances, tool_call_id="1", name="monitor_list_object_instances"),
+        AIMessage(content=build_limit_exceeded_message("model_calls", used=10, limit=10)),
+    ]
+    summary = ToolsNodes._summarize_planned_step_for_limit_continue(messages)
+    assert _CARRY_OVER_MARKER in summary
+    assert f"instance_id={instance_id}" in summary
+    assert "[OPSPILOT_LIMIT:" not in summary
+
+
 def test_summarize_planned_step_carries_instance_id_into_next_step():
     """查全部主机时第 3 步要用第 2 步查到的 instance_id，摘要只留正文会把它丢掉。"""
     import json

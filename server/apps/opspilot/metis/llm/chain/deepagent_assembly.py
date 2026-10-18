@@ -245,7 +245,11 @@ class DeepAgentAssemblyMixin:
         )
 
         filtered = filter_messages_without_limit_stop(messages)
-        summary = cls._summarize_planned_step_messages(filtered or list(messages or []))
+        source = filtered or list(messages or [])
+        carry_over = cls._step_structured_carry_over(source)
+        summary = cls._summarize_planned_step_messages(source)
+        if carry_over and _CARRY_OVER_MARKER not in summary:
+            summary = cls._join_step_summary(summary, carry_over)
         return scrub_limit_markers_from_summary(summary)
 
     @classmethod
