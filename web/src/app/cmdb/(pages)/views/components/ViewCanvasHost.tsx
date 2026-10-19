@@ -139,14 +139,25 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   }
 
   if (viewType === 'network') {
+    const networkFocuses = focuses?.length ? focuses : [focus];
+    const networkClosedSet = networkFocuses.length > 1;
     return (
       <div className="h-full min-h-0 overflow-hidden">
         <RelationshipsProvider>
           <NetworkTopo
-            key={focus.inst_uuid}
+            key={networkFocuses.map((item) => item.inst_uuid).join(',')}
             modelId={focus.model_id}
             instUuid={focus.inst_uuid}
             fillContainer
+            closedSetDevices={
+              networkClosedSet
+                ? networkFocuses.map((item) => ({
+                  modelId: item.model_id,
+                  instUuid: item.inst_uuid,
+                  instName: item.inst_name,
+                }))
+                : undefined
+            }
             centerHop={networkCenterHop}
             onCenterHopChange={onNetworkCenterHopChange}
             onRequestFocus={handleNetworkRequestFocus}

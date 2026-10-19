@@ -12,7 +12,8 @@ export const resolveRackRoomMode = (
 export const viewAllowsMultiSelect = (
   viewType: ViewType,
   mode?: RackRoomMode
-): boolean => viewType === 'rack-room' && mode === 'rack';
+): boolean =>
+  viewType === 'network' || (viewType === 'rack-room' && mode === 'rack');
 
 export const eligibleModelIdsForView = (
   viewType: ViewType,

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Select } from 'antd';
+import { message, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useInstanceApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
@@ -16,6 +16,7 @@ import {
   rackGroupsToSelectOptions,
   type RackPickerRoomGroup,
 } from '../rackPickerGroups';
+import { NODE_LIMIT } from '@/app/cmdb/(pages)/assetData/detail/relationships/networkTopo/constants';
 
 const SEARCH_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -54,6 +55,7 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   const { userId } = useUserInfoContext();
   const modelList: ModelItem[] = common?.modelList ?? [];
   const allowMultiple = viewAllowsMultiSelect(viewType, mode);
+  const allowCrossModel = viewType === 'network';
   const groupByRoom = viewType === 'rack-room' && mode === 'rack';
   const selectedFocuses = useMemo(() => {
     if (focuses?.length) return focuses;
@@ -63,6 +65,7 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>(
     focus?.model_id
   );
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [roomGroups, setRoomGroups] = useState<RackPickerRoomGroup[]>([]);
   const [loading, setLoading] = useState(false);
@@ -95,9 +98,13 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   );
 
   const recentItems = useMemo(() => {
-    if (typeof window === 'undefined' || !userId || !selectedModelId) return [];
+    if (typeof window === 'undefined' || !userId) return [];
+    if (!allowCrossModel && !selectedModelId) return [];
     const recent = readViewRecent(window.localStorage, userId, viewType);
     return recent.filter((item) => {
+      if (allowCrossModel) {
+        return selectedModelIds.includes(item.model_id);
+      }
       if (item.model_id !== selectedModelId) return false;
       if (viewType === 'rack-room' && mode && item.mode && item.mode !== mode) {
         return false;
@@ -106,9 +113,19 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
     });
     // Re-read when focus changes so newly pushed recent appears.
      
-  }, [userId, viewType, selectedModelId, mode, focus?.inst_uuid, focus?.model_id]);
+  }, [
+    userId,
+    viewType,
+    selectedModelId,
+    selectedModelIds,
+    allowCrossModel,
+    mode,
+    focus?.inst_uuid,
+    focus?.model_id,
+  ]);
 
   useEffect(() => {
+    if (allowCrossModel) return;
     if (focus?.model_id && eligibleModelIds.includes(focus.model_id)) {
       setSelectedModelId(focus.model_id);
       return;
@@ -117,7 +134,20 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
       return;
     }
     setSelectedModelId(eligibleModelIds[0]);
-  }, [focus?.model_id, eligibleModelIds, selectedModelId]);
+  }, [allowCrossModel, focus?.model_id, eligibleModelIds, selectedModelId]);
+
+  useEffect(() => {
+    if (!allowCrossModel || !eligibleModelIds.length) return;
+    const eligible = new Set(eligibleModelIds);
+    const fromFocus = [...new Set(selectedFocuses.map((item) => item.model_id))]
+      .filter((modelId) => eligible.has(modelId));
+    setSelectedModelIds((prev) => {
+      const kept = prev.filter((modelId) => eligible.has(modelId));
+      const missing = fromFocus.filter((modelId) => !kept.includes(modelId));
+      if (!missing.length && kept.length === prev.length) return prev;
+      return [...kept, ...missing];
+    });
+  }, [allowCrossModel, eligibleModelIds, selectedFocuses]);
 
   const resolveModelMeta = useCallback(
     (modelId: string) => {
@@ -136,12 +166,14 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   const fetchInstances = useCallback(
     async ({
       modelId,
+      modelIds,
       keyword,
       page,
       append,
       grouped,
     }: {
       modelId: string;
+      modelIds?: string[];
       keyword: string;
       page: number;
       append: boolean;
@@ -211,6 +243,55 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
           );
           if (!append) {
             loadedQueryRef.current = queryKey(modelId, keyword);
+          }
+          return;
+        }
+
+        if (modelIds && modelIds.length > 1) {
+          const pages = await Promise.all(
+            modelIds.map((id) => searchInstancesRef.current({
+              model_id: id,
+              query_list: keyword
+                ? [{ field: 'inst_name', type: 'str*', value: keyword }]
+                : [],
+              page,
+              page_size: SEARCH_PAGE_SIZE,
+              order: '',
+              role: '',
+              case_sensitive: false,
+            }))
+          );
+          if (seq !== searchSeqRef.current) return;
+          const nextOptions: InstanceOption[] = [];
+          let total = 0;
+          modelIds.forEach((id, index) => {
+            const pageData = pages[index];
+            total += Number(pageData?.count) || 0;
+            const insts = Array.isArray(pageData?.insts) ? pageData.insts : [];
+            insts.forEach((item: { inst_uuid?: string; inst_name?: string }) => {
+              const instUuid = resolveCmdbInstUuid(item.inst_uuid);
+              if (!instUuid) return;
+              nextOptions.push({
+                value: instUuid,
+                label: item.inst_name || instUuid,
+                model_id: id,
+                inst_name: item.inst_name || instUuid,
+              });
+            });
+          });
+          setRoomGroups([]);
+          setInstanceOptions((prev) => {
+            if (!append) return nextOptions;
+            const seen = new Set(prev.map((item) => item.value));
+            return [
+              ...prev,
+              ...nextOptions.filter((item) => !seen.has(item.value)),
+            ];
+          });
+          setInstancePage(page);
+          setInstanceTotal((prev) => total || (append ? prev : nextOptions.length));
+          if (!append) {
+            loadedQueryRef.current = queryKey([...modelIds].sort().join(','), keyword);
           }
           return;
         }
@@ -286,7 +367,23 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   // Only fetch when the instance dropdown is open — avoid loading large lists
   // just because the model changed while the user is looking at the canvas.
   useEffect(() => {
-    if (!dropdownOpen || !selectedModelId) return;
+    if (!dropdownOpen) return;
+    if (allowCrossModel) {
+      if (!selectedModelIds.length) return;
+      const modelKey = [...selectedModelIds].sort().join(',');
+      const key = queryKey(modelKey, instanceKeyword);
+      if (loadedQueryRef.current === key) return;
+      void fetchInstances({
+        modelId: selectedModelIds[0],
+        modelIds: selectedModelIds.length > 1 ? selectedModelIds : undefined,
+        keyword: instanceKeyword,
+        page: 1,
+        append: false,
+        grouped: false,
+      });
+      return;
+    }
+    if (!selectedModelId) return;
     const key = queryKey(selectedModelId, instanceKeyword);
     if (loadedQueryRef.current === key) return;
     void fetchInstances({
@@ -296,7 +393,15 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
       append: false,
       grouped: groupByRoom,
     });
-  }, [dropdownOpen, selectedModelId, instanceKeyword, fetchInstances, groupByRoom]);
+  }, [
+    dropdownOpen,
+    allowCrossModel,
+    selectedModelId,
+    selectedModelIds,
+    instanceKeyword,
+    fetchInstances,
+    groupByRoom,
+  ]);
 
   useEffect(
     () => () => {
@@ -344,6 +449,12 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
     emitFocuses([]);
   };
 
+  const handleModelsChange = (modelIds: string[]) => {
+    resetInstanceList();
+    setSelectedModelIds(modelIds);
+    emitFocuses(selectedFocuses.filter((item) => modelIds.includes(item.model_id)));
+  };
+
   const handleInstanceSearch = (value: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const keyword = value.trim();
@@ -359,7 +470,8 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   };
 
   const handleInstancePopupScroll = (event: React.UIEvent<HTMLDivElement>) => {
-    if (!selectedModelId || loading) return;
+    const activeModelId = allowCrossModel ? selectedModelIds[0] : selectedModelId;
+    if (!activeModelId || loading) return;
     const loadedCount = groupByRoom ? roomGroups.length : instanceOptions.length;
     const hasMore = loadedCount < instanceTotal;
     if (!hasMore) return;
@@ -369,11 +481,12 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
       >= target.scrollHeight - SELECT_SCROLL_LOAD_OFFSET;
     if (!isNearBottom) return;
     void fetchInstances({
-      modelId: selectedModelId,
+      modelId: activeModelId,
+      modelIds: allowCrossModel && selectedModelIds.length > 1 ? selectedModelIds : undefined,
       keyword: instanceKeyword,
       page: instancePage + 1,
       append: true,
-      grouped: groupByRoom,
+      grouped: allowCrossModel ? false : groupByRoom,
     });
   };
 
@@ -394,14 +507,32 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
     }
   };
 
+  const resolveInstanceModel = (instId: string) => (
+    instanceOptions.find((item) => item.value === instId)?.model_id
+    || recentItems.find((item) => item.inst_uuid === instId)?.model_id
+    || selectedFocuses.find((item) => item.inst_uuid === instId)?.model_id
+  );
+
   const handleInstanceChange = (value: string | string[] | undefined) => {
+    const instIds = Array.isArray(value)
+      ? value.filter(Boolean)
+      : (value ? [value] : []);
+    if (allowCrossModel) {
+      if (instIds.length > NODE_LIMIT) {
+        message.warning(t('Model.networkTopoNodeLimit'));
+        return;
+      }
+      emitFocuses(instIds.flatMap((instId) => {
+        const modelId = resolveInstanceModel(instId);
+        if (!modelId) return [];
+        return [buildFocus(modelId, instId, resolveFocusName(instId))];
+      }));
+      return;
+    }
     if (!selectedModelId) {
       emitFocuses([]);
       return;
     }
-    const instIds = Array.isArray(value)
-      ? value.filter(Boolean)
-      : (value ? [value] : []);
     if (!instIds.length) {
       emitFocuses([]);
       return;
@@ -414,6 +545,12 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   };
 
   const selectOptions = useMemo(() => {
+    const optionLabel = (modelId: string, instName: string) => {
+      if (!allowCrossModel) return instName;
+      const modelName = modelList.find((item) => item.model_id === modelId)?.model_name || modelId;
+      return `${modelName} / ${instName}`;
+    };
+
     if (groupByRoom) {
       return rackGroupsToSelectOptions({
         recent: recentItems,
@@ -435,10 +572,41 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
       groups.push({
         label: t('ViewsHub.recent'),
         options: recentItems.map((item) => ({
-          label: item.inst_name || item.inst_uuid,
+          label: optionLabel(item.model_id, item.inst_name || item.inst_uuid),
           value: item.inst_uuid,
         })),
       });
+    }
+
+    if (allowCrossModel) {
+      const recentIds = new Set(
+        instanceKeyword ? [] : recentItems.map((item) => item.inst_uuid)
+      );
+      selectedModelIds.forEach((modelId) => {
+        const modelName = modelList.find((item) => item.model_id === modelId)?.model_name || modelId;
+        const options = instanceOptions
+          .filter((item) => item.model_id === modelId && !recentIds.has(item.value))
+          .map((item) => ({
+            label: optionLabel(modelId, item.inst_name),
+            value: item.value,
+          }));
+        selectedFocuses
+          .filter((item) =>
+            item.model_id === modelId
+            && !recentIds.has(item.inst_uuid)
+            && !instanceOptions.some((opt) => opt.value === item.inst_uuid)
+          )
+          .forEach((item) => {
+            options.unshift({
+              label: optionLabel(modelId, item.inst_name || item.inst_uuid),
+              value: item.inst_uuid,
+            });
+          });
+        if (options.length) {
+          groups.push({ label: modelName, options });
+        }
+      });
+      return groups;
     }
 
     const recentIds = new Set(
@@ -471,19 +639,22 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
 
     return groups;
   }, [
+    allowCrossModel,
     groupByRoom,
     roomGroups,
     recentItems,
     instanceOptions,
     selectedFocuses,
     selectedModelId,
+    selectedModelIds,
+    modelList,
     instanceKeyword,
     t,
   ]);
 
-  const matchingFocuses = selectedFocuses.filter(
-    (item) => item.model_id === selectedModelId
-  );
+  const matchingFocuses = allowCrossModel
+    ? selectedFocuses.filter((item) => selectedModelIds.includes(item.model_id))
+    : selectedFocuses.filter((item) => item.model_id === selectedModelId);
   const selectValue = allowMultiple
     ? matchingFocuses.map((item) => item.inst_uuid)
     : matchingFocuses[0]?.inst_uuid;
@@ -491,11 +662,21 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   return (
     <div className="flex items-center gap-2 flex-wrap min-w-0">
       <Select
-        className="w-[180px]"
-        placeholder={t('ViewsHub.selectModel')}
-        value={selectedModelId}
+        className={allowCrossModel ? 'min-w-[220px] w-[360px]' : 'w-[180px]'}
+        mode={allowCrossModel ? 'multiple' : undefined}
+        maxTagCount={allowCrossModel ? 'responsive' : undefined}
+        placeholder={
+          allowCrossModel ? t('ViewsHub.selectModelMultiple') : t('ViewsHub.selectModel')
+        }
+        value={allowCrossModel ? selectedModelIds : selectedModelId}
         options={modelOptions}
-        onChange={handleModelChange}
+        onChange={(value) => {
+          if (allowCrossModel) {
+            handleModelsChange((Array.isArray(value) ? value : []) as string[]);
+            return;
+          }
+          handleModelChange(value as string);
+        }}
         showSearch
         optionFilterProp="label"
         disabled={eligibleModelIds.length === 0}
@@ -504,11 +685,13 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
         key={allowMultiple ? 'multi' : 'single'}
         className={allowMultiple ? 'min-w-[280px] w-[420px]' : 'min-w-[240px] w-[320px]'}
         placeholder={
-          groupByRoom
-            ? t('ViewsHub.selectInstanceGrouped')
-            : allowMultiple
-              ? t('ViewsHub.selectInstanceMultiple')
-              : t('ViewsHub.selectInstance')
+          allowCrossModel
+            ? t('ViewsHub.selectNetworkInstances')
+            : groupByRoom
+              ? t('ViewsHub.selectInstanceGrouped')
+              : allowMultiple
+                ? t('ViewsHub.selectInstanceMultiple')
+                : t('ViewsHub.selectInstance')
         }
         mode={allowMultiple ? 'multiple' : undefined}
         maxTagCount={allowMultiple ? 'responsive' : undefined}
@@ -522,7 +705,7 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
         onPopupScroll={handleInstancePopupScroll}
         onOpenChange={handleDropdownVisibleChange}
         allowClear
-        disabled={!selectedModelId}
+        disabled={allowCrossModel ? selectedModelIds.length === 0 : !selectedModelId}
         onChange={(value) => handleInstanceChange(value as string | string[] | undefined)}
         notFoundContent={loading ? null : undefined}
       />

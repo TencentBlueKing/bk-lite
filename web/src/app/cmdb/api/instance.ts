@@ -31,6 +31,9 @@ export const useInstanceApi = () => {
       }`
     );
 
+  const getNetworkTopoAmong = (instUuids: string[]) =>
+    post('/cmdb/api/instance/network_topo/among/', { inst_uuids: instUuids });
+
   const getRoomLayout = (modelId: string, instUuid: string) =>
     get(`/cmdb/api/instance/room_layout/${modelId}/${instUuid}/`);
 
@@ -290,6 +293,7 @@ export const useInstanceApi = () => {
     topoSearchInstances,
     getTopoThemes,
     getNetworkTopo,
+    getNetworkTopoAmong,
     getRoomLayout,
     getRackLayout,
     getApplicationResourceApps,
