@@ -2,6 +2,9 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
+import { shouldNavigateInteraction } from '@/app/ops-analysis/utils/interactionLink';
+import { useTranslation } from '@/utils/i18n';
 
 const VIEWPORT_MARGIN = 8;
 
@@ -38,6 +41,8 @@ const InteractionDataMenu: React.FC<InteractionDataMenuProps> = ({
   variant = 'default',
   anchorRef,
 }) => {
+  const { t } = useTranslation();
+  const surface = useInteractionSurface();
   const [scale, setScale] = useState(1);
   const isScene = variant === 'scene';
   const menuRef = useRef<HTMLDivElement>(null);
@@ -95,6 +100,7 @@ const InteractionDataMenu: React.FC<InteractionDataMenuProps> = ({
       <button
         type="button"
         role="menuitem"
+        title={shouldNavigateInteraction(surface) ? undefined : t('dashboard.interactionViewModeOnly', '查看模式下可跳转')}
         className={
           isScene
             ? 'block w-fit cursor-pointer border-0 bg-transparent p-0 text-left text-[#7fd4ff] [text-shadow:0_1px_3px_rgba(0,0,0,0.8)] [border-bottom:1px_solid_rgba(127,212,255,0.45)] hover:text-[#b5e8ff] hover:[border-bottom-color:#7fd4ff] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#7fd4ff]'

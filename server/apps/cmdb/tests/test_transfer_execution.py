@@ -8,6 +8,55 @@ from apps.cmdb.services.transfer_service import TransferService
 from apps.cmdb.tests.test_transfer_service import submit
 
 
+def _lifecycle(records, event):
+    return [record for record in records if record.msg.startswith(event)]
+
+
+def test_export_logs_start_and_finish_without_request_payload(transfer_owner, monkeypatch, caplog):
+    task = submit(
+        transfer_owner,
+        model_id="host\nline",
+        params={"scope": "all", "attr_list": ["inst_name"], "association_list": [], "inst_uuids": [], "note": "EXPORT-PAYLOAD-SENTINEL"},
+    )
+    monkeypatch.setattr("apps.cmdb.services.transfer_execution.TransferAuthorization.revalidate", Mock(return_value=object()))
+    monkeypatch.setattr(TransferExecution, "export", Mock(return_value=({"exported": 2}, {"result": {"key": "transfer/result"}})))
+    with caplog.at_level(logging.INFO, logger="cmdb"):
+        TransferExecution.run(task.pk, files=Mock())
+    result = TransferService.get(transfer_owner, task.pk)
+    assert result.status == "succeeded" and not result.holds_slot
+    assert result.summary == {"exported": 2}
+    assert result.error_code == ""
+    started = _lifecycle(caplog.records, "event=cmdb_transfer_started")
+    finished = _lifecycle(caplog.records, "event=cmdb_transfer_finished")
+    assert len(started) == 1 and len(finished) == 1
+    assert started[0].msg == "event=cmdb_transfer_started task_id=%s kind=%s model_id=%s"
+    assert started[0].args == (str(task.pk), "export", "host\\nline")
+    assert finished[0].msg == "event=cmdb_transfer_finished task_id=%s kind=%s status=%s holds_slot=%s error_code=%s"
+    assert finished[0].args == (str(task.pk), "export", "succeeded", "false", "-")
+    assert started[0].exc_info is None and finished[0].exc_info is None
+    rendered = logging.Formatter().format(started[0]) + logging.Formatter().format(finished[0])
+    assert "event=cmdb_transfer_started" in started[0].getMessage()
+    assert f"task_id={task.pk}" in finished[0].getMessage()
+    assert "status=succeeded" in finished[0].getMessage()
+    assert "holds_slot=false" in finished[0].getMessage()
+    assert "\n" not in started[0].getMessage()
+    assert "EXPORT-PAYLOAD-SENTINEL" not in rendered
+    assert not _lifecycle(caplog.records, "event=cmdb_transfer_failed")
+
+
+def test_slot_rejected_claim_does_not_log_execution_lifecycle(transfer_owner, caplog):
+    task = submit(transfer_owner)
+    token = TransferService.claim(task.pk)
+    files = Mock()
+    with caplog.at_level(logging.INFO, logger="cmdb"):
+        TransferExecution.run(task.pk, files=files)
+    result = TransferService.get(transfer_owner, task.pk)
+    assert result.status == "running" and result.holds_slot and result.execution_token == token
+    files.put.assert_not_called()
+    assert _lifecycle(caplog.records, "event=cmdb_transfer_started") == []
+    assert _lifecycle(caplog.records, "event=cmdb_transfer_finished") == []
+
+
 def test_disabled_owner_export_fails_without_reading_files(transfer_owner):
     task = submit(transfer_owner)
     transfer_owner.disabled = True
@@ -24,7 +73,7 @@ def test_unexpected_failure_is_sanitized_and_import_not_replayed(transfer_owner,
     task = submit(transfer_owner, kind="import")
     error = RuntimeError("PRIVATE-PAYLOAD-SENTINEL")
     monkeypatch.setattr("apps.cmdb.services.transfer_execution.TransferAuthorization.revalidate", Mock(side_effect=error))
-    with caplog.at_level(logging.ERROR, logger="cmdb"):
+    with caplog.at_level(logging.INFO, logger="cmdb"):
         TransferExecution.run(task.pk, files=Mock())
     task = TransferService.get(transfer_owner, task.pk)
     assert task.status == "failed" and not task.holds_slot
@@ -36,6 +85,14 @@ def test_unexpected_failure_is_sanitized_and_import_not_replayed(transfer_owner,
     assert records[0].args[0] == str(task.pk)
     assert records[0].exc_info[2] is error.__traceback__
     assert "PRIVATE-PAYLOAD-SENTINEL" not in logging.Formatter().format(records[0])
+    finished = _lifecycle(caplog.records, "event=cmdb_transfer_finished")
+    started = _lifecycle(caplog.records, "event=cmdb_transfer_started")
+    assert len(started) == 1 and len(finished) == 1
+    assert finished[0].msg == "event=cmdb_transfer_finished task_id=%s kind=%s status=%s holds_slot=%s error_code=%s"
+    assert finished[0].args == (str(task.pk), "import", "failed", "false", "execution_failed")
+    assert finished[0].exc_info is None
+    assert "error_code=execution_failed" in finished[0].getMessage()
+    assert "PRIVATE-PAYLOAD-SENTINEL" not in logging.Formatter().format(finished[0])
     assert str(error) == "PRIVATE-PAYLOAD-SENTINEL"
     assert not TransferService.claim(task.pk)
 

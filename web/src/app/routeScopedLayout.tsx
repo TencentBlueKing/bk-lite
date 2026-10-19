@@ -12,11 +12,7 @@ import { MenusProvider } from '@/context/menus';
 import { PermissionsProvider } from '@/context/permissions';
 import { isDashboardExecutionRenderRoute } from '@/app/routeScope';
 
-const Loader = () => (
-  <div className="flex justify-center items-center h-screen">
-    <Spin />
-  </div>
-);
+const Loader = () => <Spin fullscreen />;
 
 const DashboardExecutionRenderLayout = ({ children }: { children: ReactNode }) => {
   const { status } = useSession();

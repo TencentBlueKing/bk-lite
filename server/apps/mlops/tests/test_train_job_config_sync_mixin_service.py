@@ -1,9 +1,11 @@
 import pytest
 from django.db import transaction
 from django.db.models.query import QuerySet
+from django.utils import translation
 
 from apps.mlops.models.mixins import ConfigSyncError
 from apps.mlops.models.object_detection import ObjectDetectionTrainJob
+from apps.mlops.utils.i18n import mlops_message_for_locale
 
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
@@ -189,17 +191,27 @@ def test_clearing_pointer_failure_preserves_old_object_and_pointer(
     assert deleted == []
 
 
+@pytest.mark.parametrize("locale", [None, "zh-Hans", "en"])
 def test_missing_database_row_cleans_new_upload_without_deleting_old(
     monkeypatch,
+    locale,
 ):
     job = _create_job_with_config_path()
     deleted = _mock_config_storage(monkeypatch, job)
     _mock_config_pointer_update(monkeypatch, 0)
 
     job.hyperopt_config = {"hyperparams": {"epochs": 3}}
-    with pytest.raises(ConfigSyncError, match="数据库指针更新失败"):
-        job.save()
+    with translation.override(locale):
+        with pytest.raises(ConfigSyncError) as exc:
+            job.save()
 
+    expected_locale = "zh-Hans" if locale is None else locale
+    assert type(exc.value) is ConfigSyncError
+    assert str(exc.value) == mlops_message_for_locale(
+        expected_locale,
+        "error.train_job_config_pointer_update_failed",
+        pk=job.pk,
+    )
     job.refresh_from_db()
     assert job.config_url.name == "configs/old.json"
     assert len(deleted) == 1

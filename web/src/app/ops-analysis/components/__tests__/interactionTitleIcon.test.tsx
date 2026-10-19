@@ -2,12 +2,13 @@ import React from 'react';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import '@ant-design/v5-patch-for-react-19';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { IntlProvider } from 'react-intl';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import InteractionTitleIcon from '@/app/ops-analysis/components/interactionTitleIcon';
 import { ShareModeProvider } from '@/app/ops-analysis/context/shareMode';
+import { InteractionSurfaceProvider } from '@/app/ops-analysis/context/interactionSurface';
 import ScreenWidgetFrame from '@/app/ops-analysis/(pages)/view/screen/components/screenWidgetFrame';
 import type { WidgetInteractionLink } from '@/app/ops-analysis/types/dashBoard';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
@@ -74,7 +75,17 @@ describe('InteractionTitleIcon', () => {
     expect(button.className).toContain('rounded-full');
     expect(button.className).toContain('h-6');
     expect(button.className).not.toContain('screen-widget-frame__title-link');
-    expect(button.getAttribute('title')).toBe('查看详情');
+    expect(button.getAttribute('aria-label')).toBe('查看详情');
+  });
+
+  it('编辑态悬停提示查看模式下可跳转', async () => {
+    renderWithIntl(
+      <InteractionSurfaceProvider editing>
+        <InteractionTitleIcon config={{ interaction: titleLink }} />
+      </InteractionSurfaceProvider>,
+    );
+    fireEvent.mouseEnter(screen.getByRole('button', { name: '查看详情' }));
+    expect(await screen.findByText('查看模式下可跳转')).toBeTruthy();
   });
 
   it('hides the entry on the share surface and for data links', () => {
@@ -114,7 +125,8 @@ describe('screen title link', () => {
     expect(button.className).toContain('screen-widget-frame__title-link');
     expect(button.className).not.toContain('text-(--color-text-2)');
     expect(button.querySelector('.anticon-link')).toBeTruthy();
-    expect(button.parentElement?.className).toContain('screen-widget-frame__header');
+    expect(button.parentElement?.className).toContain('screen-widget-frame__title-row');
+    expect(button.parentElement?.parentElement?.className).toContain('screen-widget-frame__header');
     expect(screen.getByText('CPU 使用率').className).toBe('screen-widget-frame__title');
 
     rerender(
@@ -160,10 +172,10 @@ describe('screen title link styles', () => {
     );
     expect(source).toContain(`width: 100%;
           overflow: hidden;`);
-    expect(source).toContain(`.screen-widget-frame__header:has(.screen-widget-frame__title-link) {
-          justify-content: flex-start;
-          gap: calc(6px * var(--screen-widget-ui-scale));
-        }`);
+    expect(source).toContain(`.screen-widget-frame__title-row {
+          display: flex;
+          align-items: center;
+          gap: calc(6px * var(--screen-widget-ui-scale));`);
     expect(source).toContain(`width: auto;
           flex: 0 1 auto;`);
     expect(source).toContain('font-size: calc(14px * var(--screen-widget-ui-scale));');

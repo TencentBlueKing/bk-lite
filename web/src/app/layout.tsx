@@ -52,11 +52,7 @@ const GlobalWebchat = dynamic(
   { ssr: false },
 );
 
-const Loader = () => (
-  <div className="flex justify-center items-center h-screen">
-    <Spin />
-  </div>
-);
+const Loader = () => <Spin fullscreen />;
 
 const applyWatermarkTemplate = (template: string, variables: Record<string, string>) => {
   return template.replace(/\$\{([a-zA-Z0-9_]+)\}/g, (match, key) => variables[key] ?? match);

@@ -75,8 +75,47 @@ def test_custom_plugin_list_filter_uses_plugin_pk():
 
     queryset = MagicMock()
     CollectModelFilter.filter_custom_plugin_pk(queryset, "custom_plugin_pk", "7")
-    queryset.filter.assert_called_once_with(task_type=CollectPluginTypes.CUSTOM_SCRIPT, params__contains={"custom_plugin_pk": 7})
+    queryset.filter.assert_called_once_with(params__contains={"custom_plugin_pk": 7})
     assert CollectModelFilter.filter_custom_plugin_pk(queryset, "custom_plugin_pk", "bad") == queryset.none.return_value
+
+
+def test_validate_keeps_custom_script_identity_when_builtin_host_form_submits(monkeypatch):
+    """同模型内置主机表单提交 task_type=host 时，不能丢掉自定义插件归属。"""
+    from apps.cmdb.serializers.collect_serializer import CollectModelSerializer
+
+    plugin = SimpleNamespace(id=7, model_id="host", os_type="linux", team=[1])
+    monkeypatch.setattr(
+        "apps.cmdb.services.custom_script_credentials.load_plugin",
+        lambda plugin_pk: plugin if int(plugin_pk) == 7 else None,
+    )
+    serializer = CollectModelSerializer.__new__(CollectModelSerializer)
+    serializer.parent = None
+    serializer.instance = SimpleNamespace(
+        task_type=CollectPluginTypes.CUSTOM_SCRIPT,
+        model_id="host",
+        driver_type="job",
+        params={"custom_plugin_pk": 7, "os_type": "linux"},
+        team=[1],
+        instances=[],
+        ip_range="10.0.0.1-10.0.0.2",
+        timeout=60,
+    )
+    serializer._context = {"request": SimpleNamespace(user=SimpleNamespace(is_superuser=True), COOKIES={})}
+    result = serializer.validate(
+        {
+            "task_type": "host",
+            "model_id": "host",
+            "driver_type": "job",
+            "team": [1],
+            "ip_range": "10.0.0.1-10.0.0.2",
+            "instances": [],
+            "params": {"ip_precheck": True},
+            "timeout": 60,
+        }
+    )
+    assert result["task_type"] == CollectPluginTypes.CUSTOM_SCRIPT
+    assert result["params"]["custom_plugin_pk"] == 7
+    assert result["model_id"] == "host"
 
 
 def test_update_keeps_the_task_plugin_when_another_plugin_is_selected(monkeypatch):
@@ -161,6 +200,52 @@ def test_format_plugin_keeps_model_fields_and_drops_blank_inst_name(monkeypatch)
     collector.format_metrics()
     assert collector.result["host"] == [{"inst_name": "demo", "port": 8}]
     assert collector._dropped_records == 1
+
+
+def test_custom_script_host_record_inherits_access_point_cloud(monkeypatch):
+    plugin = SimpleNamespace(plugin_id="custom_host_linux_scan")
+    task = SimpleNamespace(
+        id=29,
+        params={"custom_plugin_pk": 4},
+        model_id="host",
+        instances=[],
+        access_point={"cloud_region": 1, "id": "node-1"},
+    )
+    monkeypatch.setattr(CustomScriptCollectionPlugin, "_plugin", lambda self: plugin)
+    monkeypatch.setattr(
+        "apps.cmdb.collection.plugins.community.custom_script.generic.ModelManage.search_model_attr",
+        lambda model_id: [
+            {"attr_id": "inst_name", "attr_type": "str"},
+            {"attr_id": "ip_addr", "attr_type": "str"},
+            {"attr_id": "cloud", "attr_type": "int"},
+        ],
+    )
+    collector = CustomScriptCollectionPlugin("task", 29, 29, collect_inst=task)
+    collector.format_data(
+        {
+            "result": [
+                {
+                    "metric": {
+                        "__name__": "custom_host_linux_scan_info_gauge",
+                        "inst_name": "demo-host-v2",
+                        "ip_addr": "10.10.41.149",
+                    },
+                    "value": [int(time.time()), "1"],
+                }
+            ]
+        }
+    )
+    collector.format_metrics()
+    assert collector.result["host"] == [{"inst_name": "demo-host-v2", "ip_addr": "10.10.41.149", "cloud": 1}]
+
+
+def test_custom_script_sync_queries_the_vm_gauge_series(monkeypatch):
+    plugin = SimpleNamespace(plugin_id="custom_host_linux_scan")
+    task = SimpleNamespace(id=29, params={"custom_plugin_pk": 7}, model_id="host", instances=[])
+    monkeypatch.setattr(CustomScriptCollectionPlugin, "_plugin", lambda self: plugin)
+    collector = CustomScriptCollectionPlugin("task", 29, 29, collect_inst=task)
+    assert collector._metrics == ["custom_host_linux_scan_info_gauge"]
+    assert collector.prom_sql() == "custom_host_linux_scan_info_gauge{instance_id='cmdb_29'}"
 
 
 def test_task_type_constant_is_custom_script():

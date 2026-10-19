@@ -942,6 +942,7 @@
     "interactionTimeEnd": "{name} 结束",
     "interactionUrlBlocked": "链接协议不被允许",
     "interactionOpen": "打开链接",
+    "interactionViewModeOnly": "查看模式下可跳转",
     "interactionUrlRequired": "请输入 URL",
     "interactionActionColumn": "操作",
     "eventTableStructureMismatch": "数据结构不符：事件表期望数组，或包含 items 数组的分页结构",

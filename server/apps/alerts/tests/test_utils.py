@@ -4,12 +4,13 @@
 """
 
 import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
+
 from apps.alerts.utils import util
 from apps.alerts.utils.rule_matcher import RuleMatcher, filter_by_rules
 from apps.alerts.utils.time_range_checker import TimeRangeChecker, check_time_range
-from django.utils import timezone
 
 # --------------------------------------------------------------------------
 # util.py 纯函数
@@ -257,7 +258,7 @@ def test_rule_matcher_valid_operators_build_q():
 
 
 def _dt(y, m, d, hh, mm, ss):
-    return timezone.make_aware(datetime.datetime(y, m, d, hh, mm, ss))
+    return datetime.datetime(y, m, d, hh, mm, ss, tzinfo=ZoneInfo("Asia/Shanghai"))
 
 
 def test_time_range_empty_config_always_true():

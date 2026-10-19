@@ -1231,6 +1231,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           {
             ...currentConfigItem.valueConfig,
             ...values,
+            interaction: values.interaction,
+            actions: values.actions,
             chartType: nextChartType,
             appearance: resolveScreenWidgetAppearance(
               nextChartType,

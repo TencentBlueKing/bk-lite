@@ -303,16 +303,16 @@ export default function HostAlertDrawer({
                 key={index}
                 className="flex h-16 items-stretch gap-3 rounded-lg border border-[var(--color-border)] py-2.5 pl-2.5 pr-3.5"
               >
-                <span className="w-1 animate-pulse rounded-sm bg-[var(--color-fill-3)]" />
+                <span className="w-1 animate-neutral-pulse rounded-sm bg-[var(--color-fill-3)]" />
                 <span className="flex min-w-0 flex-1 flex-col justify-center gap-2">
                   <span className="flex items-center gap-2">
-                    <span className="h-3.5 flex-1 animate-pulse rounded bg-[var(--color-fill-2)]" />
-                    <span className="h-3 w-12 shrink-0 animate-pulse rounded bg-[var(--color-fill-2)]" />
+                    <span className="h-3.5 flex-1 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
+                    <span className="h-3 w-12 shrink-0 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="h-5 w-10 animate-pulse rounded bg-[var(--color-fill-2)]" />
-                    <span className="h-5 w-8 animate-pulse rounded bg-[var(--color-fill-2)]" />
-                    <span className="h-3 w-16 animate-pulse rounded bg-[var(--color-fill-2)]" />
+                    <span className="h-5 w-10 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
+                    <span className="h-5 w-8 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
+                    <span className="h-3 w-16 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />
                   </span>
                 </span>
               </div>

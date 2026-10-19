@@ -36,11 +36,11 @@ export default function FeatureLibraryLayout({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="shrink-0 mb-3 border-b border-[var(--color-border-2)] bg-[var(--color-bg-1)]">
+      <div className="shrink-0 px-4">
         <Tabs
           activeKey={activeKey}
           onChange={handleTabChange}
-          className="!mb-0"
+          className="[&>.ant-tabs-nav]:!mb-0 [&>.ant-tabs-content-holder]:hidden"
           items={[
             {
               key: SOID_PATH,
