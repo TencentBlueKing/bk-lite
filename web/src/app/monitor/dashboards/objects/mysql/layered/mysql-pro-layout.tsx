@@ -262,6 +262,7 @@ export default function MysqlProLayout({
       <OverviewPane
         readings={readings}
         previous={previous}
+        metricMap={metricMap}
         loading={loading}
         statementsCollected={statementsCollected}
         host={linkedHost}

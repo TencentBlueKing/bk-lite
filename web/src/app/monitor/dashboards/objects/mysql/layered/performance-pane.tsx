@@ -4,9 +4,12 @@ import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { MetricSeries } from '../types';
+import { formatMetricValue } from '../../../shared/utils/format';
 import { ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
-import { numericValue, primaryChartSeries } from '../../host/layered/readings';
+import { latestNumber, numericValue, primaryChartSeries } from '../../host/layered/readings';
+import { innodbHasLoad } from './ia';
+import classic from '../../host/index.module.scss';
 import host from '../../host/layered/layered.module.scss';
 import pro from './pro.module.scss';
 
@@ -30,6 +33,13 @@ const sumSeries = (parts: ChartData[][]): ChartData[] => {
   return Array.from(buckets.entries())
     .sort((left, right) => left[0] - right[0])
     .map(([time, value]) => ({ time, value1: value }));
+};
+
+const rateReading = (metric: MetricSeries | undefined) => {
+  const value = latestNumber(metric);
+  if (value == null) return undefined;
+  const formatted = formatMetricValue(value, 'cps');
+  return `${formatted.value}${formatted.unit || ''}`;
 };
 
 const Section = ({ id, title, children }: { id: string; title: string; children: React.ReactNode }) => (
@@ -129,19 +139,34 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
         </div>
       </Section>
       <Section id="mysql-perf-innodb" title="InnoDB">
-        <ThinTimeSeries
-          title="InnoDB 读写"
-          hint="实例物理读写与 Redo 刷盘速率。"
-          loading={loading}
-          unit="cps"
-          data={innodb}
-          emptyText="暂无采集数据"
-          legends={[
-            { label: '读', color: HOST_SERIES_COLOR.diskRead },
-            { label: '写', color: HOST_SERIES_COLOR.diskWrite },
-            { label: 'Redo 刷盘', color: HOST_SERIES_COLOR.load1 }
-          ]}
-        />
+        {innodbHasLoad(metricMap) ? (
+          <ThinTimeSeries
+            title="InnoDB 读写"
+            hint="读、写与 Redo 刷盘。近窗接近零时不放大噪声。"
+            loading={loading}
+            unit="cps"
+            data={innodb}
+            legends={[
+              { label: '读', color: HOST_SERIES_COLOR.diskRead, reading: rateReading(metricMap.mysql_innodb_data_reads_rate) },
+              { label: '写', color: HOST_SERIES_COLOR.diskWrite, reading: rateReading(metricMap.mysql_innodb_data_writes_rate) },
+              { label: 'Redo', color: HOST_SERIES_COLOR.load1, reading: rateReading(metricMap.mysql_innodb_os_log_fsyncs_rate) }
+            ]}
+          />
+        ) : (
+          <section className={`${classic.panel} ${host.chartPanel}`}>
+            <div className={host.chartHead}>
+              <div className={host.chartTitle}>InnoDB 读写</div>
+            </div>
+            <div className="flex h-[72px] flex-col items-center justify-center text-center">
+              <div className="text-[13px] font-semibold text-[var(--color-text-2)]">
+                {innodb.length > 0 ? '近窗无明显 InnoDB 读写' : '暂无采集数据'}
+              </div>
+              {innodb.length > 0 ? (
+                <div className="mt-1 text-[12px] text-[var(--color-text-3)]">有负载时将显示读/写/Redo</div>
+              ) : null}
+            </div>
+          </section>
+        )}
       </Section>
       <Section id="mysql-perf-buffer" title="缓冲池">
         <ThinTimeSeries
