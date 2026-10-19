@@ -1,4 +1,6 @@
-export const MAX_CONCURRENT_METRIC_REQUESTS = 4;
+import { SITE_METRIC_REQUEST_SLOT_LIMIT } from '@/app/monitor/utils/metricRequestSlot';
+
+export const MAX_CONCURRENT_METRIC_REQUESTS = SITE_METRIC_REQUEST_SLOT_LIMIT;
 
 export function occupyMetricRequestSlot(
   slots: Map<number, AbortController>,
