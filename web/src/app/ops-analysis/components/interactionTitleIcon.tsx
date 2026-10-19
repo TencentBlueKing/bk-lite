@@ -20,6 +20,7 @@ import {
   shouldShowInteractionEntry,
   type ChartClickParams,
 } from '@/app/ops-analysis/utils/interactionLink';
+import { shouldShowDataLinkHint } from '@/app/ops-analysis/utils/interactionLinkHint';
 
 export const useOpenInteractionLink = (config?: object | null) => {
   const { t } = useTranslation();
@@ -54,8 +55,20 @@ export const useOpenInteractionLink = (config?: object | null) => {
 };
 
 export const useWidgetDataLink = (config?: object | null) => {
+  const { t } = useTranslation();
   const { link, surface, open } = useOpenInteractionLink(config);
   const active = link?.kind === 'data' && surface !== 'share';
+  const showDataLinkHint = shouldShowDataLinkHint(surface, link);
+  const hintName = link?.name?.trim() || t('dashboard.interactionOpen', '打开链接');
+  const chartTooltipHint = showDataLinkHint
+    ? t('dashboard.interactionChartTooltipHint', '{name} ↗ 点击打开', { name: hintName })
+    : '';
+  const hoverHint = showDataLinkHint
+    ? t('dashboard.interactionHoverHint', '点击打开：{name}', { name: hintName })
+    : undefined;
+  const contextHint = showDataLinkHint
+    ? t('dashboard.interactionContextHint', '右键打开链接')
+    : '';
   const openPoint = useCallback((point?: ChartLinkPoint) => {
     if (!active || !point) return;
     open(point);
@@ -63,13 +76,23 @@ export const useWidgetDataLink = (config?: object | null) => {
   const onChartClick = useCallback((params: ChartClickParams) => {
     openPoint(readChartClickPoint(params));
   }, [openPoint]);
-  return { active, link, openPoint, onChartClick, surface };
+  return {
+    active,
+    link,
+    openPoint,
+    onChartClick,
+    surface,
+    showDataLinkHint,
+    chartTooltipHint,
+    hoverHint,
+    contextHint,
+  };
 };
 
 interface InteractionTitleIconProps {
   config?: ValueConfig | null;
   floating?: boolean;
-  variant?: 'default' | 'screen';
+  variant?: 'default' | 'screen' | 'text';
 }
 
 const InteractionTitleIcon: React.FC<InteractionTitleIconProps> = ({
@@ -85,8 +108,8 @@ const InteractionTitleIcon: React.FC<InteractionTitleIconProps> = ({
   const hint = shouldNavigateInteraction(surface)
     ? label
     : t('dashboard.interactionViewModeOnly', '查看模式下可跳转');
-  const layoutClass = variant === 'screen'
-    ? 'screen-widget-frame__title-link'
+  const layoutClass = variant === 'screen' || variant === 'text'
+    ? `screen-widget-frame__title-link${variant === 'text' ? ' screen-text-item__title-link' : ''}`
     : `inline-flex shrink-0 cursor-pointer items-center justify-center text-(--color-text-2) transition-colors hover:text-(--color-primary) ${
       floating
         ? 'absolute right-2 top-2 z-20 h-6 w-6 rounded-full bg-(--color-bg-1)/80 shadow-sm'
@@ -94,7 +117,7 @@ const InteractionTitleIcon: React.FC<InteractionTitleIconProps> = ({
     }`;
 
   return (
-    <Tooltip title={hint}>
+    <Tooltip title={hint} mouseEnterDelay={0}>
       <button
         type="button"
         data-export-hidden="true"
@@ -102,8 +125,12 @@ const InteractionTitleIcon: React.FC<InteractionTitleIconProps> = ({
         className={`no-drag ${layoutClass}`}
         onClick={(event) => {
           event.preventDefault();
-          event.stopPropagation();
-          open();
+          if (shouldNavigateInteraction(surface)) {
+            event.stopPropagation();
+            open();
+            return;
+          }
+          if (variant !== 'text') event.stopPropagation();
         }}
       >
         <LinkOutlined aria-hidden />

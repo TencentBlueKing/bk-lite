@@ -32,6 +32,12 @@ interface InteractionLinkSectionProps {
   fieldConfig?: ValueConfig | null;
   /** 大屏无边框没有标题，标题链接不可新选，已有配置保留。 */
   titleLinkUnavailable?: boolean;
+  /** 大屏文本项：图标跟在文本后，不提供数据链接。 */
+  besideText?: boolean;
+  /** 选「无」时清掉名称、URL 和打开方式，避免切回标题链接后又出现。 */
+  clearOnNone?: boolean;
+  /** setFieldsValue 不会触发 Form.onValuesChange，种类切换后补一次。 */
+  onDraftChange?: () => void;
 }
 
 const InteractionLinkSection: React.FC<InteractionLinkSectionProps> = ({
@@ -41,11 +47,16 @@ const InteractionLinkSection: React.FC<InteractionLinkSectionProps> = ({
   rawData,
   fieldConfig,
   titleLinkUnavailable = false,
+  besideText = false,
+  clearOnNone = false,
+  onDraftChange,
 }) => {
   const form = Form.useFormInstance();
   const watchedKind = Form.useWatch(['interaction', 'kind'], form) as InteractionChoice | undefined;
   const kind = watchedKind ?? (form.getFieldValue(['interaction', 'kind']) as InteractionChoice | undefined);
-  const capability = interactionCapability(chartType);
+  const capability = besideText
+    ? { title: true, data: false as const }
+    : interactionCapability(chartType);
   const selectedKind: InteractionChoice = kind === 'data'
     ? (capability.data ? 'data' : 'title')
     : kind === 'title'
@@ -109,13 +120,23 @@ const InteractionLinkSection: React.FC<InteractionLinkSectionProps> = ({
   const selectKind = (next: InteractionChoice) => {
     if (next === 'title' && titleLinkUnavailable) return;
     if (next === 'data' && !capability.data) return;
+    if (next === 'none' && clearOnNone) {
+      form.setFieldsValue({
+        interaction: { kind: 'none', name: '', url: '', openMode: 'sameTab' },
+      });
+      onDraftChange?.();
+      return;
+    }
     form.setFieldValue(['interaction', 'kind'], next);
+    onDraftChange?.();
   };
 
   const linkTypeTip = (
     <div>
       <div>{t('dashboard.interactionNoneTip', '无：不设置跳转')}</div>
-      {capability.data ? (
+      {besideText ? (
+        <div>{t('dashboard.interactionTextTitleTip', '标题链接：文本后显示图标')}</div>
+      ) : capability.data ? (
         <>
           <div>{t('dashboard.interactionLinkTypeTitleTip', '标题链接：标题旁显示图标')}</div>
           <div>{t('dashboard.interactionLinkTypeDataTip', '数据链接：点击数据点、柱、扇区或数字打开')}</div>

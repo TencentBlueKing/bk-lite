@@ -202,7 +202,12 @@ reports:
       valueConfig:
         chartType: table
         dataSource: 僵尸机查询::monitor/get_zombie_host_report
-        name: 僵尸机列表
+        interaction:
+          kind: data
+          name: 查看主机
+          url: '/cmdb/assetData/detail/baseInfo?model_id=host&inst_uuid=$__data.fields.inst_uuid$&inst_name=$__data.fields.host_name$'
+          openMode: newTab
+        name: 僵尸机列表（$time$）
         description: 所选应用系统下主机在时间窗内的登录、入包、CPU/内存/IO；未采集登录显示为空，不按 0 过滤
         filterBindings:
           system_uuids__string: true
