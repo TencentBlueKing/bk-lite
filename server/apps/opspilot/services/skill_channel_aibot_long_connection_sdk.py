@@ -12,6 +12,7 @@ from apps.core.logger import opspilot_logger as logger
 _SDK_HEARTBEAT_MS = 30_000
 _AUTH_TIMEOUT_SECONDS = 10
 _REPLY_TIMEOUT_SECONDS = 15
+_REPLY_ACK_TIMEOUT_SECONDS = 15
 
 _IGNORED_COMMANDS = frozenset({"aibot_subscribe", "ping"})
 
@@ -133,6 +134,12 @@ class WecomSdkTransport:
         self._stopped = asyncio.Event()
         client = self._client_factory(_client_options(self.url, self.bot_id, self.secret))
         self._client = client
+        ws_manager = getattr(client, "_ws_manager", None)
+        if ws_manager is not None:
+            ws_manager._reply_ack_timeout = max(
+                float(getattr(ws_manager, "_reply_ack_timeout", 5.0)),
+                _REPLY_ACK_TIMEOUT_SECONDS,
+            )
 
         def enqueue(frame):
             if isinstance(frame, dict):
