@@ -115,6 +115,45 @@ def detect_limit_kind(messages: list[Any] | None) -> LimitKind | None:
     return None
 
 
+def is_limit_stop_ai_message(message: Any) -> bool:
+    """触顶后注入的终止说明，不应进入步间摘要或已有结论。"""
+    if not isinstance(message, AIMessage):
+        return False
+    if getattr(message, "tool_calls", None):
+        return False
+    text = str(message.content or "")
+    return any(marker in text for marker in _LIMIT_MARKERS)
+
+
+def filter_messages_without_limit_stop(messages: list[Any] | None) -> list[Any]:
+    return [message for message in (messages or []) if not is_limit_stop_ai_message(message)]
+
+
+def scrub_limit_markers_from_summary(text: str) -> str:
+    """去掉上限标记与「暂时停止」句，保留结构化 carry-over 与工具结论。"""
+    body = str(text or "").strip()
+    if not body:
+        return ""
+    for marker in _LIMIT_MARKERS:
+        body = body.replace(marker, "")
+    lines: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped and "暂时停止" in stripped and not stripped.startswith("【"):
+            continue
+        lines.append(line)
+    body = "\n".join(lines).strip()
+    while "暂时停止" in body:
+        start = body.find("暂时停止")
+        sentence_start = max(body.rfind("。", 0, start), body.rfind("\n", 0, start)) + 1
+        sentence_end = body.find("。", start)
+        if sentence_end < 0:
+            body = (body[:sentence_start] + body[start + len("暂时停止") :]).strip()
+            break
+        body = (body[:sentence_start] + body[sentence_end + 1 :]).strip()
+    return body.strip()
+
+
 class PlannedExecutionLimitState(AgentState):
     run_model_call_count: NotRequired[Annotated[int, UntrackedValue]]
 
