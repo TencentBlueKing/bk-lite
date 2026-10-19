@@ -1,7 +1,7 @@
 """TimeRangeChecker 测试。
 
 覆盖：
-1. 时区行为：每日/每周/每月循环窗口必须按项目本地时区解释（Asia/Shanghai 非 UTC）。
+1. 时区行为：每日/每周/每月循环窗口按策略时区解释，缺省是 Asia/Shanghai，不跟 settings.TIME_ZONE。
 2. to_orm_filter：type=one 返回可用 Q 对象；day/week/month 返回 None（退化到 Python）；
    无配置返回空 Q（全部匹配）。
 """
@@ -15,6 +15,14 @@ from django.utils import timezone
 from apps.alerts.utils.time_range_checker import TimeRangeChecker
 
 UTC = datetime.timezone.utc
+
+
+@override_settings(TIME_ZONE="UTC", USE_TZ=True)
+def test_daily_window_ignores_settings_time_zone():
+    check_time = datetime.datetime(2026, 6, 6, 2, 0, 0, tzinfo=UTC)
+    config = {"type": "day", "start_time": "09:00:00", "end_time": "17:00:00"}
+
+    assert TimeRangeChecker(config, check_time).is_in_range() is True
 
 
 @override_settings(TIME_ZONE="Asia/Shanghai", USE_TZ=True)

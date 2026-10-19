@@ -13,6 +13,7 @@ from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation
 from apps.opspilot.services.skill_channel_aibot import (
     SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE,
     SkillChannelAibotUtils,
+    append_short_connection_file_links,
     normalize_aibot_channel_config,
 )
 from apps.opspilot.tasks import process_skill_channel_aibot_message, process_skill_channel_aibot_reply
@@ -52,6 +53,12 @@ class TestNormalizeConfig:
     def test_keeps_bot_shape(self):
         cfg = {"connectionMode": "webhook", "webhook": {"token": "t", "encodingAESKey": "k"}}
         assert normalize_aibot_channel_config(cfg)["webhook"]["token"] == "t"
+
+    def test_keeps_long_connection_credentials(self):
+        cfg = {"connectionMode": "websocket", "websocket": {"botId": " bot-1 ", "secret": " sec "}}
+        normalized = normalize_aibot_channel_config(cfg)
+        assert normalized["connectionMode"] == "websocket"
+        assert normalized["websocket"] == {"botId": "bot-1", "secret": "sec"}
 
 
 class TestAibotHttp:
@@ -167,6 +174,7 @@ class TestAibotHttp:
         assert kwargs["sender_id"] == "user-1"
         assert kwargs["message"]["last_message"] == "查询 CPU"
         assert kwargs["config"]["response_url"] == "https://example.com/response"
+        assert kwargs["config"]["download_origin"] == "http://testserver"
 
     def test_post_ignores_stored_aibotid(self):
         skill = _skill()
@@ -309,7 +317,7 @@ class TestAibotTasks:
             "session_id": "chat-1",
             "response_url": "https://example.com/response",
         }
-        with patch("apps.opspilot.tasks._run_in_native_thread", side_effect=lambda f, *a, **k: f(*a, **k)), patch(
+        with patch("apps.opspilot.tasks.channel._run_in_native_thread", side_effect=lambda f, *a, **k: f(*a, **k)), patch(
             "apps.opspilot.services.skill_channel_chat_service.execute_skill_channel_im_sync",
             return_value="CPU 正常",
         ) as execute, patch.object(process_skill_channel_aibot_reply, "delay") as reply_delay, patch.object(
@@ -333,7 +341,7 @@ class TestAibotTasks:
     def test_message_task_skips_when_offline(self):
         skill = _skill()
         ch = _aibot_channel(skill, enabled=False)
-        with patch("apps.opspilot.tasks._run_in_native_thread", side_effect=lambda f, *a, **k: f(*a, **k)), patch(
+        with patch("apps.opspilot.tasks.channel._run_in_native_thread", side_effect=lambda f, *a, **k: f(*a, **k)), patch(
             "apps.opspilot.services.skill_channel_chat_service.execute_skill_channel_im_sync"
         ) as execute, patch.object(process_skill_channel_aibot_reply, "delay") as reply_delay:
             out = process_skill_channel_aibot_message.run(ch.id, "m1", {"last_message": "x"}, "u", {})
@@ -356,7 +364,7 @@ class TestAibotTasks:
 
         skill = _skill()
         ch = _aibot_channel(skill)
-        with patch("apps.opspilot.services.chat_service.chat_service.chat", return_value={"content": "答"}):
+        with patch("apps.opspilot.services.chat_service.chat_service.chat", return_value={"content": "答"}) as chat:
             text = execute_skill_channel_im_sync(
                 channel=ch,
                 user_message="问",
@@ -364,7 +372,84 @@ class TestAibotTasks:
                 session_id="chat-1",
             )
         assert text == "答"
+        assert chat.call_args.args[0]["reply_language"] == "match_user"
+        assert chat.call_args.args[0]["execution_id"]
         conv = SkillConversation.objects.get(channel=ch, external_user_id="user-1")
         roles = list(conv.messages.order_by("id").values_list("role", flat=True))
         assert roles == ["user", "assistant"]
         assert list(conv.messages.order_by("id").values_list("content", flat=True)) == ["问", "答"]
+
+    def test_execute_im_sync_appends_download_link(self, monkeypatch):
+        from apps.opspilot.services.skill_channel_chat_service import execute_skill_channel_im_sync
+
+        skill = _skill()
+        ch = _aibot_channel(skill)
+        seen = {}
+
+        def fake_append(content, execution_id, channel_id, *, origin):
+            seen["execution_id"] = execution_id
+            seen["channel_id"] = channel_id
+            seen["origin"] = origin
+            return content + "\n\n[广州介绍.txt](https://api.example/file)"
+
+        monkeypatch.setattr(
+            "apps.opspilot.services.skill_channel_chat_service.append_short_connection_file_links",
+            fake_append,
+        )
+        with patch("apps.opspilot.services.chat_service.chat_service.chat", return_value={"content": "已生成"}):
+            text = execute_skill_channel_im_sync(
+                channel=ch,
+                user_message="生成文档",
+                external_user_id="user-1",
+                session_id="chat-1",
+                download_origin="https://api.example",
+            )
+        assert seen["execution_id"]
+        assert seen["channel_id"] == ch.id
+        assert seen["origin"] == "https://api.example"
+        assert text.endswith("[广州介绍.txt](https://api.example/file)")
+        conv = SkillConversation.objects.get(channel=ch, external_user_id="user-1")
+        assert "https://api.example/file" in conv.messages.filter(role="assistant").get().content
+
+
+def test_append_short_connection_file_links_uses_server_download(monkeypatch):
+    asset = type("Asset", (), {"filename": "广州介绍[v1].txt"})()
+
+    class _Query:
+        def order_by(self, *args):
+            return [asset]
+
+    class _Manager:
+        def filter(self, **kwargs):
+            assert kwargs == {"execution_id": "exec-1"}
+            return _Query()
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot.WorkflowAttachmentAsset.objects",
+        _Manager(),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot.build_server_attachment_download_path",
+        lambda item: "/api/v1/opspilot/bot_mgmt/workflow_attachment/download/tok/",
+    )
+    text = append_short_connection_file_links("已生成", "exec-1", 7, origin="https://api.example/")
+    assert text == "已生成\n\n[广州介绍v1.txt](https://api.example/api/v1/opspilot/bot_mgmt/workflow_attachment/download/tok/)"
+
+
+def test_append_short_connection_file_links_skips_without_origin(monkeypatch):
+    asset = type("Asset", (), {"filename": "a.txt"})()
+
+    class _Query:
+        def order_by(self, *args):
+            return [asset]
+
+    class _Manager:
+        def filter(self, **kwargs):
+            return _Query()
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot.WorkflowAttachmentAsset.objects",
+        _Manager(),
+    )
+    text = append_short_connection_file_links("已生成", "exec-1", 7, origin="")
+    assert text == "已生成"

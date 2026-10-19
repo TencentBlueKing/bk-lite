@@ -4,9 +4,30 @@ from rest_framework.fields import empty
 
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.team_utils import get_current_team
-from apps.system_mgmt.models import User
+from apps.system_mgmt.models import Group, User
 
 _DEFAULT_DOMAIN = "domain.com"
+
+
+def group_name_map(groups):
+    """网页登录的组织带 name，API Key 只有整数 ID，后者再查组织名。"""
+    group_map = {}
+    bare_ids = []
+    for group in groups or []:
+        if isinstance(group, dict):
+            group_id = group.get("id")
+            if group_id is None:
+                continue
+            group_map[group_id] = group.get("name")
+            continue
+        try:
+            bare_ids.append(int(group))
+        except (TypeError, ValueError):
+            continue
+    if bare_ids:
+        rows = Group.objects.filter(id__in=bare_ids).values("id", "name")
+        group_map.update({row["id"]: row["name"] for row in rows})
+    return group_map
 
 
 class UsernameSerializer(serializers.ModelSerializer):
@@ -70,8 +91,7 @@ class TeamSerializer(UsernameSerializer):
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
         request = self.context["request"]
-        groups = request.user.group_list
-        self.group_map = {i["id"]: i["name"] for i in groups}
+        self.group_map = group_name_map(getattr(request.user, "group_list", None))
 
     def get_team_name(self, instance):
         return [self.group_map.get(i) for i in instance.team if i in self.group_map]

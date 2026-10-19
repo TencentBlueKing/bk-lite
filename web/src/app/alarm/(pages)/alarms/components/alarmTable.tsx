@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import CustomTable from '@/components/custom-table';
 import AlarmAction from './alarmAction';
 import AlertDetail from './alarmDetail';
@@ -39,12 +39,14 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
   onSelectionChange,
   extraActions,
   readonly = false,
+  openAlertId = '',
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { levelList, levelMap } = useCommon();
   const STATE_MAP = useStateMap();
   const detailRef = useRef<ModalRef>(null);
+  const openedAlertIdRef = useRef('');
   const [displayFieldKeys, setDisplayFieldKeys] = useState<string[] | null>(
     () => (typeof window === 'undefined' ? null : readAlarmDisplayFieldKeys(window.localStorage))
   );
@@ -60,6 +62,14 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       defaultTab,
     });
   };
+
+  useEffect(() => {
+    if (!openAlertId || openedAlertIdRef.current === openAlertId) return;
+    const row = dataSource.find((item) => item.alert_id === openAlertId);
+    if (!row) return;
+    openedAlertIdRef.current = openAlertId;
+    onOpenDetail(row as AlarmTableDataItem);
+  }, [openAlertId, dataSource]);
 
   const columns: ColumnsType<AlarmTableDataItem> = [
     {

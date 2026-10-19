@@ -296,9 +296,10 @@ def test_alert_read_failure_skips_without_changing_state(caplog):
             "warnThreshold": 0.1,
             "criticalThreshold": 0.2,
             "forDurationSec": 60,
-            "pendingSince": None,
-            "recoveringSince": None,
-            "notifyChannels": ["ch-1"],
+            "noDataAfter": 0,
+            "evaluationWindowMinutes": 15,
+            "organizations": [10],
+            "notificationTargets": [],
         }
     )
     events = MemoryEventStore()
@@ -320,11 +321,11 @@ def test_alert_read_failure_skips_without_changing_state(caplog):
             notifier=notifier,
             now=lambda: now,
         ).evaluate_all()
-    assert result["skippedCount"] == 1
+    assert result["failed"] == 1
     assert result["fired"] == 0
     saved = policies.get(policy["id"])
-    assert saved["pendingSince"] is None
-    assert saved["recoveringSince"] is None
+    assert saved["lastEvaluationResult"] == "failed"
+    assert saved["evaluationCursor"] == ""
     assert events.list_page(1, 20)[1] == 0
     assert notifier.sent == []
     assert caplog.records
@@ -358,21 +359,24 @@ def test_monitor_metric_zero_is_an_empty_window_not_a_failure():
             "warnThreshold": 0.1,
             "criticalThreshold": 0.2,
             "forDurationSec": 0,
-            "pendingSince": "2026-10-12T08:00:00Z",
-            "recoveringSince": None,
-            "noData": False,
-            "notifyChannels": [],
+            "noDataAfter": 0,
+            "evaluationWindowMinutes": 15,
+            "organizations": [10],
+            "notificationTargets": [],
         }
     )
+    events = MemoryEventStore()
+    moment = datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc)
     result = AlertEvaluator(
         policies=policies,
-        events=MemoryEventStore(),
+        events=events,
         analytics=ZeroAnalytics(),
         notifier=MemoryNotifier(),
-        now=lambda: datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc),
-    ).evaluate_policy(policy, datetime(2026, 10, 12, 8, 0, tzinfo=timezone.utc), datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc))
-    assert result != "skipped"
-    assert policies.get(policy["id"])["pendingSince"] is None
+        now=lambda: moment,
+    ).evaluate_policy(policy["id"], moment)
+    assert result == "none"
+    assert policies.get(policy["id"])["lastEvaluationResult"] == "ok"
+    assert events.list_page(1, 20)[1] == 0
 
 
 @pytest.mark.parametrize(

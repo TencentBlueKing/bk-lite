@@ -13,6 +13,8 @@ import {
 } from "react";
 import { message, Modal, Select, Tabs } from "antd";
 import { WidgetCsvExportRegistryProvider, notifyWidgetCsvExportNotStarted, useWidgetCsvExportRegistryState } from "@/app/ops-analysis/context/widgetCsvExportRegistry";
+import { FilterTemplateProvider } from "@/app/ops-analysis/context/filterTemplate";
+import { InteractionSurfaceProvider } from "@/app/ops-analysis/context/interactionSurface";
 import { useTranslation } from "@/utils/i18n";
 import { useScreenApi } from "@/app/ops-analysis/api/screen";
 import { useDirectoryApi } from "@/app/ops-analysis/api";
@@ -170,6 +172,9 @@ const ScreenDataConfig = memo(
     builtinNamespaceId,
     filterDefinitions,
     unifiedFilterValues,
+    configSection,
+    onConfigSectionChange,
+    screenFrame,
     onDirtyChange,
     onConfirm,
     onClose,
@@ -179,6 +184,9 @@ const ScreenDataConfig = memo(
     builtinNamespaceId?: number;
     filterDefinitions?: UnifiedFilterDefinition[];
     unifiedFilterValues?: Record<string, FilterValue>;
+    configSection?: "data" | "interaction";
+    onConfigSectionChange?: (section: "data" | "interaction") => void;
+    screenFrame?: "panel" | "bare";
     onDirtyChange?: (dirty: boolean) => void;
     onConfirm?: (values: WidgetConfig) => void;
     onClose?: () => void;
@@ -187,6 +195,9 @@ const ScreenDataConfig = memo(
       <ViewConfig
         open
         variant="panel"
+        configSection={configSection}
+        onConfigSectionChange={onConfigSectionChange}
+        screenFrame={screenFrame}
         item={item}
         dataSourceManager={dataSourceManager}
         showChartThemeMode={false}
@@ -224,6 +235,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     [t],
   );
   const csvExportRegistry = useWidgetCsvExportRegistryState();
+  const resolveFilterTextRef = useRef<(text?: string | null) => string>((text) => text ?? '');
   const { getScreenDetail, saveScreen } = useScreenApi();
   const { updateItem } = useDirectoryApi();
   const { hasPermission } = useBtnPermissions();
@@ -251,7 +263,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     x: number;
     y: number;
   } | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<"style" | "data">("style");
+  const [inspectorTab, setInspectorTab] = useState<"style" | "data" | "interaction">("style");
   const [dataFormDirty, setDataFormDirty] = useState(false);
   const [pendingConfigItem, setPendingConfigItem] =
     useState<ComponentSelectorConfigItem | null>(null);
@@ -287,7 +299,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   inspectorRef.current = {
     selectedItemId,
     inspectorTab,
-    dataConfigOpen: inspectorTab === "data" || pendingConfigItem != null,
+    dataConfigOpen: inspectorTab !== "style" || pendingConfigItem != null,
   };
   const setDraftViewSets = useCallback((updater: SetStateAction<ScreenViewSets>) => {
     const next =
@@ -1094,7 +1106,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       }
       if (key === "exportCsv") {
         const target = draftViewSetsRef.current.items.find((item) => item.id === itemId);
-        const title = target && isScreenWidgetItem(target) ? target.title || "" : "";
+        const rawTitle = target && isScreenWidgetItem(target) ? target.title || "" : "";
+        const title = resolveFilterTextRef.current(rawTitle);
         void csvExportRegistry.run(itemId, { title }).then((started) => {
           notifyWidgetCsvExportNotStarted(started, t);
         });
@@ -1218,6 +1231,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           {
             ...currentConfigItem.valueConfig,
             ...values,
+            interaction: values.interaction,
+            actions: values.actions,
             chartType: nextChartType,
             appearance: resolveScreenWidgetAppearance(
               nextChartType,
@@ -1305,6 +1320,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         onDismissInspector={
           editMode && !shareMode ? handleDismissInspector : undefined
         }
+        resolveFilterTextRef={resolveFilterTextRef}
       />
     ),
     [
@@ -1328,6 +1344,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       handleSelectCanvasItem,
       isFullscreen,
       selectedItemId,
+      resolveFilterTextRef,
       selectedScreen?.data_id,
       shareMode,
     ],
@@ -1350,6 +1367,14 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     />
   ) : null;
   const dataConfigItem = pendingViewConfigItem || currentViewConfigItem;
+  const interactionScreenFrame = pendingConfigItem
+    ? getDefaultScreenWidgetAppearance(pendingConfigItem.chartType).frame
+    : currentConfigItem
+      ? resolveScreenWidgetAppearance(
+        currentConfigItem.chartType,
+        currentConfigItem.valueConfig?.appearance,
+      ).frame
+      : undefined;
   const dataConfigPanel = dataConfigItem ? (
     <ScreenDataConfig
       key={historyNavEpoch}
@@ -1358,6 +1383,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       builtinNamespaceId={queryState.namespaceDraftId}
       filterDefinitions={queryState.definitions}
       unifiedFilterValues={queryState.filterValues}
+      configSection={inspectorTab === "interaction" ? "interaction" : "data"}
+      onConfigSectionChange={setInspectorTab}
+      screenFrame={interactionScreenFrame}
       onDirtyChange={setDataFormDirty}
       onConfirm={
         pendingViewConfigItem
@@ -1370,6 +1398,13 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
 
   return (
     <WidgetCsvExportRegistryProvider registry={csvExportRegistry}>
+    <FilterTemplateProvider
+      definitions={queryState.definitions}
+      appliedValues={queryState.appliedFilterValues}
+      resolveEnabled={false}
+      canvasId={selectedScreen?.data_id}
+    >
+    <InteractionSurfaceProvider editing={editMode && !shareMode}>
     <>
       <div
         className={
@@ -1492,42 +1527,45 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
               >
                 {pendingConfigItem ? (
                   <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                    <div className="border-b border-(--color-border-1) px-3 py-2 text-sm font-semibold text-(--color-text-1)">
-                      {t("opsAnalysis.screen.dataTab")}
-                    </div>
+                    <Tabs
+                      className="shrink-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-nav-wrap]:px-3"
+                      activeKey={inspectorTab === "interaction" ? "interaction" : "data"}
+                      onChange={(key) => setInspectorTab(key as "data" | "interaction")}
+                      items={[
+                        { key: "data", label: t("opsAnalysis.screen.dataTab") },
+                        { key: "interaction", label: t("opsAnalysis.screen.interactionTab") },
+                      ]}
+                    />
                     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                       {dataConfigPanel}
                     </div>
                   </div>
                 ) : currentConfigItem ? (
-                  <Tabs
-                    className="flex min-h-0 flex-1 flex-col [&_.ant-tabs-content]:h-full [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:overflow-hidden [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-nav-wrap]:px-3 [&_.ant-tabs-tabpane]:m-0 [&_.ant-tabs-tabpane]:h-full [&_.ant-tabs-tabpane]:min-h-0 [&_.ant-tabs-tabpane]:overflow-hidden"
-                    activeKey={inspectorTab}
-                    onChange={(key) => setInspectorTab(key as "style" | "data")}
-                    items={[
-                      {
-                        key: "style",
-                        label: t("opsAnalysis.screen.styleTab"),
-                        children: selectedItem ? (
-                          <ScreenStyleInspector
-                            item={selectedItem}
-                            viewport={draftViewSets.viewport}
-                            onChange={handlePatchItem}
-                            onFieldEditEnd={endFieldEdit}
-                          />
-                        ) : null,
-                      },
-                      {
-                        key: "data",
-                        label: t("opsAnalysis.screen.dataTab"),
-                        children: (
-                          <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                            {dataConfigPanel}
-                          </div>
-                        ),
-                      },
-                    ]}
-                  />
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <Tabs
+                      className="shrink-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-nav-wrap]:px-3"
+                      activeKey={inspectorTab}
+                      onChange={(key) => setInspectorTab(key as "style" | "data" | "interaction")}
+                      items={[
+                        { key: "style", label: t("opsAnalysis.screen.styleTab") },
+                        { key: "data", label: t("opsAnalysis.screen.dataTab") },
+                        { key: "interaction", label: t("opsAnalysis.screen.interactionTab") },
+                      ]}
+                    />
+                    <div className={inspectorTab === "style" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+                      {selectedItem ? (
+                        <ScreenStyleInspector
+                          item={selectedItem}
+                          viewport={draftViewSets.viewport}
+                          onChange={handlePatchItem}
+                          onFieldEditEnd={endFieldEdit}
+                        />
+                      ) : null}
+                    </div>
+                    <div className={inspectorTab === "style" ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-hidden"}>
+                      {dataConfigPanel}
+                    </div>
+                  </div>
                 ) : selectedItem ? (
                   <ScreenStyleInspector
                     item={selectedItem}
@@ -1607,6 +1645,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         />
       )}
     </>
+    </InteractionSurfaceProvider>
+    </FilterTemplateProvider>
     </WidgetCsvExportRegistryProvider>
   );
 });

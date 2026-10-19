@@ -35,7 +35,7 @@ import ContextUsageRing from './components/ContextUsageRing';
 import { SessionFileBar } from './components/SessionFileBar';
 import { collectSessionAttachmentFiles } from './sessionFiles';
 import { applyPlannedExecutionStep, createPlannedExecutionState } from './plannedExecution';
-import { attachmentMetadata, chatAttachmentEndpoints, isAllowedChatFile, uploadChatFile, type StoredChatAttachment } from './chatAttachments';
+import { attachmentMetadata, chatAttachmentEndpoints, fetchChatAttachmentStatus, isAllowedChatFile, uploadChatFile, type StoredChatAttachment } from './chatAttachments';
 import {
   pendingImagesReducer,
   readFileAsDataUrl,
@@ -156,6 +156,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const [imageSelectionError, setImageSelectionError] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<PendingImage[]>([]);
   const [documentChips, setDocumentChips] = useState<Array<StoredChatAttachment & { localKey: string }>>([]);
+  const pendingAttachmentIdsRef = useRef<Set<number>>(new Set());
+  const attachmentPollMetaRef = useRef<Map<number, { failures: number }>>(new Map());
   const selectedFilesRef = useRef<File[]>([]);
   const [hitlEvent, setHitlEvent] = useState<CustomProtocolEvent | null>(null);
   const [contextUsage, setContextUsage] = useState<LlmContextUsage | null>(null);
@@ -546,6 +548,70 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       }
     }
   }, [apiKey, reportImageError, requestHeaders, sseUrl, t]);
+
+  useEffect(() => {
+    const pendingIds = new Set<number>();
+    documentChips.forEach((item) => {
+      if (item.status === 'pending' && item.id) {
+        pendingIds.add(item.id);
+      }
+    });
+    pendingAttachmentIdsRef.current = pendingIds;
+  }, [documentChips]);
+
+  useEffect(() => {
+    if (!sseUrl) {
+      return undefined;
+    }
+    const headers = chatAuthHeaders(requestHeaders, apiKey);
+    const pollIntervalMs = 1500;
+    const maxConsecutiveFailures = 12;
+    const markAttachmentFailed = (attachmentId: number, reason: string) => {
+      pendingAttachmentIdsRef.current.delete(attachmentId);
+      attachmentPollMetaRef.current.delete(attachmentId);
+      setDocumentChips((current) => current.map((chip) => (
+        chip.id === attachmentId
+          ? { ...chip, status: 'failed', failure_reason: reason }
+          : chip
+      )));
+    };
+    const timer = globalThis.setInterval(() => {
+      const pendingIds = [...pendingAttachmentIdsRef.current];
+      if (!pendingIds.length) {
+        return;
+      }
+      pendingIds.forEach((attachmentId) => {
+        const meta = attachmentPollMetaRef.current.get(attachmentId) ?? { failures: 0 };
+        if (!attachmentPollMetaRef.current.has(attachmentId)) {
+          attachmentPollMetaRef.current.set(attachmentId, meta);
+        }
+        fetchChatAttachmentStatus(attachmentId, sseUrl, headers)
+          .then((next) => {
+            meta.failures = 0;
+            if (next.status === 'failed') {
+              markAttachmentFailed(attachmentId, next.failure_reason || t('file.failed', '解析失败'));
+              return;
+            }
+            if (next.status !== 'pending') {
+              pendingAttachmentIdsRef.current.delete(attachmentId);
+              attachmentPollMetaRef.current.delete(attachmentId);
+            }
+            setDocumentChips((current) => current.map((chip) => (
+              chip.id === attachmentId
+                ? { ...chip, status: next.status, failure_reason: next.failure_reason }
+                : chip
+            )));
+          })
+          .catch(() => {
+            meta.failures += 1;
+            if (meta.failures >= maxConsecutiveFailures) {
+              markAttachmentFailed(attachmentId, t('file.statusUnavailable', '无法获取解析状态，请稍后重试'));
+            }
+          });
+      });
+    }, pollIntervalMs);
+    return () => globalThis.clearInterval(timer);
+  }, [apiKey, requestHeaders, sseUrl, t]);
 
   // Handle image upload
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1065,7 +1131,11 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           <div className="flex flex-wrap gap-2 px-4 pb-1 pt-2">
             {documentChips.map((chip) => (
               <div key={chip.localKey} className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs" style={{ borderColor: 'var(--color-border-1,#e8eaf0)' }}>
-                <span>{chip.name}{chip.status === 'pending' ? ` · ${t('file.parsing', '解析中')}` : ''}{chip.status === 'failed' ? ` · ${t('file.failed', '失败')}` : ''}</span>
+                <span>
+                  {chip.name}
+                  {chip.status === 'pending' ? ` · ${t('file.parsing', '解析中')}` : ''}
+                  {chip.status === 'failed' ? ` · ${chip.failure_reason || t('file.failed', '失败')}` : ''}
+                </span>
                 <button
                   type="button"
                   aria-label={t('file.remove', '移除文件')}

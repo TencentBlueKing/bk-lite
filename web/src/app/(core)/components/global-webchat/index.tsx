@@ -22,10 +22,11 @@ import {
   lastWebchatStorageKey,
   shouldKeepGlobalWebchat,
 } from './visibility';
+import { WEBCHAT_ASSET_VERSION } from './asset-version';
 import './global-webchat.css';
 
-const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20261012-choice-reply';
-const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20261012-choice-reply';
+const WEBCHAT_SCRIPT_URL = `/webchat/webchat.js?v=${WEBCHAT_ASSET_VERSION}`;
+const WEBCHAT_STYLE_URL = `/webchat/style.css?v=${WEBCHAT_ASSET_VERSION}`;
 const WEBCHAT_ROOT_ID = 'webchat-root';
 const MANAGE_AGENTS_URL = '/opspilot/studio';
 

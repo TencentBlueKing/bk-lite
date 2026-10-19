@@ -87,20 +87,24 @@ export const createParamInputOptionsLoader = (
   let generation = 0;
   let currentKey: string | undefined;
   let currentLoad: ParamInputOptionsLoad | undefined;
+  let settled = false;
 
   const load = (config?: InputControlConfig): ParamInputOptionsLoad => {
     const key = getParamInputConfigKey(config);
     if (key === currentKey && currentLoad) return currentLoad;
     currentKey = key;
+    settled = false;
     const requestGeneration = ++generation;
 
     if (!isOptionInputControl(config)) {
       const initial: ParamInputOptionsState = { status: 'idle', options: [] };
+      settled = true;
       currentLoad = { sync: true, initial, promise: Promise.resolve(initial) };
       return currentLoad;
     }
     if (config.optionsSource.type === 'static') {
       const initial = resolved(config.optionsSource.staticItems);
+      settled = true;
       currentLoad = { sync: true, initial, promise: Promise.resolve(initial) };
       return currentLoad;
     }
@@ -131,14 +135,21 @@ export const createParamInputOptionsLoader = (
             sourceItems as Array<{ id: number; name?: string; rest_api?: string }>,
           );
         }
-        if (!sourceId) return requestGeneration === generation ? { status: 'error', options: [] } : null;
+        if (!sourceId) {
+          if (requestGeneration !== generation) return null;
+          settled = true;
+          return { status: 'error', options: [] };
+        }
         const { data } = await api.getSourceDataByApiId(sourceId, {}, requestOptions);
         const options = mapDynamicItems(
           extractDataSourceItems(data), source.valueField, source.labelField,
         );
-        return requestGeneration === generation ? resolved(options) : null;
+        if (requestGeneration !== generation) return null;
+        settled = true;
+        return resolved(options);
       } catch (error) {
         if (requestGeneration !== generation) return null;
+        settled = true;
         const errorMessage = getRequestErrorMessage(error, fallbackErrorMessage);
         return {
           status: 'error',
@@ -155,7 +166,16 @@ export const createParamInputOptionsLoader = (
     generation += 1;
     currentKey = undefined;
     currentLoad = undefined;
+    settled = false;
   };
 
-  return { load, reset };
+  /**
+   * 同一配置的请求还在飞时保留它。已经落地的缓存（例如上一块画布）丢掉。
+   */
+  const dropSettledCache = (key: string) => {
+    if (currentKey === key && currentLoad && !settled) return;
+    reset();
+  };
+
+  return { load, reset, dropSettledCache };
 };

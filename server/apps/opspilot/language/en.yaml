@@ -203,6 +203,7 @@ error:
   knowledge_base_build_running_wait: A build is still running for this knowledge base. Wait for it to finish before continuing.
   knowledge_base_build_running_retry: A build is still running for this knowledge base. Wait for it to finish before retrying.
   builtin_skill_package_not_deletable: Built-in skill packages cannot be deleted
+  system_tags_not_removable: System tags cannot be removed
   skill_package_zip_required: Upload a skill package ZIP file
   skill_package_must_be_zip: The skill package must be a ZIP file
   skill_package_file_missing: The skill package file does not exist
@@ -325,7 +326,7 @@ tools:
       Query unified alert-center alerts, details, and related events with caller identity. Read-only; no acknowledge or close.
     tools:
       alerts_list_alerts:
-        description: List alert-center tickets; filter by status, level, and keyword.
+        description: List alert-center tickets. status=active means open alerts; words like "current" or "which" are not keywords. Filter by status and level.
       alerts_get_alert_detail:
         description: Get alert details by alert ID.
       alerts_list_alert_events:

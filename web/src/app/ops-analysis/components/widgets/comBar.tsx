@@ -3,6 +3,19 @@ import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { withChartLinkPoints } from '@/app/ops-analysis/utils/interactionLink';
+import {
+  resolveDataLinkTooltipTheme,
+  wrapDataLinkTooltipFormatter,
+} from '@/app/ops-analysis/utils/interactionLinkHint';
+import {
+  bindTrendGridClick,
+  resolveTrendGridClick,
+  trendColumnCanOpen,
+  trendPointsFromTooltip,
+  type TrendGridChart,
+} from '@/app/ops-analysis/utils/trendLink';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { useTranslation } from '@/utils/i18n';
 import {
   getOpsChartColorsByMode,
@@ -55,6 +68,8 @@ const BarChart: React.FC<BarChartProps> = ({
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const yAxisName = getLineBarYAxisName(config);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
+  const { openPoint, link, surface, chartTooltipHint } = useWidgetDataLink(config);
+  const linkTooltipTheme = resolveDataLinkTooltipTheme(config?.chartThemeMode, themeName);
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
     setLegendSelected(selected);
@@ -69,6 +84,38 @@ const BarChart: React.FC<BarChartProps> = ({
 
   const chartData = transformData(rawData);
   const isDataReady = chartData.categories.length > 0;
+  const openTrendRef = useRef<(offsetX: number, offsetY: number) => void>(() => {});
+  const unbindTrendClickRef = useRef<(() => void) | null>(null);
+  openTrendRef.current = (offsetX, offsetY) => {
+    const chart = chartRef.current?.getEchartsInstance?.() as TrendGridChart | undefined;
+    if (!chart) return;
+    const series = chartData.series
+      ? chartData.series
+      : [{ name: t('topology.treeValueTitle'), points: chartData.points }];
+    openPoint(resolveTrendGridClick({
+      chart,
+      offsetX,
+      offsetY,
+      categoryCount: chartData.categories.length,
+      template: link?.url,
+      axisFields: [config?.dimensionField],
+      series,
+      legendSelected,
+    }));
+  };
+
+  const handleChartReady = useCallback((chart: TrendGridChart) => {
+    unbindTrendClickRef.current?.();
+    unbindTrendClickRef.current = null;
+    if (!chart?.getZr) return;
+    unbindTrendClickRef.current = bindTrendGridClick(chart, (offsetX, offsetY) => {
+      openTrendRef.current(offsetX, offsetY);
+    });
+  }, []);
+
+  useEffect(() => () => {
+    unbindTrendClickRef.current?.();
+  }, []);
 
   useEffect(() => {
     if (!loading) {
@@ -107,7 +154,7 @@ const BarChart: React.FC<BarChartProps> = ({
         fontSize: scaleScreenMetric(12, screenRenderContext),
         color: chartTheme.tooltipTextColor,
       },
-      formatter: function (params: any) {
+      formatter: wrapDataLinkTooltipFormatter(function (params: any) {
         if (!params || params.length === 0) return '';
         const tooltipPaddingY = scaleScreenMetric(4, screenRenderContext);
         const tooltipPaddingX = scaleScreenMetric(8, screenRenderContext);
@@ -127,7 +174,17 @@ const BarChart: React.FC<BarChartProps> = ({
 
         content += '</div>';
         return content;
-      },
+      }, {
+        surface,
+        link,
+        footerText: chartTooltipHint,
+        theme: linkTooltipTheme,
+        includeFooter: (params: unknown) => trendColumnCanOpen(
+          link?.url,
+          [config?.dimensionField],
+          trendPointsFromTooltip(params),
+        ),
+      }),
     },
     grid: {
       top: scaleScreenMetric(yAxisName ? 24 : 8, screenRenderContext),
@@ -204,7 +261,7 @@ const BarChart: React.FC<BarChartProps> = ({
     option.series = chartData.series.map((item: any) => ({
       name: item.name,
       type: 'bar',
-      data: item.data,
+      data: withChartLinkPoints(item.data, item.points),
       barMaxWidth: scaleScreenMetric(40, screenRenderContext),
       itemStyle: {
         borderRadius: usesScreenChartTheme
@@ -231,7 +288,10 @@ const BarChart: React.FC<BarChartProps> = ({
       {
         name: t('topology.treeValueTitle'),
         type: 'bar',
-        data: chartData && chartData.values ? chartData.values : [],
+        data: withChartLinkPoints(
+          chartData && chartData.values ? chartData.values : [],
+          chartData?.points,
+        ),
         barMaxWidth: scaleScreenMetric(40, screenRenderContext),
         itemStyle: {
           borderRadius: usesScreenChartTheme
@@ -307,6 +367,7 @@ const BarChart: React.FC<BarChartProps> = ({
           ref={chartRef}
           option={option}
           notMerge={true}
+          onChartReady={handleChartReady}
           style={{ height: '100%', width: '100%' }}
         />
       </div>

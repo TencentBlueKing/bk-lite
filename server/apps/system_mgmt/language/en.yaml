@@ -154,6 +154,11 @@ error:
   initial_password_email_body: '<p>Hello,</p><p>An administrator has created your BK-Lite account. The account details are below:</p><p><strong>Username: </strong>{username}</p><p><strong>Initial password: </strong>{password}</p><p>Sign in with this initial password and change it immediately after your first sign-in.</p><p><strong>Security notice: </strong>Do not forward, screenshot, or keep this email. If you did not expect it, contact an administrator.</p><p>Regards<br>BK-Lite</p>'
   current_team_archived_or_missing: The current organization is archived or does not exist
   channel_id_not_found: No channel matches the given channel_id
+  im_group_channel_unavailable: IM collaboration channel does not exist or is disabled
+  im_group_channel_not_ready: IM collaboration channel is not ready
+  im_group_provider_unsupported: This IM platform does not support group collaboration
+  im_group_instance_not_ready: IM collaboration integration instance is not ready
+  im_group_capability_not_ready: IM collaboration capability is not ready
 success:
   menu_group_disabled: Menu group disabled
   batch_create: Batch creation successful

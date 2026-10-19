@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, Mapping
+
+from apps.opspilot.utils.returned_messages import localize_returned_text
+from apps.opspilot.utils.run_locale import get_run_locale
 
 # Stable codes for logs / RUN_ERROR. Keep ASCII so ops can grep without encoding issues.
 LLM_ERROR_UNREACHABLE = "LLM_UNREACHABLE"
@@ -181,6 +185,13 @@ def classify_llm_error(exc: BaseException | None) -> dict[str, Any]:
         "status_code": status,
         "detail": str(exc or "")[:800],
     }
+
+
+def localized_llm_user_message(classification: Mapping[str, Any], locale: str | None = None) -> str:
+    """页面上的失败说明按当前对话语言返回。分类结果本身仍保留中文，供日志使用。"""
+    text = str(classification.get("user_message") or "")
+    active = locale or get_run_locale()
+    return localize_returned_text(text, SimpleNamespace(default_lang=active))
 
 
 def summarize_llm_endpoint(request: Any = None, *, model: str = "", api_base: str = "") -> dict[str, str]:

@@ -30,7 +30,7 @@ import { OPSPILOT_ATOM_KEYS, OpsPilotAtomForm } from './opspilot-atom-form';
 import { approvalDecisionReference, configureApprovalTask } from '../lib/approval-dsl';
 import { localizeAtom } from '../lib/atom-localization';
 import { BUILTIN_SAMPLE_TEMPLATE_URLS } from '../lib/sample-templates';
-import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, flattenTasks, projectApprovalCanvasEdges, workflowTriggerNodes, type WorkflowCanvasMetadata, type WorkflowReturnNode, type WorkflowTriggerNode } from '../lib/canvas-dsl';
+import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, flattenTasks, positionBesideSource, projectApprovalCanvasEdges, workflowTriggerNodes, type WorkflowCanvasMetadata, type WorkflowReturnNode, type WorkflowTriggerNode } from '../lib/canvas-dsl';
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
 import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
@@ -40,6 +40,7 @@ import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordi
 import { createUnsavedWorkflowDraft } from '../lib/workflow-draft';
 import { WorkflowPermission } from './workflow-permission';
 import { AtomConfigTemplateActions } from './atom-config-template-actions';
+import { WorkflowNodeTitleField } from './workflow-node-title-field';
 
 const API = '/workflow_orchestration/api';
 const EMPTY_TARGET_REFERENCES: string[] = [];
@@ -225,9 +226,7 @@ function ConditionEditor({
     rules: value.rules.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...patch } : rule),
   });
   return <Form className="flex flex-col gap-5" layout="vertical">
-    <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
-      <Input disabled={readOnly} value={nodeTitle} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => onNodeTitleChange(event.target.value)} />
-    </Form.Item>
+    <WorkflowNodeTitleField value={nodeTitle} disabled={readOnly} onChange={onNodeTitleChange} />
     <Alert
       type="info"
       showIcon
@@ -513,7 +512,12 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         { id: `${pendingSource.id}-${target}-${Date.now()}`, source: pendingSource.id, sourceHandle: pendingSource.handle, target },
       ]
       : projectedEdges;
-    const stagedMetadata = { ...nextMetadata, edges: expandApprovalCanvasEdges(nextDefinition, stagedVisibleEdges) };
+    const sourcePosition = pendingSource ? nodes.find((node) => node.id === pendingSource.id)?.position : undefined;
+    const stagedMetadata = {
+      ...nextMetadata,
+      edges: expandApprovalCanvasEdges(nextDefinition, stagedVisibleEdges),
+      ...(sourcePosition ? { positions: { ...(nextMetadata.positions || {}), [target]: positionBesideSource(sourcePosition) } } : {}),
+    };
     commit(nextDefinition, stagedMetadata);
     setPendingSource(undefined);
     setSelectedId(target);
@@ -980,6 +984,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       selectedTask.inputParameters || {},
       nodeTestInputs,
       inspectorTestData,
+      selectedAtom?.input_schema,
     );
     if (materialized.unresolved.length) {
       setNodeTestError(t('workflowOrchestration.editor.missingUpstreamTestData', '缺少上游测试数据：{sources}。请先测试对应上游节点。', { sources: materialized.unresolved.join('、') }));
@@ -1189,7 +1194,11 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const selectedNode = nodes.find((item) => item.id === selectedId);
   const debugTriggers = workflowTriggerNodes(metadata);
   const debugTrigger = debugTriggers.find((item) => item.id === debugTriggerId) || debugTriggers[0];
-  const interactive = nodes.map((node) => ({ ...node, data: { ...node.data, readOnly, locked: Boolean(debugExecution), onAction: action } }));
+  const interactive = nodes.map((node) => ({
+    ...node,
+    className: readOnly ? 'nopan' : node.className,
+    data: { ...node.data, readOnly, locked: Boolean(debugExecution), onAction: action },
+  }));
   const interactiveEdges = edges.map((edge) => ({
     ...edge,
     type: 'workflowCanvas',
@@ -1362,7 +1371,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         hideUpstreamInput={Boolean(selectedTrigger)}
       >
         <div className="flex flex-col gap-5">
-          {selectedTrigger && <Form className="flex flex-col gap-5" layout="vertical"><Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required><Input disabled={readOnly} value={selectedTrigger.name} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => changeTrigger({ name: event.target.value })} /></Form.Item>
+          {selectedTrigger && <Form className="flex flex-col gap-5" layout="vertical"><WorkflowNodeTitleField value={selectedTrigger.name} disabled={readOnly} onChange={(name) => changeTrigger({ name })} />
             {selectedTrigger.trigger_type === 'FORM' && <section className="flex flex-col gap-4"><Alert type="info" showIcon message={t('workflowOrchestration.editor.triggerInputHint', '{trigger} 定义本入口的运行输入', { trigger: triggerLabels[selectedTrigger.trigger_type] })} /><FormSchemaEditor context="form" readOnly={readOnly} value={selectedTrigger.input_schema} onChange={(inputSchema) => changeTrigger({ input_schema: inputSchema })} /></section>}
             {selectedTrigger.trigger_type === 'SCHEDULE' && <ScheduleTriggerEditor
               value={selectedTrigger.config}
@@ -1473,14 +1482,11 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               onNodeTitleChange={changeTaskTitle}
             />}
             {selectedTask.type === 'HUMAN' && <Form className="flex flex-col gap-5" layout="vertical">
-              <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
-                <Input
-                  disabled={readOnly}
-                  value={resolveEditableNodeTitle(t('workflowOrchestration.editor.humanApproval', '人工审批'))}
-                  placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')}
-                  onChange={(event) => changeTaskTitle(event.target.value)}
-                />
-              </Form.Item>
+              <WorkflowNodeTitleField
+                value={resolveEditableNodeTitle(t('workflowOrchestration.editor.humanApproval', '人工审批'))}
+                disabled={readOnly}
+                onChange={changeTaskTitle}
+              />
               <Form.Item className="mb-0" label={t('workflowOrchestration.editor.approvalTitle', '审批标题')} required>
                 <Input disabled={readOnly} value={String(selectedTask.inputParameters?.title || '')} onChange={(event) => changeApproval({ title: event.target.value })} />
               </Form.Item>
@@ -1489,7 +1495,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               </Form.Item>
             </Form>}
           </section>}
-          {selectedReturn && <Form className="flex flex-col gap-5" layout="vertical"><Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required><Input disabled={readOnly} value={selectedReturn.name} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => changeReturn({ name: event.target.value })} /></Form.Item><Form.Item className="mb-0" label={t('workflowOrchestration.editor.returnReference', '返回数据引用')} tooltip={t('workflowOrchestration.editor.returnReferenceHint', '从可用节点输出中选择，不支持自由表达式')}><Select showSearch optionFilterProp="label" disabled={readOnly} value={String(selectedReturn.config.body || '') || undefined} placeholder={t('workflowOrchestration.editor.selectNodeOutput', '选择节点输出')} options={returnReferences.map((item) => ({ value: item.value, label: item.label }))} onChange={(body) => changeReturn({ config: { ...selectedReturn.config, body } })} /></Form.Item></Form>}
+          {selectedReturn && <Form className="flex flex-col gap-5" layout="vertical"><WorkflowNodeTitleField value={selectedReturn.name} disabled={readOnly} onChange={(name) => changeReturn({ name })} /><Form.Item className="mb-0" label={t('workflowOrchestration.editor.returnReference', '返回数据引用')} tooltip={t('workflowOrchestration.editor.returnReferenceHint', '从可用节点输出中选择，不支持自由表达式')}><Select showSearch optionFilterProp="label" disabled={readOnly} value={String(selectedReturn.config.body || '') || undefined} placeholder={t('workflowOrchestration.editor.selectNodeOutput', '选择节点输出')} options={returnReferences.map((item) => ({ value: item.value, label: item.label }))} onChange={(body) => changeReturn({ config: { ...selectedReturn.config, body } })} /></Form.Item></Form>}
         </div>
       </WorkflowNodeInspector>}
     </div>

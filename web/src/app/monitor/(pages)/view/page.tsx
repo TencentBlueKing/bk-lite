@@ -16,10 +16,7 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/registry';
 import { findByMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
-import {
-  attachMerakiSidebarChildren,
-  isMerakiSidebarDerivative
-} from '@/app/monitor/utils/monitorObject';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import {
   VIEW_OBJECT_QUERY_PARAM,
@@ -107,37 +104,17 @@ const Integration = () => {
   }, [activeObject, objectId, objects, searchParams, syncObjectId]);
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const toNode = (item: ObjectItem): TreeItem => ({
-      title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
-      label: item.name || '--',
-      key: toMonitorIdString(item.id),
-      icon: item.icon,
-      count: item.instance_count || 0,
-      children: [],
-    });
-    const merakiDerivatives: ObjectItem[] = [];
-    const groupedData = data.reduce((acc, item) => {
-      if (!acc[item.type]) {
-        acc[item.type] = {
-          title: item.display_type || '--',
-          key: item.type,
-          children: [],
-        };
-      }
-      if (isMerakiSidebarDerivative(item, data)) {
-        merakiDerivatives.push(item);
-        return acc;
-      }
-      acc[item.type].children.push(toNode(item));
-      return acc;
-    }, {} as Record<string, TreeItem>);
-    attachMerakiSidebarChildren(groupedData, merakiDerivatives, toNode);
-    if (groupedData.Other) {
-      groupedData.Other.children = groupedData.Other.children.filter(
-        (item) => item.label !== 'SNMP Trap'
-      );
-    }
-    return Object.values(groupedData);
+    return buildMonitorObjectSidebarTree(
+      data,
+      (item) => ({
+        title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
+        label: item.name || '--',
+        key: toMonitorIdString(item.id),
+        icon: item.icon,
+        count: item.instance_count || 0,
+        children: [],
+      })
+    );
   };
 
   const updateTree = () => {
@@ -167,10 +144,10 @@ const Integration = () => {
         )}
         {treeLoading ? (
           <div className="space-y-3 p-1" aria-busy="true" aria-label="loading">
-            <div className="h-10 animate-pulse rounded-md bg-[var(--color-fill-2)]" />
-            <div className="h-10 animate-pulse rounded-md bg-[var(--color-fill-2)]" />
+            <div className="h-10 animate-neutral-pulse rounded-md bg-[var(--color-fill-2)]" />
+            <div className="h-10 animate-neutral-pulse rounded-md bg-[var(--color-fill-2)]" />
             {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+              <div key={index} className="h-8 animate-neutral-pulse rounded-md bg-[var(--color-fill-1)]" />
             ))}
           </div>
         ) : !objects.length ? (

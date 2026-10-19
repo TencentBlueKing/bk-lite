@@ -58,6 +58,7 @@ export interface Application3DWallItem {
   name: string;
   health: Application3DHealth;
   hostCoverage?: Application3DHostCoverage;
+  model_id?: string;
 }
 
 export interface Application3DWallData {
@@ -126,6 +127,7 @@ export interface Application3DArchitectureNode {
   health?: Application3DHealth;
   ip_addr?: string;
   os_name?: string;
+  model_id?: string;
 }
 
 export interface Application3DArchitectureEdge {

@@ -1,5 +1,5 @@
 import type { DirItem } from './index';
-import type { UnifiedFilterDefinition, ValueConfig } from './dashBoard';
+import type { UnifiedFilterDefinition, ValueConfig, WidgetInteractionLink } from './dashBoard';
 
 export type ScreenWidgetChartType =
   | 'single'
@@ -129,6 +129,8 @@ export interface ScreenTextItem extends ScreenItemGeometry {
   kind: 'text';
   content: string;
   textStyle?: ScreenTextStyleConfig;
+  /** 只保存标题链接。选「无」或空 URL 时不写这个字段。 */
+  interaction?: WidgetInteractionLink;
 }
 
 export interface ScreenClockItem extends ScreenItemGeometry {

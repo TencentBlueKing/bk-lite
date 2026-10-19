@@ -22,7 +22,7 @@ const normalizeScalar = (value: unknown): string | null => {
   return null;
 };
 
-const extractMultiValueItems = (data: unknown): unknown => {
+export const extractMultiValueItems = (data: unknown): unknown => {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== 'object') return data;
 

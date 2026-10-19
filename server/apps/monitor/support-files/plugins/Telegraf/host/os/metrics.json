@@ -719,6 +719,19 @@
     },
     {
       "metric_group": "Memory",
+      "name": "mem_swap_total",
+      "query": "mem_swap_total{instance_type=\"os\", __$labels__}",
+      "display_name": "Swap Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total swap space on the host, used with free/used bytes to compute swap utilization."
+    },
+    {
+      "metric_group": "Memory",
       "name": "mem_cached",
       "query": "mem_cached{instance_type=\"os\", __$labels__}",
       "display_name": "Cached Memory",

@@ -111,7 +111,7 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
       >
         <RightOutlined className={`text-[9px] text-[var(--color-text-4)] group-hover:text-[var(--color-text-3)] transition-transform duration-200 ${isGroupExpanded ? 'rotate-90' : 'rotate-0'}`} />
         <span className="flex items-center gap-1.5 font-normal">
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${isStreaming ? 'bg-[var(--color-primary)] animate-pulse' : 'bg-emerald-500'}`} />
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${isStreaming ? 'bg-[var(--color-primary)] animate-neutral-pulse' : 'bg-emerald-500'}`} />
           <span className="text-[var(--color-text-2)]">{t('chat.plannedStep.planTitle', '执行计划')}</span>
         </span>
         <span className="text-[11px] text-[var(--color-text-4)] font-mono tabular-nums ml-0.5">

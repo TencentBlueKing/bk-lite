@@ -19,6 +19,7 @@ import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/compon
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { EnabledDangerousPaths, JobRecordFile } from '@/app/job/types';
 import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
+import Permission from '@/components/permission';
 
 const extractExecutionId = (response: any): number | undefined => {
   const candidates = [
@@ -458,13 +459,15 @@ const FileDistPage = () => {
 
           <Divider />
 
-          <Button
-            type="primary"
-            onClick={handleExecute}
-            loading={submitting}
-          >
-            {t('job.executeNow')}
-          </Button>
+          <Permission requiredPermissions={['Add']}>
+            <Button
+              type="primary"
+              onClick={handleExecute}
+              loading={submitting}
+            >
+              {t('job.executeNow')}
+            </Button>
+          </Permission>
         </Form>
       </div>
 

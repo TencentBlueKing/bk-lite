@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import SkillPackageParamsModal, {
   listMissingRequiredParams,
   mergeDeclaredParams,
+  packageHasDeclaredParams,
+  skillPackageParamsForSubmit,
 } from '../skillPackageParamsModal';
 import type { SkillPackage } from '@/app/opspilot/types/skill';
 
@@ -38,6 +40,38 @@ describe('mergeDeclaredParams', () => {
     expect(merged[1].value).toBe('https://example.com');
   });
 
+  it('treats packages without declared variables as having nothing to configure', () => {
+    expect(packageHasDeclaredParams(pkg)).toBe(true);
+    expect(packageHasDeclaredParams({ ...pkg, variables: [] })).toBe(false);
+  });
+
+  it('drops undeclared keys when the variable list is resolved, and keeps stored params until then', () => {
+    const stored = {
+      atuin: [
+        { key: 'ATUIN_KEY', value: 'secret', type: 'password' as const },
+        { key: 'ATUIN_HOST', value: 'https://example.com', type: 'text' as const },
+        { key: 'CUSTOM_FLAG', value: '1', type: 'text' as const },
+      ],
+      other: [{ key: 'KEEP', value: 'yes', type: 'text' as const }],
+    };
+    const cleared = skillPackageParamsForSubmit([{ ...pkg, variables: [] }], stored);
+    expect(cleared.atuin).toEqual([]);
+    expect(cleared.other).toEqual(stored.other);
+
+    const filtered = skillPackageParamsForSubmit([pkg], stored);
+    expect(filtered.atuin.map((item) => item.key)).toEqual(['ATUIN_KEY', 'ATUIN_HOST']);
+
+    const unresolved = { ...pkg, variables: undefined, manifest: undefined };
+    expect(skillPackageParamsForSubmit([unresolved], stored).atuin).toEqual(stored.atuin);
+
+    const manifestOnly = {
+      ...pkg,
+      variables: undefined,
+      manifest: { variables: [{ name: 'ATUIN_HOST', type: 'text' as const }] },
+    };
+    expect(skillPackageParamsForSubmit([manifestOnly], stored).atuin.map((item) => item.key)).toEqual(['ATUIN_HOST']);
+  });
+
   it('lists missing required declared params', () => {
     expect(listMissingRequiredParams(pkg, [{ key: 'ATUIN_HOST', value: 'x', type: 'text' }])).toEqual(['ATUIN_KEY']);
     expect(listMissingRequiredParams(pkg, [{ key: 'ATUIN_KEY', value: 'secret', type: 'password' }])).toEqual([]);
@@ -65,18 +99,39 @@ describe('SkillPackageParamsModal', () => {
     expect(screen.queryByPlaceholderText('skill.skillPackageParams.namePlaceholder')).toBeNull();
   });
 
-  it('keeps custom variables in a separate appendix', () => {
+  it('does not render custom parameter fields', () => {
     render(
       <SkillPackageParamsModal
         open
         pkg={pkg}
-        items={[]}
+        items={[{ key: 'CUSTOM_FLAG', value: '1', type: 'text' }]}
         onCancel={vi.fn()}
         onOk={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /skill.skillPackageParams.add|添加变量/ }));
-    expect(screen.getByPlaceholderText('skill.skillPackageParams.namePlaceholder')).toBeTruthy();
+    expect(screen.queryByText('自定义变量')).toBeNull();
+    expect(screen.queryByPlaceholderText('skill.skillPackageParams.namePlaceholder')).toBeNull();
+    expect(screen.queryByRole('button', { name: /skill.skillPackageParams.add|添加变量/ })).toBeNull();
+    expect(screen.queryByDisplayValue('1')).toBeNull();
+  });
+
+  it('drops stored custom values when confirming declared params', () => {
+    const onOk = vi.fn();
+    render(
+      <SkillPackageParamsModal
+        open
+        pkg={pkg}
+        items={[{ key: 'CUSTOM_FLAG', value: '1', type: 'text' }]}
+        onCancel={vi.fn()}
+        onOk={onOk}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.confirm' }));
+    expect(onOk).toHaveBeenCalledWith([
+      expect.objectContaining({ key: 'ATUIN_KEY', value: '' }),
+      expect.objectContaining({ key: 'ATUIN_HOST', value: '' }),
+    ]);
   });
 });

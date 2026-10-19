@@ -31,6 +31,7 @@ import { getEnumColor, isStringArray } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { Select, Spin } from 'antd';
 import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
+import { shouldSkipPeriodicRefresh } from '@/app/monitor/utils/metricRequestSlot';
 import { ListItem } from '@/types';
 const { Option } = Select;
 
@@ -58,6 +59,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const modalRef = useRef<ModalRef>(null);
   const hexGridRef = useRef<HTMLDivElement>(null);
   const isFetchingRef = useRef<boolean>(false); // 用于标记是否正在加载数据
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [chartData, setChartData] = useState<HexagonData[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -108,6 +110,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     window.addEventListener('resize', updatePageSize);
     return () => {
       window.removeEventListener('resize', updatePageSize);
+      abortControllerRef.current?.abort();
     };
   }, []);
 
@@ -136,6 +139,9 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       return;
     }
     timerRef.current = setInterval(() => {
+      if (shouldSkipPeriodicRefresh(isFetchingRef.current)) {
+        return;
+      }
       getAssetInsts('timer', {
         hexColor,
         queryMetric,
@@ -340,6 +346,16 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       metricList: MetricItem[];
     }
   ) => {
+    if (type === 'timer' && shouldSkipPeriodicRefresh(isFetchingRef.current)) {
+      return;
+    }
+    if (type !== 'timer') {
+      abortControllerRef.current?.abort();
+    } else if (isFetchingRef.current) {
+      return;
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     const params = getParams();
     if (type === 'refresh') {
       params.page = 1;
@@ -348,8 +364,11 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       params.page = params.page + 1;
     }
     try {
+      isFetchingRef.current = true;
       setTableLoading(type !== 'timer');
-      const data = await getInstanceSearch(objectId, params);
+      const data = await getInstanceSearch(objectId, params, {
+        signal: abortController.signal
+      });
       const chartConfig = {
         data: data.results || [],
         metricsData: metricList,
@@ -365,6 +384,9 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         type === 'more' ? [...prev, ...chartList] : chartList
       );
     } finally {
+      if (abortControllerRef.current === abortController) {
+        isFetchingRef.current = false;
+      }
       setTableLoading(false);
     }
   };

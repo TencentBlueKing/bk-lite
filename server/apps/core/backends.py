@@ -6,7 +6,7 @@ import pytz
 from django.contrib.auth.backends import ModelBackend
 from django.core.cache import cache
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
-from django.db import IntegrityError
+from django.db import IntegrityError, InterfaceError, OperationalError
 from django.utils import timezone as django_timezone
 from django.utils import translation
 
@@ -313,7 +313,7 @@ class AuthBackend(ModelBackend):
 
             return self.set_user_info(request, user_info, rules)
 
-        except DoesNotExist:
+        except (DoesNotExist, OperationalError, InterfaceError):
             raise
         except Exception as e:
             logger.error(f"Token authentication failed: {e}")
@@ -337,7 +337,7 @@ class AuthBackend(ModelBackend):
 
             return result
 
-        except DoesNotExist:
+        except (DoesNotExist, OperationalError, InterfaceError):
             raise
         except Exception as e:
             logger.error(f"Token verification failed: {e}")
@@ -386,6 +386,8 @@ class AuthBackend(ModelBackend):
             if not isinstance(rules, dict):
                 return {}
             return rules or {}
+        except (OperationalError, InterfaceError):
+            raise
         except Exception as e:
             logger.error(f"Failed to get user rules for {username}: {e}")
             return {}
@@ -496,6 +498,8 @@ class AuthBackend(ModelBackend):
             user.group_tree = user_info.get("group_tree", [])
             return user
 
+        except (OperationalError, InterfaceError):
+            raise
         except MultipleObjectsReturned:
             domain = user_info.get("domain", "domain.com")
             logger.error("Duplicate users detected for token owner: %s@%s", username, domain)

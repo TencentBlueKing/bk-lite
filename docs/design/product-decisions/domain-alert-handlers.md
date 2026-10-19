@@ -1,12 +1,12 @@
 # 领域告警处理人产品决策记忆
 
-- 最近更新：2026-09-22
-- 当前规格：`specs/changes/domain-alert-reassign/spec.md`
-- 相关规格：`specs/changes/domain-alert-handlers-assignment/spec.md`、`specs/changes/domain-alert-lifecycle-events/spec.md`、`specs/changes/domain-alert-handlers-followup/spec.md`
+- 最近更新：2026-10-16
+- 当前规格：`specs/changes/rum-alert-alignment/spec.md`
+- 相关规格：`specs/changes/domain-alert-handlers-assignment/spec.md`、`specs/changes/domain-alert-lifecycle-events/spec.md`、`specs/changes/domain-alert-reassign/spec.md`、`specs/changes/domain-alert-handlers-followup/spec.md`
 
 ## 产品定位
 
-监控、日志、APM 各自提供轻量分派自闭环，满足售前「各模块告警能分派」的要求。这不是把告警中心的未分派 / 待响应 / 处理中状态机下沉到三域。614 是同一闭环的审计面：动作发生时往本域事件表写一行，在告警详情事件序列可见。
+监控、日志、APM、RUM 各自提供轻量分派自闭环，满足售前「各模块告警能分派」的要求。这不是把告警中心的未分派 / 待响应 / 处理中状态机下沉到这些域。614 是同一闭环的审计面：动作发生时往本域事件表写一行，在告警详情事件序列可见。RUM 于 2026-10-16 作为第四域接入，语义与下面已确认范围相同，表和入口留在 `apps.rum`，不并入监控策略，也不抽公共库。
 
 ## 已确认范围
 
@@ -65,3 +65,4 @@
 - p398_613、p398_614 需求正文与 2026-09-07～09 对齐。
 - 告警组织与策略解耦：p398_639 及三域告警 `organizations` 生成时快照。
 - 规格：`specs/changes/domain-alert-handlers-assignment/spec.md`、`specs/changes/domain-alert-lifecycle-events/spec.md`、`specs/changes/domain-alert-reassign/spec.md`。
+- RUM 第四域：`specs/changes/rum-alert-alignment/spec.md`（2026-10-16）。处置规则沿用本文，不另开超级用户豁免或告警中心状态机。

@@ -68,7 +68,7 @@ class CustomRenderer(JSONRenderer):
                 "message": self._format_validation_message(detail=detail),
                 "data": data.get("data") if isinstance(data, dict) else None,
             }
-        # 返回JSON数据
+        # 英文错误由 opspilot 条件中间件按 message 字段翻译，避免 always-on renderer 点名 optional app。
         return super(CustomRenderer, self).render(ret, accepted_media_type, renderer_context)
 
 

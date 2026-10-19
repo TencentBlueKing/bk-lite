@@ -25,6 +25,7 @@ from apps.mlops.tasks.base import (
     prepare_claim_storage,
     save_dataset_release_object,
 )
+from apps.mlops.utils.i18n import mlops_message_for_active_language
 from apps.mlops.utils.zip_extract_budget import ZipExtractBudget, extract_zip_with_budget
 
 ZIP_COPY_CHUNK_SIZE = 64 * 1024
@@ -62,26 +63,26 @@ def prepare_class_mappings(train_meta: dict, val_meta: dict, test_meta: dict | N
     """
     # 1. 验证 metadata 格式
     if not train_meta or not isinstance(train_meta, dict):
-        raise ValueError("train_meta必须是非空字典")
+        raise ValueError(mlops_message_for_active_language("error.train_meta_must_be_nonempty_dict"))
 
     train_classes = train_meta.get("classes")
     if not train_classes or not isinstance(train_classes, list):
-        raise ValueError("train_meta.classes必须是非空列表")
+        raise ValueError(mlops_message_for_active_language("error.train_meta_classes_must_be_nonempty_list"))
 
     if not val_meta or not isinstance(val_meta, dict):
-        raise ValueError("val_meta必须是非空字典")
+        raise ValueError(mlops_message_for_active_language("error.val_meta_must_be_nonempty_dict"))
 
     val_classes = val_meta.get("classes")
     if not val_classes or not isinstance(val_classes, list):
-        raise ValueError("val_meta.classes必须是非空列表")
+        raise ValueError(mlops_message_for_active_language("error.val_meta_classes_must_be_nonempty_list"))
 
     test_classes = []
     if test_meta:
         if not isinstance(test_meta, dict):
-            raise ValueError("test_meta必须是字典")
+            raise ValueError(mlops_message_for_active_language("error.test_meta_must_be_dict"))
         test_classes = test_meta.get("classes", [])
         if not isinstance(test_classes, list):
-            raise ValueError("test_meta.classes必须是列表")
+            raise ValueError(mlops_message_for_active_language("error.test_meta_classes_must_be_list"))
 
     # 2. 合并三个数据集的 classes，构建全局类别字典
     # 策略：以 train 为基准，补充 val 和 test 的类别
@@ -129,7 +130,7 @@ def prepare_class_mappings(train_meta: dict, val_meta: dict, test_meta: dict | N
                 global_classes_dict[class_id] = class_name
 
     if not global_classes_dict:
-        raise ValueError("所有数据集的 classes 都为空")
+        raise ValueError(mlops_message_for_active_language("error.dataset_classes_all_empty"))
 
     if conflicts:
         conflict_messages = []
@@ -139,7 +140,12 @@ def prepare_class_mappings(train_meta: dict, val_meta: dict, test_meta: dict | N
             actual_name = conflict.get("val_name") or conflict.get("test_name")
             conflict_messages.append(f"class_id={class_id}: expected='{expected_name}', actual='{actual_name}'")
 
-        raise ValueError("类别名称冲突，无法发布数据集版本: " + "; ".join(conflict_messages))
+        raise ValueError(
+            mlops_message_for_active_language(
+                "error.dataset_class_name_conflict",
+                detail="; ".join(conflict_messages),
+            )
+        )
 
     # 3. 按 class_id 排序，构建全局类别列表
     # 处理可能的 class_id 不连续情况（如 COCO 删除了某些类别）

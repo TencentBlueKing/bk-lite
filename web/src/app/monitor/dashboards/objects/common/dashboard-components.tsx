@@ -9,7 +9,7 @@
  * data-filtering logic (titles arrays, span overrides) in its own file.
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ApiOutlined,
   ClockCircleOutlined,
@@ -694,12 +694,36 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
 
 // ─── DashboardShell ───────────────────────────────────────────────────────────
 
+export interface DashboardViewSwitcher {
+  mode: string;
+  onChange: (mode: string) => void;
+  control?: 'segmented' | 'select' | 'pill';
+  options: ReadonlyArray<{
+    labelKey: string;
+    fallback: string;
+    value: string;
+  }>;
+}
+
 export interface DashboardShellProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
   /** Dashboard content (only shown in dashboard display mode). */
   dashboardContent: React.ReactNode;
+  /** 第三视图。未提供时，未知模式仍回落到仪表盘内容。 */
+  categoryContent?: React.ReactNode;
   /** 覆盖默认全量指标区（如主机需叠加进程指标页签）。 */
   metricsContent?: React.ReactNode;
+  /** 主机详情用标题旁 pill 切换布局，其它对象保持分段按钮。 */
+  viewSwitcher?: DashboardViewSwitcher;
+  /**
+   * 标题行与实例栏收进同一白卡，内容在卡外、与白卡同宽。
+   * 模式入口是标题旁 pill。没有的能力仍留在菜单里，置灰不可点。
+   */
+  unifiedChrome?: boolean;
+  /**
+   * 打开过的布局保持挂载，只隐藏。来回切换时不拆掉另一套页面。
+   */
+  preserveLayouts?: boolean;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
   brandLabel?: string;
   styles: DashboardStyles;
@@ -712,69 +736,147 @@ export interface DashboardShellProps {
 export const DashboardShell = ({
   dashboard,
   dashboardContent,
+  categoryContent,
   metricsContent,
+  viewSwitcher,
+  preserveLayouts = false,
+  unifiedChrome = true,
   brandLabel,
   styles
 }: DashboardShellProps) => {
   const { dt } = useDashboardText();
   const showProtocolBar = FLOW_VIEW_SWITCH_ROUTE_KEYS.has(dashboard.routeKey);
+  const professionalCapable = Boolean(categoryContent);
+  const requestedMode = viewSwitcher?.mode ?? dashboard.displayMode;
+  const activeMode = !professionalCapable && requestedMode === 'category' ? 'dashboard' : requestedMode;
+  const showsDashboardChrome = viewSwitcher ? activeMode !== 'metrics' : dashboard.isDashboardMode;
+  const [visitedModes, setVisitedModes] = useState<string[]>(() => [activeMode]);
+  useEffect(() => {
+    if (!preserveLayouts) return;
+    setVisitedModes((prev) => (prev.includes(activeMode) ? prev : [...prev, activeMode]));
+  }, [activeMode, preserveLayouts]);
+  const mountedModes = preserveLayouts && !visitedModes.includes(activeMode)
+    ? [...visitedModes, activeMode]
+    : visitedModes;
+  const onDisplayModeChange = (mode: 'dashboard' | 'metrics') => {
+    if (viewSwitcher) {
+      viewSwitcher.onChange(mode);
+      return;
+    }
+    dashboard.setDisplayMode(mode);
+  };
+  const metricsNode = metricsContent || <MetricsSection dashboard={dashboard} styles={styles} />;
+  const renderLayout = (mode: string, node: React.ReactNode) => {
+    if (!node) return null;
+    const bodyClass = unifiedChrome
+      ? (mode === 'category' ? styles.unifiedCategoryBody : styles.unifiedBody)
+      : undefined;
+    if (!preserveLayouts) {
+      if (activeMode !== mode) return null;
+      if (!unifiedChrome) return node;
+      return <div className={bodyClass}>{node}</div>;
+    }
+    if (!mountedModes.includes(mode)) return null;
+    return (
+      <div className={bodyClass} hidden={activeMode !== mode}>
+        {node}
+      </div>
+    );
+  };
+
+  const pageHeader = (
+    <DashboardPageHeader
+      title={dashboard.pageTitle}
+      displayMode={activeMode}
+      onDisplayModeChange={onDisplayModeChange}
+      modeControl={professionalCapable && (unifiedChrome || viewSwitcher?.control === 'pill') ? 'pill' : viewSwitcher?.control}
+      modeOptions={(viewSwitcher?.options ?? [
+        { labelKey: 'dashboardMode', fallback: '传统仪表盘', value: 'dashboard' },
+        { labelKey: 'categoryTabMode', fallback: '专业仪表盘', value: 'category' },
+        { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
+      ]).map((item) => ({
+        ...item,
+        disabled: item.value === 'category'
+          ? !professionalCapable
+          : item.value === 'dashboard'
+            ? dashboardContent == null
+            : false
+      }))}
+      timeDefaultValue={dashboard.timeDefaultValue}
+      onTimeChange={dashboard.onTimeChange}
+      onFrequenceChange={dashboard.setFrequence}
+      onRefresh={dashboard.onRefresh}
+      showTimeSelector={false}
+      styles={styles}
+    />
+  );
+  const instanceCard = (
+    <DashboardInstanceCard
+      instanceName={dashboard.resolvedInstanceName}
+      metaItems={[
+        ...(brandLabel
+          ? [
+            <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
+          ]
+          : []),
+        ...dashboard.objectMetaItems.map((item, index) => (
+          <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
+        ))
+      ]}
+      icon={<DatabaseOutlined />}
+      selectorValue={dashboard.instanceSelectValue}
+      selectorLoading={dashboard.instanceLoading}
+      selectorOptions={dashboard.instanceSelectOptions}
+      onInstanceChange={dashboard.onInstanceChange}
+      clusterOptions={dashboard.clusterFilterEnabled ? dashboard.clusterFilterOptions : undefined}
+      clusterValue={dashboard.clusterFilterValue}
+      onClusterChange={dashboard.onClusterFilterChange}
+      selectorPlaceholder={
+        dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : dt('选择实例')
+      }
+      selectorTitle={dashboard.currentInstanceLabel}
+      isDashboardMode={showsDashboardChrome}
+      timeSelectorProps={{
+        timeDefaultValue: dashboard.timeDefaultValue,
+        onTimeChange: dashboard.onTimeChange,
+        onFrequenceChange: dashboard.setFrequence,
+        onRefresh: dashboard.onRefresh
+      }}
+      styles={styles}
+    />
+  );
+  const protocolBar = showProtocolBar && showsDashboardChrome ? <DashboardProtocolBarSlot /> : null;
+  const layouts = (
+    <>
+      {renderLayout('dashboard', dashboardContent)}
+      {renderLayout('category', categoryContent)}
+      {renderLayout('metrics', metricsNode)}
+    </>
+  );
 
   return (
   <div className={styles.page}>
-    <div className={styles.shell}>
-      <div className={styles.pageHeader}>
-        <DashboardPageHeader
-          title={dashboard.pageTitle}
-          displayMode={dashboard.displayMode}
-          onDisplayModeChange={dashboard.setDisplayMode}
-          timeDefaultValue={dashboard.timeDefaultValue}
-          onTimeChange={dashboard.onTimeChange}
-          onFrequenceChange={dashboard.setFrequence}
-          onRefresh={dashboard.onRefresh}
-          showTimeSelector={false}
-          styles={styles}
-        />
-        <DashboardInstanceCard
-          instanceName={dashboard.resolvedInstanceName}
-          metaItems={[
-            ...(brandLabel
-              ? [
-                <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
-              ]
-              : []),
-            ...dashboard.objectMetaItems.map((item, index) => (
-              <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
-            ))
-          ]}
-          icon={<DatabaseOutlined />}
-          selectorValue={dashboard.instanceSelectValue}
-          selectorLoading={dashboard.instanceLoading}
-          selectorOptions={dashboard.instanceSelectOptions}
-          onInstanceChange={dashboard.onInstanceChange}
-          clusterOptions={dashboard.clusterFilterEnabled ? dashboard.clusterFilterOptions : undefined}
-          clusterValue={dashboard.clusterFilterValue}
-          onClusterChange={dashboard.onClusterFilterChange}
-          selectorPlaceholder={
-            dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : dt('选择实例')
-          }
-          selectorTitle={dashboard.currentInstanceLabel}
-          isDashboardMode={dashboard.isDashboardMode}
-          timeSelectorProps={{
-            timeDefaultValue: dashboard.timeDefaultValue,
-            onTimeChange: dashboard.onTimeChange,
-            onFrequenceChange: dashboard.setFrequence,
-            onRefresh: dashboard.onRefresh
-          }}
-          styles={styles}
-        />
-      </div>
-
-      {showProtocolBar && dashboard.isDashboardMode ? <DashboardProtocolBarSlot /> : null}
-
-      {dashboard.displayMode === 'dashboard' ? (
-        <>{dashboardContent}</>
+    <div className={styles.shell} data-view-mode={activeMode}>
+      {unifiedChrome ? (
+        <>
+          <div className={styles.unifiedShell} data-dashboard-shell="unified">
+            <div className={styles.pageIntro}>{pageHeader}</div>
+            <div className={styles.unifiedHostBar}>{instanceCard}</div>
+          </div>
+          <div className={styles.unifiedBelow}>
+            {protocolBar}
+            {layouts}
+          </div>
+        </>
       ) : (
-        metricsContent || <MetricsSection dashboard={dashboard} styles={styles} />
+        <>
+          <div className={styles.pageHeader}>
+            {pageHeader}
+            {instanceCard}
+          </div>
+          {protocolBar}
+          {layouts}
+        </>
       )}
     </div>
   </div>

@@ -36,7 +36,8 @@ import {
   EventItem,
   AlarmTableDataItem,
 } from '@/app/alarm/types/alarms';
-import { CopyOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { CopyOutlined, ClockCircleOutlined, LinkOutlined } from '@ant-design/icons';
+import { buildAlarmDetailUrl } from '../alarmDetailLink';
 import React, {
   useState,
   forwardRef,
@@ -468,6 +469,15 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
                   className="cursor-pointer ml-2"
                   onClick={() => copyToClipboard(formData.alert_id || '')}
                 />
+                <Tooltip title={t('alarms.copyDetailLink')}>
+                  <LinkOutlined
+                    className="cursor-pointer ml-2"
+                    onClick={() => {
+                      if (!formData.alert_id) return;
+                      copyToClipboard(buildAlarmDetailUrl(window.location.origin, formData.alert_id));
+                    }}
+                  />
+                </Tooltip>
               </Tag>
             </li>
             <li>

@@ -26,6 +26,7 @@ function metricLabel(t: (key: string, fallback?: string) => string, metric: stri
 function formatThreshold(metric: string, value: number): string {
   if (metric === 'error_rate') return `${(value * 100).toFixed(1)}%`;
   if (metric === 'cls_p75') return value.toFixed(3);
+  if (metric === 'session_count') return String(Math.round(value));
   return `${Math.round(value)}ms`;
 }
 
@@ -161,6 +162,41 @@ export default function RumMonitorsPage() {
         ),
       },
       {
+        title: t('rum.monitors.organizations', '组织'),
+        key: 'organizations',
+        width: 140,
+        ellipsis: true,
+        render: (_: unknown, m: RumMonitorItem) => (
+          <span className="truncate">{(m.organizationsDisplay || m.organizations || []).map(String).join(', ') || '—'}</span>
+        ),
+      },
+      {
+        title: t('rum.monitors.handlers', '处理人'),
+        key: 'handlers',
+        width: 140,
+        ellipsis: true,
+        render: (_: unknown, m: RumMonitorItem) => (
+          <span className="truncate">{(m.handlersDisplay || m.handlers || []).map(String).join(', ') || '—'}</span>
+        ),
+      },
+      {
+        title: t('rum.monitors.lastEvaluation', '最近判定'),
+        key: 'lastEvaluation',
+        width: 160,
+        render: (_: unknown, m: RumMonitorItem) => {
+          const when = m.lastEvaluationResult === 'failed' ? m.lastFailedAt : m.lastSucceededAt;
+          const label = m.lastEvaluationResult
+            ? t(`rum.monitors.evaluation.${m.lastEvaluationResult}`, m.lastEvaluationResult)
+            : '—';
+          return (
+            <span className="tabular-nums">
+              {label}
+              {when ? ` · ${new Date(when).toLocaleString()}` : ''}
+            </span>
+          );
+        },
+      },
+      {
         title: t('rum.monitors.condition', '条件'),
         key: 'condition',
         width: 220,
@@ -170,14 +206,16 @@ export default function RumMonitorsPage() {
               {metricLabel(t, m.metric)}
             </span>
             <span className="font-mono tabular-nums">
-              &gt; {formatThreshold(m.metric, m.criticalThreshold)}
+              {m.comparator || '>='} {formatThreshold(m.metric, m.criticalThreshold)}
             </span>
-            <span className="text-xs text-[var(--color-text-3)]">
-              ·{' '}
-              {t('rum.monitors.forMinutes', '持续 {n} 分钟', {
-                n: Math.max(1, Math.round(m.forDurationSec / 60)),
-              })}
-            </span>
+            {m.forDurationSec > 0 ? (
+              <span className="text-xs text-[var(--color-text-3)]">
+                ·{' '}
+                {t('rum.monitors.forMinutes', '持续 {n} 分钟', {
+                  n: Math.max(1, Math.round(m.forDurationSec / 60)),
+                })}
+              </span>
+            ) : null}
           </div>
         ),
       },
@@ -244,7 +282,7 @@ export default function RumMonitorsPage() {
               <SemanticBadge
                 label={
                   <span className="inline-flex items-center gap-1">
-                    <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-fail)]" />
+                    <span className="size-1.5 animate-neutral-pulse rounded-full bg-[var(--color-fail)]" />
                     {t('rum.monitors.statusFiring', '告警中')}
                   </span>
                 }
@@ -360,22 +398,9 @@ export default function RumMonitorsPage() {
           onSaved={() => void load()}
         />
 
-        {!pending && filteredItems.length === 0 ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center">
-            <Empty
-              description={
-                <div className="flex flex-col gap-1">
-                  <span>{t('rum.monitors.empty', '还没有告警策略')}</span>
-                  <span className="text-xs text-[var(--color-text-3)]">
-                    {t('rum.monitors.emptyHint', '创建一条策略，监控错误率或 Core Web Vitals。')}
-                  </span>
-                </div>
-              }
-            />
-          </div>
-        ) : pending && items.length === 0 ? (
+        {pending && items.length === 0 ? (
           <RumTableSkeleton columns={rumSkeletonColumns(columns)} />
-        ) : filteredItems.length > 0 ? (
+        ) : (
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable<RumMonitorItem>
               rowKey="id"
@@ -384,6 +409,20 @@ export default function RumMonitorsPage() {
               autoScrollX={false}
               dataSource={table.rows}
               columns={columns}
+              locale={{
+                emptyText: (
+                  <Empty
+                    description={
+                      <div className="flex flex-col gap-1">
+                        <span>{t('rum.monitors.empty', '还没有告警策略')}</span>
+                        <span className="text-[var(--color-text-3)]">
+                          {t('rum.monitors.emptyHint', '创建一条策略，监控错误率或 Core Web Vitals。')}
+                        </span>
+                      </div>
+                    }
+                  />
+                ),
+              }}
               pagination={{
                 current: table.pagination.current,
                 pageSize: table.pagination.pageSize,
@@ -401,7 +440,7 @@ export default function RumMonitorsPage() {
               })}
             />
           </div>
-        ) : null}
+        )}
       </RumSingleWorkbench>
     </div>
   );

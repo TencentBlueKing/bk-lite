@@ -156,6 +156,44 @@ class TestScriptCrud:
         assert resp.status_code == 200
         assert resp.data["deleted_count"] == 2
 
+    def test_view_only_user_cannot_update_or_delete_script(self, api_client, authenticated_user):
+        """只授予脚本库 View 时，编辑和单条删除必须被拒绝。"""
+        script = Script.objects.create(name="view-only", content="echo", script_type="shell", team=[1])
+        authenticated_user.is_superuser = False
+        authenticated_user.permission = {"job": {"script_library-View"}}
+        authenticated_user.group_list = [{"id": 1, "name": "Default"}]
+        api_client.cookies["current_team"] = "1"
+        rules = {"team": [1], "instance": []}
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            update_resp = api_client.put(
+                f"{URL}{script.id}/",
+                {"name": "hacked", "content": "echo hacked", "script_type": "shell", "team": [1]},
+                format="json",
+            )
+            delete_resp = api_client.delete(f"{URL}{script.id}/")
+            batch_resp = api_client.post(f"{URL}batch_delete/", {"ids": [script.id]}, format="json")
+
+        assert update_resp.status_code == 403
+        assert delete_resp.status_code == 403
+        assert batch_resp.status_code == 403
+        script.refresh_from_db()
+        assert script.name == "view-only"
+
+    def test_delete_permission_allows_single_delete(self, api_client, authenticated_user):
+        script = Script.objects.create(name="deletable", content="echo", script_type="shell", team=[1])
+        authenticated_user.is_superuser = False
+        authenticated_user.permission = {"job": {"script_library-View", "script_library-Delete"}}
+        authenticated_user.group_list = [{"id": 1, "name": "Default"}]
+        api_client.cookies["current_team"] = "1"
+        rules = {"team": [1], "instance": []}
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            delete_resp = api_client.delete(f"{URL}{script.id}/")
+
+        assert delete_resp.status_code in (200, 204)
+        assert not Script.objects.filter(id=script.id).exists()
+
     def test_export_returns_zip_and_strips_encrypted_defaults(self, su_client):
         from apps.job_mgmt.services.param_crypto import ParamCrypto
 

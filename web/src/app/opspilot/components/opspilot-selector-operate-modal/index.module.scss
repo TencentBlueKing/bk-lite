@@ -1,3 +1,19 @@
 div.selectedKnowledge {
   border-color: var(--color-primary) !important;
 }
+
+.spin {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+
+  :global(.ant-spin-container) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+}

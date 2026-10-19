@@ -14,6 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 from apps.alerts.error import AuthenticationSourceError
 from apps.alerts.models.alert_source import AlertSource
+from apps.alerts.notification_templates.timefmt import format_template_datetime
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.web_utils import WebUtils
@@ -81,7 +82,7 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
             return JsonResponse(
                 {
                     "status": response_status,
-                    "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "time": format_template_datetime(timezone.now()),
                     "message": "Events were only partially accepted." if response_status == "partial" else "No events were accepted.",
                     "ingestion": ingestion,
                 },
@@ -90,7 +91,7 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
         return JsonResponse(
             {
                 "status": "success",
-                "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "time": format_template_datetime(timezone.now()),
                 "message": "Data received successfully.",
                 "ingestion": ingestion,
             }
@@ -109,9 +110,7 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
             str(e),
             exc_info=True,
         )
-        return JsonResponse(
-            {"status": "error", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"), "message": "Internal server error."}, status=500
-        )
+        return JsonResponse({"status": "error", "time": format_template_datetime(timezone.now()), "message": "Internal server error."}, status=500)
 
 
 @csrf_exempt

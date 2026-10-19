@@ -78,6 +78,57 @@ test('radar submit persists indicators and range', () => {
   assert.equal('gaugeShape' in (result.config || {}), false);
 });
 
+test('eventTable and eventTimeline submit keep the data link', () => {
+  const interaction = {
+    kind: 'data' as const,
+    name: '查看',
+    url: '/ops/event?id=$__data.fields.id$',
+    openMode: 'sameTab' as const,
+  };
+  const eventTable = buildWidgetSubmitConfig({
+    values: {
+      name: '事件表',
+      chartType: 'eventTable',
+      interaction,
+    },
+    chartType: 'eventTable',
+    showChartThemeMode: false,
+    showTableFilterFields: false,
+    selectedFields: [],
+    thresholdColors: [],
+    filterBindings: {},
+    displayColumns: [
+      { id: 'id', key: 'id', title: 'ID', visible: true, order: 0 },
+    ],
+    filterFields: [],
+    actions: [],
+  });
+  assert.equal(eventTable.error, undefined);
+  assert.deepEqual(eventTable.config?.interaction, interaction);
+  assert.equal('actions' in (eventTable.config || {}), false);
+
+  const eventTimeline = buildWidgetSubmitConfig({
+    values: {
+      name: '事件时间线',
+      chartType: 'eventTimeline',
+      eventTimeline: { sortOrder: 'desc', timeField: 'time', titleField: 'title' },
+      interaction,
+    },
+    chartType: 'eventTimeline',
+    showChartThemeMode: false,
+    showTableFilterFields: false,
+    selectedFields: [],
+    thresholdColors: [],
+    filterBindings: {},
+    displayColumns: [],
+    filterFields: [],
+    actions: [],
+  });
+  assert.equal(eventTimeline.error, undefined);
+  assert.deepEqual(eventTimeline.config?.interaction, interaction);
+  assert.equal(eventTimeline.config?.eventTimeline?.timeField, 'time');
+});
+
 test('gauge submit keeps gauge fields', () => {
   const result = buildWidgetSubmitConfig({
     values: {

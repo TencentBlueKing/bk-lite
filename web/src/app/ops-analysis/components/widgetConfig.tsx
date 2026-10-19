@@ -12,7 +12,6 @@ import {
   UnifiedFilterDefinition,
   FilterBindings,
   FilterValue,
-  DashboardActionConfig,
   WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import {
@@ -21,8 +20,10 @@ import {
   Form,
   Input,
   Select,
+  Tabs,
   message,
 } from 'antd';
+import InteractionLinkSection from '@/app/ops-analysis/components/widgetConfig/sections/interactionLinkSection';
 import { EyeOutlined } from '@ant-design/icons';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useSingleValueConfig } from '@/app/ops-analysis/hooks/useSingleValueConfig';
@@ -57,7 +58,12 @@ import { ValueFormatConfigSection } from '@/app/ops-analysis/components/ops-anal
 import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
 import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import ComponentSelector from './widgetSelector';
-import { ConfigSectionTitle } from './widgetConfig/configTitles';
+import {
+  ConfigSectionTabLabel,
+  ConfigSectionTitle,
+  DataSectionTabIcon,
+  InteractionSectionTabIcon,
+} from './widgetConfig/configTitles';
 import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSection';
 import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
@@ -109,6 +115,16 @@ import { Room3DRackTopFields } from './widgetConfig/sections/room3DRackTopFields
 import Room3DFilterLinkage from './widgetConfig/sections/room3DFilterLinkage';
 import { ConfigGroupTitle } from './widgetConfig/configTitles';
 import { getDefaultScreenWidgetAppearance } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
+import { useWidgetCsvExportRegistry } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
+import { interactionKindForChartType } from '@/app/ops-analysis/utils/interactionLink';
+import {
+  acceptPreviewRawWrite,
+  clearSampleKeyOnFetchFailure,
+  isCurrentInteractionSample,
+  nextInteractionSampleTicket,
+  planInteractionSample,
+  type InteractionSampleTicket,
+} from '@/app/ops-analysis/utils/interactionSample';
 import { isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
 import {
@@ -117,6 +133,16 @@ import {
   migrateParamItemsFromStringList,
   normalizeDatasourceItemParams,
 } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
+
+const isInteractionFieldError = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('errorFields' in error)) return false;
+  const fields = (error as { errorFields?: { name?: (string | number)[] }[] }).errorFields;
+  return Array.isArray(fields) && fields.some((field) => field.name?.[0] === 'interaction');
+};
+
+const readWidgetId = (item: ViewConfigItem | null | undefined) => (
+  item && 'i' in item ? String(item.i || '') : ''
+);
 
 const viewConfigReloadKey = (item: ViewConfigItem | null | undefined) => {
   if (!item) return '';
@@ -148,16 +174,22 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   builtinNamespaceId,
   showChartThemeMode = false,
   surface = 'dashboard',
+  filterTemplateTokens = true,
   variant = 'drawer',
+  configSection,
+  onConfigSectionChange,
+  screenFrame,
   onDirtyChange,
 }) => {
   const { t } = useTranslation();
+  const canvasRawDataRegistry = useWidgetCsvExportRegistry();
   const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm();
   const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
   const [chartType, setChartType] = useState<string>('');
+  const [drawerSection, setDrawerSection] = useState<'data' | 'interaction'>('data');
+  const activeSection = variant === 'panel' ? (configSection ?? 'data') : drawerSection;
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({});
-  const [actions, setActions] = useState<DashboardActionConfig[]>([]);
   const [dataSourceSelectorVisible, setDataSourceSelectorVisible] = useState(false);
   const [editingInputConfigParam, setEditingInputConfigParam] = useState<ParamItem | null>(null);
   const [widgetParamOverrides, setWidgetParamOverrides] = useState<ParamItem[]>([]);
@@ -181,6 +213,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const { getSourceDataByApiId } = useDataSourceApi();
   const configRequestIdRef = useRef(0);
   const resolvedParamOptionsRef = useRef(new Map<string, InputOption[]>());
+  const interactionSampleKeyRef = useRef('');
+  const sampleReadRef = useRef<InteractionSampleTicket>({ widgetId: '', sequence: 0 });
+  const [settledSampleWidgetId, setSettledSampleWidgetId] = useState<string | null>(null);
 
   const {
     selectedDataSource,
@@ -309,12 +344,26 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     [],
   );
 
+  const abandonInteractionSample = useCallback((widgetId: string) => {
+    sampleReadRef.current = nextInteractionSampleTicket(sampleReadRef.current, widgetId);
+    interactionSampleKeyRef.current = '';
+    setPreviewRawData(null);
+    setLoadingRoleFields(false);
+    setSettledSampleWidgetId(null);
+  }, []);
+
+  const settleInteractionSample = useCallback((requestId: number, widgetId: string) => {
+    if (requestId !== configRequestIdRef.current) return;
+    setSettledSampleWidgetId(widgetId);
+  }, []);
+
   /** 用户通过弹窗选择了新的数据源，重置所有依赖配置 */
   const handleDataSourceChangeFromSelector = useCallback(
     async (item: DatasourceItem) => {
       const requestId = nextConfigRequestId();
       resolvedParamOptionsRef.current.clear();
       setDataSourceSelectorVisible(false);
+      abandonInteractionSample(readWidgetId(widgetItem));
 
       if (isSceneWidgetSelection(item)) {
         const sceneWidgetType =
@@ -322,28 +371,23 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         setChartType(sceneWidgetType);
         setSelectedDataSource(undefined);
         setFilterBindings({});
-        setActions([]);
         setWidgetParamOverrides([]);
         tableConfig.resetTableConfig();
         singleValueConfig.resetSingleValueConfig();
-        setPreviewRawData(null);
-        setLoadingRoleFields(false);
 
         form.setFieldsValue(
           buildSceneWidgetSelectorResetValues(sceneWidgetType, surface),
         );
+        settleInteractionSample(requestId, readWidgetId(widgetItem));
         return;
       }
 
       // 重置依赖字段
       setChartType('');
       setFilterBindings({});
-      setActions([]);
       setWidgetParamOverrides([]);
       tableConfig.resetTableConfig();
       singleValueConfig.resetSingleValueConfig();
-      setPreviewRawData(null);
-      setLoadingRoleFields(false);
 
       // 加载完整数据源（brief 模式不含 params）
       const fullItem = normalizeDatasourceItemParams(
@@ -377,6 +421,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           surface,
         }),
       );
+      settleInteractionSample(requestId, readWidgetId(widgetItem));
 
       // 重建 filter bindings
       if (fullItem.params?.length) {
@@ -419,6 +464,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       nextConfigRequestId,
       isCurrentConfigRequest,
       surface,
+      widgetItem,
+      abandonInteractionSample,
+      settleInteractionSample,
     ],
   );
 
@@ -502,6 +550,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     const resolvedId = canonicalSelectedDataSource?.id;
     if (!resolvedId || !canonicalSelectedDataSource) return;
 
+    const ticket = nextInteractionSampleTicket(
+      sampleReadRef.current,
+      readWidgetId(widgetItem),
+    );
+    sampleReadRef.current = ticket;
     setLoadingRoleFields(true);
     try {
       const formValues = form.getFieldsValue();
@@ -525,16 +578,25 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }
 
       const { data } = await getSourceDataByApiId(resolvedId, requestParams);
+      if (!isCurrentInteractionSample(sampleReadRef.current, ticket)) return;
       setPreviewRawData(data);
       if (previewOpen) {
         setSuppliedPreviewRawData(data);
         setSuppliedPreviewVersion((version) => version + 1);
       }
     } catch (error) {
+      interactionSampleKeyRef.current = clearSampleKeyOnFetchFailure(
+        sampleReadRef.current,
+        ticket,
+        interactionSampleKeyRef.current,
+      );
+      if (!isCurrentInteractionSample(sampleReadRef.current, ticket)) return;
       console.error('Failed to fetch data fields:', error);
       message.error(t('dashboard.fetchDataFieldsFailed'));
     } finally {
-      setLoadingRoleFields(false);
+      if (isCurrentInteractionSample(sampleReadRef.current, ticket)) {
+        setLoadingRoleFields(false);
+      }
     }
   }, [
     canonicalSelectedDataSource,
@@ -543,6 +605,43 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     getSourceDataByApiId,
     previewOpen,
     t,
+    widgetItem,
+  ]);
+
+  const interactionWidgetId = readWidgetId(widgetItem);
+  useEffect(() => {
+    const plan = planInteractionSample({
+      open,
+      interactionVisible: activeSection === 'interaction',
+      hasPreview: previewRawData != null,
+      widgetId: interactionWidgetId,
+      settledWidgetId: settledSampleWidgetId,
+      rendered: interactionWidgetId
+        ? canvasRawDataRegistry?.readWidgetRawData(interactionWidgetId)
+        : undefined,
+      sourceId: canonicalSelectedDataSource?.id,
+      fetchedKey: interactionSampleKeyRef.current,
+    });
+    if (plan.type === 'use-rendered') {
+      sampleReadRef.current = nextInteractionSampleTicket(
+        sampleReadRef.current,
+        interactionWidgetId,
+      );
+      setPreviewRawData(plan.data);
+      return;
+    }
+    if (plan.type !== 'fetch') return;
+    interactionSampleKeyRef.current = plan.sampleKey;
+    void fetchRoleFields();
+  }, [
+    activeSection,
+    canvasRawDataRegistry,
+    canonicalSelectedDataSource?.id,
+    fetchRoleFields,
+    interactionWidgetId,
+    open,
+    previewRawData,
+    settledSampleWidgetId,
   ]);
 
   const displayColumnOptions = useMemo(
@@ -640,6 +739,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         getDefaultScreenWidgetAppearance(newChartType),
       );
     }
+    form.setFieldValue(
+      ['interaction', 'kind'],
+      interactionKindForChartType(
+        newChartType,
+        form.getFieldValue(['interaction', 'kind']),
+      ),
+    );
     if (!supportsComponentSwitch(newChartType)) {
       setWidgetParamOverrides((previous) =>
         previous.map(clearComponentParamSwitch),
@@ -657,7 +763,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       return;
     }
 
+    const widgetId = readWidgetId(widgetItem);
+    abandonInteractionSample(widgetId);
     const { valueConfig } = widgetItem;
+    setDrawerSection('data');
     const sceneWidgetType = resolveOpenedSceneWidgetType(valueConfig);
     const isOpenedSceneWidget = Boolean(sceneWidgetType);
     const formValues = buildOpenedWidgetFormValues(widgetItem, {
@@ -665,7 +774,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       surface,
     });
     setChartType(formValues.chartType);
-    setActions(valueConfig?.actions || []);
 
     if (isOpenedSceneWidget) {
       setSelectedDataSource(undefined);
@@ -682,6 +790,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
       markFormPristine(form);
       onDirtyChange?.(false);
+      settleInteractionSample(requestId, widgetId);
       return;
     }
 
@@ -747,7 +856,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         setFilterBindings({});
       }
 
-      if (valueConfig?.tableConfig?.columns?.length) {
+      const originalColumns = valueConfig?.tableConfig?.columns || [];
+      const storedColumns = originalColumns.filter(
+        (column) => column.columnType !== 'actions',
+      );
+      if (storedColumns.length) {
         const schemaDefaultKeys = new Set(
           (targetDataSource?.field_schema || [])
             .map((field) => field.key)
@@ -786,7 +899,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         });
 
         tableConfig.setDisplayColumns(
-          valueConfig.tableConfig.columns.map((c, idx) => ({
+          storedColumns.map((c, idx) => ({
             ...c,
             id: `column_${idx}_${Date.now()}`,
             title:
@@ -800,15 +913,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }
 
       if (
-        !valueConfig?.tableConfig?.columns?.length &&
+        !storedColumns.length &&
         (formValues.chartType === 'table' ||
           formValues.chartType === 'eventTable')
       ) {
         const schemaFields = targetDataSource?.field_schema;
+        const replaceActionOnlyColumns = originalColumns.length > 0;
         if (schemaFields && schemaFields.length > 0) {
-          tableConfig.setDetectedDisplayColumns(
-            buildDisplayColumnsFromSchema(schemaFields),
-          );
+          const defaults = buildDisplayColumnsFromSchema(schemaFields);
+          tableConfig.setDetectedDisplayColumns(defaults);
+          if (replaceActionOnlyColumns) {
+            tableConfig.setDisplayColumns(defaults);
+          }
         } else {
           const probedColumns = await tableConfig.probeDefaultDisplayColumns(
             targetDataSource,
@@ -818,6 +934,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             return;
           }
           tableConfig.setDetectedDisplayColumns(probedColumns);
+          if (replaceActionOnlyColumns) {
+            tableConfig.setDisplayColumns(probedColumns);
+          }
         }
       }
     } else {
@@ -848,6 +967,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
     markFormPristine(form);
     onDirtyChange?.(false);
+    settleInteractionSample(requestId, widgetId);
   };
 
   const resetForm = (): void => {
@@ -855,7 +975,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setSelectedDataSource(undefined);
     setChartType('');
     setFilterBindings({});
-    setActions([]);
     setDataSourceSelectorVisible(false);
     setEditingInputConfigParam(null);
     setWidgetParamOverrides([]);
@@ -866,9 +985,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setPreviewSnapshotNamespaceId(undefined);
     setPreviewDataFetchSignature(null);
     setPreviewReloadVersion(0);
-    setPreviewRawData(null);
     setPreviewLoading(false);
-    setLoadingRoleFields(false);
+    abandonInteractionSample('');
     networkTopologyConfig.resetInstanceOptions();
     tableConfig.resetTableConfig();
     singleValueConfig.resetSingleValueConfig();
@@ -1088,10 +1206,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       filterBindings,
       displayColumns: tableConfig.displayColumns,
       filterFields: tableConfig.filterFields,
-      actions,
     });
   }, [
-    actions,
     chartType,
     filterBindings,
     form,
@@ -1107,7 +1223,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const liveDraft = useMemo(() => {
     return buildCurrentDraftConfig();
   }, [
-    actions,
     buildCurrentDraftConfig,
     chartType,
     filterBindings,
@@ -1202,7 +1317,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         filterBindings,
         displayColumns: tableConfig.displayColumns,
         filterFields: tableConfig.filterFields,
-        actions,
       });
 
       if (submitResult.error) {
@@ -1262,6 +1376,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         onConfirm?.(submitResult.config);
       }
     } catch (error) {
+      if (isInteractionFieldError(error)) {
+        if (variant === 'panel') {
+          onConfigSectionChange?.('interaction');
+        } else {
+          setDrawerSection('interaction');
+        }
+        window.setTimeout(() => {
+          form.scrollToField(['interaction', 'url'], { block: 'center' });
+        }, 0);
+        return;
+      }
       console.error('Form validation failed:', error);
       message.error(t('common.saveFailed'));
     }
@@ -1290,7 +1415,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               suppliedRawData={suppliedPreviewRawData}
               suppliedRawDataVersion={suppliedPreviewVersion}
               loading={previewLoading}
-              onRawData={(data) => {
+              sampleTicket={sampleReadRef.current}
+              onRawData={(data, ticket) => {
+                if (!acceptPreviewRawWrite(sampleReadRef.current, ticket)) return;
                 setPreviewRawData(data);
                 setPreviewLoading(false);
               }}
@@ -1318,11 +1445,40 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           showChartThemeMode={showChartThemeMode}
           isNetworkStatusTopology={isNetworkStatusTopology}
           surface={surface}
+          filterTemplateTokens={filterTemplateTokens}
         />
+
+        {variant === 'drawer' ? (
+          <Tabs
+            className="-mt-3 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-nav]:mb-4 [&_.ant-tabs-nav::before]:border-(--color-border-1) [&_.ant-tabs-tab-btn]:text-sm [&_.ant-tabs-tab-active_.ant-tabs-tab-btn]:text-(--color-primary) [&_.ant-tabs-ink-bar]:h-0.5 [&_.ant-tabs-ink-bar]:bg-(--color-primary)"
+            activeKey={activeSection}
+            onChange={(key) => setDrawerSection(key as 'data' | 'interaction')}
+            items={[
+              {
+                key: 'data',
+                label: (
+                  <ConfigSectionTabLabel icon={<DataSectionTabIcon />}>
+                    {t('dashboard.interactionDataTab', '数据')}
+                  </ConfigSectionTabLabel>
+                ),
+              },
+              {
+                key: 'interaction',
+                label: (
+                  <ConfigSectionTabLabel icon={<InteractionSectionTabIcon />}>
+                    {t('dashboard.interactionTab', '交互')}
+                  </ConfigSectionTabLabel>
+                ),
+              },
+            ]}
+          />
+        ) : null}
 
         <Form.Item name="sceneWidgetType" hidden>
           <Input />
         </Form.Item>
+
+        <div className={activeSection === 'data' ? undefined : 'hidden'}>
 
         {isApplication3D ? <Application3DWallFields /> : null}
 
@@ -1403,7 +1559,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 t={t}
                 displayColumns={tableConfig.displayColumns}
                 displayColumnOptions={displayColumnOptions}
-                actions={actions}
                 filterFields={tableConfig.filterFields}
                 filterFieldOptions={filterFieldOptions}
                 showFilterFields={showTableFilterFields}
@@ -1416,20 +1571,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 onDeleteFilterField={tableConfig.handleDeleteFilterField}
                 onFilterFieldChange={tableConfig.handleFilterFieldChange}
                 onAddDisplayColumn={tableConfig.handleAddDisplayColumn}
-                onDeleteDisplayColumn={(id) => {
-                  const deletingColumn = tableConfig.displayColumns.find(
-                    (column) => column.id === id,
-                  );
-                  tableConfig.handleDeleteDisplayColumn(id);
-                  if (deletingColumn?.columnType === 'actions') {
-                    setActions((prev) =>
-                      prev.filter(
-                        (action) =>
-                          action.columnKey !== deletingColumn.key,
-                      ),
-                    );
-                  }
-                }}
+                onDeleteDisplayColumn={tableConfig.handleDeleteDisplayColumn}
                 onDisplayColumnChange={tableConfig.handleDisplayColumnChange}
                 onDisplayColumnStyleChange={
                   tableConfig.handleDisplayColumnStyleChange
@@ -1443,15 +1585,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                     tableConfig.createDefaultFilterField(),
                   ])
                 }
-                onAddNewDisplayColumn={(columnType = 'data') =>
+                onAddNewDisplayColumn={() =>
                   tableConfig.setDisplayColumns([
                     ...tableConfig.displayColumns,
-                    columnType === 'actions'
-                      ? tableConfig.createDefaultOperationColumn()
-                      : tableConfig.createDefaultDisplayColumn(),
+                    tableConfig.createDefaultDisplayColumn(),
                   ])
                 }
-                onActionsChange={setActions}
               />
             )}
 
@@ -1591,6 +1730,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             )}
           </WidgetDatasourceChartTypeFields>
         )}
+        </div>
+
+        <div className={activeSection === 'interaction' ? undefined : 'hidden'}>
+          <InteractionLinkSection
+            t={t}
+            chartType={watchedFormValues?.sceneWidgetType || chartType}
+            definitions={filterDefinitions}
+            rawData={previewRawData}
+            fieldConfig={watchedFormValues}
+            titleLinkUnavailable={surface === 'screen' && screenFrame === 'bare'}
+          />
+        </div>
 
       </Form>
         </div>

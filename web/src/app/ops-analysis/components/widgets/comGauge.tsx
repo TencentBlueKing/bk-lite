@@ -1,4 +1,11 @@
 import React, { useMemo } from 'react';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import {
+  escapeInteractionTooltipHtml,
+  resolveDataLinkTooltipTheme,
+  wrapDataLinkTooltipFormatter,
+} from '@/app/ops-analysis/utils/interactionLinkHint';
+import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
@@ -24,6 +31,7 @@ import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFini
 import {
   getOpsChartThemeByMode,
   isScreenChartThemeMode,
+  resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 
 interface ComGaugeProps {
@@ -92,18 +100,59 @@ const ComGauge: React.FC<ComGaugeProps> = ({
       ],
       axisLineWidth,
     });
-  const { onEvents } = useEchartsFinishedReady({
+  const { onEvents: finishedEvents } = useEchartsFinishedReady({
     loading,
     isDataReady: hasData,
     canReportReady: hasValidContainerSize,
     onReady,
   });
+  const { onChartClick, link, surface, chartTooltipHint, showDataLinkHint } = useWidgetDataLink(config);
+  const linkTooltipTheme = resolveDataLinkTooltipTheme(
+    config?.chartThemeMode,
+    resolveOpsChartThemeName(),
+  );
+  const gaugePoint = useMemo(
+    () => buildInteractionPoints('gauge', rawData, config)[0],
+    [config, rawData],
+  );
+  const onEvents = useMemo(
+    () => ({ ...finishedEvents, click: onChartClick }),
+    [finishedEvents, onChartClick],
+  );
 
   const option = useMemo(() => {
     const currentValue = clamp(numericValue ?? safeMin, safeMin, safeMax);
+    const linkFormatter = showDataLinkHint
+      ? wrapDataLinkTooltipFormatter(
+        () => `<div>${escapeInteractionTooltipHtml(displayValue)}</div>`,
+        {
+          surface,
+          link,
+          footerText: chartTooltipHint,
+          theme: linkTooltipTheme,
+        },
+      )
+      : undefined;
 
     return {
       animation: true,
+      ...(linkFormatter ? {
+        tooltip: {
+          trigger: 'item' as const,
+          confine: true,
+          backgroundColor: chartTheme.tooltipBackgroundColor,
+          borderWidth: 1,
+          borderColor: chartTheme.tooltipBorderColor,
+          extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
+          textStyle: {
+            fontSize: usesScreenTheme
+              ? scaleScreenMetric(12, screenRenderContext)
+              : 12,
+            color: chartTheme.tooltipTextColor,
+          },
+          formatter: linkFormatter,
+        },
+      } : {}),
       series: [
         {
           type: 'gauge',
@@ -199,15 +248,28 @@ const ComGauge: React.FC<ComGaugeProps> = ({
             color,
             formatter: () => displayValue,
           },
-          data: [{ value: currentValue }],
+          data: [{
+            value: currentValue,
+            ...(gaugePoint ? { __link: gaugePoint } : {}),
+          }],
         },
       ],
     };
   }, [
     color,
+    gaugePoint,
     chartTheme.axisLineColor,
     chartTheme.singleValueMetaColor,
     chartTheme.splitLineColor,
+    chartTheme.tooltipBackgroundColor,
+    chartTheme.tooltipBorderColor,
+    chartTheme.tooltipShadow,
+    chartTheme.tooltipTextColor,
+    chartTooltipHint,
+    showDataLinkHint,
+    link,
+    linkTooltipTheme,
+    surface,
     config?.gaugeShape,
     displayValue,
     geometry.center,

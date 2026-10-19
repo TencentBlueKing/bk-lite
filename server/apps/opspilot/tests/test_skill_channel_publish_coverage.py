@@ -445,6 +445,29 @@ class TestChatServiceUnit:
         content = chat_svc.assemble_assistant_persist_content(parsed)
         assert json.loads(content)[0]["name"] == "planned_execution_status"
         assert chat_svc.visible_assistant_text(content) == "现在是下午两点"
+        generated = json.dumps(
+            [
+                {"type": "TOOL_CALL_START", "toolCallId": "t1", "toolCallName": "generate_attachment_file"},
+                {
+                    "type": "TOOL_CALL_RESULT",
+                    "toolCallId": "t1",
+                    "content": json.dumps(
+                        {
+                            "filename": "主机磁盘资源_v1.0.docx",
+                            "file_url": "https://secret.example/workflow_attachment/download/token",
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+                {"type": "TEXT_MESSAGE_CONTENT", "delta": "报告已写好。"},
+            ],
+            ensure_ascii=False,
+        )
+        visible = chat_svc.visible_assistant_text(generated)
+        assert "主机磁盘资源_v1.0.docx" in visible
+        assert "报告已写好" in visible
+        assert "secret.example" not in visible
+        assert "file_url" not in visible
         ephemeral = chat_svc.assemble_assistant_persist_content(
             events
             + [

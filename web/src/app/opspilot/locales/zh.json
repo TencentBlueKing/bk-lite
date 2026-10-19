@@ -84,6 +84,8 @@
     "batchDelete": "批量删除",
     "batchDeleteImpact": "批量删除影响预览",
     "batchDeleteCount": "将删除 {count} 条资料",
+    "batchDeletePartial": "已删除 {deleted} 条，未完成：{failed}。未继续处理 {notAttempted} 条：{notAttemptedNames}",
+    "batchDeleteFailed": "已删除 {deleted} 条，未完成：{failed}",
     "buildNeedParse": "请先完成解析",
     "statusPending": "未构建",
     "statusQueued": "排队中",
@@ -314,6 +316,8 @@
     "reindexPage": "重跑索引",
     "reindexPageDone": "重跑索引完成",
     "importOkf": "导入 OKF",
+    "okfImportProgress": "正在导入 {progress}%",
+    "okfImportEnriching": "正在完善检索",
     "exportOkf": "导出 OKF",
     "reindexKnowledgeBase": "重建索引",
     "reindexKnowledgeBaseTip": "重建该知识库全部启用知识页面的页面索引与分块索引,并记录构建结果用于诊断。",
@@ -321,6 +325,7 @@
     "reindexKnowledgeBaseDone": "知识库索引重建完成",
     "operator": "操作人",
     "detail": "详情",
+    "detailTitle": "知识库详情",
     "refreshSnapshot": "更新快照",
     "original": "原文",
     "parsedMarkdown": "解析正文",
@@ -796,6 +801,9 @@
     "batchFailureCount": "共 {count} 项"
   },
   "studio": {
+    "detail": {
+      "title": "应用详情"
+    },
     "pageTitle": "工作台",
     "pageDescription": "管理机器人应用，配置渠道发布与对话能力",
     "settings": {
@@ -911,6 +919,23 @@
     "mcpUrl": "链接",
     "transport": "传输类型",
     "label": "标签",
+    "systemTags": {
+      "monitoring_alert": "监控告警",
+      "log": "日志",
+      "asset": "资产",
+      "database": "数据库",
+      "container": "容器",
+      "release": "发布",
+      "host_identity": "主机与身份",
+      "retrieval": "检索",
+      "general": "通用",
+      "platform_app": "平台应用"
+    },
+    "userTags": "用户标签",
+    "allTags": "全部",
+    "moreTags": "更多 {count}",
+    "collapseTags": "收起",
+    "systemTagsReadonly": "系统标签",
     "maintenance": "运维",
     "subTools": "子工具",
     "other": "其他",
@@ -1642,6 +1667,9 @@
     }
   },
   "skill": {
+    "detail": {
+      "title": "智能体详情"
+    },
     "pageTitle": "智能体",
     "toolDescriptionDefault": "提供智能体外部接口调用与自动化能力",
     "pageDescription": "配置 LLM、知识库与工具，编排问答与自动化能力",
@@ -1713,6 +1741,9 @@
       "copyLink": "链接",
       "copyCallback": "回调",
       "viewDocs": "文档",
+      "aibotLongConnection": "连接方式",
+      "aibotShort": "使用 URL 回调",
+      "aibotLong": "使用长连接",
       "embeddedApiInfo": "提供可通过 WebChat 嵌入网页的对话接口。保存渠道后即可复制下方调用地址。",
       "embeddedSaveHint": "保存渠道后，可在列表中复制对接链接。",
       "callbackUrl": "回调地址",
@@ -1749,6 +1780,7 @@
         "corp_id": "企业 ID",
         "agent_id": "应用 Agent ID",
         "encodingAESKey": "EncodingAESKey",
+        "botId": "BotID",
         "client_id": "Client ID",
         "client_secret": "Client Secret",
         "app_id": "App ID",
@@ -1909,6 +1941,8 @@
     "chatHistoryEnabledPrefix": "携带最近",
     "chatHistoryEnabledSuffix": "轮对话",
     "chatHistoryDisabledHint": "单轮问答（不携带上下文）",
+    "runModelCallLimit": "每步调用次数",
+    "runModelCallLimitTip": "每个执行步骤里，模型可以发起调用的次数上限。达到后询问是否继续。",
     "chatEnhancement": "聊天增强",
     "capabilityExpand": "能力拓展",
     "useTemp": "使用该模板",

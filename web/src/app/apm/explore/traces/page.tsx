@@ -693,7 +693,14 @@ export default function ApmTracesPage() {
       width: '38%',
       ellipsis: true,
       responsive: ['sm'],
-      render: (value) => <span className="truncate font-mono text-xs font-medium text-[var(--color-text-1)]">{value}</span>,
+      render: (value: string, item) => (
+        <Link
+          href={`/apm/explore/traces/${encodeURIComponent(item.trace_id)}?span_id=${encodeURIComponent(item.span_id)}`}
+          className="block truncate font-mono text-xs font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+        >
+          {value}
+        </Link>
+      ),
     },
     {
       title: 'HTTP',
@@ -742,6 +749,21 @@ export default function ApmTracesPage() {
         <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
           {formatRelativeTime(value, t)}
         </span>
+      ),
+    },
+    {
+      title: t('apm.common.operation', '操作'),
+      key: 'actions',
+      width: APM_TABLE_COLUMN_WIDTHS.singleAction,
+      align: 'right',
+      fixed: 'right',
+      render: (_, item) => (
+        <Link
+          href={`/apm/explore/traces/${encodeURIComponent(item.trace_id)}?span_id=${encodeURIComponent(item.span_id)}`}
+          className="text-xs font-medium text-[var(--color-primary)] hover:underline"
+        >
+          {t('apm.explore.traceDetail', '详情')}
+        </Link>
       ),
     },
   ], [t]);

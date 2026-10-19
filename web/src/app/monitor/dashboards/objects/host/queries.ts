@@ -1,4 +1,4 @@
-/** Host 磁盘挂载点 TopN */
+/** Host 磁盘挂载点 TopN，单机盘「磁盘与进程」区沿用。 */
 export const HOST_DISK_TOP_N = 8;
 
 interface GuideItem {
@@ -16,6 +16,8 @@ export interface HostTopQuery {
   guide: GuideItem[];
 }
 
+const UNIX_REMOTE = 'config_type=~"host_(aix|freebsd|hpux|solaris)_remote"';
+
 export const HOST_TOP_QUERIES: HostTopQuery[] = [
   {
     key: 'disk',
@@ -23,7 +25,237 @@ export const HOST_TOP_QUERIES: HostTopQuery[] = [
     unit: 'percent',
     color: '#F59E0B',
     labelKeys: ['path', 'device'],
-    query: `topk(${HOST_DISK_TOP_N}, max by (path, device) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_used_percent_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__}))`,
+    query: `topk(${HOST_DISK_TOP_N}, max by (path, device) (disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_used_percent_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}))`,
     guide: [{ label: '磁盘排行', detail: '按挂载点/设备使用率最高排序，定位最满分区。' }]
+  }
+];
+
+export interface HostEntityMetricQuery {
+  key: string;
+  unit: 'percent' | 'byteps' | 'cps' | 'ms' | 'celsius' | 'watts' | 'mebibytes' | 'bytes' | 'counts' | 'none';
+  /** 行身份与展示优先使用的标签，不发明 inventory 之外的指标名。 */
+  labelKeys: string[];
+  query: string;
+}
+
+const WIN_LOGICAL_DISK = 'instance=~"[A-Z]:"';
+
+/**
+ * 磁盘繁忙度。对齐 Telegraf host/os：Linux 用 rate(diskio_io_time)/10，
+ * Windows 空闲时间优先，并用 unless 丢掉 io_time 零值。
+ */
+const diskIoUtilEntityQuery = () => {
+  const windowsIdle = `win_logicaldisk_idle_percent{instance_type="os", ${WIN_LOGICAL_DISK}, __$labels__}`;
+  const windows = `label_replace(clamp_max(clamp_min(100 - ${windowsIdle}, 0), 100), "name", "$1", "instance", "(.*)")`;
+  const idleNamed = `label_replace(${windowsIdle}, "name", "$1", "instance", "(.*)")`;
+  const telegraf = `(rate(diskio_io_time{instance_type="os", __$labels__}[__$window__]) / 10)`;
+  return [
+    windows,
+    `(${telegraf} unless on(instance_id, name) ${idleNamed})`,
+    `(rate(diskio_io_time_ms_gauge{instance_type="os", __$labels__}[__$window__]) / 10)`,
+    `diskio_io_util{instance_type="os", __$labels__}`,
+    `diskio_io_util_gauge{instance_type="os", __$labels__}`,
+    `diskio_io_util_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}`,
+    `disk_tm_act_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  ].join(' or ');
+};
+
+/** 读/写 IOPS：Telegraf 计数、远程累计和 Windows 计数都折成每秒，不造 0。 */
+const diskIopsEntityQuery = (kind: 'reads' | 'writes') => [
+  `rate(diskio_${kind}{instance_type="os", __$labels__}[__$window__])`,
+  `rate(diskio_${kind}_total_gauge{instance_type="os", __$labels__}[__$window__])`,
+  `rate(diskio_${kind}_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])`
+].join(' or ');
+
+/** 已是毫秒的直出值优先；没有时再用 Telegraf / 远程累计时间除以次数。 */
+const diskLatencyEntityQuery = (kind: 'read' | 'write') => {
+  const windows = `label_replace(win_logicaldisk_${kind}_latency_ms{instance_type="os", ${WIN_LOGICAL_DISK}, __$labels__}, "name", "$1", "instance", "(.*)")`;
+  const telegraf = `(rate(diskio_${kind}_time{instance_type="os", __$labels__}[__$window__]) / rate(diskio_${kind}s{instance_type="os", __$labels__}[__$window__]))`;
+  const remote = `(rate(diskio_${kind}_time_ms_gauge{instance_type="os", __$labels__}[__$window__]) / rate(diskio_${kind}s_total_gauge{instance_type="os", __$labels__}[__$window__]))`;
+  return [
+    `disk_${kind}_latency{instance_type="os", __$labels__}`,
+    `disk_${kind}_latency_gauge{instance_type="os", __$labels__}`,
+    `disk_${kind}_latency_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}`,
+    windows,
+    `(${telegraf} unless on(instance_id, name) ${windows})`,
+    remote
+  ].join(' or ');
+};
+
+const netPacketRateQuery = (direction: 'recv' | 'sent') => (
+  `rate(net_packets_${direction}{instance_type="os", __$labels__}[__$window__])`
+  + ` or rate(net_packets_${direction}_gauge{instance_type="os", __$labels__}[__$window__])`
+  + ` or rate(net_packets_${direction}_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])`
+);
+
+/** 磁盘表：保留 path/device/name，禁止 sum 成一条主机合计。 */
+export const HOST_DISK_ENTITY_QUERIES: HostEntityMetricQuery[] = [
+  {
+    key: 'disk_used_percent',
+    unit: 'percent',
+    labelKeys: ['path', 'mount', 'device', 'fstype'],
+    query: `disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_used_percent_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  },
+  {
+    key: 'disk_total',
+    unit: 'bytes',
+    labelKeys: ['path', 'mount', 'device', 'fstype'],
+    query: `disk_total{instance_type="os", __$labels__} or host_disk_total_bytes{instance_type="os", __$labels__} or disk_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_total_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  },
+  {
+    key: 'disk_free',
+    unit: 'bytes',
+    labelKeys: ['path', 'mount', 'device', 'fstype'],
+    query: `disk_free{instance_type="os", __$labels__} or host_disk_free_bytes{instance_type="os", __$labels__} or disk_free_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_free_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  },
+  {
+    key: 'disk_inodes_used_percent',
+    unit: 'percent',
+    labelKeys: ['path', 'mount', 'device', 'fstype'],
+    query: 'disk_inodes_used_percent{instance_type="os", __$labels__} or disk_inodes_used_percent_gauge{instance_type="os", __$labels__}'
+  },
+  {
+    key: 'diskio_io_util',
+    unit: 'percent',
+    labelKeys: ['name', 'device'],
+    query: diskIoUtilEntityQuery()
+  },
+  {
+    key: 'diskio_read_bytes_rate',
+    unit: 'byteps',
+    labelKeys: ['name', 'device'],
+    query: `rate(diskio_read_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type="os", config_type!~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  },
+  {
+    key: 'diskio_write_bytes_rate',
+    unit: 'byteps',
+    labelKeys: ['name', 'device'],
+    query: `rate(diskio_write_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type="os", config_type!~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_write_bytes_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  },
+  {
+    key: 'diskio_reads_rate',
+    unit: 'cps',
+    labelKeys: ['name', 'device'],
+    query: diskIopsEntityQuery('reads')
+  },
+  {
+    key: 'diskio_writes_rate',
+    unit: 'cps',
+    labelKeys: ['name', 'device'],
+    query: diskIopsEntityQuery('writes')
+  },
+  {
+    key: 'disk_read_latency',
+    unit: 'ms',
+    labelKeys: ['name', 'device'],
+    query: diskLatencyEntityQuery('read')
+  },
+  {
+    key: 'disk_write_latency',
+    unit: 'ms',
+    labelKeys: ['name', 'device'],
+    query: diskLatencyEntityQuery('write')
+  }
+];
+
+/** 网卡表：按 interface 保留明细。调用方不得把无 interface 的合计序列画成单网卡。 */
+export const HOST_NET_ENTITY_QUERIES: HostEntityMetricQuery[] = [
+  {
+    key: 'net_bytes_recv_rate',
+    unit: 'byteps',
+    labelKeys: ['interface'],
+    query: 'rate(net_bytes_recv{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_recv_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_recv_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])'
+  },
+  {
+    key: 'net_bytes_sent_rate',
+    unit: 'byteps',
+    labelKeys: ['interface'],
+    query: 'rate(net_bytes_sent{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_sent_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_bytes_sent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])'
+  },
+  {
+    key: 'net_err_in_rate',
+    unit: 'cps',
+    labelKeys: ['interface'],
+    query: 'rate(net_err_in{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])'
+  },
+  {
+    key: 'net_err_out_rate',
+    unit: 'cps',
+    labelKeys: ['interface'],
+    query: 'rate(net_err_out{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])'
+  },
+  {
+    key: 'net_drop_in_rate',
+    unit: 'cps',
+    labelKeys: ['interface'],
+    query: 'rate(net_drop_in{instance_type="os", __$labels__}[__$window__]) or rate(net_drop_in_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_drop_in_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])'
+  },
+  {
+    key: 'net_drop_out_rate',
+    unit: 'cps',
+    labelKeys: ['interface'],
+    query: 'rate(net_drop_out{instance_type="os", __$labels__}[__$window__]) or rate(net_drop_out_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_drop_out_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])'
+  },
+  {
+    key: 'net_packets_recv_rate',
+    unit: 'cps',
+    labelKeys: ['interface'],
+    query: netPacketRateQuery('recv')
+  },
+  {
+    key: 'net_packets_sent_rate',
+    unit: 'cps',
+    labelKeys: ['interface'],
+    query: netPacketRateQuery('sent')
+  }
+];
+
+/** 分核：保留 cpu 维。无该维时性能页不画分核卡。 */
+export const HOST_CPU_CORE_ENTITY_QUERIES: HostEntityMetricQuery[] = [
+  {
+    key: 'cpu_usage_core',
+    unit: 'percent',
+    labelKeys: ['cpu'],
+    query: '100 - cpu_usage_idle{cpu!="cpu-total", instance_type="os", __$labels__}'
+  }
+];
+
+/** 主机专业仪表盘进程层：按 process_name 聚合，并保留 procstat 的 pattern 标签供选中行展示匹配规则。 */
+export const HOST_PROCESS_ENTITY_QUERIES: HostEntityMetricQuery[] = [
+  {
+    key: 'process_cpu_usage',
+    unit: 'percent',
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_cpu_usage{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
+  },
+  {
+    key: 'process_mem_usage',
+    unit: 'percent',
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_memory_usage{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
+  },
+  {
+    key: 'process_memory_rss',
+    unit: 'bytes',
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_memory_rss{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
+  },
+  {
+    key: 'process_num_threads',
+    unit: 'counts',
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_num_threads{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
+  },
+  {
+    key: 'process_num_fds',
+    unit: 'counts',
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_num_fds{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
+  },
+  {
+    key: 'process_alive',
+    unit: 'none',
+    labelKeys: ['process_name', 'pattern'],
+    query: 'clamp_max(count(procstat_cpu_usage{instance_type="process", __$labels__}) by (instance_id, process_name, pattern), 1)'
   }
 ];

@@ -35,6 +35,7 @@ import {
   resolveProcessNameFromInstance,
   withHostProcessMetricsTab
 } from '@/app/monitor/dashboards/objects/host/host-process-metrics-tab';
+import { shouldSkipPeriodicRefresh } from '@/app/monitor/utils/metricRequestSlot';
 import {
   MAX_CONCURRENT_REQUESTS,
   releaseMetricRequestSlot,
@@ -108,6 +109,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
 
   // 请求并发控制：与指标详情页一致，排队而非取消最早请求。
   const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
+  const refreshInFlightRef = useRef(false);
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
   const requestGenerationRef = useRef(0);
   const visibleMetricIdsRef = useRef<Set<number>>(new Set());
@@ -618,18 +620,30 @@ const MonitorView: React.FC<ViewModalProps> = ({
       return;
     }
     if (type === 'timer') {
-      snapshotActiveQueryWindow();
+      if (
+        shouldSkipPeriodicRefresh(
+          refreshInFlightRef.current || activeRequestsRef.current.size > 0
+        )
+      ) {
+        return;
+      }
       const visibleIds = Array.from(visibleMetricIdsRef.current);
       if (!visibleIds.length) {
         return;
       }
+      snapshotActiveQueryWindow();
       const visibleIdSet = new Set(visibleIds);
+      const jobs: Promise<unknown>[] = [];
+      refreshInFlightRef.current = true;
       metricDataRef.current.forEach((group) => {
         (group.child || []).forEach((metric: MetricItem) => {
           if (visibleIdSet.has(metric.id)) {
-            void fetchSingleMetricData(metric, { force: true });
+            jobs.push(fetchSingleMetricData(metric, { force: true }));
           }
         });
+      });
+      void Promise.allSettled(jobs).finally(() => {
+        refreshInFlightRef.current = false;
       });
     }
   };

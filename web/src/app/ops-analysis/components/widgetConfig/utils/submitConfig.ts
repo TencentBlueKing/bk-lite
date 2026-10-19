@@ -10,6 +10,7 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
+import { normalizeInteractionLink } from '@/app/ops-analysis/utils/interactionLink';
 import {
   isFiniteNumber,
   type ThresholdColorConfig,
@@ -94,12 +95,22 @@ export interface WidgetConfigFormValues {
     layout?: 'list' | 'grid';
   };
   actions?: DashboardActionConfig[];
+  interaction?: {
+    kind: 'none' | 'title' | 'data';
+    name: string;
+    url: string;
+    openMode: 'sameTab' | 'newTab';
+  };
   appearance?: ValueConfig['appearance'];
 }
 
 type SubmitDisplayColumn = TableColumnConfigItem & {
   id: string;
   isDefault?: boolean;
+};
+
+type DataSubmitColumn = Omit<SubmitDisplayColumn, 'columnType'> & {
+  columnType?: 'data';
 };
 
 type SubmitFilterField = TableFilterFieldConfig & {
@@ -130,7 +141,8 @@ export interface BuildWidgetSubmitConfigInput {
   filterBindings: FilterBindings;
   displayColumns: SubmitDisplayColumn[];
   filterFields: SubmitFilterField[];
-  actions: DashboardActionConfig[];
+  /** 旧操作列。提交忽略它，保存时由 applyInteractionLink 删掉 valueConfig.actions。 */
+  actions?: DashboardActionConfig[];
   /** 预览组装：映射与提交相同，但不因未填必填项拦截。 */
   forPreview?: boolean;
 }
@@ -160,6 +172,20 @@ export const persistRelatedTopologyConfig = (
     ...(modelId ? { modelId } : {}),
     ...(instUuid ? { instUuid } : {}),
   };
+};
+
+const applyInteractionLink = (
+  result: WidgetConfig,
+  values: WidgetConfigFormValues,
+  chartType: string,
+) => {
+  const link = normalizeInteractionLink(values.interaction, chartType);
+  if (link) {
+    result.interaction = link;
+  } else {
+    delete result.interaction;
+  }
+  delete result.actions;
 };
 
 const buildWidgetConfigBase = (
@@ -274,7 +300,9 @@ const buildTableConfig = ({
       key: column.key.trim(),
       title: column.title?.trim() || column.key.trim(),
     }))
-    .filter((column) => column.key);
+    .filter((column): column is DataSubmitColumn => (
+      Boolean(column.key) && column.columnType !== 'actions'
+    ));
 
   const duplicateKeySet = new Set<string>();
   const hasDuplicateKeys = validDisplayColumns.some((column) => {
@@ -307,7 +335,7 @@ const buildTableConfig = ({
       if (columnWidth !== undefined) {
         next.width = columnWidth;
       }
-      if (column.columnType === 'actions' || !includeCellStyle) {
+      if (!includeCellStyle) {
         return next;
       }
       if (column.cellType === 'colorBackground') {
@@ -434,6 +462,7 @@ export const omitForeignChartTypeFields = <T extends object>(
   } else {
     delete next.cardList;
   }
+  delete next.actions;
   if (chartType === 'multiValue') {
     if (!Array.isArray(next.thresholdColors) || next.thresholdColors.length === 0) {
       delete next.thresholdColors;
@@ -563,7 +592,6 @@ export const buildWidgetSubmitConfig = ({
   filterBindings,
   displayColumns,
   filterFields,
-  actions,
   forPreview = false,
 }: BuildWidgetSubmitConfigInput): BuildWidgetSubmitConfigResult => {
   if (values.sceneWidgetType) {
@@ -577,7 +605,9 @@ export const buildWidgetSubmitConfig = ({
         return { error: 'relatedTopologyInstUuidRequired' };
       }
     }
-    return { config: buildSceneWidgetConfig(values) };
+    const config = buildSceneWidgetConfig(values);
+    applyInteractionLink(config, values, values.sceneWidgetType);
+    return { config };
   }
 
   const result: WidgetConfig = buildWidgetConfigBase(values, chartType);
@@ -607,19 +637,7 @@ export const buildWidgetSubmitConfig = ({
     result.chartThemeMode = values.chartThemeMode;
   }
 
-  if (chartType === 'table') {
-    const displayColumnKeys = new Set(
-      displayColumns.map((column) => (column.key || '').trim()).filter(Boolean),
-    );
-    const validActions = actions.filter((action) =>
-      displayColumnKeys.has(action.columnKey),
-    );
-    if (validActions.length > 0) {
-      result.actions = validActions;
-    } else {
-      delete result.actions;
-    }
-  }
+  applyInteractionLink(result, values, chartType);
 
   if (chartType === 'single') {
     applySingleValueConfig(result, values, selectedFields, thresholdColors);

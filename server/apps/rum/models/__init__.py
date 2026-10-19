@@ -56,18 +56,23 @@ class RumAlertPolicy(models.Model):
     name = models.CharField(max_length=128)
     application = models.CharField(max_length=128, db_index=True)
     metric = models.CharField(max_length=64)
-    severity = models.CharField(max_length=32, default="critical")
-    comparator = models.CharField(max_length=8, default=">")
+    severity = models.CharField(max_length=32, default="warning")
+    comparator = models.CharField(max_length=8, default=">=")
     warn_threshold = models.FloatField(default=0)
     critical_threshold = models.FloatField(default=0)
-    for_duration_sec = models.IntegerField(default=0)
-    no_data = models.BooleanField(default=False)
-    renotify_minutes = models.IntegerField(null=True, blank=True)
+    evaluation_window_minutes = models.PositiveIntegerField(default=15)
+    for_duration_sec = models.PositiveIntegerField(default=300)
+    no_data_after = models.PositiveIntegerField(default=3)
+    renotify_minutes = models.PositiveIntegerField(null=True, blank=True)
+    handlers = models.JSONField(default=list)
     enabled = models.BooleanField(default=True, db_index=True)
-    signal = models.CharField(max_length=64, blank=True, default="")
-    notify_channels = models.JSONField(default=list)
-    pending_since = models.DateTimeField(null=True, blank=True)
-    recovering_since = models.DateTimeField(null=True, blank=True)
+    consecutive_hits = models.PositiveIntegerField(default=0)
+    consecutive_recoveries = models.PositiveIntegerField(default=0)
+    consecutive_no_data = models.PositiveIntegerField(default=0)
+    evaluation_cursor = models.CharField(max_length=64, blank=True, default="")
+    last_succeeded_at = models.DateTimeField(null=True, blank=True)
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    last_evaluation_result = models.CharField(max_length=16, blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -75,20 +80,126 @@ class RumAlertPolicy(models.Model):
         db_table = "rum_alert_policies"
 
 
-class RumAlertEvent(models.Model):
+class RumAlertPolicyOrganization(models.Model):
+    policy = models.ForeignKey(RumAlertPolicy, on_delete=models.CASCADE, related_name="organization_links")
+    organization = models.BigIntegerField(db_index=True)
+
+    class Meta:
+        db_table = "rum_alert_policy_organizations"
+        constraints = [
+            models.UniqueConstraint(fields=("policy", "organization"), name="rum_policy_org_uniq"),
+        ]
+
+
+class RumAlertPolicyNotificationTarget(models.Model):
+    policy = models.ForeignKey(RumAlertPolicy, on_delete=models.CASCADE, related_name="notification_targets")
+    channel_id = models.PositiveBigIntegerField(db_index=True)
+    channel_name = models.CharField(max_length=100, blank=True, default="")
+    channel_type = models.CharField(max_length=30, blank=True, default="")
+    delivery_mode = models.CharField(max_length=32)
+    recipient_mode = models.CharField(max_length=32)
+    recipients = models.JSONField(default=list)
+
+    class Meta:
+        db_table = "rum_alert_policy_targets"
+        constraints = [
+            models.UniqueConstraint(fields=("policy", "channel_id"), name="rum_policy_channel_uniq"),
+        ]
+
+
+class RumAlert(models.Model):
     id = models.CharField(primary_key=True, max_length=36, default=new_id, editable=False)
-    policy_id = models.CharField(max_length=36, db_index=True)
-    status = models.CharField(max_length=32, db_index=True)
+    policy = models.ForeignKey(
+        RumAlertPolicy,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="alerts",
+    )
+    policy_id_snapshot = models.CharField(max_length=36, db_index=True)
+    policy_name = models.CharField(max_length=128)
+    application = models.CharField(max_length=128, db_index=True)
+    metric = models.CharField(max_length=64)
+    comparator = models.CharField(max_length=8, blank=True, default="")
+    warn_threshold = models.FloatField(default=0)
+    critical_threshold = models.FloatField(default=0)
     severity = models.CharField(max_length=32, blank=True, default="")
-    metric_value = models.FloatField(default=0)
-    message = models.TextField(blank=True, default="")
-    fired_at = models.DateTimeField(null=True, blank=True)
-    resolved_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=16, default="active", db_index=True)
+    current_value = models.FloatField(null=True, blank=True)
+    organizations = models.JSONField(default=list)
+    handlers = models.JSONField(default=list)
+    operator = models.CharField(max_length=150, blank=True, default="")
+    renotify_count = models.PositiveIntegerField(default=0)
+    started_at = models.DateTimeField(db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    last_event_at = models.DateTimeField(db_index=True)
     last_notified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
+        db_table = "rum_alerts"
+
+
+class RumAlertEvent(models.Model):
+    id = models.CharField(primary_key=True, max_length=36, default=new_id, editable=False)
+    event_key = models.CharField(max_length=320, unique=True)
+    alert = models.ForeignKey(RumAlert, on_delete=models.CASCADE, related_name="events")
+    action = models.CharField(max_length=16, db_index=True)
+    occurred_at = models.DateTimeField(db_index=True)
+    severity = models.CharField(max_length=32, blank=True, default="")
+    value = models.FloatField(null=True, blank=True)
+    content = models.JSONField(default=dict)
+    organizations = models.JSONField(default=list)
+
+    class Meta:
         db_table = "rum_alert_events"
+        ordering = ("occurred_at", "id")
+
+
+class RumAlertDelivery(models.Model):
+    id = models.CharField(primary_key=True, max_length=36, default=new_id, editable=False)
+    delivery_key = models.CharField(max_length=384, unique=True)
+    event = models.ForeignKey(
+        RumAlertEvent,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="deliveries",
+    )
+    alert = models.ForeignKey(RumAlert, on_delete=models.CASCADE, related_name="deliveries")
+    channel_id = models.PositiveBigIntegerField(null=True, blank=True, db_index=True)
+    channel_name = models.CharField(max_length=100, blank=True, default="")
+    channel_type = models.CharField(max_length=30, blank=True, default="")
+    delivery_mode = models.CharField(max_length=32, blank=True, default="message")
+    recipients = models.JSONField(default=list)
+    title = models.CharField(max_length=512, blank=True, default="")
+    body = models.TextField(blank=True, default="")
+    payload = models.JSONField(default=dict)
+    status = models.CharField(max_length=16, default="pending", db_index=True)
+    attempts = models.PositiveIntegerField(default=0)
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    last_error_code = models.CharField(max_length=128, blank=True, default="")
+    last_error_message = models.CharField(max_length=512, blank=True, default="")
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "rum_alert_deliveries"
+
+
+class RumAlertDeliveryRetry(models.Model):
+    id = models.CharField(primary_key=True, max_length=36, default=new_id, editable=False)
+    delivery = models.ForeignKey(RumAlertDelivery, on_delete=models.CASCADE, related_name="manual_retries")
+    requested_by = models.CharField(max_length=150)
+    previous_attempts = models.PositiveIntegerField(default=0)
+    previous_error_code = models.CharField(max_length=128, blank=True, default="")
+    previous_error_message = models.CharField(max_length=512, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "rum_alert_delivery_retries"
 
 
 class RumSavedView(models.Model):

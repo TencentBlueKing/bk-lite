@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TableSettingsSection } from '../tableSettingsSection';
 
@@ -24,12 +24,12 @@ vi.mock('@/components/custom-table', () => ({
     </div>
   ),
 }));
-vi.mock('../actionInteractionModal', () => ({ ActionInteractionModal: () => null }));
 vi.mock('../columnCellStyleModal', () => ({ ColumnCellStyleModal: () => null }));
 
 afterEach(cleanup);
 
-const renderSection = (showColumnCellStyle: boolean) =>
+const renderSection = (showColumnCellStyle: boolean) => {
+  const onAddNewDisplayColumn = vi.fn();
   render(
     <TableSettingsSection
       t={(key) => key}
@@ -37,7 +37,6 @@ const renderSection = (showColumnCellStyle: boolean) =>
         { id: 'status', key: 'status', title: '状态', visible: true, order: 0 },
       ]}
       displayColumnOptions={[{ label: '状态', value: 'status' }]}
-      actions={[]}
       filterFields={[]}
       filterFieldOptions={[]}
       showFilterFields={false}
@@ -57,10 +56,11 @@ const renderSection = (showColumnCellStyle: boolean) =>
       onDisplayColumnDragEnd={vi.fn()}
       onReProbeColumns={vi.fn()}
       onAddNewFilterField={vi.fn()}
-      onAddNewDisplayColumn={vi.fn()}
-      onActionsChange={vi.fn()}
+      onAddNewDisplayColumn={onAddNewDisplayColumn}
     />,
   );
+  return { onAddNewDisplayColumn };
+};
 
 describe('TableSettingsSection cell style visibility', () => {
   it('shows the cell style entry for table', () => {
@@ -71,10 +71,15 @@ describe('TableSettingsSection cell style visibility', () => {
   });
 
   it('hides only the cell style entry for eventTable', () => {
-    renderSection(false);
+    const { onAddNewDisplayColumn } = renderSection(false);
     expect(
       screen.queryByRole('button', { name: 'dashboard.columnCellStyleConfig' }),
     ).toBeNull();
     expect(screen.getByDisplayValue('status')).toBeTruthy();
+    expect(screen.queryByText('dashboard.addOperationColumn')).toBeNull();
+    expect(screen.getByText('common.add')).toBeTruthy();
+    fireEvent.click(screen.getByText('common.add'));
+    expect(onAddNewDisplayColumn).toHaveBeenCalledTimes(1);
+    expect(onAddNewDisplayColumn).toHaveBeenCalledWith('data');
   });
 });

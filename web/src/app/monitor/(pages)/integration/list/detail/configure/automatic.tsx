@@ -1855,6 +1855,22 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     try {
       setConfirmLoading(true);
       const collectResult = await updateNodeChildConfig(params);
+      const policyGroupResults = Array.isArray(collectResult?.policy_group_results)
+        ? collectResult.policy_group_results
+        : [];
+      const policyGroupProblems = policyGroupResults.filter(
+        (item: { outcome?: string; reason?: string; instance_id?: string }) =>
+          item?.outcome === 'failed' || item?.outcome === 'refresh_failed'
+      );
+      if (policyGroupProblems.length) {
+        message.warning(
+          policyGroupProblems
+            .map((item: { instance_id?: string; reason?: string }) =>
+              `${item.instance_id || ''}：${item.reason || '策略组加入失败，可在实例页重新加入'}`
+            )
+            .join('；')
+        );
+      }
       let didPersistMetrics = false;
       if (
         isScriptTemplate &&
@@ -2085,6 +2101,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }))}
         />
       </Form.Item>
+      <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
+        {t(
+          'monitor.integrations.policyGroupExistingKept',
+          '只作用于本次新建的实例。已经接入的实例保持原策略组。'
+        )}
+      </div>
       {policyGroupNote?.kind === 'no-plugin-rules' ? (
         <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
           {t(

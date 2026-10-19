@@ -28,6 +28,7 @@ import SearchActionBar from '@/components/search-action-bar';
 import TopSection from '@/components/top-section';
 import Password from '@/components/password';
 import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
+import Permission from '@/components/permission';
 
 const { Dragger } = Upload;
 const TARGET_DATA_COLUMN_COUNT = 7;
@@ -465,24 +466,28 @@ const TargetPage = () => {
       fixed: 'right',
       render: (_: unknown, record: Target) => (
         <div className="flex items-center gap-3">
-          <a
-            className="text-(--color-primary) cursor-pointer"
-            onClick={() => openEditModal(record)}
-          >
-            {t('job.editRule')}
-          </a>
-          <Popconfirm
-            title={t('job.deleteTarget')}
-            description={t('job.deleteTargetConfirm')}
-            okText={t('job.confirm')}
-            cancelText={t('job.cancel')}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => handleDelete(record)}
-          >
-            <a className="text-(--color-primary) cursor-pointer">
-              {t('job.deleteTarget')}
+          <Permission requiredPermissions={['Edit']}>
+            <a
+              className="text-(--color-primary) cursor-pointer"
+              onClick={() => openEditModal(record)}
+            >
+              {t('job.editRule')}
             </a>
-          </Popconfirm>
+          </Permission>
+          <Permission requiredPermissions={['Delete']}>
+            <Popconfirm
+              title={t('job.deleteTarget')}
+              description={t('job.deleteTargetConfirm')}
+              okText={t('job.confirm')}
+              cancelText={t('job.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => handleDelete(record)}
+            >
+              <a className="text-(--color-primary) cursor-pointer">
+                {t('job.deleteTarget')}
+              </a>
+            </Popconfirm>
+          </Permission>
         </div>
       ),
     },
@@ -507,13 +512,15 @@ const TargetPage = () => {
             onSearch: handleSearch,
           }}
           actions={(
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openAddModal}
-            >
-              {t('common.new')}
-            </Button>
+            <Permission requiredPermissions={['Add']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openAddModal}
+              >
+                {t('common.new')}
+              </Button>
+            </Permission>
           )}
         />
 

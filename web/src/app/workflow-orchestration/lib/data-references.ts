@@ -327,7 +327,29 @@ export function dataReferenceCompatibility(reference: DataReferenceOption, targe
   if (reference.sensitive && !targetSchema.secretCompatible) return { compatible: false, reason: '目标字段未声明可接收敏感值' };
   if (reference.type === targetType) return { compatible: true };
   if (reference.type === 'integer' && targetType === 'number') return { compatible: true };
+  if (targetType === 'string') {
+    // 宽收：标题/通知正文等；默认仅 string（URL、query、content 等）
+    if (targetSchema['x-text-surface'] === 'coerce') return { compatible: true };
+    return { compatible: false, reason: `来源类型 ${reference.type} 不能绑定到 string` };
+  }
   return { compatible: false, reason: `来源类型 ${reference.type} 不能绑定到 ${targetType}` };
+}
+
+export function coerceResolvedValueForSchema(value: unknown, targetSchema: JsonSchema | undefined): unknown {
+  if (!targetSchema || normalizedType(targetSchema) !== 'string') return value;
+  if (value == null || typeof value === 'string') return value;
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+export function coerceResolvedInputsForSchema(
+  inputs: Record<string, unknown>,
+  schema: JsonSchema | undefined,
+): Record<string, unknown> {
+  const properties = schema?.properties || {};
+  return Object.fromEntries(Object.entries(inputs).map(([key, value]) => (
+    [key, coerceResolvedValueForSchema(value, properties[key])]
+  )));
 }
 
 export function compatibleDataReferences(references: DataReferenceOption[], targetSchema: JsonSchema): DataReferenceOption[] {

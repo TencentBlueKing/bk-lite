@@ -20,6 +20,7 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import Permission from '@/components/permission';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import { resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import assetStyle from '../strategy/index.module.scss';
 import ThresholdList, { ThresholdItem } from '../strategy/detail/thresholdList';
 import SelectCard from '../strategy/detail/selectCard';
@@ -33,6 +34,7 @@ interface PolicyGroupRule {
   name: string;
   plugin_name: string;
   threshold: Array<{ level?: string; method?: string; value?: number }>;
+  open_alert_count?: number;
 }
 
 interface PolicyGroupRow {
@@ -48,6 +50,7 @@ interface PolicyGroupRow {
   notice_uniform?: boolean;
   enable?: boolean;
   enable_uniform?: boolean;
+  open_alert_count?: number;
 }
 
 interface TemplateOption {
@@ -60,6 +63,7 @@ const MEMBER_STATE: Record<string, string> = {
   member: '在组',
   declined: '不自动入组',
   skipped: '未入组',
+  failed: '加入失败',
 };
 
 interface InstanceCandidate {
@@ -208,6 +212,7 @@ const PolicyGroupPage: React.FC = () => {
         name: name || undefined,
         page,
         page_size: pageSize,
+        create_default: false,
       });
       const items = Array.isArray(data) ? data : data?.items || [];
       const total = Array.isArray(data) ? items.length : Number(data?.count || 0);
@@ -228,20 +233,13 @@ const PolicyGroupPage: React.FC = () => {
     setTreeLoading(true);
     getMonitorObject({ add_instance_count: true })
       .then((data: ObjectItem[]) => {
-        const grouped = data.reduce((acc, item) => {
-          if (!acc[item.type]) {
-            acc[item.type] = { title: item.display_type || '--', key: item.type, children: [] };
-          }
-          acc[item.type].children.push({
-            title: item.display_name || item.name || '--',
-            label: item.name || '--',
-            key: item.id,
-            icon: item.icon,
-            children: [],
-          });
-          return acc;
-        }, {} as Record<string, TreeItem>);
-        const tree = Object.values(grouped);
+        const tree = buildMonitorObjectSidebarTree(data, (item) => ({
+          title: item.display_name || item.name || '--',
+          label: item.name || '--',
+          key: item.id,
+          icon: item.icon,
+          children: [],
+        }));
         const key = resolveMonitorObjectTreeKey(
           data,
           resolveMonitorObjectQueryId({ searchParams, objects: data, fallback: data[0]?.id }),
@@ -416,7 +414,7 @@ const PolicyGroupPage: React.FC = () => {
     }
   };
 
-  const changeGroupEnable = async (record: PolicyGroupRow, enable: boolean) => {
+  const submitGroupEnable = async (record: PolicyGroupRow, enable: boolean) => {
     if (enableSavingId != null) return;
     setEnableSavingId(record.id);
     try {
@@ -428,6 +426,20 @@ const PolicyGroupPage: React.FC = () => {
     }
   };
 
+  const changeGroupEnable = (record: PolicyGroupRow, enable: boolean) => {
+    if (enableSavingId != null) return;
+    if (enable) {
+      void submitGroupEnable(record, true);
+      return;
+    }
+    const count = record.open_alert_count || 0;
+    Modal.confirm({
+      title: '停用策略组',
+      content: `停用后停止扫描，并结束 ${count} 条未恢复告警。成员仍留在组里。`,
+      onOk: () => submitGroupEnable(record, false),
+    });
+  };
+
   const templateGroups = templateOptions.reduce((acc, item) => {
     const found = acc.find((group) => group.name === item.pluginName);
     if (found) found.items.push(item);
@@ -436,7 +448,19 @@ const PolicyGroupPage: React.FC = () => {
   }, [] as Array<{ name: string; items: TemplateOption[] }>);
 
   const columns: ColumnItem[] = [
-    { title: t('common.name'), dataIndex: 'name', key: 'name' },
+    {
+      title: t('common.name'),
+      dataIndex: 'name',
+      key: 'name',
+      render: (_, record) => (
+        <span className="inline-flex items-center gap-2">
+          <span>{record.name}</span>
+          {record.notice_uniform !== false && !(record.notice_type_ids || []).length ? (
+            <StatusToneBadge tone="warning" label="未配置通知" />
+          ) : null}
+        </span>
+      ),
+    },
     {
       title: '默认',
       dataIndex: 'is_default',
@@ -485,7 +509,7 @@ const PolicyGroupPage: React.FC = () => {
             size="small"
             loading={enableSavingId === record.id}
             checked={Boolean(record.enable)}
-            onChange={(value) => void changeGroupEnable(record as PolicyGroupRow, value)}
+            onChange={(value) => changeGroupEnable(record as PolicyGroupRow, value)}
           />
         );
         return (
@@ -523,7 +547,7 @@ const PolicyGroupPage: React.FC = () => {
             复制
           </Button>
           <Popconfirm
-            title="删除后，成员记为不自动入组，未恢复告警会结束。若这是默认组，之后新实例不再自动告警。"
+            title={`删除后，成员记为不自动入组，将结束 ${record.open_alert_count || 0} 条未恢复告警。若这是默认组，之后新实例不再自动告警。`}
             onConfirm={async () => {
               await deletePolicyGroup(Number(record.id));
               message.success(t('common.successfullyDeleted'));
@@ -552,7 +576,17 @@ const PolicyGroupPage: React.FC = () => {
     rulePagination.current * rulePagination.pageSize
   );
 
-  const saveRule = async () => {
+  const saveRule = () => {
+    if (!rule || !ruleGroup || ruleSaving) return;
+    const count = rule.open_alert_count || 0;
+    Modal.confirm({
+      title: '修改阈值',
+      content: `保存后按新阈值检测，并结束这条规则上 ${count} 条未恢复告警。`,
+      onOk: () => persistRule(),
+    });
+  };
+
+  const persistRule = async () => {
     if (!rule || !ruleGroup || ruleSaving) return;
     setRuleSaving(true);
     try {

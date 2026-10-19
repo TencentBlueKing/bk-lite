@@ -1,15 +1,18 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Spin, Tooltip, Button, Input, Checkbox, Space } from 'antd';
 import { SearchOutlined, ExportOutlined } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
 import Icon from '@/components/icon';
 import OperateModal from '@/components/operate-modal';
+import spinStyle from './index.module.scss';
 import {
   resolveOptionIcon,
   type SelectorOption,
 } from '@/app/opspilot/components/opspilot-selector-shared';
+import AssetTagFilterBar from '@/app/opspilot/components/tool/assetTagFilterBar';
+import { collectTagChips, filterTaggedAssets, type TagChip } from '@/app/opspilot/utils/assetTagFilter';
 import { useTranslation } from '@/utils/i18n';
 
 interface OpspilotSelectorOperateModalProps {
@@ -44,11 +47,13 @@ const OpspilotSelectorOperateModal: React.FC<
   const { t } = useTranslation();
   const [tempSelectedOptions, setTempSelectedOptions] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   useEffect(() => {
     if (visible) {
       setTempSelectedOptions(selectedOptions);
       setSearchTerm('');
+      setSelectedTags([]);
     }
   }, [visible, selectedOptions]);
 
@@ -68,13 +73,38 @@ const OpspilotSelectorOperateModal: React.FC<
     window.open('/opspilot/knowledge', '_blank');
   };
 
-  const filteredOptions = options.filter((option) => {
-    const keyword = searchTerm.trim().toLowerCase();
-    if (!keyword) return true;
-    return (
-      option.name?.toLowerCase().includes(keyword) ||
-      option.description?.toLowerCase().includes(keyword)
-    );
+  const labelFor = (value: string, kind: 'system' | 'user') => {
+    if (kind === 'system') return t(`tool.systemTags.${value}`, value);
+    const legacy: Record<string, string> = {
+      search: t('common.search'),
+      general: t('tool.general'),
+      maintenance: t('tool.maintenance'),
+      media: t('tool.media'),
+      collaboration: t('tool.collaboration'),
+      other: t('tool.other'),
+    };
+    return legacy[value] || value;
+  };
+
+  const tagChips = useMemo<TagChip[]>(
+    () => collectTagChips(
+      options.map((option) => ({
+        systemTags: option.systemTags || [],
+        userTags: option.userTags || [],
+      })),
+      labelFor,
+    ),
+    [options, t],
+  );
+
+  const filteredOptions = filterTaggedAssets(options, {
+    selectedTags,
+    keyword: searchTerm,
+    chips: tagChips,
+    systemTags: (option) => option.systemTags || [],
+    userTags: (option) => option.userTags || [],
+    name: (option) => option.name || '',
+    description: (option) => option.description || '',
   });
 
   return (
@@ -83,6 +113,15 @@ const OpspilotSelectorOperateModal: React.FC<
       open={visible}
       onCancel={onCancel}
       width={720}
+      styles={{
+        body: {
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'calc(80vh - 108px)',
+          maxHeight: 'calc(80vh - 108px)',
+        },
+      }}
       footer={
         <div className="flex w-full items-center justify-between">
           <div className="text-xs text-[var(--color-text-3)]">
@@ -100,7 +139,10 @@ const OpspilotSelectorOperateModal: React.FC<
         </div>
       }
     >
-      <Spin spinning={loading}>
+      <Spin
+        spinning={loading}
+        wrapperClassName={spinStyle.spin}
+      >
         {options.length === 0 ? (
           isNeedGuide ? (
             <div className="py-8 text-center">
@@ -119,8 +161,9 @@ const OpspilotSelectorOperateModal: React.FC<
             />
           )
         ) : (
-          <>
-            <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="mb-3.5 flex shrink-0 flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-[var(--color-text-3)]">
                   {t('common.total', '共')} {filteredOptions.length} {t('tool.items', '项')}
@@ -139,17 +182,20 @@ const OpspilotSelectorOperateModal: React.FC<
                 value={searchTerm}
                 onChange={handleSearch}
               />
-            </div>
-            {filteredOptions.length === 0 ? (
-              <div className="py-8">
-                <CompactEmptyState description={t('common.noData')} />
               </div>
-            ) : (
-              <div className="grid max-h-[440px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-                {filteredOptions.map((option) => {
-                  const isSelected = tempSelectedOptions.includes(option.id);
-                  const resolvedIcon = resolveOptionIcon(option.name, option.icon);
-                  return (
+              <AssetTagFilterBar chips={tagChips} selected={selectedTags} onChange={setSelectedTags} />
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              {filteredOptions.length === 0 ? (
+                <div className="flex h-full items-center justify-center">
+                  <CompactEmptyState description={t('common.noData')} />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {filteredOptions.map((option) => {
+                    const isSelected = tempSelectedOptions.includes(option.id);
+                    const resolvedIcon = resolveOptionIcon(option.name, option.icon);
+                    return (
                     <div
                       key={option.id}
                       role="button"
@@ -210,11 +256,12 @@ const OpspilotSelectorOperateModal: React.FC<
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </Spin>
     </OperateModal>

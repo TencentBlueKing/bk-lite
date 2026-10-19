@@ -61,14 +61,20 @@ test('event timeline renders optional fields when present', () => {
       link: 'https://example.com',
     },
   ]);
-  assert.deepEqual(parsed.items[0], {
-    time: '2026-08-01 09:00:00',
-    title: 'A',
-    description: 'detail',
-    category: '网络',
-    status: 'warning',
-    link: 'https://example.com',
-  });
+  const item = parsed.items[0];
+  assert.equal(item?.source?.title, 'A');
+  assert.deepEqual(
+    { ...item, source: undefined },
+    {
+      time: '2026-08-01 09:00:00',
+      title: 'A',
+      description: 'detail',
+      category: '网络',
+      status: 'warning',
+      link: 'https://example.com',
+      source: undefined,
+    },
+  );
 });
 
 test('event timeline default maxItems is safety cap', () => {

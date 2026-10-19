@@ -42,7 +42,7 @@ def template_vars(policy: dict, event: dict | None, status: str, now: datetime) 
     object_name = (policy.get("application") or policy.get("name") or "").strip()
     link = "/rum/alert-events"
     if event and event.get("id"):
-        link = f"/rum/alert-events/{event['id']}"
+        link = f"/rum/alert-events?event={quote(str(event['id']), safe='')}"
     return {
         "alert.name": policy.get("name") or "",
         "alert.severity": severity,

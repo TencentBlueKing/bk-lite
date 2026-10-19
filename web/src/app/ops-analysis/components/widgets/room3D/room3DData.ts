@@ -541,3 +541,7 @@ export const validateRoom3DData = (
     },
   };
 };
+
+/** 位置冲突的占位机柜 id 不是真实 inst_uuid，不弹数据链接菜单 */
+export const canOpenRoom3DRackLink = (rack: Pick<Room3DRack, "is_conflict">) =>
+  !rack.is_conflict;

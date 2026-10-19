@@ -216,6 +216,8 @@ export interface SkillTool {
   icon?: string;
   enabled: boolean;
   is_build_in?: boolean;
+  system_tags?: string[];
+  user_tags?: string[];
   params: SkillToolParams;
 }
 
@@ -251,6 +253,8 @@ export interface SkillPackage {
   required_tools?: string[];
   triggers?: string[];
   team?: string[];
+  system_tags?: string[];
+  user_tags?: string[];
   is_enabled?: boolean;
   is_build_in?: boolean;
   permissions?: string[];

@@ -6,6 +6,38 @@ from apps.opspilot.models import SkillChannel
 from apps.opspilot.services.skill_channel_service import copy_usage_team_for_channel
 
 
+def _credential_ready(submitted, stored) -> bool:
+    if submitted == "******":
+        return isinstance(stored, str) and bool(stored.strip())
+    return isinstance(submitted, str) and bool(submitted.strip())
+
+
+def _validate_aibot_channel_config(serializer, channel_type):
+    if channel_type != SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT:
+        return
+    raw = serializer.initial_data.get("channel_config") if isinstance(serializer.initial_data, dict) else None
+    if not isinstance(raw, dict):
+        return
+    mode = raw.get("connectionMode")
+    if mode not in {"webhook", "websocket"}:
+        return
+    existing = dict(getattr(serializer.instance, "channel_config", None) or {})
+    if mode == "websocket":
+        submitted = raw.get("websocket") if isinstance(raw.get("websocket"), dict) else {}
+        stored = existing.get("websocket") if isinstance(existing.get("websocket"), dict) else {}
+        if not _credential_ready(submitted.get("botId"), stored.get("botId")):
+            raise serializers.ValidationError({"channel_config": "长连接需要填写 BotID"})
+        if not _credential_ready(submitted.get("secret"), stored.get("secret")):
+            raise serializers.ValidationError({"channel_config": "长连接需要填写 Secret"})
+        return
+    submitted = raw.get("webhook") if isinstance(raw.get("webhook"), dict) else {}
+    stored = existing.get("webhook") if isinstance(existing.get("webhook"), dict) else {}
+    if not _credential_ready(submitted.get("token"), stored.get("token") or existing.get("token")):
+        raise serializers.ValidationError({"channel_config": "短连接需要填写 Token"})
+    if not _credential_ready(submitted.get("encodingAESKey"), stored.get("encodingAESKey") or existing.get("encodingAESKey")):
+        raise serializers.ValidationError({"channel_config": "短连接需要填写 EncodingAESKey"})
+
+
 def _mask_config(config: dict) -> dict:
     if not isinstance(config, dict):
         return {}
@@ -72,6 +104,7 @@ class SkillChannelSerializer(serializers.ModelSerializer):
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise serializers.ValidationError({"name": "同一智能体下，同渠道类型不能使用重复名称"})
+        _validate_aibot_channel_config(self, channel_type)
         return attrs
 
     def create(self, validated_data):

@@ -8,8 +8,9 @@ import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.openapi import renderer
+from apps.core.openapi.catalog import build_docs_catalog
 from apps.core.openapi.testing import bearer, create_api_tenant
-from apps.system_mgmt.viewset.openapi_docs_viewset import OpenAPIDocsViewSet, build_docs_catalog
+from apps.system_mgmt.viewset.openapi_docs_viewset import OpenAPIDocsViewSet
 
 factory = APIRequestFactory()
 
@@ -64,7 +65,8 @@ def test_list_returns_internal_schema_with_view_permission():
     assert patch_service["kind"] == "internal"
     endpoint = next(item for item in patch_service["endpoints"] if item["path"] == "patch-mgmt/module-data")
     assert endpoint["method"] == "GET"
-    assert "team" not in endpoint["request_schema"]
+    assert "team" not in endpoint["request_schema"]["properties"]
+    assert endpoint["response_schema"] is None
 
 
 def test_list_matches_live_gateway_docs(client):

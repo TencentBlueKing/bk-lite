@@ -237,6 +237,22 @@ class DeepAgentAssemblyMixin:
         return f"{facts}\n{prose}"
 
     @classmethod
+    def _summarize_planned_step_for_limit_continue(cls, messages) -> str:
+        """上限续跑卡片用的已有结论：保留工具结构化字段，去掉触顶终止文案。"""
+        from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
+            filter_messages_without_limit_stop,
+            scrub_limit_markers_from_summary,
+        )
+
+        filtered = filter_messages_without_limit_stop(messages)
+        source = filtered or list(messages or [])
+        carry_over = cls._step_structured_carry_over(source)
+        summary = cls._summarize_planned_step_messages(source)
+        if carry_over and _CARRY_OVER_MARKER not in summary:
+            summary = cls._join_step_summary(summary, carry_over)
+        return scrub_limit_markers_from_summary(summary)
+
+    @classmethod
     def _step_structured_carry_over(cls, messages) -> str:
         """从本步工具结果里提取后续步要用的结构化关键字段。
 
@@ -677,10 +693,12 @@ class DeepAgentAssemblyMixin:
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
         from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
+        from apps.opspilot.metis.llm.middleware.tool_result_locale import ToolResultLocaleMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import ToolTimeoutMiddleware
 
         isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
         legacy_middleware = [
+            ToolResultLocaleMiddleware(),
             ToolTimeoutMiddleware(),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
             TerminalUserChoiceMiddleware(),
@@ -731,6 +749,7 @@ class DeepAgentAssemblyMixin:
         )
         from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
+        from apps.opspilot.metis.llm.middleware.tool_result_locale import ToolResultLocaleMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import (
             SkillExecutionGuardMiddleware,
             ToolExceptionAsResultMiddleware,
@@ -758,6 +777,7 @@ class DeepAgentAssemblyMixin:
         skill_guard = SkillExecutionGuardMiddleware(enabled=skills_only_plan)
         isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
         runtime_middleware = [
+            ToolResultLocaleMiddleware(),
             visibility_middleware,
             skill_guard,
             ToolTimeoutMiddleware(),

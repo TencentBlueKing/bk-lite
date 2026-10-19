@@ -143,7 +143,6 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
         """
         获取最近一次事件时间
         """
-        format_time = "%Y-%m-%d %H:%M:%S"
         if hasattr(obj, "scoped_last_event_time"):
             last_event_time = obj.scoped_last_event_time
         else:
@@ -153,7 +152,9 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
             return ""
         from django.utils import timezone
 
-        return timezone.localtime(last_event_time).strftime(format_time)
+        if timezone.is_naive(last_event_time):
+            last_event_time = timezone.make_aware(last_event_time, timezone.utc)
+        return last_event_time.isoformat()
 
 
 class AlertSourceOptionSerializer(serializers.ModelSerializer):

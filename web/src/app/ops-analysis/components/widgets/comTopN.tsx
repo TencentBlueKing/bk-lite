@@ -1,4 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import DataLinkHintTooltip from '@/app/ops-analysis/components/dataLinkHintTooltip';
+import { topNLinkPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import { Spin } from 'antd';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
 import {
@@ -86,6 +89,11 @@ const TopN: React.FC<TopNProps> = ({
     'minmax(112px, 28%) minmax(0, 1fr) minmax(48px, auto)';
   const cellPadding = scaleScreenMetric(8, screenRenderContext);
   const items = buildTopNItems(rawData, labelField, valueField);
+  const { active: dataLinkActive, openPoint, hoverHint } = useWidgetDataLink(config);
+  const points = useMemo(
+    () => topNLinkPoints(items, valueField),
+    [items, valueField],
+  );
   const maxValue = resolveTopNMaxValue(items);
   const isDataReady = items.length > 0;
   const contentState = resolveTopNContentState({
@@ -165,8 +173,10 @@ const TopN: React.FC<TopNProps> = ({
 
             return (
               <React.Fragment key={`${item.name}-${index}`}>
+                <DataLinkHintTooltip hint={hoverHint && <>{item.name}<br />{hoverHint}</>}>
                 <span
-                  className="flex h-7 items-center truncate rounded-l-md px-2 text-[13px]"
+                  className={`flex h-7 items-center truncate rounded-l-md px-2 text-[13px] ${dataLinkActive ? 'cursor-pointer' : ''}`}
+                  onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
                   style={{
                     color: usesScreenChartTheme
                       ? chartTheme.axisLabelColor
@@ -177,13 +187,16 @@ const TopN: React.FC<TopNProps> = ({
                     paddingLeft: cellPadding,
                     paddingRight: cellPadding,
                   }}
-                  title={item.name}
+                  title={hoverHint ? undefined : item.name}
                 >
                   {item.name}
                 </span>
+                </DataLinkHintTooltip>
+                <DataLinkHintTooltip hint={hoverHint}>
                 <div
-                  className="flex min-w-0 items-center"
+                  className={`flex min-w-0 items-center ${dataLinkActive ? 'cursor-pointer' : ''}`}
                   style={{ height: scaleScreenMetric(28, screenRenderContext) }}
+                  onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
                 >
                   <div
                     className="h-2.5 w-full overflow-hidden rounded-full"
@@ -210,8 +223,11 @@ const TopN: React.FC<TopNProps> = ({
                     />
                   </div>
                 </div>
+                </DataLinkHintTooltip>
+                <DataLinkHintTooltip hint={hoverHint}>
                 <span
-                  className="flex h-7 items-center justify-end rounded-r-md px-2 text-[13px] font-semibold tabular-nums"
+                  className={`flex h-7 items-center justify-end rounded-r-md px-2 text-[13px] font-semibold tabular-nums ${dataLinkActive ? 'cursor-pointer' : ''}`}
+                  onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
                   style={{
                     color: usesScreenChartTheme
                       ? chartTheme.pieValueColor
@@ -225,6 +241,7 @@ const TopN: React.FC<TopNProps> = ({
                 >
                   {formatVisibleChartValue(item.value, config)}
                 </span>
+                </DataLinkHintTooltip>
               </React.Fragment>
             );
           })}

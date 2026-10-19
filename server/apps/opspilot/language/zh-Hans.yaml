@@ -198,6 +198,7 @@ error:
   knowledge_base_build_running_wait: 知识库存在运行中的构建任务，请等待完成后再操作
   knowledge_base_build_running_retry: 知识库存在运行中的构建任务，请等待完成后再重试
   builtin_skill_package_not_deletable: 内置技能包不可删除
+  system_tags_not_removable: 系统标签不能删除
   skill_package_zip_required: 请上传技能包 ZIP 文件
   skill_package_must_be_zip: 技能包必须是 ZIP 文件
   skill_package_file_missing: 技能包文件不存在
@@ -320,7 +321,7 @@ tools:
       用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不支持认领或关闭。
     tools:
       alerts_list_alerts:
-        description: 查询告警中心工单列表，可按状态、级别和关键词筛选。
+        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警；「当前」「有哪些」不会当关键字。可按状态、级别筛选。
       alerts_get_alert_detail:
         description: 按告警 ID 查询告警详情。
       alerts_list_alert_events:

@@ -389,7 +389,7 @@ const SceneViewPage = () => {
               {Array.from({ length: 6 }).map((_, index) => (
                 <div
                   key={index}
-                  className="h-8 animate-pulse rounded bg-[var(--color-fill-2)]"
+                  className="h-8 animate-neutral-pulse rounded bg-[var(--color-fill-2)]"
                 />
               ))}
             </div>
@@ -489,8 +489,8 @@ const SceneViewPage = () => {
             <div className="min-h-0 flex-1 overflow-auto p-4">
               {loadingScope === 'all' && !result ? (
                 <div className="space-y-4" aria-busy="true" aria-label="loading">
-                  <div className="h-20 animate-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]" />
-                  <div className="h-48 animate-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]" />
+                  <div className="h-20 animate-neutral-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]" />
+                  <div className="h-48 animate-neutral-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]" />
                 </div>
               ) : (
                 <>

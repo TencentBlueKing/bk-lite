@@ -1,7 +1,7 @@
 'use client';
 
-import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Empty, Input, Tabs, Tag } from 'antd';
+import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Dropdown, Empty, Input, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -11,14 +11,83 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
+import { downloadExecutionArtifact } from '../lib/download-artifact';
 import { executionStatusPresentation, formatDuration, formatStartedBy, formatTriggerTypeLabel } from '../lib/presentation';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
-import type { ExecutionRecord, ExecutionStatus, PaginatedResponse, WorkflowTriggerType } from '../lib/types';
+import type { DownloadableArtifact, ExecutionRecord, ExecutionStatus, PaginatedResponse, WorkflowTriggerType } from '../lib/types';
 import { ExecutionDetailDrawer } from './execution-detail-drawer';
 import { WorkflowTablePanel } from './workflow-table-panel';
 import { WorkflowPermission } from './workflow-permission';
 
 const API = '/workflow_orchestration/api';
+
+function ExecutionDownloadAction({
+  files,
+  instancePermissions,
+  downloadingId,
+  onDownload,
+}: {
+  files: DownloadableArtifact[];
+  instancePermissions?: string[];
+  downloadingId?: string;
+  onDownload: (artifact: DownloadableArtifact) => void;
+}) {
+  const { t } = useTranslation();
+  const [keyword, setKeyword] = useState('');
+  if (!files.length) return null;
+  const loading = files.some((file) => file.id === downloadingId);
+  if (files.length === 1) {
+    return (
+      <WorkflowPermission operation="View" area="executions" instancePermissions={instancePermissions}>
+        <Button type="link" size="small" className="px-0" loading={loading} onClick={() => onDownload(files[0])}>{t('common.download', '下载')}</Button>
+      </WorkflowPermission>
+    );
+  }
+  const query = keyword.trim().toLowerCase();
+  const visible = query ? files.filter((file) => file.filename.toLowerCase().includes(query)) : files;
+  return (
+    <WorkflowPermission operation="View" area="executions" instancePermissions={instancePermissions}>
+      <Dropdown
+        trigger={['click']}
+        placement="bottomRight"
+        onOpenChange={(open) => {
+          if (!open) setKeyword('');
+        }}
+        menu={{
+          style: { maxHeight: 240, overflowY: 'auto', background: 'transparent', boxShadow: 'none', borderRadius: 0 },
+          items: visible.map((file) => ({ key: file.id, label: file.filename })),
+          onClick: ({ key }) => {
+            const file = files.find((item) => item.id === key);
+            if (file) onDownload(file);
+          },
+        }}
+        popupRender={(menu) => (
+          <div className="min-w-52 overflow-hidden rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)] shadow-md">
+            <div className="border-b border-[var(--color-border-1)] px-2 py-2">
+              <Input
+                size="small"
+                allowClear
+                value={keyword}
+                placeholder={t('common.search', '搜索')}
+                onChange={(event) => setKeyword(event.target.value)}
+                onMouseDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              />
+            </div>
+            {visible.length ? menu : <div className="px-3 py-2 text-xs text-[var(--color-text-3)]">{t('common.noResult', '无结果')}</div>}
+          </div>
+        )}
+      >
+        <Button type="link" size="small" className="px-0" loading={loading}>
+          <span className="inline-flex items-center gap-1">
+            {t('common.download', '下载')}
+            <DownOutlined aria-hidden className="text-xs" />
+          </span>
+        </Button>
+      </Dropdown>
+    </WorkflowPermission>
+  );
+}
 
 interface AppliedFilters {
   query?: string;
@@ -73,6 +142,7 @@ export function ExecutionListPage({ initialExecutionId, initialNodeReference, in
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [selectedExecutionId, setSelectedExecutionId] = useState(initialExecutionId);
+  const [downloadingArtifactId, setDownloadingArtifactId] = useState<string>();
   const listRequestCoordinator = useRequestCoordinator(setLoading);
   const triggerLabels: Record<WorkflowTriggerType, string> = {
     FORM: formatTriggerTypeLabel('FORM', t),
@@ -155,12 +225,25 @@ export function ExecutionListPage({ initialExecutionId, initialNodeReference, in
     { title: t('workflowOrchestration.execution.startedBy', '发起人'), dataIndex: 'started_by', key: 'started_by', width: 120, render: (value: string) => <EllipsisWithTooltip text={formatStartedBy(value, t)} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" /> },
     { title: t('workflowOrchestration.execution.startedAt', '开始时间'), dataIndex: 'created_at', key: 'created_at', width: 180, render: (value: string) => <span className="whitespace-nowrap tabular-nums">{value ? convertToLocalizedTime(value) : '--'}</span> },
     { title: t('workflowOrchestration.execution.duration', '耗时'), dataIndex: 'duration_ms', key: 'duration_ms', width: 100, render: (value: number | null) => <span className="tabular-nums">{formatDuration(value)}</span> },
-    { title: t('common.actions', '操作'), key: 'actions', width: 80, fixed: 'right', render: (_, record) => {
+    { title: t('common.actions', '操作'), key: 'actions', width: 140, fixed: 'right', render: (_, record) => {
       const actionable = record.actionable_approval_ids.length > 0;
       const actionLabel = actionable
         ? t('workflowOrchestration.approval.action', '审批')
         : t('common.view', '查看');
-      return <WorkflowPermission operation={actionable ? 'Approve' : 'View'} area="executions" instancePermissions={record.permission}><Button type="link" size="small" className="px-0" onClick={() => setSelectedExecutionId(record.id)}>{actionLabel}</Button></WorkflowPermission>;
+      const download = async (artifact: DownloadableArtifact) => {
+        setDownloadingArtifactId(artifact.id);
+        try {
+          await downloadExecutionArtifact(get, artifact);
+        } finally {
+          setDownloadingArtifactId(undefined);
+        }
+      };
+      return (
+        <div className="flex items-center gap-3">
+          <WorkflowPermission operation={actionable ? 'Approve' : 'View'} area="executions" instancePermissions={record.permission}><Button type="link" size="small" className="px-0" onClick={() => setSelectedExecutionId(record.id)}>{actionLabel}</Button></WorkflowPermission>
+          <ExecutionDownloadAction files={record.downloadable_artifacts ?? []} instancePermissions={record.permission} downloadingId={downloadingArtifactId} onDownload={(artifact) => void download(artifact)} />
+        </div>
+      );
     } },
   ];
 

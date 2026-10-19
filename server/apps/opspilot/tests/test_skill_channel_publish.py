@@ -135,6 +135,51 @@ class TestSkillChannelCrud:
         assert resp.data["data"]["public_id"] == str(ch.public_id)
         assert resp.data["data"]["callback_path"] == (f"/api/v1/opspilot/skill_channel/{ch.public_id}/{SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT}/")
 
+    def test_create_aibot_long_connection_stores_bot_credentials(self):
+        skill = _skill(usage_team=[1])
+        factory = APIRequestFactory()
+        user = _superuser("su_aibot_ws")
+        request = factory.post(
+            "/",
+            {
+                "skill": skill.id,
+                "channel_type": SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT,
+                "enabled": True,
+                "channel_config": {
+                    "connectionMode": "websocket",
+                    "websocket": {"botId": "bot-1", "secret": "sec-1"},
+                },
+            },
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        request.COOKIES["current_team"] = "1"
+        resp = SkillChannelViewSet.as_view({"post": "create"})(request)
+        assert resp.status_code == 201
+        ch = SkillChannel.objects.get(skill=skill, channel_type=SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+        assert ch.channel_config["connectionMode"] == "websocket"
+        assert ch.channel_config["websocket"]["botId"] == "bot-1"
+        assert ch.channel_config["websocket"]["secret"] == "sec-1"
+        assert resp.data["data"]["channel_config"]["websocket"]["secret"] == "******"
+
+    def test_create_aibot_long_connection_requires_secret(self):
+        skill = _skill(usage_team=[1])
+        factory = APIRequestFactory()
+        user = _superuser("su_aibot_ws_bad")
+        request = factory.post(
+            "/",
+            {
+                "skill": skill.id,
+                "channel_type": SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT,
+                "channel_config": {"connectionMode": "websocket", "websocket": {"botId": "bot-1"}},
+            },
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        request.COOKIES["current_team"] = "1"
+        resp = SkillChannelViewSet.as_view({"post": "create"})(request)
+        assert resp.status_code == 400
+
     def test_create_keeps_client_public_id(self):
         skill = _skill(usage_team=[1])
         public_id = uuid.uuid4()

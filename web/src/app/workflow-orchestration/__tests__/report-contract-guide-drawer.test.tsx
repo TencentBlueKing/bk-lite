@@ -60,7 +60,12 @@ describe('报告契约与模板语法抽屉', () => {
     fireEvent.click(screen.getByRole('button', { name: '脚本输出说明' }));
     expect(screen.getByRole('dialog', { name: '脚本输出说明' })).not.toBeNull();
     expect(screen.getByText('平台固定外层')).not.toBeNull();
-    expect(screen.getByText('脚本如何返回')).not.toBeNull();
+    expect(screen.getByText('每台主机的脚本要输出什么')).not.toBeNull();
+    expect(screen.getByText(/这个名字不能改/)).not.toBeNull();
+    expect(screen.getByText(/平台只认这个前缀/)).not.toBeNull();
+    expect(screen.getByText(/根必须是 JSON 对象/)).not.toBeNull();
+    expect(screen.getByText('下游拿到的完整结果')).not.toBeNull();
+    expect(screen.getByText(/下面这份 JSON 由平台组装/)).not.toBeNull();
     expect(screen.queryByText('数据如何进模板')).toBeNull();
     expect(screen.queryByText('怎么工作')).toBeNull();
     expect(screen.queryByRole('tab')).toBeNull();

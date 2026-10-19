@@ -27,8 +27,15 @@ export const setToolCallRendererLocale = (locale: 'zh' | 'en') => {
 
 const isEnglishLocale = () => rendererLocale === 'en';
 
-/** 缺词条时回退到默认渲染，保证旧调用方（不传 t）行为不变。 */
-const fallbackTranslate: Translate = (key, defaultMessage) => defaultMessage ?? key;
+/** 缺词条时回退到默认渲染，并替换 {count} 这类占位。 */
+const fallbackTranslate: Translate = (key, defaultMessage, values) => {
+  const template = defaultMessage ?? key;
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => {
+    const value = values[name];
+    return value == null ? match : String(value);
+  });
+};
 
 export interface ToolCallInfo {
   name: string;

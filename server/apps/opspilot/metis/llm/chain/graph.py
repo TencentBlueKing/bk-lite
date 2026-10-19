@@ -54,6 +54,7 @@ from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
     classify_llm_error,
     format_llm_empty_response_log,
     format_llm_failure_log,
+    localized_llm_user_message,
     summarize_llm_endpoint,
 )
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
@@ -80,6 +81,14 @@ _DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
 def _hide_planned_step_text(request: BasicLLMRequest) -> bool:
     extra = getattr(request, "extra_config", None) or {}
     return bool(extra.get(HIDE_PLANNED_STEP_TEXT_KEY))
+
+
+def _is_replayed_choice_marker(tool_message: Any) -> bool:
+    """续接时带回的选择结束标记，不是用户发起的工具调用。"""
+    if str(getattr(tool_message, "name", "") or "") != "request_user_choice":
+        return False
+    content = str(getattr(tool_message, "content", "") or "")
+    return content.startswith("已向用户发出选择，本轮结束。")
 
 
 # 纯文本轮开播条件（与 show_think、模型名无关）：
@@ -1269,6 +1278,8 @@ class BasicGraph(ABC):
         tool_call_id = str(getattr(tool_message, "tool_call_id", "") or "").strip()
         if not tool_call_id or tool_call_id in current_tool_calls:
             return []
+        if _is_replayed_choice_marker(tool_message):
+            return []
 
         tool_name, tool_args = self._resolve_tool_call_meta_from_messages(messages, tool_call_id, tool_message)
         if _is_hidden_builtin_tool(tool_name):
@@ -2149,7 +2160,9 @@ class BasicGraph(ABC):
             yield encoder.encode(
                 RunErrorEvent(
                     type=EventType.RUN_ERROR,
-                    message=f"{classification['user_message']}: {classification['detail']}"[:1000],
+                    message=(f"{localized_llm_user_message(classification, getattr(request, 'locale', None))}: " f"{classification['detail']}")[
+                        :1000
+                    ],
                     code=str(classification["code"]),
                     timestamp=int(time.time() * 1000),
                 )

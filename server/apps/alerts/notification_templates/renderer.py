@@ -11,6 +11,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
+from datetime import timezone as dt_timezone
 from html.parser import HTMLParser
 from typing import Any, Mapping
 
@@ -23,6 +24,7 @@ from apps.alerts.notification_templates.events import (
     render_event_block,
     validate_event_path,
 )
+from apps.alerts.notification_templates.timefmt import DEFAULT_DISPLAY_TIMEZONE, format_template_datetime
 
 MAX_SOURCE_BYTES = 64 * 1024
 MAX_OUTPUT_BYTES = 256 * 1024
@@ -274,33 +276,33 @@ def _neutralize_level_color_in_style(source: str) -> str:
     return STYLE_ATTRIBUTE_PATTERN.sub(replace_attribute, source)
 
 
-def _bounded_json_value(value: Any, depth: int = 0):
+def _bounded_json_value(value: Any, depth: int = 0, timezone_name: str | None = None):
     if depth > MAX_VALUE_DEPTH:
         raise TemplateValidationError("变量值嵌套层级不能超过 6 层")
     if isinstance(value, Mapping):
         if len(value) > MAX_COLLECTION_ITEMS:
             raise TemplateValidationError("变量对象不能超过 100 个字段")
-        return {str(key): _bounded_json_value(item, depth + 1) for key, item in value.items()}
+        return {str(key): _bounded_json_value(item, depth + 1, timezone_name) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         if len(value) > MAX_COLLECTION_ITEMS:
             raise TemplateValidationError("变量列表不能超过 100 项")
-        return [_bounded_json_value(item, depth + 1) for item in value]
+        return [_bounded_json_value(item, depth + 1, timezone_name) for item in value]
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     if isinstance(value, (datetime, date)):
-        return value.isoformat(sep=" ") if isinstance(value, datetime) else value.isoformat()
+        return format_template_datetime(value, timezone_name)
     return str(value)
 
 
-def _serialize_value(value: Any) -> str:
+def _serialize_value(value: Any, timezone_name: str | None = None) -> str:
     if value is None or value == "":
         return MISSING_VALUE
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (datetime, date)):
-        return value.isoformat(sep=" ") if isinstance(value, datetime) else value.isoformat()
+        return format_template_datetime(value, timezone_name)
     if isinstance(value, (dict, list, tuple)):
-        serialized = json.dumps(_bounded_json_value(value), ensure_ascii=False, separators=(",", ":"))
+        serialized = json.dumps(_bounded_json_value(value, timezone_name=timezone_name), ensure_ascii=False, separators=(",", ":"))
     else:
         serialized = str(value)
     if len(serialized.encode("utf-8")) > MAX_VALUE_BYTES:
@@ -333,6 +335,7 @@ def render_source(
     validate_source(source, channel_type=channel_type, is_subject=is_subject, scope=scope)
     missing_fields: list[str] = []
     replacement_bytes = 0
+    display_timezone = context.get("display_timezone") or DEFAULT_DISPLAY_TIMEZONE
 
     def replace(match):
         nonlocal replacement_bytes
@@ -350,6 +353,7 @@ def render_source(
                     family=_channel_family(channel_type),
                     escape=_channel_escape(channel_type),
                     max_bytes=remaining,
+                    display_timezone=display_timezone,
                 )
             except EventBlockBudgetError as exc:
                 raise TemplateValidationError("模板渲染结果不能超过 256KB") from exc
@@ -361,7 +365,7 @@ def render_source(
         value, present = _resolve_path(context, path)
         if not present:
             missing_fields.append(path)
-        serialized = _serialize_value(value)
+        serialized = _serialize_value(value, display_timezone)
         replacement_bytes += len(serialized.encode("utf-8"))
         if replacement_bytes + len(source.encode("utf-8")) > MAX_OUTPUT_BYTES:
             raise TemplateValidationError("模板渲染结果不能超过 256KB")
@@ -405,11 +409,13 @@ def build_alert_context(
     scene: str,
     *,
     generated_at: datetime | None = None,
+    display_timezone: str | None = None,
     level_display_name: str | None = None,
     level_color: str | None = None,
     notification_context: Mapping[str, Any] | None = None,
     events_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    display_timezone = display_timezone or DEFAULT_DISPLAY_TIMEZONE
     scene_names = {
         "assignment": "告警分派",
         "reassignment": "告警转派",
@@ -432,9 +438,9 @@ def build_alert_context(
         "resource_name": getattr(alert, "resource_name", ""),
         "resource_type": getattr(alert, "resource_type", ""),
         "item": getattr(alert, "item", ""),
-        "created_at": getattr(alert, "created_at", None),
-        "first_event_time": getattr(alert, "first_event_time", None),
-        "last_event_time": getattr(alert, "last_event_time", None),
+        "created_at": format_template_datetime(getattr(alert, "created_at", None), display_timezone),
+        "first_event_time": format_template_datetime(getattr(alert, "first_event_time", None), display_timezone),
+        "last_event_time": format_template_datetime(getattr(alert, "last_event_time", None), display_timezone),
         "operators": getattr(alert, "operator", None) or [],
         "owners": getattr(alert, "owners", None) or [],
         "team": getattr(alert, "team", None) or [],
@@ -452,9 +458,10 @@ def build_alert_context(
             "scene_name": scene_names.get(scene, scene),
             "receivers": receivers,
             "receiver_names": "、".join(str(receiver) for receiver in receivers),
-            "generated_at": generated_at or datetime.now().astimezone(),
+            "generated_at": format_template_datetime(generated_at or datetime.now(dt_timezone.utc), display_timezone),
             **operation_notification,
         },
+        "display_timezone": display_timezone,
     }
     if events_context is not None:
         context["events"] = events_context

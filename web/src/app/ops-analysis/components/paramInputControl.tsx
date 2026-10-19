@@ -23,6 +23,8 @@ interface ParamInputControlProps {
   allowClear?: boolean;
   style?: React.CSSProperties;
   onOptionsResolved?: (options: InputOption[]) => void;
+  onOptionsFailed?: () => void;
+  optionsNotifyKey?: string;
 }
 
 export const ParamInputControl: React.FC<ParamInputControlProps> = ({
@@ -35,11 +37,18 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   allowClear = true,
   style,
   onOptionsResolved,
+  onOptionsFailed,
+  optionsNotifyKey = '',
 }) => {
-  const state = useParamInputOptions(inputConfig);
+  const state = useParamInputOptions(inputConfig, undefined, {
+    reloadKey: optionsNotifyKey,
+  });
   const onOptionsResolvedRef = useRef(onOptionsResolved);
+  const onOptionsFailedRef = useRef(onOptionsFailed);
   const notifierRef = useRef(createParamInputOptionsNotifier());
+  const notifyKeyRef = useRef(optionsNotifyKey);
   onOptionsResolvedRef.current = onOptionsResolved;
+  onOptionsFailedRef.current = onOptionsFailed;
 
   const renderFallback = () => {
     if (!React.isValidElement(fallback)) return fallback;
@@ -52,6 +61,14 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   };
 
   useEffect(() => {
+    if (notifyKeyRef.current !== optionsNotifyKey) {
+      notifyKeyRef.current = optionsNotifyKey;
+      notifierRef.current = createParamInputOptionsNotifier();
+    }
+    if (state.status === 'error' && state.errorMessage) {
+      onOptionsFailedRef.current?.();
+      return;
+    }
     if (!onOptionsResolvedRef.current) return;
     if (state.status === 'success' && state.resultKey) {
       notifierRef.current.notify(
@@ -69,7 +86,7 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
         onOptionsResolvedRef.current,
       );
     }
-  }, [inputConfig, state]);
+  }, [inputConfig, optionsNotifyKey, state]);
 
   if (!inputConfig || inputConfig.control === 'input') return <>{renderFallback()}</>;
 
@@ -131,6 +148,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
         disabled={disabled}
         placeholder={placeholder}
         allowClear={allowClear}
+        showSearch
+        optionFilterProp="label"
         mode={inputConfig.multiple ? 'multiple' : undefined}
         maxCount={isMultiple ? inputConfig.maxCount : undefined}
         maxTagCount={isMultiple ? 'responsive' : undefined}
@@ -148,6 +167,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
       disabled={disabled}
       placeholder={placeholder}
       allowClear={allowClear}
+      showSearch
+      optionFilterProp="label"
       style={{ width: '100%', ...style }}
       options={options}
       onChange={(nextValue) => onChange?.(nextValue ?? null)}
