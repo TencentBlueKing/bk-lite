@@ -393,23 +393,23 @@ class VictoriaAnalytics:
             "truncated": bool(getattr(rows, "truncated", False)) or bool(getattr(first_seen, "truncated", False)),
         }
 
-    def monitor_metric(self, tenant_id: str, opts: dict) -> float:
+    def monitor_metric(self, tenant_id: str, opts: dict) -> float | None:
         apps = list(opts.get("applications") or [])
         if not apps and not (opts.get("application") or "").strip():
-            return 0.0
+            return None
         metric = (opts.get("metric") or "").strip()
         rows = self._stats(tenant_id, logsql_stats.monitor_metric_query(self._tenant(tenant_id), opts), opts, limit=1)
         if not rows:
-            return 0.0
+            return None
         row = rows[0]
         if metric == "error_rate":
             sessions = float(row.get("sessions") or 0)
             if sessions <= 0:
-                return 0.0
+                return None
             return float(row.get("errored") or 0) / sessions
-        value = row.get("value") or ""
-        if value == "":
-            return 0.0
+        value = row.get("value")
+        if value is None or value == "":
+            return None
         return float(value)
 
     def metric_series(self, tenant_id: str, opts: dict) -> list[dict]:

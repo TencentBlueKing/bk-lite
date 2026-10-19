@@ -65,6 +65,11 @@ export interface GroupTreeSelectProps {
   allowClear?: boolean;
 
   /**
+   * 根节点类名
+   */
+  className?: string;
+
+  /**
    * 样式
    */
   style?: React.CSSProperties;

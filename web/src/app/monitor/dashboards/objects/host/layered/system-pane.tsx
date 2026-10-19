@@ -343,6 +343,7 @@ export default function SystemPane({
   const availBytes = latestNumber(metrics.mem_available);
   const uptimeNow = latestNumber(metrics.system_uptime);
   const load1Now = latestNumber(metrics.system_load1);
+  const showLoad = metricHasPoints(metrics.system_load1);
   const phaseFor = (names: readonly string[], hasValue: boolean): MetricBlockPhase => (
     metricBlockPhase(names, pendingMetricNames, loadStateOf(metrics, names), hasValue)
   );
@@ -389,7 +390,7 @@ export default function SystemPane({
       ...splitMetric(memNow, 'percent')
     },
     { key: 'avail', label: '可用内存', names: availNames, phase: phaseFor(availNames, availBytes != null), ...splitMetric(availBytes, 'bytes') },
-    {
+    ...(showLoad ? [{
       key: 'load',
       label: hostCategoryText(t, 'loadOneMinute'),
       names: load1Names,
@@ -398,7 +399,7 @@ export default function SystemPane({
       unit: '',
       valueColor: LOAD1_SERIES_COLOR,
       alertLevel: alerts.load
-    },
+    }] : []),
     {
       key: 'uptime',
       label: hostCategoryText(t, 'uptime'),

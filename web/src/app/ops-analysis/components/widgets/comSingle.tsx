@@ -37,6 +37,7 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import OpsAnalysisMetricValue from '@/app/ops-analysis/components/ops-analysis-metric-value';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import DataLinkHintTooltip from '@/app/ops-analysis/components/dataLinkHintTooltip';
 import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
 import { useWidgetViewport } from '@/app/ops-analysis/components/widget-viewport';
@@ -182,7 +183,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const [contentAreaHeight, setContentAreaHeight] = useState(0);
 
   const selectedField = config?.selectedFields?.[0];
-  const { active: dataLinkActive, openPoint } = useWidgetDataLink(config);
+  const { active: dataLinkActive, openPoint, hoverHint } = useWidgetDataLink(config);
   const singlePoint = useMemo(
     () => buildInteractionPoints('single', rawData, config)[0],
     [config, rawData],
@@ -417,6 +418,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
   }
 
   return (
+    <DataLinkHintTooltip hint={singlePoint ? hoverHint : undefined}>
     <div
       className={`flex h-full w-full flex-col overflow-hidden ${
         usesScreenTheme ? '' : 'px-2'
@@ -529,6 +531,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
         ) : null}
       </div>
     </div>
+    </DataLinkHintTooltip>
   );
 };
 

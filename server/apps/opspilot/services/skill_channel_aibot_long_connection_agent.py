@@ -3,9 +3,34 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.models.bot_mgmt import WorkflowAttachmentAsset
 from apps.opspilot.services.skill_channel_aibot_long_connection import AnswerRequest, visible_answer_delta
+from apps.opspilot.services.skill_channel_aibot_long_connection_media import attachment_from_tool_result, generated_file_from_agui_event
+from apps.opspilot.services.workflow_attachment_service import resolve_signed_attachment_token
+
+ATTACHMENT_READ_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_file_failed channel_id=%s failed_stage=read_attachment error_type=%s"
+FILE_READY_LOG_TEMPLATE = "event=wecom_aibot_long_connection_file_ready channel_id=%s file_count=%s"
+
+
+def _files_for_execution(execution_id: str, channel_id: int) -> list[tuple[str, bytes]]:
+    """这一轮技能写进附件表的文件。流里没带上工具结果时也能发出去。"""
+    files: list[tuple[str, bytes]] = []
+    for asset in WorkflowAttachmentAsset.objects.filter(execution_id=execution_id).order_by("id"):
+        if not asset.file:
+            continue
+        try:
+            with asset.file.open("rb") as handle:
+                content = handle.read()
+        except Exception as exc:
+            logger.warning(ATTACHMENT_READ_FAILED_LOG_TEMPLATE, channel_id, type(exc).__name__)
+            continue
+        if content:
+            files.append((asset.filename or "file", content))
+    return files
+
 
 _CANCEL_POLL_SECONDS = 0.05
 
@@ -42,6 +67,21 @@ def _run_guarded(request: AnswerRequest) -> None:
         request.fail()
     finally:
         close_old_connections()
+
+
+def _read_generated_attachment(channel_id: int, filename: str, token: str) -> tuple[str, bytes] | None:
+    try:
+        asset = resolve_signed_attachment_token(token)
+        if asset is None or not asset.file:
+            return None
+        with asset.file.open("rb") as handle:
+            content = handle.read()
+    except Exception as exc:
+        logger.warning(ATTACHMENT_READ_FAILED_LOG_TEMPLATE, channel_id, type(exc).__name__)
+        return None
+    if not content:
+        return None
+    return filename or asset.filename or "file", content
 
 
 def user_visible_failure(event: dict) -> str | None:
@@ -82,6 +122,7 @@ def _run(request: AnswerRequest) -> None:
     params = build_skill_chat_params(skill, request.user_message, request_user)
     inject_skill_memory_prompt(params, skill, request.external_user_id, request.user_message)
     params["reply_language"] = "match_user"
+    params["execution_id"] = str(uuid.uuid4())
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
     params["skill_session_id"] = conversation.session_id
     params["show_think"] = False
@@ -116,6 +157,16 @@ def _run(request: AnswerRequest) -> None:
                     return
                 piece = line.decode("utf-8") if isinstance(line, (bytes, bytearray)) else str(line)
                 for event in parse_sse_json_payloads(piece):
+                    generated_file = generated_file_from_agui_event(event)
+                    if generated_file is not None:
+                        request.add_generated_file(*generated_file)
+                        continue
+                    attachment = attachment_from_tool_result(event)
+                    if attachment is not None:
+                        loaded = _read_generated_attachment(request.channel.id, *attachment)
+                        if loaded is not None:
+                            request.add_generated_file(*loaded)
+                        continue
                     visible = user_visible_failure(event)
                     if visible:
                         failure = visible
@@ -147,4 +198,9 @@ def _run(request: AnswerRequest) -> None:
     if failure:
         request.fail(failure)
         return
+    generated_files = _files_for_execution(params["execution_id"], request.channel.id)
+    if generated_files:
+        logger.info(FILE_READY_LOG_TEMPLATE, request.channel.id, len(generated_files))
+    for filename, content in generated_files:
+        request.add_generated_file(filename, content)
     request.finish()

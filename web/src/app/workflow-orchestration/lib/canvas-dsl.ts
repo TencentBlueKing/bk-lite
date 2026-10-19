@@ -162,6 +162,13 @@ function enrichSchemaFromSample(schema: JsonSchema, sample: unknown): JsonSchema
   return { ...schema, properties };
 }
 
+/** 加号添加时，新节点左边缘相对源节点左边缘的水平距离。等高时贝塞尔呈直线。 */
+export const PLUS_ADD_OFFSET_X = 160;
+
+export function positionBesideSource(source: { x: number; y: number }): { x: number; y: number } {
+  return { x: source.x + PLUS_ADD_OFFSET_X, y: source.y };
+}
+
 /** Return the input fields guaranteed by every trigger path. */
 export function commonTriggerInputSchema(metadata: WorkflowCanvasMetadata): JsonSchema {
   const triggers = workflowTriggerNodes(metadata);
@@ -195,7 +202,7 @@ export function buildWorkflowFlow(
   const nodes: Array<Node<WorkflowCanvasNodeData>> = [
     ...triggers.map((trigger, index) => ({
       id: trigger.id, type: 'workflowCanvas',
-      position: metadata.positions?.[trigger.id] || { x: 20, y: 160 + index * 180 },
+      position: metadata.positions?.[trigger.id] || { x: 20, y: 260 + index * 180 },
       data: { title: trigger.name, meta: trigger.trigger_type, kind: 'trigger' as const, triggerType: trigger.trigger_type },
     })),
     ...tasks.map((task, index) => ({

@@ -561,6 +561,66 @@ describe('application3D architecture scene', () => {
     controller.dispose();
   });
 
+  it('reports wall-card hover through a callback and never writes the canvas title', () => {
+    const onLinkHover = vi.fn();
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+      onLinkHover,
+    });
+    controller.reconcile([wallItem], { playIntro: false });
+    flushFrames();
+    const canvas = mount.querySelector('canvas') as HTMLCanvasElement;
+    const point = { clientX: 160, clientY: 90, bubbles: true };
+
+    canvas.dispatchEvent(new PointerEvent('pointermove', point));
+    expect(canvas.title).toBe('');
+    expect(onLinkHover).toHaveBeenCalled();
+    expect(onLinkHover.mock.calls.at(-1)?.[0]).toMatchObject({
+      id: 'sys-1',
+      name: '门户系统',
+      kind: 'wall',
+      x: 160,
+      y: 90,
+    });
+
+    let card: THREE.Object3D | undefined;
+    captured.scene?.traverse((child) => {
+      if (child.userData.applicationId === 'sys-1') card = child;
+    });
+    vi.spyOn(THREE.Raycaster.prototype, 'intersectObjects').mockImplementation(() => (
+      card
+        ? [{
+          object: card,
+          distance: 1,
+          point: new THREE.Vector3(),
+          distanceToRay: 0,
+        }] as THREE.Intersection[]
+        : []
+    ));
+    onLinkHover.mockClear();
+    canvas.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: 188,
+      clientY: 104,
+      bubbles: true,
+    }));
+    expect(onLinkHover.mock.calls.at(-1)?.[0]).toMatchObject({
+      id: 'sys-1',
+      kind: 'wall',
+      x: 188,
+      y: 104,
+    });
+
+    onLinkHover.mockClear();
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 0 }));
+    expect(onLinkHover).toHaveBeenCalledWith(null);
+    canvas.dispatchEvent(new PointerEvent('pointerup', { ...point, button: 0 }));
+    canvas.dispatchEvent(new PointerEvent('pointerleave'));
+    expect(canvas.title).toBe('');
+    controller.dispose();
+  });
+
   it('parks 1 and 7 cards on the same wall camera and card size', () => {
     const aspect = 320 / 180;
     const parked = resolveApplication3DWallCamera(1, aspect);
@@ -1467,6 +1527,51 @@ describe('application3D architecture host pick', () => {
     expect(onSelect).not.toHaveBeenCalled();
     expect(onLinkContextMenu).toHaveBeenCalledTimes(1);
 
+    controller.dispose();
+  });
+
+  it('reports architecture hover near the pointer and clears it while dragging', () => {
+    const onLinkHover = vi.fn();
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+      onLinkHover,
+    });
+    controller.reconcile([wallItem], { playIntro: false });
+    flushFrames();
+    controller.showArchitecture(architectureAlarms);
+    for (let step = 0; step < 40; step += 1) flushFrames(20);
+    const canvas = mount.querySelector('canvas') as HTMLCanvasElement;
+
+    mockHit(findRackMesh('host-alarm'));
+    canvas.dispatchEvent(new PointerEvent('pointermove', point));
+    expect(canvas.title).toBe('');
+    expect(onLinkHover.mock.calls.at(-1)?.[0]).toMatchObject({
+      id: 'host-alarm',
+      name: 'web-alarm',
+      kind: 'host',
+      x: point.clientX,
+      y: point.clientY,
+    });
+
+    onLinkHover.mockClear();
+    mockHit(findRackMesh('app-1'));
+    canvas.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: point.clientX + 12,
+      clientY: point.clientY + 8,
+      bubbles: true,
+    }));
+    expect(onLinkHover.mock.calls.at(-1)?.[0]).toMatchObject({
+      id: 'app-1',
+      name: '门户',
+      kind: 'application',
+    });
+
+    onLinkHover.mockClear();
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 0 }));
+    expect(onLinkHover).toHaveBeenCalledWith(null);
+    expect(canvas.title).toBe('');
     controller.dispose();
   });
 

@@ -61,6 +61,20 @@ class ApmApplicationCreateSerializer(OpenAPIRequestSerializer):
     description = serializers.CharField(required=False, allow_blank=True, max_length=512)
 
 
+class ApmApplicationResponseSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    application_id = serializers.CharField(max_length=128)
+    name = serializers.CharField(max_length=128)
+    description = serializers.CharField(allow_blank=True, max_length=512)
+
+
+class ApmApplicationPageResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField(min_value=0)
+    page = serializers.IntegerField(min_value=1)
+    page_size = serializers.IntegerField(min_value=1)
+    items = ApmApplicationResponseSerializer(many=True)
+
+
 class ApmIntegrationRegionQuerySerializer(OpenAPIRequestSerializer):
     """接入页可选云区域，以及该区域能否接收遥测。调用仍须绑定组织。"""
 

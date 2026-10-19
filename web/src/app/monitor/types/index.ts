@@ -58,6 +58,8 @@ export interface TreeItem {
   // 不传则按纯文本渲染(向后兼容既有调用方)。
   icon?: string;
   count?: number;
+  source?: string;
+  deep_link?: string;
   children: TreeItem[];
 }
 
