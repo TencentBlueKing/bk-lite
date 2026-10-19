@@ -16,16 +16,7 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/registry';
 import { findByMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
-import {
-  buildMonitorObjectSidebarTree,
-  collectCloudFamilyPlatformIdentities
-} from '@/app/monitor/utils/monitorObject';
-import {
-  fetchWeopsxCloudCatalog,
-  toWeopsxCloudTreeNodes,
-  tryOpenWeopsxCloudNav,
-  WeopsxCloudCatalogItem
-} from '@/app/monitor/utils/weopsxCloudNav';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import {
   VIEW_OBJECT_QUERY_PARAM,
@@ -33,7 +24,7 @@ import {
 } from '@/app/monitor/utils/monitorObjectQuery';
 
 const Integration = () => {
-  const { isLoading, get } = useApiClient();
+  const { isLoading } = useApiClient();
   const searchParams = useSearchParams();
   const { syncObjectId } = useMonitorObjectQuery(VIEW_OBJECT_QUERY_PARAM);
   const { getMonitorObject } = useMonitorApi();
@@ -61,7 +52,6 @@ const Integration = () => {
   }, [isLoading]);
 
   const handleObjectChange = async (id: string) => {
-    if (tryOpenWeopsxCloudNav(id, treeData)) return;
     setObjectId(id);
     setDisplayType('list');
     syncObjectId(id);
@@ -74,14 +64,10 @@ const Integration = () => {
   const getObjects = async (type?: string) => {
     try {
       setTreeLoading(true);
-      const [data, weopsxItems]: [ObjectItem[], WeopsxCloudCatalogItem[]] =
-        await Promise.all([
-          getMonitorObject({
-            add_instance_count: true,
-          }),
-          fetchWeopsxCloudCatalog(get),
-        ]);
-      const _treeData = getTreeData(cloneDeep(data), weopsxItems);
+      const data: ObjectItem[] = await getMonitorObject({
+        add_instance_count: true,
+      });
+      const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
       if (type === 'update') return;
       setObjects(data);
@@ -117,10 +103,7 @@ const Integration = () => {
     syncObjectId(fallbackId);
   }, [activeObject, objectId, objects, searchParams, syncObjectId]);
 
-  const getTreeData = (
-    data: ObjectItem[],
-    weopsxItems: WeopsxCloudCatalogItem[] = []
-  ): TreeItem[] => {
+  const getTreeData = (data: ObjectItem[]): TreeItem[] => {
     return buildMonitorObjectSidebarTree(
       data,
       (item) => ({
@@ -130,11 +113,7 @@ const Integration = () => {
         icon: item.icon,
         count: item.instance_count || 0,
         children: [],
-      }),
-      toWeopsxCloudTreeNodes(
-        weopsxItems,
-        collectCloudFamilyPlatformIdentities(data)
-      )
+      })
     );
   };
 

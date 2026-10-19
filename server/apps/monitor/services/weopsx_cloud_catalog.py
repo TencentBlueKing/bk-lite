@@ -240,7 +240,7 @@ def _empty_catalog(*, failed_stage: str, error_type: str, with_traceback: bool =
 
 
 def fetch_weopsx_cloud_catalog(*, locale: str | None = None, authorization: str | None = None) -> dict:
-    # WEOPSX_BASE_URL 开启双源云侧栏；应指向真实 WeOpsX 目录，不要指向校验用 stub。
+    # 纯 bk-lite 勿设 WEOPSX_BASE_URL。BFF 可代理目录，但 bk-lite 侧栏不接入 catalog 挂叶。
     base_url = _validate_base_url(_env("WEOPSX_BASE_URL"))
     if not base_url:
         return _empty_catalog(failed_stage="configure", error_type="unconfigured")

@@ -13,12 +13,7 @@
  */
 
 import { ObjectItem } from '@/app/monitor/types';
-import {
-  WEOPSX_CLOUD_KEY_PREFIX,
-  WEOPSX_CLOUD_NAV_SOURCE,
-  foldCloudNavIdentity,
-  weopsxCatalogOverlapsLocalCloud
-} from '@/app/monitor/utils/weopsxCloudNav';
+import { foldCloudNavIdentity } from '@/app/monitor/utils/weopsxCloudNav';
 
 const objectLevel = (obj: ObjectItem): 'base' | 'derivative' =>
   obj.level === 'derivative' ? 'derivative' : 'base';
@@ -440,15 +435,10 @@ interface SidebarTreeNode {
   children: SidebarTreeNode[];
 }
 
-const isWeopsxCloudNavNode = <T extends SidebarTreeNode>(node: T): boolean =>
-  node.source === WEOPSX_CLOUD_NAV_SOURCE ||
-  String(node.key ?? '').startsWith(WEOPSX_CLOUD_KEY_PREFIX);
-
 const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
   cloudFamilyItems: ObjectItem[],
   objects: ObjectItem[],
   toNode: (item: ObjectItem) => T,
-  weopsxNodes: SidebarTreeNode[] = [],
   attachCloudDerivatives = true
 ): T => {
   const platforms = cloudFamilyItems.filter(
@@ -490,14 +480,6 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
   }
 
   platformNodes.push(...unattached.map(toNode));
-  const localIdentities = collectCloudFamilyPlatformIdentities(objects);
-  platformNodes.push(
-    ...(weopsxNodes.filter(
-      (node) =>
-        isWeopsxCloudNavNode(node) &&
-        !weopsxCatalogOverlapsLocalCloud(node, localIdentities)
-    ) as T[])
-  );
 
   return {
     title: resolveUnifiedCloudRootTitle(objects),
@@ -515,17 +497,15 @@ const resolveSidebarTreeArgs = (
   weopsxNodesOrOptions: SidebarTreeNode[] | MonitorObjectSidebarTreeOptions = [],
   options?: MonitorObjectSidebarTreeOptions
 ): {
-  weopsxNodes: SidebarTreeNode[];
   attachCloudDerivatives: boolean;
 } => {
+  // 数组曾是 WeOpsX catalog 叶；bk-lite 不接入 catalog 到侧栏，忽略。
   if (Array.isArray(weopsxNodesOrOptions)) {
     return {
-      weopsxNodes: weopsxNodesOrOptions,
       attachCloudDerivatives: options?.attachCloudDerivatives !== false
     };
   }
   return {
-    weopsxNodes: [],
     attachCloudDerivatives: weopsxNodesOrOptions.attachCloudDerivatives !== false
   };
 };
@@ -533,8 +513,7 @@ const resolveSidebarTreeArgs = (
 /**
  * 视图 / 专业大盘对象树：
  * - type=Cloud（及历史 Tencent Cloud / Aliyun Cloud 别名）挂到唯一「云」根下，派生挂父；
- * - WeOpsX 已装云（key=`weopsx:{id}`）接在同层后，不另套分组根，也不进入非云 type；
- *   与已装云族平台基对象 id/name/cn_name 重叠的目录项不挂树；
+ * - bk-lite 不接入 WeOpsX catalog：即使传入深链叶也不挂树；
  * - Meraki 维持挂父；
  * - 其余 type 仍按 #6351 隐藏派生，禁止全局去掉 isDerivativeObject。
  * - attachCloudDerivatives=false 时云族派生不进树（集成 list/asset/group）。
@@ -545,7 +524,7 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
   weopsxNodesOrOptions: SidebarTreeNode[] | MonitorObjectSidebarTreeOptions = [],
   options?: MonitorObjectSidebarTreeOptions
 ): T[] => {
-  const { weopsxNodes, attachCloudDerivatives } = resolveSidebarTreeArgs(
+  const { attachCloudDerivatives } = resolveSidebarTreeArgs(
     weopsxNodesOrOptions,
     options
   );
@@ -587,7 +566,7 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
 
   attachMerakiSidebarChildren(groups, merakiDerivatives, toNode);
 
-  if (cloudFamilyItems.length || weopsxNodes.length) {
+  if (cloudFamilyItems.length) {
     if (!typeOrder.includes(UNIFIED_CLOUD_ROOT_TYPE)) {
       typeOrder.push(UNIFIED_CLOUD_ROOT_TYPE);
     }
@@ -595,7 +574,6 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
       cloudFamilyItems,
       objects,
       toNode,
-      weopsxNodes,
       attachCloudDerivatives
     );
   }

@@ -13,26 +13,14 @@ import { preserveDashboardReturnContext } from '../shared/utils';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { ObjectItem, TreeItem } from '@/app/monitor/types';
-import {
-  buildMonitorObjectSidebarTree,
-  collectCloudFamilyPlatformIdentities
-} from '@/app/monitor/utils/monitorObject';
-import {
-  fetchWeopsxCloudCatalog,
-  toWeopsxCloudTreeNodes,
-  tryOpenWeopsxCloudNav,
-  WeopsxCloudCatalogItem
-} from '@/app/monitor/utils/weopsxCloudNav';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import styles from './dashboard-sidebar.module.scss';
 
 interface DashboardSidebarProps {
   currentObjectKey: string;
 }
 
-const buildMonitorObjectTree = (
-  objects: ObjectItem[],
-  weopsxItems: WeopsxCloudCatalogItem[] = []
-): TreeItem[] =>
+const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] =>
   buildMonitorObjectSidebarTree(
     objects,
     (item) => ({
@@ -42,17 +30,13 @@ const buildMonitorObjectTree = (
       icon: item.icon,
       count: item.instance_count || 0,
       children: []
-    }),
-    toWeopsxCloudTreeNodes(
-      weopsxItems,
-      collectCloudFamilyPlatformIdentities(objects)
-    )
+    })
   );
 
 export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) => {
   const router = useScreenAwareRouter();
   const searchParams = useSearchParams();
-  const { isLoading, get } = useApiClient();
+  const { isLoading } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
   const normalizedCurrent = normalizeDashboardKey(currentObjectKey);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
@@ -64,14 +48,11 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
     const loadObjects = async () => {
       try {
         setTreeLoading(true);
-        const [data, weopsxItems] = await Promise.all([
-          getMonitorObject({
-            add_instance_count: true
-          }),
-          fetchWeopsxCloudCatalog(get)
-        ]);
+        const data = await getMonitorObject({
+          add_instance_count: true
+        });
         setObjects(data);
-        setTreeData(buildMonitorObjectTree(data, weopsxItems));
+        setTreeData(buildMonitorObjectTree(data));
       } finally {
         setTreeLoading(false);
       }
@@ -100,7 +81,6 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
   }, [normalizedCurrent, objects, searchParams]);
 
   const handleSelect = (key: string) => {
-    if (tryOpenWeopsxCloudNav(key, treeData)) return;
     if (String(key) === String(selectedObjectId || '')) return;
 
     const monitorItem = objects.find((item) => String(item.id) === String(key));

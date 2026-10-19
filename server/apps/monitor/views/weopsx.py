@@ -7,7 +7,7 @@ from apps.monitor.services.weopsx_cloud_catalog import fetch_weopsx_cloud_catalo
 
 
 class WeopsxCloudCatalogViewSet(viewsets.ViewSet):
-    """只读代理 WeOpsX GET /api/v1/cmp/cloud-nav/catalog，供侧栏同一「云」根拼树。"""
+    """只读代理 WeOpsX GET /api/v1/cmp/cloud-nav/catalog。bk-lite 侧栏不接入此目录挂叶。"""
 
     @action(methods=["get"], detail=False, url_path="cloud-catalog")
     @HasPermission("view_list-View")

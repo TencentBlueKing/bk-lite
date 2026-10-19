@@ -1,3 +1,4 @@
+// bk-lite 侧栏不调用 fetchWeopsxCloudCatalog / toWeopsxCloudTreeNodes 挂叶。
 export const WEOPSX_CLOUD_NAV_SOURCE = 'weopsx';
 export const WEOPSX_CLOUD_KEY_PREFIX = 'weopsx:';
 export const WEOPSX_CLOUD_CATALOG_PATH = '/monitor/api/weopsx/cloud-catalog/';

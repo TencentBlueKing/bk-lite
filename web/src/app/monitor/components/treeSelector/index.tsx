@@ -1,16 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Tree, Spin, Input, Empty } from 'antd';
-import { ExportOutlined } from '@ant-design/icons';
 import { TreeItem, TableDataItem, TreeSortData } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import type { TreeProps, TreeDataNode } from 'antd';
 import { cloneDeep } from 'lodash';
 import ObjectIcon from '@/app/monitor/components/objectIcon';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import {
-  isWeopsxCloudNavKey,
-  WEOPSX_CLOUD_NAV_SOURCE
-} from '@/app/monitor/utils/weopsxCloudNav';
 import styles from './index.module.scss';
 import { shouldNotifyTreeNodeSelect } from './selectionNotify';
 
@@ -254,26 +249,16 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
   };
 
   // 叶子节点带 icon/count 时渲染「图标 + 标签 + 计数徽标」,否则按纯文本(向后兼容既有调用方)。
-  // WeOpsX 深链节点用外链图标，避免空 icon 走默认灰标、看起来像坏掉的平台节点。
   const renderTitle = (node: TreeDataNode) => {
     const item = node as unknown as TreeItem;
-    const isWeopsxNav =
-      item.source === WEOPSX_CLOUD_NAV_SOURCE || isWeopsxCloudNavKey(item.key);
-    const hasMeta = isWeopsxNav || !!item.icon || item.count != null;
+    const hasMeta = !!item.icon || item.count != null;
     if (!hasMeta) {
       return <span>{item.title}</span>;
     }
     return (
       <span className={`${styles.node} treeMetaNode`}>
         <span className={styles.icon}>
-          {isWeopsxNav ? (
-            <ExportOutlined
-              className="text-[16px] text-[var(--color-primary)]"
-              title="在新标签页打开"
-            />
-          ) : (
-            <ObjectIcon icon={item.icon} />
-          )}
+          <ObjectIcon icon={item.icon} />
         </span>
         <span className={styles.label}>
           {typeof item.title === 'string' ? (

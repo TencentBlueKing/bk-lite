@@ -32,7 +32,8 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import {
   buildMonitorObjectTypeSidebarTree,
   expandCloudFamilyTypeSortData,
-  resolveMonitorObjectTypeSelection
+  resolveMonitorObjectTypeSelection,
+  resolveMonitorObjectTypeTreeKey
 } from '@/app/monitor/utils/monitorObjectTypeSidebar';
 
 const ObjectPage = () => {
@@ -239,19 +240,20 @@ const ObjectPage = () => {
     if (!selectedType) return;
     try {
       setObjectLoading(true);
-      // 构建排序数据：当前类型下的对象名称列表（按新顺序）
-      const orderData = [
-        {
-          type: selectedType.id,
-          object_list: newList.map((item) => item.name)
-        }
-      ];
-      await updateObjectOrder(orderData);
+      const lists = new Map<string, string[]>();
+      for (const item of newList) {
+        const originalType = item.type_id || item.type || selectedType.id;
+        const list = lists.get(originalType) || [];
+        list.push(item.name);
+        lists.set(originalType, list);
+      }
+      // 按原 type 各提交一次，避免多 type 一包误改类型顺序。
+      for (const [type, object_list] of lists) {
+        await updateObjectOrder([{ type, object_list }]);
+      }
       message.success(t('common.updateSuccess'));
-      // 排序成功后刷新列表
       fetchObjects(selectedType.id);
     } catch {
-      // 排序失败，重新获取列表
       setObjectLoading(false);
     }
   };
@@ -262,10 +264,14 @@ const ObjectPage = () => {
       setTypeLoading(true);
       const data = await getObjectTypes();
       setTypeList(data || []);
-      // 默认选中第一个
       if (data?.length > 0 && !selectedType) {
-        setSelectedType(data[0]);
-        setDefaultSelectedKey(data[0].id);
+        const initial =
+          resolveMonitorObjectTypeSelection(
+            resolveMonitorObjectTypeTreeKey(data[0].id),
+            data
+          ) || data[0];
+        setSelectedType(initial);
+        setDefaultSelectedKey(resolveMonitorObjectTypeTreeKey(data[0].id));
       }
     } finally {
       setTypeLoading(false);
@@ -335,7 +341,7 @@ const ObjectPage = () => {
   const handleNodeDrag = async (sortData: TreeSortData[]) => {
     try {
       // sortData 格式: [{ type: 类型ID, object_list: [] }, ...]
-      // 「云」父节点展开回 Tencent Cloud / Aliyun Cloud / Cloud 原 id
+      // 唯一「云」叶展开回 Tencent Cloud / Aliyun Cloud / Cloud 原 id
       await updateObjectTypeOrder(
         expandCloudFamilyTypeSortData(
           sortData,
@@ -422,8 +428,13 @@ const ObjectPage = () => {
       const data = await getObjectTypes();
       setTypeList(data || []);
       if (data?.length > 0) {
-        setSelectedType(data[0]);
-        setDefaultSelectedKey(data[0].id);
+        const initial =
+          resolveMonitorObjectTypeSelection(
+            resolveMonitorObjectTypeTreeKey(data[0].id),
+            data
+          ) || data[0];
+        setSelectedType(initial);
+        setDefaultSelectedKey(resolveMonitorObjectTypeTreeKey(data[0].id));
       } else {
         setSelectedType(null);
         setDefaultSelectedKey('');
@@ -512,11 +523,10 @@ const ObjectPage = () => {
       setTypeList(list || []);
 
       if (actionType === 'add' && data.id) {
-        // 新增：选中新创建的对象类型（根据后端返回的 id）
         const newType = list?.find((item) => item.id === data.id);
         if (newType) {
           setSelectedType(newType);
-          setDefaultSelectedKey(newType.id);
+          setDefaultSelectedKey(resolveMonitorObjectTypeTreeKey(newType.id));
         }
       } else if (actionType === 'edit' && data.id) {
         // 编辑：更新当前选中的对象类型信息（同步右侧标题）
