@@ -30,7 +30,7 @@
     {
       "name": "Events",
       "children": [
-        { "id": "alert_events", "name": "Alert events", "operation": ["View"] },
+        { "id": "alert_events", "name": "Alert events", "operation": ["View", "Operate"] },
         { "id": "monitors", "name": "Monitors", "operation": ["View", "Operate"] }
       ]
     },
@@ -64,7 +64,8 @@
         "errors-View",
         "releases-View",
         "monitors-View",
-        "alert_events-View"
+        "alert_events-View",
+        "alert_events-Operate"
       ]
     }
   ]

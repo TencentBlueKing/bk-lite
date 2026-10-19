@@ -22,6 +22,7 @@ def control_error_response(exc: ControlError) -> Response:
         "revision_conflict": status.HTTP_409_CONFLICT,
         "idempotency_conflict": status.HTTP_409_CONFLICT,
         "org_conflict": status.HTTP_409_CONFLICT,
+        "conflict": status.HTTP_409_CONFLICT,
         "unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
         "internal_error": status.HTTP_502_BAD_GATEWAY,
     }
