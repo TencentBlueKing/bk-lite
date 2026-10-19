@@ -24,6 +24,7 @@ from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.node_mgmt import InstanceConfigService
+from apps.monitor.services.user_query_slots import with_user_query_slot
 from apps.monitor.utils.dimension import normalize_instance_identity, parse_instance_id
 from apps.monitor.utils.pagination import parse_page_params
 
@@ -351,6 +352,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         )
 
     @action(methods=["get"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/list")
+    @with_user_query_slot()
     def monitor_instance_list(self, request, monitor_object_id):
         """非特殊对象的通用列表接口"""
         scope = resolve_current_team_data_scope(request)
@@ -412,6 +414,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/search")
+    @with_user_query_slot()
     def monitor_instance_search(self, request, monitor_object_id):
         """特殊搜索接口，特殊对象不通用的查询条件"""
 
@@ -455,6 +458,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         return WebUtils.response_success(data)
 
     @action(methods=["get"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/effective_plugins")
+    @with_user_query_slot()
     def effective_plugins(self, request, monitor_object_id):
         instance_id = request.GET.get("instance_id")
         if not instance_id:

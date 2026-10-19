@@ -318,6 +318,99 @@ def test_sdk_transport_keeps_sdk_reconnect_after_connect_error():
         transport.close()
 
 
+def test_sdk_transport_exchange_sends_upload_command():
+    from apps.opspilot.services.skill_channel_aibot_long_connection_sdk import WecomSdkTransport
+
+    class ReplyClient:
+        def __init__(self, options):
+            self.handlers = {}
+            self.replies = []
+
+        def on(self, name, callback):
+            self.handlers.setdefault(name, []).append(callback)
+
+        async def connect(self):
+            for callback in self.handlers.get("authenticated", []):
+                callback()
+
+        def disconnect(self):
+            return None
+
+        async def reply_stream(self, frame, stream_id, content, finish=False, msg_item=None, feedback=None):
+            return {}
+
+        async def reply(self, frame, body, cmd=None):
+            self.replies.append({"req_id": (frame.get("headers") or {}).get("req_id"), "cmd": cmd, "body": body})
+            return {"errcode": 0, "headers": frame.get("headers") or {}, "body": {"upload_id": "up-1"}}
+
+    transport = WecomSdkTransport(
+        "wss://openws.work.weixin.qq.com",
+        "bot-1",
+        "secret-1",
+        client_factory=ReplyClient,
+    )
+    try:
+        ack = transport.exchange(
+            {
+                "cmd": "aibot_upload_media_init",
+                "headers": {"req_id": "upload-1"},
+                "body": {"type": "file", "filename": "a.txt"},
+            }
+        )
+        assert ack["body"]["upload_id"] == "up-1"
+        client = transport._client
+        assert client.replies == [{"req_id": "upload-1", "cmd": "aibot_upload_media_init", "body": {"type": "file", "filename": "a.txt"}}]
+    finally:
+        transport.close()
+
+
+def test_upload_wecom_file_chunks_and_returns_media_id():
+    import base64
+
+    from apps.opspilot.services.skill_channel_aibot_long_connection_media import WecomMediaRejected, generated_file_from_agui_event, upload_wecom_file
+
+    content = b"a" * (512 * 1024 + 10)
+    sent = []
+
+    def exchange(payload):
+        sent.append(payload)
+        cmd = payload["cmd"]
+        if cmd == "aibot_upload_media_init":
+            body = payload["body"]
+            assert body["filename"] == "report.docx"
+            assert body["total_size"] == len(content)
+            assert body["total_chunks"] == 2
+            return {"errcode": 0, "body": {"upload_id": "up-1"}}
+        if cmd == "aibot_upload_media_chunk":
+            return {"errcode": 0, "body": {}}
+        return {"errcode": 0, "body": {"media_id": "media-1", "type": "file"}}
+
+    assert upload_wecom_file(exchange, filename="dir/report.docx", content=content) == "media-1"
+    chunks = [item for item in sent if item["cmd"] == "aibot_upload_media_chunk"]
+    assert [item["body"]["chunk_index"] for item in chunks] == [0, 1]
+    assert base64.b64decode(chunks[1]["body"]["base64_data"]) == b"a" * 10
+    with pytest.raises(WecomMediaRejected):
+        upload_wecom_file(exchange, filename="x.bin", content=b"1234")
+
+    parsed = generated_file_from_agui_event(
+        {
+            "type": "CUSTOM",
+            "name": "report_file_download",
+            "value": {"filename": "report.docx", "content_base64": base64.b64encode(b"hello-file").decode("ascii")},
+        }
+    )
+    assert parsed == ("report.docx", b"hello-file")
+    assert generated_file_from_agui_event({"type": "TEXT_MESSAGE_CONTENT", "delta": "hi"}) is None
+    from apps.opspilot.services.skill_channel_aibot_long_connection_media import attachment_from_tool_result
+
+    tool_result = (
+        '{"attachment_id": "skill_1", "filename": "广州介绍_v1.0.txt", '
+        '"file_url": "/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/tok.en:1:sig/"}'
+    )
+    assert attachment_from_tool_result({"type": "TOOL_CALL_RESULT", "content": tool_result}) == ("广州介绍_v1.0.txt", "tok.en:1:sig")
+    assert attachment_from_tool_result({"type": "TOOL_CALL_RESULT", "content": '{"skipped": true}'}) is None
+
+
 def test_visible_answer_keeps_final_text_only():
     events = [
         {"type": "THINKING_TEXT_MESSAGE_CONTENT", "delta": "思考过程"},
@@ -529,6 +622,10 @@ def test_wecom_answer_follows_the_user_message_language(monkeypatch):
         "apps.opspilot.services.skill_memory_service.inject_skill_memory_prompt",
         lambda *args, **kwargs: None,
     )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot_long_connection_agent._files_for_execution",
+        lambda execution_id, channel_id: [],
+    )
     request = SimpleNamespace(
         channel=SimpleNamespace(id=7, skill=SimpleNamespace(id=1, name="skill", skill_type=1, conversation_window_size=10)),
         external_user_id="user-1",
@@ -541,6 +638,156 @@ def test_wecom_answer_follows_the_user_message_language(monkeypatch):
     )
     _run(request)
     assert captured["reply_language"] == "match_user"
+
+
+def test_wecom_answer_collects_generated_file(monkeypatch):
+    import base64
+
+    from apps.opspilot.services.skill_channel_aibot_long_connection_agent import _run
+
+    collected = []
+
+    async def fake_stream(*args, **kwargs):
+        payload = {
+            "type": "CUSTOM",
+            "name": "report_file_download",
+            "value": {"filename": "report.docx", "content_base64": base64.b64encode(b"hello-file").decode("ascii")},
+        }
+        yield f"data: {json.dumps(payload)}\n\n"
+
+    monkeypatch.setattr("apps.opspilot.utils.agui_chat._generate_agui_stream", fake_stream)
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.get_or_create_conversation",
+        lambda *args, **kwargs: SimpleNamespace(session_id="session-1"),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.build_skill_chat_params",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service._history_from_conversation",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_memory_service.inject_skill_memory_prompt",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot_long_connection_agent._files_for_execution",
+        lambda execution_id, channel_id: [],
+    )
+    request = SimpleNamespace(
+        channel=SimpleNamespace(id=7, skill=SimpleNamespace(id=1, name="skill", skill_type=1, conversation_window_size=10)),
+        external_user_id="user-1",
+        session_id="room-1",
+        user_message="出报告",
+        cancelled=False,
+        publish=lambda text: None,
+        finish=lambda: None,
+        fail=lambda message=None: None,
+        add_generated_file=lambda filename, content: collected.append((filename, content)),
+    )
+    _run(request)
+    assert collected == [("report.docx", b"hello-file")]
+
+
+def test_wecom_answer_sends_generated_attachment_tool_result(monkeypatch):
+    from apps.opspilot.services.skill_channel_aibot_long_connection_agent import _run
+
+    collected = []
+
+    async def fake_stream(*args, **kwargs):
+        payload = {
+            "type": "TOOL_CALL_RESULT",
+            "content": ('{"filename": "广州介绍_v1.0.txt", ' '"file_url": "/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/tok.en:1:sig/"}'),
+        }
+        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    monkeypatch.setattr("apps.opspilot.utils.agui_chat._generate_agui_stream", fake_stream)
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.get_or_create_conversation",
+        lambda *args, **kwargs: SimpleNamespace(session_id="session-1"),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.build_skill_chat_params",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service._history_from_conversation",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_memory_service.inject_skill_memory_prompt",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot_long_connection_agent._read_generated_attachment",
+        lambda channel_id, filename, token: (filename, b"guangzhou"),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot_long_connection_agent._files_for_execution",
+        lambda execution_id, channel_id: [],
+    )
+    request = SimpleNamespace(
+        channel=SimpleNamespace(id=7, skill=SimpleNamespace(id=1, name="skill", skill_type=1, conversation_window_size=10)),
+        external_user_id="user-1",
+        session_id="room-1",
+        user_message="帮我生成一个广州介绍的500txt文件",
+        cancelled=False,
+        publish=lambda text: None,
+        finish=lambda: None,
+        fail=lambda message=None: None,
+        add_generated_file=lambda filename, content: collected.append((filename, content)),
+    )
+    _run(request)
+    assert collected == [("广州介绍_v1.0.txt", b"guangzhou")]
+
+
+def test_wecom_answer_sends_file_saved_for_this_execution(monkeypatch):
+    from apps.opspilot.services.skill_channel_aibot_long_connection_agent import _run
+
+    collected = []
+    seen = {}
+
+    async def fake_stream(params, *args, **kwargs):
+        seen["execution_id"] = params.get("execution_id")
+        if False:
+            yield ""
+
+    monkeypatch.setattr("apps.opspilot.utils.agui_chat._generate_agui_stream", fake_stream)
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.get_or_create_conversation",
+        lambda *args, **kwargs: SimpleNamespace(session_id="session-1"),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.build_skill_chat_params",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service._history_from_conversation",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_memory_service.inject_skill_memory_prompt",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot_long_connection_agent._files_for_execution",
+        lambda execution_id, channel_id: [("广州介绍_v1.2.txt", b"guangzhou-v2")] if execution_id == seen["execution_id"] else [],
+    )
+    request = SimpleNamespace(
+        channel=SimpleNamespace(id=7, skill=SimpleNamespace(id=1, name="skill", skill_type=1, conversation_window_size=10)),
+        external_user_id="user-1",
+        session_id="room-1",
+        user_message="帮我生成一个广州的介绍文档",
+        cancelled=False,
+        publish=lambda text: None,
+        finish=lambda: collected.append("finish"),
+        fail=lambda message=None: None,
+        add_generated_file=lambda filename, content: collected.append((filename, content)),
+    )
+    _run(request)
+    assert collected == [("广州介绍_v1.2.txt", b"guangzhou-v2"), "finish"]
 
 
 def test_cancelling_a_turn_stops_the_blocked_agent_stream(monkeypatch):
@@ -865,6 +1112,36 @@ class TestLongConnectionConversation:
         assert finished["finish"] is True
         assert finished["content"].endswith("内容过长，已截断")
         assert len(finished["content"].encode("utf-8")) <= 20480
+
+    def test_completed_turn_sends_generated_file_after_the_text(self):
+        channel = self._saved_channel(self._skill())
+        agent = RecordingAgent()
+        session, transport, _clock = self._session(channel, agent)
+        delivered = []
+
+        def exchange(payload):
+            delivered.append(payload)
+            cmd = payload["cmd"]
+            if cmd == "aibot_upload_media_init":
+                return {"errcode": 0, "body": {"upload_id": "up-1"}}
+            if cmd == "aibot_upload_media_chunk":
+                return {"errcode": 0, "body": {}}
+            if cmd == "aibot_upload_media_finish":
+                return {"errcode": 0, "body": {"media_id": "media-1"}}
+            return {"errcode": 0, "body": {}}
+
+        transport.exchange = exchange
+        session.handle_frame(_text_frame("req-1", "出一份报告"))
+        agent.requests[0].publish("报告好了")
+        agent.requests[0].add_generated_file("report.docx", b"hello-file")
+        agent.requests[0].finish()
+
+        assert _stream_body(_streams(transport)[-1])["finish"] is True
+        assert _stream_body(_streams(transport)[-1])["content"] == "报告好了"
+        file_reply = delivered[-1]
+        assert file_reply["cmd"] == "aibot_respond_msg"
+        assert file_reply["headers"]["req_id"] == "req-1"
+        assert file_reply["body"] == {"msgtype": "file", "file": {"media_id": "media-1"}}
 
     def test_empty_answer_finishes_instead_of_leaving_processing_text(self):
         channel = self._saved_channel(self._skill())

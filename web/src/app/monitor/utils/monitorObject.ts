@@ -13,6 +13,7 @@
  */
 
 import { ObjectItem } from '@/app/monitor/types';
+import { foldCloudNavIdentity } from '@/app/monitor/utils/weopsxCloudNav';
 
 const objectLevel = (obj: ObjectItem): 'base' | 'derivative' =>
   obj.level === 'derivative' ? 'derivative' : 'base';
@@ -76,9 +77,11 @@ const MERAKI_DERIVATIVE_OBJECT_NAMES = new Set([
 ]);
 
 /**
- * 视图 / 专业大盘侧栏仅把 Cisco Meraki 的派生对象挂到父节点下。
+ * 视图 / 专业大盘 / 事件侧栏把 Cisco Meraki 的派生对象挂到父节点下。
  * 名称集合覆盖内置五个子对象；parent 指向 Cisco Meraki 时也认，避免漏挂。
- * 不根据 isDerivativeObject 全局建树；其它派生对象仍作为分组下的平级叶子出现。
+ * 集成 list/asset/group 走 attachCloudDerivatives=false，不挂这些子叶。
+ * 云族挂父见 isCloudFamilySidebarType / buildMonitorObjectSidebarTree；
+ * 禁止借此全局去掉 isDerivativeObject（VMware / K8s 等非云派生仍隐藏）。
  */
 export const isMerakiSidebarDerivative = (
   item: ObjectItem,
@@ -100,19 +103,83 @@ export const attachMerakiSidebarChildren = <T extends { label?: string; children
   merakiDerivatives: ObjectItem[],
   toNode: (item: ObjectItem) => T
 ): void => {
-  if (!merakiDerivatives.length) {
+  attachSidebarChildrenByParentLabel(
+    groups,
+    merakiDerivatives,
+    toNode,
+    CISCO_MERAKI_OBJECT_NAME
+  );
+};
+
+/**
+ * 把派生节点挂到分组内 label 匹配的父叶子下（仅 Meraki 调用；云族走 buildUnifiedCloudRoot）。
+ */
+export const attachSidebarChildrenByParentLabel = <T extends { label?: string; children: T[] }>(
+  groups: Record<string, { children: T[] }>,
+  derivatives: ObjectItem[],
+  toNode: (item: ObjectItem) => T,
+  parentLabel: string
+): void => {
+  if (!derivatives.length) {
     return;
   }
   for (const group of Object.values(groups)) {
-    const parent = group.children.find(
-      (child) => child.label === CISCO_MERAKI_OBJECT_NAME
-    );
+    const parent = group.children.find((child) => child.label === parentLabel);
     if (!parent) {
       continue;
     }
-    parent.children = merakiDerivatives.map(toNode);
+    parent.children = derivatives.map(toNode);
     return;
   }
+};
+
+/** 演进现有 type=Cloud 作为唯一「云」总根。新云只需 type=Cloud，不必改名单。 */
+export const UNIFIED_CLOUD_ROOT_TYPE = 'Cloud';
+
+/**
+ * 历史对象仍可能 typed 为 Tencent Cloud / Aliyun Cloud。
+ * 仅作入根归一，不是开放厂商白名单；新云请用 type=Cloud。
+ */
+const LEGACY_CLOUD_FAMILY_TYPE_ALIASES: Record<string, string> = {
+  'Tencent Cloud': UNIFIED_CLOUD_ROOT_TYPE,
+  'Aliyun Cloud': UNIFIED_CLOUD_ROOT_TYPE
+};
+
+/** 与后端 CLOUD_FAMILY_TYPE_IDS 对齐：点「云」时右侧按这一组 type 取平台。 */
+export const CLOUD_FAMILY_TYPE_IDS = [
+  UNIFIED_CLOUD_ROOT_TYPE,
+  ...Object.keys(LEGACY_CLOUD_FAMILY_TYPE_ALIASES)
+] as const;
+
+export const normalizeCloudFamilySidebarType = (
+  type?: string | null
+): string | undefined => {
+  if (!type) return undefined;
+  return LEGACY_CLOUD_FAMILY_TYPE_ALIASES[type] ?? type;
+};
+
+export const isCloudFamilySidebarType = (type?: string | null): boolean =>
+  normalizeCloudFamilySidebarType(type) === UNIFIED_CLOUD_ROOT_TYPE;
+
+export const resolveCloudFamilyTypeQueryValues = (
+  typeId?: string | null
+): string[] => {
+  if (!typeId) return [];
+  return isCloudFamilySidebarType(typeId)
+    ? [...CLOUD_FAMILY_TYPE_IDS]
+    : [typeId];
+};
+
+export const uniqueMonitorRecords = <T extends { id?: unknown }>(
+  items: T[]
+): T[] => {
+  const seen = new Map<string, T>();
+  for (const item of items) {
+    const key = String(item.id ?? '');
+    if (!key || seen.has(key)) continue;
+    seen.set(key, item);
+  }
+  return [...seen.values()];
 };
 
 /**
@@ -311,6 +378,279 @@ export const filterVisibleMonitorObjects = (
     }
   }
   return objects.filter((item) => !hiddenIds.has(item.id));
+};
+
+const isCloudFamilyPlatformBase = (item: ObjectItem): boolean =>
+  isCloudFamilySidebarType(item.type) && objectLevel(item) === 'base';
+
+/** 已装云族平台基对象的 name / display_name，用来剔除 WeOpsX 目录里的重复云。 */
+export const collectCloudFamilyPlatformIdentities = (
+  objects: ObjectItem[]
+): string[] => {
+  const tokens = new Set<string>();
+  for (const item of objects) {
+    if (!isCloudFamilyPlatformBase(item)) continue;
+    for (const raw of [item.name, item.display_name]) {
+      const folded = foldCloudNavIdentity(raw);
+      if (folded) tokens.add(folded);
+    }
+  }
+  return [...tokens];
+};
+
+/**
+ * 云族派生的父平台：优先 parent / getBaseObject，缺失时按名称前缀
+ * （SangforSCPHost → SangforSCP，CNwareVM → CNware）。CVM 不依赖前缀，走 parent。
+ */
+export const resolveCloudFamilyParent = (
+  item: ObjectItem,
+  objects: ObjectItem[]
+): ObjectItem | undefined => {
+  if (isCloudFamilyPlatformBase(item) && item.parent == null) {
+    return undefined;
+  }
+  const byParent = getBaseObject(item, objects);
+  if (
+    byParent &&
+    byParent.id !== item.id &&
+    isCloudFamilySidebarType(byParent.type)
+  ) {
+    return byParent;
+  }
+  return objects
+    .filter(isCloudFamilyPlatformBase)
+    .find(
+      (platform) =>
+        platform.id !== item.id &&
+        (item.parent === platform.id ||
+          (item.name !== platform.name && item.name.startsWith(platform.name)))
+    );
+};
+
+export const isCloudFamilySidebarDerivative = (
+  item: ObjectItem,
+  objects: ObjectItem[]
+): boolean => {
+  if (!isCloudFamilySidebarType(item.type)) {
+    return false;
+  }
+  if (objectLevel(item) === 'derivative') {
+    return true;
+  }
+  return Boolean(resolveCloudFamilyParent(item, objects));
+};
+
+/** 与集成 list/asset/group 侧栏「云」下平台叶同一集合（不含 CVM 等派生）。 */
+export const collectCloudFamilyPlatformIds = (
+  objects: ObjectItem[]
+): Array<ObjectItem['id']> =>
+  objects
+    .filter(
+      (item) =>
+        isCloudFamilySidebarType(item.type) &&
+        !isCloudFamilySidebarDerivative(item, objects)
+    )
+    .map((item) => item.id);
+
+export const resolveUnifiedCloudRootTitle = (objects: ObjectItem[]): string => {
+  const cloudType = objects.find(
+    (item) => item.type === UNIFIED_CLOUD_ROOT_TYPE && item.display_type
+  );
+  if (cloudType?.display_type) {
+    return cloudType.display_type;
+  }
+  const looksZh = objects.some((item) =>
+    /[\u4e00-\u9fff]/.test(String(item.display_name || item.display_type || ''))
+  );
+  return looksZh ? '云' : 'Cloud';
+};
+
+interface SidebarTreeNode {
+  title?: unknown;
+  label?: string;
+  key?: string | number;
+  source?: string;
+  name?: string;
+  cn_name?: string;
+  children: SidebarTreeNode[];
+}
+
+const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
+  cloudFamilyItems: ObjectItem[],
+  objects: ObjectItem[],
+  toNode: (item: ObjectItem) => T,
+  attachSidebarDerivatives = true
+): T => {
+  const platforms = cloudFamilyItems.filter(
+    (item) => !isCloudFamilySidebarDerivative(item, objects)
+  );
+  const derivatives = attachSidebarDerivatives
+    ? cloudFamilyItems.filter((item) => isCloudFamilySidebarDerivative(item, objects))
+    : [];
+  const childrenByParentId = new Map<number, ObjectItem[]>();
+  const unattached: ObjectItem[] = [];
+  for (const item of derivatives) {
+    const parent = resolveCloudFamilyParent(item, objects);
+    if (!parent) {
+      unattached.push(item);
+      continue;
+    }
+    const siblings = childrenByParentId.get(parent.id) || [];
+    siblings.push(item);
+    childrenByParentId.set(parent.id, siblings);
+  }
+
+  const platformNodes = platforms.map((platform) => {
+    const node = toNode(platform);
+    const childItems = childrenByParentId.get(platform.id) || [];
+    node.children = childItems.map(toNode);
+    childrenByParentId.delete(platform.id);
+    return node;
+  });
+
+  for (const [parentId, childItems] of childrenByParentId) {
+    const parent = objects.find((item) => item.id === parentId);
+    if (!parent) {
+      unattached.push(...childItems);
+      continue;
+    }
+    const node = toNode(parent);
+    node.children = childItems.map(toNode);
+    platformNodes.push(node);
+  }
+
+  platformNodes.push(...unattached.map(toNode));
+
+  return {
+    title: resolveUnifiedCloudRootTitle(objects),
+    key: UNIFIED_CLOUD_ROOT_TYPE,
+    children: platformNodes
+  } as unknown as T;
+};
+
+export interface MonitorObjectSidebarTreeOptions {
+  /**
+   * 默认 true：把挂父派生（云族 CVM 等、Meraki 五子）挂到父叶。
+   * 集成 list/asset/group 传 false，只露父接入。
+   * attachCloudDerivatives 为旧名，语义相同。
+   */
+  attachSidebarDerivatives?: boolean;
+  attachCloudDerivatives?: boolean;
+}
+
+const resolveAttachSidebarDerivatives = (
+  options?: MonitorObjectSidebarTreeOptions
+): boolean => {
+  if (!options) return true;
+  if (options.attachSidebarDerivatives !== undefined) {
+    return options.attachSidebarDerivatives !== false;
+  }
+  return options.attachCloudDerivatives !== false;
+};
+
+const resolveSidebarTreeArgs = (
+  weopsxNodesOrOptions: SidebarTreeNode[] | MonitorObjectSidebarTreeOptions = [],
+  options?: MonitorObjectSidebarTreeOptions
+): {
+  attachSidebarDerivatives: boolean;
+} => {
+  // 数组曾是 WeOpsX catalog 叶；bk-lite 不接入 catalog 到侧栏，忽略。
+  if (Array.isArray(weopsxNodesOrOptions)) {
+    return {
+      attachSidebarDerivatives: resolveAttachSidebarDerivatives(options)
+    };
+  }
+  return {
+    attachSidebarDerivatives: resolveAttachSidebarDerivatives(
+      weopsxNodesOrOptions
+    )
+  };
+};
+
+/**
+ * 视图 / 专业大盘 / 事件对象树：
+ * - type=Cloud（及历史 Tencent Cloud / Aliyun Cloud 别名）挂到唯一「云」根下，派生挂父；
+ * - bk-lite 不接入 WeOpsX catalog：即使传入深链叶也不挂树；
+ * - Meraki 默认挂父；attachCloudDerivatives/attachSidebarDerivatives=false 时不挂
+ *   （集成 list/asset/group 只露 Cisco Meraki 父接入）；
+ * - 其余 type 仍按派生隐藏，禁止全局去掉 isDerivativeObject（VMware / K8s 等）。
+ */
+export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
+  objects: ObjectItem[],
+  toNode: (item: ObjectItem) => T,
+  weopsxNodesOrOptions: SidebarTreeNode[] | MonitorObjectSidebarTreeOptions = [],
+  options?: MonitorObjectSidebarTreeOptions
+): T[] => {
+  const { attachSidebarDerivatives } = resolveSidebarTreeArgs(
+    weopsxNodesOrOptions,
+    options
+  );
+  const groups: Record<string, T> = {};
+  const typeOrder: string[] = [];
+  const merakiDerivatives: ObjectItem[] = [];
+  const cloudFamilyItems: ObjectItem[] = [];
+
+  const ensureGroup = (item: ObjectItem): T => {
+    if (!groups[item.type]) {
+      groups[item.type] = {
+        title: item.display_type || '--',
+        key: item.type,
+        children: []
+      } as unknown as T;
+      typeOrder.push(item.type);
+    }
+    return groups[item.type];
+  };
+
+  for (const item of objects) {
+    if (isCloudFamilySidebarType(item.type)) {
+      if (!typeOrder.includes(UNIFIED_CLOUD_ROOT_TYPE)) {
+        typeOrder.push(UNIFIED_CLOUD_ROOT_TYPE);
+      }
+      cloudFamilyItems.push(item);
+      continue;
+    }
+    if (isMerakiSidebarDerivative(item, objects)) {
+      if (attachSidebarDerivatives) {
+        ensureGroup(item);
+        merakiDerivatives.push(item);
+      }
+      continue;
+    }
+    if (isDerivativeObject(item, objects)) {
+      continue;
+    }
+    ensureGroup(item).children.push(toNode(item));
+  }
+
+  if (attachSidebarDerivatives) {
+    attachMerakiSidebarChildren(groups, merakiDerivatives, toNode);
+  }
+
+  if (cloudFamilyItems.length) {
+    if (!typeOrder.includes(UNIFIED_CLOUD_ROOT_TYPE)) {
+      typeOrder.push(UNIFIED_CLOUD_ROOT_TYPE);
+    }
+    groups[UNIFIED_CLOUD_ROOT_TYPE] = buildUnifiedCloudRoot(
+      cloudFamilyItems,
+      objects,
+      toNode,
+      attachSidebarDerivatives
+    );
+  }
+
+  const tree = typeOrder
+    .map((type) => groups[type])
+    .filter((group): group is T => Boolean(group));
+
+  const otherGroup = groups.Other;
+  if (otherGroup) {
+    otherGroup.children = otherGroup.children.filter(
+      (item) => item.label !== 'SNMP Trap'
+    );
+  }
+
+  return tree;
 };
 
 const POD_MONITOR_OBJECT_NAMES = new Set(['Pod', 'K3SPod']);

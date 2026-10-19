@@ -15,6 +15,8 @@ from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.models import Dashboard, Directory, Screen, Topology
 
 BUILTIN_CANVASES_PATH = Path(__file__).resolve().parents[1] / "support-files" / "builtin_canvases.yaml"
+WEOPSX_DASHBOARD_PATH = Path(__file__).resolve().parents[1] / "support-files" / "weopsx_platform_usage_dashboard.yaml"
+LANGUAGE_DIR = Path(__file__).resolve().parents[1] / "language"
 NETWORK_TOPOLOGY_SCREEN_PATH = Path(__file__).resolve().parents[1] / "support-files" / "builtin_network_topology_screen.yaml"
 SOURCE_API_PATH = Path(__file__).resolve().parents[1] / "support-files" / "source_api.json"
 
@@ -32,6 +34,62 @@ def _load_builtin_room3d_screen():
 def _load_builtin_alert_dashboard():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
     return next(dashboard for dashboard in payload["dashboards"] if dashboard["name"] == "统一告警中心仪表盘")
+
+
+ALERT_DATA_LINK = {
+    "kind": "data",
+    "name": "查看告警",
+    "url": "/alarm/alarms?alert_id=$__data.fields.alert_id$",
+    "openMode": "newTab",
+}
+# 资产列表页读取 modelId / classificationId。明细行没有 classification_id。
+CMDB_MODEL_TOP_LINK = {
+    "kind": "data",
+    "name": "查看模型",
+    "url": "/cmdb/assetData?modelId=$__data.fields.model_id$&classificationId=$__data.fields.classification_id$",
+    "openMode": "newTab",
+}
+CMDB_MODEL_TABLE_LINK = {
+    "kind": "data",
+    "name": "查看模型",
+    "url": "/cmdb/assetData?modelId=$__data.fields.model_id$",
+    "openMode": "newTab",
+}
+# 实例详情页读取 model_id / inst_uuid / inst_name。
+SCENE_CMDB_DETAIL_LINK = {
+    "kind": "data",
+    "name": "查看 CMDB 详情",
+    "url": (
+        "/cmdb/assetData/detail/baseInfo?model_id=$__data.fields.object.model_id$"
+        "&inst_uuid=$__data.fields.object.id$&inst_name=$__data.fields.object.name$"
+    ),
+    "openMode": "newTab",
+}
+
+
+def _title_link(name, url):
+    return {"kind": "title", "name": name, "url": url, "openMode": "newTab"}
+
+
+ALERT_SOURCE_TITLE_LINK = _title_link("查看告警源", "/alarm/integration")
+COLLECT_TASK_TITLE_LINK = _title_link("查看采集", "/cmdb/assetManage/autoDiscovery/collection?view=tasks")
+INSTANCE_SCALE_TITLE_LINK = _title_link("查看实例规模", "/cmdb/assetOverview")
+MODEL_MANAGE_TITLE_LINK = _title_link("查看模型", "/cmdb/assetManage/management")
+# 主机模型实际分类是 host_manage。资产列表缺 classificationId 时会落到第一个分类。
+HOST_LIST_TITLE_LINK = _title_link(
+    "查看主机",
+    "/cmdb/assetData?modelId=host&classificationId=host_manage",
+)
+MONITOR_OBJECT_TITLE_LINK = _title_link("查看监控对象", "/monitor/integration/object")
+MONITOR_PLUGIN_TITLE_LINK = _title_link("查看插件", "/monitor/integration/list")
+# 比率按 0–100 计。≥90 绿、≥70 黄、其余红：90 为健康线，70 沿用原高位作为警告线。
+RATE_THRESHOLD_COLORS = [
+    {"color": "#67a567", "value": "90"},
+    {"color": "#EAB839", "value": "70"},
+    {"color": "#fd666d", "value": "0"},
+]
+TREND_TITLE_SUFFIX = "（$time$）"
+ALERT_SCREEN_DESC = "今日已产生和今日已关闭按当天统计；待响应、处理中和活跃告警按当前状态统计。新增事故、关联事件、通知成功率和趋势图跟随所选时段。"
 
 
 def _count_nested_key(value, target_key):
@@ -81,6 +139,7 @@ def test_builtin_application_topology_screen_filter_uses_canvas_contract():
         "textStyle": {"color": "canvas", "fontSize": 25, "fontWeight": 600},
     }
     assert widget["valueConfig"]["applicationTopology"] == {"depth": 3}
+    assert widget["valueConfig"]["interaction"] == SCENE_CMDB_DETAIL_LINK
     assert widget["valueConfig"]["filterBindings"] == {
         "application_system_id__string": True,
         "application_topology_depth__string": True,
@@ -182,6 +241,7 @@ def test_builtin_application3d_screen_yaml_contains_only_the_self_fetch_scene_wi
             "valueConfig": {
                 "chartType": "application3D",
                 "sceneWidgetType": "application3D",
+                "interaction": SCENE_CMDB_DETAIL_LINK,
                 "application3DWall": {"autoPageEnabled": True},
                 "appearance": {"frame": "bare"},
             },
@@ -543,17 +603,229 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
 
 
 @pytest.mark.unit
+def test_builtin_canvas_data_links_and_alert_screen_drops_organization_filter():
+    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
+    screen = _load_builtin_alert_screen()
+
+    assert screen["view_sets"]["filters"] == [
+        {
+            "id": "time__timeRange",
+            "key": "time",
+            "name": "时间范围",
+            "type": "timeRange",
+            "order": 0,
+            "enabled": True,
+            "defaultValue": {
+                "end": "2026-08-04T00:00:00.000Z",
+                "start": "2026-07-28T00:00:00.000Z",
+                "selectValue": 10080,
+            },
+        }
+    ]
+    assert _count_nested_key(screen, "organization__string") == 0
+    for widget in screen["view_sets"]["items"]:
+        if widget.get("type") != "widget":
+            continue
+        assert "organization__string" not in (widget["valueConfig"].get("filterBindings") or {})
+
+    node_by_id = {node["id"]: node for node in screen["view_sets"]["items"]}
+    assert node_by_id["alert-active-table"]["valueConfig"]["interaction"] == ALERT_DATA_LINK
+    assert node_by_id["alert-duration-top"]["valueConfig"]["interaction"] == ALERT_DATA_LINK
+
+    alert_dashboard = next(item for item in payload["dashboards"] if item["name"] == "统一告警中心仪表盘")
+    duration_table = next(item for item in alert_dashboard["view_sets"] if item["name"] == "活跃告警持续时长 TOP 10")
+    assert duration_table["valueConfig"]["interaction"] == ALERT_DATA_LINK
+
+    cmdb_dashboard = next(item for item in payload["dashboards"] if item["name"] == "CMDB仪表盘")
+    model_top = next(item for item in cmdb_dashboard["view_sets"] if item["name"] == "模型实例 TOP 5")
+    model_table = next(item for item in cmdb_dashboard["view_sets"] if item["name"] == "模型实例明细")
+    assert model_top["valueConfig"]["interaction"] == CMDB_MODEL_TOP_LINK
+    assert model_table["valueConfig"]["interaction"] == CMDB_MODEL_TABLE_LINK
+
+    room3d = next(item for item in _load_builtin_room3d_screen()["view_sets"]["items"] if item["id"] == "builtin-room3d-main")
+    application_screen = next(item for item in payload["screens"] if item["key"] == "screen::3D应用大屏_内置")
+    application3d = next(item for item in application_screen["view_sets"]["items"] if item["id"] == "builtin-application3d-main")
+    assert room3d["valueConfig"]["interaction"] == SCENE_CMDB_DETAIL_LINK
+    assert application3d["valueConfig"]["interaction"] == SCENE_CMDB_DETAIL_LINK
+
+
+def _widgets_by_name(nodes):
+    found = {}
+    for node in nodes or []:
+        if isinstance(node, dict) and node.get("name"):
+            found[node["name"]] = node
+        sub_grid = node.get("subGridOpts") if isinstance(node, dict) else None
+        children = sub_grid.get("children") if isinstance(sub_grid, dict) else None
+        found.update(_widgets_by_name(children))
+    return found
+
+
+@pytest.mark.unit
+def test_builtin_canvas_title_links_and_alert_screen_trend_titles():
+    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
+    screen_nodes = {node["id"]: node for node in _load_builtin_alert_screen()["view_sets"]["items"]}
+
+    # 无边框组件不渲染标题图标，标题链接挂在正上方、文案相同的文本项上。
+    screen_title_links = {
+        "alert-active-pending": ("label-alert-active-pending", "待响应", _title_link("查看告警", "/alarm/alarms?status=pending")),
+        "alert-kpi-processing": ("label-alert-kpi-processing", "处理中", _title_link("查看告警", "/alarm/alarms?status=processing")),
+        "alert-active-total": (
+            "label-alert-active-total",
+            "活跃告警总数",
+            _title_link("查看告警", "/alarm/alarms?status=pending,processing,unassigned"),
+        ),
+    }
+    for widget_id, (label_id, content, link) in screen_title_links.items():
+        widget = screen_nodes[widget_id]
+        label = screen_nodes[label_id]
+        assert widget["valueConfig"]["appearance"]["frame"] == "bare"
+        assert "interaction" not in widget["valueConfig"]
+        assert widget["title"] == content
+        assert label["kind"] == "text"
+        assert label["content"] == content
+        assert label["interaction"] == link
+        assert label["y"] + label["h"] <= widget["y"]
+        assert abs(label["x"] - widget["x"]) <= 8
+    incident_widget = screen_nodes["2bdee93c-3a75-49a6-93b2-bd0d448967b3"]
+    incident_label = screen_nodes["label-2bdee93c-3a75-49a6-93b2-bd0d448967b3"]
+    assert incident_widget["title"] == "新增事故数"
+    assert incident_label["content"] == f"新增事故数{TREND_TITLE_SUFFIX}"
+    assert screen_nodes["label-f9156f59-ac47-48b9-b071-da3289f769af"]["content"] == f"告警关联事件数{TREND_TITLE_SUFFIX}"
+    assert screen_nodes["label-081f2a79-debe-4825-9d4d-1aeb02d9702e"]["content"] == f"渠道通知成功率{TREND_TITLE_SUFFIX}"
+    assert screen_nodes["label-alert-source-event-top"]["content"] == f"告警关联事件来源 TOP10{TREND_TITLE_SUFFIX}"
+    assert screen_nodes["f9156f59-ac47-48b9-b071-da3289f769af"]["title"] == "告警关联事件数"
+    assert screen_nodes["081f2a79-debe-4825-9d4d-1aeb02d9702e"]["title"] == "渠道通知成功率"
+    assert screen_nodes["alert-source-event-top"]["title"] == "告警关联事件来源 TOP10"
+    assert "interaction" not in incident_widget["valueConfig"]
+    assert "interaction" not in incident_label
+    assert _load_builtin_alert_screen()["desc"] == ALERT_SCREEN_DESC
+    assert screen_nodes["alert-access-trend"]["title"] == f"告警与关联事件趋势{TREND_TITLE_SUFFIX}"
+    assert screen_nodes["label-alert-access-trend"]["content"] == f"告警与关联事件趋势{TREND_TITLE_SUFFIX}"
+    assert screen_nodes["alert-level-trend"]["title"] == f"告警等级趋势{TREND_TITLE_SUFFIX}"
+    assert screen_nodes["label-alert-level-trend"]["content"] == f"告警等级趋势{TREND_TITLE_SUFFIX}"
+    assert "interaction" not in screen_nodes["alert-access-trend"]["valueConfig"]
+    assert "interaction" not in screen_nodes["alert-level-trend"]["valueConfig"]
+
+    alert_widgets = _widgets_by_name(next(item for item in payload["dashboards"] if item["name"] == "统一告警中心仪表盘")["view_sets"])
+    assert "interaction" not in alert_widgets[f"新增事故数{TREND_TITLE_SUFFIX}"]["valueConfig"]
+    assert alert_widgets["告警源总数"]["valueConfig"]["interaction"] == ALERT_SOURCE_TITLE_LINK
+    assert "organization__string" not in (alert_widgets["告警源总数"]["valueConfig"].get("filterBindings") or {})
+    for name in ("已启用告警源数", f"活跃告警源数{TREND_TITLE_SUFFIX}", "告警源启用率"):
+        value_config = alert_widgets[name]["valueConfig"]
+        assert "interaction" not in value_config
+        assert "organization__string" not in (value_config.get("filterBindings") or {})
+    assert alert_widgets["告警源启用率"]["valueConfig"]["thresholdColors"] == RATE_THRESHOLD_COLORS
+    assert alert_widgets[f"通知成功率{TREND_TITLE_SUFFIX}"]["valueConfig"]["thresholdColors"] == RATE_THRESHOLD_COLORS
+    assert alert_widgets[f"通知失败率{TREND_TITLE_SUFFIX}"]["valueConfig"]["thresholdColors"] == [
+        {"color": "#fd666d", "value": "70"},
+        {"color": "#EAB839", "value": "30"},
+        {"color": "#366CE4", "value": "0"},
+    ]
+
+    cmdb_widgets = _widgets_by_name(next(item for item in payload["dashboards"] if item["name"] == "CMDB仪表盘")["view_sets"])
+    for name in ("模型分类数", "实例数", "非空模型数", "空模型数", "模型覆盖率"):
+        assert cmdb_widgets[name]["valueConfig"]["interaction"] == INSTANCE_SCALE_TITLE_LINK
+    assert cmdb_widgets["模型数"]["valueConfig"]["interaction"] == MODEL_MANAGE_TITLE_LINK
+    assert cmdb_widgets["主机操作系统分布"]["valueConfig"]["interaction"] == HOST_LIST_TITLE_LINK
+    assert cmdb_widgets[f"变更趋势{TREND_TITLE_SUFFIX}"]["valueConfig"]["filterBindings"]["time__timeRange"] is True
+    assert cmdb_widgets["采集任务总数"]["valueConfig"]["interaction"] == COLLECT_TASK_TITLE_LINK
+    for name in ("周期任务数", "采集成功任务数", "运行中任务数", "超时任务数", "从未执行任务数"):
+        assert "interaction" not in cmdb_widgets[name]["valueConfig"]
+    assert cmdb_widgets["模型覆盖率"]["valueConfig"]["thresholdColors"] == RATE_THRESHOLD_COLORS
+
+    monitor_widgets = _widgets_by_name(next(item for item in payload["dashboards"] if item["name"] == "监控中心仪表盘")["view_sets"])
+    for name in (
+        "告警总数",
+        "历史告警总数",
+        "今日新增告警数",
+        "已恢复告警数",
+        "已关闭告警数",
+        "告警快照总数",
+        "监控事件总数",
+        "今日新增事件数",
+        "告警策略总数",
+        "启用策略数",
+        "禁用策略数",
+        "阈值策略数",
+        "无数据策略数",
+        "无数据基准总数",
+    ):
+        assert "interaction" not in monitor_widgets[name]["valueConfig"]
+    assert monitor_widgets["监控对象总数"]["valueConfig"]["interaction"] == MONITOR_OBJECT_TITLE_LINK
+    assert monitor_widgets["监控对象分类数"]["valueConfig"]["interaction"] == MONITOR_OBJECT_TITLE_LINK
+    assert monitor_widgets["监控插件总数"]["valueConfig"]["interaction"] == MONITOR_PLUGIN_TITLE_LINK
+
+    weopsx = yaml.safe_load(WEOPSX_DASHBOARD_PATH.read_text(encoding="utf-8"))
+    weopsx_widgets = _widgets_by_name(next(item for item in weopsx["dashboards"] if item["name"] == "WeOpsX 平台使用")["view_sets"])
+    class_top = weopsx_widgets["分类实例 TOP"]
+    assert "interaction" not in class_top["valueConfig"]
+    group_by = next(param for param in class_top["valueConfig"]["dataSourceParams"] if param["name"] == "group_by")
+    assert group_by["value"] == "classification"
+    assert weopsx_widgets["采集覆盖率"]["valueConfig"]["thresholdColors"] == [
+        {"color": "#16a34a", "value": "90"},
+        {"color": "#d97706", "value": "70"},
+        {"color": "#dc2626", "value": "0"},
+    ]
+
+    for language, titles in {
+        "zh-Hans": {
+            "alert-level-trend": f"告警等级趋势{TREND_TITLE_SUFFIX}",
+            "alert-access-trend": f"告警与关联事件趋势{TREND_TITLE_SUFFIX}",
+        },
+        "en": {
+            "alert-level-trend": f"Severity Trend{TREND_TITLE_SUFFIX}",
+            "alert-access-trend": f"Alert and Linked Event Trend{TREND_TITLE_SUFFIX}",
+        },
+    }.items():
+        catalog = yaml.safe_load((LANGUAGE_DIR / f"{language}.yaml").read_text(encoding="utf-8"))
+        screen_copy = catalog["screens"]["screen::告警运营大屏_内置"]
+        widgets = screen_copy["widgets"]
+        for widget_id, title in titles.items():
+            assert widgets[widget_id]["title"] == title
+        expected_desc = {
+            "zh-Hans": ALERT_SCREEN_DESC,
+            "en": (
+                "Created Today and Closed Today use the calendar day. "
+                "Pending, processing, and active alerts use the current status. "
+                "New incidents, linked events, notification success, and trend charts follow the selected time range."
+            ),
+        }[language]
+        assert screen_copy["desc"] == expected_desc
+        dashboards = catalog["dashboards"]
+        assert dashboards["dashboard::CMDB仪表盘_内置"]["widgets"]["4df1fa2e-a38d-48e9-b6ca-a16f91f768eb"]["name"].endswith(TREND_TITLE_SUFFIX)
+        alert_lang = dashboards["dashboard::统一告警中心仪表盘_内置"]["widgets"]
+        for widget_id in (
+            "99ff96a3-2055-4932-b882-bc2b896cc1e7",
+            "d0a485b5-9f7c-46ae-9c42-717aa5fca81b",
+            "8b710945-88a5-42d3-8fdd-a52507f54fe4",
+            "586576ee-f427-4c56-9e8a-6777c95c1290",
+            "083e3d04-08d6-4100-9d02-6bdb4a4e5a6f",
+            "fb51e119-3763-4a99-844f-274fa6c50577",
+            "8c4c5cb4-dfd9-4b01-9baa-33a9f758a4b6",
+        ):
+            assert alert_lang[widget_id]["name"].endswith(TREND_TITLE_SUFFIX)
+        assert (
+            alert_lang["e7b15832-9734-4eff-ae1b-96dc5148d286"]["name"]
+            == {
+                "zh-Hans": "告警源总数",
+                "en": "Alert Sources",
+            }[language]
+        )
+        assert not alert_lang["02ed505a-d71b-4bbc-82c8-4a5338596c37"]["name"].endswith(TREND_TITLE_SUFFIX)
+
+
+@pytest.mark.unit
 def test_builtin_alert_dashboard_separates_period_and_snapshot_bindings():
     widgets = _load_builtin_alert_dashboard()["view_sets"]
     widget_by_name = {widget["name"]: widget for widget in widgets}
 
     period_names = {
-        "告警关联事件数",
-        "新增告警数",
-        "新增事故数",
-        "事件聚合倍率",
-        "会话告警占比",
-        "告警关联事件来源 TOP 5",
+        f"告警关联事件数{TREND_TITLE_SUFFIX}",
+        f"新增告警数{TREND_TITLE_SUFFIX}",
+        f"新增事故数{TREND_TITLE_SUFFIX}",
+        f"事件聚合倍率{TREND_TITLE_SUFFIX}",
+        f"会话告警占比{TREND_TITLE_SUFFIX}",
+        f"告警关联事件来源 TOP 5{TREND_TITLE_SUFFIX}",
     }
     snapshot_names = {
         "活跃告警数",
@@ -1245,16 +1517,10 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
                 "selectValue": 10080,
             },
         },
-        {
-            "id": "organization__string",
-            "key": "organization",
-            "name": "组织",
-            "type": "string",
-            "order": 1,
-            "enabled": True,
-            "defaultValue": "",
-        },
     ]
+    assert _count_nested_key(screen.view_sets, "organization__string") == 0
+    assert node_by_id["alert-active-table"]["valueConfig"]["interaction"] == ALERT_DATA_LINK
+    assert node_by_id["alert-duration-top"]["valueConfig"]["interaction"] == ALERT_DATA_LINK
     period_node_ids = {
         "alert-level-trend",
         "alert-access-trend",
@@ -1342,6 +1608,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
             "valueConfig": {
                 "chartType": "application3D",
                 "sceneWidgetType": "application3D",
+                "interaction": SCENE_CMDB_DETAIL_LINK,
                 "application3DWall": {"autoPageEnabled": True},
                 "appearance": {"frame": "bare"},
             },

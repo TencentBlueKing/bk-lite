@@ -209,6 +209,7 @@ def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sende
                 user_message=user_message,
                 external_user_id=sender_id or "",
                 session_id=session_id,
+                download_origin=(config or {}).get("download_origin") or "",
             )
             markdown = rewrite_markdown_images_for_im(reply_text)
             process_skill_channel_aibot_reply.delay(channel_id, msg_id, response_url, markdown)

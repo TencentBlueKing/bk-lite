@@ -91,13 +91,22 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     const pluginsMapRef = useRef<Record<number, PluginOption[]>>({});
     // 正在请求中的指标 key，避免预热与下拉懒加载并发重复请求同一插件
     const inflightMetricsRef = useRef<Set<string>>(new Set());
+    const sessionAbortRef = useRef<AbortController | null>(null);
     const metricSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
       {}
     );
     const metricSearchGenerationRef = useRef<Record<string, number>>({});
 
-    useEffect(() => () => {
+    const abortSession = () => {
+      sessionAbortRef.current?.abort();
+      sessionAbortRef.current = null;
       Object.values(metricSearchTimerRef.current).forEach((timer) => clearTimeout(timer));
+      metricSearchTimerRef.current = {};
+      inflightMetricsRef.current = new Set();
+    };
+
+    useEffect(() => () => {
+      abortSession();
     }, []);
 
     useEffect(() => {
@@ -113,12 +122,16 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     }, [activeId]);
 
     const loadNodeOptions = useCallback(
-      async (node: ConfigObjectNode) => {
+      async (node: ConfigObjectNode, signal?: AbortSignal) => {
         if (pluginsMapRef.current[node.id]) return;
         try {
-          const plugins = await getObjectPlugins(node.id);
+          const plugins = await getObjectPlugins(node.id, signal);
+          if (signal?.aborted) return;
           setPluginsMap((p) => ({ ...p, [node.id]: plugins || [] }));
-        } catch {
+        } catch (error: unknown) {
+          if ((error as { name?: string } | null)?.name === 'AbortError' || signal?.aborted) {
+            return;
+          }
           message.error(t('common.operationFailed'));
         }
       },
@@ -128,6 +141,9 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     useImperativeHandle(ref, () => ({
       showModal: async ({ form }: ModalConfig) => {
         const obj = form as MonitorObjectItem;
+        abortSession();
+        const sessionAbort = new AbortController();
+        sessionAbortRef.current = sessionAbort;
         setVisible(true);
         setLoading(true);
         dirtyRef.current = new Set();
@@ -149,7 +165,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
           `${t('monitor.object.displayFieldsConfig')} - ${obj.display_name || obj.name}`
         );
         try {
-          const baseDetail = await getObjectDetail(obj.id);
+          const baseDetail = await getObjectDetail(obj.id, sessionAbort.signal);
           const baseNode: ConfigObjectNode = {
             id: obj.id,
             name: baseDetail.name,
@@ -161,7 +177,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
           };
           const allNodes: ConfigObjectNode[] = [baseNode];
           if ((obj.children_count ?? 0) > 0) {
-            const children = await getObjectChildrenRaw(obj.id);
+            const children = await getObjectChildrenRaw(obj.id, sessionAbort.signal);
             for (const child of children) {
               allNodes.push({
                 id: child.id,
@@ -179,11 +195,16 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
           setColumnsMap(initColumns);
           activeIdRef.current = obj.id;
           setActiveId(obj.id);
-          await loadNodeOptions(baseNode);
-        } catch {
+          await loadNodeOptions(baseNode, sessionAbort.signal);
+        } catch (error: unknown) {
+          if ((error as { name?: string } | null)?.name === 'AbortError' || sessionAbort.signal.aborted) {
+            return;
+          }
           message.error(t('common.operationFailed'));
         } finally {
-          setLoading(false);
+          if (!sessionAbort.signal.aborted) {
+            setLoading(false);
+          }
         }
       }
     }));
@@ -191,7 +212,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     useEffect(() => {
       if (activeId != null) {
         const node = nodes.find((n) => n.id === activeId);
-        if (node) loadNodeOptions(node);
+        if (node) loadNodeOptions(node, sessionAbortRef.current?.signal);
       }
     }, [activeId, nodes, loadNodeOptions]);
 
@@ -278,13 +299,15 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
 
     const metricsKey = (objId: number, plugin: string) => `${objId}|${plugin}`;
 
-    const ensureMetrics = async (plugin: string) => {
+    const ensureMetrics = async (plugin: string, signal?: AbortSignal) => {
       if (activeId == null || !plugin) return [];
       const key = metricsKey(activeId, plugin);
       if (metricsMap[key]) return metricsMap[key];
       if (inflightMetricsRef.current.has(key)) return [];
       const pluginOpt = currentPlugins.find((p) => p.name === plugin);
       if (!pluginOpt) return [];
+      const requestSignal = signal ?? sessionAbortRef.current?.signal;
+      if (requestSignal?.aborted) return [];
       inflightMetricsRef.current.add(key);
       try {
         const boundMetricNames = currentColumns
@@ -296,14 +319,21 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
           { length: Math.ceil(uniqueBoundMetricNames.length / 100) },
           (_, index) => uniqueBoundMetricNames.slice(index * 100, (index + 1) * 100)
         );
-        const [firstPage, selectedPages] = await Promise.all([
-          getObjectMetrics(activeId, pluginOpt.id),
-          Promise.all(
-            boundMetricNameChunks.map((names) =>
-              getObjectMetrics(activeId, pluginOpt.id, { name_in: names.join(',') })
-            )
-          )
-        ]);
+        // 串行拉目录，避免交换机等对象一开弹窗对全部品牌并行打满连接。
+        const firstPage = await getObjectMetrics(activeId, pluginOpt.id, {
+          signal: requestSignal
+        });
+        if (requestSignal?.aborted) return [];
+        const selectedPages = [];
+        for (const names of boundMetricNameChunks) {
+          if (requestSignal?.aborted) return [];
+          selectedPages.push(
+            await getObjectMetrics(activeId, pluginOpt.id, {
+              name_in: names.join(','),
+              signal: requestSignal
+            })
+          );
+        }
         const metrics = [...firstPage.items];
         selectedPages.flatMap((page) => page.items).forEach((metric) => {
           if (!metrics.some((item) => item.id === metric.id)) {
@@ -312,7 +342,10 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
         });
         setMetricsMap((prev) => ({ ...prev, [key]: metrics }));
         return metrics;
-      } catch {
+      } catch (error: unknown) {
+        if ((error as { name?: string } | null)?.name === 'AbortError' || requestSignal?.aborted) {
+          return [];
+        }
         message.error(t('common.operationFailed'));
         return [];
       } finally {
@@ -320,17 +353,34 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       }
     };
 
-    // 预热已绑定指标的插件选项：否则初次渲染时 Select 的 value（指标原始名）在空 options
-    // 里匹配不到对应项，antd 会回退显示原始名（英文），点开下拉懒加载后才变成中文展示名。
+    // 预热已绑定指标：串行排队，点开下拉仍可懒加载。关弹窗 abort。
     useEffect(() => {
       if (activeId == null || currentPlugins.length === 0) return;
-      const boundPlugins = new Set(
-        currentColumns
-          .flatMap((c) => c.metrics)
-          .map((m) => m.plugin)
-          .filter(Boolean)
-      );
-      boundPlugins.forEach((plugin) => ensureMetrics(plugin));
+      const abort = new AbortController();
+      const onSessionAbort = () => abort.abort();
+      sessionAbortRef.current?.signal.addEventListener('abort', onSessionAbort);
+      if (sessionAbortRef.current?.signal.aborted) {
+        abort.abort();
+      }
+      const boundPlugins = [
+        ...new Set(
+          currentColumns
+            .flatMap((c) => c.metrics)
+            .map((m) => m.plugin)
+            .filter(Boolean)
+        )
+      ];
+      const warmup = async () => {
+        for (const plugin of boundPlugins) {
+          if (abort.signal.aborted) return;
+          await ensureMetrics(plugin, abort.signal);
+        }
+      };
+      void warmup();
+      return () => {
+        abort.abort();
+        sessionAbortRef.current?.signal.removeEventListener('abort', onSessionAbort);
+      };
       // ensureMetrics 依赖随渲染重建，且内部已用 metricsMap/inflight 双重去重，无需纳入依赖
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeId, currentPlugins, currentColumns]);
@@ -419,11 +469,13 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       metricSearchTimerRef.current[searchKey] = setTimeout(async () => {
         try {
           const { items } = await getObjectMetrics(activeId, pluginOpt.id, {
-            keyword: keyword.trim()
+            keyword: keyword.trim(),
+            signal: sessionAbortRef.current?.signal
           });
           if (metricSearchGenerationRef.current[searchKey] !== generation) return;
           setMetricSearchOptionsMap((prev) => ({ ...prev, [searchKey]: items }));
-        } catch {
+        } catch (error: unknown) {
+          if ((error as { name?: string } | null)?.name === 'AbortError') return;
           if (metricSearchGenerationRef.current[searchKey] !== generation) return;
           setMetricSearchOptionsMap((prev) => ({ ...prev, [searchKey]: [] }));
         }
@@ -478,7 +530,10 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
         bindIdx
       });
       try {
-        const fields = await getMetricVmFields(metricOpt.id);
+        const fields = await getMetricVmFields(
+          metricOpt.id,
+          sessionAbortRef.current?.signal
+        );
         setFieldPicker((prev) => ({
           ...prev,
           loading: false,
@@ -539,6 +594,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     };
 
     const handleCancel = () => {
+      abortSession();
       setVisible(false);
       setNodes([]);
       columnsMapRef.current = {};

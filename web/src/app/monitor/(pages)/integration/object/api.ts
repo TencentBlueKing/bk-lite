@@ -128,8 +128,11 @@ const useObjectApi = () => {
   };
 
   // 获取单个对象详情
-  const getObjectDetail = async (id: number): Promise<MonitorObjectItem> => {
-    const res = await get(`/monitor/api/monitor_object/${id}/`);
+  const getObjectDetail = async (
+    id: number,
+    signal?: AbortSignal
+  ): Promise<MonitorObjectItem> => {
+    const res = await get(`/monitor/api/monitor_object/${id}/`, { signal });
     return {
       ...res,
       type_id: res.type,
@@ -152,10 +155,12 @@ const useObjectApi = () => {
 
   // 获取子对象原始数据（含真实 id 与 display_fields，用于展示列配置）
   const getObjectChildrenRaw = async (
-    parentId: number
+    parentId: number,
+    signal?: AbortSignal
   ): Promise<MonitorObjectItem[]> => {
     const res = await get('/monitor/api/monitor_object/', {
-      params: { parent: parentId }
+      params: { parent: parentId },
+      signal
     });
     const items: MonitorObjectItem[] = Array.isArray(res) ? res : res?.results || [];
     return items.map((item) => ({
@@ -287,9 +292,10 @@ const useObjectApi = () => {
   };
 
   const getMetricVmFields = async (
-    metricId: number | string
+    metricId: number | string,
+    signal?: AbortSignal
   ): Promise<string[]> => {
-    return await get(`/monitor/api/metrics/${metricId}/vm-fields/`);
+    return await get(`/monitor/api/metrics/${metricId}/vm-fields/`, { signal });
   };
 
   return {

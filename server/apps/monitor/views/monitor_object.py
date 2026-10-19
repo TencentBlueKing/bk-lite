@@ -20,6 +20,7 @@ from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, Mon
 from apps.monitor.serializers.view_column_preference import MonitorViewColumnPreferenceSerializer
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.monitor_object_cleanup import MonitorObjectCleanupPolicyService
+from apps.monitor.services.weopsx_cloud_catalog import CLOUD_FAMILY_TYPE_IDS
 from apps.monitor.utils.display_fields import build_display_column_key, validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
@@ -528,12 +529,15 @@ class MonitorObjectTypeViewSet(viewsets.ModelViewSet):
         # 获取语言加载器
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
 
-        # 统计每个类型下的父对象数量（不包括子对象）
+        # 统计每个类型下的父对象数量（不包括子对象）。
+        # 云族历史别名折进唯一「云」叶：count 与右侧 parent_only 平台列表同一集合。
         type_object_counts = MonitorObject.objects.filter(parent__isnull=True).values("type").annotate(object_count=Count("id"))
         count_map = {item["type"]: item["object_count"] for item in type_object_counts}
+        cloud_family_count = sum(count_map.get(type_id, 0) for type_id in CLOUD_FAMILY_TYPE_IDS)
 
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
+        has_cloud_root = any(result["id"] == CLOUD_FAMILY_TYPE_IDS[0] for result in results)
 
         for result in results:
             # 添加国际化显示名称
@@ -541,8 +545,14 @@ class MonitorObjectTypeViewSet(viewsets.ModelViewSet):
             _type_key = f"{LanguageConstants.MONITOR_OBJECT_TYPE}.{result['id']}"
             i18n_name = lan.get(_type_key)
             result["display_name"] = i18n_name or result.get("name") or result["id"]
-            # 添加对象数量
-            result["object_count"] = count_map.get(result["id"], 0)
+            type_id = result["id"]
+            if type_id == CLOUD_FAMILY_TYPE_IDS[0]:
+                result["object_count"] = cloud_family_count
+            elif type_id in CLOUD_FAMILY_TYPE_IDS:
+                # 唯一「云」叶会把族内 count 加总；根存在时别名记 0，避免 4+1+1。
+                result["object_count"] = 0 if has_cloud_root else count_map.get(type_id, 0)
+            else:
+                result["object_count"] = count_map.get(type_id, 0)
             # 添加是否内置标识：有国际化配置表示内置类型
             result["is_builtin"] = bool(i18n_name)
 

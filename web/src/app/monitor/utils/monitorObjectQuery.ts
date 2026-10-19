@@ -1,4 +1,8 @@
 import { findByMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
+import {
+  isCloudFamilySidebarType,
+  UNIFIED_CLOUD_ROOT_TYPE
+} from '@/app/monitor/utils/monitorObject';
 
 export const VIEW_OBJECT_QUERY_PARAM = 'object_id';
 export const MODULE_OBJECT_QUERY_PARAM = 'objId';
@@ -90,11 +94,17 @@ const acceptMonitorObjectQueryId = (
     if (value === 'all') return options.allowAll ? 'all' : '';
     return value;
   }
-  if (
-    options.allowTypeKeys &&
-    objects.some((item) => String(item.type || '') === value)
-  ) {
-    return value;
+  if (options.allowTypeKeys) {
+    const matchesType = objects.some((item) => {
+      const itemType = String(item.type || '');
+      if (itemType === value) return true;
+      return (
+        isCloudFamilySidebarType(value) && isCloudFamilySidebarType(itemType)
+      );
+    });
+    if (matchesType) {
+      return isCloudFamilySidebarType(value) ? UNIFIED_CLOUD_ROOT_TYPE : value;
+    }
   }
   return findByMonitorId(objects, value) ? toMonitorIdString(value) : '';
 };

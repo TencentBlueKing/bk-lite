@@ -1,4 +1,11 @@
-export const MAX_CONCURRENT_REQUESTS = 4;
+import {
+  SITE_METRIC_REQUEST_SLOT_LIMIT,
+  waitForSiteMetricSlot,
+} from '@/app/monitor/utils/metricRequestSlot';
+
+/** 遗留单页上限；实际排队走全站 SITE_METRIC_REQUEST_SLOT_LIMIT。 */
+export const MAX_CONCURRENT_REQUESTS = SITE_METRIC_REQUEST_SLOT_LIMIT;
+export { SITE_METRIC_REQUEST_SLOT_LIMIT };
 
 export interface WaitForAvailableMetricSlotOptions {
   maxConcurrent?: number;
@@ -50,7 +57,7 @@ export async function waitForAvailableMetricSlot(
   isCurrentGeneration: () => boolean,
   options?: WaitForAvailableMetricSlotOptions
 ): Promise<boolean> {
-  const maxConcurrent = options?.maxConcurrent ?? MAX_CONCURRENT_REQUESTS;
+  const maxConcurrent = options?.maxConcurrent ?? SITE_METRIC_REQUEST_SLOT_LIMIT;
   const intervalMs = options?.intervalMs ?? 30;
   const sleep =
     options?.sleep ??
@@ -62,7 +69,7 @@ export async function waitForAvailableMetricSlot(
       return false;
     }
   }
-  return isCurrentGeneration();
+  return waitForSiteMetricSlot(isCurrentGeneration, { intervalMs, sleep });
 }
 
 export async function runMetricRangeQuery<T>({

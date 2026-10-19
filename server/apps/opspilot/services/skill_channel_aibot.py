@@ -9,14 +9,57 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_log_value
 from apps.opspilot.enum import SkillChannelChoices
-from apps.opspilot.models import SkillChannel
+from apps.opspilot.models import SkillChannel, WorkflowAttachmentAsset
+from apps.opspilot.services.workflow_attachment_service import build_server_attachment_download_path
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 from apps.opspilot.utils.enterprise_wechat_aibot_crypto import EnterpriseWechatAibotCrypto, EnterpriseWechatAibotCryptoError
+
+SHORT_CONNECTION_FILE_LINKED_LOG = "event=wecom_aibot_short_connection_file_linked channel_id=%s file_count=%s"
+SHORT_CONNECTION_FILE_SKIPPED_LOG = "event=wecom_aibot_short_connection_file_skipped channel_id=%s failed_stage=download_origin file_count=%s"
 
 SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE = (
     "event=skill_channel_aibot_decrypt_failed channel_id=%s failed_stage=decrypt_callback "
     "error_type=%s has_msg_signature=%s has_timestamp=%s has_nonce=%s token_len=%s"
 )
+
+
+def _markdown_link_label(filename: str) -> str:
+    label = (filename or "").replace("[", "").replace("]", "").replace("(", "").replace(")", "").strip()
+    return label or "文件"
+
+
+def callback_download_origin(request: HttpRequest) -> str:
+    """企微回调已经打到的这台 server。下载链接用同一地址，不再另配站点。"""
+    origin = request.build_absolute_uri("/").rstrip("/")
+    if origin.startswith("http://") or origin.startswith("https://"):
+        return origin
+    return ""
+
+
+def append_short_connection_file_links(content: str, execution_id: str, channel_id: int, *, origin: str) -> str:
+    """短连接只能回 Markdown。链接指向后台接口，由 server 从 MinIO 读出文件。"""
+    assets = list(WorkflowAttachmentAsset.objects.filter(execution_id=execution_id).order_by("id"))
+    if not assets:
+        return content
+    base = (origin or "").rstrip("/")
+    if not (base.startswith("http://") or base.startswith("https://")):
+        logger.warning(SHORT_CONNECTION_FILE_SKIPPED_LOG, channel_id, len(assets))
+        return content
+    lines = []
+    body = content or ""
+    for asset in assets:
+        path = build_server_attachment_download_path(asset)
+        if path in body:
+            continue
+        lines.append(f"[{_markdown_link_label(asset.filename)}]({base}{path})")
+    if not lines:
+        return content
+    logger.info(SHORT_CONNECTION_FILE_LINKED_LOG, channel_id, len(lines))
+    block = "\n".join(lines)
+    stripped = body.rstrip()
+    if not stripped:
+        return block
+    return f"{stripped}\n\n{block}"
 
 
 def normalize_aibot_channel_config(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -136,7 +179,11 @@ class SkillChannelAibotUtils(EnterpriseWechatAibotChatFlowUtils):
             message=message,
             clean_text=clean_text,
         )
-        task_config = {**config, "response_url": message.get("response_url") or ""}
+        task_config = {
+            **config,
+            "response_url": message.get("response_url") or "",
+            "download_origin": callback_download_origin(request),
+        }
         from apps.opspilot.tasks import process_skill_channel_aibot_message
 
         process_skill_channel_aibot_message.delay(

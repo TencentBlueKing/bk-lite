@@ -175,6 +175,36 @@ describe('normalizeScreenViewSets', () => {
     expect(normalized.items.some(isScreenTitleFrameItem)).toBe(false);
     expect(normalized.decorations.showTitle).toBe(false);
   });
+
+  it('keeps a text title link when a screen is loaded', () => {
+    const interaction = {
+      kind: 'title' as const,
+      name: '查看告警',
+      url: '/alerts?source=$source$',
+      openMode: 'newTab' as const,
+    };
+    const normalized = normalizeScreenViewSets({
+      viewport: { width: 1920, height: 1080 },
+      items: [{
+        id: 'label-alert-source-event-top',
+        kind: 'text',
+        content: '告警关联事件来源 TOP10',
+        x: 44,
+        y: 1036,
+        w: 1212,
+        h: 42,
+        zIndex: 5,
+        interaction,
+      }],
+      decorations: {},
+    });
+
+    expect(normalized.items[0]).toMatchObject({
+      kind: 'text',
+      content: '告警关联事件来源 TOP10',
+      interaction,
+    });
+  });
 });
 
 describe('resolveScreenDisplayAdapter', () => {
@@ -240,6 +270,12 @@ describe('scaleScreenItemsToViewport', () => {
         h: 40,
         zIndex: 2,
         textStyle: { fontSize: 20 },
+        interaction: {
+          kind: 'title',
+          name: '查看告警',
+          url: '/alerts?source=$source$',
+          openMode: 'sameTab',
+        },
       },
       {
         id: 'clock',
@@ -263,6 +299,12 @@ describe('scaleScreenItemsToViewport', () => {
       w: 100,
       h: 20,
       textStyle: { fontSize: 10 },
+      interaction: {
+        kind: 'title',
+        name: '查看告警',
+        url: '/alerts?source=$source$',
+        openMode: 'sameTab',
+      },
     });
     expect(scaled[2]).toMatchObject({
       x: 200,

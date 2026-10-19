@@ -15,6 +15,7 @@ from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryE
 from apps.monitor.services.flow_conversations import query_flow_conversation_page
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.services.metrics import MetricsQueryBudgetExceeded
+from apps.monitor.services.user_query_slots import with_user_query_slot
 from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.unit_converter import UnitConverter
 
@@ -40,6 +41,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         raise ValidationAppException(str(exc))
 
     @action(methods=["post"], detail=False, url_path="query_by_metric_range")
+    @with_user_query_slot()
     def query_by_metric_range(self, request):
         """按当前用户实例权限执行服务端指标模板的范围查询。"""
         try:
@@ -66,6 +68,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="query_by_metric")
+    @with_user_query_slot()
     def query_by_metric(self, request):
         """按当前用户实例权限执行服务端指标模板的即时查询。"""
         try:
