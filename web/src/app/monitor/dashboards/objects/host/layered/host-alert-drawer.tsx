@@ -36,6 +36,8 @@ interface HostAlertDrawerProps {
   focusAlertId?: string;
   onClose: () => void;
   onCount: (count: number) => void;
+  emptyCopy?: string;
+  emptyHint?: string;
 }
 
 const levelColor = (level: string) => {
@@ -69,7 +71,9 @@ export default function HostAlertDrawer({
   monitorObjectId,
   focusAlertId = '',
   onClose,
-  onCount
+  onCount,
+  emptyCopy = EMPTY_COPY,
+  emptyHint = EMPTY_HINT
 }: HostAlertDrawerProps) {
   const { getMonitorAlert } = useMonitorApi();
   const levelList = useLevelList();
@@ -347,8 +351,8 @@ export default function HostAlertDrawer({
             >
               <CheckOutlined />
             </span>
-            <span className="text-[13px] font-medium text-[var(--color-text-2)]">{EMPTY_COPY}</span>
-            <span className="text-[12px] text-[var(--color-text-3)]">{EMPTY_HINT}</span>
+            <span className="text-[13px] font-medium text-[var(--color-text-2)]">{emptyCopy}</span>
+            <span className="text-[12px] text-[var(--color-text-3)]">{emptyHint}</span>
           </div>
         ) : null}
         {!loading && phase === 'ready' ? (

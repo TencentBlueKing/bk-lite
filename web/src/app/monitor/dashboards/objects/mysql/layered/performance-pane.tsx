@@ -1,0 +1,174 @@
+'use client';
+
+import React, { useMemo } from 'react';
+import type { ChartData } from '@/app/monitor/types';
+import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import type { MetricSeries } from '../types';
+import ThinTimeSeries from '../../host/layered/thin-time-series';
+import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
+import { numericValue, primaryChartSeries } from '../../host/layered/readings';
+import classic from '../../host/index.module.scss';
+import host from '../../host/layered/layered.module.scss';
+import pro from './pro.module.scss';
+
+interface PerformancePaneProps {
+  metricMap: Record<string, MetricSeries | undefined>;
+  loading: boolean;
+}
+
+const seriesOf = (metric: MetricSeries | undefined) => primaryChartSeries(metric?.viewData);
+
+const sumSeries = (parts: ChartData[][]): ChartData[] => {
+  const buckets = new Map<number, number>();
+  parts.forEach((points) => {
+    points.forEach((point) => {
+      const time = Number(point.time);
+      const value = numericValue(point);
+      if (!Number.isFinite(time) || value == null) return;
+      buckets.set(time, (buckets.get(time) || 0) + value);
+    });
+  });
+  return Array.from(buckets.entries())
+    .sort((left, right) => left[0] - right[0])
+    .map(([time, value]) => ({ time, value1: value }));
+};
+
+const Section = ({ id, title, children }: { id: string; title: string; children: React.ReactNode }) => (
+  <section id={id}>
+    <div className={host.sectionHead}>
+      <div className={`${classic.sectionLabel} ${host.sectionTitle}`}>{title}</div>
+    </div>
+    {children}
+  </section>
+);
+
+export default function PerformancePane({ metricMap, loading }: PerformancePaneProps) {
+  const connection = useMemo(() => mergeChartSeries([
+    { key: 'connected', label: '当前连接', data: seriesOf(metricMap.mysql_threads_connected) },
+    { key: 'running', label: '活跃会话', data: seriesOf(metricMap.mysql_threads_running) }
+  ]), [metricMap.mysql_threads_connected?.viewData, metricMap.mysql_threads_running?.viewData]);
+
+  const writes = useMemo(() => ({
+    insert: seriesOf(metricMap.mysql_com_insert_rate),
+    update: seriesOf(metricMap.mysql_com_update_rate),
+    delete: seriesOf(metricMap.mysql_com_delete_rate)
+  }), [
+    metricMap.mysql_com_insert_rate?.viewData,
+    metricMap.mysql_com_update_rate?.viewData,
+    metricMap.mysql_com_delete_rate?.viewData
+  ]);
+
+  const throughput = useMemo(() => mergeChartSeries([
+    { key: 'qps', label: 'QPS', data: seriesOf(metricMap.mysql_queries_rate) },
+    { key: 'tps', label: 'TPS', data: sumSeries([writes.insert, writes.update, writes.delete]) }
+  ]), [metricMap.mysql_queries_rate?.viewData, writes]);
+
+  const statementMix = useMemo(() => mergeChartSeries([
+    { key: 'insert', label: 'INSERT', data: writes.insert },
+    { key: 'update', label: 'UPDATE', data: writes.update },
+    { key: 'delete', label: 'DELETE', data: writes.delete }
+  ]), [writes]);
+
+  const innodb = useMemo(() => mergeChartSeries([
+    { key: 'read', label: '读', data: seriesOf(metricMap.mysql_innodb_data_reads_rate) },
+    { key: 'write', label: '写', data: seriesOf(metricMap.mysql_innodb_data_writes_rate) },
+    { key: 'redo', label: 'Redo 刷盘', data: seriesOf(metricMap.mysql_innodb_os_log_fsyncs_rate) }
+  ]), [
+    metricMap.mysql_innodb_data_reads_rate?.viewData,
+    metricMap.mysql_innodb_data_writes_rate?.viewData,
+    metricMap.mysql_innodb_os_log_fsyncs_rate?.viewData
+  ]);
+
+  const buffer = useMemo(() => mergeChartSeries([
+    { key: 'hit', label: '命中率', data: seriesOf(metricMap.mysql_buffer_pool_hit_ratio) }
+  ]), [metricMap.mysql_buffer_pool_hit_ratio?.viewData]);
+
+  const replication = useMemo(() => mergeChartSeries([
+    { key: 'delay', label: '复制延迟', data: seriesOf(metricMap.mysql_slave_seconds_behind_master) }
+  ]), [metricMap.mysql_slave_seconds_behind_master?.viewData]);
+
+  return (
+    <div className={pro.chartStack}>
+      <Section id="mysql-perf-connections" title="连接">
+        <ThinTimeSeries
+          title="连接与活跃会话"
+          hint="当前连接数与 Threads_running。"
+          loading={loading}
+          unit="counts"
+          data={connection}
+          emptyText="暂无采集数据"
+          legends={[
+            { label: '当前连接', color: HOST_SERIES_COLOR.memUsed },
+            { label: '活跃会话', color: HOST_SERIES_COLOR.load1 }
+          ]}
+        />
+      </Section>
+      <Section id="mysql-perf-throughput" title="吞吐">
+        <div className={host.chartGrid2}>
+          <ThinTimeSeries
+            title="QPS / TPS"
+            hint="QPS 为实例 Queries/s。TPS 为 INSERT、UPDATE、DELETE 速率之和。"
+            loading={loading}
+            unit="cps"
+            data={throughput}
+            emptyText="暂无采集数据"
+            legends={[
+              { label: 'QPS', color: HOST_SERIES_COLOR.memAvailable },
+              { label: 'TPS', color: HOST_PALETTE.orange }
+            ]}
+          />
+          <ThinTimeSeries
+            title="写入语句"
+            loading={loading}
+            unit="cps"
+            data={statementMix}
+            emptyText="暂无采集数据"
+            legends={[
+              { label: 'INSERT', color: HOST_PALETTE.orange },
+              { label: 'UPDATE', color: HOST_SERIES_COLOR.load5 },
+              { label: 'DELETE', color: HOST_PALETTE.rose }
+            ]}
+          />
+        </div>
+      </Section>
+      <Section id="mysql-perf-innodb" title="InnoDB">
+        <ThinTimeSeries
+          title="InnoDB 读写"
+          hint="实例物理读写与 Redo 刷盘速率。"
+          loading={loading}
+          unit="cps"
+          data={innodb}
+          emptyText="暂无采集数据"
+          legends={[
+            { label: '读', color: HOST_SERIES_COLOR.diskRead },
+            { label: '写', color: HOST_SERIES_COLOR.diskWrite },
+            { label: 'Redo 刷盘', color: HOST_SERIES_COLOR.load1 }
+          ]}
+        />
+      </Section>
+      <Section id="mysql-perf-buffer" title="缓冲池">
+        <ThinTimeSeries
+          title="缓冲池命中"
+          hint="InnoDB buffer pool 命中率。"
+          loading={loading}
+          unit="percent"
+          data={buffer}
+          emptyText="暂无采集数据"
+          legends={[{ label: '命中率', color: HOST_SERIES_COLOR.cpu }]}
+        />
+      </Section>
+      {replication.length > 0 ? (
+        <Section id="mysql-perf-replication" title="复制">
+          <ThinTimeSeries
+            title="复制延迟"
+            loading={loading}
+            unit="s"
+            data={replication}
+            emptyText="暂无采集数据"
+            legends={[{ label: '复制延迟', color: HOST_SERIES_COLOR.memUsed }]}
+          />
+        </Section>
+      ) : null}
+    </div>
+  );
+}

@@ -1,0 +1,87 @@
+.tabGhost {
+  color: var(--color-text-4);
+}
+
+:global(.ant-tabs-tab-active) .tabGhost {
+  color: inherit;
+}
+
+.railLabel {
+  flex: none;
+  font-weight: 600;
+  color: var(--color-text-3);
+}
+
+.railHost {
+  flex: none;
+  font-weight: 650;
+  color: var(--color-text-1);
+}
+
+.railNums {
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+  color: var(--color-text-2);
+
+  b {
+    font-weight: 650;
+    color: var(--color-text-1);
+  }
+}
+
+.railLink {
+  margin-left: auto;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  padding: 3px 10px;
+  color: var(--color-primary);
+  font-size: 12px;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+.emptyPane {
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  background: var(--color-fill-1);
+  padding: 28px 16px;
+  text-align: center;
+}
+
+.emptyTitle {
+  color: var(--color-text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.emptyHint {
+  margin-top: 4px;
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.focusBtn {
+  width: 100%;
+  margin: 0;
+  padding: 12px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sqlCell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.chartStack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
