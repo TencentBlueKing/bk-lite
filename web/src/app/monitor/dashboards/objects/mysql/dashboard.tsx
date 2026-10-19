@@ -43,7 +43,8 @@ import {
 } from '../../shared/widgets';
 import type { DashboardModeOption } from '../../shared/widgets/dashboard-page-header';
 import MysqlProLayout from './layered/mysql-pro-layout';
-import MysqlLegacyLayout, { readMysqlClassicIdentity } from './legacy-layout';
+import { readMysqlHeaderIdentity } from './layered/ia';
+import MysqlLegacyLayout from './legacy-layout';
 
 interface MysqlInstanceOption {
   label: string;
@@ -445,7 +446,7 @@ export default function MysqlDashboardPage() {
   const showEmpty = isDashboardMode ? !hasDashboardContent : false;
 
   const chrome = displayMode === 'category' ? hostChrome : styles;
-  const mysqlIdentity = readMysqlClassicIdentity(metricMap, resolvedInstanceName);
+  const mysqlIdentity = readMysqlHeaderIdentity(metricMap, resolvedInstanceName);
   // 实例 ID 与展示名仅分隔符不同时（mysql_3306 vs mysql-3306）视为重复，不再展示。
   const normalizeIdentityKey = (value: string) => value.trim().toLowerCase().replace(/[-_\s]+/g, '');
   const showInstanceId =

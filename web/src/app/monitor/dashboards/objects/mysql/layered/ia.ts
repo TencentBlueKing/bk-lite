@@ -1,5 +1,6 @@
 import { formatMetricValue } from '../../../shared/utils/format';
 import { normalizeDashboardKey } from '../../../shared/utils';
+import { getLatestChartValue } from '../../../shared/utils/chart-data';
 import { encodeInstanceIdValuesParam } from '../../../shared/utils/instance';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import type { MetricSeries } from '../types';
@@ -353,6 +354,34 @@ export const buildHostDashboardHref = (host: MysqlHostCandidate | null) => {
     instance_id_keys: host.instanceIdKeys.join(',') || 'instance_id'
   });
   return `/monitor/view/dashboard/host?${params.toString()}`;
+};
+
+const seriesPresent = (metric: MetricSeries | undefined) => (
+  metric?.loadState === 'success' && Array.isArray(metric.viewData) && metric.viewData.length > 0
+);
+
+/**
+ * 页头拓扑。没有从库状态行、也没有 log_slave_updates 时，
+ * primary/master 等名字不打成主从。传统复制区仍用抽出时的判据。
+ */
+export const readMysqlHeaderIdentity = (
+  metricMap: Record<string, MetricSeries | undefined>,
+  instanceName: string
+) => {
+  const hasReplicationMetrics = seriesPresent(metricMap.mysql_slave_seconds_behind_master)
+    || seriesPresent(metricMap.mysql_slave_io_running)
+    || seriesPresent(metricMap.mysql_slave_sql_running);
+  const logSlaveUpdates = getLatestChartValue(metricMap.mysql_variables_log_slave_updates?.viewData || []);
+  const nameSaysReplica = /从库|从节点|slave|replica|secondary/.test(instanceName.toLowerCase());
+  const topologyEvidence = hasReplicationMetrics || logSlaveUpdates > 0;
+  const replicaByWeakName = !hasReplicationMetrics && logSlaveUpdates > 0 && nameSaysReplica;
+  const deployment = topologyEvidence ? '主从复制' : '单节点';
+  const role = hasReplicationMetrics || replicaByWeakName
+    ? '从库'
+    : deployment === '主从复制'
+      ? '主库'
+      : '独立实例';
+  return { deployment, role };
 };
 
 export const waitStatementTarget = (
