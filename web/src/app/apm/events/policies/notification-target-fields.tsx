@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Alert, Button, Form, InputNumber, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Form, InputNumber, Select, Tag, Typography } from 'antd';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
 import type {
@@ -21,6 +21,7 @@ interface NotificationTargetFieldsProps {
   channelState: NotificationDirectoryState;
   recipientState: NotificationDirectoryState;
   refreshing: boolean;
+  defaultSystemUserRecipients: string[];
   onRetry: () => void;
   onSearchRecipients: (search: string) => void;
 }
@@ -47,6 +48,7 @@ export default function NotificationTargetFields({
   channelState,
   recipientState,
   refreshing,
+  defaultSystemUserRecipients,
   onRetry,
   onSearchRecipients,
 }: NotificationTargetFieldsProps) {
@@ -76,7 +78,7 @@ export default function NotificationTargetFields({
   };
 
   return (
-    <>
+    <div className="space-y-4">
       {channelState === 'error' || channelState === 'forbidden' ? (
         <Alert
           showIcon
@@ -91,7 +93,12 @@ export default function NotificationTargetFields({
           )}
           description={t('apm.policies.retryChannels', '可以稍后重试，或前往系统管理检查渠道配置。')}
           action={(
-            <Button icon={<ReloadOutlined />} loading={refreshing} disabled={refreshing} onClick={onRetry}>
+            <Button
+              icon={<ReloadOutlined aria-hidden="true" />}
+              loading={refreshing}
+              disabled={refreshing}
+              onClick={onRetry}
+            >
               {t('apm.common.retry', '重试')}
             </Button>
           )}
@@ -115,7 +122,12 @@ export default function NotificationTargetFields({
           type="warning"
           message={t('apm.policies.userDirectoryDown', '系统用户目录暂不可用')}
           action={(
-            <Button icon={<ReloadOutlined />} loading={refreshing} disabled={refreshing} onClick={onRetry}>
+            <Button
+              icon={<ReloadOutlined aria-hidden="true" />}
+              loading={refreshing}
+              disabled={refreshing}
+              onClick={onRetry}
+            >
               {t('apm.common.retry', '重试')}
             </Button>
           )}
@@ -132,7 +144,7 @@ export default function NotificationTargetFields({
         ]}
       >
         {(fields, { add, remove }, { errors }) => (
-          <Space direction="vertical" size="middle" className="!flex">
+          <div className="space-y-4">
             {fields.map((field) => {
               const target = targets[field.name];
               const channel = target ? channelById.get(target.channel_id) : undefined;
@@ -140,33 +152,36 @@ export default function NotificationTargetFields({
               const unavailable = (channelState === 'ready' || channelState === 'empty')
                 && channel?.availability !== 'available';
               return (
-                <div key={field.key} className="rounded-lg border border-[var(--color-border-2)] p-4">
+                <div
+                  key={field.key}
+                  className="border-b border-[var(--color-border)] pb-4 last:border-b-0 last:pb-0"
+                >
                   <Form.Item name={[field.name, 'channel_id']} hidden><InputNumber /></Form.Item>
                   <div className="flex items-start justify-between gap-3">
-                    <Space align="start">
-                      <Icon type={channelIcon(channel?.channel_type)} className="text-2xl" />
-                      <div>
-                        <Space wrap>
+                    <div className="flex min-w-0 items-start gap-2">
+                      <Icon
+                        type={channelIcon(channel?.channel_type)}
+                        className="mt-0.5 text-xl"
+                        aria-hidden="true"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Typography.Text strong>{channel?.name || t('apm.alerts.channel', '渠道')}</Typography.Text>
-                          {channel?.channel_type ? <Tag>{channel.channel_type}</Tag> : null}
-                          <Tag bordered={false} color={channel?.delivery_mode === 'alert_event_copy' ? 'purple' : 'blue'}>
-                            {channel?.delivery_mode === 'alert_event_copy'
-                              ? t('apm.policies.alertCopyShort', '告警中心副本')
-                              : t('apm.alerts.plainNotice', '普通通知')}
-                          </Tag>
-                          {unavailable ? <Tag color="error">{t('apm.policies.invalidRemove', '已失效，保存前请移除')}</Tag> : null}
-                        </Space>
+                          {channel?.channel_type ? <Tag className="!m-0">{channel.channel_type}</Tag> : null}
+                          {unavailable ? <Tag color="error" className="!m-0">{t('apm.policies.invalidRemove', '已失效，保存前请移除')}</Tag> : null}
+                        </div>
                         {channel?.description ? (
-                          <Typography.Paragraph type="secondary" className="!mb-0">
+                          <Typography.Text type="secondary" className="block break-words">
                             {channel.description}
-                          </Typography.Paragraph>
+                          </Typography.Text>
                         ) : null}
                       </div>
-                    </Space>
+                    </div>
                     <Button
-                      type="text"
+                      type="link"
+                      size="small"
                       danger
-                      icon={<DeleteOutlined />}
+                      icon={<DeleteOutlined aria-hidden="true" />}
                       aria-label={t('apm.policies.removeChannel', '移除 {name}', { name: channel?.name || '' })}
                       onClick={() => remove(field.name)}
                     />
@@ -178,6 +193,7 @@ export default function NotificationTargetFields({
                   ) : (
                     <Form.Item
                       name={[field.name, 'recipients']}
+                      className="!mb-0 !mt-3"
                       label={recipientMode === 'system_user'
                         ? t('apm.policies.userId', '系统用户 ID')
                         : t('apm.policies.notificationRecipients', '通知对象')}
@@ -206,44 +222,38 @@ export default function NotificationTargetFields({
               );
             })}
             <Form.ErrorList errors={errors} />
-            {channelsToAdd.length ? (
-              <div>
-                <Typography.Text strong>{t('apm.policies.addChannel', '添加通知渠道')}</Typography.Text>
-                <Space wrap className="mt-2 !flex">
-                  {channelsToAdd.map((channel) => (
-                    <Button
-                      key={channel.id}
-                      type="default"
-                      className="min-w-56 !h-auto !p-3 text-left"
-                      onClick={() => add({ channel_id: channel.id, recipients: [] })}
-                    >
-                      <Space align="start">
-                        <Icon type={channelIcon(channel.channel_type)} className="text-xl" />
-                        <span>
-                          <Space wrap>
-                            <Typography.Text strong>{channel.name}</Typography.Text>
-                            <Tag>{channel.channel_type}</Tag>
-                            <Tag bordered={false} color={channel.delivery_mode === 'alert_event_copy' ? 'purple' : 'blue'}>
-                              {channel.delivery_mode === 'alert_event_copy'
-                                ? t('apm.policies.alertCopyShort', '告警中心副本')
-                                : t('apm.alerts.plainNotice', '普通通知')}
-                            </Tag>
-                          </Space>
-                          {channel.description ? (
-                            <Typography.Text type="secondary" className="block">
-                              {channel.description}
-                            </Typography.Text>
-                          ) : null}
-                        </span>
-                      </Space>
-                    </Button>
-                  ))}
-                </Space>
-              </div>
+            {channelState === 'loading' || channelsToAdd.length ? (
+              <Form.Item
+                label={t('apm.policies.addChannel', '添加通知渠道')}
+                className="!mb-0"
+              >
+                <Select<number>
+                  value={undefined}
+                  aria-label={t('apm.policies.addChannel', '添加通知渠道')}
+                  loading={channelState === 'loading'}
+                  disabled={channelState === 'loading'}
+                  placeholder={channelState === 'loading'
+                    ? t('apm.policies.loadingChannels', '正在加载通知渠道')
+                    : t('apm.policies.notificationChannelPlaceholder', '选择通知渠道')}
+                  options={channelsToAdd.map((channel) => ({
+                    value: channel.id,
+                    label: `${channel.name}（${channel.channel_type}）`,
+                  }))}
+                  onChange={(channelId) => {
+                    const channel = channelById.get(channelId);
+                    add({
+                      channel_id: channelId,
+                      recipients: channel?.recipient_mode === 'system_user'
+                        ? defaultSystemUserRecipients
+                        : [],
+                    });
+                  }}
+                />
+              </Form.Item>
             ) : null}
-          </Space>
+          </div>
         )}
       </Form.List>
-    </>
+    </div>
   );
 }

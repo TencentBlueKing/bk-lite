@@ -200,7 +200,9 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     renderWithApmIntl(<ApmPolicyEditor />);
 
     await user.click(await screen.findByRole('switch', { name: '启用通知' }));
-    await user.click(screen.getByRole('button', { name: /邮件.*普通通知/ }));
+    const addChannel = screen.getByRole('combobox', { name: '添加通知渠道' });
+    await user.click(addChannel);
+    await user.click(await screen.findByText('邮件（email）'));
     const recipientSearch = await screen.findByLabelText('系统用户 ID');
     await user.click(recipientSearch);
     await user.type(recipientSearch, 'late');
@@ -210,9 +212,11 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     ]);
     await user.click(await screen.findByText('Late User (late-user)'));
 
-    await user.click(screen.getByRole('button', { name: /Webhook.*普通通知/ }));
+    await user.click(addChannel);
+    await user.click(await screen.findByText('Webhook（custom_webhook）'));
     expect(screen.getByLabelText('通知对象')).not.toBeNull();
-    await user.click(screen.getByRole('button', { name: /告警中心.*告警中心副本/ }));
+    await user.click(addChannel);
+    await user.click(await screen.findByText('告警中心（nats）'));
     expect(screen.getByText('该渠道接收告警事件副本，无需配置接收人。')).not.toBeNull();
   });
 
@@ -401,6 +405,15 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
         recipient_mode: 'none',
         availability: 'unavailable',
       },
+      {
+        id: 24,
+        name: '告警副本',
+        channel_type: 'nats',
+        description: '事件副本',
+        delivery_mode: 'alert_event_copy',
+        recipient_mode: 'none',
+        availability: 'available',
+      },
     ]);
     api.getPolicy.mockResolvedValue({
       ...policy,
@@ -428,6 +441,15 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     await user.click(screen.getByRole('button', { name: '保存策略' }));
     expect(await screen.findByText('已失效，保存前请移除')).not.toBeNull();
     expect(api.updatePolicy).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '移除渠道' }));
+    await user.click(screen.getByRole('combobox', { name: '添加通知渠道' }));
+    await user.click(await screen.findByText('告警副本（nats）'));
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ notification_targets: [{ channel_id: 24, recipients: [] }] }),
+    ));
   });
 
   it('选服务且组织为空时带入服务组织，保存时提交所属组织', async () => {
@@ -452,7 +474,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     );
   });
 
-  it('按策略组织拉取处理人候选，添加系统用户渠道时不把处理人写入接收人', async () => {
+  it('按策略组织拉取处理人候选，添加系统用户渠道时默认带入处理人', async () => {
     const user = userEvent.setup();
     api.getPolicy.mockResolvedValue({
       ...policy,
@@ -479,9 +501,10 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     );
 
     await user.click(await screen.findByRole('switch', { name: '启用通知' }));
-    await user.click(screen.getByRole('button', { name: /邮件.*普通通知/ }));
+    await user.click(screen.getByRole('combobox', { name: '添加通知渠道' }));
+    await user.click(await screen.findByText('邮件（email）'));
     const recipients = await screen.findByLabelText('系统用户 ID');
-    expect(recipients.closest('.ant-select')?.textContent).not.toContain('7');
+    expect(recipients.closest('.ant-select')?.textContent).toContain('Bob (bob)');
   });
 
   it('截断候选不删除已选处理人，保存仍提交原 User.id', async () => {

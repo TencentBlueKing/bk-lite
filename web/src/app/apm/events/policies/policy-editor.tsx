@@ -1012,6 +1012,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               channelState={channelState}
               recipientState={recipientState}
               refreshing={directoriesRefreshing}
+              defaultSystemUserRecipients={(selectedHandlers || []).map(String)}
               onRetry={() => void loadNotificationDirectories()}
               onSearchRecipients={scheduleRecipientSearch}
             />
