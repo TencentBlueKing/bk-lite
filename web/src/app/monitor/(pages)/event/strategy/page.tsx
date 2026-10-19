@@ -41,6 +41,7 @@ import {
   resolveMonitorObjectQueryId,
   resolveMonitorObjectTreeKey
 } from '@/app/monitor/utils/monitorObjectQuery';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 
 const Strategy: React.FC = () => {
   const { t } = useTranslation();
@@ -339,27 +340,13 @@ const Strategy: React.FC = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
-      (acc, item) => {
-        if (!acc[item.type]) {
-          acc[item.type] = {
-            title: item.display_type || '--',
-            key: item.type,
-            children: []
-          };
-        }
-        acc[item.type].children.push({
-          title: (item.display_name || '--') + `(${item.policy_count})`,
-          label: item.name || '--',
-          key: item.id,
-          icon: item.icon,
-          children: []
-        });
-        return acc;
-      },
-      {} as Record<string, TreeItem>
-    );
-    return Object.values(groupedData);
+    return buildMonitorObjectSidebarTree(data, (item) => ({
+      title: (item.display_name || '--') + `(${item.policy_count})`,
+      label: item.name || '--',
+      key: item.id,
+      icon: item.icon,
+      children: []
+    }));
   };
 
   const deleteConfirm = async (id: React.Key) => {

@@ -41,7 +41,14 @@ import Permission from '@/components/permission';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
-import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
+import {
+  buildMonitorObjectSidebarTree,
+  collectCloudFamilyPlatformIds,
+  isCloudFamilySidebarType,
+  resolveCloudFamilyTypeQueryValues,
+  UNIFIED_CLOUD_ROOT_TYPE,
+  uniqueMonitorRecords
+} from '@/app/monitor/utils/monitorObject';
 import { sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import { cloneDeep } from 'lodash';
 import CreateTemplateModal from './createTemplateModal';
@@ -61,6 +68,38 @@ import { resolvePluginSourceBadge } from '@/app/monitor/utils/pluginSourceBadge'
 import { downloadPluginConfig } from './exportDownload';
 
 const { confirm } = Modal;
+
+const expandCloudFamilySortData = (
+  sortData: TreeSortData[],
+  objectItems: ObjectItem[]
+): TreeSortData[] => {
+  const byName = new Map(objectItems.map((item) => [item.name, item]));
+  const expanded: TreeSortData[] = [];
+  for (const item of sortData) {
+    if (item.type === 'all') {
+      continue;
+    }
+    if (!isCloudFamilySidebarType(item.type)) {
+      expanded.push(item);
+      continue;
+    }
+    const lists = new Map<string, string[]>();
+    for (const name of item.object_list || []) {
+      const originalType = byName.get(name)?.type || UNIFIED_CLOUD_ROOT_TYPE;
+      const list = lists.get(originalType) || [];
+      list.push(name);
+      lists.set(originalType, list);
+    }
+    if (!lists.size) {
+      expanded.push({ type: UNIFIED_CLOUD_ROOT_TYPE, object_list: [] });
+      continue;
+    }
+    for (const [type, object_list] of lists) {
+      expanded.push({ type, object_list });
+    }
+  }
+  return expanded;
+};
 
 const Integration = () => {
   const { isLoading } = useApiClient();
@@ -109,7 +148,14 @@ const Integration = () => {
   useEffect(() => {
     if (isLoading) return;
     getPluginList();
-  }, [isLoading, objectId, objectType, pagination.current, pagination.pageSize]);
+  }, [
+    isLoading,
+    objectId,
+    objectType,
+    objects,
+    pagination.current,
+    pagination.pageSize
+  ]);
 
   useEffect(() => {
     return () => {
@@ -120,7 +166,7 @@ const Integration = () => {
   const handleNodeDrag = async (data: TreeSortData[]) => {
     try {
       setTreeLoading(true);
-      await updateMonitorObject(data);
+      await updateMonitorObject(expandCloudFamilySortData(data, objects));
       message.success(t('common.updateSuccess'));
       invalidateMonitorObjectsCache();
       getObjects({ force: true });
@@ -180,20 +226,78 @@ const Integration = () => {
         params.monitor_object_type !== undefined
           ? params.monitor_object_type
           : objectType;
-      const data = await getMonitorPlugin(
-        {
-          ...(monitorObjectId ? { monitor_object_id: monitorObjectId } : {}),
-          ...(monitorObjectType
-            ? { monitor_object_type: monitorObjectType }
-            : {}),
-          keyword: params.keyword !== undefined ? params.keyword : searchText,
-          page,
-          page_size: pagination.pageSize
-        },
-        {
-          signal: abortController.signal
+      const keyword =
+        params.keyword !== undefined ? params.keyword : searchText;
+      const familyPlatformIds =
+        !monitorObjectId && isCloudFamilySidebarType(String(monitorObjectType))
+          ? collectCloudFamilyPlatformIds(objects)
+          : [];
+      const familyTypeIds =
+        !monitorObjectId &&
+        isCloudFamilySidebarType(String(monitorObjectType)) &&
+        !familyPlatformIds.length
+          ? resolveCloudFamilyTypeQueryValues(String(monitorObjectType))
+          : [];
+      const fetchPluginPage = (
+        query: {
+          monitor_object_id?: React.Key | null;
+          monitor_object_type?: string | null;
+          page?: number;
+          page_size?: number;
         }
-      );
+      ) =>
+        getMonitorPlugin(
+          {
+            ...(query.monitor_object_id
+              ? { monitor_object_id: query.monitor_object_id }
+              : {}),
+            ...(query.monitor_object_type
+              ? { monitor_object_type: query.monitor_object_type }
+              : {}),
+            keyword,
+            page: query.page ?? page,
+            page_size: query.page_size ?? pagination.pageSize
+          },
+          {
+            signal: abortController.signal
+          }
+        );
+      // 点「云」根：按侧栏 4 个平台对象（或云族 type）并集取卡，避免只命中 type=Cloud 的 SCP/CNware。
+      if (familyPlatformIds.length || familyTypeIds.length) {
+        const pages = await Promise.all(
+          familyPlatformIds.length
+            ? familyPlatformIds.map((id) =>
+              fetchPluginPage({
+                monitor_object_id: id,
+                page: 1,
+                page_size: -1
+              })
+            )
+            : familyTypeIds.map((typeId) =>
+              fetchPluginPage({
+                monitor_object_type: typeId,
+                page: 1,
+                page_size: -1
+              })
+            )
+        );
+        if (currentRequestId !== pluginRequestIdRef.current) return;
+        const all = uniqueMonitorRecords(
+          pages.flatMap((data) => unwrapMonitorPluginList<ObjectItem>(data))
+        );
+        const start = (page - 1) * pagination.pageSize;
+        setPluginList(all.slice(start, start + pagination.pageSize));
+        setPagination((prev) => ({
+          ...prev,
+          current: page,
+          total: all.length
+        }));
+        return;
+      }
+      const data = await fetchPluginPage({
+        monitor_object_id: monitorObjectId,
+        monitor_object_type: monitorObjectType
+      });
       if (currentRequestId !== pluginRequestIdRef.current) return;
       const items = unwrapMonitorPluginList<ObjectItem>(data);
       const count = Array.isArray(data)
@@ -234,27 +338,16 @@ const Integration = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
-      (acc, item) => {
-        if (!acc[item.type]) {
-          acc[item.type] = {
-            title: item.display_type || '--',
-            key: item.type,
-            children: []
-          };
-        }
-        if (!isDerivativeObject(item, data)) {
-          acc[item.type].children.push({
-            title: item.display_name || '--',
-            label: item.name || '--',
-            key: toMonitorIdString(item.id),
-            icon: item.icon,
-            children: []
-          });
-        }
-        return acc;
-      },
-      {} as Record<string, TreeItem>
+    const tree = buildMonitorObjectSidebarTree(
+      data,
+      (item) => ({
+        title: item.display_name || '--',
+        label: item.name || '--',
+        key: toMonitorIdString(item.id),
+        icon: item.icon,
+        children: []
+      }),
+      { attachCloudDerivatives: false }
     );
     return [
       {
@@ -262,7 +355,7 @@ const Integration = () => {
         key: 'all',
         children: []
       },
-      ...Object.values(groupedData)
+      ...tree
     ];
   };
 
