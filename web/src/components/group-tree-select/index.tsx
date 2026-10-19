@@ -17,6 +17,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   multiple = true,
   disabled = false,
   allowClear = false,
+  className,
   style = { width: '100%' },
   mode = 'ownership',
   height = 300,
@@ -182,7 +183,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
 
   const dropdownContent = (
     <div
-      className="rounded shadow-lg bg-[var(--color-bg)] overflow-hidden"
+      className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] shadow-[var(--ant-box-shadow-secondary)]"
       onClick={(e) => e.stopPropagation()}
     >
       <MultiCascadePanel
@@ -194,7 +195,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
         columnWidth={200}
         disabled={disabled}
         searchable={showSearch}
-        searchPlaceholder={placeholder}
+        searchPlaceholder={t('common.search', '搜索')}
         single={!multiple}
       />
     </div>
@@ -226,7 +227,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   }, [internalValue, multiple, disabled, placeholder, processedTreeData, getFullPathLabel, handleRemoveTag, lockedSet]);
 
   return (
-    <div style={style}>
+    <div className={className} style={style}>
       <Dropdown
         open={open}
         onOpenChange={setOpen}
