@@ -1032,7 +1032,7 @@
     "chartThemeModeScreenDark": "Dark",
     "chartThemeModeScreenLight": "Light",
     "widgetName": "Widget Name",
-    "filterTokenHint": "Type $ to insert a filter",
+    "filterTokenHint": "Type $ to reference a global filter variable",
     "filterTokenMulti": "{first} ({count} items)",
     "filterTokenSeparator": ", ",
     "filterTokenUnmatched": "{tokens} did not match a filter",
