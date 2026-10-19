@@ -30,37 +30,9 @@
   }
 }
 
-.railLink {
+a.railLink {
+  margin-top: 0;
   margin-left: auto;
-  flex: none;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-  padding: 3px 10px;
-  color: var(--color-primary);
-  font-size: 12px;
-  line-height: 20px;
-  text-decoration: none;
-}
-
-.emptyPane {
-  border: 1px dashed var(--color-border);
-  border-radius: 8px;
-  background: var(--color-fill-1);
-  padding: 28px 16px;
-  text-align: center;
-}
-
-.emptyTitle {
-  color: var(--color-text-2);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.emptyHint {
-  margin-top: 4px;
-  color: var(--color-text-3);
-  font-size: 12px;
 }
 
 .focusBtn {

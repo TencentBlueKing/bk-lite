@@ -38,7 +38,7 @@ export default function MysqlHostRail({
           {showMem ? <span>内存 <b>{percentText(memPercent as number)}</b></span> : null}
         </span>
       ) : null}
-      <Link className={pro.railLink} href={href}>
+      <Link className={`${shell.jumpBtn} ${pro.railLink} no-underline`} href={href}>
         查看主机
       </Link>
     </div>

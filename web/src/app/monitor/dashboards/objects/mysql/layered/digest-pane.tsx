@@ -4,7 +4,7 @@ import React from 'react';
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
-import ThinTimeSeries from '../../host/layered/thin-time-series';
+import { GrayTabEmptyState, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_SERIES_COLOR } from '../../host/config';
 import host from '../../host/layered/layered.module.scss';
 import {
@@ -34,13 +34,6 @@ const trendData = (points: Array<{ time: number; value: number }> | undefined) =
   }])
 );
 
-const CollectionEmpty = ({ title, hint }: { title: string; hint: string }) => (
-  <div className={pro.emptyPane}>
-    <div className={pro.emptyTitle}>{title}</div>
-    <div className={pro.emptyHint}>{hint}</div>
-  </div>
-);
-
 const STATEMENT_TITLES: Record<StatementColumn, string> = {
   sql: '语句',
   totalTimeMs: '耗时 (ms)',
@@ -62,7 +55,7 @@ interface StatementPaneProps {
 
 export function StatementPane({ rows, selectedId, onSelect }: StatementPaneProps) {
   if (!rows.length) {
-    return <CollectionEmpty {...MYSQL_EMPTY_COPY.statements} />;
+    return <GrayTabEmptyState {...MYSQL_EMPTY_COPY.statements} />;
   }
   const selected = rows.find((row) => row.id === selectedId) || rows[0];
   const columns = statementColumns(rows);
@@ -118,7 +111,7 @@ export function WaitPane({
   onOpenStatement
 }: WaitPaneProps) {
   if (!rows.length) {
-    return <CollectionEmpty {...MYSQL_EMPTY_COPY.waits} />;
+    return <GrayTabEmptyState {...MYSQL_EMPTY_COPY.waits} />;
   }
   const selected = rows.find((row) => row.id === selectedId) || rows[0];
   const columns = waitColumns(rows);

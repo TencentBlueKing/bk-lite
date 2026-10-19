@@ -14,6 +14,7 @@ import {
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
+import { ProSectionTitle } from './section-title';
 import ThinTimeSeries from './thin-time-series';
 import type { HostSurfaceAlerts } from './tab-level';
 import {
@@ -265,18 +266,12 @@ export default function OverviewPane({
 
   return (
     <>
-      <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>健康概览</div>
-      </div>
+      <ProSectionTitle>健康概览</ProSectionTitle>
       <KpiStrip items={cards} />
-      <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'events')}</div>
-      </div>
+      <ProSectionTitle>{hostCategoryText(t, 'events')}</ProSectionTitle>
       <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
 
-      <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>重点关注</div>
-      </div>
+      <ProSectionTitle>重点关注</ProSectionTitle>
       <div className={styles.shortcutGrid}>
         <div key="disk" className={`${classic.panel} ${styles.shortcutCard}`}>
           <div className={styles.shortcutCopy}>
@@ -366,9 +361,7 @@ export default function OverviewPane({
         ) : null}
       </div>
 
-      <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'viewTrend')}</div>
-      </div>
+      <ProSectionTitle>{hostCategoryText(t, 'viewTrend')}</ProSectionTitle>
       <div className={styles.chartGrid4}>
         <ThinTimeSeries
           title={hostCategoryText(t, 'cpuUtilization')}

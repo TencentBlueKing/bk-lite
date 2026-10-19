@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { KpiStrip, type KpiCardModel } from '../../host/layered/signal-bar';
+import { KpiTileRow, ProSectionTitle, type KpiTileModel } from '../../host/layered/pro-chrome';
 import classic from '../../host/index.module.scss';
 import host from '../../host/layered/layered.module.scss';
 import {
@@ -41,7 +41,7 @@ export default function OverviewPane({
   onOpenAlerts,
   onOpenFocus
 }: OverviewPaneProps) {
-  const cards = useMemo<KpiCardModel[]>(() => (
+  const cards = useMemo<KpiTileModel[]>(() => (
     buildMysqlOverviewKpis(readings).map((card) => ({
       key: card.key,
       label: card.label,
@@ -59,17 +59,13 @@ export default function OverviewPane({
 
   return (
     <>
-      <div className={host.sectionHead}>
-        <div className={`${classic.sectionLabel} ${host.sectionTitle}`}>健康概览</div>
-      </div>
-      {cards.length > 0 ? <KpiStrip items={cards} /> : null}
+      <ProSectionTitle>健康概览</ProSectionTitle>
+      {cards.length > 0 ? <KpiTileRow items={cards} /> : null}
       {!loading && cards.length === 0 ? (
-        <div className={pro.emptyHint}>当前窗口没有可展示的实例指标</div>
+        <div className="text-[13px] text-[var(--color-text-3)]">当前窗口没有可展示的实例指标</div>
       ) : null}
 
-      <div className={host.sectionHead}>
-        <div className={`${classic.sectionLabel} ${host.sectionTitle}`}>所属主机</div>
-      </div>
+      <ProSectionTitle>所属主机</ProSectionTitle>
       <MysqlHostRail
         host={linkedHost}
         href={hostHref}
@@ -79,9 +75,7 @@ export default function OverviewPane({
 
       {focus.length > 0 ? (
         <>
-          <div className={host.sectionHead}>
-            <div className={`${classic.sectionLabel} ${host.sectionTitle}`}>重点关注</div>
-          </div>
+          <ProSectionTitle>重点关注</ProSectionTitle>
           <div className={host.shortcutGrid}>
             {focus.map((card) => (
               <button

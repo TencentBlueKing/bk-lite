@@ -15,6 +15,7 @@ import {
 } from './config';
 import { MetricSeries, MetricUnit, MysqlMetricConfig } from './types';
 import styles from './index.module.scss';
+import hostChrome from '../host/index.module.scss';
 import useMonitorApi from '@/app/monitor/api';
 import {
   DEFAULT_REFRESH_FREQUENCY_LIST,
@@ -443,6 +444,7 @@ export default function MysqlDashboardPage() {
   const hasDashboardContent = dashboardMetrics.length > 0;
   const showEmpty = isDashboardMode ? !hasDashboardContent : false;
 
+  const chrome = displayMode === 'category' ? hostChrome : styles;
   const mysqlIdentity = readMysqlClassicIdentity(metricMap, resolvedInstanceName);
   // 实例 ID 与展示名仅分隔符不同时（mysql_3306 vs mysql-3306）视为重复，不再展示。
   const normalizeIdentityKey = (value: string) => value.trim().toLowerCase().replace(/[-_\s]+/g, '');
@@ -452,12 +454,12 @@ export default function MysqlDashboardPage() {
   const identityMetaItems =
     mysqlIdentity.deployment === '单节点'
       ? [
-        <span key="topology" className={styles.instanceMetaInline}>
+        <span key="topology" className={chrome.instanceMetaInline}>
           单节点
         </span>
       ]
       : [
-        <span key="topology" className={styles.instanceMetaInline}>
+        <span key="topology" className={chrome.instanceMetaInline}>
           主从复制
         </span>,
         <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
@@ -465,16 +467,16 @@ export default function MysqlDashboardPage() {
         </span>
       ];
   const instanceMetaItems = [
-    <span key="object-name" className={styles.instanceMetaInline}>
+    <span key="object-name" className={chrome.instanceMetaInline}>
       {objectDisplayText}
     </span>,
     showInstanceId ? (
-      <span key="instance-id" className={styles.instanceMetaMuted}>
+      <span key="instance-id" className={chrome.instanceMetaMuted}>
         {instanceIdText}
       </span>
     ) : null,
     ...identityMetaItems,
-    <span key="timezone" className={styles.instanceMetaMuted}>
+    <span key="timezone" className={chrome.instanceMetaMuted}>
       时区 Asia/Shanghai
     </span>
   ].filter(Boolean) as React.ReactNode[];
@@ -530,10 +532,10 @@ export default function MysqlDashboardPage() {
   };
 
   return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <div className={styles.unifiedShell} data-dashboard-shell="unified">
-          <div className={styles.pageIntro}>
+    <div className={chrome.page} data-mysql-chrome={displayMode === 'category' ? 'host' : 'classic'}>
+      <div className={chrome.shell}>
+        <div className={chrome.unifiedShell} data-dashboard-shell="unified">
+          <div className={chrome.pageIntro}>
           <DashboardPageHeader
             title={pageTitle}
             displayMode={displayMode}
@@ -551,10 +553,10 @@ export default function MysqlDashboardPage() {
             onFrequenceChange={onFrequenceChange}
             onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
             showTimeSelector={false}
-            styles={styles}
+            styles={chrome}
           />
           </div>
-          <div className={styles.unifiedHostBar}>
+          <div className={chrome.unifiedHostBar}>
           <DashboardInstanceCard
             instanceName={primaryInstanceText}
             metaItems={instanceMetaItems}
@@ -573,12 +575,12 @@ export default function MysqlDashboardPage() {
               onFrequenceChange,
               onRefresh: () => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))
             }}
-            styles={styles}
+            styles={chrome}
           />
           </div>
         </div>
 
-        <div className={styles.unifiedBelow}>
+        <div className={chrome.unifiedBelow}>
           {showEmpty ? (
             <div className={styles.empty}>
               <CompactEmptyState description={t('common.noData')} />

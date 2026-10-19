@@ -4,10 +4,9 @@ import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { MetricSeries } from '../types';
-import ThinTimeSeries from '../../host/layered/thin-time-series';
+import { ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
 import { numericValue, primaryChartSeries } from '../../host/layered/readings';
-import classic from '../../host/index.module.scss';
 import host from '../../host/layered/layered.module.scss';
 import pro from './pro.module.scss';
 
@@ -35,9 +34,7 @@ const sumSeries = (parts: ChartData[][]): ChartData[] => {
 
 const Section = ({ id, title, children }: { id: string; title: string; children: React.ReactNode }) => (
   <section id={id}>
-    <div className={host.sectionHead}>
-      <div className={`${classic.sectionLabel} ${host.sectionTitle}`}>{title}</div>
-    </div>
+    <ProSectionTitle>{title}</ProSectionTitle>
     {children}
   </section>
 );
