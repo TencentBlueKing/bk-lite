@@ -77,8 +77,9 @@ const MERAKI_DERIVATIVE_OBJECT_NAMES = new Set([
 ]);
 
 /**
- * 视图 / 专业大盘侧栏把 Cisco Meraki 的派生对象挂到父节点下。
+ * 视图 / 专业大盘 / 事件侧栏把 Cisco Meraki 的派生对象挂到父节点下。
  * 名称集合覆盖内置五个子对象；parent 指向 Cisco Meraki 时也认，避免漏挂。
+ * 集成 list/asset/group 走 attachCloudDerivatives=false，不挂这些子叶。
  * 云族挂父见 isCloudFamilySidebarType / buildMonitorObjectSidebarTree；
  * 禁止借此全局去掉 isDerivativeObject（VMware / K8s 等非云派生仍隐藏）。
  */
@@ -111,7 +112,7 @@ export const attachMerakiSidebarChildren = <T extends { label?: string; children
 };
 
 /**
- * 把派生节点挂到分组内 label 匹配的父叶子下（Meraki / 云族共用）。
+ * 把派生节点挂到分组内 label 匹配的父叶子下（仅 Meraki 调用；云族走 buildUnifiedCloudRoot）。
  */
 export const attachSidebarChildrenByParentLabel = <T extends { label?: string; children: T[] }>(
   groups: Record<string, { children: T[] }>,
@@ -478,12 +479,12 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
   cloudFamilyItems: ObjectItem[],
   objects: ObjectItem[],
   toNode: (item: ObjectItem) => T,
-  attachCloudDerivatives = true
+  attachSidebarDerivatives = true
 ): T => {
   const platforms = cloudFamilyItems.filter(
     (item) => !isCloudFamilySidebarDerivative(item, objects)
   );
-  const derivatives = attachCloudDerivatives
+  const derivatives = attachSidebarDerivatives
     ? cloudFamilyItems.filter((item) => isCloudFamilySidebarDerivative(item, objects))
     : [];
   const childrenByParentId = new Map<number, ObjectItem[]>();
@@ -528,34 +529,51 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
 };
 
 export interface MonitorObjectSidebarTreeOptions {
-  /** 默认 true：云族派生挂父（视图 / 大盘 / 事件）。集成分页传 false，只露平台。 */
+  /**
+   * 默认 true：把挂父派生（云族 CVM 等、Meraki 五子）挂到父叶。
+   * 集成 list/asset/group 传 false，只露父接入。
+   * attachCloudDerivatives 为旧名，语义相同。
+   */
+  attachSidebarDerivatives?: boolean;
   attachCloudDerivatives?: boolean;
 }
+
+const resolveAttachSidebarDerivatives = (
+  options?: MonitorObjectSidebarTreeOptions
+): boolean => {
+  if (!options) return true;
+  if (options.attachSidebarDerivatives !== undefined) {
+    return options.attachSidebarDerivatives !== false;
+  }
+  return options.attachCloudDerivatives !== false;
+};
 
 const resolveSidebarTreeArgs = (
   weopsxNodesOrOptions: SidebarTreeNode[] | MonitorObjectSidebarTreeOptions = [],
   options?: MonitorObjectSidebarTreeOptions
 ): {
-  attachCloudDerivatives: boolean;
+  attachSidebarDerivatives: boolean;
 } => {
   // 数组曾是 WeOpsX catalog 叶；bk-lite 不接入 catalog 到侧栏，忽略。
   if (Array.isArray(weopsxNodesOrOptions)) {
     return {
-      attachCloudDerivatives: options?.attachCloudDerivatives !== false
+      attachSidebarDerivatives: resolveAttachSidebarDerivatives(options)
     };
   }
   return {
-    attachCloudDerivatives: weopsxNodesOrOptions.attachCloudDerivatives !== false
+    attachSidebarDerivatives: resolveAttachSidebarDerivatives(
+      weopsxNodesOrOptions
+    )
   };
 };
 
 /**
- * 视图 / 专业大盘对象树：
+ * 视图 / 专业大盘 / 事件对象树：
  * - type=Cloud（及历史 Tencent Cloud / Aliyun Cloud 别名）挂到唯一「云」根下，派生挂父；
  * - bk-lite 不接入 WeOpsX catalog：即使传入深链叶也不挂树；
- * - Meraki 维持挂父；
- * - 其余 type 仍按 #6351 隐藏派生，禁止全局去掉 isDerivativeObject。
- * - attachCloudDerivatives=false 时云族派生不进树（集成 list/asset/group）。
+ * - Meraki 默认挂父；attachCloudDerivatives/attachSidebarDerivatives=false 时不挂
+ *   （集成 list/asset/group 只露 Cisco Meraki 父接入）；
+ * - 其余 type 仍按派生隐藏，禁止全局去掉 isDerivativeObject（VMware / K8s 等）。
  */
 export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
   objects: ObjectItem[],
@@ -563,7 +581,7 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
   weopsxNodesOrOptions: SidebarTreeNode[] | MonitorObjectSidebarTreeOptions = [],
   options?: MonitorObjectSidebarTreeOptions
 ): T[] => {
-  const { attachCloudDerivatives } = resolveSidebarTreeArgs(
+  const { attachSidebarDerivatives } = resolveSidebarTreeArgs(
     weopsxNodesOrOptions,
     options
   );
@@ -593,8 +611,10 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
       continue;
     }
     if (isMerakiSidebarDerivative(item, objects)) {
-      ensureGroup(item);
-      merakiDerivatives.push(item);
+      if (attachSidebarDerivatives) {
+        ensureGroup(item);
+        merakiDerivatives.push(item);
+      }
       continue;
     }
     if (isDerivativeObject(item, objects)) {
@@ -603,7 +623,9 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
     ensureGroup(item).children.push(toNode(item));
   }
 
-  attachMerakiSidebarChildren(groups, merakiDerivatives, toNode);
+  if (attachSidebarDerivatives) {
+    attachMerakiSidebarChildren(groups, merakiDerivatives, toNode);
+  }
 
   if (cloudFamilyItems.length) {
     if (!typeOrder.includes(UNIFIED_CLOUD_ROOT_TYPE)) {
@@ -613,7 +635,7 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
       cloudFamilyItems,
       objects,
       toNode,
-      attachCloudDerivatives
+      attachSidebarDerivatives
     );
   }
 
