@@ -1,6 +1,6 @@
 /**
- * 全浏览器共享的监控查询槽位。
- * 多 Tab / 弹窗 / 看板合计最多 N 路（默认 8），避免一人叠请求打满 PG。
+ * 本 Tab 内的监控查询槽位。
+ * 弹窗 / 看板 / 列表合计最多 N 路（默认 8），避免一人叠请求打满 PG。
  */
 
 export const SITE_METRIC_REQUEST_SLOT_LIMIT = readSlotLimit(
@@ -8,16 +8,22 @@ export const SITE_METRIC_REQUEST_SLOT_LIMIT = readSlotLimit(
   8
 );
 export const SITE_METRIC_REQUEST_SLOT_HOLD_TIMEOUT_MS = 60_000;
-const SLOT_LOCK_PREFIX = 'bklite-monitor-metric-slot-';
 
 type SlotRelease = () => void;
 
-type LocalWaiter = {
+/** Axios GenericAbortSignal 与 DOM AbortSignal 的最小交集。 */
+interface SlotAbortSignal {
+  readonly aborted: boolean;
+  addEventListener?: (type: 'abort', listener: () => void) => void;
+  removeEventListener?: (type: 'abort', listener: () => void) => void;
+}
+
+interface LocalWaiter {
   resolve: (release: SlotRelease) => void;
   reject: (error: unknown) => void;
-  signal?: AbortSignal;
+  signal?: SlotAbortSignal;
   onAbort?: () => void;
-};
+}
 
 let localInFlight = 0;
 const localWaiters: LocalWaiter[] = [];
@@ -105,13 +111,13 @@ function pumpLocal() {
       continue;
     }
     if (next.onAbort) {
-      next.signal?.removeEventListener('abort', next.onAbort);
+      next.signal?.removeEventListener?.('abort', next.onAbort);
     }
     grantLocal(next);
   }
 }
 
-function acquireLocalSlot(signal?: AbortSignal): Promise<SlotRelease> {
+function acquireLocalSlot(signal?: SlotAbortSignal): Promise<SlotRelease> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(abortError());
@@ -125,9 +131,9 @@ function acquireLocalSlot(signal?: AbortSignal): Promise<SlotRelease> {
       }
       reject(abortError());
     };
-    signal?.addEventListener('abort', waiter.onAbort);
+    signal?.addEventListener?.('abort', waiter.onAbort);
     if (localInFlight < SITE_METRIC_REQUEST_SLOT_LIMIT) {
-      signal?.removeEventListener('abort', waiter.onAbort);
+      signal?.removeEventListener?.('abort', waiter.onAbort);
       grantLocal(waiter);
       return;
     }
@@ -136,92 +142,18 @@ function acquireLocalSlot(signal?: AbortSignal): Promise<SlotRelease> {
   });
 }
 
-function acquireWebLockSlot(signal?: AbortSignal): Promise<SlotRelease> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(abortError());
-      return;
-    }
-    const siblingAbort = new AbortController();
-    const onUserAbort = () => siblingAbort.abort();
-    signal?.addEventListener('abort', onUserAbort);
-
-    let settled = false;
-    const fail = (error: unknown) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      signal?.removeEventListener('abort', onUserAbort);
-      reject(error);
-    };
-    const succeed = (release: SlotRelease) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      signal?.removeEventListener('abort', onUserAbort);
-      resolve(release);
-    };
-
-    for (let index = 0; index < SITE_METRIC_REQUEST_SLOT_LIMIT; index += 1) {
-      void navigator.locks
-        .request(
-          `${SLOT_LOCK_PREFIX}${index}`,
-          { mode: 'exclusive', signal: siblingAbort.signal },
-          () =>
-            new Promise<void>((releaseLock) => {
-              siblingAbort.abort();
-              acquiredTotal += 1;
-              localInFlight += 1;
-              let released = false;
-              const timer = window.setTimeout(() => {
-                recycledTotal += 1;
-                release();
-              }, SITE_METRIC_REQUEST_SLOT_HOLD_TIMEOUT_MS);
-              const release = () => {
-                if (released) {
-                  return;
-                }
-                released = true;
-                window.clearTimeout(timer);
-                localInFlight = Math.max(0, localInFlight - 1);
-                releaseLock();
-              };
-              succeed(release);
-            })
-        )
-        .catch(() => {
-          if (signal?.aborted) {
-            fail(abortError());
-          }
-        });
-    }
-  });
-}
-
 export async function acquireMetricRequestSlot(options?: {
-  signal?: AbortSignal;
+  signal?: SlotAbortSignal;
 }): Promise<SlotRelease> {
   if (options?.signal?.aborted) {
     throw abortError();
-  }
-  if (typeof navigator !== 'undefined' && navigator.locks?.request) {
-    try {
-      return await acquireWebLockSlot(options?.signal);
-    } catch (error) {
-      if (options?.signal?.aborted) {
-        throw error;
-      }
-      // locks 不可用或被中断时回退到页内队列，仍保证本页不超过 N。
-    }
   }
   return acquireLocalSlot(options?.signal);
 }
 
 export async function waitForSiteMetricSlot(
   isCurrentGeneration: () => boolean,
-  options?: { intervalMs?: number; sleep?: (ms: number) => Promise<void>; signal?: AbortSignal }
+  options?: { intervalMs?: number; sleep?: (ms: number) => Promise<void>; signal?: SlotAbortSignal }
 ): Promise<boolean> {
   const intervalMs = options?.intervalMs ?? 30;
   const sleep =
