@@ -108,25 +108,25 @@ const getUptimeInsight = (uptimeSeconds: number) => {
   };
 };
 
-const inferMysqlIdentity = (roleSignals: {
+export const inferMysqlIdentity = (roleSignals: {
   instanceName: string;
   hasReplicationMetrics: boolean;
   logSlaveUpdates: number;
 }) => {
   const { instanceName, hasReplicationMetrics, logSlaveUpdates } = roleSignals;
   const normalizedName = instanceName.toLowerCase();
-  const nameSaysStandalone = /单点|单节点|独立|standalone|single/.test(normalizedName);
   const nameSaysReplica = /从库|从节点|slave|replica|secondary/.test(normalizedName);
-  const nameSaysPrimary = /主库|主节点|master|primary/.test(normalizedName);
-
-  // 从库判据的 ground truth:SHOW SLAVE STATUS 有行(hasReplicationMetrics),名称作兜底。
-  // 刻意不把 read_only / super_read_only 单独当作从库信号 —— 主库也可能被临时设为只读,
-  // 据此会把只读主库误判成从库、进而误报"复制已停止"。运行中的从库本就有 slave 状态行,已被覆盖。
-  const hasReplicaIdentity = hasReplicationMetrics || nameSaysReplica;
-  // 是否处于主从拓扑:本身是从库,或名称/配置(回放写日志 log_slave_updates)表明它是拓扑中的主库。
-  const inReplicationTopology = hasReplicaIdentity || nameSaysPrimary || logSlaveUpdates > 0;
-  const deployment = nameSaysStandalone || !inReplicationTopology ? '单节点' : '主从复制';
-  const role = hasReplicaIdentity ? '从库' : deployment === '主从复制' ? '主库' : '独立实例';
+  // 拓扑只认指标：从库状态行，或 log_slave_updates。primary/master 等名字不能单独打成主从。
+  // 名字最多在已有 log_slave_updates、但还没有从库状态行时，弱提示它更像中间从库。
+  // 不做 MGR。read_only 也不单独当从库信号，避免只读主库被误报成复制停止。
+  const topologyEvidence = hasReplicationMetrics || logSlaveUpdates > 0;
+  const replicaByWeakName = !hasReplicationMetrics && logSlaveUpdates > 0 && nameSaysReplica;
+  const deployment = topologyEvidence ? '主从复制' : '单节点';
+  const role = hasReplicationMetrics || replicaByWeakName
+    ? '从库'
+    : deployment === '主从复制'
+      ? '主库'
+      : '独立实例';
   const replication = role === '从库' ? '从库复制' : role === '主库' ? '源端复制' : '不适用';
 
   return { deployment, role, replication };
@@ -469,9 +469,8 @@ export default function MysqlLegacyLayout({
     hasReplicationMetrics: hasReplicationData,
     logSlaveUpdates: logSlaveUpdatesValue
   });
-  // 展示复制区块的条件:存在 SHOW SLAVE STATUS 数据(运行中或已停止的真实从库 —— hasReplicationData 是
-  // 判定从库的 ground truth,主库永远没有这些行),或名称明确为从库。主库 / 独立实例两者皆不满足 → 显示"不适用"。
-  // 真主库即使被临时设为只读也不会落入此分支(inferMysqlIdentity 已不再把 read_only 单独当作从库信号)。
+  // 展示复制区块的条件:存在 SHOW SLAVE STATUS 数据，或身份已判成从库。
+  // 没有从库指标、也没有 log_slave_updates 时，名字里的 primary/master 不会打开这块。
   const replicationApplicable = hasReplicationData || mysqlIdentity.role === '从库';
   const connectionGuide = [
     { label: '连接使用率', detail: '表示当前连接数占最大连接数上限的比例。' },
