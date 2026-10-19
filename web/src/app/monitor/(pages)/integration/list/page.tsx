@@ -41,7 +41,11 @@ import Permission from '@/components/permission';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
-import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
+import {
+  buildMonitorObjectSidebarTree,
+  isCloudFamilySidebarType,
+  UNIFIED_CLOUD_ROOT_TYPE
+} from '@/app/monitor/utils/monitorObject';
 import { sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import { cloneDeep } from 'lodash';
 import CreateTemplateModal from './createTemplateModal';
@@ -61,6 +65,38 @@ import { resolvePluginSourceBadge } from '@/app/monitor/utils/pluginSourceBadge'
 import { downloadPluginConfig } from './exportDownload';
 
 const { confirm } = Modal;
+
+const expandCloudFamilySortData = (
+  sortData: TreeSortData[],
+  objectItems: ObjectItem[]
+): TreeSortData[] => {
+  const byName = new Map(objectItems.map((item) => [item.name, item]));
+  const expanded: TreeSortData[] = [];
+  for (const item of sortData) {
+    if (item.type === 'all') {
+      continue;
+    }
+    if (!isCloudFamilySidebarType(item.type)) {
+      expanded.push(item);
+      continue;
+    }
+    const lists = new Map<string, string[]>();
+    for (const name of item.object_list || []) {
+      const originalType = byName.get(name)?.type || UNIFIED_CLOUD_ROOT_TYPE;
+      const list = lists.get(originalType) || [];
+      list.push(name);
+      lists.set(originalType, list);
+    }
+    if (!lists.size) {
+      expanded.push({ type: UNIFIED_CLOUD_ROOT_TYPE, object_list: [] });
+      continue;
+    }
+    for (const [type, object_list] of lists) {
+      expanded.push({ type, object_list });
+    }
+  }
+  return expanded;
+};
 
 const Integration = () => {
   const { isLoading } = useApiClient();
@@ -120,7 +156,7 @@ const Integration = () => {
   const handleNodeDrag = async (data: TreeSortData[]) => {
     try {
       setTreeLoading(true);
-      await updateMonitorObject(data);
+      await updateMonitorObject(expandCloudFamilySortData(data, objects));
       message.success(t('common.updateSuccess'));
       invalidateMonitorObjectsCache();
       getObjects({ force: true });
@@ -234,35 +270,20 @@ const Integration = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
-      (acc, item) => {
-        if (!acc[item.type]) {
-          acc[item.type] = {
-            title: item.display_type || '--',
-            key: item.type,
-            children: []
-          };
-        }
-        if (!isDerivativeObject(item, data)) {
-          acc[item.type].children.push({
-            title: item.display_name || '--',
-            label: item.name || '--',
-            key: toMonitorIdString(item.id),
-            icon: item.icon,
-            children: []
-          });
-        }
-        return acc;
-      },
-      {} as Record<string, TreeItem>
-    );
+    const tree = buildMonitorObjectSidebarTree(data, (item) => ({
+      title: item.display_name || '--',
+      label: item.name || '--',
+      key: toMonitorIdString(item.id),
+      icon: item.icon,
+      children: []
+    }));
     return [
       {
         title: t('common.all'),
         key: 'all',
         children: []
       },
-      ...Object.values(groupedData)
+      ...tree
     ];
   };
 
