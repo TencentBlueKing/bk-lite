@@ -24,6 +24,8 @@ from apps.monitor.utils.last_sample import LAST_SAMPLE_LOOKBACK, last_sample_tim
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
+DISPLAY_METRICS_VM_MAX_WORKERS = 2
+
 # 实例 status 映射短 TTL 缓存，缓解列表/轮询重复打 VM。
 _INSTANCE_STATUS_CACHE_TTL_SECONDS = 15.0
 _INSTANCE_STATUS_CACHE_MAX = 128
@@ -567,6 +569,7 @@ class MonitorObjectService:
         responses, errors = run_unique_vm_queries(
             (query for _, query in plugin_queries),
             lambda query: vm_api.query(query, step=LAST_SAMPLE_LOOKBACK),
+            max_workers=DISPLAY_METRICS_VM_MAX_WORKERS,
         )
         for plugin_name, query in plugin_queries:
             if query in errors:
