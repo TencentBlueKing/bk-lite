@@ -883,14 +883,18 @@ const Asset = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    return buildMonitorObjectSidebarTree(data, (item) => ({
-      title: item.display_name || '--',
-      label: item.name || '--',
-      key: toMonitorIdString(item.id),
-      icon: item.icon,
-      count: item.instance_count ?? 0,
-      children: []
-    }));
+    return buildMonitorObjectSidebarTree(
+      data,
+      (item) => ({
+        title: item.display_name || '--',
+        label: item.name || '--',
+        key: toMonitorIdString(item.id),
+        icon: item.icon,
+        count: item.instance_count ?? 0,
+        children: []
+      }),
+      { attachCloudDerivatives: false }
+    );
   };
 
   const deleteInstConfirm = async (row: any) => {

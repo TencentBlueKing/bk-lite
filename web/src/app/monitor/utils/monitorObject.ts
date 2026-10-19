@@ -448,14 +448,15 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
   cloudFamilyItems: ObjectItem[],
   objects: ObjectItem[],
   toNode: (item: ObjectItem) => T,
-  weopsxNodes: SidebarTreeNode[] = []
+  weopsxNodes: SidebarTreeNode[] = [],
+  attachCloudDerivatives = true
 ): T => {
   const platforms = cloudFamilyItems.filter(
     (item) => !isCloudFamilySidebarDerivative(item, objects)
   );
-  const derivatives = cloudFamilyItems.filter((item) =>
-    isCloudFamilySidebarDerivative(item, objects)
-  );
+  const derivatives = attachCloudDerivatives
+    ? cloudFamilyItems.filter((item) => isCloudFamilySidebarDerivative(item, objects))
+    : [];
   const childrenByParentId = new Map<number, ObjectItem[]>();
   const unattached: ObjectItem[] = [];
   for (const item of derivatives) {
@@ -505,6 +506,30 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
   } as unknown as T;
 };
 
+export interface MonitorObjectSidebarTreeOptions {
+  /** 默认 true：云族派生挂父（视图 / 大盘 / 事件）。集成分页传 false，只露平台。 */
+  attachCloudDerivatives?: boolean;
+}
+
+const resolveSidebarTreeArgs = (
+  weopsxNodesOrOptions: SidebarTreeNode[] | MonitorObjectSidebarTreeOptions = [],
+  options?: MonitorObjectSidebarTreeOptions
+): {
+  weopsxNodes: SidebarTreeNode[];
+  attachCloudDerivatives: boolean;
+} => {
+  if (Array.isArray(weopsxNodesOrOptions)) {
+    return {
+      weopsxNodes: weopsxNodesOrOptions,
+      attachCloudDerivatives: options?.attachCloudDerivatives !== false
+    };
+  }
+  return {
+    weopsxNodes: [],
+    attachCloudDerivatives: weopsxNodesOrOptions.attachCloudDerivatives !== false
+  };
+};
+
 /**
  * 视图 / 专业大盘对象树：
  * - type=Cloud（及历史 Tencent Cloud / Aliyun Cloud 别名）挂到唯一「云」根下，派生挂父；
@@ -512,12 +537,18 @@ const buildUnifiedCloudRoot = <T extends SidebarTreeNode>(
  *   与已装云族平台基对象 id/name/cn_name 重叠的目录项不挂树；
  * - Meraki 维持挂父；
  * - 其余 type 仍按 #6351 隐藏派生，禁止全局去掉 isDerivativeObject。
+ * - attachCloudDerivatives=false 时云族派生不进树（集成 list/asset/group）。
  */
 export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
   objects: ObjectItem[],
   toNode: (item: ObjectItem) => T,
-  weopsxNodes: SidebarTreeNode[] = []
+  weopsxNodesOrOptions: SidebarTreeNode[] | MonitorObjectSidebarTreeOptions = [],
+  options?: MonitorObjectSidebarTreeOptions
 ): T[] => {
+  const { weopsxNodes, attachCloudDerivatives } = resolveSidebarTreeArgs(
+    weopsxNodesOrOptions,
+    options
+  );
   const groups: Record<string, T> = {};
   const typeOrder: string[] = [];
   const merakiDerivatives: ObjectItem[] = [];
@@ -564,7 +595,8 @@ export const buildMonitorObjectSidebarTree = <T extends SidebarTreeNode>(
       cloudFamilyItems,
       objects,
       toNode,
-      weopsxNodes
+      weopsxNodes,
+      attachCloudDerivatives
     );
   }
 

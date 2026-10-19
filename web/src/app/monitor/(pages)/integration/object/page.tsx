@@ -29,6 +29,11 @@ import DisplayFieldsModal from './displayFieldsModal';
 import useObjectApi from './api';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
+import {
+  buildMonitorObjectTypeSidebarTree,
+  expandCloudFamilyTypeSortData,
+  resolveMonitorObjectTypeSelection
+} from '@/app/monitor/utils/monitorObjectTypeSidebar';
 
 const ObjectPage = () => {
   const { isLoading } = useApiClient();
@@ -67,14 +72,10 @@ const ObjectPage = () => {
   });
 
   // 将对象类型列表转换为 TreeSelector 需要的数据格式
-  const treeData: TreeItem[] = useMemo(() => {
-    return typeList.map((type) => ({
-      title: `${type.name}（${type.object_count || 0}）`,
-      key: type.id,
-      label: type.id,
-      children: []
-    }));
-  }, [typeList]);
+  const treeData: TreeItem[] = useMemo(
+    () => buildMonitorObjectTypeSidebarTree(typeList),
+    [typeList]
+  );
 
   // 表格列配置
   const columns: ColumnItem[] = useMemo(
@@ -315,7 +316,7 @@ const ObjectPage = () => {
 
   // 选择对象类型
   const handleNodeSelect = (key: string) => {
-    const type = typeList.find((t) => t.id === key);
+    const type = resolveMonitorObjectTypeSelection(key, typeList);
     if (type) {
       // 取消上一次请求
       if (abortControllerRef.current) {
@@ -334,8 +335,13 @@ const ObjectPage = () => {
   const handleNodeDrag = async (sortData: TreeSortData[]) => {
     try {
       // sortData 格式: [{ type: 类型ID, object_list: [] }, ...]
-      // 后端接口直接接受这个格式
-      await updateObjectTypeOrder(sortData);
+      // 「云」父节点展开回 Tencent Cloud / Aliyun Cloud / Cloud 原 id
+      await updateObjectTypeOrder(
+        expandCloudFamilyTypeSortData(
+          sortData,
+          typeList.map((item) => item.id)
+        )
+      );
       message.success(t('common.updateSuccess'));
       fetchObjectTypes();
     } catch {
@@ -586,6 +592,7 @@ const ObjectPage = () => {
               defaultSelectedKey={defaultSelectedKey}
               loading={typeLoading}
               draggable
+              allowParentSelect
               onNodeSelect={handleNodeSelect}
               onNodeDrag={handleNodeDrag}
             />

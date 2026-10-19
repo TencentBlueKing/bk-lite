@@ -270,13 +270,17 @@ const Integration = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const tree = buildMonitorObjectSidebarTree(data, (item) => ({
-      title: item.display_name || '--',
-      label: item.name || '--',
-      key: toMonitorIdString(item.id),
-      icon: item.icon,
-      children: []
-    }));
+    const tree = buildMonitorObjectSidebarTree(
+      data,
+      (item) => ({
+        title: item.display_name || '--',
+        label: item.name || '--',
+        key: toMonitorIdString(item.id),
+        icon: item.icon,
+        children: []
+      }),
+      { attachCloudDerivatives: false }
+    );
     return [
       {
         title: t('common.all'),
