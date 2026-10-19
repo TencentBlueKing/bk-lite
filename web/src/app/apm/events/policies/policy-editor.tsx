@@ -791,6 +791,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
             rules={[{ required: true, message: t('apm.common.organizationRequired', '请至少选择一个组织') }]}
           >
             <GroupTreeSelect
+              className={styles.organizationControl}
               multiple
               mode="ownership"
               showSearch

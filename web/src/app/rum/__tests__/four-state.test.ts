@@ -111,6 +111,8 @@ describe('rum page four-state presence (static)', () => {
         'errors/page.tsx',
         'funnels/[id]/page.tsx',
         'funnels/page.tsx',
+        'monitors/[id]/page.tsx',
+        'monitors/new/page.tsx',
         'monitors/page.tsx',
         'page.tsx',
         'releases/page.tsx',
@@ -129,6 +131,7 @@ describe('rum page four-state presence (static)', () => {
       const src = readFileSync(file, 'utf8');
       if (src.includes('redirect(')) continue;
       if (src.includes('FunnelsWorkspace') && !src.includes('pending')) continue;
+      if (src.includes('MonitorPolicyEditor') && !src.includes('pending')) continue;
       if (src.includes('RumPortPlaceholder')) {
         throw new Error(`placeholder still present: ${file}`);
       }
@@ -171,6 +174,10 @@ describe('rum page four-state presence (static)', () => {
     expect(workspace.includes('pending')).toBe(true);
     expect(workspace.includes('<Empty')).toBe(true);
     expect(workspace.includes('catch')).toBe(true);
+    const policyEditor = readFileSync(join(RUM_ROOT, 'monitors/ui/monitor-policy-editor.tsx'), 'utf8');
+    expect(policyEditor.includes('RumBone')).toBe(true);
+    expect(policyEditor.includes('<Empty')).toBe(true);
+    expect(policyEditor.includes('catch')).toBe(true);
   });
 
   it('application catalog and session list wait for auth and keep failed loads off the empty copy', () => {
