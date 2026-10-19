@@ -99,6 +99,23 @@ describe('InteractionLinkSection', () => {
     expect(screen.getByText('数据链接：点击数据点、柱、扇区或数字打开')).toBeTruthy();
   });
 
+  it('应用拓扑能选数据链接，并列出对象 id、名称和模型', async () => {
+    const user = userEvent.setup();
+    renderSection('applicationTopology', 'none');
+
+    expect(screen.getByRole('radio', { name: '数据链接' })).toBeTruthy();
+    await user.click(screen.getByText('数据链接'));
+    const url = await screen.findByPlaceholderText('输入 URL，键入 $ 插入变量');
+    await user.type(url, '/cmdb?id=');
+    await user.type(url, '$');
+
+    expect(await screen.findByRole('option', { name: /对象 ID/ })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /对象名称/ })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /对象模型 ID/ })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /对象类型/ })).toBeNull();
+    expect(screen.queryByRole('option', { name: /机柜 ID/ })).toBeNull();
+  });
+
   it('只支持标题链接的组件用同一分段选择器，并把数据链接收成标题链接', async () => {
     const user = userEvent.setup();
     renderSection('text', 'data');
@@ -282,5 +299,50 @@ describe('InteractionLinkSection', () => {
     expect(screen.queryByText('当前为无边框样式，标题链接不会显示，切换为标准样式后生效')).toBeNull();
     expect((screen.getByPlaceholderText('输入 URL，键入 $ 插入变量') as HTMLInputElement).value).toBe('/ops');
     expect(formRef.current?.getFieldValue(['interaction', 'url'])).toBe('/ops');
+  });
+
+  it('文本项只保留标题链接，选无会清空名称和 URL', async () => {
+    const user = userEvent.setup();
+    const formRef = createRef<FormInstance>();
+    render(
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <Form
+          ref={formRef}
+          layout="vertical"
+          initialValues={{
+            interaction: { kind: 'title', name: '详情', url: '/ops', openMode: 'newTab' },
+          }}
+        >
+          <InteractionLinkSection
+            t={translate}
+            definitions={[]}
+            rawData={null}
+            besideText
+            clearOnNone
+          />
+          <KindValue />
+        </Form>
+      </ConfigProvider>,
+    );
+
+    expect(screen.queryByRole('radio', { name: '数据链接' })).toBeNull();
+    await user.hover(screen.getByRole('img', { name: 'question-circle' }));
+    expect(await screen.findByText('标题链接：文本后显示图标')).toBeTruthy();
+    expect(screen.queryByText('该组件仅支持标题链接，点击标题旁图标打开')).toBeNull();
+
+    await user.click(screen.getByText('无'));
+    await waitFor(() => {
+      expect(screen.getByTestId('kind').textContent).toBe('none');
+    });
+    expect(formRef.current?.getFieldValue(['interaction'])).toEqual({
+      kind: 'none',
+      name: '',
+      url: '',
+      openMode: 'sameTab',
+    });
+
+    await user.click(screen.getByText('标题链接'));
+    expect((await screen.findByPlaceholderText('输入 URL，键入 $ 插入变量') as HTMLInputElement).value).toBe('');
+    expect((screen.getByPlaceholderText('例如：查看详情') as HTMLInputElement).value).toBe('');
   });
 });

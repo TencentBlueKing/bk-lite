@@ -512,6 +512,13 @@ export const createApplication3DScene = (
       host?: { id: string; name: string; ip?: string; os?: string; modelId?: string };
       application?: { id: string; name: string; modelId?: string };
     } | null) => void;
+    onLinkHover?: (hit: {
+      id: string;
+      name: string;
+      kind: string;
+      x: number;
+      y: number;
+    } | null) => void;
   },
 ): Application3DSceneController => {
   const reducedMotion = prefersReducedMotion();
@@ -935,6 +942,7 @@ export const createApplication3DScene = (
   const tweens = new Map<number, Tween>();
   let pointerDown: { x: number; y: number } | null = null;
   let hoveredId = '';
+  let linkHoverKey = '';
   let introSafetyTimer: number | null = null;
   let resizeLayoutTimer: number | null = null;
   let particlesBuilt = false;
@@ -2399,10 +2407,28 @@ export const createApplication3DScene = (
       : idleCursor();
   };
 
+  const notifyLinkHover = (hit: {
+    id: string;
+    name: string;
+    kind: string;
+    x: number;
+    y: number;
+  } | null) => {
+    const nextKey = hit
+      ? `${hit.id}|${hit.kind}|${Math.round(hit.x)}|${Math.round(hit.y)}`
+      : '';
+    if (nextKey === linkHoverKey) return;
+    linkHoverKey = nextKey;
+    options.onLinkHover?.(hit
+      ? { ...hit, x: Math.round(hit.x), y: Math.round(hit.y) }
+      : null);
+  };
+
   const handlePointerDown = (event: PointerEvent) => {
     if (!active || !options.interactive) return;
     pointerDown = { x: event.clientX, y: event.clientY };
     if (controls.enabled) renderer.domElement.style.cursor = 'grabbing';
+    notifyLinkHover(null);
     requestRender();
   };
 
@@ -2421,10 +2447,10 @@ export const createApplication3DScene = (
     }
     if (phase === 'architecture') {
       if (pointerDown) {
+        notifyLinkHover(null);
         if (!architectureSelectedId && architectureHoveredId) {
           architectureHoveredId = null;
           architectureView?.setHoveredNode?.(null);
-          renderer.domElement.title = '';
           requestRender();
         }
       } else {
@@ -2435,9 +2461,15 @@ export const createApplication3DScene = (
           if (!architectureSelectedId) {
             architectureView?.setHoveredNode?.(architectureHoveredId);
           }
-          renderer.domElement.title = hitNode ? hitNode.name : '';
           requestRender();
         }
+        notifyLinkHover(hitNode ? {
+          id: hitNode.id,
+          name: hitNode.name,
+          kind: hitNode.kind,
+          x: event.clientX,
+          y: event.clientY,
+        } : null);
       }
       return;
     }
@@ -2446,30 +2478,35 @@ export const createApplication3DScene = (
         hoveredId = '';
         requestRender();
       }
+      notifyLinkHover(null);
       return;
     }
     const next = pickApplicationId(event.clientX, event.clientY) ?? '';
-    if (next === hoveredId) return;
-    hoveredId = next;
+    if (next !== hoveredId) {
+      hoveredId = next;
+      requestRender();
+    }
     const hovered = next ? visuals.get(next) : undefined;
-    renderer.domElement.title = hovered
-      ? formatApplication3DCardTitle(hovered.item.name)
-      : '';
-    requestRender();
+    notifyLinkHover(hovered ? {
+      id: hovered.item.id,
+      name: formatApplication3DCardTitle(hovered.item.name),
+      kind: 'wall',
+      x: event.clientX,
+      y: event.clientY,
+    } : null);
   };
 
   const handlePointerLeave = () => {
+    notifyLinkHover(null);
     if (phase === 'architecture' && architectureHoveredId) {
       architectureHoveredId = null;
       if (!architectureSelectedId) {
         architectureView?.setHoveredNode?.(null);
       }
-      renderer.domElement.title = '';
       requestRender();
     }
     if (!hoveredId) return;
     hoveredId = '';
-    renderer.domElement.title = '';
     requestRender();
   };
 
@@ -2693,6 +2730,7 @@ export const createApplication3DScene = (
       if (disposed || active === nextActive) return;
       active = nextActive;
       if (!active) {
+        notifyLinkHover(null);
         setOrbitEnabled(false);
         if (frameId !== null) window.cancelAnimationFrame(frameId);
         if (resizeRaf !== null) window.cancelAnimationFrame(resizeRaf);
@@ -2708,6 +2746,7 @@ export const createApplication3DScene = (
     },
     dispose: () => {
       disposed = true;
+      notifyLinkHover(null);
       cameraComplete = null;
       cancelTweens();
       clearIntroTimers();

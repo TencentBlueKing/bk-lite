@@ -333,11 +333,11 @@ dashboards:
           selectedFields:
           - collect_coverage_rate
           thresholdColors:
-          - color: '#dc2626'
-            value: '70'
+          - color: '#16a34a'
+            value: '90'
           - color: '#d97706'
-            value: '30'
-          - color: '#2563eb'
+            value: '70'
+          - color: '#dc2626'
             value: '0'
           dataSourceParams:
           - name: organization
@@ -517,7 +517,7 @@ dashboards:
         x: 0
         y: 3
         id: weopsx-mon-most-alerts
-        name: 告警最多实例
+        name: 告警最多实例（$time$）
         itemType: widget
         description: 时间窗内产生告警最多的监控实例
         valueConfig:
@@ -556,7 +556,7 @@ dashboards:
         x: 6
         y: 3
         id: weopsx-mon-least-alerts
-        name: 已配策略告警最少
+        name: 已配策略告警最少（$time$）
         itemType: widget
         description: 已配策略覆盖且时间窗内告警最少（含 0）的监控实例
         valueConfig:
@@ -724,7 +724,7 @@ dashboards:
         x: 6
         y: 3
         id: weopsx-log-policy-top
-        name: 告警规则 TOP
+        name: 告警规则 TOP（$time$）
         itemType: widget
         description: 时间窗内产生告警最多的日志告警策略
         valueConfig:
@@ -830,7 +830,7 @@ dashboards:
         x: 0
         y: 3
         id: weopsx-alert-loop
-        name: 闭环率
+        name: 闭环率（$time$）
         itemType: widget
         description: 时间窗内关闭告警数除以新增告警数；关闭多于新增时可超过 100%
         valueConfig:
@@ -871,7 +871,7 @@ dashboards:
         x: 3
         y: 3
         id: weopsx-alert-source-top
-        name: 接入源事件 TOP
+        name: 接入源事件 TOP（$time$）
         itemType: widget
         description: 时间窗内事件数最多的告警接入源
         valueConfig:
@@ -905,7 +905,7 @@ dashboards:
         x: 7
         y: 3
         id: weopsx-alert-rule-top
-        name: 相关性命中 TOP
+        name: 相关性命中 TOP（$time$）
         itemType: widget
         description: 时间窗内关联/聚合规则命中次数（按产生告警条数）
         valueConfig:
@@ -1178,7 +1178,7 @@ dashboards:
         x: 8
         y: 0
         id: weopsx-job-success
-        name: 执行成功率
+        name: 执行成功率（$time$）
         itemType: widget
         description: 时间窗内成功执行次数占总执行次数的比例
         valueConfig:

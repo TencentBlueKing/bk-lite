@@ -291,7 +291,7 @@ export const screenItemFieldKey = (
   editedKey?: ScreenGeometryField,
 ): string | null => {
   if (before.id !== after.id) return null;
-  const keys = ['content', 'x', 'y', 'w', 'h', 'textStyle', 'shapeStyle'] as const;
+  const keys = ['content', 'interaction', 'x', 'y', 'w', 'h', 'textStyle', 'shapeStyle'] as const;
   const changed = keys.filter((key) => !sameValue(
     (before as unknown as Record<string, unknown>)[key],
     (after as unknown as Record<string, unknown>)[key],
@@ -305,7 +305,14 @@ export const screenItemFieldKey = (
   }
   if (changed.length !== 1) return null;
   const key = changed[0];
-  if (key === 'content' || key === 'x' || key === 'y' || key === 'w' || key === 'h') {
+  if (
+    key === 'content'
+    || key === 'interaction'
+    || key === 'x'
+    || key === 'y'
+    || key === 'w'
+    || key === 'h'
+  ) {
     return key;
   }
   if (key === 'textStyle' && (isScreenTextItem(before) || isScreenTitleFrameItem(before))) {

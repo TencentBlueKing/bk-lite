@@ -11,7 +11,7 @@ import {
   toNodeGraphMapping,
   withNodeGraphParallelIndex,
 } from '@/app/ops-analysis/utils/nodeGraphData';
-import { unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
+import { buildTopNItems, type TopNItem } from '@/app/ops-analysis/utils/topNData';
 import { parseEventTimelineItems } from '@/app/ops-analysis/utils/eventTimeline';
 import {
   chartLinkFields,
@@ -39,6 +39,19 @@ const numericPoint = (
     ...(raw !== undefined ? { raw } : {}),
   };
 };
+
+export const topNLinkPoints = (
+  items: Array<Pick<TopNItem, 'name' | 'source'>>,
+  valueField?: string,
+): ChartLinkPoint[] => items.map((item) => {
+  const raw = item.source ? getValueByPath(item.source, valueField) : undefined;
+  const fields = item.source ? chartLinkFields(item.source) : undefined;
+  return numericPoint(raw, {
+    seriesName: item.name,
+    text: item.name,
+    ...(fields ? { fields } : {}),
+  });
+});
 
 export const cardListLinkPoints = (
   items: Array<{ primary?: string; source?: Record<string, unknown> }>,
@@ -119,19 +132,10 @@ export const buildInteractionPoints = (
   }
 
   if (chartType === 'topN') {
-    return unwrapTopNData(rawData).flatMap((row) => {
-      if (!isRecord(row)) return [];
-      const label = String(
-        getValueByPath(row, config?.topNLabelField) ?? '',
-      ).trim();
-      if (!label) return [];
-      const raw = getValueByPath(row, config?.topNValueField);
-      return [numericPoint(raw, {
-        seriesName: label,
-        text: label,
-        fields: chartLinkFields(row),
-      })];
-    });
+    return topNLinkPoints(
+      buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField),
+      config?.topNValueField,
+    );
   }
 
   if (chartType === 'multiValue') {

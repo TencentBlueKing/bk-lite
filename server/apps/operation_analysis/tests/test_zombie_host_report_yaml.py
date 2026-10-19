@@ -71,17 +71,27 @@ def test_zombie_report_yaml_parses_and_binds_table_and_filters():
     report = document.reports[0]
     assert report.name == "僵尸机报表"
     assert report.key == "report::僵尸机报表"
-    assert "时间默认 7 天" in report.desc
-    assert "阈值不随窗口缩放" in report.desc
-    assert "登录未采集不按 0 过滤" in report.desc
+    assert "默认查看最近 7 天" in report.desc
+    assert "必须先选择应用系统" in report.desc
+    source = next(item for item in document.datasources if item.rest_api == "monitor/get_zombie_host_report")
+    assert "时间默认 7 天" in source.desc
+    assert "阈值不随窗口缩放" in source.desc
+    assert "登录未采集不按 0 过滤" in source.desc
 
     view_sets = report.view_sets
     sections = view_sets["sections"]
     assert len(sections) == 1
     table = sections[0]
     assert table["id"] == "zombie-table"
+    assert table["valueConfig"]["name"] == "僵尸机列表（$time$）"
     assert table["valueConfig"]["chartType"] == "table"
     assert table["valueConfig"]["dataSource"] == ZOMBIE_SOURCE_KEY
+    assert table["valueConfig"]["interaction"] == {
+        "kind": "data",
+        "name": "查看主机",
+        "url": "/cmdb/assetData/detail/baseInfo?model_id=host&inst_uuid=$__data.fields.inst_uuid$&inst_name=$__data.fields.host_name$",
+        "openMode": "newTab",
+    }
 
     filter_keys = {item["key"] for item in view_sets["filters"]}
     assert FILTER_PARAM_KEYS <= filter_keys

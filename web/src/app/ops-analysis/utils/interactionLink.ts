@@ -121,7 +121,7 @@ export const interactionCapability = (
   if (TITLE_ONLY.has(type)) return { title: true, data: false };
   if (type === 'table' || type === 'eventTable') return { title: true, data: 'table' };
   if (type === 'eventTimeline') return { title: true, data: 'timeline' };
-  if (type === 'room3D' || type === 'application3D') {
+  if (type === 'room3D' || type === 'application3D' || type === 'applicationTopology') {
     return { title: true, data: 'contextMenu' };
   }
   if (CLICK_CHARTS.has(type)) return { title: true, data: 'click' };
@@ -378,6 +378,23 @@ interface ParsedInteractionToken {
   body: string;
   end: number;
 }
+
+export const listInteractionTemplateBodies = (text: string): string[] => {
+  if (!text) return [];
+  const bodies: string[] = [];
+  for (let cursor = 0; cursor < text.length; cursor += 1) {
+    if (text[cursor] === '\\' && text[cursor + 1] === '$') {
+      cursor += 1;
+      continue;
+    }
+    if (text[cursor] !== '$') continue;
+    const token = readInteractionToken(text, cursor);
+    if (!token) continue;
+    bodies.push(token.body);
+    cursor = token.end - 1;
+  }
+  return bodies;
+};
 
 const readInteractionToken = (
   text: string,
@@ -736,7 +753,7 @@ export const listPresentDataVariables = (
 ): InteractionVariable[] => {
   const capability = interactionCapability(chartType);
   if (!capability.data) return [];
-  if (chartType === 'room3D' || chartType === 'application3D') {
+  if (chartType === 'room3D' || chartType === 'application3D' || chartType === 'applicationTopology') {
     return listSceneVariables(chartType, labels);
   }
   const profile = POINT_PROFILES[chartType || ''];
@@ -895,6 +912,11 @@ const listSceneVariables = (
     add(RESERVED_FIELD_TOKENS.applicationId, labels.applicationId, 'application.id', labels.applicationGroup, 'application');
     add(RESERVED_FIELD_TOKENS.applicationName, labels.applicationName, 'application.name', labels.applicationGroup, 'application');
   }
+  if (chartType === 'applicationTopology') {
+    add(RESERVED_FIELD_TOKENS.objectId, labels.objectId, 'object.id', labels.objectGroup, 'object');
+    add(RESERVED_FIELD_TOKENS.objectName, labels.objectName, 'object.name', labels.objectGroup, 'object');
+    add(RESERVED_FIELD_TOKENS.objectModel, labels.objectModelId, 'object.model_id', labels.objectGroup, 'object');
+  }
   return variables;
 };
 
@@ -1019,6 +1041,22 @@ export const sceneLinkPoint = (hit: {
             : modelOn(hit.application) ?? SCENE_OBJECT_MODEL_ID.application;
     writeText('object.model_id', objectModelId);
   }
+  return { fields };
+};
+
+/** 应用拓扑节点 id 就是 inst_uuid，原样写入 object.id。 */
+export const applicationTopologyLinkPoint = (node: {
+  id: string;
+  name?: string;
+  modelId?: string;
+}): ChartLinkPoint => {
+  const fields: Record<string, unknown> = {};
+  const id = sceneText(node.id);
+  const name = sceneText(node.name);
+  const modelId = sceneText(node.modelId);
+  if (id) fields['object.id'] = id;
+  if (name) fields['object.name'] = name;
+  if (modelId) fields['object.model_id'] = modelId;
   return { fields };
 };
 

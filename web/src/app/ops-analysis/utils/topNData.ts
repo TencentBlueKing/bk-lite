@@ -3,7 +3,11 @@ import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 export interface TopNItem {
   name: string;
   value: number | null;
+  source?: Record<string, unknown>;
 }
+
+const isTopNRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const DECIMAL_NUMBER_PATTERN =
   /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
@@ -75,6 +79,7 @@ export const buildTopNItems = (
       return {
         name,
         value: coerceTopNNumericValue(getValueByPath(row, valueField)),
+        ...(isTopNRecord(row) ? { source: row } : {}),
       };
     })
     .filter((item): item is TopNItem => item !== null);
