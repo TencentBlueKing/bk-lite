@@ -1,7 +1,9 @@
 import os
+from datetime import timezone as dt_timezone
 from typing import List
 
 from django.conf import settings
+from django.utils import timezone as django_timezone
 from jinja2 import FileSystemLoader
 from jinja2.defaults import DEFAULT_FILTERS
 
@@ -27,12 +29,14 @@ class SQLBuilder:
 
         template = self.env.get_template(template_name)
 
-        window_start = window_config.get_window_start().isoformat()
+        window_start = _sql_timestamp(window_config.get_window_start())
+        window_end = _sql_timestamp(window_config.get_window_end())
 
         dimension_specs = [self._dimension_spec(dimension) for dimension in dimensions]
         context = {
             "dimensions": dimension_specs,
             "window_start": window_start,
+            "window_end": window_end,
             "min_event_count": 1,
             "strategy_id": strategy_id,
         }
@@ -55,3 +59,14 @@ class SQLBuilder:
                 ),
             }
         return {"name": dimension, "expression": dimension}
+
+    def grouping_expression(self, dimensions: List[str]) -> str:
+        dimension_specs = [self._dimension_spec(dimension) for dimension in dimensions]
+        template = self.env.from_string("{% import 'macros.jinja' as macros %}{{ macros.effective_dimension(dimensions) }}")
+        return template.render(dimensions=dimension_specs)
+
+
+def _sql_timestamp(value) -> str:
+    if django_timezone.is_aware(value):
+        value = value.astimezone(dt_timezone.utc).replace(tzinfo=None)
+    return value.strftime("%Y-%m-%d %H:%M:%S.%f")
