@@ -24,20 +24,26 @@ def workflow_attachment_download_max_age() -> int:
     return int(getattr(settings, "WORKFLOW_ATTACHMENT_DOWNLOAD_MAX_AGE", 24 * 60 * 60))
 
 
+def _attachment_download_token(asset: WorkflowAttachmentAsset) -> str:
+    """令牌绑定附件主键与 execution_id，下载时校验过期和绑定关系。"""
+    return signing.dumps(
+        {"aid": asset.id, "eid": asset.execution_id},
+        salt=WORKFLOW_ATTACHMENT_DOWNLOAD_SALT,
+    )
+
+
 def build_signed_attachment_download_url(asset: WorkflowAttachmentAsset) -> str:
     """为工作流附件生成带签名且会过期的下载 URL。
-
-    令牌绑定附件主键 id 与 execution_id，使用 TimestampSigner 机制(signing.dumps)
-    携带时间戳，下载时按 max_age 校验过期并核对绑定关系，防止令牌被猜测或越权复用。
 
     URL 使用 /api/proxy/... 前缀，以便浏览器端通过 Next.js 代理路由
     转发到后台 /api/v1/... 接口，而不是被 Next.js 当作页面路由处理。
     """
-    token = signing.dumps(
-        {"aid": asset.id, "eid": asset.execution_id},
-        salt=WORKFLOW_ATTACHMENT_DOWNLOAD_SALT,
-    )
-    return f"/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/{token}/"
+    return f"/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/{_attachment_download_token(asset)}/"
+
+
+def build_server_attachment_download_path(asset: WorkflowAttachmentAsset) -> str:
+    """后台下载接口。由 server 从 MinIO 读出附件，不经过站点代理。"""
+    return f"/api/v1/opspilot/bot_mgmt/workflow_attachment/download/{_attachment_download_token(asset)}/"
 
 
 def resolve_signed_attachment_token(download_token: str) -> WorkflowAttachmentAsset | None:
