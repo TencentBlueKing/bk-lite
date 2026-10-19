@@ -153,7 +153,7 @@ export interface NetworkTopoLink {
 }
 
 export interface NetworkTopoData {
-  center: NetworkTopoNode;
+  center?: NetworkTopoNode;
   nodes: NetworkTopoNode[];
   links: NetworkTopoLink[];
   truncated?: boolean;

@@ -4,7 +4,7 @@ from django.http import FileResponse, HttpResponse, JsonResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 
-from apps.cmdb.constants.constants import NETWORK_TOPO_DEFAULT_HOP, NETWORK_TOPO_MAX_HOP, OPERATE, PERMISSION_INSTANCES, VIEW
+from apps.cmdb.constants.constants import NETWORK_TOPO_DEFAULT_HOP, NETWORK_TOPO_MAX_HOP, NETWORK_TOPO_NODE_LIMIT, OPERATE, PERMISSION_INSTANCES, VIEW
 from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
 from apps.cmdb.models.change_record import INSTANCE_EDIT_CORRECTABLE_SCENARIOS, ORDINARY_ATTRIBUTE_CHANGE
 from apps.cmdb.serializers.application_resource_overview import ApplicationResourceEntrySerializer, ApplicationResourceTopologyQuerySerializer
@@ -1797,6 +1797,60 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             permission_map=permissions_map,
             user=request.user,
         )
+        return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["post"], url_path="network_topo/among")
+    @HasPermission("asset_info-View")
+    def network_topo_among(self, request):
+        """勾选设备的接口直连诱导子图。节点等于名单，边只保留两端都在名单内。
+
+        供视图页跨模型多选。实例详情仍走 network_topo 的单中心跳数展开。
+        """
+        payload = request.data if isinstance(request.data, dict) else {}
+        raw = payload.get("inst_uuids")
+        if not isinstance(raw, list):
+            return WebUtils.response_error("inst_uuids 必须是列表", status_code=status.HTTP_400_BAD_REQUEST)
+        if not raw:
+            return WebUtils.response_error(
+                "设备列表包含无效或不允许的网络设备，请重新配置",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(raw) > NETWORK_TOPO_NODE_LIMIT:
+            return WebUtils.response_error(
+                f"inst_uuids 不能超过 {NETWORK_TOPO_NODE_LIMIT}",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            entities = InstanceManage.query_entity_by_uuids(raw)
+        except BaseAppException as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        if len(entities) != len(raw):
+            return WebUtils.response_error(
+                "设备列表包含无效或不允许的网络设备，请重新配置",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        permission_maps = {}
+        for entity in entities:
+            permission_error = self.require_instance_permission(request, entity, operator=VIEW)
+            if permission_error:
+                return permission_error
+            model_id = str(entity.get("model_id") or "")
+            if model_id not in permission_maps:
+                permission_maps[model_id] = CmdbRulesFormatUtil.format_user_groups_permissions(
+                    request=request,
+                    model_id=model_id,
+                )
+
+        try:
+            result = InstanceManage.network_topology_among_uuids(
+                raw,
+                permission_maps=permission_maps,
+                user=request.user,
+            )
+        except BaseAppException as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
         return WebUtils.response_success(result)
 
     @action(

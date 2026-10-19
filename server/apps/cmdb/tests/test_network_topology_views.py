@@ -12,7 +12,9 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.cmdb.constants.constants import NETWORK_TOPO_NODE_LIMIT
 from apps.cmdb.views.instance import InstanceViewSet
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 VIEWS = "apps.cmdb.views.instance"
 
@@ -134,3 +136,111 @@ def test_network_topo_404_when_instance_empty_dict(superuser, monkeypatch):
         _req("get", superuser), model_id="switch", inst_uuid="550e8400-e29b-41d4-a716-446655440099"
     )
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+SWITCH_UUID = "550e8400-e29b-41d4-a716-446655440010"
+ROUTER_UUID = "550e8400-e29b-41d4-a716-446655440011"
+
+
+def _among(user, payload):
+    return InstanceViewSet.as_view({"post": "network_topo_among"})(_req("post", user, payload))
+
+
+@pytest.mark.django_db
+def test_network_topo_among_returns_closed_set(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [
+            {"_id": 1, "model_id": "switch", "inst_uuid": uuids[0]},
+            {"_id": 2, "model_id": "router", "inst_uuid": uuids[1]},
+        ],
+    )
+    captured = {}
+
+    def _fake(inst_uuids, permission_maps=None, user=None):
+        captured["inst_uuids"] = list(inst_uuids)
+        captured["models"] = sorted((permission_maps or {}).keys())
+        captured["user"] = user
+        return {
+            "nodes": [
+                {"id": SWITCH_UUID, "model_id": "switch"},
+                {"id": ROUTER_UUID, "model_id": "router"},
+            ],
+            "links": [{"relationship_id": "9", "source_device": SWITCH_UUID, "target_device": ROUTER_UUID}],
+            "truncated": False,
+        }
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.network_topology_among_uuids", _fake)
+    response = _among(superuser, {"inst_uuids": [SWITCH_UUID, ROUTER_UUID]})
+    assert response.status_code == status.HTTP_200_OK
+    body = _body(response)
+    assert {node["id"] for node in body["data"]["nodes"]} == {SWITCH_UUID, ROUTER_UUID}
+    assert body["data"]["links"][0]["relationship_id"] == "9"
+    assert "center" not in body["data"]
+    assert captured["inst_uuids"] == [SWITCH_UUID, ROUTER_UUID]
+    assert captured["models"] == ["router", "switch"]
+    assert captured["user"] == superuser
+
+
+@pytest.mark.django_db
+def test_network_topo_among_rejects_non_list_empty_and_over_limit(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_uuids",
+        lambda uuids: (_ for _ in ()).throw(AssertionError("should not query")),
+    )
+    non_list = _among(superuser, {"inst_uuids": "switch"})
+    empty = _among(superuser, {"inst_uuids": []})
+    over = _among(
+        superuser,
+        {"inst_uuids": [f"00000000-0000-4000-8000-{index:012d}" for index in range(NETWORK_TOPO_NODE_LIMIT + 1)]},
+    )
+    assert non_list.status_code == status.HTTP_400_BAD_REQUEST
+    assert empty.status_code == status.HTTP_400_BAD_REQUEST
+    assert over.status_code == status.HTTP_400_BAD_REQUEST
+    assert f"不能超过 {NETWORK_TOPO_NODE_LIMIT}" in _body(over)["message"]
+
+
+@pytest.mark.django_db
+def test_network_topo_among_maps_closed_set_rejection(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [{"_id": 1, "model_id": "host", "inst_uuid": uuids[0]}],
+    )
+
+    def _reject(*args, **kwargs):
+        raise BaseAppException("设备列表包含无效或不允许的网络设备，请重新配置")
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.network_topology_among_uuids", _reject)
+    response = _among(superuser, {"inst_uuids": [SWITCH_UUID]})
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert _body(response)["message"] == "设备列表包含无效或不允许的网络设备，请重新配置"
+
+
+@pytest.mark.django_db
+def test_network_topo_among_stops_when_one_device_is_denied(superuser, monkeypatch):
+    from apps.core.utils.web_utils import WebUtils
+
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [
+            {"_id": 1, "model_id": "switch", "inst_uuid": uuids[0]},
+            {"_id": 2, "model_id": "router", "inst_uuid": uuids[1]},
+        ],
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceViewSet.require_instance_permission",
+        lambda self, request, instance, operator=None: WebUtils.response_error(
+            "无权限",
+            status_code=status.HTTP_403_FORBIDDEN,
+        ),
+    )
+    called = {"n": 0}
+
+    def _fake(*args, **kwargs):
+        called["n"] += 1
+        return {"nodes": [], "links": []}
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.network_topology_among_uuids", _fake)
+    response = _among(superuser, {"inst_uuids": [SWITCH_UUID, ROUTER_UUID]})
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert called["n"] == 0

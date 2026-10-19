@@ -330,8 +330,17 @@ def test_get_nodes_with_child_config_returns_only_matching_assignments(setup):
         collector="Telegraf",
         collect_type="host",
     )
+    assignments = NodeService.get_child_config_assignments(
+        [node.id, other_node.id],
+        collector="Telegraf",
+        collect_type="host",
+    )
 
     assert configured_node_ids == [node.id]
+    assert assignments == [
+        {"id": "child-host-cpu", "node_id": node.id},
+        {"id": "child-host-mem", "node_id": node.id},
+    ]
 
 
 @pytest.mark.django_db
@@ -344,6 +353,12 @@ def test_get_nodes_with_child_config_rejects_oversized_batches():
             collector="Telegraf",
             collect_type="host",
         )
+
+
+@pytest.mark.django_db
+def test_get_child_config_assignments_rejects_invalid_collector():
+    with pytest.raises(BaseAppException, match="collector 非法"):
+        NodeService.get_child_config_assignments(["node-1"], "", "host")
 
 
 @pytest.mark.django_db

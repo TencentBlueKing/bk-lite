@@ -85,6 +85,14 @@ def test_nats_delegates_to_services():
         assert n.get_authorized_nodes_by_ids(["n1"], {"team": 1}) == ["n1"]
         auth.assert_called_once_with(["n1"], {"team": 1})
 
+    with patch.object(
+        n.NodeService,
+        "get_child_config_assignments",
+        return_value=[{"id": "c1", "node_id": "n1"}],
+    ) as assigned:
+        assert n.get_child_config_assignments(["n1"], "Telegraf", "host") == [{"id": "c1", "node_id": "n1"}]
+        assigned.assert_called_once_with(["n1"], "Telegraf", "host")
+
     with patch.object(n, "import_collector", return_value={"ok": True}) as imported:
         assert n.import_collectors([{"id": 1}]) == {"ok": True}
         imported.assert_called_once_with([{"id": 1}])

@@ -41,12 +41,11 @@ import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useClientData } from '@/context/client';
+import { useModuleLinkApi } from '@/app/module-link/api';
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
 import {
+  canOpenMonitorLink,
   canSyncMonitor,
-  isMonitorSold,
-  pickBatchPushCounts,
-  resolveBatchPushSummaryLevel,
   isSystemLinkAttr,
   resolveListDisplayFieldKeys,
   buildExternalIdLines,
@@ -241,7 +240,7 @@ interface ImportRef {
 const AssetDataContent = () => {
   const { t } = useTranslation();
   const { selectedGroup, userId } = useUserInfoContext();
-  const { clientData } = useClientData();
+  const { clientData, loading: clientLoading } = useClientData();
   const { getModelAssociationTypes, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
@@ -252,8 +251,8 @@ const AssetDataContent = () => {
     setInstanceShowFieldSettings,
     deleteInstance,
     batchDeleteInstances,
-    batchPushToMonitor,
   } = useInstanceApi();
+  const { createCmdbMonitorTask } = useModuleLinkApi();
   const { getCollectTaskNames } = useCollectApi();
   const router = useScreenAwareRouter();
   const pathname = usePathname();
@@ -766,17 +765,13 @@ const AssetDataContent = () => {
       centered: true,
       async onOk() {
         try {
-          const summary = await batchPushToMonitor(instUuids);
-          const counts = pickBatchPushCounts(summary);
-          const level = resolveBatchPushSummaryLevel(counts);
-          const text = t('Model.systemLinkageBatchSummary', '', counts);
-          if (level === 'success') {
-            message.success(text);
-          } else if (level === 'warning') {
-            message.warning(text);
-          } else {
-            message.error(text);
+          const task = await createCmdbMonitorTask(instUuids);
+          const taskId = String(task?.id || '').trim();
+          if (!taskId) {
+            message.error(t('Model.systemLinkageSyncFailed'));
+            return;
           }
+          router.push(`/module-link/cmdb-monitor/tasks/${taskId}`);
         } catch {
           message.error(t('Model.systemLinkageSyncFailed'));
         }
@@ -1251,7 +1246,7 @@ const AssetDataContent = () => {
     setCurrentColumns([...orderedColumns, actionColumn]);
   }, [propertyList, displayFieldKeys, propertyListGroups, modelId, followPendingKey, handleFollowToggle, isFollowed, t, userList]);
 
-  const showBatchSyncMonitor = canSyncMonitor(modelId) && isMonitorSold(clientData);
+  const showBatchSyncMonitor = canOpenMonitorLink(clientData, clientLoading, modelId);
   const batchSyncMonitorItem: NonNullable<MenuProps['items']>[number] = {
     key: 'batchSyncMonitor',
     label: (
