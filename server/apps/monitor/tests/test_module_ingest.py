@@ -207,6 +207,74 @@ def test_monitor_ingest_by_cmdb_id_updates_existing(host_object):
 
 
 @pytest.mark.django_db
+def test_cmdb_link_uses_active_instance_and_releases_inactive_holder(host_object):
+    inactive = MonitorInstance.objects.create(
+        id="('1_os_10.11.27.147',)",
+        name="1_os_10.11.27.147",
+        monitor_object=host_object,
+        node_id="node-old",
+        cmdb_id="ci-host",
+        is_active=False,
+    )
+    active = MonitorInstance.objects.create(
+        id="('short-host',)",
+        name="10.11.27.147",
+        monitor_object=host_object,
+        cloud_region_id=1,
+        is_active=True,
+    )
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="ci-host",
+            link_ids={"cmdb_id": "ci-host", "node_id": "node-old"},
+            raw={
+                "name": "10.11.27.147[default]",
+                "ip": "10.11.27.147",
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+
+    assert result["id"] == active.id
+    assert result.get("conflict") in (None, "")
+    assert result.get("ignored") is False
+    active.refresh_from_db()
+    inactive.refresh_from_db()
+    assert active.cmdb_id == "ci-host"
+    assert active.node_id in (None, "")
+    assert inactive.cmdb_id in (None, "")
+    assert inactive.node_id == "node-old"
+    assert inactive.is_active is False
+
+
+def test_cmdb_link_does_not_attach_when_only_inactive_instance_matches(host_object):
+    inactive = MonitorInstance.objects.create(
+        id="('1_os_10.0.0.8',)",
+        name="1_os_10.0.0.8",
+        monitor_object=host_object,
+        node_id="node-only",
+        is_active=False,
+    )
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="ci-miss",
+            link_ids={"cmdb_id": "ci-miss", "node_id": "node-only"},
+            raw={"name": "somewhere-else", "ip": "10.9.9.9", "model_id": "host", "organization_ids": [1]},
+        )
+    )
+
+    assert result["ignored"] is True
+    assert result["id"] in (None, "")
+    inactive.refresh_from_db()
+    assert inactive.cmdb_id in (None, "")
+    assert inactive.node_id == "node-only"
+
+
 def test_cmdb_uncredentialed_hit_links_ids_without_renaming(host_object):
     existing = MonitorInstance.objects.create(
         id="('stock-host',)",

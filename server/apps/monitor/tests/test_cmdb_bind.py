@@ -40,6 +40,7 @@ def _instance(
     node_id=None,
     org=1,
     is_deleted=False,
+    is_active=True,
 ):
     inst = MonitorInstance.objects.create(
         id=pk,
@@ -49,6 +50,7 @@ def _instance(
         cmdb_id=cmdb_id,
         node_id=node_id,
         is_deleted=is_deleted,
+        is_active=is_active,
     )
     if org is not None:
         MonitorInstanceOrganization.objects.create(monitor_instance=inst, organization=org)
@@ -128,6 +130,34 @@ def test_candidates_exclude_deleted_instances():
 
     assert [row["id"] for row in rows] == ["m-live"]
     _assert_candidate_row(rows[0])
+
+
+def test_inactive_instance_is_not_a_bind_target():
+    from apps.monitor.services.cmdb_bind import bind_cmdb_id, list_cmdb_bind_candidates
+
+    inactive = _instance(pk="m-off", name="10.11.27.147", is_active=False)
+    rows = list_cmdb_bind_candidates("Host", "10.11.27.147", [1])
+    result = bind_cmdb_id("m-off", "ci-host", "Host", [1])
+
+    assert rows == []
+    assert result == {"status": "not_found"}
+    inactive.refresh_from_db()
+    assert inactive.cmdb_id is None
+
+
+def test_bind_releases_cmdb_id_held_by_inactive_instance():
+    from apps.monitor.services.cmdb_bind import bind_cmdb_id
+
+    inactive = _instance(pk="m-off", name="1_os_10.11.27.147", cmdb_id="ci-host", is_active=False, org=None)
+    active = _instance(pk="m-on", name="10.11.27.147")
+
+    result = bind_cmdb_id("m-on", "ci-host", "Host", [1])
+
+    assert result == {"status": "ok", "monitor_id": "m-on", "cmdb_id": "ci-host"}
+    inactive.refresh_from_db()
+    active.refresh_from_db()
+    assert inactive.cmdb_id is None
+    assert active.cmdb_id == "ci-host"
 
 
 def test_org_out_of_scope_not_listed_and_bind_not_found():
