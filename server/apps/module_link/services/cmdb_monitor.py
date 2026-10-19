@@ -66,6 +66,15 @@ def _as_text(value: Any) -> str:
     return str(value).strip()
 
 
+_LOG_ID_LIMIT = 128
+
+
+def _log_id(value: Any) -> str:
+    """Log copy only: drop CR/LF so a caller-supplied id cannot forge a new line."""
+    text = _as_text(value).replace("\r", " ").replace("\n", " ")
+    return text[:_LOG_ID_LIMIT]
+
+
 def _first_port(value: Any) -> str:
     if isinstance(value, bool):
         return ""
@@ -189,7 +198,7 @@ def _claim_by_unique_name(entity: dict[str, Any], object_name: str, actor_scope:
     except Exception as exc:
         logger.error(
             _ROW_FAILED,
-            _as_text(entity.get("inst_uuid")),
+            _log_id(entity.get("inst_uuid")),
             "list_candidates",
             type(exc).__name__,
             exc_info=_safe_exc_info(exc),
@@ -213,7 +222,7 @@ def _claim_by_unique_name(entity: dict[str, Any], object_name: str, actor_scope:
     except Exception as exc:
         logger.error(
             _ROW_FAILED,
-            _as_text(entity.get("inst_uuid")),
+            _log_id(entity.get("inst_uuid")),
             "bind_cmdb_id",
             type(exc).__name__,
             exc_info=_safe_exc_info(exc),
@@ -409,7 +418,7 @@ class CmdbMonitorTaskService:
             except Exception as exc:
                 logger.error(
                     _ROW_FAILED,
-                    inst_uuid,
+                    _log_id(inst_uuid),
                     "query_entity",
                     type(exc).__name__,
                     exc_info=_safe_exc_info(exc),
@@ -597,7 +606,7 @@ class CmdbMonitorTaskService:
             except Exception as exc:
                 logger.error(
                     _ROW_FAILED,
-                    item.inst_uuid,
+                    _log_id(item.inst_uuid),
                     "query_entity",
                     type(exc).__name__,
                     exc_info=_safe_exc_info(exc),
@@ -634,7 +643,7 @@ class CmdbMonitorTaskService:
         task.summary = _summary_from_items(items)
         _sync_drafts(task)
         task.save(update_fields=["status", "summary", "updated_at"])
-        logger.info(_ASSIGN_DONE, str(task.id), object_name, len(item_ids))
+        logger.info(_ASSIGN_DONE, str(task.id), _log_id(object_name), len(item_ids))
         return task
 
     @classmethod

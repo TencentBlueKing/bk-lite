@@ -23,6 +23,7 @@ CREATE_DONE = (
     "already_linked=%s not_found=%s conflict=%s failed=%s skipped_model=%s needs_object=%s"
 )
 RECYCLE_DONE = "event=module_link_recycle_completed deleted=%s"
+ROW_FAILED = "event=module_link_cmdb_monitor_row_failed inst_uuid=%s failed_stage=%s error_type=%s"
 ACTOR_SCOPE = {"allowed_org_ids": [1], "operator": "alice"}
 
 
@@ -64,6 +65,33 @@ def test_over_limit_raises_without_creating(mocker):
         CmdbMonitorTaskService.create([f"u-{i}" for i in range(BATCH_LIMIT + 1)], request=_request())
     push.assert_not_called()
     assert MonitorLinkTask.objects.count() == 0
+
+
+def test_query_failure_log_stays_one_line_and_keeps_uuid(mocker, caplog):
+    secret = "SECRET-PAYLOAD-DO-NOT-LOG"
+    raw = "u-1\r\nINJECTED"
+    mocker.patch(AUTH, return_value=True)
+    mocker.patch(SCOPE, return_value=ACTOR_SCOPE)
+    mocker.patch(QUERY, side_effect=RuntimeError(secret))
+    mocker.patch(PUSH)
+    with caplog.at_level(logging.ERROR, logger="module-link"):
+        task = CmdbMonitorTaskService.create([raw], request=_request())
+    item = task.items.get()
+    assert item.inst_uuid == raw
+    assert item.status == "failed"
+    records = [row for row in caplog.records if row.msg == ROW_FAILED]
+    assert len(records) == 1
+    record = records[0]
+    assert record.args == ("u-1  INJECTED", "query_entity", "RuntimeError")
+    assert record.exc_info[0] is RuntimeError
+    assert str(record.exc_info[1]) == "module link cmdb monitor row failed"
+    assert record.exc_info[2] is not None
+    message = record.getMessage()
+    formatted = logging.Formatter().format(record)
+    assert "\n" not in message
+    assert "\r" not in message
+    assert secret not in message
+    assert secret not in formatted
 
 
 def test_buckets_and_drafts(mocker, caplog):
