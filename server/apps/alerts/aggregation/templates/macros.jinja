@@ -54,15 +54,15 @@ CASE
   MIN(received_at) as first_event_time,
   MAX(received_at) as last_event_time,
   MIN(TRY_CAST(level AS INTEGER)) as alert_level,
-  LIST(event_id) as event_ids,
-  FIRST(title) as alert_title,
-  FIRST(description) as first_event_description,
-  STRING_AGG(DISTINCT CAST(resource_name AS VARCHAR), ',') as alert_description
+  arg_max(title, (received_at, pk)) as alert_title,
+  arg_max(description, (received_at, pk)) as first_event_description,
+  string_agg(DISTINCT CAST(resource_name AS VARCHAR), ',' ORDER BY CAST(resource_name AS VARCHAR)) as alert_description
 {% endmacro %}
 
 {# Macro: Window time filter #}
-{% macro time_filter(window_start) %}
+{% macro time_filter(window_start, window_end) %}
   received_at >= TIMESTAMP '{{ window_start }}'
+  AND received_at < TIMESTAMP '{{ window_end }}'
 {% endmacro %}
 
 {# Macro: Event action filter (action=created for new events) #}

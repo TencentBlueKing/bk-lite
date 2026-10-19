@@ -1,17 +1,38 @@
 import json
 import threading
-from typing import Any, Dict, List
+from datetime import datetime
+from datetime import timezone as dt_timezone
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import duckdb
-import pandas as pd
 
+from apps.alerts.aggregation.batching import AGGREGATION_BATCH_SIZE
+from apps.alerts.serializers.strategy import ALLOWED_DIMENSIONS
 from apps.core.logger import alert_logger as logger
+
+FIXED_COLUMNS = (
+    "pk",
+    "event_id",
+    "received_at",
+    "action",
+    "level",
+    "title",
+    "description",
+    "resource_name",
+    "external_id",
+)
+
+COLUMN_TYPES = {
+    "pk": "BIGINT",
+    "received_at": "TIMESTAMP",
+}
 
 
 class DuckDBConnection:
     _local = threading.local()
 
     def __init__(self):
+        self.loaded_batches = 0
         self._ensure_connection()
 
     def _ensure_connection(self):
@@ -23,80 +44,106 @@ class DuckDBConnection:
         conn = self._local.conn
         result = conn.execute(sql).fetchall()
         columns = [desc[0] for desc in conn.description]
-        return [dict(zip(columns, row)) for row in result]
+        return [{column: self._aware_utc(value) for column, value in zip(columns, row)} for row in result]
 
-    def load_events_to_memory(self, events_queryset):
-        """
-        将 Event QuerySet 加载到 DuckDB 内存表中供聚合查询使用
+    def load_events_to_memory(self, events_queryset, dimensions: Optional[Sequence[str]] = None):
+        """按主键分批把事件投影装入本轮 DuckDB 表。空输入返回 None。"""
+        self._ensure_connection()
+        self.loaded_batches = 0
+        columns = self._columns_for(dimensions)
+        inserted = False
+        for batch in self._iter_row_batches(events_queryset, columns):
+            if not batch:
+                continue
+            if not inserted:
+                self._create_table(columns)
+            self._insert_rows(columns, batch)
+            self.loaded_batches += 1
+            inserted = True
+        if not inserted:
+            logger.warning("load_events_to_memory 收到空数据，策略调节筛选event为空")
+            return None
+        return True
 
-        每个策略的事件范围不同（基于 window_size），所以需要每次重新加载
-
-        Args:
-            events_queryset: Django QuerySet，已过滤的事件集合（必须非空）
-
-        Note:
-            调用此方法前应确保 events_queryset 有数据，否则说明上游业务逻辑有误
-        """
+    def iter_member_pk_batches(self, grouping_expression: str, group_value, batch_size: int = AGGREGATION_BATCH_SIZE):
+        """按与摘要相同的分组表达式分页读取成员主键。"""
         self._ensure_connection()
         conn = self._local.conn
-
-        # 1. 从 QuerySet 提取需要的字段
-        events_data = list(
-            events_queryset.values(
-                "event_id",
-                "title",
-                "description",
-                "level",
-                "resource_name",
-                "resource_id",
-                "resource_type",
-                "item",
-                "external_id",
-                "received_at",
-                "action",
-                "source_id",
-                "push_source_id",
-                "labels",
-                "service",
-                "location",
-                "event_type",
-                "tags",
-                "enrichment",
-            )
-        )
-
-        # 2. 防御性检查：理论上不应该出现空数据（上游已过滤）
-        if not events_data:
-            logger.warning("load_events_to_memory 收到空数据，策略调节筛选event为空")
-            return
-
-        # 3. 序列化 JSON 字段（DuckDB 要求字符串格式）
-        # 性能优化：使用条件表达式，避免重复get()调用
-        for event in events_data:
-            labels = event.get("labels")
-            tags = event.get("tags")
-            enrichment = event.get("enrichment")
-            event["labels"] = json.dumps(labels) if labels else None
-            event["tags"] = json.dumps(tags) if tags else None
-            event["enrichment"] = json.dumps(enrichment) if enrichment else None
-
-        # 4. 使用 pandas DataFrame 批量加载数据到 DuckDB
-        events_df = pd.DataFrame(events_data)
-        # pandas 3.0（或 future.infer_string=True）会把字符串列建成扩展 string dtype
-        # （'str' / 'string' / 'string[pyarrow]'），而 duckdb<1.2 不识别它们，register 会抛
-        # NotImplementedException("Data type 'str' not recognized")，导致整条聚合失败。
-        # 统一把扩展 string 列降级为 object，保证跨 pandas/duckdb 版本兼容；
-        # object / datetime / 数值列不受影响（duckdb 本就支持）。
-        for col, dtype in events_df.dtypes.items():
-            if dtype != object and pd.api.types.is_string_dtype(dtype):
-                events_df[col] = events_df[col].astype(object)
-        conn.execute("DROP TABLE IF EXISTS events_table")
-        conn.register("events_df", events_df)
-        conn.execute("CREATE TABLE events_table AS SELECT * FROM events_df")
-
-        return True
+        last_pk = None
+        while True:
+            sql = f"SELECT pk FROM events_table WHERE ({grouping_expression}) IS NOT DISTINCT FROM ?"
+            params: List[Any] = [group_value]
+            if last_pk is not None:
+                sql += " AND pk > ?"
+                params.append(last_pk)
+            sql += " ORDER BY pk LIMIT ?"
+            params.append(batch_size)
+            rows = conn.execute(sql, params).fetchall()
+            if not rows:
+                return
+            yield [row[0] for row in rows]
+            last_pk = rows[-1][0]
 
     def close(self):
         if hasattr(self._local, "conn") and self._local.conn is not None:
             self._local.conn.close()
             self._local.conn = None
+
+    def _columns_for(self, dimensions: Optional[Sequence[str]]) -> List[str]:
+        columns = list(FIXED_COLUMNS)
+        selected = list(dimensions) if dimensions is not None else sorted(ALLOWED_DIMENSIONS)
+        needs_enrichment = any(str(name).startswith("enrichment.") for name in selected)
+        if needs_enrichment or dimensions is None:
+            columns.append("enrichment")
+        for name in selected:
+            if name in columns or str(name).startswith("enrichment."):
+                continue
+            columns.append(name)
+        return columns
+
+    def _create_table(self, columns: Sequence[str]) -> None:
+        definitions = ", ".join(f"{name} {COLUMN_TYPES.get(name, 'VARCHAR')}" for name in columns)
+        conn = self._local.conn
+        conn.execute("DROP TABLE IF EXISTS events_table")
+        conn.execute(f"CREATE TABLE events_table ({definitions})")
+
+    def _insert_rows(self, columns: Sequence[str], rows: Sequence[dict]) -> None:
+        placeholders = ", ".join("?" for _ in columns)
+        names = ", ".join(columns)
+        payload = [tuple(self._cell(row, column) for column in columns) for row in rows]
+        self._local.conn.executemany(
+            f"INSERT INTO events_table ({names}) VALUES ({placeholders})",
+            payload,
+        )
+
+    @staticmethod
+    def _cell(row: dict, column: str):
+        value = row.get(column)
+        if column == "enrichment" and value is not None and not isinstance(value, str):
+            return json.dumps(value, ensure_ascii=False)
+        if column == "received_at" and isinstance(value, datetime) and value.tzinfo is not None:
+            return value.astimezone(dt_timezone.utc).replace(tzinfo=None)
+        return value
+
+    @staticmethod
+    def _aware_utc(value: Any) -> Any:
+        if isinstance(value, datetime) and value.tzinfo is None:
+            return value.replace(tzinfo=dt_timezone.utc)
+        return value
+
+    def _iter_row_batches(self, events_queryset, columns: Sequence[str]) -> Iterable[List[dict]]:
+        if hasattr(events_queryset, "order_by") and hasattr(events_queryset, "filter"):
+            last_pk = None
+            while True:
+                page = events_queryset
+                if last_pk is not None:
+                    page = page.filter(pk__gt=last_pk)
+                batch = list(page.order_by("pk").values(*columns)[:AGGREGATION_BATCH_SIZE])
+                if not batch:
+                    return
+                yield batch
+                last_pk = batch[-1]["pk"]
+            return
+        rows = list(events_queryset.values(*columns))
+        for offset in range(0, len(rows), AGGREGATION_BATCH_SIZE):
+            yield rows[offset : offset + AGGREGATION_BATCH_SIZE]
