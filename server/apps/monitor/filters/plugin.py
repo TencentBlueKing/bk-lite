@@ -2,7 +2,7 @@ from django_filters import CharFilter, FilterSet
 
 from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.models import MonitorPlugin
-from apps.monitor.services.weopsx_cloud_catalog import CLOUD_FAMILY_TYPE_IDS
+from apps.monitor.services.weopsx_cloud_catalog import expand_cloud_family_type_ids
 
 
 class MonitorPluginFilter(FilterSet):
@@ -39,9 +39,9 @@ class MonitorPluginFilter(FilterSet):
 
         集成列表点统一「云」根时，历史 Tencent Cloud / Aliyun Cloud 与 type=Cloud 一次返回。
         """
-        if not value:
+        type_ids = expand_cloud_family_type_ids(value)
+        if not type_ids:
             return queryset
-        type_ids = CLOUD_FAMILY_TYPE_IDS if value in CLOUD_FAMILY_TYPE_IDS else (value,)
         return queryset.filter(monitor_object__type_id__in=type_ids).distinct()
 
     class Meta:

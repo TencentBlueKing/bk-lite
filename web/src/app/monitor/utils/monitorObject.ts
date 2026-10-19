@@ -144,6 +144,12 @@ const LEGACY_CLOUD_FAMILY_TYPE_ALIASES: Record<string, string> = {
   'Aliyun Cloud': UNIFIED_CLOUD_ROOT_TYPE
 };
 
+/** 与后端 CLOUD_FAMILY_TYPE_IDS 对齐：点「云」时右侧按这一组 type 取平台。 */
+export const CLOUD_FAMILY_TYPE_IDS = [
+  UNIFIED_CLOUD_ROOT_TYPE,
+  ...Object.keys(LEGACY_CLOUD_FAMILY_TYPE_ALIASES)
+] as const;
+
 export const normalizeCloudFamilySidebarType = (
   type?: string | null
 ): string | undefined => {
@@ -153,6 +159,27 @@ export const normalizeCloudFamilySidebarType = (
 
 export const isCloudFamilySidebarType = (type?: string | null): boolean =>
   normalizeCloudFamilySidebarType(type) === UNIFIED_CLOUD_ROOT_TYPE;
+
+export const resolveCloudFamilyTypeQueryValues = (
+  typeId?: string | null
+): string[] => {
+  if (!typeId) return [];
+  return isCloudFamilySidebarType(typeId)
+    ? [...CLOUD_FAMILY_TYPE_IDS]
+    : [typeId];
+};
+
+export const uniqueMonitorRecords = <T extends { id?: unknown }>(
+  items: T[]
+): T[] => {
+  const seen = new Map<string, T>();
+  for (const item of items) {
+    const key = String(item.id ?? '');
+    if (!key || seen.has(key)) continue;
+    seen.set(key, item);
+  }
+  return [...seen.values()];
+};
 
 /**
  * 获取所有派生对象的名称列表
@@ -411,6 +438,18 @@ export const isCloudFamilySidebarDerivative = (
   }
   return Boolean(resolveCloudFamilyParent(item, objects));
 };
+
+/** 与集成 list/asset/group 侧栏「云」下平台叶同一集合（不含 CVM 等派生）。 */
+export const collectCloudFamilyPlatformIds = (
+  objects: ObjectItem[]
+): Array<ObjectItem['id']> =>
+  objects
+    .filter(
+      (item) =>
+        isCloudFamilySidebarType(item.type) &&
+        !isCloudFamilySidebarDerivative(item, objects)
+    )
+    .map((item) => item.id);
 
 export const resolveUnifiedCloudRootTitle = (objects: ObjectItem[]): string => {
   const cloudType = objects.find(

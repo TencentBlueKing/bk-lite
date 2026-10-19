@@ -43,8 +43,11 @@ import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import {
   buildMonitorObjectSidebarTree,
+  collectCloudFamilyPlatformIds,
   isCloudFamilySidebarType,
-  UNIFIED_CLOUD_ROOT_TYPE
+  resolveCloudFamilyTypeQueryValues,
+  UNIFIED_CLOUD_ROOT_TYPE,
+  uniqueMonitorRecords
 } from '@/app/monitor/utils/monitorObject';
 import { sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import { cloneDeep } from 'lodash';
@@ -145,7 +148,14 @@ const Integration = () => {
   useEffect(() => {
     if (isLoading) return;
     getPluginList();
-  }, [isLoading, objectId, objectType, pagination.current, pagination.pageSize]);
+  }, [
+    isLoading,
+    objectId,
+    objectType,
+    objects,
+    pagination.current,
+    pagination.pageSize
+  ]);
 
   useEffect(() => {
     return () => {
@@ -216,20 +226,78 @@ const Integration = () => {
         params.monitor_object_type !== undefined
           ? params.monitor_object_type
           : objectType;
-      const data = await getMonitorPlugin(
-        {
-          ...(monitorObjectId ? { monitor_object_id: monitorObjectId } : {}),
-          ...(monitorObjectType
-            ? { monitor_object_type: monitorObjectType }
-            : {}),
-          keyword: params.keyword !== undefined ? params.keyword : searchText,
-          page,
-          page_size: pagination.pageSize
-        },
-        {
-          signal: abortController.signal
+      const keyword =
+        params.keyword !== undefined ? params.keyword : searchText;
+      const familyPlatformIds =
+        !monitorObjectId && isCloudFamilySidebarType(String(monitorObjectType))
+          ? collectCloudFamilyPlatformIds(objects)
+          : [];
+      const familyTypeIds =
+        !monitorObjectId &&
+        isCloudFamilySidebarType(String(monitorObjectType)) &&
+        !familyPlatformIds.length
+          ? resolveCloudFamilyTypeQueryValues(String(monitorObjectType))
+          : [];
+      const fetchPluginPage = (
+        query: {
+          monitor_object_id?: React.Key | null;
+          monitor_object_type?: string | null;
+          page?: number;
+          page_size?: number;
         }
-      );
+      ) =>
+        getMonitorPlugin(
+          {
+            ...(query.monitor_object_id
+              ? { monitor_object_id: query.monitor_object_id }
+              : {}),
+            ...(query.monitor_object_type
+              ? { monitor_object_type: query.monitor_object_type }
+              : {}),
+            keyword,
+            page: query.page ?? page,
+            page_size: query.page_size ?? pagination.pageSize
+          },
+          {
+            signal: abortController.signal
+          }
+        );
+      // 点「云」根：按侧栏 4 个平台对象（或云族 type）并集取卡，避免只命中 type=Cloud 的 SCP/CNware。
+      if (familyPlatformIds.length || familyTypeIds.length) {
+        const pages = await Promise.all(
+          familyPlatformIds.length
+            ? familyPlatformIds.map((id) =>
+              fetchPluginPage({
+                monitor_object_id: id,
+                page: 1,
+                page_size: -1
+              })
+            )
+            : familyTypeIds.map((typeId) =>
+              fetchPluginPage({
+                monitor_object_type: typeId,
+                page: 1,
+                page_size: -1
+              })
+            )
+        );
+        if (currentRequestId !== pluginRequestIdRef.current) return;
+        const all = uniqueMonitorRecords(
+          pages.flatMap((data) => unwrapMonitorPluginList<ObjectItem>(data))
+        );
+        const start = (page - 1) * pagination.pageSize;
+        setPluginList(all.slice(start, start + pagination.pageSize));
+        setPagination((prev) => ({
+          ...prev,
+          current: page,
+          total: all.length
+        }));
+        return;
+      }
+      const data = await fetchPluginPage({
+        monitor_object_id: monitorObjectId,
+        monitor_object_type: monitorObjectType
+      });
       if (currentRequestId !== pluginRequestIdRef.current) return;
       const items = unwrapMonitorPluginList<ObjectItem>(data);
       const count = Array.isArray(data)

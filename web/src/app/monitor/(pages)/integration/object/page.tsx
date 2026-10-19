@@ -35,6 +35,10 @@ import {
   resolveMonitorObjectTypeSelection,
   resolveMonitorObjectTypeTreeKey
 } from '@/app/monitor/utils/monitorObjectTypeSidebar';
+import {
+  resolveCloudFamilyTypeQueryValues,
+  uniqueMonitorRecords
+} from '@/app/monitor/utils/monitorObject';
 
 const ObjectPage = () => {
   const { isLoading } = useApiClient();
@@ -293,19 +297,29 @@ const ObjectPage = () => {
 
     setObjectLoading(true);
     try {
-      const params = {
-        type_id: currentTypeId,
-        page: pagination.current,
-        page_size: pagination.pageSize,
-        name: objectSearchText || undefined
-      };
-      const data = await getObjects(params, controller.signal);
+      const typeIds = resolveCloudFamilyTypeQueryValues(currentTypeId);
+      const pages = await Promise.all(
+        typeIds.map((type_id) =>
+          getObjects(
+            {
+              type_id,
+              page: pagination.current,
+              page_size: pagination.pageSize,
+              name: objectSearchText || undefined
+            },
+            controller.signal
+          )
+        )
+      );
+      const results = uniqueMonitorRecords(
+        pages.flatMap((page) => page?.results || [])
+      );
       // 请求成功且未被取消时才更新数据和关闭 loading
       if (!controller.signal.aborted) {
-        setObjectList(data?.results || []);
+        setObjectList(results);
         setPagination((prev) => ({
           ...prev,
-          total: data?.count || 0
+          total: results.length
         }));
         setObjectLoading(false);
       }
@@ -483,20 +497,30 @@ const ObjectPage = () => {
 
     setObjectLoading(true);
     try {
-      const params = {
-        type_id: currentTypeId,
-        page: 1,
-        page_size: pagination.pageSize,
-        name: searchText || undefined
-      };
-      const data = await getObjects(params, controller.signal);
+      const typeIds = resolveCloudFamilyTypeQueryValues(currentTypeId);
+      const pages = await Promise.all(
+        typeIds.map((type_id) =>
+          getObjects(
+            {
+              type_id,
+              page: 1,
+              page_size: pagination.pageSize,
+              name: searchText || undefined
+            },
+            controller.signal
+          )
+        )
+      );
+      const results = uniqueMonitorRecords(
+        pages.flatMap((page) => page?.results || [])
+      );
       // 请求成功且未被取消时才更新数据和关闭 loading
       if (!controller.signal.aborted) {
-        setObjectList(data?.results || []);
+        setObjectList(results);
         setPagination((prev) => ({
           ...prev,
           current: 1,
-          total: data?.count || 0
+          total: results.length
         }));
         setObjectLoading(false);
       }

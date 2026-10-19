@@ -22,6 +22,17 @@ _MIN_OVERLAP_TOKEN_LEN = 4
 # type=Cloud 及历史入根别名；与侧栏 isCloudFamilySidebarType 对齐。
 CLOUD_FAMILY_TYPE_IDS = ("Cloud", "Tencent Cloud", "Aliyun Cloud")
 
+
+def expand_cloud_family_type_ids(value):
+    """点统一「云」时把 Cloud / Tencent Cloud / Aliyun Cloud 收成同一组 type id。"""
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return CLOUD_FAMILY_TYPE_IDS if text in CLOUD_FAMILY_TYPE_IDS else (text,)
+
+
 # 产品路径已装云：腾讯云 / 阿里云 / 深信服 SCP / 云宏 CNware，及 WeOpsX 目录同义 id。
 _EXCLUDED_ID_MARKERS = (
     "qcloud",

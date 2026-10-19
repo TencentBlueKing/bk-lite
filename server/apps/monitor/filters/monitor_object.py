@@ -2,7 +2,7 @@ from django_filters import CharFilter, FilterSet, NumberFilter
 
 from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectOrganizationRule
-from apps.monitor.services.weopsx_cloud_catalog import CLOUD_FAMILY_TYPE_IDS
+from apps.monitor.services.weopsx_cloud_catalog import expand_cloud_family_type_ids
 
 
 class MonitorObjectFilter(FilterSet):
@@ -12,9 +12,9 @@ class MonitorObjectFilter(FilterSet):
 
     def filter_type(self, queryset, _name, value):
         """点统一「云」时一次返回 Cloud / Tencent Cloud / Aliyun Cloud 平台对象。"""
-        if not value:
+        type_ids = expand_cloud_family_type_ids(value)
+        if not type_ids:
             return queryset
-        type_ids = CLOUD_FAMILY_TYPE_IDS if value in CLOUD_FAMILY_TYPE_IDS else (value,)
         return queryset.filter(type_id__in=type_ids)
 
     class Meta:
