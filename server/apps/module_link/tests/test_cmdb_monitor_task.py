@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.cmdb.constants.monitor_link import CMDB_MODEL_TO_MONITOR_OBJECT
 from apps.module_link.constants import BATCH_LIMIT, ITEM_NEEDS_OBJECT, ITEM_NOT_FOUND, STATUS_CANCELLED
 from apps.module_link.models import ModuleLinkModelMap, MonitorAccessDraft, MonitorLinkTask, MonitorLinkTaskItem
-from apps.module_link.services.cmdb_monitor import CmdbMonitorTaskService, serialize_draft
+from apps.module_link.services.cmdb_monitor import CmdbMonitorTaskService, can_see_task, resolved_current_team, serialize_draft
 
 pytestmark = pytest.mark.django_db
 
@@ -248,6 +248,101 @@ def test_draft_payload_has_no_password(mocker):
     assert payload["rows"][0]["cmdb_id"] == "u-miss"
     assert payload["rows"][0]["ip"] == "10.0.0.1"
     assert payload["rows"][0]["instance_name"] == "u-miss"
+
+
+def _visibility_request(*, username="bob", team=2, superuser=False, domain="domain.com"):
+    return SimpleNamespace(
+        user=SimpleNamespace(
+            username=username,
+            domain=domain,
+            is_superuser=superuser,
+            group_list=[{"id": team}],
+        ),
+        COOKIES={"current_team": str(team)},
+    )
+
+
+def _stored_task(team):
+    return MonitorLinkTask.objects.create(
+        operator="alice",
+        team=team,
+        status="waiting_access",
+        summary={},
+        retain_until=timezone.now() + timedelta(days=7),
+    )
+
+
+def test_resolved_current_team_rejects_foreign_cookie():
+    request = _visibility_request(username="alice", team=1)
+    request.COOKIES["current_team"] = "99"
+    assert resolved_current_team(request) is None
+
+
+def test_resolved_current_team_accepts_owned_cookie():
+    request = _visibility_request(username="alice", team=1)
+    assert resolved_current_team(request) == 1
+
+
+def test_can_see_task_requires_overlapping_org():
+    task = SimpleNamespace(operator="alice", team=[1])
+    other = _visibility_request(username="alice", team=2)
+    assert can_see_task(task, other, {"allowed_org_ids": [2], "operator": "alice"}) is False
+    same = _visibility_request(username="carol", team=1)
+    assert can_see_task(task, same, {"allowed_org_ids": [1], "operator": "carol"}) is True
+
+
+def test_get_task_hides_same_operator_other_team(mocker):
+    task = _stored_task([1])
+    request = _visibility_request(username="alice", team=2)
+    mocker.patch(SCOPE, return_value={"allowed_org_ids": [2], "operator": "alice"})
+    assert CmdbMonitorTaskService.get_task(task.id, request=request) is None
+
+
+def test_get_draft_hides_other_team(mocker):
+    task = _stored_task([1])
+    draft = MonitorAccessDraft.objects.create(
+        task=task,
+        object_name="Host",
+        rows=[{"cmdb_id": "u-1", "ip": "10.0.0.1"}],
+        expires_at=task.retain_until,
+    )
+    request = _visibility_request(username="bob", team=2)
+    mocker.patch(SCOPE, return_value={"allowed_org_ids": [2], "operator": "bob"})
+    assert CmdbMonitorTaskService.get_draft(draft.id, request=request) is None
+
+
+def test_create_ignores_foreign_team_model_map(mocker):
+    ModuleLinkModelMap.objects.create(team=99, model_id="weblogic", object_name="Tomcat")
+    entities = {"u-custom": _entity("u-custom", model_id="weblogic")}
+    _patch_common(mocker, entities)
+    monitor = mocker.patch(MONITOR)
+    request = _visibility_request(username="alice", team=1)
+    request.COOKIES["current_team"] = "99"
+    task = CmdbMonitorTaskService.create(["u-custom"], request=request)
+    monitor.assert_not_called()
+    item = task.items.get()
+    assert item.status == ITEM_NEEDS_OBJECT
+    assert item.object_name == ""
+
+
+def test_assign_object_remember_ignores_foreign_team(mocker):
+    entities = {"u-custom": _entity("u-custom", model_id="weblogic", inst_name="wl-1")}
+    _patch_common(mocker, entities)
+    monitor = mocker.patch(MONITOR)
+    monitor.return_value.list_cmdb_bind_candidates.return_value = []
+    task = CmdbMonitorTaskService.create(["u-custom"], request=_request())
+    item = task.items.get()
+    request = _visibility_request(username="alice", team=1)
+    CmdbMonitorTaskService.assign_object(
+        task,
+        item_ids=[str(item.id)],
+        object_name="Tomcat",
+        remember=True,
+        request=request,
+        current_team=99,
+    )
+    assert ModuleLinkModelMap.objects.filter(team=99).count() == 0
+    assert ModuleLinkModelMap.objects.filter(team=1).count() == 0
 
 
 def test_draft_payload_includes_port(mocker):

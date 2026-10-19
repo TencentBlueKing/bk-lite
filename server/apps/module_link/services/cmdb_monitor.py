@@ -13,6 +13,7 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
 from apps.cmdb.services.monitor_link import CANDIDATE_LIMIT, MonitorLinkService
 from apps.core.logger import module_link_logger as logger
+from apps.core.utils.team_utils import collect_group_tree_ids, get_current_team
 from apps.module_link.constants import (
     BATCH_LIMIT,
     ITEM_ALREADY_LINKED,
@@ -331,14 +332,38 @@ def serialize_draft(draft: MonitorAccessDraft) -> dict[str, Any]:
     }
 
 
+def _org_ids(values) -> set[int]:
+    ids: set[int] = set()
+    for item in values or []:
+        number = _as_int_or_none(item)
+        if number is not None:
+            ids.add(number)
+    return ids
+
+
+def resolved_current_team(request) -> int | None:
+    """只接受调用者组织树内的 current_team；空树或伪造 cookie 一律 None。"""
+    team = _as_int_or_none(get_current_team(request))
+    if team is None:
+        return None
+    user = getattr(request, "user", None)
+    if getattr(user, "is_superuser", False):
+        return team
+    group_ids = collect_group_tree_ids(getattr(user, "group_list", []) or [])
+    if not group_ids or team not in group_ids:
+        return None
+    return team
+
+
 def can_see_task(task: MonitorLinkTask, request, actor_scope: dict[str, Any]) -> bool:
     if getattr(request.user, "is_superuser", False):
         return True
-    operator = getattr(request.user, "username", "")
-    if task.operator and operator and task.operator == operator:
-        return True
-    allowed = {int(item) for item in (actor_scope.get("allowed_org_ids") or []) if str(item).lstrip("-").isdigit()}
-    stored = {int(item) for item in (task.team or []) if str(item).lstrip("-").isdigit()}
+    stored = _org_ids(task.team)
+    if not stored:
+        return False
+    allowed = _org_ids(actor_scope.get("allowed_org_ids"))
+    if not allowed:
+        allowed = collect_group_tree_ids(getattr(request.user, "group_list", []) or [])
     return bool(allowed & stored)
 
 
@@ -348,7 +373,7 @@ class CmdbMonitorTaskService:
         if len(inst_uuids) > BATCH_LIMIT:
             raise ValueError("batch push exceeds limit of 100")
         actor_scope = build_cmdb_push_actor_scope(request)
-        current_team = _as_int_or_none(getattr(request, "COOKIES", {}).get("current_team"))
+        current_team = resolved_current_team(request)
         try:
             with transaction.atomic():
                 return cls._create_in_txn(inst_uuids, request=request, actor_scope=actor_scope, current_team=current_team)
@@ -596,10 +621,11 @@ class CmdbMonitorTaskService:
             item.save(update_fields=["status", "object_name", "monitor_id", "inst_name", "ip", "port"])
             if remember and item.model_id:
                 remembered_models.add(item.model_id)
-        if remember and current_team is not None:
+        team_id = resolved_current_team(request)
+        if remember and team_id is not None and team_id == current_team:
             for model_id in remembered_models:
                 ModuleLinkModelMap.objects.update_or_create(
-                    team=current_team,
+                    team=team_id,
                     model_id=model_id,
                     defaults={"object_name": object_name},
                 )

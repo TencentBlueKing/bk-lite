@@ -76,3 +76,55 @@ def test_draft_missing_is_404(superuser, monkeypatch):
     body = _body(response)
     assert body["result"] is False
     assert "password" not in json.dumps(body)
+
+
+def test_draft_retrieve_requires_monitor_permission(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"cmdb": {"asset_info-Edit"}}
+    called = []
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbMonitorTaskService.get_draft",
+        lambda *a, **k: called.append(1) or None,
+    )
+    response = AccessDraftViewSet.as_view({"get": "retrieve"})(_req("get", authenticated_user), pk=str(uuid4()))
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert called == []
+
+
+def test_draft_retrieve_allows_monitor_view_permission(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"monitor": {"integration_list-View"}}
+    monkeypatch.setattr(f"{VIEWS}.CmdbMonitorTaskService.get_draft", lambda pk, request: None)
+    response = AccessDraftViewSet.as_view({"get": "retrieve"})(_req("get", authenticated_user), pk=str(uuid4()))
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_create_requires_cmdb_edit(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"monitor": {"integration_configure-Add"}}
+    called = []
+    monkeypatch.setattr(f"{VIEWS}.CmdbMonitorTaskService.create", lambda *a, **k: called.append(1))
+    response = CmdbMonitorTaskViewSet.as_view({"post": "create"})(_req("post", authenticated_user, {"inst_uuids": ["u-1"]}))
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert called == []
+
+
+def test_assign_object_remember_rejects_foreign_team(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"cmdb": {"asset_info-Edit"}}
+    authenticated_user.group_list = [{"id": 1}]
+    called = []
+    monkeypatch.setattr(f"{VIEWS}.CmdbMonitorTaskService.get_task", lambda pk, request: SimpleNamespace(id=pk))
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbMonitorTaskService.assign_object",
+        lambda *a, **k: called.append(k) or SimpleNamespace(),
+    )
+    request = _req(
+        "post",
+        authenticated_user,
+        {"item_ids": [str(uuid4())], "object_name": "Host", "remember": True},
+    )
+    request.COOKIES["current_team"] = "99"
+    response = CmdbMonitorTaskViewSet.as_view({"post": "assign_object"})(request, pk=str(uuid4()))
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert called == []
