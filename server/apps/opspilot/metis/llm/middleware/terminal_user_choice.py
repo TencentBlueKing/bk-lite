@@ -10,7 +10,7 @@ from langchain_core.callbacks import dispatch_custom_event
 from langchain_core.messages import AIMessage, ToolMessage
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.chain.nested_stream import publish_owned_custom_event
+from apps.opspilot.metis.llm.chain.nested_stream import publish_owned_custom_event_nowait
 from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
 from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
 from apps.opspilot.utils.pending_question import (
@@ -77,7 +77,7 @@ def guard_rejection(call: Any, configurable: dict[str, Any]) -> str:
 
 
 def emit_choice_request(config: Any, payload: dict[str, Any]) -> None:
-    if publish_owned_custom_event(config, "user_choice_request", payload):
+    if publish_owned_custom_event_nowait(config, "user_choice_request", payload):
         return
     try:
         dispatch_custom_event("user_choice_request", payload, config=config)

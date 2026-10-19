@@ -144,7 +144,7 @@ def test_alert_source_retrieve_statistics_match_visible_event_scope(permission_u
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["data"]["event_count"] == 1
-    assert payload["data"]["last_event_time"] == timezone.localtime(visible_time).strftime("%Y-%m-%d %H:%M:%S")
+    assert payload["data"]["last_event_time"] == visible_time.isoformat()
 
 
 @pytest.mark.django_db

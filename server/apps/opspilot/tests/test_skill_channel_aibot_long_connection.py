@@ -203,6 +203,121 @@ def test_sdk_transport_uses_official_client_for_reply_and_heartbeat():
         transport.close()
 
 
+def test_sdk_transport_stays_open_on_disconnected_while_sdk_reconnects():
+    from apps.opspilot.services.skill_channel_aibot_long_connection_sdk import WecomSdkTransport
+
+    class DisconnectingClient:
+        def __init__(self, options):
+            self.options = options
+            self.handlers = {}
+
+        def on(self, name, callback):
+            self.handlers.setdefault(name, []).append(callback)
+
+        async def connect(self):
+            for callback in self.handlers.get("authenticated", []):
+                callback()
+            for callback in self.handlers.get("disconnected", []):
+                callback("connection reset")
+
+        def disconnect(self):
+            return None
+
+        async def reply_stream(self, frame, stream_id, content, finish=False, msg_item=None, feedback=None):
+            return {}
+
+    transport = WecomSdkTransport(
+        "wss://openws.work.weixin.qq.com",
+        "bot-1",
+        "secret-1",
+        client_factory=DisconnectingClient,
+    )
+    try:
+        assert transport.closed is False
+        with pytest.raises(TimeoutError):
+            transport.recv_json(0.05)
+    finally:
+        transport.close()
+
+
+def test_sdk_transport_surfaces_closed_connection_after_unrecoverable_error():
+    from apps.opspilot.services.skill_channel_aibot_long_connection_sdk import WecomSdkTransport
+
+    class FailingAfterAuthClient:
+        def __init__(self, options):
+            self.options = options
+            self.handlers = {}
+
+        def on(self, name, callback):
+            self.handlers.setdefault(name, []).append(callback)
+
+        async def connect(self):
+            for callback in self.handlers.get("authenticated", []):
+                callback()
+            # 接收循环里的非关闭异常：发 error，不再 _schedule_reconnect。
+            for callback in self.handlers.get("error", []):
+                callback(RuntimeError("socket dropped"))
+
+        def disconnect(self):
+            return None
+
+        async def reply_stream(self, frame, stream_id, content, finish=False, msg_item=None, feedback=None):
+            return {}
+
+    transport = WecomSdkTransport(
+        "wss://openws.work.weixin.qq.com",
+        "bot-1",
+        "secret-1",
+        client_factory=FailingAfterAuthClient,
+    )
+    try:
+        with pytest.raises(ConnectionError):
+            transport.recv_json(0.5)
+        assert transport.closed is True
+    finally:
+        transport.close()
+
+
+def test_sdk_transport_keeps_sdk_reconnect_after_connect_error():
+    from apps.opspilot.services.skill_channel_aibot_long_connection_sdk import WecomSdkTransport
+
+    class ReconnectAfterConnectError:
+        def __init__(self, options):
+            self.options = options
+            self.handlers = {}
+
+        def on(self, name, callback):
+            self.handlers.setdefault(name, []).append(callback)
+
+        async def connect(self):
+            for callback in self.handlers.get("authenticated", []):
+                callback()
+            # 与官方 SDK 相同：connect() 失败先 error，再 reconnecting。
+            for callback in self.handlers.get("error", []):
+                callback(ConnectionError("reconnect connect failed"))
+            for callback in self.handlers.get("reconnecting", []):
+                callback(2)
+
+        def disconnect(self):
+            return None
+
+        async def reply_stream(self, frame, stream_id, content, finish=False, msg_item=None, feedback=None):
+            return {}
+
+    transport = WecomSdkTransport(
+        "wss://openws.work.weixin.qq.com",
+        "bot-1",
+        "secret-1",
+        client_factory=ReconnectAfterConnectError,
+    )
+    try:
+        with pytest.raises(TimeoutError):
+            transport.recv_json(0.2)
+        assert transport.closed is False
+    finally:
+        transport.close()
+
+
 def test_visible_answer_keeps_final_text_only():
     events = [
         {"type": "THINKING_TEXT_MESSAGE_CONTENT", "delta": "思考过程"},

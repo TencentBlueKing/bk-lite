@@ -763,7 +763,7 @@ const ToolListPage: React.FC = () => {
               {fetchingTools ? (
                 <>
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="p-3 bg-[var(--color-fill-1)] border border-[var(--color-border)] rounded-lg animate-pulse">
+                    <div key={i} className="p-3 bg-[var(--color-fill-1)] border border-[var(--color-border)] rounded-lg animate-neutral-pulse">
                       <div className="flex items-start gap-3">
                         <div className="flex-shrink-0 w-8 h-8 bg-[var(--color-fill-3)] rounded-lg"></div>
                         <div className="flex-1 space-y-2">

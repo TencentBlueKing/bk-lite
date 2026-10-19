@@ -16,6 +16,13 @@ const readCollectionProtocol = (params?: object | null) => {
   return typeof protocol === 'string' ? protocol : undefined;
 };
 
+const readCustomPluginPk = (params?: object | null) => {
+  if (!params || !('custom_plugin_pk' in params)) return undefined;
+  const raw = (params as { custom_plugin_pk?: unknown }).custom_plugin_pk;
+  const pk = Number(raw);
+  return Number.isInteger(pk) && pk > 0 ? pk : undefined;
+};
+
 export interface CatalogCategoryGroup {
   category: TreeNode;
   plugins: TreeNode[];
@@ -341,6 +348,15 @@ export const resolveCollectPlugin = (
   task: CatalogPluginTask,
 ) => {
   const plugins = collectPlugins(categories);
+  const customPluginPk = readCustomPluginPk(task.params);
+  if (customPluginPk) {
+    const customPlugin = plugins.find(
+      (plugin) =>
+        plugin.task_type === 'custom_script' &&
+        plugin.custom_plugin_pk === customPluginPk,
+    );
+    if (customPlugin) return customPlugin;
+  }
   const modelId = task.model_id || '';
   const driverType = task.driver_type || '';
 

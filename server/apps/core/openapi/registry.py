@@ -30,6 +30,13 @@ METHODS = {"GET", "POST", "PUT", "DELETE"}
 USER_INFO_ANCHOR_FIELDS = ("team", "include_children")
 
 
+def _validate_serializer_contract(func_name, serializer_class, *, response=False):
+    if not (isinstance(serializer_class, type) and issubclass(serializer_class, drf_serializers.BaseSerializer)):
+        if response:
+            raise ImproperlyConfigured(f"openapi_expose({func_name}): response_schema 须为 DRF Serializer 子类")
+        raise ImproperlyConfigured(f"openapi_expose({func_name}): schema 必填且须为 DRF Serializer 子类（fail-closed）")
+
+
 @dataclass
 class Endpoint:
     service: str
@@ -38,6 +45,7 @@ class Endpoint:
     func: object
     serializer_class: type
     inject: str
+    response_serializer_class: type | None = None
     permission: str = ""
     permission_app: str = ""
     team_free: bool = False
@@ -60,6 +68,7 @@ class OpenAPIRegistry:
         path: str,
         method: str,
         serializer_class,
+        response_serializer_class=None,
         func,
         inject: str = None,
         permission: str = "",
@@ -72,91 +81,61 @@ class OpenAPIRegistry:
 
         service, _, sub_path = (path or "").partition("/")
         if not sub_path:
-            raise ImproperlyConfigured(
-                f"openapi_expose({func_name}): path 必须形如 'service/sub-path'，got {path!r}"
-            )
+            raise ImproperlyConfigured(f"openapi_expose({func_name}): path 必须形如 'service/sub-path'，got {path!r}")
         if service.startswith("_") or not SERVICE_NAME_RE.match(service):
-            raise ImproperlyConfigured(
-                f"openapi_expose({func_name}): 非法 service 名 {service!r}"
-                "（规则 ^[a-z][a-z0-9-]{0,31}$，下划线开头为网关保留命名空间）"
-            )
+            raise ImproperlyConfigured(f"openapi_expose({func_name}): 非法 service 名 {service!r}" "（规则 ^[a-z][a-z0-9-]{0,31}$，下划线开头为网关保留命名空间）")
         if method not in METHODS:
-            raise ImproperlyConfigured(
-                f"openapi_expose({func_name}): method 必须是 {sorted(METHODS)} 之一，got {method!r}"
-            )
-        if serializer_class is None or not (
-            isinstance(serializer_class, type)
-            and issubclass(serializer_class, drf_serializers.BaseSerializer)
-        ):
-            raise ImproperlyConfigured(
-                f"openapi_expose({func_name}): schema 必填且须为 DRF Serializer 子类（fail-closed）"
-            )
+            raise ImproperlyConfigured(f"openapi_expose({func_name}): method 必须是 {sorted(METHODS)} 之一，got {method!r}")
+        _validate_serializer_contract(func_name, serializer_class)
+
+        if response_serializer_class is not None:
+            _validate_serializer_contract(func_name, response_serializer_class, response=True)
 
         params = inspect.signature(func).parameters
         serializer_fields = set(serializer_class().fields)
 
         if team_free:
             if inject is not None:
-                raise ImproperlyConfigured(
-                    f"openapi_expose({func_name}): team_free=True 与 inject 互斥"
-                )
+                raise ImproperlyConfigured(f"openapi_expose({func_name}): team_free=True 与 inject 互斥")
         else:
             if inject not in VALID_INJECTS:
                 raise ImproperlyConfigured(
-                    f"openapi_expose({func_name}): inject 必须是 {sorted(VALID_INJECTS)} 之一，"
-                    f"或显式声明 team_free=True，got {inject!r}"
+                    f"openapi_expose({func_name}): inject 必须是 {sorted(VALID_INJECTS)} 之一，" f"或显式声明 team_free=True，got {inject!r}"
                 )
             if inject in {INJECT_TEAM_LIST, INJECT_TEAM_LIST_WITH_USER}:
                 if "team" not in params:
-                    raise ImproperlyConfigured(
-                        f"openapi_expose({func_name}): inject='{inject}' 要求函数具有可按关键字传入的 team 参数"
-                    )
+                    raise ImproperlyConfigured(f"openapi_expose({func_name}): inject='{inject}' 要求函数具有可按关键字传入的 team 参数")
                 if "team" in serializer_fields:
-                    raise ImproperlyConfigured(
-                        f"openapi_expose({func_name}): inject='{inject}' 时 serializer 不得声明 team 字段"
-                        "（身份集合只能由网关注入，客户端字段一律丢弃）"
-                    )
+                    raise ImproperlyConfigured(f"openapi_expose({func_name}): inject='{inject}' 时 serializer 不得声明 team 字段" "（身份集合只能由网关注入，客户端字段一律丢弃）")
                 if inject == INJECT_TEAM_LIST_WITH_USER:
                     if "user_info" not in params:
-                        raise ImproperlyConfigured(
-                            f"openapi_expose({func_name}): inject='{inject}' 要求函数具有 user_info 参数"
-                        )
+                        raise ImproperlyConfigured(f"openapi_expose({func_name}): inject='{inject}' 要求函数具有 user_info 参数")
                     conflict = serializer_fields & {"user_info", "user", "domain"}
                     if conflict:
-                        raise ImproperlyConfigured(
-                            f"openapi_expose({func_name}): serializer 不得声明身份字段 {sorted(conflict)}"
-                        )
+                        raise ImproperlyConfigured(f"openapi_expose({func_name}): serializer 不得声明身份字段 {sorted(conflict)}")
             if inject == INJECT_USER_INFO:
                 if "user_info" not in params:
-                    raise ImproperlyConfigured(
-                        f"openapi_expose({func_name}): inject='user_info' 要求函数具有 user_info 参数"
-                    )
+                    raise ImproperlyConfigured(f"openapi_expose({func_name}): inject='user_info' 要求函数具有 user_info 参数")
                 conflict = serializer_fields & {"user_info", "user", "domain"}
                 if conflict:
-                    raise ImproperlyConfigured(
-                        f"openapi_expose({func_name}): serializer 不得声明身份字段 {sorted(conflict)}"
-                    )
+                    raise ImproperlyConfigured(f"openapi_expose({func_name}): serializer 不得声明身份字段 {sorted(conflict)}")
                 # 锚点式下 dispatcher 从 serializer 中抽取字面名 team 的字段并入
                 # user_info。serializer 若把锚点命名成别的字段，JWT 调用方将永远
                 # 拿到 400 "team is required"（且无法补传，未知字段被拒），
                 # API 令牌调用方则静默使用绑定组织——把该错误提前到启动期。
                 if "team" not in serializer_fields:
                     raise ImproperlyConfigured(
-                        f"openapi_expose({func_name}): inject='user_info' 要求 serializer 声明名为 "
-                        "'team' 的组织锚点字段（网关据此抽取并注入 user_info）"
+                        f"openapi_expose({func_name}): inject='user_info' 要求 serializer 声明名为 " "'team' 的组织锚点字段（网关据此抽取并注入 user_info）"
                     )
 
         if permission and not permission_app:
             raise ImproperlyConfigured(
-                f"openapi_expose({func_name}): 声明 permission 时必须同时声明 permission_app"
-                "（取值为该应用菜单定义的 client_id，如 patch_mgmt → 'patch'）"
+                f"openapi_expose({func_name}): 声明 permission 时必须同时声明 permission_app" "（取值为该应用菜单定义的 client_id，如 patch_mgmt → 'patch'）"
             )
 
         key = (service, sub_path, method)
         if key in self._endpoints:
-            raise ImproperlyConfigured(
-                f"openapi_expose({func_name}): 重复注册 {method} /{path}"
-            )
+            raise ImproperlyConfigured(f"openapi_expose({func_name}): 重复注册 {method} /{path}")
 
         endpoint = Endpoint(
             service=service,
@@ -165,6 +144,7 @@ class OpenAPIRegistry:
             func=func,
             serializer_class=serializer_class,
             inject=inject,
+            response_serializer_class=response_serializer_class,
             permission=permission,
             permission_app=permission_app,
             team_free=team_free,

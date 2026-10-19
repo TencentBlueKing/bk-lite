@@ -391,9 +391,9 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
                 >
                   <div className="h-10 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35" />
                   <div className="space-y-2 p-3">
-                    <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
-                    <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
-                    <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+                    <div className="h-8 animate-neutral-pulse rounded-md bg-[var(--color-fill-1)]" />
+                    <div className="h-8 animate-neutral-pulse rounded-md bg-[var(--color-fill-1)]" />
+                    <div className="h-8 animate-neutral-pulse rounded-md bg-[var(--color-fill-1)]" />
                   </div>
                 </section>
               ))}

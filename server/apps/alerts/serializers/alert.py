@@ -16,6 +16,15 @@ from apps.core.utils.serializers import AuthSerializer
 from apps.system_mgmt.models.user import User
 
 
+def _isoformat_utc(value):
+    """返回带偏移的 UTC 时刻，展示时区交给前端。"""
+    if value is None:
+        return None
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone.utc)
+    return value.isoformat()
+
+
 def _format_alert_duration(total_seconds: int) -> str:
     days = total_seconds // 86400
     hours = (total_seconds % 86400) // 3600
@@ -187,7 +196,7 @@ class AlertModelSerializer(AuthSerializer):
         for notify_object, notify_results in raw_records_map.items():
             records_map[notify_object] = [
                 {
-                    "notify_time": timezone.localtime(item.notify_time).strftime("%Y-%m-%d %H:%M:%S"),
+                    "notify_time": _isoformat_utc(item.notify_time),
                     "channel": item.notify_channel or "",
                     "channel_name": item.notify_channel_name or item.notify_channel or "",
                     "recipients": [

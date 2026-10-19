@@ -76,7 +76,7 @@ export const PlannedExecutionPanel: React.FC<{
           ▶
         </span>
         <span className="flex items-center gap-1.5 font-normal">
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${isStreaming ? 'animate-pulse bg-[var(--color-primary)]' : 'bg-emerald-500'}`} />
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${isStreaming ? 'animate-neutral-pulse bg-[var(--color-primary)]' : 'bg-emerald-500'}`} />
           <span className="text-[var(--color-text-2)]">{t('chat.plannedStep.planTitle', '执行计划')}</span>
         </span>
         <span className="ml-0.5 font-mono text-[11px] tabular-nums text-[var(--color-text-4)]">

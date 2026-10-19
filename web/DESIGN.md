@@ -524,6 +524,8 @@ OpsPilot 与系统管理已接入上述抽象。域内差异（置顶、厂商�
 
 **The Skeleton Fidelity Rule.** 骨架的栏数、卡片数量级、表头、工具条和内容节奏必须来自最终页面结构，禁止用若干通用横条替代未知布局。普通工作台骨架只使用中性 `fill-*` token，不加彩色光晕、投影、渐变或悬浮动画；最终页面没有 KPI、卡片或工具条时，骨架也不得虚构这些区域。
 
+**The Neutral Loading Animation Rule.** 页面骨架和运行状态点统一使用 `animate-neutral-pulse`；该动画只允许改变透明度，禁止改变 `box-shadow`、颜色、边框或渐变。应用和嵌入式组件包自定义的 `@keyframes` 必须带产品命名空间（例如 `bk-*` / `webchat-*`），禁止重新声明 `pulse`、`loading`、`spin` 等框架通用全局名称，避免后加载样式覆盖其他模块。
+
 **The Bootstrap Loader Boundary Rule.** 只有在应用外壳尚不可用的启动阶段（会话、语言包、菜单或权限仍在初始化）才允许使用共享的全屏 `Spin fullscreen`；外壳出现后，页面数据加载必须切换为与内容同构的局部骨架。共享启动 Loader 必须使用中性语义 token，禁止硬编码品牌色、多色圆环、彩色边框或光晕。组件默认是局部加载态，调用方不得依赖 `position: fixed` 偷换成整屏遮罩。
 
 ### Tables
@@ -617,6 +619,7 @@ OpsPilot 与系统管理已接入上述抽象。域内差异（置顶、厂商�
 - **Don't** 为实体列表另起一套卡片壳或用 Spin 罩住旧卡冒充刷新；没有时间字段时不要为展示去改后端加列。
 - **Don't** 在文字没有溢出时给标题或单元格加常驻 Tooltip；省略场景用 `EllipsisWithTooltip`，只在真正截断时出现。
 - **Don't** 用居中 `Spin` 代替整页加载。骨架必须与最终分栏、栏头、底栏同构；失败时不要假骨架假装有数据。
+- **Don't** 在业务页面继续使用通用 `animate-pulse`，或给加载动画增加彩色边框、投影、光晕和渐变；统一使用只改变透明度的 `animate-neutral-pulse`。
 - **Don't** 用 placeholder 当 label，不要只靠 toast 汇总表单错误。
 - **Don't** 把 `div onClick` 当按钮。可点击就用 `button`、AntD Button、链接或正确 ARIA 语义。
 - **Don't** 给卡片、输入框、面板使用 `32px+` 大圆角。

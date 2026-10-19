@@ -24,8 +24,8 @@ import {
 } from './visibility';
 import './global-webchat.css';
 
-const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20261016-attachment-status';
-const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20261016-attachment-status';
+const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20261016-attachment-poll';
+const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20261016-attachment-poll';
 const WEBCHAT_ROOT_ID = 'webchat-root';
 const MANAGE_AGENTS_URL = '/opspilot/studio';
 

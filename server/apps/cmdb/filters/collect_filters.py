@@ -6,7 +6,7 @@ from django.db.models import Q
 from django_filters import CharFilter, FilterSet
 
 from apps.cmdb.collection.physical_server_protocol import PHYSICAL_SERVER_MODEL_ID
-from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
+from apps.cmdb.constants.constants import CollectDriverTypes
 from apps.cmdb.models.collect_model import CollectModels, OidMapping, PortFingerprint
 
 
@@ -39,7 +39,9 @@ class CollectModelFilter(FilterSet):
             plugin_pk = int(value)
         except (TypeError, ValueError):
             return queryset.none()
-        return queryset.filter(task_type=CollectPluginTypes.CUSTOM_SCRIPT, params__contains={"custom_plugin_pk": plugin_pk})
+        # 不限定 task_type：编辑曾被同模型内置插件抢走时，任务类型会被改成 host，
+        # 但 params.custom_plugin_pk 还在。只按类型过滤会让插件页查不到这条任务。
+        return queryset.filter(params__contains={"custom_plugin_pk": plugin_pk})
 
     class Meta:
         model = CollectModels

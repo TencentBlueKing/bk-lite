@@ -29,6 +29,16 @@ def mlops_message_for_locale(locale: Any, key: str, **values: Any) -> str:
         return str(template)
 
 
+def mlops_message_for_active_language(key: str, **values: Any) -> str:
+    """模型保存与 Celery 任务没有 request。
+
+    认证成功时当前线程已被激活为用户 locale；未激活时回落 zh-Hans。
+    """
+    from django.utils.translation import get_language
+
+    return mlops_message_for_locale(get_language(), key, **values)
+
+
 def mlops_message(request: Any, key: str, *_legacy_default: str, **values: Any) -> str:
     """按请求用户语言读取并格式化 MLOps 文案。"""
     user = getattr(request, "user", None)
