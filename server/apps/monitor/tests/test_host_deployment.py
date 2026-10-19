@@ -4,41 +4,26 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import CollectConfig, MonitorInstance, MonitorObject, MonitorPlugin
 from apps.monitor.services.host_deployment import HostDeploymentStatus
 from apps.monitor.services.node_mgmt import InstanceConfigService
-from apps.node_mgmt.models import (
-    ChildConfig,
-    CloudRegion,
-    Collector,
-    CollectorConfiguration,
-    Node,
-)
+from apps.node_mgmt.models import ChildConfig, CloudRegion, Collector, CollectorConfiguration, Node
 from apps.rpc.node_mgmt import NodeMgmt
 
 
 class FakeNodeMgmt:
-    def __init__(self, configured_node_ids):
-        self.configured_node_ids = configured_node_ids
+    def __init__(self, assignments, *, deleted=None):
+        self.assignments = assignments
         self.calls = []
+        self.deleted = deleted if deleted is not None else []
 
-    def get_nodes_with_child_config(self, node_ids, collector, collect_type):
-        self.calls.append((node_ids, collector, collect_type))
-        return self.configured_node_ids
+    def get_child_config_assignments(self, node_ids, collector, collect_type):
+        self.calls.append((list(node_ids), collector, collect_type))
+        allowed = set(node_ids)
+        return [item for item in self.assignments if item["node_id"] in allowed]
 
-
-@pytest.mark.unit
-def test_registry_returns_configured_host_monitoring_nodes():
-    node_mgmt = FakeNodeMgmt(["node-2", "node-2"])
-    deployment_status = HostDeploymentStatus(node_mgmt=node_mgmt)
-
-    configured_node_ids = deployment_status.get_configured_node_ids(
-        ["node-2", "node-1", "node-1", ""]
-    )
-
-    assert configured_node_ids == {"node-2"}
-    assert node_mgmt.calls == [(["node-2", "node-1"], "Telegraf", "host")]
+    def delete_child_configs(self, ids):
+        self.deleted.append(list(ids))
 
 
-@pytest.mark.django_db
-def test_registry_uses_node_mgmt_assignment_as_deployment_fact():
+def _create_host_topology(child_id="host-deployment-child"):
     region = CloudRegion.objects.create(name="host-deployment-region")
     collector = Collector.objects.create(
         id="host-deployment-telegraf",
@@ -63,18 +48,121 @@ def test_registry_uses_node_mgmt_assignment_as_deployment_fact():
     )
     config.nodes.add(node)
     ChildConfig.objects.create(
-        id="host-deployment-child",
+        id=child_id,
         collect_type="host",
         config_type="cpu",
         content="[[inputs.cpu]]",
         collector_config=config,
     )
+    return node, child_id
 
-    configured_node_ids = HostDeploymentStatus(
-        node_mgmt=NodeMgmt(is_local_client=True)
-    ).get_configured_node_ids([node.id])
+
+def _create_live_collect_config(child_id, *, object_name="Host", config_type="cpu", is_deleted=False, instance_id=None):
+    monitor_object, _ = MonitorObject.objects.get_or_create(name=object_name, defaults={"level": "base"})
+    instance = MonitorInstance.objects.create(
+        id=instance_id or f"('{object_name.lower()}-deployment-instance',)",
+        name=f"{object_name.lower()}-deployment-instance",
+        monitor_object=monitor_object,
+        is_deleted=is_deleted,
+    )
+    CollectConfig.objects.create(
+        id=child_id,
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="host",
+        config_type=config_type,
+        file_type="toml",
+        is_child=True,
+    )
+    return instance
+
+
+@pytest.mark.django_db
+def test_registry_returns_configured_host_monitoring_nodes():
+    live = _create_live_collect_config("child-2")
+    node_mgmt = FakeNodeMgmt(
+        [
+            {"id": "child-2", "node_id": "node-2"},
+            {"id": "child-2", "node_id": "node-2"},
+            {"id": "orphan-1", "node_id": "node-1"},
+        ]
+    )
+    deployment_status = HostDeploymentStatus(node_mgmt=node_mgmt)
+
+    configured_node_ids = deployment_status.get_configured_node_ids(["node-2", "node-1", "node-1", ""])
+
+    assert live.is_deleted is False
+    assert configured_node_ids == {"node-2"}
+    assert node_mgmt.calls == [(["node-2", "node-1"], "Telegraf", "host")]
+
+
+@pytest.mark.django_db
+def test_registry_uses_live_collect_config_as_deployment_fact():
+    node, child_id = _create_host_topology()
+    _create_live_collect_config(child_id)
+
+    configured_node_ids = HostDeploymentStatus(node_mgmt=NodeMgmt(is_local_client=True)).get_configured_node_ids([node.id])
 
     assert configured_node_ids == {node.id}
+
+
+@pytest.mark.django_db
+def test_registry_ignores_orphan_child_config_without_collect_config():
+    node, _child_id = _create_host_topology()
+
+    configured_node_ids = HostDeploymentStatus(node_mgmt=NodeMgmt(is_local_client=True)).get_configured_node_ids([node.id])
+
+    assert configured_node_ids == set()
+
+
+@pytest.mark.django_db
+def test_registry_ignores_child_config_when_monitor_instance_deleted():
+    node, child_id = _create_host_topology()
+    _create_live_collect_config(child_id, is_deleted=True)
+
+    configured_node_ids = HostDeploymentStatus(node_mgmt=NodeMgmt(is_local_client=True)).get_configured_node_ids([node.id])
+
+    assert configured_node_ids == set()
+
+
+@pytest.mark.django_db
+def test_release_unbound_child_configs_deletes_orphans_only():
+    _create_live_collect_config("child-live")
+    _create_live_collect_config(
+        "child-process",
+        object_name="Process",
+        config_type="procstat",
+        instance_id="('process-deployment-instance',)",
+    )
+    node_mgmt = FakeNodeMgmt(
+        [
+            {"id": "child-live", "node_id": "node-2"},
+            {"id": "child-process", "node_id": "node-1"},
+            {"id": "child-orphan", "node_id": "node-1"},
+        ]
+    )
+    deployment_status = HostDeploymentStatus(node_mgmt=node_mgmt)
+
+    released = deployment_status.release_unbound_child_configs(["node-1", "node-2"])
+
+    assert released == ["child-orphan"]
+    assert node_mgmt.deleted == [["child-orphan"]]
+    assert deployment_status.get_configured_node_ids(["node-1", "node-2"]) == {"node-2"}
+
+
+@pytest.mark.django_db
+def test_registry_ignores_process_host_child_config_on_same_node():
+    node, child_id = _create_host_topology(child_id="host-process-procstat")
+    _create_live_collect_config(
+        child_id,
+        object_name="Process",
+        config_type="procstat",
+        instance_id="('process-procstat-instance',)",
+    )
+
+    configured_node_ids = HostDeploymentStatus(node_mgmt=NodeMgmt(is_local_client=True)).get_configured_node_ids([node.id])
+
+    assert configured_node_ids == set()
 
 
 @pytest.mark.django_db
@@ -107,9 +195,7 @@ def test_host_onboarding_rejects_node_with_deployed_monitoring(mocker):
 @pytest.mark.django_db
 def test_host_onboarding_rejects_existing_instance_with_different_metric_type(mocker):
     host = MonitorObject.objects.create(name="Host", level="base")
-    instance = MonitorInstance.objects.create(
-        id="('host-1',)", name="host-1", monitor_object=host
-    )
+    instance = MonitorInstance.objects.create(id="('host-1',)", name="host-1", monitor_object=host)
     CollectConfig.objects.create(
         id="host-cpu-config",
         monitor_instance=instance,
@@ -122,6 +208,10 @@ def test_host_onboarding_rejects_existing_instance_with_different_metric_type(mo
     mocker.patch(
         "apps.monitor.services.node_mgmt.HostDeploymentStatus.get_configured_node_ids",
         return_value=set(),
+    )
+    mocker.patch(
+        "apps.monitor.services.node_mgmt.HostDeploymentStatus.release_unbound_child_configs",
+        return_value=[],
     )
 
     with pytest.raises(BaseAppException, match="已存在主机监控配置"):
@@ -150,42 +240,53 @@ def test_local_host_onboarding_persists_selected_node_ip_as_instance_fact(mocker
         name="Host Fact Contract",
         collector="Telegraf",
         collect_type="host",
-        instance_fact_bindings=[{
-            "fact": "asset.ip",
-            "value_type": "ip",
-            "resolver": "selected_node",
-            "options": {"selection_field": "node_ids", "node_field": "ip", "required": True},
-        }],
+        instance_fact_bindings=[
+            {
+                "fact": "asset.ip",
+                "value_type": "ip",
+                "resolver": "selected_node",
+                "options": {"selection_field": "node_ids", "node_field": "ip", "required": True},
+            }
+        ],
     )
     plugin.monitor_object.add(host)
     node_mgmt = mocker.patch("apps.monitor.services.node_mgmt.NodeMgmt")
-    node_mgmt.return_value.get_nodes_by_ids.return_value = [{
-        "id": "node-1",
-        "name": "fusion-collector",
-        "ip": "10.0.41.149",
-    }]
+    node_mgmt.return_value.get_nodes_by_ids.return_value = [
+        {
+            "id": "node-1",
+            "name": "fusion-collector",
+            "ip": "10.0.41.149",
+        }
+    ]
     mocker.patch(
         "apps.monitor.services.node_mgmt.HostDeploymentStatus.get_configured_node_ids",
         return_value=set(),
     )
+    release = mocker.patch(
+        "apps.monitor.services.node_mgmt.HostDeploymentStatus.release_unbound_child_configs",
+        return_value=[],
+    )
     mocker.patch("apps.monitor.services.node_mgmt.Controller").return_value.controller.return_value = None
 
-    InstanceConfigService.create_monitor_instance_by_node_mgmt({
-        "monitor_object_id": host.id,
-        "monitor_plugin_id": plugin.id,
-        "collector": "Telegraf",
-        "collect_type": "host",
-        "configs": [],
-        "instances": [{
-            "instance_id": "host-1",
-            "instance_name": "fusion-collector",
-            "node_ids": ["node-1"],
-            "group_ids": [1],
-        }],
-    })
+    InstanceConfigService.create_monitor_instance_by_node_mgmt(
+        {
+            "monitor_object_id": host.id,
+            "monitor_plugin_id": plugin.id,
+            "collector": "Telegraf",
+            "collect_type": "host",
+            "configs": [],
+            "instances": [
+                {
+                    "instance_id": "host-1",
+                    "instance_name": "fusion-collector",
+                    "node_ids": ["node-1"],
+                    "group_ids": [1],
+                }
+            ],
+        }
+    )
 
     instance = MonitorInstance.objects.get(id="('host-1',)")
     assert instance.summary_facts["asset.ip"] == "10.0.41.149"
-    assert instance.summary_facts["_sources"]["asset.ip"] == {
-        "Host Fact Contract": "10.0.41.149"
-    }
+    assert instance.summary_facts["_sources"]["asset.ip"] == {"Host Fact Contract": "10.0.41.149"}
+    release.assert_called_once_with(["node-1"])

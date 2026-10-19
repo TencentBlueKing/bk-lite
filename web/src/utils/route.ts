@@ -3,11 +3,22 @@ const DEFAULT_CLIENT_ID = 'ops-console';
 /** Portal landing after sign-in and for the `/` route. */
 export const PORTAL_HOME_PATH = '/ops-console/home';
 
+export const isModuleLinkRoute = (pathname: string | null | undefined): boolean => {
+  if (!pathname) {
+    return false;
+  }
+  return pathname === '/module-link' || pathname.startsWith('/module-link/');
+};
+
 const clientIdFromPathname = (pathname: string): string => {
   const pathSegments = pathname.split('/').filter(Boolean);
 
   if (pathSegments.length > 0 && pathSegments[0] === 'auth') {
     return DEFAULT_CLIENT_ID;
+  }
+
+  if (isModuleLinkRoute(pathname)) {
+    return pathname.startsWith('/module-link/monitor-cmdb') ? 'monitor' : 'cmdb';
   }
 
   if (pathSegments.length > 0) {
@@ -37,6 +48,7 @@ export const isAppClientMenuRoute = (pathname: string | null | undefined): boole
     pathname.startsWith('/auth/')
     || pathname === '/no-permission'
     || pathname === '/no-found'
+    || isModuleLinkRoute(pathname)
   );
 };
 

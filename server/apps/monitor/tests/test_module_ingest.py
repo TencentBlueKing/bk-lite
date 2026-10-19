@@ -1212,6 +1212,7 @@ def _stop_collect_mock_and_stub_controller(mock_collect_apply, mocker):
     mock_collect_apply.stop()
     mocker.patch("apps.monitor.services.node_mgmt.Controller")
     mocker.patch.object(HostDeploymentStatus, "get_configured_node_ids", return_value=set())
+    mocker.patch.object(HostDeploymentStatus, "release_unbound_child_configs", return_value=[])
     mocker.patch("apps.rpc.node_mgmt.NodeMgmt.get_nodes_by_ids", return_value=[])
 
 

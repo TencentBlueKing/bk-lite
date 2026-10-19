@@ -1,5 +1,7 @@
 import fs from 'fs/promises';
 
+const ALWAYS_ON_APPS = ['module-link'];
+
 const parseInstallApps = (value?: string) => {
   return (value || '')
     .split(',')
@@ -22,7 +24,7 @@ const discoverInstallApps = async (appRoot: string) => {
 export const getInstallApps = async (appRoots: string[]) => {
   const configuredApps = parseInstallApps(process.env.NEXTAPI_INSTALL_APP);
   if (configuredApps.length > 0) {
-    return configuredApps;
+    return Array.from(new Set([...configuredApps, ...ALWAYS_ON_APPS]));
   }
 
   const discoveredApps = await Promise.all(appRoots.map(discoverInstallApps));

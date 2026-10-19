@@ -2,6 +2,7 @@
 import './register-list-pilot';
 import React, { useEffect, useState, useRef } from 'react';
 import {
+  Alert,
   Button,
   Tooltip,
   message,
@@ -483,10 +484,12 @@ const Integration = () => {
       return;
     }
     const icon = getPluginBrandIcon(app.name) || result.context.objectIcon;
+    const cmdbDraft = searchParams.get('cmdb_draft');
     router.push(
       buildIntegrationConfigureUrl(
         { ...result.context, objectIcon: icon },
-        OBJECT_DEFAULT_ICON
+        OBJECT_DEFAULT_ICON,
+        cmdbDraft ? { cmdb_draft: cmdbDraft } : undefined
       )
     );
   };
@@ -577,6 +580,14 @@ const Integration = () => {
         </div>
       </ResizableSidebar>
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-5">
+        {searchParams.get('cmdb_draft') ? (
+          <Alert
+            className="mb-3"
+            type="info"
+            showIcon
+            message={t('monitor.integrations.cmdbDraftHint')}
+          />
+        ) : null}
         <SearchActionBar
           searchProps={{
             placeholder: t('common.searchPlaceHolder'),

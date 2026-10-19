@@ -90,7 +90,7 @@ class TestGetInstallAppsLicense:
         monkeypatch.setenv("INSTALL_APPS", "opspilot")
         with patch(_DETECTOR_PATH, return_value=status):
             result = get_install_apps()
-        assert result == {"opspilot", "system_mgmt", "console_mgmt"}
+        assert result == {"opspilot", "system_mgmt", "console_mgmt", "module_link"}
 
 
 class TestCommandHandleEnterpriseFootprintPropagation:

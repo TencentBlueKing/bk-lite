@@ -21,6 +21,7 @@ const commonDirs = [
   'src/app/layout.tsx',
   'src/app/page.tsx',
   'src/app/no-found.tsx',
+  'src/app/module-link/**/*',
   'src/components/**/*',
   'src/constants/**/*',
   'src/context/**/*',
