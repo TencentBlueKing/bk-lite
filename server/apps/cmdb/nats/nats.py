@@ -66,6 +66,7 @@ from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_utc
 from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
+from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
@@ -785,7 +786,13 @@ def ingest_from_source(params):
       allowed_org_ids / service_scope.allowed_org_ids / user_info
     """
     params = dict(params or {})
-    params["allowed_org_ids"] = _resolve_allowed_org_ids(params)
+    event_type = str(params.get("event_type") or "")
+    try:
+        params["allowed_org_ids"] = _resolve_allowed_org_ids(params)
+    except ValueError:
+        if event_type != EVENT_LIFECYCLE:
+            raise
+        params["allowed_org_ids"] = []
     return CmdbModuleIngestService.ingest(params)
 
 

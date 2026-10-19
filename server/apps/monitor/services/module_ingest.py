@@ -89,8 +89,9 @@ class MonitorModuleIngestService:
 
     @classmethod
     def ingest(cls, params: dict[str, Any]) -> dict[str, Any]:
+        event_type = str(params.get("event_type") or EVENT_UPSERT).strip()
         allowed_org_ids = params.get("allowed_org_ids")
-        if not allowed_org_ids:
+        if event_type != EVENT_LIFECYCLE and not allowed_org_ids:
             raise ValueError("authorization scope is required for monitor ingest")
 
         raw = params.get("raw") or {}
@@ -123,7 +124,6 @@ class MonitorModuleIngestService:
                 ignored=True,
             ).as_dict()
 
-        event_type = str(params.get("event_type") or EVENT_UPSERT).strip()
         if event_type == EVENT_LIFECYCLE:
             return cls._handle_lifecycle(
                 raw=raw,
@@ -1104,21 +1104,30 @@ class MonitorModuleIngestService:
             )
             return IngestResult(id=monitor_id, ignored=True).as_dict()
 
-        # 节点删除确认清理：软删监控资产
+        # 节点删除确认清理：软删监控资产，并清对端 CMDB 指针（不动 CMDB 资产）
         if source_module == "node_mgmt" and action in ("retire", "archive", "stop", ""):
-            if existing.is_deleted and not existing.is_active:
+            leftover_cmdb_id = cls._normalize_optional_str(existing.cmdb_id)
+            already_retired = existing.is_deleted and not existing.is_active
+            if already_retired and not leftover_cmdb_id:
                 return IngestResult(id=existing.id, ignored=True).as_dict()
 
+            snapshot = cls._lifecycle_unlink_snapshot(existing) if leftover_cmdb_id else None
             update_fields = ["is_active", "is_deleted", "updated_at"]
             existing.is_active = False
             existing.is_deleted = True
+            if leftover_cmdb_id:
+                existing.cmdb_id = None
+                update_fields.append("cmdb_id")
             if operator:
                 existing.updated_by = operator
                 update_fields.append("updated_by")
             existing.save(update_fields=update_fields)
+            if snapshot:
+                cls._best_effort_notify_cmdb_unlink(snapshot, operator=operator)
             logger.info(
-                "[MonitorModuleIngest] lifecycle retire soft-deactivated instance_id=%s",
+                "[MonitorModuleIngest] lifecycle retire soft-deactivated instance_id=%s cmdb_id_cleared=%s",
                 existing.id,
+                bool(leftover_cmdb_id),
             )
             return IngestResult(id=existing.id, updated=True).as_dict()
 
@@ -1151,6 +1160,37 @@ class MonitorModuleIngestService:
             source_module,
         )
         return IngestResult(id=existing.id, updated=True).as_dict()
+
+    @staticmethod
+    def _lifecycle_unlink_snapshot(instance: MonitorInstance) -> dict[str, Any]:
+        return {
+            "id": str(instance.id),
+            "name": instance.name,
+            "ip": str(instance.ip) if instance.ip else None,
+            "cloud_region_id": instance.cloud_region_id,
+            "node_id": str(instance.node_id or "").strip() or None,
+            "cmdb_id": str(instance.cmdb_id or "").strip() or None,
+            "monitor_object_name": getattr(instance.monitor_object, "name", None),
+            "organization_ids": list(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True)),
+        }
+
+    @staticmethod
+    def _best_effort_notify_cmdb_unlink(snapshot: dict[str, Any], *, operator: str) -> None:
+        try:
+            from apps.monitor.services.module_push import MonitorToCmdbPushService
+
+            MonitorToCmdbPushService.best_effort_notify_on_delete(
+                [snapshot],
+                operator=operator or "",
+                allowed_org_ids=list(snapshot.get("organization_ids") or []),
+            )
+        except Exception as exc:
+            logger.exception(
+                "[MonitorModuleIngest] retire notify cmdb unlink failed monitor_id=%s failed_stage=%s error_type=%s",
+                snapshot.get("id"),
+                "cmdb_unlink_notify",
+                type(exc).__name__,
+            )
 
     @classmethod
     def _find_by_pk(cls, instance_id: str) -> MonitorInstance | None:

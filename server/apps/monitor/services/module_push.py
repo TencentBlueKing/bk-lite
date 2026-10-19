@@ -12,6 +12,8 @@ from apps.node_mgmt.services.module_push_contract import (
     EVENT_LIFECYCLE,
     EVENT_UPSERT,
     IngestEnvelope,
+    actor_scope_with_instance_orgs,
+    ingest_auth_kwargs,
 )
 from apps.rpc.cmdb import CMDB
 from apps.rpc.node_mgmt import NodeMgmt
@@ -63,11 +65,7 @@ class MonitorToCmdbPushService:
         *,
         actor_scope: dict[str, Any],
     ) -> dict[str, Any]:
-        instance = (
-            MonitorInstance.objects.filter(id=str(inst_id), is_deleted=False)
-            .select_related("monitor_object")
-            .first()
-        )
+        instance = MonitorInstance.objects.filter(id=str(inst_id), is_deleted=False).select_related("monitor_object").first()
         if not instance:
             raise ValueError(f"monitor instance not found: {inst_id}")
 
@@ -91,11 +89,7 @@ class MonitorToCmdbPushService:
 
         # 成功响应回填 cmdb_id（含幂等命中）；ignored/conflict 不回填
         result_id = result.get("id")
-        if (
-            result_id is not None
-            and not result.get("ignored")
-            and not result.get("conflict")
-        ):
+        if result_id is not None and not result.get("ignored") and not result.get("conflict"):
             new_cmdb_id = str(result_id)
             if instance.cmdb_id != new_cmdb_id:
                 instance.cmdb_id = new_cmdb_id
@@ -131,9 +125,7 @@ class MonitorToCmdbPushService:
                     instance.node_id = linked
                     instance.save(update_fields=["node_id", "updated_at"])
             except Exception:
-                logger.exception(
-                    "[MonitorIoC] notify node failed monitor_id=%s", instance.id
-                )
+                logger.exception("[MonitorIoC] notify node failed monitor_id=%s", instance.id)
 
             try:
                 from apps.cmdb.services.module_ingest import CmdbModuleIngestService
@@ -149,19 +141,13 @@ class MonitorToCmdbPushService:
                 if not isinstance(result, dict):
                     result = {"id": result}
                 result_id = result.get("id")
-                if (
-                    result_id is not None
-                    and not result.get("ignored")
-                    and not result.get("conflict")
-                ):
+                if result_id is not None and not result.get("ignored") and not result.get("conflict"):
                     new_cmdb_id = str(result_id)
                     if instance.cmdb_id != new_cmdb_id:
                         instance.cmdb_id = new_cmdb_id
                         instance.save(update_fields=["cmdb_id", "updated_at"])
             except Exception:
-                logger.exception(
-                    "[MonitorIoC] notify cmdb failed monitor_id=%s", instance.id
-                )
+                logger.exception("[MonitorIoC] notify cmdb failed monitor_id=%s", instance.id)
         except Exception:
             logger.exception(
                 "[MonitorIoC] best_effort_notify_on_host_create failed monitor_id=%s",
@@ -175,11 +161,7 @@ class MonitorToCmdbPushService:
         *,
         actor_scope: dict[str, Any],
     ) -> dict[str, Any]:
-        org_ids = list(
-            MonitorInstanceOrganization.objects.filter(
-                monitor_instance=instance
-            ).values_list("organization", flat=True)
-        )
+        org_ids = list(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True))
         raw: dict[str, Any] = {
             "ip": str(instance.ip) if instance.ip else None,
             "ip_addr": str(instance.ip) if instance.ip else None,
@@ -231,14 +213,8 @@ class MonitorToCmdbPushService:
 
     @classmethod
     def _build_envelope(cls, instance: MonitorInstance) -> dict[str, Any]:
-        org_ids = list(
-            MonitorInstanceOrganization.objects.filter(
-                monitor_instance=instance
-            ).values_list("organization", flat=True)
-        )
-        model_id = resolve_cmdb_model_id(
-            getattr(instance.monitor_object, "name", None)
-        )
+        org_ids = list(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True))
+        model_id = resolve_cmdb_model_id(getattr(instance.monitor_object, "name", None))
         raw: dict[str, Any] = {
             "ip": str(instance.ip) if instance.ip else None,
             "ip_addr": str(instance.ip) if instance.ip else None,
@@ -301,9 +277,7 @@ class MonitorToCmdbPushService:
                 except Exception:
                     logger.exception(
                         "[MonitorIoC] delete notify one failed monitor_id=%s",
-                        getattr(instance, "id", None)
-                        if not isinstance(instance, dict)
-                        else instance.get("id"),
+                        getattr(instance, "id", None) if not isinstance(instance, dict) else instance.get("id"),
                     )
         except Exception:
             logger.exception("[MonitorIoC] best_effort_notify_on_delete failed")
@@ -328,11 +302,7 @@ class MonitorToCmdbPushService:
             monitor_id = str(instance.id)
             node_id = str(instance.node_id or "").strip() or None
             cmdb_id = str(instance.cmdb_id or "").strip() or None
-            org_ids = list(
-                MonitorInstanceOrganization.objects.filter(
-                    monitor_instance=instance
-                ).values_list("organization", flat=True)
-            )
+            org_ids = list(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True))
             object_name = getattr(instance.monitor_object, "name", None)
             ip = str(instance.ip) if instance.ip else None
             name = instance.name
@@ -357,6 +327,7 @@ class MonitorToCmdbPushService:
             link_ids["cmdb_id"] = cmdb_id
 
         occurred_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        delete_scope = actor_scope_with_instance_orgs(actor_scope, org_ids)
         base = {
             "source_module": MODULE_NAME,
             "source_id": monitor_id,
@@ -364,8 +335,7 @@ class MonitorToCmdbPushService:
             "occurred_at": occurred_at,
             "raw": raw,
             "link_ids": link_ids,
-            "allowed_org_ids": list(actor_scope.get("allowed_org_ids") or []),
-            "operator": actor_scope.get("operator") or "",
+            **ingest_auth_kwargs(delete_scope),
         }
 
         try:
@@ -380,9 +350,7 @@ class MonitorToCmdbPushService:
             except Exception:
                 NodeMgmt().ingest_from_source(**payload)
         except Exception:
-            logger.exception(
-                "[MonitorIoC] delete notify node failed monitor_id=%s", monitor_id
-            )
+            logger.exception("[MonitorIoC] delete notify node failed monitor_id=%s", monitor_id)
 
         try:
             from apps.cmdb.services.module_ingest import CmdbModuleIngestService
@@ -396,6 +364,4 @@ class MonitorToCmdbPushService:
             except Exception:
                 CMDB().ingest_from_source(**payload)
         except Exception:
-            logger.exception(
-                "[MonitorIoC] delete notify cmdb failed monitor_id=%s", monitor_id
-            )
+            logger.exception("[MonitorIoC] delete notify cmdb failed monitor_id=%s", monitor_id)

@@ -1327,7 +1327,8 @@ class InstanceManage(object):
 
         update_attr = dict(update_attr)
         ensure_instance_identity_immutable(update_attr)
-        # 用户写路径剔除系统联动字段；IoC 回填走 skip_permission_check=True 时保留
+        # 用户改 IP/名称/组织不断开既有绑定，也不允许把 monitor_id/node_id 改写成别的对象。
+        # IoC 回填走 skip_permission_check=True 时保留系统联动字段。
         if not skip_permission_check:
             update_attr = strip_system_link_fields(update_attr)
         inst_info = InstanceManage.query_entity_by_id(inst_id)
@@ -1453,8 +1454,9 @@ class InstanceManage(object):
         allowed_org_ids: list | None = None,
     ):
         """批量修改实例属性"""
+        from apps.cmdb.services.module_ingest import strip_system_link_fields
 
-        update_attr = dict(update_attr)
+        update_attr = strip_system_link_fields(dict(update_attr))
         ensure_instance_identity_immutable(update_attr)
         inst_ids = _normalize_batch_instance_ids(inst_ids)
         inst_list = _require_complete_batch_instances(

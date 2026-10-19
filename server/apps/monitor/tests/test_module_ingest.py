@@ -2,6 +2,7 @@
 
 import json
 import logging
+import traceback
 from pathlib import Path
 
 import pytest
@@ -1162,6 +1163,109 @@ def test_lifecycle_retire_soft_deactivates_without_hard_delete(host_object):
     assert inst.is_deleted is True
     assert inst.is_active is False
     assert MonitorInstance.objects.filter(id=inst_id, is_deleted=False).count() == 0
+
+
+@pytest.mark.django_db
+def test_lifecycle_from_cmdb_without_org_scope_still_clears_cmdb_id(host_object):
+    created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-unlink-empty", "cmdb_id": "88"}))
+    inst = MonitorInstance.objects.get(id=created["id"])
+    payload = _params(
+        source_module="cmdb",
+        source_id="88",
+        event_type="lifecycle",
+        link_ids={"cmdb_id": "88", "monitor_id": inst.id},
+        raw={"action": "unlink"},
+    )
+    payload["allowed_org_ids"] = []
+
+    result = MonitorModuleIngestService.ingest(payload)
+
+    assert result["updated"] is True
+    inst.refresh_from_db()
+    assert inst.cmdb_id in (None, "")
+    assert inst.node_id == "n-unlink-empty"
+    assert inst.is_deleted is False
+
+
+@pytest.mark.django_db
+def test_upsert_still_requires_allowed_org_ids(host_object):
+    payload = _params()
+    payload["allowed_org_ids"] = []
+    with pytest.raises(ValueError, match="authorization scope"):
+        MonitorModuleIngestService.ingest(payload)
+
+
+@pytest.mark.django_db
+def test_lifecycle_retire_clears_cmdb_id_and_notifies_cmdb(host_object, mocker, caplog):
+    created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-ret-ci", "cmdb_id": "ci-9"}))
+    inst_id = created["id"]
+    notify = mocker.patch(
+        "apps.monitor.services.module_push.MonitorToCmdbPushService.best_effort_notify_on_delete",
+    )
+
+    with caplog.at_level(logging.INFO, logger="monitor"):
+        result = MonitorModuleIngestService.ingest(
+            _params(
+                source_id="n-ret-ci",
+                event_type="lifecycle",
+                link_ids={"node_id": "n-ret-ci", "monitor_id": inst_id, "cmdb_id": "ci-9"},
+                raw={"action": "retire"},
+            )
+        )
+
+    assert result["updated"] is True
+    inst = MonitorInstance.objects.get(id=inst_id)
+    assert inst.is_deleted is True
+    assert inst.is_active is False
+    assert inst.cmdb_id in (None, "")
+    notify.assert_called_once()
+    snapshot = notify.call_args.args[0][0]
+    assert snapshot["id"] == inst_id
+    assert snapshot["cmdb_id"] == "ci-9"
+    retire_logs = [r for r in caplog.records if "lifecycle retire soft-deactivated" in r.msg]
+    assert retire_logs
+    assert retire_logs[0].msg == ("[MonitorModuleIngest] lifecycle retire soft-deactivated instance_id=%s cmdb_id_cleared=%s")
+    assert retire_logs[0].args == (inst_id, True)
+    assert "ci-9" not in retire_logs[0].getMessage()
+
+
+@pytest.mark.django_db
+def test_lifecycle_retire_survives_cmdb_notify_failure(host_object, mocker, caplog):
+    created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-ret-fail", "cmdb_id": "ci-fail"}))
+    inst_id = created["id"]
+    mocker.patch(
+        "apps.monitor.services.module_push.MonitorToCmdbPushService.best_effort_notify_on_delete",
+        side_effect=RuntimeError("peer unavailable"),
+    )
+
+    with caplog.at_level(logging.ERROR, logger="monitor"):
+        result = MonitorModuleIngestService.ingest(
+            _params(
+                source_id="n-ret-fail",
+                event_type="lifecycle",
+                link_ids={"node_id": "n-ret-fail", "monitor_id": inst_id, "cmdb_id": "ci-fail"},
+                raw={"action": "retire"},
+            )
+        )
+
+    assert result["updated"] is True
+    inst = MonitorInstance.objects.get(id=inst_id)
+    assert inst.is_deleted is True
+    assert inst.cmdb_id in (None, "")
+    fail_logs = [r for r in caplog.records if "retire notify cmdb unlink failed" in r.msg]
+    assert fail_logs
+    assert fail_logs[0].msg == ("[MonitorModuleIngest] retire notify cmdb unlink failed monitor_id=%s failed_stage=%s error_type=%s")
+    assert fail_logs[0].args == (inst_id, "cmdb_unlink_notify", "RuntimeError")
+    assert fail_logs[0].exc_info is not None
+    formatted = fail_logs[0].getMessage()
+    assert inst_id in formatted
+    assert "failed_stage=cmdb_unlink_notify" in formatted
+    assert "error_type=RuntimeError" in formatted
+    assert "ci-fail" not in formatted
+    assert "peer unavailable" not in formatted
+    traceback_text = "".join(traceback.format_exception(*fail_logs[0].exc_info))
+    assert "RuntimeError: peer unavailable" in traceback_text
+    assert traceback_text.count("Traceback (most recent call last):") == 1
 
 
 @pytest.mark.django_db

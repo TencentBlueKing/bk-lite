@@ -17,8 +17,7 @@ from apps.cmdb.services.monitored_host import normalize_zombie_whitelist
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as monitor_logger
 from apps.core.logger import nats_logger as logger
-from apps.core.logger import safe_exception_info
-from apps.core.logger import safe_log_value
+from apps.core.logger import safe_exception_info, safe_log_value
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
@@ -121,6 +120,7 @@ from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
+from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE
 from apps.rpc.system_mgmt import SystemMgmt
 
 _normalize_bool = normalize_bool
@@ -827,13 +827,9 @@ def _license_monitor_instance_labels(data, kwargs):
     try:
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=language)
         stored_names = {
-            name: display_name
-            for name, display_name in MonitorObject.objects.filter(name__in=list(data)).values_list("name", "display_name")
+            name: display_name for name, display_name in MonitorObject.objects.filter(name__in=list(data)).values_list("name", "display_name")
         }
-        return {
-            name: lan.get(f"{LanguageConstants.MONITOR_OBJECT}.{name}") or stored_names.get(name) or name
-            for name in data
-        }
+        return {name: lan.get(f"{LanguageConstants.MONITOR_OBJECT}.{name}") or stored_names.get(name) or name for name in data}
     except Exception as exc:
         monitor_logger.warning(
             "event=license_monitor_labels_skipped failed_stage=%s error_type=%s",
@@ -2928,17 +2924,29 @@ def _resolve_monitor_ingest_allowed_org_ids(params):
 
     无 user_info 时保持旧语义，信任报文 allowed_org_ids。
     有 user_info 时按服务端身份重算范围并与报文取交集。
+    lifecycle 按精确 ID 清指针：组织缺失或与操作者不相交时仍放行 claimed/空范围。
     """
-    claimed = _claimed_monitor_ingest_org_ids(params)
+    is_lifecycle = str((params or {}).get("event_type") or "") == EVENT_LIFECYCLE
+    try:
+        claimed = _claimed_monitor_ingest_org_ids(params)
+    except (ValueError, BaseAppException):
+        if is_lifecycle:
+            return set()
+        raise
+
     user_info = (params or {}).get("user_info")
     if not isinstance(user_info, dict) or not user_info:
         return claimed
 
     _user, _team, _include_children, scope_ids, _is_superuser, error = _get_nats_actor_scope(user_info)
     if error:
+        if is_lifecycle:
+            return claimed
         raise ValueError(error.get("message") or "authorization scope is required for monitor ingest")
     intersection = claimed & scope_ids
     if not intersection:
+        if is_lifecycle:
+            return claimed
         raise ValueError("allowed_org_ids 不在授权范围内")
     return intersection
 
