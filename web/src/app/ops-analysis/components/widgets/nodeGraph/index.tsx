@@ -16,6 +16,10 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import {
+  dataLinkTooltipFooterStyle,
+  resolveDataLinkTooltipTheme,
+} from '@/app/ops-analysis/utils/interactionLinkHint';
 import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import {
   NODE_GRAPH_NODE_HEIGHT,
@@ -81,7 +85,11 @@ const NodeGraph: React.FC<NodeGraphProps> = ({
   onReadyRef.current = onReady;
 
   const mapping = useMemo(() => toNodeGraphMapping(config), [config]);
-  const { openPoint } = useWidgetDataLink(config);
+  const { openPoint, chartTooltipHint } = useWidgetDataLink(config);
+  const linkTooltipTheme = resolveDataLinkTooltipTheme(
+    config?.chartThemeMode,
+    resolveOpsChartThemeName(),
+  );
   const linkPointsRef = useRef(buildInteractionPoints('nodeGraph', rawData, config));
   linkPointsRef.current = buildInteractionPoints('nodeGraph', rawData, config);
   const openPointRef = useRef(openPoint);
@@ -421,6 +429,9 @@ const NodeGraph: React.FC<NodeGraphProps> = ({
                 <span>{formatVisibleChartValue(hover.info.value, config)}</span>
               </div>
             )}
+            {chartTooltipHint ? (
+              <div style={dataLinkTooltipFooterStyle(linkTooltipTheme)}>{chartTooltipHint}</div>
+            ) : null}
           </div>
         ) : null}
       </div>

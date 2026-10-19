@@ -83,6 +83,11 @@ def test_weopsx_yaml_parses_and_binds_organization_and_time():
         assert value_config["filterBindings"]["organization__string"] is True
         bound_time = value_config["filterBindings"].get("time__timeRange") is True
         assert bound_time == (widget["id"] in TIME_BOUND_WIDGET_IDS), widget["id"]
+        if bound_time:
+            assert widget["name"].endswith("（$time$）"), widget["id"]
+        else:
+            assert "（$time$）" not in widget["name"], widget["id"]
+        assert "$organization$" not in widget["name"]
         org_param = next(param for param in value_config["dataSourceParams"] if param["name"] == "organization")
         assert org_param["filterType"] == "filter"
         assert (org_param.get("inputConfig") or {}).get("control") == "organization"

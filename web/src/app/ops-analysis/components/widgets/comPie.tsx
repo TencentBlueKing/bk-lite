@@ -25,6 +25,10 @@ import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueForm
 import { useTranslation } from '@/utils/i18n';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { pieSectorSelectedMode } from '@/app/ops-analysis/utils/interactionBehavior';
+import {
+  resolveDataLinkTooltipTheme,
+  wrapDataLinkTooltipFormatter,
+} from '@/app/ops-analysis/utils/interactionLinkHint';
 
 interface OsPieProps {
   rawData: any;
@@ -82,7 +86,8 @@ const OsPie: React.FC<OsPieProps> = ({
     isDataReady,
     onReady,
   });
-  const { link, surface, onChartClick } = useWidgetDataLink(config);
+  const { link, surface, onChartClick, chartTooltipHint } = useWidgetDataLink(config);
+  const linkTooltipTheme = resolveDataLinkTooltipTheme(config?.chartThemeMode, themeName);
   const sectorSelectedMode = pieSectorSelectedMode(surface, link?.kind);
   const onEvents = useMemo(
     () => ({ ...finishedEvents, click: onChartClick }),
@@ -105,7 +110,7 @@ const OsPie: React.FC<OsPieProps> = ({
         fontSize: scaleScreenMetric(12, screenRenderContext),
         color: chartTheme.tooltipTextColor,
       },
-      formatter: function (params: any) {
+      formatter: wrapDataLinkTooltipFormatter(function (params: any) {
         const percent = params.percent || 0;
         const tooltipPaddingY = scaleScreenMetric(4, screenRenderContext);
         const tooltipPaddingX = scaleScreenMetric(8, screenRenderContext);
@@ -121,7 +126,12 @@ const OsPie: React.FC<OsPieProps> = ({
             </div>
           </div>
         `;
-      },
+      }, {
+        surface,
+        link,
+        footerText: chartTooltipHint,
+        theme: linkTooltipTheme,
+      }),
     },
     legend: {
       show: false,
@@ -193,6 +203,10 @@ const OsPie: React.FC<OsPieProps> = ({
     pieTotalLabel,
     screenRenderContext,
     usesScreenChartTheme,
+    surface,
+    link,
+    chartTooltipHint,
+    linkTooltipTheme,
   ]);
 
   if (loading) {

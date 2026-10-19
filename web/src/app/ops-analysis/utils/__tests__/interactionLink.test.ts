@@ -4,7 +4,8 @@ import test from 'node:test';
 
 import type { UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
-import { buildInteractionPoints, cardListLinkPoints } from '@/app/ops-analysis/utils/interactionPoints';
+import { buildInteractionPoints, cardListLinkPoints, topNLinkPoints } from '@/app/ops-analysis/utils/interactionPoints';
+import { buildTopNItems } from '@/app/ops-analysis/utils/topNData';
 import { parseCardListItems, DEFAULT_CARD_LIST_MAX_ITEMS } from '@/app/ops-analysis/utils/cardList';
 import {
   interactionActionColumnTitle,
@@ -21,6 +22,8 @@ import {
   prepareInteractionNavigation,
   readChartClickPoint,
   readWidgetInteraction,
+  applicationTopologyLinkPoint,
+  interactionCapability,
   resolveInteractionUrl,
   sceneLinkPoint,
   shouldNavigateInteraction,
@@ -492,12 +495,22 @@ test('chart clicks expose the fields that exist on each widget', () => {
   });
   assert.equal(gauge[0]?.numeric, 40);
 
-  const topN = buildInteractionPoints('topN', [
+  const topNRows = [
     { name: 'a', value: 3 },
-  ], { topNLabelField: 'name', topNValueField: 'value' });
+    { name: '  ', value: 9 },
+    { name: 'b', value: '0' },
+  ];
+  const topNConfig = { topNLabelField: 'name', topNValueField: 'value' };
+  const topNItems = buildTopNItems(topNRows, 'name', 'value');
+  const topN = buildInteractionPoints('topN', topNRows, topNConfig);
+  assert.deepEqual(topNItems.map((item) => item.name), ['a', 'b']);
+  assert.deepEqual(topN, topNLinkPoints(topNItems, 'value'));
   assert.equal(topN[0]?.seriesName, 'a');
   assert.equal(topN[0]?.numeric, 3);
+  assert.equal(topN[0]?.raw, 3);
   assert.equal(topN[0]?.fields?.name, 'a');
+  assert.equal(topN[1]?.numeric, 0);
+  assert.equal(topN[1]?.raw, '0');
 
   const pie = buildInteractionPoints('pie', [
     { name: 'up', value: 2 },
@@ -593,6 +606,35 @@ test('chart clicks expose the fields that exist on each widget', () => {
       items: [{ id: 'sys-1', name: '门户' }],
     }, applicationLabels).map((item) => [item.label, item.token]),
     systems.map((item) => [item.label, item.token]),
+  );
+
+  assert.deepEqual(interactionCapability('applicationTopology'), {
+    title: true,
+    data: 'contextMenu',
+  });
+  const topologyTokens = [
+    '$__data.fields.object.id$',
+    '$__data.fields.object.name$',
+    '$__data.fields.object.model_id$',
+  ];
+  const topology = listPresentDataVariables('applicationTopology', null, applicationLabels);
+  assert.deepEqual(topology.map((item) => item.token), topologyTokens);
+  const nodeId = '9f3c2a10-6b2e-4d11-9a77-0c1e8b44aa01';
+  const topologyPoint = applicationTopologyLinkPoint({
+    id: nodeId,
+    name: '订单服务',
+    modelId: 'application',
+  });
+  assert.equal(topologyPoint.fields?.['object.id'], nodeId);
+  assert.equal(topologyPoint.fields?.['object.name'], '订单服务');
+  assert.equal(topologyPoint.fields?.['object.model_id'], 'application');
+  assert.equal(topologyPoint.fields?.['object.type'], undefined);
+  assert.equal(
+    resolveInteractionUrl(
+      '/cmdb/assetData/detail/baseInfo?model_id=$__data.fields.object.model_id$&inst_uuid=$__data.fields.object.id$&inst_name=$__data.fields.object.name$',
+      { definitions: [], values: {}, point: topologyPoint, now },
+    ),
+    `/cmdb/assetData/detail/baseInfo?model_id=application&inst_uuid=${nodeId}&inst_name=${encodeURIComponent('订单服务')}`,
   );
 });
 
@@ -1013,6 +1055,12 @@ test('interaction dropdown group names exist in Chinese and English', () => {
   assert.equal(en.interactionNoneHint, 'No interaction is set. The widget cannot be opened by clicking.');
   assert.equal(zh.interactionActionColumn, '操作');
   assert.equal(en.interactionActionColumn, 'Actions');
+  assert.equal(zh.interactionChartTooltipHint, '{name} ↗ 点击打开');
+  assert.equal(en.interactionChartTooltipHint, '{name} ↗ Click to open');
+  assert.equal(zh.interactionHoverHint, '点击打开：{name}');
+  assert.equal(en.interactionHoverHint, 'Click to open: {name}');
+  assert.equal(zh.interactionContextHint, '右键打开链接');
+  assert.equal(en.interactionContextHint, 'Right-click to open link');
   assert.equal(zh.interactionOpen, '打开链接');
   assert.equal(en.interactionOpen, 'Open link');
   assert.equal(zh.interactionUrlRequired, '请输入 URL');
@@ -1035,6 +1083,8 @@ test('interaction dropdown group names exist in Chinese and English', () => {
   assert.equal(en.interactionLinkTypeDataTip, 'Data link: click a point, bar, sector, or number to open');
   assert.equal(zh.interactionTitleOnlyTip, '该组件仅支持标题链接，点击标题旁图标打开');
   assert.equal(en.interactionTitleOnlyTip, 'This widget only supports a title link. Click the icon beside the title to open.');
+  assert.equal(zh.interactionTextTitleTip, '标题链接：文本后显示图标');
+  assert.equal(en.interactionTextTitleTip, 'Title link: an icon appears after the text');
   assert.equal(zh.interactionUrlPlaceholder, '输入 URL，键入 $ 插入变量');
   assert.equal(en.interactionUrlPlaceholder, 'Enter a URL, type $ to insert a variable');
   for (const key of [
