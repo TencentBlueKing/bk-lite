@@ -8,6 +8,7 @@ import {
   latestPreferSignal,
   pointsToChartData,
   showDiskFsTypeColumn,
+  showDiskInodeColumn,
   type EntityTableRow
 } from '../entity-series';
 import { hostCategoryText, type HostCategoryCopyKey } from './category-copy';
@@ -114,7 +115,8 @@ export default function DiskPane({
   selectedDeviceKey,
   onSelectMount,
   onSelectDevice,
-  hostLabel
+  hostLabel,
+  windowsHost
 }: {
   mountRows: EntityTableRow[];
   deviceRows: EntityTableRow[];
@@ -125,7 +127,6 @@ export default function DiskPane({
   onSelectMount: (key: string) => void;
   onSelectDevice: (key: string) => void;
   hostLabel: string;
-  /** 调用方仍传入。inode 列始终展示，缺采集显示 —，不再按系统藏列。 */
   windowsHost?: boolean;
 }) {
   const { t } = useDashboardText();
@@ -133,6 +134,7 @@ export default function DiskPane({
   const selectedMount = mountRows.find((row) => row.key === selectedMountKey) || mountRows[0] || null;
   const selectedDevice = deviceRows.find((row) => row.key === selectedDeviceKey) || deviceRows[0] || null;
   const showFsType = showDiskFsTypeColumn(mountRows);
+  const showInode = showDiskInodeColumn(mountRows, Boolean(windowsHost));
   const showMountBody = loading || mountRows.length > 0;
   const showDeviceBody = loading || deviceRows.length > 0;
   const emptyText = hostCategoryText(t, 'noData');
@@ -199,12 +201,12 @@ export default function DiskPane({
         );
       }
     },
-    {
+    ...(showInode ? [{
       key: 'disk_inodes_used_percent',
       title: hostCategoryText(t, 'inodeUsage'),
       unit: 'percent' as const,
       emptyDash: true
-    },
+    }] : []),
     ...(showFsType ? [{
       key: 'fstype',
       title: hostCategoryText(t, 'filesystemType'),

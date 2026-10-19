@@ -20,7 +20,7 @@ export function chatAttachmentEndpoints(sseUrl: string): { upload: string; downl
     const prefix = absolute ? `${url.origin}${pathPrefix}` : pathPrefix;
     return {
       upload: `${prefix}/skill_channel/chat_attachment/upload/`,
-      status: (id: number) => `${prefix}/skill_channel/chat_attachment/${id}`,
+      status: (id: number) => `${prefix}/skill_channel/chat_attachment/${id}/`,
       download: (id: number) => `${prefix}/skill_channel/chat_attachment/${id}/download/`,
     };
   } catch {

@@ -29,6 +29,29 @@ def test_load_params_fills_defaults():
     assert params["alert_template"] == {}
 
 
+def test_heartbeat_cron_uses_creator_timezone(monkeypatch):
+    monkeypatch.setattr(
+        "apps.alerts.notification_templates.timefmt.resolve_display_timezone",
+        lambda _usernames: "America/New_York",
+    )
+    strategy = SimpleNamespace(
+        id=1,
+        created_by="ny-user",
+        created_at=datetime.datetime(2026, 3, 20, 0, 0, tzinfo=datetime.timezone.utc),
+    )
+    params = {
+        "cron_expr": "0 9 * * *",
+        "grace_period": 0,
+        "activation_mode": "immediate",
+        "last_heartbeat_time": None,
+    }
+    now = datetime.datetime(2026, 3, 20, 12, 0, tzinfo=datetime.timezone.utc)
+
+    deadline = AggregationProcessor()._calculate_deadline(strategy, params, now)
+
+    assert deadline.astimezone(datetime.timezone.utc) == datetime.datetime(2026, 3, 20, 13, 0, tzinfo=datetime.timezone.utc)
+
+
 def test_load_params_preserves_existing():
     strategy = SimpleNamespace(params={"grace_period": 5, "cron_expr": "* * * * *"})
     params = AggregationProcessor._load_params(strategy)

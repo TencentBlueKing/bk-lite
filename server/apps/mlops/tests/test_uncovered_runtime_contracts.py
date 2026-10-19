@@ -5,12 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 from django.http import Http404
+from django.utils import translation
 from rest_framework import serializers
 from rest_framework.response import Response
 
 from apps.mlops.management.commands.init_algorithm_config import Command
 from apps.mlops.models.mixins import ConfigSyncError
 from apps.mlops.models.object_detection import ObjectDetectionTrainJob
+from apps.mlops.utils.i18n import mlops_message_for_locale
 from apps.mlops.utils.webhook_client import (
     WebhookConnectionError,
     WebhookError,
@@ -94,7 +96,8 @@ def test_config_sync_uploads_complete_json_without_deleting_old_file(
     assert len(calls) == 1
 
 
-def test_config_sync_wraps_upload_failure_and_preserves_old_file(monkeypatch):
+@pytest.mark.parametrize("locale", [None, "zh-Hans", "en"])
+def test_config_sync_wraps_upload_failure_and_preserves_old_file(monkeypatch, locale):
     job = ObjectDetectionTrainJob(
         id=42,
         algorithm="yolo11",
@@ -115,8 +118,19 @@ def test_config_sync_wraps_upload_failure_and_preserves_old_file(monkeypatch):
         field.storage, "delete", lambda path: deleted.append(path)
     )
 
-    with pytest.raises(ConfigSyncError, match="storage offline"):
-        job._sync_config_to_minio()
+    with translation.override(locale):
+        with pytest.raises(ConfigSyncError) as exc:
+            job._sync_config_to_minio()
+
+    expected_locale = "zh-Hans" if locale is None else locale
+    assert type(exc.value) is ConfigSyncError
+    assert isinstance(exc.value.__cause__, OSError)
+    assert str(exc.value.__cause__) == "storage offline"
+    assert str(exc.value) == mlops_message_for_locale(
+        expected_locale,
+        "error.train_job_config_minio_sync_failed",
+        detail="storage offline",
+    )
     assert deleted == []
     assert job.config_url.name == "configs/old.json"
 

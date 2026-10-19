@@ -90,6 +90,7 @@ class MetricsCannula:
             old_by_id.update((row["_id"], row) for row in rows)
 
         if model_id == "host":
+            self._reuse_host_inst_name(ag, base_params, metrics)
             align_collected_host_inst_names(list(old_by_id.values()), metrics)
 
         organizations = {str(value) for value in (self.organization or [])}
@@ -117,6 +118,17 @@ class MetricsCannula:
                 accepted.append(row)
         old_data = [row for row in old_by_id.values() if row["inst_name"] not in conflicts]
         return old_data, accepted, failed
+
+    @staticmethod
+    def _reuse_host_inst_name(ag, base_params, metrics):
+        """同一云区域下内网 IP 不能重复。采集行已带云区域时，沿用该 IP+云区域的实例名。"""
+        ips = list(dict.fromkeys(str(row.get("ip_addr") or "").strip() for row in metrics if isinstance(row, dict)))
+        ips = [ip for ip in ips if ip]
+        found = []
+        for start in range(0, len(ips), 200):
+            rows, _ = ag.query_entity(INSTANCE, base_params + [{"field": "ip_addr", "type": "str[]", "value": ips[start : start + 200]}])
+            found.extend(rows)
+        align_collected_host_inst_names(found, metrics)
 
     def collect_controller(self) -> dict:
         if self.reconcile_task_assets and getattr(self.task, "model_id", None) == "vmware_vc":

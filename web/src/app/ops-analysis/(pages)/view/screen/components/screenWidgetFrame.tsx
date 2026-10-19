@@ -82,12 +82,10 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
           key="header"
           className="screen-widget-frame__header screen-widget-frame__drag-handle"
         >
-          <span
-            {...screenUniformTextProps(undefined, undefined, 'screen-widget-frame__title')}
-          >
-            {title || item.chartType}
+          <span {...screenUniformTextProps(undefined, undefined, 'screen-widget-frame__title-row')}>
+            <span className="screen-widget-frame__title">{title || item.chartType}</span>
+            <InteractionTitleIcon config={item.valueConfig} variant="screen" />
           </span>
-          <InteractionTitleIcon config={item.valueConfig} variant="screen" />
         </header>
       )}
       {isBare && editMode && (

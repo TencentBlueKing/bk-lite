@@ -2928,6 +2928,9 @@ class ToolsNodes(
             def _step_summary(messages: List[BaseMessage]) -> str:
                 return self._summarize_planned_step_messages(messages)
 
+            def _step_summary_for_limit_continue(messages: List[BaseMessage]) -> str:
+                return self._summarize_planned_step_for_limit_continue(messages)
+
             def _resolve_step_tools(step_tool_names: List[str]) -> list:
                 selected = [tool_by_name[name] for name in step_tool_names if name in tool_by_name]
                 selected_names = {getattr(tool, "name", "") for tool in selected}
@@ -3294,17 +3297,18 @@ class ToolsNodes(
                             continue
                         limit_kind = detect_limit_kind(step_messages)
                         if limit_kind:
-                            summary = _step_summary(step_messages) or "本步骤因调用/预算上限提前结束。"
+                            summary = _step_summary_for_limit_continue(step_messages)
                             question_text, tool_message = await ask_limit_continue(
                                 kind=limit_kind,
                                 step_objective=step.objective,
                                 config=config,
-                                messages=list(agent_state.get("messages") or []),
+                                messages=result_messages,
                                 summary=summary,
                             )
                             _collect_output_messages(step_messages + [tool_message, AIMessage(content=question_text)])
                             completed_steps.append(CompletedExecutionStep(objective=step.objective, result=summary))
                             pending_steps.clear()
+                            choice_stopped = True
                             agent_state = step_result
                             await _emit_step_boundary(
                                 "planned_execution_step",

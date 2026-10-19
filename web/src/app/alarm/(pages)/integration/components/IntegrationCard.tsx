@@ -5,7 +5,8 @@ import { EyeOutlined } from '@ant-design/icons';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import { SourceItem } from '@/app/alarm/types/integration';
-import { getHealth, getLogoColor, formatEventCount, formatTimestamp } from '../utils/health';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { getHealth, getLogoColor, formatEventCount } from '../utils/health';
 import GridEntityCard, {
   type GridEntityCardStatusTone,
 } from '@/components/grid-entity-card';
@@ -25,6 +26,7 @@ const HEALTH_TONE: Record<string, GridEntityCardStatusTone> = {
 
 const IntegrationCard: React.FC<IntegrationCardProps> = ({ src }) => {
   const { t } = useTranslation();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const router = useScreenAwareRouter();
   const health = getHealth(src);
   const logoColor = getLogoColor(src.source_id);
@@ -59,7 +61,9 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({ src }) => {
             <span className="w-[100px] shrink-0 text-[var(--color-text-3)]">
               {t('integration.lastEventTime')}
             </span>
-            <span className="tabular-nums">{formatTimestamp(src.last_event_time)}</span>
+            <span className="tabular-nums">
+              {src.last_event_time ? convertToLocalizedTime(src.last_event_time) : '--'}
+            </span>
           </div>
         </div>
       }

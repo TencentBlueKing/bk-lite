@@ -1180,6 +1180,8 @@ export const PlatformChat = React.forwardRef<HTMLDivElement, PlatformChatProps>(
   </WebChatLocaleProvider>
 ));
 
+PlatformChat.displayName = 'PlatformChat';
+
 export function shouldRenderPlatformChat(props: Pick<PlatformChatProps, 'platform' | 'sseUrl'>): boolean {
   return isPlatformMode(props);
 }

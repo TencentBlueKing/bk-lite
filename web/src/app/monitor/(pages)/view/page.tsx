@@ -144,10 +144,10 @@ const Integration = () => {
         )}
         {treeLoading ? (
           <div className="space-y-3 p-1" aria-busy="true" aria-label="loading">
-            <div className="h-10 animate-pulse rounded-md bg-[var(--color-fill-2)]" />
-            <div className="h-10 animate-pulse rounded-md bg-[var(--color-fill-2)]" />
+            <div className="h-10 animate-neutral-pulse rounded-md bg-[var(--color-fill-2)]" />
+            <div className="h-10 animate-neutral-pulse rounded-md bg-[var(--color-fill-2)]" />
             {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+              <div key={index} className="h-8 animate-neutral-pulse rounded-md bg-[var(--color-fill-1)]" />
             ))}
           </div>
         ) : !objects.length ? (

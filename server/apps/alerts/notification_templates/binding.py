@@ -12,6 +12,7 @@ from apps.alerts.models.notification_template import NotificationTemplate, Notif
 from apps.alerts.notification_templates.events import MAX_EVENT_ROWS, event_row, inspect_event_usage
 from apps.alerts.notification_templates.operation import is_managed_nats_channel
 from apps.alerts.notification_templates.renderer import build_alert_context, render_source
+from apps.alerts.notification_templates.timefmt import resolve_display_timezone
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids, get_authorized_group_ids
 from apps.system_mgmt.models.channel import Channel
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
@@ -136,7 +137,7 @@ def load_event_context(alert, sources, state=None):
     }
 
 
-def build_runtime_alert_context(alert, receivers, scene, notification_context=None, events_context=None):
+def build_runtime_alert_context(alert, receivers, scene, notification_context=None, events_context=None, display_timezone=None):
     """使用运行时告警和级别配置构造模板上下文。"""
     try:
         raw_level = int(getattr(alert, "level", ""))
@@ -157,6 +158,7 @@ def build_runtime_alert_context(alert, receivers, scene, notification_context=No
         level_color=level_color,
         notification_context=notification_context,
         events_context=events_context,
+        display_timezone=display_timezone,
     )
 
 
@@ -176,6 +178,7 @@ def render_bound_template(template_id, channel_type, alert, receivers, scene, no
     if not template.is_global and (not template_teams or not template_teams.intersection(alert_teams)):
         raise TemplateBindingError("模板与告警不属于同一团队")
 
+    display_timezone = resolve_display_timezone(receivers)
     sources = (content.subject_template, content.body_template)
     events_context = None
     if inspect_event_usage(sources).used:
@@ -183,7 +186,7 @@ def render_bound_template(template_id, channel_type, alert, receivers, scene, no
             events_context = event_context_loader(alert, sources)
         else:
             events_context = load_event_context(alert, sources)
-    context = build_runtime_alert_context(alert, receivers, scene, notification_context, events_context)
+    context = build_runtime_alert_context(alert, receivers, scene, notification_context, events_context, display_timezone)
     subject = render_source(
         content.subject_template,
         context,

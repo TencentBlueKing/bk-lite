@@ -483,6 +483,7 @@ def test_planned_execution_limit_middleware_messages_and_continue():
         PlannedExecutionLimitMiddleware,
         build_limit_exceeded_message,
         detect_limit_kind,
+        scrub_limit_markers_from_summary,
     )
 
     model_msg = build_limit_exceeded_message("model_calls", used=10, limit=10)
@@ -495,6 +496,8 @@ def test_planned_execution_limit_middleware_messages_and_continue():
 
     assert detect_limit_kind([AIMessage(content=model_msg)]) == "model_calls"
     assert detect_limit_kind([AIMessage(content=token_msg)]) == "token_budget"
+    assert LIMIT_MARKER_MODEL_CALLS not in scrub_limit_markers_from_summary(model_msg)
+    assert "暂时停止" not in scrub_limit_markers_from_summary(model_msg)
 
     accumulator = TokenUsageAccumulator()
     accumulator.total_tokens = 100

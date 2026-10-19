@@ -1046,7 +1046,7 @@ const SkillSettingsPage: React.FC = () => {
 
                   <Form.Item
                     label={t('skill.runModelCallLimit', '每步调用次数')}
-                    tooltip={t('skill.runModelCallLimitTip', '每个执行步骤里，模型可以发起调用的次数上限。达到后本步停止。')}
+                    tooltip={t('skill.runModelCallLimitTip', '每个执行步骤里，模型可以发起调用的次数上限。达到后询问是否继续。')}
                     className="!mb-3.5"
                   >
                     <InputNumber
@@ -1099,7 +1099,7 @@ const SkillSettingsPage: React.FC = () => {
                   <span className="text-[13px] font-semibold text-[var(--color-text-1)]">{t('chat.test')}</span>
                   {currentModelName && (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-bg)] px-2.5 py-0.5 text-xs text-[var(--color-text-2)] font-mono border border-[var(--color-border-1)] shadow-2xs">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-neutral-pulse" />
                       {currentModelName}
                     </span>
                   )}

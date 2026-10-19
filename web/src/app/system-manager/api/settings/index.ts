@@ -84,13 +84,24 @@ export interface NetworkWhiteListPage {
   items: NetworkWhiteListItem[];
 }
 
-export interface OpenAPIFieldSpec {
-  type: string;
-  required: boolean;
+export interface OpenAPIJsonSchema {
+  $schema?: string;
+  type?: string | string[];
+  format?: string;
+  properties?: Record<string, OpenAPIJsonSchema>;
+  required?: string[];
+  items?: OpenAPIJsonSchema;
+  enum?: unknown[];
+  nullable?: boolean;
   default?: unknown;
-  choices?: unknown;
-  min_value?: number;
-  max_value?: number;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
+  description?: string;
+  additionalProperties?: boolean | OpenAPIJsonSchema;
 }
 
 export interface OpenAPIInternalEndpoint {
@@ -99,7 +110,8 @@ export interface OpenAPIInternalEndpoint {
   summary: string;
   inject: string | null;
   permission: string;
-  request_schema: Record<string, OpenAPIFieldSpec>;
+  request_schema: OpenAPIJsonSchema;
+  response_schema: OpenAPIJsonSchema | null;
 }
 
 export interface OpenAPIService {

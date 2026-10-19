@@ -89,6 +89,7 @@ cmdb = [
 ]
 dev = [
     "django-debug-toolbar==4.2.0",
+    "jsonschema>=4.23,<5",
     "poethepoet>=0.37.0",
     "pytest-asyncio==0.26.0",
     "pytest-cov==4.1.0",
