@@ -24,8 +24,8 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.rpc.node_mgmt import NodeMgmt
 
 # 实例列表页插件状态查询的最大并发度：每个插件的 status_query 是一次独立 VM 读，
-# 去重后并发拉取以消除「插件越多越慢」的串行 N+1。保守默认 8，可经 env 调。
-PLUGIN_STATUS_QUERY_MAX_WORKERS = int(os.getenv("MONITOR_PLUGIN_STATUS_QUERY_MAX_WORKERS", "8"))
+# 去重后并发拉取。默认 4，避免多插件对象把连接打满；可经 env 调。
+PLUGIN_STATUS_QUERY_MAX_WORKERS = int(os.getenv("MONITOR_PLUGIN_STATUS_QUERY_MAX_WORKERS", "4"))
 
 # vm_params 中非 Enum 指标名的保留键（不参与通用 Enum 过滤）。
 _VM_PARAM_RESERVED_KEYS = frozenset({"instance_id", "node", "status", "asset.ip"})
