@@ -26,7 +26,7 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
-  const { active: dataLinkActive, openPoint } = useWidgetDataLink(config);
+  const { active: dataLinkActive, openPoint, hoverHint } = useWidgetDataLink(config);
   const points = useMemo(
     () => buildInteractionPoints('multiValue', rawData, config),
     [config, rawData],
@@ -71,7 +71,7 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
             className={`flex min-w-0 items-center justify-between gap-3 rounded px-2 py-1 ${dataLinkActive ? 'cursor-pointer' : ''}`}
             onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
           >
-            <Tooltip title={item.label}>
+            <Tooltip title={hoverHint ? <>{item.label}<br />{hoverHint}</> : item.label}>
               <span
                 className="min-w-0 flex-1 truncate text-left"
                 style={{ color: theme.axisLabelColor }}
@@ -79,7 +79,7 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
                 {item.label}
               </span>
             </Tooltip>
-            <Tooltip title={display.text}>
+            <Tooltip title={hoverHint ? <>{display.text}<br />{hoverHint}</> : display.text}>
               <span
                 className="shrink-0 truncate text-right font-semibold tabular-nums"
                 style={{ color: display.color }}

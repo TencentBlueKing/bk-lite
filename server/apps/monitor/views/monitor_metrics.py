@@ -32,6 +32,7 @@ from apps.monitor.services.custom_script_plugin import (
     is_script_collect_type,
     is_script_self_monitor_metric_name,
 )
+from apps.monitor.services.user_query_slots import with_user_query_slot
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.metric_keyword import apply_metric_keyword_filter
 from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder, is_raw_vector_selector
@@ -686,6 +687,7 @@ class MetricViewSet(viewsets.ModelViewSet):
         )
         return WebUtils.response_success({"updated": len(prepared)})
 
+    @with_user_query_slot()
     def list(self, request, *args, **kwargs):
         # Do not union a select_related queryset: joins would make the two SELECT
         # column sets differ. The bounded page is hydrated below in one query.
@@ -808,6 +810,7 @@ class MetricViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success()
 
     @action(detail=True, methods=["get"], url_path="vm-fields")
+    @with_user_query_slot()
     def vm_fields(self, request, *args, **kwargs):
         metric = self.get_object()
         return WebUtils.response_success(collect_vm_field_names(metric))

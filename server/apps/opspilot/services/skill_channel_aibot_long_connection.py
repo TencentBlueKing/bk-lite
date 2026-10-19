@@ -4,14 +4,22 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.services.skill_channel_aibot_long_connection_media import upload_wecom_file
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
+
+
+def _upload_error_code(exc: BaseException) -> str:
+    matched = re.search(r"errcode=(\d+)", str(exc))
+    return matched.group(1) if matched else "-"
+
 
 DEFAULT_LONG_CONNECTION_URL = "wss://openws.work.weixin.qq.com"
 LONG_CONNECTION_URL_ENV = "WECOM_AIBOT_LONG_CONNECTION_URL"
@@ -36,6 +44,8 @@ SUBSCRIBE_LOG_TEMPLATE = "event=wecom_aibot_long_connection_subscribed channel_i
 CONNECT_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_connect_failed channel_id=%s failed_stage=connect error_type=%s"
 TRANSPORT_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_transport_failed channel_id=%s failed_stage=read error_type=%s"
 REPLY_FINISHED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_reply_finished channel_id=%s outcome=%s"
+FILE_SENT_LOG_TEMPLATE = "event=wecom_aibot_long_connection_file_sent channel_id=%s"
+FILE_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_file_failed channel_id=%s failed_stage=upload error_type=%s error_code=%s"
 
 _RENEW_LOCK_SCRIPT = """
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -144,6 +154,9 @@ class AnswerRequest:
     def finish(self) -> None:
         self.session.complete_turn(self.turn)
 
+    def add_generated_file(self, filename: str, content: bytes) -> None:
+        self.session.note_file(self.turn, filename, content)
+
     def fail(self, message: str | None = None) -> None:
         self.session.fail_turn(self.turn, message)
 
@@ -162,6 +175,7 @@ class Turn:
     generated: str = ""
     closed: bool = False
     request: AnswerRequest | None = None
+    files: list[tuple[str, bytes]] = field(default_factory=list)
 
 
 @dataclass
@@ -235,15 +249,28 @@ class WecomAibotConnection:
             turn.generated = text
             self._maybe_refresh(turn, now)
 
+    def note_file(self, turn: Turn, filename: str, content: bytes) -> None:
+        if not isinstance(content, bytes) or not content:
+            return
+        with self._lock:
+            if turn.closed or (turn.request and turn.request.cancelled):
+                return
+            if any(existing == filename for existing, _content in turn.files):
+                return
+            turn.files.append((filename, content))
+
     def complete_turn(self, turn: Turn) -> None:
+        files: list[tuple[str, bytes]] = []
         with self._lock:
             if turn.closed or (turn.request and turn.request.cancelled):
                 return
             turn.closed = True
             content = (turn.generated or "").strip() or EMPTY_ANSWER_TEXT
+            files = list(turn.files)
             self._send_stream(turn, content, finish=True)
             self._persist_assistant(turn, content)
             self._turns.pop(turn.session_key, None)
+        self._deliver_files(turn, files)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "completed")
 
     def fail_turn(self, turn: Turn, message: str | None = None) -> None:
@@ -340,6 +367,25 @@ class WecomAibotConnection:
             last_sent_at=self.clock.now(),
         )
         self._send_stream(turn, UNSUPPORTED_TEXT, finish=True)
+
+    def _deliver_files(self, turn: Turn, files: list[tuple[str, bytes]]) -> None:
+        exchange = getattr(self.transport, "exchange", None)
+        if not files or exchange is None:
+            return
+        for filename, content in files:
+            try:
+                media_id = upload_wecom_file(exchange, filename=filename, content=content)
+                exchange(
+                    {
+                        "cmd": "aibot_respond_msg",
+                        "headers": {"req_id": turn.req_id},
+                        "body": {"msgtype": "file", "file": {"media_id": media_id}},
+                    }
+                )
+            except Exception as exc:
+                logger.warning(FILE_FAILED_LOG_TEMPLATE, self.channel.id, type(exc).__name__, _upload_error_code(exc))
+                continue
+            logger.info(FILE_SENT_LOG_TEMPLATE, self.channel.id)
 
     def _send_stream(self, turn: Turn, content: str, *, finish: bool) -> None:
         text = EnterpriseWechatAibotChatFlowUtils.truncate_markdown(content or "")

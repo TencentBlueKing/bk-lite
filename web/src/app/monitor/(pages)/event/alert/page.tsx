@@ -60,6 +60,7 @@ import {
   resolveMonitorObjectQueryId,
   resolveMonitorObjectTreeKey
 } from '@/app/monitor/utils/monitorObjectQuery';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 const { Option } = Select;
 
 const alertLevelTone = (level: string): StatusTone => {
@@ -348,33 +349,20 @@ const Alert: React.FC = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
-      (acc, item) => {
-        if (!acc[item.type]) {
-          acc[item.type] = {
-            title: item.display_type || '--',
-            key: item.type,
-            children: []
-          };
-        }
-        acc[item.type].children.push({
-          title: item.display_name || '--',
-          label: item.name || '--',
-          key: item.id,
-          icon: item.icon,
-          children: []
-        });
-        return acc;
-      },
-      {} as Record<string, TreeItem>
-    );
+    const tree = buildMonitorObjectSidebarTree(data, (item) => ({
+      title: item.display_name || '--',
+      label: item.name || '--',
+      key: item.id,
+      icon: item.icon,
+      children: []
+    }));
     return [
       {
         title: t('common.all'),
         key: 'all',
         children: []
       },
-      ...Object.values(groupedData)
+      ...tree
     ];
   };
 

@@ -34,6 +34,7 @@ from apps.opspilot.services.chat_attachment_service import (
     normalize_attachment_ids,
 )
 from apps.opspilot.services.history_service import HistoryService
+from apps.opspilot.services.skill_channel_aibot import append_short_connection_file_links
 from apps.opspilot.services.skill_channel_service import channel_allows_team, resolve_ops_pilot_guest_id
 from apps.opspilot.services.skill_memory_service import (
     annotate_pending_memory_rounds,
@@ -1402,6 +1403,7 @@ def execute_skill_channel_im_sync(
     user_message: str,
     external_user_id: str,
     session_id: str | None = None,
+    download_origin: str = "",
 ) -> str:
     """IM 异步任务内同步执行单 Agent，落库后返回纯文本回复。"""
     from apps.opspilot.services.chat_service import chat_service
@@ -1412,8 +1414,11 @@ def execute_skill_channel_im_sync(
 
     request_user = type("IMUser", (), {"username": external_user_id or "", "id": None, "locale": "en"})()
     params = build_skill_chat_params(skill, user_message, request_user)
+    execution_id = ""
     if getattr(channel, "channel_type", "") == "enterprise_wechat_aibot":
         params["reply_language"] = "match_user"
+        execution_id = str(uuid.uuid4())
+        params["execution_id"] = execution_id
     inject_skill_memory_prompt(params, skill, external_user_id, user_message)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
     params["skill_session_id"] = conversation.session_id
@@ -1425,6 +1430,8 @@ def execute_skill_channel_im_sync(
         content = str(result).strip()
     if not content:
         content = "处理完成，但未产生可展示内容"
+    if execution_id:
+        content = append_short_connection_file_links(content, execution_id, channel.id, origin=download_origin)
     append_message(conversation, SkillConversationMessage.ROLE_ASSISTANT, content)
     maybe_schedule_skill_memory_write(conversation)
     return content

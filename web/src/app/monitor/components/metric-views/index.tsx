@@ -33,6 +33,7 @@ import {
   useMetricSelectOptions,
 } from '@/app/monitor/components/metricSelectOptions';
 import { buildSearchTimeQueryParams } from '@/app/monitor/utils/searchTimeQuery';
+import { shouldSkipPeriodicRefresh } from '@/app/monitor/utils/metricRequestSlot';
 import {
   MAX_CONCURRENT_METRIC_REQUESTS,
   executeMetricViewRequest,
@@ -210,6 +211,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   // 只允许可视区域及下一行卡片以最多四路请求排队加载。
   const MAX_CONCURRENT_REQUESTS = MAX_CONCURRENT_METRIC_REQUESTS;
   const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
+  const refreshInFlightRef = useRef(false);
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
   const requestGenerationRef = useRef(0);
   const visibleMetricIdsRef = useRef<Set<number>>(new Set());
@@ -794,18 +796,30 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       return;
     }
     if (type === 'timer') {
+      if (
+        shouldSkipPeriodicRefresh(
+          refreshInFlightRef.current || activeRequestsRef.current.size > 0
+        )
+      ) {
+        return;
+      }
       // 定时刷新只重拉当前视口内卡片，保留离屏 viewData，避免全量清空导致卡顿。
       const visibleIds = Array.from(visibleMetricIdsRef.current);
       if (!visibleIds.length) {
         return;
       }
       const visibleIdSet = new Set(visibleIds);
+      const jobs: Promise<unknown>[] = [];
+      refreshInFlightRef.current = true;
       metricDataRef.current.forEach((group) => {
         (group.child || []).forEach((metric: MetricItem) => {
           if (visibleIdSet.has(metric.id)) {
-            void fetchSingleMetricData(metric, { force: true });
+            jobs.push(fetchSingleMetricData(metric, { force: true }));
           }
         });
+      });
+      void Promise.allSettled(jobs).finally(() => {
+        refreshInFlightRef.current = false;
       });
     }
   };

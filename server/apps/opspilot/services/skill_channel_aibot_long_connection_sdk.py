@@ -82,6 +82,18 @@ class WecomSdkTransport:
         )
         future.result(timeout=_REPLY_TIMEOUT_SECONDS)
 
+    def exchange(self, payload: dict) -> dict:
+        """发送一帧并等待回执。上传素材和文件回复都走这里。"""
+        if self._loop is None or self._client is None:
+            raise RuntimeError("WecomSdkNotConnected")
+        frame = {"headers": payload.get("headers") or {}}
+        future = asyncio.run_coroutine_threadsafe(
+            self._client.reply(frame, payload.get("body") or {}, payload.get("cmd") or "aibot_respond_msg"),
+            self._loop,
+        )
+        ack = future.result(timeout=_REPLY_TIMEOUT_SECONDS)
+        return ack if isinstance(ack, dict) else {}
+
     @property
     def closed(self) -> bool:
         return self._closed.is_set()

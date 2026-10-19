@@ -91,11 +91,16 @@ const getDashboardRouteCandidates = (item: ProfessionalDashboardMetaItem) =>
 /**
  * 监控对象查找：只用 objectName + aliases。
  * 不含 dashboard key 与泛化展示名，避免腾讯云 slug `TCP` 误绑 TCP 端口盘。
+ * 腾讯云对象名就是 `TCP`（normalize 后为 `tcp`），与拨测路由 `/dashboard/tcp` 同形，
+ * 匹配时必须继续用 objectName=TCPPort，禁止把腾讯节点绑到 TCPPort 盘。
  */
 export const getDashboardObjectMatchKeys = (item: ProfessionalDashboardMetaItem) =>
   [item.objectName, ...(item.aliases || [])]
     .filter(Boolean)
     .map((value) => normalizeDashboardKey(value));
+
+const isTencentCloudTcpObjectName = (objectName?: string | null) =>
+  normalizeDashboardKey(objectName) === 'tcp';
 
 export const findProfessionalDashboardMeta = (
   objectName?: string | null,
@@ -103,6 +108,9 @@ export const findProfessionalDashboardMeta = (
 ) => {
   const objectCandidates = [objectName, objectDisplayName].map((value) => normalizeDashboardKey(value));
   return PROFESSIONAL_DASHBOARD_METADATA.find((item) => {
+    if (isTencentCloudTcpObjectName(objectName) && item.objectName === 'TCPPort') {
+      return false;
+    }
     const candidates = getDashboardObjectMatchKeys(item);
     return objectCandidates.some((candidate) => candidate && candidates.includes(candidate));
   });

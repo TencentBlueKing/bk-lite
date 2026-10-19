@@ -7,7 +7,12 @@ import type { ChartClickParams } from '@/app/ops-analysis/utils/interactionLink'
 import ChartSurface from '@/components/chart-surface';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import { randomColorForLegend } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
-import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
+import { getOpsChartThemeByMode, resolveOpsChartThemeName } from '@/app/ops-analysis/utils/chartTheme';
+import {
+  escapeInteractionTooltipHtml,
+  resolveDataLinkTooltipTheme,
+  wrapDataLinkTooltipFormatter,
+} from '@/app/ops-analysis/utils/interactionLinkHint';
 import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import {
   normalizeRadarRange,
@@ -47,7 +52,11 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
     isDataReady: hasData,
     onReady,
   });
-  const { onChartClick } = useWidgetDataLink(config);
+  const { onChartClick, link, surface, chartTooltipHint } = useWidgetDataLink(config);
+  const linkTooltipTheme = resolveDataLinkTooltipTheme(
+    config?.chartThemeMode,
+    resolveOpsChartThemeName(),
+  );
   const chartRef = useRef<ReactEcharts>(null);
   const radarPoints = useMemo(
     () => buildInteractionPoints('radar', rawData, config),
@@ -66,48 +75,64 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
   );
 
   const option = useMemo(
-    () => ({
-      tooltip: {
-        trigger: 'item',
-        confine: true,
-        backgroundColor: chartTheme.tooltipBackgroundColor,
-        borderWidth: 1,
-        borderColor: chartTheme.tooltipBorderColor,
-        extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
-        textStyle: { color: chartTheme.tooltipTextColor },
-      },
-      radar: {
-        indicator: radarSeries.indicatorLabels.map((label) => ({
-          name: label,
-          min: range.min,
-          max: range.max,
-        })),
-        axisName: { color: chartTheme.axisLabelColor },
-        axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
-        splitLine: { lineStyle: { color: chartTheme.splitLineColor } },
-      },
-      series: [
-        {
-          type: 'radar',
-          data: [
-            {
-              value: radarSeries.indicatorValues,
-              __links: radarPoints,
-              areaStyle: {
-                color: seriesColor,
-                opacity: chartTheme.lineAreaOpacity,
-              },
-            },
-          ],
-          lineStyle: {
-            width: chartTheme.lineWidth,
-            color: seriesColor,
-            opacity: chartTheme.lineOpacity,
-          },
-          itemStyle: { color: seriesColor },
+    () => {
+      const linkFormatter = wrapDataLinkTooltipFormatter(undefined, {
+        surface,
+        link,
+        footerText: chartTooltipHint,
+        theme: linkTooltipTheme,
+        fallback: () => {
+          const rows = radarSeries.indicatorLabels.map((label, index) => {
+            const value = radarSeries.indicatorValues[index];
+            return `${escapeInteractionTooltipHtml(String(label))}: ${escapeInteractionTooltipHtml(value == null ? '' : String(value))}`;
+          }).join('<br/>');
+          return `<div>${rows}</div>`;
         },
-      ],
-    }),
+      });
+      return ({
+        tooltip: {
+          trigger: 'item',
+          confine: true,
+          backgroundColor: chartTheme.tooltipBackgroundColor,
+          borderWidth: 1,
+          borderColor: chartTheme.tooltipBorderColor,
+          extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
+          textStyle: { color: chartTheme.tooltipTextColor },
+          ...(linkFormatter ? { formatter: linkFormatter } : {}),
+        },
+        radar: {
+          indicator: radarSeries.indicatorLabels.map((label) => ({
+            name: label,
+            min: range.min,
+            max: range.max,
+          })),
+          axisName: { color: chartTheme.axisLabelColor },
+          axisLine: { lineStyle: { color: chartTheme.axisLineColor } },
+          splitLine: { lineStyle: { color: chartTheme.splitLineColor } },
+        },
+        series: [
+          {
+            type: 'radar',
+            data: [
+              {
+                value: radarSeries.indicatorValues,
+                __links: radarPoints,
+                areaStyle: {
+                  color: seriesColor,
+                  opacity: chartTheme.lineAreaOpacity,
+                },
+              },
+            ],
+            lineStyle: {
+              width: chartTheme.lineWidth,
+              color: seriesColor,
+              opacity: chartTheme.lineOpacity,
+            },
+            itemStyle: { color: seriesColor },
+          },
+        ],
+      });
+    },
     [
       chartTheme.axisLabelColor,
       chartTheme.axisLineColor,
@@ -125,6 +150,10 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
       range.max,
       range.min,
       seriesColor,
+      surface,
+      link,
+      chartTooltipHint,
+      linkTooltipTheme,
     ],
   );
 

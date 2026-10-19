@@ -1,12 +1,20 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import InteractionTitleIcon from '@/app/ops-analysis/components/interactionTitleIcon';
+import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
+import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSurface';
 import type {
   ScreenClockItem,
   ScreenItem,
+  ScreenTextAlign,
+  ScreenTextItem,
   ScreenTextStyleConfig,
 } from '@/app/ops-analysis/types/screen';
-import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
+import {
+  readWidgetInteraction,
+  shouldShowInteractionEntry,
+} from '@/app/ops-analysis/utils/interactionLink';
 import { getScreenClockDisplayParts } from '../utils/screenClock';
 import {
   isScreenClockItem,
@@ -66,17 +74,24 @@ const ClockSkin: React.FC<{
   );
 };
 
-interface ScreenChromeRendererProps {
-  item: ScreenItem;
-}
+const TEXT_JUSTIFY: Record<ScreenTextAlign, React.CSSProperties['justifyContent']> = {
+  left: 'flex-start',
+  center: 'center',
+  right: 'flex-end',
+};
 
-const ScreenChromeRenderer: React.FC<ScreenChromeRendererProps> = ({
-  item,
-}) => {
-  const textContent = useFilterTemplateText(isScreenTextItem(item) ? item.content : '');
-  let body: React.ReactNode = null;
-  if (isScreenTextItem(item)) {
-    body = (
+const ScreenTextBody: React.FC<{ item: ScreenTextItem }> = ({ item }) => {
+  const textContent = useFilterTemplateText(item.content);
+  const surface = useInteractionSurface();
+  const titleConfig = item.interaction?.kind === 'title'
+    ? { interaction: item.interaction }
+    : undefined;
+  const showLink = shouldShowInteractionEntry(
+    surface,
+    Boolean(readWidgetInteraction(titleConfig)),
+  );
+  if (!showLink) {
+    return (
       <div
         {...screenUniformTextProps(
           item.textStyle,
@@ -88,6 +103,52 @@ const ScreenChromeRenderer: React.FC<ScreenChromeRendererProps> = ({
         {textContent}
       </div>
     );
+  }
+
+  const align = item.textStyle?.align ?? 'left';
+  const multiline = textContent.includes('\n');
+  return (
+    <div
+      {...screenUniformTextProps(
+        item.textStyle,
+        undefined,
+        'flex h-full w-full min-w-0 flex-nowrap items-center overflow-hidden px-1 py-1',
+      )}
+      data-screen-text-link=""
+      style={{
+        ...screenChromeTextStyle(item.textStyle),
+        justifyContent: TEXT_JUSTIFY[align],
+        gap: '0.4em',
+      }}
+    >
+      <span
+        data-screen-text-label=""
+        className="min-w-0 overflow-hidden"
+        style={{
+          flex: '0 1 auto',
+          textAlign: align,
+          whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
+          wordBreak: multiline ? 'break-word' : 'normal',
+          textOverflow: multiline ? 'clip' : 'ellipsis',
+        }}
+      >
+        {textContent}
+      </span>
+      <InteractionTitleIcon config={titleConfig} variant="text" />
+    </div>
+  );
+};
+
+interface ScreenChromeRendererProps {
+  item: ScreenItem;
+}
+
+const ScreenChromeRenderer: React.FC<ScreenChromeRendererProps> = ({
+  item,
+}) => {
+  let body: React.ReactNode = null;
+  if (isScreenTextItem(item)) {
+    body = <ScreenTextBody item={item} />;
   } else if (isScreenClockItem(item)) {
     body = <ClockSkin format={item.format} textStyle={item.textStyle} />;
   } else if (isScreenTitleFrameItem(item)) {

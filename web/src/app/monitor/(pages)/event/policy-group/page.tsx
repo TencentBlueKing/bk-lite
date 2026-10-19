@@ -20,6 +20,7 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import Permission from '@/components/permission';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import { resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import assetStyle from '../strategy/index.module.scss';
 import ThresholdList, { ThresholdItem } from '../strategy/detail/thresholdList';
 import SelectCard from '../strategy/detail/selectCard';
@@ -232,20 +233,13 @@ const PolicyGroupPage: React.FC = () => {
     setTreeLoading(true);
     getMonitorObject({ add_instance_count: true })
       .then((data: ObjectItem[]) => {
-        const grouped = data.reduce((acc, item) => {
-          if (!acc[item.type]) {
-            acc[item.type] = { title: item.display_type || '--', key: item.type, children: [] };
-          }
-          acc[item.type].children.push({
-            title: item.display_name || item.name || '--',
-            label: item.name || '--',
-            key: item.id,
-            icon: item.icon,
-            children: [],
-          });
-          return acc;
-        }, {} as Record<string, TreeItem>);
-        const tree = Object.values(grouped);
+        const tree = buildMonitorObjectSidebarTree(data, (item) => ({
+          title: item.display_name || item.name || '--',
+          label: item.name || '--',
+          key: item.id,
+          icon: item.icon,
+          children: [],
+        }));
         const key = resolveMonitorObjectTreeKey(
           data,
           resolveMonitorObjectQueryId({ searchParams, objects: data, fallback: data[0]?.id }),

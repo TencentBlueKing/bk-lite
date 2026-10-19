@@ -74,6 +74,7 @@ const ApplicationTopologyCanvas = ({
     <ApplicationTopology
       instUuid={instUuid}
       depth={depth}
+      config={config}
       chartThemeMode={config?.chartThemeMode}
       screenRenderContext={screenRenderContext}
     />

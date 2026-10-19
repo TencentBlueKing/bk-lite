@@ -101,6 +101,7 @@ export const createScreenTextItem = (
     color: 'canvas',
     align: 'left',
   },
+  ...(overrides?.interaction ? { interaction: overrides.interaction } : {}),
   ...geometry(items, { w: 360, h: 72, ...overrides }),
 });
 
