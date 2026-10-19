@@ -1,5 +1,7 @@
 import { MysqlMetricConfig, TrendLegendItem } from './types';
 
+export const MYSQL_COLLECTION_STATUS_QUERY = "count({instance_type='mysql', collect_type='database', __$labels__}) by (instance_id)";
+
 export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   {
     name: 'mysql_uptime',
