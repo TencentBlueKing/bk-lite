@@ -260,6 +260,11 @@ class LanguageViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         else:
             locale = "en"
         self.loader = LanguageLoader(app=app_name, default_lang=locale)
+        if app_name == "opspilot":
+            request.opspilot_language_loader = self.loader
+            django_request = getattr(request, "_request", None)
+            if django_request is not None:
+                django_request.opspilot_language_loader = self.loader
 
 
 class MaintainerViewSet(LanguageViewSet):

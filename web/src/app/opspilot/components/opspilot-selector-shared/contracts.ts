@@ -9,6 +9,8 @@ export interface SelectorOption {
   name: string;
   icon?: string;
   description?: string;
+  systemTags?: string[];
+  userTags?: string[];
 }
 
 export interface KnowledgeBaseRagSource {

@@ -4,6 +4,7 @@
 """
 
 import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.db import connection
@@ -86,7 +87,7 @@ def test_resolve_target_timezone_valid():
 
 def test_resolve_target_timezone_invalid_falls_back():
     tz = N._resolve_target_timezone("Not/AZone")
-    assert tz == timezone.get_current_timezone()
+    assert tz == ZoneInfo("Asia/Shanghai")
 
 
 def test_parse_client_datetime_iso():

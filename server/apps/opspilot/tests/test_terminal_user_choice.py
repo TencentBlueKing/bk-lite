@@ -1,11 +1,13 @@
 """request_user_choice 发出即结束；校验失败不终止。"""
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 from django.test import override_settings
 from langchain_core.messages import AIMessage
 
+from apps.opspilot.metis.llm.chain.nested_stream import OWNED_EVENT_QUEUE_KEY
 from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
 from apps.opspilot.utils.pending_question import consume_pending_question
 
@@ -173,15 +175,26 @@ def test_unrelated_k8s_reply_is_not_a_repair_mode():
 async def test_limit_continue_ends_turn_without_same_run_grant():
     from apps.opspilot.metis.llm.middleware.planned_execution_limits import PlannedExecutionLimitMiddleware, ask_limit_continue
 
+    queue = asyncio.Queue()
     text, _tool_message = await ask_limit_continue(
         kind="model_calls",
         step_objective="查磁盘",
-        config={"configurable": {"execution_id": "exec-limit", "node_id": "agent-b", "thread_id": "limit-thread"}},
+        config={
+            "configurable": {
+                "execution_id": "exec-limit",
+                "node_id": "agent-b",
+                "thread_id": "limit-thread",
+                OWNED_EVENT_QUEUE_KEY: queue,
+            }
+        },
         messages=[],
         summary="磁盘已到 80%",
     )
     assert "1. 继续" in text
     assert "磁盘已到 80%" in text
+    event = queue.get_nowait()
+    assert event["name"] == "user_choice_request"
+    assert event["data"]["options"]
     pending = consume_pending_question("thread:limit-thread")
     assert pending["kind"] == "limit_continue"
     assert pending["node_id"] == "agent-b"

@@ -8,7 +8,10 @@ export type SessionAttachmentFile = {
   ext: string;
 };
 
-const hasUnsafeCharacters = (url: string) => /[\u0000-\u001F\u007F\\]/.test(url);
+const hasUnsafeCharacters = (url: string) => Array.from(url).some((character) => {
+  const codePoint = character.codePointAt(0) ?? 0;
+  return codePoint <= 0x1F || codePoint === 0x7F || character === '\\';
+});
 
 const hasParentSegment = (url: string) => url.split(/[?#]/, 1)[0].split('/').some((part) => {
   try {

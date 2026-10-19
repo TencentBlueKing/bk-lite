@@ -318,6 +318,8 @@ class SkillPackage(MaintainerInfo, TimeInfo):
     required_tools = models.JSONField(default=list, verbose_name="依赖工具")
     triggers = models.JSONField(default=list, verbose_name="触发词")
     team = models.JSONField(default=list, verbose_name="分组")
+    system_tags = models.JSONField(default=list, blank=True, verbose_name="系统标签")
+    user_tags = models.JSONField(default=list, blank=True, verbose_name="用户标签")
     is_enabled = models.BooleanField(default=True, verbose_name="是否启用")
     is_build_in = models.BooleanField(default=False, db_index=True, verbose_name="是否内置")
 
@@ -332,6 +334,8 @@ class SkillTools(MaintainerInfo, TimeInfo):
     team = models.JSONField(default=list)
     description = models.TextField()
     tags = models.JSONField(default=list)
+    system_tags = models.JSONField(default=list, blank=True, verbose_name="系统标签")
+    user_tags = models.JSONField(default=list, blank=True, verbose_name="用户标签")
     icon = models.CharField(max_length=100, default="")
     is_build_in = models.BooleanField(default=False)
     tools = models.JSONField(default=list)

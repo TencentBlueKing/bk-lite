@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Callable, Mapping, Sequence
 
+from apps.alerts.notification_templates.timefmt import format_template_datetime
+
 MAX_EVENT_ROWS = 100
 MAX_EVENT_COLUMNS = 10
 MAX_EVENT_BLOCKS = 5
@@ -255,15 +257,13 @@ def resolve_event_value(row: Mapping[str, Any], path: str) -> Any:
     return current
 
 
-def cell_text(value: Any) -> str:
+def cell_text(value: Any, timezone_name: str | None = None) -> str:
     if value is None or value == "":
         return MISSING_VALUE
     if isinstance(value, bool):
         text = "true" if value else "false"
-    elif isinstance(value, datetime):
-        text = value.isoformat(sep=" ", timespec="seconds")
-    elif isinstance(value, date):
-        text = value.isoformat()
+    elif isinstance(value, (datetime, date)):
+        text = format_template_datetime(value, timezone_name)
     elif isinstance(value, (dict, list, tuple)):
         text = json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
     else:
@@ -274,7 +274,7 @@ def cell_text(value: Any) -> str:
     return text
 
 
-def _sort_rows(rows: Sequence[Mapping[str, Any]], order: str) -> list[Mapping[str, Any]]:
+def _sort_rows(rows: Sequence[Mapping[str, Any]], order: str, timezone_name: str | None = None) -> list[Mapping[str, Any]]:
     field = order.lstrip("-")
     reverse = order.startswith("-")
 
@@ -282,7 +282,7 @@ def _sort_rows(rows: Sequence[Mapping[str, Any]], order: str) -> list[Mapping[st
         value = row.get(field)
         if value in (None, ""):
             return ""
-        return cell_text(value)
+        return cell_text(value, timezone_name)
 
     return sorted(rows, key=sort_key, reverse=reverse)
 
@@ -373,12 +373,12 @@ def resolve_format(spec: EventBlockSpec, family: str) -> str:
     return "list" if family == "markdown" else "table"
 
 
-def _ordered_rows(spec: EventBlockSpec, events_context: Mapping[str, Any]) -> tuple[list[Mapping[str, Any]], int]:
+def _ordered_rows(spec: EventBlockSpec, events_context: Mapping[str, Any], timezone_name: str | None = None) -> tuple[list[Mapping[str, Any]], int]:
     grouped = events_context.get("rows_by_order") or {}
     if spec.order in grouped:
         ordered = list(grouped[spec.order])
     else:
-        ordered = _sort_rows(events_context.get("rows") or [], spec.order)
+        ordered = _sort_rows(events_context.get("rows") or [], spec.order, timezone_name)
     total = int(events_context.get("count") or 0)
     limit = MAX_EVENT_ROWS if spec.limit is None else spec.limit
     return ordered[:limit], total
@@ -391,8 +391,9 @@ def render_event_block(
     family: str,
     escape: Callable[[str], str],
     max_bytes: int | None = None,
+    display_timezone: str | None = None,
 ) -> str:
-    picked, total = _ordered_rows(spec, events_context)
+    picked, total = _ordered_rows(spec, events_context, display_timezone)
     if not picked:
         text = escape(spec.empty)
         if max_bytes is not None and len(text.encode("utf-8")) > max_bytes:
@@ -400,7 +401,7 @@ def render_event_block(
         return text
 
     headers = [column.label for column in spec.columns]
-    rows = [[cell_text(resolve_event_value(row, column.path)) for column in spec.columns] for row in picked]
+    rows = [[cell_text(resolve_event_value(row, column.path), display_timezone) for column in spec.columns] for row in picked]
     renderer = _RENDERERS[(family, resolve_format(spec, family))]
     chosen = len(rows)
     while chosen >= 1:

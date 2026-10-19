@@ -5,6 +5,7 @@ from django.http import HttpResponse, JsonResponse
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_log_value
 from apps.core.utils.exempt import api_exempt
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.memory.identity import resolve_system_user_uuid
@@ -35,10 +36,27 @@ from apps.opspilot.services.skill_channel_service import (
     web_chat_channels_for_team,
 )
 from apps.opspilot.utils.agui_chat import stream_agui_chat
+from apps.opspilot.utils.returned_messages import localize_returned_text
 from apps.opspilot.utils.sse_chat import create_error_stream_response
 from apps.opspilot.views.chat_flow import parse_json_body
 
 SKILL_CHANNEL_IM_ACCEPTED_TEMPLATE = "event=skill_channel_im_accepted channel_id=%s channel_type=%s method=%s"
+
+
+def _bind_channel_locale(request):
+    """页面语言优先，其次账号 locale。与 LanguageViewSet 一致。"""
+    header = request.headers.get("X-BK-Locale") if hasattr(request, "headers") else None
+    if header:
+        locale = header
+    else:
+        user = getattr(request, "user", None)
+        locale = (getattr(user, "locale", None) or "en") if user else "en"
+    request.opspilot_language_loader = LanguageLoader(app="opspilot", default_lang=locale)
+    return request.opspilot_language_loader
+
+
+def _shown(request, text):
+    return localize_returned_text(text, getattr(request, "opspilot_language_loader", None))
 
 
 def _serialize_saas_skill_channels(qs):
@@ -63,6 +81,7 @@ def list_platform_skill_channels(request):
 
     webchat_width 为当前用户保存的悬浮栏宽度；没有记录时返回默认值，不写库。
     """
+    _bind_channel_locale(request)
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return JsonResponse({"result": False, "message": "未登录"}, status=401)
     current_team = request.COOKIES.get("current_team") or get_current_team(request) or "0"
@@ -80,6 +99,7 @@ def list_platform_skill_channels(request):
 
 def save_platform_webchat_width(request):
     """保存当前用户的悬浮对话栏宽度。"""
+    _bind_channel_locale(request)
     if request.method != "POST":
         return JsonResponse({"result": False, "message": "method not allowed"}, status=405)
     if not getattr(request, "user", None) or not request.user.is_authenticated:
@@ -98,6 +118,7 @@ def save_platform_webchat_width(request):
 
 def list_web_chat_skill_channels(request):
     """当前用户有权限的已启用 Web 对话渠道列表（供独立对话页消费）。"""
+    _bind_channel_locale(request)
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return JsonResponse({"result": False, "message": "未登录"}, status=401)
     current_team = request.COOKIES.get("current_team") or get_current_team(request) or "0"
@@ -121,6 +142,7 @@ def _serialize_published_web_skills(skills):
 
 def list_published_web_skills(request):
     """当前组可用的已发布 Web 智能体列表（按 skill_id，使用组包含当前组）。"""
+    _bind_channel_locale(request)
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return JsonResponse({"result": False, "message": "未登录"}, status=401)
     current_team = request.COOKIES.get("current_team") or get_current_team(request) or "0"
@@ -130,12 +152,13 @@ def list_published_web_skills(request):
 
 
 def execute_published_web_skill_chat(request, skill_id):
+    _bind_channel_locale(request)
     """已发布 Web 智能体 AGUI 流式对话：只传 skill_id 与对话历史，参数与窗口由服务端读取并截断。"""
     if not getattr(request, "user", None) or not request.user.is_authenticated:
-        return create_error_stream_response("未登录")
+        return create_error_stream_response(_shown(request, "未登录"))
     kwargs, parse_error = parse_json_body(request)
     if parse_error:
-        return create_error_stream_response(parse_error)
+        return create_error_stream_response(_shown(request, parse_error))
     current_team = request.COOKIES.get("current_team") or get_current_team(request) or "0"
     group_list = getattr(request.user, "group_list", None) or []
     try:
@@ -156,9 +179,9 @@ def execute_published_web_skill_chat(request, skill_id):
         params["browser_use_force_task"] = True
         params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, request.user)
     except SkillChannelChatError as e:
-        return create_error_stream_response(e.message)
+        return create_error_stream_response(_shown(request, e.message))
     except CallerIdentityError as e:
-        return create_error_stream_response(str(e))
+        return create_error_stream_response(_shown(request, str(e)))
 
     current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
     if current_ip:
@@ -169,6 +192,7 @@ def execute_published_web_skill_chat(request, skill_id):
 
 
 def _require_login_and_web_channel(request):
+    _bind_channel_locale(request)
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return None, JsonResponse({"result": False, "message": "未登录"}, status=401)
     channel_id = request.GET.get("channel_id")
@@ -187,6 +211,7 @@ def _require_login_and_web_channel(request):
 
 def list_skill_channel_conversations(request):
     """当前用户在当前渠道下的会话列表。Web 对话不混入 Web 发布等其它渠道。"""
+    _bind_channel_locale(request)
     channel, error = _require_login_and_web_channel(request)
     if error:
         return error
@@ -200,6 +225,7 @@ def list_skill_channel_conversations(request):
 
 def list_skill_channel_session_messages(request):
     """当前用户指定会话的消息列表。"""
+    _bind_channel_locale(request)
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return JsonResponse({"result": False, "message": "未登录"}, status=401)
     session_id = request.GET.get("session_id") or ""
@@ -222,6 +248,7 @@ def list_skill_channel_session_messages(request):
 
 def delete_skill_channel_session(request):
     """删除当前用户的一条智能体会话（级联消息）。"""
+    _bind_channel_locale(request)
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return JsonResponse({"result": False, "message": "未登录"}, status=401)
     session_id = ""
@@ -247,15 +274,16 @@ def delete_skill_channel_session(request):
 
 def execute_skill_channel_chat(request, channel_id):
     """平台 / Web 登录态 SSE 对话（channel_type 须为 platform 或 web_chat）。"""
+    _bind_channel_locale(request)
     if not getattr(request, "user", None) or not request.user.is_authenticated:
-        return create_error_stream_response("未登录")
+        return create_error_stream_response(_shown(request, "未登录"))
     kwargs, parse_error = parse_json_body(request)
     if parse_error:
-        return create_error_stream_response(parse_error)
+        return create_error_stream_response(_shown(request, parse_error))
     message = kwargs.get("message", "") or kwargs.get("user_message", "")
     attachment_ids = kwargs.get("attachment_ids") or []
     if not message and not attachment_ids:
-        return create_error_stream_response("message 必填")
+        return create_error_stream_response(_shown(request, "message 必填"))
     session_id = kwargs.get("session_id") or ""
     page_context = kwargs.get("page_context")
     try:
@@ -273,19 +301,20 @@ def execute_skill_channel_chat(request, channel_id):
             attachment_ids=attachment_ids,
         )
     except SkillChannelChatError as e:
-        return create_error_stream_response(e.message)
+        return create_error_stream_response(_shown(request, e.message))
 
 
 @api_exempt
 def execute_skill_embedded_chat(request, skill_id, channel_id=None, public_id=None):
     """嵌入式对话：Api-Authorization + 固定 skill_id + public_id（兼容历史 channel_id）。"""
+    _bind_channel_locale(request)
     kwargs, parse_error = parse_json_body(request)
     if parse_error:
         return JsonResponse({"result": False, "message": parse_error}, status=400)
     message = (kwargs or {}).get("message", "") or (kwargs or {}).get("user_message", "")
     attachment_ids = (kwargs or {}).get("attachment_ids") or []
     if not message and not attachment_ids:
-        return create_error_stream_response("message 必填")
+        return create_error_stream_response(_shown(request, "message 必填"))
     session_id = (kwargs or {}).get("session_id") or (kwargs or {}).get("sessionId") or ""
     try:
         user_secret, team_id = authenticate_embedded(request)
@@ -306,7 +335,7 @@ def execute_skill_embedded_chat(request, skill_id, channel_id=None, public_id=No
             attachment_ids=attachment_ids,
         )
     except SkillChannelChatError as e:
-        return create_error_stream_response(e.message)
+        return create_error_stream_response(_shown(request, e.message))
 
 
 def _im_channel_id(channel_id=None, public_id=None, channel_type=None):

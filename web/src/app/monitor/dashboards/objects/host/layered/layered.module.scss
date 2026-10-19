@@ -1,0 +1,1354 @@
+.root {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: var(--color-text-1);
+}
+
+.tabBand {
+  padding: 8px 0 0;
+  background: transparent;
+}
+
+.partitionTabs {
+  :global(.ant-tabs-content-holder) {
+    display: none;
+  }
+
+  :global(.ant-tabs-nav) {
+    margin: 0;
+
+    &::before {
+      border-bottom: 1px solid var(--color-border-1);
+    }
+  }
+
+  :global(.ant-tabs-tab) {
+    margin: 0 2px !important;
+    padding: 4px 0 6px;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  :global(.ant-tabs-tab-btn) {
+    padding: 4px 12px;
+    border-radius: 6px;
+    color: var(--color-text-3);
+    font-weight: 500;
+    text-shadow: none !important;
+  }
+
+  :global(.ant-tabs-tab:hover .ant-tabs-tab-btn) {
+    color: var(--color-text-2);
+  }
+
+  :global(.ant-tabs-tab-active),
+  :global(.ant-tabs-tab-active:hover) {
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  :global(.ant-tabs-tab-active .ant-tabs-tab-btn),
+  :global(.ant-tabs-tab-active:hover .ant-tabs-tab-btn) {
+    background: var(--color-primary-bg-active);
+    border-radius: 6px;
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  :global(.ant-tabs-ink-bar) {
+    height: 2px;
+    background: var(--color-primary);
+  }
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 0 16px;
+}
+
+.chartGrid,
+.chartGrid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.chartGrid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detailTrio {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.detailFull {
+  margin-top: 12px;
+}
+
+.detailTrio .detailCard,
+.detailFull .detailCard {
+  height: 100%;
+  border-radius: 8px;
+}
+
+.detailSlot {
+  min-height: 100%;
+  justify-content: flex-start;
+}
+
+.composeBody {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 156px;
+}
+
+.composePie {
+  width: 120px;
+  height: 120px;
+  flex: 0 0 auto;
+}
+
+.composeLegend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+  color: var(--color-text-2);
+}
+
+.composeLegend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.leadRow {
+  margin: -2px -6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-bg));
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.composeName {
+  flex: 0 0 auto;
+}
+
+.composeReading {
+  margin-left: auto;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-1);
+  white-space: nowrap;
+}
+
+.gpuBandTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--color-text-1);
+
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--color-primary);
+    flex-shrink: 0;
+  }
+}
+
+.gpuRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.gpuBand {
+  display: flex;
+  flex-direction: column;
+  min-height: 220px;
+}
+
+.gpuEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 156px;
+  font-size: 22px;
+  font-weight: 650;
+  color: var(--color-text-1);
+}
+
+.chartGrid4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* 网络趋势三卡。窄于 1100 折成两列（2+1），不跟 chartGrid4 一起收成单列。 */
+.netTrendGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.instantKpiRow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.instantKpiRow .instantKpi {
+  display: flex;
+  flex-direction: column;
+  min-height: 58px;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.instantKpiLabel {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-text-3);
+}
+
+.instantKpiValue {
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.15;
+  color: var(--color-text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.instantKpiUnit {
+  margin-left: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  color: inherit;
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+/* 健康六卡：上下 8px、左右 12px，总高约 64–76px。内容顶对齐，不把空白均分到数字上下。 */
+.kpiCard {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  min-height: 64px;
+  margin: 0;
+  padding: 8px 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg);
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.02);
+  color: inherit;
+  font: inherit;
+  line-height: normal;
+  text-align: left;
+  appearance: none;
+  cursor: default;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+button.kpiCard {
+  cursor: pointer;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
+  }
+}
+
+.kpiLabel {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kpiValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.kpiValue {
+  margin-top: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-1);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 26px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kpiValueRow .kpiValue {
+  flex: 0 1 auto;
+  margin-top: 0;
+  min-width: 0;
+}
+
+.kpiAside {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kpiMeta {
+  margin-top: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-3);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.shortcutGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sectionHead .sectionTitle {
+  margin: 0;
+  min-width: 0;
+}
+
+/* 磁盘子切换。挂载通栏绘图区 160（140–180）；设备三卡绘图区 124（110–140）。 */
+.diskSubBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.diskSubSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.diskSubBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 7px 14px;
+  border: 1px solid #e5e6eb;
+  border-radius: 6px;
+  background: #fff;
+  color: #4e5969;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.diskSubBtn:hover:not(.diskSubBtnOn) {
+  border-color: #c9cdd4;
+}
+
+.diskSubBtn:focus-visible {
+  outline: 2px solid #1664ff;
+  outline-offset: 2px;
+}
+
+.diskSubBtnOn {
+  border-color: #1664ff;
+  background: #e8f3ff;
+  color: #1664ff;
+  font-weight: 600;
+}
+
+.diskSubCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #f2f3f5;
+  color: #4e5969;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.diskSubBtnOn .diskSubCount {
+  background: #1664ff;
+  color: #fff;
+}
+
+:global(html.dark) .diskSubBtn {
+  border-color: var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-2);
+}
+
+:global(html.dark) .diskSubBtn:hover:not(.diskSubBtnOn) {
+  border-color: var(--color-border-3);
+}
+
+:global(html.dark) .diskSubBtn:focus-visible {
+  outline-color: var(--color-primary);
+}
+
+:global(html.dark) .diskSubBtnOn {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bg));
+  color: var(--color-primary);
+}
+
+:global(html.dark) .diskSubCount {
+  background: var(--color-fill-3);
+  color: var(--color-text-2);
+}
+
+:global(html.dark) .diskSubBtnOn .diskSubCount {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+
+.diskMountChart .chartPanel {
+  min-height: 0;
+}
+
+.diskMountChart .chartBody {
+  height: 160px;
+}
+
+.diskDeviceCharts .chartPanel {
+  min-height: 0;
+  padding: 8px 12px 10px;
+}
+
+.diskDeviceCharts .chartHead {
+  margin-bottom: 4px;
+}
+
+.diskDeviceCharts .chartBody {
+  height: 124px;
+}
+
+.footnote {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-3);
+}
+
+.shortcutCard {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 112px;
+}
+
+.shortcutCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.focusChart {
+  flex: 1 1 240px;
+  min-width: 200px;
+  max-width: 320px;
+}
+
+.focusChart .chartBody {
+  height: 120px;
+}
+
+.shortcutLabel {
+  font-size: 12px;
+  color: var(--color-text-3);
+}
+
+.shortcutMain {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--color-text-1);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shortcutValue {
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.shortcutSub {
+  font-size: 12px;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.jumpBtn {
+  margin-top: auto;
+  width: fit-content;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.tabLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tabLevelDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* 页签达档点。提醒橙实心，警告红带浅光晕。不跟主题主色走，也不改 Tab 文字色。 */
+.tabLevelWarn {
+  background: #fa8c16;
+}
+
+.tabLevelCritical {
+  background: #f5222d;
+  box-shadow: 0 0 0 2px rgba(245, 34, 45, 0.18);
+}
+
+/* 卡级气味：贴右上的折角。页签仍用上面的圆点。不加左边框，也不描满边。 */
+.cardAlert {
+  position: relative;
+  overflow: hidden;
+}
+
+.cardAlertFold {
+  --fold-face: #fa8c16;
+  --fold-crease: #d46b08;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    to top right,
+    transparent 50%,
+    var(--fold-crease) 50%,
+    var(--fold-crease) 56%,
+    var(--fold-face) 56%
+  );
+}
+
+.cardAlertFoldWarn {
+  --fold-face: #fa8c16;
+  --fold-crease: #d46b08;
+}
+
+.cardAlertFoldCritical {
+  --fold-face: #f5222d;
+  --fold-crease: #cf1322;
+}
+
+/* 主值已是同色系（load1 橙字 + 警告折角）时改描边，避免实心折角糊住数字。 */
+.cardAlertFoldOutline {
+  background: none;
+}
+
+.cardAlertFoldOutline::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 20px;
+  height: 20px;
+  background:
+    linear-gradient(var(--fold-face), var(--fold-face)) top / 100% 1.5px no-repeat,
+    linear-gradient(var(--fold-face), var(--fold-face)) right / 1.5px 100% no-repeat,
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 0.75px),
+      var(--fold-crease) calc(50% - 0.75px),
+      var(--fold-crease) calc(50% + 0.75px),
+      transparent calc(50% + 0.75px)
+    );
+}
+
+.cardAlert .chartLegend,
+.cardAlertPad {
+  margin-right: 14px;
+}
+
+.cardAlert .currentName,
+.cardAlert .currentKicker,
+.cardAlert .sectionTitle,
+.cardAlert .kpiLabel,
+.cardAlert .instantKpiLabel,
+.cardAlert .statusLabel,
+.cardAlert .statusHint {
+  padding-right: 14px;
+}
+
+.tabBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-warning);
+  color: var(--color-bg);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.nameCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nameCellTruncate {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+}
+
+.pathEllipsis {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mountPaths {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  white-space: normal;
+}
+
+.mountPath {
+  display: block;
+  max-width: 100%;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.mountCount {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-3);
+}
+
+.rowDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chartPanel {
+  min-width: 0;
+  min-height: 168px;
+}
+
+.chartHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.chartTitleGroup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chartTitleBlock {
+  min-width: 0;
+}
+
+.chartSubtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--color-text-3);
+}
+
+.chartTitle {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.chartReading {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-3);
+}
+
+.legendReading {
+  margin-left: 4px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-1);
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.chartBody {
+  height: 156px;
+}
+
+.chartEmpty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-3);
+  font-size: 13px;
+}
+
+.statusPanel {
+  width: 100%;
+  gap: 12px;
+}
+
+.statusCards {
+  --status-value-size: 22px;
+  /* 进程状态堆叠条定稿色（运行/休眠/阻塞/僵尸）。分类色，不随主题翻转。 */
+  --proc-running: #3b82f6;
+  --proc-sleeping: #93c5fd;
+  --proc-blocked: #f97316;
+  --proc-zombie: #ef4444;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+
+.statusCard {
+  --status-accent: var(--color-success);
+  --status-value: var(--status-accent);
+  --status-unit: var(--status-accent);
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 72px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid color-mix(in srgb, var(--status-accent) 28%, var(--color-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--status-accent) 10%, var(--color-bg));
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-text-1) 4%, transparent);
+  text-align: left;
+  overflow: hidden;
+}
+
+.statusLabel {
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--color-text-3);
+}
+
+.statusHint {
+  width: fit-content;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--color-text-3);
+  border-bottom: 1px dashed var(--color-text-4);
+  cursor: help;
+}
+
+.statusValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.statusValue {
+  font-size: var(--status-value-size, 24px);
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--status-value, var(--color-text-1));
+}
+
+.statusUnit {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--status-unit);
+}
+
+.statusCardCalm {
+  --status-accent: var(--color-success);
+}
+
+.statusCardWarning {
+  --status-accent: var(--color-warning);
+  --status-value: var(--color-warning);
+  --status-unit: var(--color-warning);
+}
+
+.statusCardDanger {
+  --status-accent: var(--color-fail);
+  --status-value: var(--color-fail);
+  --status-unit: var(--color-fail);
+}
+
+.statusCardNeutral {
+  --status-accent: var(--color-text-4);
+  --status-value: var(--color-text-1);
+  --status-unit: var(--color-text-3);
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.statusCardInfo {
+  --status-accent: var(--proc-running);
+  --status-value: var(--color-text-1);
+  --status-unit: var(--color-text-3);
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.statusCardTotal {
+  flex: 1.25 1 0;
+}
+
+.stackRunning {
+  background: var(--proc-running);
+}
+
+.stackSleeping {
+  background: var(--proc-sleeping);
+}
+
+.stackBlocked {
+  background: var(--proc-blocked);
+}
+
+.stackZombie {
+  background: var(--proc-zombie);
+}
+
+.processTop {
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.processTrends {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.processTrends .chartBody {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 96px;
+}
+
+.processTrends .chartPanel {
+  height: 100%;
+  min-height: 0;
+}
+
+.processTrends .chartTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.processTrends .cardAlert .chartTitle {
+  padding-right: 16px;
+}
+
+.currentCard {
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 16px 18px;
+}
+
+.currentKicker {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-text-3);
+}
+
+.currentName {
+  margin: 6px 0 16px;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--color-text-1);
+}
+
+.currentMetric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--color-text-3);
+  font-size: 14px;
+}
+
+.currentMetric b {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-1);
+}
+
+.quotaCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.miniBar {
+  display: inline-block;
+  width: 44px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--color-fill-2);
+}
+
+.miniBarFill {
+  display: block;
+  height: 100%;
+}
+
+.miniBarFillSuccess {
+  background: #00b42a;
+}
+
+.miniBarFillWarning {
+  background: #faad14;
+}
+
+.miniBarFillError {
+  background: #f5222d;
+}
+
+.entityStack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.processSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.tableWrap {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--color-text-3);
+}
+
+.rowActive {
+  cursor: pointer;
+
+  :global(td) {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important;
+    color: var(--color-text-1);
+  }
+
+  :global(td:first-child) {
+    box-shadow: inset 3px 0 0 var(--color-primary);
+  }
+}
+
+.rowIdle {
+  cursor: pointer;
+}
+
+.tableWrap tr.rowActive:has(+ :global(.ant-table-expanded-row)) :global(td) {
+  border-bottom-color: transparent !important;
+}
+
+.tableWrap :global(.ant-table-expanded-row > .ant-table-cell) {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important;
+  padding-top: 0 !important;
+  padding-bottom: 8px !important;
+}
+
+.deviceLink {
+  border: 0;
+  margin: 0;
+  padding: 0 2px;
+  background: transparent;
+  color: var(--color-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.deviceLinkOn {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  text-decoration: none;
+}
+
+.root :global(.ant-table) {
+  background: transparent;
+  color: var(--color-text-1);
+  font-size: 12px;
+}
+
+.root :global(.ant-table-thead > tr > th) {
+  background: var(--color-fill-1);
+  color: var(--color-text-3);
+  border-bottom-color: var(--color-border);
+}
+
+.root :global(.ant-table-tbody > tr > td) {
+  background: transparent;
+  color: var(--color-text-2);
+  border-bottom-color: var(--color-border-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.root :global(.ant-table-tbody > tr:hover > td) {
+  background: var(--color-fill-1) !important;
+}
+
+.root :global(.ant-empty-description) {
+  color: var(--color-text-3);
+}
+
+.root :global(.ant-table-column-sorter) {
+  color: var(--color-text-3) !important;
+}
+
+@media (max-width: 1100px) {
+  .chartGrid,
+  .chartGrid2,
+  .chartGrid3,
+  .chartGrid4,
+  .detailTrio,
+  .gpuRow,
+  .processSplit,
+  .processTop {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .instantKpiRow {
+    grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  }
+
+  .statusCards {
+    flex-wrap: wrap;
+  }
+
+  .statusCard {
+    flex: 1 1 140px;
+  }
+
+  .statusCardTotal {
+    flex: 1 0 100%;
+  }
+}
+
+@media (max-width: 1099px) {
+  .netTrendGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 概览事件轻轨。没有事件时仍留一行矮轨，文案左对齐，不撑高。 */
+.eventsRail {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  min-width: 0;
+  padding: 8px 12px;
+  overflow: hidden;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.02);
+  color: var(--color-text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.eventsEmpty {
+  flex: none;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.eventsMeasure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 8px;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.eventsRow {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  flex-wrap: nowrap;
+  gap: 8px;
+  width: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.eventsChip,
+.eventsMore,
+.eventsOverflowItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 240px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.eventsChip {
+  flex: 0 1 auto;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-fill-1);
+  overflow: hidden;
+}
+
+.eventsChip:hover,
+.eventsMore:hover,
+.eventsOverflowItem:hover {
+  background: var(--color-fill-2);
+}
+
+.eventsMore {
+  flex: none;
+  height: 28px;
+  padding: 0 6px;
+  color: var(--color-text-3);
+}
+
+.eventsDot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.eventsTime {
+  flex: none;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.eventsVerb {
+  flex: none;
+  color: var(--color-text-1);
+}
+
+.eventsText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eventsTip {
+  max-width: 320px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-1);
+}
+
+.eventsTipMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-2);
+}
+
+.eventsTipBody {
+  margin-top: 4px;
+  color: var(--color-text-1);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.eventsOverflow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 360px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.eventsOverflowItem {
+  max-width: none;
+  justify-content: flex-start;
+}

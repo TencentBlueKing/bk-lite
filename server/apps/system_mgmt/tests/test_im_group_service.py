@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import IMNotificationChannel, IntegrationInstance, User
 from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.services.im_channel_access import can_access_im_channel, filter_accessible_im_channels
@@ -113,17 +114,36 @@ def test_common_access_rules_cover_regular_unassigned_cross_team_and_superusers(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("locale", ["zh-Hans", "en"])
 @pytest.mark.parametrize(
-    ("mutate", "expected_code"),
+    ("mutate", "expected_code", "message_key"),
     [
-        (lambda channel: setattr(channel, "enabled", False), "im_group.channel_unavailable"),
-        (lambda channel: setattr(channel, "status", "needs_resync"), "im_group.channel_not_ready"),
-        (lambda channel: setattr(channel.integration_instance, "provider_key", "wechat"), "im_group.provider_unsupported",),
-        (lambda channel: setattr(channel.integration_instance, "enabled", False), "im_group.instance_not_ready"),
-        (lambda channel: setattr(channel.integration_instance, "status", "verification_failed"), "im_group.instance_not_ready"),
+        (lambda channel: setattr(channel, "enabled", False), "im_group.channel_unavailable", "error.im_group_channel_unavailable"),
+        (lambda channel: setattr(channel, "status", "needs_resync"), "im_group.channel_not_ready", "error.im_group_channel_not_ready"),
+        (
+            lambda channel: setattr(channel.integration_instance, "provider_key", "wechat"),
+            "im_group.provider_unsupported",
+            "error.im_group_provider_unsupported",
+        ),
+        (
+            lambda channel: setattr(channel.integration_instance, "enabled", False),
+            "im_group.instance_not_ready",
+            "error.im_group_instance_not_ready",
+        ),
+        (
+            lambda channel: setattr(channel.integration_instance, "status", "verification_failed"),
+            "im_group.instance_not_ready",
+            "error.im_group_instance_not_ready",
+        ),
+        (
+            lambda channel: setattr(channel.integration_instance, "capability_status", {"im_notification": "pending"}),
+            "im_group.capability_not_ready",
+            "error.im_group_capability_not_ready",
+        ),
     ],
 )
-def test_require_ready_channel_rejects_each_unready_state(user, channel, mutate, expected_code):
+def test_require_ready_channel_rejects_each_unready_state(user, channel, mutate, expected_code, message_key, locale):
+    user.locale = locale
     user.group_list = [{"id": 1}]
     mutate(channel)
     channel.integration_instance.save()
@@ -133,16 +153,20 @@ def test_require_ready_channel_rejects_each_unready_state(user, channel, mutate,
         IMGroupRuntimeService.require_ready_channel(user, channel.id)
 
     assert error.value.code == expected_code
+    assert str(error.value) == LanguageLoader(app="system_mgmt", default_lang=locale).get(message_key)
 
 
 @pytest.mark.django_db
-def test_require_ready_channel_rejects_cross_team_user(user, channel):
+@pytest.mark.parametrize("locale", ["zh-Hans", "en"])
+def test_require_ready_channel_rejects_cross_team_user(user, channel, locale):
+    user.locale = locale
     user.group_list = [{"id": 2}]
 
     with pytest.raises(IMGroupChannelError) as error:
         IMGroupRuntimeService.require_ready_channel(user, channel.id)
 
     assert error.value.code == "im_group.channel_access_denied"
+    assert str(error.value) == LanguageLoader(app="system_mgmt", default_lang=locale).get("error.no_permission_access_team")
 
 
 @pytest.mark.django_db

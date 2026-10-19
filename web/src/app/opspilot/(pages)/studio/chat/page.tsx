@@ -385,14 +385,14 @@ const StudioChatPage: React.FC = () => {
                 <Icon type="jiqiren3" className="text-2xl text-[var(--color-primary)]" />
               </div>
               <div className="flex-1">
-                <div className="h-4 bg-[var(--color-fill-2)] rounded w-2/3 mb-2 animate-pulse" />
-                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/2 animate-pulse" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-2/3 mb-2 animate-neutral-pulse" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/2 animate-neutral-pulse" />
               </div>
             </div>
             <div className="flex gap-4 items-end justify-end mb-6 w-full px-8">
               <div className="flex-1 text-right">
-                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/2 mb-2 animate-pulse inline-block" />
-                <div className="h-4 bg-[var(--color-fill-2)] rounded w-2/3 animate-pulse inline-block" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/2 mb-2 animate-neutral-pulse inline-block" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-2/3 animate-neutral-pulse inline-block" />
               </div>
               <div className="rounded-full bg-[var(--color-fill-1)] w-12 h-12 flex items-center justify-center">
                 <Icon type="yonghu" className="text-2xl text-[var(--color-text-3)]" />
@@ -403,8 +403,8 @@ const StudioChatPage: React.FC = () => {
                 <Icon type="jiqiren3" className="text-2xl text-[var(--color-primary)]" />
               </div>
               <div className="flex-1">
-                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/2 mb-2 animate-pulse" />
-                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/3 animate-pulse" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/2 mb-2 animate-neutral-pulse" />
+                <div className="h-4 bg-[var(--color-fill-2)] rounded w-1/3 animate-neutral-pulse" />
               </div>
             </div>
           </div>

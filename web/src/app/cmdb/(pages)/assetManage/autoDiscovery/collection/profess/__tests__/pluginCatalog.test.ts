@@ -84,6 +84,50 @@ describe('plugin catalog', () => {
     ).toBe('physcial_server_ipmi');
   });
 
+  it('resolves a custom script task to its plugin, not the builtin model plugin', () => {
+    const catalog: TreeNode[] = [
+      {
+        id: 'host_manage',
+        key: 'host_manage',
+        name: '主机',
+        tabItems: [
+          {
+            id: 'host',
+            key: 'host',
+            name: '主机',
+            model_id: 'host',
+            type: 'job',
+            task_type: 'host',
+          },
+        ],
+      },
+      {
+        id: 'custom_script',
+        key: 'custom_script',
+        name: '自定义',
+        tabItems: [
+          {
+            id: 'custom_host_linux_scan',
+            key: 'custom_host_linux_scan',
+            name: '主机Linux采集',
+            model_id: 'host',
+            type: 'job',
+            task_type: 'custom_script',
+            custom_plugin_pk: 7,
+          },
+        ],
+      },
+    ];
+
+    expect(
+      resolveCollectPlugin(catalog, {
+        model_id: 'host',
+        driver_type: 'job',
+        params: { custom_plugin_pk: 7, os_type: 'linux' },
+      })?.id,
+    ).toBe('custom_host_linux_scan');
+  });
+
   it('counts running, success, failed and partial tasks', () => {
     expect(
       countPluginTasks({

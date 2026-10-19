@@ -63,6 +63,14 @@ class LogK8sCollectorCreateSerializer(OpenAPIRequestSerializer):
     instance_id = serializers.CharField(required=False, allow_blank=False, max_length=200)
 
 
+class K8sDaemonSetTolerationSerializer(OpenAPIRequestSerializer):
+    """DaemonSet 容忍项。只声明 key、effect、value；服务层继续做 Kubernetes 名称校验。"""
+
+    key = serializers.CharField()
+    effect = serializers.ChoiceField(choices=("NoSchedule", "NoExecute"))
+    value = serializers.CharField(required=False, allow_blank=True)
+
+
 class LogK8sSettingSerializer(OpenAPIRequestSerializer):
     """保存日志 Kubernetes 采集范围。"""
 
@@ -72,7 +80,7 @@ class LogK8sSettingSerializer(OpenAPIRequestSerializer):
     docker_container_log_path = serializers.CharField(required=False, allow_blank=True, max_length=500)
     namespace_patterns = serializers.CharField(required=False, allow_blank=True, max_length=2000)
     pod_patterns = serializers.CharField(required=False, allow_blank=True, max_length=2000)
-    tolerations = serializers.ListField(child=serializers.DictField(), required=False)
+    tolerations = serializers.ListField(child=K8sDaemonSetTolerationSerializer(), required=False, max_length=16)
 
 
 class LogK8sInstallCommandSerializer(OpenAPIRequestSerializer):
@@ -81,7 +89,7 @@ class LogK8sInstallCommandSerializer(OpenAPIRequestSerializer):
     instance_id = serializers.CharField(max_length=200)
     cloud_region_id = serializers.IntegerField(min_value=1)
     image_registry_prefix = serializers.CharField(required=False, allow_blank=True, max_length=200)
-    tolerations = serializers.ListField(child=serializers.DictField(), required=False)
+    tolerations = serializers.ListField(child=K8sDaemonSetTolerationSerializer(), required=False, max_length=16)
 
 
 class LogK8sStatusQuerySerializer(OpenAPIRequestSerializer):

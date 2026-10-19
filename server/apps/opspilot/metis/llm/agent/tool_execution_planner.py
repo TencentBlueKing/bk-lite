@@ -1558,6 +1558,19 @@ def collect_generated_attachment_filenames(messages: Sequence[Any] | None) -> li
     return deduped
 
 
+def attachment_step_produced_file(messages: Sequence[Any] | None) -> bool:
+    """本步是否已经成功写出带下载地址的新文件。只说改好了不算。"""
+    for message in messages or []:
+        if not isinstance(message, ToolMessage):
+            continue
+        if str(getattr(message, "name", "") or "") != GENERATE_ATTACHMENT_FILE_TOOL_NAME:
+            continue
+        content = str(getattr(message, "content", "") or "")
+        if "file_url" in content and "filename" in content and '"skipped": true' not in content and "'skipped': True" not in content:
+            return True
+    return False
+
+
 def looks_like_attachment_file_task(
     user_message: str = "",
     agent_system_prompt: str = "",

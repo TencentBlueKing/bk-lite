@@ -11,7 +11,7 @@ const bars = [
 function Bone({ width }: { width: string }) {
   return (
     <div
-      className="h-3 animate-pulse rounded-full"
+      className="h-3 animate-neutral-pulse rounded-full"
       style={{ width, background: WC.botBorder }}
     />
   );

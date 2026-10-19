@@ -9,12 +9,14 @@ from unittest.mock import Mock
 import pydantic.root_model  # noqa
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
+from django.utils import translation
 
 from apps.mlops.constants import DatasetReleaseStatus
 from apps.mlops.tasks import image_classification as ic_task
 from apps.mlops.tasks import object_detection as od_task
 from apps.mlops.tasks.base import DatasetReleaseBusy
 from apps.mlops.tasks.object_detection import prepare_class_mappings
+from apps.mlops.utils.i18n import mlops_message_for_locale
 
 pytestmark = pytest.mark.unit
 
@@ -74,6 +76,52 @@ def test_prepare_class_mappings_invalid_val_meta():
 def test_prepare_class_mappings_invalid_test_meta_type():
     with pytest.raises(ValueError):
         prepare_class_mappings({"classes": ["a"]}, {"classes": ["a"]}, "not-a-dict")
+
+
+class _TruthyEmptyList(list):
+    """布尔值为真但迭代为空，用于走到 classes 全空分支。"""
+
+    def __bool__(self):
+        return True
+
+    def __iter__(self):
+        return iter(())
+
+
+@pytest.mark.parametrize("locale", [None, "zh-Hans", "en"])
+@pytest.mark.parametrize(
+    ("train", "val", "test", "key", "values"),
+    [
+        ({}, {"classes": ["a"]}, None, "error.train_meta_must_be_nonempty_dict", {}),
+        ({"classes": []}, {"classes": ["a"]}, None, "error.train_meta_classes_must_be_nonempty_list", {}),
+        ({"classes": ["a"]}, {}, None, "error.val_meta_must_be_nonempty_dict", {}),
+        ({"classes": ["a"]}, {"classes": []}, None, "error.val_meta_classes_must_be_nonempty_list", {}),
+        ({"classes": ["a"]}, {"classes": ["a"]}, "not-a-dict", "error.test_meta_must_be_dict", {}),
+        ({"classes": ["a"]}, {"classes": ["a"]}, {"classes": "nope"}, "error.test_meta_classes_must_be_list", {}),
+        (
+            {"classes": _TruthyEmptyList()},
+            {"classes": _TruthyEmptyList()},
+            None,
+            "error.dataset_classes_all_empty",
+            {},
+        ),
+        (
+            {"classes": ["cat", "dog"]},
+            {"classes": ["kitten", "bird"]},
+            None,
+            "error.dataset_class_name_conflict",
+            {"detail": "class_id=0: expected='cat', actual='kitten'; class_id=1: expected='dog', actual='bird'"},
+        ),
+    ],
+)
+def test_prepare_class_mappings_errors_match_active_locale(locale, train, val, test, key, values):
+    expected_locale = "zh-Hans" if locale is None else locale
+    with translation.override(locale):
+        with pytest.raises(ValueError) as exc:
+            prepare_class_mappings(train, val, test)
+
+    assert type(exc.value) is ValueError
+    assert str(exc.value) == mlops_message_for_locale(expected_locale, key, **values)
 
 
 # ---------------- early-return branches (DB) ----------------

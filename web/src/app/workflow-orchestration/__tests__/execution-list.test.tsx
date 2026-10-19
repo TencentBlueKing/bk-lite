@@ -626,7 +626,15 @@ describe('执行记录统一详情入口', () => {
         { responseType: 'blob' },
       ));
 
-      fireEvent.click(within(screen.getByText('多报告巡检').closest('tr') as HTMLElement).getByRole('button', { name: '下载' }));
+      const manyRow = screen.getByText('多报告巡检').closest('tr') as HTMLElement;
+      const manyDownload = within(manyRow).getByRole('button', { name: '下载' });
+      expect(manyDownload.querySelector('.anticon-down')).not.toBeNull();
+      expect(within(screen.getByText('生产变更前置检查').closest('tr') as HTMLElement).getByRole('button', { name: /下载/ }).querySelector('.anticon-down')).toBeNull();
+
+      fireEvent.click(manyDownload);
+      const search = await screen.findByPlaceholderText('搜索');
+      fireEvent.change(search, { target: { value: 'docx' } });
+      expect(screen.queryByRole('menuitem', { name: 'health-a.xlsx' })).toBeNull();
       fireEvent.click(await screen.findByRole('menuitem', { name: 'health-b.docx' }));
       await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
         '/workflow_orchestration/api/artifacts/artifact-b/download/',

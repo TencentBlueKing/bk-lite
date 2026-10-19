@@ -88,3 +88,24 @@ def test_intent_internal_temperature_omitted_for_fixed_unit_model():
     chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(params, _llm_model("gpt-5-mini"))
 
     assert chat_kwargs["temperature"] is None
+
+
+def test_reply_language_follows_page_locale():
+    en_kwargs, _, _ = ChatService.format_chat_server_kwargs(_chat_kwargs(locale="en"), _llm_model())
+    zh_kwargs, _, _ = ChatService.format_chat_server_kwargs(_chat_kwargs(locale="zh-Hans"), _llm_model())
+
+    assert en_kwargs["system_message_prompt"].startswith("system prompt")
+    assert "Reply in English" in en_kwargs["system_message_prompt"]
+    assert zh_kwargs["system_message_prompt"].startswith("system prompt")
+    assert "请用简体中文回复" in zh_kwargs["system_message_prompt"]
+
+
+def test_wecom_reply_language_follows_the_user_message():
+    kwargs, _, _ = ChatService.format_chat_server_kwargs(
+        _chat_kwargs(locale="en", reply_language="match_user"),
+        _llm_model(),
+    )
+
+    prompt = kwargs["system_message_prompt"]
+    assert "消息中有中文就用简体中文" in prompt
+    assert "Reply in English" not in prompt

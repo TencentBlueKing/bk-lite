@@ -52,7 +52,7 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
     if (execStatus === 'submitting' || execStatus === 'running') {
       return (
         <div className="flex items-center gap-3 mb-3 text-[var(--color-primary)]">
-          <span className="animate-pulse">● Running</span>
+          <span className="animate-neutral-pulse">● Running</span>
           <span className="font-mono text-sm">Timer: {timerDisplay}</span>
         </div>
       );

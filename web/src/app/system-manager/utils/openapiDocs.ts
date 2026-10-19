@@ -1,6 +1,6 @@
 import type {
   OpenAPIDocsCatalog,
-  OpenAPIFieldSpec,
+  OpenAPIJsonSchema,
   OpenAPIService,
 } from '@/app/system-manager/api/settings';
 
@@ -19,8 +19,16 @@ export interface OpenAPIDocRow {
   docUrl: string;
   inject: string;
   permission: string;
-  requestSchema: Record<string, OpenAPIFieldSpec>;
+  requestSchema: OpenAPIJsonSchema;
+  responseSchema: OpenAPIJsonSchema | null;
   searchText: string;
+}
+
+export interface OpenAPISchemaFieldRow {
+  name: string;
+  schema: OpenAPIJsonSchema;
+  required: boolean;
+  depth: number;
 }
 
 export interface OpenAPIFilterOptions {
@@ -50,7 +58,8 @@ const flattenService = (service: OpenAPIService): OpenAPIDocRow[] => {
         docUrl: service.doc_url || '',
         inject: '',
         permission: '',
-        requestSchema: {},
+        requestSchema: { type: 'object', properties: {} },
+        responseSchema: null,
         searchText: asSearchText([service.kind, service.name, path, service.doc_url]),
       },
     ];
@@ -58,7 +67,12 @@ const flattenService = (service: OpenAPIService): OpenAPIDocRow[] => {
 
   return (service.endpoints || []).map((endpoint) => {
     const path = gatewayUrl(endpoint.path);
-    const fieldNames = Object.keys(endpoint.request_schema || {});
+    const requestSchema = endpoint.request_schema || { type: 'object', properties: {} };
+    const responseSchema = endpoint.response_schema ?? null;
+    const fieldNames = [
+      ...flattenSchemaFields(requestSchema),
+      ...(responseSchema ? flattenSchemaFields(responseSchema) : []),
+    ].map((field) => field.name);
     return {
       key: `internal:${endpoint.method}:${endpoint.path}`,
       kind: 'internal' as const,
@@ -69,7 +83,8 @@ const flattenService = (service: OpenAPIService): OpenAPIDocRow[] => {
       docUrl: '',
       inject: endpoint.inject || '',
       permission: endpoint.permission || '',
-      requestSchema: endpoint.request_schema || {},
+      requestSchema,
+      responseSchema,
       searchText: asSearchText([
         service.kind,
         service.name,
@@ -113,34 +128,122 @@ export const filterOpenApiRows = (
   });
 };
 
-export const generateSamplePayload = (
-  schema: Record<string, OpenAPIFieldSpec>
-): Record<string, unknown> | null => {
-  const keys = Object.keys(schema);
-  if (!keys.length) return null;
-  const payload: Record<string, unknown> = {};
+const schemaTypes = (schema: OpenAPIJsonSchema): string[] => {
+  const types = Array.isArray(schema.type) ? [...schema.type] : schema.type ? [schema.type] : [];
+  if (schema.nullable && !types.includes('null')) {
+    types.push('null');
+  }
+  return types;
+};
 
-  for (const [key, spec] of Object.entries(schema)) {
-    if (spec.default !== undefined) {
-      payload[key] = spec.default;
-    } else if (Array.isArray(spec.choices) && spec.choices.length > 0) {
-      payload[key] = spec.choices[0];
-    } else {
-      const type = (spec.type || '').toLowerCase();
-      if (type.includes('int') || type.includes('number') || type.includes('float')) {
-        payload[key] = spec.min_value ?? 1;
-      } else if (type.includes('bool')) {
-        payload[key] = true;
-      } else if (type.includes('list') || type.includes('array')) {
-        payload[key] = [];
-      } else if (type.includes('dict') || type.includes('object') || type.includes('json')) {
-        payload[key] = {};
-      } else {
-        payload[key] = key.endsWith('_id') ? 1 : 'string';
+export const formatSchemaType = (schema: OpenAPIJsonSchema): string => {
+  const types = schemaTypes(schema);
+  if (types.length) {
+    return types
+      .map((type) => {
+        if (type !== 'array' || !schema.items) return type;
+        return `array<${formatSchemaType(schema.items)}>`;
+      })
+      .join(' | ');
+  }
+  if (schema.properties) return 'object';
+  if (schema.items) return `array<${formatSchemaType(schema.items)}>`;
+  return 'any';
+};
+
+export const flattenSchemaFields = (
+  schema: OpenAPIJsonSchema,
+): OpenAPISchemaFieldRow[] => {
+  const rows: OpenAPISchemaFieldRow[] = [];
+
+  const visitProperties = (
+    properties: Record<string, OpenAPIJsonSchema>,
+    requiredNames: string[],
+    prefix: string,
+    depth: number,
+  ) => {
+    for (const [name, childSchema] of Object.entries(properties)) {
+      const path = prefix ? `${prefix}.${name}` : name;
+      rows.push({
+        name: path,
+        schema: childSchema,
+        required: requiredNames.includes(name),
+        depth,
+      });
+
+      if (childSchema.properties) {
+        visitProperties(
+          childSchema.properties,
+          childSchema.required || [],
+          path,
+          depth + 1,
+        );
+      }
+      if (childSchema.items?.properties) {
+        visitProperties(
+          childSchema.items.properties,
+          childSchema.items.required || [],
+          `${path}[]`,
+          depth + 1,
+        );
       }
     }
+  };
+
+  if (schema.properties) {
+    visitProperties(schema.properties, schema.required || [], '', 0);
+  } else {
+    rows.push({ name: '$', schema, required: true, depth: 0 });
   }
-  return payload;
+  return rows;
+};
+
+const hasOwn = (value: object, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
+export const generateSchemaExample = (schema: OpenAPIJsonSchema): unknown => {
+  if (hasOwn(schema, 'default')) {
+    return schema.default;
+  }
+  if (schema.enum?.length) {
+    return schema.enum[0];
+  }
+
+  const type = schemaTypes(schema).find((item) => item !== 'null') || 'null';
+  if (type === 'object' || schema.properties) {
+    return Object.fromEntries(
+      Object.entries(schema.properties || {}).map(([name, childSchema]) => [
+        name,
+        generateSchemaExample(childSchema),
+      ]),
+    );
+  }
+  if (type === 'array' || schema.items) {
+    return schema.items ? [generateSchemaExample(schema.items)] : [];
+  }
+  if (type === 'integer' || type === 'number') {
+    return schema.minimum ?? 1;
+  }
+  if (type === 'boolean') {
+    return true;
+  }
+  if (type === 'null') {
+    return null;
+  }
+  if (type === 'string' && schema.format === 'uuid') {
+    return '00000000-0000-4000-8000-000000000000';
+  }
+  return 'string';
+};
+
+export const generateSamplePayload = (
+  schema: OpenAPIJsonSchema,
+): Record<string, unknown> | null => {
+  const sample = generateSchemaExample(schema);
+  if (!sample || Array.isArray(sample) || typeof sample !== 'object') {
+    return null;
+  }
+  return Object.keys(sample).length ? sample as Record<string, unknown> : null;
 };
 
 export type OpenApiDocsTokenKind = 'personal' | 'system';
@@ -161,7 +264,7 @@ export const generateCurlCommand = (
   }
   const method = row.method.toUpperCase();
   const url = absoluteGatewayUrl(row.path, origin);
-  const isBodyMethod = ['POST', 'PUT', 'PATCH'].includes(method);
+  const isBodyMethod = method !== 'GET';
   const sample = isBodyMethod ? generateSamplePayload(row.requestSchema) : null;
 
   const lines = [
@@ -176,11 +279,14 @@ export const generateCurlCommand = (
   if (sample && Object.keys(sample).length > 0) {
     lines.push(`  -H "Content-Type: application/json"`);
     lines.push(`  -d '${JSON.stringify(sample, null, 2)}'`);
-  } else if (!isBodyMethod && row.requestSchema && Object.keys(row.requestSchema).length > 0) {
+  } else if (!isBodyMethod) {
     const sampleParams = generateSamplePayload(row.requestSchema);
     if (sampleParams) {
       const queryStr = Object.entries(sampleParams)
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+        .map(([k, v]) => {
+          const value = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v);
+          return `${encodeURIComponent(k)}=${encodeURIComponent(value)}`;
+        })
         .join('&');
       if (queryStr) {
         lines[0] = `curl -X ${method} "${url}?${queryStr}"`;
@@ -196,13 +302,25 @@ export const formatChoices = (choices: unknown): string => {
     return '';
   }
   if (Array.isArray(choices)) {
-    return choices.map((item) => String(item)).join(', ');
+    return choices
+      .map((item) => typeof item === 'object' && item !== null ? JSON.stringify(item) : String(item))
+      .join(', ');
   }
   return String(choices);
 };
 
 export const formatChoicesDisplay = (choices: unknown): string =>
   formatChoices(choices) || '--';
+
+export const formatSchemaValue = (value: unknown): string => {
+  if (value === undefined) return '';
+  if (value === null) return 'null';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
+export const schemaHasDefault = (schema: OpenAPIJsonSchema): boolean =>
+  hasOwn(schema, 'default');
 
 export const injectDescriptionKey = (inject: string): string => {
   switch (inject) {
@@ -236,13 +354,27 @@ export const formatAuthHeaderPlainText = (
 ): string => `${desc} ${hint.split(LINK_PLACEHOLDER).join(linkLabel)}`.trim();
 
 export const fieldHasRange = (
-  spec: Pick<OpenAPIFieldSpec, 'min_value' | 'max_value'>,
-): boolean => spec.min_value != null || spec.max_value != null;
+  schema: Pick<
+    OpenAPIJsonSchema,
+    'minimum' | 'maximum' | 'minLength' | 'maxLength' | 'minItems' | 'maxItems'
+  >,
+): boolean => [
+  schema.minimum,
+  schema.maximum,
+  schema.minLength,
+  schema.maxLength,
+  schema.minItems,
+  schema.maxItems,
+].some((value) => value != null);
 
 export const formatFieldRange = (
-  minValue?: number | null,
-  maxValue?: number | null,
+  schema: Pick<
+    OpenAPIJsonSchema,
+    'minimum' | 'maximum' | 'minLength' | 'maxLength' | 'minItems' | 'maxItems'
+  >,
 ): string => {
+  const minValue = schema.minimum ?? schema.minLength ?? schema.minItems;
+  const maxValue = schema.maximum ?? schema.maxLength ?? schema.maxItems;
   const hasMin = minValue != null;
   const hasMax = maxValue != null;
   if (hasMin && hasMax) {
