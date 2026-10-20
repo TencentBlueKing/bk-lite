@@ -159,6 +159,11 @@ error:
   im_group_provider_unsupported: This IM platform does not support group collaboration
   im_group_instance_not_ready: IM collaboration integration instance is not ready
   im_group_capability_not_ready: IM collaboration capability is not ready
+  notification_provider_unavailable: Notification transport is temporarily unavailable.
+  notification_invalid_provider_response: The notification channel returned an invalid response.
+  alert_copy_partial_accepted: The alert center accepted only some event copies.
+  notification_delivery_failed: Notification channel delivery failed.
+  alert_copy_rejected: The alert center did not accept the event copy.
 success:
   menu_group_disabled: Menu group disabled
   batch_create: Batch creation successful
