@@ -200,13 +200,25 @@
 }
 
 // 实例态窄条。薰衣草底，和所属主机蓝条（事件轨 / primary）分开。
+// 宽度贴内容：禁止 width:100% 通栏空很长；pill 增减时条宽跟着变。
 .instanceStateRail {
+  width: fit-content;
+  max-width: 100%;
   background: #f4efff;
   border: 1px solid #e4d7fb;
 }
 
 .instanceStateLabel {
   color: #6d28d9;
+}
+
+.instanceStateLoading {
+  flex: none;
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
 }
 
 .controls {
