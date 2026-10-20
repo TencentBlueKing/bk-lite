@@ -12,6 +12,7 @@ NETWORK_DEVICE_MAPPING = {
     "brand": "brand",
     "sys_desc": "sysdescr",
     "model_id": "model_id",
+    "sn": CollectNetworkMetrics.get_device_sn,
 }
 
 NETWORK_INTERFACE_MAPPING = {

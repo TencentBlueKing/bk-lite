@@ -87,6 +87,7 @@ SNMP 凭据按版本区分，请先确定 `version` 再填写对应字段。
 | syscontact | 联系人信息（sysContact） |
 | model | 设备型号（来自 OID 库匹配） |
 | brand | 设备品牌 |
+| sn | 实体序列号表。列：`oid`（完整 OID，行标识）、`serial`（序列号）、`entity`（实体，机箱为 `chassis / 描述`）。只保留 `entPhysicalSerialNum` 非空的行。本次 ENTITY-MIB walk 失败时不覆盖已有表 |
 
 **接口（interface，network 的关联子项）**
 
