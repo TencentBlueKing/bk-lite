@@ -507,9 +507,19 @@ export function clampPlatformDockChatWidth(
     typeof viewportWidth === 'number' && Number.isFinite(viewportWidth)
       ? Math.round(viewportWidth * PLATFORM_DOCK_MAX_VIEWPORT_RATIO)
       : Number.POSITIVE_INFINITY;
-  const chatMax = half - (historyOpen ? PLATFORM_HISTORY_RAIL_DOCK : 0);
-  const max = Math.min(Math.max(PLATFORM_DOCK_CHAT_MIN_WIDTH, chatMax), half);
-  const min = Math.min(PLATFORM_DOCK_CHAT_MIN_WIDTH, max);
+  const rail = historyOpen ? PLATFORM_HISTORY_RAIL_DOCK : 0;
+  const chatMax = Number.isFinite(half) ? half - rail : Number.POSITIVE_INFINITY;
+  // 侧栏展开时遵守 chat + rail ≤ half；轨宽变大后可能低于 PLATFORM_DOCK_CHAT_MIN_WIDTH。
+  const max =
+    historyOpen && Number.isFinite(half)
+      ? Math.max(0, chatMax)
+      : Number.isFinite(half)
+        ? Math.min(Math.max(PLATFORM_DOCK_CHAT_MIN_WIDTH, chatMax), half)
+        : Number.POSITIVE_INFINITY;
+  const min =
+    historyOpen && Number.isFinite(half)
+      ? Math.min(PLATFORM_DOCK_CHAT_MIN_WIDTH, max)
+      : PLATFORM_DOCK_CHAT_MIN_WIDTH;
   if (!Number.isFinite(width)) {
     return Math.min(max, Math.max(min, PLATFORM_DOCK_CHAT_WIDTH));
   }
@@ -569,11 +579,16 @@ export function platformDockInsetWidth(input: {
   fullscreen?: boolean;
   historyOpen?: boolean;
   chatWidth?: number;
+  viewportWidth?: number;
 }): number {
   if (!input.visible || input.fullscreen) {
     return 0;
   }
-  const chatWidth = clampPlatformDockChatWidth(input.chatWidth ?? PLATFORM_DOCK_CHAT_WIDTH);
+  const chatWidth = clampPlatformDockChatWidth(
+    input.chatWidth ?? PLATFORM_DOCK_CHAT_WIDTH,
+    input.viewportWidth,
+    Boolean(input.historyOpen)
+  );
   return input.historyOpen ? chatWidth + PLATFORM_HISTORY_RAIL_DOCK : chatWidth;
 }
 

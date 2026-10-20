@@ -933,6 +933,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
       fullscreen: isFullscreen,
       historyOpen: sideOpen,
       chatWidth,
+      viewportWidth: window.innerWidth,
     });
     document.documentElement.style.setProperty(WEBCHAT_DOCK_INSET_VAR, `${width}px`);
     return () => {
