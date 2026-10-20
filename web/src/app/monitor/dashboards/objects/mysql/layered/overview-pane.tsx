@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { ProEventsSectionTitle } from '../../host/layered/alert-event-hint';
 import { KpiTileRow, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
 import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { HOST_SERIES_COLOR } from '../../host/config';
@@ -179,7 +180,7 @@ export default function OverviewPane({
         loading={hostLoading}
       />
 
-      <ProSectionTitle>事件</ProSectionTitle>
+      <ProEventsSectionTitle title="事件" />
       <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
 
       {focusLoading ? (

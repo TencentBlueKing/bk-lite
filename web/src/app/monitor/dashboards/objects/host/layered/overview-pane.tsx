@@ -16,6 +16,7 @@ import { formatDuration, type MetricSeries } from '../../common/simple-dashboard
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
 import { metricBlockPhase } from './performance-scope';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
+import { ProEventsSectionTitle } from './alert-event-hint';
 import { ProSectionTitle } from './section-title';
 import ThinTimeSeries from './thin-time-series';
 import FocusShortcutTitle from './focus-shortcut-title';
@@ -305,7 +306,7 @@ export default function OverviewPane({
     <>
       <ProSectionTitle>健康概览</ProSectionTitle>
       <KpiStrip items={cards} loading={loading} />
-      <ProSectionTitle>{hostCategoryText(t, 'events')}</ProSectionTitle>
+      <ProEventsSectionTitle title={hostCategoryText(t, 'events')} />
       <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
 
       <ProSectionTitle>重点关注</ProSectionTitle>

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Tooltip } from 'antd';
+import { alertKpiHintLines, ProInfoHint } from './alert-event-hint';
 import { CardAlertDot, cardAlertClass } from './card-alert';
 import type { TabAlertLevel } from './tab-level';
 import styles from './layered.module.scss';
@@ -22,15 +23,26 @@ export interface KpiCardModel {
   alertLevel?: TabAlertLevel;
 }
 
-const KpiLabel = ({ item }: { item: KpiCardModel }) => (
-  <div className={styles.kpiLabel}>
-    {item.hint ? (
-      <Tooltip title={item.hint}>
-        <span>{item.label}</span>
-      </Tooltip>
-    ) : item.label}
-  </div>
-);
+const KpiLabel = ({ item }: { item: KpiCardModel }) => {
+  const scopeHint = alertKpiHintLines(item.key);
+  if (!scopeHint) {
+    return (
+      <div className={styles.kpiLabel}>
+        {item.hint ? (
+          <Tooltip title={item.hint}>
+            <span>{item.label}</span>
+          </Tooltip>
+        ) : item.label}
+      </div>
+    );
+  }
+  return (
+    <div className={`${styles.kpiLabel} inline-flex max-w-full items-center gap-1 !overflow-visible`}>
+      <span className="min-w-0 truncate">{item.label}</span>
+      <ProInfoHint kind="alert" lines={scopeHint} />
+    </div>
+  );
+};
 
 const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
   <>
