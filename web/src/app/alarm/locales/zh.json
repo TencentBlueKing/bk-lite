@@ -334,7 +334,7 @@
     "resolved": "已解决",
     "closed": "已关闭",
     "close": "关闭",
-    "closeReasonLabel": "关闭原因（选填）",
+    "closeReasonLabel": "关闭原因",
     "closeReasonPlaceholder": "请输入关闭原因",
     "reassign": "转派",
     "acknowledge": "认领",
