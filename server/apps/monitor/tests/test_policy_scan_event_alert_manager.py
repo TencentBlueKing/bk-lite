@@ -9,7 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData
+import apps.cmdb.models  # noqa: F401  INSTALL_APPS 需含 cmdb（monitor.nats.monitor 导入 cmdb.services）
+import apps.node_mgmt.models  # noqa: F401  INSTALL_APPS 需含 node_mgmt（monitor.apps.ready → nats.monitor）
+from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData, MonitorInstance, MonitorObject
 from apps.monitor.tasks.services.policy_scan.event_alert_manager import EventAlertManager
 
 pytestmark = pytest.mark.django_db
@@ -39,6 +41,23 @@ def _policy(**kwargs):
     )
     base.update(kwargs)
     return SimpleNamespace(**base)
+
+
+def _materialize_instances(instances_map):
+    """给 instances_map 中的假 ID 补上真实实例行，存在性检查才与扫描快照一致。"""
+    if not instances_map:
+        return
+    monitor_object = MonitorObject.objects.create(name="PolicyScanEventHost", level="base")
+    MonitorInstance.objects.bulk_create(
+        [
+            MonitorInstance(
+                id=instance_id,
+                name=instance_name or instance_id,
+                monitor_object=monitor_object,
+            )
+            for instance_id, instance_name in instances_map.items()
+        ]
+    )
 
 
 class TestCreateEvents:
@@ -100,6 +119,7 @@ class TestCreateEventsAndAlerts:
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"h1": "主机1"})
         mgr = EventAlertManager(_policy(), {"h1": "主机1"}, [])
         events = [{
             "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
@@ -119,6 +139,7 @@ class TestCreateEventsAndAlerts:
         notifier_cls = mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"h1": "主机1"})
         mgr = EventAlertManager(_policy(notice=True, handlers=[7]), {"h1": "主机1"}, [])
         events = [{
             "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
@@ -137,6 +158,7 @@ class TestCreateEventsAndAlerts:
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"h1": "主机1"})
         mgr = EventAlertManager(_policy(handlers=[7, 8]), {"h1": "主机1"}, [])
         events = [{
             "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
@@ -160,6 +182,7 @@ class TestCreateEventsAndAlerts:
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"h1": "主机1"})
         existing = MonitorAlert.objects.create(
             policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
             alert_type="alert", level="warning", status="new",
@@ -185,6 +208,7 @@ class TestCreateEventsAndAlerts:
         notifier_cls = mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"h1": "主机1"})
         existing = MonitorAlert.objects.create(
             policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
             alert_type="alert", level="warning", status="new",
@@ -206,6 +230,7 @@ class TestCreateEventsAndAlerts:
         notifier_cls = mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"h1": "主机1"})
         existing = MonitorAlert.objects.create(
             policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
             alert_type="alert", level="critical", status="new",
@@ -227,6 +252,7 @@ class TestCreateEventsAndAlerts:
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"h1": "主机1"})
         existing = MonitorAlert.objects.create(
             policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
             alert_type="alert", level="critical", status="new", value=99.0,
@@ -249,6 +275,7 @@ class TestCreateEventsAndAlerts:
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"h1": "主机1"})
         mgr = EventAlertManager(_policy(no_data_level="error"), {"h1": "主机1"}, [])
         events = [{
             "monitor_instance_id": "h1", "metric_instance_id": "('h1',)",
@@ -264,6 +291,7 @@ class TestCreateEventsAndAlerts:
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"pod-1": "orders-7f9"})
         mgr = EventAlertManager(_policy(), {"pod-1": "orders-7f9"}, [])
         events = [
             {
@@ -299,6 +327,7 @@ class TestCreateEventsAndAlerts:
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"pod-1": "orders-7f9"})
         existing = MonitorAlert.objects.create(
             policy_id=1,
             monitor_instance_id="pod-1",
@@ -329,6 +358,7 @@ class TestCreateEventsAndAlerts:
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
+        _materialize_instances({"host-1": "主机1"})
         mgr = EventAlertManager(_policy(), {"host-1": "主机1"}, [])
         events = [
             {
