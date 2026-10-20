@@ -71,6 +71,9 @@
       "widget_props": {
         "placeholder": "https://www.example.com/"
       },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.urls[0]"
+      },
       "label_en": "Site URL",
       "description_en": "Site probe URL. Leave empty to use http://<host>/, or http://127.0.0.1/ when host is empty."
     },
