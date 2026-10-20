@@ -2969,6 +2969,7 @@
         "theLineShouldStayAt0NonZeroPointsMeanBro": "The line should stay at 0. Non-zero points mean Broker, network, or disk sync needs a check.",
         "underReplicatedPartitions3": "Under-replicated Partitions",
         "wirelessDeviceDashboard": "Wireless Device Dashboard",
+        "mysqlDashboard": "MySQL Monitoring Dashboard",
         "mysqlExporterCollectionStatusToTellWheth": "MySQL exporter collection status, to tell whether this instance has valid collected data.",
         "slowQueryRate": "Slow Query Rate",
         "rowLockWaitRateOpsS": "Row Lock Wait Rate (ops/s)",

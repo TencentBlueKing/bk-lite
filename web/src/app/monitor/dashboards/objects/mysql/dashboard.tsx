@@ -462,11 +462,10 @@ export default function MysqlDashboardPage() {
 
   const previousMetricMap = useMemo(() => previousSeries, [previousSeries]);
 
+  // 专业态与传统态共用同一页标题，对齐主机「主机监控仪表盘」。
   const pageTitle = displayMode === 'metrics'
     ? `${objectDisplayText} 全量指标`
-    : displayMode === 'category'
-      ? 'MySQL 实例详情'
-      : 'MySQL 监控仪表盘';
+    : 'MySQL 监控仪表盘';
   const hasDashboardContent = dashboardMetrics.length > 0;
   const showEmpty = isDashboardMode ? !hasDashboardContent : false;
 

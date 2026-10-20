@@ -2969,6 +2969,7 @@
         "theLineShouldStayAt0NonZeroPointsMeanBro": "折线应稳定在 0；非零点表示需要检查 Broker、网络或磁盘同步。",
         "underReplicatedPartitions3": "不同步分区",
         "wirelessDeviceDashboard": "无线设备监控仪表盘",
+        "mysqlDashboard": "MySQL 监控仪表盘",
         "mysqlExporterCollectionStatusToTellWheth": "MySQL 监控探针采集状态，用于判断当前实例是否存在有效采集数据。",
         "slowQueryRate": "慢查询速率",
         "rowLockWaitRateOpsS": "行锁等待速率（次/秒）",
