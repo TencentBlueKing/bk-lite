@@ -542,4 +542,117 @@ describe("room3D scene rendering", () => {
     expect(testState.render).toHaveBeenCalledTimes(1);
     controller.dispose();
   });
+
+  it("reports a device hover after the rack opens and skips conflict placeholders", () => {
+    const mountNode = createMountNode();
+    const onHover = vi.fn();
+    const onDeviceSelect = vi.fn();
+    const device = {
+      device_id: "dev-1",
+      device_name: "srv-1",
+      rack_u_start: 1,
+      u_size: 1,
+    };
+    const data = {
+      room: { id: "room-1", name: "Room 1" },
+      racks: [
+        {
+          rack_id: "rack-1",
+          rack_name: "Rack 1",
+          row: 1,
+          col: 1,
+          devices: [device],
+        },
+      ],
+    };
+    testState.intersectObjects.mockImplementation(
+      (targets: import("three").Object3D[]) => {
+        const deviceTarget = targets.find((item) => item.userData?.device);
+        const target = deviceTarget || targets[0];
+        return target ? [{ object: target }] : [];
+      },
+    );
+    const controller = createRoom3DScene(mountNode, data, {
+      onHover,
+      onSelect: vi.fn(),
+      onDeviceSelect,
+    });
+    runNextFrame(0);
+    const canvas = mountNode.querySelector("canvas");
+    canvas?.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 40, clientY: 40 }),
+    );
+    runNextFrame(16);
+    expect(onHover.mock.calls.at(-1)?.[0]).toMatchObject({
+      device: { device_id: "dev-1", device_name: "srv-1" },
+      rackTooltip: true,
+      x: 40,
+      y: 40,
+    });
+
+    canvas?.dispatchEvent(
+      new PointerEvent("click", { clientX: 40, clientY: 40 }),
+    );
+    expect(onDeviceSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        device: expect.objectContaining({ device_id: "dev-1" }),
+      }),
+    );
+
+    onHover.mockClear();
+    canvas?.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 48, clientY: 52 }),
+    );
+    runNextFrame(32);
+    runNextFrame(33);
+    expect(onHover.mock.calls.at(-1)?.[0]).toMatchObject({
+      device: { device_id: "dev-1" },
+      rackTooltip: false,
+      x: 48,
+      y: 52,
+    });
+
+    onHover.mockClear();
+    canvas?.dispatchEvent(
+      new PointerEvent("pointermove", {
+        clientX: 60,
+        clientY: 60,
+        buttons: 1,
+      }),
+    );
+    runNextFrame(40);
+    runNextFrame(41);
+    expect(onHover).toHaveBeenCalledWith(null);
+    controller.dispose();
+
+    const conflictHover = vi.fn();
+    const conflictMount = createMountNode();
+    const conflict = createRoom3DScene(
+      conflictMount,
+      {
+        room: { id: "room-1", name: "Room 1" },
+        racks: [
+          {
+            rack_id: "rack-2",
+            rack_name: "Conflict",
+            row: 1,
+            col: 1,
+            is_conflict: true,
+            devices: [device],
+          },
+        ],
+      },
+      { onHover: conflictHover, onSelect: vi.fn() },
+    );
+    runNextFrame(48);
+    conflictMount.querySelector("canvas")?.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 30, clientY: 30 }),
+    );
+    runNextFrame(56);
+    runNextFrame(57);
+    const conflictState = conflictHover.mock.calls.at(-1)?.[0];
+    expect(conflictState?.device).toBeUndefined();
+    expect(conflictState?.rack?.is_conflict).toBe(true);
+    conflict.dispose();
+  });
 });

@@ -10,6 +10,7 @@ import {
   createScreenClockItem,
   createScreenDecorationItem,
   createScreenShapeItem,
+  createScreenTextItem,
   createScreenTitleFrameItem,
 } from '../../utils/screenItems';
 import { createScreenWidgetItem } from '../../utils/layoutUtils';
@@ -441,5 +442,17 @@ describe('ScreenStyleInspector for Display Elements', () => {
     // Click to collapse
     fireEvent.click(screen.getByText('common.collapse'));
     expect(screen.queryByText('opsAnalysis.screen.panelFrame.border-22')).toBeNull();
+  });
+
+  it('puts a title-only link on the text inspector', () => {
+    const item = createScreenTextItem([], { id: 'text-1', content: '说明' });
+    render(
+      <ScreenStyleInspector item={item} viewport={defaultViewport} onChange={vi.fn()} />,
+    );
+
+    expect(screen.getByText('opsAnalysis.screen.interactionTab')).toBeTruthy();
+    expect(screen.getByText('dashboard.interactionNone')).toBeTruthy();
+    expect(screen.getByText('dashboard.interactionTitleLink')).toBeTruthy();
+    expect(screen.queryByText('dashboard.interactionDataLink')).toBeNull();
   });
 });

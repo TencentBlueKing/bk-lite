@@ -100,6 +100,11 @@ def test_duckdb_groups_events_by_enrichment_dimension(monkeypatch):
         "get_window_start",
         lambda self: datetime.fromisoformat("2026-09-03T08:00:00+00:00"),
     )
+    monkeypatch.setattr(
+        WindowConfig,
+        "get_window_end",
+        lambda self: datetime.fromisoformat("2026-09-03T12:00:00+00:00"),
+    )
     sql = SQLBuilder().build_aggregation_sql(
         dimensions=["enrichment.cmdb.owner"],
         window_config=WindowConfig(WindowType.SLIDING, window_size_minutes=10),
@@ -109,9 +114,9 @@ def test_duckdb_groups_events_by_enrichment_dimension(monkeypatch):
     connection.execute(
         """
         CREATE TABLE events_table AS SELECT * FROM (VALUES
-          ('E1', 'CPU', 'high', '1', 'host-a', 'ext-a', TIMESTAMP '2026-09-03 09:00:00', 'created', '{"cmdb":{"owner":"alice"}}'),
-          ('E2', 'CPU', 'high', '1', 'host-b', 'ext-b', TIMESTAMP '2026-09-03 09:00:00', 'created', '{"cmdb":{"owner":"bob"}}')
-        ) AS t(event_id, title, description, level, resource_name, external_id, received_at, action, enrichment)
+          (1, 'E1', 'CPU', 'high', '1', 'host-a', 'ext-a', TIMESTAMP '2026-09-03 09:00:00', 'created', '{"cmdb":{"owner":"alice"}}'),
+          (2, 'E2', 'CPU', 'high', '1', 'host-b', 'ext-b', TIMESTAMP '2026-09-03 09:00:00', 'created', '{"cmdb":{"owner":"bob"}}')
+        ) AS t(pk, event_id, title, description, level, resource_name, external_id, received_at, action, enrichment)
         """
     )
 
@@ -130,6 +135,11 @@ def test_duckdb_reads_legacy_namespace_array_dimension(monkeypatch):
         "get_window_start",
         lambda self: datetime.fromisoformat("2026-09-03T08:00:00+00:00"),
     )
+    monkeypatch.setattr(
+        WindowConfig,
+        "get_window_end",
+        lambda self: datetime.fromisoformat("2026-09-03T12:00:00+00:00"),
+    )
     sql = SQLBuilder().build_aggregation_sql(
         dimensions=["enrichment.cmdb.owner"],
         window_config=WindowConfig(WindowType.SLIDING, window_size_minutes=10),
@@ -139,8 +149,8 @@ def test_duckdb_reads_legacy_namespace_array_dimension(monkeypatch):
     connection.execute(
         """
         CREATE TABLE events_table AS SELECT * FROM (VALUES
-          ('E1', 'CPU', 'high', '1', 'host-a', 'ext-a', TIMESTAMP '2026-09-03 09:00:00', 'created', '{"cmdb":[{"owner":"alice"},{"owner":"bob"}]}')
-        ) AS t(event_id, title, description, level, resource_name, external_id, received_at, action, enrichment)
+          (1, 'E1', 'CPU', 'high', '1', 'host-a', 'ext-a', TIMESTAMP '2026-09-03 09:00:00', 'created', '{"cmdb":[{"owner":"alice"},{"owner":"bob"}]}')
+        ) AS t(pk, event_id, title, description, level, resource_name, external_id, received_at, action, enrichment)
         """
     )
 

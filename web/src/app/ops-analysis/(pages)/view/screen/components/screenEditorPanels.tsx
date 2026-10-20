@@ -28,6 +28,7 @@ import {
   FontColorsOutlined,
   FontSizeOutlined,
   LeftOutlined,
+  LinkOutlined,
   MinusOutlined,
   PictureOutlined,
   QuestionCircleOutlined,
@@ -103,6 +104,7 @@ import {
   screenChromeTextStyle,
   titleFrameThumbSrc,
 } from './screenChromeSkins';
+import ScreenTextLinkFields from './screenTextLinkFields';
 
 const GEOMETRY_MIN = 1;
 
@@ -1706,6 +1708,13 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
               onChange={(textStyle) => onChange({ ...item, textStyle })}
               onFieldEditEnd={onFieldEditEnd}
             />
+          </InspectorSection>
+
+          <InspectorSection
+            title={t('opsAnalysis.screen.interactionTab')}
+            icon={<LinkOutlined />}
+          >
+            <ScreenTextLinkFields item={item} onChange={onChange} />
           </InspectorSection>
         </>
       )}

@@ -4,11 +4,7 @@ import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import MonitorInstanceOrganization
-from apps.monitor.models.monitor_object import (
-    MonitorObject,
-    MonitorObjectType,
-    MonitorInstance,
-)
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject, MonitorObjectType
 from apps.monitor.services.monitor_object import MonitorObjectService as S
 
 pytestmark = pytest.mark.django_db
@@ -46,7 +42,10 @@ class TestGenerateMonitorInstanceId:
     def test_creates_new_instance(self):
         obj = _obj("GMIObj")
         iid = S.generate_monitor_instance_id(
-            obj.id, "host-a", 30, actor_context={"username": "alice"},
+            obj.id,
+            "host-a",
+            30,
+            actor_context={"username": "alice"},
         )
         inst = MonitorInstance.objects.get(id=iid, name="host-a")
         assert inst.created_by == "alice"
@@ -55,10 +54,17 @@ class TestGenerateMonitorInstanceId:
     def test_reuses_existing_and_updates_interval(self):
         obj = _obj("GMIObj2")
         inst = MonitorInstance.objects.create(
-            id="('h1',)", name="host-b", monitor_object=obj, interval=10, created_by="alice",
+            id="('h1',)",
+            name="host-b",
+            monitor_object=obj,
+            interval=10,
+            created_by="alice",
         )
         iid = S.generate_monitor_instance_id(
-            obj.id, "host-b", 60, actor_context={"username": "bob"},
+            obj.id,
+            "host-b",
+            60,
+            actor_context={"username": "bob"},
         )
         assert iid == "('h1',)"
         inst.refresh_from_db()
@@ -91,10 +97,12 @@ class TestSetObjectOrder:
         assert a.order == 1  # Host 第二
 
     def test_orders_types_when_multiple(self):
-        S.set_object_order([
-            {"type": "type_x", "object_list": []},
-            {"type": "type_y", "object_list": []},
-        ])
+        S.set_object_order(
+            [
+                {"type": "type_x", "object_list": []},
+                {"type": "type_y", "object_list": []},
+            ]
+        )
         tx = MonitorObjectType.objects.get(id="type_x")
         ty = MonitorObjectType.objects.get(id="type_y")
         assert tx.order == 0 and ty.order == 1
@@ -110,7 +118,9 @@ class TestUpdateInstance:
         inst = MonitorInstance.objects.create(id="('h1',)", name="old", monitor_object=obj)
         MonitorInstanceOrganization.objects.create(monitor_instance=inst, organization=1)
         S.update_instance(
-            "('h1',)", name="newname", organizations=[2, 3],
+            "('h1',)",
+            name="newname",
+            organizations=[2, 3],
             actor_context={"username": "alice"},
         )
         inst.refresh_from_db()
@@ -127,6 +137,22 @@ class TestUpdateInstance:
         assert inst.ip == "10.0.0.1"
         assert inst.cloud_region_id == 2
 
+    def test_identity_update_keeps_cmdb_id(self):
+        obj = _obj("UIObjKeepBind")
+        inst = MonitorInstance.objects.create(
+            id="('h-keep',)",
+            name="old",
+            monitor_object=obj,
+            cmdb_id="ci-keep",
+            ip="10.0.0.9",
+        )
+        S.update_instance("('h-keep',)", name="new", ip="10.0.0.1", cloud_region_id=2, cmdb_id="ci-hijack")
+        inst.refresh_from_db()
+        assert inst.name == "new"
+        assert inst.ip == "10.0.0.1"
+        assert inst.cloud_region_id == 2
+        assert inst.cmdb_id == "ci-keep"
+
 
 class TestOrganizationOps:
     def test_add_and_remove_and_set(self):
@@ -135,14 +161,9 @@ class TestOrganizationOps:
         S.add_instances_organizations(["('h1',)"], [1, 2])
         assert MonitorInstanceOrganization.objects.filter(monitor_instance_id="('h1',)").count() == 2
         S.remove_instances_organizations(["('h1',)"], [1])
-        assert not MonitorInstanceOrganization.objects.filter(
-            monitor_instance_id="('h1',)", organization=1
-        ).exists()
+        assert not MonitorInstanceOrganization.objects.filter(monitor_instance_id="('h1',)", organization=1).exists()
         S.set_instances_organizations(["('h1',)"], [9])
-        orgs = set(
-            MonitorInstanceOrganization.objects.filter(monitor_instance_id="('h1',)")
-            .values_list("organization", flat=True)
-        )
+        orgs = set(MonitorInstanceOrganization.objects.filter(monitor_instance_id="('h1',)").values_list("organization", flat=True))
         assert orgs == {9}
 
     def test_noops_on_empty(self):

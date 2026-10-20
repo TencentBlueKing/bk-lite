@@ -256,7 +256,7 @@
         "systemLinkageSyncConflict": "身份对应了不同的监控实例，未关联。",
         "systemLinkageSyncFailed": "建立监控关联失败，请稍后重试。",
         "systemLinkageBatchSync": "建立监控关联",
-        "systemLinkageBatchConfirm": "确认将选中的 {count} 个资产建立监控关联？仅关联已有监控对象，不会新建。",
+        "systemLinkageBatchConfirm": "确认将选中的 {count} 个资产同步到监控？将生成任务：先自动关联已有对象，对不上的再去监控接入。",
         "systemLinkageBatchSummary": "成功 {ok}，已关联跳过 {already_linked}，未找到 {not_found}，冲突 {conflict}，失败 {failed}",
         "systemLinkageManualBind": "手动关联",
         "systemLinkageUnbind": "解除关联",
@@ -1887,6 +1887,8 @@
         "modeRoom": "机房",
         "modeRack": "机柜",
         "selectModel": "选择模型",
+        "selectModelMultiple": "选择模型（可多选）",
+        "selectNetworkInstances": "跨模型选择设备",
         "backToRoom": "返回机房",
         "workspacePlaceholder": "画布区域（后续接入）",
         "unknownView": "未知视图"

@@ -1,9 +1,13 @@
-# Celery beat schedule for RUM alert evaluation.
+from apps.core.celery_schedule import beat_crontab
 
 CELERY_BEAT_SCHEDULE = {
-    "rum_evaluate_alert_policies": {
-        "task": "apps.rum.tasks.evaluate_rum_alert_policies",
-        "schedule": 30.0,
+    "rum_dispatch_policy_evaluations": {
+        "task": "apps.rum.tasks.dispatch_rum_policy_evaluations",
+        "schedule": beat_crontab(minute="*"),
+    },
+    "rum_deliver_alert_outbox": {
+        "task": "apps.rum.tasks.deliver_rum_alert_outbox",
+        "schedule": beat_crontab(minute="*"),
     },
     "rum_publish_pending_outbox": {
         "task": "apps.rum.tasks.publish_pending_rum_outbox",

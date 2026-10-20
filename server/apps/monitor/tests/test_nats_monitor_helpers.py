@@ -500,3 +500,22 @@ class TestResolveMonitorIngestAllowedOrgIds:
                     "user_info": {"team": 1},
                 }
             )
+
+    def test_lifecycle_allows_empty_org_scope(self):
+        assert nm._resolve_monitor_ingest_allowed_org_ids({"event_type": "lifecycle"}) == set()
+        assert nm._resolve_monitor_ingest_allowed_org_ids({"event_type": "lifecycle", "allowed_org_ids": []}) == set()
+
+    def test_lifecycle_empty_intersection_keeps_claimed(self, monkeypatch):
+        monkeypatch.setattr(
+            nm,
+            "_get_nats_actor_scope",
+            lambda user_info: (None, 1, False, frozenset({1}), False, None),
+        )
+        out = nm._resolve_monitor_ingest_allowed_org_ids(
+            {
+                "event_type": "lifecycle",
+                "allowed_org_ids": [9],
+                "user_info": {"user": "alice", "domain": "domain.com", "team": 1, "include_children": False},
+            }
+        )
+        assert set(out) == {9}

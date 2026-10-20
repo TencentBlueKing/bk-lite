@@ -1172,6 +1172,21 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           filter: drop-shadow(0 0 calc(6px * var(--screen-widget-ui-scale)) var(--screen-chrome-glow));
         }
 
+        .screen-text-item__title-link {
+          width: 1em;
+          height: 1em;
+          flex-shrink: 0;
+          font-size: 1em;
+          outline: none;
+          box-shadow: none;
+        }
+
+        .screen-text-item__title-link:focus,
+        .screen-text-item__title-link:focus-visible {
+          outline: none;
+          box-shadow: none;
+        }
+
         .screen-widget-frame__body {
           position: relative;
           z-index: 1;
@@ -1269,6 +1284,18 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           font-size: var(--ops-screen-table-body-font-size, calc(20px * var(--screen-widget-ui-scale))) !important;
           line-height: var(--ops-screen-table-line-height, calc(30px * var(--screen-widget-ui-scale))) !important;
           padding: var(--ops-screen-table-cell-padding-y, calc(12px * var(--screen-widget-ui-scale))) var(--ops-screen-table-cell-padding-x, calc(18px * var(--screen-widget-ui-scale))) !important;
+        }
+
+        .screen-tech-canvas .ant-table-tbody > tr > td .ant-btn-link {
+          height: auto !important;
+          padding: 0 !important;
+          font-size: inherit !important;
+          line-height: inherit !important;
+          color: var(--screen-chrome-accent) !important;
+        }
+
+        .screen-tech-canvas .ant-table-tbody > tr > td .ant-btn-link:not(:disabled):hover {
+          color: color-mix(in srgb, var(--screen-chrome-accent) 72%, white) !important;
         }
 
         .screen-tech-canvas .ant-table-tbody > tr:nth-child(even) > td {

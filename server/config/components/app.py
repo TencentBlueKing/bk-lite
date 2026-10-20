@@ -9,7 +9,7 @@ ROOT_URLCONF = "urls"
 _db_engine = os.getenv("DB_ENGINE", "postgresql").lower()
 _migrate_patch_db_engines = {"dameng", "gaussdb", "goldendb", "oceanbase", "mysql"}
 # 显式 INSTALL_APPS 裁剪时仍须装入的 always-on 业务 app（与 extra.py 保持一致）
-_ALWAYS_ON_SCAN_APPS = frozenset({"system_mgmt", "console_mgmt"})
+_ALWAYS_ON_SCAN_APPS = frozenset({"system_mgmt", "console_mgmt", "module_link"})
 
 # 模板页面配置
 TEMPLATES = [

@@ -2,6 +2,7 @@ from django_filters import CharFilter, FilterSet
 
 from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.models import MonitorPlugin
+from apps.monitor.services.weopsx_cloud_catalog import expand_cloud_family_type_ids
 
 
 class MonitorPluginFilter(FilterSet):
@@ -34,10 +35,14 @@ class MonitorPluginFilter(FilterSet):
         return filter_positive_int_field(queryset, "monitor_object", value)
 
     def filter_monitor_object_type(self, queryset, name, value):
-        """按监控对象分类 ID 过滤（如 database），用于左侧树点一级分类看该类全部能力。"""
-        if value:
-            return queryset.filter(monitor_object__type_id=value).distinct()
-        return queryset
+        """按监控对象分类 ID 过滤（如 database），用于左侧树点一级分类看该类全部能力。
+
+        集成列表点统一「云」根时，历史 Tencent Cloud / Aliyun Cloud 与 type=Cloud 一次返回。
+        """
+        type_ids = expand_cloud_family_type_ids(value)
+        if not type_ids:
+            return queryset
+        return queryset.filter(monitor_object__type_id__in=type_ids).distinct()
 
     class Meta:
         model = MonitorPlugin

@@ -29,6 +29,16 @@ import DisplayFieldsModal from './displayFieldsModal';
 import useObjectApi from './api';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
+import {
+  buildMonitorObjectTypeSidebarTree,
+  expandCloudFamilyTypeSortData,
+  resolveMonitorObjectTypeSelection,
+  resolveMonitorObjectTypeTreeKey
+} from '@/app/monitor/utils/monitorObjectTypeSidebar';
+import {
+  resolveCloudFamilyTypeQueryValues,
+  uniqueMonitorRecords
+} from '@/app/monitor/utils/monitorObject';
 
 const ObjectPage = () => {
   const { isLoading } = useApiClient();
@@ -67,14 +77,10 @@ const ObjectPage = () => {
   });
 
   // 将对象类型列表转换为 TreeSelector 需要的数据格式
-  const treeData: TreeItem[] = useMemo(() => {
-    return typeList.map((type) => ({
-      title: `${type.name}（${type.object_count || 0}）`,
-      key: type.id,
-      label: type.id,
-      children: []
-    }));
-  }, [typeList]);
+  const treeData: TreeItem[] = useMemo(
+    () => buildMonitorObjectTypeSidebarTree(typeList),
+    [typeList]
+  );
 
   // 表格列配置
   const columns: ColumnItem[] = useMemo(
@@ -238,19 +244,20 @@ const ObjectPage = () => {
     if (!selectedType) return;
     try {
       setObjectLoading(true);
-      // 构建排序数据：当前类型下的对象名称列表（按新顺序）
-      const orderData = [
-        {
-          type: selectedType.id,
-          object_list: newList.map((item) => item.name)
-        }
-      ];
-      await updateObjectOrder(orderData);
+      const lists = new Map<string, string[]>();
+      for (const item of newList) {
+        const originalType = item.type_id || item.type || selectedType.id;
+        const list = lists.get(originalType) || [];
+        list.push(item.name);
+        lists.set(originalType, list);
+      }
+      // 按原 type 各提交一次，避免多 type 一包误改类型顺序。
+      for (const [type, object_list] of lists) {
+        await updateObjectOrder([{ type, object_list }]);
+      }
       message.success(t('common.updateSuccess'));
-      // 排序成功后刷新列表
       fetchObjects(selectedType.id);
     } catch {
-      // 排序失败，重新获取列表
       setObjectLoading(false);
     }
   };
@@ -261,10 +268,14 @@ const ObjectPage = () => {
       setTypeLoading(true);
       const data = await getObjectTypes();
       setTypeList(data || []);
-      // 默认选中第一个
       if (data?.length > 0 && !selectedType) {
-        setSelectedType(data[0]);
-        setDefaultSelectedKey(data[0].id);
+        const initial =
+          resolveMonitorObjectTypeSelection(
+            resolveMonitorObjectTypeTreeKey(data[0].id),
+            data
+          ) || data[0];
+        setSelectedType(initial);
+        setDefaultSelectedKey(resolveMonitorObjectTypeTreeKey(data[0].id));
       }
     } finally {
       setTypeLoading(false);
@@ -286,19 +297,29 @@ const ObjectPage = () => {
 
     setObjectLoading(true);
     try {
-      const params = {
-        type_id: currentTypeId,
-        page: pagination.current,
-        page_size: pagination.pageSize,
-        name: objectSearchText || undefined
-      };
-      const data = await getObjects(params, controller.signal);
+      const typeIds = resolveCloudFamilyTypeQueryValues(currentTypeId);
+      const pages = await Promise.all(
+        typeIds.map((type_id) =>
+          getObjects(
+            {
+              type_id,
+              page: pagination.current,
+              page_size: pagination.pageSize,
+              name: objectSearchText || undefined
+            },
+            controller.signal
+          )
+        )
+      );
+      const results = uniqueMonitorRecords(
+        pages.flatMap((page) => page?.results || [])
+      );
       // 请求成功且未被取消时才更新数据和关闭 loading
       if (!controller.signal.aborted) {
-        setObjectList(data?.results || []);
+        setObjectList(results);
         setPagination((prev) => ({
           ...prev,
-          total: data?.count || 0
+          total: results.length
         }));
         setObjectLoading(false);
       }
@@ -315,7 +336,7 @@ const ObjectPage = () => {
 
   // 选择对象类型
   const handleNodeSelect = (key: string) => {
-    const type = typeList.find((t) => t.id === key);
+    const type = resolveMonitorObjectTypeSelection(key, typeList);
     if (type) {
       // 取消上一次请求
       if (abortControllerRef.current) {
@@ -334,8 +355,13 @@ const ObjectPage = () => {
   const handleNodeDrag = async (sortData: TreeSortData[]) => {
     try {
       // sortData 格式: [{ type: 类型ID, object_list: [] }, ...]
-      // 后端接口直接接受这个格式
-      await updateObjectTypeOrder(sortData);
+      // 唯一「云」叶展开回 Tencent Cloud / Aliyun Cloud / Cloud 原 id
+      await updateObjectTypeOrder(
+        expandCloudFamilyTypeSortData(
+          sortData,
+          typeList.map((item) => item.id)
+        )
+      );
       message.success(t('common.updateSuccess'));
       fetchObjectTypes();
     } catch {
@@ -416,8 +442,13 @@ const ObjectPage = () => {
       const data = await getObjectTypes();
       setTypeList(data || []);
       if (data?.length > 0) {
-        setSelectedType(data[0]);
-        setDefaultSelectedKey(data[0].id);
+        const initial =
+          resolveMonitorObjectTypeSelection(
+            resolveMonitorObjectTypeTreeKey(data[0].id),
+            data
+          ) || data[0];
+        setSelectedType(initial);
+        setDefaultSelectedKey(resolveMonitorObjectTypeTreeKey(data[0].id));
       } else {
         setSelectedType(null);
         setDefaultSelectedKey('');
@@ -466,20 +497,30 @@ const ObjectPage = () => {
 
     setObjectLoading(true);
     try {
-      const params = {
-        type_id: currentTypeId,
-        page: 1,
-        page_size: pagination.pageSize,
-        name: searchText || undefined
-      };
-      const data = await getObjects(params, controller.signal);
+      const typeIds = resolveCloudFamilyTypeQueryValues(currentTypeId);
+      const pages = await Promise.all(
+        typeIds.map((type_id) =>
+          getObjects(
+            {
+              type_id,
+              page: 1,
+              page_size: pagination.pageSize,
+              name: searchText || undefined
+            },
+            controller.signal
+          )
+        )
+      );
+      const results = uniqueMonitorRecords(
+        pages.flatMap((page) => page?.results || [])
+      );
       // 请求成功且未被取消时才更新数据和关闭 loading
       if (!controller.signal.aborted) {
-        setObjectList(data?.results || []);
+        setObjectList(results);
         setPagination((prev) => ({
           ...prev,
           current: 1,
-          total: data?.count || 0
+          total: results.length
         }));
         setObjectLoading(false);
       }
@@ -506,11 +547,10 @@ const ObjectPage = () => {
       setTypeList(list || []);
 
       if (actionType === 'add' && data.id) {
-        // 新增：选中新创建的对象类型（根据后端返回的 id）
         const newType = list?.find((item) => item.id === data.id);
         if (newType) {
           setSelectedType(newType);
-          setDefaultSelectedKey(newType.id);
+          setDefaultSelectedKey(resolveMonitorObjectTypeTreeKey(newType.id));
         }
       } else if (actionType === 'edit' && data.id) {
         // 编辑：更新当前选中的对象类型信息（同步右侧标题）
@@ -586,6 +626,7 @@ const ObjectPage = () => {
               defaultSelectedKey={defaultSelectedKey}
               loading={typeLoading}
               draggable
+              allowParentSelect
               onNodeSelect={handleNodeSelect}
               onNodeDrag={handleNodeDrag}
             />

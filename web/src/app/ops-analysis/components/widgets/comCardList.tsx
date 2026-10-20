@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { cardListLinkPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import { Alert } from 'antd';
+import DataLinkHintTooltip from '@/app/ops-analysis/components/dataLinkHintTooltip';
 import ChartSurface from '@/components/chart-surface';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import {
@@ -25,7 +26,7 @@ const ComCardList: React.FC<ComCardListProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
-  const { active: dataLinkActive, openPoint } = useWidgetDataLink(config);
+  const { active: dataLinkActive, openPoint, hoverHint } = useWidgetDataLink(config);
   const cardListConfig = config?.cardList;
   const parsed = parseCardListItems(rawData, {
     ...cardListConfig,
@@ -73,50 +74,51 @@ const ComCardList: React.FC<ComCardListProps> = ({
           }
         >
           {parsed.items.map((item, index) => (
-            <article
-              key={`${item.primary}-${index}`}
-              className={`flex min-w-0 items-center gap-3 rounded-md border border-(--color-border-2) bg-(--color-bg) px-3 py-2 ${dataLinkActive ? 'cursor-pointer' : ''}`}
-              onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
-            >
-              {item.leading ? (
-                <CardListAccent
-                  text={item.leading}
-                  style={leadingStyle}
-                  kind="leading"
-                />
-              ) : null}
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-(--color-text-1)">
-                  {item.primary}
+            <DataLinkHintTooltip key={`${item.primary}-${index}`} hint={hoverHint}>
+              <article
+                className={`flex min-w-0 items-center gap-3 rounded-md border border-(--color-border-2) bg-(--color-bg) px-3 py-2 ${dataLinkActive ? 'cursor-pointer' : ''}`}
+                onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
+              >
+                {item.leading ? (
+                  <CardListAccent
+                    text={item.leading}
+                    style={leadingStyle}
+                    kind="leading"
+                  />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-(--color-text-1)">
+                    {item.primary}
+                  </div>
+                  {item.secondary ? (
+                    <div className="mt-0.5 line-clamp-2 text-xs text-(--color-text-2)">
+                      {item.secondary}
+                    </div>
+                  ) : null}
                 </div>
-                {item.secondary ? (
-                  <div className="mt-0.5 line-clamp-2 text-xs text-(--color-text-2)">
-                    {item.secondary}
+                {item.badge || item.trailingPrimary || item.trailingSecondary ? (
+                  <div className="flex min-w-0 shrink-0 flex-col items-end gap-1">
+                    {item.badge ? (
+                      <CardListAccent
+                        text={item.badge}
+                        style={badgeStyle}
+                        kind="badge"
+                      />
+                    ) : null}
+                    {item.trailingPrimary ? (
+                      <span className="max-w-full truncate text-xs font-medium text-(--color-text-1)">
+                        {item.trailingPrimary}
+                      </span>
+                    ) : null}
+                    {item.trailingSecondary ? (
+                      <span className="max-w-full truncate text-xs text-(--color-text-3)">
+                        {item.trailingSecondary}
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
-              </div>
-              {item.badge || item.trailingPrimary || item.trailingSecondary ? (
-                <div className="flex min-w-0 shrink-0 flex-col items-end gap-1">
-                  {item.badge ? (
-                    <CardListAccent
-                      text={item.badge}
-                      style={badgeStyle}
-                      kind="badge"
-                    />
-                  ) : null}
-                  {item.trailingPrimary ? (
-                    <span className="max-w-full truncate text-xs font-medium text-(--color-text-1)">
-                      {item.trailingPrimary}
-                    </span>
-                  ) : null}
-                  {item.trailingSecondary ? (
-                    <span className="max-w-full truncate text-xs text-(--color-text-3)">
-                      {item.trailingSecondary}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </article>
+              </article>
+            </DataLinkHintTooltip>
           ))}
         </div>
       </div>

@@ -9,7 +9,7 @@ import os
 from apps.core.utils.enterprise_footprint import EnterpriseFootprintError, detect_enterprise_footprint
 
 # 显式 INSTALL_APPS 裁剪时仍须装入的 always-on 业务 app（与 app.py / extra.py 保持一致）
-_ALWAYS_ON_SCAN_APPS = frozenset({"system_mgmt", "console_mgmt"})
+_ALWAYS_ON_SCAN_APPS = frozenset({"system_mgmt", "console_mgmt", "module_link"})
 
 
 def get_install_apps() -> set[str]:

@@ -152,7 +152,7 @@ export const FilterTokenInput: React.FC<FilterTokenInputProps> = ({
   const currentIndex = Math.min(activeIndex, Math.max(filtered.length - 1, 0));
   const menuOpen = open && filtered.length > 0 && menuItems.length > 0;
   const hintText = hint === undefined
-    ? t('dashboard.filterTokenHint', '输入 $ 插入筛选')
+    ? t('dashboard.filterTokenHint', '输入 $ 引用全局筛选变量')
     : hint;
   const unmatchedMessage = unmatchedTokens.length
     ? t(

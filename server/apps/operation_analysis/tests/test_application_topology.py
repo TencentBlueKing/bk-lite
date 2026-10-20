@@ -276,3 +276,115 @@ def test_application_topology_monitor_id_failure_still_returns_graph(monkeypatch
     assert record.args == ("monitor_ids", "NatsResultFalse", CENTER_UUID)
     assert SECRET not in record.getMessage()
     assert SECRET not in caplog.text
+
+
+SECOND_UUID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+SECOND_MONITOR = "monitor-2"
+
+
+def _topology_with_second():
+    payload = _topology()
+    payload["data"]["nodes"].append(
+        {
+            "id": SECOND_UUID,
+            "name": "host-02",
+            "model_id": "host",
+            "hop": 1,
+            "category": "host",
+            "app_topo_layer": "host",
+        }
+    )
+    return payload
+
+
+def test_application_topology_later_monitor_id_chunk_still_overlays(monkeypatch, caplog):
+    monkeypatch.setattr("apps.operation_analysis.services.application_topology._MONITOR_ID_CHUNK", 1)
+
+    class ChunkCmdb(_Cmdb):
+        def application_resource_topology_by_uuid(self, **kwargs):
+            return _topology_with_second()
+
+        def get_monitor_ids_by_inst_uuids(self, **kwargs):
+            requested = [str(item) for item in kwargs.get("inst_uuids") or []]
+            if requested == [HOST_UUID]:
+                return {"result": False, "message": SECRET}
+            mapping = {CENTER_UUID: "", SECOND_UUID: SECOND_MONITOR}
+            return {
+                "result": True,
+                "data": {"items": [{"inst_uuid": item, "monitor_id": mapping[item]} for item in requested if item in mapping]},
+            }
+
+    monkeypatch.setattr("apps.operation_analysis.services.application_topology.CMDB", lambda: ChunkCmdb())
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application_topology.Monitor",
+        lambda: _Monitor([{"instance_id": SECOND_MONITOR, "count": 4, "max_level": "warning"}]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application_topology.build_nats_user_info",
+        lambda request: {"user": "alice", "token": SECRET},
+    )
+
+    with caplog.at_level(logging.ERROR, logger="operation_analysis"):
+        result = ApplicationTopologyService.build(SimpleNamespace(), CENTER_UUID, 3)
+
+    by_id = {node["id"]: node for node in result["nodes"]}
+    assert set(by_id) == {CENTER_UUID, HOST_UUID, SECOND_UUID}
+    assert by_id[HOST_UUID]["monitor_id"] == ""
+    assert by_id[HOST_UUID]["alert_count"] is None
+    assert by_id[SECOND_UUID]["monitor_id"] == SECOND_MONITOR
+    assert by_id[SECOND_UUID]["alert_count"] == 4
+    assert by_id[SECOND_UUID]["max_level"] == "warning"
+    error_records = [record for record in caplog.records if record.levelno >= logging.ERROR]
+    assert len(error_records) == 1
+    assert error_records[0].args == ("monitor_ids", "NatsResultFalse", CENTER_UUID)
+    assert SECRET not in json.dumps(result)
+
+
+def test_application_topology_later_alert_chunk_still_overlays(monkeypatch, caplog):
+    monkeypatch.setattr("apps.operation_analysis.services.application_topology._MONITOR_ID_CHUNK", 1)
+
+    class ChunkCmdb(_Cmdb):
+        def application_resource_topology_by_uuid(self, **kwargs):
+            return _topology_with_second()
+
+        def get_monitor_ids_by_inst_uuids(self, **kwargs):
+            requested = [str(item) for item in kwargs.get("inst_uuids") or []]
+            mapping = {CENTER_UUID: "", HOST_UUID: MONITOR_ID, SECOND_UUID: SECOND_MONITOR}
+            return {
+                "result": True,
+                "data": {"items": [{"inst_uuid": item, "monitor_id": mapping[item]} for item in requested if item in mapping]},
+            }
+
+    class ChunkMonitor(_Monitor):
+        def run(self, name, query_data=None, user_info=None):
+            assert name == "query_latest_active_alerts"
+            assert SECRET not in json.dumps(query_data)
+            if query_data["instance_ids"] == [MONITOR_ID]:
+                return {"result": False, "message": SECRET, "data": {"secret": SECRET}}
+            assert query_data["instance_ids"] == [SECOND_MONITOR]
+            return {
+                "result": True,
+                "data": {"instance_summaries": [{"instance_id": SECOND_MONITOR, "count": 2, "max_level": "critical"}]},
+            }
+
+    monkeypatch.setattr("apps.operation_analysis.services.application_topology.CMDB", lambda: ChunkCmdb())
+    monkeypatch.setattr("apps.operation_analysis.services.application_topology.Monitor", lambda: ChunkMonitor([]))
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application_topology.build_nats_user_info",
+        lambda request: {"user": "alice", "token": SECRET},
+    )
+
+    with caplog.at_level(logging.ERROR, logger="operation_analysis"):
+        result = ApplicationTopologyService.build(SimpleNamespace(), CENTER_UUID, 3)
+
+    by_id = {node["id"]: node for node in result["nodes"]}
+    assert by_id[HOST_UUID]["monitor_id"] == MONITOR_ID
+    assert by_id[HOST_UUID]["alert_count"] is None
+    assert by_id[SECOND_UUID]["monitor_id"] == SECOND_MONITOR
+    assert by_id[SECOND_UUID]["alert_count"] == 2
+    assert by_id[SECOND_UUID]["max_level"] == "critical"
+    error_records = [record for record in caplog.records if record.levelno >= logging.ERROR]
+    assert len(error_records) == 1
+    assert error_records[0].args == ("active_alerts", "NatsResultFalse", CENTER_UUID)
+    assert SECRET not in json.dumps(result)
+    assert SECRET not in caplog.text

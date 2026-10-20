@@ -727,7 +727,8 @@
 
 .stepContent :global(.ant-input),
 .stepContent :global(.ant-input-number),
-.stepContent :global(.ant-select) {
+.stepContent :global(.ant-select),
+.organizationControl {
   width: 100%;
   max-width: 560px;
 }

@@ -1,4 +1,10 @@
-from apps.node_mgmt.services.module_push_contract import IngestResult, ingest_auth_kwargs, validate_envelope
+from apps.node_mgmt.services.module_push_contract import (
+    IngestResult,
+    actor_scope_with_instance_orgs,
+    ingest_auth_kwargs,
+    org_ids_from_values,
+    validate_envelope,
+)
 
 
 def test_validate_envelope_requires_source_and_event():
@@ -53,3 +59,17 @@ def test_ingest_auth_kwargs_omits_empty_user_info():
         "allowed_org_ids": [1],
         "operator": "bob",
     }
+
+
+def test_org_ids_from_values_skips_invalid_and_dedupes():
+    assert org_ids_from_values(["1", 2, "x", None, 2, "2"]) == [1, 2]
+    assert org_ids_from_values(None) == []
+    assert org_ids_from_values(3) == [3]
+
+
+def test_actor_scope_with_instance_orgs_fills_only_when_empty():
+    filled = actor_scope_with_instance_orgs({"operator": "alice"}, [9, "9"])
+    assert filled["allowed_org_ids"] == [9]
+    assert filled["operator"] == "alice"
+    kept = actor_scope_with_instance_orgs({"allowed_org_ids": [1], "operator": "alice"}, [9])
+    assert kept["allowed_org_ids"] == [1]

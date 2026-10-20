@@ -65,6 +65,7 @@ export const ruleList = [
   { name: 'level', verbose_name: '级别' },
   { name: 'resource_type', verbose_name: '类型对象' },
   { name: 'resource_id', verbose_name: '对象实例' },
+  { name: 'cmdb_id', verbose_name: 'CMDB实例ID' },
   { name: 'content', verbose_name: '内容' },
   { name: 'service', verbose_name: '服务' },
   { name: 'location', verbose_name: '位置' },

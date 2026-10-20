@@ -183,6 +183,12 @@ describe('createScreenCopyItemHandler', () => {
       w: 200,
       h: 40,
       zIndex: 2,
+      interaction: {
+        kind: 'title',
+        name: '查看告警',
+        url: '/alerts?source=$source$',
+        openMode: 'newTab',
+      },
     });
     const shape = createScreenShapeItem([text], 'rect', {
       id: 'shape-1',
@@ -218,6 +224,12 @@ describe('createScreenCopyItemHandler', () => {
       w: 200,
       h: 40,
       zIndex: 4,
+      interaction: {
+        kind: 'title',
+        name: '查看告警',
+        url: '/alerts?source=$source$',
+        openMode: 'newTab',
+      },
     });
     if (copied && 'textStyle' in copied && 'textStyle' in text) {
       copied.textStyle.fontSize = 99;

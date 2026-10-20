@@ -289,8 +289,9 @@ class CmdbModuleIngestService:
 
     @classmethod
     def ingest(cls, params: dict[str, Any]) -> dict[str, Any]:
-        allowed_org_ids = params.get("allowed_org_ids")
-        if not allowed_org_ids:
+        event_type = str(params.get("event_type") or EVENT_UPSERT).strip()
+        allowed_org_ids = list(params.get("allowed_org_ids") or [])
+        if event_type != EVENT_LIFECYCLE and not allowed_org_ids:
             raise ValueError("authorization scope is required for CMDB ingest")
 
         raw = params.get("raw") or {}
@@ -315,7 +316,6 @@ class CmdbModuleIngestService:
         if cls._is_echo(params):
             return IngestResult(id=cmdb_id, ignored=True).as_dict()
 
-        event_type = str(params.get("event_type") or EVENT_UPSERT).strip()
         if event_type == EVENT_LIFECYCLE:
             return cls._handle_lifecycle(
                 raw=raw,
@@ -324,7 +324,7 @@ class CmdbModuleIngestService:
                 cmdb_id=cmdb_id,
                 monitor_id=monitor_id,
                 operator=params.get("operator") or "",
-                allowed_org_ids=list(allowed_org_ids),
+                allowed_org_ids=allowed_org_ids,
             )
 
         if not node_id and not cmdb_id and not cls._extract_ip(raw):

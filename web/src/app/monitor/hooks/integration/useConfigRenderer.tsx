@@ -12,7 +12,13 @@ import {
   Spin,
   Alert,
 } from 'antd';
-import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
+import {
+  ExclamationCircleFilled,
+  FormatPainterOutlined,
+  MinusCircleOutlined,
+  PlusOutlined,
+  SyncOutlined
+} from '@ant-design/icons';
 import CodeEditor from '@/components/code-editor';
 import {
   ScriptBodyEditor,
@@ -908,7 +914,10 @@ export const useConfigRenderer = () => {
     columnConfig: any,
     dataSource: any[],
     onTableDataChange: (data: any[]) => void,
-    externalOptions?: Record<string, any[]>
+    externalOptions?: Record<string, any[]>,
+    columnExtras?: {
+      onApplyNodeToEmptyRows?: (nodeIds: unknown) => void;
+    }
   ) => {
     const {
       name,
@@ -926,6 +935,11 @@ export const useConfigRenderer = () => {
     } = columnConfig;
     const { width: columnWidth, ...componentProps } = widget_props;
     const guideTip = guide_short || tooltip || description;
+    const showBatchApply =
+      name === 'node_ids' &&
+      !enable_row_filter &&
+      typeof columnExtras?.onApplyNodeToEmptyRows === 'function';
+    const batchApplyLabel = t('monitor.integrations.batchApplyNode', '批量生效');
 
     let options = columnConfig.options || [];
     if (!options?.length && externalOptions) {
@@ -949,7 +963,8 @@ export const useConfigRenderer = () => {
       ),
       dataIndex: name,
       key: name,
-      width: columnWidth || 200
+      ellipsis: false,
+      width: columnWidth || (showBatchApply ? 280 : 200)
     };
 
     // 验证函数
@@ -1079,44 +1094,77 @@ export const useConfigRenderer = () => {
             name
           );
 
+          const hasSelectedNode = !(
+            text === undefined ||
+            text === null ||
+            text === '' ||
+            (Array.isArray(text) && text.length === 0)
+          );
+          const selectedOption = (options || []).find((option: any) => {
+            if (Array.isArray(text)) {
+              return text.some((item) => String(item) === String(option.value));
+            }
+            return String(option.value) === String(text);
+          });
+          const selectedLabel = selectedOption?.label || selectedOption?.name;
+
           return (
-            <div className="flex items-center gap-2">
-              <Select
-                value={text}
-                onChange={(value) => handleChange(value, record, index)}
-                placeholder={componentProps.placeholder || label}
-                className="flex-1"
-                status={errorMsg ? 'error' : ''}
-                showSearch
-                optionFilterProp="label"
-                {...componentProps}
-              >
-                {filteredOptions.map((option: any) => (
-                  <Select.Option
-                    key={option.value}
-                    value={option.value}
-                    label={option.label}
-                    disabled={option.disabled}
+            <div className="flex w-full min-w-0 items-center gap-1">
+              <Tooltip title={hasSelectedNode ? selectedLabel : undefined}>
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <Select
+                    {...componentProps}
+                    value={text}
+                    onChange={(value) => handleChange(value, record, index)}
+                    placeholder={componentProps.placeholder || label}
+                    className="w-full"
+                    status={errorMsg ? 'error' : ''}
+                    showSearch
+                    optionFilterProp="label"
                   >
-                    <Tooltip
-                      title={
-                        option.disabledReason
-                          ? `${option.label} · ${option.disabledReason}`
-                          : option.label
-                      }
-                    >
-                      <span className="flex w-full min-w-0 items-center justify-between gap-2">
-                        <span className="min-w-0 truncate">{option.label}</span>
-                        {option.disabledReason && (
-                          <span className="shrink-0 text-[12px] text-[var(--color-text-3)]">
-                            {option.disabledReason}
+                    {filteredOptions.map((option: any) => (
+                      <Select.Option
+                        key={option.value}
+                        value={option.value}
+                        label={option.label}
+                        disabled={option.disabled}
+                      >
+                        <Tooltip
+                          title={
+                            option.disabledReason
+                              ? `${option.label} · ${option.disabledReason}`
+                              : option.label
+                          }
+                        >
+                          <span className="flex w-full min-w-0 items-center justify-between gap-2">
+                            <span className="min-w-0 truncate">{option.label}</span>
+                            {option.disabledReason && (
+                              <span className="shrink-0 text-[12px] text-[var(--color-text-3)]">
+                                {option.disabledReason}
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                    </Tooltip>
-                  </Select.Option>
-                ))}
-              </Select>
+                        </Tooltip>
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </div>
+              </Tooltip>
+              {showBatchApply && (
+                <Tooltip title={batchApplyLabel}>
+                  <span className="inline-flex shrink-0">
+                    <Button
+                      type="text"
+                      size="small"
+                      className="px-1 text-[var(--color-text-3)]"
+                      disabled={!hasSelectedNode}
+                      aria-label={batchApplyLabel}
+                      icon={<FormatPainterOutlined />}
+                      onClick={() => columnExtras?.onApplyNodeToEmptyRows?.(text)}
+                    />
+                  </span>
+                </Tooltip>
+              )}
               {errorMsg && (
                 <Tooltip title={errorMsg}>
                   <ExclamationCircleFilled className="text-[14px] text-[var(--color-fail)]" />

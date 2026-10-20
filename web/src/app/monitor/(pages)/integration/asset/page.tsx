@@ -52,7 +52,7 @@ import TreeSelector from '@/app/monitor/components/treeSelector';
 import EditConfig from './updateConfig';
 import EditInstance from './editInstance';
 import TemplateConfigDrawer from './templateConfigDrawer';
-import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
+import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import CompactEmptyState from '@/components/compact-empty-state';
 import Permission from '@/components/permission';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
@@ -883,30 +883,18 @@ const Asset = () => {
   };
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
-    const groupedData = data.reduce(
-      (acc, item) => {
-        if (!acc[item.type]) {
-          acc[item.type] = {
-            title: item.display_type || '--',
-            key: item.type,
-            children: []
-          };
-        }
-        if (!isDerivativeObject(item, data)) {
-          acc[item.type].children.push({
-            title: item.display_name || '--',
-            label: item.name || '--',
-            key: toMonitorIdString(item.id),
-            icon: item.icon,
-            count: item.instance_count ?? 0,
-            children: []
-          });
-        }
-        return acc;
-      },
-      {} as Record<string, TreeItem>
+    return buildMonitorObjectSidebarTree(
+      data,
+      (item) => ({
+        title: item.display_name || '--',
+        label: item.name || '--',
+        key: toMonitorIdString(item.id),
+        icon: item.icon,
+        count: item.instance_count ?? 0,
+        children: []
+      }),
+      { attachCloudDerivatives: false }
     );
-    return Object.values(groupedData);
   };
 
   const deleteInstConfirm = async (row: any) => {

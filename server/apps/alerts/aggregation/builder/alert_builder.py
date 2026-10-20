@@ -4,15 +4,16 @@ from typing import Any, Dict, List, Optional
 
 from django.utils import timezone
 
+from apps.alerts.aggregation.batching import AGGREGATION_BATCH_SIZE
+from apps.alerts.aggregation.builder.event_reducer import EventFieldReducer
 from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.constants.constants import AlertStatus, EventAction, LevelType, SessionStatus
 from apps.alerts.enrichment.merge import merge_namespace_payload
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event, Level
-from apps.alerts.service.monitor_object_snapshot import resolve_monitor_objects
-from apps.alerts.service.monitor_sources import collect_push_source_ids, remember_snapshot
-from apps.alerts.utils.enrichment import resolve_data_path
+from apps.alerts.service.monitor_sources import remember_snapshot
 from apps.alerts.utils.permission_scope import normalize_team_ids
+from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
 from apps.core.logger import alert_logger as logger
 
 MAX_ALERT_OWNERS = 50
@@ -188,72 +189,77 @@ class AlertBuilder:
         return owners
 
     @staticmethod
-    def _resolve_standard_fields(events) -> Dict[str, Any]:
-        event_list = list(events)
-        if not event_list:
-            return {
-                "source_name": None,
-                "push_source_ids": [],
-                "resource_id": None,
-                "resource_name": None,
-                "resource_type": None,
-                "item": None,
-                "labels": {},
-                "enrichment": {},
-                "enrichment_meta": {"schema_version": 1, "event_count": 0, "status_counts": {}},
-            }
+    def _reduce_events(events, group_by_field: str = "") -> EventFieldReducer:
+        reducer = EventFieldReducer(group_by_field)
+        batch = []
+        for event in events:
+            batch.append(event)
+            if len(batch) >= AGGREGATION_BATCH_SIZE:
+                reducer.consume(batch)
+                batch = []
+        if batch:
+            reducer.consume(batch)
+        return reducer
 
-        return {
-            "source_name": AlertBuilder._get_unique_scalar_value([event.source.name for event in event_list]),
-            "push_source_ids": collect_push_source_ids(event_list),
-            "resource_id": AlertBuilder._get_unique_scalar_value([event.resource_id for event in event_list]),
-            "resource_name": AlertBuilder._get_unique_scalar_value([event.resource_name for event in event_list]),
-            "resource_type": AlertBuilder._get_unique_scalar_value([event.resource_type for event in event_list]),
-            "item": AlertBuilder._get_unique_scalar_value([event.item for event in event_list]),
-            "labels": AlertBuilder._get_consistent_labels(event_list),
-            "enrichment": AlertBuilder._merge_enrichment(event_list),
-            "enrichment_meta": AlertBuilder._merge_enrichment_meta(event_list),
-        }
+    @staticmethod
+    def _resolve_standard_fields(events) -> Dict[str, Any]:
+        return AlertBuilder._reduce_events(events).standard_fields()
 
     @staticmethod
     def _resolve_dimensions(events: List[Event], group_by_field: str) -> Dict[str, str]:
-        event_list = list(events)
-        if not event_list or not group_by_field:
+        if not group_by_field:
             return {}
-
-        dimension_names = [item.strip() for item in group_by_field.split(",") if item.strip()]
-        dimensions: Dict[str, str] = {}
-
-        for dimension_name in dimension_names:
-            values = set()
-            for event in event_list:
-                if dimension_name.startswith("enrichment."):
-                    value = resolve_data_path(
-                        {"enrichment": getattr(event, "enrichment", None) or {}},
-                        dimension_name,
-                    )
-                else:
-                    value = getattr(event, dimension_name, None)
-                if value is None:
-                    continue
-                normalized_value = str(value).strip()
-                if normalized_value:
-                    values.add(normalized_value)
-
-            if len(values) == 1:
-                dimensions[dimension_name] = values.pop()
-
-        return dimensions
+        return AlertBuilder._reduce_events(events, group_by_field).dimensions()
 
     @staticmethod
-    def _get_events_by_ids(event_ids: List) -> List[Event]:
-        return list(Event.objects.select_related("source").filter(event_id__in=event_ids).order_by("pk"))
+    def _pk_batches_for_event_ids(event_ids: List):
+        if not event_ids:
+            return
+        queryset = Event.objects.filter(event_id__in=event_ids)
+        for batch in iter_queryset_in_pk_batches(queryset, AGGREGATION_BATCH_SIZE):
+            yield [event.pk for event in batch]
+
+    @staticmethod
+    def _link_pk_batches(alert: Alert, pk_batches) -> int:
+        added = 0
+        for pks in pk_batches or []:
+            if not pks:
+                continue
+            existing = set(alert.events.filter(pk__in=pks).values_list("pk", flat=True))
+            new_pks = [pk for pk in pks if pk not in existing]
+            if not new_pks:
+                continue
+            alert.events.add(*new_pks)
+            added += len(new_pks)
+        return added
+
+    @staticmethod
+    def _fill_reduced_fields(alert: Alert, group_by_field: str) -> None:
+        reducer = EventFieldReducer(group_by_field)
+        related = alert.events.select_related("source")
+        for batch in iter_queryset_in_pk_batches(related, AGGREGATION_BATCH_SIZE):
+            reducer.consume(batch)
+        fields = reducer.standard_fields()
+        alert.source_name = fields["source_name"]
+        alert.push_source_ids = fields["push_source_ids"]
+        alert.resource_id = fields["resource_id"]
+        alert.resource_name = fields["resource_name"]
+        alert.resource_type = fields["resource_type"]
+        alert.item = fields["item"]
+        alert.labels = fields["labels"]
+        alert.enrichment = fields["enrichment"]
+        alert.enrichment_meta = fields["enrichment_meta"]
+        alert.dimensions = reducer.dimensions()
+        alert.monitor_objects = reducer.monitor_objects
+        alert.owners = reducer.owners
 
     @staticmethod
     def create_or_update_alert(
         aggregation_result: Dict[str, Any],
         strategy: AlarmStrategy,
         group_by_field: str = "",
+        window_end=None,
+        member_pk_batches=None,
     ) -> Alert:
         """
         创建或更新Alert（并发安全版本）
@@ -262,14 +268,29 @@ class AlertBuilder:
         """
         fingerprint = aggregation_result.get("fingerprint")
         event_ids = aggregation_result.get("event_ids", [])
+        if member_pk_batches is None:
+            member_pk_batches = AlertBuilder._pk_batches_for_event_ids(event_ids)
 
         from apps.alerts.service.active_fingerprint import bind_active_fingerprint, claim_active_fingerprint
 
         lease, alert = claim_active_fingerprint(fingerprint)
         if alert:
-            return AlertBuilder._update_existing_alert(alert, aggregation_result, event_ids, strategy)
+            return AlertBuilder._update_existing_alert(
+                alert,
+                aggregation_result,
+                member_pk_batches,
+                strategy,
+                group_by_field,
+                window_end,
+            )
 
-        alert = AlertBuilder._create_new_alert(aggregation_result, strategy, event_ids, group_by_field)
+        alert = AlertBuilder._create_new_alert(
+            aggregation_result,
+            strategy,
+            member_pk_batches,
+            group_by_field,
+            window_end,
+        )
         bind_active_fingerprint(lease, alert)
         return alert
 
@@ -277,17 +298,12 @@ class AlertBuilder:
     def _create_new_alert(
         result: Dict[str, Any],
         strategy: AlarmStrategy,
-        event_ids: List,
+        member_pk_batches,
         group_by_field: str,
+        window_end=None,
     ) -> Alert:
         alert_id = f"ALERT-{uuid.uuid4().hex.upper()}"
-        events = AlertBuilder._get_events_by_ids(event_ids) if event_ids else []
-        standard_fields = AlertBuilder._resolve_standard_fields(events)
-        dimensions = AlertBuilder._resolve_dimensions(events, group_by_field)
-        monitor_objects = resolve_monitor_objects(event for event in events if event.action == EventAction.CREATED)
-        owners = AlertBuilder._collect_owners(events)
-
-        window_config = WindowFactory.create_from_strategy(strategy)
+        window_config = WindowFactory.create_from_strategy(strategy, window_end=window_end)
 
         is_session_alert = window_config.is_session_window
         session_timeout_minutes = getattr(window_config, "session_timeout_minutes", 0)
@@ -304,19 +320,19 @@ class AlertBuilder:
             status=AlertStatus.UNASSIGNED,
             first_event_time=result["first_event_time"],
             last_event_time=result["last_event_time"],
-            labels=standard_fields["labels"],
-            enrichment=standard_fields["enrichment"],
-            enrichment_meta=standard_fields["enrichment_meta"],
-            item=standard_fields["item"],
-            resource_id=standard_fields["resource_id"],
-            resource_name=standard_fields["resource_name"],
-            resource_type=standard_fields["resource_type"],
-            monitor_objects=monitor_objects,
-            owners=owners,
-            source_name=standard_fields["source_name"],
-            push_source_ids=standard_fields["push_source_ids"],
+            labels={},
+            enrichment={},
+            enrichment_meta={"schema_version": 1, "event_count": 0, "status_counts": {}},
+            item=None,
+            resource_id=None,
+            resource_name=None,
+            resource_type=None,
+            monitor_objects=[],
+            owners=[],
+            source_name=None,
+            push_source_ids=[],
             group_by_field=group_by_field,
-            dimensions=dimensions,
+            dimensions={},
             is_session_alert=is_session_alert,
             session_status=SessionStatus.OBSERVING if is_session_alert and session_timeout_minutes else None,
             session_end_time=window_config.get_session_end_time() if is_session_alert and session_timeout_minutes else None,
@@ -324,11 +340,26 @@ class AlertBuilder:
             team=AlertBuilder._get_safe_strategy_team(strategy),
         )
 
-        if events:
-            alert.events.add(*events)
-
-            # 初始化新创建Alert的缓存
-            AlertBuilder._alert_event_cache[alert.pk] = set(event_ids)
+        added = AlertBuilder._link_pk_batches(alert, member_pk_batches)
+        AlertBuilder._fill_reduced_fields(alert, group_by_field)
+        alert.save(
+            update_fields=[
+                "source_name",
+                "push_source_ids",
+                "resource_id",
+                "resource_name",
+                "resource_type",
+                "item",
+                "labels",
+                "enrichment",
+                "enrichment_meta",
+                "dimensions",
+                "monitor_objects",
+                "owners",
+                "updated_at",
+            ]
+        )
+        alert.aggregation_linked_new_events = added
 
         remember_snapshot(alert)
 
@@ -344,8 +375,10 @@ class AlertBuilder:
     def _update_existing_alert(
         alert: Alert,
         result: Dict[str, Any],
-        event_ids: List,
+        member_pk_batches,
         strategy: AlarmStrategy,
+        group_by_field: str = "",
+        window_end=None,
     ) -> Alert:
         # 与恢复事件关联、历史回填共用 Alert 行锁；锁内重读快照。
         alert = Alert.objects.select_for_update().get(pk=alert.pk)
@@ -359,36 +392,12 @@ class AlertBuilder:
             time_out = params.get("time_out", False)
 
             if time_out:
-                window_config = WindowFactory.create_from_strategy(strategy)
+                window_config = WindowFactory.create_from_strategy(strategy, window_end=window_end)
                 alert.session_end_time = window_config.get_session_end_time()
 
-        if event_ids:
-            # 事务回滚不会回滚进程缓存；锁内以数据库关系为准，保证重试不会漏关联。
-            existing_event_ids = set(alert.events.filter(event_id__in=event_ids).values_list("event_id", flat=True))
-            new_event_ids = [eid for eid in event_ids if eid not in existing_event_ids]
-
-            if new_event_ids:
-                new_events = Event.objects.filter(event_id__in=new_event_ids)
-                alert.events.add(*new_events)
-
-        related_events = alert.events.select_related("source").all().order_by("pk")
-        standard_fields = AlertBuilder._resolve_standard_fields(related_events)
-        alert.monitor_objects = resolve_monitor_objects(event for event in related_events if event.action == EventAction.CREATED)
-        alert.owners = AlertBuilder._collect_owners(related_events)
-        dimensions = AlertBuilder._resolve_dimensions(
-            related_events,
-            alert.group_by_field or "",
-        )
-        alert.source_name = standard_fields["source_name"]
-        alert.push_source_ids = standard_fields["push_source_ids"]
-        alert.resource_id = standard_fields["resource_id"]
-        alert.resource_name = standard_fields["resource_name"]
-        alert.resource_type = standard_fields["resource_type"]
-        alert.item = standard_fields["item"]
-        alert.labels = standard_fields["labels"]
-        alert.enrichment = standard_fields["enrichment"]
-        alert.enrichment_meta = standard_fields["enrichment_meta"]
-        alert.dimensions = dimensions
+        added = AlertBuilder._link_pk_batches(alert, member_pk_batches)
+        AlertBuilder._fill_reduced_fields(alert, group_by_field or alert.group_by_field or "")
+        alert.aggregation_linked_new_events = added
         alert.save(
             update_fields=[
                 "last_event_time",
