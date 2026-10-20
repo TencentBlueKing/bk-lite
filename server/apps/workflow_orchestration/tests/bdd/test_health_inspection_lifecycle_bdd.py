@@ -141,11 +141,12 @@ def builtin_templates_render(ctx):
         rendered = render_report(content, fmt, ctx["health_data"])
         text = _rendered_text(fmt, rendered)
         assert "results" in parsed.loops
-        assert any("host.hostname" in item for item in parsed.placeholders)
+        assert "metric_summary" in parsed.loops
         assert "10.10.90.120" in text
         assert "CPU Total" in text
         assert "Ethernet0" in text
-        assert "win-demo-01" in text
+        assert "CPU 使用率" in text
+        assert "Windows 巡检主机" in text
         assert "{{" not in text
 
 

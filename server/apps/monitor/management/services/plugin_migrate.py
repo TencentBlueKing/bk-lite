@@ -629,6 +629,9 @@ def _cleanup_removed_plugins(path_list):
     removed_names = list(removed_plugins.values_list("name", flat=True))
     try:
         with transaction.atomic():
+            from apps.monitor.services.policy_group import PolicyGroupService
+
+            PolicyGroupService.retire_policies_for_plugins(removed_ids, operator="system")
             ui_deleted, _ = MonitorPluginUITemplate.objects.filter(plugin_id__in=removed_ids).delete()
             config_deleted, _ = MonitorPluginConfigTemplate.objects.filter(plugin_id__in=removed_ids).delete()
             policy_deleted, _ = PolicyTemplate.objects.filter(plugin_id__in=removed_ids).delete()

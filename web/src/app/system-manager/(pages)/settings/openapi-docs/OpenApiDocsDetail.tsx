@@ -6,6 +6,7 @@ import { Button, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   ApiOutlined,
+  CodeOutlined,
   CopyOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
@@ -16,17 +17,22 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import HttpEndpointDisplay from '@/components/http-endpoint-display';
 import SourceOriginBadge from '@/components/source-origin-badge';
 import { useCopy } from '@/hooks/useCopy';
-import type { OpenAPIFieldSpec } from '@/app/system-manager/api/settings';
 import {
   fieldHasRange,
+  flattenSchemaFields,
   formatChoicesDisplay,
   formatFieldRange,
+  formatSchemaType,
+  formatSchemaValue,
   generateCurlCommand,
   generateSamplePayload,
+  generateSchemaExample,
   injectDescriptionKey,
   OPENAPI_SECRET_KEY_HREF,
+  schemaHasDefault,
   splitLinkPlaceholder,
   type OpenAPIDocRow,
+  type OpenAPISchemaFieldRow,
 } from '@/app/system-manager/utils/openapiDocs';
 import { useTranslation } from '@/utils/i18n';
 
@@ -51,24 +57,27 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
     setOrigin(window.location.origin);
   }, []);
 
-  const schemaRows = useMemo(() => {
+  const requestSchemaRows = useMemo(() => {
     if (!selectedRow?.requestSchema) return [];
-    return Object.entries(selectedRow.requestSchema).map(([name, spec]) => ({
-      name,
-      ...spec,
-    }));
+    return flattenSchemaFields(selectedRow.requestSchema);
+  }, [selectedRow]);
+
+  const responseSchemaRows = useMemo(() => {
+    if (!selectedRow?.responseSchema) return [];
+    return flattenSchemaFields(selectedRow.responseSchema);
   }, [selectedRow]);
 
   const schemaColumns = useMemo(() => {
-    const columns: ColumnsType<{ name: string } & OpenAPIFieldSpec> = [
+    const allRows = [...requestSchemaRows, ...responseSchemaRows];
+    const columns: ColumnsType<OpenAPISchemaFieldRow> = [
       {
         title: t('system.settings.openapiDocs.fieldName'),
         dataIndex: 'name',
         key: 'name',
         width: 130,
         render: (name: string, record) => (
-          <div className="flex items-center gap-1.5">
-            <span className="font-mono text-xs font-semibold text-[var(--color-text-1)]">{name}</span>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="break-all font-mono text-xs font-semibold text-[var(--color-text-1)]">{name}</span>
             {record.required && (
               <span className="text-[10px] font-bold leading-none text-[var(--color-fail)]">*</span>
             )}
@@ -77,12 +86,11 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
       },
       {
         title: t('system.settings.openapiDocs.fieldType'),
-        dataIndex: 'type',
         key: 'type',
         width: 90,
-        render: (type: string) => (
+        render: (_, record) => (
           <Tag className="m-0 border-0 bg-[var(--color-fill-2)] font-mono text-[11px] text-[var(--color-text-2)]">
-            {type}
+            {formatSchemaType(record.schema)}
           </Tag>
         ),
       },
@@ -102,14 +110,14 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
       },
     ];
 
-    if (schemaRows.some((row) => fieldHasRange(row))) {
+    if (allRows.some((row) => fieldHasRange(row.schema))) {
       columns.push({
         title: t('system.settings.openapiDocs.range'),
         key: 'range',
         width: 110,
         render: (_, record) => (
           <span className="font-mono text-xs text-[var(--color-text-3)]">
-            {formatFieldRange(record.min_value, record.max_value) || '--'}
+            {formatFieldRange(record.schema) || '--'}
           </span>
         ),
       });
@@ -118,25 +126,23 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
     columns.push(
       {
         title: t('system.settings.openapiDocs.default'),
-        dataIndex: 'default',
         key: 'default',
         width: 80,
         ellipsis: true,
-        render: (value: unknown) => (
+        render: (_, record) => (
           <EllipsisWithTooltip
-            text={value == null ? '--' : String(value)}
+            text={schemaHasDefault(record.schema) ? formatSchemaValue(record.schema.default) : '--'}
             className="w-full truncate font-mono text-xs text-[var(--color-text-3)]"
           />
         ),
       },
       {
         title: t('system.settings.openapiDocs.choices'),
-        dataIndex: 'choices',
         key: 'choices',
         ellipsis: true,
-        render: (choices: unknown) => (
+        render: (_, record) => (
           <EllipsisWithTooltip
-            text={formatChoicesDisplay(choices)}
+            text={formatChoicesDisplay(record.schema.enum)}
             className="w-full truncate text-xs text-[var(--color-text-3)]"
           />
         ),
@@ -144,11 +150,16 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
     );
 
     return columns;
-  }, [schemaRows, t]);
+  }, [requestSchemaRows, responseSchemaRows, t]);
 
   const samplePayload = useMemo(() => {
     if (!selectedRow?.requestSchema) return null;
     return generateSamplePayload(selectedRow.requestSchema);
+  }, [selectedRow]);
+
+  const responseExample = useMemo(() => {
+    if (!selectedRow?.responseSchema) return null;
+    return generateSchemaExample(selectedRow.responseSchema);
   }, [selectedRow]);
 
   const curlExamples = useMemo(() => {
@@ -163,6 +174,26 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
 
   const [authKeyHintBefore, authKeyHintAfter] = splitLinkPlaceholder(
     t('system.settings.openapiDocs.authHeaderKeyHint'),
+  );
+
+  const renderSchemaTable = (rows: OpenAPISchemaFieldRow[], emptyText: string) => (
+    <div className="pt-2">
+      {rows.length === 0 ? (
+        <div className="rounded border border-dashed border-[var(--color-border-1)] p-6 text-center text-xs text-[var(--color-text-3)]">
+          {emptyText}
+        </div>
+      ) : (
+        <CustomTable
+          rowKey="name"
+          size="small"
+          pagination={false}
+          autoScrollX={false}
+          columns={schemaColumns}
+          dataSource={rows}
+          className="rounded border border-[var(--color-border-1)]"
+        />
+      )}
+    </div>
   );
 
   return (
@@ -265,30 +296,53 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
                       <span className="flex items-center gap-1 text-xs">
                         <ApiOutlined />
                         <span>{t('system.settings.openapiDocs.tabParams')}</span>
-                        {schemaRows.length > 0 && (
+                        {requestSchemaRows.length > 0 && (
                           <span className="ml-1 rounded-full bg-[var(--color-fill-2)] px-1.5 py-0.2 text-[10px] text-[var(--color-text-3)]">
-                            {schemaRows.length}
+                            {requestSchemaRows.length}
                           </span>
                         )}
                       </span>
                     ),
-                    children: (
-                      <div className="pt-2">
-                        {schemaRows.length === 0 ? (
-                          <div className="rounded border border-dashed border-[var(--color-border-1)] p-6 text-center text-xs text-[var(--color-text-3)]">
-                            {t('system.settings.openapiDocs.noParams')}
-                          </div>
-                        ) : (
-                          <CustomTable
-                            rowKey="name"
-                            size="small"
-                            pagination={false}
-                            autoScrollX={false}
-                            columns={schemaColumns}
-                            dataSource={schemaRows}
-                            className="rounded border border-[var(--color-border-1)]"
-                          />
+                    children: renderSchemaTable(
+                      requestSchemaRows,
+                      t('system.settings.openapiDocs.noParams'),
+                    ),
+                  },
+                  {
+                    key: 'response',
+                    label: (
+                      <span className="flex items-center gap-1 text-xs">
+                        <CodeOutlined />
+                        <span>{t('system.settings.openapiDocs.tabResponse')}</span>
+                        {responseSchemaRows.length > 0 && (
+                          <span className="ml-1 rounded-full bg-[var(--color-fill-2)] px-1.5 py-0.2 text-[10px] text-[var(--color-text-3)]">
+                            {responseSchemaRows.length}
+                          </span>
                         )}
+                      </span>
+                    ),
+                    children: selectedRow.responseSchema ? (
+                      <div className="space-y-3 pb-3">
+                        {renderSchemaTable(
+                          responseSchemaRows,
+                          t('system.settings.openapiDocs.noResponseFields'),
+                        )}
+                        <div>
+                          <div className="mb-1 text-xs font-medium text-[var(--color-text-2)]">
+                            {t('system.settings.openapiDocs.responseExample')}
+                          </div>
+                          <CodeSnippet
+                            value={JSON.stringify(responseExample, null, 2) ?? 'null'}
+                            copyable
+                            className={DETAIL_SNIPPET_CLASS}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pt-2">
+                        <div className="rounded border border-dashed border-[var(--color-border-1)] p-6 text-center text-xs text-[var(--color-text-3)]">
+                          {t('system.settings.openapiDocs.noResponseSchema')}
+                        </div>
                       </div>
                     ),
                   },

@@ -4,6 +4,7 @@ from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.plugins.base import AutoRegisterCollectionPluginMixin
 from apps.cmdb.constants.constants import CollectPluginTypes
 from apps.cmdb.models.custom_collect_plugin import CustomCollectPlugin
+from apps.cmdb.services.host_sync_identity import parse_cloud_id
 from apps.cmdb.services.model import ModelManage
 
 _SYSTEM_LABELS = {
@@ -39,7 +40,9 @@ class CustomScriptCollectionPlugin(AutoRegisterCollectionPluginMixin, CollectBas
         plugin = self._plugin()
         if plugin is None:
             return []
-        return [f"{plugin.plugin_id}_info"]
+        # VM 按测量名 + gauge 字段落库，序列名是 {plugin_id}_info_gauge。
+        # 漏掉 _gauge 时，任务同步查不到已上报的数据。
+        return [f"{plugin.plugin_id}_info_gauge"]
 
     def check_metrics(self):
         return True
@@ -73,8 +76,30 @@ class CustomScriptCollectionPlugin(AutoRegisterCollectionPluginMixin, CollectBas
                     if key in _SYSTEM_LABELS or key not in attrs:
                         continue
                     record[key] = self._convert(attrs[key], raw)
+                self._fill_host_cloud(task, attrs, record)
                 records.append(record)
         self.result[task.model_id] = records
+
+    @staticmethod
+    def _fill_host_cloud(task, attrs, record):
+        """主机唯一键含云区域。脚本没上报时，用任务接入点上的云区域。"""
+        if getattr(task, "model_id", None) != "host" or "cloud" not in attrs:
+            return
+        if parse_cloud_id(record.get("cloud")) is not None:
+            return
+        access_point = getattr(task, "access_point", None)
+        if isinstance(access_point, list):
+            access_point = access_point[0] if access_point else None
+        params = task.params if isinstance(getattr(task, "params", None), dict) else {}
+        sources = [params]
+        if isinstance(access_point, dict):
+            sources.append(access_point)
+        for source in sources:
+            for key in ("cloud", "cloud_id", "cloud_region"):
+                cloud = parse_cloud_id(source.get(key))
+                if cloud is not None:
+                    record["cloud"] = cloud
+                    return
 
     def _convert(self, attr, raw):
         attr_type = str(attr.get("attr_type") or "str")

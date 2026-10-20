@@ -331,6 +331,32 @@ class TestAppPyEnterpriseWiring:
         assert "apps.system_mgmt" in mod.INSTALLED_APPS
         assert "apps.console_mgmt" in mod.INSTALLED_APPS
 
+    def test_module_link_always_added_when_only_cmdb(self, tmp_path, monkeypatch):
+        _make_apps(tmp_path, {"cmdb": ["__init__.py"], "module_link": ["__init__.py"]})
+        mod = _load_app(tmp_path, monkeypatch)
+        assert "apps.module_link" in mod.INSTALLED_APPS
+
+    def test_module_link_always_added_when_only_monitor(self, tmp_path, monkeypatch):
+        _make_apps(tmp_path, {"monitor": ["__init__.py"], "module_link": ["__init__.py"]})
+        mod = _load_app(tmp_path, monkeypatch)
+        assert "apps.module_link" in mod.INSTALLED_APPS
+
+    def test_module_link_injected_when_not_listed(self, tmp_path, monkeypatch):
+        _make_apps(
+            tmp_path,
+            {
+                "cmdb": ["__init__.py"],
+                "monitor": ["__init__.py"],
+                "module_link": ["__init__.py"],
+                "system_mgmt": ["__init__.py"],
+                "console_mgmt": ["__init__.py"],
+            },
+        )
+        mod = _load_app(tmp_path, monkeypatch, install_apps="cmdb,monitor")
+        assert "apps.module_link" in mod.INSTALLED_APPS
+        assert "apps.cmdb" in mod.INSTALLED_APPS
+        assert "apps.monitor" in mod.INSTALLED_APPS
+
 
 # ---------------------------------------------------------------------------
 # extra.py enterprise wiring
@@ -444,6 +470,22 @@ class TestExtraPyEnterpriseWiring:
         assert getattr(mod, "SYSTEM_MGMT_CONFIG_LOADED", False) is True
         assert getattr(mod, "CONSOLE_MGMT_CONFIG_LOADED", False) is True
 
+    def test_explicit_install_apps_injects_module_link_config(self, tmp_path, monkeypatch):
+        _make_apps(
+            tmp_path,
+            {
+                "opspilot": ["__init__.py"],
+                "system_mgmt": ["__init__.py"],
+                "console_mgmt": ["__init__.py"],
+                "module_link": ["__init__.py"],
+            },
+        )
+        (tmp_path / "apps" / "module_link" / "config.py").write_text("MODULE_LINK_CONFIG_LOADED = True\n")
+
+        mod = _load_extra(tmp_path, monkeypatch, install_apps="opspilot")
+
+        assert getattr(mod, "MODULE_LINK_CONFIG_LOADED", False) is True
+
     def test_auto_discovery_mode_preserved_when_footprint_present(self, tmp_path, monkeypatch):
         """When INSTALL_APPS is empty (auto-discovery), extra.py must not block normal config
         discovery — license_mgmt/config.py is still imported via the standard app iteration."""
@@ -500,3 +542,41 @@ class TestExtraPyEnterpriseWiring:
         mod = _load_extra(tmp_path, monkeypatch, install_apps="license_mgmt")
 
         assert getattr(mod, "LICENSE_MGMT_CONFIG_LOADED", False) is False, "INSTALL_APPS=license_mgmt must not bypass the enterprise gate in extra.py"
+
+
+_RETURNED_MESSAGE_MIDDLEWARE = "apps.opspilot.middlewares.returned_message_middleware.ReturnedMessageLocaleMiddleware"
+
+
+class TestReturnedMessageMiddlewareInstallGate:
+    def test_explicit_install_apps_without_opspilot_omits_middleware(self, tmp_path, monkeypatch):
+        """INSTALL_APPS 不含 opspilot 时，即使目录存在，全局 MIDDLEWARE 也不挂它。"""
+        _make_apps(
+            tmp_path,
+            {
+                "opspilot": ["__init__.py"],
+                "monitor": ["__init__.py"],
+                "system_mgmt": ["__init__.py"],
+                "console_mgmt": ["__init__.py"],
+            },
+        )
+        mod = _load_app(tmp_path, monkeypatch, install_apps="monitor")
+        assert "apps.opspilot" not in mod.INSTALLED_APPS
+        assert _RETURNED_MESSAGE_MIDDLEWARE not in mod.MIDDLEWARE
+
+    def test_explicit_install_apps_with_opspilot_appends_middleware(self, tmp_path, monkeypatch):
+        _make_apps(
+            tmp_path,
+            {
+                "opspilot": ["__init__.py"],
+                "system_mgmt": ["__init__.py"],
+                "console_mgmt": ["__init__.py"],
+            },
+        )
+        mod = _load_app(tmp_path, monkeypatch, install_apps="opspilot")
+        assert "apps.opspilot" in mod.INSTALLED_APPS
+        assert _RETURNED_MESSAGE_MIDDLEWARE in mod.MIDDLEWARE
+
+    def test_full_install_appends_middleware_when_opspilot_exists(self, tmp_path, monkeypatch):
+        _make_apps(tmp_path, {"opspilot": ["__init__.py"], "monitor": ["__init__.py"]})
+        mod = _load_app(tmp_path, monkeypatch, install_apps="")
+        assert _RETURNED_MESSAGE_MIDDLEWARE in mod.MIDDLEWARE

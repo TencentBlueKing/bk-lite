@@ -62,6 +62,8 @@ def test_memory_fields_are_serialized_and_updatable():
     assert "memory_write_rounds" not in set(LLMSerializer.Meta.read_only_fields)
     assert "memory_space_id" in LLMViewSet.UPDATABLE_SKILL_FIELDS
     assert "memory_write_rounds" in LLMViewSet.UPDATABLE_SKILL_FIELDS
+    assert "run_model_call_limit" in LLMSerializer.Meta.fields
+    assert "run_model_call_limit" in LLMViewSet.UPDATABLE_SKILL_FIELDS
 
 
 def test_apply_skill_packages_records_visible_match_summary(mocker):

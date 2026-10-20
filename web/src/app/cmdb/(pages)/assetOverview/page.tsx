@@ -8,10 +8,8 @@ import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { useScreenAwareRouter } from '@/console-layout';
 import ModelIcon from '@/app/cmdb/components/model-icon';
-import { Input } from 'antd';
+import { Alert, Button, Input, Skeleton } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
-import ListPageHeader from '@/components/list-page-header';
-import CardGridSkeleton from '@/components/card-grid-skeleton';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useClassificationApi, useInstanceApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
@@ -25,6 +23,7 @@ const AssetsOverview: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [overViewList, setOverViewList] = useState<GroupItem[]>([]);
   const [allOverViewList, setAllOverViewList] = useState<GroupItem[]>([]);
+  const [loadError, setLoadError] = useState(false);
 
   const { getClassificationList } = useClassificationApi();
   const { getModelInstanceCount } = useInstanceApi();
@@ -68,6 +67,7 @@ const AssetsOverview: React.FC = () => {
 
   const fetchAssetsOverviewList = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const [groupData, instCount] = await Promise.all([
         getClassificationList(),
@@ -94,6 +94,7 @@ const AssetsOverview: React.FC = () => {
       setAllOverViewList(groups);
     } catch (error) {
       console.error(error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -101,23 +102,38 @@ const AssetsOverview: React.FC = () => {
 
   return (
     <div className={assetsOverviewStyle.assetsOverview}>
-      <ListPageHeader
-        title={t('menu.assetsOverview')}
-        actions={(
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="mb-3 flex justify-end">
           <Input.Search
             allowClear
             enterButton
-            className="w-60"
+            className="w-80 max-w-full"
             placeholder={t('common.search')}
             aria-label={t('common.search')}
             onSearch={handleSearch}
             onClear={() => setOverViewList(allOverViewList)}
           />
-        )}
-      />
-      {loading ? (
-        <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5" />
-      ) : overViewList.length ? (
+        </div>
+        {loadError ? (
+          <Alert
+            type="error"
+            showIcon
+            message={t('common.loadFailed')}
+            action={(
+              <Button size="small" onClick={() => void fetchAssetsOverviewList()}>
+                {t('common.retry')}
+              </Button>
+            )}
+          />
+        ) : loading ? (
+          <div className={assetsOverviewStyle.skeletonGrid} aria-label={t('common.loading')}>
+            {Array.from({ length: 6 }, (_, index) => (
+              <section key={index} className={assetsOverviewStyle.card}>
+                <Skeleton active title paragraph={{ rows: 5 }} className="p-4" />
+              </section>
+            ))}
+          </div>
+        ) : overViewList.length ? (
           <Masonry
             breakpointCols={breakpointColumnsObj}
             className={assetsOverviewStyle['my-masonry-grid']}
@@ -135,7 +151,8 @@ const AssetsOverview: React.FC = () => {
                 <ul className={assetsOverviewStyle.list}>
                   {item.list.map((sec) => (
                     <li key={sec.model_id}>
-                      <div
+                      <button
+                        type="button"
                         className={assetsOverviewStyle.listItem}
                         onClick={() => linkToDetial(sec)}
                       >
@@ -168,16 +185,17 @@ const AssetsOverview: React.FC = () => {
                             {sec.count}
                           </span>
                         </span>
-                      </div>
+                      </button>
                     </li>
                   ))}
                 </ul>
               </section>
             ))}
           </Masonry>
-      ) : (
+        ) : (
           <CompactEmptyState description={t('common.noData')} />
-      )}
+        )}
+      </div>
     </div>
   );
 };

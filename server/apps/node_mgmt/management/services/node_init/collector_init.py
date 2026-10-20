@@ -1,10 +1,35 @@
+from django.db import transaction
+
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
-from apps.node_mgmt.models.sidecar import Collector
+from apps.node_mgmt.models.sidecar import Collector, CollectorDefaultBackfill
 from apps.node_mgmt.utils.collector_tags import normalize_collector_tags
 
 COMMUNITY_PLUGIN_DIRECTORY = "apps/node_mgmt/support-files/collectors"
 ENTERPRISE_PLUGIN_DIRECTORY = "apps/node_mgmt/enterprise/support-files/collectors"
+_MODE_TEMPLATE_EXCLUDED_KEYS = {"add_config", "config_section"}
+
+
+def _new_builtin_backfill_ids(create_collectors):
+    collector_ids = []
+    for item in create_collectors:
+        if item.get("is_pre") is False or not item.get("controller_default_run"):
+            continue
+        default_config = item.get("default_config")
+        if not isinstance(default_config, dict):
+            continue
+        has_template = any(
+            key not in _MODE_TEMPLATE_EXCLUDED_KEYS and isinstance(value, str) and value.strip() for key, value in default_config.items()
+        )
+        if has_template:
+            collector_ids.append(item["id"])
+    return collector_ids
+
+
+def _enqueue_new_collector_followup(*, schedule_task):
+    from apps.node_mgmt.tasks.collector_default_backfill import enqueue_collector_default_backfill
+
+    enqueue_collector_default_backfill(schedule_task=schedule_task)
 
 
 def import_collector(collectors):
@@ -28,7 +53,16 @@ def import_collector(collectors):
             create_collectors.append(collector_info)
 
     if create_collectors:
-        Collector.objects.bulk_create([Collector(**i) for i in create_collectors])
+        backfill_ids = _new_builtin_backfill_ids(create_collectors)
+        with transaction.atomic():
+            Collector.objects.bulk_create([Collector(**item) for item in create_collectors])
+            if backfill_ids:
+                CollectorDefaultBackfill.objects.bulk_create(
+                    [CollectorDefaultBackfill(collector_id=collector_id) for collector_id in backfill_ids],
+                    ignore_conflicts=True,
+                )
+            schedule_task = bool(backfill_ids)
+            transaction.on_commit(lambda schedule_task=schedule_task: _enqueue_new_collector_followup(schedule_task=schedule_task))
 
     if update_collectors:
         imported_ids = set(

@@ -1,4 +1,5 @@
 import os
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -6,6 +7,9 @@ from zoneinfo import ZoneInfo
 from django.utils import timezone as dj_timezone
 
 from apps.core.logger import monitor_logger as logger
+from apps.core.logger import safe_exception_info
+from apps.monitor.utils.alert_name_variables import _NOTIFICATION_FACT_MAX_LENGTH, _NOTIFICATION_SENSITIVE_PARTS, build_instance_notification_labels
+from apps.monitor.utils.display_fields_metrics import extract_field_bindings
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 from apps.system_mgmt.models import Channel, User
 
@@ -33,6 +37,81 @@ NOTIFY_SCOPE_ALL_CONFIGURED = "all_configured"
 ALERT_CENTER_PER_EVENT_ACK_ENABLED = os.getenv("MONITOR_ALERT_CENTER_PER_EVENT_ACK_ENABLED", "false").lower() in {"1", "true", "yes"}
 ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 ALERT_CENTER_CREATED_RETRY_ENABLED = os.getenv("MONITOR_ALERT_CENTER_CREATED_RETRY_ENABLED", "false").lower() in {"1", "true", "yes"}
+
+
+def _merge_notification_labels(labels, instance_labels):
+    merged = dict(labels)
+    for key, value in (instance_labels or {}).items():
+        merged.setdefault(key, value)
+    return merged
+
+
+_DISPLAY_FIELD_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+def _display_field_key(field) -> str:
+    key = str(field or "").strip()
+    if not _DISPLAY_FIELD_KEY.fullmatch(key):
+        return ""
+    if any(part in key.lower() for part in _NOTIFICATION_SENSITIVE_PARTS):
+        return ""
+    return key
+
+
+def _display_field_labels(instances) -> dict:
+    """本批实例的字段展示列。指标值列不查；同一对象的同一字段只查一次。"""
+    grouped = {}
+    for instance in instances:
+        bucket = grouped.setdefault(instance.monitor_object_id, {"object": instance.monitor_object, "ids": []})
+        bucket["ids"].append({"instance_id": instance.id})
+    if not grouped:
+        return {}
+
+    from apps.monitor.models import Metric
+    from apps.monitor.services.monitor_object import MonitorObjectService
+
+    labels = {}
+    for bucket in grouped.values():
+        monitor_object = bucket["object"]
+        bindings = []
+        for binding in extract_field_bindings(getattr(monitor_object, "display_fields", None)):
+            key = _display_field_key(binding.get("field"))
+            if key:
+                bindings.append({**binding, "field": key})
+        if not bindings:
+            continue
+        metric_by_plugin = {}
+        metric_by_name = {}
+        for metric_obj in Metric.objects.filter(
+            monitor_object_id=monitor_object.id,
+            name__in=[binding["metric"] for binding in bindings],
+        ).select_related("monitor_plugin"):
+            plugin_name = metric_obj.monitor_plugin.name if metric_obj.monitor_plugin_id else ""
+            metric_by_plugin[(plugin_name, metric_obj.name)] = metric_obj
+            metric_by_name.setdefault(metric_obj.name, metric_obj)
+        for binding in bindings:
+            plugin_name = binding.get("plugin") or ""
+            metric_obj = metric_by_plugin.get((plugin_name, binding["metric"])) if plugin_name else metric_by_name.get(binding["metric"])
+            if metric_obj is None:
+                continue
+            field_key = binding["field"]
+            try:
+                values = MonitorObjectService._query_metric_field_values(metric_obj, bucket["ids"], field_key)
+            except Exception as exc:
+                logger.warning(
+                    "event=alert_center_display_field_skipped monitor_object_id=%s field=%s failed_stage=query_display_field error_type=%s",
+                    monitor_object.id,
+                    field_key,
+                    type(exc).__name__,
+                    exc_info=safe_exception_info(exc),
+                )
+                continue
+            for instance_id, raw in values.items():
+                text = str(raw or "").strip()
+                if not text:
+                    continue
+                labels.setdefault(instance_id, {}).setdefault(field_key, text[:_NOTIFICATION_FACT_MAX_LENGTH])
+    return labels
 
 
 def _policy_secondary_context(policy) -> str:
@@ -619,13 +698,23 @@ class AlertLifecycleNotifier:
 
         from apps.monitor.models.monitor_object import MonitorInstance
 
+        instances = list(MonitorInstance.objects.select_related("monitor_object").filter(id__in=instance_ids))
+        display_labels = _display_field_labels(instances)
         return {
             instance.id: {
                 "cmdb_id": instance.cmdb_id,
                 "node_id": instance.node_id,
                 "resource_type": instance.monitor_object.name,
+                "notification_labels": _merge_notification_labels(
+                    build_instance_notification_labels(
+                        instance.summary_facts,
+                        instance.ip,
+                        instance.monitor_object.instance_summary_columns,
+                    ),
+                    display_labels.get(instance.id),
+                ),
             }
-            for instance in MonitorInstance.objects.select_related("monitor_object").filter(id__in=instance_ids)
+            for instance in instances
         }
 
     def _resolve_alert_organizations(self, alert, instance_org_map, policy=None):
@@ -705,13 +794,16 @@ class AlertLifecycleNotifier:
             "resource_name": getattr(alert, "monitor_instance_name", ""),
             "organizations": self._resolve_alert_organizations(alert, instance_org_map, policy),
             "tags": getattr(alert, "dimensions", {}),
-            "labels": {
-                "policy_name": _format_policy_display_label(policy),
-                "metric_instance_id": getattr(alert, "metric_instance_id", ""),
-                "operator": operator,
-                "reason": reason,
-                "status": alert.status,
-            },
+            "labels": _merge_notification_labels(
+                {
+                    "policy_name": _format_policy_display_label(policy),
+                    "metric_instance_id": getattr(alert, "metric_instance_id", ""),
+                    "operator": operator,
+                    "reason": reason,
+                    "status": alert.status,
+                },
+                monitor_identity.get("notification_labels"),
+            ),
         }
 
     def _build_title(self, alert, action):

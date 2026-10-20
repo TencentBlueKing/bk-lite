@@ -179,6 +179,7 @@ FILE_HANDLER_FILES = {
     "mlops": "mlops.log",
     "patch-mgmt": "patch-mgmt.log",
     "workflow-orchestration": "workflow-orchestration.log",
+    "module-link": "module-link.log",
 }
 
 APP_LOGGER_FILE_HANDLERS = {
@@ -201,6 +202,7 @@ APP_LOGGER_FILE_HANDLERS = {
     "mlops": "mlops",
     "patch-mgmt": "patch-mgmt",
     "workflow-orchestration": "workflow-orchestration",
+    "module-link": "module-link",
 }
 
 

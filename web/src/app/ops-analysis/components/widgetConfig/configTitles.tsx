@@ -1,4 +1,39 @@
 import React from 'react';
+import { LinkOutlined } from '@ant-design/icons';
+
+const tabIconClass = 'size-4 shrink-0';
+
+export const ConfigSectionTabLabel: React.FC<{
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ icon, children }) => (
+  <span className="inline-flex items-center gap-1.5 font-medium">
+    <span className="inline-flex leading-none" aria-hidden>
+      {icon}
+    </span>
+    {children}
+  </span>
+);
+
+export const DataSectionTabIcon: React.FC = () => (
+  <svg viewBox="0 0 16 16" className={tabIconClass} fill="none" focusable="false">
+    <ellipse cx="8" cy="3.25" rx="5.15" ry="1.7" stroke="currentColor" strokeWidth="1.5" />
+    <path
+      d="M2.85 3.25v9.5c0 .94 2.3 1.7 5.15 1.7s5.15-.76 5.15-1.7v-9.5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    />
+    <path
+      d="M2.85 8c0 .94 2.3 1.7 5.15 1.7s5.15-.76 5.15-1.7"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    />
+  </svg>
+);
+
+export const InteractionSectionTabIcon: React.FC = () => (
+  <LinkOutlined className="text-base" />
+);
 
 export const ConfigSectionTitle: React.FC<{ children: React.ReactNode }> = ({
   children,

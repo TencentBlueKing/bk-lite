@@ -27,8 +27,16 @@ test('log top rows keep names and convert string hits', () => {
   );
 
   assert.deepEqual(items, [
-    { name: '10.51.176.171', value: 208036 },
-    { name: '10.51.176.50', value: null },
+    {
+      name: '10.51.176.171',
+      value: 208036,
+      source: { value: '208036', name: '10.51.176.171' },
+    },
+    {
+      name: '10.51.176.50',
+      value: null,
+      source: { value: 'not-a-number', name: '10.51.176.50' },
+    },
   ]);
   assert.equal(resolveTopNMaxValue(items), 208036);
   assert.equal(resolveTopNBarPercent(items[1].value, 208036), 0);

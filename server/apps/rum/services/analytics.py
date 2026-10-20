@@ -46,7 +46,7 @@ class Analytics(Protocol):
     def list_releases(self, tenant_id: str, opts: dict) -> dict:
         ...
 
-    def monitor_metric(self, tenant_id: str, opts: dict) -> float:
+    def monitor_metric(self, tenant_id: str, opts: dict) -> float | None:
         ...
 
     def metric_series(self, tenant_id: str, opts: dict) -> list[dict]:
@@ -83,7 +83,7 @@ class UnavailableAnalytics:
     def list_releases(self, tenant_id: str, opts: dict) -> dict:
         return empty_release_list(reason="analytics")
 
-    def monitor_metric(self, tenant_id: str, opts: dict) -> float:
+    def monitor_metric(self, tenant_id: str, opts: dict) -> float | None:
         raise RuntimeError("analytics unavailable")
 
     def metric_series(self, tenant_id: str, opts: dict) -> list[dict]:

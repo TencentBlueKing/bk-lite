@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, resolveCanvasNodeTitle } from '../lib/canvas-dsl';
+import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, positionBesideSource, resolveCanvasNodeTitle } from '../lib/canvas-dsl';
 import type { ConductorDefinition } from '../lib/types';
 
 const definition: ConductorDefinition = {
@@ -46,6 +46,11 @@ describe('画布连线与 Conductor DSL', () => {
     });
   });
 
+  it('加号添加的新节点与源节点同高，并右移固定间距', () => {
+    expect(positionBesideSource({ x: 20, y: 160 })).toEqual({ x: 180, y: 160 });
+    expect(positionBesideSource({ x: 260, y: 420 })).toEqual({ x: 420, y: 420 });
+  });
+
   it('画布以 Form 触发器作为默认入口', () => {
     const flow = buildWorkflowFlow(definition);
 
@@ -78,7 +83,8 @@ describe('画布连线与 Conductor DSL', () => {
 
     const flow = buildWorkflowFlow(healthDefinition, { return_nodes: [] });
     expect(flow.nodes.map((node) => node.id)).toEqual(['trigger_form', 'scan', 'report']);
-    expect(flow.nodes.slice(1).map((node) => node.position)).toEqual([
+    expect(flow.nodes.map((node) => node.position)).toEqual([
+      { x: 20, y: 260 },
       { x: 260, y: 260 },
       { x: 480, y: 260 },
     ]);

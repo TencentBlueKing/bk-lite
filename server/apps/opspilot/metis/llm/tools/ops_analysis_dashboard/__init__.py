@@ -1,10 +1,9 @@
 """运营分析仪表盘工具。
 
-只执行模型传入的检索条件和方案，通过 NATS 调用运营分析的检索与校验接口。
-不读取聊天文本或页面状态，也不在对话引擎里拼装方案。
-返回给模型的目录保留数据源支持的图表，以及字段的中文标题和说明。
+用当前用户身份检索运营分析数据源，并把校验通过的方案应用到当前仪表盘。
 
-说明：本模块 docstring 仅供工具目录展示；给大模型的调用约束写在各 @tool 中。
+说明：本模块 docstring 仅供 parse_tools_yml 入库与界面展示；
+给大模型的调用约束写在各 @tool(description=...) 中，运行时从代码加载。
 """
 
 import asyncio
@@ -37,15 +36,29 @@ _SEARCH_HINT = (
     "layout 是扁平数组，禁止 row、children。"
     "画布固定 12 列。同一行 w 之和不得超过 12，且每个组件 x+w 不超过 12。"
     "一行 N 个时 w 为 12//N，不能整除时把余数分给靠前的组件。用户说几列就按几列排。"
+    "没有特别要求时，single 和 gauge 的 h 用 3，line、bar、pie、topN、table 的 h 用 4。用户指定某个组件高度时，按该数字写 h。"
     "按这份目录调用一次 prepare_dashboard_proposal，页面会写入画布。"
     "不要反复检索，不要只写文字，不要让用户手工添加。"
+)
+_OPTION_SOURCE_HINT = (
+    "参数要不要从列表里选，由你根据参数别名、说明和 optionSources 的名称、说明决定。"
+    "需要下拉时，在该参数 inputConfig 写 control=select，optionsSource 为 "
+    "{type:dynamic, sourceId:optionSources 里的 id, valueField, labelField}，"
+    "两个字段必须是该选项源 fields[].name。自由文本不要写 optionsSource。服务端不会替你选列表。"
 )
 _DATASOURCE_MISS_HINT = (
     "这些 dataSource 不存在。不要改试 1、2、10、20、100、200 或其他未列出的数字。"
     "只能使用 sources 里的 id，selectedFields 只能填该条 fields 里的名字。"
     "layout 必须是扁平组件数组，禁止 row 和 children。按 sources 改完再调用一次。"
 )
-_PROPOSAL_APPLIED_HINT = "方案已校验通过，已返回当前画布的应用动作。不要再次调用 prepare_dashboard_proposal。" "本轮搭盘步骤已完成，简短说明结果；画布草稿由用户点击保存后持久化。"
+_PROPOSAL_APPLIED_HINT = "方案已校验通过，已返回当前画布的应用动作。不要再次调用 prepare_dashboard_proposal。" "本轮搭盘步骤已完成，用组件和数据源名称简短说明结果，不要写数据源数字 id；画布草稿由用户点击保存后持久化。"
+_CATALOG_HINT = (
+    "这是数据源目录咨询。根据 candidates 的 name、desc、chart_type、fields、params 直接回答。"
+    "回答和推荐都只用名称，禁止写 id=数字。推荐要写成「优先用受控监控指标趋势」，不要写「优先用 id=54」。"
+    "上文出现过的数字 id 也不要再写。chart_type 为空表示该源只提供选项、不出图。"
+    "不要调用 prepare_dashboard_proposal，不要改当前画布。"
+)
+_CATALOG_EMPTY_HINT = "目录里没有符合这个问题的数据源。直接告诉用户没有，不要调用 prepare_dashboard_proposal，也不要改画布。"
 _PROPOSAL_PENDING_HINT = (
     "方案未应用。根据 pending 中的 index 定位 layout 组件并修正，禁止原样重试。"
     "datasource_not_found：使用本轮检索候选的数字 id；已有候选时不要让用户提供数据源。"
@@ -126,18 +139,19 @@ def _public_field(field) -> dict | None:
     return item
 
 
-def _public_candidate(candidate: dict) -> dict:
+def _public_candidate(candidate: dict, *, include_id: bool = True) -> dict:
     fields = []
     for field in candidate.get("fields") or []:
         public = _public_field(field)
         if public:
             fields.append(public)
     item = {
-        "id": candidate.get("id"),
         "name": candidate.get("name") or "",
         "chart_type": list(candidate.get("chart_type") or []),
         "fields": fields,
     }
+    if include_id:
+        item["id"] = candidate.get("id")
     tags = [str(tag) for tag in (candidate.get("tags") or []) if tag not in (None, "")]
     if tags:
         item["tags"] = tags
@@ -162,12 +176,25 @@ def _public_candidate(candidate: dict) -> dict:
     return item
 
 
-def _public_search_result(result: dict) -> dict:
+def _public_search_result(result: dict, *, catalog: bool = False) -> dict:
     raw = [item for item in (result.get("candidates") or []) if isinstance(item, dict) and item.get("id") is not None]
-    public = [_public_candidate(item) for item in raw]
+    public = [_public_candidate(item, include_id=not catalog) for item in raw]
     ids = ",".join(str(item.get("id")) for item in public)
-    payload = _ok({"candidates": public})
-    hint = f"只能使用这些 id：{ids}。" + _SEARCH_HINT if ids else _SEARCH_HINT
+    data = {"candidates": public, **({"catalog": True} if catalog else {})}
+    option_sources = []
+    if not catalog:
+        option_sources = [
+            _public_candidate(item) for item in (result.get("optionSources") or []) if isinstance(item, dict) and item.get("id") is not None
+        ]
+        if option_sources:
+            data["optionSources"] = option_sources
+    payload = _ok(data)
+    if catalog:
+        hint = _CATALOG_HINT
+    else:
+        hint = f"调用 prepare_dashboard_proposal 时 dataSource 必须填这些数字 id，不能填名称：{ids}。" + _SEARCH_HINT + "画布写入后，回复用户只用数据源名称。" if ids else _SEARCH_HINT
+        if option_sources:
+            hint += _OPTION_SOURCE_HINT
     payload["_next_step_hint"] = hint
     return payload
 
@@ -219,30 +246,33 @@ def _model_failure(result: dict) -> dict:
     return slim or result
 
 
-@tool
+@tool(
+    description=(
+        "检索当前组织可用于搭建运营分析仪表盘的数据源。"
+        "返回的 candidates[].id 是唯一合法的 dataSource，fields[].name 是唯一合法字段名，禁止编造。"
+        "组件标题用 fields[].title，说明用 fields[].description。"
+        "chart_type 是该数据源允许的图表。一张盘要混用目录里实际支持的类型，不要全部做成 single。"
+        "概览源最多两个 single 或 gauge，其余改用 pie、topN、line、table 的其他数据源。"
+        "用户在问有哪些数据源时，检索后直接用名称和说明回答，不要写出数据源数字 id，也不要调用 prepare_dashboard_proposal。"
+        "optionSources 是不出图的列表。参数是否用某条列表做下拉，由你按语义决定，并写入 inputConfig.optionsSource.sourceId。"
+        "用户要求搭建或修改仪表盘时，检索后的下一步才调用 prepare_dashboard_proposal，不要只回复文字，也不要让用户手工添加。"
+    )
+)
 def search_data_sources(requirements: list[dict], config: RunnableConfig) -> dict:
-    """检索当前组织可用于搭建运营分析仪表盘的数据源。
-
-    返回的 candidates[].id 是唯一合法的 dataSource，fields[].name 是唯一合法字段名，禁止编造。
-    fields[].title 是组件中文标题，fields[].description 是组件说明，不要把英文字段名写成标题。
-    chart_type 是该数据源允许的图表。一张盘要混用目录里实际支持的类型。概览源最多两个 single 或 gauge，其余组件改用 pie、topN、line、table 的其他数据源，不要把同一个源的每个数字都做成卡片。
-    layout 必须是扁平组件数组，禁止 row、children。
-    画布固定 12 列。同一行 w 之和不得超过 12，且每个组件 x+w 不超过 12。一行 N 个时 w 为 12//N，不能整除时把余数分给靠前的组件。用户说几列就按几列排。
-    检索后的下一步只能调用 prepare_dashboard_proposal。禁止插入 request_user_choice，不要让用户挑选指标或确认后再添加。
-    requirements 必须由调用方显式传入，每项至少提供 text；可补充 purpose（visualization 或
-    parameter_options）、domain、metric、dimension、analysisType 和 chartType。
-    工具不会读取聊天文本或页面状态，也不会改写 requirements。
-    single 或 gauge 的 selectedFields 必须包含一个字段名，不能为空。
-    pie 填写 dimensionField 与 valueField。同一数据源的多个数字要选不同字段。
-    没有候选时只说明没有匹配的数据源。
-    """
-
     caller = _caller(config)
     if isinstance(caller, ValueError):
         return _fail(str(caller))
-    invalid = _reject_non_object_list(requirements, "requirements 必须是非空对象数组")
-    if invalid:
-        return invalid
+    from apps.operation_analysis.services.dashboard_proposal_service import is_datasource_catalog_question
+    from apps.opspilot.metis.llm.tools.search_terms import user_message_from_config
+
+    utterance = user_message_from_config(config)
+    catalog = is_datasource_catalog_question(utterance)
+    if catalog:
+        requirements = [{"text": utterance, "purpose": "catalog"}]
+    else:
+        invalid = _reject_non_object_list(requirements, "requirements 必须是非空对象数组")
+        if invalid:
+            return invalid
     try:
         result = _run_dashboard_rpc(
             "search_dashboard_data_sources",
@@ -257,38 +287,39 @@ def search_data_sources(requirements: list[dict], config: RunnableConfig) -> dic
         return _fail("运营分析返回了无效的检索结果")
     if result.get("candidates"):
         # 执行上下文只保留结果开头。目录必须完整落在这个窗口里，否则模型会改去猜 id。
-        return _public_search_result(result)
+        return _public_search_result(result, catalog=catalog)
+    if catalog:
+        payload = _ok({"candidates": [], "catalog": True})
+        payload["_next_step_hint"] = _CATALOG_EMPTY_HINT
+        return payload
     return _ok(result)
 
 
-@tool
+@tool(
+    description=(
+        "校验并应用运营分析仪表盘方案。通过后页面直接写入当前画布，不要再次调用。"
+        'proposal.schemaVersion 固定为 "1.0"。layout 是扁平组件数组，禁止 row、children。'
+        "dataSource 只能填 search_data_sources 返回的数字 id，字段只能填该数据源 fields 里的 name。"
+        "chartType 必须属于该数据源的 chart_type。single 和 gauge 的 selectedFields 必须有一个字段。"
+        "pie 填写 dimensionField 与 valueField。画布 12 列，同一行宽度之和不得超过 12。"
+        "没有特别要求时，single 和 gauge 的 h 用 3，其余图表 h 用 4。用户指定高度时按该数字写 h。"
+        "dashboard_id 用 current。用户要求搭建时必须调用本工具，不能只输出文字方案。"
+        "参数下拉只保留你写入的 optionsSource；sourceId 必须是检索到的选项源，valueField 和 labelField 必须是该源字段。"
+    )
+)
 def prepare_dashboard_proposal(
     proposal: dict,
     dashboard_id: str = "current",
     config: RunnableConfig = None,
 ) -> dict:
-    """校验并应用运营分析仪表盘方案。通过后页面直接写入当前画布，不要再次调用。
-
-    proposal 必须由调用方显式传入，且 schemaVersion 固定为 "1.0"。
-    layout 是扁平组件数组，禁止 row、children、title、panels、chart_type、data_source_id。
-    画布固定 12 列。同一行 w 之和不得超过 12，且每个组件 x+w 不超过 12。一行 N 个时 w 为 12//N，不能整除时把余数分给靠前的组件。用户说几列就按几列排。放不下的宽度会按原比例收进 12 列。
-    dataSource 只能填 search_data_sources 返回的数字 id，禁止编造其他数字。
-    chartType 必须属于该数据源的 chart_type。
-    组件 name 用字段中文 title，description 用字段说明，不要用英文字段名。
-    chartType 从该数据源 chart_type 里选。概览源最多两个 single 或 gauge，其余组件改用 pie、topN、line、table 的其他数据源，不要把同一个源的每个数字都做成卡片。
-    single 和 gauge 的 selectedFields 必须填该数据源 fields 里的一个 name，不能为空。
-    pie 填写 dimensionField 与 valueField。table 的 selectedFields 填写要展示的列。
-    layout 必须显式传入；只有用户要求清空组件时才传空数组。
-    dashboard_id 用 current。目录节点 id（如 dashboard_426）表示同一张当前盘。
-    用户要求搭建或应用时必须调用本工具，不能只输出文字方案、让用户手工添加，或调用 request_user_choice 确认。
-    校验通过时返回 pageAction，页面写入可撤销的编辑草稿。保存由用户点击页面保存完成。
-    校验未通过时不产生页面动作。按 _next_step_hint、sources 或 allowedFields 改一次，禁止换一组 id 再试。
-    工具不缓存方案，不读取聊天或页面状态。
-    """
-
     caller = _caller(config)
     if isinstance(caller, ValueError):
         return _fail(str(caller))
+    from apps.operation_analysis.services.dashboard_proposal_service import is_datasource_catalog_question
+    from apps.opspilot.metis.llm.tools.search_terms import user_message_from_config
+
+    if is_datasource_catalog_question(user_message_from_config(config)):
+        return _fail("当前问题是在查询数据源目录。根据检索候选直接回答名称、说明、图表和参数，不要生成或应用仪表盘方案。")
     if not isinstance(proposal, dict):
         return _fail("proposal 必须是对象")
     proposal = _flatten_layout(proposal)

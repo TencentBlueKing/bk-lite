@@ -4,12 +4,11 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest import mock
-from zoneinfo import ZoneInfo
 
 import pytest
-from django.utils import timezone as django_timezone
+from django.test import override_settings
 
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.models import Alert
@@ -538,6 +537,7 @@ def test_manual_assignment_uses_team_alert_operation_template():
 
 
 @pytest.mark.django_db
+@override_settings(TIME_ZONE="Asia/Shanghai")
 def test_reassignment_operation_template_receives_actor_previous_receiver_and_action_time():
     from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent
     from apps.system_mgmt.models.channel import Channel
@@ -568,15 +568,14 @@ def test_reassignment_operation_template_receives_actor_previous_receiver_and_ac
         ),
     )
     alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-OPERATION-CONTEXT", team=[1])
-    alert.updated_at = datetime(2026, 9, 10, 11, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
+    alert.updated_at = datetime(2026, 9, 10, 3, 30, tzinfo=timezone.utc)
 
-    with django_timezone.override(ZoneInfo("Asia/Shanghai")):
-        result = AlertOperator(user="admin").format_notify_data(
-            ["zhangsan"],
-            alert,
-            scene="reassignment",
-            previous_assignee=["lisi"],
-        )
+    result = AlertOperator(user="admin").format_notify_data(
+        ["zhangsan"],
+        alert,
+        scene="reassignment",
+        previous_assignee=["lisi"],
+    )
 
     assert result[0]["content"] == ("该告警已由 admin 从 lisi 转派给 zhangsan，请新的处理人及时认领并处理。\n" "操作人：admin\n" "原处理人：lisi\n" "操作时间：2026-09-10 11:30:00")
 

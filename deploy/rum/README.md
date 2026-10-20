@@ -36,6 +36,7 @@ RUM 公网入口独立于 APM ADR 0008（4318 受信内网）。见
 | `compose.yaml` + `.env.example` | 契约夹具 | 本地依赖（Redis、NATS、VL、VT、MinIO）；`dataplane` profile 追加三个进程 |
 | `redis/` / `nats/` | 契约夹具 | 本地最小权限示例，**不是**生产凭据 |
 | `OPS-DEPLOY.md` | 运维 | 服务、镜像、进程参数、密钥文件、Server 变量清单 |
+| `APP-ONBOARDING.md` | 运维 | 把已有网站接到已经可用的 RUM |
 | `ACCEPTANCE.md` | 运维 | 上线验收与回滚约束 |
 | `Makefile` | 契约夹具 | `up` / `up-all` / `down` / `validate` / `test` / `image` |
 

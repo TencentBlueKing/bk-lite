@@ -4,7 +4,6 @@ import re
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, cast
-from zoneinfo import ZoneInfo
 
 from croniter import croniter
 from django.db import transaction
@@ -37,10 +36,6 @@ from apps.core.logger import alert_logger as logger
 
 
 class AggregationProcessor:
-    # TODO(timezone): 心跳 cron 时区硬编码 Asia/Shanghai，对非 +8 部署（海外客户）或用户以其他时区
-    # 配置心跳 cron 时，deadline 会整体偏移。需要可配置化设计，需产品确认时区契约后单独立项。
-    HEARTBEAT_CRON_SOURCE_TIMEZONE = ZoneInfo("Asia/Shanghai")
-
     def __init__(self):
         self.sql_builder = SQLBuilder()
         self.db_conn = DuckDBConnection()
@@ -180,6 +175,7 @@ class AggregationProcessor:
         events = (
             Event.objects.filter(
                 received_at__gte=cutoff_time,
+                received_at__lt=now,
                 action=EventAction.CREATED,
             )
             .exclude(
@@ -371,8 +367,8 @@ class AggregationProcessor:
         return params
 
     def _calculate_deadline(self, strategy: AlarmStrategy, params: Dict[str, Any], now: datetime) -> Optional[datetime]:
-        project_tz = timezone.get_current_timezone()
-        cron_tz = self.HEARTBEAT_CRON_SOURCE_TIMEZONE
+        cron_tz = self._heartbeat_timezone(strategy)
+        project_tz = cron_tz
         now_in_tz = self._normalize_to_project_timezone(now, project_tz)
         now_in_cron_tz = self._normalize_to_timezone(now, cron_tz)
         last_heartbeat_time = self._parse_runtime_datetime(params.get("last_heartbeat_time"))
@@ -543,6 +539,13 @@ class AggregationProcessor:
         }
 
     @staticmethod
+    def _heartbeat_timezone(strategy):
+        """周期表达式按策略创建人的时区解释，没有创建人时用默认展示时区。"""
+        from apps.alerts.notification_templates.timefmt import coerce_display_timezone, resolve_display_timezone
+
+        return coerce_display_timezone(resolve_display_timezone([getattr(strategy, "created_by", None)]))
+
+    @staticmethod
     def _parse_runtime_datetime(value: Optional[str]) -> Optional[datetime]:
         if not value:
             return None
@@ -550,7 +553,7 @@ class AggregationProcessor:
         if parsed is None:
             parsed = datetime.fromisoformat(value)
         if timezone.is_naive(parsed):
-            parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+            parsed = timezone.make_aware(parsed, timezone.utc)
         return parsed
 
     @staticmethod
@@ -580,13 +583,13 @@ class AggregationProcessor:
         """对指定维度执行聚合"""
         try:
             # 优化：直接使用已过滤的 events QuerySet，避免重复查询
-            load_success = self.db_conn.load_events_to_memory(events)
+            load_success = self.db_conn.load_events_to_memory(events, dimensions)
             if not load_success:
                 logger.info("[AlertAggregation] 策略 %s 过滤后无事件，跳过聚合", strategy.name)
                 self._mark_strategy_executed(strategy, now)
                 return False
 
-            window_config = WindowFactory.create_from_strategy(strategy)
+            window_config = WindowFactory.create_from_strategy(strategy, window_end=now)
 
             logger.debug(
                 "[AlertAggregation] 策略 %s: 窗口配置 type=%s, size=%s分钟",
@@ -612,7 +615,14 @@ class AggregationProcessor:
 
             logger.info("[AlertAggregation] 策略 %s: 聚合完成, 生成 %s 个告警组", strategy.name, len(results))
 
-            success_count = self._create_or_update_alerts(results, strategy, dimensions)
+            logger.info(
+                "[AlertAggregation] window_summary strategy_id=%s loaded_batches=%s groups=%s",
+                strategy.id,
+                self.db_conn.loaded_batches,
+                len(results),
+            )
+
+            success_count = self._create_or_update_alerts(results, strategy, dimensions, now)
             if success_count > 0:
                 self._mark_strategy_executed(strategy, now)
             return True
@@ -626,6 +636,7 @@ class AggregationProcessor:
         aggregation_results: List[Dict[str, Any]],
         strategy: AlarmStrategy,
         dimensions: List[str],
+        window_end: datetime,
     ) -> int:
         """创建或更新告警"""
 
@@ -636,6 +647,10 @@ class AggregationProcessor:
         fail_count = 0
         recovered_count = 0
         new_alert_ids = []  # 收集新创建的告警ID
+        grouping_expression = self.sql_builder.grouping_expression(dimensions)
+
+        from apps.alerts.aggregation.recovery.recovery_checker import attach_visible_recoveries
+        from apps.alerts.service.outbox import enqueue_outbox
 
         for result in aggregation_results:
             try:
@@ -649,7 +664,21 @@ class AggregationProcessor:
                         aggregation_result=result,
                         strategy=strategy,
                         group_by_field=",".join(dimensions),
+                        window_end=window_end,
+                        member_pk_batches=self.db_conn.iter_member_pk_batches(
+                            grouping_expression,
+                            result.get("effective_group_dimension"),
+                        ),
                     )
+
+                    linked_new_events = getattr(alert, "aggregation_linked_new_events", 0)
+                    linked_recoveries = attach_visible_recoveries(alert)
+                    if linked_new_events or linked_recoveries:
+                        enqueue_outbox(
+                            "recovery_reattach",
+                            {"alert_pk": alert.pk, "window_end": window_end.isoformat()},
+                            f"recovery-reattach:{alert.pk}:{window_end.isoformat()}",
+                        )
 
                     # 需要(重新)分派:新建告警,或仍处 UNASSIGNED 的存量告警。
                     # 后者覆盖"首次分派 0 命中/失败"的死亡序列——告警停留 UNASSIGNED 时,

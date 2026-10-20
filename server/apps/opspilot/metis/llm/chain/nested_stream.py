@@ -262,27 +262,44 @@ def nested_agent_callbacks(config: dict | None) -> list:
     return [OwnedEventBridge(queue, planned_step_holder(config))]
 
 
-async def publish_owned_custom_event(queue_or_config: Any, name: str, data: Any) -> bool:
-    """把自定义事件写进本请求队列。计划步骤里父级 astream 回调已被摘掉。"""
+def _owned_custom_event(name: str, data: Any) -> dict[str, Any]:
+    return {
+        "event": "on_custom_event",
+        "name": name,
+        "data": data,
+        "tags": [],
+        "metadata": {},
+        "parent_ids": [],
+        "_enqueued_at": time.monotonic(),
+    }
+
+
+def _owned_queue(queue_or_config: Any) -> asyncio.Queue | None:
     if isinstance(queue_or_config, asyncio.Queue):
-        queue = queue_or_config
-    else:
-        config = queue_or_config if isinstance(queue_or_config, dict) else None
-        queue = owned_event_queue(config)
+        return queue_or_config
+    config = queue_or_config if isinstance(queue_or_config, dict) else None
+    return owned_event_queue(config)
+
+
+def publish_owned_custom_event_nowait(queue_or_config: Any, name: str, data: Any) -> bool:
+    """同步写入本请求队列。调用方不在 async 上下文时不能 await。"""
+    queue = _owned_queue(queue_or_config)
     if queue is None or not name:
         return False
     try:
-        await queue.put(
-            {
-                "event": "on_custom_event",
-                "name": name,
-                "data": data,
-                "tags": [],
-                "metadata": {},
-                "parent_ids": [],
-                "_enqueued_at": time.monotonic(),
-            }
-        )
+        queue.put_nowait(_owned_custom_event(name, data))
+    except asyncio.QueueFull:
+        return False
+    return True
+
+
+async def publish_owned_custom_event(queue_or_config: Any, name: str, data: Any) -> bool:
+    """把自定义事件写进本请求队列。计划步骤里父级 astream 回调已被摘掉。"""
+    queue = _owned_queue(queue_or_config)
+    if queue is None or not name:
+        return False
+    try:
+        await queue.put(_owned_custom_event(name, data))
     except Exception:
         return False
     return True

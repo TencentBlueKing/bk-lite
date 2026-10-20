@@ -9,7 +9,7 @@ ROOT_URLCONF = "urls"
 _db_engine = os.getenv("DB_ENGINE", "postgresql").lower()
 _migrate_patch_db_engines = {"dameng", "gaussdb", "goldendb", "oceanbase", "mysql"}
 # 显式 INSTALL_APPS 裁剪时仍须装入的 always-on 业务 app（与 extra.py 保持一致）
-_ALWAYS_ON_SCAN_APPS = frozenset({"system_mgmt", "console_mgmt"})
+_ALWAYS_ON_SCAN_APPS = frozenset({"system_mgmt", "console_mgmt", "module_link"})
 
 # 模板页面配置
 TEMPLATES = [
@@ -160,6 +160,11 @@ else:
     app_folders = []
 
 INSTALLED_APPS += tuple(f"apps.{app}" for app in app_folders if f"apps.{app}" not in INSTALLED_APPS)
+
+# optional：与 license_mgmt 一样条件追加。opspilot 未装入时不得引用其模块。
+_RETURNED_MESSAGE_LOCALE_MIDDLEWARE = "apps.opspilot.middlewares.returned_message_middleware.ReturnedMessageLocaleMiddleware"
+if "apps.opspilot" in INSTALLED_APPS and _RETURNED_MESSAGE_LOCALE_MIDDLEWARE not in MIDDLEWARE:
+    MIDDLEWARE += (_RETURNED_MESSAGE_LOCALE_MIDDLEWARE,)
 
 # 文件上传数量限制
 DATA_UPLOAD_MAX_NUMBER_FILES = 100

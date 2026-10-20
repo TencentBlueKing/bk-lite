@@ -20,6 +20,7 @@ from apps.monitor.services.plugin import MonitorPluginService
 from apps.monitor.services.plugin_guide import PluginGuideService
 from apps.monitor.services.qcloud_regions import QCloudRegionService
 from apps.monitor.services.template_access_guide import TemplateAccessGuideService
+from apps.monitor.services.user_query_slots import with_user_query_slot
 from apps.monitor.utils.pagination import parse_page_params
 from apps.monitor.utils.plugin_source import is_built_in_plugin, is_custom_plugin_template
 from apps.monitor.views.node_mgmt import _build_actor_context
@@ -267,6 +268,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
                 row.setdefault("stale_instance_count", 0)
         return results
 
+    @with_user_query_slot()
     def list(self, request, *args, **kwargs):
         queryset = self._filter_visible_entry_plugins(self.filter_queryset(self.get_queryset())).order_by("id")
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
@@ -320,6 +322,9 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         plugin = self.get_object()
         self._ensure_modifiable(plugin)
+        from apps.monitor.services.policy_group import PolicyGroupService
+
+        PolicyGroupService.retire_policies_for_plugins([plugin.id], operator=getattr(request.user, "username", None) or "system")
         if is_custom_plugin_template(plugin.template_type):
             try:
                 plugin.delete()

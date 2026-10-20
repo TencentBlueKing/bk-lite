@@ -7,6 +7,7 @@ import type { TransferTask } from '@/app/cmdb/types/transfer';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { KeepAlive, useActivate, useUnactivate } from 'react-activation';
 import {
+  Alert,
   Button,
   Space,
   Modal,
@@ -17,6 +18,7 @@ import {
   Input,
   Tag,
   Tooltip,
+  Skeleton,
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import type { MenuProps } from 'antd';
@@ -39,12 +41,11 @@ import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useClientData } from '@/context/client';
+import { useModuleLinkApi } from '@/app/module-link/api';
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
 import {
+  canOpenMonitorLink,
   canSyncMonitor,
-  isMonitorSold,
-  pickBatchPushCounts,
-  resolveBatchPushSummaryLevel,
   isSystemLinkAttr,
   resolveListDisplayFieldKeys,
   buildExternalIdLines,
@@ -57,6 +58,7 @@ import {
 import { useCommon, useCmdbUserList } from '@/app/cmdb/context/common';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
+import { isMultiIpSearchAttr } from './list/multiIpSearch';
 import { useModelApi, useClassificationApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import {
   GroupItem,
@@ -103,6 +105,22 @@ import {
 } from './treeSelectedNodeScroll';
 
 const { confirm } = Modal;
+
+const AssetDataWorkspaceSkeleton = () => (
+  <div className="flex h-full min-h-0 gap-3 p-3" aria-busy="true" aria-label="loading">
+    <div className="w-60 shrink-0 rounded-lg bg-[var(--color-bg)] p-3">
+      <Skeleton.Input active className="!h-8 !w-full !min-w-0" />
+      <Skeleton active title={false} paragraph={{ rows: 8 }} className="mt-4" />
+    </div>
+    <div className="min-w-0 flex-1 rounded-lg bg-[var(--color-bg)] p-4">
+      <div className="mb-4 flex justify-end gap-2">
+        <Skeleton.Input active className="!h-8 !w-64 !min-w-0" />
+        <Skeleton.Button active className="!h-8 !w-20" />
+      </div>
+      <Skeleton active title={false} paragraph={{ rows: 9 }} />
+    </div>
+  </div>
+);
 
 const COPY_EXCLUDE_FIELDS = ['_id', 'inst_id', 'inst_uuid', 'id', 'created_at', 'updated_at', 'created_by', 'updated_by'];
 
@@ -222,7 +240,7 @@ interface ImportRef {
 const AssetDataContent = () => {
   const { t } = useTranslation();
   const { selectedGroup, userId } = useUserInfoContext();
-  const { clientData } = useClientData();
+  const { clientData, loading: clientLoading } = useClientData();
   const { getModelAssociationTypes, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
@@ -233,8 +251,8 @@ const AssetDataContent = () => {
     setInstanceShowFieldSettings,
     deleteInstance,
     batchDeleteInstances,
-    batchPushToMonitor,
   } = useInstanceApi();
+  const { createCmdbMonitorTask } = useModuleLinkApi();
   const { getCollectTaskNames } = useCollectApi();
   const router = useScreenAwareRouter();
   const pathname = usePathname();
@@ -258,6 +276,7 @@ const AssetDataContent = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<any>>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState(false);
   const [modelGroup, setModelGroup] = useState<GroupItem[]>([]);
   const [originModels, setOriginModels] = useState<ModelItem[]>([]);
   const [groupId, setGroupId] = useState<string>('');
@@ -305,8 +324,10 @@ const AssetDataContent = () => {
   const [modelInstCount, setModelInstCount] = useState<Record<string, number>>(
     {}
   );
-  // 是否折叠操作栏
-  const [isActionsCollapsed, setIsActionsCollapsed] = useState(false);
+  // 窄屏时把「数据订阅」收进更多。导入导出记录始终在更多里，新建和导出保持可见。
+  const [secondaryActionsCollapsed, setSecondaryActionsCollapsed] = useState(false);
+  const [quickCreateToken, setQuickCreateToken] = useState(0);
+  const searchAttr = useAssetDataStore((state) => state.searchAttr);
   const urlQueryInitialized = useRef(false);
   const initialDataLoaded = useRef(false);
   const treeWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -332,12 +353,15 @@ const AssetDataContent = () => {
     let frameId: number | null = null;
     const updateCollapseState = () => {
       if (!rowEl || !leftEl || !sizerEl) return;
-      const rowWidth = rowEl.getBoundingClientRect().width;
-      const leftContentWidth = leftEl.scrollWidth;
-      const sizerWidth = sizerEl.getBoundingClientRect().width;
+      const shell = rowEl.firstElementChild as HTMLElement | null;
+      const rowWidth = (shell ?? rowEl).clientWidth;
+      const inputWidth = isMultiIpSearchAttr(searchAttr) ? 360 : 200;
+      // 组织选择 200、属性下拉 120、搜索按钮 32、精确匹配约 108、刷新 32，间距 8。
+      const preferredFilterWidth = 200 + 120 + inputWidth + 32 + 108 + 32 + 8 * 4;
+      const fullActionsWidth = sizerEl.getBoundingClientRect().width;
       const recoveryBuffer = 30;
-      const shouldCollapse = leftContentWidth + sizerWidth > rowWidth + recoveryBuffer;
-      setIsActionsCollapsed((prev) => (prev === shouldCollapse ? prev : shouldCollapse));
+      const shouldCollapse = preferredFilterWidth + fullActionsWidth > rowWidth + recoveryBuffer;
+      setSecondaryActionsCollapsed((prev) => (prev === shouldCollapse ? prev : shouldCollapse));
     };
 
     // 创建一个观察器，当窗口大小变化时，更新折叠状态
@@ -357,7 +381,7 @@ const AssetDataContent = () => {
       if (frameId) cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, []);
+  }, [searchAttr]);
 
   useEffect(() => {
     // 主页中当模型为host时，获取云区域选项test8.7
@@ -579,6 +603,7 @@ const AssetDataContent = () => {
   const getModelGroup = async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const [groupData, assoType, instCount] = await Promise.all([
         getClassificationList(),
         getModelAssociationTypes(),
@@ -610,6 +635,7 @@ const AssetDataContent = () => {
       getInitData(defaultModelId, initialQueryList);
       updateUrl(defaultModelId, defaultGroupId, urlQueryList);
     } catch {
+      setLoadError(true);
       setLoading(false);
     }
   };
@@ -657,6 +683,7 @@ const AssetDataContent = () => {
       .catch(() => message.error(t('common.loadFailed')));
 
     setLoading(true);
+    setLoadError(false);
     Promise.all([
       getModelAttrList(id),
       searchInstances({ ...tableParams, model_id: id }),
@@ -668,8 +695,8 @@ const AssetDataContent = () => {
         setPropertyList(attrList);
         setTableData(instData.insts);
         setPagination(prev => ({ ...prev, total: instData.count }));
-
       })
+      .catch(() => setLoadError(true))
       .finally(() => {
         setLoading(false);
         requestAnimationFrame(() => {
@@ -738,17 +765,13 @@ const AssetDataContent = () => {
       centered: true,
       async onOk() {
         try {
-          const summary = await batchPushToMonitor(instUuids);
-          const counts = pickBatchPushCounts(summary);
-          const level = resolveBatchPushSummaryLevel(counts);
-          const text = t('Model.systemLinkageBatchSummary', '', counts);
-          if (level === 'success') {
-            message.success(text);
-          } else if (level === 'warning') {
-            message.warning(text);
-          } else {
-            message.error(text);
+          const task = await createCmdbMonitorTask(instUuids);
+          const taskId = String(task?.id || '').trim();
+          if (!taskId) {
+            message.error(t('Model.systemLinkageSyncFailed'));
+            return;
           }
+          router.push(`/module-link/cmdb-monitor/tasks/${taskId}`);
         } catch {
           message.error(t('Model.systemLinkageSyncFailed'));
         }
@@ -1223,8 +1246,7 @@ const AssetDataContent = () => {
     setCurrentColumns([...orderedColumns, actionColumn]);
   }, [propertyList, displayFieldKeys, propertyListGroups, modelId, followPendingKey, handleFollowToggle, isFollowed, t, userList]);
 
-  const showSubscribeAction = selectedRowKeys.length > 0 || storeQueryList.length > 0;
-  const showBatchSyncMonitor = canSyncMonitor(modelId) && isMonitorSold(clientData);
+  const showBatchSyncMonitor = canOpenMonitorLink(clientData, clientLoading, modelId);
   const batchSyncMonitorItem: NonNullable<MenuProps['items']>[number] = {
     key: 'batchSyncMonitor',
     label: (
@@ -1236,15 +1258,6 @@ const AssetDataContent = () => {
   };
 
   const batchOperateItems: MenuProps['items'] = [
-    {
-      key: 'subscribe',
-      label: (
-        <a onClick={() => openSubscription(selectedRowKeys.length > 0 ? 'list_selection' : 'list_filter')}>
-          {t('subscription.subscribe')}
-        </a>
-      ),
-      disabled: !showSubscribeAction,
-    },
     {
       key: 'batchEdit',
       label: (
@@ -1260,7 +1273,6 @@ const AssetDataContent = () => {
       ),
       disabled: !selectedRowKeys.length || !propertyListGroups.length,
     },
-    ...(showBatchSyncMonitor ? [batchSyncMonitorItem] : []),
     {
       key: 'batchDelete',
       label: (
@@ -1270,24 +1282,10 @@ const AssetDataContent = () => {
       ),
       disabled: !selectedRowKeys.length,
     },
+    ...(showBatchSyncMonitor
+      ? [{ type: 'divider' as const, key: 'divider-monitor' }, batchSyncMonitorItem]
+      : []),
   ];
-
-  // 添加实例菜单项，添加权限检查
-  const addInstItemsWithPermission: MenuProps['items'] = addInstItems.map(
-    (item) => {
-      if (!item || ('type' in item && item.type === 'divider') || !('label' in item)) {
-        return item;
-      }
-      return {
-        ...item,
-        label: (
-          <PermissionWrapper requiredPermissions={['Add']} fallback={item.label}>
-            {item.label}
-          </PermissionWrapper>
-        ),
-      };
-    }
-  );
 
   const transfers = useTransferTasks(transferOpen, (task) => {
     if (task.model_id === modelId) void updateFieldList();
@@ -1298,26 +1296,59 @@ const AssetDataContent = () => {
     setTransferOpen(true);
   };
 
-  const buildPrefixedItems = (items: MenuProps['items'], prefix: string) =>
-    items.map((item, index) => {
-      if (!item) return item;
-      const baseKey = 'key' in item && item.key ? String(item.key) : `${prefix}-${index}`;
-      return {
-        ...item,
-        key: `${prefix}-${baseKey}`,
-      };
-    });
+  const transferMoreItem: NonNullable<MenuProps['items']>[number] = {
+    key: 'transfers',
+    label: (
+      <a onClick={() => setTransferOpen(true)}>
+        {t('Transfer.title')}
+        {pendingTransfers ? ` (${pendingTransfers})` : ''}
+      </a>
+    ),
+  };
 
-  const collapsedMoreItems: MenuProps['items'] = [
-    ...buildPrefixedItems(addInstItemsWithPermission, 'add'),
-    { type: 'divider', key: 'divider-add-export' },
-    ...buildPrefixedItems(exportItems, 'export'),
-    { type: 'divider', key: 'divider-export-batch' },
-    ...buildPrefixedItems(batchOperateItems, 'batch'),
+  const subscriptionMoreItem: NonNullable<MenuProps['items']>[number] = {
+    key: 'subscription',
+    label: (
+      <a onClick={() => openSubscription('drawer')}>{t('subscription.dataSubscription')}</a>
+    ),
+  };
+
+  const moreItems: MenuProps['items'] = [
+    transferMoreItem,
+    ...(secondaryActionsCollapsed ? [subscriptionMoreItem] : []),
+    { type: 'divider', key: 'divider-secondary-batch' },
+    ...batchOperateItems,
   ];
+
+  const openQuickCreate = (source: 'list_selection' | 'list_filter') => {
+    setSubscriptionSource(source);
+    if (source === 'list_selection') {
+      setQuickContext({ selectedInstanceUuids: selectedRowKeys.map((key) => String(key)) });
+    } else {
+      setQuickContext({ queryList: storeQueryList });
+    }
+    setQuickCreateToken((token) => token + 1);
+    setSubscriptionDrawerOpen(true);
+  };
 
   return (
     <div className={assetDataStyle.assetLoading}>
+      {loading && modelGroup.length === 0 ? (
+        <AssetDataWorkspaceSkeleton />
+      ) : loadError && modelGroup.length === 0 ? (
+        <div className="h-full p-3">
+          <Alert
+            type="error"
+            showIcon
+            message={t('common.loadFailed')}
+            action={(
+              <Button size="small" onClick={() => void getModelGroup()}>
+                {t('common.retry')}
+              </Button>
+            )}
+          />
+        </div>
+      ) : (
       <div className={assetDataStyle.assetData}>
         {/* 左侧树形选择器 */}
         <div className={`${assetDataStyle.groupSelector}`}>
@@ -1375,13 +1406,15 @@ const AssetDataContent = () => {
         <div className={assetDataStyle.assetList}>
           <div ref={topRowRef}>
             <ToolbarSplitShell
-              className={storeQueryList.length === 0 ? undefined : '!mb-0'}
+              className={`!flex-nowrap${storeQueryList.length === 0 ? '' : ' !mb-0'}`}
+              trailingClassName="!w-full min-w-0 !flex-nowrap"
               trailing={(
                 <>
-                  <div ref={leftActionsRef} className="flex flex-wrap items-center gap-2">
+                  <div ref={leftActionsRef} className="flex min-w-0 shrink items-center gap-2">
                     <GroupTreeSelector
                       style={{
                         width: '200px',
+                        flexShrink: 0,
                       }}
                       placeholder={t('common.selectTip')}
                       value={organization}
@@ -1392,6 +1425,7 @@ const AssetDataContent = () => {
                     />
                     <SearchFilter
                       key={modelId}
+                      allowShrink
                       proxyOptions={proxyOptions}
                       userList={userList}
                       modelId={modelId}
@@ -1412,15 +1446,14 @@ const AssetDataContent = () => {
                         {t('IPAM.conflictFilter')}
                       </Tag>
                     )}
-                    <RefreshIconButton
-                      loading={loading}
-                      onClick={() => fetchData()}
-                    />
+                    <span className="shrink-0">
+                      <RefreshIconButton
+                        loading={loading}
+                        onClick={() => fetchData()}
+                      />
+                    </span>
                   </div>
-                  <div
-                    className={`${assetDataStyle.actionGroup} ${isActionsCollapsed ? assetDataStyle.actionGroupCollapsed : ''}`}
-                    aria-hidden={isActionsCollapsed}
-                  >
+                  <div className="shrink-0">
                     <Dropdown menu={{ items: exportItems }} placement="bottom">
                       <Button>
                         <Space>
@@ -1431,26 +1464,26 @@ const AssetDataContent = () => {
                     </Dropdown>
                   </div>
                   <Dropdown
-                    menu={{ items: isActionsCollapsed ? collapsedMoreItems : batchOperateItems }}
+                    menu={{ items: moreItems }}
                     placement="bottom"
                   >
-                    <Button>
+                    <Button className="shrink-0">
                       <Space>
                         {t('more')}
                         <DownOutlined />
                       </Space>
                     </Button>
                   </Dropdown>
-                  <Button onClick={() => setTransferOpen(true)}>{t('Transfer.title')}
-                    {pendingTransfers ? ` (${pendingTransfers})` : ''}
-                  </Button>
-                  <Button icon={<UnorderedListOutlined aria-hidden="true" />} onClick={() => openSubscription('drawer')}>
-                    {t('subscription.dataSubscription')}
-                  </Button>
-                  <div
-                    className={isActionsCollapsed ? assetDataStyle.actionGroupCollapsed : undefined}
-                    aria-hidden={isActionsCollapsed}
-                  >
+                  {secondaryActionsCollapsed ? null : (
+                    <Button
+                      className="shrink-0"
+                      icon={<UnorderedListOutlined aria-hidden="true" />}
+                      onClick={() => openSubscription('drawer')}
+                    >
+                      {t('subscription.dataSubscription')}
+                    </Button>
+                  )}
+                  <div className="shrink-0">
                     <PermissionWrapper requiredPermissions={['Add']}>
                       <Dropdown menu={{ items: addInstItems }} placement="bottom">
                         <Button type="primary">
@@ -1486,9 +1519,6 @@ const AssetDataContent = () => {
                   <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
-              <Button>{t('Transfer.title')}
-                {pendingTransfers ? ` (${pendingTransfers})` : ''}
-              </Button>
               <Button icon={<UnorderedListOutlined aria-hidden="true" />}>
                 {t('subscription.dataSubscription')}
               </Button>
@@ -1506,29 +1536,39 @@ const AssetDataContent = () => {
             />
           </div>
 
-          <CustomTable
-            style={{ marginTop: '-1px' }}
-            size="small"
-            rowSelection={rowSelection}
-            dataSource={tableData}
-            columns={currentColumns}
-            pagination={pagination}
-            loading={loading || tableLoading}
-            scroll={{
-              x: 'max-content',
-              y: storeQueryList.length > 0
-                ? 'calc(100vh - 320px)'
-                : 'calc(100vh - 300px)'
-            }}
-            fieldSetting={{
-              showSetting: true,
-              displayFieldKeys,
-              choosableFields: columns.filter((item) => item.key !== 'action'),
-            }}
-            onSelectFields={onSelectFields}
-            rowKey="inst_uuid"
-            onChange={handleTableChange}
-          />
+          <div className={assetDataStyle.tableArea}>
+            {loadError ? (
+              <Alert
+                type="error"
+                showIcon
+                message={t('common.loadFailed')}
+                action={(
+                  <Button size="small" onClick={() => getInitData(modelId)}>
+                    {t('common.retry')}
+                  </Button>
+                )}
+              />
+            ) : (
+              <CustomTable
+                style={{ marginTop: '-1px' }}
+                size="small"
+                rowSelection={rowSelection}
+                dataSource={tableData}
+                columns={currentColumns}
+                pagination={pagination}
+                loading={loading || tableLoading}
+                scroll={{ x: 'max-content' }}
+                fieldSetting={{
+                  showSetting: true,
+                  displayFieldKeys,
+                  choosableFields: columns.filter((item) => item.key !== 'action'),
+                }}
+                onSelectFields={onSelectFields}
+                rowKey="inst_uuid"
+                onChange={handleTableChange}
+              />
+            )}
+          </div>
           <FieldModal
             ref={fieldRef}
             userList={userList}
@@ -1559,6 +1599,15 @@ const AssetDataContent = () => {
             modelId={modelId}
             modelName={currentModelName}
             quickDefaults={quickDefaults}
+            quickCreateToken={quickCreateToken}
+            canCreateFromSelection={selectedRowKeys.length > 0}
+            canCreateFromFilter={storeQueryList.length > 0}
+            onCreateFromSelection={() => openQuickCreate('list_selection')}
+            onCreateFromFilter={() => openQuickCreate('list_filter')}
+            onCreateBlank={() => {
+              setSubscriptionSource('drawer');
+              setQuickContext({});
+            }}
           />
           <Modal
             open={quickSubscribeModalOpen}
@@ -1608,6 +1657,7 @@ const AssetDataContent = () => {
           </Modal>
         </div>
       </div>
+      )}
     </div>
   );
 };

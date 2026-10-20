@@ -435,6 +435,29 @@ class InstanceManage(object):
         return result
 
     @staticmethod
+    def search_inst_by_monitor_ids(monitor_ids) -> dict:
+        """按实例属性 monitor_id 批量查询，不限模型。返回 {monitor_id: [instance, ...]}。"""
+        normalized = []
+        seen = set()
+        for value in monitor_ids or []:
+            text = str(value).strip() if value not in (None, "") else ""
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            normalized.append(text)
+        if not normalized:
+            return {}
+        with GraphClient() as ag:
+            inst_list, _ = ag.query_entity(INSTANCE, [{"field": "monitor_id", "type": "str[]", "value": normalized}])
+        grouped = {}
+        for inst in inst_list:
+            key = str(inst.get("monitor_id") or "").strip()
+            if not key:
+                continue
+            grouped.setdefault(key, []).append(inst)
+        return grouped
+
+    @staticmethod
     def query_entity_page_by_ids(
         inst_ids: list[int],
         page: int = 1,
@@ -1327,7 +1350,8 @@ class InstanceManage(object):
 
         update_attr = dict(update_attr)
         ensure_instance_identity_immutable(update_attr)
-        # 用户写路径剔除系统联动字段；IoC 回填走 skip_permission_check=True 时保留
+        # 用户改 IP/名称/组织不断开既有绑定，也不允许把 monitor_id/node_id 改写成别的对象。
+        # IoC 回填走 skip_permission_check=True 时保留系统联动字段。
         if not skip_permission_check:
             update_attr = strip_system_link_fields(update_attr)
         inst_info = InstanceManage.query_entity_by_id(inst_id)
@@ -1453,8 +1477,9 @@ class InstanceManage(object):
         allowed_org_ids: list | None = None,
     ):
         """批量修改实例属性"""
+        from apps.cmdb.services.module_ingest import strip_system_link_fields
 
-        update_attr = dict(update_attr)
+        update_attr = strip_system_link_fields(dict(update_attr))
         ensure_instance_identity_immutable(update_attr)
         inst_ids = _normalize_batch_instance_ids(inst_ids)
         inst_list = _require_complete_batch_instances(

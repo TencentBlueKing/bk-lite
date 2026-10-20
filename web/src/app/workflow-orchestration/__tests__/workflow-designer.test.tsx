@@ -1040,6 +1040,80 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(detailsButton.className).toContain('ant-btn-link');
   });
 
+  it('从加号添加的节点与源节点同高', async () => {
+    const { container } = render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
+
+    const addNext = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('button[aria-label="从此节点添加下一步"]');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    fireEvent.click(addNext);
+    fireEvent.click(await screen.findByRole('button', { name: /HTTP 请求/ }));
+
+    await screen.findByDisplayValue('HTTP 请求');
+    const titles = [...container.querySelectorAll<HTMLElement>('[data-workflow-node-title]')];
+    const sourceNode = titles.find((item) => item.textContent === '发送巡检结果')?.closest<HTMLElement>('.react-flow__node');
+    const addedNode = titles.find((item) => item.textContent === 'HTTP 请求')?.closest<HTMLElement>('.react-flow__node');
+    expect(sourceNode?.style.transform).toBe('translate(260px,260px)');
+    expect(addedNode?.style.transform).toBe('translate(420px,260px)');
+  });
+
+  it('内置流程双击原子和标题打开配置，空白画布仍可双击缩放', async () => {
+    const httpWorkflow = {
+      ...workflow,
+      is_builtin: true,
+      definition: {
+        ...workflow.definition,
+        tasks: [{
+          name: 'bklite_http_request',
+          taskReferenceName: 'request_status',
+          type: 'SIMPLE',
+          inputParameters: { method: 'GET', url: 'https://example.com/health', query: {}, headers: {}, timeout: 30 },
+        }],
+      },
+      canvas_metadata: { node_titles: { request_status: '检查服务状态' } },
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/workflows/1/')) return Promise.resolve(httpWorkflow);
+      if (url.includes('/workflows/atoms/')) return Promise.resolve(atoms);
+      return Promise.resolve([]);
+    });
+    const view = render(<App><WorkflowOrchestrationConsole workflowId={1} mode="view" /></App>);
+    const { container } = view;
+
+    const node = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('[data-workflow-node="atom"] button[aria-label="检查服务状态"]');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    const wrapper = node.closest('.react-flow__node');
+    expect(wrapper?.classList.contains('nopan')).toBe(true);
+    expect(container.querySelector('.react-flow__pane')?.classList.contains('nopan')).toBe(false);
+
+    const title = container.querySelector<HTMLElement>('[data-workflow-node="atom"] [data-workflow-node-title]');
+    expect(title?.textContent).toBe('检查服务状态');
+    expect(title?.classList.contains('nopan')).toBe(true);
+
+    fireEvent.doubleClick(title!);
+    const nameFromTitle = await screen.findByDisplayValue('检查服务状态');
+    expect(nameFromTitle.hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('请求参数')).not.toBeNull();
+    view.unmount();
+
+    const again = render(<App><WorkflowOrchestrationConsole workflowId={1} mode="view" /></App>);
+    const square = await waitFor(() => {
+      const button = again.container.querySelector<HTMLButtonElement>('[data-workflow-node="atom"] button[aria-label="检查服务状态"]');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    fireEvent.doubleClick(square);
+    const nameFromSquare = await screen.findByDisplayValue('检查服务状态');
+    expect(nameFromSquare.hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('请求参数')).not.toBeNull();
+    again.unmount();
+  });
+
   it('单击节点只选中，双击节点才打开业务配置窗口', async () => {
     const { container } = render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
 

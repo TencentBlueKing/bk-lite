@@ -57,6 +57,8 @@ dependencies = [
     "uvicorn==0.32.0",
     "whitenoise==6.5.0",
     "wechatpy==1.8.18",
+    "wecom-aibot-python-sdk==1.0.1",
+    "websockets>=13.0",
     "dingtalk-stream==0.24.3",
     "pyotp==2.9.0",
     "qrcode==8.2",
@@ -87,6 +89,7 @@ cmdb = [
 ]
 dev = [
     "django-debug-toolbar==4.2.0",
+    "jsonschema>=4.23,<5",
     "poethepoet>=0.37.0",
     "pytest-asyncio==0.26.0",
     "pytest-cov==4.1.0",

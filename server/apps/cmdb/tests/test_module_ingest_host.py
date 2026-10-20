@@ -671,6 +671,56 @@ def test_lifecycle_retire_clears_node_id_without_hard_delete(mocker):
     delete.assert_not_called()
 
 
+def test_lifecycle_from_monitor_without_org_scope_still_clears_monitor_id(mocker):
+    mocker.patch.object(
+        CmdbModuleIngestService,
+        "_find_by_cmdb_id",
+        return_value={
+            "_id": 42,
+            "model_id": "host",
+            "node_id": "n1",
+            "monitor_id": "m1",
+        },
+    )
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_monitor_id_attr",
+        return_value=True,
+    )
+    update = mocker.patch(
+        "apps.cmdb.services.module_ingest.write_system_link_fields",
+        return_value={"_id": 42, "monitor_id": ""},
+    )
+
+    result = CmdbModuleIngestService.ingest(
+        {
+            "source_module": "monitor",
+            "source_id": "m1",
+            "event_type": "lifecycle",
+            "occurred_at": "2026-08-05T00:00:00Z",
+            "raw": {"action": "unlink"},
+            "link_ids": {"cmdb_id": "42", "monitor_id": "m1"},
+            "operator": "alice",
+        }
+    )
+
+    assert result["updated"] is True
+    assert update.call_args.args == (42, {"monitor_id": ""})
+
+
+def test_upsert_still_requires_allowed_org_ids():
+    with pytest.raises(ValueError, match="authorization scope"):
+        CmdbModuleIngestService.ingest(
+            {
+                "source_module": "monitor",
+                "source_id": "m1",
+                "event_type": "upsert",
+                "occurred_at": "2026-08-05T00:00:00Z",
+                "raw": {"ip": "1.1.1.1"},
+                "link_ids": {"cmdb_id": "42"},
+            }
+        )
+
+
 def test_lifecycle_from_monitor_clears_monitor_id_only(mocker):
     mocker.patch.object(
         CmdbModuleIngestService,

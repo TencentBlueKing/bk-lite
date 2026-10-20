@@ -26,6 +26,10 @@ import {
   PROXY_TIMEOUT_HEADER,
 } from '@/utils/proxyTimeout';
 import { resolveAuthToken } from '@/utils/authRecovery';
+import {
+  acquireMetricRequestSlot,
+  shouldLimitMonitorQueryUrl,
+} from '@/app/monitor/utils/metricRequestSlot';
 
 const apiClient = axios.create({
   baseURL: '/api/proxy',
@@ -47,6 +51,22 @@ export interface RequestConfig extends AxiosRequestConfig {
   suppressErrorNotification?: boolean;
   /** When responseType is blob, return { data, headers } instead of the raw Blob. */
   blobMeta?: boolean;
+  /** Skip the site-wide monitor query slot (internal retry / non-query calls). */
+  skipMetricRequestSlot?: boolean;
+}
+
+const metricSlotReleases = new WeakMap<object, () => void>();
+
+function releaseMetricSlot(config?: InternalAxiosRequestConfig) {
+  if (!config) {
+    return;
+  }
+  const release = metricSlotReleases.get(config);
+  if (!release) {
+    return;
+  }
+  metricSlotReleases.delete(config);
+  release();
 }
 
 /** Normalized request error that callers may map to a local error state. */
@@ -88,7 +108,7 @@ const handleResponse = (response: AxiosResponse) => {
 
 // Register interceptors once at module level
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
+  async (config: InternalAxiosRequestConfig) => {
     if (isSessionExpiredState()) {
       return Promise.reject(createSessionExpiredRequestError());
     }
@@ -107,6 +127,14 @@ apiClient.interceptors.request.use(
     } else {
       config.headers.delete(PROXY_TIMEOUT_HEADER);
     }
+    const requestConfig = config as RequestConfig;
+    if (
+      !requestConfig.skipMetricRequestSlot &&
+      shouldLimitMonitorQueryUrl(config.url)
+    ) {
+      const release = await acquireMetricRequestSlot({ signal: config.signal });
+      metricSlotReleases.set(config, release);
+    }
     return config;
   },
   (error) => {
@@ -115,8 +143,12 @@ apiClient.interceptors.request.use(
 );
 
 apiClient.interceptors.response.use(
-  (response: AxiosResponse) => response,
-  (error) => {
+  (response: AxiosResponse) => {
+    releaseMetricSlot(response.config);
+    return response;
+  },
+  async (error) => {
+    releaseMetricSlot(error?.config);
     if (isSessionExpiredState()) {
       return Promise.reject(error);
     }
@@ -134,7 +166,25 @@ apiClient.interceptors.response.use(
         payload,
         presentation: presentation ?? undefined,
       });
-      if (status === 460) {
+      if (status === 429) {
+        const retryConfig = error.config as RequestConfig & { __metric429Retried?: boolean };
+        if (
+          retryConfig &&
+          !retryConfig.__metric429Retried &&
+          shouldLimitMonitorQueryUrl(retryConfig.url)
+        ) {
+          retryConfig.__metric429Retried = true;
+          const retryAfterRaw = error.response.headers?.['retry-after'];
+          const retryAfterSec = Number(retryAfterRaw);
+          const delayMs =
+            Number.isFinite(retryAfterSec) && retryAfterSec > 0
+              ? retryAfterSec * 1000
+              : 800 + Math.random() * 700;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          return apiClient.request(retryConfig);
+        }
+        return Promise.reject(handledError);
+      } else if (status === 460) {
         void forceLogoutAndRedirect();
         return Promise.reject(error);
       } else if (status === 401) {

@@ -15,13 +15,21 @@ import type {
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import {
+  dataLinkTooltipFooterStyle,
+  resolveDataLinkTooltipTheme,
+} from '@/app/ops-analysis/utils/interactionLinkHint';
+import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import {
   NODE_GRAPH_NODE_HEIGHT,
   NODE_GRAPH_NODE_WIDTH,
   buildNodeGraph,
   isNodeGraphMappingComplete,
   layoutNodeGraphBipartite,
+  nodeGraphEdgeFields,
   toNodeGraphMapping,
+  withNodeGraphParallelIndex,
 } from '@/app/ops-analysis/utils/nodeGraphData';
 
 interface NodeGraphProps {
@@ -77,6 +85,15 @@ const NodeGraph: React.FC<NodeGraphProps> = ({
   onReadyRef.current = onReady;
 
   const mapping = useMemo(() => toNodeGraphMapping(config), [config]);
+  const { openPoint, chartTooltipHint } = useWidgetDataLink(config);
+  const linkTooltipTheme = resolveDataLinkTooltipTheme(
+    config?.chartThemeMode,
+    resolveOpsChartThemeName(),
+  );
+  const linkPointsRef = useRef(buildInteractionPoints('nodeGraph', rawData, config));
+  linkPointsRef.current = buildInteractionPoints('nodeGraph', rawData, config);
+  const openPointRef = useRef(openPoint);
+  openPointRef.current = openPoint;
   const mappingComplete = isNodeGraphMappingComplete(mapping);
   const graphModel = useMemo(
     () => buildNodeGraph(rawData, mapping),
@@ -211,6 +228,26 @@ const NodeGraph: React.FC<NodeGraphProps> = ({
     graph.on('node:mouseleave', () => setHover(null));
     graph.on('edge:mouseleave', () => setHover(null));
     graph.on('blank:mouseenter', () => setHover(null));
+    graph.on('node:click', ({ node, e }) => {
+      e.stopPropagation();
+      const id = (node.getData() as { label?: string } | undefined)?.label;
+      const point = linkPointsRef.current.find((item) => item.fields?.id === id);
+      openPointRef.current(point);
+    });
+    graph.on('edge:click', ({ edge, e }) => {
+      e.stopPropagation();
+      const data = edge.getData() as {
+        source?: string;
+        target?: string;
+        parallelIndex?: number;
+      } | undefined;
+      const point = linkPointsRef.current.find(
+        (item) => item.fields?.source === data?.source
+          && item.fields?.target === data?.target
+          && item.fields?.parallelIndex === data?.parallelIndex,
+      );
+      openPointRef.current(point);
+    });
 
     const observer =
       typeof ResizeObserver === 'undefined'
@@ -263,16 +300,16 @@ const NodeGraph: React.FC<NodeGraphProps> = ({
         };
       }),
     );
+    const parallelEdges = withNodeGraphParallelIndex(graphModel.edges);
     graph.addEdges(
       placed.edges.map((edge, index) => ({
         id: `node-graph-edge-${index}`,
         source: { cell: edge.source, anchor: { name: 'right' } },
         target: { cell: edge.target, anchor: { name: 'left' } },
-        data: {
-          source: graphModel.edges[index].source,
-          target: graphModel.edges[index].target,
-          value: edge.value,
-        },
+        data: nodeGraphEdgeFields(
+          { ...parallelEdges[index], value: edge.value },
+          config?.nodeGraphIdentityMode,
+        ),
         connector: { name: 'smooth' },
         attrs: {
           line: {
@@ -307,6 +344,7 @@ const NodeGraph: React.FC<NodeGraphProps> = ({
     };
   }, [
     chartTheme.panelTitleColor,
+    config?.nodeGraphIdentityMode,
     errorMessage,
     graphModel,
     loading,
@@ -391,6 +429,9 @@ const NodeGraph: React.FC<NodeGraphProps> = ({
                 <span>{formatVisibleChartValue(hover.info.value, config)}</span>
               </div>
             )}
+            {chartTooltipHint ? (
+              <div style={dataLinkTooltipFooterStyle(linkTooltipTheme)}>{chartTooltipHint}</div>
+            ) : null}
           </div>
         ) : null}
       </div>

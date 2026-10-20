@@ -185,6 +185,45 @@ def test_normalize_screen_keeps_custom_image_background_through_yaml_rewrite():
     assert imported["viewport"]["background"] == {"type": "image", "src": src}
 
 
+def test_normalize_screen_keeps_text_title_link():
+    from apps.operation_analysis.services.canvas_draft.validation import validate_projectable
+
+    interaction = {
+        "kind": "title",
+        "name": "查看告警",
+        "url": "/alerts?source=$source$",
+        "openMode": "newTab",
+    }
+    payload = {
+        "viewport": {"width": 1920, "height": 1080},
+        "items": [
+            {
+                "id": "label-alert-source-event-top",
+                "kind": "text",
+                "content": "告警关联事件来源 TOP10",
+                "x": 44,
+                "y": 1036,
+                "w": 1212,
+                "h": 42,
+                "zIndex": 5,
+                "interaction": interaction,
+            }
+        ],
+        "decorations": {},
+    }
+
+    stored = vs.normalize_canvas_view_sets_for_storage(payload, ObjectType.SCREEN)
+    assert stored["items"][0]["interaction"] == interaction
+
+    exported = vs.rewrite_canvas_view_sets_refs_for_yaml(stored, ObjectType.SCREEN, {})
+    assert exported["items"][0]["interaction"] == interaction
+
+    imported = vs.rewrite_canvas_view_sets_refs_for_storage(exported, ObjectType.SCREEN, {})
+    assert imported["items"][0]["interaction"] == interaction
+
+    validate_projectable(ObjectType.SCREEN, payload)
+
+
 def test_validate_screen_allows_chrome_items_without_chart_type():
     from apps.operation_analysis.services.canvas_draft.validation import validate_projectable
 

@@ -996,7 +996,8 @@ export default function MysqlDashboardPage() {
   return (
     <div className={styles.page}>
       <div className={styles.shell}>
-        <div className={styles.pageHeader}>
+        <div className={styles.unifiedShell} data-dashboard-shell="unified">
+          <div className={styles.pageIntro}>
           <DashboardPageHeader
             title={pageTitle}
             displayMode={displayMode}
@@ -1009,7 +1010,8 @@ export default function MysqlDashboardPage() {
             showTimeSelector={false}
             styles={styles}
           />
-
+          </div>
+          <div className={styles.unifiedHostBar}>
           <DashboardInstanceCard
             instanceName={primaryInstanceText}
             metaItems={instanceMetaItems}
@@ -1030,9 +1032,10 @@ export default function MysqlDashboardPage() {
             }}
             styles={styles}
           />
+          </div>
         </div>
 
-        <div>
+        <div className={styles.unifiedBelow}>
           {showEmpty ? (
             <div className={styles.empty}>
               <CompactEmptyState description={t('common.noData')} />

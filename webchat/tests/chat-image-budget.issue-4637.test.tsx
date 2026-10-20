@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { File as NodeFile } from 'node:buffer';
 import test from 'node:test';
 
 import React from 'react';
@@ -7,6 +8,16 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import type { Message } from '../packages/webchat-core/src/types';
 import { Chat, type ChatProps } from '../packages/webchat-ui/src/Chat';
 import { FloatingButton } from '../packages/webchat-ui/src/FloatingButton';
+
+// Node.js 18 没有全局 File，但该版本的 node:buffer 已提供兼容实现。
+// 仅在测试环境缺失时补齐，避免改变浏览器运行时行为。
+if (typeof globalThis.File === 'undefined') {
+  Object.defineProperty(globalThis, 'File', {
+    configurable: true,
+    value: NodeFile,
+    writable: true,
+  });
+}
 
 interface TestFile {
   arrayBuffer: () => Promise<ArrayBuffer>;
@@ -138,13 +149,13 @@ test('Chat 默认预算在上传和粘贴入口读取前原子拒绝超限批次
   const errors: Error[] = [];
   const renderer = renderChat({ onError: (error) => errors.push(error) });
 
-  await selectFiles(renderer.root, Array.from({ length: 5 }, (_, index) => imageFile(`${index}.png`)));
+  await selectFiles(renderer.root, Array.from({ length: 6 }, (_, index) => imageFile(`${index}.png`)));
   assert.equal(ControlledFileReader.pending.length, 0);
-  assert.match(errors[0]?.message ?? '', /最多选择 4 张/);
+  assert.match(errors[0]?.message ?? '', /最多选择 5 张/);
 
-  await pasteFiles(renderer.root, Array.from({ length: 5 }, (_, index) => imageFile(`p${index}.png`)));
+  await pasteFiles(renderer.root, Array.from({ length: 6 }, (_, index) => imageFile(`p${index}.png`)));
   assert.equal(ControlledFileReader.pending.length, 0);
-  assert.match(errors[1]?.message ?? '', /最多选择 4 张/);
+  assert.match(errors[1]?.message ?? '', /最多选择 5 张/);
   renderer.unmount();
 });
 
@@ -526,6 +537,122 @@ const submitAndWait = async (root: ReactTestInstance, text: string, seen: () => 
     });
   }
 };
+
+test('文档上传后按间隔查询解析状态，完成后不再显示解析中', async () => {
+  const calls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  const timers: Array<() => void> = [];
+  globalThis.setInterval = ((handler: TimerHandler) => {
+    if (typeof handler === 'function') timers.push(() => handler());
+    return 1 as unknown as ReturnType<typeof setInterval>;
+  }) as unknown as typeof setInterval;
+  globalThis.clearInterval = (() => undefined) as unknown as typeof clearInterval;
+  let polls = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes('/chat_attachment/upload/')) {
+      return new Response(JSON.stringify({
+        result: true,
+        data: { id: 9, name: '广州旅游介绍.pptx', mime: 'application/vnd.ms-powerpoint', size: 20, status: 'pending' },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    polls += 1;
+    return new Response(JSON.stringify({
+      result: true,
+      data: {
+        id: 9,
+        name: '广州旅游介绍.pptx',
+        mime: 'application/vnd.ms-powerpoint',
+        size: 20,
+        status: polls > 1 ? 'ready' : 'pending',
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+
+  const chipText = (root: ReactTestInstance) => root.findAllByType('span')
+    .map((node) => node.children.filter((child): child is string => typeof child === 'string').join(''))
+    .join('\n');
+
+  try {
+    const renderer = renderChat({ apiKey: 'token', sseUrl: SSE_URL });
+    const file = new File([new Uint8Array([1])], '广州旅游介绍.pptx', {
+      type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    });
+    await selectFiles(renderer.root, [file]);
+    assert.match(chipText(renderer.root), /广州旅游介绍\.pptx · 解析中/);
+    assert.equal(timers.length, 1);
+    assert.ok(calls.some((url) => url.endsWith('/skill_channel/chat_attachment/upload/')));
+
+    await act(async () => {
+      timers[0]();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    assert.ok(calls.some((url) => url.endsWith('/skill_channel/chat_attachment/9/')));
+    assert.match(chipText(renderer.root), /广州旅游介绍\.pptx · 解析中/);
+
+    await act(async () => {
+      timers[0]();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    assert.doesNotMatch(chipText(renderer.root), /解析中/);
+    assert.match(chipText(renderer.root), /广州旅游介绍\.pptx/);
+    renderer.unmount();
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test('文档解析状态连续查询失败时标记为失败', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  const timers: Array<() => void> = [];
+  globalThis.setInterval = ((handler: TimerHandler) => {
+    if (typeof handler === 'function') timers.push(() => handler());
+    return 1 as unknown as ReturnType<typeof setInterval>;
+  }) as unknown as typeof setInterval;
+  globalThis.clearInterval = (() => undefined) as unknown as typeof clearInterval;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/chat_attachment/upload/')) {
+      return new Response(JSON.stringify({
+        result: true,
+        data: { id: 11, name: 'report.pdf', mime: 'application/pdf', size: 20, status: 'pending' },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ result: false, message: 'down' }), { status: 500, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+
+  const chipText = (root: ReactTestInstance) => root.findAllByType('span')
+    .map((node) => node.children.filter((child): child is string => typeof child === 'string').join(''))
+    .join('\n');
+
+  try {
+    const renderer = renderChat({ apiKey: 'token', sseUrl: SSE_URL });
+    const file = new File([new Uint8Array([1])], 'report.pdf', { type: 'application/pdf' });
+    await selectFiles(renderer.root, [file]);
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await act(async () => {
+        timers[0]();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+    assert.match(chipText(renderer.root), /无法获取解析状态/);
+    renderer.unmount();
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
 
 test('粘贴图片发送时写入 attachment_ids，移除的图片不会被上传', async () => {
   const network = installAttachmentFetch();

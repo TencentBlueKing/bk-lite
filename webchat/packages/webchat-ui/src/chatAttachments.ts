@@ -4,6 +4,7 @@ export interface StoredChatAttachment {
   mime: string;
   size: number;
   status: string;
+  failure_reason?: string;
 }
 
 const ACCEPT = new Set(['pdf', 'docx', 'pptx', 'xlsx', 'csv', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp']);
@@ -47,6 +48,19 @@ export async function uploadChatFile(file: File, sseUrl: string, headers: Header
   const payload = await response.json();
   if (!response.ok || payload?.result === false) {
     throw new Error(payload?.message || '上传失败');
+  }
+  return payload.data as StoredChatAttachment;
+}
+
+export async function fetchChatAttachmentStatus(id: number, sseUrl: string, headers: HeadersInit): Promise<StoredChatAttachment> {
+  const endpoints = chatAttachmentEndpoints(sseUrl);
+  if (!endpoints) {
+    throw new Error('缺少附件状态地址');
+  }
+  const response = await fetch(endpoints.status(id), { headers, credentials: 'include' });
+  const payload = await response.json();
+  if (!response.ok || payload?.result === false) {
+    throw new Error(payload?.message || '状态查询失败');
   }
   return payload.data as StoredChatAttachment;
 }

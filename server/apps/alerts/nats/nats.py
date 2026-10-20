@@ -24,7 +24,8 @@ from apps.alerts.error import AuthenticationSourceError
 from apps.alerts.models.alert_operator import AlarmStrategy, NotifyResult
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
-from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
+from apps.alerts.notification_templates.timefmt import DEFAULT_DISPLAY_TIMEZONE, format_template_datetime, resolve_display_timezone
+from apps.alerts.utils.permission_scope import apply_operator_scope, apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.internal_event_auth import TRUSTED_INTERNAL_EVENT_CALLERS, legacy_internal_event_auth_allowed, verify_internal_event
 from apps.core.utils.permission_utils import get_permission_rules
@@ -205,7 +206,20 @@ def _resolve_target_timezone(timezone_name=None):
             return ZoneInfo(timezone_name)
         except Exception:
             logger.warning("Invalid timezone provided for alert trend: %s", timezone_name)
-    return timezone.get_current_timezone()
+    return ZoneInfo(DEFAULT_DISPLAY_TIMEZONE)
+
+
+def _caller_display_timezone(user_info):
+    info = user_info or {}
+    explicit = info.get("timezone")
+    if isinstance(explicit, str) and explicit.strip():
+        try:
+            ZoneInfo(explicit.strip())
+            return explicit.strip()
+        except Exception:
+            logger.warning("Invalid caller timezone %s", explicit)
+    username = info.get("username") or info.get("user")
+    return resolve_display_timezone([username] if username else [])
 
 
 def _parse_client_datetime(value, target_tz):
@@ -959,7 +973,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             "ingestion": ingestion,
             "source_id": source_id,
             "pusher": pusher,
-            "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": format_template_datetime(timezone.now()),
         }
         if event_results is not None:
             data["event_results"] = event_results
@@ -1414,13 +1428,13 @@ def get_active_alert_top(limit=10, **kwargs):
     return {"result": True, "data": alerts_with_duration, "message": ""}
 
 
-def _format_alert_datetime(value):
+def _format_alert_datetime(value, timezone_name=None):
     if value is None:
         return None
-    return timezone.localtime(value).isoformat()
+    return format_template_datetime(value, timezone_name)
 
 
-def _serialize_alert_for_tool(alert, *, detail=False):
+def _serialize_alert_for_tool(alert, *, detail=False, timezone_name=None):
     data = {
         "alert_id": alert.alert_id,
         "title": alert.title,
@@ -1437,10 +1451,10 @@ def _serialize_alert_for_tool(alert, *, detail=False):
         "rule_id": alert.rule_id,
         "fingerprint": alert.fingerprint,
         "dimensions": alert.dimensions or {},
-        "first_event_time": _format_alert_datetime(alert.first_event_time),
-        "last_event_time": _format_alert_datetime(alert.last_event_time),
-        "created_at": _format_alert_datetime(alert.created_at),
-        "updated_at": _format_alert_datetime(alert.updated_at),
+        "first_event_time": _format_alert_datetime(alert.first_event_time, timezone_name),
+        "last_event_time": _format_alert_datetime(alert.last_event_time, timezone_name),
+        "created_at": _format_alert_datetime(alert.created_at, timezone_name),
+        "updated_at": _format_alert_datetime(alert.updated_at, timezone_name),
     }
     if detail:
         data["labels"] = alert.labels or {}
@@ -1448,7 +1462,7 @@ def _serialize_alert_for_tool(alert, *, detail=False):
     return data
 
 
-def _serialize_event_for_tool(event):
+def _serialize_event_for_tool(event, timezone_name=None):
     source = getattr(event, "source", None)
     return {
         "event_id": event.event_id,
@@ -1461,7 +1475,7 @@ def _serialize_event_for_tool(event):
         "resource_id": event.resource_id,
         "resource_type": event.resource_type,
         "resource_name": event.resource_name,
-        "received_at": _format_alert_datetime(event.received_at),
+        "received_at": _format_alert_datetime(event.received_at, timezone_name),
     }
 
 
@@ -1498,6 +1512,16 @@ def _llm_alert_team_ids(user_info: dict):
     return [current_team]
 
 
+def _union_assigned_alerts(queryset, user_info: dict):
+    """与告警中心默认列表一致：当前组织范围内的告警，再加上分派给当前用户的告警。"""
+    permission_user = _build_permission_user(user_info)
+    username = getattr(permission_user, "username", "") if permission_user else ""
+    if not username:
+        return queryset
+    assigned_ids = apply_operator_scope(Alert.objects.all(), username).values("id")
+    return Alert.objects.filter(Q(id__in=queryset.values("id")) | Q(id__in=assigned_ids))
+
+
 def _llm_authorized_alert_queryset(user_info: dict):
     """LLM 只读查询授权：不依赖 caller 传入的 Alarms-View / is_superuser 字段。"""
     user_info = user_info or {}
@@ -1511,7 +1535,7 @@ def _llm_authorized_alert_queryset(user_info: dict):
 
     team_ids = _llm_alert_team_ids(user_info)
     if _llm_is_superuser(user_info):
-        return apply_team_scope_with_group_ids(Alert.objects.all(), team_ids), None
+        return _union_assigned_alerts(apply_team_scope_with_group_ids(Alert.objects.all(), team_ids), user_info), None
 
     permission_data = get_permission_rules(
         permission_user,
@@ -1526,7 +1550,7 @@ def _llm_authorized_alert_queryset(user_info: dict):
     permission_team_ids = permission_data.get("team", [])
 
     if not instance_ids and not permission_team_ids:
-        return Alert.objects.none(), None
+        return _union_assigned_alerts(Alert.objects.none(), user_info), None
 
     normalized_permission_team_ids = []
     for team_id in permission_team_ids:
@@ -1538,7 +1562,28 @@ def _llm_authorized_alert_queryset(user_info: dict):
     authorized_queryset = apply_team_scope_with_group_ids(Alert.objects.all(), normalized_permission_team_ids)
     if instance_ids:
         authorized_queryset = Alert.objects.filter(Q(id__in=authorized_queryset.values("id")) | Q(id__in=instance_ids))
-    return authorized_queryset.distinct(), None
+    return _union_assigned_alerts(authorized_queryset, user_info), None
+
+
+_ACTIVE_STATUS_TOKENS = frozenset({"active", "activate", "activated", "活跃", "活动"})
+
+
+def _alert_statuses_for_query(status):
+    """active 对齐告警中心活动页：待响应、处理中、未分派。"""
+    raw_items = status if isinstance(status, (list, tuple)) else [status]
+    normalized = []
+    seen = set()
+    for item in raw_items:
+        token = str(item or "").strip()
+        if not token:
+            continue
+        expanded = AlertStatus.ACTIVATE_STATUS if token.casefold() in _ACTIVE_STATUS_TOKENS else (token,)
+        for value in expanded:
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+    return normalized
 
 
 @nats_client.register
@@ -1553,8 +1598,9 @@ def list_alerts(query_data=None, user_info=None, **kwargs):
 
     status = query_data.get("status")
     if status:
-        statuses = status if isinstance(status, list) else [status]
-        queryset = queryset.filter(status__in=statuses)
+        statuses = _alert_statuses_for_query(status)
+        if statuses:
+            queryset = queryset.filter(status__in=statuses)
     level = query_data.get("level")
     if level:
         levels = level if isinstance(level, list) else [level]
@@ -1587,7 +1633,7 @@ def list_alerts(query_data=None, user_info=None, **kwargs):
             "count": count,
             "page": page,
             "page_size": page_size,
-            "items": [_serialize_alert_for_tool(alert) for alert in items],
+            "items": [_serialize_alert_for_tool(alert, timezone_name=_caller_display_timezone(user_info)) for alert in items],
         },
         "message": "",
     }
@@ -1607,7 +1653,7 @@ def get_alert_detail(alert_id=None, user_info=None, **kwargs):
     alert = queryset.filter(alert_id=alert_id).first()
     if alert is None:
         return {"result": False, "data": {}, "message": "告警不存在"}
-    return {"result": True, "data": _serialize_alert_for_tool(alert, detail=True), "message": ""}
+    return {"result": True, "data": _serialize_alert_for_tool(alert, detail=True, timezone_name=_caller_display_timezone(user_info)), "message": ""}
 
 
 @nats_client.register
@@ -1638,7 +1684,7 @@ def list_alert_events(alert_id=None, query_data=None, user_info=None, **kwargs):
             "count": count,
             "page": page,
             "page_size": page_size,
-            "items": [_serialize_event_for_tool(event) for event in items],
+            "items": [_serialize_event_for_tool(event, timezone_name=_caller_display_timezone(user_info)) for event in items],
         },
         "message": "",
     }

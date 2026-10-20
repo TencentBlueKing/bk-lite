@@ -17,6 +17,8 @@ import {
   InstDetailItem,
 } from '@/app/cmdb/types/assetSearch';
 import {
+  Alert,
+  Skeleton,
   Input,
   Tabs,
   Button,
@@ -81,6 +83,42 @@ interface FollowedAssetDetailResponse extends AssetListItem {
   organization_display?: string;
 }
 
+const AssetSearchResultSkeleton = () => (
+  <div className="flex h-full min-h-0 flex-col" aria-busy="true" aria-label="loading">
+    <div className="flex h-11 shrink-0 items-center gap-6 border-b border-[var(--color-border-1)] px-3">
+      <Skeleton.Input active size="small" className="!h-4 !w-28 !min-w-0" />
+      <Skeleton.Input active size="small" className="!h-4 !w-20 !min-w-0" />
+    </div>
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(280px,0.9fr)_minmax(420px,1.5fr)] overflow-hidden">
+      <div className="min-h-0 border-r border-[var(--color-border-1)] p-3">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div key={index} className="border-b border-[var(--color-border-1)] px-2 py-3">
+            <Skeleton.Input active size="small" className="!h-4 !w-36 !min-w-0" />
+            <div className="mt-2 flex gap-3">
+              <Skeleton.Input active size="small" className="!h-3 !w-24 !min-w-0" />
+              <Skeleton.Input active size="small" className="!h-3 !w-32 !min-w-0" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="min-h-0 p-4">
+        <div className="flex items-center justify-between border-b border-[var(--color-border-1)] pb-3">
+          <Skeleton.Input active size="small" className="!h-5 !w-44 !min-w-0" />
+          <Skeleton.Button active size="small" className="!h-7 !w-16" />
+        </div>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-5 pt-5">
+          {Array.from({ length: 10 }, (_, index) => (
+            <div key={index} className="flex items-center gap-3">
+              <Skeleton.Input active size="small" className="!h-3 !w-20 !min-w-0" />
+              <Skeleton.Input active size="small" className="!h-3 !w-32 !min-w-0" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 const AssetSearch = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
@@ -131,6 +169,7 @@ const AssetSearch = () => {
   const [recentChanges, setRecentChanges] = useState<RecentChangeItem[]>([]);
   const [recentChangeFilter, setRecentChangeFilter] = useState<RecentChangeFilter>('all');
   const [followedAssets, setFollowedAssets] = useState<FollowedAssetViewItem[]>([]);
+  const [searchError, setSearchError] = useState(false);
   const [categoryEntries, setCategoryEntries] = useState<CategoryEntryItem[]>([]);
   const recentChangesFetchingRef = useRef(false);
   const followedAssetsLoadedRef = useRef(false);
@@ -355,6 +394,7 @@ const AssetSearch = () => {
     setCurrentPage(1);
     setTotalCount(0);
     setPageLoading(false);
+    setSearchError(false);
   };
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -373,6 +413,7 @@ const AssetSearch = () => {
     }
     setSearchText(nextSearchText);
     setShowSearch(false);
+    setSearchError(false);
 
     const histories = deepClone(historyList);
     if (
@@ -422,6 +463,7 @@ const AssetSearch = () => {
       setTotalCount(0);
       setCurrentPage(1);
       setPageLoading(false);
+      setSearchError(true);
     }
   };
 
@@ -432,6 +474,7 @@ const AssetSearch = () => {
     keyword = searchText
   ) => {
     setPageLoading(true);
+    setSearchError(false);
     try {
       const result: SearchByModelResponse = await fulltextSearchByModel({
         search: keyword,
@@ -453,6 +496,7 @@ const AssetSearch = () => {
       setCurrentModelData([]);
       setTotalCount(0);
       setActiveInstItem(-1);
+      setSearchError(true);
     } finally {
       setPageLoading(false);
     }
@@ -497,18 +541,11 @@ const AssetSearch = () => {
         label: `${modelName}(${totalCount})`,
         children: (
           <div className={assetSearchStyle.searchResult}>
-            <div
-              className={assetSearchStyle.list}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                maxHeight: 'calc(100vh - 184px)',
-                minHeight: 'calc(100vh - 184px)',
-              }}
-            >
+            <div className={assetSearchStyle.list}>
               <div style={{ flex: 1, overflow: 'auto' }}>
                 {descItems.map((target: InstDetailItem[], index: number) => (
-                  <div
+                  <button
+                    type="button"
                     key={index}
                     className={`${assetSearchStyle.listItem} ${
                       index === activeInstItem ? assetSearchStyle.active : ''
@@ -558,7 +595,7 @@ const AssetSearch = () => {
                           ) : null;
                       })}
                     </ul>
-                  </div>
+                  </button>
                 ))}
               </div>
               {totalCount > 0 && (
@@ -871,15 +908,8 @@ const AssetSearch = () => {
             onRecentChangeFilterChange={handleRecentChangeFilterChange}
           />
         ) : (
-          <div className={assetSearchStyle.searchDetail}>
-            <div
-              style={{
-                display: 'flex',
-                gap: '12px',
-                alignItems: 'center',
-                marginBottom: '12px',
-              }}
-            >
+          <div className={`${assetSearchStyle.searchDetail} flex h-full min-h-0 flex-col p-3`}>
+            <div className="mb-3 flex shrink-0 items-center justify-between gap-4 rounded-lg bg-[var(--color-bg)] p-3">
               <Button
                 type="text"
                 icon={<ArrowLeftOutlined />}
@@ -887,53 +917,45 @@ const AssetSearch = () => {
               >
                 {t('common.backToHome')}
               </Button>
-              <Search
-                className={assetSearchStyle.input}
-                value={searchText}
-                allowClear
-                placeholder={t('assetSearchTxt')}
-                enterButton={
-                  <div
-                    className={assetSearchStyle.searchBtn}
-                    onClick={() => void handleSearch()}
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+                <Search
+                  className={`${assetSearchStyle.input} !w-80 max-w-full`}
+                  value={searchText}
+                  allowClear
+                  placeholder={t('assetSearchTxt')}
+                  enterButton={(
+                    <span className={assetSearchStyle.searchBtn}>
+                      <SearchOutlined className="pr-[8px]" />
+                      {t('common.search')}
+                    </span>
+                  )}
+                  onChange={handleTextChange}
+                  onSearch={() => void handleSearch()}
+                />
+                <div className="shrink-0 whitespace-nowrap rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg)] px-3 py-1">
+                  <Checkbox
+                    checked={caseSensitive}
+                    onChange={(e) => setCaseSensitive(e.target.checked)}
                   >
-                    <SearchOutlined className="pr-[8px]" />
-                    {t('common.search')}
-                  </div>
-                }
-                onChange={handleTextChange}
-                onPressEnter={() => void handleSearch()}
-              />
-              <div
-                style={{
-                  border: '1px solid var(--color-border-2)',
-                  borderRadius: '2px',
-                  padding: '4px 12px',
-                  background: 'var(--color-bg-1)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <Checkbox
-                  checked={caseSensitive}
-                  onChange={(e) => setCaseSensitive(e.target.checked)}
-                >
-                  {t('FilterBar.exactMatch')}
-                </Checkbox>
+                    {t('FilterBar.exactMatch')}
+                  </Checkbox>
+                </div>
               </div>
             </div>
-            <div className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-[var(--color-bg)] p-3">
               {pageLoading ? (
-                <div className="space-y-3" aria-busy="true" aria-label="loading">
-                  <div className="flex gap-2">
-                    {[0, 1, 2].map((index) => (
-                      <div
-                        key={index}
-                        className="h-8 w-24 animate-pulse rounded bg-[var(--color-fill-2)]"
-                      />
-                    ))}
-                  </div>
-                  <div className="h-64 animate-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]" />
-                </div>
+                <AssetSearchResultSkeleton />
+              ) : searchError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message={t('common.loadFailed')}
+                  action={(
+                    <Button size="small" onClick={() => void handleSearch()}>
+                      {t('common.retry')}
+                    </Button>
+                  )}
+                />
               ) : modelStats.length ? (
                 <Tabs
                   activeKey={activeTab}

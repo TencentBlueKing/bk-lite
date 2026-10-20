@@ -113,23 +113,26 @@ class VictoriaAnalytics:
         )
         events = self._load_events(tenant_id, [application], start, end, limit=8000)
         countries: dict[str, dict] = {}
-        devices = {"mobile": 0, "desktop": 0}
         envs: dict[str, dict] = {}
         releases: dict[str, dict] = {}
         country_sessions: dict[str, set[str]] = {}
         env_sessions: dict[str, set[str]] = {}
         rel_sessions: dict[str, set[str]] = {}
+        mobile_sessions: set[str] = set()
+        desktop_sessions: set[str] = set()
         for event in events:
+            session_id = event.get("sessionId") or ""
             if event.get("eventType") == "view":
                 country = event.get("country") or ""
                 countries.setdefault(country, {"country": country, "views": 0, "sessions": 0})
                 countries[country]["views"] += 1
-                country_sessions.setdefault(country, set()).add(event.get("sessionId") or "")
+                country_sessions.setdefault(country, set()).add(session_id)
             ua = (event.get("userAgent") or "").lower()
-            if "mobile" in ua or "android" in ua:
-                devices["mobile"] += 1
-            elif event.get("userAgent"):
-                devices["desktop"] += 1
+            if session_id and ua:
+                if "mobile" in ua or "android" in ua:
+                    mobile_sessions.add(session_id)
+                else:
+                    desktop_sessions.add(session_id)
             if event.get("environment"):
                 key = event["environment"]
                 envs.setdefault(key, {"key": key, "views": 0, "sessions": 0})
@@ -148,6 +151,9 @@ class VictoriaAnalytics:
             row["sessions"] = len({sid for sid in env_sessions.get(key, set()) if sid})
         for key, row in releases.items():
             row["sessions"] = len({sid for sid in rel_sessions.get(key, set()) if sid})
+        # 同一会话只要出现过移动端标识，就只计入移动端，避免一次访问被两边各算一台。
+        desktop_sessions -= mobile_sessions
+        devices = {"mobile": len(mobile_sessions), "desktop": len(desktop_sessions)}
         return {
             "application": application,
             "kpi": kpi,
@@ -387,23 +393,23 @@ class VictoriaAnalytics:
             "truncated": bool(getattr(rows, "truncated", False)) or bool(getattr(first_seen, "truncated", False)),
         }
 
-    def monitor_metric(self, tenant_id: str, opts: dict) -> float:
+    def monitor_metric(self, tenant_id: str, opts: dict) -> float | None:
         apps = list(opts.get("applications") or [])
         if not apps and not (opts.get("application") or "").strip():
-            return 0.0
+            return None
         metric = (opts.get("metric") or "").strip()
         rows = self._stats(tenant_id, logsql_stats.monitor_metric_query(self._tenant(tenant_id), opts), opts, limit=1)
         if not rows:
-            return 0.0
+            return None
         row = rows[0]
         if metric == "error_rate":
             sessions = float(row.get("sessions") or 0)
             if sessions <= 0:
-                return 0.0
+                return None
             return float(row.get("errored") or 0) / sessions
-        value = row.get("value") or ""
-        if value == "":
-            return 0.0
+        value = row.get("value")
+        if value is None or value == "":
+            return None
         return float(value)
 
     def metric_series(self, tenant_id: str, opts: dict) -> list[dict]:

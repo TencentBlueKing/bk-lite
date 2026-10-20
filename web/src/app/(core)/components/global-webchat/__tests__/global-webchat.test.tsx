@@ -1,4 +1,7 @@
 import React from 'react';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -38,6 +41,12 @@ let userInfoState: UserInfoState = {
   loading: false,
 };
 let pathname = '/cmdb';
+
+const expectedAssetVersion = createHash('sha256')
+  .update(readFileSync(path.join(process.cwd(), 'public/webchat/webchat.js')))
+  .update(readFileSync(path.join(process.cwd(), 'public/webchat/style.css')))
+  .digest('hex')
+  .slice(0, 12);
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
@@ -137,10 +146,10 @@ describe('GlobalWebChat', () => {
       'script[data-bk-global-webchat]',
     );
 
-    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20261012-choice-reply');
+    expect(script?.getAttribute('src')).toBe(`/webchat/webchat.js?v=${expectedAssetVersion}`);
     expect(
       document.querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')?.getAttribute('href'),
-    ).toBe('/webchat/style.css?v=20261012-choice-reply');
+    ).toBe(`/webchat/style.css?v=${expectedAssetVersion}`);
 
     window.WebChat = {
       default: initialize,

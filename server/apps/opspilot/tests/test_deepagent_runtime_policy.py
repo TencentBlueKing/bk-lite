@@ -483,6 +483,7 @@ def test_planned_execution_limit_middleware_messages_and_continue():
         PlannedExecutionLimitMiddleware,
         build_limit_exceeded_message,
         detect_limit_kind,
+        scrub_limit_markers_from_summary,
     )
 
     model_msg = build_limit_exceeded_message("model_calls", used=10, limit=10)
@@ -495,6 +496,8 @@ def test_planned_execution_limit_middleware_messages_and_continue():
 
     assert detect_limit_kind([AIMessage(content=model_msg)]) == "model_calls"
     assert detect_limit_kind([AIMessage(content=token_msg)]) == "token_budget"
+    assert LIMIT_MARKER_MODEL_CALLS not in scrub_limit_markers_from_summary(model_msg)
+    assert "暂时停止" not in scrub_limit_markers_from_summary(model_msg)
 
     accumulator = TokenUsageAccumulator()
     accumulator.total_tokens = 100
@@ -2277,10 +2280,39 @@ async def test_planner_drops_use_skills_without_packages():
     assert plan.steps == []
 
 
+def test_attachment_step_produced_file_requires_download_url():
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import attachment_step_produced_file, looks_like_attachment_file_task
+
+    prose = [AIMessage(content="已完成 v1.1 重新生成：主机磁盘资源_v1.1.docx")]
+    skipped = [
+        ToolMessage(
+            content='{"skipped": true, "message": "本轮已生成文件"}',
+            name="generate_attachment_file",
+            tool_call_id="1",
+        )
+    ]
+    created = [
+        ToolMessage(
+            content='{"filename": "主机磁盘资源_v1.1.docx", "file_url": "/api/v1/workflow_attachment/download/x"}',
+            name="generate_attachment_file",
+            tool_call_id="2",
+        )
+    ]
+    history = [{"role": "assistant", "content": "报告已写好。\n已生成文件：主机磁盘资源_v1.0.docx"}]
+    assert looks_like_attachment_file_task("文档没有论据，需加入表格展示所有主机的均值和预测峰值", conversation_messages=history) is True
+    assert attachment_step_produced_file(prose) is False
+    assert attachment_step_produced_file(skipped) is False
+    assert attachment_step_produced_file(created) is True
+
+
 def test_enforce_generate_attachment_file_injects_when_empty_plan():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import (
         GENERATE_ATTACHMENT_FILE_TOOL_NAME,
         ToolExecutionPlan,
+        collect_generated_attachment_filenames,
+        conversation_has_generated_attachment,
         enforce_generate_attachment_file,
         looks_like_attachment_file_task,
     )
@@ -2302,12 +2334,36 @@ def test_enforce_generate_attachment_file_injects_when_empty_plan():
         {"role": "assistant", "content": "已生成 Word 报告：主机磁盘资源未来7天风险趋势分析报告.docx"},
         {"role": "user", "content": revision},
     ]
+    linked_history = [
+        {
+            "role": "assistant",
+            "content": (
+                "已生成 Word 报告：主机磁盘资源未来7天风险趋势分析报告.docx "
+                "file_url=/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/tok/ "
+                "filename=主机磁盘资源未来7天风险趋势分析报告.docx"
+            ),
+        },
+    ]
     assert looks_like_attachment_file_task(revision, conversation_messages=prose_history) is True
+    assert looks_like_attachment_file_task(revision, conversation_messages=linked_history) is True
     assert looks_like_attachment_file_task(revision, conversation_messages=[{"role": "system", "content": "文件名用 .pptx"}]) is False
+    example_history = [
+        {"role": "assistant", "content": "例如可以把结果存成 月报.docx，这次先看正文。比如 data.xlsx 也只是举例。"},
+    ]
+    assert looks_like_attachment_file_task(revision, conversation_messages=example_history) is False
     font_edit = "重点介绍广州各区美食，字体这些调整下，统一用微软雅黑字体"
     assert looks_like_attachment_file_task(font_edit) is False
     assert looks_like_attachment_file_task(font_edit, conversation_messages=prose_history) is True
-    assert looks_like_attachment_file_task("现在还有没有没关的告警", conversation_messages=prose_history) is False
+    assert looks_like_attachment_file_task(font_edit, conversation_messages=linked_history) is True
+    assert looks_like_attachment_file_task("现在还有没有没关的告警", conversation_messages=linked_history) is False
+    visible_history = [AIMessage(content="已生成 Word 报告：主机磁盘资源未来7天风险趋势分析报告.docx")]
+    assert conversation_has_generated_attachment(prose_history) is True
+    assert collect_generated_attachment_filenames(prose_history) == ["主机磁盘资源未来7天风险趋势分析报告.docx"]
+    assert looks_like_attachment_file_task(font_edit, conversation_messages=visible_history) is True
+    assert collect_generated_attachment_filenames(visible_history) == ["主机磁盘资源未来7天风险趋势分析报告.docx"]
+    assert conversation_has_generated_attachment(example_history) is False
+    assert collect_generated_attachment_filenames(example_history) == []
+    assert collect_generated_attachment_filenames(prior_file) == ["报告.docx"]
     revised = enforce_generate_attachment_file(
         ToolExecutionPlan(goal="改报告", steps=[]),
         {GENERATE_ATTACHMENT_FILE_TOOL_NAME},

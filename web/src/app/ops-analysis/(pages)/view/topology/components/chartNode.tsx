@@ -9,6 +9,11 @@ import {
   getOpsChartThemeByMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
+import InteractionTitleIcon from '@/app/ops-analysis/components/interactionTitleIcon';
+import { FilterTemplateProvider } from '@/app/ops-analysis/context/filterTemplate';
+import { InteractionSurfaceProvider } from '@/app/ops-analysis/context/interactionSurface';
+import { ShareModeProvider } from '@/app/ops-analysis/context/shareMode';
+import { useInteractionRuntime } from '@/app/ops-analysis/context/interactionRuntime';
 import WidgetCsvHoverButton from '@/app/ops-analysis/components/widgetCsvHoverButton';
 import { isWidgetCsvExportDataBlocked, supportsWidgetCsvExport } from '@/app/ops-analysis/utils/widgetCsvExport';
 import { useTopologyCsvExportHoverEnabled } from '../utils/topologyCsvExportHover';
@@ -71,6 +76,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
     onExportCsv,
   } = nodeData;
 
+  const interactionRuntime = useInteractionRuntime();
   const chartTheme = getOpsChartThemeByMode(valueConfig?.chartThemeMode);
   const width = styleConfig?.width || NODE_DEFAULTS.CHART_NODE.width;
   const height = styleConfig?.height || NODE_DEFAULTS.CHART_NODE.height;
@@ -123,6 +129,13 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
       : `1px solid ${panelChromeBorderColor}`;
 
   return (
+    <ShareModeProvider value={interactionRuntime.surface === 'share'}>
+    <InteractionSurfaceProvider editing={interactionRuntime.surface === 'edit'}>
+    <FilterTemplateProvider
+      definitions={interactionRuntime.definitions}
+      appliedValues={interactionRuntime.values}
+      resolveEnabled={interactionRuntime.surface === 'view'}
+    >
     <div
       className={chartChromeClassName}
       data-topology-selected={isSelectedChrome ? 'true' : 'false'}
@@ -158,6 +171,9 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
           }}
         />
       )}
+      {componentName ? null : (
+        <InteractionTitleIcon config={valueConfig} floating />
+      )}
       {componentName && (
         <div
           style={{
@@ -167,11 +183,14 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
           }}
         >
           <div className={`flex min-w-0 items-center gap-2 ${normalizedDescription ? 'mb-1' : ''}`}>
-            <div
-              className="min-w-0 flex-1 truncate text-sm font-semibold leading-5"
-              style={{ color: chartTheme.panelTitleColor }}
-            >
-              {componentName}
+            <div className="flex min-w-0 flex-1 items-center gap-1">
+              <div
+                className="min-w-0 truncate text-sm font-semibold leading-5"
+                style={{ color: chartTheme.panelTitleColor }}
+              >
+                {componentName}
+              </div>
+              <InteractionTitleIcon config={valueConfig} />
             </div>
             {showCsvHover && (
               <WidgetCsvHoverButton
@@ -257,6 +276,9 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
         )}
       </div>
     </div>
+    </FilterTemplateProvider>
+    </InteractionSurfaceProvider>
+    </ShareModeProvider>
   );
 };
 

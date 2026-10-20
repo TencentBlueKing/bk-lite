@@ -5,8 +5,9 @@ import type {
   Room3DResponse,
   Room3DRack,
 } from "./room3DData";
-import { getRoom3DSceneRacks } from "./room3DData";
+import { canOpenRoom3DRackLink, getRoom3DSceneRacks } from "./room3DData";
 import type { Room3DRackTopLines } from "@/app/ops-analysis/types/sceneWidget";
+import { createRightClickGesture } from "@/app/ops-analysis/utils/interactionBehavior";
 import {
   ROOM3D_COL_GAP,
   ROOM3D_FRONT_AISLE_EXTRA,
@@ -30,11 +31,28 @@ export {
 } from "./room3DMeshes";
 
 export interface Room3DSceneCallbacks {
-  onHover: (state: { rack: Room3DRack; x: number; y: number } | null) => void;
+  onHover: (
+    state: {
+      rack: Room3DRack;
+      device?: Room3DRenderableDevice;
+      /** 打开机柜后的设备悬停只展示链接提示，不再铺机柜字段浮层。 */
+      rackTooltip?: boolean;
+      x: number;
+      y: number;
+    } | null,
+  ) => void;
   onSelect: (rack: Room3DRack | null) => void;
   onFirstRender?: () => void;
   onDeviceSelect?: (
     state: { rack: Room3DRack; device: Room3DRenderableDevice } | null,
+  ) => void;
+  onContextMenu?: (
+    hit: {
+      rack: Room3DRack;
+      device?: Room3DRenderableDevice;
+      x: number;
+      y: number;
+    } | null,
   ) => void;
 }
 
@@ -59,10 +77,13 @@ interface PickedRoomObject {
 interface PointerCoordinates {
   clientX: number;
   clientY: number;
+  buttons?: number;
 }
 
 interface HoverNotification {
   rackId: string;
+  deviceId?: string;
+  rackTooltip: boolean;
   x: number;
   y: number;
 }
@@ -581,7 +602,12 @@ export const createRoom3DScene = (
     );
   };
 
-  const notifyHover = (rack: Room3DRack | null) => {
+  const notifyHover = (
+    rack: Room3DRack | null,
+    device?: Room3DRenderableDevice,
+    pointOverride?: PointerCoordinates,
+    rackTooltip = !device,
+  ) => {
     if (!rack) {
       if (hoverNotification) {
         hoverNotification = null;
@@ -589,16 +615,27 @@ export const createRoom3DScene = (
       }
       return;
     }
-    const point = getRackScreenPoint(rack);
+    const point = pointOverride
+      ? { x: pointOverride.clientX, y: pointOverride.clientY }
+      : getRackScreenPoint(rack);
+    const deviceId = device?.device_id;
     if (
       hoverNotification?.rackId === rack.rack_id &&
+      hoverNotification.deviceId === deviceId &&
+      hoverNotification.rackTooltip === rackTooltip &&
       Math.abs(hoverNotification.x - point.x) < HOVER_POSITION_EPSILON &&
       Math.abs(hoverNotification.y - point.y) < HOVER_POSITION_EPSILON
     ) {
       return;
     }
-    hoverNotification = { rackId: rack.rack_id, ...point };
-    callbacks.onHover({ rack, ...point });
+    hoverNotification = { rackId: rack.rack_id, deviceId, rackTooltip, ...point };
+    callbacks.onHover({
+      rack,
+      device,
+      rackTooltip,
+      x: point.x,
+      y: point.y,
+    });
   };
 
   const processPointerMove = () => {
@@ -620,6 +657,16 @@ export const createRoom3DScene = (
       return;
     }
     renderer.domElement.style.cursor = "pointer";
+    const linkableDevice =
+      rack.device && canOpenRoom3DRackLink(rack.rack) ? rack.device : undefined;
+    if (linkableDevice) {
+      if ((coordinates.buttons ?? 0) !== 0) {
+        notifyHover(null);
+        return;
+      }
+      notifyHover(rack.rack, linkableDevice, coordinates, !openRackId);
+      return;
+    }
     if (openRackId) {
       notifyHover(null);
       return;
@@ -631,6 +678,7 @@ export const createRoom3DScene = (
     pendingPointerCoordinates = {
       clientX: event.clientX,
       clientY: event.clientY,
+      buttons: event.buttons,
     };
     if (pendingPointerFrameId === null) {
       pendingPointerFrameId = window.requestAnimationFrame(processPointerMove);
@@ -768,9 +816,32 @@ export const createRoom3DScene = (
     updateVisualStates();
   };
 
+  const rightClickGesture = createRightClickGesture();
+  const handleRightPointerDown = (event: PointerEvent) => {
+    rightClickGesture.pointerDown(event);
+  };
+  const handleContextMenu = (event: MouseEvent) => {
+    event.preventDefault();
+    const picked = pickRack(event);
+    const decision = rightClickGesture.decide(event, Boolean(picked));
+    if (!decision.open || !picked) {
+      if (!decision.dragged) callbacks.onContextMenu?.(null);
+      return;
+    }
+    event.stopImmediatePropagation();
+    callbacks.onContextMenu?.({
+      rack: picked.rack,
+      device: picked.device,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  renderer.domElement.addEventListener("pointerdown", handleRightPointerDown, true);
   renderer.domElement.addEventListener("pointermove", handlePointerMove);
   renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
   renderer.domElement.addEventListener("click", handleClick);
+  renderer.domElement.addEventListener("contextmenu", handleContextMenu);
 
   const handlePreparePrint = () => {
     if (disposed) {
@@ -803,12 +874,14 @@ export const createRoom3DScene = (
         "change",
         handlePixelRatioChange,
       );
+      renderer.domElement.removeEventListener("pointerdown", handleRightPointerDown, true);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener(
         "pointerleave",
         handlePointerLeave,
       );
       renderer.domElement.removeEventListener("click", handleClick);
+      renderer.domElement.removeEventListener("contextmenu", handleContextMenu);
       controls.removeEventListener("start", handleControlsStart);
       controls.removeEventListener("change", requestRender);
       controls.dispose();

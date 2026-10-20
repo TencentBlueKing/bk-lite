@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { Button, Empty, Input, Popconfirm, Select, Switch, type TableColumnsType } from 'antd';
 
@@ -13,7 +14,6 @@ import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-s
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
-import MonitorFormDrawer from '@/app/rum/monitors/ui/monitor-form-drawer';
 import CustomTable from '@/components/custom-table';
 import SemanticBadge from '@/components/semantic-badge';
 import { toneSemanticPalette } from '@/app/rum/lib/cwv';
@@ -26,6 +26,7 @@ function metricLabel(t: (key: string, fallback?: string) => string, metric: stri
 function formatThreshold(metric: string, value: number): string {
   if (metric === 'error_rate') return `${(value * 100).toFixed(1)}%`;
   if (metric === 'cls_p75') return value.toFixed(3);
+  if (metric === 'session_count') return String(Math.round(value));
   return `${Math.round(value)}ms`;
 }
 
@@ -37,6 +38,7 @@ const severityTone: Record<string, 'info' | 'warning' | 'danger' | 'neutral'> = 
 
 export default function RumMonitorsPage() {
   const { t } = useTranslation();
+  const router = useRouter();
   const { application: appFromUrl, searchParams } = useRumSearchParams();
   const focusRule = searchParams.get('rule')?.trim() || undefined;
   const { listMonitors, updateMonitor, deleteMonitor, listApplications, authReady } = useRumQueries();
@@ -47,8 +49,6 @@ export default function RumMonitorsPage() {
   const [query, setQuery] = useState('');
   const [pending, setPending] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editing, setEditing] = useState<RumMonitorItem | null>(null);
 
   const load = useCallback(async () => {
     setPending(true);
@@ -149,42 +149,81 @@ export default function RumMonitorsPage() {
       {
         title: t('rum.monitors.name', '名称'),
         key: 'name',
+        width: 176,
         ellipsis: true,
         render: (_: unknown, m: RumMonitorItem) => <span className="truncate">{m.name}</span>,
       },
       {
         title: t('rum.applications.application', '应用'),
         key: 'application',
-        width: 140,
+        width: 112,
+        ellipsis: true,
         render: (_: unknown, m: RumMonitorItem) => (
-          <span className="font-mono">{m.application}</span>
+          <span className="truncate font-mono">{m.application}</span>
         ),
+      },
+      {
+        title: t('rum.monitors.organizations', '组织'),
+        key: 'organizations',
+        width: 116,
+        ellipsis: true,
+        render: (_: unknown, m: RumMonitorItem) => (
+          <span className="truncate">{(m.organizationsDisplay || m.organizations || []).map(String).join(', ') || '—'}</span>
+        ),
+      },
+      {
+        title: t('rum.monitors.handlers', '处理人'),
+        key: 'handlers',
+        width: 116,
+        ellipsis: true,
+        render: (_: unknown, m: RumMonitorItem) => (
+          <span className="truncate">{(m.handlersDisplay || m.handlers || []).map(String).join(', ') || '—'}</span>
+        ),
+      },
+      {
+        title: t('rum.monitors.lastEvaluation', '最近判定'),
+        key: 'lastEvaluation',
+        width: 152,
+        render: (_: unknown, m: RumMonitorItem) => {
+          const when = m.lastEvaluationResult === 'failed' ? m.lastFailedAt : m.lastSucceededAt;
+          const label = m.lastEvaluationResult
+            ? t(`rum.monitors.evaluation.${m.lastEvaluationResult}`, m.lastEvaluationResult)
+            : '—';
+          return (
+            <span className="tabular-nums">
+              {label}
+              {when ? ` · ${new Date(when).toLocaleString()}` : ''}
+            </span>
+          );
+        },
       },
       {
         title: t('rum.monitors.condition', '条件'),
         key: 'condition',
-        width: 220,
+        width: 136,
         render: (_: unknown, m: RumMonitorItem) => (
           <div className="inline-flex flex-wrap items-center gap-1.5">
             <span className="rounded bg-[var(--color-fill-2)] px-1.5 py-0.5 text-xs font-medium">
               {metricLabel(t, m.metric)}
             </span>
             <span className="font-mono tabular-nums">
-              &gt; {formatThreshold(m.metric, m.criticalThreshold)}
+              {m.comparator || '>='} {formatThreshold(m.metric, m.criticalThreshold)}
             </span>
-            <span className="text-xs text-[var(--color-text-3)]">
-              ·{' '}
-              {t('rum.monitors.forMinutes', '持续 {n} 分钟', {
-                n: Math.max(1, Math.round(m.forDurationSec / 60)),
-              })}
-            </span>
+            {m.forDurationSec > 0 ? (
+              <span className="text-xs text-[var(--color-text-3)]">
+                ·{' '}
+                {t('rum.monitors.forMinutes', '持续 {n} 分钟', {
+                  n: Math.max(1, Math.round(m.forDurationSec / 60)),
+                })}
+              </span>
+            ) : null}
           </div>
         ),
       },
       {
         title: t('rum.monitors.severityLabel', '严重级别'),
         key: 'severity',
-        width: 96,
+        width: 80,
         render: (_: unknown, m: RumMonitorItem) => (
           <SemanticBadge
             label={t(`rum.monitors.severity.${m.severity || 'warning'}`, m.severity || 'warning')}
@@ -195,7 +234,7 @@ export default function RumMonitorsPage() {
       {
         title: t('rum.monitors.enable', '启用'),
         key: 'enabled',
-        width: 72,
+        width: 56,
         render: (_: unknown, m: RumMonitorItem) => (
           <div onClick={(e) => e.stopPropagation()}>
             <RumPermission
@@ -224,7 +263,7 @@ export default function RumMonitorsPage() {
       {
         title: t('rum.alertEvents.status', '状态'),
         key: 'status',
-        width: 96,
+        width: 72,
         render: (_: unknown, m: RumMonitorItem) => {
           if (!m.enabled) {
             return (
@@ -244,7 +283,7 @@ export default function RumMonitorsPage() {
               <SemanticBadge
                 label={
                   <span className="inline-flex items-center gap-1">
-                    <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-fail)]" />
+                    <span className="size-1.5 animate-neutral-pulse rounded-full bg-[var(--color-fail)]" />
                     {t('rum.monitors.statusFiring', '告警中')}
                   </span>
                 }
@@ -268,7 +307,7 @@ export default function RumMonitorsPage() {
       {
         title: t('rum.common.actions', '操作'),
         key: 'actions',
-        width: 120,
+        width: 108,
         fixed: 'right',
         render: (_: unknown, m: RumMonitorItem) => (
           <div
@@ -282,10 +321,7 @@ export default function RumMonitorsPage() {
             >
               <RumIconAction
                 title={t('rum.common.edit', '编辑')}
-                onClick={() => {
-                  setEditing(m);
-                  setDrawerOpen(true);
-                }}
+                onClick={() => router.push(`/rum/monitors/${encodeURIComponent(m.id)}`)}
               />
               <Popconfirm
                 title={t('rum.monitors.deleteConfirm', '确认删除该策略？')}
@@ -307,7 +343,7 @@ export default function RumMonitorsPage() {
         ),
       },
     ],
-    [t, acting],
+    [t, acting, router],
   );
 
   return (
@@ -340,10 +376,7 @@ export default function RumMonitorsPage() {
                   <Button
                     type="primary"
                     icon={<PlusOutlined aria-hidden="true" />}
-                    onClick={() => {
-                      setEditing(null);
-                      setDrawerOpen(true);
-                    }}
+                    onClick={() => router.push('/rum/monitors/new')}
                   >
                     {t('common.new', '新建')}
                   </Button>
@@ -353,29 +386,9 @@ export default function RumMonitorsPage() {
           />
         }
       >
-        <MonitorFormDrawer
-          open={drawerOpen}
-          onOpenChange={setDrawerOpen}
-          initial={editing}
-          onSaved={() => void load()}
-        />
-
-        {!pending && filteredItems.length === 0 ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center">
-            <Empty
-              description={
-                <div className="flex flex-col gap-1">
-                  <span>{t('rum.monitors.empty', '还没有告警策略')}</span>
-                  <span className="text-xs text-[var(--color-text-3)]">
-                    {t('rum.monitors.emptyHint', '创建一条策略，监控错误率或 Core Web Vitals。')}
-                  </span>
-                </div>
-              }
-            />
-          </div>
-        ) : pending && items.length === 0 ? (
+        {pending && items.length === 0 ? (
           <RumTableSkeleton columns={rumSkeletonColumns(columns)} />
-        ) : filteredItems.length > 0 ? (
+        ) : (
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable<RumMonitorItem>
               rowKey="id"
@@ -384,6 +397,20 @@ export default function RumMonitorsPage() {
               autoScrollX={false}
               dataSource={table.rows}
               columns={columns}
+              locale={{
+                emptyText: (
+                  <Empty
+                    description={
+                      <div className="flex flex-col gap-1">
+                        <span>{t('rum.monitors.empty', '还没有告警策略')}</span>
+                        <span className="text-[var(--color-text-3)]">
+                          {t('rum.monitors.emptyHint', '创建一条策略，监控错误率或 Core Web Vitals。')}
+                        </span>
+                      </div>
+                    }
+                  />
+                ),
+              }}
               pagination={{
                 current: table.pagination.current,
                 pageSize: table.pagination.pageSize,
@@ -394,14 +421,11 @@ export default function RumMonitorsPage() {
               rowClassName={(row) => (focusRule && row.id === focusRule ? 'bg-[var(--color-primary-bg)]' : '')}
               onRow={(record) => ({
                 className: 'cursor-pointer transition-colors hover:bg-[var(--color-fill-2)]',
-                onClick: () => {
-                  setEditing(record);
-                  setDrawerOpen(true);
-                },
+                onClick: () => router.push(`/rum/monitors/${encodeURIComponent(record.id)}`),
               })}
             />
           </div>
-        ) : null}
+        )}
       </RumSingleWorkbench>
     </div>
   );

@@ -66,6 +66,7 @@ from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_utc
 from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
+from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
@@ -602,29 +603,77 @@ def search_instances(params):
     return _serialize_instance_for_transport(result)
 
 
+def _instance_org_ids(instance):
+    org_ids = set()
+    for org_id in (instance or {}).get("organization") or []:
+        try:
+            org_ids.add(int(org_id))
+        except (TypeError, ValueError):
+            continue
+    return org_ids
+
+
+def _select_instance_for_orgs(instances, allowed_org_ids):
+    for instance in instances or []:
+        if allowed_org_ids & _instance_org_ids(instance):
+            return _serialize_instance_for_transport(instance)
+    return None
+
+
 @nats_client.register
 @_accept_legacy_rpc_kwargs
 def search_instances_batch(params):
-    """批量查询实例。params={"model_id":..,"inst_uuids":[..],"inst_names":[..]}。"""
+    """批量查询实例。
+
+    带 model_id 时按 inst_uuids / inst_names 查该模型。
+    不带 model_id 时，inst_uuids 按实例 UUID 查，monitor_ids 按实例属性 monitor_id 查。
+    """
     _require_uuid_protocol(params)
     _reject_legacy_numeric_locators(params, "ids", "_id", "inst_ids")
     allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
     if not allowed_org_ids:
         return {}
+    model_id = params.get("model_id")
+    inst_uuids = params.get("inst_uuids") or []
+    monitor_ids = params.get("monitor_ids") or []
+    if not model_id and monitor_ids and not inst_uuids:
+        grouped = InstanceManage.search_inst_by_monitor_ids(monitor_ids)
+        selected = {}
+        for key, instances in grouped.items():
+            chosen = _select_instance_for_orgs(instances, allowed_org_ids)
+            if chosen:
+                selected[key] = chosen
+        return selected
+    if not model_id and inst_uuids:
+        from apps.cmdb.services.instance_identity import optional_inst_uuid
+
+        valid = []
+        seen = set()
+        for value in inst_uuids:
+            parsed = optional_inst_uuid(value)
+            if parsed and parsed not in seen:
+                seen.add(parsed)
+                valid.append(parsed)
+        instances = InstanceManage.query_entity_by_uuids(valid) if valid else []
+        grouped = {}
+        for instance in instances:
+            key = optional_inst_uuid(instance.get("inst_uuid"))
+            if key:
+                grouped.setdefault(key, []).append(instance)
+        selected = {}
+        for key, matches in grouped.items():
+            chosen = _select_instance_for_orgs(matches, allowed_org_ids)
+            if chosen:
+                selected[key] = chosen
+        return selected
     result = InstanceManage.search_inst_batch(
         model_id=params["model_id"],
-        inst_uuids=params.get("inst_uuids"),
+        inst_uuids=inst_uuids,
         inst_names=params.get("inst_names"),
     )
     filtered = {}
     for key, instance in result.items():
-        instance_org_ids = set()
-        for org_id in instance.get("organization") or []:
-            try:
-                instance_org_ids.add(int(org_id))
-            except (TypeError, ValueError):
-                continue
-        if allowed_org_ids & instance_org_ids:
+        if allowed_org_ids & _instance_org_ids(instance):
             filtered[key] = _serialize_instance_for_transport(instance)
     return filtered
 
@@ -785,7 +834,13 @@ def ingest_from_source(params):
       allowed_org_ids / service_scope.allowed_org_ids / user_info
     """
     params = dict(params or {})
-    params["allowed_org_ids"] = _resolve_allowed_org_ids(params)
+    event_type = str(params.get("event_type") or "")
+    try:
+        params["allowed_org_ids"] = _resolve_allowed_org_ids(params)
+    except ValueError:
+        if event_type != EVENT_LIFECYCLE:
+            raise
+        params["allowed_org_ids"] = []
     return CmdbModuleIngestService.ingest(params)
 
 

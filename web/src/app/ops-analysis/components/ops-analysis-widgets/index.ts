@@ -13,13 +13,11 @@ export { default as OpsAnalysisTextPanel } from '@/app/ops-analysis/components/o
 export { default as OpsAnalysisTopN } from '@/app/ops-analysis/components/ops-analysis-widgets/top-n';
 export {
   ChartDataTransformer,
-  buildDashboardActionUrl,
   buildFallbackSparkline,
   extractComparableValue,
   getChangePercent,
   getOpsChartTheme,
   randomColorForLegend,
-  resolveDashboardActionParams,
   resolveOpsChartThemeName,
   toComparableNumber,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';

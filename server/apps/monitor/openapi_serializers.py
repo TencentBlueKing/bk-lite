@@ -105,6 +105,14 @@ class MonitorClusterCollectorCreateSerializer(OpenAPIRequestSerializer):
     interval = serializers.IntegerField(required=False, min_value=1)
 
 
+class K8sDaemonSetTolerationSerializer(OpenAPIRequestSerializer):
+    """DaemonSet 容忍项。只声明 key、effect、value；服务层继续做 Kubernetes 名称校验。"""
+
+    key = serializers.CharField()
+    effect = serializers.ChoiceField(choices=("NoSchedule", "NoExecute"))
+    value = serializers.CharField(required=False, allow_blank=True)
+
+
 class MonitorClusterInstallCommandSerializer(OpenAPIRequestSerializer):
     """生成复制到集群执行的安装命令。collector_type=k3s 时同时返回卸载命令。"""
 
@@ -112,7 +120,7 @@ class MonitorClusterInstallCommandSerializer(OpenAPIRequestSerializer):
     instance_id = serializers.CharField(max_length=200)
     cloud_region_id = serializers.IntegerField(min_value=1)
     image_registry_prefix = serializers.CharField(required=False, allow_blank=True, max_length=200)
-    tolerations = serializers.ListField(child=serializers.DictField(), required=False)
+    tolerations = serializers.ListField(child=K8sDaemonSetTolerationSerializer(), required=False, max_length=16)
 
     def validate(self, attrs):
         if attrs["collector_type"] == "k3s" and ("image_registry_prefix" in self.initial_data or "tolerations" in self.initial_data):

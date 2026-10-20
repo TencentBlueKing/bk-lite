@@ -2,10 +2,16 @@ import React, { useEffect } from 'react';
 import { Alert, Tag } from 'antd';
 import ChartSurface from '@/components/chart-surface';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import {
   DEFAULT_EVENT_TIMELINE_MAX_ITEMS,
   parseEventTimelineItems,
 } from '@/app/ops-analysis/utils/eventTimeline';
+import {
+  eventTimelineLinkPoint,
+  readWidgetInteraction,
+  shouldRenderEventTimelineFieldLink,
+} from '@/app/ops-analysis/utils/interactionLink';
 import { isScreenChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import { useTranslation } from '@/utils/i18n';
 
@@ -33,6 +39,8 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
 }) => {
   const { t } = useTranslation();
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
+  const { active: dataLinkActive, openPoint } = useWidgetDataLink(config);
+  const dataLink = readWidgetInteraction(config);
   const timelineConfig = config?.eventTimeline;
   const parsed = parseEventTimelineItems(rawData, {
     sortOrder: timelineConfig?.sortOrder,
@@ -72,7 +80,13 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="relative pl-5">
           {parsed.items.map((item, index) => (
-            <div key={`${item.time}-${item.title}-${index}`} className="relative pb-4">
+            <div
+              key={`${item.time}-${item.title}-${index}`}
+              className={`relative pb-4${dataLinkActive ? ' cursor-pointer' : ''}`}
+              onClick={dataLinkActive
+                ? () => openPoint(eventTimelineLinkPoint(item))
+                : undefined}
+            >
               <span
                 className="absolute left-[-15px] top-1 h-2.5 w-2.5 rounded-full"
                 style={{
@@ -103,8 +117,13 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
                 ) : null}
               </div>
               <div className="mt-1 text-sm font-medium text-(--color-text-1)">
-                {item.link ? (
-                  <a href={item.link} target="_blank" rel="noopener noreferrer">
+                {shouldRenderEventTimelineFieldLink(dataLink, item.link) ? (
+                  <a
+                    href={item.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     {item.title}
                   </a>
                 ) : (

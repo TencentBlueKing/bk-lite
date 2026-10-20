@@ -230,6 +230,19 @@ describe('screen edit history', () => {
     expect(undoScreenEdit(saved).document.viewSets.items[0]?.x).toBe(10);
   });
 
+  it('keeps the interaction inspector tab when the same item stays selected', () => {
+    const session = createScreenEditSession(documentWith('标题', 10), {
+      selectedItemId: 'title',
+      inspectorTab: 'interaction',
+      dataConfigOpen: true,
+    });
+    const moved = commitScreenEdit(session, {
+      document: documentWith('标题', 40),
+      itemId: 'title',
+    });
+    expect(undoScreenEdit(moved).inspector.inspectorTab).toBe('interaction');
+  });
+
   it('selects the item a step touched and keeps the inspector tab when it was already selected', () => {
     const session = createScreenEditSession(documentWith('标题', 10), {
       selectedItemId: 'title',
@@ -353,6 +366,44 @@ describe('screen edit history', () => {
     expect(undoScreenEdit(added).document.viewSets.items).toHaveLength(1);
     expect(added.canUndo).toBe(true);
     expect(undoScreenEdit(undoScreenEdit(added)).canUndo).toBe(false);
+  });
+
+  it('coalesces text link edits and drops the field when the link is cleared', () => {
+    const base = documentWith('标题');
+    const withLink = (url: string): ScreenEditDocument => {
+      const viewSets = buildDefaultScreenViewSets();
+      viewSets.items = [createScreenTextItem([], {
+        id: 'title',
+        content: '标题',
+        x: 10,
+        y: 20,
+        w: 100,
+        h: 40,
+        zIndex: 1,
+        interaction: { kind: 'title', name: '查看', url, openMode: 'sameTab' },
+      })];
+      return { viewSets, filters: [] };
+    };
+
+    expect(screenItemFieldKey(
+      base.viewSets.items[0],
+      withLink('/a').viewSets.items[0],
+    )).toBe('interaction');
+    const typed = commitScreenEdit(
+      commitScreenEdit(createScreenEditSession(base), {
+        document: withLink('/a'),
+        itemId: 'title',
+        fieldKey: 'interaction',
+      }),
+      {
+        document: withLink('/ab'),
+        itemId: 'title',
+        fieldKey: 'interaction',
+      },
+    );
+    const undone = undoScreenEdit(typed);
+    expect(undone.document.viewSets.items[0]).not.toHaveProperty('interaction');
+    expect(undone.canUndo).toBe(false);
   });
 
   it('starts a new step when the field changes or a drag begins', () => {

@@ -11,6 +11,7 @@ from apps.alerts.constants.constants import SYSTEM_OPERATOR_USER, AlertAssignmen
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
 from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.notification_templates.timefmt import resolve_display_timezone
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.service.un_dispatch import UnDispatchService
 from apps.alerts.utils.monitor_source_rules import MonitorSourceRuleMatcher
@@ -207,7 +208,8 @@ class AlertAssignmentOperator:
         # 按分派策略的时间范围过滤告警
         # 优先尝试将时间范围下推到数据库（利用 created_at 索引），
         # 仅当 type 不支持 SQL 下推（day/week/month 循环型）时才退化到 Python 遍历。
-        checker_proto = TimeRangeChecker(assignment.config)
+        display_timezone = resolve_display_timezone([getattr(assignment, "created_by", None)])
+        checker_proto = TimeRangeChecker(assignment.config, timezone_name=display_timezone)
         orm_filter = checker_proto.to_orm_filter("created_at")
 
         if orm_filter is not None:
@@ -218,7 +220,7 @@ class AlertAssignmentOperator:
             # 退化路径：循环型时段（day/week/month）→ Python 层逐行判断
             time_matched_alert_ids = []
             for alert_pk, created_at in base_queryset.values_list("id", "created_at"):
-                checker = TimeRangeChecker(assignment.config, created_at)
+                checker = TimeRangeChecker(assignment.config, created_at, display_timezone)
                 if checker.is_in_range():
                     time_matched_alert_ids.append(alert_pk)
             time_filtered_queryset = Alert.objects.filter(id__in=time_matched_alert_ids)

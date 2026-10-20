@@ -478,6 +478,12 @@ const FamilyOverview = () => {
                   { key: 'cpu', title: 'CPU%', visible: true, order: 2 },
                 ],
               },
+              interaction: {
+                kind: 'data',
+                name: '查看主机',
+                url: '/ops/host?name=$__data.fields.host$',
+                openMode: 'sameTab',
+              },
             }}
           />
           <OpsAnalysisTable
@@ -576,6 +582,12 @@ const FamilyOverview = () => {
                   { key: 'time', title: '时间', visible: true, order: 3, width: 180 },
                 ],
               },
+              interaction: {
+                kind: 'data',
+                name: '查看事件',
+                url: '/ops/event?id=$__data.fields.id$',
+                openMode: 'sameTab',
+              },
             }}
           />
         </section>
@@ -610,6 +622,12 @@ const FamilyOverview = () => {
                   chartType: 'eventTimeline',
                   eventTimeline: {
                     sortOrder: 'desc',
+                  },
+                  interaction: {
+                    kind: 'data',
+                    name: '查看事件',
+                    url: '/ops/event?title=$__value.text$&at=$__value.time$',
+                    openMode: 'sameTab',
                   },
                 }}
               />

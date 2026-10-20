@@ -2,7 +2,9 @@
 
 from apps.apm.openapi_serializers import (
     ApmApplicationCreateSerializer,
+    ApmApplicationPageResponseSerializer,
     ApmApplicationQuerySerializer,
+    ApmApplicationResponseSerializer,
     ApmInstanceQuerySerializer,
     ApmIntegrationConfigSerializer,
     ApmIntegrationRegionQuerySerializer,
@@ -31,6 +33,7 @@ _ORG_SCOPE = "组织口径：API 令牌绑定组织精确匹配，不级联子�
     path="apm/applications",
     method="GET",
     schema=ApmApplicationQuerySerializer,
+    response_schema=ApmApplicationPageResponseSerializer,
     inject="team_list_with_user",
     permission="applications-View",
     permission_app="apm",
@@ -167,6 +170,7 @@ def openapi_get_trace(trace_id, *, team=None, user_info=None):
     path="apm/applications",
     method="POST",
     schema=ApmApplicationCreateSerializer,
+    response_schema=ApmApplicationResponseSerializer,
     inject="team_list_with_user",
     permission="applications-Operate",
     permission_app="apm",

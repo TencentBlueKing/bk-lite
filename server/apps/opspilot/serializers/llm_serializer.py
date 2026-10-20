@@ -5,9 +5,11 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
 from apps.opspilot.models import LLMModel, LLMSkill, SkillPackage, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSerializer
+from apps.opspilot.services.asset_tags import normalize_user_tags, system_tags_removed
 from apps.opspilot.services.llm_context_budget import parse_context_window_tokens
 from apps.opspilot.services.skill_memory_service import SkillMemoryConfigError, normalize_write_rounds, validate_skill_memory_binding
 from apps.opspilot.utils.skill_package_params import mask_package_params
+from apps.opspilot.utils.user_message import user_message
 
 
 class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
@@ -219,6 +221,8 @@ class SkillPackageSerializer(AuthSerializer):
             "required_tools",
             "triggers",
             "team",
+            "system_tags",
+            "user_tags",
             "is_enabled",
             "is_build_in",
             "permissions",
@@ -237,7 +241,43 @@ class SkillPackageSerializer(AuthSerializer):
             "storage_path",
             "manifest",
             "is_build_in",
+            "system_tags",
         ]
+
+    def _reject_removed_system_tags(self, instance):
+        if "system_tags" not in self.initial_data:
+            return
+        if not system_tags_removed(instance.system_tags, self.initial_data.get("system_tags")):
+            return
+        loader = self._get_language_loader()
+        request = self.context.get("request")
+        raise serializers.ValidationError(
+            {
+                "system_tags": user_message(
+                    request,
+                    "error.system_tags_not_removable",
+                    "系统标签不能删除",
+                    loader,
+                )
+            }
+        )
+
+    def update(self, instance: SkillPackage, validated_data):
+        """技能包只改分组和用户标签。内置包的系统标签不能少。"""
+        self._reject_removed_system_tags(instance)
+        update_fields = []
+        if "user_tags" in self.initial_data or "user_tags" in validated_data:
+            instance.user_tags = normalize_user_tags(self.initial_data.get("user_tags", validated_data.get("user_tags")))
+            update_fields.append("user_tags")
+        if "team" in validated_data:
+            instance.team = validated_data["team"]
+            update_fields.append("team")
+        if not instance.is_build_in:
+            instance.system_tags = []
+            update_fields.append("system_tags")
+        if update_fields:
+            instance.save(update_fields=update_fields)
+        return instance
 
     def _get_language_loader(self):
         request = self.context.get("request")
@@ -286,6 +326,7 @@ class SkillToolsSerializer(AuthSerializer):
     description_tr = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
     tools = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
 
     class Meta:
         model = SkillTools
@@ -302,6 +343,8 @@ class SkillToolsSerializer(AuthSerializer):
             "team",
             "description",
             "tags",
+            "system_tags",
+            "user_tags",
             "icon",
             "is_build_in",
             "tools",
@@ -310,6 +353,66 @@ class SkillToolsSerializer(AuthSerializer):
             "description_tr",
             "display_name",
         ]
+
+    def to_internal_value(self, data):
+        if hasattr(data, "copy"):
+            mutable = data.copy()
+        else:
+            mutable = dict(data)
+        if "user_tags" not in mutable and "tags" in mutable:
+            mutable["user_tags"] = mutable.get("tags")
+        return super().to_internal_value(mutable)
+
+    def _reject_removed_system_tags(self, instance: SkillTools):
+        if "system_tags" not in self.initial_data:
+            return
+        if not system_tags_removed(instance.system_tags, self.initial_data.get("system_tags")):
+            return
+        loader = self._get_language_loader()
+        request = self.context.get("request")
+        raise serializers.ValidationError(
+            {
+                "system_tags": user_message(
+                    request,
+                    "error.system_tags_not_removable",
+                    "系统标签不能删除",
+                    loader,
+                )
+            }
+        )
+
+    def create(self, validated_data):
+        validated_data["user_tags"] = normalize_user_tags(validated_data.get("user_tags"))
+        validated_data["system_tags"] = []
+        validated_data.pop("tags", None)
+        return super().create(validated_data)
+
+    def update(self, instance: SkillTools, validated_data):
+        if instance.is_build_in:
+            self._reject_removed_system_tags(instance)
+            update_fields = []
+            if "user_tags" in self.initial_data or "user_tags" in validated_data:
+                instance.user_tags = normalize_user_tags(self.initial_data.get("user_tags", validated_data.get("user_tags")))
+                update_fields.append("user_tags")
+            if "team" in validated_data:
+                instance.team = validated_data["team"]
+                update_fields.append("team")
+            if update_fields:
+                instance.save(update_fields=update_fields)
+            return instance
+
+        validated_data.pop("system_tags", None)
+        validated_data.pop("tags", None)
+        if "user_tags" in validated_data:
+            validated_data["user_tags"] = normalize_user_tags(validated_data.get("user_tags"))
+        validated_data["system_tags"] = []
+        return super().update(instance, validated_data)
+
+    @staticmethod
+    def get_tags(instance: SkillTools):
+        system_tags = [str(tag) for tag in (instance.system_tags or []) if tag not in (None, "")]
+        user_tags = [str(tag) for tag in (instance.user_tags or []) if tag not in (None, "") and str(tag) not in system_tags]
+        return system_tags + user_tags
 
     def _get_language_loader(self):
         """获取语言加载器，根据请求的用户语言设置"""

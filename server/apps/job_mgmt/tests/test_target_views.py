@@ -75,7 +75,7 @@ def test_update_maps_concurrent_team_change_to_client_error():
         "apps.core.utils.viewset_utils.AuthViewSet.update",
         side_effect=TargetTeamConcurrentUpdateError("Target.team 已被并发修改，请刷新后重试"),
     ):
-        response = view.update(SimpleNamespace())
+        response = view.update(SimpleNamespace(user=SimpleNamespace(is_superuser=True)))
 
     assert response.status_code == 400
     assert "刷新后重试" in response.data["detail"]
@@ -104,6 +104,37 @@ class TestTargetCrud:
         resp = su_client.post(URL, self._payload(), format="json")
         assert resp.status_code == 201
         assert Target.objects.filter(name="host1").exists()
+
+    def test_view_only_user_cannot_update_or_delete_target(self, api_client, authenticated_user):
+        target = Target.objects.create(name="view-only", ip="10.0.0.8", team=[1])
+        authenticated_user.is_superuser = False
+        authenticated_user.permission = {"job": {"target-View"}}
+        authenticated_user.group_list = [{"id": 1, "name": "Default"}]
+        api_client.cookies["current_team"] = "1"
+        rules = {"team": [1], "instance": []}
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            update_resp = api_client.put(f"{URL}{target.id}/", {"name": "hacked"}, format="json")
+            delete_resp = api_client.delete(f"{URL}{target.id}/")
+
+        assert update_resp.status_code == 403
+        assert delete_resp.status_code == 403
+        target.refresh_from_db()
+        assert target.name == "view-only"
+
+    def test_api_key_integer_group_list_can_list_targets(self, api_client, authenticated_user):
+        Target.objects.create(name="api-key-host", ip="10.0.0.9", team=[1])
+        authenticated_user.is_superuser = False
+        authenticated_user.permission = {"job": {"target-View"}}
+        authenticated_user.group_list = [1]
+        api_client.cookies["current_team"] = "1"
+        rules = {"team": [1], "instance": []}
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            resp = api_client.get(URL)
+
+        assert resp.status_code == 200
+        assert "api-key-host" in str(resp.data)
 
     @pytest.mark.parametrize(
         ("submitted_value", "expected_value"),

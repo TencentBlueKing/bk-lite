@@ -7,8 +7,6 @@ import {
   ChartDataTransformer as SharedChartDataTransformer,
   type ChartFieldMapping,
 } from '@/app/ops-analysis/utils/chartDataTransform';
-import type { DashboardActionParamMapping } from '@/app/ops-analysis/components/ops-analysis-widgets';
-
 export interface ChartDataItem {
   name: string;
   value: number;
@@ -721,86 +719,4 @@ export const buildFallbackSparkline = (
     const value = trendBase + oscillation;
     return Number(value.toFixed(2));
   });
-};
-
-export const buildDashboardActionUrl = (
-  rawUrl: string | undefined,
-  params: Record<string, string | number | boolean>,
-): string => {
-  const url = rawUrl?.trim();
-  if (!url) return '';
-
-  const searchParams = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value === null || value === undefined || value === '') {
-      return;
-    }
-    searchParams.set(key, String(value));
-  });
-
-  const queryString = searchParams.toString();
-  if (!queryString) return url;
-
-  const [urlWithoutHash, hash = ''] = url.split('#');
-  const separator = urlWithoutHash.includes('?') ? '&' : '?';
-  const hashFragment = hash ? `#${hash}` : '';
-
-  return `${urlWithoutHash}${separator}${queryString}${hashFragment}`;
-};
-
-export const resolveDashboardActionParams = (
-  mappings: DashboardActionParamMapping[] | undefined,
-  record: Record<string, any>,
-): Record<string, string | number | boolean> => {
-  const params: Record<string, string | number | boolean> = {};
-
-  (mappings || []).forEach((mapping) => {
-    if (!mapping.key) {
-      return;
-    }
-
-    if (mapping.source === 'rowField') {
-      const value = mapping.sourceKey ? record?.[mapping.sourceKey] : undefined;
-      if (value === null || value === undefined || value === '') {
-        return;
-      }
-      if (['string', 'number', 'boolean'].includes(typeof value)) {
-        params[mapping.key] = value;
-      } else {
-        params[mapping.key] = String(value);
-      }
-      return;
-    }
-
-    if (
-      mapping.source === 'fixed' &&
-      mapping.value !== null &&
-      mapping.value !== undefined &&
-      mapping.value !== ''
-    ) {
-      params[mapping.key] = mapping.value;
-    }
-  });
-
-  return params;
-};
-
-/**
- * Generate a unique column key for the "operations" action column.
- * Used by useTableConfig when injecting a default action column into displayColumns.
- * Ensures the generated key does not collide with any existing column key.
- */
-export const createOperationColumnKey = (displayColumns: Array<{ key: string }>): string => {
-  const existingKeys = new Set(displayColumns.map((c) => c.key));
-  const base = `column_actions_${Date.now()}`;
-  if (!existingKeys.has(base)) {
-    return base;
-  }
-  let suffix = 1;
-  let candidate = `${base}_${suffix}`;
-  while (existingKeys.has(candidate)) {
-    suffix += 1;
-    candidate = `${base}_${suffix}`;
-  }
-  return candidate;
 };

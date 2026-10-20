@@ -52,6 +52,38 @@ def test_email_html_keeps_layout_and_escapes_variable_values():
     assert result.missing_fields == []
 
 
+@pytest.mark.parametrize(
+    ("time_zone", "expected_times", "expected_cell"),
+    [
+        ("UTC", "2026-10-16 03:24:01｜2026-10-16 03:24:01｜2026-10-16 03:30:00", "2026-10-16 03:24:01"),
+        ("Asia/Shanghai", "2026-10-16 11:24:01｜2026-10-16 11:24:01｜2026-10-16 11:30:00", "2026-10-16 11:24:01"),
+        ("Europe/Berlin", "2026-10-16 05:24:01｜2026-10-16 05:24:01｜2026-10-16 05:30:00", "2026-10-16 05:24:01"),
+    ],
+)
+def test_time_variables_follow_display_timezone(time_zone, expected_times, expected_cell):
+    from datetime import datetime, timezone
+
+    from apps.alerts.notification_templates.events import cell_text
+    from apps.alerts.notification_templates.renderer import build_alert_context, render_source
+
+    created_at = datetime(2026, 10, 16, 3, 24, 1, 123456, tzinfo=timezone.utc)
+    context = build_alert_context(
+        AlertStub(created_at=created_at, first_event_time=created_at),
+        [],
+        "assignment",
+        generated_at=datetime(2026, 10, 16, 3, 30, tzinfo=timezone.utc),
+        display_timezone=time_zone,
+    )
+    result = render_source(
+        "{{ alert.created_at }}｜{{ alert.first_event_time }}｜{{ notification.generated_at }}",
+        context,
+        channel_type="custom_webhook",
+    )
+
+    assert result.value == expected_times
+    assert cell_text(created_at, time_zone) == expected_cell
+
+
 def test_receiver_names_are_human_readable_without_changing_raw_receiver_list():
     from apps.alerts.notification_templates.renderer import build_alert_context
 

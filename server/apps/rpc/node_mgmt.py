@@ -68,6 +68,15 @@ class NodeMgmt(object):
             collect_type,
         )
 
+    def get_child_config_assignments(self, node_ids, collector, collect_type):
+        """查询节点上指定采集器子配置的分配。"""
+        return self.client.run(
+            "get_child_config_assignments",
+            node_ids,
+            collector,
+            collect_type,
+        )
+
     def get_node_names_by_ids(self, node_ids):
         """
         :param node_ids: 节点ID列表

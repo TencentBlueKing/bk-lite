@@ -116,7 +116,7 @@ def error_list_query(tenant_id: str, opts: dict) -> str:
     limit = _positive(opts.get("limit"), 100)
     offset = max(0, int(opts.get("offset") or 0))
     return (
-        f"{base} | stats by (`rum.error.fingerprint`) "
+        f"{base} | stats by (`rum.error.fingerprint`, `rum.error.group_key`) "
         "count() as count, "
         "count_uniq(`rum.session.key`) as sessions, "
         "count_uniq(`rum.user.id`) as users, "
@@ -317,7 +317,7 @@ def map_error_issue(row: dict) -> dict:
     start = _fmt_dt(_parse_time(_text(row, "start_time")))
     end = _fmt_dt(_parse_time(_text(row, "end_time")))
     return {
-        "fingerprint": _text(row, "rum.error.fingerprint"),
+        "fingerprint": _text(row, "rum.error.fingerprint") or _text(row, "rum.error.group_key"),
         "sampleMessage": sample_text(row, "message"),
         "normalizedMessage": sample_text(row, "message"),
         "errorType": sample_text(row, "error_type"),

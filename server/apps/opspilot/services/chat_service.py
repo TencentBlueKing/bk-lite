@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import contextvars
 import os
 import re
 import threading
@@ -46,6 +47,24 @@ from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.pending_question import consume_pending_question, resolve_conversation_key
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
+from apps.opspilot.utils.run_locale import reset_run_locale, set_run_locale
+
+_REPLY_LANGUAGE_EN = (
+    "\n\n[Reply language] The user interface language is English. "
+    "Reply in English. Skill instructions, the opening guide, and tool results may be in another language; "
+    "the user-facing answer must still be English."
+)
+_REPLY_LANGUAGE_ZH = "\n\n【回复语言】当前界面语言是简体中文。请用简体中文回复。" "技能说明、引导语和工具结果即使是其他语言，面向用户的回答也必须使用简体中文。"
+_REPLY_LANGUAGE_MATCH_USER = "\n\n【回复语言】这是企业微信对话。请按用户本轮消息的语言回复：" "消息中有中文就用简体中文；没有中文就用用户这句本身的语言。" "技能说明、引导语和工具结果即使是其他语言，面向用户的回答也必须与用户这句的语言一致。"
+
+
+def append_reply_language(prompt: str, locale: str | None, *, match_user_message: bool = False) -> str:
+    """按当前页面语言要求智能体回复，不改技能里保存的提示词原文。企微改为跟随用户这句的语言。"""
+    if match_user_message:
+        return f"{prompt or ''}{_REPLY_LANGUAGE_MATCH_USER}"
+    normalized = (locale or "en").replace("_", "-").lower()
+    suffix = _REPLY_LANGUAGE_ZH if normalized.startswith("zh") else _REPLY_LANGUAGE_EN
+    return f"{prompt or ''}{suffix}"
 
 
 def _inject_llm_working_budget(chat_kwargs, extra_config, llm_model, *, scene_output_default):
@@ -268,8 +287,8 @@ class ChatService:
                 {},
             )
 
+        token = set_run_locale(chat_kwargs.get("locale") or "en")
         try:
-            # 创建 agent 实例并直接执行
             graph, request = create_agent_instance(skill_type, chat_kwargs)
 
             if _is_eventlet_environment():
@@ -323,7 +342,14 @@ class ChatService:
 
             # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
             _agent_timeout = _resolve_agent_execute_timeout()
-            worker = threading.Thread(target=_worker, name="opspilot-invoke-chat", daemon=True)
+            # 工作线程不继承 ContextVar。拷贝当前轮次语言后再启动；
+            # 调用线程在 finally 里 reset，下一轮不会读到上一轮的 locale。
+            worker = threading.Thread(
+                target=contextvars.copy_context().run,
+                args=(_worker,),
+                name="opspilot-invoke-chat",
+                daemon=True,
+            )
             worker.start()
             if not worker_done.wait(timeout=_agent_timeout):
                 timed_out_holder["value"] = True
@@ -413,6 +439,8 @@ class ChatService:
                 doc_map,
                 title_map,
             )
+        finally:
+            reset_run_locale(token)
 
     @staticmethod
     def _process_tools_and_extra_config(kwargs, chat_kwargs, extra_config):  # noqa: C901
@@ -620,6 +648,11 @@ class ChatService:
         memory_block = kwargs.get("skill_memory_block") or ""
         if memory_block:
             resolved_prompt = append_skill_memory_block(resolved_prompt, memory_block)
+        resolved_prompt = append_reply_language(
+            resolved_prompt,
+            kwargs.get("locale"),
+            match_user_message=kwargs.get("reply_language") == "match_user",
+        )
 
         vendor_type = llm_model.vendor.vendor_type if llm_model.vendor_id else ""
         # 对话温度固定 1；技能表与请求里的旧滑条值忽略。

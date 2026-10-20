@@ -21,7 +21,7 @@ meta:
 dashboards:
 - key: dashboard::CMDB仪表盘_内置
   name: CMDB仪表盘
-  desc: CMDB仪表盘
+  desc: 集中展示 CMDB 的模型、实例和采集任务，以及主机操作系统分布、实例变更和各模型的实例规模，帮助运维人员掌握配置资源现状和采集任务的执行情况。
   other:
     timeSelector:
       selectValue: 10080
@@ -37,6 +37,11 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+      interaction:
+        kind: title
+        name: 查看实例规模
+        url: '/cmdb/assetOverview'
+        openMode: newTab
       selectedFields:
       - classification_count
       thresholdColors:
@@ -57,6 +62,11 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+      interaction:
+        kind: title
+        name: 查看模型
+        url: '/cmdb/assetManage/management'
+        openMode: newTab
       selectedFields:
       - model_count
       thresholdColors:
@@ -77,6 +87,11 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+      interaction:
+        kind: title
+        name: 查看实例规模
+        url: '/cmdb/assetOverview'
+        openMode: newTab
       selectedFields:
       - instance_count
       thresholdColors:
@@ -97,6 +112,11 @@ dashboards:
     valueConfig:
       chartType: pie
       dataSource: 主机操作系统分布::get_instance_group_by
+      interaction:
+        kind: title
+        name: 查看主机
+        url: '/cmdb/assetData?modelId=host&classificationId=host_manage'
+        openMode: newTab
       dataSourceParams:
       - name: model_id
         type: string
@@ -113,7 +133,7 @@ dashboards:
     x: 0
     y: 3
     id: 4df1fa2e-a38d-48e9-b6ca-a16f91f768eb
-    name: 变更趋势
+    name: 变更趋势（$time$）
     itemType: widget
     description: 实例新增、修改、删除，跟随时间范围
     valueConfig:
@@ -143,6 +163,11 @@ dashboards:
     valueConfig:
       chartType: table
       dataSource: 模型实例统计::get_model_inst_statistics
+      interaction:
+        kind: data
+        name: 查看模型
+        url: '/cmdb/assetData?modelId=$__data.fields.model_id$'
+        openMode: newTab
       tableConfig:
         columns:
         - key: classification
@@ -218,11 +243,11 @@ dashboards:
       selectedFields:
       - model_coverage_rate
       thresholdColors:
-      - color: '#fd666d'
-        value: '70'
+      - color: '#67a567'
+        value: '90'
       - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
+        value: '70'
+      - color: '#fd666d'
         value: '0'
   - h: 3
     w: 2
@@ -235,6 +260,11 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      interaction:
+        kind: title
+        name: 查看采集
+        url: '/cmdb/assetManage/autoDiscovery/collection?view=tasks'
+        openMode: newTab
       selectedFields:
       - task_count
       thresholdColors:
@@ -359,6 +389,11 @@ dashboards:
     valueConfig:
       chartType: topN
       dataSource: CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
+      interaction:
+        kind: data
+        name: 查看模型
+        url: '/cmdb/assetData?modelId=$__data.fields.model_id$&classificationId=$__data.fields.classification_id$'
+        openMode: newTab
       topNLabelField: model
       topNValueField: count
       dataSourceParams:
@@ -394,7 +429,7 @@ dashboards:
       selectValue: 43200
 - key: dashboard::统一告警中心仪表盘_内置
   name: 统一告警中心仪表盘
-  desc: ''
+  desc: 汇总告警接入、当前处理进度和通知发送情况，包括新增告警、活跃告警、处理状态、等级分布和通知结果，帮助运维人员掌握告警运营情况。
   other: {}
   view_sets:
   - h: 3
@@ -402,7 +437,7 @@ dashboards:
     x: 0
     y: 0
     id: 99ff96a3-2055-4932-b882-bc2b896cc1e7
-    name: 告警关联事件数
+    name: 告警关联事件数（$time$）
     itemType: widget
     description: 按事件接收时间，仅计已关联授权告警
     valueConfig:
@@ -424,7 +459,7 @@ dashboards:
     x: 3
     y: 0
     id: d0a485b5-9f7c-46ae-9c42-717aa5fca81b
-    name: 新增告警数
+    name: 新增告警数（$time$）
     itemType: widget
     description: 按告警创建时间
     valueConfig:
@@ -446,7 +481,7 @@ dashboards:
     x: 6
     y: 0
     id: 8b710945-88a5-42d3-8fdd-a52507f54fe4
-    name: 新增事故数
+    name: 新增事故数（$time$）
     itemType: widget
     description: 按事故创建时间
     valueConfig:
@@ -530,7 +565,7 @@ dashboards:
     x: 6
     y: 3
     id: f6ddd2a0-2adc-4e20-9513-f6ebb7426211
-    name: 事件聚合倍率
+    name: 事件聚合倍率（$time$）
     itemType: widget
     description: 关联事件数 ÷ 受影响告警数（非百分比）
     valueConfig:
@@ -552,7 +587,7 @@ dashboards:
     x: 9
     y: 3
     id: 5c2735d3-5449-4d29-871d-545eaf7b24b9
-    name: 会话告警占比
+    name: 会话告警占比（$time$）
     itemType: widget
     description: 新增告警中会话类告警的比例
     valueConfig:
@@ -575,7 +610,7 @@ dashboards:
     x: 0
     y: 6
     id: 586576ee-f427-4c56-9e8a-6777c95c1290
-    name: 告警与关联事件趋势
+    name: 告警与关联事件趋势（$time$）
     itemType: widget
     description: 告警数、关联事件数与已恢复数
     valueConfig:
@@ -611,7 +646,7 @@ dashboards:
     x: 0
     y: 11
     id: ad522899-2fc5-4b7a-875e-19004c33a425
-    name: 告警关联事件来源 TOP 5
+    name: 告警关联事件来源 TOP 5（$time$）
     itemType: widget
     description: 按关联事件数排序
     valueConfig:
@@ -644,6 +679,11 @@ dashboards:
       compare: false
       chartType: single
       dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      interaction:
+        kind: title
+        name: 查看告警源
+        url: '/alarm/integration'
+        openMode: newTab
       selectedFields:
       - total_count
       thresholdColors:
@@ -679,7 +719,7 @@ dashboards:
     x: 6
     y: 14
     id: 083e3d04-08d6-4100-9d02-6bdb4a4e5a6f
-    name: 活跃告警源数
+    name: 活跃告警源数（$time$）
     itemType: widget
     description: 跟随时间范围，至少收到一条事件的告警源
     valueConfig:
@@ -713,18 +753,18 @@ dashboards:
       selectedFields:
       - enabled_rate
       thresholdColors:
-      - color: '#fd666d'
-        value: '200'
+      - color: '#67a567'
+        value: '90'
       - color: '#EAB839'
-        value: '100'
-      - color: '#366CE4'
+        value: '70'
+      - color: '#fd666d'
         value: '0'
   - h: 6
     w: 6
     x: 0
     y: 17
     id: 80a6b436-a8c3-44f0-a054-905fb3f08a3d
-    name: 渠道通知成功率
+    name: 渠道通知成功率（$time$）
     itemType: widget
     description: 各渠道发送成功占比
     valueConfig:
@@ -737,7 +777,7 @@ dashboards:
     x: 6
     y: 20
     id: af0ee431-54a4-4fcb-8ae4-43a7666a5aed
-    name: 通知失败数
+    name: 通知失败数（$time$）
     itemType: widget
     description: 发送失败的通知数
     valueConfig:
@@ -760,7 +800,7 @@ dashboards:
     x: 9
     y: 20
     id: 38cbdb62-671c-48a6-a883-2c41a97882f2
-    name: 通知失败率
+    name: 通知失败率（$time$）
     itemType: widget
     description: 发送失败通知占全部通知的比例
     valueConfig:
@@ -784,7 +824,7 @@ dashboards:
     x: 0
     y: 23
     id: 9fb91936-d18b-4583-b14b-d9ae04d6bb10
-    name: 告警缺少规则 ID 占比
+    name: 告警缺少规则 ID 占比（$time$）
     itemType: widget
     description: 分母为时间范围内新增告警
     valueConfig:
@@ -808,7 +848,7 @@ dashboards:
     x: 3
     y: 23
     id: aede04f0-83f3-4fc6-b804-a2772c640623
-    name: 告警缺少资源 ID 占比
+    name: 告警缺少资源 ID 占比（$time$）
     itemType: widget
     description: 分母为时间范围内新增告警
     valueConfig:
@@ -832,7 +872,7 @@ dashboards:
     x: 6
     y: 17
     id: 063b6d01-ec91-4218-b6ad-9f34c82ea94b
-    name: 通知成功数
+    name: 通知成功数（$time$）
     itemType: widget
     description: 发送成功的通知数
     valueConfig:
@@ -855,7 +895,7 @@ dashboards:
     x: 9
     y: 17
     id: fb51e119-3763-4a99-844f-274fa6c50577
-    name: 通知成功率
+    name: 通知成功率（$time$）
     itemType: widget
     description: 发送成功通知占全部通知的比例
     valueConfig:
@@ -868,18 +908,18 @@ dashboards:
       selectedFields:
       - success_rate
       thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
       - color: '#67a567'
+        value: '90'
+      - color: '#EAB839'
+        value: '70'
+      - color: '#fd666d'
         value: '0'
   - h: 3
     w: 3
     x: 6
     y: 23
     id: 356ec2d9-0bf2-4d03-aa0b-dda3d9d7cf87
-    name: 关联事件缺少指标项占比
+    name: 关联事件缺少指标项占比（$time$）
     itemType: widget
     description: 分母为时间范围内告警关联事件
     valueConfig:
@@ -902,7 +942,7 @@ dashboards:
     x: 9
     y: 23
     id: 8c4c5cb4-dfd9-4b01-9baa-33a9f758a4b6
-    name: 关联事件缺少外部事件 ID 占比
+    name: 关联事件缺少外部事件 ID 占比（$time$）
     itemType: widget
     description: 分母为时间范围内告警关联事件
     valueConfig:
@@ -931,6 +971,11 @@ dashboards:
     valueConfig:
       chartType: table
       dataSource: 活跃告警 TOP N::get_active_alert_top
+      interaction:
+        kind: data
+        name: 查看告警
+        url: '/alarm/alarms?alert_id=$__data.fields.alert_id$'
+        openMode: newTab
       tableConfig:
         columns:
         - key: alert_id
@@ -993,7 +1038,7 @@ dashboards:
       selectValue: 43200
 - key: dashboard::监控中心仪表盘_内置
   name: 监控中心仪表盘
-  desc: 监控中心资源/能力/告警总览
+  desc: 集中展示监控对象、监控实例、采集插件、采集配置和告警策略等数据，帮助运维人员了解监控资源规模、采集配置和告警策略的建设情况。
   other:
     timeSelector:
       selectValue: 10080
@@ -1009,6 +1054,11 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      interaction:
+        kind: title
+        name: 查看监控对象
+        url: '/monitor/integration/object'
+        openMode: newTab
       selectedFields:
       - monitor_object_total
       thresholdColors:
@@ -1049,6 +1099,11 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      interaction:
+        kind: title
+        name: 查看监控对象
+        url: '/monitor/integration/object'
+        openMode: newTab
       selectedFields:
       - monitor_object_category
       thresholdColors:
@@ -1129,6 +1184,11 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      interaction:
+        kind: title
+        name: 查看插件
+        url: '/monitor/integration/list'
+        openMode: newTab
       selectedFields:
       - plugin_total
       thresholdColors:
@@ -1527,7 +1587,7 @@ topologies: []
 screens:
 - key: screen::告警运营大屏_内置
   name: 告警运营大屏
-  desc: 告警中心运营态势大屏，使用页面可配置图表节点展示今日、活动、趋势、分布与活跃告警信息
+  desc: 今日已产生和今日已关闭按当天统计；待响应、处理中和活跃告警按当前状态统计。新增事故、关联事件、通知成功率和趋势图跟随所选时段。
   other: {}
   view_sets:
     items:
@@ -1645,7 +1705,7 @@ screens:
       id: label-2bdee93c-3a75-49a6-93b2-bd0d448967b3
       kind: text
       zIndex: 5
-      content: 新增事故数
+      content: 新增事故数（$time$）
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1689,7 +1749,7 @@ screens:
       id: label-f9156f59-ac47-48b9-b071-da3289f769af
       kind: text
       zIndex: 5
-      content: 告警关联事件数
+      content: 告警关联事件数（$time$）
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1752,7 +1812,7 @@ screens:
       id: label-081f2a79-debe-4825-9d4d-1aeb02d9702e
       kind: text
       zIndex: 5
-      content: 渠道通知成功率
+      content: 渠道通知成功率（$time$）
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1808,7 +1868,7 @@ screens:
       id: label-alert-access-trend
       kind: text
       zIndex: 5
-      content: 告警与关联事件趋势
+      content: 告警与关联事件趋势（$time$）
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1925,7 +1985,7 @@ screens:
       id: label-alert-level-trend
       kind: text
       zIndex: 5
-      content: 告警等级趋势
+      content: 告警等级趋势（$time$）
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1938,7 +1998,7 @@ screens:
       id: label-alert-source-event-top
       kind: text
       zIndex: 5
-      content: 告警关联事件来源 TOP10
+      content: 告警关联事件来源 TOP10（$time$）
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1982,7 +2042,7 @@ screens:
       y: 1084
       id: alert-access-trend
       type: widget
-      title: 告警与关联事件趋势
+      title: 告警与关联事件趋势（$time$）
       zIndex: 8
       chartType: line
       valueConfig:
@@ -2015,8 +2075,6 @@ screens:
           frame: bare
         dataSource: '告警快照统计::alert/get_alert_snapshot_statistics'
         chartThemeMode: screen-dark
-        filterBindings:
-          organization__string: true
         selectedFields:
         - pending_count
         thresholdColors:
@@ -2096,8 +2154,6 @@ screens:
           frame: bare
         dataSource: '告警快照统计::alert/get_alert_snapshot_statistics'
         chartThemeMode: screen-dark
-        filterBindings:
-          organization__string: true
         selectedFields:
         - active_count
         thresholdColors:
@@ -2161,8 +2217,6 @@ screens:
           frame: bare
         dataSource: '告警快照统计::alert/get_alert_snapshot_statistics'
         chartThemeMode: screen-dark
-        filterBindings:
-          organization__string: true
         selectedFields:
         - processing_count
         thresholdColors:
@@ -2195,7 +2249,7 @@ screens:
       y: 568
       id: alert-level-trend
       type: widget
-      title: 告警等级趋势
+      title: 告警等级趋势（$time$）
       zIndex: 8
       chartType: bar
       valueConfig:
@@ -2515,13 +2569,6 @@ screens:
         end: '2026-08-04T00:00:00.000Z'
         start: '2026-07-28T00:00:00.000Z'
         selectValue: 10080
-    - id: organization__string
-      key: organization
-      name: 组织
-      type: string
-      order: 1
-      enabled: true
-      defaultValue: ''
     viewport:
       theme: screen-dark
       width: 3840
@@ -2549,7 +2596,7 @@ screens:
     namespace_keys: []
 - key: screen::3D机房大屏_内置
   name: 3D机房大屏
-  desc: 基于 CMDB 机房、机柜和设备数据展示的 3D 机房大屏，两侧容量与告警图表跟随画布机房筛选
+  desc: 按所选机房，以三维方式展示机柜和设备布局、U 位占用、设备分布，以及这些设备当前的监控和告警情况。机房、机柜和落位来自 CMDB，告警来自监控中心。
   other: {}
   view_sets:
     items:
@@ -2578,7 +2625,7 @@ screens:
       x: 1620
       y: 4
       zIndex: 38
-    - h: 216
+    - h: 198
       id: bg-room-scale
       kind: shape
       shape: rect
@@ -2595,9 +2642,9 @@ screens:
         shadow: 0
       w: 354
       x: 16
-      y: 144
+      y: 164
       zIndex: 1
-    - h: 224
+    - h: 206
       id: bg-room-u-usage
       kind: shape
       shape: rect
@@ -2614,9 +2661,9 @@ screens:
         shadow: 0
       w: 354
       x: 16
-      y: 354
+      y: 366
       zIndex: 1
-    - h: 274
+    - h: 269
       id: bg-room-u-top
       kind: shape
       shape: rect
@@ -2633,9 +2680,9 @@ screens:
         shadow: 0
       w: 354
       x: 16
-      y: 571
+      y: 803
       zIndex: 1
-    - h: 242
+    - h: 223
       id: bg-room-device-types
       kind: shape
       shape: rect
@@ -2652,9 +2699,9 @@ screens:
         shadow: 0
       w: 354
       x: 16
-      y: 837
+      y: 576
       zIndex: 1
-    - h: 238
+    - h: 219
       id: bg-room-coverage
       kind: shape
       shape: rect
@@ -2671,9 +2718,9 @@ screens:
         shadow: 0
       w: 354
       x: 1550
-      y: 132
+      y: 168
       zIndex: 1
-    - h: 238
+    - h: 219
       id: bg-room-alarm-level
       kind: shape
       shape: rect
@@ -2690,9 +2737,9 @@ screens:
         shadow: 0
       w: 354
       x: 1550
-      y: 363
+      y: 391
       zIndex: 1
-    - h: 256
+    - h: 217
       id: bg-room-alarm-top
       kind: shape
       shape: rect
@@ -2709,7 +2756,7 @@ screens:
         shadow: 0
       w: 352
       x: 1551
-      y: 594
+      y: 614
       zIndex: 1
     - h: 227
       id: bg-room-alarm-devices
@@ -2734,73 +2781,73 @@ screens:
       h: 198
       id: panel-room-scale
       kind: decoration
-      preset: border-1
+      preset: border-25
       w: 354
       x: 16
-      y: 144
+      y: 164
       zIndex: 5
     - decorationType: panelFrame
       h: 206
       id: panel-room-u-usage
       kind: decoration
-      preset: border-1
+      preset: border-25
       w: 354
       x: 16
-      y: 354
+      y: 366
       zIndex: 3
     - decorationType: panelFrame
-      h: 254
+      h: 269
       id: panel-room-u-top
       kind: decoration
-      preset: border-1
+      preset: border-25
       w: 354
       x: 16
-      y: 571
+      y: 803
       zIndex: 4
     - decorationType: panelFrame
       h: 223
       id: panel-room-device-types
       kind: decoration
-      preset: border-1
+      preset: border-25
       w: 354
       x: 16
-      y: 837
+      y: 576
       zIndex: 6
     - decorationType: panelFrame
       h: 219
       id: panel-room-coverage
       kind: decoration
-      preset: border-1
+      preset: border-25
       w: 354
       x: 1550
-      y: 132
+      y: 168
       zIndex: 7
     - decorationType: panelFrame
       h: 219
       id: panel-room-alarm-level
       kind: decoration
-      preset: border-1
+      preset: border-25
       w: 354
       x: 1550
-      y: 363
+      y: 391
       zIndex: 9
     - decorationType: panelFrame
-      h: 237
+      h: 217
       id: panel-room-alarm-top
       kind: decoration
-      preset: border-1
+      preset: border-25
       w: 352
       x: 1551
-      y: 594
+      y: 614
       zIndex: 8
     - decorationType: panelFrame
-      h: 221
+      h: 237
       id: panel-room-alarm-devices
       kind: decoration
       preset: border-1
-      w: 1506
-      x: 392
-      y: 842
+      w: 1522
+      x: 379
+      y: 835
       zIndex: 10
     - content: 机房规模
       h: 29
@@ -2813,7 +2860,7 @@ screens:
         fontWeight: 600
       w: 343
       x: 22
-      y: 152
+      y: 171
       zIndex: 24
     - content: U 使用率
       h: 29
@@ -2826,7 +2873,7 @@ screens:
         fontWeight: 600
       w: 343
       x: 22
-      y: 361
+      y: 372
       zIndex: 22
     - content: 机柜 U 占用 TOP5
       h: 30
@@ -2838,8 +2885,8 @@ screens:
         fontSize: 18
         fontWeight: 600
       w: 343
-      x: 15
-      y: 576
+      x: 21
+      y: 811
       zIndex: 23
     - content: 设备类型
       h: 29
@@ -2852,7 +2899,7 @@ screens:
         fontWeight: 600
       w: 343
       x: 22
-      y: 845
+      y: 583
       zIndex: 25
     - content: 监控状态
       h: 29
@@ -2865,7 +2912,7 @@ screens:
         fontWeight: 600
       w: 343
       x: 1556
-      y: 140
+      y: 174
       zIndex: 26
     - content: 告警等级
       h: 29
@@ -2878,7 +2925,7 @@ screens:
         fontWeight: 600
       w: 343
       x: 1556
-      y: 371
+      y: 397
       zIndex: 28
     - content: 机柜告警 TOP5
       h: 30
@@ -2891,7 +2938,7 @@ screens:
         fontWeight: 600
       w: 341
       x: 1557
-      y: 602
+      y: 620
       zIndex: 27
     - content: 告警设备
       h: 37
@@ -2902,9 +2949,9 @@ screens:
         color: '#E6F3FF'
         fontSize: 18
         fontWeight: 600
-      w: 1486
-      x: 405
-      y: 857
+      w: 1508
+      x: 382
+      y: 850
       zIndex: 29
     - content: 机柜总数
       h: 20
@@ -2917,7 +2964,7 @@ screens:
         fontWeight: 500
       w: 98
       x: 39
-      y: 289
+      y: 309
       zIndex: 35
     - content: 设备总数
       h: 20
@@ -2930,7 +2977,7 @@ screens:
         fontWeight: 500
       w: 98
       x: 148
-      y: 289
+      y: 309
       zIndex: 36
     - content: 未落位
       h: 20
@@ -2943,7 +2990,7 @@ screens:
         fontWeight: 500
       w: 98
       x: 257
-      y: 289
+      y: 309
       zIndex: 33
     - content: 已用 U
       h: 16
@@ -2956,7 +3003,7 @@ screens:
         fontWeight: 500
       w: 102
       x: 244
-      y: 448
+      y: 460
       zIndex: 32
     - content: 总 U
       h: 16
@@ -2969,7 +3016,7 @@ screens:
         fontWeight: 500
       w: 102
       x: 244
-      y: 516
+      y: 528
       zIndex: 34
     - chartType: single
       h: 113
@@ -3002,7 +3049,7 @@ screens:
           value: '0'
       w: 98
       x: 39
-      y: 185
+      y: 205
       zIndex: 15
     - chartType: single
       h: 113
@@ -3035,7 +3082,7 @@ screens:
           value: '0'
       w: 98
       x: 148
-      y: 185
+      y: 205
       zIndex: 16
     - chartType: single
       h: 113
@@ -3068,7 +3115,7 @@ screens:
           value: '0'
       w: 98
       x: 257
-      y: 185
+      y: 205
       zIndex: 14
     - chartType: single
       h: 44
@@ -3101,7 +3148,7 @@ screens:
           value: '0'
       w: 102
       x: 244
-      y: 403
+      y: 415
       zIndex: 30
     - chartType: single
       h: 37
@@ -3134,10 +3181,10 @@ screens:
           value: '0'
       w: 94
       x: 248
-      y: 481
+      y: 493
       zIndex: 31
     - chartType: gauge
-      h: 216
+      h: 233
       id: room-u-usage
       title: U 使用率
       type: widget
@@ -3146,6 +3193,15 @@ screens:
           frame: bare
         chartThemeMode: screen-dark
         chartType: gauge
+        gaugeShape: semicircle
+        name: U 使用率
+        thresholdColors:
+        - color: '#dc2626'
+          value: '70'
+        - color: '#d97706'
+          value: '30'
+        - color: '#35e2cb'
+          value: '0'
         dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
         dataSourceParams:
         - alias_name: 机房
@@ -3166,9 +3222,9 @@ screens:
         selectedFields:
         - u_usage_percent
         unit: '%'
-      w: 271
-      x: 15
-      y: 384
+      w: 276
+      x: 17
+      y: 391
       zIndex: 12
     - chartType: pie
       h: 178
@@ -3191,10 +3247,10 @@ screens:
           server_room_id__string: true
       w: 336
       x: 23
-      y: 878
+      y: 617
       zIndex: 17
     - chartType: topN
-      h: 212
+      h: 227
       id: room-u-top
       title: 机柜 U 占用 TOP5
       type: widget
@@ -3226,7 +3282,7 @@ screens:
         topNValueField: value
       w: 334
       x: 24
-      y: 606
+      y: 838
       zIndex: 13
     - chartType: pie
       h: 173
@@ -3254,7 +3310,7 @@ screens:
           server_room_id__string: true
       w: 342
       x: 1558
-      y: 173
+      y: 209
       zIndex: 18
     - chartType: pie
       h: 173
@@ -3282,10 +3338,10 @@ screens:
           server_room_id__string: true
       w: 340
       x: 1558
-      y: 403
+      y: 431
       zIndex: 20
     - chartType: topN
-      h: 185
+      h: 174
       id: room-alarm-top
       title: 机柜告警 TOP5
       type: widget
@@ -3315,12 +3371,12 @@ screens:
           server_room_id__string: true
         topNLabelField: name
         topNValueField: value
-      w: 336
+      w: 333
       x: 1559
-      y: 638
+      y: 650
       zIndex: 19
     - chartType: table
-      h: 160
+      h: 181
       id: room-alarm-devices
       title: 告警设备
       type: widget
@@ -3398,9 +3454,9 @@ screens:
             order: 5
             title: U位
             visible: true
-      w: 1476
-      x: 409
-      y: 896
+      w: 1502
+      x: 388
+      y: 884
       zIndex: 21
     - chartType: room3D
       h: 734
@@ -3413,15 +3469,20 @@ screens:
         chartType: room3D
         filterBindings:
           server_room_id__string: true
+        interaction:
+          kind: data
+          name: 查看 CMDB 详情
+          url: '/cmdb/assetData/detail/baseInfo?model_id=$__data.fields.object.model_id$&inst_uuid=$__data.fields.object.id$&inst_name=$__data.fields.object.name$'
+          openMode: newTab
         sceneWidgetType: room3D
       w: 1168
-      x: 375
-      y: 121
+      x: 378
+      y: 118
       zIndex: 11
     viewport:
       adapter: fill
       background:
-        color: '#071829'
+        color: '#09233C'
         type: color
       height: 1080
       theme: screen-dark
@@ -3456,7 +3517,7 @@ screens:
     namespace_keys: []
 - key: screen::3D应用大屏_内置
   name: 3D应用大屏
-  desc: 以 3D 应用墙展示当前可见应用的健康状态、活跃告警和详情
+  desc: 以三维应用墙展示当前可见的应用及其健康情况，并标出有告警的应用。应用来自 CMDB，告警来自监控中心。
   other: {}
   view_sets:
     items:
@@ -3495,6 +3556,11 @@ screens:
       valueConfig:
         chartType: application3D
         sceneWidgetType: application3D
+        interaction:
+          kind: data
+          name: 查看 CMDB 详情
+          url: '/cmdb/assetData/detail/baseInfo?model_id=$__data.fields.object.model_id$&inst_uuid=$__data.fields.object.id$&inst_name=$__data.fields.object.name$'
+          openMode: newTab
         application3DWall:
           autoPageEnabled: true
         appearance:
@@ -3515,14 +3581,14 @@ screens:
     namespace_keys: []
 - key: screen::应用拓扑大屏_内置
   name: 应用拓扑大屏
-  desc: 按应用系统展示五带拓扑，并叠加监控中心活跃告警
+  desc: 按所选应用系统，分层展示应用与服务、主机、基础设施之间的关系，并标出正在告警的节点。关系来自 CMDB 的应用拓扑，告警来自监控中心。
   other: {}
   view_sets:
     items:
     - h: 82
       w: 800
       x: 554
-      y: 30
+      y: 4
       id: legacy-title-frame
       kind: titleFrame
       preset: hero-4
@@ -3531,10 +3597,22 @@ screens:
       textStyle:
         align: center
         fontSize: 28
-    - h: 996
+    - h: 56
+      w: 360
+      x: 1528
+      y: 20
+      id: legacy-clock
+      kind: clock
+      format: YYYY-MM-DD HH:mm:ss
+      zIndex: 3
+      textStyle:
+        color: canvas
+        fontSize: 25
+        fontWeight: 600
+    - h: 1004
       w: 1906
       x: 13
-      y: 83
+      y: 75
       id: builtin-application-topology-main
       type: widget
       title: 应用拓扑
@@ -3547,8 +3625,14 @@ screens:
           depth: 3
         filterBindings:
           application_system_id__string: true
+          application_topology_depth__string: true
         appearance:
           frame: bare
+        interaction:
+          kind: data
+          name: 查看 CMDB 详情
+          url: '/cmdb/assetData/detail/baseInfo?model_id=$__data.fields.object.model_id$&inst_uuid=$__data.fields.object.id$&inst_name=$__data.fields.object.name$'
+          openMode: newTab
     viewport:
       theme: screen-dark
       width: 1920
@@ -3578,6 +3662,29 @@ screens:
       key: application_system_id
       name: 应用系统
       order: 0
+      type: string
+    - defaultValue: "3"
+      enabled: true
+      id: application_topology_depth__string
+      inputConfig:
+        control: select
+        optionsSource:
+          staticItems:
+          - label: "1"
+            value: "1"
+          - label: "2"
+            value: "2"
+          - label: "3"
+            value: "3"
+          - label: "4"
+            value: "4"
+          - label: "5"
+            value: "5"
+          type: static
+      inputMode: select
+      key: application_topology_depth
+      name: 展开层级
+      order: 1
       type: string
   refs:
     datasource_keys:

@@ -58,7 +58,7 @@ describe('作业执行脚本本地暂存', () => {
     expect(value).toEqual(expect.objectContaining({ script_type: 'shell', script_content: 'echo hello#edited' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'powershell' }));
-    expect(value).toEqual(expect.objectContaining({ script_type: 'powershell', script_content: '' }));
+    expect(value).toEqual(expect.objectContaining({ script_type: 'powershell', script_content: '# 在此处编写 PowerShell 脚本\n' }));
     expect(screen.getByTestId('script-editor-lang').textContent).toBe('powershell');
 
     fireEvent.change(screen.getByLabelText('script-editor-powershell'), { target: { value: 'Write-Host ok' } });
@@ -68,6 +68,31 @@ describe('作业执行脚本本地暂存', () => {
     expect(value).toEqual(expect.objectContaining({ script_type: 'shell', script_content: 'echo hello#edited' }));
     expect(screen.getByLabelText('script-editor-shell')).toHaveProperty('value', 'echo hello#edited');
     expect(screen.getByRole('button', { name: '脚本输出说明' })).not.toBeNull();
+  });
+
+  it('新建节点的四种脚本带上作业平台临时输入的默认底稿', () => {
+    let value: Record<string, unknown> = { script_type: 'shell', script_content: '', targets: [] };
+    const onChange = vi.fn((next: Record<string, unknown>) => {
+      value = next;
+    });
+    render(<IntlProvider locale="zh-CN" messages={{}}><App><JobExecuteForm
+      value={value}
+      references={[]}
+      readOnly={false}
+      onChange={onChange}
+    /></App></IntlProvider>);
+
+    expect(screen.getByLabelText('script-editor-shell')).toHaveProperty('value', expect.stringContaining('在此处编写脚本逻辑'));
+    expect(value.script_content).toEqual(expect.stringContaining('job_success() {'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'bat' }));
+    expect(value.script_content).toBe('@echo off\nREM 在此处编写批处理脚本\n');
+    fireEvent.click(screen.getByRole('button', { name: 'python' }));
+    expect(value.script_content).toBe('#!/usr/bin/env python3\n# 在此处编写 Python 脚本\n');
+    fireEvent.click(screen.getByRole('button', { name: 'powershell' }));
+    expect(value.script_content).toBe('# 在此处编写 PowerShell 脚本\n');
+    fireEvent.click(screen.getByRole('button', { name: 'shell' }));
+    expect(value.script_content).toEqual(expect.stringContaining('# ---------- 结束 ----------'));
   });
 
   it('参数区可以修改节点名称', () => {
@@ -116,7 +141,7 @@ describe('作业执行脚本本地暂存', () => {
     const paramsHelp = paramsItem?.querySelector('[aria-label="question-circle"]');
     expect(paramsHelp).not.toBeNull();
     await userEvent.hover(paramsHelp!);
-    expect((await screen.findByRole('tooltip')).textContent).toContain('回车添加参数，也可从左侧拖入字段');
+    expect((await screen.findByRole('tooltip')).textContent).toContain('回车添加参数；不支持从左侧拖入上游字段');
     expect(screen.queryByText(/Shell \/ Python 仅能选择/)).toBeNull();
   });
 
@@ -152,10 +177,11 @@ describe('作业执行脚本本地暂存', () => {
       getData: vi.fn().mockImplementation((format: string) => format === WORKFLOW_REFERENCE_MIME ? '${system.workflow_id}' : ''),
     };
     const paramsItem = screen.getByText('执行参数').closest('.ant-form-item');
-    const dropzone = paramsItem?.querySelector('[data-testid="workflow-reference-dropzone"]');
-    expect(dropzone).not.toBeNull();
-    fireEvent.dragOver(dropzone!, { dataTransfer });
-    fireEvent.drop(dropzone!, { dataTransfer });
-    expect(value.execution_params).toBe('a ${system.workflow_id}');
+    const guard = paramsItem?.querySelector('[data-testid="workflow-reference-drop-guard"]');
+    expect(guard).not.toBeNull();
+    fireEvent.dragOver(guard!, { dataTransfer });
+    fireEvent.drop(guard!, { dataTransfer });
+    expect(value.execution_params).toBe('a');
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

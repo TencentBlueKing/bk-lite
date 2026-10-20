@@ -6,12 +6,12 @@ from django.db import IntegrityError, transaction
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import (
     CollectConfig,
+    MonitorAlert,
+    MonitorEvent,
     MonitorInstance,
     MonitorInstanceOrganization,
     MonitorObject,
     MonitorObjectOrganizationRule,
-    MonitorAlert,
-    MonitorEvent,
     MonitorPolicy,
     PolicyInstanceBaseline,
 )
@@ -83,6 +83,38 @@ def test_remove_physically_deletes_instance_and_configs(db, monkeypatch):
     assert base_calls == [[base.id]]
 
 
+def test_remove_notifies_cmdb_unlink_with_instance_orgs(db, monkeypatch):
+    """监控单边删除：用实例组织通知 CMDB 清 monitor_id，不依赖操作者组织。"""
+    monitor_object = MonitorObject.objects.create(name="RemovalLinkHost", display_name="Removal Link Host")
+    instance = MonitorInstance.objects.create(
+        id="('remove-link',)",
+        name="remove-link",
+        monitor_object=monitor_object,
+        cmdb_id="ci-keep-asset",
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=7)
+    captured = []
+    _stub_node_mgmt(monkeypatch)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.module_ingest.NodeModuleIngestService.ingest",
+        lambda params: {"ignored": True},
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.module_ingest.CmdbModuleIngestService.ingest",
+        lambda params: captured.append(params) or {"id": "ci-keep-asset", "updated": True},
+    )
+
+    MonitorInstanceRemovalService.remove([instance.id])
+
+    assert captured
+    payload = captured[0]
+    assert payload["event_type"] == "lifecycle"
+    assert payload["raw"]["action"] == "unlink"
+    assert payload["link_ids"]["cmdb_id"] == "ci-keep-asset"
+    assert payload["link_ids"]["monitor_id"] == instance.id
+    assert payload["allowed_org_ids"] == [7]
+
+
 def test_remove_closes_active_alerts_and_preserves_alert_history(
     db,
     monkeypatch,
@@ -129,9 +161,7 @@ def test_remove_closes_active_alerts_and_preserves_alert_history(
     _stub_node_mgmt(monkeypatch)
     monkeypatch.setattr(
         "apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier.notify_alerts",
-        lambda self, alerts, action, operator="", reason="", **kwargs: notified.append(
-            ([alert.id for alert in alerts], action, operator, reason)
-        ),
+        lambda self, alerts, action, operator="", reason="", **kwargs: notified.append(([alert.id for alert in alerts], action, operator, reason)),
     )
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -154,14 +184,20 @@ def test_remove_closes_active_alerts_and_preserves_alert_history(
     assert threshold_alert.operation_logs[-1]["operator"] == "tester"
     assert historical_alert.status == "recovered"
     assert unrelated_alert.status == "new"
-    assert MonitorEvent.objects.filter(
-        alert_id__in=[threshold_alert.id, no_data_alert.id],
-        action=MonitorEvent.Action.CLOSED,
-    ).count() == 2
-    assert MonitorEvent.objects.filter(
-        alert_id=historical_alert.id,
-        action=MonitorEvent.Action.CLOSED,
-    ).count() == 0
+    assert (
+        MonitorEvent.objects.filter(
+            alert_id__in=[threshold_alert.id, no_data_alert.id],
+            action=MonitorEvent.Action.CLOSED,
+        ).count()
+        == 2
+    )
+    assert (
+        MonitorEvent.objects.filter(
+            alert_id=historical_alert.id,
+            action=MonitorEvent.Action.CLOSED,
+        ).count()
+        == 0
+    )
     assert notified == [
         (
             [threshold_alert.id, no_data_alert.id],

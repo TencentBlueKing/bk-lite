@@ -1,14 +1,23 @@
 import React from 'react';
 
-const Spin = () => {
-  return (
-    <div>
-      <div className='first-loader-wrapper'>
-        <div className='loading-arc'></div>
-        <h1><span>LOADING</span></h1>
-      </div>
-    </div>
-  );
+interface SpinProps {
+  fullscreen?: boolean;
+  label?: string;
 }
+
+const Spin = ({ fullscreen = false, label = 'Loading' }: SpinProps) => (
+  <div
+    role="status"
+    aria-label={label}
+    className={fullscreen
+      ? 'fixed inset-0 z-[999] flex items-center justify-center bg-[var(--color-bg)]'
+      : 'inline-flex items-center justify-center'}
+  >
+    <span
+      aria-hidden="true"
+      className="h-7 w-7 animate-spin rounded-full border-2 border-[var(--color-fill-3)] border-t-[var(--color-text-3)] motion-reduce:animate-none"
+    />
+  </div>
+);
 
 export default Spin;

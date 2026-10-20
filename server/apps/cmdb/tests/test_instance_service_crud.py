@@ -220,6 +220,53 @@ def test_instance_update_rejects_inst_uuid(fake_graph, patch_side_effects):
 
 
 @pytest.mark.django_db
+def test_instance_update_keeps_monitor_bind_and_strips_user_pointer(fake_graph, patch_side_effects, monkeypatch):
+    """改 IP 不断开既有 monitor_id；用户写入的 monitor_id 被剔除，也不发删除通知。"""
+    delete_notify = []
+    monkeypatch.setattr(
+        "apps.cmdb.services.module_push.CmdbToMonitorPushService.best_effort_notify_on_delete",
+        lambda *a, **k: delete_notify.append(1),
+    )
+    graph = fake_graph(
+        MODULE,
+        query_entity_by_id={
+            "_id": 5,
+            "inst_uuid": HOST_UUID,
+            "model_id": "host",
+            "inst_name": "h1",
+            "organization": [1],
+            "monitor_id": "m-keep",
+            "ip_addr": "10.0.0.1",
+        },
+        query_entity=([], 0),
+        set_entity_properties=[
+            {
+                "_id": 5,
+                "inst_uuid": HOST_UUID,
+                "model_id": "host",
+                "inst_name": "h1",
+                "organization": [1],
+                "monitor_id": "m-keep",
+                "ip_addr": "10.0.0.2",
+            }
+        ],
+    )
+
+    InstanceManage.instance_update(
+        [{"id": 1}],
+        ["admin"],
+        5,
+        {"ip_addr": "10.0.0.2", "monitor_id": "m-hijack"},
+        "admin",
+    )
+
+    update_call = next(call for call in graph.calls if call[0] == "set_entity_properties")
+    assert update_call[1][2]["ip_addr"] == "10.0.0.2"
+    assert "monitor_id" not in update_call[1][2]
+    assert delete_notify == []
+
+
+@pytest.mark.django_db
 def test_instance_update_ok(fake_graph, patch_side_effects):
     def _query(label, params, **k):
         return ([], 0)
@@ -369,6 +416,44 @@ def test_batch_instance_update_ok(fake_graph, patch_side_effects):
     )
     out = InstanceManage.batch_instance_update([{"id": 1}], ["admin"], [1], {"inst_name": "h2"}, "admin")
     assert out[0]["inst_name"] == "h2"
+
+
+@pytest.mark.django_db
+def test_batch_instance_update_strips_user_monitor_id(fake_graph, patch_side_effects):
+    graph = fake_graph(
+        MODULE,
+        query_entity_by_ids=[
+            {
+                "_id": 1,
+                "inst_uuid": HOST_UUID,
+                "model_id": "host",
+                "inst_name": "h1",
+                "organization": [1],
+                "monitor_id": "m-keep",
+            }
+        ],
+        query_entity=([], 0),
+        set_entity_properties=[
+            {
+                "_id": 1,
+                "inst_uuid": HOST_UUID,
+                "model_id": "host",
+                "inst_name": "h2",
+                "organization": [1],
+                "monitor_id": "m-keep",
+            }
+        ],
+    )
+    InstanceManage.batch_instance_update(
+        [{"id": 1}],
+        ["admin"],
+        [1],
+        {"inst_name": "h2", "monitor_id": "m-hijack"},
+        "admin",
+    )
+    update_call = next(call for call in graph.calls if call[0] == "set_entity_properties")
+    assert update_call[1][2]["inst_name"] == "h2"
+    assert "monitor_id" not in update_call[1][2]
 
 
 @pytest.mark.django_db

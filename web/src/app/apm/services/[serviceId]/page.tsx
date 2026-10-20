@@ -1,7 +1,7 @@
 'use client';
 
 import './register-service-pilot';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -31,6 +31,7 @@ import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown
 import CompactEmptyState from '@/components/compact-empty-state';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
+import DurationShareBar from '@/app/apm/components/duration-share-bar';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
   catalogErrorKind,
@@ -54,6 +55,7 @@ import {
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
 import type {
+  ApmClientRollupRow,
   ApmDeploymentEvent,
   ApmService,
   ApmServiceEndpointRed,
@@ -73,7 +75,7 @@ import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
 type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
-type DetailTab = 'overview' | 'traces' | 'errors' | 'runtime' | 'deployments' | 'slo';
+type DetailTab = 'overview' | 'database' | 'outbound' | 'attributes' | 'traces' | 'errors' | 'runtime' | 'deployments' | 'slo';
 type RedChartPoint = Record<string, unknown> & {
   timestamp: string;
   request_rate: number | null;
@@ -100,6 +102,7 @@ export default function ApmServiceDetailPage() {
   const {
     getService,
     getServiceRed,
+    getServiceClientRollups,
     getServiceErrorBreakdown,
     getTraces,
     getTopology,
@@ -113,6 +116,15 @@ export default function ApmServiceDetailPage() {
     searchParams.get('environment') ?? undefined
   );
   const [red, setRed] = useState<ApmServiceRed>();
+  const [rollups, setRollups] = useState<ApmClientRollupRow[]>([]);
+  const [outboundChannel, setOutboundChannel] = useState<'http' | 'other'>('other');
+  const [openEndpoint, setOpenEndpoint] = useState<string>();
+  const [endpointSamples, setEndpointSamples] = useState<{
+    loading: boolean;
+    ok?: ApmTraceSummary;
+    error?: ApmTraceSummary;
+  }>({ loading: false });
+  const endpointSampleRequest = useRef(0);
   const [timeRange, setTimeRange] = useState<TimeRange>(() => {
     const value = searchParams.get('window');
     return isTimeWindow(value) ? value : '1h';
@@ -200,6 +212,28 @@ export default function ApmServiceDetailPage() {
       active = false;
     };
   }, [environment, getServiceRed, queryWindow, service]);
+
+  useEffect(() => {
+    if (!service || environment === undefined) {
+      setRollups([]);
+      return;
+    }
+    let active = true;
+    getServiceClientRollups(service.id, {
+      environment,
+      started_at: queryWindow.startedAt,
+      ended_at: queryWindow.endedAt,
+    })
+      .then((value) => {
+        if (active) setRollups(value.rows);
+      })
+      .catch(() => {
+        if (active) setRollups([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [environment, getServiceClientRollups, queryWindow, service]);
 
   useEffect(() => {
     if (!service || environment === undefined || authLoading) return;
@@ -369,6 +403,93 @@ export default function ApmServiceDetailPage() {
     const maxRate = Math.max(...items.map((item) => item.request_rate), 1);
     return items.map((item) => ({ ...item, ratio: Math.round((item.request_rate / maxRate) * 100) }));
   }, [red]);
+
+  const databaseRows = useMemo(
+    () => rollups.filter((row) => row.channel === 'database'),
+    [rollups],
+  );
+  const outboundRows = useMemo(
+    () => rollups.filter((row) => row.channel === 'outbound'),
+    [rollups],
+  );
+  const httpRows = useMemo(
+    () => rollups.filter((row) => row.channel === 'http'),
+    [rollups],
+  );
+  const shareSegments = useMemo(() => {
+    const grouped = new Map<string, { label: string; durationMs: number; calls: number }>();
+    rollups.forEach((row) => {
+      const key = `${row.channel}:${row.system}`;
+      const channelLabel = row.channel === 'database'
+        ? t('apm.serviceDetail.database', '数据库')
+        : row.channel === 'http'
+          ? t('apm.serviceDetail.channelHttp', 'HTTP')
+          : t('apm.serviceDetail.cache', '缓存');
+      const current = grouped.get(key) ?? {
+        label: `${channelLabel} · ${row.system}`,
+        durationMs: 0,
+        calls: 0,
+      };
+      current.durationMs += row.duration_ms;
+      current.calls += row.call_count;
+      grouped.set(key, current);
+    });
+    return Array.from(grouped.entries()).map(([key, item]) => ({
+      key,
+      label: item.label,
+      durationMs: item.durationMs,
+      detail: item.calls
+        ? `${item.calls} × ${formatLatency(item.durationMs / item.calls, false, t)} = ${formatLatency(item.durationMs, false, t)}`
+        : formatLatency(item.durationMs, false, t),
+    }));
+  }, [rollups, t]);
+  const shareCaption = rollups.length
+    ? (red?.request_count
+      ? t('apm.serviceDetail.durationShareCaption', '下游合计约 {duration}/次。入口耗时不放进这根条。', {
+        duration: formatLatency(
+          rollups.reduce((sum, row) => sum + row.duration_ms, 0) / red.request_count,
+          false,
+          t,
+        ),
+      })
+      : t('apm.serviceDetail.durationShareExcludesEntry', '入口耗时不放进这根条。'))
+    : undefined;
+
+  const toggleEndpointSamples = (endpoint: string) => {
+    if (!service || environment === undefined) return;
+    if (openEndpoint === endpoint) {
+      setOpenEndpoint(undefined);
+      return;
+    }
+    const requestId = endpointSampleRequest.current + 1;
+    endpointSampleRequest.current = requestId;
+    setOpenEndpoint(endpoint);
+    setEndpointSamples({ loading: true });
+    const base = {
+      service_namespace: service.namespace,
+      service_name: service.name,
+      environment,
+      started_at: queryWindow.startedAt,
+      ended_at: queryWindow.endedAt,
+      span_name: endpoint,
+      limit: 1,
+    };
+    Promise.all([
+      getTraces({ ...base, status: 'ok' }),
+      getTraces({ ...base, status: 'error' }),
+    ])
+      .then(([okPage, errorPage]) => {
+        if (endpointSampleRequest.current !== requestId) return;
+        setEndpointSamples({
+          loading: false,
+          ok: okPage.items[0],
+          error: errorPage.items[0],
+        });
+      })
+      .catch(() => {
+        if (endpointSampleRequest.current === requestId) setEndpointSamples({ loading: false });
+      });
+  };
 
   const health = deriveHealth(service?.status ?? 'silent', red?.error_rate ?? null);
 
@@ -755,6 +876,12 @@ export default function ApmServiceDetailPage() {
                         </ApmSurface>
                       </Col>
                     </Row>
+                    {shareSegments.length ? (
+                      <ApmSurface>
+                        <Typography.Text strong className="mb-3 block">{t('apm.serviceDetail.durationShare', '耗时构成')}</Typography.Text>
+                        <DurationShareBar segments={shareSegments} caption={shareCaption} />
+                      </ApmSurface>
+                    ) : null}
                     <Row gutter={[12, 12]}>
                       <Col xs={24} lg={12}>
                         <ApmSurface>
@@ -768,12 +895,23 @@ export default function ApmServiceDetailPage() {
                               <List.Item className="!px-0">
                                 <div className="w-full">
                                   <div className="mb-1.5 flex items-start justify-between gap-3">
-                                    <Link
-                                      href={`/apm/explore/endpoints?service=${encodeURIComponent(service.name)}&environment=${encodeURIComponent(environment ?? '')}&endpoint=${encodeURIComponent(item.endpoint)}`}
-                                      className="min-w-0 break-all text-sm text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
-                                    >
-                                      {item.endpoint}
-                                    </Link>
+                                    <div className="flex min-w-0 items-start gap-1">
+                                      <Button
+                                        type="text"
+                                        size="small"
+                                        aria-expanded={openEndpoint === item.endpoint}
+                                        aria-label={t('apm.serviceDetail.expandEndpoint', '展开 {endpoint} 的样本', { endpoint: item.endpoint })}
+                                        onClick={() => toggleEndpointSamples(item.endpoint)}
+                                      >
+                                        {openEndpoint === item.endpoint ? '▾' : '▸'}
+                                      </Button>
+                                      <Link
+                                        href={`/apm/explore/endpoints?service=${encodeURIComponent(service.name)}&environment=${encodeURIComponent(environment ?? '')}&endpoint=${encodeURIComponent(item.endpoint)}`}
+                                        className="min-w-0 break-all text-sm text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+                                      >
+                                        {item.endpoint}
+                                      </Link>
+                                    </div>
                                     <span className="shrink-0 text-xs tabular-nums text-[var(--color-text-3)]">
                                       {t('apm.serviceDetail.endpointMeta', '{throughput} · P99 {latency}', {
                                         throughput: formatRequestRate(item.request_rate, false, t),
@@ -788,6 +926,33 @@ export default function ApmServiceDetailPage() {
                                     strokeColor="var(--color-primary)"
                                     trailColor="var(--color-border)"
                                   />
+                                  {openEndpoint === item.endpoint ? (
+                                    <div className="mt-2 flex flex-col gap-1 text-xs text-[var(--color-text-3)]">
+                                      {endpointSamples.loading ? t('common.loading', '加载中') : null}
+                                      {!endpointSamples.loading ? (
+                                        <>
+                                          <span>
+                                            {t('apm.serviceDetail.healthySample', '健康样本')}
+                                            {' '}
+                                            {endpointSamples.ok ? (
+                                              <Link href={`/apm/explore/traces/${encodeURIComponent(endpointSamples.ok.trace_id)}`}>
+                                                {formatLatency(endpointSamples.ok.duration_ms, false, t)}
+                                              </Link>
+                                            ) : t('apm.serviceDetail.noEndpointSample', '当前时间窗没有这类样本')}
+                                          </span>
+                                          <span>
+                                            {t('apm.serviceDetail.errorSample', '失败样本')}
+                                            {' '}
+                                            {endpointSamples.error ? (
+                                              <Link href={`/apm/explore/traces/${encodeURIComponent(endpointSamples.error.trace_id)}`}>
+                                                {formatLatency(endpointSamples.error.duration_ms, false, t)}
+                                              </Link>
+                                            ) : t('apm.serviceDetail.noEndpointSample', '当前时间窗没有这类样本')}
+                                          </span>
+                                        </>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
                                 </div>
                               </List.Item>
                             )}
@@ -816,6 +981,11 @@ export default function ApmServiceDetailPage() {
                                 {downstream.length
                                   ? downstream.map(dependencyTag)
                                   : <Typography.Text type="secondary" className="!text-xs">{t('apm.serviceDetail.noDownstream', '近窗内无向下调用')}</Typography.Text>}
+                                {rollups.length ? (
+                                  <Typography.Text type="secondary" className="!mt-1.5 !block !text-xs">
+                                    {t('apm.serviceDetail.inferredDownstreamHint', '库和缓存在「数据库语句」「出站调用」。')}
+                                  </Typography.Text>
+                                ) : null}
                               </div>
                             </Col>
                           </Row>
@@ -833,6 +1003,136 @@ export default function ApmServiceDetailPage() {
                     />
                   </ApmSurface>
                 ),
+              },
+              {
+                key: 'database',
+                label: t('apm.serviceDetail.databaseStatements', '数据库语句'),
+                children: (
+                  <ApmSurface>
+                    <ApmDataTable
+                      rowKey={(row) => `${row.system}:${row.statement}`}
+                      dataSource={databaseRows}
+                      pagination={false}
+                      locale={{ emptyText: t('apm.serviceDetail.noDatabaseStatements', '当前时间窗没有数据库语句。') }}
+                      columns={[
+                        {
+                          title: t('apm.serviceDetail.statement', '语句'),
+                          dataIndex: 'statement',
+                          render: (value: string) => (
+                            <span className="break-all font-mono text-xs text-[var(--color-text-1)]">{value}</span>
+                          ),
+                        },
+                        {
+                          title: t('apm.serviceDetail.system', '系统'),
+                          dataIndex: 'system',
+                          render: (value: string, row) => (
+                            <span>
+                              {value}
+                              {row.inferred ? ` ${t('apm.serviceDetail.inferred', '推断')}` : ''}
+                            </span>
+                          ),
+                        },
+                        { title: t('apm.serviceDetail.failureCount', '失败次数'), dataIndex: 'error_count', align: 'right' },
+                        { title: t('apm.serviceDetail.occurrenceCount', '次数'), dataIndex: 'call_count', align: 'right' },
+                        {
+                          title: t('apm.serviceDetail.average', '平均'),
+                          align: 'right',
+                          render: (_, row) => formatLatency(row.call_count ? row.duration_ms / row.call_count : row.duration_ms, false, t),
+                        },
+                        {
+                          title: t('apm.serviceDetail.accumulated', '累计'),
+                          align: 'right',
+                          render: (_, row) => formatLatency(row.duration_ms, false, t),
+                        },
+                      ]}
+                    />
+                    <Typography.Text type="secondary" className="mt-2 block text-xs">
+                      {t('apm.serviceDetail.statementVerbHint', '按 SQL 模板汇总，绑定参数已折叠成占位符。')}
+                    </Typography.Text>
+                  </ApmSurface>
+                ),
+              },
+              {
+                key: 'outbound',
+                label: t('apm.serviceDetail.outboundCalls', '出站调用'),
+                children: (
+                  <ApmSurface>
+                    <Segmented
+                      className="mb-3"
+                      value={outboundChannel}
+                      onChange={(value) => setOutboundChannel(value as 'http' | 'other')}
+                      options={[
+                        { label: t('apm.serviceDetail.channelHttp', 'HTTP'), value: 'http' },
+                        { label: t('apm.serviceDetail.channelOther', '其他'), value: 'other' },
+                      ]}
+                    />
+                    <ApmDataTable
+                      rowKey={(row) => `${row.channel}:${row.system}:${row.statement}`}
+                      dataSource={outboundChannel === 'http' ? httpRows : outboundRows}
+                      pagination={false}
+                      locale={{
+                        emptyText: outboundChannel === 'http'
+                          ? t('apm.serviceDetail.httpOutboundEmpty', '当前时间窗没有 HTTP 出站。')
+                          : t('apm.serviceDetail.otherOutboundEmpty', '当前时间窗没有缓存或其他出站。'),
+                      }}
+                      columns={[
+                        {
+                          title: t('apm.serviceDetail.outboundCalls', '出站调用'),
+                          dataIndex: 'system',
+                          render: (value: string, row) => (
+                            <div>
+                              <div>
+                                {value}
+                                {row.inferred ? ` ${t('apm.serviceDetail.inferred', '推断')}` : ''}
+                              </div>
+                              <div className="text-xs text-[var(--color-text-3)]">{row.statement}</div>
+                            </div>
+                          ),
+                        },
+                        { title: t('apm.serviceDetail.occurrenceCount', '次数'), dataIndex: 'call_count', align: 'right' },
+                        { title: t('apm.serviceDetail.failureCount', '失败次数'), dataIndex: 'error_count', align: 'right' },
+                        {
+                          title: t('apm.serviceDetail.average', '平均'),
+                          align: 'right',
+                          render: (_, row) => formatLatency(row.call_count ? row.duration_ms / row.call_count : row.duration_ms, false, t),
+                        },
+                        {
+                          title: t('apm.serviceDetail.accumulated', '累计'),
+                          align: 'right',
+                          render: (_, row) => formatLatency(row.duration_ms, false, t),
+                        },
+                      ]}
+                    />
+                    {outboundChannel === 'http' ? (
+                      <Typography.Text type="secondary" className="mt-2 block text-xs">
+                        {t('apm.serviceDetail.httpOutboundHint', '按方法与路由模板汇总；入库会丢掉完整 URL。')}
+                      </Typography.Text>
+                    ) : null}
+                  </ApmSurface>
+                ),
+              },
+              {
+                key: 'attributes',
+                label: t('apm.serviceDetail.attributes', '属性'),
+                children: service ? (
+                  <ApmSurface>
+                    <ApmDataTable
+                      rowKey="key"
+                      pagination={false}
+                      dataSource={[
+                        { key: 'service.name', value: service.name },
+                        { key: 'service.namespace', value: service.namespace },
+                        { key: 'deployment.environment', value: environment || t('apm.common.unsetEnvironment', '未设置环境') },
+                        { key: t('apm.serviceDetail.ownerApplication', '所属应用'), value: service.application_name },
+                        { key: t('apm.serviceDetail.technology', '技术'), value: service.language || '—' },
+                      ]}
+                      columns={[
+                        { title: t('apm.trace.attribute', '属性'), dataIndex: 'key' },
+                        { title: t('apm.trace.value', '值'), dataIndex: 'value' },
+                      ]}
+                    />
+                  </ApmSurface>
+                ) : null,
               },
               {
                 key: 'traces',

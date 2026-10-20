@@ -1,7 +1,7 @@
 'use client';
 
 import { CloseOutlined, FileOutlined, UploadOutlined } from '@ant-design/icons';
-import { Button, Form, Input, Typography, Upload, message } from 'antd';
+import { Button, Form, Typography, Upload, message } from 'antd';
 
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -11,6 +11,7 @@ import type { JsonSchema } from '../lib/types';
 import { FileSampleLinks } from './file-sample-links';
 import { ReportContractGuideDrawer } from './report-contract-guide-drawer';
 import { SchemaNodeField } from './schema-node-form';
+import { WorkflowNodeTitleField } from './workflow-node-title-field';
 import { WorkflowPermission } from './workflow-permission';
 
 interface Props {
@@ -128,9 +129,7 @@ export function DocumentRenderForm({ schema, value, references, nodeTitle, readO
   };
 
   return <Form className="flex flex-col gap-5" layout="vertical">
-    <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
-      <Input disabled={readOnly} value={nodeTitle} onChange={(event) => onNodeTitleChange(event.target.value)} />
-    </Form.Item>
+    <WorkflowNodeTitleField value={nodeTitle} disabled={readOnly} onChange={onNodeTitleChange} />
     <Form.Item
       className="mb-0"
       label={t('workflowOrchestration.editor.documentTemplate', '报告模板')}
@@ -170,7 +169,7 @@ export function DocumentRenderForm({ schema, value, references, nodeTitle, readO
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <FileSampleLinks schema={SAMPLE_SCHEMA} />
           <ReportContractGuideDrawer
-            defaultTab="template"
+            mode="template"
             triggerLabel={t('workflowOrchestration.editor.viewTemplateSyntaxGuide', '模板语法说明')}
           />
         </div>
@@ -191,7 +190,8 @@ export function DocumentRenderForm({ schema, value, references, nodeTitle, readO
         />
         <div className="self-start">
           <ReportContractGuideDrawer
-            defaultTab="structure"
+            mode="structure"
+            audience="document"
             triggerLabel={t('workflowOrchestration.editor.viewDocumentDataGuide', '数据结构说明')}
           />
         </div>

@@ -20,6 +20,7 @@ VM_QUERY_MAX_WORKERS = _resolve_vm_query_max_workers()
 def run_unique_vm_queries(
     queries: Iterable[str],
     query_func: Callable[[str], Any],
+    max_workers: int | None = None,
 ) -> tuple[dict[str, Any], dict[str, Exception]]:
     """并发执行去重后的 VM 查询，并把单项失败留给调用方按原语义处理。"""
     unique_queries = list(dict.fromkeys(query for query in queries if query and query.strip()))
@@ -28,8 +29,9 @@ def run_unique_vm_queries(
 
     results = {}
     errors = {}
-    max_workers = min(len(unique_queries), VM_QUERY_MAX_WORKERS)
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    worker_limit = VM_QUERY_MAX_WORKERS if max_workers is None else max(1, min(int(max_workers), VM_QUERY_MAX_WORKERS_HARD_LIMIT))
+    resolved_workers = min(len(unique_queries), worker_limit)
+    with ThreadPoolExecutor(max_workers=resolved_workers) as executor:
         future_to_query = {executor.submit(query_func, query): query for query in unique_queries}
         for future in as_completed(future_to_query):
             query = future_to_query[future]
