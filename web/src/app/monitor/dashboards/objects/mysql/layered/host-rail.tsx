@@ -4,7 +4,6 @@ import React from 'react';
 import Link from 'next/link';
 import type { MysqlHostCandidate } from './ia';
 import shell from '../../host/layered/layered.module.scss';
-import pro from './pro.module.scss';
 
 interface MysqlHostRailProps {
   host: MysqlHostCandidate | null;
@@ -19,8 +18,8 @@ const percentText = (value: number | null) => (
 );
 
 /**
- * 健康六卡下的通栏宿主条。复用事件轨壳，左簇贴边、查看主机贴右缘。
- * 未关联不渲染整条，避免空条或置灰入口。
+ * 健康六卡下的通栏宿主条。壳、主机名胶囊和入口都用主机事件轨的现成类。
+ * 未关联不渲染整条。
  */
 export default function MysqlHostRail({
   host,
@@ -33,24 +32,24 @@ export default function MysqlHostRail({
 
   return (
     <div
-      className={`${shell.eventsRail} ${pro.hostStrip}`}
+      className={shell.eventsRail}
       data-host-strip=""
       data-host-linked={host ? '' : undefined}
       aria-busy={loading && !host ? true : undefined}
     >
       {host ? (
         <>
-          <div className={pro.hostStripLead}>
-            <span className={pro.hostStripLabel}>所属主机</span>
-            <span className={pro.hostStripName} title={host.name}>{host.name}</span>
-            <span className={pro.hostStripMetric}>
-              CPU <b>{percentText(cpuPercent)}</b>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 text-[var(--color-text-3)]">所属主机</span>
+            <span className={`${shell.eventsChip} truncate`} title={host.name}>{host.name}</span>
+            <span className="shrink-0 whitespace-nowrap">
+              CPU <b className="font-semibold tabular-nums text-[var(--color-text-1)]">{percentText(cpuPercent)}</b>
             </span>
-            <span className={pro.hostStripMetric}>
-              内存 <b>{percentText(memPercent)}</b>
+            <span className="shrink-0 whitespace-nowrap">
+              内存 <b className="font-semibold tabular-nums text-[var(--color-text-1)]">{percentText(memPercent)}</b>
             </span>
           </div>
-          <Link className={`${shell.jumpBtn} ${pro.hostStripLink} no-underline`} href={href}>
+          <Link className={`${shell.jumpBtn} !mt-0 ml-auto shrink-0 self-center whitespace-nowrap no-underline`} href={href}>
             查看主机
           </Link>
         </>
