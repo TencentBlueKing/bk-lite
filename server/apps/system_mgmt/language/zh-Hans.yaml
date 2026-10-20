@@ -155,6 +155,11 @@ error:
   im_group_provider_unsupported: 当前 IM 平台不支持群协作
   im_group_instance_not_ready: IM 群协作集成实例尚未就绪
   im_group_capability_not_ready: IM 群协作能力尚未就绪
+  notification_provider_unavailable: 通知传输暂不可用。
+  notification_invalid_provider_response: 通知渠道返回格式无效。
+  alert_copy_partial_accepted: 告警中心仅接受了部分事件副本。
+  notification_delivery_failed: 通知渠道投递失败。
+  alert_copy_rejected: 告警中心未接受事件副本。
 success:
   menu_group_disabled: 菜单组已禁用
   batch_create: 批量创建成功
