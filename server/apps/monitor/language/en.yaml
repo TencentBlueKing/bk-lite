@@ -14,9 +14,14 @@ monitor_object_type:
   Aliyun Cloud: Aliyun Cloud
   Other: Other
 
-# Fallback display name when plugin i18n is missing: show TCP, not TCPPort
+# Fallback display name when plugin i18n is missing: show TCP, not TCPPort.
+# Cloud-family L2 uses the platform name only (no "Cloud Platform" / "VM Monitoring" suffix).
 monitor_object:
   TCPPort: TCP
+  TCP: Tencent Cloud
+  Aliyun: Alibaba Cloud
+  SangforSCP: Sangfor SCP
+  CNware: CNware
 
 flow_onboarding_ui:
   accessAsset: Access Asset

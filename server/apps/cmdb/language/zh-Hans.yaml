@@ -121,7 +121,7 @@ MODEL:
   fusioninsight_host: FusionInsight主机
   ip: IP
   manageone: ManageOne
-  manageone_cloud: ManageOne云平台
+  manageone_cloud: ManageOne
   manageone_ds: ManageOne数据存储
   manageone_host: ManageOne宿主机
   manageone_server: ManageOne云服务器
@@ -217,7 +217,7 @@ MODEL:
   azure_dns: Azure DNS
   inspurincloudrail: 浪潮超融合平台
   inspurincloudrail_vm: 浪潮超融合虚拟机
-  sangforscp: SCP云平台
+  sangforscp: 深信服 SCP
   sangforscp_host: SCP平台主机
   sangforscp_vm: SCP平台虚拟机
   nutanixhci: 路坦力超融合平台

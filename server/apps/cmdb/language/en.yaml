@@ -121,7 +121,7 @@ MODEL:
   fusioninsight_host: FusionInsight Cluster
   ip: IP
   manageone: ManageOne
-  manageone_cloud: ManageOne Cloud
+  manageone_cloud: ManageOne
   manageone_ds: ManageOne Data Storage
   manageone_host: ManageOne Host
   manageone_server: ManageOne Cloud

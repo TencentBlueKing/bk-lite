@@ -14,9 +14,14 @@ monitor_object_type:
   Aliyun Cloud: 阿里云
   Other: 其他
 
-# 对象展示名兜底：插件语言未合并时仍显示「TCP」而非技术名 TCPPort
+# 对象展示名兜底：插件语言未合并时仍显示「TCP」而非技术名 TCPPort。
+# Cloud 族 L2 只写平台名，去掉「云平台 / 虚拟机监控」等后缀。
 monitor_object:
   TCPPort: TCP
+  TCP: 腾讯云
+  Aliyun: 阿里云
+  SangforSCP: 深信服 SCP
+  CNware: 云宏 CNware
 
 flow_onboarding_ui:
   accessAsset: 接入资产
