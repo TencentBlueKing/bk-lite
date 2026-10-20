@@ -14,10 +14,10 @@ import {
   mergePlatformCurrentApp,
   PLATFORM_DOCK_CHAT_MIN_WIDTH,
   PLATFORM_DOCK_CHAT_WIDTH,
-  PLATFORM_HISTORY_RAIL_DOCK,
   clampPlatformDockChatWidth,
   nextPlatformDockChatWidth,
   platformDockInsetWidth,
+  platformHistoryRailDockWidth,
   clampFabPosition,
   DEFAULT_FAB_POSITION,
   fabPositionStorageKey,
@@ -109,6 +109,7 @@ const HistoryRail: React.FC<{
   sessionId: string | null;
   loading: boolean;
   wide: boolean;
+  dockWidth: number;
   onSelect: (id: string) => void;
   canDelete: (id: string) => boolean;
   confirmingDeleteId: string | null;
@@ -121,6 +122,7 @@ const HistoryRail: React.FC<{
   sessionId,
   loading,
   wide,
+  dockWidth,
   onSelect,
   canDelete,
   confirmingDeleteId,
@@ -152,7 +154,7 @@ const HistoryRail: React.FC<{
     <aside
       className="flex h-full min-h-0 flex-shrink-0 flex-col"
       style={{
-        width: wide ? HISTORY_RAIL_FULL : PLATFORM_HISTORY_RAIL_DOCK,
+        width: wide ? HISTORY_RAIL_FULL : dockWidth,
         background: WC.historyRail,
         borderRight: `1px solid ${WC.botBorder}`,
       }}
@@ -515,6 +517,10 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
   const sideOpen = historyOpen || filePanelOpen;
   const historyOpenRef = useRef(sideOpen);
   historyOpenRef.current = sideOpen;
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === 'undefined' ? 0 : window.innerWidth
+  );
+  const dockRailWidth = platformHistoryRailDockWidth(viewportWidth);
   const resizingRef = useRef(false);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -880,6 +886,17 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
     setChatWidth((current) => clampPlatformDockChatWidth(current, window.innerWidth, sideOpen));
   }, [sideOpen]);
 
+  useEffect(() => {
+    const onResize = () => {
+      setViewportWidth(window.innerWidth);
+      setChatWidth((current) =>
+        clampPlatformDockChatWidth(current, window.innerWidth, historyOpenRef.current)
+      );
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   useEffect(() => () => resizeCleanupRef.current?.(), []);
 
   const onResizePointerDown = useCallback(
@@ -933,13 +950,13 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
       fullscreen: isFullscreen,
       historyOpen: sideOpen,
       chatWidth,
-      viewportWidth: window.innerWidth,
+      viewportWidth,
     });
     document.documentElement.style.setProperty(WEBCHAT_DOCK_INSET_VAR, `${width}px`);
     return () => {
       document.documentElement.style.setProperty(WEBCHAT_DOCK_INSET_VAR, '0px');
     };
-  }, [showLauncher, forbidden, hasOpened, collapsed, isFullscreen, sideOpen, chatWidth]);
+  }, [showLauncher, forbidden, hasOpened, collapsed, isFullscreen, sideOpen, chatWidth, viewportWidth]);
 
   if (forbidden || !showLauncher) {
     return null;
@@ -976,7 +993,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
           style={{
             width: isFullscreen
               ? undefined
-              : chatWidth + (sideOpen ? PLATFORM_HISTORY_RAIL_DOCK : 0),
+              : chatWidth + (sideOpen ? dockRailWidth : 0),
             background: WC.white,
             borderLeft: isFullscreen ? undefined : `1px solid ${WC.dockEdge}`,
             display: collapsed ? 'none' : undefined,
@@ -1139,6 +1156,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
               sessionId={sessionId}
               loading={loading}
               wide={isFullscreen}
+              dockWidth={dockRailWidth}
               onSelect={handleSelectSession}
               canDelete={(id) => !isPersistedPlatformSession(id, sessions) || Boolean(platform.deleteSessionUrl)}
               confirmingDeleteId={confirmingDeleteId}
@@ -1151,7 +1169,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
             <div
               className="flex h-full min-h-0 flex-shrink-0 flex-col"
               style={{
-                width: isFullscreen ? HISTORY_RAIL_FULL : PLATFORM_HISTORY_RAIL_DOCK,
+                width: isFullscreen ? HISTORY_RAIL_FULL : dockRailWidth,
                 background: WC.stage,
                 borderRight: `1px solid ${WC.botBorder}`,
               }}

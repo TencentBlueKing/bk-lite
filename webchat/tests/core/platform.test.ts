@@ -18,6 +18,7 @@ import {
   clampPlatformDockChatWidth,
   nextPlatformDockChatWidth,
   platformDockInsetWidth,
+  platformHistoryRailDockWidth,
   readPlatformWebchatWidth,
   resolvePlatformWebchatWidthUrl,
   shouldShowPlatformLauncher,
@@ -589,6 +590,21 @@ test('dock chat width clamps and grows when the pointer moves left', () => {
   assert.equal(historyChat, half - PLATFORM_HISTORY_RAIL_DOCK);
   assert.equal(historyChat + PLATFORM_HISTORY_RAIL_DOCK, half);
   assert.ok(historyChat < PLATFORM_DOCK_CHAT_MIN_WIDTH);
+  const narrow = 400;
+  const narrowHalf = Math.round(narrow * PLATFORM_DOCK_MAX_VIEWPORT_RATIO);
+  const narrowRail = platformHistoryRailDockWidth(narrow);
+  const narrowChat = clampPlatformDockChatWidth(1200, narrow, true);
+  assert.equal(narrowRail, narrowHalf);
+  assert.equal(narrowChat + narrowRail, narrowHalf);
+  assert.equal(
+    platformDockInsetWidth({
+      visible: true,
+      historyOpen: true,
+      chatWidth: 1200,
+      viewportWidth: narrow,
+    }),
+    narrowHalf,
+  );
   assert.equal(clampPlatformDockChatWidth(Number.NaN), PLATFORM_DOCK_CHAT_WIDTH);
   assert.equal(nextPlatformDockChatWidth(380, -40), 420);
   assert.equal(nextPlatformDockChatWidth(380, 100), 320);
