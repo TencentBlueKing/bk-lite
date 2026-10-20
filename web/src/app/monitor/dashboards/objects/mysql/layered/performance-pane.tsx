@@ -123,6 +123,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
 
   const innodbCard = innodbHasLoad(metricMap) || innodbAwaiting ? (
     <ThinTimeSeries
+      className="h-full max-[720px]:h-auto"
       title="InnoDB 读写"
       hint="读、写与 Redo 刷盘。近窗接近零时不放大噪声。"
       loading={innodbAwaiting}
@@ -135,11 +136,11 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       ]}
     />
   ) : (
-    <section className={`${classic.panel} ${host.chartPanel}`}>
+    <section className={`${classic.panel} ${host.chartPanel} flex h-full flex-col max-[720px]:h-auto`}>
       <div className={host.chartHead}>
         <div className={host.chartTitle}>InnoDB 读写</div>
       </div>
-      <div className="flex h-[72px] flex-col items-center justify-center text-center">
+      <div className="flex min-h-[156px] grow flex-col items-center justify-center text-center">
         <div className="text-[13px] font-semibold text-[var(--color-text-2)]">
           {innodb.length > 0 ? '近窗无明显 InnoDB 读写' : '暂无采集数据'}
         </div>
@@ -157,6 +158,11 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const showBuffer = bufferAwaiting || buffer.length > 0;
   const cardClass = (wide: boolean) => (wide ? `min-w-0 ${pro.perfWide}` : 'min-w-0');
   const writeInnodbPair = showWrites && showInnodb;
+  // 桌面并排：列拉到同行较高侧，卡填满列高。窄屏折行后各卡自高。
+  const pairCol = writeInnodbPair
+    ? 'grid h-full min-w-0 grid-rows-[auto_minmax(auto,1fr)] gap-3 max-[720px]:h-auto max-[720px]:grid-rows-[auto_auto]'
+    : 'flex min-w-0 flex-col gap-3';
+  const pairCard = writeInnodbPair ? 'h-full max-[720px]:h-auto' : undefined;
 
   return (
     <>
@@ -202,14 +208,15 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       {showWrites || showInnodb ? (
         <div
           className={writeInnodbPair
-            ? 'grid grid-cols-2 items-start gap-3 max-[720px]:grid-cols-1'
+            ? 'grid grid-cols-2 items-stretch gap-3 max-[720px]:grid-cols-1'
             : 'grid grid-cols-1 gap-3'}
           data-perf-pair={writeInnodbPair ? 'side' : 'single'}
         >
           {showWrites ? (
-            <div className="flex min-w-0 flex-col gap-3">
+            <div className={pairCol}>
               <ProSectionTitle>写入与语句</ProSectionTitle>
               <ThinTimeSeries
+                className={pairCard}
                 title="写入语句"
                 loading={writesAwaiting}
                 unit="cps"
@@ -224,7 +231,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
             </div>
           ) : null}
           {showInnodb ? (
-            <div id="mysql-perf-innodb" className="flex min-w-0 flex-col gap-3">
+            <div id="mysql-perf-innodb" className={pairCol}>
               <ProSectionTitle>InnoDB</ProSectionTitle>
               {innodbCard}
             </div>
