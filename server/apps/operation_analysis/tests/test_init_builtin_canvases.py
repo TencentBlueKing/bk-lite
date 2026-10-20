@@ -718,8 +718,10 @@ def test_builtin_canvas_title_links_and_alert_screen_trend_titles():
     ]
 
     cmdb_widgets = _widgets_by_name(next(item for item in payload["dashboards"] if item["name"] == "CMDB仪表盘")["view_sets"])
-    for name in ("模型分类数", "实例数", "非空模型数", "空模型数", "模型覆盖率"):
+    for name in ("模型分类数", "实例数"):
         assert cmdb_widgets[name]["valueConfig"]["interaction"] == INSTANCE_SCALE_TITLE_LINK
+    for name in ("非空模型数", "空模型数", "模型覆盖率"):
+        assert "interaction" not in cmdb_widgets[name]["valueConfig"]
     assert cmdb_widgets["模型数"]["valueConfig"]["interaction"] == MODEL_MANAGE_TITLE_LINK
     assert cmdb_widgets["主机操作系统分布"]["valueConfig"]["interaction"] == HOST_LIST_TITLE_LINK
     assert cmdb_widgets[f"变更趋势{TREND_TITLE_SUFFIX}"]["valueConfig"]["filterBindings"]["time__timeRange"] is True
