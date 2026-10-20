@@ -6,9 +6,6 @@ import { useOpenApiTokensPage } from '@/app/system-manager/hooks/useOpenApiToken
 
 const SecretKeyPage: React.FC = () => {
   const {
-    canViewSystem,
-    canManagePersonal,
-    canManageSystem,
     personalRows,
     systemRows,
     personalLoading,
@@ -23,9 +20,6 @@ const SecretKeyPage: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <OpenApiTokensPageShell
-        canViewSystem={canViewSystem}
-        canManagePersonal={canManagePersonal}
-        canManageSystem={canManageSystem}
         personalRows={personalRows}
         systemRows={systemRows}
         personalLoading={personalLoading}
