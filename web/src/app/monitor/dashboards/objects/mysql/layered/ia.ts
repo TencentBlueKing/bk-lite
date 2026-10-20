@@ -1030,7 +1030,8 @@ const positiveErrno = (value: number | null) => (
 
 /**
  * 复制签加深。错误号为 0 或不存在时不占卡。
- * 位点与日志、主库下游都是有采才出；从库视角不渲染主库下游。
+ * 主库下游有采才出；从库视角不渲染主库下游。
+ * 位点当前值不在这里铺文案卡，见 readMysqlReplicationSeries。
  */
 export const readMysqlReplicationExtras = (
   metricMap: Record<string, MetricSeries | undefined>
@@ -1119,6 +1120,50 @@ export const readMysqlReplicationExtras = (
   }
 
   return { error, logs, downstream };
+};
+
+export interface MysqlReplicationSeries {
+  delay: ChartData[];
+  relay: ChartData[];
+  binlog: ChartData[];
+  delayNote?: string;
+  relayNote?: string;
+  binlogNote?: string;
+}
+
+const noteLine = (parts: string[]) => {
+  const text = parts.filter(Boolean).join(' · ');
+  return text || undefined;
+};
+
+/**
+ * 复制趋势三条线：延迟、Relay 位点、Binlog 位点。
+ * 体积和文件数只进标题旁注，不单独成线。没有采点就留空数组，不补 0。
+ */
+export const readMysqlReplicationSeries = (
+  metricMap: Record<string, MetricSeries | undefined>
+): MysqlReplicationSeries => {
+  const delayLatest = latestNumber(metricMap.mysql_slave_seconds_behind_master);
+  const relayPos = latestNumber(metricMap.mysql_slave_relay_log_pos);
+  const relaySpace = latestNumber(metricMap.mysql_slave_relay_log_space);
+  const sourcePos = latestNumber(metricMap.mysql_replication_source_log_pos);
+  const binlogSize = latestNumber(metricMap.mysql_binary_size_bytes);
+  const binlogFiles = latestNumber(metricMap.mysql_binary_files_count);
+  return {
+    delay: collectedPoints(metricMap.mysql_slave_seconds_behind_master),
+    relay: collectedPoints(metricMap.mysql_slave_relay_log_pos),
+    binlog: collectedPoints(metricMap.mysql_replication_source_log_pos),
+    delayNote: delayLatest == null ? undefined : `当前 ${formatMysqlReplicationLag(delayLatest)}`,
+    relayNote: noteLine([
+      relayPos != null ? `位置 ${formatPosition(relayPos)}` : '',
+      relaySpace != null ? formatBytes(relaySpace) : ''
+    ]),
+    binlogNote: noteLine([
+      sourcePos != null ? `位置 ${formatPosition(sourcePos)}` : '',
+      binlogSize != null ? formatBytes(binlogSize) : '',
+      binlogFiles != null ? `${formatPosition(binlogFiles)} 文件` : ''
+    ])
+  };
 };
 
 export const waitStatementIds = (event: MysqlWaitEventRow) => {

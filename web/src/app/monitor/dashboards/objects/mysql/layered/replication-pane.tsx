@@ -3,14 +3,16 @@
 import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
 import { GrayTabEmptyState, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
-import { KpiStrip, type KpiCardModel } from '../../host/layered/signal-bar';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
+import host from '../../host/layered/layered.module.scss';
 import {
   formatMysqlReplicationLag,
   MYSQL_REPLICATION_EXTRA_METRICS,
   readMysqlReplicationExtras,
+  readMysqlReplicationSeries,
   readMysqlRoleBlock,
   type MysqlReplicationCard,
+  type MysqlReplicationSeries,
   type MysqlRoleField,
   type MysqlRoleTone
 } from './ia';
@@ -52,6 +54,20 @@ const lagChange = (points: ChartData[] | undefined) => {
 const replicaFields = (fields: MysqlRoleField[]) => REPLICA_LABELS.map((label) => (
   fields.find((field) => field.label === label) || { label, value: '--', tone: 'muted' as const }
 ));
+
+/** 从库，或已经采到延迟/位点时，铺三张趋势卡。缺的那张留空，不补零线。 */
+const hasReplicationTrends = (
+  kind: 'primary' | 'replica' | 'group' | undefined,
+  trends: MysqlReplicationSeries
+) => Boolean(
+  kind === 'replica'
+  || trends.delay.length
+  || trends.relay.length
+  || trends.binlog.length
+  || trends.delayNote
+  || trends.relayNote
+  || trends.binlogNote
+);
 
 function NoteCard({ card }: { card: MysqlReplicationCard }) {
   return (
@@ -96,6 +112,61 @@ function FillState({ title }: { title: string }) {
   );
 }
 
+function StatusCards({
+  items
+}: {
+  items: Array<{ key: string; label: string; value: string; tone?: string; subtitle?: string }>;
+}) {
+  return (
+    <div className="mt-3 grid grid-cols-3 gap-3">
+      {items.map((item) => (
+        <section key={item.key} className={host.kpiCard} data-kpi={item.key}>
+          <div className={host.kpiLabel}>{item.label}</div>
+          <div
+            className="mt-1 max-w-full truncate text-[18px] font-semibold leading-6 tracking-[-0.02em] text-[var(--color-text-1)] [font-variant-numeric:tabular-nums]"
+            style={item.tone ? { color: item.tone } : undefined}
+          >
+            {item.value}
+          </div>
+          {item.subtitle ? (
+            <div className="mt-1 max-w-full truncate text-[12px] leading-4 text-[var(--color-text-3)]">{item.subtitle}</div>
+          ) : null}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function TrendCard({
+  trend,
+  title,
+  unit,
+  color,
+  data,
+  note
+}: {
+  trend: 'delay' | 'relay' | 'binlog';
+  title: string;
+  unit: 's' | 'counts';
+  color: string;
+  data: ChartData[];
+  note?: string;
+}) {
+  return (
+    <div className={trend === 'delay' ? `${pro.perfWide} min-w-0` : 'min-w-0'} data-replication-trend={trend}>
+      <ThinTimeSeries
+        title={title}
+        unit={unit}
+        numericAxis
+        data={data}
+        reading={note}
+        emptyText="暂无数据"
+        legends={[{ label: title, color }]}
+      />
+    </div>
+  );
+}
+
 export default function ReplicationPane({
   metricMap,
   pendingMetricNames
@@ -105,25 +176,25 @@ export default function ReplicationPane({
 }) {
   const block = useMemo(() => readMysqlRoleBlock(metricMap), [metricMap]);
   const extras = useMemo(() => readMysqlReplicationExtras(metricMap), [metricMap]);
+  const trends = useMemo(() => readMysqlReplicationSeries(metricMap), [metricMap]);
 
   const statusBlock = block && block.kind !== 'primary' && block.fields.length > 0 ? block : null;
   const fields = statusBlock
     ? (statusBlock.kind === 'replica' ? replicaFields(statusBlock.fields) : statusBlock.fields)
     : [];
   const change = lagChange(statusBlock?.delay);
-  const items: KpiCardModel[] = fields.map((field) => ({
+  const items = fields.map((field) => ({
     key: field.label,
     label: field.label,
     value: displayValue(field),
     tone: toneColor(field),
     subtitle: field.label === '复制延迟' ? change : undefined
   }));
-  const showTrend = Boolean(statusBlock && (statusBlock.kind === 'replica' || statusBlock.delay?.length));
+  const showTrends = hasReplicationTrends(statusBlock?.kind, trends);
   const hasContent = items.length > 0
     || Boolean(extras?.error)
-    || Boolean(extras?.logs.length)
     || Boolean(extras?.downstream.length)
-    || showTrend;
+    || showTrends;
 
   const replicationLoading = blocksUntilReady(MYSQL_ROLE_METRICS, pendingMetricNames)
     || blocksUntilReady(MYSQL_REPLICATION_EXTRA_METRICS, pendingMetricNames);
@@ -135,20 +206,8 @@ export default function ReplicationPane({
       {items.length > 0 || extras?.error ? (
         <>
           <ProSectionTitle>状态</ProSectionTitle>
-          {items.length > 0 ? (
-            <div className="mt-3 [&>div]:!grid-cols-3">
-              <KpiStrip items={items} />
-            </div>
-          ) : null}
+          {items.length > 0 ? <StatusCards items={items} /> : null}
           {extras?.error ? <CardRow cards={[extras.error]} /> : null}
-        </>
-      ) : null}
-      {extras && extras.logs.length > 0 ? (
-        <>
-          <div className="mt-3">
-            <ProSectionTitle>位点与日志</ProSectionTitle>
-          </div>
-          <CardRow cards={extras.logs} />
         </>
       ) : null}
       {extras && extras.downstream.length > 0 ? (
@@ -159,21 +218,36 @@ export default function ReplicationPane({
           <CardRow cards={extras.downstream} />
         </>
       ) : null}
-      {showTrend ? (
+      {showTrends ? (
         <>
           <div className="mt-3">
             <ProSectionTitle>趋势</ProSectionTitle>
           </div>
           <div className={`mt-3 ${pro.perfGrid}`}>
-            <div className={pro.perfWide}>
-              <ThinTimeSeries
-                title="复制延迟"
-                unit="s"
-                data={statusBlock?.delay || []}
-                emptyText="暂无数据"
-                legends={[{ label: '延迟', color: HOST_SERIES_COLOR.memUsed }]}
-              />
-            </div>
+            <TrendCard
+              trend="delay"
+              title="复制延迟"
+              unit="s"
+              color={HOST_SERIES_COLOR.memUsed}
+              data={trends.delay}
+              note={trends.delayNote}
+            />
+            <TrendCard
+              trend="relay"
+              title="Relay 位点"
+              unit="counts"
+              color={HOST_SERIES_COLOR.memAvailable}
+              data={trends.relay}
+              note={trends.relayNote}
+            />
+            <TrendCard
+              trend="binlog"
+              title="Binlog 位点"
+              unit="counts"
+              color={HOST_SERIES_COLOR.diskUsed}
+              data={trends.binlog}
+              note={trends.binlogNote}
+            />
           </div>
         </>
       ) : null}
