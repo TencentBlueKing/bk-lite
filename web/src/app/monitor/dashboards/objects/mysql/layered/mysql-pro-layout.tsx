@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
@@ -48,7 +48,8 @@ import pro from './pro.module.scss';
 interface MysqlProLayoutProps {
   metricMap: Record<string, MetricSeries | undefined>;
   previousMetricMap: Record<string, MetricSeries | undefined>;
-  loading: boolean;
+  pendingMetricNames: ReadonlySet<string>;
+  instanceListLoading?: boolean;
   instanceId: string;
   monitorObjectId?: React.Key;
   nodeId: string;
@@ -70,7 +71,8 @@ const hostMetric = (name: string) => HOST_DASHBOARD_CONFIG.metrics.find((metric)
 export default function MysqlProLayout({
   metricMap,
   previousMetricMap,
-  loading,
+  pendingMetricNames,
+  instanceListLoading = false,
   instanceId,
   monitorObjectId,
   nodeId,
@@ -99,10 +101,15 @@ export default function MysqlProLayout({
   const [statementId, setStatementId] = useState('');
   const [waitId, setWaitId] = useState('');
   const [linkedHost, setLinkedHost] = useState<MysqlHostCandidate | null>(null);
+  const [hostPhase, setHostPhase] = useState<'loading' | 'ready'>(() => (
+    nodeId.trim() || ip.trim() ? 'loading' : 'ready'
+  ));
   const [cpuPercent, setCpuPercent] = useState<number | null>(null);
   const [memPercent, setMemPercent] = useState<number | null>(null);
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
+  const [eventsPhase, setEventsPhase] = useState<'loading' | 'ready'>('loading');
+  const eventsScopeRef = useRef<string | null>(null);
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const [alertRefreshKey, setAlertRefreshKey] = useState(0);
   const [focusAlertId, setFocusAlertId] = useState('');
@@ -140,15 +147,28 @@ export default function MysqlProLayout({
     let active = true;
     if (!nodeId.trim() && !ip.trim()) {
       setLinkedHost(null);
+      setCpuPercent(null);
+      setMemPercent(null);
+      setHostPhase('ready');
       return undefined;
     }
+    setHostPhase('loading');
+    setLinkedHost(null);
+    setCpuPercent(null);
+    setMemPercent(null);
     const load = async () => {
       try {
         const objects = await getMonitorObject({ include_invisible: true });
-        if (!active || !Array.isArray(objects)) return;
+        if (!active) return;
+        if (!Array.isArray(objects)) {
+          setLinkedHost(null);
+          setHostPhase('ready');
+          return;
+        }
         const hostObject = objects.find((item: { name?: string; display_name?: string }) => isHostMonitorObject(item));
         if (!hostObject?.id) {
           setLinkedHost(null);
+          setHostPhase('ready');
           return;
         }
         const pages = await fetchDashboardInstancePages(getInstanceList, hostObject.id);
@@ -174,8 +194,12 @@ export default function MysqlProLayout({
           };
         }).filter((host) => host.instanceId);
         setLinkedHost(matchMysqlHost({ nodeId, ip }, hosts));
+        setHostPhase('ready');
       } catch {
-        if (active) setLinkedHost(null);
+        if (active) {
+          setLinkedHost(null);
+          setHostPhase('ready');
+        }
       }
     };
     load();
@@ -250,14 +274,23 @@ export default function MysqlProLayout({
     };
   }, [alertDrawerOpen, getMonitorAlert, instanceId, tab]);
 
+  const eventsScope = `${instanceId}|${
+    chartWindow ? Math.round(chartWindow.endSec - chartWindow.startSec) : ''
+  }`;
   useEffect(() => {
+    if (eventsScopeRef.current === eventsScope) return;
+    const first = eventsScopeRef.current == null;
+    eventsScopeRef.current = eventsScope;
+    if (first) return;
     setAlertEvents([]);
-  }, [instanceId]);
+    setEventsPhase('loading');
+  }, [eventsScope]);
 
   useEffect(() => {
     if (tab !== 'overview') return undefined;
     if (!instanceId) {
       setAlertEvents([]);
+      setEventsPhase('ready');
       return undefined;
     }
     let active = true;
@@ -267,10 +300,14 @@ export default function MysqlProLayout({
       page_size: 20
     })
       .then((data) => {
-        if (active) setAlertEvents(hostAlertRailEvents(data?.results));
+        if (!active) return;
+        setAlertEvents(hostAlertRailEvents(data?.results));
+        setEventsPhase('ready');
       })
       .catch(() => {
-        if (active) setAlertEvents([]);
+        if (!active) return;
+        setAlertEvents([]);
+        setEventsPhase('ready');
       });
     return () => {
       active = false;
@@ -342,10 +379,15 @@ export default function MysqlProLayout({
 
   const pane = () => {
     if (tab === 'performance') {
-      return <PerformancePane metricMap={metricMap} loading={loading} />;
+      return <PerformancePane metricMap={metricMap} pendingMetricNames={pendingMetricNames} />;
     }
     if (tab === 'replication') {
-      return <ReplicationPane metricMap={metricMap} loading={loading} />;
+      return (
+        <ReplicationPane
+          metricMap={metricMap}
+          pendingMetricNames={pendingMetricNames}
+        />
+      );
     }
     if (tab === 'statements') {
       return (
@@ -377,14 +419,16 @@ export default function MysqlProLayout({
         readings={readings}
         previous={previous}
         metricMap={metricMap}
-        loading={loading}
+        pendingMetricNames={pendingMetricNames}
         statementsCollected={statementsCollected}
         host={linkedHost}
         hostHref={buildHostDashboardHref(linkedHost)}
+        hostLoading={hostPhase === 'loading' || (instanceListLoading && !linkedHost)}
         cpuPercent={cpuPercent}
         memPercent={memPercent}
         alertsOpen={alertDrawerOpen}
         alertEvents={alertEvents}
+        eventsLoading={eventsPhase === 'loading'}
         onOpenAlerts={() => {
           setFocusAlertId('');
           setAlertDrawerOpen(true);
@@ -401,7 +445,7 @@ export default function MysqlProLayout({
   };
 
   return (
-    <ProTimeWindowProvider timeValues={timeValues} queryTimeRange={queryTimeRange} suspend={loading}>
+    <ProTimeWindowProvider timeValues={timeValues} queryTimeRange={queryTimeRange}>
     <div className={host.root}>
       <div className={host.tabBand}>
         <Tabs

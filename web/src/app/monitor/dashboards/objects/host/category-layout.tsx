@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import {
@@ -185,6 +185,8 @@ export default function HostCategoryLayout({
   const [uncontrolledTab, setUncontrolledTab] = useState('overview');
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
+  const [eventsPhase, setEventsPhase] = useState<'loading' | 'ready'>('loading');
+  const eventsScopeRef = useRef<string | null>(null);
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const [alertRefreshKey, setAlertRefreshKey] = useState(0);
   const [focusAlertId, setFocusAlertId] = useState('');
@@ -309,11 +311,24 @@ export default function HostCategoryLayout({
     };
   }, [activeTab, alertDrawerOpen, dashboard.instanceId, getMonitorAlert]);
 
+  const eventsScope = `${String(dashboard.instanceId || '')}|${
+    chartWindow ? Math.round(chartWindow.endSec - chartWindow.startSec) : ''
+  }`;
+  useEffect(() => {
+    if (eventsScopeRef.current === eventsScope) return;
+    const first = eventsScopeRef.current == null;
+    eventsScopeRef.current = eventsScope;
+    if (first) return;
+    setAlertEvents([]);
+    setEventsPhase('loading');
+  }, [eventsScope]);
+
   useEffect(() => {
     if (activeTab !== 'overview') return undefined;
     const instanceId = String(dashboard.instanceId || '');
     if (!instanceId) {
       setAlertEvents([]);
+      setEventsPhase('ready');
       return undefined;
     }
     let active = true;
@@ -325,10 +340,12 @@ export default function HostCategoryLayout({
       .then((data) => {
         if (!active) return;
         setAlertEvents(hostAlertRailEvents(data?.results));
+        setEventsPhase('ready');
       })
       .catch(() => {
         if (!active) return;
         setAlertEvents([]);
+        setEventsPhase('ready');
       });
     return () => {
       active = false;
@@ -418,10 +435,11 @@ export default function HostCategoryLayout({
       <OverviewPane
         metrics={metrics}
         loading={
-          dashboard.loading
+          (dashboard.loading && dashboard.pendingMetricNames.size === 0)
           || diskLoading
           || HOST_OVERVIEW_KPI_METRICS.some((name) => dashboard.pendingMetricNames.has(name))
         }
+        pendingMetricNames={dashboard.pendingMetricNames}
         diskRows={diskRows}
         diskLoading={diskLoading}
         netRows={netRows}
@@ -431,6 +449,7 @@ export default function HostCategoryLayout({
         processLoading={processLoading}
         alertCount={alertCount}
         alertEvents={alertEvents}
+        eventsLoading={eventsPhase === 'loading'}
         alertsOpen={alertDrawerOpen}
         onOpenAlerts={openHostAlerts}
         onFocusAlert={focusHostAlert}
@@ -444,7 +463,7 @@ export default function HostCategoryLayout({
     <ProTimeWindowProvider
       timeValues={dashboard.timeValues}
       queryTimeRange={dashboard.queryTimeRange}
-      suspend={dashboard.loading}
+      suspend={dashboard.loading && dashboard.pendingMetricNames.size === 0}
     >
     <div className={styles.root}>
       <div className={styles.tabBand}>

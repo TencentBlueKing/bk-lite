@@ -48,6 +48,7 @@ import {
 } from '../../shared/utils/pro-dashboard';
 import MysqlProLayout from './layered/mysql-pro-layout';
 import { MYSQL_PERF_AUX_METRICS, MYSQL_REPLICATION_EXTRA_METRICS, readMysqlHeaderIdentity, readMysqlProHeader } from './layered/ia';
+import { MYSQL_HEADER_METRICS, MYSQL_HEALTH_METRICS, blocksUntilReady } from './layered/section-loading';
 import MysqlLegacyLayout from './legacy-layout';
 
 interface MysqlInstanceOption {
@@ -144,6 +145,13 @@ const MYSQL_COMPARE_METRICS = [
   'mysql_buffer_pool_hit_ratio'
 ];
 const MYSQL_METRIC_CONFIG_BY_NAME = new Map(DASHBOARD_METRICS.map((metric) => [metric.name, metric]));
+const MYSQL_CATEGORY_METRIC_NAMES = [...new Set([
+  ...MYSQL_HEALTH_METRICS,
+  ...MYSQL_METRIC_GROUPS.flatMap((group) => group.names),
+  ...MYSQL_PERF_AUX_METRICS,
+  ...MYSQL_REPLICATION_EXTRA_METRICS
+])].filter((name) => MYSQL_METRIC_CONFIG_BY_NAME.has(name));
+const MYSQL_CATEGORY_PENDING_ALL: ReadonlySet<string> = new Set(MYSQL_CATEGORY_METRIC_NAMES);
 
 export default function MysqlDashboardPage() {
   const { getInstanceQuery } = useViewApi();
@@ -154,7 +162,7 @@ export default function MysqlDashboardPage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const loadSequence = useLoadSequence();
   const modeQuery = searchParams.toString();
-  const [loading, setLoading] = useState(true);
+  const [pendingMetricNames, setPendingMetricNames] = useState<ReadonlySet<string>>(() => new Set());
   const [displayMode, setDisplayMode] = useState<MysqlDisplayMode>(() => (
     resolveObjectDashboardMode('mysql', new URLSearchParams(modeQuery))
   ));
@@ -268,7 +276,11 @@ export default function MysqlDashboardPage() {
   const currentInstanceInterval = currentInstanceOption?.interval;
   const primaryInstanceText = resolvedInstanceName;
 
-  const loadMetricGroup = async (metricNames: readonly string[], targetTimeValues: TimeValuesProps) => {
+  const loadMetricGroup = async (
+    metricNames: readonly string[],
+    targetTimeValues: TimeValuesProps,
+    onMetric?: (name: string, series: MetricSeries) => void
+  ) => {
     const metrics = metricNames
       .map((name) => MYSQL_METRIC_CONFIG_BY_NAME.get(name))
       .filter((metric): metric is MysqlMetricConfig => Boolean(metric));
@@ -276,31 +288,131 @@ export default function MysqlDashboardPage() {
     return runWithConcurrency(
       metrics,
       METRIC_QUERY_CONCURRENCY,
-      async (metric) =>
-        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, undefined, false, currentInstanceInterval, {
+      async (metric) => {
+        const entry = await getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, undefined, false, currentInstanceInterval, {
+          monitorObjectId,
+          instanceId,
+        }))
+          .then((result): [string, MetricSeries] => [
+            metric.name,
+            toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)
+          ])
+          .catch((): [string, MetricSeries] => [metric.name, { ...metric, viewData: [], loadState: 'error' }]);
+        onMetric?.(entry[0], entry[1]);
+        return entry;
+      }
+    );
+  };
+
+  const loadCategoryMetrics = async (silent: boolean) => {
+    const loadSeq = loadSequence.begin();
+    const nextInstanceKey = `${String(instanceId)}|${idValuesKey}`;
+    const switchingInstance = requestedInstanceKeyRef.current !== nextInstanceKey;
+    requestedInstanceKeyRef.current = nextInstanceKey;
+    const fresh = !silent || switchingInstance;
+
+    if (fresh) {
+      setSeries({});
+      setPreviousSeries({});
+      if (switchingInstance) setCollectionStatusMetric(null);
+      setPendingMetricNames(new Set(MYSQL_CATEGORY_METRIC_NAMES));
+      setSettledInstanceKey(nextInstanceKey);
+    }
+
+    if (!idValues.length) {
+      setSeries({});
+      setPreviousSeries({});
+      setCollectionStatusMetric(null);
+      setPendingMetricNames(new Set());
+      setSettledInstanceKey(nextInstanceKey);
+      return;
+    }
+
+    const frozenTimeValues = freezeTimeValues(timeValues);
+    const frozenRange = resolveCollectionStatusRange(frozenTimeValues);
+    if (frozenRange) setQueryTimeRange(frozenRange);
+    const previousTimeValues = buildPreviousPeriodTimeValues(frozenTimeValues);
+    const compareMetrics = MYSQL_COMPARE_METRICS
+      .map((name) => MYSQL_METRIC_CONFIG_BY_NAME.get(name))
+      .filter((metric): metric is MysqlMetricConfig => Boolean(metric));
+
+    if (fresh) setPreviousSeries({});
+
+    if (previousTimeValues) {
+      runWithConcurrency(
+        compareMetrics,
+        METRIC_QUERY_CONCURRENCY,
+        async (metric) => getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, undefined, false, currentInstanceInterval, {
           monitorObjectId,
           instanceId,
         }))
           .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
           .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
-    );
+      ).then((previousResults) => {
+        if (!loadSequence.isCurrent(loadSeq)) return;
+        const next = Object.fromEntries(previousResults);
+        setPreviousSeries((prev) => (fresh ? next : { ...prev, ...next }));
+      });
+    }
+
+    getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false, currentInstanceInterval, {
+      monitorObjectId,
+      instanceId,
+    }))
+      .then((result) => toMetricSeries(
+        {
+          name: 'mysql_collection_status',
+          display_name: '采集状态',
+          description: 'MySQL 监控探针采集状态，用于判断当前实例是否存在有效采集数据。',
+          unit: 'counts',
+          query: MYSQL_COLLECTION_STATUS_QUERY,
+          color: '#27c274'
+        },
+        result,
+        instanceId,
+        resolvedInstanceName,
+        idValues,
+        instanceIdKeys
+      ))
+      .catch(() => ({
+        name: 'mysql_collection_status',
+        display_name: '采集状态',
+        description: 'MySQL 监控探针采集状态，用于判断当前实例是否存在有效采集数据。',
+        unit: 'counts' as MetricUnit,
+        query: MYSQL_COLLECTION_STATUS_QUERY,
+        color: '#27c274',
+        viewData: [],
+        loadState: 'error' as const
+      } satisfies MetricSeries))
+      .then((collectionStatus) => {
+        if (!loadSequence.isCurrent(loadSeq)) return;
+        setCollectionStatusMetric(collectionStatus);
+      });
+
+    const publish = (name: string, series: MetricSeries) => {
+      if (!loadSequence.isCurrent(loadSeq)) return;
+      setSeries((prev) => ({ ...prev, [name]: series }));
+      if (!fresh) return;
+      setPendingMetricNames((prev) => {
+        if (!prev.has(name)) return prev;
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+    };
+
+    await loadMetricGroup(MYSQL_CATEGORY_METRIC_NAMES, frozenTimeValues, publish);
   };
 
   const loadMetrics = async (silent = false) => {
+    if (displayMode === 'category') {
+      await loadCategoryMetrics(silent);
+      return;
+    }
     const loadSeq = loadSequence.begin();
     const nextInstanceKey = `${String(instanceId)}|${idValuesKey}`;
-    const switchingInstance = requestedInstanceKeyRef.current !== nextInstanceKey;
     requestedInstanceKeyRef.current = nextInstanceKey;
     let committed = false;
-
-    if (!silent || switchingInstance) {
-      setLoading(true);
-    }
-    if (!silent && displayMode === 'category') {
-      setSeries({});
-      setPreviousSeries({});
-      if (switchingInstance) setCollectionStatusMetric(null);
-    }
 
     try {
       if (isDashboardMode) {
@@ -310,7 +422,6 @@ export default function MysqlDashboardPage() {
           setCollectionStatusMetric(null);
           setSettledInstanceKey(nextInstanceKey);
           committed = true;
-          if (!silent) setLoading(false);
           return;
         }
         const frozenTimeValues = freezeTimeValues(timeValues);
@@ -396,15 +507,8 @@ export default function MysqlDashboardPage() {
         setSettledInstanceKey(nextInstanceKey);
         committed = true;
 
-        if (!silent) {
-          setLoading(false);
-        }
-
         MYSQL_METRIC_GROUPS.slice(1).forEach((group) => {
-          const names = group.key === 'details' && displayMode === 'category'
-            ? [...group.names, ...MYSQL_PERF_AUX_METRICS, ...MYSQL_REPLICATION_EXTRA_METRICS]
-            : group.names;
-          loadMetricGroup(names, frozenTimeValues).then((results) => {
+          loadMetricGroup(group.names, frozenTimeValues).then((results) => {
             if (!loadSequence.isCurrent(loadSeq)) {
               return;
             }
@@ -418,20 +522,15 @@ export default function MysqlDashboardPage() {
         setCollectionStatusMetric(null);
       }
     } finally {
-      if (loadSequence.isCurrent(loadSeq)) {
-        if (!committed) setSettledInstanceKey(nextInstanceKey);
-        if (!silent) setLoading(false);
+      if (loadSequence.isCurrent(loadSeq) && !committed) {
+        setSettledInstanceKey(nextInstanceKey);
       }
     }
   };
 
   useEffect(() => {
-    if (isDashboardMode) {
-      loadMetrics();
-      return;
-    }
-
-    setLoading(false);
+    if (!isDashboardMode) return;
+    loadMetrics();
   }, [currentInstanceInterval, instanceId, idValuesKey, timeValues, isDashboardMode, displayMode]);
 
   useEffect(() => {
@@ -474,16 +573,19 @@ export default function MysqlDashboardPage() {
   const instanceSwitching = displayMode === 'category' && settledInstanceKey !== instanceKey;
   const proMetricMap = instanceSwitching ? {} : metricMap;
   const proPreviousMetricMap = instanceSwitching ? {} : previousMetricMap;
-  const proLoading = instanceSwitching || loading;
+  const proPending = instanceSwitching ? MYSQL_CATEGORY_PENDING_ALL : pendingMetricNames;
+  const headerMetricsPending = blocksUntilReady(MYSQL_HEADER_METRICS, proPending);
   const mysqlIdentity = readMysqlHeaderIdentity(metricMap, resolvedInstanceName);
-  const proHeader = displayMode === 'category' && !instanceSwitching ? readMysqlProHeader(metricMap) : null;
+  const proHeader = displayMode === 'category' && !instanceSwitching && !headerMetricsPending
+    ? readMysqlProHeader(proMetricMap)
+    : null;
   // 实例 ID 与展示名仅分隔符不同时（mysql_3306 vs mysql-3306）视为重复，不再展示。
   const normalizeIdentityKey = (value: string) => value.trim().toLowerCase().replace(/[-_\s]+/g, '');
   const showInstanceId =
     Boolean(instanceIdText) &&
     normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
-  // 专业盘在切实例或盘未就绪时收起整行 meta，不留灰骨架，也不留上一实例的角色。
-  const hideProMeta = displayMode === 'category' && (instanceSwitching || loading);
+  // 顶栏 meta 无骨架。切实例或角色指标未回时收起，不等折线。
+  const hideProMeta = displayMode === 'category' && (instanceSwitching || headerMetricsPending);
   const identityMetaItems = proHeader
     ? [
       <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
@@ -662,7 +764,8 @@ export default function MysqlDashboardPage() {
                     key={instanceKey}
                     metricMap={proMetricMap}
                     previousMetricMap={proPreviousMetricMap}
-                    loading={proLoading}
+                    pendingMetricNames={proPending}
+                    instanceListLoading={instanceLoading}
                     instanceId={String(instanceId || '')}
                     monitorObjectId={monitorObjectId}
                     nodeId={currentInstanceOption?.nodeId || ''}

@@ -13,6 +13,7 @@ import {
 } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
+import { metricBlockPhase } from './performance-scope';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
 import { ProSectionTitle } from './section-title';
 import ThinTimeSeries from './thin-time-series';
@@ -41,12 +42,28 @@ interface OverviewPaneProps {
   processLoading?: boolean;
   alertCount: number | null;
   alertEvents?: HostAlertRailEvent[];
+  eventsLoading?: boolean;
   alertsOpen?: boolean;
+  pendingMetricNames?: ReadonlySet<string>;
   onOpenAlerts?: () => void;
   onFocusAlert?: (alertId: string) => void;
   onJump: (tab: 'disk' | 'net' | 'process', key: string) => void;
   alerts: HostSurfaceAlerts['overview'];
 }
+
+const EMPTY_PENDING: ReadonlySet<string> = new Set();
+
+const loadStateOf = (
+  metrics: Record<string, MetricSeries | undefined>,
+  names: readonly string[]
+) => {
+  const states: Record<string, 'success' | 'error' | undefined> = {};
+  names.forEach((name) => {
+    const state = metrics[name]?.loadState;
+    if (state === 'success' || state === 'error') states[name] = state;
+  });
+  return states;
+};
 
 const latestOfRow = (row: EntityTableRow | undefined, key: string) => {
   const value = row?.values[key];
@@ -120,7 +137,9 @@ export default function OverviewPane({
   processLoading = false,
   alertCount,
   alertEvents = [],
+  eventsLoading = false,
   alertsOpen = false,
+  pendingMetricNames = EMPTY_PENDING,
   onOpenAlerts,
   onFocusAlert,
   onJump,
@@ -263,13 +282,16 @@ export default function OverviewPane({
       : []),
     [topProcess]
   );
+  const chartLoading = (names: readonly string[], hasValue: boolean) => (
+    metricBlockPhase(names, pendingMetricNames, loadStateOf(metrics, names), hasValue) === 'loading'
+  );
 
   return (
     <>
       <ProSectionTitle>健康概览</ProSectionTitle>
       <KpiStrip items={cards} loading={loading} />
       <ProSectionTitle>{hostCategoryText(t, 'events')}</ProSectionTitle>
-      <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
+      <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
 
       <ProSectionTitle>重点关注</ProSectionTitle>
       <div className={styles.shortcutGrid}>
@@ -365,14 +387,14 @@ export default function OverviewPane({
       <div className={styles.chartGrid4}>
         <ThinTimeSeries
           title={hostCategoryText(t, 'cpuUtilization')}
-          loading={loading}
+          loading={chartLoading(['cpu_usage_total'], cpuTrend.length > 0)}
           unit="percent"
           data={cpuTrend}
           legends={[CPU_SERIES]}
         />
         <ThinTimeSeries
           title={hostCategoryText(t, 'memoryUtilization')}
-          loading={loading}
+          loading={chartLoading(['mem_used_percent', 'mem_available', 'mem_total'], memTrend.length > 0)}
           unit="percent"
           data={memTrend}
           legends={[MEM_SERIES]}
@@ -380,7 +402,7 @@ export default function OverviewPane({
         <ThinTimeSeries
           title={hostCategoryText(t, 'diskWeightedUsage')}
           hint="总使用率 = 100% × 各挂载已用之和 / 总量之和。概览 KPI 与告警色点用最满挂载，不是这个合计。"
-          loading={diskLoading}
+          loading={diskLoading && diskUsageTrend.length === 0}
           unit="percent"
           emptyText="暂无挂载数据"
           data={diskUsageTrend}
@@ -389,7 +411,7 @@ export default function OverviewPane({
         <ThinTimeSeries
           title="网卡合计"
           hint="本机全部网卡入站与出站吞吐之和；与「吞吐最高网卡」不同。"
-          loading={loading}
+          loading={chartLoading(['net_bytes_recv_rate', 'net_bytes_sent_rate'], netTrend.length > 0)}
           unit="byteps"
           data={netTrend}
           legends={[

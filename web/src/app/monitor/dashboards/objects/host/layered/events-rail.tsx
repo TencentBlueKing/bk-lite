@@ -145,10 +145,12 @@ const EventBody = ({
 
 export default function EventsRail({
   events,
-  onFocusAlert
+  onFocusAlert,
+  loading = false
 }: {
   events: HostAlertRailEvent[];
   onFocusAlert?: (alertId: string) => void;
+  loading?: boolean;
 }) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -196,7 +198,7 @@ export default function EventsRail({
     return () => observer.disconnect();
   }, [proTime?.suspend, shownEvents]);
 
-  if (proTime?.suspend) {
+  if (loading || proTime?.suspend) {
     return (
       <div className={styles.eventsRail} data-events-rail="" data-events-empty="" aria-busy="true">
         <div className={styles.eventsRow}>

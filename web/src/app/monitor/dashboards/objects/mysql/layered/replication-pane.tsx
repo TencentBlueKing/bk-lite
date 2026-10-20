@@ -7,14 +7,15 @@ import { KpiStrip, type KpiCardModel } from '../../host/layered/signal-bar';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import {
   formatMysqlReplicationLag,
+  MYSQL_REPLICATION_EXTRA_METRICS,
   readMysqlReplicationExtras,
   readMysqlRoleBlock,
-  replicationExtrasPending,
   type MysqlReplicationCard,
   type MysqlRoleField,
   type MysqlRoleTone
 } from './ia';
 import type { MetricSeries } from '../types';
+import { MYSQL_ROLE_METRICS, blocksUntilReady } from './section-loading';
 import pro from './pro.module.scss';
 
 const TONE_COLOR: Record<MysqlRoleTone, string | undefined> = {
@@ -97,21 +98,13 @@ function FillState({ title }: { title: string }) {
 
 export default function ReplicationPane({
   metricMap,
-  loading
+  pendingMetricNames
 }: {
   metricMap: Record<string, MetricSeries | undefined>;
-  loading: boolean;
+  pendingMetricNames: ReadonlySet<string>;
 }) {
-  const block = useMemo(
-    () => (loading ? null : readMysqlRoleBlock(metricMap)),
-    [loading, metricMap]
-  );
-  const extras = useMemo(
-    () => (loading ? null : readMysqlReplicationExtras(metricMap)),
-    [loading, metricMap]
-  );
-
-  if (loading) return <FillState title="加载中" />;
+  const block = useMemo(() => readMysqlRoleBlock(metricMap), [metricMap]);
+  const extras = useMemo(() => readMysqlReplicationExtras(metricMap), [metricMap]);
 
   const statusBlock = block && block.kind !== 'primary' && block.fields.length > 0 ? block : null;
   const fields = statusBlock
@@ -132,7 +125,9 @@ export default function ReplicationPane({
     || Boolean(extras?.downstream.length)
     || showTrend;
 
-  if (!hasContent && replicationExtrasPending(metricMap)) return <FillState title="加载中" />;
+  const replicationLoading = blocksUntilReady(MYSQL_ROLE_METRICS, pendingMetricNames)
+    || blocksUntilReady(MYSQL_REPLICATION_EXTRA_METRICS, pendingMetricNames);
+  if (!hasContent && replicationLoading) return <FillState title="加载中" />;
   if (!hasContent) return <FillState title="暂无复制数据" />;
 
   return (

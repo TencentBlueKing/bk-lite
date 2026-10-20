@@ -11,26 +11,36 @@ import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
   buildMysqlOverviewTrends,
-  hasMysqlOverviewSample,
   type MysqlFocusCard,
-  type MysqlOverviewReadings
+  type MysqlHostCandidate,
+  type MysqlOverviewReadings,
+  type MysqlTrendModel
 } from './ia';
 import MysqlHostRail from './host-rail';
-import type { MysqlHostCandidate } from './ia';
-import type { MetricSeries as MysqlMetricSeries } from '../types';
+import {
+  MYSQL_BUFFER_TREND_METRICS,
+  MYSQL_FOCUS_METRICS,
+  MYSQL_HEALTH_METRICS,
+  MYSQL_INNODB_TREND_METRICS,
+  MYSQL_TREND_SLOTS,
+  blocksUntilReady
+} from './section-loading';
+import type { MetricSeries as MysqlMetricSeries, MetricUnit } from '../types';
 
 interface OverviewPaneProps {
   readings: MysqlOverviewReadings;
   previous: Pick<MysqlOverviewReadings, 'slowPerSecond' | 'connectionUtilization' | 'bufferPoolHit'>;
   metricMap: Record<string, MysqlMetricSeries | undefined>;
-  loading: boolean;
+  pendingMetricNames: ReadonlySet<string>;
   statementsCollected: boolean;
   host: MysqlHostCandidate | null;
   hostHref: string;
+  hostLoading: boolean;
   cpuPercent: number | null;
   memPercent: number | null;
   alertsOpen: boolean;
   alertEvents: HostAlertRailEvent[];
+  eventsLoading: boolean;
   onOpenAlerts: () => void;
   onFocusAlert: (alertId: string) => void;
   onOpenFocus: (card: MysqlFocusCard) => void;
@@ -42,6 +52,8 @@ const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'buffe
   value: ''
 }));
 
+const FOCUS_LOADING = ['慢查询', '连接使用率', '缓冲池命中', '活跃会话'] as const;
+
 const SPARK_METRIC: Record<NonNullable<MysqlFocusCard['spark']>, { name: string; unit: 'counts' | 'cps' | 'percent'; color: string }> = {
   slow: { name: 'mysql_slow_queries_rate', unit: 'cps', color: HOST_SERIES_COLOR.load1 },
   connections: { name: 'mysql_connection_utilization', unit: 'percent', color: HOST_SERIES_COLOR.memUsed },
@@ -49,18 +61,60 @@ const SPARK_METRIC: Record<NonNullable<MysqlFocusCard['spark']>, { name: string;
   active: { name: 'mysql_threads_running', unit: 'counts', color: HOST_SERIES_COLOR.load1 }
 };
 
+const SLOT_UNIT: Record<(typeof MYSQL_TREND_SLOTS)[number]['key'], MetricUnit> = {
+  connections: 'counts',
+  qps: 'cps',
+  slow: 'cps'
+};
+
+function TrendCard({
+  title,
+  unit,
+  chart,
+  loading
+}: {
+  title: string;
+  unit: MetricUnit;
+  chart?: MysqlTrendModel;
+  loading: boolean;
+}) {
+  if (chart) {
+    return (
+      <ThinTimeSeries
+        title={chart.title}
+        unit={chart.unit}
+        data={chart.data}
+        legends={chart.legends}
+        loading={loading}
+      />
+    );
+  }
+  return (
+    <ThinTimeSeries
+      title={title}
+      unit={unit}
+      loading={loading}
+      emptyText="暂无数据"
+      data={[]}
+      legends={[]}
+    />
+  );
+}
+
 export default function OverviewPane({
   readings,
   previous,
   metricMap,
-  loading,
+  pendingMetricNames,
   statementsCollected,
   host: linkedHost,
   hostHref,
+  hostLoading,
   cpuPercent,
   memPercent,
   alertsOpen,
   alertEvents,
+  eventsLoading,
   onOpenAlerts,
   onFocusAlert,
   onOpenFocus
@@ -81,43 +135,33 @@ export default function OverviewPane({
     [previous, readings, statementsCollected]
   );
   const trends = useMemo(() => buildMysqlOverviewTrends(metricMap), [metricMap]);
-  const suspended = loading && !hasMysqlOverviewSample(readings);
-
-  if (suspended) {
-    return (
-      <div aria-busy="true" aria-live="polite">
-        <ProSectionTitle>健康概览</ProSectionTitle>
-        <KpiTileRow loading items={MYSQL_LOADING_KPIS} />
-        <ProSectionTitle>所属主机</ProSectionTitle>
-        <MysqlHostRail host={null} href="" cpuPercent={null} memPercent={null} loading />
-        <ProSectionTitle>事件</ProSectionTitle>
-        <div className={host.eventsRail} data-events-rail="" data-events-empty="">
-          <div className={host.eventsRow}>
-            <span className={host.eventsEmpty}>加载中</span>
-          </div>
-        </div>
-        <ProSectionTitle>实例趋势</ProSectionTitle>
-        <div className={host.chartGrid4}>
-          {['连接', 'QPS', '慢查询', '缓冲池命中'].map((title) => (
-            <ThinTimeSeries
-              key={title}
-              title={title}
-              loading
-              unit="counts"
-              data={[]}
-              legends={[]}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const trendByKey = useMemo(() => {
+    const map = new Map<string, MysqlTrendModel>();
+    [...trends.row, ...trends.extra].forEach((chart) => map.set(chart.key, chart));
+    return map;
+  }, [trends]);
+  const healthLoading = blocksUntilReady(MYSQL_HEALTH_METRICS, pendingMetricNames);
+  const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
+  const bufferLoading = blocksUntilReady(MYSQL_BUFFER_TREND_METRICS, pendingMetricNames);
+  const innodbLoading = blocksUntilReady(MYSQL_INNODB_TREND_METRICS, pendingMetricNames);
+  const bufferChart = trendByKey.get('buffer');
+  const innodbChart = trendByKey.get('innodb');
+  const fourth = bufferChart
+    ? { title: '缓冲池命中', unit: 'percent' as const, chart: bufferChart, loading: false }
+    : bufferLoading
+      ? { title: '缓冲池命中', unit: 'percent' as const, chart: undefined, loading: true }
+      : innodbChart
+        ? { title: innodbChart.title, unit: innodbChart.unit, chart: innodbChart, loading: false }
+        : innodbLoading
+          ? { title: 'InnoDB 读写', unit: 'cps' as const, chart: undefined, loading: true }
+          : { title: '缓冲池命中', unit: 'percent' as const, chart: undefined, loading: false };
+  const extra = trends.extra.filter((chart) => chart.key !== fourth.chart?.key);
 
   return (
     <>
       <ProSectionTitle>健康概览</ProSectionTitle>
-      {loading ? (
-        <KpiTileRow loading items={cards} />
+      {healthLoading ? (
+        <KpiTileRow loading items={MYSQL_LOADING_KPIS} />
       ) : (
         <KpiTileRow items={cards} />
       )}
@@ -128,16 +172,17 @@ export default function OverviewPane({
         href={hostHref}
         cpuPercent={cpuPercent}
         memPercent={memPercent}
+        loading={hostLoading}
       />
 
       <ProSectionTitle>事件</ProSectionTitle>
-      <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
+      <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
 
-      {loading && focus.length === 0 ? (
+      {focusLoading ? (
         <>
           <ProSectionTitle>重点关注</ProSectionTitle>
           <div className={host.shortcutGrid}>
-            {['慢查询', '连接使用率', '缓冲池命中', '活跃会话'].map((title) => (
+            {FOCUS_LOADING.map((title) => (
               <ThinTimeSeries
                 key={title}
                 title={title}
@@ -187,52 +232,37 @@ export default function OverviewPane({
         </>
       ) : null}
 
-      {loading && trends.row.length === 0 ? (
-        <>
-          <ProSectionTitle>实例趋势</ProSectionTitle>
-          <div className={host.chartGrid4}>
-            {['连接', 'QPS', '慢查询', '缓冲池命中'].map((title) => (
-              <ThinTimeSeries
-                key={title}
-                title={title}
-                loading
-                unit="counts"
-                data={[]}
-                legends={[]}
-              />
-            ))}
-          </div>
-        </>
-      ) : trends.row.length > 0 ? (
-        <>
-          <ProSectionTitle>实例趋势</ProSectionTitle>
-          <div className={host.chartGrid4}>
-            {trends.row.map((chart) => (
-              <ThinTimeSeries
-                key={chart.key}
-                title={chart.title}
-                unit={chart.unit}
-                data={chart.data}
-                legends={chart.legends}
-                loading={loading}
-              />
-            ))}
-          </div>
-          {trends.extra.length > 0 ? (
-            <div className={host.chartGrid2}>
-              {trends.extra.map((chart) => (
-                <ThinTimeSeries
-                  key={chart.key}
-                  title={chart.title}
-                  unit={chart.unit}
-                  data={chart.data}
-                  legends={chart.legends}
-                  loading={loading}
-                />
-              ))}
-            </div>
-          ) : null}
-        </>
+      <ProSectionTitle>实例趋势</ProSectionTitle>
+      <div className={host.chartGrid4}>
+        {MYSQL_TREND_SLOTS.map((slot) => (
+          <TrendCard
+            key={slot.key}
+            title={slot.title}
+            unit={SLOT_UNIT[slot.key]}
+            chart={trendByKey.get(slot.key)}
+            loading={blocksUntilReady(slot.names, pendingMetricNames)}
+          />
+        ))}
+        <TrendCard
+          key={fourth.chart?.key || fourth.title}
+          title={fourth.title}
+          unit={fourth.unit}
+          chart={fourth.chart}
+          loading={fourth.loading}
+        />
+      </div>
+      {extra.length > 0 ? (
+        <div className={host.chartGrid2}>
+          {extra.map((chart) => (
+            <TrendCard
+              key={chart.key}
+              title={chart.title}
+              unit={chart.unit}
+              chart={chart}
+              loading={false}
+            />
+          ))}
+        </div>
       ) : null}
     </>
   );

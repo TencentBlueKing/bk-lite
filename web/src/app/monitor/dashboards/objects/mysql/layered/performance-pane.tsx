@@ -15,7 +15,7 @@ import pro from './pro.module.scss';
 
 interface PerformancePaneProps {
   metricMap: Record<string, MetricSeries | undefined>;
-  loading: boolean;
+  pendingMetricNames: ReadonlySet<string>;
 }
 
 const seriesOf = (metric: MetricSeries | undefined) => primaryChartSeries(metric?.viewData);
@@ -42,12 +42,7 @@ const rateReading = (metric: MetricSeries | undefined) => {
   return `${formatted.value}${formatted.unit || ''}`;
 };
 
-/** 分组查询还没写回时不算缺采，卡片先走共用「加载中」。 */
-const awaiting = (metrics: Array<MetricSeries | undefined>, points: { length: number }) => (
-  points.length === 0 && metrics.some((metric) => !metric)
-);
-
-export default function PerformancePane({ metricMap, loading }: PerformancePaneProps) {
+export default function PerformancePane({ metricMap, pendingMetricNames }: PerformancePaneProps) {
   const connection = useMemo(() => mergeChartSeries([
     { key: 'connected', label: '当前连接', data: seriesOf(metricMap.mysql_threads_connected) },
     { key: 'running', label: '活跃会话', data: seriesOf(metricMap.mysql_threads_running) }
@@ -105,29 +100,26 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
     [metricMap.mysql_table_locks_waited_rate?.viewData]
   );
 
-  const connectionMetrics = [metricMap.mysql_threads_connected, metricMap.mysql_threads_running];
-  const throughputMetrics = [
-    metricMap.mysql_queries_rate,
-    metricMap.mysql_com_insert_rate,
-    metricMap.mysql_com_update_rate,
-    metricMap.mysql_com_delete_rate
-  ];
-  const writeMetrics = [
-    metricMap.mysql_com_insert_rate,
-    metricMap.mysql_com_update_rate,
-    metricMap.mysql_com_delete_rate
-  ];
-  const innodbMetrics = [
-    metricMap.mysql_innodb_data_reads_rate,
-    metricMap.mysql_innodb_data_writes_rate,
-    metricMap.mysql_innodb_os_log_fsyncs_rate
-  ];
-  const bufferMetrics = [metricMap.mysql_buffer_pool_hit_ratio];
-  const connectionAwaiting = loading || awaiting(connectionMetrics, connection);
-  const throughputAwaiting = loading || awaiting(throughputMetrics, throughput);
-  const writesAwaiting = loading || awaiting(writeMetrics, statementMix);
-  const innodbAwaiting = loading || awaiting(innodbMetrics, innodb);
-  const bufferAwaiting = loading || awaiting(bufferMetrics, buffer);
+  const slotLoading = (names: readonly string[], points: { length: number }) => (
+    points.length === 0 && names.some((name) => pendingMetricNames.has(name))
+  );
+  const connectionAwaiting = slotLoading(
+    ['mysql_threads_connected', 'mysql_threads_running'],
+    connection
+  );
+  const throughputAwaiting = slotLoading(
+    ['mysql_queries_rate', 'mysql_com_insert_rate', 'mysql_com_update_rate', 'mysql_com_delete_rate'],
+    throughput
+  );
+  const writesAwaiting = slotLoading(
+    ['mysql_com_insert_rate', 'mysql_com_update_rate', 'mysql_com_delete_rate'],
+    statementMix
+  );
+  const innodbAwaiting = slotLoading(
+    ['mysql_innodb_data_reads_rate', 'mysql_innodb_data_writes_rate', 'mysql_innodb_os_log_fsyncs_rate'],
+    innodb
+  );
+  const bufferAwaiting = slotLoading(['mysql_buffer_pool_hit_ratio'], buffer);
 
   const innodbCard = innodbHasLoad(metricMap) || innodbAwaiting ? (
     <ThinTimeSeries
