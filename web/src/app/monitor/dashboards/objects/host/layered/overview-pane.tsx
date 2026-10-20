@@ -267,7 +267,7 @@ export default function OverviewPane({
   return (
     <>
       <ProSectionTitle>健康概览</ProSectionTitle>
-      <KpiStrip items={cards} />
+      <KpiStrip items={cards} loading={loading} />
       <ProSectionTitle>{hostCategoryText(t, 'events')}</ProSectionTitle>
       <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
 

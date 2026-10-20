@@ -277,6 +277,16 @@
   }
 }
 
+.kpiCard.kpiCardLoading {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--color-text-3);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
 button.kpiCard {
   cursor: pointer;
 

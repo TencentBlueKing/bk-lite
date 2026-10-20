@@ -47,10 +47,22 @@ const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
 );
 
 /** 概览 KPI：六张数字卡，标题贴顶、主值紧跟。不含环图、饼图或 sparkline。 */
-export function KpiStrip({ items }: { items: KpiCardModel[] }) {
+export function KpiStrip({ items, loading = false }: { items: KpiCardModel[]; loading?: boolean }) {
   return (
-    <div className={styles.kpiGrid}>
+    <div className={styles.kpiGrid} aria-busy={loading || undefined}>
       {items.map((item) => {
+        if (loading) {
+          return (
+            <div
+              key={item.key}
+              className={`${styles.kpiCard} ${styles.kpiCardLoading}`}
+              data-kpi={item.key}
+              aria-label="加载中"
+            >
+              加载中
+            </div>
+          );
+        }
         const className = `${styles.kpiCard} ${cardAlertClass(item.alertLevel)}`;
         const body = (
           <>

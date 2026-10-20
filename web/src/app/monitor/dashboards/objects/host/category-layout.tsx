@@ -45,6 +45,16 @@ const TabLevelMark = ({ level }: { level: TabAlertLevel }) => {
 
 const EMPTY_ENTITY: EntityLoadState = { status: 'idle', byMetric: {} };
 
+/** 健康概览主值。这些序列或磁盘维度还在飞时，整行显示「加载中」，不用 `--` 占位。 */
+const HOST_OVERVIEW_KPI_METRICS = [
+  'cpu_usage_total',
+  'mem_used_percent',
+  'mem_available',
+  'mem_total',
+  'system_uptime',
+  'system_load1'
+] as const;
+
 const maxRowValue = (rows: EntityTableRow[], key: string) => {
   let best: number | null = null;
   for (const row of rows) {
@@ -400,7 +410,11 @@ export default function HostCategoryLayout({
     return (
       <OverviewPane
         metrics={metrics}
-        loading={dashboard.loading}
+        loading={
+          dashboard.loading
+          || diskLoading
+          || HOST_OVERVIEW_KPI_METRICS.some((name) => dashboard.pendingMetricNames.has(name))
+        }
         diskRows={diskRows}
         diskLoading={diskLoading}
         netRows={netRows}

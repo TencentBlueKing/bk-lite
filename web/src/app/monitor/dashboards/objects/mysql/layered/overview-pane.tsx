@@ -37,6 +37,12 @@ interface OverviewPaneProps {
   onOpenFocus: (card: MysqlFocusCard) => void;
 }
 
+const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'buffer', 'uptime', 'alerts'].map((key) => ({
+  key,
+  label: key,
+  value: ''
+}));
+
 const SPARK_METRIC: Record<NonNullable<MysqlFocusCard['spark']>, { name: string; unit: 'counts' | 'cps' | 'percent'; color: string }> = {
   slow: { name: 'mysql_slow_queries_rate', unit: 'cps', color: HOST_SERIES_COLOR.load1 },
   connections: { name: 'mysql_connection_utilization', unit: 'percent', color: HOST_SERIES_COLOR.memUsed },
@@ -83,14 +89,7 @@ export default function OverviewPane({
     return (
       <div aria-busy="true" aria-live="polite">
         <ProSectionTitle>健康概览</ProSectionTitle>
-        <div className={host.kpiGrid}>
-          {['connections', 'qps', 'slow', 'buffer', 'uptime', 'alerts'].map((key) => (
-            <div key={key} className={host.kpiCard} aria-label="加载中">
-              <span className="block h-3 w-12 rounded bg-[var(--color-fill-2)]" />
-              <span className="mt-2 block h-6 w-16 rounded bg-[var(--color-fill-2)]" />
-            </div>
-          ))}
-        </div>
+        <KpiTileRow loading items={MYSQL_LOADING_KPIS} />
         <ProSectionTitle>所属主机</ProSectionTitle>
         <MysqlHostRail host={null} href="" cpuPercent={null} memPercent={null} loading />
         <ProSectionTitle>事件</ProSectionTitle>
@@ -119,10 +118,13 @@ export default function OverviewPane({
   return (
     <>
       <ProSectionTitle>健康概览</ProSectionTitle>
-      {cards.length > 0 ? <KpiTileRow items={cards} /> : null}
-      {!loading && cards.length === 0 ? (
+      {loading ? (
+        <KpiTileRow loading items={cards.length > 0 ? cards : MYSQL_LOADING_KPIS} />
+      ) : cards.length > 0 ? (
+        <KpiTileRow items={cards} />
+      ) : (
         <div className="text-[13px] text-[var(--color-text-3)]">当前窗口没有可展示的实例指标</div>
-      ) : null}
+      )}
 
       <ProSectionTitle>所属主机</ProSectionTitle>
       <MysqlHostRail
