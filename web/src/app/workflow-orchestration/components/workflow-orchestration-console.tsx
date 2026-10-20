@@ -30,7 +30,7 @@ import { OPSPILOT_ATOM_KEYS, OpsPilotAtomForm } from './opspilot-atom-form';
 import { approvalDecisionReference, configureApprovalTask } from '../lib/approval-dsl';
 import { localizeAtom } from '../lib/atom-localization';
 import { BUILTIN_SAMPLE_TEMPLATE_URLS } from '../lib/sample-templates';
-import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, flattenTasks, positionBesideSource, projectApprovalCanvasEdges, workflowTriggerNodes, type WorkflowCanvasMetadata, type WorkflowReturnNode, type WorkflowTriggerNode } from '../lib/canvas-dsl';
+import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, flattenTasks, implicitCanvasEdges, positionBesideSource, projectApprovalCanvasEdges, workflowTriggerNodes, type WorkflowCanvasMetadata, type WorkflowReturnNode, type WorkflowTriggerNode } from '../lib/canvas-dsl';
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
 import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
@@ -406,13 +406,14 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       trace_id: t('workflowOrchestration.editor.systemField.trace_id', '追踪号'),
     },
   }), [t]);
+  const visibleEdges = useMemo(() => (definition ? buildWorkflowFlow(definition, metadata).edges : []), [definition, metadata]);
   const triggerGroupLabel = useMemo(() => resolveTriggerGroupLabel(
     selectedTask?.taskReferenceName || '',
     workflowTriggerNodes(metadata).map((item) => ({ id: item.id, name: item.name })),
-    metadata.edges,
+    visibleEdges,
     referenceLabels.triggerInput,
-  ), [metadata, referenceLabels.triggerInput, selectedTask?.taskReferenceName]);
-  const references = useMemo(() => selectedTask && definition ? buildDataReferenceOptions(definition, selectedTask.taskReferenceName, localizedAtoms, commonTriggerInputSchema(metadata), referenceLabels, metadata.edges, metadata.node_titles, triggerGroupLabel) : [], [definition, localizedAtoms, metadata, referenceLabels, selectedTask, triggerGroupLabel]);
+  ), [metadata, referenceLabels.triggerInput, selectedTask?.taskReferenceName, visibleEdges]);
+  const references = useMemo(() => selectedTask && definition ? buildDataReferenceOptions(definition, selectedTask.taskReferenceName, localizedAtoms, commonTriggerInputSchema(metadata), referenceLabels, visibleEdges, metadata.node_titles, triggerGroupLabel) : [], [definition, localizedAtoms, metadata, referenceLabels, selectedTask, triggerGroupLabel, visibleEdges]);
   const inspectorTriggers = useMemo(() => workflowTriggerNodes(metadata), [metadata]);
   const inspectorTestTrigger = inspectorTriggers.find((item) => item.id === nodeTestTriggerId) || inspectorTriggers.find((item) => item.trigger_type === 'FORM') || inspectorTriggers[0];
   const nodeTestInputContract = useMemo(() => buildNodeTestInputContract(selectedTask, selectedAtom?.input_schema, inspectorTestTrigger?.input_schema), [inspectorTestTrigger, selectedAtom?.input_schema, selectedTask]);
@@ -511,7 +512,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         ...projectedEdges.filter((edge) => !(pendingSource.handle && edge.source === pendingSource.id && (edge.sourceHandle || undefined) === pendingSource.handle)),
         { id: `${pendingSource.id}-${target}-${Date.now()}`, source: pendingSource.id, sourceHandle: pendingSource.handle, target },
       ]
-      : projectedEdges;
+      : projectedEdges.length ? projectedEdges : implicitCanvasEdges(nextDefinition, nextMetadata);
     const sourcePosition = pendingSource ? nodes.find((node) => node.id === pendingSource.id)?.position : undefined;
     const stagedMetadata = {
       ...nextMetadata,
@@ -1199,10 +1200,24 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     className: readOnly ? 'nopan' : node.className,
     data: { ...node.data, readOnly, locked: Boolean(debugExecution), onAction: action },
   }));
+  const removeEdge = (edgeId: string) => {
+    if (!definition) return;
+    const nextEdges = edges.filter((edge) => edge.id !== edgeId);
+    setEdges(nextEdges);
+    setMetadata((current) => ({
+      ...current,
+      edges: expandApprovalCanvasEdges(
+        definition,
+        nextEdges.map(({ id, source, target, sourceHandle, targetHandle }) => ({ id, source, target, sourceHandle, targetHandle })),
+      ),
+    }));
+    setDirty(true);
+  };
   const interactiveEdges = edges.map((edge) => ({
     ...edge,
-    type: 'workflowCanvas',
+    type: 'workflowCanvas' as const,
     sourceHandle: edge.sourceHandle ?? (nodes.find((node) => node.id === edge.source)?.data.taskType === 'SWITCH' ? 'true' : undefined),
+    data: { ...(edge.data || {}), readOnly: readOnly || Boolean(debugExecution), onRemove: removeEdge },
   }));
   const tidyCanvas = async () => {
     setNodes(await layoutWorkflowCanvas(nodes, edges));

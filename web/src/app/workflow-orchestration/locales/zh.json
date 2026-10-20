@@ -691,6 +691,7 @@
       "viewAtomDetails": "查看原子详情",
       "atomDetailMissing": "未找到该原子的目录信息",
       "deleteNode": "删除节点",
+      "deleteEdge": "删除连线",
       "newWorkflow": "新建流程",
       "enterAndPressReturn": "输入后按回车添加",
       "selectJobHosts": "选择作业平台主机",

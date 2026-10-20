@@ -691,6 +691,7 @@
       "viewAtomDetails": "View Atom Details",
       "atomDetailMissing": "Atom catalog details were not found",
       "deleteNode": "Delete Node",
+      "deleteEdge": "Delete connection",
       "newWorkflow": "New Workflow",
       "enterAndPressReturn": "Type and press Enter to add",
       "selectJobHosts": "Select Job Platform hosts",
