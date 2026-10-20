@@ -7,7 +7,7 @@ export const blocksUntilReady = (
   pending: ReadonlySet<string>
 ) => names.some((name) => pending.has(name));
 
-/** 顶栏角色 / Binlog。不等折线。 */
+/** 实例态：角色 / 只读 / Binlog。不等折线。 */
 export const MYSQL_HEADER_METRICS = [
   'mysql_variables_read_only',
   'mysql_variables_super_read_only',

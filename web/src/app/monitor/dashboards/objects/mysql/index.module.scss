@@ -199,6 +199,16 @@
   font-weight: 700;
 }
 
+// 实例态窄条。薰衣草底，和所属主机蓝条（事件轨 / primary）分开。
+.instanceStateRail {
+  background: #f4efff;
+  border: 1px solid #e4d7fb;
+}
+
+.instanceStateLabel {
+  color: #6d28d9;
+}
+
 .controls {
   display: flex;
   align-items: center;
@@ -1720,6 +1730,15 @@
   background: rgba(47, 107, 255, 0.16);
   border-color: rgba(127, 176, 255, 0.24);
   color: #9abfff;
+}
+
+:global(html.dark) .instanceStateRail {
+  background: #2a1b45;
+  border-color: #5b3d86;
+}
+
+:global(html.dark) .instanceStateLabel {
+  color: #d6c4fb;
 }
 
 :global(html.dark) .metricBadge {

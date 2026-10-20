@@ -47,6 +47,7 @@ import {
   writeObjectDashboardMode
 } from '../../shared/utils/pro-dashboard';
 import MysqlProLayout from './layered/mysql-pro-layout';
+import MysqlInstanceStateRail from './layered/instance-state-rail';
 import { MYSQL_PERF_AUX_METRICS, MYSQL_REPLICATION_EXTRA_METRICS, readMysqlHeaderIdentity, readMysqlProHeader } from './layered/ia';
 import { MYSQL_HEADER_METRICS, MYSQL_HEALTH_METRICS, blocksUntilReady } from './layered/section-loading';
 import MysqlLegacyLayout from './legacy-layout';
@@ -576,7 +577,9 @@ export default function MysqlDashboardPage() {
   const proPending = instanceSwitching ? MYSQL_CATEGORY_PENDING_ALL : pendingMetricNames;
   const headerMetricsPending = blocksUntilReady(MYSQL_HEADER_METRICS, proPending);
   const mysqlIdentity = readMysqlHeaderIdentity(metricMap, resolvedInstanceName);
-  const proHeader = displayMode === 'category' && !instanceSwitching && !headerMetricsPending
+  const proMode = displayMode === 'category';
+  const instanceStatePending = proMode && (instanceSwitching || headerMetricsPending);
+  const proHeader = proMode && !instanceStatePending
     ? readMysqlProHeader(proMetricMap)
     : null;
   // 实例 ID 与展示名仅分隔符不同时（mysql_3306 vs mysql-3306）视为重复，不再展示。
@@ -584,24 +587,9 @@ export default function MysqlDashboardPage() {
   const showInstanceId =
     Boolean(instanceIdText) &&
     normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
-  // 顶栏 meta 无骨架。切实例或角色指标未回时收起，不等折线。
-  const hideProMeta = displayMode === 'category' && (instanceSwitching || headerMetricsPending);
-  const identityMetaItems = proHeader
-    ? [
-      <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
-        {proHeader.pill}
-      </span>,
-      proHeader.aside ? (
-        <span key="aside" className={styles.instanceMetaMuted}>
-          {proHeader.aside}
-        </span>
-      ) : null,
-      proHeader.binlog ? (
-        <span key="binlog" className={styles.identityPill}>
-          {proHeader.binlog}
-        </span>
-      ) : null
-    ].filter(Boolean)
+  // 专业盘角色、只读、Binlog 改到顶栏下的实例态条。传统盘与全量指标仍用拓扑身份。
+  const identityMetaItems = proMode
+    ? []
     : mysqlIdentity.deployment === '单节点'
       ? [
         <span key="topology" className={chrome.instanceMetaInline}>
@@ -616,7 +604,7 @@ export default function MysqlDashboardPage() {
           {mysqlIdentity.role}
         </span>
       ];
-  const instanceMetaItems = hideProMeta ? [] : [
+  const instanceMetaItems = [
     <span key="object-name" className={chrome.instanceMetaInline}>
       {objectDisplayText}
     </span>,
@@ -738,6 +726,14 @@ export default function MysqlDashboardPage() {
             styles={chrome}
           />
           </div>
+          {proMode ? (
+            <div className="px-4 pb-3">
+              <MysqlInstanceStateRail
+                header={proHeader}
+                pending={instanceStatePending}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className={chrome.unifiedBelow}>
