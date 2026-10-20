@@ -4,8 +4,8 @@
 
 status:
 - ok：绑定或清除成功（含幂等）
-- occupied：目标已有其它 CI，或该 cmdb_id 已被其它实例占用
-- not_found：实例不存在、已删、或组织不在 allowed_org_ids
+- occupied：目标已有其它 CI，或该 cmdb_id 已被其它启用中的实例占用
+- not_found：实例不存在、已删、未启用，或组织不在 allowed_org_ids
 - type_mismatch：实例存在且组织在范围内，但对象名不符
 - mismatch：clear 时 expected_cmdb_id 与当前值不一致（已空则仍 ok）
 """
@@ -78,7 +78,7 @@ def _in_allowed_orgs(monitor_id, org_ids):
 
 
 def list_cmdb_bind_candidates(object_name, query, allowed_org_ids, limit=DEFAULT_CANDIDATE_LIMIT):
-    """按对象类型与组织列手绑候选；query 同时 icontains 匹配 name / ip。"""
+    """按对象类型与组织列启用中的手绑候选；query 同时 icontains 匹配 name / ip。"""
     org_ids = _normalize_org_ids(allowed_org_ids)
     object_name = (object_name or "").strip()
     clamped = _clamp_limit(limit)
@@ -89,6 +89,7 @@ def list_cmdb_bind_candidates(object_name, query, allowed_org_ids, limit=DEFAULT
     qs = (
         MonitorInstance.objects.filter(
             is_deleted=False,
+            is_active=True,
             monitor_object__name=object_name,
             monitorinstanceorganization__organization__in=org_ids,
         )
@@ -117,7 +118,7 @@ def list_cmdb_bind_candidates(object_name, query, allowed_org_ids, limit=DEFAULT
 
 
 def bind_cmdb_id(monitor_id, cmdb_id, object_name, allowed_org_ids):
-    """将 cmdb_id 写入指定监控实例；占用或类型不符时拒绝，不抢绑。"""
+    """将 cmdb_id 写入指定的启用中监控实例。未启用实例不接关联；它占着的 cmdb_id 会让出。"""
     org_ids = _normalize_org_ids(allowed_org_ids)
     monitor_id = _normalize_id(monitor_id)
     cmdb_id = _normalize_id(cmdb_id)
@@ -129,7 +130,7 @@ def bind_cmdb_id(monitor_id, cmdb_id, object_name, allowed_org_ids):
     try:
         with transaction.atomic():
             instance = MonitorInstance.objects.select_for_update().select_related("monitor_object").filter(pk=monitor_id).first()
-            if instance is None or instance.is_deleted or not _in_allowed_orgs(instance.id, org_ids):
+            if instance is None or instance.is_deleted or not instance.is_active or not _in_allowed_orgs(instance.id, org_ids):
                 logger.warning(BIND_NOT_FOUND_TEMPLATE, monitor_id, "lookup", STATUS_NOT_FOUND)
                 return {"status": STATUS_NOT_FOUND}
             if instance.monitor_object.name != object_name:
@@ -144,10 +145,13 @@ def bind_cmdb_id(monitor_id, cmdb_id, object_name, allowed_org_ids):
                 logger.warning(BIND_OCCUPIED_TEMPLATE, instance.id, current)
                 return {"status": STATUS_OCCUPIED, "occupied_cmdb_id": current}
 
-            occupier = MonitorInstance.objects.filter(cmdb_id=cmdb_id).exclude(pk=instance.id).first()
-            if occupier is not None:
+            occupier = MonitorInstance.objects.select_for_update().filter(cmdb_id=cmdb_id).exclude(pk=instance.id).first()
+            if occupier is not None and occupier.is_active:
                 logger.warning(BIND_OCCUPIED_TEMPLATE, instance.id, occupier.cmdb_id)
                 return {"status": STATUS_OCCUPIED, "occupied_cmdb_id": occupier.cmdb_id}
+            if occupier is not None:
+                occupier.cmdb_id = None
+                occupier.save(update_fields=["cmdb_id", "updated_at"])
 
             instance.cmdb_id = cmdb_id
             instance.save(update_fields=["cmdb_id", "updated_at"])

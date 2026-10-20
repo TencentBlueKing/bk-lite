@@ -343,6 +343,34 @@ def test_push_instance_not_found_does_not_backfill(mocker, host_object):
 
 
 @pytest.mark.django_db
+def test_delete_notify_clears_monitor_cmdb_id_without_actor_orgs(host_object, mocker):
+    """CMDB 单边删除：操作者组织为空时仍按实例组织通知监控清 cmdb_id，不删监控资产。"""
+    inst = MonitorInstance.objects.create(
+        id="m-linked",
+        name="host-from-cmdb",
+        monitor_object=host_object,
+        cmdb_id=INST_UUID,
+        is_active=True,
+        is_deleted=False,
+    )
+    mocker.patch(
+        "apps.cmdb.services.module_push.Monitor"
+    ).return_value.ingest_from_source.side_effect = lambda **kwargs: MonitorModuleIngestService.ingest(kwargs)
+    mocker.patch("apps.node_mgmt.services.module_ingest.NodeModuleIngestService.ingest", return_value={"ignored": True})
+
+    CmdbToMonitorPushService.best_effort_notify_on_delete(
+        [_cmdb_instance(monitor_id=inst.id, organization=[1])],
+        operator="alice",
+        allowed_org_ids=None,
+    )
+
+    inst.refresh_from_db()
+    assert inst.cmdb_id in (None, "")
+    assert inst.is_deleted is False
+    assert inst.is_active is True
+
+
+@pytest.mark.django_db
 def test_monitor_ingest_ignores_echo(host_object):
     result = MonitorModuleIngestService.ingest(
         {

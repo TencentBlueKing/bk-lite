@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { IntlProvider } from 'react-intl';
 import { SessionProvider } from 'next-auth/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -40,6 +40,7 @@ const renderWithIntl = (node: React.ReactNode) => render(
       'alarms.monitorId': '监控实例 ID',
       'alarms.cmdbId': 'CMDB 实例 ID',
       'alarms.enrichment': '丰富信息',
+      'alarms.rawData': '原始数据',
       'integration.pushSourceId': '监控源',
     }}
     onError={() => undefined}
@@ -200,6 +201,29 @@ describe('告警关联监控对象快照', () => {
     expect(screen.getAllByText('--').length).toBeGreaterThan(0);
   });
 
+  it('告警详情事件原始数据带上丰富结果', () => {
+    renderWithIntl(
+      <AlarmEventTable
+        dataSource={[
+          {
+            id: 1,
+            level: 'critical',
+            raw_data: { title: 'cpu' },
+            enrichment: { cmdb: { ip_addr: '10.11.27.147' } },
+          },
+        ]}
+        levelOptions={[{ label: '严重', value: 'critical' }]}
+        pagination={{ current: 1, pageSize: 20, total: 1 }}
+        onChange={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '原始数据' }));
+
+    expect(screen.getByText(/"title": "cpu"/)).toBeTruthy();
+    expect(screen.getByText(/"ip_addr": "10.11.27.147"/)).toBeTruthy();
+  });
+
   it('集成详情事件表展示监控身份和监控源', () => {
     const event = {
       id: 1,
@@ -207,7 +231,8 @@ describe('告警关联监控对象快照', () => {
       end_time: '',
       source_name: 'NATS',
       push_source_id: 'cluster-prod-01',
-      raw_data: {},
+      raw_data: { title: 'CPU high' },
+      enrichment: { cmdb: { inst_name: '10.11.27.147[default]' } },
       received_at: '',
       title: 'CPU high',
       description: '',
@@ -240,5 +265,9 @@ describe('告警关联监控对象快照', () => {
     expect(screen.getByText('cluster-prod-01')).toBeTruthy();
     expect(screen.getByText('0001')).toBeTruthy();
     expect(screen.getAllByText('--').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '原始数据' }));
+    expect(screen.getByText(/"title": "CPU high"/)).toBeTruthy();
+    expect(screen.getByText(/"inst_name": "10.11.27.147\[default\]"/)).toBeTruthy();
   });
 });

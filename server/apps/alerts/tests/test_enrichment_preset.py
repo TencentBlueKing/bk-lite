@@ -6,7 +6,7 @@ from apps.alerts.constants.init_data import BUILTIN_ENRICHMENT_RULES
 def test_builtin_cmdb_preset_shape():
     rule = next(r for r in BUILTIN_ENRICHMENT_RULES if r["provider_type"] == "cmdb")
     assert rule["preset_key"] == "builtin_cmdb_resource"
-    assert rule["input_binding"] == {"model_id": "resource_type", "inst_uuid": "resource_id"}
+    assert rule["input_binding"] == {"model_id": "resource_type", "inst_uuid": "cmdb_id"}
     assert rule["output_projection"]
     assert rule["on_multiple"] == "first"
     assert rule["is_active"] is True

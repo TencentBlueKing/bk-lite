@@ -7,8 +7,9 @@ import { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
+import { presentEventRawData } from '@/app/alarm/utils/eventRawData';
 import { useStateMap } from '@/app/alarm/constants/alarm';
-import { EventTableItem, RawEventData } from '@/app/alarm/types/integration';
+import { EventTableItem } from '@/app/alarm/types/integration';
 import { getMonitorIdentityColumns } from '@/app/alarm/components/monitor-object-list/columns';
 
 interface EventTableProps {
@@ -34,11 +35,11 @@ const EventTable: React.FC<EventTableProps> = ({
   const { convertToLocalizedTime } = useLocalizedTime();
   const { levelListEvent, levelMapEvent } = useCommon();
   const [rawVisible, setRawVisible] = useState(false);
-  const [rawData, setRawData] = useState<RawEventData>();
+  const [rawData, setRawData] = useState<unknown>();
   const STATE_MAP = useStateMap();
 
   const handleShowRaw = (record: EventTableItem) => {
-    setRawData((record.raw_data || record) as any);
+    setRawData(presentEventRawData(record));
     setRawVisible(true);
   };
 
