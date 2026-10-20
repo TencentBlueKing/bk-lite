@@ -10,6 +10,8 @@ import { HOST_DASHBOARD_CONFIG } from '../../host/config';
 import { latestNumber } from '../../host/layered/readings';
 import HostAlertDrawer from '../../host/layered/host-alert-drawer';
 import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered/events-rail';
+import { ProTimeWindowProvider } from '../../host/layered/pro-time-window';
+import { selectProChartWindow } from '../../../shared/utils/pro-chart-window';
 import { activeHostAlertParams } from '../../host/layered/host-alert-list';
 import {
   buildSearchParams,
@@ -55,6 +57,9 @@ interface MysqlProLayoutProps {
   idValues: string[];
   instanceIdKeys: string[];
   timeValues: TimeValuesProps;
+  queryTimeRange?: { startMs: number; endMs: number } | null;
+  /** 刷新按钮。时间档位不变时也要按当前窗口重拉语句、等待和所属主机读数。 */
+  reloadKey?: number;
   minStepSeconds?: number;
 }
 
@@ -74,6 +79,8 @@ export default function MysqlProLayout({
   idValues,
   instanceIdKeys,
   timeValues,
+  queryTimeRange,
+  reloadKey = 0,
   minStepSeconds
 }: MysqlProLayoutProps) {
   const router = useRouter();
@@ -100,6 +107,11 @@ export default function MysqlProLayout({
   const [alertRefreshKey, setAlertRefreshKey] = useState(0);
   const [focusAlertId, setFocusAlertId] = useState('');
 
+  const chartWindow = useMemo(
+    () => selectProChartWindow(timeValues, queryTimeRange),
+    [queryTimeRange, timeValues]
+  );
+  const chartWindowKey = chartWindow ? `${chartWindow.startSec}|${chartWindow.endSec}` : '';
   const readings = useMemo(
     () => readMysqlOverview(metricMap, alertCount),
     [alertCount, metricMap]
@@ -217,7 +229,7 @@ export default function MysqlProLayout({
     return () => {
       active = false;
     };
-  }, [getInstanceQuery, linkedHost, minStepSeconds, timeValues]);
+  }, [getInstanceQuery, linkedHost, minStepSeconds, reloadKey, timeValues]);
 
   useEffect(() => {
     if (tab !== 'overview' || alertDrawerOpen) return undefined;
@@ -263,7 +275,7 @@ export default function MysqlProLayout({
     return () => {
       active = false;
     };
-  }, [getMonitorAlert, instanceId, tab]);
+  }, [chartWindowKey, getMonitorAlert, instanceId, tab]);
 
   const digestIdentity = `${idValues.join('\u0001')}::${instanceIdKeys.join('\u0001')}`;
   useEffect(() => {
@@ -277,6 +289,8 @@ export default function MysqlProLayout({
       return undefined;
     }
     let active = true;
+    setStatements([]);
+    setWaits([]);
     setDigestStatus('loading');
     const context = { monitorObjectId: String(monitorObjectId), instanceId };
     const loadOne = (metric: (typeof MYSQL_DIGEST_METRICS)[number]) => getInstanceQuery(buildSearchParams(
@@ -322,6 +336,7 @@ export default function MysqlProLayout({
     instanceName,
     minStepSeconds,
     monitorObjectId,
+    reloadKey,
     timeValues
   ]);
 
@@ -388,6 +403,7 @@ export default function MysqlProLayout({
   };
 
   return (
+    <ProTimeWindowProvider timeValues={timeValues} queryTimeRange={queryTimeRange} suspend={loading}>
     <div className={host.root}>
       <div className={host.tabBand}>
         <Tabs
@@ -424,5 +440,6 @@ export default function MysqlProLayout({
         emptyHint="本实例暂无活跃告警"
       />
     </div>
+    </ProTimeWindowProvider>
   );
 }

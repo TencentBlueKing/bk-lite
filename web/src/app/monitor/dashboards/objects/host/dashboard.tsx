@@ -69,7 +69,8 @@ export default function HostDashboardPage() {
     monitorObjectId,
     instanceId,
     minStepSeconds: currentInstanceInterval,
-    isDashboardMode
+    isDashboardMode,
+    reloadKey: dashboard.loadTick
   };
   const diskState = useHostEntityMetrics({
     ...entityArgs,

@@ -3,6 +3,7 @@ export * from './format';
 export * from './search-params';
 export * from './chart-data';
 export * from './time';
+export * from './pro-chart-window';
 export * from './compare';
 export * from './instance';
 export * from './metric-series';

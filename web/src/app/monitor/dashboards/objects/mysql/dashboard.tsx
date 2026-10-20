@@ -171,6 +171,7 @@ export default function MysqlDashboardPage() {
   const [previousSeries, setPreviousSeries] = useState<Record<string, MetricSeries>>({});
   const [collectionStatusMetric, setCollectionStatusMetric] = useState<MetricSeries | null>(null);
   const [queryTimeRange, setQueryTimeRange] = useState<{ startMs: number; endMs: number } | null>(null);
+  const [proReloadKey, setProReloadKey] = useState(0);
   const [instanceOptions, setInstanceOptions] = useState<MysqlInstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
@@ -295,10 +296,10 @@ export default function MysqlDashboardPage() {
     if (!silent || switchingInstance) {
       setLoading(true);
     }
-    if (switchingInstance && displayMode === 'category') {
+    if (!silent && displayMode === 'category') {
       setSeries({});
       setPreviousSeries({});
-      setCollectionStatusMetric(null);
+      if (switchingInstance) setCollectionStatusMetric(null);
     }
 
     try {
@@ -563,6 +564,15 @@ export default function MysqlDashboardPage() {
     setFrequence(val);
   };
 
+  const refreshDashboard = () => {
+    if (!isDashboardMode) {
+      setMetricsRefreshSignal((value) => value + 1);
+      return;
+    }
+    if (displayMode === 'category') setProReloadKey((value) => value + 1);
+    loadMetrics();
+  };
+
   const onInstanceChange = (value: string) => {
     const target = instanceOptions.find((item) => item.value === value);
     const params = new URLSearchParams(searchParams.toString());
@@ -597,7 +607,7 @@ export default function MysqlDashboardPage() {
             frequencyList={MYSQL_REFRESH_FREQUENCY_LIST}
             onTimeChange={onTimeChange}
             onFrequenceChange={onFrequenceChange}
-            onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
+            onRefresh={refreshDashboard}
             showTimeSelector={false}
             styles={chrome}
           />
@@ -619,7 +629,7 @@ export default function MysqlDashboardPage() {
               frequencyList: MYSQL_REFRESH_FREQUENCY_LIST,
               onTimeChange,
               onFrequenceChange,
-              onRefresh: () => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))
+              onRefresh: refreshDashboard
             }}
             styles={chrome}
           />
@@ -659,6 +669,8 @@ export default function MysqlDashboardPage() {
                     idValues={idValues}
                     instanceIdKeys={instanceIdKeys}
                     timeValues={timeValues}
+                    queryTimeRange={queryTimeRange}
+                    reloadKey={proReloadKey}
                     minStepSeconds={currentInstanceInterval}
                   />
                 </div>

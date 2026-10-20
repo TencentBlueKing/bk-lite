@@ -17,6 +17,8 @@ import DiskPane from './layered/disk-pane';
 import FlatProcessSplit from './layered/flat-process-split';
 import NetworkPane from './layered/network-pane';
 import { hostAlertRailEvents, type HostAlertRailEvent } from './layered/events-rail';
+import { ProTimeWindowProvider } from './layered/pro-time-window';
+import { selectProChartWindow } from '../../shared/utils/pro-chart-window';
 import HostAlertDrawer from './layered/host-alert-drawer';
 import { activeHostAlertParams } from './layered/host-alert-list';
 import OverviewPane from './layered/overview-pane';
@@ -227,6 +229,11 @@ export default function HostCategoryLayout({
     return () => cancelAnimationFrame(frame);
   }, [activeTab]);
   const metrics = dashboard.metricSeries;
+  const chartWindow = useMemo(
+    () => selectProChartWindow(dashboard.timeValues, dashboard.queryTimeRange),
+    [dashboard.queryTimeRange, dashboard.timeValues]
+  );
+  const chartWindowKey = chartWindow ? `${chartWindow.startSec}|${chartWindow.endSec}` : '';
 
   const diskRows = useMemo(() => buildMountDiskRows(diskState.byMetric), [diskState.byMetric]);
   const diskDeviceRows = useMemo(() => buildDiskDeviceRows(diskState.byMetric), [diskState.byMetric]);
@@ -326,7 +333,7 @@ export default function HostCategoryLayout({
     return () => {
       active = false;
     };
-  }, [activeTab, dashboard.instanceId, getMonitorAlert]);
+  }, [activeTab, chartWindowKey, dashboard.instanceId, dashboard.loadTick, getMonitorAlert]);
 
   const jump = (tab: 'disk' | 'net' | 'process', key: string) => {
     if (tab === 'disk') diskSelection.setPendingMountKey(key);
@@ -434,6 +441,11 @@ export default function HostCategoryLayout({
   };
 
   return (
+    <ProTimeWindowProvider
+      timeValues={dashboard.timeValues}
+      queryTimeRange={dashboard.queryTimeRange}
+      suspend={dashboard.loading}
+    >
     <div className={styles.root}>
       <div className={styles.tabBand}>
         <Tabs
@@ -462,5 +474,6 @@ export default function HostCategoryLayout({
         onCount={applyAlertCount}
       />
     </div>
+    </ProTimeWindowProvider>
   );
 }

@@ -12,6 +12,8 @@ import { CHART_COLORS } from '@/app/monitor/constants';
 import { CardAlertDot, cardAlertClass } from './card-alert';
 import { seriesMarkerColor } from './readings';
 import type { TabAlertLevel } from './tab-level';
+import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
+import { useProTimeWindow } from './pro-time-window';
 import { useThemeColors } from './theme-color';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -95,6 +97,13 @@ export default function ThinTimeSeries({
   alertLevel,
   onRetry
 }: ThinTimeSeriesProps) {
+  const proTime = useProTimeWindow();
+  const chartWindow = proTime?.window ?? null;
+  const suspend = Boolean(proTime?.suspend);
+  const plotted = useMemo(
+    () => clipChartDataToWindow(data, chartWindow),
+    [chartWindow, data]
+  );
   const theme = useThemeColors();
   const axisColor = theme['--color-border'];
   const mutedColor = theme['--color-text-3'];
@@ -136,11 +145,11 @@ export default function ThinTimeSeries({
     return () => observer.disconnect();
   }, [legendCompact, legendKey, legends]);
   const keys = useMemo(() => {
-    const all = areaKeys(data);
+    const all = areaKeys(plotted);
     // 单图例只画一条线。value2 通常是同一指标的 or 回退，叠上去会双计。
     if (legends.length <= 1) return all.slice(0, 1);
     return all;
-  }, [data, legends.length]);
+  }, [legends.length, plotted]);
   const seriesColors = useMemo(
     () => keys.map((_, index) => legends[index]?.color || CHART_COLORS[index % CHART_COLORS.length]),
     // legendKey 锁内容。legends 每次渲染都是新数组，放进依赖会让图在刷新时反复 setOption。
@@ -148,15 +157,17 @@ export default function ThinTimeSeries({
   );
   const splitAxes = independentAxes && keys.length > 1;
   const option = useMemo(() => {
-    if (!data.length || !keys.length) return null;
-    let minTime = Number.POSITIVE_INFINITY;
-    let maxTime = Number.NEGATIVE_INFINITY;
-    data.forEach((point) => {
-      const time = Number(point.time);
-      if (!Number.isFinite(time)) return;
-      if (time < minTime) minTime = time;
-      if (time > maxTime) maxTime = time;
-    });
+    if (suspend || !plotted.length || !keys.length) return null;
+    let minTime = chartWindow?.startSec ?? Number.POSITIVE_INFINITY;
+    let maxTime = chartWindow?.endSec ?? Number.NEGATIVE_INFINITY;
+    if (!chartWindow) {
+      plotted.forEach((point) => {
+        const time = Number(point.time);
+        if (!Number.isFinite(time)) return;
+        if (time < minTime) minTime = time;
+        if (time > maxTime) maxTime = time;
+      });
+    }
     const timeSpan = Number.isFinite(minTime) && Number.isFinite(maxTime) ? maxTime - minTime : 0;
     const formatAxisTime = (value: number) => {
       const stamp = dayjs(value * 1000);
@@ -178,8 +189,8 @@ export default function ThinTimeSeries({
       grid: { top: 8, right: splitAxes ? 48 : 10, bottom: 28, left: 44, containLabel: false },
       xAxis: {
         type: 'value' as const,
-        min: 'dataMin' as const,
-        max: 'dataMax' as const,
+        min: chartWindow ? chartWindow.startSec : 'dataMin' as const,
+        max: chartWindow ? chartWindow.endSec : 'dataMax' as const,
         splitNumber: 3,
         axisLabel: {
           show: true,
@@ -249,7 +260,7 @@ export default function ThinTimeSeries({
           smooth: 0.15,
           connectNulls: true,
           itemStyle: { color },
-          data: data.map((point) => {
+          data: plotted.map((point) => {
             const value = point[key];
             return [point.time, typeof value === 'number' ? value : null];
           }),
@@ -261,9 +272,9 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, data, keys, legendKey, mutedColor, panelColor, seriesColors, splitAxes, textColor, unit]);
+  }, [axisColor, chartWindow, keys, legendKey, mutedColor, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit]);
   const { containerRef } = useECharts(option);
-  const drawnSeriesCount = keys.filter((key) => data.some((point) => {
+  const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];
     return typeof value === 'number' && Number.isFinite(value);
   })).length;
@@ -347,9 +358,9 @@ export default function ThinTimeSeries({
         </div>
       ) : null}
       <div className={styles.chartBody}>
-        {!data.length ? (
+        {suspend || !plotted.length ? (
           <div className={styles.chartEmpty}>
-            {loading ? '加载中' : emptyText}
+            {suspend || loading ? '加载中' : emptyText}
             {!loading && onRetry ? (
               <button
                 type="button"

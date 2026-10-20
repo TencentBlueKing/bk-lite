@@ -134,7 +134,22 @@ export default function OverviewPane({
       <ProSectionTitle>事件</ProSectionTitle>
       <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
 
-      {focus.length > 0 ? (
+      {loading && focus.length === 0 ? (
+        <>
+          <ProSectionTitle>重点关注</ProSectionTitle>
+          <div className={host.shortcutGrid}>
+            {['慢查询', '连接使用率', '缓冲池命中', '活跃会话'].map((title) => (
+              <ThinTimeSeries
+                key={title}
+                title={title}
+                loading
+                data={[]}
+                legends={[]}
+              />
+            ))}
+          </div>
+        </>
+      ) : focus.length > 0 ? (
         <>
           <ProSectionTitle>重点关注</ProSectionTitle>
           <div className={host.shortcutGrid}>
@@ -173,7 +188,23 @@ export default function OverviewPane({
         </>
       ) : null}
 
-      {trends.row.length > 0 ? (
+      {loading && trends.row.length === 0 ? (
+        <>
+          <ProSectionTitle>实例趋势</ProSectionTitle>
+          <div className={host.chartGrid4}>
+            {['连接', 'QPS', '慢查询', '缓冲池命中'].map((title) => (
+              <ThinTimeSeries
+                key={title}
+                title={title}
+                loading
+                unit="counts"
+                data={[]}
+                legends={[]}
+              />
+            ))}
+          </div>
+        </>
+      ) : trends.row.length > 0 ? (
         <>
           <ProSectionTitle>实例趋势</ProSectionTitle>
           <div className={host.chartGrid4}>
