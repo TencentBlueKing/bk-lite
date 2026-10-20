@@ -9,6 +9,7 @@ import type { TimeValuesProps } from '@/app/monitor/types';
 import { HOST_DASHBOARD_CONFIG } from '../../host/config';
 import { latestNumber } from '../../host/layered/readings';
 import HostAlertDrawer from '../../host/layered/host-alert-drawer';
+import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { activeHostAlertParams } from '../../host/layered/host-alert-list';
 import {
   buildSearchParams,
@@ -88,8 +89,10 @@ export default function MysqlProLayout({
   const [cpuPercent, setCpuPercent] = useState<number | null>(null);
   const [memPercent, setMemPercent] = useState<number | null>(null);
   const [alertCount, setAlertCount] = useState<number | null>(null);
+  const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const [alertRefreshKey, setAlertRefreshKey] = useState(0);
+  const [focusAlertId, setFocusAlertId] = useState('');
 
   const readings = useMemo(
     () => readMysqlOverview(metricMap, alertCount),
@@ -229,6 +232,33 @@ export default function MysqlProLayout({
     };
   }, [alertDrawerOpen, getMonitorAlert, instanceId, tab]);
 
+  useEffect(() => {
+    setAlertEvents([]);
+  }, [instanceId]);
+
+  useEffect(() => {
+    if (tab !== 'overview') return undefined;
+    if (!instanceId) {
+      setAlertEvents([]);
+      return undefined;
+    }
+    let active = true;
+    getMonitorAlert({
+      monitor_instance_id: instanceId,
+      page: 1,
+      page_size: 20
+    })
+      .then((data) => {
+        if (active) setAlertEvents(hostAlertRailEvents(data?.results));
+      })
+      .catch(() => {
+        if (active) setAlertEvents([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [getMonitorAlert, instanceId, tab]);
+
   const openStatement = (id: string) => {
     setStatementId(id);
     selectTab('statements');
@@ -270,7 +300,14 @@ export default function MysqlProLayout({
         cpuPercent={cpuPercent}
         memPercent={memPercent}
         alertsOpen={alertDrawerOpen}
+        alertEvents={alertEvents}
         onOpenAlerts={() => {
+          setFocusAlertId('');
+          setAlertDrawerOpen(true);
+          setAlertRefreshKey((key) => key + 1);
+        }}
+        onFocusAlert={(alertId) => {
+          setFocusAlertId(alertId);
           setAlertDrawerOpen(true);
           setAlertRefreshKey((key) => key + 1);
         }}
@@ -307,7 +344,7 @@ export default function MysqlProLayout({
         open={alertDrawerOpen}
         refreshKey={alertRefreshKey}
         instanceId={instanceId}
-        focusAlertId=""
+        focusAlertId={focusAlertId}
         onClose={() => setAlertDrawerOpen(false)}
         onCount={setAlertCount}
         emptyHint="本实例暂无活跃告警"

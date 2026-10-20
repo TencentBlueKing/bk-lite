@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { KpiTileRow, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
+import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { HOST_SERIES_COLOR } from '../../host/config';
 import { primaryChartSeries } from '../../host/layered/readings';
 import classic from '../../host/index.module.scss';
@@ -30,7 +31,9 @@ interface OverviewPaneProps {
   cpuPercent: number | null;
   memPercent: number | null;
   alertsOpen: boolean;
+  alertEvents: HostAlertRailEvent[];
   onOpenAlerts: () => void;
+  onFocusAlert: (alertId: string) => void;
   onOpenFocus: (card: MysqlFocusCard) => void;
 }
 
@@ -52,7 +55,9 @@ export default function OverviewPane({
   cpuPercent,
   memPercent,
   alertsOpen,
+  alertEvents,
   onOpenAlerts,
+  onFocusAlert,
   onOpenFocus
 }: OverviewPaneProps) {
   const cards = useMemo<KpiTileModel[]>(() => (
@@ -60,7 +65,7 @@ export default function OverviewPane({
       key: card.key,
       label: card.label,
       value: card.value,
-      detail: card.detail,
+      subtitle: card.subtitle,
       tone: card.tone,
       onActivate: card.key === 'alerts' ? onOpenAlerts : undefined,
       expanded: card.key === 'alerts' ? alertsOpen : undefined
@@ -89,41 +94,8 @@ export default function OverviewPane({
         memPercent={memPercent}
       />
 
-      {trends.row.length > 0 ? (
-        <>
-          <ProSectionTitle>实例趋势</ProSectionTitle>
-          <div className={host.chartGrid4}>
-            {trends.row.map((chart) => (
-              <ThinTimeSeries
-                key={chart.key}
-                title={chart.title}
-                unit={chart.unit}
-                data={chart.data}
-                legends={chart.legends}
-                reading={chart.reading}
-                loading={loading}
-              />
-            ))}
-          </div>
-          {trends.extra.length > 0 ? (
-            <div className={host.chartGrid2}>
-              {trends.extra.map((chart) => (
-                <ThinTimeSeries
-                  key={chart.key}
-                  title={chart.title}
-                  unit={chart.unit}
-                  data={chart.data}
-                  legends={chart.legends}
-                  reading={chart.reading}
-                  loading={loading}
-                />
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      <MysqlRoleBlock block={role} />
+      <ProSectionTitle>事件</ProSectionTitle>
+      <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
 
       {focus.length > 0 ? (
         <>
@@ -163,6 +135,42 @@ export default function OverviewPane({
           </div>
         </>
       ) : null}
+
+      {trends.row.length > 0 ? (
+        <>
+          <ProSectionTitle>实例趋势</ProSectionTitle>
+          <div className={host.chartGrid4}>
+            {trends.row.map((chart) => (
+              <ThinTimeSeries
+                key={chart.key}
+                title={chart.title}
+                unit={chart.unit}
+                data={chart.data}
+                legends={chart.legends}
+                reading={chart.reading}
+                loading={loading}
+              />
+            ))}
+          </div>
+          {trends.extra.length > 0 ? (
+            <div className={host.chartGrid2}>
+              {trends.extra.map((chart) => (
+                <ThinTimeSeries
+                  key={chart.key}
+                  title={chart.title}
+                  unit={chart.unit}
+                  data={chart.data}
+                  legends={chart.legends}
+                  reading={chart.reading}
+                  loading={loading}
+                />
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      <MysqlRoleBlock block={role} />
     </>
   );
 }

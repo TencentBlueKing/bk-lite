@@ -110,7 +110,8 @@ export interface MysqlKpiCard {
   key: 'connections' | 'qps' | 'slow' | 'bufferHit' | 'uptime' | 'alerts';
   label: string;
   value: string;
-  detail?: string;
+  /** 与主值同一行的辅文。不另起第三行，避免把卡撑得比主机健康卡高。 */
+  subtitle?: string;
   tone?: string;
 }
 
@@ -151,7 +152,7 @@ const formatUptime = (seconds: number) => {
 
 /**
  * 有采才出卡。缺指标不补「—」占位。
- * 顺序固定为：连接 / QPS / 慢查 / 缓冲池命中 / 运行时长 / 告警。
+ * 顺序固定为：连接 / QPS / 慢查询 / 缓冲池命中 / 运行时长 / 告警。
  */
 export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKpiCard[] => {
   const cards: MysqlKpiCard[] = [];
@@ -159,16 +160,16 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
   const maxConnections = finite(readings.maxConnections);
   const utilization = finite(readings.connectionUtilization);
   if (connected != null || utilization != null) {
-    const detail: string[] = [];
+    const subtitle: string[] = [];
     if (connected != null && maxConnections != null && maxConnections > 0) {
-      detail.push(`/ ${formatCount(maxConnections)}`);
+      subtitle.push(`/ ${formatCount(maxConnections)}`);
     }
-    if (utilization != null) detail.push(formatPercent(utilization));
+    if (connected != null && utilization != null) subtitle.push(formatPercent(utilization));
     cards.push({
       key: 'connections',
       label: '连接',
       value: connected != null ? formatCount(connected) : formatPercent(utilization as number),
-      detail: detail.join(' · ') || undefined,
+      subtitle: subtitle.join(' · ') || undefined,
       tone: HOST_SERIES_COLOR.memUsed
     });
   }
@@ -179,7 +180,6 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
       key: 'qps',
       label: 'QPS',
       value: formatRate(qps),
-      detail: '吞吐',
       tone: HOST_SERIES_COLOR.memAvailable
     });
   }
@@ -188,9 +188,8 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
   if (slow != null) {
     cards.push({
       key: 'slow',
-      label: '慢查',
+      label: '慢查询',
       value: formatRate(slow),
-      detail: '速率',
       tone: slow > 0 ? HOST_THRESHOLD_COLOR.warn : undefined
     });
   }
@@ -201,7 +200,6 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
       key: 'bufferHit',
       label: '缓冲池命中',
       value: formatPercent(hit),
-      detail: 'InnoDB',
       tone: hit >= 95 ? HOST_SERIES_COLOR.cpu : HOST_THRESHOLD_COLOR.warn
     });
   }
@@ -211,8 +209,7 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
     cards.push({
       key: 'uptime',
       label: '运行时长',
-      value: formatUptime(uptime),
-      detail: 'Uptime'
+      value: formatUptime(uptime)
     });
   }
 
@@ -222,7 +219,6 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
       key: 'alerts',
       label: '告警',
       value: String(Math.max(0, Math.round(alerts))),
-      detail: '本实例',
       tone: alerts > 0 ? 'var(--color-fail)' : 'var(--color-success)'
     });
   }
@@ -273,7 +269,7 @@ export const buildMysqlFocusCards = (
       value: formatRate(slow),
       delta: delta || undefined,
       deltaTone: delta && slow > (previousSlow || 0) ? 'var(--color-fail)' : undefined,
-      hint: statementsCollected ? '跳转「语句」' : '跳转「性能 · 吞吐」',
+      hint: statementsCollected ? '查看语句' : '查看吞吐',
       tab: statementsCollected ? 'statements' : 'performance',
       anchor: statementsCollected ? undefined : 'throughput',
       spark: 'slow'
@@ -286,7 +282,7 @@ export const buildMysqlFocusCards = (
       key: 'connections',
       label: '连接使用率',
       value: formatPercent(utilization),
-      hint: '跳转「性能 · 连接」',
+      hint: '查看连接',
       tab: 'performance',
       anchor: 'connections',
       spark: 'connections'
@@ -303,7 +299,7 @@ export const buildMysqlFocusCards = (
       value: formatPercent(hit),
       delta: delta || undefined,
       deltaTone: delta && previousHit != null && hit < previousHit ? HOST_THRESHOLD_COLOR.warn : undefined,
-      hint: '跳转「性能 · 缓冲池」',
+      hint: '查看缓冲池',
       tab: 'performance',
       anchor: 'buffer',
       spark: 'buffer'
@@ -317,7 +313,7 @@ export const buildMysqlFocusCards = (
       key: 'active',
       label: '活跃会话',
       value: Math.abs(running - rounded) < 0.05 ? String(rounded) : running.toFixed(1),
-      hint: '跳转「性能 · 连接」',
+      hint: '查看连接',
       tab: 'performance',
       anchor: 'connections',
       spark: 'active'
@@ -515,7 +511,7 @@ const innodbTrend = (metricMap: Record<string, MetricSeries | undefined>): Mysql
 };
 
 /**
- * 概览趋势。四格优先连接 / QPS / 慢查 / 缓冲池命中。
+ * 概览趋势。四格优先连接 / QPS / 慢查询 / 缓冲池命中。
  * 缓冲池无采时，第四格改成有负载的 InnoDB 读写。噪声线不占格。
  * 第一行不足四格时，第二行再补 InnoDB 或活跃会话。
  */
@@ -525,7 +521,7 @@ export const buildMysqlOverviewTrends = (
   const row = [
     singleTrend('connections', '连接', metricMap.mysql_threads_connected, 'counts', HOST_SERIES_COLOR.memUsed, (value) => formatCount(value)),
     singleTrend('qps', 'QPS', metricMap.mysql_queries_rate, 'cps', HOST_SERIES_COLOR.memAvailable, rateText),
-    singleTrend('slow', '慢查', metricMap.mysql_slow_queries_rate, 'cps', HOST_SERIES_COLOR.load1, rateText)
+    singleTrend('slow', '慢查询', metricMap.mysql_slow_queries_rate, 'cps', HOST_SERIES_COLOR.load1, rateText)
   ].filter((chart): chart is MysqlTrendModel => chart != null);
   const buffer = singleTrend(
     'buffer',
@@ -565,37 +561,132 @@ export interface MysqlRoleField {
 
 export interface MysqlRoleBlockModel {
   kind: 'primary' | 'replica' | 'group';
-  pill: string;
-  summary: string;
   fields: MysqlRoleField[];
-  note?: string;
   delay?: ChartData[];
 }
 
-const GROUP_METRIC = /wsrep|galera|group_replication/i;
+export interface MysqlProHeader {
+  pill: '主库' | '从库' | 'GR' | 'Galera';
+  aside?: '写入源' | '只读';
+  binlog?: 'Binlog · 已开启' | 'Binlog · 已关闭';
+}
+
+const GROUP_REPLICATION = /group_replication/i;
+const GALERA = /wsrep|galera/i;
+const CONNECTED_SLAVES = /connected_slaves|slaves_connected|slave_connections|replica_count|semi_sync_master_clients/i;
+const SEMISYNC = /semi_?sync/i;
+const BINLOG_POSITION = /binlog_(file|pos)|master_log_(file|pos)|file_position|gtid_executed/i;
+const REPLICA_POSITION = /relay_log_pos|relay_master_log_pos|read_master_log_pos|exec_master_log_pos/i;
 const THREAD_TEXT = (value: number) => (value > 0 ? '运行' : '停止');
 const THREAD_TONE = (value: number): MysqlRoleTone => (value > 0 ? 'ok' : 'warn');
 
+const isLogBinToggle = (name: string) => /(?:^|_)log_bin$/.test(name);
+
+const collectedNamed = (
+  metricMap: Record<string, MetricSeries | undefined>,
+  test: (name: string) => boolean
+) => Object.entries(metricMap).flatMap(([name, series]) => {
+  if (!test(name)) return [];
+  const value = latestNumber(series);
+  if (value == null) return [];
+  return [{ name, value }];
+});
+
+const formatPlainNumber = (value: number) => {
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+};
+
+const groupFieldLabel = (name: string) => {
+  if (/member_state|member_role/i.test(name)) return '成员角色';
+  if (/cluster_size|member_count|members_online/i.test(name)) return '成员';
+  if (/flow_control/i.test(name)) return '流控';
+  if (/conflict|cert_failures/i.test(name)) return '冲突';
+  return '';
+};
+
+const readonlyOn = (metricMap: Record<string, MetricSeries | undefined>) => {
+  const readOnly = latestNumber(metricMap.mysql_variables_read_only);
+  const superReadOnly = latestNumber(metricMap.mysql_variables_super_read_only);
+  return (readOnly != null && readOnly > 0) || (superReadOnly != null && superReadOnly > 0);
+};
+
+/** 专业盘页头。Binlog 开关只出小标签；无从库线程时不伪造从库。 */
+export const readMysqlProHeader = (
+  metricMap: Record<string, MetricSeries | undefined>
+): MysqlProHeader => {
+  const gr = collectedNamed(metricMap, (name) => GROUP_REPLICATION.test(name));
+  const galera = collectedNamed(metricMap, (name) => GALERA.test(name));
+  const io = latestNumber(metricMap.mysql_slave_io_running);
+  const sql = latestNumber(metricMap.mysql_slave_sql_running);
+  const delay = latestNumber(metricMap.mysql_slave_seconds_behind_master);
+  const logBin = latestNumber(metricMap.mysql_variables_log_bin);
+  const pill: MysqlProHeader['pill'] = gr.length
+    ? 'GR'
+    : galera.length
+      ? 'Galera'
+      : (io != null || sql != null || delay != null)
+        ? '从库'
+        : '主库';
+  const aside: MysqlProHeader['aside'] = pill === '主库'
+    ? (readonlyOn(metricMap) ? '只读' : '写入源')
+    : (readonlyOn(metricMap) ? '只读' : undefined);
+  return {
+    pill,
+    aside,
+    binlog: logBin == null ? undefined : (logBin > 0 ? 'Binlog · 已开启' : 'Binlog · 已关闭')
+  };
+};
+
+const primaryDownstreamFields = (
+  metricMap: Record<string, MetricSeries | undefined>
+): MysqlRoleField[] => {
+  const fields: MysqlRoleField[] = [];
+  const seen = new Set<string>();
+  Object.entries(metricMap).forEach(([name, series]) => {
+    const value = latestNumber(series);
+    if (value == null || isLogBinToggle(name)) return;
+    const kind = CONNECTED_SLAVES.test(name)
+      ? 'slaves'
+      : SEMISYNC.test(name)
+        ? 'semisync'
+        : BINLOG_POSITION.test(name)
+          ? 'position'
+          : '';
+    if (!kind || seen.has(kind)) return;
+    seen.add(kind);
+    if (kind === 'slaves') {
+      fields.push({ label: '已连接从库', value: formatPlainNumber(value), tone: 'muted' });
+    } else if (kind === 'semisync') {
+      fields.push({
+        label: '半同步',
+        value: value > 0 ? '已开启' : '已关闭',
+        tone: value > 0 ? 'ok' : 'muted'
+      });
+    } else {
+      fields.push({ label: 'Binlog 位点', value: formatPlainNumber(value), tone: 'muted' });
+    }
+  });
+  return fields;
+};
+
 /**
- * 专业盘角色块。没有 Group Replication / Galera 采点就不出集群块。
- * 无从库线程时按主库紧凑条降级，不画「无需复制线程」大卡。
+ * 概览紧凑复制块。主库只有 log_bin 开关时返回 null（页头已表达）。
+ * 不带「实例角色」标题，也不带「暂无从库连接数据」。
  */
 export const readMysqlRoleBlock = (
   metricMap: Record<string, MetricSeries | undefined>
-): MysqlRoleBlockModel => {
-  const groupFields = Object.entries(metricMap).flatMap(([name, series]) => {
-    if (!GROUP_METRIC.test(name)) return [];
-    const value = latestNumber(series);
-    if (value == null) return [];
-    return [{ label: name, value: String(Math.round(value * 100) / 100), tone: 'muted' as const }];
+): MysqlRoleBlockModel | null => {
+  const groupFields = collectedNamed(
+    metricMap,
+    (name) => GROUP_REPLICATION.test(name) || GALERA.test(name)
+  ).flatMap(({ name, value }) => {
+    const label = groupFieldLabel(name);
+    if (!label) return [];
+    return [{ label, value: formatPlainNumber(value), tone: 'muted' as const }];
   }).slice(0, 4);
   if (groupFields.length) {
-    return {
-      kind: 'group',
-      pill: '集群',
-      summary: 'Group Replication / Galera',
-      fields: groupFields
-    };
+    return { kind: 'group', fields: groupFields };
   }
 
   const io = latestNumber(metricMap.mysql_slave_io_running);
@@ -612,33 +703,21 @@ export const readMysqlRoleBlock = (
     }
     if (io != null) fields.push({ label: 'IO 线程', value: THREAD_TEXT(io), tone: THREAD_TONE(io) });
     if (sql != null) fields.push({ label: 'SQL 线程', value: THREAD_TEXT(sql), tone: THREAD_TONE(sql) });
+    const position = collectedNamed(metricMap, (name) => REPLICA_POSITION.test(name))[0];
+    if (position) {
+      fields.push({ label: '位点', value: formatPlainNumber(position.value), tone: 'muted' });
+    }
     const delayPoints = collectedPoints(metricMap.mysql_slave_seconds_behind_master);
     return {
       kind: 'replica',
-      pill: '从库',
-      summary: '复制线程与延迟',
       fields,
       delay: delayPoints.length ? delayPoints : undefined
     };
   }
 
-  const logBin = latestNumber(metricMap.mysql_variables_log_bin);
-  const readOnly = latestNumber(metricMap.mysql_variables_read_only);
-  const fields: MysqlRoleField[] = [];
-  if (logBin != null) {
-    fields.push({
-      label: 'Binlog',
-      value: logBin > 0 ? '已开启' : '未开启',
-      tone: logBin > 0 ? 'ok' : 'muted'
-    });
-  }
-  return {
-    kind: 'primary',
-    pill: '主库',
-    summary: readOnly != null && readOnly > 0 ? '实例处于只读' : '当前为写入源',
-    fields,
-    note: '暂无从库连接数据'
-  };
+  const downstream = primaryDownstreamFields(metricMap);
+  if (!downstream.length) return null;
+  return { kind: 'primary', fields: downstream };
 };
 
 export const waitStatementTarget = (

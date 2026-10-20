@@ -43,7 +43,7 @@ import {
 } from '../../shared/widgets';
 import type { DashboardModeOption } from '../../shared/widgets/dashboard-page-header';
 import MysqlProLayout from './layered/mysql-pro-layout';
-import { readMysqlHeaderIdentity } from './layered/ia';
+import { readMysqlHeaderIdentity, readMysqlProHeader } from './layered/ia';
 import MysqlLegacyLayout from './legacy-layout';
 
 interface MysqlInstanceOption {
@@ -447,13 +447,29 @@ export default function MysqlDashboardPage() {
 
   const chrome = displayMode === 'category' ? hostChrome : styles;
   const mysqlIdentity = readMysqlHeaderIdentity(metricMap, resolvedInstanceName);
+  const proHeader = displayMode === 'category' ? readMysqlProHeader(metricMap) : null;
   // 实例 ID 与展示名仅分隔符不同时（mysql_3306 vs mysql-3306）视为重复，不再展示。
   const normalizeIdentityKey = (value: string) => value.trim().toLowerCase().replace(/[-_\s]+/g, '');
   const showInstanceId =
     Boolean(instanceIdText) &&
     normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
-  const identityMetaItems =
-    mysqlIdentity.deployment === '单节点'
+  const identityMetaItems = proHeader
+    ? [
+      <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
+        {proHeader.pill}
+      </span>,
+      proHeader.aside ? (
+        <span key="aside" className={styles.instanceMetaMuted}>
+          {proHeader.aside}
+        </span>
+      ) : null,
+      proHeader.binlog ? (
+        <span key="binlog" className={styles.identityPill}>
+          {proHeader.binlog}
+        </span>
+      ) : null
+    ].filter(Boolean)
+    : mysqlIdentity.deployment === '单节点'
       ? [
         <span key="topology" className={chrome.instanceMetaInline}>
           单节点

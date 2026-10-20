@@ -42,11 +42,10 @@ const rateReading = (metric: MetricSeries | undefined) => {
   return `${formatted.value}${formatted.unit || ''}`;
 };
 
-const Section = ({ id, title, children }: { id: string; title: string; children: React.ReactNode }) => (
-  <section id={id}>
+const SpanTitle = ({ id, title }: { id: string; title: string }) => (
+  <div id={id} className={pro.perfSpan}>
     <ProSectionTitle>{title}</ProSectionTitle>
-    {children}
-  </section>
+  </div>
 );
 
 export default function PerformancePane({ metricMap, loading }: PerformancePaneProps) {
@@ -95,92 +94,87 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
   ]), [metricMap.mysql_slave_seconds_behind_master?.viewData]);
 
   return (
-    <div className={pro.chartStack}>
-      <Section id="mysql-perf-connections" title="连接">
+    <div className={pro.perfGrid}>
+      <SpanTitle id="mysql-perf-connections" title="连接" />
+      <ThinTimeSeries
+        title="连接与活跃会话"
+        hint="当前连接数与 Threads_running。"
+        loading={loading}
+        unit="counts"
+        data={connection}
+        emptyText="暂无采集数据"
+        legends={[
+          { label: '当前连接', color: HOST_SERIES_COLOR.memUsed },
+          { label: '活跃会话', color: HOST_SERIES_COLOR.load1 }
+        ]}
+      />
+      <SpanTitle id="mysql-perf-throughput" title="吞吐" />
+      <ThinTimeSeries
+        title="QPS / TPS"
+        hint="QPS 为实例 Queries/s。TPS 为 INSERT、UPDATE、DELETE 速率之和。"
+        loading={loading}
+        unit="cps"
+        data={throughput}
+        emptyText="暂无采集数据"
+        legends={[
+          { label: 'QPS', color: HOST_SERIES_COLOR.memAvailable },
+          { label: 'TPS', color: HOST_PALETTE.orange }
+        ]}
+      />
+      <ThinTimeSeries
+        title="写入语句"
+        loading={loading}
+        unit="cps"
+        data={statementMix}
+        emptyText="暂无采集数据"
+        legends={[
+          { label: 'INSERT', color: HOST_PALETTE.orange },
+          { label: 'UPDATE', color: HOST_SERIES_COLOR.load5 },
+          { label: 'DELETE', color: HOST_PALETTE.rose }
+        ]}
+      />
+      <SpanTitle id="mysql-perf-innodb" title="InnoDB" />
+      {innodbHasLoad(metricMap) ? (
         <ThinTimeSeries
-          title="连接与活跃会话"
-          hint="当前连接数与 Threads_running。"
+          title="InnoDB 读写"
+          hint="读、写与 Redo 刷盘。近窗接近零时不放大噪声。"
           loading={loading}
-          unit="counts"
-          data={connection}
-          emptyText="暂无采集数据"
+          unit="cps"
+          data={innodb}
           legends={[
-            { label: '当前连接', color: HOST_SERIES_COLOR.memUsed },
-            { label: '活跃会话', color: HOST_SERIES_COLOR.load1 }
+            { label: '读', color: HOST_SERIES_COLOR.diskRead, reading: rateReading(metricMap.mysql_innodb_data_reads_rate) },
+            { label: '写', color: HOST_SERIES_COLOR.diskWrite, reading: rateReading(metricMap.mysql_innodb_data_writes_rate) },
+            { label: 'Redo', color: HOST_SERIES_COLOR.load1, reading: rateReading(metricMap.mysql_innodb_os_log_fsyncs_rate) }
           ]}
         />
-      </Section>
-      <Section id="mysql-perf-throughput" title="吞吐">
-        <div className={host.chartGrid2}>
-          <ThinTimeSeries
-            title="QPS / TPS"
-            hint="QPS 为实例 Queries/s。TPS 为 INSERT、UPDATE、DELETE 速率之和。"
-            loading={loading}
-            unit="cps"
-            data={throughput}
-            emptyText="暂无采集数据"
-            legends={[
-              { label: 'QPS', color: HOST_SERIES_COLOR.memAvailable },
-              { label: 'TPS', color: HOST_PALETTE.orange }
-            ]}
-          />
-          <ThinTimeSeries
-            title="写入语句"
-            loading={loading}
-            unit="cps"
-            data={statementMix}
-            emptyText="暂无采集数据"
-            legends={[
-              { label: 'INSERT', color: HOST_PALETTE.orange },
-              { label: 'UPDATE', color: HOST_SERIES_COLOR.load5 },
-              { label: 'DELETE', color: HOST_PALETTE.rose }
-            ]}
-          />
-        </div>
-      </Section>
-      <Section id="mysql-perf-innodb" title="InnoDB">
-        {innodbHasLoad(metricMap) ? (
-          <ThinTimeSeries
-            title="InnoDB 读写"
-            hint="读、写与 Redo 刷盘。近窗接近零时不放大噪声。"
-            loading={loading}
-            unit="cps"
-            data={innodb}
-            legends={[
-              { label: '读', color: HOST_SERIES_COLOR.diskRead, reading: rateReading(metricMap.mysql_innodb_data_reads_rate) },
-              { label: '写', color: HOST_SERIES_COLOR.diskWrite, reading: rateReading(metricMap.mysql_innodb_data_writes_rate) },
-              { label: 'Redo', color: HOST_SERIES_COLOR.load1, reading: rateReading(metricMap.mysql_innodb_os_log_fsyncs_rate) }
-            ]}
-          />
-        ) : (
-          <section className={`${classic.panel} ${host.chartPanel}`}>
-            <div className={host.chartHead}>
-              <div className={host.chartTitle}>InnoDB 读写</div>
+      ) : (
+        <section className={`${classic.panel} ${host.chartPanel}`}>
+          <div className={host.chartHead}>
+            <div className={host.chartTitle}>InnoDB 读写</div>
+          </div>
+          <div className="flex h-[72px] flex-col items-center justify-center text-center">
+            <div className="text-[13px] font-semibold text-[var(--color-text-2)]">
+              {innodb.length > 0 ? '近窗无明显 InnoDB 读写' : '暂无采集数据'}
             </div>
-            <div className="flex h-[72px] flex-col items-center justify-center text-center">
-              <div className="text-[13px] font-semibold text-[var(--color-text-2)]">
-                {innodb.length > 0 ? '近窗无明显 InnoDB 读写' : '暂无采集数据'}
-              </div>
-              {innodb.length > 0 ? (
-                <div className="mt-1 text-[12px] text-[var(--color-text-3)]">有负载时将显示读/写/Redo</div>
-              ) : null}
-            </div>
-          </section>
-        )}
-      </Section>
-      <Section id="mysql-perf-buffer" title="缓冲池">
-        <ThinTimeSeries
-          title="缓冲池命中"
-          hint="InnoDB buffer pool 命中率。"
-          loading={loading}
-          unit="percent"
-          data={buffer}
-          emptyText="暂无采集数据"
-          legends={[{ label: '命中率', color: HOST_SERIES_COLOR.cpu }]}
-        />
-      </Section>
+            {innodb.length > 0 ? (
+              <div className="mt-1 text-[12px] text-[var(--color-text-3)]">有负载时将显示读/写/Redo</div>
+            ) : null}
+          </div>
+        </section>
+      )}
+      <SpanTitle id="mysql-perf-buffer" title="缓冲池" />
+      <ThinTimeSeries
+        title="缓冲池命中"
+        hint="InnoDB buffer pool 命中率。"
+        loading={loading}
+        unit="percent"
+        data={buffer}
+        emptyText="暂无采集数据"
+        legends={[{ label: '命中率', color: HOST_SERIES_COLOR.cpu }]}
+      />
       {replication.length > 0 ? (
-        <Section id="mysql-perf-replication" title="复制">
+        <>
+          <SpanTitle id="mysql-perf-replication" title="复制" />
           <ThinTimeSeries
             title="复制延迟"
             loading={loading}
@@ -189,7 +183,7 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
             emptyText="暂无采集数据"
             legends={[{ label: '复制延迟', color: HOST_SERIES_COLOR.memUsed }]}
           />
-        </Section>
+        </>
       ) : null}
     </div>
   );
