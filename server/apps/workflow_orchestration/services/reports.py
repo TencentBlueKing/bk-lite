@@ -292,7 +292,7 @@ def _metric_summary(results: list[Any]) -> list[dict[str, Any]]:
     for item in results:
         if not isinstance(item, dict):
             continue
-        payload = item.get("data") if isinstance(item.get("data"), dict) else {}
+        payload = item.get("result") if isinstance(item.get("result"), dict) else {}
         for metric in payload.get("metrics") or []:
             if not isinstance(metric, dict):
                 continue
@@ -342,15 +342,15 @@ def _metric_summary(results: list[Any]) -> list[dict[str, Any]]:
 
 
 def prepare_report_data(data: dict[str, Any]) -> dict[str, Any]:
-    """Copy job results into the flat fields the health report template prints."""
-    results: list[Any] = []
+    """Copy job host rows into the flat fields the health report template prints."""
+    hosts: list[Any] = []
     collected_at = ""
-    for item in list(data.get("results") or []):
+    for item in list(data.get("data") or []):
         if not isinstance(item, dict):
-            results.append(item)
+            hosts.append(item)
             continue
         row = dict(item)
-        payload = row.get("data")
+        payload = row.get("result")
         if not isinstance(payload, dict):
             payload = {
                 "collected_at": "",
@@ -370,28 +370,28 @@ def prepare_report_data(data: dict[str, Any]) -> dict[str, Any]:
         copied["metric_count"] = len(metrics)
         if not collected_at:
             collected_at = _format_collected_at(copied.get("collected_at"))
-        row["data"] = copied
-        results.append(row)
-    buckets = [_host_bucket(item) for item in results]
+        row["result"] = copied
+        hosts.append(row)
+    buckets = [_host_bucket(item) for item in hosts]
     summary = dict(data.get("summary") or {})
     summary.update(
         {
-            "total": len(results),
+            "total": len(hosts),
             "succeeded": buckets.count("critical") + buckets.count("warning") + buckets.count("healthy"),
-            "failed": len(results) - (buckets.count("critical") + buckets.count("warning") + buckets.count("healthy")),
+            "failed": len(hosts) - (buckets.count("critical") + buckets.count("warning") + buckets.count("healthy")),
             "critical_hosts": buckets.count("critical"),
             "warning_hosts": buckets.count("warning"),
             "healthy_hosts": buckets.count("healthy"),
             "collected_at": collected_at,
         }
     )
-    return {**data, "results": results, "summary": summary, "metric_summary": _metric_summary(results)}
+    return {**data, "data": hosts, "summary": summary, "metric_summary": _metric_summary(hosts)}
 
 
 def _host_bucket(item: Any) -> str | None:
     if not isinstance(item, dict) or str(item.get("status") or "").upper() != "SUCCESS":
         return None
-    payload = item.get("data") if isinstance(item.get("data"), dict) else {}
+    payload = item.get("result") if isinstance(item.get("result"), dict) else {}
     critical = int(payload.get("critical_count") or 0)
     warning = int(payload.get("warning_count") or 0)
     if critical:

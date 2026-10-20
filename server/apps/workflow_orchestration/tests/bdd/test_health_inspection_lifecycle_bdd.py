@@ -126,7 +126,7 @@ def word_and_excel_health_workflows():
 def multidimensional_health_data(ctx):
     execution = WorkflowExecution.objects.get(trigger_id="health-word-success")
     ctx["health_data"] = execution.output["job"]
-    data = ctx["health_data"]["results"][0]["data"]
+    data = ctx["health_data"]["data"][0]["result"]
     categories = {metric["category"] for metric in data["metrics"]}
     assert categories >= {"计算", "内存", "磁盘", "网络", "系统健康", "基础服务", "安全浅检", "更新账龄"}
     assert data["host"]["hostname"]
@@ -140,7 +140,7 @@ def builtin_templates_render(ctx):
         parsed = parse_report_template(content, fmt)
         rendered = render_report(content, fmt, ctx["health_data"])
         text = _rendered_text(fmt, rendered)
-        assert "results" in parsed.loops
+        assert "data" in parsed.loops
         assert "metric_summary" in parsed.loops
         assert "10.10.90.120" in text
         assert "CPU Total" in text
@@ -180,7 +180,7 @@ def scoped_idempotent_rebuild(ctx):
 @then("多磁盘告警执行应当标记告警并保留具体磁盘维度")
 def warning_evidence():
     execution = WorkflowExecution.objects.get(trigger_id="health-warning")
-    metrics = execution.output["job"]["results"][0]["data"]["metrics"]
+    metrics = execution.output["job"]["data"][0]["result"]["metrics"]
     disk_warning = next(metric for metric in metrics if metric["category"] == "磁盘" and metric["object_name"] == "D:")
     assert execution.has_warnings is True
     assert execution.warning_count == 1

@@ -50,14 +50,14 @@ _EMPTY_HOST = {
 
 
 def _coerce_result_data(item: Any) -> Any:
-    """作业失败时 data/host 可能为 null；补齐空结构，避免模板访问 .host 崩掉。"""
+    """作业失败时 result/host 可能为 null；补齐空结构，避免模板访问 .host 崩掉。"""
     if not isinstance(item, dict):
         return item
     row = dict(item)
-    payload = row.get("data")
+    payload = row.get("result")
     if not isinstance(payload, dict):
         conclusion = str(row.get("error") or row.get("status") or "无采集数据")
-        row["data"] = {
+        row["result"] = {
             "collected_at": "",
             "conclusion": conclusion,
             "host": dict(_EMPTY_HOST),
@@ -83,23 +83,23 @@ def _coerce_result_data(item: Any) -> Any:
     ):
         if not isinstance(data.get(key), list):
             data[key] = default
-    row["data"] = data
+    row["result"] = data
     return row
 
 
 def _merge_report_data(primary: dict[str, Any], additional: Any) -> dict[str, Any]:
     """合并多份作业输出，供多主机 / 多操作系统巡检共用同一份报告模板。"""
     if additional in (None, ""):
-        results = [_coerce_result_data(item) for item in list(primary.get("results") or [])]
-        return {**primary, "results": results}
+        results = [_coerce_result_data(item) for item in list(primary.get("data") or [])]
+        return {**primary, "data": results}
     if not isinstance(additional, dict):
         raise ValueError("追加文档数据必须是 JSON 对象")
-    results = [_coerce_result_data(item) for item in list(primary.get("results") or []) + list(additional.get("results") or [])]
+    results = [_coerce_result_data(item) for item in list(primary.get("data") or []) + list(additional.get("data") or [])]
     succeeded = sum(1 for item in results if str(item.get("status") or "").upper() == "SUCCESS")
     job_task_ids = list(primary.get("job_task_ids") or []) + list(additional.get("job_task_ids") or [])
     return {
         **primary,
-        "results": results,
+        "data": results,
         "summary": {"total": len(results), "succeeded": succeeded, "failed": len(results) - succeeded},
         "job_task_ids": job_task_ids,
     }

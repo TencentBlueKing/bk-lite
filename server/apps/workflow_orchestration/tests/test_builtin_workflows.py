@@ -98,6 +98,38 @@ def test_ensure_builtin_health_workflows_are_idempotent(builtin_user, builtin_ch
 
 
 @pytest.mark.django_db
+def test_ensure_builtin_publishes_next_version_when_template_snapshot_changes(builtin_user, builtin_channels, mocker):
+    snapshots = {"generation": "first"}
+
+    def snapshot(fmt, team_id):
+        return {
+            "object_key": f"workflow-orchestration/templates/demo/team-{team_id}/health-{snapshots['generation']}.{fmt}",
+            "format": fmt,
+            "sha256": "a" * 64,
+            "size": 128,
+            "filename_prefix": f"health-{fmt}",
+        }
+
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ConductorClient").return_value
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.seed_builtin_health_template_snapshot", side_effect=snapshot)
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ensure_platform_atom")
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.sync_published_triggers")
+
+    first = ensure_builtin_health_workflows(team_id=1, username=builtin_user.username, domain=builtin_user.domain)
+    snapshots["generation"] = "second"
+    second = ensure_builtin_health_workflows(team_id=1, username=builtin_user.username, domain=builtin_user.domain)
+
+    assert [item.current_version for item in first] == [1, 1]
+    assert [item.current_version for item in second] == [2, 2]
+    linux = next(item for item in second if item.engine_name == builtin_engine_name(1, BUILTIN_LINUX_KEY))
+    script = linux.definition["tasks"][0]["inputParameters"]["script_content"]
+    assert 'print("result="' in script
+    assert "BK_LITE_RESULT=" not in script
+    assert linux.versions.filter(version=1).exists()
+    assert linux.versions.filter(version=2).exists()
+
+
+@pytest.mark.django_db
 def test_ensure_builtin_skips_nats_preferred_channel(builtin_user, builtin_channels, mocker):
     _patch_builtin_deps(mocker)
 

@@ -59,7 +59,7 @@ def _host_result(
             "operating_system": operating_system,
         },
         "status": "SUCCESS",
-        "data": {
+        "result": {
             "collected_at": collected_at,
             "conclusion": conclusion,
             "host": {
@@ -87,7 +87,7 @@ def _host_result(
 
 HEALTH_REPORT_DATA = {
     "summary": {"total": 1, "succeeded": 1, "failed": 0},
-    "results": [
+    "data": [
         _host_result(
             name="job-web3",
             ip="10.10.90.120",
@@ -133,7 +133,7 @@ HEALTH_REPORT_DATA = {
 
 MULTI_HOST_REPORT_DATA = {
     "summary": {"total": 2, "succeeded": 2, "failed": 0},
-    "results": [
+    "data": [
         _host_result(
             name="job-web3",
             ip="10.10.90.120",
@@ -194,10 +194,10 @@ def test_builtin_health_report_template_matches_job_output_contract_and_renders_
     parsed = parse_report_template(content, fmt)
     rendered = render_report(content, fmt, HEALTH_REPORT_DATA)
 
-    assert "results" in parsed.loops
-    assert "results.data.metrics" in parsed.loops
-    assert "results.data.critical" in parsed.loops
-    assert "results.data.warning" in parsed.loops
+    assert "data" in parsed.loops
+    assert "data.result.metrics" in parsed.loops
+    assert "data.result.critical" in parsed.loops
+    assert "data.result.warning" in parsed.loops
     assert "metric_summary" in parsed.loops
     assert "summary.total" in parsed.placeholders
     assert "summary.critical_hosts" in parsed.placeholders
@@ -243,11 +243,11 @@ def test_builtin_health_report_renders_failed_host_with_null_data(fmt):
     payload = _merge_report_data(
         {
             "summary": {"total": 1, "succeeded": 0, "failed": 1},
-            "results": [
+            "data": [
                 {
                     "target": {"name": "job-web3", "ip": "10.10.90.120", "operating_system": "windows"},
                     "status": "FAILED",
-                    "data": None,
+                    "result": None,
                     "error": "command timed out",
                 }
             ],

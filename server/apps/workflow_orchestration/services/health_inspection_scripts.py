@@ -2,7 +2,7 @@
 
 约束：
 - 禁止出现 Conductor 表达式字面量 ``${...}``（发布时虽会转义，脚本源码仍保持干净便于契约测试）。
-- 输出统一为 ``BK_LITE_RESULT=`` + JSON，字段含 ``host`` 画像与可打分 ``metrics``。
+- 输出统一为行首 ``result=`` + JSON，字段含 ``host`` 画像与可打分 ``metrics``。
 """
 
 from __future__ import annotations
@@ -226,7 +226,7 @@ $result = @{
   normal_count = $normal.Count
   conclusion = $(if (($critical.Count + $warning.Count) -gt 0) { "需关注" } else { "健康" })
 }
-Write-Output ("BK_LITE_RESULT=" + ($result | ConvertTo-Json -Depth 8 -Compress))
+Write-Output ("result=" + ($result | ConvertTo-Json -Depth 8 -Compress))
 """.strip()
 
 
@@ -596,6 +596,6 @@ result = {
     "normal_count": len(normal),
     "conclusion": "需关注" if (critical or warning) else "健康",
 }
-print("BK_LITE_RESULT=" + json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+print("result=" + json.dumps(result, ensure_ascii=False, separators=(",", ":")))
 PY
 """.strip()

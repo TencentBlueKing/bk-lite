@@ -178,7 +178,7 @@ def _base_metadata(title: str) -> dict[str, Any]:
 
 
 def _sample_job_envelope() -> dict[str, Any]:
-    """显式文档验收数据：字段形状对齐内置健康报告模板（含 data.host）。"""
+    """显式文档验收数据：字段形状对齐内置健康报告模板（含 result.host）。"""
     collected_at = timezone.now().isoformat()
     metric = {
         "category": "计算",
@@ -196,7 +196,7 @@ def _sample_job_envelope() -> dict[str, Any]:
         "display_name": "CPU 使用率",
     }
     return {
-        "results": [
+        "data": [
             {
                 "target": {
                     "id": "manual:1",
@@ -210,7 +210,7 @@ def _sample_job_envelope() -> dict[str, Any]:
                 "exit_code": 0,
                 "stdout": "",
                 "stderr": "",
-                "data": {
+                "result": {
                     "collected_at": collected_at,
                     "conclusion": "健康",
                     "host": {

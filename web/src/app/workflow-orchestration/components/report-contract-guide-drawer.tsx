@@ -9,64 +9,14 @@ export type ReportContractGuideMode = 'template' | 'structure';
 export type ReportContractGuideAudience = 'job' | 'document';
 
 const OUTPUT_CONTRACT_SAMPLE = `{
-  "summary": {
-    "total": 2,
-    "succeeded": 2,
-    "failed": 0
-  },
-  "results": [
+  "summary": { "total": 2, "succeeded": 2, "failed": 0 },
+  "data": [
     {
-      "target": {
-        "name": "job-web3",
-        "ip": "10.10.90.120",
-        "operating_system": "windows"
-      },
+      "target": { "name": "job-web3", "ip": "10.10.90.120" },
       "status": "SUCCESS",
       "exit_code": 0,
       "error": "",
-      "data": {
-        "collected_at": "2026-09-21T06:23:00Z",
-        "conclusion": "健康",
-        "metric_count": 2,
-        "metrics": [
-          {
-            "category": "CPU",
-            "metric_name": "usage_percent",
-            "value": 12,
-            "unit": "%",
-            "health_status": "NORMAL"
-          },
-          {
-            "category": "内存",
-            "metric_name": "usage_percent",
-            "value": 68,
-            "unit": "%",
-            "health_status": "NORMAL"
-          }
-        ]
-      }
-    },
-    {
-      "target": {
-        "name": "job-lab-linux",
-        "ip": "10.10.90.121",
-        "operating_system": "linux"
-      },
-      "status": "SUCCESS",
-      "exit_code": 0,
-      "error": "",
-      "data": {
-        "conclusion": "需关注",
-        "metrics": [
-          {
-            "category": "磁盘",
-            "metric_name": "usage_percent",
-            "value": 88,
-            "unit": "%",
-            "health_status": "WARNING"
-          }
-        ]
-      }
+      "result": { "collected_at": "...", "conclusion": "健康", "metrics": [] }
     }
   ]
 }`;
@@ -85,26 +35,24 @@ function CodeBlock({ children }: { children: string }) {
 function StructureGuide({ audience }: { audience: ReportContractGuideAudience }) {
   const { t } = useTranslation();
   return <div className="flex flex-col gap-5 pb-4">
-    <GuideSection title={t('workflowOrchestration.editor.reportFixedContractTitle', '平台固定外层')}>
-      <p className="m-0">{t('workflowOrchestration.editor.reportFixedContractBody', '作业执行节点的结构化输出外层由平台固定：summary、results、target、status、exit_code、error。脚本不要改这些字段名。')}</p>
-      <p className="m-0">{t('workflowOrchestration.editor.reportCustomDataBody', '业务内容是脚本自己定义的字段，例如结论和指标。平台按主机放进 results[].data。每台主机单独解析，字段可以不同。根必须是 JSON 对象；对象里可以有数组和嵌套，深度不超过 10 层。')}</p>
+    <GuideSection title={t('workflowOrchestration.editor.reportFixedContractTitle', '平台字段')}>
+      <p className="m-0">{t('workflowOrchestration.editor.reportFixedContractBody', '平台填写 summary、data、target、status、exit_code、error。脚本不要打印这些字段。data 是主机列表。每台主机的 result 由脚本定义，例如结论和指标。根必须是 JSON 对象，嵌套不超过 10 层。')}</p>
     </GuideSection>
-    <GuideSection title={t('workflowOrchestration.editor.reportScriptMarkerTitle', '每台主机的脚本要输出什么')}>
-      <p className="m-0">{t('workflowOrchestration.editor.reportScriptMarkerBody', '脚本在每台目标主机上执行。需要交给下游的业务数据，在标准输出里单独打印一行。行首必须是平台固定前缀 BK_LITE_RESULT=，这个名字不能改。等号后面是一个 JSON 对象，对象里的字段由脚本自己定义，例如结论和指标。')}</p>
-      <CodeBlock>{`BK_LITE_RESULT={"collected_at":"...","conclusion":"健康","metrics":[]}`}</CodeBlock>
-      <p className="m-0">{t('workflowOrchestration.editor.reportScriptMarkerFollow', '平台只认这个前缀，并把等号后面的对象放进该主机的 results[].data。没有这一行时，data 为 {}。summary、results、target、status 由平台填写，脚本不要打印这些外层字段。')}</p>
+    <GuideSection title={t('workflowOrchestration.editor.reportScriptMarkerTitle', '脚本输出')}>
+      <p className="m-0">{t('workflowOrchestration.editor.reportScriptMarkerBody', '每台主机在标准输出单独打印一行，行首固定为 result=，等号后是一个 JSON 对象。平台把它写入该主机的 result。没有这一行时，result 为 {}。')}</p>
+      <CodeBlock>{`result={"collected_at":"...","conclusion":"健康","metrics":[]}`}</CodeBlock>
     </GuideSection>
     {audience === 'document' ? (
       <GuideSection title={t('workflowOrchestration.editor.reportDataToTemplateTitle', '数据如何进模板')}>
-        <p className="m-0">{t('workflowOrchestration.editor.reportDataToTemplateBody', '文档生成节点在进程内渲染：Word 用 docxtpl，Excel 用 xlsxjinja。模板根数据就是上述 JSON，没有额外的 d 包装：summary 是汇总，results 是主机数组，results[n].data 是该主机脚本返回的业务字段。')}</p>
+        <p className="m-0">{t('workflowOrchestration.editor.reportDataToTemplateBody', '文档生成节点在进程内渲染：Word 用 docxtpl，Excel 用 xlsxjinja。模板根数据就是上述 JSON，没有额外的 d 包装：summary 是汇总，data 是主机数组，data[n].result 是该主机脚本返回的业务字段。')}</p>
         <ul className="m-0 list-disc space-y-1 pl-5">
-          <li>{t('workflowOrchestration.editor.reportDataToTemplateHost', '跑了几台主机，results 就有几条；表格循环行数由数组长度决定。')}</li>
+          <li>{t('workflowOrchestration.editor.reportDataToTemplateHost', '跑了几台主机，data 就有几条；表格循环行数由数组长度决定。')}</li>
           <li>{t('workflowOrchestration.editor.reportDataToTemplateMetric', '每台主机内部的 metrics / critical 等数组，可用嵌套循环再展开。')}</li>
         </ul>
       </GuideSection>
     ) : null}
-    <GuideSection title={t('workflowOrchestration.editor.reportStructureSampleTitle', '下游拿到的完整结果')}>
-      <p className="m-0">{t('workflowOrchestration.editor.reportStructureSampleCaption', '下面这份 JSON 由平台组装，是作业节点交给下游的结果。results 里有几台主机就有几条。每条里的 data，就是该主机脚本打印的那个 JSON 对象。')}</p>
+    <GuideSection title={t('workflowOrchestration.editor.reportStructureSampleTitle', '下游结构')}>
+      <p className="m-0">{t('workflowOrchestration.editor.reportStructureSampleCaption', 'data 有几台主机就有几条。每条里的 result 就是该主机打印的对象。')}</p>
       <CodeBlock>{OUTPUT_CONTRACT_SAMPLE}</CodeBlock>
     </GuideSection>
   </div>;
@@ -121,13 +69,13 @@ function TemplateGuide() {
       <p className="m-0">{t('workflowOrchestration.editor.reportWordSyntaxBody', '字段用 {{ }}。跨段落或表格行循环时，必须用 {%p ... %} / {%tr ... %} 这类特殊标签，普通 {% for %} 不能跨越段落或表格行。')}</p>
       <CodeBlock>{`总数：{{ summary.total }}
 
-{%tr for r in results %}
-{{ r.target.name }} | {{ r.target.ip }} | {{ r.data.conclusion }}
+{%tr for r in data %}
+{{ r.target.name }} | {{ r.target.ip }} | {{ r.result.conclusion }}
 {%tr endfor %}`}</CodeBlock>
       <p className="m-0">{t('workflowOrchestration.editor.reportWordLoopHint', '开始/结束标签各自独占一行（表格行）。中间行写 {{ r.字段 }}；引擎按数组长度复制中间行。')}</p>
-      <CodeBlock>{`{%tr for r in results %}
+      <CodeBlock>{`{%tr for r in data %}
 主机 {{ r.target.name }}
-{%tr for m in r.data.metrics %}
+{%tr for m in r.result.metrics %}
 {{ m.category }}  {{ m.metric_name }}  {{ m.value }}
 {%tr endfor %}
 {%tr endfor %}`}</CodeBlock>
@@ -136,13 +84,13 @@ function TemplateGuide() {
     <GuideSection title={t('workflowOrchestration.editor.reportExcelSyntaxTitle', 'Excel（xlsxjinja）')}>
       <p className="m-0">{t('workflowOrchestration.editor.reportExcelSyntaxBody', '字段同样用 {{ }}。循环用普通 {% for %} / {% endfor %}，放在单元格里；多工作表时每张表各自写循环。')}</p>
       <CodeBlock>{`B1 = {{ summary.total }}
-A2 = {% for r in results %}
+A2 = {% for r in data %}
 A3 = {{ r.target.name }}
 B3 = {{ r.target.ip }}
-C3 = {{ r.data.conclusion }}
+C3 = {{ r.result.conclusion }}
 A4 = {% endfor %}`}</CodeBlock>
-      <CodeBlock>{`A1 = {% for r in results %}
-A2 = {% for m in r.data.metrics %}
+      <CodeBlock>{`A1 = {% for r in data %}
+A2 = {% for m in r.result.metrics %}
 A3 = {{ r.target.name }}
 B3 = {{ m.metric_name }}
 C3 = {{ m.value }}
@@ -170,7 +118,7 @@ A5 = {% endfor %}`}</CodeBlock>
 
     <GuideSection title={t('workflowOrchestration.editor.reportSupportedTitle', '明确支持')}>
       <ul className="m-0 list-disc space-y-1 pl-5">
-        <li>{t('workflowOrchestration.editor.reportSupportedReplace', '单值字段替换（汇总、主机名、IP、脚本 data 字段）')}</li>
+        <li>{t('workflowOrchestration.editor.reportSupportedReplace', '单值字段替换（汇总、主机名、IP、脚本 result 字段）')}</li>
         <li>{t('workflowOrchestration.editor.reportSupportedLoop', '按数组纵向循环扩行 / 扩段，以及一层嵌套循环')}</li>
         <li>{t('workflowOrchestration.editor.reportSupportedStaticMerge', '循环外的静态合并单元格与常规 Word/Excel 样式')}</li>
         <li>{t('workflowOrchestration.editor.reportSupportedMultiTable', '同一文档内多张独立表格、多个工作表分别循环')}</li>
