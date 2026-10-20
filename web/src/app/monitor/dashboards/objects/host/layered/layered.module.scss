@@ -511,32 +511,33 @@ button.kpiCard {
 .shortcutCard {
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-start;
   gap: 12px;
   min-height: 112px;
 }
 
+/* 左文只占内容宽。禁止 flex:1，否则空位落在文图之间。 */
 .shortcutCopy {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1 1 auto;
-  min-width: min(100%, 9em);
-  max-width: max-content;
-  container-type: inline-size;
-  container-name: focus-copy;
+  flex: 0 1 auto;
+  width: max-content;
+  min-width: 0;
+  max-width: 42%;
 }
 
 .shortcutCopy .jumpBtn {
   margin-top: 0;
 }
 
+/* 折线吃满卡内剩余宽。间距只靠卡片 gap，不再用固定宽甩到右边。 */
 .focusChart {
-  flex: 0 1 280px;
-  width: 280px;
+  flex: 1 1 0;
+  width: auto;
   min-width: 0;
-  max-width: 280px;
+  max-width: none;
 }
 
 .focusChart .chartBody {
@@ -568,12 +569,6 @@ button.kpiCard {
   font-weight: 400;
   line-height: 16px;
   font-variant-numeric: tabular-nums;
-}
-
-@container focus-copy (max-width: 96px) {
-  .shortcutAxisUnit {
-    font-size: 10px;
-  }
 }
 
 .shortcutMain {
