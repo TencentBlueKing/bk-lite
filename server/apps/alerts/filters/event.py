@@ -1,9 +1,10 @@
 # -- coding: utf-8 --
 import json
 
-from django_filters import CharFilter, FilterSet
+from django_filters import CharFilter, ChoiceFilter, FilterSet
 from rest_framework.exceptions import ValidationError
 
+from apps.alerts.constants.constants import EventStatus
 from apps.alerts.models.models import Event
 from apps.alerts.utils.i18n import alerts_message
 
@@ -17,6 +18,7 @@ class EventModelFilter(FilterSet):
     source_id = CharFilter(field_name="source__source_id", lookup_expr="exact", label="集成源ID")
     push_source_id = CharFilter(field_name="push_source_id", lookup_expr="exact", label="监控源")
     push_source_ids = CharFilter(method="filter_push_source_ids", label="监控源")
+    status = ChoiceFilter(field_name="status", choices=EventStatus.CHOICES, label="状态")
     received_at_after = CharFilter(field_name="received_at", lookup_expr="gte", label="接收时间（起始）")
     received_at_before = CharFilter(field_name="received_at", lookup_expr="lte", label="接收时间（结束）")
 
@@ -30,6 +32,7 @@ class EventModelFilter(FilterSet):
             "source_id",
             "push_source_id",
             "push_source_ids",
+            "status",
             "received_at_after",
             "received_at_before",
         ]

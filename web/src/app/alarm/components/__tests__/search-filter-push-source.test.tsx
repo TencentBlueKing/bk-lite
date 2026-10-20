@@ -69,6 +69,7 @@ it('空选择不带监控源筛选参数，多选发 JSON 数组', () => {
   expect(buildIntegrationEventSearchParams(null)).toEqual({});
   expect(buildIntegrationEventSearchParams({ field: 'push_source_id', type: 'push_source', value: [] })).toEqual({});
   expect(buildIntegrationEventSearchParams({ field: 'title', type: 'str', value: 'CPU' })).toEqual({ title: 'CPU' });
+  expect(buildIntegrationEventSearchParams({ field: 'status', type: 'enum', value: 'shield' })).toEqual({ status: 'shield' });
   expect(
     buildIntegrationEventSearchParams({
       field: 'push_source_id',

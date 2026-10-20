@@ -41,6 +41,8 @@ const renderWithIntl = (node: React.ReactNode) => render(
       'alarms.cmdbId': 'CMDB 实例 ID',
       'alarms.enrichment': '丰富信息',
       'alarms.rawData': '原始数据',
+      'alarms.state': '状态',
+      'alarms.shield': '屏蔽',
       'alarms.owners': '责任人',
       'alarms.ownersTip': '负责人说明',
       'alarms.operatorTip': '处理人说明',
@@ -257,7 +259,7 @@ describe('告警关联监控对象快照', () => {
       resource_name: 'ip1',
       monitor_id: '0001',
       cmdb_id: null,
-      status: 'new',
+      status: 'shield',
       value: 81,
     } as EventTableItem;
 
@@ -272,6 +274,8 @@ describe('告警关联监控对象快照', () => {
     expect(screen.getAllByText('监控实例 ID').length).toBeGreaterThan(0);
     expect(screen.getAllByText('CMDB 实例 ID').length).toBeGreaterThan(0);
     expect(screen.getAllByText('监控源').length).toBeGreaterThan(0);
+    expect(screen.getByText('状态')).toBeTruthy();
+    expect(screen.getByText('屏蔽')).toBeTruthy();
     expect(screen.getByText('cluster-prod-01')).toBeTruthy();
     expect(screen.getByText('0001')).toBeTruthy();
     expect(screen.getAllByText('--').length).toBeGreaterThan(0);
