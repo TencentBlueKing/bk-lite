@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from apps.log.services.collect_type import CollectTypeService
@@ -24,6 +25,17 @@ class FakeQuerySet:
     def select_related(self, *args):
         return self
 
+    def order_by(self, *fields):
+        if fields != ("-created_at", "id"):
+            return self
+
+        def sort_key(item):
+            created = getattr(item, "created_at", None)
+            stamp = -created.timestamp() if created is not None else 0
+            return (created is None, stamp, str(item.id))
+
+        return FakeQuerySet(sorted(self.instances, key=sort_key))
+
     def count(self):
         return len(self.instances)
 
@@ -46,6 +58,59 @@ class FakeValuesListQuery:
 
     def values_list(self, *args):
         return self.rows
+
+
+def test_search_instance_orders_by_created_at_desc(monkeypatch):
+    now = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    instances = [
+        SimpleNamespace(
+            id="inst-old",
+            name="old",
+            node_id="node-old",
+            collect_type_id="ctype",
+            collect_type=SimpleNamespace(name="file", collector="Vector"),
+            created_at=now - timedelta(days=2),
+        ),
+        SimpleNamespace(
+            id="inst-new",
+            name="new",
+            node_id="node-new",
+            collect_type_id="ctype",
+            collect_type=SimpleNamespace(name="file", collector="Vector"),
+            created_at=now,
+        ),
+        SimpleNamespace(
+            id="inst-mid",
+            name="mid",
+            node_id="node-mid",
+            collect_type_id="ctype",
+            collect_type=SimpleNamespace(name="file", collector="Vector"),
+            created_at=now - timedelta(days=1),
+        ),
+    ]
+    monkeypatch.setattr(
+        "apps.log.services.collect_type.CollectInstanceOrganization",
+        SimpleNamespace(objects=FakeValuesListManager([])),
+    )
+    monkeypatch.setattr(
+        "apps.log.services.collect_type.CollectConfig",
+        SimpleNamespace(objects=FakeValuesListManager([])),
+    )
+    monkeypatch.setattr(
+        "apps.log.services.collect_type.NodeMgmt",
+        type("FakeNodeMgmt", (), {"get_node_names_by_ids": lambda self, node_ids: []}),
+    )
+
+    result = CollectTypeService.search_instance_with_permission(
+        collect_type_id=None,
+        name=None,
+        page=1,
+        page_size=2,
+        queryset=FakeQuerySet(instances),
+        visible_organization_ids={1},
+    )
+
+    assert [item["id"] for item in result["items"]] == ["inst-new", "inst-mid"]
 
 
 def test_search_instance_uses_current_page_node_lookup(monkeypatch):

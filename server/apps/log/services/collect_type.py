@@ -290,8 +290,8 @@ class CollectTypeService:
         if name:
             queryset = queryset.filter(name__icontains=name)
 
-        # 去重并关联查询
-        queryset = queryset.distinct().select_related("collect_type")
+        # 去重并按创建时间倒序，避免无 ORDER BY 时分页顺序漂移。
+        queryset = queryset.distinct().select_related("collect_type").order_by("-created_at", "id")
 
         # 计算总数
         total_count = queryset.count()
