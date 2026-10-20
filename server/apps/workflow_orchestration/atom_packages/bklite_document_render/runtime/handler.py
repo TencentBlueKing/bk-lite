@@ -12,7 +12,7 @@ from apps.workflow_orchestration.atom_packages.runtime import trusted_execution_
 from apps.workflow_orchestration.models import ExecutionArtifact, WorkflowExecution
 from apps.workflow_orchestration.services.object_store import WorkflowObjectStore
 from apps.workflow_orchestration.services.report_template_inputs import resolve_uploaded_report_template, verify_template_content
-from apps.workflow_orchestration.services.reports import missing_template_fields, parse_report_template, prepare_report_data, render_report
+from apps.workflow_orchestration.services.reports import missing_template_fields, parse_report_template, render_report
 
 
 def _template_content(inputs: dict[str, Any], execution: WorkflowExecution, store) -> tuple[bytes, str, str]:
@@ -37,74 +37,6 @@ def _template_content(inputs: dict[str, Any], execution: WorkflowExecution, stor
     raise ValueError("请上传 Word 或 Excel 报告模板")
 
 
-_EMPTY_HOST = {
-    "hostname": "",
-    "os_version": "",
-    "architecture": "",
-    "uptime_hours": "",
-    "cpu_cores": "",
-    "memory_total_gb": "",
-    "top_cpu": "",
-    "top_memory": "",
-}
-
-
-def _coerce_result_data(item: Any) -> Any:
-    """作业失败时 result/host 可能为 null；补齐空结构，避免模板访问 .host 崩掉。"""
-    if not isinstance(item, dict):
-        return item
-    row = dict(item)
-    payload = row.get("result")
-    if not isinstance(payload, dict):
-        conclusion = str(row.get("error") or row.get("status") or "无采集数据")
-        row["result"] = {
-            "collected_at": "",
-            "conclusion": conclusion,
-            "host": dict(_EMPTY_HOST),
-            "metrics": [],
-            "metric_count": 0,
-            "critical": [],
-            "warning": [],
-            "normal": [],
-            "critical_count": 0,
-            "warning_count": 0,
-            "normal_count": 0,
-        }
-        return row
-    data = dict(payload)
-    host = data.get("host")
-    if not isinstance(host, dict):
-        data["host"] = dict(_EMPTY_HOST)
-    for key, default in (
-        ("metrics", []),
-        ("critical", []),
-        ("warning", []),
-        ("normal", []),
-    ):
-        if not isinstance(data.get(key), list):
-            data[key] = default
-    row["result"] = data
-    return row
-
-
-def _merge_report_data(primary: dict[str, Any], additional: Any) -> dict[str, Any]:
-    """合并多份作业输出，供多主机 / 多操作系统巡检共用同一份报告模板。"""
-    if additional in (None, ""):
-        results = [_coerce_result_data(item) for item in list(primary.get("data") or [])]
-        return {**primary, "data": results}
-    if not isinstance(additional, dict):
-        raise ValueError("追加文档数据必须是 JSON 对象")
-    results = [_coerce_result_data(item) for item in list(primary.get("data") or []) + list(additional.get("data") or [])]
-    succeeded = sum(1 for item in results if str(item.get("status") or "").upper() == "SUCCESS")
-    job_task_ids = list(primary.get("job_task_ids") or []) + list(additional.get("job_task_ids") or [])
-    return {
-        **primary,
-        "data": results,
-        "summary": {"total": len(results), "succeeded": succeeded, "failed": len(results) - succeeded},
-        "job_task_ids": job_task_ids,
-    }
-
-
 def render_document_atom(inputs: dict[str, Any], *, store=None) -> dict[str, Any]:
     execution_id, team = trusted_execution_scope(inputs)
     execution = WorkflowExecution.objects.get(pk=UUID(str(execution_id)))
@@ -117,11 +49,9 @@ def render_document_atom(inputs: dict[str, Any], *, store=None) -> dict[str, Any
     data = inputs.get("data")
     if not isinstance(data, dict):
         raise ValueError("文档数据必须是 JSON 对象")
-    data = _merge_report_data(data, inputs.get("additional_data"))
-    prepared = prepare_report_data(data)
-    document = render_report(content, fmt, prepared)
+    document = render_report(content, fmt, data)
     parsed = parse_report_template(content, fmt)
-    warnings = missing_template_fields(parsed, prepared)
+    warnings = missing_template_fields(parsed, data)
     digest = hashlib.sha256(document).hexdigest()
     filename = f"{filename_prefix}-{timezone.localtime():%Y%m%d-%H%M%S}.{fmt}"
     object_key = f"workflow-orchestration/executions/{execution.id}/{digest[:16]}/{filename}"

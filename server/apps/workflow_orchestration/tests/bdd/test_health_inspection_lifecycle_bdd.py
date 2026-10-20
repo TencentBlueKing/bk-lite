@@ -11,7 +11,9 @@ from openpyxl import load_workbook
 from pytest_bdd import given, scenarios, then, when
 
 from apps.workflow_orchestration.models import Workflow, WorkflowExecution, WorkflowInteraction
+from apps.workflow_orchestration.services.data_transform import run_data_transform
 from apps.workflow_orchestration.services.demo_templates import BUILTIN_TEMPLATE_DIR
+from apps.workflow_orchestration.services.health_summary_sql import health_summary_queries
 from apps.workflow_orchestration.services.reports import parse_report_template, render_report
 
 FEATURE = str(Path(__file__).parent / "health_inspection_lifecycle.feature")
@@ -138,7 +140,11 @@ def builtin_templates_render(ctx):
     for fmt in ("xlsx", "docx"):
         content = (TEMPLATE_DIR / f"health-inspection-example.{fmt}").read_bytes()
         parsed = parse_report_template(content, fmt)
-        rendered = render_report(content, fmt, ctx["health_data"])
+        rendered = render_report(
+            content,
+            fmt,
+            run_data_transform(ctx["health_data"], health_summary_queries(), 30),
+        )
         text = _rendered_text(fmt, rendered)
         assert "data" in parsed.loops
         assert "metric_summary" in parsed.loops

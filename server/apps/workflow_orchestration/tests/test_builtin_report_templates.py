@@ -6,7 +6,9 @@ import pytest
 from docx import Document
 from openpyxl import load_workbook
 
+from apps.workflow_orchestration.services.data_transform import run_data_transform
 from apps.workflow_orchestration.services.demo_templates import BUILTIN_TEMPLATE_DIR
+from apps.workflow_orchestration.services.health_summary_sql import health_summary_queries
 from apps.workflow_orchestration.services.reports import parse_report_template, render_report
 
 TEMPLATE_DIR = BUILTIN_TEMPLATE_DIR
@@ -192,7 +194,7 @@ def test_builtin_health_report_template_matches_job_output_contract_and_renders_
     content = template_path.read_bytes()
 
     parsed = parse_report_template(content, fmt)
-    rendered = render_report(content, fmt, HEALTH_REPORT_DATA)
+    rendered = render_report(content, fmt, run_data_transform(HEALTH_REPORT_DATA, health_summary_queries(), 30))
 
     assert "data" in parsed.loops
     assert "data.result.metrics" in parsed.loops
@@ -236,11 +238,9 @@ def test_builtin_health_report_template_matches_job_output_contract_and_renders_
 
 @pytest.mark.parametrize("fmt", ["docx", "xlsx"])
 def test_builtin_health_report_renders_failed_host_with_null_data(fmt):
-    from apps.workflow_orchestration.atom_packages.bklite_document_render.runtime.handler import _merge_report_data
-
     template_path = TEMPLATE_DIR / f"health-inspection-example.{fmt}"
     content = template_path.read_bytes()
-    payload = _merge_report_data(
+    payload = run_data_transform(
         {
             "summary": {"total": 1, "succeeded": 0, "failed": 1},
             "data": [
@@ -252,11 +252,14 @@ def test_builtin_health_report_renders_failed_host_with_null_data(fmt):
                 }
             ],
         },
-        None,
+        health_summary_queries(),
+        30,
     )
     rendered = render_report(content, fmt, payload)
     text = _rendered_text(fmt, rendered)
-    assert payload["summary"] == {"total": 1, "succeeded": 0, "failed": 1}
+    assert payload["summary"]["total"] == 1
+    assert payload["summary"]["succeeded"] == 0
+    assert payload["summary"]["failed"] == 1
     assert "10.10.90.120" in text
     assert "未采集" in text
     assert "command timed out" not in text
@@ -268,7 +271,7 @@ def test_builtin_health_report_template_renders_multi_host_multi_os(fmt):
     template_path = TEMPLATE_DIR / f"health-inspection-example.{fmt}"
     content = template_path.read_bytes()
 
-    rendered = render_report(content, fmt, MULTI_HOST_REPORT_DATA)
+    rendered = render_report(content, fmt, run_data_transform(MULTI_HOST_REPORT_DATA, health_summary_queries(), 30))
     text = _rendered_text(fmt, rendered)
 
     assert "10.10.90.120" in text

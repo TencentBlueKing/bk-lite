@@ -7,11 +7,14 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, SchemaError
 
+from apps.workflow_orchestration.services.health_summary_sql import health_transform_input
+
 MAX_DEFINITION_BYTES = 256 * 1024
 SUPPORTED_SYSTEM_TASKS = {"FORK_JOIN", "JOIN", "SWITCH", "HUMAN"}
 SUPPORTED_ATOMS = {
     "bklite_notification",
     "bklite_job_execute",
+    "bklite_data_transform",
     "bklite_document_render",
     "bklite_http_request",
 }
@@ -561,11 +564,17 @@ def build_health_inspection_definition() -> dict[str, Any]:
                 },
             },
             {
+                "name": "bklite_data_transform",
+                "taskReferenceName": "summarize",
+                "type": "SIMPLE",
+                "inputParameters": health_transform_input("${scan.output}"),
+            },
+            {
                 "name": "bklite_document_render",
                 "taskReferenceName": "report",
                 "type": "SIMPLE",
                 "inputParameters": {
-                    "data": "${scan.output}",
+                    "data": "${summarize.output}",
                     "execution_id": "${workflow.input.execution_id}",
                     "team": "${workflow.input.team}",
                 },
@@ -632,7 +641,8 @@ def build_health_inspection_canvas_metadata() -> dict[str, Any]:
         "return_nodes": [],
         "edges": [
             {"id": "trigger-scan", "source": "trigger_form", "target": "scan"},
-            {"id": "scan-report", "source": "scan", "target": "report"},
+            {"id": "scan-summarize", "source": "scan", "target": "summarize"},
+            {"id": "summarize-report", "source": "summarize", "target": "report"},
             {"id": "report-notify", "source": "report", "target": "notify"},
         ],
         "input_schema": {

@@ -130,7 +130,7 @@ export interface WorkflowTargetField {
   max_count: number;
 }
 
-export type FormFieldWidget = 'input' | 'textarea' | 'code' | 'number' | 'switch' | 'select' | 'radio' | 'multiselect' | 'tags' | 'key-value' | 'json' | 'target-selector' | 'file-upload' | 'agent-knowledge-upload';
+export type FormFieldWidget = 'input' | 'textarea' | 'code' | 'number' | 'switch' | 'select' | 'radio' | 'multiselect' | 'tags' | 'key-value' | 'json' | 'query-list' | 'target-selector' | 'file-upload' | 'agent-knowledge-upload';
 
 export interface TargetFieldBinding {
   mode: 'runtime';

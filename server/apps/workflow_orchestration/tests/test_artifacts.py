@@ -229,7 +229,7 @@ def test_report_atom_persists_downloadable_office_artifact(fmt):
 
 
 @pytest.mark.django_db
-def test_report_atom_merges_additional_job_envelope_for_multi_host_report():
+def test_report_atom_keeps_the_summary_it_is_given():
     workflow = Workflow.objects.create(name="inspection-merge", team=[7], definition={})
     execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
     store = MemoryStore()
@@ -283,8 +283,11 @@ def test_report_atom_merges_additional_job_envelope_for_multi_host_report():
                 "size": len(template),
                 "filename_prefix": "inspection",
             },
-            "data": primary,
-            "additional_data": additional,
+            "data": {
+                "data": primary["data"] + additional["data"],
+                "summary": {"total": 2, "succeeded": 2, "failed": 0},
+                "job_task_ids": [101, 102],
+            },
         },
         store=store,
     )

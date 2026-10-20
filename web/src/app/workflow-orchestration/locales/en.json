@@ -218,6 +218,17 @@
             "event_id": "Async Event ID"
           }
         },
+        "bklite_data_transform": {
+          "name": "Data Transform",
+          "category": "Report",
+          "description": "Run SQL over one JSON object and overlay each query result onto the output",
+          "input": {
+            "data": "Input Data",
+            "queries": "Queries",
+            "timeout_seconds": "Timeout (seconds)"
+          },
+          "output": {}
+        },
         "bklite_document_render": {
           "name": "Document",
           "category": "Report",
@@ -689,6 +700,10 @@
       "mappingKey": "Mapping field name",
       "deleteMappingField": "Delete mapping field {number}",
       "addMappingField": "Add mapping field",
+      "queryResultName": "Result name",
+      "querySql": "SELECT",
+      "deleteQuery": "Delete query {number}",
+      "addQuery": "Add query",
       "effectiveTimeout": "Effective Timeout",
       "effectiveRetry": "Failure Retry",
       "effectiveTimeoutValue": "{seconds}s (fixed by the atom contract)",

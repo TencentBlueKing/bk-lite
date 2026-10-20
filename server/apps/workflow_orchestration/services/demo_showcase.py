@@ -6,6 +6,7 @@ from typing import Any
 from apps.workflow_orchestration.services.definitions import build_health_inspection_canvas_metadata, build_health_inspection_definition
 
 SHOWCASE_ATOM_KEYS = (
+    "bklite_data_transform",
     "bklite_document_render",
     "bklite_http_request",
     "bklite_job_execute",
@@ -405,7 +406,7 @@ def build_health_inspection_showcase_workflow(
     os_label = "Windows" if os_key == "windows" else "Linux"
     definition = build_health_inspection_definition()
     definition["description"] = f"{os_label} 主机健康巡检（{label}）：授权主机采集后生成 {label} 报告并通知"
-    scan = definition["tasks"][0]["inputParameters"]
+    scan = next(task["inputParameters"] for task in definition["tasks"] if task["taskReferenceName"] == "scan")
     scan.update(
         {
             "script_type": script_type,
@@ -414,9 +415,9 @@ def build_health_inspection_showcase_workflow(
             "timeout_seconds": 600,
         }
     )
-    report = definition["tasks"][1]["inputParameters"]
+    report = next(task["inputParameters"] for task in definition["tasks"] if task["taskReferenceName"] == "report")
     report["template_snapshot"] = copy.deepcopy(template_snapshot)
-    notify_task = definition["tasks"][2]
+    notify_task = next(task for task in definition["tasks"] if task["taskReferenceName"] == "notify")
     # 通知渠道未配齐时不应阻断报告产物；失败可在执行明细里看到。
     notify_task["optional"] = True
     notify_recipients = list(recipients) if recipients is not None else [username]
@@ -440,14 +441,16 @@ def build_health_inspection_showcase_workflow(
     metadata["node_titles"] = {
         **metadata.get("node_titles", {}),
         "scan": "作业执行",
+        "summarize": "巡检汇总",
         "report": f"生成{label}报告",
         "notify": "发送巡检通知",
     }
     metadata["positions"] = {
         "trigger_form": {"x": 20, "y": 260},
         "scan": {"x": 260, "y": 260},
-        "report": {"x": 480, "y": 260},
-        "notify": {"x": 700, "y": 260},
+        "summarize": {"x": 500, "y": 260},
+        "report": {"x": 740, "y": 260},
+        "notify": {"x": 980, "y": 260},
     }
     metadata["risk_summary"] = {
         "level": "low",

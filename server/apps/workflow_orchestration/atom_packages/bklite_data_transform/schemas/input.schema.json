@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "properties": {
+    "data": {
+      "type": "object",
+      "title": "输入数据",
+      "description": "任意 JSON 对象。查询通过 input.payload 读取整份文本。"
+    },
+    "queries": {
+      "type": "array",
+      "title": "查询",
+      "minItems": 1,
+      "maxItems": 20,
+      "x-widget": "query-list",
+      "x-binding": "literal-only",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "结果名",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "sql": {
+            "type": "string",
+            "title": "SELECT",
+            "minLength": 1,
+            "maxLength": 50000
+          }
+        },
+        "required": ["name", "sql"],
+        "additionalProperties": false
+      }
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "title": "超时（秒）",
+      "minimum": 1,
+      "maximum": 120,
+      "default": 30,
+      "x-binding": "literal-only"
+    }
+  },
+  "required": ["data", "queries"],
+  "additionalProperties": false
+}

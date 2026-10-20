@@ -218,6 +218,17 @@
             "event_id": "异步事件标识"
           }
         },
+        "bklite_data_transform": {
+          "name": "数据转换",
+          "category": "报告",
+          "description": "用 SQL 读取一份 JSON，把查询结果盖到输出上，供下游文档或节点使用",
+          "input": {
+            "data": "输入数据",
+            "queries": "查询",
+            "timeout_seconds": "超时（秒）"
+          },
+          "output": {}
+        },
         "bklite_document_render": {
           "name": "文档生成",
           "category": "报告",
@@ -689,6 +700,10 @@
       "mappingKey": "映射字段名",
       "deleteMappingField": "删除映射字段 {number}",
       "addMappingField": "添加映射字段",
+      "queryResultName": "结果名",
+      "querySql": "SELECT",
+      "deleteQuery": "删除查询 {number}",
+      "addQuery": "添加查询",
       "effectiveTimeout": "生效超时",
       "effectiveRetry": "失败重试",
       "effectiveTimeoutValue": "{seconds} 秒（由原子契约固定）",

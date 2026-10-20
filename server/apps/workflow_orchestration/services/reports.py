@@ -212,7 +212,6 @@ def _lookup(data: Any, parts: list[str]) -> Any:
     return value
 
 
-_CATEGORY_ORDER = ["计算", "内存", "磁盘", "网络", "系统健康", "进程热点", "基础服务", "安全浅检", "更新账龄"]
 _RED_FILL = PatternFill("solid", fgColor="FDEDEC")
 _AMBER_FILL = PatternFill("solid", fgColor="FEF5E7")
 _GREEN_FILL = PatternFill("solid", fgColor="E8F8F5")
@@ -221,184 +220,6 @@ _RED_FONT = Font(name="Calibri", size=11, bold=True, color="C0392B")
 _AMBER_FONT = Font(name="Calibri", size=11, bold=True, color="B9770E")
 _GREEN_FONT = Font(name="Calibri", size=11, bold=True, color="196F3D")
 _GRAY_FONT = Font(name="Calibri", size=11, bold=True, color="7F8C8D")
-
-
-def _display_number(value: Any) -> str:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return "" if value in (None, "") else str(value)
-    if number.is_integer():
-        return str(int(number))
-    return f"{number:g}"
-
-
-def _unit_suffix(unit: str) -> str:
-    if unit == "%":
-        return "%"
-    if unit == "days":
-        return "天"
-    return unit
-
-
-def _threshold_line(metric: dict[str, Any], which: str) -> str:
-    unit = str(metric.get("unit") or "")
-    if unit == "bool":
-        return "—"
-    try:
-        warning = float(metric.get("warning_threshold"))
-        critical = float(metric.get("critical_threshold"))
-    except (TypeError, ValueError):
-        return "—"
-    if warning == 0 and critical == 0:
-        return "—"
-    number = warning if which == "warning" else critical
-    return f"≥{_display_number(number)}{_unit_suffix(unit)}"
-
-
-def _value_text(metric: dict[str, Any]) -> str:
-    unit = str(metric.get("unit") or "")
-    if unit == "bool":
-        return str(metric.get("detail") or "")
-    suffix = _unit_suffix(unit)
-    number = _display_number(metric.get("value"))
-    return f"{number}{suffix}" if number else ""
-
-
-def _status_text(status: str) -> str:
-    return {"CRITICAL": "严重", "WARNING": "告警", "NORMAL": "正常"}.get(status, status)
-
-
-def _annotate_metric(metric: dict[str, Any]) -> dict[str, Any]:
-    copied = dict(metric)
-    if not copied.get("display_name"):
-        copied["display_name"] = copied.get("metric_name") or ""
-    copied["value_text"] = _value_text(copied)
-    copied["warning_line"] = _threshold_line(copied, "warning")
-    copied["critical_line"] = _threshold_line(copied, "critical")
-    copied["status_text"] = _status_text(str(copied.get("health_status") or ""))
-    return copied
-
-
-def _format_collected_at(value: Any) -> str:
-    text = str(value or "").strip().replace("T", " ").replace("Z", "")
-    if "+" in text:
-        text = text.split("+", 1)[0]
-    return text[:19]
-
-
-def _metric_summary(results: list[Any]) -> list[dict[str, Any]]:
-    groups: dict[tuple[Any, ...], dict[str, Any]] = {}
-    for item in results:
-        if not isinstance(item, dict):
-            continue
-        payload = item.get("result") if isinstance(item.get("result"), dict) else {}
-        for metric in payload.get("metrics") or []:
-            if not isinstance(metric, dict):
-                continue
-            key = (
-                metric.get("category") or "",
-                metric.get("display_name") or metric.get("metric_name") or "",
-                str(metric.get("unit") or ""),
-                _display_number(metric.get("warning_threshold")),
-                _display_number(metric.get("critical_threshold")),
-            )
-            bucket = groups.setdefault(
-                key,
-                {"metric": metric, "critical_count": 0, "warning_count": 0, "normal_count": 0},
-            )
-            status = metric.get("health_status")
-            if status == "CRITICAL":
-                bucket["critical_count"] += 1
-            elif status == "WARNING":
-                bucket["warning_count"] += 1
-            elif status == "NORMAL":
-                bucket["normal_count"] += 1
-    rows = []
-    for bucket in groups.values():
-        metric = bucket["metric"]
-        critical = bucket["critical_count"]
-        warning = bucket["warning_count"]
-        rows.append(
-            {
-                "category": metric.get("category") or "",
-                "name": metric.get("display_name") or metric.get("metric_name") or "",
-                "warning_line": metric.get("warning_line") or "—",
-                "critical_line": metric.get("critical_line") or "—",
-                "critical_count": critical,
-                "warning_count": warning,
-                "normal_count": bucket["normal_count"],
-                "conclusion": "需关注" if critical or warning else "健康",
-            }
-        )
-    rows.sort(
-        key=lambda row: (
-            0 if row["critical_count"] else 1 if row["warning_count"] else 2,
-            _CATEGORY_ORDER.index(row["category"]) if row["category"] in _CATEGORY_ORDER else len(_CATEGORY_ORDER),
-            row["name"],
-        )
-    )
-    return rows
-
-
-def prepare_report_data(data: dict[str, Any]) -> dict[str, Any]:
-    """Copy job host rows into the flat fields the health report template prints."""
-    hosts: list[Any] = []
-    collected_at = ""
-    for item in list(data.get("data") or []):
-        if not isinstance(item, dict):
-            hosts.append(item)
-            continue
-        row = dict(item)
-        payload = row.get("result")
-        if not isinstance(payload, dict):
-            payload = {
-                "collected_at": "",
-                "conclusion": str(row.get("error") or row.get("status") or ""),
-                "host": {},
-                "metrics": [],
-            }
-        copied = dict(payload)
-        metrics = [_annotate_metric(metric) for metric in list(copied.get("metrics") or []) if isinstance(metric, dict)]
-        copied["metrics"] = metrics
-        copied["critical"] = [metric for metric in metrics if metric.get("health_status") == "CRITICAL"]
-        copied["warning"] = [metric for metric in metrics if metric.get("health_status") == "WARNING"]
-        copied["normal"] = [metric for metric in metrics if metric.get("health_status") == "NORMAL"]
-        copied["critical_count"] = len(copied["critical"])
-        copied["warning_count"] = len(copied["warning"])
-        copied["normal_count"] = len(copied["normal"])
-        copied["metric_count"] = len(metrics)
-        if not collected_at:
-            collected_at = _format_collected_at(copied.get("collected_at"))
-        row["result"] = copied
-        hosts.append(row)
-    buckets = [_host_bucket(item) for item in hosts]
-    summary = dict(data.get("summary") or {})
-    summary.update(
-        {
-            "total": len(hosts),
-            "succeeded": buckets.count("critical") + buckets.count("warning") + buckets.count("healthy"),
-            "failed": len(hosts) - (buckets.count("critical") + buckets.count("warning") + buckets.count("healthy")),
-            "critical_hosts": buckets.count("critical"),
-            "warning_hosts": buckets.count("warning"),
-            "healthy_hosts": buckets.count("healthy"),
-            "collected_at": collected_at,
-        }
-    )
-    return {**data, "data": hosts, "summary": summary, "metric_summary": _metric_summary(hosts)}
-
-
-def _host_bucket(item: Any) -> str | None:
-    if not isinstance(item, dict) or str(item.get("status") or "").upper() != "SUCCESS":
-        return None
-    payload = item.get("result") if isinstance(item.get("result"), dict) else {}
-    critical = int(payload.get("critical_count") or 0)
-    warning = int(payload.get("warning_count") or 0)
-    if critical:
-        return "critical"
-    if warning:
-        return "warning"
-    return "healthy"
 
 
 def _header_map(worksheet) -> dict[str, int]:
@@ -574,7 +395,6 @@ def render_report(content: bytes, fmt: str, data: dict[str, Any]) -> bytes:
     parsed = parse_report_template(content, fmt)
     if not isinstance(data, dict):
         raise ReportTemplateError("文档数据必须是 JSON 对象")
-    prepared = prepare_report_data(data)
     if parsed.format == "docx":
-        return _paint_health_docx(_render_docx(content, prepared))
-    return _paint_health_report(_render_xlsx(content, prepared))
+        return _paint_health_docx(_render_docx(content, data))
+    return _paint_health_report(_render_xlsx(content, data))

@@ -89,12 +89,12 @@ def test_ensure_builtin_health_workflows_are_idempotent(builtin_user, builtin_ch
     assert Workflow.objects.filter(is_builtin=True, team=[1]).count() == 2
     assert {item.pk for item in second} == {item.pk for item in first}
     assert all(not item.has_draft and item.enabled and item.current_version == 1 for item in second)
-    notify = first[0].definition["tasks"][2]["inputParameters"]
+    notify = first[0].definition["tasks"][3]["inputParameters"]
     assert notify["channel_id"] == builtin_channels["email_first"].id
     assert notify["recipients"] == [BUILTIN_EXECUTOR_RECIPIENT]
     for workflow in first:
         positions = workflow.canvas_metadata["positions"]
-        assert {positions[key]["y"] for key in ("trigger_form", "scan", "report", "notify")} == {260}
+        assert {positions[key]["y"] for key in ("trigger_form", "scan", "summarize", "report", "notify")} == {260}
 
 
 @pytest.mark.django_db
@@ -140,7 +140,7 @@ def test_ensure_builtin_skips_nats_preferred_channel(builtin_user, builtin_chann
         channel_id=builtin_channels["nats"].id,
     )
 
-    assert workflows[0].definition["tasks"][2]["inputParameters"]["channel_id"] == builtin_channels["email_first"].id
+    assert workflows[0].definition["tasks"][3]["inputParameters"]["channel_id"] == builtin_channels["email_first"].id
 
 
 @pytest.mark.django_db
@@ -157,7 +157,7 @@ def test_ensure_builtin_allows_empty_channel_when_no_email(builtin_user, mocker)
     workflows = ensure_builtin_health_workflows(team_id=1, username=builtin_user.username, domain=builtin_user.domain)
 
     assert len(workflows) == 2
-    notify = workflows[0].definition["tasks"][2]["inputParameters"]
+    notify = workflows[0].definition["tasks"][3]["inputParameters"]
     assert "channel_id" not in notify
     assert notify["recipients"] == [BUILTIN_EXECUTOR_RECIPIENT]
 
