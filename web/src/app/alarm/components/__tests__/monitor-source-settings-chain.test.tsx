@@ -178,7 +178,7 @@ describe('五个正式配置页面的类型化保存', () => {
       fireEvent.change(await screen.findByLabelText('settings.enrichmentName'),{target:{value:'来源丰富'}});
       fireEvent.click(screen.getByRole('radio',{name:'settings.enrichmentScopeFilter'}));
       fireEvent.mouseDown(screen.getAllByRole('combobox')[1]);
-      fireEvent.click(await screen.findByText('alarmCommon.ruleFields.source_name',{selector:'.ant-select-item-option-content'}));
+      fireEvent.click(await screen.findByText('alarmCommon.ruleFields.source_name（source_name）',{selector:'.ant-select-item-option-content'}));
       fireEvent.mouseDown(screen.getAllByRole('combobox')[2]);
       fireEvent.click(await screen.findByText('alarmCommon.candidateOperators.any_of',{selector:'.ant-select-item-option-content'}));
     }

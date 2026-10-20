@@ -5,7 +5,7 @@ import { useTranslation } from '@/utils/i18n';
 import { Select, Button, Input } from 'antd';
 import { DeleteOutlined, PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/alarm/context/common';
-import { type RuleScope, type RuleCondition, ruleFields, ruleField, operatorTranslation, invalidRuleCondition, isMultiOperator, normalizeRuleTags } from '@/app/alarm/utils/multivalueRules';
+import { type RuleScope, type RuleCondition, ruleFields, ruleField, ruleFieldLabel, operatorTranslation, invalidRuleCondition, isMultiOperator, normalizeRuleTags } from '@/app/alarm/utils/multivalueRules';
 import { MatchRuleValue } from './matchRuleValue';
 import MatchRuleHelp from './matchRuleHelp';
 import SourceNameSelect from './sourceNameSelect';
@@ -59,10 +59,10 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange, scope: supplied
             const missing = condition.value === undefined || condition.value === '' || (Array.isArray(condition.value) && !condition.value.length);
             return <div key={conditionIndex}>
               <div className="flex flex-wrap items-start gap-2">
-                <div className="w-36 shrink-0">
-                  <Select className="w-full" popupMatchSelectWidth={220} allowClear virtual={false} value={field?.key}
+                <div className="w-60 shrink-0">
+                  <Select className="w-full" popupMatchSelectWidth={280} showSearch optionFilterProp="label" allowClear virtual={false} value={field?.key}
                     status={condition.key && !field ? 'error' : undefined} placeholder={t('common.selectTip')}
-                    options={ruleFields(scope).map(item => ({ value: item.key, label: t(`alarmCommon.ruleFields.${item.key}`) }))}
+                    options={ruleFields(scope).map(item => ({ value: item.key, label: ruleFieldLabel(item.key, t) }))}
                     onChange={key => change(groupIndex, conditionIndex, { key, operator: undefined, value: undefined })} />
                 </div>
                 <div className="w-48 shrink-0">
