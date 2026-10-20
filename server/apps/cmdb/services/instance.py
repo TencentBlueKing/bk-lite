@@ -435,6 +435,29 @@ class InstanceManage(object):
         return result
 
     @staticmethod
+    def search_inst_by_monitor_ids(monitor_ids) -> dict:
+        """按实例属性 monitor_id 批量查询，不限模型。返回 {monitor_id: [instance, ...]}。"""
+        normalized = []
+        seen = set()
+        for value in monitor_ids or []:
+            text = str(value).strip() if value not in (None, "") else ""
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            normalized.append(text)
+        if not normalized:
+            return {}
+        with GraphClient() as ag:
+            inst_list, _ = ag.query_entity(INSTANCE, [{"field": "monitor_id", "type": "str[]", "value": normalized}])
+        grouped = {}
+        for inst in inst_list:
+            key = str(inst.get("monitor_id") or "").strip()
+            if not key:
+                continue
+            grouped.setdefault(key, []).append(inst)
+        return grouped
+
+    @staticmethod
     def query_entity_page_by_ids(
         inst_ids: list[int],
         page: int = 1,

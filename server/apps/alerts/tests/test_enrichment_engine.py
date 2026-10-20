@@ -67,6 +67,74 @@ def test_unmatched_event_skipped():
     assert events[0]["enrichment"] == {}
 
 
+def test_builtin_rule_binds_monitor_cmdb_identity_before_resource_fields():
+    events = [
+        {
+            "resource_type": "Host",
+            "resource_id": "0001",
+            "monitor_id": "0001",
+            "cmdb_id": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            "enrichment": {},
+            "team": [1],
+        }
+    ]
+    rule = _rule(
+        preset_key="builtin_cmdb_resource",
+        input_binding={"model_id": "resource_type", "inst_uuid": "resource_id"},
+    )
+    EnrichmentEngine(rules=[rule]).enrich_batch(events)
+    assert dict(_CountingProvider.calls[0][0]) == {
+        "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+        "monitor_id": "0001",
+    }
+    assert events[0]["enrichment"]["cmdb"] == {"owner": "alice"}
+
+
+def test_builtin_rule_uses_monitor_id_when_cmdb_id_is_absent_or_invalid():
+    events = [
+        {
+            "resource_type": "Host",
+            "resource_id": "0001",
+            "monitor_id": "0001",
+            "cmdb_id": "not-a-uuid",
+            "enrichment": {},
+            "team": [1],
+        }
+    ]
+    rule = _rule(
+        preset_key="builtin_cmdb_resource",
+        input_binding={"model_id": "resource_type", "inst_uuid": "resource_id"},
+    )
+    EnrichmentEngine(rules=[rule]).enrich_batch(events)
+    assert dict(_CountingProvider.calls[0][0]) == {"monitor_id": "0001"}
+
+
+def test_builtin_rule_keeps_resource_binding_without_monitor_identity():
+    events = [{"resource_type": "host", "resource_id": "inst-1", "enrichment": {}, "team": [1]}]
+    rule = _rule(
+        preset_key="builtin_cmdb_resource",
+        input_binding={"model_id": "resource_type", "inst_uuid": "resource_id"},
+    )
+    EnrichmentEngine(rules=[rule]).enrich_batch(events)
+    assert dict(_CountingProvider.calls[0][0]) == {"model_id": "host", "inst_uuid": "inst-1"}
+
+
+def test_custom_rule_ignores_monitor_identity_fields():
+    events = [
+        {
+            "resource_type": "host",
+            "resource_id": "inst-1",
+            "monitor_id": "0001",
+            "cmdb_id": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            "enrichment": {},
+            "team": [1],
+        }
+    ]
+    rule = _rule(input_binding={"model_id": "resource_type", "inst_uuid": "resource_id"})
+    EnrichmentEngine(rules=[rule]).enrich_batch(events)
+    assert dict(_CountingProvider.calls[0][0]) == {"model_id": "host", "inst_uuid": "inst-1"}
+
+
 def test_missing_binding_field_skipped():
     events = [{"resource_type": "host", "enrichment": {}, "team": [1]}]  # 缺 resource_id
     EnrichmentEngine(rules=[_rule()]).enrich_batch(events)

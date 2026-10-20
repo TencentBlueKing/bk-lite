@@ -10,7 +10,7 @@ from uuid import uuid4
 from django.core.cache import cache
 
 from apps.alerts.enrichment.circuit_breaker import CircuitBreaker
-from apps.alerts.enrichment.keys import build_binding_key, resolve_binding
+from apps.alerts.enrichment.keys import build_binding_key, resolve_rule_binding
 from apps.alerts.enrichment.matcher import event_matches
 from apps.alerts.enrichment.merge import merge_namespace_payload
 from apps.alerts.enrichment.owners import apply_enriched_owners, remember_owner_ids
@@ -259,7 +259,7 @@ class EnrichmentEngine:
             if not event_matches(event, rule.match_rules):
                 unmatched += 1
                 continue
-            params = resolve_binding(event, rule.input_binding)
+            params = resolve_rule_binding(event, rule)
             if params is None:
                 missing_binding += 1
                 self._record_event_status(event, rule, namespace, "missing_binding")
