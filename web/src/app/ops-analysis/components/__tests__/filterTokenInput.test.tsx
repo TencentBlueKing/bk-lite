@@ -49,7 +49,7 @@ const translate = (
   fallback?: string,
   values?: Record<string, string | number>,
 ) => {
-  if (key === 'dashboard.filterTokenHint') return '输入 $ 插入筛选';
+  if (key === 'dashboard.filterTokenHint') return '输入 $ 引用全局筛选变量';
   if (key === 'dashboard.filterTokenSeparator') return '、';
   if (key === 'dashboard.filterTokenUnmatched' && values) {
     return `${values.tokens} 未匹配到筛选项`;
@@ -74,7 +74,7 @@ describe('FilterTokenInput', () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    const hint = screen.getByText('输入 $ 插入筛选');
+    const hint = screen.getByText('输入 $ 引用全局筛选变量');
     expect(hint.className).toContain('hidden');
     expect(hint.className).toContain('group-focus-within:block');
     expect(hint.parentElement?.className).toContain('flex-col');
@@ -99,7 +99,7 @@ describe('FilterTokenInput', () => {
       />,
     );
 
-    expect(screen.queryByText('输入 $ 插入筛选')).toBeNull();
+    expect(screen.queryByText('输入 $ 引用全局筛选变量')).toBeNull();
     await user.type(screen.getByRole('textbox'), '$');
     expect(screen.queryByRole('listbox')).toBeNull();
   });

@@ -51,6 +51,12 @@ function defaultLiteral(schema: JsonSchema): unknown {
   return undefined;
 }
 
+function displayedLiteral(schema: JsonSchema, value: unknown): unknown {
+  if (value != null) return value;
+  if (schema.type === 'integer' || schema.type === 'number') return undefined;
+  return defaultLiteral(schema);
+}
+
 interface CapabilityProfileUi {
   key: string;
   version: string;
@@ -154,15 +160,74 @@ function LiteralField({
   value,
   references,
   valueLabels,
+  disabled = false,
   onChange,
 }: {
   schema: JsonSchema;
   value: unknown;
   references: DataReferenceOption[];
   valueLabels?: Record<string, string>;
+  disabled?: boolean;
   onChange: (value: unknown) => void;
 }) {
   const { t } = useTranslation();
+  if (schema['x-widget'] === 'query-list') {
+    const rows = Array.isArray(value)
+      ? value.filter((item): item is { name?: string; sql?: string } => Boolean(item) && typeof item === 'object')
+      : [];
+    const update = (index: number, patch: { name?: string; sql?: string }) => {
+      onChange(rows.map((row, rowIndex) => rowIndex === index ? { name: row.name || '', sql: row.sql || '', ...patch } : row));
+    };
+    return (
+      <div className="flex flex-col gap-3">
+        {rows.map((row, index) => (
+          <div key={index} className="flex flex-col gap-2 rounded-md border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-3">
+            <div className="flex items-center gap-2">
+              <Input
+                size="small"
+                disabled={disabled}
+                value={row.name || ''}
+                placeholder={t('workflowOrchestration.editor.queryResultName', '结果名')}
+                onChange={(event) => update(index, { name: event.target.value })}
+              />
+              {disabled ? null : (
+                <Button
+                  type="text"
+                  danger
+                  aria-label={t('workflowOrchestration.editor.deleteQuery', '删除查询 {number}', { number: index + 1 })}
+                  icon={<DeleteOutlined />}
+                  onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}
+                />
+              )}
+            </div>
+            <CodeEditor
+              aria-label={t('workflowOrchestration.editor.querySql', 'SELECT')}
+              className="overflow-hidden rounded-md border border-[var(--color-border-1)]"
+              headerOptions={{ copy: true, fullscreen: true }}
+              height="160px"
+              mode="sql"
+              readOnly={disabled}
+              setOptions={{ showPrintMargin: false, useWorker: false, tabSize: 2, fontSize: 14 }}
+              theme="monokai"
+              value={row.sql || ''}
+              width="100%"
+              onChange={(next: string) => update(index, { sql: next })}
+            />
+          </div>
+        ))}
+        {disabled ? null : (
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            disabled={rows.length >= 20}
+            onClick={() => onChange([...rows, { name: '', sql: '' }])}
+          >
+            {t('workflowOrchestration.editor.addQuery', '添加查询')}
+          </Button>
+        )}
+      </div>
+    );
+  }
   if (schema['x-widget'] === 'textarea') return <Input.TextArea rows={schema['x-rows'] || 4} value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} />;
   if (schema['x-widget'] === 'code') {
     return <CodeEditor
@@ -186,7 +251,7 @@ function LiteralField({
   }
   if (schema.type === 'boolean') return <Switch className="self-start" checked={Boolean(value)} onChange={onChange} />;
   if (schema.type === 'integer' || schema.type === 'number') {
-    return <InputNumber className="w-full" min={schema.minimum} max={schema.maximum} value={typeof value === 'number' ? value : undefined} onChange={onChange} />;
+    return <InputNumber className="w-full" min={schema.minimum} max={schema.maximum} value={typeof value === 'number' ? value : undefined} onChange={(next) => onChange(typeof next === 'number' ? next : undefined)} />;
   }
   if (schema.type === 'array' && schema.items && !['object', 'array'].includes(String(schema.items.type))) {
     const selected = Array.isArray(value) ? value.map(String) : [];
@@ -331,7 +396,7 @@ function BindingEditor({
   if (field['x-binding'] === 'literal-only') {
     return (
       <ReferenceDropGuard>
-        <LiteralField schema={field} value={incomingLiteral ?? defaultLiteral(field)} references={references} valueLabels={valueLabels} onChange={(next) => onChange(compileNodeInputBinding({ kind: 'literal', value: next }))} />
+        <LiteralField schema={field} value={displayedLiteral(field, incomingLiteral)} references={references} valueLabels={valueLabels} disabled={disabled} onChange={(next) => onChange(compileNodeInputBinding({ kind: 'literal', value: next }))} />
       </ReferenceDropGuard>
     );
   }
@@ -394,7 +459,7 @@ function BindingEditor({
     />);
   }
 
-  return dropSurface(<LiteralField schema={field} value={literalDraft ?? defaultLiteral(field)} references={references} valueLabels={valueLabels} onChange={(next) => { setLiteralDraft(next); onChange(compileNodeInputBinding({ kind: 'literal', value: next })); }} />);
+  return dropSurface(<LiteralField schema={field} value={displayedLiteral(field, literalDraft)} references={references} valueLabels={valueLabels} disabled={disabled} onChange={(next) => { setLiteralDraft(next); onChange(compileNodeInputBinding({ kind: 'literal', value: next })); }} />);
 }
 
 export function SchemaNodeField({
@@ -439,6 +504,13 @@ export function SchemaNodeForm({ schema, uiSchema, value, onChange, references =
     </Form>;
   }
   const setField = (key: string, next: unknown) => {
+    if (next === undefined && selector?.field !== key) {
+      if (!(key in value)) return;
+      const nextValue = { ...value };
+      delete nextValue[key];
+      onChange(nextValue);
+      return;
+    }
     if (selector?.field === key) {
       const profile = selector.profiles.find((item) => item.key === next);
       const retainedKeys = new Set([...(Object.keys(schema?.properties || {})), ...Object.keys(profile?.input_schema.properties || {})]);
@@ -466,7 +538,7 @@ export function SchemaNodeForm({ schema, uiSchema, value, onChange, references =
     const rawHint = String(ui['ui:help'] || field.description || '');
     const label = atomKey ? t(`workflowOrchestration.atomUi.${atomKey}.${key}.label`, rawLabel) : rawLabel;
     const hint = (atomKey ? t(`workflowOrchestration.atomUi.${atomKey}.${key}.help`, rawHint) : rawHint) || undefined;
-    const editor = <BindingEditor schema={bindingSchema} value={value[key]} references={references} onChange={(next) => setField(key, next)} />;
+    const editor = <BindingEditor schema={bindingSchema} value={value[key]} references={references} disabled={readOnly} onChange={(next) => setField(key, next)} />;
     return <Form.Item className="mb-0" key={key} label={label} required={effectiveSchema.required?.includes(key)} tooltip={hint}>
       {fieldActions[key] ? <div className="flex items-start gap-2"><div className="min-w-0 flex-1">{editor}</div><div className="shrink-0">{fieldActions[key]}</div></div> : editor}
     </Form.Item>;

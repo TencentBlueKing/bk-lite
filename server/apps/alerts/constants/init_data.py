@@ -241,7 +241,7 @@ BUILTIN_ENRICHMENT_RULES = [
         "name": "内置-CMDB资源丰富",
         "preset_key": "builtin_cmdb_resource",
         "provider_type": "cmdb",
-        "input_binding": {"model_id": "resource_type", "inst_uuid": "resource_id"},
+        "input_binding": {"model_id": "resource_type", "inst_uuid": "cmdb_id"},
         "provider_config": {"query_timeout_seconds": 3},
         "output_projection": [
             {"source": "owner"},

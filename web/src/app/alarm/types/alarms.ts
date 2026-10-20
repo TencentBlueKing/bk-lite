@@ -415,6 +415,7 @@ export interface EventItem {
   end_time: string;
   source_name: string;
   raw_data: EventRawData;
+  enrichment?: Record<string, unknown>;
   received_at: string;
   title: string;
   description: string;

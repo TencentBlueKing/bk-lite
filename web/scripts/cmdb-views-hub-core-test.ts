@@ -17,7 +17,9 @@ import {
   buildViewsPath,
   buildViewsPathPreserving,
   buildBaseInfoPath,
+  alignViewFocusModels,
   parseInstUuids,
+  parseModelIds,
   parseViewsSearch,
 } from '../src/app/cmdb/(pages)/views/viewUrls';
 import {
@@ -80,23 +82,47 @@ assert.deepEqual(
 
 assert.equal(viewAllowsMultiSelect('rack-room', 'rack'), true);
 assert.equal(viewAllowsMultiSelect('rack-room', 'room'), false);
+assert.equal(viewAllowsMultiSelect('network'), true);
 assert.equal(viewAllowsMultiSelect('k8s'), false);
 
 assert.equal(
   buildViewsPath('network', { model_id: 'router', inst_uuid: '1' }),
-  '/cmdb/views/network?model_id=router&inst_uuid=1'
+  '/cmdb/views/network'
 );
 assert.equal(
   buildViewsPath('rack-room', { model_id: 'rack', inst_uuid: '9', mode: 'rack' }),
-  '/cmdb/views/rack-room?model_id=rack&inst_uuid=9&mode=rack'
+  '/cmdb/views/rack-room?mode=rack'
 );
 assert.equal(
   buildViewsPath('rack-room', [
     { model_id: 'rack', inst_uuid: 'a', mode: 'rack', inst_name: 'A01' },
     { model_id: 'rack', inst_uuid: 'b', mode: 'rack', inst_name: 'A02' },
   ]),
-  '/cmdb/views/rack-room?model_id=rack&inst_uuid=a%2Cb&inst_name=A01&mode=rack'
+  '/cmdb/views/rack-room?mode=rack'
 );
+assert.equal(
+  buildViewsPath('network', [
+    { model_id: 'switch', inst_uuid: 'a', inst_name: 'sw-a' },
+    { model_id: 'router', inst_uuid: 'b', inst_name: 'rt-b' },
+  ]),
+  '/cmdb/views/network'
+);
+assert.deepEqual(parseModelIds('switch, router,,firewall'), ['switch', 'router', 'firewall']);
+assert.deepEqual(
+  alignViewFocusModels(['switch'], ['a', 'b']),
+  [
+    { model_id: 'switch', inst_uuid: 'a' },
+    { model_id: 'switch', inst_uuid: 'b' },
+  ]
+);
+assert.deepEqual(
+  alignViewFocusModels(['switch', 'router'], ['a', 'b']),
+  [
+    { model_id: 'switch', inst_uuid: 'a' },
+    { model_id: 'router', inst_uuid: 'b' },
+  ]
+);
+assert.deepEqual(alignViewFocusModels(['switch', 'router'], ['a']), []);
 assert.deepEqual(parseInstUuids('a,b,a, c'), ['a', 'b', 'c']);
 {
   const withUi = new URLSearchParams(
@@ -108,9 +134,9 @@ assert.deepEqual(parseInstUuids('a,b,a, c'), ['a', 'b', 'c']);
     withUi
   );
   const preservedParams = new URLSearchParams(preserved.split('?')[1] || '');
-  assert.equal(preservedParams.get('model_id'), 'k8s_cluster');
-  assert.equal(preservedParams.get('inst_uuid'), '42');
-  assert.equal(preservedParams.get('inst_name'), 'prod');
+  assert.equal(preservedParams.get('model_id'), null);
+  assert.equal(preservedParams.get('inst_uuid'), null);
+  assert.equal(preservedParams.get('inst_name'), null);
   assert.equal(preservedParams.get('sub'), 'pod');
   assert.equal(preservedParams.get('expanded_workloads'), 'w1');
   assert.equal(preservedParams.get('unowned_pods'), '1');
@@ -124,6 +150,7 @@ assert.deepEqual(
   parseViewsSearch(new URLSearchParams('model_id=router&inst_uuid=1')),
   {
     model_id: 'router',
+    model_ids: ['router'],
     inst_uuid: '1',
     inst_uuids: ['1'],
     mode: undefined,
@@ -136,9 +163,23 @@ assert.deepEqual(
   parseViewsSearch(new URLSearchParams('model_id=rack&inst_uuid=a,b&mode=rack')),
   {
     model_id: 'rack',
+    model_ids: ['rack'],
     inst_uuid: 'a',
     inst_uuids: ['a', 'b'],
     mode: 'rack',
+    inst_name: undefined,
+    model_name: undefined,
+    icn: undefined,
+  }
+);
+assert.deepEqual(
+  parseViewsSearch(new URLSearchParams('model_id=switch,router&inst_uuid=a,b')),
+  {
+    model_id: 'switch',
+    model_ids: ['switch', 'router'],
+    inst_uuid: 'a',
+    inst_uuids: ['a', 'b'],
+    mode: undefined,
     inst_name: undefined,
     model_name: undefined,
     icn: undefined,

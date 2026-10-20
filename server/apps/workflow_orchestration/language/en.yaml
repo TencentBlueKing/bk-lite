@@ -195,9 +195,9 @@ error:
   is_builtin_invalid: is_builtin is invalid
   job_actor_missing: Job execution is missing a trusted actor context
   job_context_missing: Job execution is missing a trusted workflow context
-  job_result_depth: BK_LITE_RESULT is nested more than 10 levels
-  job_result_json: BK_LITE_RESULT must be followed by valid JSON
-  job_result_object: BK_LITE_RESULT must be a JSON object
+  job_result_depth: result= is nested more than 10 levels
+  job_result_json: result= must be followed by valid JSON
+  job_result_object: result= must be a JSON object
   job_target_count: Job execution must select 1 to 100 target hosts
   job_target_id_invalid: The job platform target ID is invalid
   job_target_source_missing: The job target is missing a controlled source

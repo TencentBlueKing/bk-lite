@@ -5,6 +5,7 @@ import DetailListPanel from '@/components/detail-list-panel';
 import MonitorObjectList from '@/app/alarm/components/monitor-object-list';
 import MonitorSourceList from '@/app/alarm/components/monitor-source-list';
 import type { MonitorObjectSnapshot } from '@/app/alarm/types/alarms';
+import PersonFieldLabel from '@/app/alarm/components/person-field-label';
 import { useTranslation } from '@/utils/i18n';
 
 export interface AlarmBaseInfoDetail {
@@ -55,13 +56,23 @@ const AlarmBaseInfo: React.FC<AlarmBaseInfoProps> = ({ detail }) => {
     },
     {
       key: 'operator',
-      label: t('alarmCommon.operator'),
+      label: (
+        <PersonFieldLabel
+          label={t('alarmCommon.operator')}
+          tip={t('alarms.operatorTip')}
+        />
+      ),
       value: detail.operator_user,
       copyable: false,
     },
     {
       key: 'owners',
-      label: t('alarms.owners'),
+      label: (
+        <PersonFieldLabel
+          label={t('alarms.owners')}
+          tip={t('alarms.ownersTip')}
+        />
+      ),
       value: Array.isArray(detail.owners) && detail.owners.length ? detail.owners.join('、') : PLACEHOLDER,
       copyable: false,
     },
@@ -115,7 +126,7 @@ const AlarmBaseInfo: React.FC<AlarmBaseInfoProps> = ({ detail }) => {
 
   return (
     <DetailListPanel
-      labelWidthClassName="w-32"
+      labelWidthClassName="w-36"
       placeholder={PLACEHOLDER}
       items={descriptionItems}
     />

@@ -15,6 +15,7 @@ from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import App, Channel, Group, GroupDataRule, Menu, Role, User
 from apps.system_mgmt.models.channel import ChannelChoices
+from apps.system_mgmt.utils.i18n import system_mgmt_message
 from nats_client.registry import default_registry
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
@@ -1330,7 +1331,124 @@ def test_monitor_alert_copy_dispatch_preserves_retryable_per_event_rejection(mon
 
     assert result["result"] is False
     assert result["retryable"] is True
+    assert result["message"] == "Alert events were only partially accepted."
     assert result["data"]["event_results"] == [{"delivery_id": "delivery-rejected", "status": "rejected", "retryable": True}]
+
+
+def test_dispatch_notification_post_send_failures_use_default_locale_messages(monkeypatch):
+    webhook = Channel.objects.create(
+        name="Webhook",
+        channel_type=ChannelChoices.CUSTOM_WEBHOOK,
+        config={"webhook_url": "encrypted"},
+        description="hook",
+        team=[7],
+    )
+
+    def dispatch_webhook(response):
+        monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", Mock(return_value=response))
+        return nats_api.dispatch_notification(
+            delivery_key="apm:event:i18n",
+            channel_id=webhook.id,
+            organization_ids=[7],
+            recipients=["on-call"],
+            title="title",
+            body="body",
+            event_payload={},
+        )
+
+    monkeypatch.setattr(
+        "apps.system_mgmt.nats.channels.send_msg_with_channel",
+        Mock(side_effect=RuntimeError("transport down")),
+    )
+    unavailable = nats_api.dispatch_notification(
+        delivery_key="apm:event:i18n",
+        channel_id=webhook.id,
+        organization_ids=[7],
+        recipients=["on-call"],
+        title="title",
+        body="body",
+        event_payload={},
+    )
+    assert unavailable["result"] is False
+    assert unavailable["code"] == "provider_unavailable"
+    assert unavailable["retryable"] is True
+    assert unavailable["message"] == system_mgmt_message(None, "error.notification_provider_unavailable") == "通知传输暂不可用。"
+
+    invalid = dispatch_webhook("not-a-dict")
+    assert invalid["result"] is False
+    assert invalid["code"] == "invalid_provider_response"
+    assert invalid["retryable"] is True
+    assert invalid["message"] == system_mgmt_message(None, "error.notification_invalid_provider_response") == "通知渠道返回格式无效。"
+
+    delivery_failed = dispatch_webhook({"result": False, "code": "upstream_busy"})
+    assert delivery_failed["result"] is False
+    assert delivery_failed["code"] == "upstream_busy"
+    assert delivery_failed["retryable"] is True
+    assert delivery_failed["message"] == system_mgmt_message(None, "error.notification_delivery_failed") == "通知渠道投递失败。"
+
+    provider_message = dispatch_webhook(
+        {"result": False, "code": "rejected", "message": "provider said no", "retryable": False}
+    )
+    assert provider_message["code"] == "rejected"
+    assert provider_message["retryable"] is False
+    assert provider_message["message"] == "provider said no"
+
+    alert_channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events"},
+        description="alert copy",
+        team=[1],
+    )
+
+    def dispatch_alert(response, **overrides):
+        monkeypatch.setattr(
+            "apps.system_mgmt.nats.channels.send_msg_with_channel",
+            lambda *args, **kwargs: response,
+        )
+        payload = {
+            "delivery_key": "delivery-i18n",
+            "channel_id": alert_channel.id,
+            "organization_ids": [1],
+            "recipients": [],
+            "title": "",
+            "body": "alert",
+            "event_payload": {"delivery_id": "delivery-i18n", "organizations": [1]},
+            "required_delivery_mode": "alert_event_copy",
+            "producer": "lite-monitor",
+            "ack_mode": "per_event_v1",
+            "ack_token": "receiver-secret",
+        }
+        payload.update(overrides)
+        return _authenticated_dispatch(**payload)
+
+    event_results = [{"delivery_id": "delivery-i18n", "status": "rejected", "retryable": False}]
+    partial = dispatch_alert({"result": False, "data": {"event_results": event_results}})
+    assert partial["result"] is False
+    assert partial["code"] == "alert_copy_partial"
+    assert partial["retryable"] is False
+    assert partial["data"] == {"event_results": event_results}
+    assert partial["message"] == system_mgmt_message(None, "error.alert_copy_partial_accepted") == "告警中心仅接受了部分事件副本。"
+
+    partial_with_message = dispatch_alert(
+        {
+            "result": False,
+            "message": "Alert events were only partially accepted.",
+            "data": {"event_results": event_results},
+        }
+    )
+    assert partial_with_message["message"] == "Alert events were only partially accepted."
+    assert partial_with_message["data"] == {"event_results": event_results}
+
+    rejected = dispatch_alert(
+        {"result": True, "data": {"ingestion": {"accepted": 0, "skipped": 0, "errored": 1}}},
+        ack_mode="",
+        ack_token="",
+    )
+    assert rejected["result"] is False
+    assert rejected["code"] == "alert_copy_rejected"
+    assert rejected["retryable"] is True
+    assert rejected["message"] == system_mgmt_message(None, "error.alert_copy_rejected") == "告警中心未接受事件副本。"
 
 
 def test_get_wechat_settings():

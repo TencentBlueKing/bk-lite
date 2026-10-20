@@ -780,7 +780,30 @@ class InstanceConfigService:
         if association_objs:
             MonitorInstanceOrganization.objects.bulk_create(association_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
+        InstanceConfigService._backfill_cmdb_monitor_ids(
+            new_instances + existing_instances,
+            actor_context=actor_context,
+        )
         return created_instance_ids, created_rule_ids
+
+    @staticmethod
+    def _backfill_cmdb_monitor_ids(instances, actor_context=None):
+        """接入带 cmdb_id 的实例后，把监控实例 ID 回写到 CMDB。胶水模块未装入时跳过。"""
+        pairs = []
+        for instance in instances or []:
+            cmdb_id = str(instance.get("cmdb_id") or "").strip()
+            monitor_id = str(instance.get("instance_id") or "").strip()
+            if cmdb_id and monitor_id:
+                pairs.append((cmdb_id, monitor_id))
+        if not pairs:
+            return
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("apps.module_link"):
+            return
+        from apps.module_link.services.backfill import backfill_monitor_ids
+
+        backfill_monitor_ids(pairs, actor_context)
 
     @staticmethod
     def _build_instance_objects(new_instances, monitor_object_id, actor_context=None):
@@ -1105,9 +1128,11 @@ class InstanceConfigService:
                     str(node_id) for instance in sanitized_instances for node_id in instance.get("node_ids", []) if node_id not in (None, "")
                 )
             )
-            configured_node_ids = HostDeploymentStatus().get_configured_node_ids(requested_node_ids)
+            deployment_status = HostDeploymentStatus()
+            configured_node_ids = deployment_status.get_configured_node_ids(requested_node_ids)
             if configured_node_ids:
                 raise BaseAppException(f"以下节点已接入主机监控，请刷新节点列表: {', '.join(sorted(configured_node_ids))}")
+            deployment_status.release_unbound_child_configs(requested_node_ids)
         prepared_instances = sanitized_instances
         if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
             try:

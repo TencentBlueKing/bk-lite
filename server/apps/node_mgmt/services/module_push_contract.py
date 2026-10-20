@@ -68,3 +68,40 @@ def ingest_auth_kwargs(actor_scope: dict[str, Any] | None) -> dict[str, Any]:
     if isinstance(user_info, dict) and user_info:
         kwargs["user_info"] = user_info
     return kwargs
+
+
+def org_ids_from_values(values: Any) -> list[int]:
+    """从实例组织字段抽出整数 ID；空值或非法项跳过，不抛。"""
+    if values in (None, ""):
+        return []
+    if not isinstance(values, (list, tuple, set, frozenset)):
+        values = [values]
+    ids: list[int] = []
+    seen: set[int] = set()
+    for item in values:
+        try:
+            number = int(item)
+        except (TypeError, ValueError):
+            continue
+        if number in seen:
+            continue
+        seen.add(number)
+        ids.append(number)
+    return ids
+
+
+def actor_scope_with_instance_orgs(
+    actor_scope: dict[str, Any] | None,
+    instance_orgs: Any,
+) -> dict[str, Any]:
+    """删除通知：操作者范围为空时，用被删对象自身组织作为对端 lifecycle 授权。
+
+    不从对端 payload 反推权限；组织来自本模块已加载的对象快照。
+    """
+    scope = dict(actor_scope or {})
+    if org_ids_from_values(scope.get("allowed_org_ids")):
+        return scope
+    filled = org_ids_from_values(instance_orgs)
+    if filled:
+        scope["allowed_org_ids"] = filled
+    return scope

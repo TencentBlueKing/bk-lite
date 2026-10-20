@@ -47,8 +47,20 @@ describe('画布连线与 Conductor DSL', () => {
   });
 
   it('加号添加的新节点与源节点同高，并右移固定间距', () => {
-    expect(positionBesideSource({ x: 20, y: 160 })).toEqual({ x: 180, y: 160 });
-    expect(positionBesideSource({ x: 260, y: 420 })).toEqual({ x: 420, y: 420 });
+    expect(positionBesideSource({ x: 20, y: 160 })).toEqual({ x: 260, y: 160 });
+    expect(positionBesideSource({ x: 260, y: 420 })).toEqual({ x: 500, y: 420 });
+  });
+
+  it('显式空连线不再补回自动连线，未记录连线的旧画布仍补线', () => {
+    const canvas = {
+      ...definition,
+      tasks: [{ name: 'bklite_job_execute', taskReferenceName: 'job_execute', type: 'SIMPLE' as const, inputParameters: {} }],
+    };
+    const cleared = buildWorkflowFlow(canvas, { edges: [] });
+    const legacy = buildWorkflowFlow(canvas, {});
+
+    expect(cleared.edges).toEqual([]);
+    expect(legacy.edges.map(({ source, target }) => [source, target])).toEqual([['trigger_form', 'job_execute']]);
   });
 
   it('画布以 Form 触发器作为默认入口', () => {

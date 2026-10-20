@@ -195,4 +195,31 @@ describe('PermissionsProvider same-tab app switch', () => {
       expect(screen.getByTestId('loading').textContent).toBe('false');
     });
   });
+
+  it('does not fetch menus for glue module-link task pages', async () => {
+    const { rerender } = render(
+      <PermissionsProvider>
+        <Probe />
+      </PermissionsProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading').textContent).toBe('false');
+    });
+    const fetchesAfterCmdb = menuFetch.count;
+    expect(fetchesAfterCmdb).toBeGreaterThan(0);
+
+    pathname = '/module-link/cmdb-monitor/tasks/abc';
+    rerender(
+      <PermissionsProvider>
+        <Probe />
+      </PermissionsProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading').textContent).toBe('false');
+    });
+    expect(menuFetch.count).toBe(fetchesAfterCmdb);
+    expect(screen.getByTestId('menu-root').textContent).toBe('/cmdb/assetOverview');
+  });
 });

@@ -400,9 +400,18 @@ const IntegrationDetail: FC = () => {
     };
   }, [source?.id]);
 
+  const eventStatusOptions = [
+    { id: 'received', name: t('alarms.received') },
+    { id: 'pending', name: t('alarms.pending') },
+    { id: 'processing', name: t('alarms.processing') },
+    { id: 'resolved', name: t('alarms.resolved') },
+    { id: 'closed', name: t('alarms.closed') },
+    { id: 'shield', name: t('alarms.shield') },
+  ];
   const eventAttrList = [
     { attr_id: 'title', attr_name: '标题', attr_type: 'str', option: [] },
     { attr_id: 'description', attr_name: '内容', attr_type: 'str', option: [] },
+    { attr_id: 'status', attr_name: t('alarms.state'), attr_type: 'enum', option: eventStatusOptions },
     { attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'push_source', option: [] },
   ];
 

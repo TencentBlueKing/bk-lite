@@ -10,6 +10,7 @@ import StructuredDataPreview from '@/components/structured-data-preview';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { getMonitorIdentityColumns } from '@/app/alarm/components/monitor-object-list/columns';
+import { presentEventRawData } from '@/app/alarm/utils/eventRawData';
 
 export interface AlarmEventLevelOption {
   color?: string;
@@ -36,6 +37,8 @@ export interface AlarmEventTableItem {
   value?: number | string;
   level?: string;
   raw_data?: AlarmEventRawData;
+  enrichment?: Record<string, unknown>;
+  assignee?: string[];
 }
 
 export interface AlarmEventTableProps {
@@ -62,7 +65,7 @@ const AlarmEventTable: React.FC<AlarmEventTableProps> = ({
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [rawVisible, setRawVisible] = useState(false);
-  const [rawData, setRawData] = useState<AlarmEventRawData>();
+  const [rawData, setRawData] = useState<unknown>();
   const stateLabelMap = {
     new: t('alarms.new'),
     closed: t('alarms.closed'),
@@ -78,7 +81,7 @@ const AlarmEventTable: React.FC<AlarmEventTableProps> = ({
   };
 
   const handleShowRaw = (record: AlarmEventTableItem) => {
-    setRawData((record.raw_data || record) as AlarmEventRawData);
+    setRawData(presentEventRawData(record));
     setRawVisible(true);
   };
 

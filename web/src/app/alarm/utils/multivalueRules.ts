@@ -7,6 +7,8 @@ export const isMultiOperator = (operator?: string) => MULTI_OPERATORS.includes(o
 export const ruleFields = (scope: RuleScope) => RULE_FIELDS.filter(field =>
   (field.contexts as readonly string[]).includes(['assignment', 'action'].includes(scope) ? 'alert' : 'event'));
 export const ruleField = (key?: string, scope?: RuleScope) => (scope ? ruleFields(scope) : RULE_FIELDS).find(field => field.key === key);
+export const ruleFieldLabel = (key: string | undefined, t: (key: string) => string) =>
+  key ? `${t(`alarmCommon.ruleFields.${key}`)}（${key}）` : '';
 export const multiOperators = (key?: string) => ruleField(key)?.operators.filter(op => isMultiOperator(op)) || [];
 export const normalizeRuleTags = (values: string[]) => Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
 export const operatorTranslation = (key: string | undefined, operator: string) => {
@@ -43,7 +45,7 @@ export const invalidMatchRules = (value: unknown, allowAll = false, scope?: Rule
 export const formatMatchRules = (rules: RuleCondition[][], t: (key: string) => string) =>
   rules.map(group => `(${group.map(condition => {
     if (invalidRuleCondition(condition)) return t('alarmCommon.invalidRuleCondition');
-    const label = t(`alarmCommon.ruleFields.${condition.key}`);
+    const label = ruleFieldLabel(condition.key, t);
     const operator = t(operatorTranslation(condition.key, condition.operator!));
     return `${label} ${operator} ${JSON.stringify(condition.value)}`;
   }).join(` ${t('common.and')} `)})`).join(` ${t('common.or')} `);

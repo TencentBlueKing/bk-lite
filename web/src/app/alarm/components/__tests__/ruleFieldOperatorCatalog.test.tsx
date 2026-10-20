@@ -28,17 +28,17 @@ interface FieldSpec { key: string; label: string; operators: OperatorSpec[] }
 const TEXT: OperatorSpec[] = [
   { key: 'eq', label: '等于', value: 'text' },
   { key: 'ne', label: '不等于', value: 'text' },
-  { key: 'contains', label: '包含', value: 'text' },
-  { key: 'not_contains', label: '不包含', value: 'text' },
+  { key: 'contains', label: '文本包含', value: 'text' },
+  { key: 'not_contains', label: '文本不包含', value: 'text' },
 ];
 const CANDIDATE = (value: ValueKind): OperatorSpec[] => [
-  { key: 'any_of', label: '包含', value },
-  { key: 'none_of', label: '不包含', value },
+  { key: 'any_of', label: '属于任意一个', value },
+  { key: 'none_of', label: '不属于任何一个', value },
 ];
 const SET: OperatorSpec[] = [
-  { key: 'any_of', label: '包含任一', value: 'source' },
-  { key: 'all_of', label: '包含全部', value: 'source' },
-  { key: 'none_of', label: '不包含', value: 'source' },
+  { key: 'any_of', label: '含有其中任一', value: 'source' },
+  { key: 'all_of', label: '含有全部', value: 'source' },
+  { key: 'none_of', label: '不含其中任一', value: 'source' },
 ];
 const MIXED: OperatorSpec[] = [
   { key: 'any_of', label: '属于任意一个', value: 'tags' },
@@ -50,31 +50,31 @@ const MIXED: OperatorSpec[] = [
 
 /** 界面查询类型的独立期望：中文文案来自产品契约，不从生产目录或 i18n key 推导。 */
 const EVENT_CATALOG: FieldSpec[] = [
-  { key: 'title', label: '标题', operators: TEXT },
-  { key: 'source_name', label: '告警源', operators: CANDIDATE('source') },
-  { key: 'level', label: '级别', operators: CANDIDATE('level') },
-  { key: 'resource_type', label: '类型对象', operators: CANDIDATE('tags') },
-  { key: 'resource_id', label: '对象实例', operators: CANDIDATE('tags') },
-  { key: 'description', label: '内容', operators: TEXT },
-  { key: 'service', label: '服务', operators: MIXED },
-  { key: 'location', label: '位置', operators: MIXED },
-  { key: 'resource_name', label: '资源名称', operators: MIXED },
-  { key: 'item', label: '指标', operators: MIXED },
-  { key: 'push_source_id', label: '监控源', operators: CANDIDATE('tags') },
+  { key: 'title', label: '标题（title）', operators: TEXT },
+  { key: 'source_name', label: '集成源（source_name）', operators: CANDIDATE('source') },
+  { key: 'level', label: '级别（level）', operators: CANDIDATE('level') },
+  { key: 'resource_type', label: '类型对象（resource_type）', operators: CANDIDATE('tags') },
+  { key: 'resource_id', label: '对象实例（resource_id）', operators: CANDIDATE('tags') },
+  { key: 'description', label: '内容（description）', operators: TEXT },
+  { key: 'service', label: '服务（service）', operators: MIXED },
+  { key: 'location', label: '位置（location）', operators: MIXED },
+  { key: 'resource_name', label: '资源名称（resource_name）', operators: MIXED },
+  { key: 'item', label: '指标（item）', operators: MIXED },
+  { key: 'push_source_id', label: '监控源（push_source_id）', operators: CANDIDATE('tags') },
 ];
 const ALERT_CATALOG: FieldSpec[] = [
-  { key: 'title', label: '标题', operators: TEXT },
-  { key: 'source_names', label: '告警源', operators: SET },
-  { key: 'level', label: '级别', operators: CANDIDATE('level') },
-  { key: 'resource_type', label: '类型对象', operators: CANDIDATE('tags') },
-  { key: 'resource_id', label: '对象实例', operators: CANDIDATE('tags') },
-  { key: 'content', label: '内容', operators: TEXT },
-  { key: 'resource_name', label: '资源名称', operators: MIXED },
-  { key: 'item', label: '指标', operators: MIXED },
-  { key: 'push_source_ids', label: '监控源', operators: [
-    { key: 'any_of', label: '包含任一', value: 'tags' },
-    { key: 'all_of', label: '包含全部', value: 'tags' },
-    { key: 'none_of', label: '不包含', value: 'tags' },
+  { key: 'title', label: '标题（title）', operators: TEXT },
+  { key: 'source_names', label: '集成源（source_names）', operators: SET },
+  { key: 'level', label: '级别（level）', operators: CANDIDATE('level') },
+  { key: 'resource_type', label: '类型对象（resource_type）', operators: CANDIDATE('tags') },
+  { key: 'resource_id', label: '对象实例（resource_id）', operators: CANDIDATE('tags') },
+  { key: 'content', label: '内容（content）', operators: TEXT },
+  { key: 'resource_name', label: '资源名称（resource_name）', operators: MIXED },
+  { key: 'item', label: '指标（item）', operators: MIXED },
+  { key: 'push_source_ids', label: '监控源（push_source_ids）', operators: [
+    { key: 'any_of', label: '含有其中任一', value: 'tags' },
+    { key: 'all_of', label: '含有全部', value: 'tags' },
+    { key: 'none_of', label: '不含其中任一', value: 'tags' },
   ] },
 ];
 const SCOPES: Record<RuleScope, FieldSpec[]> = {
@@ -98,7 +98,8 @@ function optionLabels() {
   return Array.from(document.querySelectorAll('.ant-select-item-option-content')).map(node => node.textContent);
 }
 function valueKind(): ValueKind {
-  if (screen.queryByRole('combobox', { name: '选择告警源' })) return 'source';
+  if (screen.queryByRole('combobox', { name: '选择集成源' })) return 'source';
+  if (screen.queryByRole('combobox', { name: '选择监控源' }) || screen.queryByRole('combobox', { name: '输入监控源' })) return 'tags';
   if (screen.queryByRole('combobox', { name: '匹配值' })) return 'tags';
   if (document.querySelector('.ant-select-multiple')) return 'level';
   if (screen.queryByPlaceholderText('请输入')) return 'text';

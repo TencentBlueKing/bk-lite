@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.workflow_orchestration.atom_packages.runtime import actor_snapshot, team_id
 from apps.workflow_orchestration.services.job_platform import JobPlatformExecutor
 
-CUSTOM_RESULT_MARKER = "BK_LITE_RESULT="
+CUSTOM_RESULT_MARKER = "result="
 MAX_CAPTURED_OUTPUT = 16 * 1024
 MAX_RESULT_DEPTH = 10
 SCRIPT_OPERATING_SYSTEM = {"shell": "linux", "python": "linux", "bat": "windows", "powershell": "windows"}
@@ -49,10 +49,14 @@ def _target_identity(target: dict[str, Any], source_id: str) -> dict[str, Any]:
 
 def _accept_result_payload(decoded: Any) -> Any:
     if not isinstance(decoded, dict):
-        raise ValueError("BK_LITE_RESULT 必须是 JSON 对象")
+        raise ValueError("result= 必须是 JSON 对象")
     if _json_depth(decoded) > MAX_RESULT_DEPTH:
-        raise ValueError("BK_LITE_RESULT 嵌套超过 10 层")
+        raise ValueError("result= 嵌套超过 10 层")
     return decoded
+
+
+def _is_line_start(value: str, index: int) -> bool:
+    return index == 0 or value[index - 1] == "\n"
 
 
 def _collect_result_markers(value: str, *, absolute: bool, absolute_markers: list[int], nested_payloads: list[str]) -> None:
@@ -61,11 +65,13 @@ def _collect_result_markers(value: str, *, absolute: bool, absolute_markers: lis
         found = value.find(CUSTOM_RESULT_MARKER, start)
         if found < 0:
             return
+        start = found + len(CUSTOM_RESULT_MARKER)
+        if not _is_line_start(value, found):
+            continue
         if absolute:
             absolute_markers.append(found)
         else:
             nested_payloads.append(value[found + len(CUSTOM_RESULT_MARKER) :])
-        start = found + len(CUSTOM_RESULT_MARKER)
 
 
 def _walk_nested_result_markers(value: Any, *, absolute_markers: list[int], nested_payloads: list[str]) -> None:
@@ -133,7 +139,7 @@ def _decode_nested_result_payloads(nested_payloads: list[str]) -> Any | None:
 
 
 def _parse_optional_data(stdout: str) -> Any:
-    """从 stdout 提取 BK_LITE_RESULT。
+    """从 stdout 提取行首的 result=。
 
     标记必须出现在前 MAX_CAPTURED_OUTPUT 字符内（防滥用）；找到后对完整 stdout
     做 raw_decode，允许报表 JSON 越过该窗口（Ansible 包装长输出常见）。
@@ -157,7 +163,7 @@ def _parse_optional_data(stdout: str) -> Any:
     if decoded is not None:
         return decoded
     if absolute_markers or nested_payloads:
-        raise ValueError("BK_LITE_RESULT 后必须是有效 JSON")
+        raise ValueError("result= 后必须是有效 JSON")
     return None
 
 
@@ -189,7 +195,7 @@ def _execution_results(detail: dict[str, Any], targets: list[dict[str, Any]]) ->
                 "exit_code": exit_code,
                 "stdout": raw_stdout[:MAX_CAPTURED_OUTPUT],
                 "stderr": stderr,
-                "data": data,
+                "result": data,
                 "error": error,
             }
         )
@@ -203,7 +209,7 @@ def _execution_results(detail: dict[str, Any], targets: list[dict[str, Any]]) ->
                 "exit_code": 1,
                 "stdout": "",
                 "stderr": "",
-                "data": None,
+                "result": None,
                 "error": "作业平台未返回该目标结果",
             }
         )
@@ -286,7 +292,7 @@ def execute_custom_script(inputs: dict[str, Any], *, executor=None) -> dict[str,
     succeeded = sum(item["status"] == "SUCCESS" for item in results)
     failed = len(results) - succeeded
     return {
-        "results": results,
+        "data": results,
         "summary": {"total": len(results), "succeeded": succeeded, "failed": failed},
         "job_task_ids": [task_id for task_id, _targets in submissions],
     }

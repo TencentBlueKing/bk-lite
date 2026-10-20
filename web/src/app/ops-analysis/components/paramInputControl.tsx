@@ -148,6 +148,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
         disabled={disabled}
         placeholder={placeholder}
         allowClear={allowClear}
+        showSearch
+        optionFilterProp="label"
         mode={inputConfig.multiple ? 'multiple' : undefined}
         maxCount={isMultiple ? inputConfig.maxCount : undefined}
         maxTagCount={isMultiple ? 'responsive' : undefined}
@@ -165,6 +167,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
       disabled={disabled}
       placeholder={placeholder}
       allowClear={allowClear}
+      showSearch
+      optionFilterProp="label"
       style={{ width: '100%', ...style }}
       options={options}
       onChange={(nextValue) => onChange?.(nextValue ?? null)}

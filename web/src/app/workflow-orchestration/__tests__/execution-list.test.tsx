@@ -588,9 +588,10 @@ describe('执行记录统一详情入口', () => {
     ));
   });
 
-  it('执行列表仅对仍可下载的文件显示下载，单个文件直接下载，多个文件按文件名选择', async () => {
+  it('执行列表用产物抽屉列出可下载文件，一份和多份都先打开抽屉再下载', async () => {
     const file = (id: string, filename: string) => ({
       id, format: filename.endsWith('.xlsx') ? 'xlsx' : 'docx', filename, size: 1024,
+      created_at: '2026-10-09T02:00:00Z', expires_at: '2026-11-08T02:00:00Z',
       download_url: `/workflow_orchestration/api/artifacts/${id}/download/`,
     });
     const withOne = {
@@ -615,27 +616,54 @@ describe('执行记录统一详情入口', () => {
     Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() });
     try {
       renderPage();
-      expect(await screen.findAllByRole('button', { name: '下载' })).toHaveLength(2);
+      expect(await screen.findAllByRole('button', { name: '产物' })).toHaveLength(2);
       const row = screen.getByText('无报告流程').closest('tr');
       expect(row).not.toBeNull();
-      expect(within(row as HTMLElement).queryByRole('button', { name: '下载' })).toBeNull();
+      expect(within(row as HTMLElement).queryByRole('button', { name: '产物' })).toBeNull();
 
-      fireEvent.click(within(screen.getByText('生产变更前置检查').closest('tr') as HTMLElement).getByRole('button', { name: '下载' }));
+      fireEvent.click(within(screen.getByText('生产变更前置检查').closest('tr') as HTMLElement).getByRole('button', { name: '产物' }));
+      const drawer = await waitFor(() => {
+        const element = document.querySelector<HTMLElement>('.ant-drawer-open');
+        expect(element).not.toBeNull();
+        return element!;
+      });
+      expect(within(drawer).getByText(/产物/)).not.toBeNull();
+      expect(within(drawer).getByText(/生产变更前置检查/)).not.toBeNull();
+      expect(within(drawer).getByText('health.xlsx')).not.toBeNull();
+      expect(within(drawer).getByText(/生成时间：/)).not.toBeNull();
+      expect(within(drawer).getByText(/有效期：/)).not.toBeNull();
+      const singleGrid = drawer.querySelector('.grid-cols-2');
+      expect(singleGrid).not.toBeNull();
+      expect(singleGrid?.children).toHaveLength(1);
+      expect(singleGrid?.children[0]?.className).not.toContain('col-span');
+      expect(mocks.get).not.toHaveBeenCalledWith(
+        '/workflow_orchestration/api/artifacts/artifact-1/download/',
+        { responseType: 'blob' },
+      );
+      fireEvent.click(within(drawer).getByRole('button', { name: '下载 health.xlsx' }));
       await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
         '/workflow_orchestration/api/artifacts/artifact-1/download/',
         { responseType: 'blob' },
       ));
+      fireEvent.click(drawer.querySelector('.ant-drawer-close') as HTMLElement);
 
-      const manyRow = screen.getByText('多报告巡检').closest('tr') as HTMLElement;
-      const manyDownload = within(manyRow).getByRole('button', { name: '下载' });
-      expect(manyDownload.querySelector('.anticon-down')).not.toBeNull();
-      expect(within(screen.getByText('生产变更前置检查').closest('tr') as HTMLElement).getByRole('button', { name: /下载/ }).querySelector('.anticon-down')).toBeNull();
-
-      fireEvent.click(manyDownload);
-      const search = await screen.findByPlaceholderText('搜索');
-      fireEvent.change(search, { target: { value: 'docx' } });
-      expect(screen.queryByRole('menuitem', { name: 'health-a.xlsx' })).toBeNull();
-      fireEvent.click(await screen.findByRole('menuitem', { name: 'health-b.docx' }));
+      fireEvent.click(within(screen.getByText('多报告巡检').closest('tr') as HTMLElement).getByRole('button', { name: '产物' }));
+      const manyDrawer = await waitFor(() => {
+        const element = document.querySelector<HTMLElement>('.ant-drawer-open');
+        expect(within(element as HTMLElement).getByText(/多报告巡检/)).not.toBeNull();
+        expect(within(element as HTMLElement).getByText('health-b.docx')).not.toBeNull();
+        return element!;
+      });
+      const manyGrid = manyDrawer.querySelector('.grid-cols-2');
+      expect(manyGrid?.children).toHaveLength(2);
+      fireEvent.change(within(manyDrawer).getByPlaceholderText('搜索文件'), { target: { value: 'missing' } });
+      expect(within(manyDrawer).getByText('无结果')).not.toBeNull();
+      expect(within(manyDrawer).queryByText('health-a.xlsx')).toBeNull();
+      fireEvent.change(within(manyDrawer).getByPlaceholderText('搜索文件'), { target: { value: 'docx' } });
+      expect(within(manyDrawer).queryByText('health-a.xlsx')).toBeNull();
+      expect(manyDrawer.querySelector('.grid-cols-2')?.children).toHaveLength(1);
+      expect(manyDrawer.querySelector('.grid-cols-2')?.children[0]?.className).not.toContain('col-span');
+      fireEvent.click(within(manyDrawer).getByRole('button', { name: '下载 health-b.docx' }));
       await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
         '/workflow_orchestration/api/artifacts/artifact-b/download/',
         { responseType: 'blob' },

@@ -73,6 +73,15 @@ def test_get_node_names_by_ids_转发(node):
     assert _last(node.client) == ("get_node_names_by_ids", (["a", "b"],), {})
 
 
+def test_get_child_config_assignments_转发(node):
+    node.get_child_config_assignments(["n1"], "Telegraf", "host")
+    assert _last(node.client) == (
+        "get_child_config_assignments",
+        (["n1"], "Telegraf", "host"),
+        {},
+    )
+
+
 def test_get_nodes_by_ids_转发(node):
     node.get_nodes_by_ids(["x"])
     assert _last(node.client) == ("get_nodes_by_ids", (["x"],), {})

@@ -226,16 +226,6 @@
             "Add",
             "Delete"
           ]
-        },
-        {
-          "id": "system_api_secret",
-          "name": "System Token",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-          ]
         }
       ]
     }

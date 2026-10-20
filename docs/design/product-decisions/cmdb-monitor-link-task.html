@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CMDB ↔ 监控同步任务 · 交互稿</title>
+  <style>
+    :root {
+      --primary: #155aef;
+      --primary-bg: #e8f0ff;
+      --body: #f4f6f8;
+      --bg: #fff;
+      --fill: #f7f8fa;
+      --fill-2: #f2f3f5;
+      --border: #e5e6eb;
+      --text: #1d2129;
+      --text-2: #4e5969;
+      --text-3: #86909c;
+      --ok: #00b42a;
+      --ok-bg: #e8ffea;
+      --warn: #ff7d00;
+      --warn-bg: #fff7e8;
+      --fail: #f53f3f;
+      --fail-bg: #ffece8;
+      --shadow: 0 8px 28px rgba(29, 33, 41, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--body);
+      line-height: 1.5;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .page { max-width: 1180px; margin: 0 auto; padding: 20px 20px 48px; }
+    .kicker { color: var(--text-3); font-size: 12px; letter-spacing: 0.04em; }
+    h1 { margin: 4px 0 8px; font-size: 22px; font-weight: 650; }
+    .lede { margin: 0 0 16px; color: var(--text-2); max-width: 820px; }
+    .dir {
+      display: flex; gap: 8px; margin: 0 0 16px;
+    }
+    .dir button {
+      border: 1px solid var(--border); background: var(--bg); color: var(--text-2);
+      border-radius: 8px; padding: 8px 12px;
+    }
+    .dir button[aria-pressed="true"] {
+      border-color: var(--primary); background: var(--primary-bg); color: var(--primary); font-weight: 600;
+    }
+    .note {
+      background: #fff7e8; border: 1px solid #ffe4ba; color: #613400;
+      border-radius: 8px; padding: 10px 12px; margin-bottom: 16px;
+    }
+    .note strong { color: var(--text); }
+    .layout { display: grid; grid-template-columns: 220px 1fr; gap: 16px; min-height: 640px; }
+    @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+    .steps {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+    }
+    .steps h2 { margin: 0 0 8px; font-size: 13px; }
+    .step {
+      display: block; width: 100%; text-align: left; border: 0; background: transparent;
+      padding: 8px 8px; border-radius: 8px; color: var(--text-2); margin-bottom: 4px;
+    }
+    .step[aria-current="true"] { background: var(--primary-bg); color: var(--primary); font-weight: 600; }
+    .step .n { display: inline-block; width: 18px; color: var(--text-3); }
+    .shell {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      display: grid; grid-template-rows: auto auto 1fr; min-height: 640px; overflow: hidden;
+    }
+    .chrome {
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      background: #1d2129; color: #f2f3f5; font-size: 12px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #c9cdd4; }
+    .crumb {
+      padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-2);
+    }
+    .crumb b { color: var(--text); }
+    .stage { padding: 12px; min-height: 0; }
+    .bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .bar h3 { margin: 0; font-size: 15px; flex: 1; }
+    .btn {
+      border: 1px solid var(--border); background: var(--bg); border-radius: 6px;
+      padding: 5px 12px; color: var(--text);
+    }
+    .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .btn.ghost { color: var(--primary); border-color: transparent; background: var(--primary-bg); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-3); font-weight: 500; background: var(--fill); }
+    .tag {
+      display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 12px;
+    }
+    .tag.ok { background: var(--ok-bg); color: #008026; }
+    .tag.wait { background: var(--warn-bg); color: #b35c00; }
+    .tag.bad { background: var(--fail-bg); color: #cb2634; }
+    .tag.mute { background: var(--fill-2); color: var(--text-3); }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    @media (max-width: 720px) { .kpis { grid-template-columns: 1fr 1fr; } }
+    .kpi { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--fill); }
+    .kpi b { display: block; font-size: 20px; }
+    .kpi span { color: var(--text-3); }
+    .panel { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+    .panel h4 {
+      margin: 0; padding: 8px 12px; background: var(--fill); font-size: 13px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .panel h4 span { margin-left: auto; font-weight: 400; color: var(--text-3); }
+    .hint { color: var(--text-3); font-size: 12px; margin: 8px 0 0; }
+    .form { display: grid; grid-template-columns: 120px 1fr; gap: 8px 12px; align-items: center; padding: 12px; }
+    .form input, .form select {
+      border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: #fff; width: min(320px, 100%);
+    }
+    .form input[readonly] { background: var(--fill); color: var(--text-2); }
+    .call {
+      margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--primary-bg); color: var(--text-2);
+    }
+    .hidden { display: none; }
+    .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .diff del { color: var(--fail); text-decoration: none; }
+    .diff ins { color: #008026; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="kicker">交互稿 · 不是实现</div>
+    <h1>同步做成任务，而不是点一次就散</h1>
+    <p class="lede">
+      本期只做 CMDB → 监控。勾选后生成任务：先把身份对得上的关联上，再把监控没有的对象编成接入草稿，跳到监控接入页补凭据。
+      反向（监控 → CMDB）一并画出，方便对照：先关联，再决定要不要把监控里的台账字段写回 CMDB。
+    </p>
+    <div class="dir" role="tablist">
+      <button type="button" id="dir-cmdb" aria-pressed="true">本期：CMDB → 监控</button>
+      <button type="button" id="dir-mon" aria-pressed="false">对照：监控 → CMDB</button>
+    </div>
+    <div class="note" id="banner">
+      <strong>本期边界：</strong>单向任务。不在 CMDB 生成采集配置，不无凭据暗建监控实例。凭据只在监控接入页填写。
+    </div>
+    <div class="layout">
+      <nav class="steps" id="steps"></nav>
+      <section class="shell">
+        <div class="chrome"><span class="dot"></span><span id="appName">CMDB</span><span>·</span><span id="appPath">资源 / 主机</span></div>
+        <div class="crumb" id="crumb">资源 <span> / </span> <b>主机</b></div>
+        <div class="stage" id="stage"></div>
+      </section>
+    </div>
+  </div>
+  <script>
+    const STEPS = {
+      cmdb: [
+        { id: "list", title: "勾选并同步" },
+        { id: "run", title: "任务：自动关联" },
+        { id: "result", title: "任务结果分桶" },
+        { id: "templates", title: "选择接入模板" },
+        { id: "access", title: "跳转接入草稿" },
+      ],
+      mon: [
+        { id: "mlist", title: "勾选并同步" },
+        { id: "mrun", title: "任务：自动关联" },
+        { id: "mresult", title: "关联 / 待建 / 不一致" },
+        { id: "msync", title: "确认是否写回台账" },
+      ],
+    };
+
+    let dir = "cmdb";
+    let scene = "list";
+
+    const $ = (id) => document.getElementById(id);
+
+    function renderSteps() {
+      const nav = $("steps");
+      nav.innerHTML = "<h2>走一遍</h2>" + STEPS[dir].map((s, i) =>
+        `<button class="step" type="button" data-scene="${s.id}" aria-current="${s.id === scene}">` +
+        `<span class="n">${i + 1}</span>${s.title}</button>`
+      ).join("");
+      nav.querySelectorAll(".step").forEach((btn) => {
+        btn.onclick = () => { scene = btn.dataset.scene; render(); };
+      });
+    }
+
+    function hostRows() {
+      return `
+        <table>
+          <thead><tr><th></th><th>实例名</th><th>IP</th><th>云区域</th><th>监控关联</th></tr></thead>
+          <tbody>
+            <tr><td><input type="checkbox" checked></td><td>web-01</td><td>10.11.27.11</td><td>default</td><td><span class="tag mute">未关联</span></td></tr>
+            <tr><td><input type="checkbox" checked></td><td>web-02</td><td>10.11.27.12</td><td>default</td><td><span class="tag mute">未关联</span></td></tr>
+            <tr><td><input type="checkbox" checked></td><td>db-01</td><td>10.11.27.21</td><td>default</td><td><span class="tag mute">未关联</span></td></tr>
+            <tr><td><input type="checkbox" checked></td><td>app-03</td><td>10.11.27.33</td><td>default</td><td><span class="tag mute">未关联</span></td></tr>
+          </tbody>
+        </table>`;
+    }
+
+    const scenes = {
+      list: () => {
+        $("appName").textContent = "CMDB";
+        $("appPath").textContent = "资源 / 主机";
+        $("crumb").innerHTML = "资源 <span> / </span> <b>主机</b>";
+        return `
+          <div class="bar">
+            <h3>主机</h3>
+            <button class="btn">全选本页</button>
+            <button class="btn primary" data-go="run">同步到监控</button>
+          </div>
+          ${hostRows()}
+          <p class="hint">点「同步到监控」生成任务，不在当前列表里转圈等完全部认领失败。</p>
+          <div class="call">弹出确认：将把已勾选的 12 台主机交给同步任务。身份对得上的会立刻关联；监控没有的会进入接入草稿，不会现在暗建。</div>`;
+      },
+      run: () => {
+        $("appName").textContent = "CMDB";
+        $("appPath").textContent = "自动发现 / 同步任务";
+        $("crumb").innerHTML = "同步任务 <span> / </span> <b>SYNC-1842</b>";
+        return `
+          <div class="bar"><h3>SYNC-1842 · CMDB → 监控</h3><span class="tag wait">自动关联中</span></div>
+          <div class="kpis">
+            <div class="kpi"><b>12</b><span>勾选</span></div>
+            <div class="kpi"><b>7</b><span>已匹配</span></div>
+            <div class="kpi"><b>4</b><span>监控没有</span></div>
+            <div class="kpi"><b>1</b><span>冲突</span></div>
+          </div>
+          <p class="hint">第一段只做认领：已有关联 ID → 主机 IP+云区域。不开采集，不改监控业务字段。</p>
+          <div class="bar"><button class="btn primary" data-go="result">关联完成，看分桶</button></div>`;
+      },
+      result: () => {
+        $("appName").textContent = "CMDB";
+        $("appPath").textContent = "自动发现 / 同步任务";
+        $("crumb").innerHTML = "同步任务 <span> / </span> <b>SYNC-1842</b>";
+        return `
+          <div class="bar"><h3>SYNC-1842</h3><span class="tag wait">待接入</span></div>
+          <div class="panel">
+            <h4>已关联 <span>7 台 · 无需再进接入页</span></h4>
+            <table>
+              <tr><td>web-01</td><td>10.11.27.11</td><td><span class="tag ok">已关联 Host / web-01</span></td></tr>
+              <tr><td>web-02</td><td>10.11.27.12</td><td><span class="tag ok">已关联 Host / web-02</span></td></tr>
+            </table>
+          </div>
+          <div class="panel">
+            <h4>待接入 · Host <span>4 台 · 同一张接入草稿</span></h4>
+            <table>
+              <tr><td>app-03</td><td>10.11.27.33</td><td>default</td></tr>
+              <tr><td>app-04</td><td>10.11.27.34</td><td>default</td></tr>
+            </table>
+            <div style="padding:10px 12px">
+              <button class="btn primary" data-go="templates">去配置监控接入</button>
+              <span class="hint" style="margin-left:8px">先到该对象下选模板（内置或自己 DIY 的），再进预填接入页。</span>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>无对象映射 <span>2 台 · 自定义模型「机房空调」</span></h4>
+            <table>
+              <tr><td>ac-01</td><td>10.11.27.80</td><td>没有内置 Host/Mysql 那种一对一关系</td></tr>
+              <tr><td>ac-02</td><td>10.11.27.81</td><td>不能猜要用哪个监控对象</td></tr>
+            </table>
+            <div class="form" style="padding-top:0">
+              <label>本次对到</label>
+              <select>
+                <option>选择监控对象…</option>
+                <option>Hardware Server</option>
+                <option>自定义对象：机房环境</option>
+              </select>
+            </div>
+            <p class="hint" style="padding:0 12px 10px">指定后才生成该对象的接入草稿，并可记住这个模型以后默认对谁。K8s / 云 / vCenter 仍不走这一步。</p>
+          </div>
+          <div class="panel">
+            <h4>冲突 <span>1 台 · 不进草稿</span></h4>
+            <table>
+              <tr><td>db-01</td><td>10.11.27.21 对应两台 Host</td><td><button class="btn ghost">去手绑</button></td></tr>
+            </table>
+          </div>
+          <div class="call">交换机如果也勾了，会另开一组 Switch 草稿，不会和 Host 混在一张表里。自定义模型先指定对象，再和普通草稿一样选模板。</div>`;
+      },
+      templates: () => {
+        $("appName").textContent = "监控";
+        $("appPath").textContent = "接入 / Host / 选择模板";
+        $("crumb").innerHTML = "接入 <span> / </span> <b>Host</b> <span> / </span> 来自 SYNC-1842";
+        return `
+          <div class="bar"><h3>选择 Host 的接入模板</h3><span class="tag wait">草稿 4 台等着</span></div>
+          <p class="hint">同一监控对象下可能有内置插件，也可能有人 DIY 的模板。任务不替你猜，进接入页之前先选定。</p>
+          <div class="kpis">
+            <div class="kpi"><b>Host</b><span>内置 · Telegraf</span></div>
+            <div class="kpi"><b>Host Ping</b><span>内置</span></div>
+            <div class="kpi"><b>主机-生产SSH</b><span>自定义模板</span></div>
+            <div class="kpi"><b>主机-带外IPMI</b><span>自定义模板</span></div>
+          </div>
+          <div class="bar">
+            <button class="btn">返回任务</button>
+            <button class="btn primary" data-go="access">用「主机-生产SSH」继续</button>
+          </div>
+          <div class="call">落地时复用监控接入列表的对象+插件卡片，不另做一套模板库。点卡片后才带 cmdb_draft 进配置页。</div>`;
+      },
+      access: () => {
+        $("appName").textContent = "监控";
+        $("appPath").textContent = "接入 / Host / 主机-生产SSH";
+        $("crumb").innerHTML = "接入 <span> / </span> Host <span> / </span> <b>主机-生产SSH</b>";
+        return `
+          <div class="bar"><h3>批量接入 Host</h3><span class="tag mute">草稿 4 台</span></div>
+          <div class="form">
+            <label>采集方式</label><select><option>SSH 远程</option><option>Agent 本地</option></select>
+            <label>云区域</label><input value="default" readonly>
+            <label>凭据</label><select><option>选择系统管理凭据…</option><option>手动填写</option></select>
+            <label>采集间隔</label><input value="60" >
+          </div>
+          <table>
+            <thead><tr><th>实例名</th><th>IP</th><th>cmdb_id</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>app-03</td><td>10.11.27.33</td><td class="diff">c3d4-…-a4b5</td><td></td></tr>
+              <tr><td>app-04</td><td>10.11.27.34</td><td class="diff">d4e5-…-b5c6</td><td></td></tr>
+            </tbody>
+          </table>
+          <div class="bar" style="margin-top:12px">
+            <button class="btn">返回任务</button>
+            <button class="btn primary">创建接入</button>
+          </div>
+          <p class="hint">提交后走监控现有批量接入；默认告警规则由接入链路创建，不是这个任务另写一套策略。</p>
+          <div class="call">人只补「监控才知道」的字段。CMDB 已经知道的名称 / IP / 组织 / cmdb_id 不许再抄一遍。</div>`;
+      },
+      mlist: () => {
+        $("appName").textContent = "监控";
+        $("appPath").textContent = "资产 / Host";
+        $("crumb").innerHTML = "资产 <span> / </span> <b>Host</b>";
+        return `
+          <div class="bar">
+            <h3>Host</h3>
+            <button class="btn">全选本页</button>
+            <button class="btn primary" data-go="mrun">同步到 CMDB</button>
+          </div>
+          <table>
+            <thead><tr><th></th><th>监控实例</th><th>IP</th><th>CMDB 关联</th></tr></thead>
+            <tbody>
+              <tr><td><input type="checkbox" checked></td><td>web-01</td><td>10.11.27.11</td><td><span class="tag mute">未关联</span></td></tr>
+              <tr><td><input type="checkbox" checked></td><td>cache-01</td><td>10.11.27.41</td><td><span class="tag mute">未关联</span></td></tr>
+              <tr><td><input type="checkbox" checked></td><td>web-01-old</td><td>10.11.27.11</td><td><span class="tag mute">未关联</span></td></tr>
+            </tbody>
+          </table>
+          <p class="hint">实现后置。交互与 CMDB 侧对称：先出任务，不把凭据带进 CMDB。</p>`;
+      },
+      mrun: () => {
+        $("appName").textContent = "监控";
+        $("appPath").textContent = "同步任务";
+        $("crumb").innerHTML = "同步任务 <span> / </span> <b>SYNC-1901</b>";
+        return `
+          <div class="bar"><h3>SYNC-1901 · 监控 → CMDB</h3><span class="tag wait">自动关联中</span></div>
+          <div class="kpis">
+            <div class="kpi"><b>10</b><span>勾选</span></div>
+            <div class="kpi"><b>6</b><span>已匹配</span></div>
+            <div class="kpi"><b>2</b><span>CMDB 没有</span></div>
+            <div class="kpi"><b>2</b><span>字段不一致</span></div>
+          </div>
+          <div class="bar"><button class="btn primary" data-go="mresult">看分桶</button></div>`;
+      },
+      mresult: () => {
+        $("appName").textContent = "监控";
+        $("appPath").textContent = "同步任务";
+        $("crumb").innerHTML = "同步任务 <span> / </span> <b>SYNC-1901</b>";
+        return `
+          <div class="bar"><h3>SYNC-1901</h3><span class="tag wait">待确认写入</span></div>
+          <div class="panel">
+            <h4>已关联 <span>6 台 · 指针已成对，默认不改 CMDB 字段</span></h4>
+          </div>
+          <div class="panel">
+            <h4>CMDB 没有 · 将新建 CI <span>2 台</span></h4>
+            <table>
+              <tr><td>cache-01</td><td>10.11.27.41</td><td>将建主机 CI</td></tr>
+              <tr><td>cache-02</td><td>10.11.27.42</td><td>将建主机 CI</td></tr>
+            </table>
+          </div>
+          <div class="panel">
+            <h4>已能关联，但台账不一致 <span>2 台</span></h4>
+            <table>
+              <tr><td>web-01</td><td>名称、组织不同</td></tr>
+              <tr><td>db-01</td><td>云区域不同</td></tr>
+            </table>
+            <div style="padding:10px 12px">
+              <button class="btn primary" data-go="msync">确认是否同步数据</button>
+            </div>
+          </div>
+          <div class="call">和 CMDB → 监控的差别在这里：反向不问「怎么接入」，问「CMDB 台账要不要用监控侧事实更新」。</div>`;
+      },
+      msync: () => {
+        $("appName").textContent = "监控";
+        $("appPath").textContent = "同步任务 / 写入台账";
+        $("crumb").innerHTML = "SYNC-1901 <span> / </span> <b>同步数据</b>";
+        return `
+          <div class="bar">
+            <h3>写入 CMDB 前确认</h3>
+            <button class="btn">全部保持 CMDB</button>
+            <button class="btn">全部用监控覆盖</button>
+          </div>
+          <table>
+            <thead><tr><th>实例</th><th>字段</th><th>CMDB</th><th>监控</th><th>写入</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>web-01</td><td>名称</td>
+                <td class="diff">web-01</td>
+                <td class="diff">web-01.prod</td>
+                <td><select><option>保持 CMDB</option><option>用监控覆盖</option></select></td>
+              </tr>
+              <tr>
+                <td>web-01</td><td>组织</td>
+                <td>运维一组</td><td>默认</td>
+                <td><select><option>保持 CMDB</option><option>用监控覆盖</option></select></td>
+              </tr>
+              <tr>
+                <td>db-01</td><td>云区域</td>
+                <td>default</td><td>idc-2</td>
+                <td><select><option selected>保持 CMDB</option><option>用监控覆盖</option></select></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="hint">新建的 2 条 CI 会带上监控已有的名称 / IP / 云区域 / 组织。不把监控插件凭据写入 CMDB 采集。</p>
+          <div class="bar" style="margin-top:12px">
+            <button class="btn">取消</button>
+            <button class="btn primary">写入 CMDB</button>
+          </div>
+          <div class="call">默选「保持 CMDB」更安全：关联已经建立，台账覆盖是另一次明确操作。</div>`;
+      },
+    };
+
+    function render() {
+      $("banner").innerHTML = dir === "cmdb"
+        ? "<strong>本期边界：</strong>单向任务。不在 CMDB 生成采集配置，不无凭据暗建监控实例。凭据只在监控接入页填写。"
+        : "<strong>对照稿：</strong>实现后置。先关联身份，再决定要不要把监控事实写进 CMDB。凭据不随同步走。";
+      $("dir-cmdb").setAttribute("aria-pressed", dir === "cmdb");
+      $("dir-mon").setAttribute("aria-pressed", dir === "mon");
+      renderSteps();
+      $("stage").innerHTML = scenes[scene]();
+      $("stage").querySelectorAll("[data-go]").forEach((btn) => {
+        btn.onclick = () => { scene = btn.dataset.go; render(); };
+      });
+    }
+
+    $("dir-cmdb").onclick = () => { dir = "cmdb"; scene = "list"; render(); };
+    $("dir-mon").onclick = () => { dir = "mon"; scene = "mlist"; render(); };
+    render();
+  </script>
+</body>
+</html>

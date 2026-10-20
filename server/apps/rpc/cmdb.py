@@ -53,8 +53,11 @@ class CMDB(object):
         return return_data
 
     def search_instances_batch(self, **kwargs):
-        """告警丰富批量查询 CMDB 实例（UUID）。
-        :param kwargs/params: {"protocol_version": "2", "model_id": .., "inst_uuids": [..], "inst_names": [..], "organization_ids": [..]}
+        """告警丰富批量查询 CMDB 实例。
+
+        params 含 protocol_version、organization_ids，以及 model_id、inst_uuids、
+        inst_names、monitor_ids。不带 model_id 时，inst_uuids 按实例 UUID 查，
+        monitor_ids 按实例属性 monitor_id 查。
         """
         return self._run_params_handler("search_instances_batch", kwargs)
 
