@@ -211,6 +211,53 @@ def test_create_missing_writes_only_selected_not_found(mocker, host_object):
     bind.assert_called()
 
 
+def test_create_missing_keeps_cmdb_id_when_bind_fails_and_retry_only_binds(mocker, host_object):
+    _instance(host_object, pk="m-bind-fail", name="keep-name", ip="10.0.0.18")
+    _patch_common(mocker)
+    mocker.patch(QUERY_UUID, return_value=None)
+    mocker.patch(QUERY_IDENT, return_value={})
+    create_ci = mocker.patch(CREATE_CI, return_value={"inst_uuid": "u-orphan", "inst_name": "keep-name"})
+    bind = mocker.patch(BIND, side_effect=[{"status": "occupied"}, {"status": "ok"}])
+
+    task = MonitorCmdbTaskService.create(["m-bind-fail"], "Host", request=_request())
+    item = task.items.get()
+    task = MonitorCmdbTaskService.create_missing(task, [str(item.id)], request=_request())
+    item.refresh_from_db()
+    assert item.status == "conflict"
+    assert item.cmdb_id == "u-orphan"
+    assert item.message == "对端已被其他实例占用"
+    assert create_ci.call_count == 1
+
+    task = MonitorCmdbTaskService.create_missing(task, [str(item.id)], request=_request())
+    item.refresh_from_db()
+    assert item.status == "ok"
+    assert item.cmdb_id == "u-orphan"
+    assert item.message == ""
+    assert create_ci.call_count == 1
+    assert bind.call_count == 2
+
+
+def test_create_missing_blank_name_fails_without_creating(mocker, host_object):
+    _instance(host_object, pk="m-noname", name="", ip="10.0.0.19")
+    _patch_common(mocker)
+    mocker.patch(QUERY_UUID, return_value=None)
+    mocker.patch(QUERY_IDENT, return_value={})
+    create_ci = mocker.patch(CREATE_CI)
+    mocker.patch(BIND)
+
+    task = MonitorCmdbTaskService.create(["m-noname"], "Host", request=_request())
+    item = task.items.get()
+    assert item.status == ITEM_NOT_FOUND
+    assert item.inst_name == ""
+
+    MonitorCmdbTaskService.create_missing(task, [str(item.id)], request=_request())
+    item.refresh_from_db()
+    assert item.status == "failed"
+    assert item.cmdb_id == ""
+    assert item.message == "实例名为空，无法新建"
+    create_ci.assert_not_called()
+
+
 def test_host_blank_cloud_uses_monitor_default_on_create(mocker, host_object):
     _instance(host_object, pk="m-nocloud", name="h-empty", ip="10.0.0.9", cloud=None)
     _patch_common(mocker)

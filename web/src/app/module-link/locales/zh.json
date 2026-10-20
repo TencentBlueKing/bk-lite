@@ -42,6 +42,9 @@
     "selectNotFound": "请先勾选要写入的行",
     "createMissingConfirm": "将按监控侧的名称、IP、组织和云区域新建配置项，并写上关联。不会覆盖已有台账字段。",
     "createMissingSuccess": "已写入所选配置项",
+    "retryBind": "重新关联",
+    "retryBindConfirm": "这些行已经有配置项，只会再写一次关联，不会新建。",
+    "selectRetryBind": "请先勾选已有配置项编号的失败行",
     "cmdbId": "CMDB ID",
     "rowMessage": "原因"
   }

@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.cmdb.services.host_sync_identity import parse_cloud_id
@@ -467,8 +468,11 @@ def _create_ci(item: MonitorCmdbTaskItem, actor_scope: dict[str, Any]) -> tuple[
     orgs = _orgs_in_scope(item.organization, actor_scope)
     if not orgs:
         return ITEM_FAILED, "", item_message(stage="missing_org")
+    inst_name = _as_text(item.inst_name)
+    if not inst_name:
+        return ITEM_FAILED, "", item_message(stage="missing_name")
     payload: dict[str, Any] = {
-        "inst_name": item.inst_name or item.ip or item.monitor_id,
+        "inst_name": inst_name,
         "organization": orgs,
     }
     ip = _as_text(item.ip)
@@ -511,7 +515,7 @@ def _create_ci(item: MonitorCmdbTaskItem, actor_scope: dict[str, Any]) -> tuple[
         return ITEM_FAILED, "", item_message(stage="missing_cmdb_id")
     bind_status, bound_id, message = _bind_pair(cmdb_id, item.monitor_id, actor_scope)
     if bind_status != ITEM_OK:
-        return bind_status, "", message
+        return bind_status, cmdb_id, message
     return ITEM_OK, bound_id or cmdb_id, ""
 
 
@@ -677,34 +681,50 @@ class MonitorCmdbTaskService:
         if len(item_ids) > BATCH_LIMIT:
             raise ValueError("batch push exceeds limit of 100")
         actor_scope = build_monitor_push_actor_scope(request)
-        items = list(task.items.filter(id__in=item_ids, status=ITEM_NOT_FOUND))
+        remembered = (Q(status=ITEM_FAILED) | Q(status=ITEM_CONFLICT)) & ~Q(cmdb_id="")
+        eligible = Q(status=ITEM_NOT_FOUND) | remembered
+        item_pks = list(task.items.filter(id__in=item_ids).filter(eligible).values_list("id", flat=True))
         created = 0
         failed = 0
         has_edit = _has_cmdb_asset_edit(request)
-        allowed = _authorized_monitor_ids(request, [item.monitor_id for item in items])
-        for item in items:
-            if item.monitor_id not in allowed:
-                item.status = ITEM_FAILED
-                item.message = item_message(stage="unauthorized")
-                item.save(update_fields=["status", "message"])
-                failed += 1
-                continue
-            if not has_edit:
-                logger.warning(_ROW_FAILED, _log_id(item.monitor_id), "create_ci", "PermissionDenied")
-                item.status = ITEM_FAILED
-                item.message = item_message(stage="create_ci_permission")
-                item.save(update_fields=["status", "message"])
-                failed += 1
-                continue
-            status, cmdb_id, message = _create_ci(item, actor_scope)
-            item.status = status if status in REVERSE_ITEM_STATUSES else ITEM_FAILED
-            item.cmdb_id = cmdb_id if item.status == ITEM_OK else ""
-            item.message = "" if item.status == ITEM_OK else message
-            item.save(update_fields=["status", "cmdb_id", "message"])
-            if item.status == ITEM_OK:
-                created += 1
-            else:
-                failed += 1
+        allowed = _authorized_monitor_ids(
+            request,
+            list(task.items.filter(id__in=item_pks).values_list("monitor_id", flat=True)),
+        )
+        for item_pk in item_pks:
+            with transaction.atomic():
+                item = task.items.select_for_update().filter(id=item_pk).first()
+                if item is None:
+                    continue
+                rebind = bool(_as_text(item.cmdb_id))
+                if not rebind and item.status != ITEM_NOT_FOUND:
+                    continue
+                if item.monitor_id not in allowed:
+                    item.status = ITEM_FAILED
+                    item.message = item_message(stage="unauthorized")
+                    item.save(update_fields=["status", "message"])
+                    failed += 1
+                    continue
+                if not has_edit:
+                    logger.warning(_ROW_FAILED, _log_id(item.monitor_id), "create_ci", "PermissionDenied")
+                    item.status = ITEM_FAILED
+                    item.message = item_message(stage="create_ci_permission")
+                    item.save(update_fields=["status", "message"])
+                    failed += 1
+                    continue
+                if rebind:
+                    status, cmdb_id, message = _bind_pair(item.cmdb_id, item.monitor_id, actor_scope)
+                    cmdb_id = cmdb_id or item.cmdb_id
+                else:
+                    status, cmdb_id, message = _create_ci(item, actor_scope)
+                item.status = status if status in REVERSE_ITEM_STATUSES else ITEM_FAILED
+                item.cmdb_id = _as_text(cmdb_id) or _as_text(item.cmdb_id)
+                item.message = "" if item.status == ITEM_OK else message
+                item.save(update_fields=["status", "cmdb_id", "message"])
+                if item.status == ITEM_OK:
+                    created += 1
+                else:
+                    failed += 1
         items = list(task.items.all())
         task.status = _task_status_from_items(items)
         task.summary = _summary_from_items(items)

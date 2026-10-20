@@ -20,6 +20,7 @@ _STAGE = {
     "create_ci_permission": "没有 CMDB 资产编辑权限",
     "host_missing_ip": "主机缺少 IP，无法新建",
     "missing_org": "当前组织范围内没有可用的所属组织",
+    "missing_name": "实例名为空，无法新建",
     "missing_cmdb_id": "新建后没有返回配置项 ID",
     "list_candidates": "查询监控候选失败",
     "bind_cmdb_id": "写入监控关联失败",

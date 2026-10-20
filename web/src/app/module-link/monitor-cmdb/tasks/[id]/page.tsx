@@ -31,6 +31,7 @@ const MonitorCmdbTaskPage = () => {
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedNotFound, setSelectedNotFound] = useState<string[]>([]);
+  const [selectedRetry, setSelectedRetry] = useState<string[]>([]);
   const [bindItem, setBindItem] = useState<MonitorCmdbTaskItem | null>(null);
 
   const loadTask = useCallback(async () => {
@@ -76,6 +77,32 @@ const MonitorCmdbTaskPage = () => {
         const data = await cancelMonitorCmdbTask(taskId);
         setTask(data);
         message.success(t('ModuleLink.cancelled'));
+      },
+    });
+  };
+
+  const handleRetryBind = (itemIds: string[]) => {
+    if (!itemIds.length) {
+      message.warning(t('ModuleLink.selectRetryBind'));
+      return;
+    }
+    Modal.confirm({
+      centered: true,
+      title: t('ModuleLink.retryBindConfirm'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        setCreating(true);
+        try {
+          const data = await createMissingCmdbItems(taskId, itemIds);
+          setTask(data);
+          setSelectedRetry([]);
+          message.success(t('ModuleLink.createMissingSuccess'));
+        } catch {
+          message.error(t('ModuleLink.loadFailed'));
+        } finally {
+          setCreating(false);
+        }
       },
     });
   };
@@ -166,16 +193,25 @@ const MonitorCmdbTaskPage = () => {
       ) : null}
       {visibleStatuses.map((status) => {
         const rows = items.filter((item) => item.status === status);
-        const extra =
-          status === 'not_found' ? (
-            <Button
-              type="link"
-              disabled={!selectedNotFound.length || creating || task?.status === 'cancelled'}
-              onClick={handleCreateMissing}
-            >
-              {t('ModuleLink.createMissing')}
-            </Button>
-          ) : null;
+        const retryable = status === 'failed' || status === 'conflict';
+        const selectedHere = selectedRetry.filter((id) => rows.some((row) => row.id === id));
+        const extra = status === 'not_found' ? (
+          <Button
+            type="link"
+            disabled={!selectedNotFound.length || creating || task?.status === 'cancelled'}
+            onClick={handleCreateMissing}
+          >
+            {t('ModuleLink.createMissing')}
+          </Button>
+        ) : retryable ? (
+          <Button
+            type="link"
+            disabled={!selectedHere.length || creating || task?.status === 'cancelled'}
+            onClick={() => handleRetryBind(selectedHere)}
+          >
+            {t('ModuleLink.retryBind')}
+          </Button>
+        ) : null;
         return (
           <Card
             key={`table-${status}`}
@@ -197,7 +233,21 @@ const MonitorCmdbTaskPage = () => {
                     selectedRowKeys: selectedNotFound,
                     onChange: (keys) => setSelectedNotFound(keys.map(String)),
                   }
-                  : undefined
+                  : status === 'failed' || status === 'conflict'
+                    ? {
+                      selectedRowKeys: selectedHere,
+                      onChange: (keys) => {
+                        const tableIds = new Set(rows.map((row) => row.id));
+                        setSelectedRetry((current) => [
+                          ...current.filter((id) => !tableIds.has(id)),
+                          ...keys.map(String),
+                        ]);
+                      },
+                      getCheckboxProps: (record: MonitorCmdbTaskItem) => ({
+                        disabled: !record.cmdb_id,
+                      }),
+                    }
+                    : undefined
               }
               columns={
                 status === 'conflict'

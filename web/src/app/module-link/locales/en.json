@@ -42,6 +42,9 @@
     "selectNotFound": "Select the rows to create first",
     "createMissingConfirm": "This creates CIs from the monitor name, IP, organization, and cloud region, then writes the link. Existing CI fields are not overwritten.",
     "createMissingSuccess": "Selected CIs were created",
+    "retryBind": "Link again",
+    "retryBindConfirm": "These rows already have a CI. This only writes the link again and does not create another CI.",
+    "selectRetryBind": "Select failed rows that already have a CI id",
     "cmdbId": "CMDB ID",
     "rowMessage": "Reason"
   }
