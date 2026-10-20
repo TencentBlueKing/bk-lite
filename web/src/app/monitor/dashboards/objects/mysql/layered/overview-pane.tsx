@@ -171,8 +171,6 @@ export default function OverviewPane({
       ) : (
         <KpiTileRow items={cards} />
       )}
-
-      <ProSectionTitle>所属主机</ProSectionTitle>
       <MysqlHostRail
         host={linkedHost}
         href={hostHref}

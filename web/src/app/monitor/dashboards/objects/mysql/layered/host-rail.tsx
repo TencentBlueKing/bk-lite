@@ -14,9 +14,14 @@ interface MysqlHostRailProps {
   loading?: boolean;
 }
 
-const percentText = (value: number) => `${Math.round(value)}%`;
+const percentText = (value: number | null) => (
+  value != null && Number.isFinite(value) ? `${Math.round(value)}%` : '—'
+);
 
-/** 所属主机内联旁注。复用事件轨壳，但收成贴内容的一条，不拉通栏。 */
+/**
+ * 健康六卡下的通栏宿主条。复用事件轨壳，左簇贴边、查看主机贴右缘。
+ * 未关联不渲染整条，避免空条或置灰入口。
+ */
 export default function MysqlHostRail({
   host,
   href,
@@ -24,36 +29,34 @@ export default function MysqlHostRail({
   memPercent,
   loading = false
 }: MysqlHostRailProps) {
-  const showCpu = cpuPercent != null && Number.isFinite(cpuPercent);
-  const showMem = memPercent != null && Number.isFinite(memPercent);
+  if (!host && !loading) return null;
+
   return (
-    <div className={pro.hostAsideWrap}>
-      <div className={`${shell.eventsRail} ${pro.hostAside}`}>
-        {loading ? (
-          <span className={shell.eventsEmpty}>加载中</span>
-        ) : host ? (
-          <>
-            <span className={pro.railHost}>{host.name}</span>
-            {showCpu ? (
-              <>
-                <span className={pro.railDot} aria-hidden="true">·</span>
-                <span>CPU <b>{percentText(cpuPercent as number)}</b></span>
-              </>
-            ) : null}
-            {showMem ? (
-              <>
-                <span className={pro.railDot} aria-hidden="true">·</span>
-                <span>内存 <b>{percentText(memPercent as number)}</b></span>
-              </>
-            ) : null}
-            <Link className={`${shell.jumpBtn} ${pro.railLink} no-underline`} href={href}>
-              查看主机
-            </Link>
-          </>
-        ) : (
-          <span className={shell.eventsEmpty}>未关联主机</span>
-        )}
-      </div>
+    <div
+      className={`${shell.eventsRail} ${pro.hostStrip}`}
+      data-host-strip=""
+      data-host-linked={host ? '' : undefined}
+      aria-busy={loading && !host ? true : undefined}
+    >
+      {host ? (
+        <>
+          <div className={pro.hostStripLead}>
+            <span className={pro.hostStripLabel}>所属主机</span>
+            <span className={pro.hostStripName} title={host.name}>{host.name}</span>
+            <span className={pro.hostStripMetric}>
+              CPU <b>{percentText(cpuPercent)}</b>
+            </span>
+            <span className={pro.hostStripMetric}>
+              内存 <b>{percentText(memPercent)}</b>
+            </span>
+          </div>
+          <Link className={`${shell.jumpBtn} ${pro.hostStripLink} no-underline`} href={href}>
+            查看主机
+          </Link>
+        </>
+      ) : (
+        <span className={shell.eventsEmpty}>加载中</span>
+      )}
     </div>
   );
 }
