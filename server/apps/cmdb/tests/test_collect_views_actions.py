@@ -791,3 +791,106 @@ def test_oid_create_duplicate(superuser):
     body = _body(resp)
     assert body["result"] is False
     assert "OID已存在" in body["message"]
+
+
+def _network_unknown_task():
+    return CollectModels.objects.create(
+        name="net-unknown-view",
+        task_type=CollectPluginTypes.SNMP,
+        driver_type="protocol",
+        model_id="network",
+        cycle_value_type="cycle",
+        team=[1],
+        exec_status=CollectRunStatusType.SUCCESS,
+        format_data={
+            "unresolved": [
+                {
+                    "soid": "1.3.6.1.4.1.99999.1",
+                    "devices": [{"ip_addr": "10.0.0.8", "port": "161", "sys_desc": "box", "interfaces": []}],
+                }
+            ]
+        },
+    )
+
+
+@pytest.mark.django_db
+def test_unknown_soid_mapping_view_creates_library_row(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    monkeypatch.setattr(CollectModelViewSet, "get_has_permission", lambda *args, **kwargs: True)
+    task = _network_unknown_task()
+    request = _req(
+        "post",
+        superuser,
+        data={"items": [{"soid": "1.3.6.1.4.1.99999.1", "device_type": "firewall", "brand": "Hillstone", "model": "SG-6000"}]},
+        current_team="1",
+    )
+
+    response = CollectModelViewSet.as_view({"post": "unknown_soid_mappings"})(request, pk=task.id)
+
+    body = _body(response)
+    assert response.status_code == 200
+    assert body["result"] is True
+    assert body["data"]["created"][0]["brand"] == "Hillstone"
+    assert OidMapping.objects.filter(oid="1.3.6.1.4.1.99999.1", built_in=False).exists()
+    task.refresh_from_db()
+    assert task.format_data["unresolved"][0]["devices"][0]["ip_addr"] == "10.0.0.8"
+
+
+@pytest.mark.django_db
+def test_unknown_soid_view_requires_execute_permission(authenticated_user):
+    user = authenticated_user
+    user.is_superuser = False
+    user.permission = {"cmdb": set()}
+    task = _network_unknown_task()
+    request = _req("post", user, data={"items": []})
+
+    response = CollectModelViewSet.as_view({"post": "unknown_soid_mappings"})(request, pk=task.id)
+
+    assert response.status_code == 403
+    assert OidMapping.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_unknown_soid_view_requires_soid_add_and_task_permission(authenticated_user, monkeypatch):
+    user = authenticated_user
+    user.is_superuser = False
+    user.permission = {"cmdb": {"auto_collection-Execute"}}
+    task = _network_unknown_task()
+    request = _req(
+        "post",
+        user,
+        data={"items": [{"soid": "1.3.6.1.4.1.99999.1", "device_type": "switch", "brand": "Cisco", "model": "C9300"}]},
+        current_team="1",
+    )
+    _bypass_permission(monkeypatch)
+    monkeypatch.setattr(CollectModelViewSet, "get_has_permission", lambda *args, **kwargs: True)
+
+    denied = CollectModelViewSet.as_view({"post": "unknown_soid_mappings"})(request, pk=task.id)
+
+    assert denied.status_code == 403
+    assert "特征库" in _body(denied)["message"]
+
+    monkeypatch.setattr(CollectModelViewSet, "get_has_permission", lambda *args, **kwargs: False)
+    user.permission = {"cmdb": {"auto_collection-Execute", "soid_library-Add"}}
+    blocked = CollectModelViewSet.as_view({"post": "write_unknown_devices"})(
+        _req("post", user, data={"ip_addrs": ["10.0.0.8"]}, current_team="1"),
+        pk=task.id,
+    )
+    assert blocked.status_code == 403
+    assert "采集任务" in _body(blocked)["message"]
+
+
+@pytest.mark.django_db
+def test_write_unknown_devices_view_returns_missing_soids(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    monkeypatch.setattr(CollectModelViewSet, "get_has_permission", lambda *args, **kwargs: True)
+    task = _network_unknown_task()
+    request = _req("post", superuser, data={"ip_addrs": ["10.0.0.8"]}, current_team="1")
+
+    response = CollectModelViewSet.as_view({"post": "write_unknown_devices"})(request, pk=task.id)
+
+    body = _body(response)
+    assert body["result"] is False
+    assert body["data"]["missing_soids"] == ["1.3.6.1.4.1.99999.1"]
+    task.refresh_from_db()
+    assert task.format_data["unresolved"][0]["devices"][0]["ip_addr"] == "10.0.0.8"
