@@ -105,7 +105,7 @@ class MonitorCmdbTaskItem(models.Model):
 
     class Meta:
         verbose_name = "监控-CMDB同步任务行"
-        indexes = [models.Index(fields=["task", "status"])]
+        indexes = [models.Index(fields=["task", "status"], name="module_link_task_id_rev_idx")]
 
     def save(self, *args, **kwargs):
         if self.status not in REVERSE_ITEM_STATUSES:
