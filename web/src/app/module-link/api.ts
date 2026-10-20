@@ -107,20 +107,32 @@ export const useModuleLinkApi = () => {
   );
 
   const getMonitorCmdbTask = useCallback(
-    (taskId: string) => get(`/module_link/api/monitor_cmdb_tasks/${taskId}/`),
+    (taskId: string) =>
+      get(`/module_link/api/monitor_cmdb_tasks/${taskId}/`, {
+        suppressErrorNotification: true,
+      }),
     [get],
   );
 
   const cancelMonitorCmdbTask = useCallback(
-    (taskId: string) => post(`/module_link/api/monitor_cmdb_tasks/${taskId}/cancel/`),
+    (taskId: string) =>
+      post(
+        `/module_link/api/monitor_cmdb_tasks/${taskId}/cancel/`,
+        {},
+        { suppressErrorNotification: true },
+      ),
     [post],
   );
 
   const createMissingCmdbItems = useCallback(
     (taskId: string, itemIds: string[]) =>
-      post(`/module_link/api/monitor_cmdb_tasks/${taskId}/create_missing/`, {
-        item_ids: itemIds,
-      }),
+      post(
+        `/module_link/api/monitor_cmdb_tasks/${taskId}/create_missing/`,
+        {
+          item_ids: itemIds,
+        },
+        { suppressErrorNotification: true },
+      ),
     [post],
   );
 

@@ -53,7 +53,6 @@ const MonitorCmdbTaskPage = () => {
 
   const items = task?.items || [];
   const summary = task?.summary || {};
-  const notFoundRows = items.filter((item) => item.status === 'not_found');
 
   const columns: ColumnsType<MonitorCmdbTaskItem> = useMemo(
     () => [
@@ -82,10 +81,10 @@ const MonitorCmdbTaskPage = () => {
   };
 
   const handleCreateMissing = () => {
-    const itemIds = selectedNotFound.length
-      ? selectedNotFound
-      : notFoundRows.map((item) => item.id);
-    if (!itemIds.length) return;
+    if (!selectedNotFound.length) {
+      message.warning(t('ModuleLink.selectNotFound'));
+      return;
+    }
     Modal.confirm({
       centered: true,
       title: t('ModuleLink.createMissingConfirm'),
@@ -94,7 +93,7 @@ const MonitorCmdbTaskPage = () => {
       onOk: async () => {
         setCreating(true);
         try {
-          const data = await createMissingCmdbItems(taskId, itemIds);
+          const data = await createMissingCmdbItems(taskId, selectedNotFound);
           setTask(data);
           setSelectedNotFound([]);
           message.success(t('ModuleLink.createMissingSuccess'));
@@ -171,7 +170,7 @@ const MonitorCmdbTaskPage = () => {
           status === 'not_found' ? (
             <Button
               type="link"
-              disabled={!rows.length || creating || task?.status === 'cancelled'}
+              disabled={!selectedNotFound.length || creating || task?.status === 'cancelled'}
               onClick={handleCreateMissing}
             >
               {t('ModuleLink.createMissing')}

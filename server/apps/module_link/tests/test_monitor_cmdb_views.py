@@ -91,3 +91,15 @@ def test_create_missing_empty_is_400(superuser, monkeypatch):
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert called == []
+
+
+def test_create_missing_over_limit_is_400(superuser, monkeypatch):
+    monkeypatch.setattr(f"{VIEWS}.MonitorCmdbTaskService.get_task", lambda pk, request: SimpleNamespace(id=pk))
+    called = []
+    monkeypatch.setattr(f"{VIEWS}.MonitorCmdbTaskService.create_missing", lambda *a, **k: called.append(1))
+    response = MonitorCmdbTaskViewSet.as_view({"post": "create_missing"})(
+        _req("post", superuser, {"item_ids": [str(uuid4()) for _ in range(BATCH_LIMIT + 1)]}),
+        pk=str(uuid4()),
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert called == []

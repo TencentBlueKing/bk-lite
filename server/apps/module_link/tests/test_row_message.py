@@ -20,6 +20,8 @@ def test_item_message_prefers_business_exception():
 def test_item_message_falls_back_to_stage_sentence():
     assert item_message(stage="create_ci", exc=RuntimeError("boom")) == "新建配置项失败"
     assert item_message(stage="unauthorized") == "没有这条实例的操作权限"
+    assert item_message(stage="host_missing_ip") == "主机缺少 IP，无法新建"
+    assert item_message(stage="missing_org") == "当前组织范围内没有可用的所属组织"
     assert item_message(stage="unknown-stage") == ""
 
 

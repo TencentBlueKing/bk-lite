@@ -31,8 +31,8 @@ Status: implemented
 - 上限 100，同步跑完第一段，不上队列。
 - 任务状态：有待新建行则为 `waiting_create`，否则 `completed`；取消不拆已写指针。
 - 行状态：`already_linked`、`ok`（本次新绑）、`not_found`、`conflict`、`failed`、`skipped_model`。
-- 关联规则：已有成对 ID 且对端还在 → already_linked；Host 用 IP+云区域唯一命中；其它对象用该模型已有身份规则或唯一实例名；多命中 → conflict。
-- 确认新建：只处理勾选的 `not_found` 行；写入名称 / IP / 云区域 / 组织 / `monitor_id`；不带凭据、不重采、不进通用待审批、不覆盖未勾选行。监控实例未填 `cloud_region_id` 时，先用关联 Node，再按 IP 唯一命中节点，再落到监控默认云区域（`default` / id=1）。host 新建必带 `cloud`。主机 IP 先用实例 IP，再用 `summary_facts.asset.ip`，再用关联 Node IP。组织只写当前 actor 范围内的 ID，超出范围的组织丢掉，避免 CMDB 范围校验把整行打成失败。内置同步模型里只有 host 额外必填 `ip_addr`+`cloud` 且唯一规则是 IP+云区域；其它对象必填只有实例名和组织，端口不是必填，确认新建不写凭据也不为可选端口专门去采集配置里翻。
+- 关联规则：已有成对 ID 且对端还在 → already_linked；Host 用 IP+云区域唯一命中，未解析到云区域时不当成默认云区域去撞唯一；其它对象用该模型已有身份规则或唯一实例名；多命中 → conflict。
+- 确认新建：只处理勾选的 `not_found` 行；写入名称 / IP / 云区域 / 组织，不把 `monitor_id` 写进 `instance_create`（避免 bind 短路、监控侧 `cmdb_id` 没落上），关 `schedule_post_actions` 后再 `MonitorLinkService.bind` 成对写指针。不带凭据、不重采、不进通用待审批、不覆盖未勾选行。监控实例未填 `cloud_region_id` 时，先用关联 Node，再按 IP 唯一命中节点，再落到监控默认云区域（`default` / id=1）。host 新建必带 `cloud` 和 `ip_addr`。主机 IP 先用实例 IP，再用 `summary_facts.asset.ip`，再用关联 Node IP。组织只写当前 actor 范围内的 ID，超出范围的组织丢掉；交集为空则该行失败，不改写成操作者组织。内置同步模型里只有 host 额外必填 `ip_addr`+`cloud` 且唯一规则是 IP+云区域；其它对象必填只有实例名和组织，端口不是必填，确认新建不写凭据也不为可选端口专门去采集配置里翻。
 - 冲突手绑复用现有 CMDB 候选绑定，不自动合并。
 - 回收与正向共用 7 天 Beat，CASCADE 删任务行，不拆指针。
 - 写任务要监控实例操作权；确认新建还要 CMDB `asset_info-Edit`。无权行记 `failed`，不整批 403。

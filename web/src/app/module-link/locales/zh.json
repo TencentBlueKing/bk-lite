@@ -39,6 +39,7 @@
     "reverseOkHint": "这次任务按身份对上了配置项，并写上了关联。",
     "reverseAlreadyLinkedHint": "进来之前这条监控实例就已经有 CMDB ID，这次没有改台账字段。",
     "createMissing": "写入所选 CI",
+    "selectNotFound": "请先勾选要写入的行",
     "createMissingConfirm": "将按监控侧的名称、IP、组织和云区域新建配置项，并写上关联。不会覆盖已有台账字段。",
     "createMissingSuccess": "已写入所选配置项",
     "cmdbId": "CMDB ID",

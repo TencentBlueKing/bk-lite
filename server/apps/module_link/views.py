@@ -130,6 +130,8 @@ class MonitorCmdbTaskViewSet(viewsets.ViewSet):
         item_ids = _parse_uuid_list(payload.get("item_ids"))
         if not item_ids:
             return WebUtils.response_error("item_ids 必须是非空数组", status_code=status.HTTP_400_BAD_REQUEST)
+        if len(item_ids) > BATCH_LIMIT:
+            return WebUtils.response_error("item_ids 数量超过上限", status_code=status.HTTP_400_BAD_REQUEST)
         try:
             task = MonitorCmdbTaskService.create_missing(task, item_ids, request=request)
         except ValueError as exc:

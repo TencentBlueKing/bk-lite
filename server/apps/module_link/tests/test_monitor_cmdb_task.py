@@ -18,7 +18,7 @@ from apps.node_mgmt.models.sidecar import Node
 
 pytestmark = pytest.mark.django_db
 
-AUTH = "apps.module_link.services.monitor_cmdb._is_monitor_id_authorized"
+AUTH = "apps.module_link.services.monitor_cmdb._authorized_monitor_ids"
 SCOPE = "apps.module_link.services.monitor_cmdb.build_monitor_push_actor_scope"
 QUERY_UUID = "apps.module_link.services.monitor_cmdb.InstanceManage.query_entity_by_uuid"
 QUERY_IDENT = "apps.module_link.services.monitor_cmdb.InstanceManage.query_entity_by_identity"
@@ -69,7 +69,7 @@ def _instance(host_object, *, pk, name="mon-1", ip="10.0.0.1", cloud=1, cmdb_id=
 
 
 def _patch_common(mocker):
-    mocker.patch(AUTH, return_value=True)
+    mocker.patch(AUTH, side_effect=lambda request, ids: set(ids))
     mocker.patch(SCOPE, return_value=ACTOR_SCOPE)
     mocker.patch(ENSURE_ATTR, return_value=True)
 
@@ -175,7 +175,7 @@ def test_identity_conflict_does_not_merge(mocker, host_object):
 def test_unauthorized_row_is_failed_not_403(mocker, host_object):
     _instance(host_object, pk="m-deny")
     _patch_common(mocker)
-    mocker.patch(AUTH, return_value=False)
+    mocker.patch(AUTH, return_value=set())
     task = MonitorCmdbTaskService.create(["m-deny"], "Host", request=_request())
     item = task.items.get()
     assert item.status == "failed"
@@ -205,8 +205,9 @@ def test_create_missing_writes_only_selected_not_found(mocker, host_object):
     payload = create_ci.call_args.kwargs["instance_info"]
     assert payload["inst_name"] == "to-create"
     assert payload["ip_addr"] == "10.0.0.8"
-    assert payload["monitor_id"] == "m-miss"
+    assert "monitor_id" not in payload
     assert payload["cloud"] == 1
+    assert create_ci.call_args.kwargs["schedule_post_actions"] is False
     bind.assert_called()
 
 
@@ -222,12 +223,13 @@ def test_host_blank_cloud_uses_monitor_default_on_create(mocker, host_object):
     task = MonitorCmdbTaskService.create(["m-nocloud"], "Host", request=_request())
     item = task.items.get()
     assert item.status == ITEM_NOT_FOUND
-    assert item.cloud_region_id == CloudRegionConstants.DEFAULT_CLOUD_REGION_ID
-    assert any(row.get("ip_addr") == "10.0.0.9" and row.get("cloud") == CloudRegionConstants.DEFAULT_CLOUD_REGION_ID for row in seen)
+    assert item.cloud_region_id is None
+    assert all("cloud" not in row for row in seen)
 
     task = MonitorCmdbTaskService.create_missing(task, [str(item.id)], request=_request())
     payload = create_ci.call_args.kwargs["instance_info"]
     assert payload["cloud"] == CloudRegionConstants.DEFAULT_CLOUD_REGION_ID
+    assert "monitor_id" not in payload
     bind.assert_called()
 
 
@@ -346,8 +348,9 @@ def test_mysql_create_writes_name_org_ip_without_cloud(mocker):
     assert payload["inst_name"] == "db-1"
     assert payload["organization"] == [1]
     assert payload["ip_addr"] == "10.0.0.5"
-    assert payload["monitor_id"] == "m-mysql"
+    assert "monitor_id" not in payload
     assert "cloud" not in payload
+    assert create_ci.call_args.kwargs["schedule_post_actions"] is False
 
 
 def test_create_missing_without_cmdb_edit_fails_row(mocker, host_object):
@@ -414,6 +417,8 @@ def test_query_failure_log_stays_one_line(mocker, host_object, caplog):
     assert record.args[0] == "m-1  INJECTED"
     assert record.args[1] == "query_entity"
     assert record.args[2] == "RuntimeError"
+    assert record.exc_info[0] is RuntimeError
+    assert record.exc_info[2] is not None
     assert str(record.exc_info[1]) == "module link monitor cmdb row failed"
     formatted = logging.Formatter().format(record)
     assert secret not in formatted
@@ -450,3 +455,114 @@ def test_create_missing_runtime_error_uses_stage_sentence(mocker, host_object):
     assert item.status == "failed"
     assert item.message == "新建配置项失败"
     assert secret not in item.message
+
+
+def test_create_missing_empty_org_intersect_fails_without_inventing_team(mocker, host_object):
+    inst = _instance(host_object, pk="m-org-empty", name="h-org-empty", ip="10.0.0.46")
+    MonitorInstanceOrganization.objects.filter(monitor_instance=inst).delete()
+    MonitorInstanceOrganization.objects.create(monitor_instance=inst, organization=2)
+    _patch_common(mocker)
+    mocker.patch(QUERY_UUID, return_value=None)
+    mocker.patch(QUERY_IDENT, return_value={})
+    create_ci = mocker.patch(CREATE_CI)
+
+    task = MonitorCmdbTaskService.create(["m-org-empty"], "Host", request=_request())
+    item = task.items.get()
+    assert item.organization == [2]
+    MonitorCmdbTaskService.create_missing(task, [str(item.id)], request=_request())
+    item.refresh_from_db()
+    assert item.status == "failed"
+    assert item.message == "当前组织范围内没有可用的所属组织"
+    create_ci.assert_not_called()
+
+
+def test_host_instance_ip_preferred_over_summary_facts(mocker, host_object):
+    inst = _instance(host_object, pk="m-ip-pref", name="h-ip-pref", ip="10.0.0.10")
+    inst.summary_facts = {"asset.ip": "10.0.0.77"}
+    inst.save(update_fields=["summary_facts"])
+    _patch_common(mocker)
+    mocker.patch(QUERY_UUID, return_value=None)
+    mocker.patch(QUERY_IDENT, return_value={})
+    create_ci = mocker.patch(CREATE_CI, return_value={"inst_uuid": "u-ip-pref"})
+    mocker.patch(BIND, return_value={"status": "ok"})
+
+    task = MonitorCmdbTaskService.create(["m-ip-pref"], "Host", request=_request())
+    item = task.items.get()
+    assert item.ip == "10.0.0.10"
+    MonitorCmdbTaskService.create_missing(task, [str(item.id)], request=_request())
+    payload = create_ci.call_args.kwargs["instance_info"]
+    assert payload["ip_addr"] == "10.0.0.10"
+
+
+def test_stale_node_id_uses_unique_ip_cloud(mocker, host_object):
+    region = CloudRegion.objects.create(name="edge-unique-ip")
+    Node.objects.create(
+        id="node-unique-ip",
+        name="node-unique-ip",
+        ip="10.0.0.66",
+        operating_system="linux",
+        collector_configuration_directory="/etc/sidecar",
+        cloud_region=region,
+    )
+    inst = _instance(host_object, pk="m-stale-node", name="h-stale", ip="10.0.0.66", cloud=None)
+    inst.node_id = "missing-node"
+    inst.save(update_fields=["node_id"])
+    _patch_common(mocker)
+    seen = []
+    mocker.patch(QUERY_UUID, return_value=None)
+    mocker.patch(QUERY_IDENT, side_effect=lambda model_id, identity: seen.append(identity) or {})
+    create_ci = mocker.patch(CREATE_CI, return_value={"inst_uuid": "u-stale"})
+    mocker.patch(BIND, return_value={"status": "ok"})
+
+    task = MonitorCmdbTaskService.create(["m-stale-node"], "Host", request=_request())
+    item = task.items.get()
+    assert item.cloud_region_id == region.id
+    assert any(row.get("ip_addr") == "10.0.0.66" and row.get("cloud") == region.id for row in seen)
+    MonitorCmdbTaskService.create_missing(task, [str(item.id)], request=_request())
+    payload = create_ci.call_args.kwargs["instance_info"]
+    assert payload["cloud"] == region.id
+
+
+def test_host_missing_ip_fails_create_without_calling_cmdb(mocker, host_object):
+    _instance(host_object, pk="m-no-ip", name="h-no-ip", ip=None)
+    _patch_common(mocker)
+    mocker.patch(QUERY_UUID, return_value=None)
+    mocker.patch(QUERY_IDENT, return_value={})
+    create_ci = mocker.patch(CREATE_CI)
+
+    task = MonitorCmdbTaskService.create(["m-no-ip"], "Host", request=_request())
+    item = task.items.get()
+    MonitorCmdbTaskService.create_missing(task, [str(item.id)], request=_request())
+    item.refresh_from_db()
+    assert item.status == "failed"
+    assert item.message == "主机缺少 IP，无法新建"
+    create_ci.assert_not_called()
+
+
+def test_create_missing_over_limit_raises_without_creating(mocker, host_object):
+    _instance(host_object, pk="m-limit", ip="10.0.0.47")
+    _patch_common(mocker)
+    mocker.patch(QUERY_UUID, return_value=None)
+    mocker.patch(QUERY_IDENT, return_value={})
+    create_ci = mocker.patch(CREATE_CI)
+    task = MonitorCmdbTaskService.create(["m-limit"], "Host", request=_request())
+    with pytest.raises(ValueError, match="batch push exceeds limit"):
+        MonitorCmdbTaskService.create_missing(task, [f"i-{i}" for i in range(BATCH_LIMIT + 1)], request=_request())
+    create_ci.assert_not_called()
+
+
+def test_create_missing_rechecks_monitor_operate(mocker, host_object):
+    _instance(host_object, pk="m-reauth", ip="10.0.0.48")
+    _patch_common(mocker)
+    mocker.patch(QUERY_UUID, return_value=None)
+    mocker.patch(QUERY_IDENT, return_value={})
+    create_ci = mocker.patch(CREATE_CI)
+
+    task = MonitorCmdbTaskService.create(["m-reauth"], "Host", request=_request())
+    item = task.items.get()
+    mocker.patch(AUTH, return_value=set())
+    MonitorCmdbTaskService.create_missing(task, [str(item.id)], request=_request())
+    item.refresh_from_db()
+    assert item.status == "failed"
+    assert item.message == "没有这条实例的操作权限"
+    create_ci.assert_not_called()

@@ -35,7 +35,7 @@ from apps.module_link.constants import (
 from apps.module_link.models import MonitorCmdbTask, MonitorCmdbTaskItem
 from apps.module_link.services.cmdb_monitor import can_see_task
 from apps.module_link.services.row_message import item_message
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization
+from apps.monitor.models import MonitorInstance
 from apps.monitor.services.module_push import build_monitor_push_actor_scope
 from apps.monitor.utils.alert_name_variables import resolve_resource_ip
 
@@ -91,7 +91,10 @@ def _default_monitor_cloud_region_id() -> int:
 
 
 def _monitor_ip(instance: MonitorInstance) -> str:
-    return resolve_resource_ip(getattr(instance, "summary_facts", None), getattr(instance, "ip", None))
+    ip = _as_text(getattr(instance, "ip", None))
+    if ip:
+        return ip
+    return _as_text(resolve_resource_ip(getattr(instance, "summary_facts", None), None))
 
 
 def _load_node_cloud_maps(instances: list[MonitorInstance]) -> tuple[dict[str, int], dict[str, int], dict[str, str]]:
@@ -101,8 +104,6 @@ def _load_node_cloud_maps(instances: list[MonitorInstance]) -> tuple[dict[str, i
     ips_need = []
     for row in instances:
         if parse_cloud_id(getattr(row, "cloud_region_id", None)) is not None:
-            continue
-        if _as_text(getattr(row, "node_id", "")):
             continue
         ip = _monitor_ip(row)
         if ip:
@@ -156,7 +157,7 @@ def _resolve_cloud_region_id(
         parsed = parse_cloud_id(node_cloud_by_ip.get(ip))
         if parsed is not None:
             return parsed
-    return _default_monitor_cloud_region_id()
+    return None
 
 
 def _resolve_instance_ip(
@@ -212,18 +213,7 @@ def _orgs_in_scope(organization, actor_scope: dict[str, Any]) -> list:
         if parsed in allowed and parsed not in seen:
             selected.append(parsed)
             seen.add(parsed)
-    if selected:
-        return selected
-    team = (actor_scope.get("user_info") or {}).get("team")
-    try:
-        team_id = int(team) if team not in (None, "") else None
-    except (TypeError, ValueError):
-        team_id = None
-    if team_id is not None and (not allowed or team_id in allowed):
-        return [team_id]
-    if len(allowed) == 1:
-        return [next(iter(allowed))]
-    return []
+    return selected
 
 
 def _empty_counts() -> dict[str, int]:
@@ -265,6 +255,19 @@ def _is_monitor_id_authorized(request, monitor_id: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _authorized_monitor_ids(request, monitor_ids: list[str]) -> set[str]:
+    ids = [monitor_id for monitor_id in monitor_ids if monitor_id]
+    if not ids:
+        return set()
+    from apps.monitor.views.monitor_instance import _ensure_operate_instances
+
+    try:
+        _ensure_operate_instances(request, ids)
+        return set(ids)
+    except Exception:
+        return {monitor_id for monitor_id in ids if _is_monitor_id_authorized(request, monitor_id)}
 
 
 def serialize_task(task: MonitorCmdbTask) -> dict[str, Any]:
@@ -312,7 +315,7 @@ def _snapshot(
     node_cloud_by_ip: dict[str, int] | None = None,
     node_ip_by_id: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    org_ids = list(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True))
+    org_ids = [rel.organization for rel in instance.monitorinstanceorganization_set.all()]
     return {
         "monitor_id": str(instance.id),
         "inst_name": _as_text(instance.name),
@@ -461,10 +464,12 @@ def _create_ci(item: MonitorCmdbTaskItem, actor_scope: dict[str, Any]) -> tuple[
     model_id = item.model_id
     operator = actor_scope.get("operator") or ""
     allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
+    orgs = _orgs_in_scope(item.organization, actor_scope)
+    if not orgs:
+        return ITEM_FAILED, "", item_message(stage="missing_org")
     payload: dict[str, Any] = {
         "inst_name": item.inst_name or item.ip or item.monitor_id,
-        "organization": _orgs_in_scope(item.organization, actor_scope),
-        "monitor_id": item.monitor_id,
+        "organization": orgs,
     }
     ip = _as_text(item.ip)
     cloud = parse_cloud_id(item.cloud_region_id)
@@ -475,12 +480,13 @@ def _create_ci(item: MonitorCmdbTaskItem, actor_scope: dict[str, Any]) -> tuple[
         ip = _resolve_instance_ip(instance)
     if ip:
         payload["ip_addr"] = ip
-    if cloud is None:
-        if instance is not None:
-            cloud = _resolve_cloud_region_id(instance)
-        else:
+    if cloud is None and instance is not None:
+        cloud = _resolve_cloud_region_id(instance)
+    if model_id == "host":
+        if not ip:
+            return ITEM_FAILED, "", item_message(stage="host_missing_ip")
+        if cloud is None:
             cloud = _default_monitor_cloud_region_id()
-    if model_id == "host" and cloud is not None:
         payload["cloud"] = cloud
     try:
         ensure_model_monitor_id_attr(model_id, username=operator or "admin")
@@ -489,6 +495,7 @@ def _create_ci(item: MonitorCmdbTaskItem, actor_scope: dict[str, Any]) -> tuple[
             instance_info=payload,
             operator=operator,
             allowed_org_ids=allowed_org_ids,
+            schedule_post_actions=False,
         )
     except Exception as exc:
         logger.error(
@@ -538,12 +545,16 @@ class MonitorCmdbTaskService:
     @classmethod
     def _create_in_txn(cls, monitor_ids, object_name, model_id, *, request, actor_scope) -> MonitorCmdbTask:
         instances = {
-            str(row.id): row for row in MonitorInstance.objects.filter(id__in=monitor_ids, is_deleted=False).select_related("monitor_object")
+            str(row.id): row
+            for row in MonitorInstance.objects.filter(id__in=monitor_ids, is_deleted=False)
+            .select_related("monitor_object")
+            .prefetch_related("monitorinstanceorganization_set")
         }
         node_cloud_by_id, node_cloud_by_ip, node_ip_by_id = _load_node_cloud_maps(list(instances.values()))
+        allowed = _authorized_monitor_ids(request, monitor_ids)
         prepared: list[dict[str, Any]] = []
         for monitor_id in monitor_ids:
-            if not _is_monitor_id_authorized(request, monitor_id):
+            if monitor_id not in allowed:
                 prepared.append(
                     {
                         "snapshot": _empty_snapshot(monitor_id),
@@ -663,12 +674,21 @@ class MonitorCmdbTaskService:
     def create_missing(cls, task: MonitorCmdbTask, item_ids: list[str], *, request) -> MonitorCmdbTask:
         if task.status == STATUS_CANCELLED:
             raise ValueError("task is cancelled")
+        if len(item_ids) > BATCH_LIMIT:
+            raise ValueError("batch push exceeds limit of 100")
         actor_scope = build_monitor_push_actor_scope(request)
         items = list(task.items.filter(id__in=item_ids, status=ITEM_NOT_FOUND))
         created = 0
         failed = 0
         has_edit = _has_cmdb_asset_edit(request)
+        allowed = _authorized_monitor_ids(request, [item.monitor_id for item in items])
         for item in items:
+            if item.monitor_id not in allowed:
+                item.status = ITEM_FAILED
+                item.message = item_message(stage="unauthorized")
+                item.save(update_fields=["status", "message"])
+                failed += 1
+                continue
             if not has_edit:
                 logger.warning(_ROW_FAILED, _log_id(item.monitor_id), "create_ci", "PermissionDenied")
                 item.status = ITEM_FAILED

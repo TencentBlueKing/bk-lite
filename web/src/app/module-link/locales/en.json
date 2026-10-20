@@ -39,6 +39,7 @@
     "reverseOkHint": "This task matched an existing CI and wrote the link.",
     "reverseAlreadyLinkedHint": "This monitor instance already had a CMDB ID. No CMDB fields were changed.",
     "createMissing": "Create selected CIs",
+    "selectNotFound": "Select the rows to create first",
     "createMissingConfirm": "This creates CIs from the monitor name, IP, organization, and cloud region, then writes the link. Existing CI fields are not overwritten.",
     "createMissingSuccess": "Selected CIs were created",
     "cmdbId": "CMDB ID",
