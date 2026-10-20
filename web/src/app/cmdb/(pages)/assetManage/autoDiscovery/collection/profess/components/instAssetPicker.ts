@@ -35,6 +35,13 @@ export function resolveInstPaginationChange({
   };
 }
 
+export function resolveDirectAssetModelId(modelId: string): string | null {
+  if (modelId === 'security_device') {
+    return 'security_device';
+  }
+  return null;
+}
+
 export function resolveInstFetchModelId({
   isCommonSelectInstTask,
   instanceModelId,

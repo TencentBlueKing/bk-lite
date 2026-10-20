@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   mergeInstSelection,
+  resolveDirectAssetModelId,
   resolveInstFetchModelId,
   resolveInstPaginationChange,
   restoreInstDrawerSelection,
@@ -129,6 +130,31 @@ describe('选择资产请求模型', () => {
         relateType: 'network',
       })
     ).toBe('host');
+  });
+
+  it('安全设备采集固定按 security_device 选实例', () => {
+    expect(resolveDirectAssetModelId('security_device')).toBe('security_device');
+    expect(
+      resolveInstFetchModelId({
+        isCommonSelectInstTask: true,
+        instanceModelId: 'security_device',
+        collectionModelId: 'security_device',
+        relateType: 'switch',
+      })
+    ).toBe('security_device');
+    const root = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(resolve(root, '../baseTask.tsx'), 'utf8');
+    expect(source).toMatch(
+      /const directAssetModelId = resolveDirectAssetModelId\(modelId\)/
+    );
+    expect(source).toMatch(
+      /const instanceModelId = directAssetModelId \|\| targetModelId \|\| modelId/
+    );
+    expect(source).toMatch(/directAssetModelId !== null/);
+  });
+
+  it('网络发现仍按网络设备模型选择', () => {
+    expect(resolveDirectAssetModelId('network')).toBeNull();
   });
 
   it('网络设备下拉选择时按当前 relateType 拉取', () => {
