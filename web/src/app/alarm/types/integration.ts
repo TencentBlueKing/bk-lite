@@ -165,6 +165,7 @@ export interface EventTableItem {
     source_name: string;
     push_source_id?: string;
     raw_data: RawEventData;
+    enrichment?: Record<string, unknown>;
     received_at: string;
     title: string;
     description: string;
