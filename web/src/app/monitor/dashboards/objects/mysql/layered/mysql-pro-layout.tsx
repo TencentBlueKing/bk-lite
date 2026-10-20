@@ -44,6 +44,7 @@ interface MysqlProLayoutProps {
   previousMetricMap: Record<string, MetricSeries | undefined>;
   loading: boolean;
   instanceId: string;
+  monitorObjectId?: React.Key;
   nodeId: string;
   ip: string;
   timeValues: TimeValuesProps;
@@ -68,6 +69,7 @@ export default function MysqlProLayout({
   previousMetricMap,
   loading,
   instanceId,
+  monitorObjectId,
   nodeId,
   ip,
   timeValues,
@@ -344,6 +346,7 @@ export default function MysqlProLayout({
         open={alertDrawerOpen}
         refreshKey={alertRefreshKey}
         instanceId={instanceId}
+        monitorObjectId={monitorObjectId}
         focusAlertId={focusAlertId}
         onClose={() => setAlertDrawerOpen(false)}
         onCount={setAlertCount}

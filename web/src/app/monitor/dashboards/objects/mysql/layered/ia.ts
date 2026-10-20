@@ -158,18 +158,17 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
   const cards: MysqlKpiCard[] = [];
   const connected = finite(readings.threadsConnected);
   const maxConnections = finite(readings.maxConnections);
-  const utilization = finite(readings.connectionUtilization);
-  if (connected != null || utilization != null) {
-    const subtitle: string[] = [];
-    if (connected != null && maxConnections != null && maxConnections > 0) {
-      subtitle.push(`/ ${formatCount(maxConnections)}`);
-    }
-    if (connected != null && utilization != null) subtitle.push(formatPercent(utilization));
+  if (connected != null) {
+    const occupancy = maxConnections != null && maxConnections > 0
+      ? (connected / maxConnections) * 100
+      : null;
     cards.push({
       key: 'connections',
       label: '连接',
-      value: connected != null ? formatCount(connected) : formatPercent(utilization as number),
-      subtitle: subtitle.join(' · ') || undefined,
+      value: formatCount(connected),
+      subtitle: occupancy == null || !Number.isFinite(occupancy)
+        ? undefined
+        : `上限 ${formatCount(maxConnections as number)} · 占用率 ${occupancy.toFixed(1)}%`,
       tone: HOST_SERIES_COLOR.memUsed
     });
   }
@@ -189,7 +188,7 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
     cards.push({
       key: 'slow',
       label: '慢查询',
-      value: formatRate(slow),
+      value: `${formatRate(slow)} 次/秒`,
       tone: slow > 0 ? HOST_THRESHOLD_COLOR.warn : undefined
     });
   }
@@ -266,7 +265,7 @@ export const buildMysqlFocusCards = (
     cards.push({
       key: 'slow',
       label: '慢查询',
-      value: formatRate(slow),
+      value: `${formatRate(slow)} 次/秒`,
       delta: delta || undefined,
       deltaTone: delta && slow > (previousSlow || 0) ? 'var(--color-fail)' : undefined,
       hint: statementsCollected ? '查看语句' : '查看吞吐',

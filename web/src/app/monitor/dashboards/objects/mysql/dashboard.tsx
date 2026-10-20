@@ -41,7 +41,11 @@ import {
   DashboardInstanceCard,
   DashboardPanel
 } from '../../shared/widgets';
-import type { DashboardModeOption } from '../../shared/widgets/dashboard-page-header';
+import {
+  dashboardModeOptions,
+  resolveObjectDashboardMode,
+  writeObjectDashboardMode
+} from '../../shared/utils/pro-dashboard';
 import MysqlProLayout from './layered/mysql-pro-layout';
 import { readMysqlHeaderIdentity, readMysqlProHeader } from './layered/ia';
 import MysqlLegacyLayout from './legacy-layout';
@@ -57,12 +61,6 @@ interface MysqlInstanceOption {
 }
 
 type MysqlDisplayMode = 'dashboard' | 'metrics' | 'category';
-
-const MYSQL_MODE_OPTIONS: readonly DashboardModeOption[] = [
-  { labelKey: 'dashboardMode', fallback: '传统仪表盘', value: 'dashboard', disabled: false },
-  { labelKey: 'categoryTabMode', fallback: '专业仪表盘', value: 'category', disabled: false },
-  { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics', disabled: false }
-];
 
 const MYSQL_REFRESH_FREQUENCY_LIST = DEFAULT_REFRESH_FREQUENCY_LIST;
 const METRIC_QUERY_CONCURRENCY = 4;
@@ -155,8 +153,11 @@ export default function MysqlDashboardPage() {
   const searchParams = useSearchParams();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const loadSequence = useLoadSequence();
+  const modeQuery = searchParams.toString();
   const [loading, setLoading] = useState(true);
-  const [displayMode, setDisplayMode] = useState<MysqlDisplayMode>('dashboard');
+  const [displayMode, setDisplayMode] = useState<MysqlDisplayMode>(() => (
+    resolveObjectDashboardMode('mysql', new URLSearchParams(modeQuery))
+  ));
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
     originValue: 15
@@ -173,6 +174,10 @@ export default function MysqlDashboardPage() {
   const [instanceOptions, setInstanceOptions] = useState<MysqlInstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
+
+  useEffect(() => {
+    setDisplayMode(resolveObjectDashboardMode('mysql', new URLSearchParams(modeQuery)));
+  }, [modeQuery]);
 
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || 'Mysql';
@@ -558,12 +563,13 @@ export default function MysqlDashboardPage() {
             displayMode={displayMode}
             onDisplayModeChange={(mode) => {
               const next = String(mode);
-              if (next === 'dashboard' || next === 'metrics' || next === 'category') {
-                setDisplayMode(next);
-              }
+              if (next !== 'dashboard' && next !== 'metrics' && next !== 'category') return;
+              setDisplayMode(next);
+              const params = writeObjectDashboardMode(new URLSearchParams(searchParams.toString()), next);
+              router.replace(`?${params.toString()}`, { scroll: false });
             }}
             modeControl="pill"
-            modeOptions={MYSQL_MODE_OPTIONS}
+            modeOptions={dashboardModeOptions('mysql')}
             timeDefaultValue={timeDefaultValue}
             frequencyList={MYSQL_REFRESH_FREQUENCY_LIST}
             onTimeChange={onTimeChange}
@@ -622,6 +628,7 @@ export default function MysqlDashboardPage() {
                     previousMetricMap={previousMetricMap}
                     loading={loading}
                     instanceId={String(instanceId || '')}
+                    monitorObjectId={monitorObjectId}
                     nodeId={currentInstanceOption?.nodeId || ''}
                     ip={currentInstanceOption?.ip || ''}
                     timeValues={timeValues}
