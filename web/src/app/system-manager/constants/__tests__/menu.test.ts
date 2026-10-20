@@ -61,6 +61,8 @@ describe('系统管理菜单文案与二级顺序', () => {
   it.each(['zh', 'en'] as const)('%s 用户管理顺序与稳定标识保持不变', (locale) => {
     const userMenu = menu[locale].find((item) => item.url === '/system-manager/user');
     const names = userMenu?.children?.map((item) => item.name) ?? [];
+
+    expect(userMenu?.name).toBe('Organization');
     const urls = userMenu?.children?.map((item) => item.url) ?? [];
 
     expect(names).toEqual([...STABLE_USER_NAMES]);
@@ -123,6 +125,10 @@ describe('系统管理菜单文案与二级顺序', () => {
     ]);
     expect(zhPatch?.children.map((item) => item.title)).toEqual(['门户设置', '许可管理']);
     expect(enPatch?.children.map((item) => item.title)).toEqual(['Portal Settings', 'License Management']);
+
+    const userMenuName = 'Organization';
+    expect(enterpriseMenus.zh_patches.find((item) => item.children.some((child) => child.name === 'sensitive_info'))?.target).toBe(userMenuName);
+    expect(enterpriseMenus.en_patches.find((item) => item.children.some((child) => child.name === 'sensitive_info'))?.target).toBe(userMenuName);
   });
 
   it('页面文案与菜单同步，且未误改 OTP 白名单、应用密钥和签名密钥', () => {
