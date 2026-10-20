@@ -44,6 +44,11 @@ describe('systemLinkage', () => {
       EXTERNAL_ID_COLUMN_KEY,
     ]);
     expect(resolveListDisplayFieldKeys([], attrs)).toEqual([]);
+    expect(resolveListDisplayFieldKeys(undefined, attrs)).not.toContain('inst_uuid');
+    expect(resolveListDisplayFieldKeys(['inst_name', 'inst_uuid'], attrs)).toEqual([
+      'inst_name',
+      'inst_uuid',
+    ]);
   });
 
   it('builds host external ids as node then monitor', () => {
