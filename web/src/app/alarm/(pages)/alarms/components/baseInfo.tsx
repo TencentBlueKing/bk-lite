@@ -4,6 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import { AlarmTableDataItem } from '@/app/alarm/types/alarms';
 import MonitorObjectList from '@/app/alarm/components/monitor-object-list';
 import MonitorSourceList from '@/app/alarm/components/monitor-source-list';
+import PersonFieldLabel from '@/app/alarm/components/person-field-label';
 import NotificationStatusTooltip from './notificationStatusTooltip';
 
 const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
@@ -22,12 +23,22 @@ const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
     },
     {
       key: 'operator',
-      label: t('alarmCommon.operator'),
+      label: (
+        <PersonFieldLabel
+          label={t('alarmCommon.operator')}
+          tip={t('alarms.operatorTip')}
+        />
+      ),
       value: detail.operator_user,
     },
     {
       key: 'owners',
-      label: t('alarms.owners'),
+      label: (
+        <PersonFieldLabel
+          label={t('alarms.owners')}
+          tip={t('alarms.ownersTip')}
+        />
+      ),
       value: Array.isArray(detail.owners) && detail.owners.length ? detail.owners.join('、') : '--',
     },
     {
@@ -61,10 +72,8 @@ const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
       column={1}
       style={{ tableLayout: 'fixed' }}
       labelStyle={{
-        width: '120px',
+        width: '148px',
         whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
       }}
     >
       <Descriptions.Item

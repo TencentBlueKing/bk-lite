@@ -403,6 +403,8 @@
     "detailLinkNotFound": "This alert was not found, or the current account cannot see it",
     "alertContent": "Alert Content",
     "owners": "Owners",
+    "operatorTip": "Who this alert is assigned to. Notifications go to the handlers, and only they can claim it. Claiming or reassigning changes the handlers only.",
+    "ownersTip": "People recorded when the event arrived, from reported usernames or CMDB enrichment (operator and backup operator). Owners are not notified and cannot claim the alert. When assignment prefers alert owners, the first assignment copies active owners onto the handlers.",
     "ruleId": "Rule ID",
     "relatedAlertsRecommend": "Related Alerts",
     "relatedAlertsAndIncident": "Related Alerts & Incident Assistance",

@@ -403,6 +403,8 @@
     "detailLinkNotFound": "没有找到这条告警，或当前账号看不到它",
     "alertContent": "告警内容",
     "owners": "责任人",
+    "operatorTip": "这条告警实际派给谁。通知发给处理人，也只有处理人能认领。认领和转派只改处理人。",
+    "ownersTip": "事件进来时记下的人，来自上报的用户名，或 CMDB 丰富出的负责人和备份负责人。负责人不直接发通知，也不能认领。分派打开「优先通知告警责任人」时，第一次分派会把有效负责人抄成处理人。",
     "ruleId": "规则ID",
     "relatedAlertsRecommend": "相关告警推荐",
     "relatedAlertsAndIncident": "相关告警推荐与 Incident 辅助",
