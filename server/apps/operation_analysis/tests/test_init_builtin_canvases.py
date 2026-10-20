@@ -629,8 +629,8 @@ def test_builtin_canvas_data_links_and_alert_screen_drops_organization_filter():
         assert "organization__string" not in (widget["valueConfig"].get("filterBindings") or {})
 
     node_by_id = {node["id"]: node for node in screen["view_sets"]["items"]}
-    assert node_by_id["alert-active-table"]["valueConfig"]["interaction"] == ALERT_DATA_LINK
-    assert node_by_id["alert-duration-top"]["valueConfig"]["interaction"] == ALERT_DATA_LINK
+    assert "interaction" not in node_by_id["alert-active-table"]["valueConfig"]
+    assert "interaction" not in node_by_id["alert-duration-top"]["valueConfig"]
 
     alert_dashboard = next(item for item in payload["dashboards"] if item["name"] == "统一告警中心仪表盘")
     duration_table = next(item for item in alert_dashboard["view_sets"] if item["name"] == "活跃告警持续时长 TOP 10")
@@ -665,17 +665,12 @@ def test_builtin_canvas_title_links_and_alert_screen_trend_titles():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
     screen_nodes = {node["id"]: node for node in _load_builtin_alert_screen()["view_sets"]["items"]}
 
-    # 无边框组件不渲染标题图标，标题链接挂在正上方、文案相同的文本项上。
-    screen_title_links = {
-        "alert-active-pending": ("label-alert-active-pending", "待响应", _title_link("查看告警", "/alarm/alarms?status=pending")),
-        "alert-kpi-processing": ("label-alert-kpi-processing", "处理中", _title_link("查看告警", "/alarm/alarms?status=processing")),
-        "alert-active-total": (
-            "label-alert-active-total",
-            "活跃告警总数",
-            _title_link("查看告警", "/alarm/alarms?status=pending,processing,unassigned"),
-        ),
+    screen_titles = {
+        "alert-active-pending": ("label-alert-active-pending", "待响应"),
+        "alert-kpi-processing": ("label-alert-kpi-processing", "处理中"),
+        "alert-active-total": ("label-alert-active-total", "活跃告警总数"),
     }
-    for widget_id, (label_id, content, link) in screen_title_links.items():
+    for widget_id, (label_id, content) in screen_titles.items():
         widget = screen_nodes[widget_id]
         label = screen_nodes[label_id]
         assert widget["valueConfig"]["appearance"]["frame"] == "bare"
@@ -683,7 +678,7 @@ def test_builtin_canvas_title_links_and_alert_screen_trend_titles():
         assert widget["title"] == content
         assert label["kind"] == "text"
         assert label["content"] == content
-        assert label["interaction"] == link
+        assert "interaction" not in label
         assert label["y"] + label["h"] <= widget["y"]
         assert abs(label["x"] - widget["x"]) <= 8
     incident_widget = screen_nodes["2bdee93c-3a75-49a6-93b2-bd0d448967b3"]
@@ -1519,8 +1514,8 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
         },
     ]
     assert _count_nested_key(screen.view_sets, "organization__string") == 0
-    assert node_by_id["alert-active-table"]["valueConfig"]["interaction"] == ALERT_DATA_LINK
-    assert node_by_id["alert-duration-top"]["valueConfig"]["interaction"] == ALERT_DATA_LINK
+    assert "interaction" not in node_by_id["alert-active-table"]["valueConfig"]
+    assert "interaction" not in node_by_id["alert-duration-top"]["valueConfig"]
     period_node_ids = {
         "alert-level-trend",
         "alert-access-trend",

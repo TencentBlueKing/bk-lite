@@ -1637,11 +1637,6 @@ screens:
       valueConfig:
         name: 活动告警持续时长 TOP10
         chartType: topN
-        interaction:
-          kind: data
-          name: 查看告警
-          url: '/alarm/alarms?alert_id=$__data.fields.alert_id$'
-          openMode: newTab
         appearance:
           frame: bare
         dataSource: '活跃告警 TOP N::get_active_alert_top'
@@ -1902,11 +1897,6 @@ screens:
       kind: text
       zIndex: 5
       content: 待响应
-      interaction:
-        kind: title
-        name: 查看告警
-        url: '/alarm/alarms?status=pending'
-        openMode: newTab
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1933,11 +1923,6 @@ screens:
       kind: text
       zIndex: 5
       content: 活跃告警总数
-      interaction:
-        kind: title
-        name: 查看告警
-        url: '/alarm/alarms?status=pending,processing,unassigned'
-        openMode: newTab
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1990,11 +1975,6 @@ screens:
       kind: text
       zIndex: 5
       content: 处理中
-      interaction:
-        kind: title
-        name: 查看告警
-        url: '/alarm/alarms?status=processing'
-        openMode: newTab
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -2129,11 +2109,6 @@ screens:
         appearance:
           frame: bare
         dataSource: '活跃告警 TOP N::get_active_alert_top'
-        interaction:
-          kind: data
-          name: 查看告警
-          url: '/alarm/alarms?alert_id=$__data.fields.alert_id$'
-          openMode: newTab
         tableConfig:
           columns:
           - key: title
