@@ -1,7 +1,7 @@
 import React from 'react';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { Form, Input, InputNumber, Radio, Select, Tooltip, TreeSelect } from 'antd';
-import { ConfigGroupTitle } from '../configTitles';
+import { ConfigSectionTitle } from '../configTitles';
 import { RefreshFieldsButton } from './chartRoleLabel';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
@@ -98,7 +98,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
         </div>
       ) : null}
 
-      <ConfigGroupTitle
+      <ConfigSectionTitle
         actions={(
           <RefreshFieldsButton
             label={t('dashboard.refreshFields')}
@@ -109,7 +109,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
         )}
       >
         {t('dashboard.dataFields')}
-      </ConfigGroupTitle>
+      </ConfigSectionTitle>
 
       <Form.Item
         label={
@@ -164,128 +164,140 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
         />
       </Form.Item>
 
-        <Form.Item
-          label={t('dashboard.gaugeMin')}
-          name="gaugeMin"
-          rules={[
-            {
-              required: true,
-              message: t('common.inputMsg'),
-            },
-          ]}
-          initialValue={0}
-        >
-          <InputNumber style={{ width: '100%' }} />
-        </Form.Item>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4 [&_.ant-form-item]:!mb-0">
+          <Form.Item
+            className="min-w-0"
+            label={t('dashboard.gaugeShape')}
+            name="gaugeShape"
+            initialValue="semicircle"
+          >
+            <Radio.Group>
+              <Radio.Button value="semicircle">
+                {t('dashboard.gaugeShapeSemicircle')}
+              </Radio.Button>
+              <Radio.Button value="circle">
+                {t('dashboard.gaugeShapeCircle')}
+              </Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+          <div aria-hidden className="col-span-1" />
 
-        <Form.Item
-          label={t('dashboard.gaugeMax')}
-          name="gaugeMax"
-          rules={[
-            {
-              required: true,
-              message: t('common.inputMsg'),
-            },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                const min = Number(getFieldValue('gaugeMin'));
-                const max = Number(value);
-                if (
-                  !Number.isFinite(min) ||
-                  !Number.isFinite(max) ||
-                  max <= min
-                ) {
-                  return Promise.reject(
-                    new Error(t('dashboard.gaugeMaxMustGreaterMin')),
-                  );
-                }
-                return Promise.resolve();
+          <Form.Item
+            className="min-w-0"
+            label={t('dashboard.gaugeMin')}
+            name="gaugeMin"
+            rules={[
+              {
+                required: true,
+                message: t('common.inputMsg'),
               },
-            }),
-          ]}
-          initialValue={100}
-        >
-          <InputNumber style={{ width: '100%' }} />
-        </Form.Item>
-
-        <Form.Item
-          label={t('dashboard.gaugeShape')}
-          name="gaugeShape"
-          initialValue="semicircle"
-        >
-          <Radio.Group>
-            <Radio.Button value="semicircle">
-              {t('dashboard.gaugeShapeSemicircle')}
-            </Radio.Button>
-            <Radio.Button value="circle">
-              {t('dashboard.gaugeShapeCircle')}
-            </Radio.Button>
-          </Radio.Group>
-        </Form.Item>
-
-        <Form.Item label={t('topology.nodeConfig.unit')} name="unitId">
-          <Select
-            allowClear
-            placeholder={t('common.selectMsg')}
-            style={{ width: '240px' }}
-            options={[
-              { value: '', label: t('topology.nodeConfig.customSuffix') },
-              ...getUnitCategories(t).map((cat) => ({
-                label: cat.label,
-                options: cat.units.map((u) => ({
-                  value: u.id,
-                  label: u.label,
-                })),
-              })),
             ]}
-          />
-        </Form.Item>
+            initialValue={0}
+          >
+            <InputNumber className="w-full" />
+          </Form.Item>
 
-        {/* unitId 为空（自定义/未设）时回退到自由文本后缀，兼容旧配置 */}
-        <Form.Item
-          noStyle
-          shouldUpdate={(prev, cur) => prev.unitId !== cur.unitId}
-        >
-          {({ getFieldValue }) =>
-            !getFieldValue('unitId') ? (
-              <Form.Item
-                label={t('topology.nodeConfig.customSuffix')}
-                name="unit"
-              >
-                <Input
-                  placeholder={t('common.inputMsg')}
-                  style={{ width: '240px' }}
-                />
-              </Form.Item>
-            ) : null
-          }
-        </Form.Item>
+          <Form.Item
+            className="min-w-0"
+            label={t('dashboard.gaugeMax')}
+            name="gaugeMax"
+            rules={[
+              {
+                required: true,
+                message: t('common.inputMsg'),
+              },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  const min = Number(getFieldValue('gaugeMin'));
+                  const max = Number(value);
+                  if (
+                    !Number.isFinite(min) ||
+                    !Number.isFinite(max) ||
+                    max <= min
+                  ) {
+                    return Promise.reject(
+                      new Error(t('dashboard.gaugeMaxMustGreaterMin')),
+                    );
+                  }
+                  return Promise.resolve();
+                },
+              }),
+            ]}
+            initialValue={100}
+          >
+            <InputNumber className="w-full" />
+          </Form.Item>
 
-        <Form.Item
-          label={t('topology.nodeConfig.conversionFactor')}
-          name="conversionFactor"
-        >
-          <InputNumber
-            min={0}
-            max={100000}
-            step={0.01}
-            placeholder={t('common.inputMsg')}
-            style={{ width: '140px' }}
-          />
-        </Form.Item>
+          <Form.Item
+            className="min-w-0"
+            label={t('topology.nodeConfig.conversionFactor')}
+            name="conversionFactor"
+          >
+            <InputNumber
+              min={0}
+              max={100000}
+              step={0.01}
+              placeholder={t('common.inputMsg')}
+              className="w-full"
+            />
+          </Form.Item>
 
-        <Form.Item
-          label={t('topology.nodeConfig.decimalPlaces')}
-          name="decimalPlaces"
-        >
-          <InputNumber
-            min={0}
-            max={10}
-            step={1}
-            placeholder={t('common.inputMsg')}
-            style={{ width: '140px' }}
-          />
-        </Form.Item>
+          <Form.Item
+            className="min-w-0"
+            label={t('topology.nodeConfig.decimalPlaces')}
+            name="decimalPlaces"
+          >
+            <InputNumber
+              min={0}
+              max={10}
+              step={1}
+              placeholder={t('common.inputMsg')}
+              className="w-full"
+            />
+          </Form.Item>
+
+          <Form.Item
+            className="min-w-0"
+            label={t('topology.nodeConfig.unit')}
+            name="unitId"
+          >
+            <Select
+              allowClear
+              placeholder={t('common.selectMsg')}
+              className="w-full"
+              options={[
+                { value: '', label: t('topology.nodeConfig.customSuffix') },
+                ...getUnitCategories(t).map((cat) => ({
+                  label: cat.label,
+                  options: cat.units.map((u) => ({
+                    value: u.id,
+                    label: u.label,
+                  })),
+                })),
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, cur) => prev.unitId !== cur.unitId}
+          >
+            {({ getFieldValue }) =>
+              !getFieldValue('unitId') ? (
+                <Form.Item
+                  className="min-w-0"
+                  label={t('topology.nodeConfig.customSuffix')}
+                  name="unit"
+                >
+                  <Input
+                    placeholder={t('common.inputMsg')}
+                    className="w-full"
+                  />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
+        </div>
 
         <ThresholdColorConfigSection
           t={t}

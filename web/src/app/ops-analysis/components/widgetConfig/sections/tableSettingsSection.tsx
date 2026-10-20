@@ -20,7 +20,7 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DisplayColumnRow } from '../utils/columnProbing';
 import CompactEmptyState from '@/components/compact-empty-state';
-import { ConfigGroupTitle } from '../configTitles';
+import { ConfigSectionTitle } from '../configTitles';
 import { ColumnCellStyleModal } from './columnCellStyleModal';
 
 type FilterFieldRow = TableFilterFieldConfig & { id: string };
@@ -297,7 +297,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   return (
     <div className="space-y-5">
       <div>
-        <ConfigGroupTitle
+        <ConfigSectionTitle
           extra={
             invalidConfiguredFieldKeys.length > 0 ? (
               <Tooltip
@@ -335,7 +335,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
           }
         >
           {t('dashboard.displayColumns')}
-        </ConfigGroupTitle>
+        </ConfigSectionTitle>
         {displayColumns.length > 0 ? (
           <div className="pt-1">
             <CustomTable
@@ -372,7 +372,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
 
       {showFilterFields && (
         <div>
-          <ConfigGroupTitle
+          <ConfigSectionTitle
             actions={
               <Button
                 type="dashed"
@@ -386,7 +386,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
             }
           >
             {t('dashboard.filterFields')}
-          </ConfigGroupTitle>
+          </ConfigSectionTitle>
           {filterFieldOptions.length === 0 ? (
             <CompactEmptyState description={t('dashboard.noSchemaFields')} />
           ) : filterFields.length > 0 ? (

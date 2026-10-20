@@ -84,7 +84,7 @@ export const ValueMappingsConfigSection: React.FC<
   };
 
   return (
-    <div className="rounded-xl bg-(--color-fill-1)/30 p-3">
+    <div className="rounded-xl bg-(--color-fill-2) p-3">
         {mappings.length === 0 ? (
           <div className="py-1 text-xs text-(--color-text-3)">
             {t('topology.nodeConfig.valueMappingsEmpty')}

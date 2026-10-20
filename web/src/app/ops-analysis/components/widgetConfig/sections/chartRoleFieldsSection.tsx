@@ -2,7 +2,7 @@ import React from 'react';
 import { Form, Select } from 'antd';
 import type { NamePath } from 'antd/es/form/interface';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
-import { ConfigGroupTitle } from '../configTitles';
+import { ConfigSectionTitle } from '../configTitles';
 import { ChartRoleLabel, RefreshFieldsButton } from './chartRoleLabel';
 
 export interface ChartRoleField {
@@ -150,7 +150,7 @@ export const ChartRoleFieldsSection: React.FC<ChartRoleFieldsSectionProps> = ({
 
   return (
     <div className="mb-4">
-      <ConfigGroupTitle
+      <ConfigSectionTitle
         actions={(
           <RefreshFieldsButton
             label={t('dashboard.refreshFields')}
@@ -161,7 +161,7 @@ export const ChartRoleFieldsSection: React.FC<ChartRoleFieldsSectionProps> = ({
         )}
       >
         {t('dashboard.dataFields')}
-      </ConfigGroupTitle>
+      </ConfigSectionTitle>
       {roles.map((role) => (
         <Form.Item
           key={Array.isArray(role.name) ? role.name.join('.') : String(role.name)}
