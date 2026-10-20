@@ -38,6 +38,7 @@ export interface AlarmEventTableItem {
   level?: string;
   raw_data?: AlarmEventRawData;
   enrichment?: Record<string, unknown>;
+  assignee?: string[];
 }
 
 export interface AlarmEventTableProps {

@@ -16,7 +16,6 @@ SETTING_CHILD_IDS = [
     "network_white_list",
     "openapi_docs",
     "api_secret_key",
-    "system_api_secret",
 ]
 FROZEN_CHILD_IDS = {
     "user_group",
@@ -29,7 +28,6 @@ FROZEN_CHILD_IDS = {
     "network_white_list",
     "openapi_docs",
     "api_secret_key",
-    "system_api_secret",
 }
 
 
@@ -52,8 +50,9 @@ def test_system_manager_menu_json_keeps_stable_ids_and_new_order():
     assert FROZEN_CHILD_IDS <= child_ids
 
     by_id = {child["id"]: child["name"] for child in setting["children"]}
+    token = next(child for child in setting["children"] if child["id"] == "api_secret_key")
     assert by_id["api_secret_key"] == "API Token"
-    assert by_id["system_api_secret"] == "System Token"
+    assert token["operation"] == ["View", "Add", "Delete"]
     assert by_id["openapi_docs"] == "API Documentation"
     assert by_id["network_white_list"] == "Network Whitelist"
 

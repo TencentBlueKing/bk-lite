@@ -1,7 +1,7 @@
 import React from 'react';
 import { Form, Select } from 'antd';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
-import { ConfigGroupTitle } from '../configTitles';
+import { ConfigSectionTitle } from '../configTitles';
 import { ChartRoleLabel, RefreshFieldsButton } from './chartRoleLabel';
 
 interface NodeGraphSettingsSectionProps {
@@ -62,7 +62,7 @@ export const NodeGraphSettingsSection: React.FC<NodeGraphSettingsSectionProps> =
           />
         </Form.Item>
 
-        <ConfigGroupTitle
+        <ConfigSectionTitle
           actions={(
             <RefreshFieldsButton
               label={t('dashboard.refreshFields')}
@@ -73,7 +73,7 @@ export const NodeGraphSettingsSection: React.FC<NodeGraphSettingsSectionProps> =
           )}
         >
           {t('dashboard.dataFields')}
-        </ConfigGroupTitle>
+        </ConfigSectionTitle>
 
         <Form.Item
           label={(

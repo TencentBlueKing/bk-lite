@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { message } from 'antd';
 import Cookies from 'js-cookie';
-import { useUserInfoContext } from '@/context/userInfo';
-import useBtnPermissions from '@/hooks/usePermissions';
-import useApiClient, { HandledRequestError } from '@/utils/request';
+import { HandledRequestError } from '@/utils/request';
 import { CURRENT_TEAM_COOKIE } from '@/utils/userTeamPreference';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingsApi } from '@/app/system-manager/api/settings';
@@ -16,17 +14,12 @@ import type {
 } from '@/app/system-manager/components/openapi-tokens/types';
 import {
   asList,
-  canManageByOperations,
   docsToCatalog,
-  findMenuOperations,
   formValuesToWritePayload,
   isDuplicateTokenNameError,
   toPersonalRow,
   toSystemRow,
-  type MenuTreeNode,
 } from '@/app/system-manager/utils/openapiTokens';
-
-const SYSTEM_SECRET_MENU = 'system_api_secret';
 
 const isForbidden = (error: unknown) => (
   error instanceof HandledRequestError && error.status === 403
@@ -34,9 +27,6 @@ const isForbidden = (error: unknown) => (
 
 export const useOpenApiTokensPage = () => {
   const { t } = useTranslation();
-  const { get } = useApiClient();
-  const { isSuperUser, loading: userLoading } = useUserInfoContext();
-  const { hasPermission } = useBtnPermissions();
   const {
     fetchUserApiSecrets,
     createUserApiSecret,
@@ -56,11 +46,7 @@ export const useOpenApiTokensPage = () => {
   const [systemRows, setSystemRows] = useState<SystemOpenApiTokenRow[]>([]);
   const [personalLoading, setPersonalLoading] = useState(false);
   const [systemLoading, setSystemLoading] = useState(false);
-  const [canViewSystem, setCanViewSystem] = useState(isSuperUser);
-  const [canManageSystem, setCanManageSystem] = useState(isSuperUser);
   const [scopeCatalog, setScopeCatalog] = useState<OpenApiTokenServiceCatalog[]>([]);
-
-  const canManagePersonal = hasPermission(['Add']) || hasPermission(['Delete']);
 
   const loadPersonal = useCallback(async () => {
     setPersonalLoading(true);
@@ -89,27 +75,6 @@ export const useOpenApiTokensPage = () => {
     }
   }, [fetchSystemApiTokens, t]);
 
-  const loadSystemAccess = useCallback(async () => {
-    try {
-      const menus = await get<MenuTreeNode[]>('/core/api/get_user_menus/', {
-        params: { name: 'system-manager' },
-        suppressErrorNotification: true,
-      });
-      const operations = findMenuOperations(menus, SYSTEM_SECRET_MENU);
-      const viewable = operations.includes('View');
-      setCanViewSystem(viewable);
-      setCanManageSystem(canManageByOperations(operations));
-      if (viewable) {
-        await loadSystem();
-      } else {
-        setSystemRows([]);
-      }
-    } catch {
-      setCanViewSystem(false);
-      setCanManageSystem(false);
-    }
-  }, [get, loadSystem]);
-
   const loadCatalog = useCallback(async () => {
     try {
       setScopeCatalog(docsToCatalog(await fetchOpenApiDocs()));
@@ -127,21 +92,8 @@ export const useOpenApiTokensPage = () => {
   }, []);
 
   useEffect(() => {
-    void loadPersonal();
-  }, [currentTeam, loadPersonal]);
-
-  useEffect(() => {
-    if (isSuperUser) {
-      setCanViewSystem(true);
-      setCanManageSystem(true);
-      void loadSystem();
-      return;
-    }
-    if (userLoading) {
-      return;
-    }
-    void loadSystemAccess();
-  }, [isSuperUser, loadSystem, loadSystemAccess, userLoading]);
+    void Promise.all([loadPersonal(), loadSystem()]);
+  }, [currentTeam, loadPersonal, loadSystem]);
 
   useEffect(() => {
     void loadCatalog();
@@ -215,9 +167,6 @@ export const useOpenApiTokensPage = () => {
   };
 
   return {
-    canViewSystem,
-    canManagePersonal,
-    canManageSystem,
     personalRows,
     systemRows,
     personalLoading,
