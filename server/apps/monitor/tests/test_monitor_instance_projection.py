@@ -1,12 +1,62 @@
 import types
+from datetime import timedelta
 
 from django.db import connection
+from django.utils import timezone
 
 from apps.monitor.models import Metric, MetricGroup, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import build_safe_instance_id
+
+
+def test_instance_lists_default_to_created_at_desc(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(
+        name="CreatedAtOrder",
+        default_metric="up",
+        instance_id_keys=["instance_id"],
+    )
+    now = timezone.now()
+    older = MonitorInstance.objects.create(id="('older',)", name="Older", monitor_object=monitor_object)
+    newer = MonitorInstance.objects.create(id="('newer',)", name="Newer", monitor_object=monitor_object)
+    middle = MonitorInstance.objects.create(id="('middle',)", name="Middle", monitor_object=monitor_object)
+    MonitorInstance.objects.filter(id=older.id).update(created_at=now - timedelta(days=2))
+    MonitorInstance.objects.filter(id=middle.id).update(created_at=now - timedelta(days=1))
+    MonitorInstance.objects.filter(id=newer.id).update(created_at=now)
+    monkeypatch.setattr(MonitorObjectService, "get_instances_by_metric", lambda *args, **kwargs: {})
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result, visible_organization_ids=None: None)
+
+    listed = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=2,
+        name=None,
+        qs=MonitorInstance.objects.all(),
+    )
+    asset = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": 2},
+        qs=MonitorInstance.objects.all(),
+    ).search_by_primary_object()
+    search = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": 10},
+        qs=MonitorInstance.objects.all(),
+    )
+    monkeypatch.setattr(
+        search,
+        "get_vm_metrics",
+        lambda: [
+            {"metric": {"instance_id": "older"}, "value": [1, "1"]},
+            {"metric": {"instance_id": "middle"}, "value": [2, "1"]},
+            {"metric": {"instance_id": "newer"}, "value": [3, "1"]},
+        ],
+    )
+
+    assert [item["instance_id"] for item in listed["results"]] == [newer.id, middle.id]
+    assert [item["instance_id"] for item in asset["results"]] == [newer.id, middle.id]
+    assert [item["instance_id"] for item in search.search()["results"]] == [newer.id, middle.id, older.id]
 
 
 def test_monitor_instance_status_failure_degrades_to_empty_status_map(monkeypatch):
