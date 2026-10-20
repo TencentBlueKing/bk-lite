@@ -177,7 +177,7 @@
 
 可用根变量：
 
-- `alert`：标题、内容、级别、状态、来源、资源、时间、负责人和组织；其中 `alert.level` 是按告警级别配置映射后的展示名称（如“警告”），`alert.level_id` 保留原始级别 ID，`alert.level_color` 是该级别配置颜色的十六进制值。邮件正文默认用它给级别名称上色，用户可以把这段样式改成固定颜色；
+- `alert`：标题、内容、级别、状态、来源、资源、时间、负责人和组织；其中 `alert.level` 是按告警级别配置映射后的展示名称（如“警告”），`alert.level_id` 保留原始级别 ID，`alert.level_color` 是该级别配置颜色的十六进制值。邮件正文默认用它给级别名称上色，用户可以把这段样式改成固定颜色。`alert.wecom_color` 只用于企业微信群机器人 Markdown，按级别 ID 取 `warning`（严重、错误）、`comment`（警告）或 `info`（其余级别）；默认正文把级别名称包在对应的 `font` 标签里，用户可以改成固定标签。`alert.feishu_color` 只用于飞书群机器人卡片 Markdown，按级别 ID 取 `red`（严重）、`orange`（错误）、`yellow`（警告）或 `green`（其余级别）；默认正文同样只包住级别名称，用户可以改成飞书支持的固定颜色名。编辑器按当前渠道提供颜色参考：邮件给出级别色变量和内置色值，企微和飞书给出可抄的颜色标签，其余渠道说明正文不能上色；
 - `labels`、`dimensions`、`enrichment`：告警已有结构化数据；
 - `notification`：场景、场景名称、本次接收人和生成时间；`notification.receiver_names` 是用于正文展示的顿号分隔名称，`notification.receivers` 保留原始列表；
 - `summary`：仅为后续汇总范围预留，单告警模板禁止使用。

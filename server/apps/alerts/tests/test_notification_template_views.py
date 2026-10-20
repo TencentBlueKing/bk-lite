@@ -581,6 +581,58 @@ def test_preview_uses_level_color_as_default_and_keeps_user_color(template_clien
 
 
 @pytest.mark.django_db
+def test_preview_wecom_markdown_uses_fixed_level_color(template_client):
+    body = '<font color="{{ alert.wecom_color }}">{{ alert.level }}</font>'
+    warning = template_client.post(
+        "/api/v1/alerts/api/notification_templates/preview/",
+        {"scope": "single_alert", "channel_type": "enterprise_wechat_bot", "subject_template": "", "body_template": body},
+        format="json",
+    )
+    critical = template_client.post(
+        "/api/v1/alerts/api/notification_templates/preview/",
+        {
+            "scope": "single_alert",
+            "channel_type": "enterprise_wechat_bot",
+            "subject_template": "",
+            "body_template": body,
+            "sample": {"alert": {"level": "严重", "level_id": "0"}},
+        },
+        format="json",
+    )
+
+    assert warning.status_code == 200, warning.content
+    assert warning.data["body"] == '<font color="comment">警告</font>'
+    assert critical.status_code == 200, critical.content
+    assert critical.data["body"] == '<font color="warning">严重</font>'
+
+
+@pytest.mark.django_db
+def test_preview_feishu_markdown_uses_fixed_level_color(template_client):
+    body = "<font color='{{ alert.feishu_color }}'>{{ alert.level }}</font>"
+    warning = template_client.post(
+        "/api/v1/alerts/api/notification_templates/preview/",
+        {"scope": "single_alert", "channel_type": "feishu_bot", "subject_template": "", "body_template": body},
+        format="json",
+    )
+    critical = template_client.post(
+        "/api/v1/alerts/api/notification_templates/preview/",
+        {
+            "scope": "single_alert",
+            "channel_type": "feishu_bot",
+            "subject_template": "",
+            "body_template": body,
+            "sample": {"alert": {"level": "严重", "level_id": "0", "feishu_color": "green"}},
+        },
+        format="json",
+    )
+
+    assert warning.status_code == 200, warning.content
+    assert warning.data["body"] == "<font color='yellow'>警告</font>"
+    assert critical.status_code == 200, critical.content
+    assert critical.data["body"] == "<font color='red'>严重</font>"
+
+
+@pytest.mark.django_db
 def test_alert_operation_default_email_content_can_be_previewed(template_client):
     from apps.system_mgmt.models.channel import Channel
 
