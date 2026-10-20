@@ -214,7 +214,6 @@ export default function OverviewPane({
                 unit={chart.unit}
                 data={chart.data}
                 legends={chart.legends}
-                reading={chart.reading}
                 loading={loading}
               />
             ))}
@@ -228,7 +227,6 @@ export default function OverviewPane({
                   unit={chart.unit}
                   data={chart.data}
                   legends={chart.legends}
-                  reading={chart.reading}
                   loading={loading}
                 />
               ))}
