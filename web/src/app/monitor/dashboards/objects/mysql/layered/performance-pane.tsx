@@ -147,6 +147,7 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
   const showInnodb = innodbAwaiting || innodb.length > 0;
   const showBuffer = bufferAwaiting || buffer.length > 0;
   const cardClass = (wide: boolean) => (wide ? `min-w-0 ${pro.perfWide}` : 'min-w-0');
+  const writeInnodbPair = showWrites && showInnodb;
 
   return (
     <>
@@ -189,11 +190,16 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
           </div>
         </>
       ) : null}
-      {showWrites ? (
-        <>
-          <ProSectionTitle>写入与语句</ProSectionTitle>
-          <div className={pro.perfGrid}>
-            <div className={cardClass(true)}>
+      {showWrites || showInnodb ? (
+        <div
+          className={writeInnodbPair
+            ? 'grid grid-cols-2 items-start gap-3 max-[720px]:grid-cols-1'
+            : 'grid grid-cols-1 gap-3'}
+          data-perf-pair={writeInnodbPair ? 'side' : 'single'}
+        >
+          {showWrites ? (
+            <div className="flex min-w-0 flex-col gap-3">
+              <ProSectionTitle>写入与语句</ProSectionTitle>
               <ThinTimeSeries
                 title="写入语句"
                 loading={writesAwaiting}
@@ -207,18 +213,14 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
                 ]}
               />
             </div>
-          </div>
-        </>
-      ) : null}
-      {showInnodb ? (
-        <>
-          <ProSectionTitle>InnoDB</ProSectionTitle>
-          <div className={pro.perfGrid}>
-            <div id="mysql-perf-innodb" className={cardClass(true)}>
+          ) : null}
+          {showInnodb ? (
+            <div id="mysql-perf-innodb" className="flex min-w-0 flex-col gap-3">
+              <ProSectionTitle>InnoDB</ProSectionTitle>
               {innodbCard}
             </div>
-          </div>
-        </>
+          ) : null}
+        </div>
       ) : null}
       {showBuffer ? (
         <>

@@ -688,8 +688,19 @@ const CONNECTED_SLAVES = /connected_slaves|slaves_connected|slave_connections|re
 const SEMISYNC = /semi_?sync/i;
 const BINLOG_POSITION = /binlog_(file|pos)|master_log_(file|pos)|file_position|gtid_executed/i;
 const REPLICA_POSITION = /relay_log_pos|relay_master_log_pos|read_master_log_pos|exec_master_log_pos/i;
-const THREAD_TEXT = (value: number) => (value > 0 ? '运行' : '停止');
+const THREAD_TEXT = (value: number) => (value > 0 ? '运行中' : '已停止');
 const THREAD_TONE = (value: number): MysqlRoleTone => (value > 0 ? 'ok' : 'warn');
+
+/** 复制延迟主值。不足 1 秒用毫秒，其余用秒。 */
+export const formatMysqlReplicationLag = (seconds: number) => {
+  if (!Number.isFinite(seconds)) return '--';
+  if (Math.abs(seconds) < 1) return `${Math.round(seconds * 1000)} 毫秒`;
+  const rounded = Math.round(seconds * 10) / 10;
+  const text = Math.abs(rounded - Math.round(rounded)) < 0.05
+    ? String(Math.round(rounded))
+    : rounded.toFixed(1);
+  return `${text} 秒`;
+};
 
 const isLogBinToggle = (name: string) => /(?:^|_)log_bin$/.test(name);
 
@@ -808,7 +819,7 @@ export const readMysqlRoleBlock = (
     if (delay != null) {
       fields.push({
         label: '复制延迟',
-        value: `${Math.round(delay)}s`,
+        value: formatMysqlReplicationLag(delay),
         tone: delay > 30 ? 'warn' : 'ok'
       });
     }
