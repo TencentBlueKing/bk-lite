@@ -55,6 +55,12 @@ from apps.system_mgmt.utils.i18n import system_mgmt_message
         ("error.alert_copy_partial_accepted", {}, "告警中心仅接受了部分事件副本。", "The alert center accepted only some event copies."),
         ("error.notification_delivery_failed", {}, "通知渠道投递失败。", "Notification channel delivery failed."),
         ("error.alert_copy_rejected", {}, "告警中心未接受事件副本。", "The alert center did not accept the event copy."),
+        (
+            "error.vault_secret_key_not_configured",
+            {},
+            "SECRET_KEY 未配置,无法加解密 vault",
+            "SECRET_KEY is not configured; cannot encrypt or decrypt the vault",
+        ),
         ("channel.opspilot_nats_trigger_description", {}, "OpsPilot 工作流自动创建的 NATS 触发通道", "NATS trigger channel created by an OpsPilot workflow"),
         ("export.login_log_sheet", {}, "用户登录日志", "User login logs"),
         ("export.operation_log_filename", {}, "用户操作日志", "user_operation_logs"),
