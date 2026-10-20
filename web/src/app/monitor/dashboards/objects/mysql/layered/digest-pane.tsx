@@ -6,7 +6,8 @@ import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { EntityTableRow } from '../../host/entity-series';
 import LayeredEntityTable, { type LayeredColumn } from '../../host/layered/entity-table';
 import TableCsvExportButton from '../../host/layered/table-csv-export';
-import { ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
+import host from '../../host/layered/layered.module.scss';
 import { HOST_SERIES_COLOR } from '../../host/config';
 import {
   MYSQL_EMPTY_COPY,
@@ -124,6 +125,38 @@ const waitLayerColumns = (rows: readonly MysqlWaitEventRow[]): LayeredColumn[] =
 
 const csvHost = (instanceName: string) => instanceName.trim() || 'mysql';
 
+/** 主机磁盘挂载点短图：绘图区 160px，通栏，不另做第三套图壳。 */
+function MountTrend({
+  title,
+  unit,
+  points,
+  legendLabel,
+  color,
+  loading,
+  emptyText
+}: {
+  title: string;
+  unit: 'ms' | 'counts';
+  points?: Array<{ time: number; value: number }>;
+  legendLabel: string;
+  color: string;
+  loading?: boolean;
+  emptyText: string;
+}) {
+  return (
+    <div className={host.diskMountChart}>
+      <ThinTimeSeries
+        title={title}
+        unit={unit}
+        loading={loading}
+        data={trendData(points)}
+        legends={[{ label: legendLabel, color }]}
+        emptyText={emptyText}
+      />
+    </div>
+  );
+}
+
 interface StatementPaneProps {
   rows: readonly MysqlStatementRow[];
   waits?: readonly MysqlWaitEventRow[];
@@ -145,17 +178,19 @@ export function StatementPane({
   const entities = statementEntities(rows);
   const columns = statementLayerColumns(rows);
   const primaryWait = selected ? primaryWaitForStatement(selected.id, waits) : null;
+  const hasRows = rows.length > 0;
   return (
     <div className={pro.chartStack}>
-      {selected ? (
-        <ThinTimeSeries
-          title={selected.sql}
-          unit={rows.some((row) => row.totalTimeMs != null) ? 'ms' : 'counts'}
-          data={trendData(selected.trend)}
-          legends={[{ label: '选中语句', color: HOST_SERIES_COLOR.memUsed }]}
-          emptyText="该语句暂无趋势"
-        />
-      ) : null}
+      <ProSectionTitle>语句</ProSectionTitle>
+      <MountTrend
+        title={selected?.sql || '语句趋势'}
+        unit={rows.some((row) => row.totalTimeMs != null) ? 'ms' : 'counts'}
+        points={selected?.trend}
+        legendLabel="选中语句"
+        color={HOST_SERIES_COLOR.memUsed}
+        loading={loading && !hasRows}
+        emptyText={hasRows ? '该语句暂无趋势' : '暂无数据'}
+      />
       {primaryWait ? (
         <div className="text-[12px] text-[var(--color-text-3)]">{`主要等待 ${primaryWait}`}</div>
       ) : null}
@@ -206,7 +241,8 @@ export function WaitPane({
   const waitTableColumns = waitLayerColumns(rows);
   const relatedTableRows = statementEntities(relatedRows);
   const relatedTableColumns = statementLayerColumns(relatedRows);
-  const host = csvHost(instanceName);
+  const exportHost = csvHost(instanceName);
+  const hasRows = rows.length > 0;
   const relatedEmpty = selected
     ? emptyCopy({
       title: '暂无与该等待关联的语句',
@@ -215,58 +251,58 @@ export function WaitPane({
     : emptyCopy(MYSQL_EMPTY_COPY.statements);
   return (
     <div className={pro.chartStack}>
-      {selected ? (
-        <ThinTimeSeries
-          title={selected.name}
-          unit="counts"
-          data={trendData(selected.trend)}
-          legends={[{ label: '等待', color: HOST_SERIES_COLOR.load1 }]}
-          emptyText="该等待事件暂无趋势"
-        />
-      ) : null}
-      <div className={pro.perfGrid}>
-        <LayeredEntityTable
-          title="等待列表"
-          rows={waitTableRows}
-          columns={waitTableColumns}
-          loading={loading}
-          selectedKey={selected?.id || ''}
-          onSelect={(key) => onSelect(key === selectedId ? '' : key)}
-          emptyText={emptyCopy(MYSQL_EMPTY_COPY.waits)}
-          toolbar={(
-            <>
-              {selected ? (
-                <Button type="text" size="small" className={TEXT_BUTTON} onClick={() => onSelect('')}>
-                  清除
-                </Button>
-              ) : null}
-              <TableCsvExportButton
-                host={host}
-                slug="waits"
-                columns={waitTableColumns}
-                rows={waitTableRows}
-              />
-            </>
-          )}
-        />
-        <LayeredEntityTable
-          title="相关语句"
-          rows={relatedTableRows}
-          columns={relatedTableColumns}
-          loading={loading && statements.length === 0 && rows.length === 0}
-          selectedKey=""
-          onSelect={() => undefined}
-          emptyText={relatedEmpty}
-          toolbar={(
+      <ProSectionTitle>等待</ProSectionTitle>
+      <MountTrend
+        title={selected?.name || '等待趋势'}
+        unit="counts"
+        points={selected?.trend}
+        legendLabel="等待"
+        color={HOST_SERIES_COLOR.load1}
+        loading={loading && !hasRows}
+        emptyText={!hasRows ? '暂无数据' : selected ? '该等待事件暂无趋势' : '选中后上图跟随'}
+      />
+      <LayeredEntityTable
+        title="等待列表"
+        rows={waitTableRows}
+        columns={waitTableColumns}
+        loading={loading}
+        selectedKey={selected?.id || ''}
+        onSelect={(key) => onSelect(key === selectedId ? '' : key)}
+        emptyText={emptyCopy(MYSQL_EMPTY_COPY.waits)}
+        toolbar={(
+          <>
+            {selected ? (
+              <Button type="text" size="small" className={TEXT_BUTTON} onClick={() => onSelect('')}>
+                清除
+              </Button>
+            ) : null}
             <TableCsvExportButton
-              host={host}
-              slug="wait_statements"
-              columns={relatedTableColumns}
-              rows={relatedTableRows}
+              host={exportHost}
+              slug="waits"
+              columns={waitTableColumns}
+              rows={waitTableRows}
             />
-          )}
-        />
-      </div>
+          </>
+        )}
+      />
+      <ProSectionTitle>相关语句</ProSectionTitle>
+      <LayeredEntityTable
+        title="相关语句"
+        rows={relatedTableRows}
+        columns={relatedTableColumns}
+        loading={loading && statements.length === 0 && rows.length === 0}
+        selectedKey=""
+        onSelect={() => undefined}
+        emptyText={relatedEmpty}
+        toolbar={(
+          <TableCsvExportButton
+            host={exportHost}
+            slug="wait_statements"
+            columns={relatedTableColumns}
+            rows={relatedTableRows}
+          />
+        )}
+      />
     </div>
   );
 }
