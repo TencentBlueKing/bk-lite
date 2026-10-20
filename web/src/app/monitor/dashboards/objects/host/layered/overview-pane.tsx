@@ -3,6 +3,9 @@
 import React, { useMemo } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
+import type { MetricUnit } from '../../../shared/types';
+import type { ChartData } from '@/app/monitor/types';
 import { hostCategoryText } from './category-copy';
 import { HOST_SERIES_COLOR } from '../config';
 import {
@@ -17,6 +20,9 @@ import { metricBlockPhase } from './performance-scope';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
 import { ProSectionTitle } from './section-title';
 import ThinTimeSeries from './thin-time-series';
+import FocusShortcutTitle from './focus-shortcut-title';
+import { describeFocusAxis, seriesSampleValues } from './focus-axis';
+import { useProTimeWindow } from './pro-time-window';
 import type { HostSurfaceAlerts } from './tab-level';
 import {
   formatPercent,
@@ -146,6 +152,11 @@ export default function OverviewPane({
   alerts
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
+  const proTime = useProTimeWindow();
+  const chartWindow = proTime?.window ?? null;
+  const focusUnit = (unit: MetricUnit, data: ChartData[]) => (
+    describeFocusAxis(unit, seriesSampleValues(clipChartDataToWindow(data, chartWindow))).unitLabel
+  );
   const worst = diskRows[0];
   const busiest = netRows[0];
   const topProcess = processRows[0];
@@ -297,7 +308,10 @@ export default function OverviewPane({
       <div className={styles.shortcutGrid}>
         <div key="disk" className={`${classic.panel} ${styles.shortcutCard}`}>
           <div className={styles.shortcutCopy}>
-            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestMount')}</div>
+            <FocusShortcutTitle
+              label={hostCategoryText(t, 'busiestMount')}
+              unit={worst ? focusUnit('percent', diskTrend) : undefined}
+            />
             {worst ? (
               <>
                 <div className={styles.shortcutMain}>{mountName || '—'}</div>
@@ -315,6 +329,7 @@ export default function OverviewPane({
           {worst ? (
             <ThinTimeSeries
               bare
+              numericAxis
               className={styles.focusChart}
               title=""
               unit="percent"
@@ -325,7 +340,10 @@ export default function OverviewPane({
         </div>
         <div key="net" className={`${classic.panel} ${styles.shortcutCard}`}>
           <div className={styles.shortcutCopy}>
-            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestNic')}</div>
+            <FocusShortcutTitle
+              label={hostCategoryText(t, 'busiestNic')}
+              unit={busiest ? focusUnit('byteps', nicTrend) : undefined}
+            />
             {busiest ? (
               <>
                 <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
@@ -343,6 +361,7 @@ export default function OverviewPane({
           {busiest ? (
             <ThinTimeSeries
               bare
+              numericAxis
               className={styles.focusChart}
               title=""
               unit="byteps"
@@ -354,7 +373,10 @@ export default function OverviewPane({
         {processReady ? (
           <div key="process" className={`${classic.panel} ${styles.shortcutCard}`}>
             <div className={styles.shortcutCopy}>
-              <div className={styles.shortcutLabel}>CPU 占用最高</div>
+              <FocusShortcutTitle
+                label="CPU 占用最高"
+                unit={topProcess ? focusUnit('percent', processTrend) : undefined}
+              />
               {topProcess ? (
                 <>
                   <div className={styles.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
@@ -372,6 +394,7 @@ export default function OverviewPane({
             {topProcess ? (
               <ThinTimeSeries
                 bare
+                numericAxis
                 className={styles.focusChart}
                 title=""
                 unit="percent"

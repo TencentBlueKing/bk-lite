@@ -13,6 +13,7 @@ import { CardAlertDot, cardAlertClass } from './card-alert';
 import { seriesMarkerColor } from './readings';
 import type { TabAlertLevel } from './tab-level';
 import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
+import { describeFocusAxis, seriesSampleValues } from './focus-axis';
 import { useProTimeWindow } from './pro-time-window';
 import { useThemeColors } from './theme-color';
 import classic from '../index.module.scss';
@@ -50,6 +51,11 @@ interface ThinTimeSeriesProps {
   className?: string;
   /** 嵌进已有卡片时不再套一层 panel。 */
   bare?: boolean;
+  /**
+   * 重点关注 spark：Y 轴只留数字，单位改到卡片标题右侧。
+   * 实例趋势不要开。
+   */
+  numericAxis?: boolean;
   /** 每条序列一根 Y 轴。进程 CPU 可超过 100%，与内存共轴时会把内存压扁。 */
   independentAxes?: boolean;
   /**
@@ -93,6 +99,7 @@ export default function ThinTimeSeries({
   titleExtra,
   className,
   bare = false,
+  numericAxis = false,
   independentAxes = false,
   alertLevel,
   onRetry
@@ -175,9 +182,14 @@ export default function ThinTimeSeries({
       if (timeSpan <= 36 * 3600) return stamp.format('HH:mm');
       return stamp.format('MM-DD');
     };
+    const focusAxis = numericAxis
+      ? describeFocusAxis(unit, seriesSampleValues(plotted))
+      : null;
     const axisLabel = {
       fontSize: 10,
+      margin: focusAxis?.labelMargin ?? 8,
       formatter: (value: number) => {
+        if (focusAxis) return focusAxis.formatTick(Number(value));
         const formatted = formatMetricValue(value, unit);
         return `${formatted.value}${formatted.unit || ''}`;
       }
@@ -186,7 +198,13 @@ export default function ThinTimeSeries({
       animation: false,
       backgroundColor: 'transparent',
       color: seriesColors,
-      grid: { top: 8, right: splitAxes ? 48 : 10, bottom: 28, left: 44, containLabel: false },
+      grid: {
+        top: 8,
+        right: splitAxes ? 48 : 10,
+        bottom: 28,
+        left: focusAxis ? focusAxis.left : 44,
+        containLabel: false
+      },
       xAxis: {
         type: 'value' as const,
         min: chartWindow ? chartWindow.startSec : 'dataMin' as const,
@@ -272,7 +290,7 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, chartWindow, keys, legendKey, mutedColor, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit]);
+  }, [axisColor, chartWindow, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];

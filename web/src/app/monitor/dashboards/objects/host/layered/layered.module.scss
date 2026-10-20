@@ -524,6 +524,8 @@ button.kpiCard {
   flex: 1 1 auto;
   min-width: min(100%, 9em);
   max-width: max-content;
+  container-type: inline-size;
+  container-name: focus-copy;
 }
 
 .shortcutCopy .jumpBtn {
@@ -542,8 +544,36 @@ button.kpiCard {
 }
 
 .shortcutLabel {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
   font-size: 12px;
+  line-height: 16px;
   color: var(--color-text-3);
+  white-space: nowrap;
+}
+
+.shortcutLabelText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shortcutAxisUnit {
+  flex: none;
+  color: var(--color-text-4);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+@container focus-copy (max-width: 96px) {
+  .shortcutAxisUnit {
+    font-size: 10px;
+  }
 }
 
 .shortcutMain {

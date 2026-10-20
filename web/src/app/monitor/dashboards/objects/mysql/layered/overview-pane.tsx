@@ -5,6 +5,10 @@ import { KpiTileRow, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '
 import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { HOST_SERIES_COLOR } from '../../host/config';
 import { primaryChartSeries } from '../../host/layered/readings';
+import FocusShortcutTitle from '../../host/layered/focus-shortcut-title';
+import { describeFocusAxis, seriesSampleValues } from '../../host/layered/focus-axis';
+import { useProTimeWindow } from '../../host/layered/pro-time-window';
+import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
 import classic from '../../host/index.module.scss';
 import host from '../../host/layered/layered.module.scss';
 import {
@@ -156,6 +160,8 @@ export default function OverviewPane({
           ? { title: 'InnoDB 读写', unit: 'cps' as const, chart: undefined, loading: true }
           : { title: '缓冲池命中', unit: 'percent' as const, chart: undefined, loading: false };
   const extra = trends.extra.filter((chart) => chart.key !== fourth.chart?.key);
+  const proTime = useProTimeWindow();
+  const chartWindow = proTime?.window ?? null;
 
   return (
     <>
@@ -201,10 +207,16 @@ export default function OverviewPane({
               const spark = card.spark ? SPARK_METRIC[card.spark] : undefined;
               const series = spark ? metricMap[spark.name] : undefined;
               const points = series?.loadState === 'success' ? primaryChartSeries(series.viewData) : [];
+              const axisUnit = spark
+                ? describeFocusAxis(
+                  spark.unit,
+                  seriesSampleValues(clipChartDataToWindow(points, chartWindow))
+                ).unitLabel
+                : '';
               return (
                 <div key={card.key} className={`${classic.panel} ${host.shortcutCard}`}>
                   <div className={host.shortcutCopy}>
-                    <div className={host.shortcutLabel}>{card.label}</div>
+                    <FocusShortcutTitle label={card.label} unit={axisUnit} />
                     <div className={host.shortcutValue}>{card.value}</div>
                     {card.delta ? (
                       <div className={host.shortcutSub} style={card.deltaTone ? { color: card.deltaTone } : undefined}>
@@ -218,6 +230,7 @@ export default function OverviewPane({
                   {spark && points.length > 0 ? (
                     <ThinTimeSeries
                       bare
+                      numericAxis
                       className={host.focusChart}
                       title=""
                       unit={spark.unit}
