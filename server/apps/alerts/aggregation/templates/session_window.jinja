@@ -8,7 +8,7 @@ SELECT
   '{{ session_end_time }}' as session_end_time
 FROM events_table
 WHERE
-  {{ macros.time_filter(window_start) }}
+  {{ macros.time_filter(window_start, window_end) }}
   AND {{ macros.event_action_filter() }}
 GROUP BY {{ macros.effective_dimension(dimensions) }}
 HAVING COUNT(*) >= {{ min_event_count | default(1) }}

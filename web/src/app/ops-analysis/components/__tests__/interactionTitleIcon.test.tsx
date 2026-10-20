@@ -71,7 +71,7 @@ describe('InteractionTitleIcon', () => {
     );
 
     const button = screen.getByRole('button', { name: '查看详情' });
-    expect(button.className).toContain('text-(--color-text-2)');
+    expect(button.className).toContain('text-(--color-text-3)');
     expect(button.className).toContain('rounded-full');
     expect(button.className).toContain('h-6');
     expect(button.className).not.toContain('screen-widget-frame__title-link');

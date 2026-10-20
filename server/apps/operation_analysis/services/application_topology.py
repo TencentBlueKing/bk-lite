@@ -86,7 +86,7 @@ class ApplicationTopologyService:
                 lambda: CMDB().get_monitor_ids_by_inst_uuids(inst_uuids=chunk, user_info=user_info),
             )
             if result is None:
-                break
+                continue
             data = result.get("data") if isinstance(result.get("data"), dict) else {}
             items.extend(item for item in data.get("items") or [] if isinstance(item, dict))
         return items
@@ -116,7 +116,7 @@ class ApplicationTopologyService:
                 ),
             )
             if result is None:
-                break
+                continue
             data = result.get("data") if isinstance(result.get("data"), dict) else {}
             summaries.extend(item for item in data.get("instance_summaries") or [] if isinstance(item, dict))
         return summaries

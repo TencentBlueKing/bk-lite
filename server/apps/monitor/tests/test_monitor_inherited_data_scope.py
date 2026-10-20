@@ -878,3 +878,72 @@ def test_nats_latest_alerts_without_instance_ids_does_not_emit_summaries(mocker)
     assert response["data"]["count"] == 1
     assert response["data"]["max_level"] == "warning"
     assert response["data"]["instance_summaries"] == []
+
+
+def test_nats_latest_alerts_requested_ids_keep_aliases_and_skip_other_instances(mocker):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    policy = _policy("latest-scoped-load-policy", [1])
+    by_name = MonitorInstance.objects.create(
+        id="scoped-load-by-name",
+        name="Scoped-Host",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    by_tuple = MonitorInstance.objects.create(
+        id="('9_10.9.9.9_22',)",
+        name="tuple-host",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    by_fact = MonitorInstance.objects.create(
+        id="scoped-load-by-fact",
+        name="fact-host",
+        monitor_object=policy.monitor_object,
+        ip="10.8.8.8",
+        summary_facts={"asset.ip": "10.7.7.7"},
+        is_active=True,
+    )
+    quiet = MonitorInstance.objects.create(
+        id="scoped-load-quiet",
+        name="quiet-host",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    decoy = MonitorInstance.objects.create(
+        id="decoy-not-in-request-zz",
+        name="decoy-not-in-request-zz",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    for instance in (by_name, by_tuple, by_fact, quiet, decoy):
+        MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+    MonitorAlert.objects.create(
+        policy_id=policy.id,
+        organizations=list(policy.organizations),
+        monitor_instance_id=by_name.id,
+        status="new",
+        level="warning",
+    )
+    user_info = _patch_nats_alert_permissions(mocker)
+
+    with CaptureQueriesContext(connection) as captured:
+        response = monitor_nats.query_latest_active_alerts(
+            {
+                "instance_ids": ["scoped-host", "9_10.9.9.9_22", "10.7.7.7", quiet.id],
+                "limit": 1,
+            },
+            user_info=user_info,
+        )
+
+    assert response["result"] is True
+    summaries = {row["instance_id"]: row for row in response["data"]["instance_summaries"]}
+    assert set(summaries) == {by_name.id, by_tuple.id, by_fact.id, quiet.id}
+    assert summaries[by_name.id]["count"] == 1
+    assert summaries[by_name.id]["max_level"] == "warning"
+    assert summaries[quiet.id] == {"instance_id": quiet.id, "count": 0, "max_level": None}
+    assert summaries[by_tuple.id]["count"] == 0
+    assert summaries[by_fact.id]["count"] == 0
+    sql = "\n".join(item["sql"] for item in captured.captured_queries)
+    assert decoy.id not in sql

@@ -182,6 +182,8 @@ describe('ViewConfig preview drawer', () => {
     const interactionTab = await screen.findByRole('tab', { name: 'dashboard.interactionTab' });
     const dataTab = screen.getByRole('tab', { name: 'dashboard.interactionDataTab' });
     expect(interactionTab.closest('.ant-tabs-nav')).toBeTruthy();
+    expect(dataTab.querySelector('svg')).toBeTruthy();
+    expect(interactionTab.querySelector('svg')).toBeTruthy();
     expect(dataTab.getAttribute('aria-selected')).toBe('true');
 
     await user.click(interactionTab);

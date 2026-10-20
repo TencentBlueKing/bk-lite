@@ -71,7 +71,7 @@ describe('InteractionLinkSection', () => {
     expect(screen.getByText('链接类型')).toBeTruthy();
     expect(screen.queryByText('在标题旁显示图标。')).toBeNull();
     expect(screen.queryByText('输入 $ 选择要带上的值')).toBeNull();
-    expect(screen.queryByText('输入 $ 插入筛选')).toBeNull();
+    expect(screen.queryByText('输入 $ 引用全局筛选变量')).toBeNull();
 
     expect(screen.getByRole('radio', { name: '无' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: '标题链接' })).toBeTruthy();
