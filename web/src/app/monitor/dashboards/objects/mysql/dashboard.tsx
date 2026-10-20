@@ -174,6 +174,8 @@ export default function MysqlDashboardPage() {
   const [instanceOptions, setInstanceOptions] = useState<MysqlInstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
+  const [settledInstanceKey, setSettledInstanceKey] = useState('');
+  const requestedInstanceKeyRef = useRef('');
 
   useEffect(() => {
     setDisplayMode(resolveObjectDashboardMode('mysql', new URLSearchParams(modeQuery)));
@@ -285,9 +287,18 @@ export default function MysqlDashboardPage() {
 
   const loadMetrics = async (silent = false) => {
     const loadSeq = loadSequence.begin();
+    const nextInstanceKey = `${String(instanceId)}|${idValuesKey}`;
+    const switchingInstance = requestedInstanceKeyRef.current !== nextInstanceKey;
+    requestedInstanceKeyRef.current = nextInstanceKey;
+    let committed = false;
 
-    if (!silent) {
+    if (!silent || switchingInstance) {
       setLoading(true);
+    }
+    if (switchingInstance && displayMode === 'category') {
+      setSeries({});
+      setPreviousSeries({});
+      setCollectionStatusMetric(null);
     }
 
     try {
@@ -296,6 +307,8 @@ export default function MysqlDashboardPage() {
           setSeries({});
           setPreviousSeries({});
           setCollectionStatusMetric(null);
+          setSettledInstanceKey(nextInstanceKey);
+          committed = true;
           if (!silent) setLoading(false);
           return;
         }
@@ -379,6 +392,8 @@ export default function MysqlDashboardPage() {
 
         setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
         setCollectionStatusMetric(collectionStatus);
+        setSettledInstanceKey(nextInstanceKey);
+        committed = true;
 
         if (!silent) {
           setLoading(false);
@@ -400,7 +415,8 @@ export default function MysqlDashboardPage() {
       }
     } finally {
       if (loadSequence.isCurrent(loadSeq)) {
-        setLoading(false);
+        if (!committed) setSettledInstanceKey(nextInstanceKey);
+        if (!silent) setLoading(false);
       }
     }
   };
@@ -451,15 +467,30 @@ export default function MysqlDashboardPage() {
   const showEmpty = isDashboardMode ? !hasDashboardContent : false;
 
   const chrome = displayMode === 'category' ? hostChrome : styles;
+  const instanceKey = `${String(instanceId)}|${idValuesKey}`;
+  const instanceSwitching = displayMode === 'category' && settledInstanceKey !== instanceKey;
+  const proMetricMap = instanceSwitching ? {} : metricMap;
+  const proPreviousMetricMap = instanceSwitching ? {} : previousMetricMap;
+  const proLoading = instanceSwitching || loading;
   const mysqlIdentity = readMysqlHeaderIdentity(metricMap, resolvedInstanceName);
-  const proHeader = displayMode === 'category' ? readMysqlProHeader(metricMap) : null;
+  const proHeader = displayMode === 'category' && !instanceSwitching ? readMysqlProHeader(metricMap) : null;
   // 实例 ID 与展示名仅分隔符不同时（mysql_3306 vs mysql-3306）视为重复，不再展示。
   const normalizeIdentityKey = (value: string) => value.trim().toLowerCase().replace(/[-_\s]+/g, '');
   const showInstanceId =
     Boolean(instanceIdText) &&
     normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
-  const identityMetaItems = proHeader
+  const identityMetaItems = instanceSwitching
     ? [
+      <span
+        key="role"
+        className="inline-block h-4 w-16 rounded bg-[var(--color-fill-2)]"
+        aria-busy="true"
+        aria-label="加载中"
+      />,
+      <span key="binlog" className="inline-block h-4 w-24 rounded bg-[var(--color-fill-2)]" aria-hidden="true" />
+    ]
+    : proHeader
+      ? [
       <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
         {proHeader.pill}
       </span>,
@@ -473,21 +504,21 @@ export default function MysqlDashboardPage() {
           {proHeader.binlog}
         </span>
       ) : null
-    ].filter(Boolean)
-    : mysqlIdentity.deployment === '单节点'
-      ? [
+      ].filter(Boolean)
+      : mysqlIdentity.deployment === '单节点'
+        ? [
         <span key="topology" className={chrome.instanceMetaInline}>
           单节点
         </span>
-      ]
-      : [
+        ]
+        : [
         <span key="topology" className={chrome.instanceMetaInline}>
           主从复制
         </span>,
         <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
           {mysqlIdentity.role}
         </span>
-      ];
+        ];
   const instanceMetaItems = [
     <span key="object-name" className={chrome.instanceMetaInline}>
       {objectDisplayText}
@@ -624,9 +655,10 @@ export default function MysqlDashboardPage() {
               ) : displayMode === 'category' ? (
                 <div className={styles.modeContent} data-mysql-body="pro">
                   <MysqlProLayout
-                    metricMap={metricMap}
-                    previousMetricMap={previousMetricMap}
-                    loading={loading}
+                    key={instanceKey}
+                    metricMap={proMetricMap}
+                    previousMetricMap={proPreviousMetricMap}
+                    loading={proLoading}
                     instanceId={String(instanceId || '')}
                     monitorObjectId={monitorObjectId}
                     nodeId={currentInstanceOption?.nodeId || ''}

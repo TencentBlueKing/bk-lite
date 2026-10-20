@@ -11,38 +11,49 @@ interface MysqlHostRailProps {
   href: string;
   cpuPercent: number | null;
   memPercent: number | null;
+  loading?: boolean;
 }
 
 const percentText = (value: number) => `${Math.round(value)}%`;
 
-/** 所属主机轻轨。没有关联时不写主机名，数字只在有采时出现。 */
+/** 所属主机内联旁注。复用事件轨壳，但收成贴内容的一条，不拉通栏。 */
 export default function MysqlHostRail({
   host,
   href,
   cpuPercent,
-  memPercent
+  memPercent,
+  loading = false
 }: MysqlHostRailProps) {
   const showCpu = cpuPercent != null && Number.isFinite(cpuPercent);
   const showMem = memPercent != null && Number.isFinite(memPercent);
   return (
-    <div className={shell.eventsRail}>
-      <span className={pro.railLabel}>所属主机</span>
-      {host ? (
-        <span className={pro.railHost}>{host.name}</span>
-      ) : (
-        <span className={shell.eventsEmpty}>未关联主机</span>
-      )}
-      {showCpu || showMem ? (
-        <span className={pro.railNums}>
-          {showCpu ? <span>CPU <b>{percentText(cpuPercent as number)}</b></span> : null}
-          {showMem ? <span>内存 <b>{percentText(memPercent as number)}</b></span> : null}
-        </span>
-      ) : null}
-      {host ? (
-        <Link className={`${shell.jumpBtn} ${pro.railLink} no-underline`} href={href}>
-          查看主机
-        </Link>
-      ) : null}
+    <div className={pro.hostAsideWrap}>
+      <div className={`${shell.eventsRail} ${pro.hostAside}`}>
+        {loading ? (
+          <span className={shell.eventsEmpty}>加载中</span>
+        ) : host ? (
+          <>
+            <span className={pro.railHost}>{host.name}</span>
+            {showCpu ? (
+              <>
+                <span className={pro.railDot} aria-hidden="true">·</span>
+                <span>CPU <b>{percentText(cpuPercent as number)}</b></span>
+              </>
+            ) : null}
+            {showMem ? (
+              <>
+                <span className={pro.railDot} aria-hidden="true">·</span>
+                <span>内存 <b>{percentText(memPercent as number)}</b></span>
+              </>
+            ) : null}
+            <Link className={`${shell.jumpBtn} ${pro.railLink} no-underline`} href={href}>
+              查看主机
+            </Link>
+          </>
+        ) : (
+          <span className={shell.eventsEmpty}>未关联主机</span>
+        )}
+      </div>
     </div>
   );
 }

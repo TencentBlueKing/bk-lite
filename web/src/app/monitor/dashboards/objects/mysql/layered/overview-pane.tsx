@@ -77,6 +77,44 @@ export default function OverviewPane({
   );
   const trends = useMemo(() => buildMysqlOverviewTrends(metricMap), [metricMap]);
   const role = useMemo(() => readMysqlRoleBlock(metricMap), [metricMap]);
+  const suspended = loading && cards.length === 0;
+
+  if (suspended) {
+    return (
+      <div aria-busy="true" aria-live="polite">
+        <ProSectionTitle>健康概览</ProSectionTitle>
+        <div className={host.kpiGrid}>
+          {['connections', 'qps', 'slow', 'buffer', 'uptime', 'alerts'].map((key) => (
+            <div key={key} className={host.kpiCard} aria-label="加载中">
+              <span className="block h-3 w-12 rounded bg-[var(--color-fill-2)]" />
+              <span className="mt-2 block h-6 w-16 rounded bg-[var(--color-fill-2)]" />
+            </div>
+          ))}
+        </div>
+        <ProSectionTitle>所属主机</ProSectionTitle>
+        <MysqlHostRail host={null} href="" cpuPercent={null} memPercent={null} loading />
+        <ProSectionTitle>事件</ProSectionTitle>
+        <div className={host.eventsRail} data-events-rail="" data-events-empty="">
+          <div className={host.eventsRow}>
+            <span className={host.eventsEmpty}>加载中</span>
+          </div>
+        </div>
+        <ProSectionTitle>实例趋势</ProSectionTitle>
+        <div className={host.chartGrid4}>
+          {['连接', 'QPS', '慢查询', '缓冲池命中'].map((title) => (
+            <ThinTimeSeries
+              key={title}
+              title={title}
+              loading
+              unit="counts"
+              data={[]}
+              legends={[]}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -109,9 +147,9 @@ export default function OverviewPane({
                 <div key={card.key} className={`${classic.panel} ${host.shortcutCard}`}>
                   <div className={host.shortcutCopy}>
                     <div className={host.shortcutLabel}>{card.label}</div>
-                    <div className={host.shortcutMain}>{card.value}</div>
+                    <div className={host.shortcutValue}>{card.value}</div>
                     {card.delta ? (
-                      <div className={host.shortcutValue} style={card.deltaTone ? { color: card.deltaTone } : undefined}>
+                      <div className={host.shortcutSub} style={card.deltaTone ? { color: card.deltaTone } : undefined}>
                         {card.delta}
                       </div>
                     ) : null}

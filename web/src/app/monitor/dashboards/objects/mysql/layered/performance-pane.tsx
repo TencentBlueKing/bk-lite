@@ -87,7 +87,7 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
     { key: 'delay', label: '复制延迟', data: seriesOf(metricMap.mysql_slave_seconds_behind_master) }
   ]), [metricMap.mysql_slave_seconds_behind_master?.viewData]);
 
-  const innodbCard = innodbHasLoad(metricMap) ? (
+  const innodbCard = innodbHasLoad(metricMap) || loading ? (
     <ThinTimeSeries
       title="InnoDB 读写"
       hint="读、写与 Redo 刷盘。近窗接近零时不放大噪声。"

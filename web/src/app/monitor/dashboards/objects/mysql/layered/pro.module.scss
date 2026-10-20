@@ -6,10 +6,22 @@
   color: inherit;
 }
 
-.railLabel {
-  flex: none;
-  font-weight: 600;
-  color: var(--color-text-3);
+.hostAsideWrap {
+  display: flex;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+.hostAside.hostAside {
+  width: max-content;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
+.hostAside b {
+  font-weight: 650;
+  color: var(--color-text-1);
 }
 
 .railHost {
@@ -18,21 +30,14 @@
   color: var(--color-text-1);
 }
 
-.railNums {
-  display: flex;
-  gap: 14px;
-  min-width: 0;
-  color: var(--color-text-2);
-
-  b {
-    font-weight: 650;
-    color: var(--color-text-1);
-  }
+.railDot {
+  flex: none;
+  color: var(--color-text-4);
 }
 
 a.railLink {
   margin-top: 0;
-  margin-left: auto;
+  margin-left: 4px;
 }
 
 .sqlCell {

@@ -351,7 +351,7 @@ button.kpiCard {
 
 .shortcutGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
 }
 
@@ -502,7 +502,7 @@ button.kpiCard {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   min-height: 112px;
 }
@@ -511,13 +511,20 @@ button.kpiCard {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: min(100%, 9em);
+  max-width: max-content;
+}
+
+.shortcutCopy .jumpBtn {
+  margin-top: 0;
 }
 
 .focusChart {
-  flex: 1 1 240px;
-  min-width: 200px;
-  max-width: 320px;
+  flex: 0 1 280px;
+  width: 280px;
+  min-width: 0;
+  max-width: 280px;
 }
 
 .focusChart .chartBody {
@@ -544,6 +551,9 @@ button.kpiCard {
   font-weight: 650;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .shortcutSub {
