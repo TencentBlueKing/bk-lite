@@ -1538,7 +1538,7 @@ def test_execution_list_returns_only_live_artifacts_for_download(superuser):
     ready_files = rows[str(ready.id)]["downloadable_artifacts"]
     assert [item["filename"] for item in ready_files] == ["health-a.xlsx", "health-b.docx"]
     assert ready_files[0]["download_url"] == f"/workflow_orchestration/api/artifacts/{first.id}/download/"
-    assert set(ready_files[0]) == {"id", "format", "filename", "size", "download_url"}
+    assert set(ready_files[0]) == {"id", "format", "filename", "size", "created_at", "expires_at", "download_url"}
     assert rows[str(expired_execution.id)]["downloadable_artifacts"] == []
     assert rows[str(removed_execution.id)]["downloadable_artifacts"] == []
     assert rows[str(empty.id)]["downloadable_artifacts"] == []

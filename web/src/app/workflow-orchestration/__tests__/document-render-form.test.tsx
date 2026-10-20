@@ -71,7 +71,7 @@ describe('文档生成节点配置', () => {
     fireEvent.click(document.querySelector('.ant-drawer-close')!);
 
     fireEvent.click(screen.getByRole('button', { name: '数据结构说明' }));
-    expect(await screen.findByText('平台固定外层')).not.toBeNull();
+    expect(await screen.findByText('平台字段')).not.toBeNull();
     expect(screen.getByText('数据如何进模板')).not.toBeNull();
   });
 
