@@ -43,8 +43,10 @@ import {
   type LlmContextUsage,
 } from '@webchat/core';
 import type { ChatProps } from './chatProps';
+import type { SessionAttachmentFile } from './sessionFiles';
 import { WC } from './chrome';
 import { ConversationSkeleton } from './components/ConversationSkeleton';
+import { SessionFileBar } from './components/SessionFileBar';
 import { useTranslator, WebChatLocaleProvider } from './useTranslator';
 import {
   deletePlatformSession,
@@ -60,7 +62,7 @@ const Chat = React.lazy(async () => {
   return { default: mod.Chat };
 });
 
-const HISTORY_RAIL_FULL = 240;
+const HISTORY_RAIL_FULL = 320;
 
 export interface PlatformChatProps extends ChatProps {
   platform: PlatformContract;
@@ -494,6 +496,11 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
   const [forbidden, setForbidden] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [filePanelOpen, setFilePanelOpen] = useState(false);
+  const [sessionFiles, setSessionFiles] = useState<SessionAttachmentFile[]>([]);
+  const handleSessionFilesChange = useCallback((files: SessionAttachmentFile[]) => {
+    setSessionFiles(files);
+  }, []);
   const [collapsed, setCollapsed] = useState(true);
   const [hasOpened, setHasOpened] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -505,8 +512,9 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
   const chatStateRef = useRef<ChatState>('idle');
   const chatWidthRef = useRef(chatWidth);
   chatWidthRef.current = chatWidth;
-  const historyOpenRef = useRef(historyOpen);
-  historyOpenRef.current = historyOpen;
+  const sideOpen = historyOpen || filePanelOpen;
+  const historyOpenRef = useRef(sideOpen);
+  historyOpenRef.current = sideOpen;
   const resizingRef = useRef(false);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -819,7 +827,14 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
 
   const handleToggleSessions = useCallback(() => {
     setConfirmingDeleteId(null);
+    setFilePanelOpen(false);
     setHistoryOpen((open) => !open);
+  }, []);
+
+  const handleToggleFiles = useCallback(() => {
+    setConfirmingDeleteId(null);
+    setHistoryOpen(false);
+    setFilePanelOpen((open) => !open);
   }, []);
 
   const handleToggleFullscreen = useCallback(() => {
@@ -862,8 +877,8 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
   const emptyApps = !loading && apps.length === 0;
 
   useEffect(() => {
-    setChatWidth((current) => clampPlatformDockChatWidth(current, window.innerWidth, historyOpen));
-  }, [historyOpen]);
+    setChatWidth((current) => clampPlatformDockChatWidth(current, window.innerWidth, sideOpen));
+  }, [sideOpen]);
 
   useEffect(() => () => resizeCleanupRef.current?.(), []);
 
@@ -916,14 +931,14 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
     const width = platformDockInsetWidth({
       visible: showLauncher && !forbidden && hasOpened && !collapsed,
       fullscreen: isFullscreen,
-      historyOpen,
+      historyOpen: sideOpen,
       chatWidth,
     });
     document.documentElement.style.setProperty(WEBCHAT_DOCK_INSET_VAR, `${width}px`);
     return () => {
       document.documentElement.style.setProperty(WEBCHAT_DOCK_INSET_VAR, '0px');
     };
-  }, [showLauncher, forbidden, hasOpened, collapsed, isFullscreen, historyOpen, chatWidth]);
+  }, [showLauncher, forbidden, hasOpened, collapsed, isFullscreen, sideOpen, chatWidth]);
 
   if (forbidden || !showLauncher) {
     return null;
@@ -960,9 +975,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
           style={{
             width: isFullscreen
               ? undefined
-              : historyOpen
-                ? chatWidth + PLATFORM_HISTORY_RAIL_DOCK
-                : chatWidth,
+              : chatWidth + (sideOpen ? PLATFORM_HISTORY_RAIL_DOCK : 0),
             background: WC.white,
             borderLeft: isFullscreen ? undefined : `1px solid ${WC.dockEdge}`,
             display: collapsed ? 'none' : undefined,
@@ -1020,6 +1033,15 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
               <QuietIcon title={t('chat.newConversation', '新对话')} onClick={handleNewChat}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 5v14M5 12h14" />
+                </svg>
+              </QuietIcon>
+              <QuietIcon
+                title={filePanelOpen ? t('chat.collapseFiles', '收起文件') : t('chat.generatedFiles', '已生成文件')}
+                onClick={handleToggleFiles}
+                active={filePanelOpen}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
                 </svg>
               </QuietIcon>
               <QuietIcon
@@ -1124,6 +1146,17 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
               onConfirmDelete={(id) => void handleDeleteSession(id)}
               onCancelDelete={() => setConfirmingDeleteId(null)}
             />
+          ) : filePanelOpen ? (
+            <div
+              className="flex h-full min-h-0 flex-shrink-0 flex-col"
+              style={{
+                width: isFullscreen ? HISTORY_RAIL_FULL : PLATFORM_HISTORY_RAIL_DOCK,
+                background: WC.stage,
+                borderRight: `1px solid ${WC.botBorder}`,
+              }}
+            >
+              <SessionFileBar files={sessionFiles} />
+            </div>
           ) : null}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ background: WC.stage }}>
             {currentApp && sessionId && chatUrl ? (
@@ -1149,6 +1182,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
                   platform={platform}
                   historyLoading={messagesLoading}
                   initialMessages={messages}
+                  onSessionFilesChange={handleSessionFilesChange}
                   wideLayout={isFullscreen}
                   customData={sessionCustomData}
                   onStateChange={handleChatStateChange}

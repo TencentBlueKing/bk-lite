@@ -11,6 +11,7 @@ import {
   lastSessionStorageKey,
   mapPlatformApplications,
   mergePlatformCurrentApp,
+  PLATFORM_DOCK_CHAT_MIN_WIDTH,
   PLATFORM_DOCK_CHAT_WIDTH,
   PLATFORM_HISTORY_RAIL_DOCK,
   clampPlatformDockChatWidth,
@@ -562,7 +563,7 @@ test('dock chat width clamps and grows when the pointer moves left', () => {
   assert.equal(clampPlatformDockChatWidth(200), 320);
   assert.equal(clampPlatformDockChatWidth(1200), 1200);
   assert.equal(clampPlatformDockChatWidth(1200, 1000), 500);
-  assert.equal(clampPlatformDockChatWidth(1200, 1000, true), 500 - 176);
+  assert.equal(clampPlatformDockChatWidth(1200, 1000, true), PLATFORM_DOCK_CHAT_MIN_WIDTH);
   assert.equal(clampPlatformDockChatWidth(Number.NaN), PLATFORM_DOCK_CHAT_WIDTH);
   assert.equal(nextPlatformDockChatWidth(380, -40), 420);
   assert.equal(nextPlatformDockChatWidth(380, 100), 320);

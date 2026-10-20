@@ -494,7 +494,8 @@ export const PLATFORM_DOCK_CHAT_WIDTH = 380;
 export const PLATFORM_DOCK_CHAT_MIN_WIDTH = 320;
 /** 侧边栏（含历史轨）最多占视口宽度的一半。 */
 export const PLATFORM_DOCK_MAX_VIEWPORT_RATIO = 0.5;
-export const PLATFORM_HISTORY_RAIL_DOCK = 176;
+/** 历史和已生成文件共用这一栏，切换时窗口宽度不变。 */
+export const PLATFORM_HISTORY_RAIL_DOCK = 280;
 
 /** 对话栏宽度。历史轨只在展开时计入这 50% 上限。 */
 export function clampPlatformDockChatWidth(

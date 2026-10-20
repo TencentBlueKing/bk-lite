@@ -32,7 +32,6 @@ import { formatDegradedCustomEvent, HitlPanels, isBlockingHitlEvent } from './co
 import { ConversationSkeleton } from './components/ConversationSkeleton';
 import { PillComposer } from './components/PillComposer';
 import ContextUsageRing from './components/ContextUsageRing';
-import { SessionFileBar } from './components/SessionFileBar';
 import { collectSessionAttachmentFiles } from './sessionFiles';
 import { applyPlannedExecutionStep, createPlannedExecutionState } from './plannedExecution';
 import { attachmentMetadata, chatAttachmentEndpoints, fetchChatAttachmentStatus, isAllowedChatFile, uploadChatFile, type StoredChatAttachment } from './chatAttachments';
@@ -115,6 +114,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onStreamingStop,
     onCustomEvent,
     onToolResult,
+    onSessionFilesChange,
     platform,
     kickoffMessage,
     onKickoffConsumed,
@@ -944,6 +944,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
   // Toggle fullscreen
   const panelFullscreen = fullscreen ?? isFullscreen;
+  const sessionFiles = useMemo(() => collectSessionAttachmentFiles(messages), [messages]);
+  useEffect(() => {
+    onSessionFilesChange?.(sessionFiles);
+  }, [onSessionFilesChange, sessionFiles]);
   const toggleFullscreen = useCallback(() => {
     const next = !panelFullscreen;
     setIsFullscreen(next);
@@ -1013,6 +1017,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       </div>
       )}
 
+      <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Messages Area */}
       <div
         className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${wideLayout || panelFullscreen ? 'px-6 pb-2 pt-5' : 'px-4 pb-1.5 pt-4'}`}
@@ -1176,7 +1182,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           </div>
         )}
         
-              <SessionFileBar files={collectSessionAttachmentFiles(messages)} />
               {conversationHistoryEnabled ? (
                 <div className="mb-1 flex h-8 items-center justify-end">
                   <ContextUsageRing usage={contextUsage} />
@@ -1248,6 +1253,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                   </label>
                 }
               />
+      </div>
+        </div>
       </div>
 
       {/* Clear Confirmation Dialog */}
