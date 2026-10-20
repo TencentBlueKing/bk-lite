@@ -68,6 +68,7 @@ export default function LayeredEntityTable({
   expandedRowRender,
   rowExpandable,
   toolbar,
+  title,
   alertLevel
 }: {
   rows: EntityTableRow[];
@@ -75,7 +76,9 @@ export default function LayeredEntityTable({
   loading: boolean;
   selectedKey: string;
   onSelect: (key: string) => void;
-  emptyText?: string;
+  emptyText?: React.ReactNode;
+  /** 框内顶栏左侧标题。与 toolbar 同一行，不浮到表框外。 */
+  title?: React.ReactNode;
   /** 选中行下方的附加行。未提供时表格不出现展开列。 */
   expandedRowRender?: (row: EntityTableRow) => React.ReactNode;
   rowExpandable?: (row: EntityTableRow) => boolean;
@@ -133,7 +136,12 @@ export default function LayeredEntityTable({
   return (
     <div className={`${classic.panel} ${styles.tableWrap} ${cardAlertClass(alertLevel)}`}>
       <CardAlertDot level={alertLevel} />
-      {toolbar ? (
+      {title ? (
+        <div className={`${styles.tableFrameHead}${alertLevel && alertLevel !== 'none' ? ` ${styles.cardAlertPad}` : ''}`}>
+          <div className={styles.tableFrameTitle}>{title}</div>
+          {toolbar ? <div className={styles.tableFrameTools}>{toolbar}</div> : null}
+        </div>
+      ) : toolbar ? (
         <div className={`mb-1 flex justify-end ${alertLevel && alertLevel !== 'none' ? styles.cardAlertPad : ''}`}>
           {toolbar}
         </div>

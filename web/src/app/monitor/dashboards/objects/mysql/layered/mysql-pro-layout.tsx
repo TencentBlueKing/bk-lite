@@ -340,11 +340,6 @@ export default function MysqlProLayout({
     timeValues
   ]);
 
-  const openStatement = (id: string) => {
-    setStatementId(id);
-    selectTab('statements');
-  };
-
   const pane = () => {
     if (tab === 'performance') {
       return <PerformancePane metricMap={metricMap} loading={loading} />;
@@ -356,9 +351,11 @@ export default function MysqlProLayout({
       return (
         <StatementPane
           rows={statements}
+          waits={waits}
           selectedId={statementId}
           onSelect={setStatementId}
           loading={digestLoading}
+          instanceName={instanceName}
         />
       );
     }
@@ -370,7 +367,8 @@ export default function MysqlProLayout({
           loading={digestLoading}
           selectedId={waitId}
           onSelect={setWaitId}
-          onOpenStatement={openStatement}
+          instanceName={instanceName}
+          statementsCollected={statementsCollected}
         />
       );
     }

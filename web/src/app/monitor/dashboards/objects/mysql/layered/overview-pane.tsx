@@ -11,6 +11,7 @@ import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
   buildMysqlOverviewTrends,
+  hasMysqlOverviewSample,
   type MysqlFocusCard,
   type MysqlOverviewReadings
 } from './ia';
@@ -80,7 +81,7 @@ export default function OverviewPane({
     [previous, readings, statementsCollected]
   );
   const trends = useMemo(() => buildMysqlOverviewTrends(metricMap), [metricMap]);
-  const suspended = loading && cards.length === 0;
+  const suspended = loading && !hasMysqlOverviewSample(readings);
 
   if (suspended) {
     return (
@@ -116,11 +117,9 @@ export default function OverviewPane({
     <>
       <ProSectionTitle>健康概览</ProSectionTitle>
       {loading ? (
-        <KpiTileRow loading items={cards.length > 0 ? cards : MYSQL_LOADING_KPIS} />
-      ) : cards.length > 0 ? (
-        <KpiTileRow items={cards} />
+        <KpiTileRow loading items={cards} />
       ) : (
-        <div className="text-[13px] text-[var(--color-text-3)]">当前窗口没有可展示的实例指标</div>
+        <KpiTileRow items={cards} />
       )}
 
       <ProSectionTitle>所属主机</ProSectionTitle>

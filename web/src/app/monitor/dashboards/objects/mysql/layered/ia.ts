@@ -37,9 +37,13 @@ export const isMysqlIaTab = (value: string | null | undefined): value is MysqlIa
 export interface MysqlStatementRow {
   id: string;
   sql: string;
+  /** 窗口内耗时，毫秒。无耗时序列时为 null。 */
   totalTimeMs?: number | null;
   calls?: number | null;
   rowsExamined?: number | null;
+  /** 窗口内耗时占已返回语句耗时之和。无耗时字段时为 null，不填 0。 */
+  timeShare?: number | null;
+  avgSeconds?: number | null;
   trend?: Array<{ time: number; value: number }>;
 }
 
@@ -48,11 +52,13 @@ export interface MysqlWaitEventRow {
   name: string;
   waits?: number | null;
   timeMs?: number | null;
+  /** 仅当等待序列标签里真有 digest 时填写，不靠事件名猜测。 */
   statementId?: string;
+  statementIds?: string[];
   trend?: Array<{ time: number; value: number }>;
 }
 
-export type StatementColumn = 'sql' | 'totalTimeMs' | 'calls' | 'rowsExamined';
+export type StatementColumn = 'sql' | 'timeShare' | 'calls' | 'avgSeconds' | 'rowsExamined';
 export type WaitColumn = 'name' | 'waits' | 'timeMs';
 
 const finite = (value: number | null | undefined) => (
@@ -61,10 +67,9 @@ const finite = (value: number | null | undefined) => (
 
 const hasNumber = (value: number | null | undefined) => finite(value) != null;
 
+/** 三列始终在表头。扫描行有数才出现。空值由单元格显示 `--`。 */
 export const statementColumns = (rows: readonly MysqlStatementRow[]): StatementColumn[] => {
-  const columns: StatementColumn[] = ['sql'];
-  if (rows.some((row) => hasNumber(row.totalTimeMs))) columns.push('totalTimeMs');
-  if (rows.some((row) => hasNumber(row.calls))) columns.push('calls');
+  const columns: StatementColumn[] = ['sql', 'timeShare', 'calls', 'avgSeconds'];
   if (rows.some((row) => hasNumber(row.rowsExamined))) columns.push('rowsExamined');
   return columns;
 };
@@ -114,9 +119,32 @@ const labeledSeries = (
   });
 };
 
-const latestOf = (points: Array<{ time: number; value: number }>) => {
-  const sorted = [...points].sort((left, right) => left.time - right.time);
-  return sorted.length ? sorted[sorted.length - 1].value : null;
+/** 计数器在当前查询窗口内的增量。单点无法做差，退回该点读数。 */
+const counterIncrease = (points: Array<{ time: number; value: number }>): number | null => {
+  const sorted = points
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value))
+    .sort((left, right) => left.time - right.time);
+  if (!sorted.length) return null;
+  if (sorted.length === 1) return sorted[0].value;
+  let total = 0;
+  for (let index = 1; index < sorted.length; index += 1) {
+    const delta = sorted[index].value - sorted[index - 1].value;
+    total += delta >= 0 ? delta : sorted[index].value;
+  }
+  return total;
+};
+
+const roundedCount = (points: Array<{ time: number; value: number }>): number | null => {
+  const value = counterIncrease(points);
+  return value == null ? null : Math.round(value);
+};
+
+/** 只认 digest 标签。没有该字段就不生成语句 id，避免用事件名或文本凑关联。 */
+const digestStatementId = (labels: Record<string, string>) => {
+  const digest = String(labels.digest || '').trim();
+  if (!digest) return '';
+  const schema = String(labels.schema || '').trim();
+  return schema ? `${schema}|${digest}` : digest;
 };
 
 const statementIdentity = (labels: Record<string, string>) => {
@@ -124,6 +152,27 @@ const statementIdentity = (labels: Record<string, string>) => {
   const schema = String(labels.schema || '').trim();
   if (digest) return schema ? `${schema}|${digest}` : digest;
   return String(labels.digest_text || '').trim();
+};
+
+const rank = (value: number | null | undefined) => (
+  value == null || !Number.isFinite(value) ? Number.NEGATIVE_INFINITY : value
+);
+
+const sumIncrease = (items: readonly LabeledPoints[]) => {
+  let total = 0;
+  let any = false;
+  items.forEach((item) => {
+    const value = counterIncrease(item.points);
+    if (value == null) return;
+    any = true;
+    total += value;
+  });
+  return any ? total : null;
+};
+
+const sumCount = (items: readonly LabeledPoints[]) => {
+  const value = sumIncrease(items);
+  return value == null ? null : Math.round(value);
 };
 
 /** 把语句耗时、次数、扫描行按摘要对齐成表行。无序列时返回空数组。 */
@@ -136,7 +185,7 @@ export const readMysqlStatementRows = (
   const calls = labeledSeries(callSeries, statementIdentity);
   const examined = labeledSeries(examinedSeries, statementIdentity);
   const ids = new Set([...times, ...calls, ...examined].map((item) => item.id));
-  return Array.from(ids).flatMap((id) => {
+  const rows = Array.from(ids).flatMap((id) => {
     const time = times.find((item) => item.id === id);
     const call = calls.find((item) => item.id === id);
     const examinedRow = examined.find((item) => item.id === id);
@@ -144,22 +193,42 @@ export const readMysqlStatementRows = (
     if (!labels) return [];
     const sql = String(labels.digest_text || labels.digest || id).trim();
     if (!sql) return [];
-    const seconds = time ? latestOf(time.points) : null;
+    const seconds = time ? counterIncrease(time.points) : null;
+    const callCount = call ? roundedCount(call.points) : null;
     const trendSource = time?.points || call?.points || [];
     return [{
       id,
       sql,
       totalTimeMs: seconds == null ? null : seconds * 1000,
-      calls: call ? latestOf(call.points) : null,
-      rowsExamined: examinedRow ? latestOf(examinedRow.points) : null,
+      calls: callCount,
+      rowsExamined: examinedRow ? roundedCount(examinedRow.points) : null,
       trend: [...trendSource]
         .sort((left, right) => left.time - right.time)
         .map((point) => ({ time: point.time, value: time ? point.value * 1000 : point.value }))
     }];
-  }).sort((left, right) => (
-    (right.totalTimeMs || 0) - (left.totalTimeMs || 0)
-    || (right.calls || 0) - (left.calls || 0)
+  });
+  const totalMs = rows.reduce((sum, row) => sum + (row.totalTimeMs && row.totalTimeMs > 0 ? row.totalTimeMs : 0), 0);
+  return rows.map((row) => ({
+    ...row,
+    timeShare: row.totalTimeMs == null ? null : (totalMs > 0 ? Math.max(0, row.totalTimeMs) / totalMs : 0),
+    avgSeconds: row.totalTimeMs == null || row.calls == null || row.calls <= 0
+      ? null
+      : (row.totalTimeMs / 1000) / row.calls
+  })).sort((left, right) => (
+    rank(right.timeShare) - rank(left.timeShare)
+    || rank(right.calls) - rank(left.calls)
+    || left.id.localeCompare(right.id)
   )).slice(0, DIGEST_ROW_LIMIT);
+};
+
+const groupLabeled = (items: readonly LabeledPoints[]) => {
+  const groups = new Map<string, LabeledPoints[]>();
+  items.forEach((item) => {
+    const list = groups.get(item.id) || [];
+    list.push(item);
+    groups.set(item.id, list);
+  });
+  return groups;
 };
 
 /** 把等待次数与耗时按事件名对齐成表行。无序列时返回空数组。 */
@@ -168,23 +237,30 @@ export const readMysqlWaitRows = (
   timeSeries: MetricSeries | undefined
 ): MysqlWaitEventRow[] => {
   const eventId = (labels: Record<string, string>) => String(labels.event_name || '').trim();
-  const counts = labeledSeries(countSeries, eventId);
-  const times = labeledSeries(timeSeries, eventId);
-  const ids = new Set([...counts, ...times].map((item) => item.id));
+  const counts = groupLabeled(labeledSeries(countSeries, eventId));
+  const times = groupLabeled(labeledSeries(timeSeries, eventId));
+  const ids = new Set([...counts.keys(), ...times.keys()]);
   return Array.from(ids).flatMap((id) => {
-    const count = counts.find((item) => item.id === id);
-    const time = times.find((item) => item.id === id);
-    const name = String(time?.labels.event_name || count?.labels.event_name || id).trim();
+    const countGroup = counts.get(id) || [];
+    const timeGroup = times.get(id) || [];
+    const labels = timeGroup[0]?.labels || countGroup[0]?.labels;
+    const name = String(labels?.event_name || id).trim();
     if (!name) return [];
-    const seconds = time ? latestOf(time.points) : null;
+    const seconds = sumIncrease(timeGroup);
+    const statementIds = [...new Set(
+      [...timeGroup, ...countGroup].map((item) => digestStatementId(item.labels)).filter(Boolean)
+    )];
+    const trend = countGroup.length
+      ? [...countGroup[0].points].sort((left, right) => left.time - right.time)
+      : [];
     return [{
       id,
       name,
-      waits: count ? latestOf(count.points) : null,
+      waits: sumCount(countGroup),
       timeMs: seconds == null ? null : seconds * 1000,
-      trend: count
-        ? [...count.points].sort((left, right) => left.time - right.time)
-        : []
+      statementId: statementIds.length === 1 ? statementIds[0] : undefined,
+      statementIds: statementIds.length ? statementIds : undefined,
+      trend
     }];
   }).sort((left, right) => (
     (right.timeMs || 0) - (left.timeMs || 0)
@@ -263,9 +339,53 @@ const formatUptime = (seconds: number) => {
   return `${Math.floor(seconds)}s`;
 };
 
+/** 其它健康卡有采才出。运行时间始终留格，缺采只空主值，避免加载后整卡消失。 */
+export const hasMysqlOverviewSample = (readings: MysqlOverviewReadings) => (
+  finite(readings.threadsConnected) != null
+  || finite(readings.qps) != null
+  || finite(readings.slowPerSecond) != null
+  || finite(readings.bufferPoolHit) != null
+  || finite(readings.uptimeSeconds) != null
+  || finite(readings.alertCount) != null
+);
+
+export const MYSQL_UPTIME_EMPTY = '暂无数据';
+
+const trimDigits = (value: number, digits: number) => {
+  const fixed = value.toFixed(digits);
+  return fixed.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+};
+
+/** 占比。无字段为 `--`，真实 0 为 `0%`。 */
+export const formatTimeShare = (ratio: number | null | undefined) => {
+  if (ratio == null || !Number.isFinite(ratio)) return '--';
+  return `${trimDigits(Math.max(0, ratio) * 100, 1)}%`;
+};
+
+/** 次数。无字段为 `--`。 */
+export const formatCallCount = (value: number | null | undefined) => {
+  if (value == null || !Number.isFinite(value)) return '--';
+  return formatCount(Math.round(value));
+};
+
+/** 平均耗时。µs / ms / s 自适应。无法计算时为 `--`。 */
+export const formatAverageLatency = (seconds: number | null | undefined) => {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '--';
+  if (seconds === 0) return '0 µs';
+  if (seconds < 0.001) {
+    const micros = seconds * 1e6;
+    return `${trimDigits(micros, micros >= 10 ? 0 : 1)} µs`;
+  }
+  if (seconds < 1) {
+    const millis = seconds * 1e3;
+    return `${trimDigits(millis, millis >= 10 ? 1 : 2)} ms`;
+  }
+  return `${trimDigits(seconds, seconds >= 10 ? 1 : 2)} s`;
+};
+
 /**
- * 有采才出卡。缺指标不补「—」占位。
- * 顺序固定为：连接 / QPS / 慢查询 / 缓冲池命中 / 运行时长 / 告警。
+ * 连接 / QPS / 慢查询 / 缓冲池命中 / 告警：有采才出卡。
+ * 运行时间与主机专业盘同名，格位保留；有采才出主值。
  */
 export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKpiCard[] => {
   const cards: MysqlKpiCard[] = [];
@@ -317,13 +437,11 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
   }
 
   const uptime = finite(readings.uptimeSeconds);
-  if (uptime != null) {
-    cards.push({
-      key: 'uptime',
-      label: '运行时长',
-      value: formatUptime(uptime)
-    });
-  }
+  cards.push({
+    key: 'uptime',
+    label: '运行时间',
+    value: uptime == null ? MYSQL_UPTIME_EMPTY : formatUptime(uptime)
+  });
 
   const alerts = finite(readings.alertCount);
   if (alerts != null) {
@@ -843,11 +961,52 @@ export const readMysqlRoleBlock = (
   return { kind: 'primary', fields: downstream };
 };
 
+export const waitStatementIds = (event: MysqlWaitEventRow) => {
+  const ids = new Set<string>();
+  event.statementIds?.forEach((id) => {
+    const trimmed = id.trim();
+    if (trimmed) ids.add(trimmed);
+  });
+  const single = event.statementId?.trim();
+  if (single) ids.add(single);
+  return [...ids];
+};
+
 export const waitStatementTarget = (
   event: MysqlWaitEventRow,
   statements: readonly MysqlStatementRow[]
 ) => {
-  const statementId = event.statementId?.trim();
-  if (!statementId) return null;
-  return statements.some((row) => row.id === statementId) ? statementId : null;
+  const match = waitStatementIds(event).find((id) => statements.some((row) => row.id === id));
+  return match || null;
+};
+
+/**
+ * 未选中：返回当前已加载的全部语句。
+ * 选中但没有 digest 关联，或关联对不上现有语句：返回 null，由界面展示空态。
+ */
+export const relatedStatementRows = (
+  event: MysqlWaitEventRow | null,
+  statements: readonly MysqlStatementRow[]
+): MysqlStatementRow[] | null => {
+  if (!event) return [...statements];
+  const ids = waitStatementIds(event);
+  if (!ids.length) return null;
+  const matched = statements.filter((row) => ids.includes(row.id));
+  return matched.length ? matched : null;
+};
+
+/** 语句的主要等待。没有真实关联时返回 null，不做反向猜测。 */
+export const primaryWaitForStatement = (
+  statementId: string,
+  waits: readonly MysqlWaitEventRow[]
+): string | null => {
+  const id = statementId.trim();
+  if (!id) return null;
+  const related = waits.filter((wait) => waitStatementIds(wait).includes(id));
+  if (!related.length) return null;
+  const top = [...related].sort((left, right) => (
+    (right.timeMs || 0) - (left.timeMs || 0)
+    || (right.waits || 0) - (left.waits || 0)
+  ))[0];
+  return top?.name || null;
 };
