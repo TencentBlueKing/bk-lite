@@ -39,17 +39,3 @@ export const MYSQL_ROLE_METRICS = [
   'mysql_slave_io_running',
   'mysql_slave_sql_running'
 ] as const;
-
-export const MYSQL_TREND_SLOTS = [
-  { key: 'connections', title: '连接', names: ['mysql_threads_connected'] as const },
-  { key: 'qps', title: 'QPS', names: ['mysql_queries_rate'] as const },
-  { key: 'slow', title: '慢查询', names: ['mysql_slow_queries_rate'] as const }
-] as const;
-
-export const MYSQL_BUFFER_TREND_METRICS = ['mysql_buffer_pool_hit_ratio'] as const;
-
-export const MYSQL_INNODB_TREND_METRICS = [
-  'mysql_innodb_data_reads_rate',
-  'mysql_innodb_data_writes_rate',
-  'mysql_innodb_os_log_fsyncs_rate'
-] as const;

@@ -1,10 +1,9 @@
 import type { ChartData } from '@/app/monitor/types';
 import { formatMetricValue } from '../../../shared/utils/format';
 import { normalizeDashboardKey } from '../../../shared/utils';
-import { getLatestChartValue, mergeChartSeries } from '../../../shared/utils/chart-data';
+import { getLatestChartValue } from '../../../shared/utils/chart-data';
 import { encodeInstanceIdValuesParam } from '../../../shared/utils/instance';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
-import type { MetricUnit } from '../../../shared/types';
 import type { MetricSeries } from '../types';
 import { latestNumber, primaryChartSeries } from '../../host/layered/readings';
 
@@ -675,114 +674,6 @@ export const innodbHasLoad = (metricMap: Record<string, MetricSeries | undefined
     return peak != null && peak >= INNODB_LOAD_FLOOR;
   })
 );
-
-const rateText = (value: number) => {
-  const formatted = formatMetricValue(value, 'cps');
-  return `${formatted.value}${formatted.unit || ''}`;
-};
-
-export interface MysqlTrendModel {
-  key: string;
-  title: string;
-  unit: MetricUnit;
-  data: ChartData[];
-  legends: Array<{ label: string; color: string; reading?: string }>;
-  reading?: string;
-}
-
-const singleTrend = (
-  key: string,
-  title: string,
-  series: MetricSeries | undefined,
-  unit: MetricUnit,
-  color: string,
-  readingOf: (value: number) => string
-): MysqlTrendModel | null => {
-  const points = collectedPoints(series);
-  if (!points.length) return null;
-  const latest = latestNumber(series);
-  const reading = latest == null ? undefined : readingOf(latest);
-  return {
-    key,
-    title,
-    unit,
-    data: points,
-    legends: [{ label: title, color, reading }],
-    reading
-  };
-};
-
-const innodbTrend = (metricMap: Record<string, MetricSeries | undefined>): MysqlTrendModel | null => {
-  if (!innodbHasLoad(metricMap)) return null;
-  const read = collectedPoints(metricMap.mysql_innodb_data_reads_rate);
-  const write = collectedPoints(metricMap.mysql_innodb_data_writes_rate);
-  const data = mergeChartSeries([
-    { key: 'read', label: '读', data: read },
-    { key: 'write', label: '写', data: write }
-  ]).filter((point) => point.value1 != null || point.value2 != null);
-  if (!data.length) return null;
-  const readNow = latestNumber(metricMap.mysql_innodb_data_reads_rate);
-  const writeNow = latestNumber(metricMap.mysql_innodb_data_writes_rate);
-  return {
-    key: 'innodb',
-    title: 'InnoDB 读写',
-    unit: 'cps',
-    data,
-    legends: [
-      {
-        label: '读',
-        color: HOST_SERIES_COLOR.diskRead,
-        reading: readNow == null ? undefined : rateText(readNow)
-      },
-      {
-        label: '写',
-        color: HOST_SERIES_COLOR.diskWrite,
-        reading: writeNow == null ? undefined : rateText(writeNow)
-      }
-    ]
-  };
-};
-
-/**
- * 概览趋势。四格优先连接 / QPS / 慢查询 / 缓冲池命中。
- * 缓冲池无采时，第四格改成有负载的 InnoDB 读写。噪声线不占格。
- * 第一行不足四格时，第二行再补 InnoDB 或活跃会话。
- */
-export const buildMysqlOverviewTrends = (
-  metricMap: Record<string, MetricSeries | undefined>
-) => {
-  const row = [
-    singleTrend('connections', '连接', metricMap.mysql_threads_connected, 'counts', HOST_SERIES_COLOR.memUsed, (value) => formatCount(value)),
-    singleTrend('qps', 'QPS', metricMap.mysql_queries_rate, 'cps', HOST_SERIES_COLOR.memAvailable, rateText),
-    singleTrend('slow', '慢查询', metricMap.mysql_slow_queries_rate, 'cps', HOST_SERIES_COLOR.load1, rateText)
-  ].filter((chart): chart is MysqlTrendModel => chart != null);
-  const buffer = singleTrend(
-    'buffer',
-    '缓冲池命中',
-    metricMap.mysql_buffer_pool_hit_ratio,
-    'percent',
-    HOST_SERIES_COLOR.cpu,
-    (value) => formatPercent(value)
-  );
-  const innodb = innodbTrend(metricMap);
-  if (buffer) row.push(buffer);
-  else if (innodb) row.push(innodb);
-
-  const extra: MysqlTrendModel[] = [];
-  if (row.length < 4) {
-    if (innodb && !row.some((chart) => chart.key === 'innodb')) extra.push(innodb);
-    const active = singleTrend(
-      'active',
-      '活跃会话',
-      metricMap.mysql_threads_running,
-      'counts',
-      HOST_SERIES_COLOR.load1,
-      (value) => (Math.abs(value - Math.round(value)) < 0.05 ? String(Math.round(value)) : value.toFixed(1))
-    );
-    if (active) extra.push(active);
-  }
-  return { row, extra };
-};
 
 export type MysqlRoleTone = 'ok' | 'warn' | 'muted';
 

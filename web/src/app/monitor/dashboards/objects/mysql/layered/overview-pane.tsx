@@ -15,22 +15,17 @@ import host from '../../host/layered/layered.module.scss';
 import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
-  buildMysqlOverviewTrends,
   type MysqlFocusCard,
   type MysqlHostCandidate,
-  type MysqlOverviewReadings,
-  type MysqlTrendModel
+  type MysqlOverviewReadings
 } from './ia';
 import MysqlHostRail from './host-rail';
 import {
-  MYSQL_BUFFER_TREND_METRICS,
   MYSQL_FOCUS_METRICS,
   MYSQL_HEALTH_METRICS,
-  MYSQL_INNODB_TREND_METRICS,
-  MYSQL_TREND_SLOTS,
   blocksUntilReady
 } from './section-loading';
-import type { MetricSeries as MysqlMetricSeries, MetricUnit } from '../types';
+import type { MetricSeries as MysqlMetricSeries } from '../types';
 
 interface OverviewPaneProps {
   readings: MysqlOverviewReadings;
@@ -66,46 +61,6 @@ const SPARK_METRIC: Record<NonNullable<MysqlFocusCard['spark']>, { name: string;
   active: { name: 'mysql_threads_running', unit: 'counts', color: HOST_SERIES_COLOR.load1 }
 };
 
-const SLOT_UNIT: Record<(typeof MYSQL_TREND_SLOTS)[number]['key'], MetricUnit> = {
-  connections: 'counts',
-  qps: 'cps',
-  slow: 'cps'
-};
-
-function TrendCard({
-  title,
-  unit,
-  chart,
-  loading
-}: {
-  title: string;
-  unit: MetricUnit;
-  chart?: MysqlTrendModel;
-  loading: boolean;
-}) {
-  if (chart) {
-    return (
-      <ThinTimeSeries
-        title={chart.title}
-        unit={chart.unit}
-        data={chart.data}
-        legends={chart.legends}
-        loading={loading}
-      />
-    );
-  }
-  return (
-    <ThinTimeSeries
-      title={title}
-      unit={unit}
-      loading={loading}
-      emptyText="暂无数据"
-      data={[]}
-      legends={[]}
-    />
-  );
-}
-
 export default function OverviewPane({
   readings,
   previous,
@@ -139,28 +94,8 @@ export default function OverviewPane({
     () => buildMysqlFocusCards(readings, previous, statementsCollected),
     [previous, readings, statementsCollected]
   );
-  const trends = useMemo(() => buildMysqlOverviewTrends(metricMap), [metricMap]);
-  const trendByKey = useMemo(() => {
-    const map = new Map<string, MysqlTrendModel>();
-    [...trends.row, ...trends.extra].forEach((chart) => map.set(chart.key, chart));
-    return map;
-  }, [trends]);
   const healthLoading = blocksUntilReady(MYSQL_HEALTH_METRICS, pendingMetricNames);
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
-  const bufferLoading = blocksUntilReady(MYSQL_BUFFER_TREND_METRICS, pendingMetricNames);
-  const innodbLoading = blocksUntilReady(MYSQL_INNODB_TREND_METRICS, pendingMetricNames);
-  const bufferChart = trendByKey.get('buffer');
-  const innodbChart = trendByKey.get('innodb');
-  const fourth = bufferChart
-    ? { title: '缓冲池命中', unit: 'percent' as const, chart: bufferChart, loading: false }
-    : bufferLoading
-      ? { title: '缓冲池命中', unit: 'percent' as const, chart: undefined, loading: true }
-      : innodbChart
-        ? { title: innodbChart.title, unit: innodbChart.unit, chart: innodbChart, loading: false }
-        : innodbLoading
-          ? { title: 'InnoDB 读写', unit: 'cps' as const, chart: undefined, loading: true }
-          : { title: '缓冲池命中', unit: 'percent' as const, chart: undefined, loading: false };
-  const extra = trends.extra.filter((chart) => chart.key !== fourth.chart?.key);
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
 
@@ -242,39 +177,6 @@ export default function OverviewPane({
             })}
           </div>
         </>
-      ) : null}
-
-      <ProSectionTitle>实例趋势</ProSectionTitle>
-      <div className={host.chartGrid4}>
-        {MYSQL_TREND_SLOTS.map((slot) => (
-          <TrendCard
-            key={slot.key}
-            title={slot.title}
-            unit={SLOT_UNIT[slot.key]}
-            chart={trendByKey.get(slot.key)}
-            loading={blocksUntilReady(slot.names, pendingMetricNames)}
-          />
-        ))}
-        <TrendCard
-          key={fourth.chart?.key || fourth.title}
-          title={fourth.title}
-          unit={fourth.unit}
-          chart={fourth.chart}
-          loading={fourth.loading}
-        />
-      </div>
-      {extra.length > 0 ? (
-        <div className={host.chartGrid2}>
-          {extra.map((chart) => (
-            <TrendCard
-              key={chart.key}
-              title={chart.title}
-              unit={chart.unit}
-              chart={chart}
-              loading={false}
-            />
-          ))}
-        </div>
       ) : null}
     </>
   );
