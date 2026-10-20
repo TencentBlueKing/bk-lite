@@ -4,8 +4,6 @@ import React, { useMemo } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
-import type { MetricUnit } from '../../../shared/types';
-import type { ChartData } from '@/app/monitor/types';
 import { hostCategoryText } from './category-copy';
 import { HOST_SERIES_COLOR } from '../config';
 import {
@@ -21,7 +19,7 @@ import { KpiStrip, type KpiCardModel } from './signal-bar';
 import { ProSectionTitle } from './section-title';
 import ThinTimeSeries from './thin-time-series';
 import FocusShortcutTitle from './focus-shortcut-title';
-import { describeFocusAxis, seriesSampleValues } from './focus-axis';
+import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from './focus-axis';
 import { useProTimeWindow } from './pro-time-window';
 import type { HostSurfaceAlerts } from './tab-level';
 import {
@@ -154,9 +152,6 @@ export default function OverviewPane({
   const { t } = useDashboardText();
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
-  const focusUnit = (unit: MetricUnit, data: ChartData[]) => (
-    describeFocusAxis(unit, seriesSampleValues(clipChartDataToWindow(data, chartWindow))).unitLabel
-  );
   const worst = diskRows[0];
   const busiest = netRows[0];
   const topProcess = processRows[0];
@@ -296,6 +291,15 @@ export default function OverviewPane({
   const chartLoading = (names: readonly string[], hasValue: boolean) => (
     metricBlockPhase(names, pendingMetricNames, loadStateOf(metrics, names), hasValue) === 'loading'
   );
+  const diskFocus = worst
+    ? describeFocusAxis('percent', seriesSampleValues(clipChartDataToWindow(diskTrend, chartWindow)))
+    : null;
+  const nicFocus = busiest
+    ? describeFocusAxis('byteps', seriesSampleValues(clipChartDataToWindow(nicTrend, chartWindow)))
+    : null;
+  const processFocus = topProcess
+    ? describeFocusAxis('percent', seriesSampleValues(clipChartDataToWindow(processTrend, chartWindow)))
+    : null;
 
   return (
     <>
@@ -310,13 +314,13 @@ export default function OverviewPane({
           <div className={styles.shortcutCopy}>
             <FocusShortcutTitle
               label={hostCategoryText(t, 'busiestMount')}
-              unit={worst ? focusUnit('percent', diskTrend) : undefined}
+              unit={diskFocus?.unitLabel}
             />
             {worst ? (
               <>
                 <div className={styles.shortcutMain}>{mountName || '—'}</div>
                 <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.diskUsed }}>
-                  {formatPercent(diskCurrent)}
+                  {diskFocus ? formatFocusHeadline(diskFocus, diskCurrent) : '--'}
                 </div>
                 <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
                   查看磁盘
@@ -342,13 +346,13 @@ export default function OverviewPane({
           <div className={styles.shortcutCopy}>
             <FocusShortcutTitle
               label={hostCategoryText(t, 'busiestNic')}
-              unit={busiest ? focusUnit('byteps', nicTrend) : undefined}
+              unit={nicFocus?.unitLabel}
             />
             {busiest ? (
               <>
                 <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
                 <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.netIn }}>
-                  {formatUnit(nicThroughput, 'byteps')}
+                  {nicFocus ? formatFocusHeadline(nicFocus, nicThroughput) : '--'}
                 </div>
                 <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
                   查看网络
@@ -375,13 +379,13 @@ export default function OverviewPane({
             <div className={styles.shortcutCopy}>
               <FocusShortcutTitle
                 label="CPU 占用最高"
-                unit={topProcess ? focusUnit('percent', processTrend) : undefined}
+                unit={processFocus?.unitLabel}
               />
               {topProcess ? (
                 <>
                   <div className={styles.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
                   <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
-                    {formatPercent(readingOfRow(topProcess, 'process_cpu_usage'))}
+                    {processFocus ? formatFocusHeadline(processFocus, readingOfRow(topProcess, 'process_cpu_usage')) : '--'}
                   </div>
                   <button type="button" className={styles.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
                     查看进程

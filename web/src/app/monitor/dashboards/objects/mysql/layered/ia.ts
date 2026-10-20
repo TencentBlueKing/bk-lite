@@ -318,6 +318,9 @@ const formatRate = (value: number) => {
 
 const formatPercent = (value: number) => `${Math.min(100, Math.max(0, value)).toFixed(1)}%`;
 
+/** 重点关注主值只要数字。百分号写在标题括号里。 */
+const formatFocusPercent = (value: number) => Math.min(100, Math.max(0, value)).toFixed(1);
+
 const KPI_ORDER: MysqlKpiCard['key'][] = [
   'connections',
   'qps',
@@ -496,7 +499,7 @@ export const buildMysqlFocusCards = (
     cards.push({
       key: 'slow',
       label: '慢查询',
-      value: `${formatRate(slow)} 次/秒`,
+      value: formatRate(slow),
       delta: delta || undefined,
       deltaTone: delta && slow > (previousSlow || 0) ? 'var(--color-fail)' : undefined,
       hint: statementsCollected ? '查看语句' : '查看吞吐',
@@ -511,7 +514,7 @@ export const buildMysqlFocusCards = (
     cards.push({
       key: 'connections',
       label: '连接使用率',
-      value: formatPercent(utilization),
+      value: formatFocusPercent(utilization),
       hint: '查看连接',
       tab: 'performance',
       anchor: 'connections',
@@ -526,7 +529,7 @@ export const buildMysqlFocusCards = (
     cards.push({
       key: 'buffer',
       label: '缓冲池命中',
-      value: formatPercent(hit),
+      value: formatFocusPercent(hit),
       delta: delta || undefined,
       deltaTone: delta && previousHit != null && hit < previousHit ? HOST_THRESHOLD_COLOR.warn : undefined,
       hint: '查看缓冲池',

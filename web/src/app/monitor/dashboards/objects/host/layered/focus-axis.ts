@@ -10,7 +10,7 @@ const BIT_RATE_LABELS = ['b/s', 'Kb/s', 'Mb/s', 'Gb/s', 'Tb/s', 'Pb/s'];
 export const FOCUS_AXIS_LABEL_MARGIN = 4;
 
 export interface FocusAxis {
-  /** 标题右侧短单位。空字符串表示不展示（如活跃会话）。 */
+  /** 标题右侧短单位，不含括号。空字符串表示不展示（如活跃会话）。 */
   unitLabel: string;
   formatTick: (value: number) => string;
   /** 绘图区左边距。比带单位时的 44 更窄，把刻度让出的宽度还给折线。 */
@@ -89,8 +89,26 @@ export const seriesSampleValues = (data: ReadonlyArray<Record<string, unknown>>)
 };
 
 /**
- * 重点关注 spark 的光轴：刻度只留数字，单位只出现一次。
- * 百分比、速率的后缀固定；字节速率按整段最大值锁一个刻度，避免逐点换单位。
+ * 标题右侧单位。空串、空白和空括号都不占位，避免写出 `()`。
+ * 括号只包一层，调用方传入 `次/秒` 或 `%` 即可。
+ */
+export const formatFocusUnitText = (unit: string | null | undefined) => {
+  const bare = (unit ?? '').trim().replace(/^\(+/, '').replace(/\)+$/, '').trim();
+  return bare ? `(${bare})` : '';
+};
+
+/** 重点关注大数字：与 Y 轴同一把尺，只留数字。 */
+export const formatFocusHeadline = (
+  axis: FocusAxis,
+  value: number | null | undefined
+) => {
+  if (value == null || !Number.isFinite(value)) return '--';
+  return axis.formatTick(value);
+};
+
+/**
+ * 重点关注 spark：刻度与主值只留数字，单位只在标题括号里出现一次。
+ * 百分比、速率的单位固定；字节速率按整段最大值锁一个刻度，主值跟同一把尺。
  */
 export const describeFocusAxis = (unit: MetricUnit, samples: number[]): FocusAxis => {
   const normalized = unit === 'Bps' ? 'byteps' : unit;
@@ -100,7 +118,7 @@ export const describeFocusAxis = (unit: MetricUnit, samples: number[]): FocusAxi
   }
 
   if (normalized === 'cps' || normalized === 'pps') {
-    return withGutter('/s', (value) => formatMetricValue(value, normalized).value, samples);
+    return withGutter('次/秒', (value) => formatMetricValue(value, normalized).value, samples);
   }
 
   if (normalized === 'none') {
