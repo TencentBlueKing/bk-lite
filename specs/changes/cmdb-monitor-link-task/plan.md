@@ -17,7 +17,7 @@
 
 1. **独立胶水模块，不是新的可售卖应用。** 后端 `apps.module_link`，前端路由 `/module-link/cmdb-monitor/tasks/[id]`。不进顶栏应用列表，不单独许可。
 2. **对端不可见则入口不出现（fail-closed）。** `clientData` 加载中、为空、或不含 `monitor` 时，CMDB 列表/详情的同步按钮都不渲染。监控侧将来的反向入口同理看 `cmdb`。现网 `isMonitorSold` 空列表当 true，本入口不再沿用。
-3. **服务端始终装入胶水模块。** `module_link` 与 `system_mgmt` / `console_mgmt` 一样 always-on；入口只按 CMDB、监控许可控制。许可闸对 `/api/v1/module_link/` 继承 cmdb+monitor 授权，不把胶水当成可售卖应用。
+3. **服务端始终装入胶水模块。** `module_link` 与 `system_mgmt` / `console_mgmt` 一样 always-on；入口只按 CMDB、监控许可控制。许可闸对 `/api/v1/module_link/` 继承 cmdb+monitor 授权，不把胶水当成可售卖应用。EE `LicenseAppGuard` 按 URL 第一段当 SKU，OSS 把该前缀写入 `LICENSE_EXEMPT_PREFIXES`，再由 `ModuleLinkLicenseInheritMiddleware` 要求 cmdb+monitor 都已授权。
 4. **CMDB / 监控只留薄适配。** 详情手绑、单条 `push_to_monitor`、ingest 身份规则仍留在各自核心。任务表、任务页、草稿、回收、读草稿接口搬出 CMDB。
 5. **100 条同步跑完。** 与现网 `BATCH_PUSH_LIMIT` 相同，不上 Celery 执行第一段。
 6. **草稿一组一个监控对象，但接入前先选模板。** 「去配置」跳到该对象的监控接入列表（带着 `cmdb_draft`），人选内置插件或 DIY 模板后再进配置页。任务不默认同名内置插件。

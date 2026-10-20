@@ -36,6 +36,7 @@ import {
   DEFAULT_INST_PAGE_SIZE,
   mergeInstSelection,
   resolveSelectedAssetTableScroll,
+  resolveDirectAssetModelId,
   resolveInstFetchModelId,
   resolveInstPaginationChange,
   restoreInstDrawerSelection,
@@ -190,7 +191,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const { model_id: modelId, task_type: taskType, target_model_id: targetModelId } = modelItem;
     const isCustomScriptTask = taskType === 'custom_script';
     const isNetworkConfigFileTask = modelId === 'network_config_file';
-    const instanceModelId = targetModelId || modelId;
+    const directAssetModelId = resolveDirectAssetModelId(modelId);
+    const instanceModelId = directAssetModelId || targetModelId || modelId;
     const previousInstanceModelIdRef = useRef(instanceModelId);
     const normalizedTaskType = isCustomScriptTask ? 'host' : (taskType || nodeId || '');
     const isNetworkCollectionAssetTask =
@@ -270,8 +272,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       normalizedTaskType
     );
 
-    const isCommonSelectInstTask = COMMON_SELECT_INST_TASK_TYPES.includes(
-      normalizedTaskType
+    const isCommonSelectInstTask = (
+      COMMON_SELECT_INST_TASK_TYPES.includes(normalizedTaskType) ||
+      directAssetModelId !== null
     ) && !isNetworkConfigFileTask;
     const isHostTask = normalizedTaskType === 'host';
     const isHostDiscovery = collectionType === 'host';

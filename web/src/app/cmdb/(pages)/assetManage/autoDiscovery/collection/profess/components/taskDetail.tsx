@@ -26,6 +26,7 @@ import { useCollectApi, useModelApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import TopologyGraphModal from './topologyGraphModal';
+import UnknownSoidPanel from './unknownSoidPanel';
 import styles from '../index.module.scss';
 import type {
   CollectTask,
@@ -250,6 +251,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
     });
   }, []);
   const [topologyGraphOpen, setTopologyGraphOpen] = useState(false);
+  const [detailVersion, setDetailVersion] = useState(0);
   const [rawDataPage, setRawDataPage] = useState(1);
   const [rawDataPageSize, setRawDataPageSize] = useState(20);
   const [associationMap, setAssociationMap] = useState<Record<string, string>>(
@@ -276,7 +278,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       }
     };
     fetchDetailData();
-  }, [task.id]);
+  }, [task.id, detailVersion]);
 
   useEffect(() => {
     const fetchAssociationTypes = async () => {
@@ -783,6 +785,21 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       });
     }
 
+    if ((detailData.unresolved?.count || 0) > 0) {
+      items.push({
+        key: 'unresolved',
+        label: `${t('Collection.taskDetail.unresolvedDevices')} (${detailData.unresolved?.count || 0})`,
+        children: (
+          <UnknownSoidPanel
+            taskId={task.id}
+            execStatus={task.exec_status}
+            groups={detailData.unresolved?.data || []}
+            onChanged={() => setDetailVersion((version) => version + 1)}
+          />
+        ),
+      });
+    }
+
     items.push({
       key: 'raw_data',
       label: `${t('Collection.taskDetail.rawData')} (${detailData.raw_data?.count || 0})`,
@@ -802,6 +819,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
     loading,
     task.id,
     topologyFacts.length,
+    task.exec_status,
     processColumns,
     statusColumn,
     errorColumn,
