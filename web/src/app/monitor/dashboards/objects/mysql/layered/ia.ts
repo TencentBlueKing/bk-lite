@@ -693,7 +693,50 @@ export interface MysqlProHeader {
   pill: '主库' | '从库' | 'GR' | 'Galera';
   aside?: '写入源' | '只读';
   binlog?: 'Binlog · 已开启' | 'Binlog · 已关闭';
+  /** 主版本，如 5.7 / 8.0。标签缺失或无法截取时为「未知」。 */
+  version: string;
 }
+
+export const MYSQL_VERSION_UNKNOWN = '未知';
+const INNODB_VERSION_LABEL = 'innodb_version';
+
+/** innodb_version（如 5.7.43 / 8.0.32）截成「大.小」。截不到返回「未知」。 */
+export const formatMysqlMajorMinorVersion = (raw: string | null | undefined) => {
+  const text = String(raw || '').trim();
+  const match = text.match(/^(\d+)\.(\d+)/);
+  return match ? `${match[1]}.${match[2]}` : MYSQL_VERSION_UNKNOWN;
+};
+
+const innodbVersionFromSeries = (series: MetricSeries | undefined) => {
+  if (!series || series.loadState !== 'success' || !series.viewData?.length) return '';
+  for (const point of series.viewData) {
+    const metrics = point.seriesMetrics;
+    if (!metrics) continue;
+    for (const labels of Object.values(metrics)) {
+      const value = String(labels?.[INNODB_VERSION_LABEL] || '').trim();
+      if (value) return value;
+    }
+  }
+  return '';
+};
+
+/** 从已有 mysql_variables_* 序列的 innodb_version label 读主版本。不另发查询。 */
+export const readMysqlMajorMinorVersion = (
+  metricMap: Record<string, MetricSeries | undefined>
+) => {
+  const named = innodbVersionFromSeries(metricMap.mysql_variables_max_connections)
+    || innodbVersionFromSeries(metricMap.mysql_variables_read_only)
+    || innodbVersionFromSeries(metricMap.mysql_variables_log_bin)
+    || innodbVersionFromSeries(metricMap.mysql_variables_super_read_only)
+    || innodbVersionFromSeries(metricMap.mysql_variables_log_slave_updates);
+  if (named) return formatMysqlMajorMinorVersion(named);
+  for (const [name, series] of Object.entries(metricMap)) {
+    if (!name.startsWith('mysql_variables_')) continue;
+    const value = innodbVersionFromSeries(series);
+    if (value) return formatMysqlMajorMinorVersion(value);
+  }
+  return MYSQL_VERSION_UNKNOWN;
+};
 
 const GROUP_REPLICATION = /group_replication/i;
 const GALERA = /wsrep|galera/i;
@@ -745,7 +788,7 @@ const readonlyOn = (metricMap: Record<string, MetricSeries | undefined>) => {
   return (readOnly != null && readOnly > 0) || (superReadOnly != null && superReadOnly > 0);
 };
 
-/** 专业盘页头。Binlog 开关只出小标签；无从库线程时不伪造从库。 */
+/** 专业盘实例摘要。Binlog 开关只出小标签；无从库线程时不伪造从库。 */
 export const readMysqlProHeader = (
   metricMap: Record<string, MetricSeries | undefined>
 ): MysqlProHeader => {
@@ -768,7 +811,8 @@ export const readMysqlProHeader = (
   return {
     pill,
     aside,
-    binlog: logBin == null ? undefined : (logBin > 0 ? 'Binlog · 已开启' : 'Binlog · 已关闭')
+    binlog: logBin == null ? undefined : (logBin > 0 ? 'Binlog · 已开启' : 'Binlog · 已关闭'),
+    version: readMysqlMajorMinorVersion(metricMap)
   };
 };
 

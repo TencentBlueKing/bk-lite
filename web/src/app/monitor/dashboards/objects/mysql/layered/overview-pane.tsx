@@ -15,13 +15,15 @@ import host from '../../host/layered/layered.module.scss';
 import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
+  readMysqlProHeader,
   type MysqlFocusCard,
   type MysqlHostCandidate,
   type MysqlOverviewReadings
 } from './ia';
-import MysqlHostRail from './host-rail';
+import MysqlInstanceSummaryCard from './instance-summary-card';
 import {
   MYSQL_FOCUS_METRICS,
+  MYSQL_HEADER_METRICS,
   MYSQL_HEALTH_METRICS,
   blocksUntilReady
 } from './section-loading';
@@ -96,24 +98,28 @@ export default function OverviewPane({
   );
   const healthLoading = blocksUntilReady(MYSQL_HEALTH_METRICS, pendingMetricNames);
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
+  const headerPending = blocksUntilReady(MYSQL_HEADER_METRICS, pendingMetricNames);
+  const header = headerPending ? null : readMysqlProHeader(metricMap);
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
 
   return (
     <>
+      <MysqlInstanceSummaryCard
+        header={header}
+        headerPending={headerPending}
+        host={linkedHost}
+        href={hostHref}
+        cpuPercent={cpuPercent}
+        memPercent={memPercent}
+        hostLoading={hostLoading}
+      />
       <ProSectionTitle>健康概览</ProSectionTitle>
       {healthLoading ? (
         <KpiTileRow loading items={MYSQL_LOADING_KPIS} />
       ) : (
         <KpiTileRow items={cards} />
       )}
-      <MysqlHostRail
-        host={linkedHost}
-        href={hostHref}
-        cpuPercent={cpuPercent}
-        memPercent={memPercent}
-        loading={hostLoading}
-      />
 
       <ProEventsSectionTitle title="事件" />
       <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />

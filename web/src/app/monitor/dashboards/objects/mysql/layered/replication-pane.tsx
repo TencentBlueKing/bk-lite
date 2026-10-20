@@ -153,7 +153,8 @@ function TrendCard({
   unit,
   color,
   data,
-  note
+  note,
+  loading
 }: {
   trend: 'delay' | 'relay' | 'binlog';
   title: string;
