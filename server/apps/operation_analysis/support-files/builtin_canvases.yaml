@@ -198,11 +198,6 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-      interaction:
-        kind: title
-        name: 查看实例规模
-        url: '/cmdb/assetOverview'
-        openMode: newTab
       selectedFields:
       - model_with_instance_count
       thresholdColors:
@@ -223,11 +218,6 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-      interaction:
-        kind: title
-        name: 查看实例规模
-        url: '/cmdb/assetOverview'
-        openMode: newTab
       selectedFields:
       - empty_model_count
       thresholdColors:
@@ -250,11 +240,6 @@ dashboards:
       unit: '%'
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-      interaction:
-        kind: title
-        name: 查看实例规模
-        url: '/cmdb/assetOverview'
-        openMode: newTab
       selectedFields:
       - model_coverage_rate
       thresholdColors:
@@ -1637,11 +1622,6 @@ screens:
       valueConfig:
         name: 活动告警持续时长 TOP10
         chartType: topN
-        interaction:
-          kind: data
-          name: 查看告警
-          url: '/alarm/alarms?alert_id=$__data.fields.alert_id$'
-          openMode: newTab
         appearance:
           frame: bare
         dataSource: '活跃告警 TOP N::get_active_alert_top'
@@ -1902,11 +1882,6 @@ screens:
       kind: text
       zIndex: 5
       content: 待响应
-      interaction:
-        kind: title
-        name: 查看告警
-        url: '/alarm/alarms?status=pending'
-        openMode: newTab
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1933,11 +1908,6 @@ screens:
       kind: text
       zIndex: 5
       content: 活跃告警总数
-      interaction:
-        kind: title
-        name: 查看告警
-        url: '/alarm/alarms?status=pending,processing,unassigned'
-        openMode: newTab
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -1990,11 +1960,6 @@ screens:
       kind: text
       zIndex: 5
       content: 处理中
-      interaction:
-        kind: title
-        name: 查看告警
-        url: '/alarm/alarms?status=processing'
-        openMode: newTab
       textStyle:
         align: left
         color: '#EAF3FF'
@@ -2129,11 +2094,6 @@ screens:
         appearance:
           frame: bare
         dataSource: '活跃告警 TOP N::get_active_alert_top'
-        interaction:
-          kind: data
-          name: 查看告警
-          url: '/alarm/alarms?alert_id=$__data.fields.alert_id$'
-          openMode: newTab
         tableConfig:
           columns:
           - key: title
