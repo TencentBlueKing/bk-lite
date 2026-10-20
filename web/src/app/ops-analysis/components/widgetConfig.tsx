@@ -113,7 +113,6 @@ import { ApplicationTopologyFilterLinkage } from './widgetConfig/sections/applic
 import { Application3DWallFields } from './widgetConfig/sections/application3DWallFields';
 import { Room3DRackTopFields } from './widgetConfig/sections/room3DRackTopFields';
 import Room3DFilterLinkage from './widgetConfig/sections/room3DFilterLinkage';
-import { ConfigGroupTitle } from './widgetConfig/configTitles';
 import { getDefaultScreenWidgetAppearance } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
 import { useWidgetCsvExportRegistry } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
 import { interactionKindForChartType } from '@/app/ops-analysis/utils/interactionLink';
@@ -1512,9 +1511,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               {t('dashboard.dataConfigSection', '数据配置')}
             </ConfigSectionTitle>
             <div className="mb-6">
-              <ConfigGroupTitle>
+              <ConfigSectionTitle>
                 {t('dashboard.unifiedFilterLinkage')}
-              </ConfigGroupTitle>
+              </ConfigSectionTitle>
               <ApplicationTopologyFilterLinkage definitions={previewFilterDefinitions} />
             </div>
           </section>
@@ -1524,14 +1523,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               {t('dashboard.dataConfigSection', '数据配置')}
             </ConfigSectionTitle>
             <div className="mb-6">
-              <ConfigGroupTitle>
+              <ConfigSectionTitle>
                 {t('dashboard.unifiedFilterLinkage')}
-              </ConfigGroupTitle>
+              </ConfigSectionTitle>
               <Room3DFilterLinkage definitions={previewFilterDefinitions} />
             </div>
-            <ConfigGroupTitle>
+            <ConfigSectionTitle>
               {t('dashboard.room3DRackTopSection')}
-            </ConfigGroupTitle>
+            </ConfigSectionTitle>
             <Room3DRackTopFields />
           </section>
         ) : isSceneWidget ? null : (
@@ -1685,18 +1684,22 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             )}
 
             {chartType === 'eventTimeline' && (
-              <Form.Item
-                label={t('dashboard.eventTimelineSortOrder')}
-                name={['eventTimeline', 'sortOrder']}
-                initialValue="desc"
-              >
-                <Select
-                  options={[
-                    { label: t('dashboard.eventTimelineSortDesc'), value: 'desc' },
-                    { label: t('dashboard.eventTimelineSortAsc'), value: 'asc' },
-                  ]}
-                />
-              </Form.Item>
+              <div className="grid grid-cols-2 gap-x-4">
+                <Form.Item
+                  className="min-w-0"
+                  label={t('dashboard.eventTimelineSortOrder')}
+                  name={['eventTimeline', 'sortOrder']}
+                  initialValue="desc"
+                >
+                  <Select
+                    className="w-full"
+                    options={[
+                      { label: t('dashboard.eventTimelineSortDesc'), value: 'desc' },
+                      { label: t('dashboard.eventTimelineSortAsc'), value: 'asc' },
+                    ]}
+                  />
+                </Form.Item>
+              </div>
             )}
 
             {chartType === 'radar' && (
