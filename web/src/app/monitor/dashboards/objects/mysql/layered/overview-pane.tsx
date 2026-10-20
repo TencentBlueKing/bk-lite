@@ -11,12 +11,10 @@ import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
   buildMysqlOverviewTrends,
-  readMysqlRoleBlock,
   type MysqlFocusCard,
   type MysqlOverviewReadings
 } from './ia';
 import MysqlHostRail from './host-rail';
-import MysqlRoleBlock from './role-block';
 import type { MysqlHostCandidate } from './ia';
 import type { MetricSeries as MysqlMetricSeries } from '../types';
 
@@ -82,7 +80,6 @@ export default function OverviewPane({
     [previous, readings, statementsCollected]
   );
   const trends = useMemo(() => buildMysqlOverviewTrends(metricMap), [metricMap]);
-  const role = useMemo(() => readMysqlRoleBlock(metricMap), [metricMap]);
   const suspended = loading && cards.length === 0;
 
   if (suspended) {
@@ -209,8 +206,6 @@ export default function OverviewPane({
           ) : null}
         </>
       ) : null}
-
-      <MysqlRoleBlock block={role} />
     </>
   );
 }

@@ -11,6 +11,7 @@ import { latestNumber, primaryChartSeries } from '../../host/layered/readings';
 export const MYSQL_IA_TABS = [
   { key: 'overview', label: '概览' },
   { key: 'performance', label: '性能' },
+  { key: 'replication', label: '复制' },
   { key: 'statements', label: '语句' },
   { key: 'waits', label: '等待' }
 ] as const;
@@ -670,8 +671,8 @@ const primaryDownstreamFields = (
 };
 
 /**
- * 概览紧凑复制块。主库只有 log_bin 开关时返回 null（页头已表达）。
- * 不带「实例角色」标题，也不带「暂无从库连接数据」。
+ * 复制 Tab 的采点。无从库线程、也没有主库下游采点时返回 null，
+ * 页上显示「暂无复制数据」。只有 log_bin 开关时同样返回 null（页头已表达）。
  */
 export const readMysqlRoleBlock = (
   metricMap: Record<string, MetricSeries | undefined>

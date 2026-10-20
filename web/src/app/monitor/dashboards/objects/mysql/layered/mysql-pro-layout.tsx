@@ -21,6 +21,7 @@ import { buildInstanceDisplayName } from '../../../shared/utils/instance';
 import type { MetricSeries } from '../types';
 import OverviewPane from './overview-pane';
 import PerformancePane from './performance-pane';
+import ReplicationPane from './replication-pane';
 import { StatementPane, WaitPane } from './digest-pane';
 import {
   MYSQL_IA_TABS,
@@ -269,6 +270,9 @@ export default function MysqlProLayout({
   const pane = () => {
     if (tab === 'performance') {
       return <PerformancePane metricMap={metricMap} loading={loading} />;
+    }
+    if (tab === 'replication') {
+      return <ReplicationPane metricMap={metricMap} loading={loading} />;
     }
     if (tab === 'statements') {
       return (

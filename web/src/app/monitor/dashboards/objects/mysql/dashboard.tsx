@@ -479,18 +479,10 @@ export default function MysqlDashboardPage() {
   const showInstanceId =
     Boolean(instanceIdText) &&
     normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
-  const identityMetaItems = instanceSwitching
+  // 专业盘在切实例或盘未就绪时收起整行 meta，不留灰骨架，也不留上一实例的角色。
+  const hideProMeta = displayMode === 'category' && (instanceSwitching || loading);
+  const identityMetaItems = proHeader
     ? [
-      <span
-        key="role"
-        className="inline-block h-4 w-16 rounded bg-[var(--color-fill-2)]"
-        aria-busy="true"
-        aria-label="加载中"
-      />,
-      <span key="binlog" className="inline-block h-4 w-24 rounded bg-[var(--color-fill-2)]" aria-hidden="true" />
-    ]
-    : proHeader
-      ? [
       <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
         {proHeader.pill}
       </span>,
@@ -504,22 +496,22 @@ export default function MysqlDashboardPage() {
           {proHeader.binlog}
         </span>
       ) : null
-      ].filter(Boolean)
-      : mysqlIdentity.deployment === '单节点'
-        ? [
+    ].filter(Boolean)
+    : mysqlIdentity.deployment === '单节点'
+      ? [
         <span key="topology" className={chrome.instanceMetaInline}>
           单节点
         </span>
-        ]
-        : [
+      ]
+      : [
         <span key="topology" className={chrome.instanceMetaInline}>
           主从复制
         </span>,
         <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
           {mysqlIdentity.role}
         </span>
-        ];
-  const instanceMetaItems = [
+      ];
+  const instanceMetaItems = hideProMeta ? [] : [
     <span key="object-name" className={chrome.instanceMetaInline}>
       {objectDisplayText}
     </span>,

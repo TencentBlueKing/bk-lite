@@ -5,7 +5,7 @@ import type { ChartData } from '@/app/monitor/types';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { MetricSeries } from '../types';
 import { formatMetricValue } from '../../../shared/utils/format';
-import { ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
 import { latestNumber, numericValue, primaryChartSeries } from '../../host/layered/readings';
 import { innodbHasLoad } from './ia';
@@ -41,6 +41,11 @@ const rateReading = (metric: MetricSeries | undefined) => {
   const formatted = formatMetricValue(value, 'cps');
   return `${formatted.value}${formatted.unit || ''}`;
 };
+
+/** 分组查询还没写回时不算缺采，卡片先走共用「加载中」。 */
+const awaiting = (metrics: Array<MetricSeries | undefined>, points: { length: number }) => (
+  points.length === 0 && metrics.some((metric) => !metric)
+);
 
 export default function PerformancePane({ metricMap, loading }: PerformancePaneProps) {
   const connection = useMemo(() => mergeChartSeries([
@@ -83,15 +88,35 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
     { key: 'hit', label: '命中率', data: seriesOf(metricMap.mysql_buffer_pool_hit_ratio) }
   ]), [metricMap.mysql_buffer_pool_hit_ratio?.viewData]);
 
-  const replication = useMemo(() => mergeChartSeries([
-    { key: 'delay', label: '复制延迟', data: seriesOf(metricMap.mysql_slave_seconds_behind_master) }
-  ]), [metricMap.mysql_slave_seconds_behind_master?.viewData]);
+  const connectionMetrics = [metricMap.mysql_threads_connected, metricMap.mysql_threads_running];
+  const throughputMetrics = [
+    metricMap.mysql_queries_rate,
+    metricMap.mysql_com_insert_rate,
+    metricMap.mysql_com_update_rate,
+    metricMap.mysql_com_delete_rate
+  ];
+  const writeMetrics = [
+    metricMap.mysql_com_insert_rate,
+    metricMap.mysql_com_update_rate,
+    metricMap.mysql_com_delete_rate
+  ];
+  const innodbMetrics = [
+    metricMap.mysql_innodb_data_reads_rate,
+    metricMap.mysql_innodb_data_writes_rate,
+    metricMap.mysql_innodb_os_log_fsyncs_rate
+  ];
+  const bufferMetrics = [metricMap.mysql_buffer_pool_hit_ratio];
+  const connectionAwaiting = loading || awaiting(connectionMetrics, connection);
+  const throughputAwaiting = loading || awaiting(throughputMetrics, throughput);
+  const writesAwaiting = loading || awaiting(writeMetrics, statementMix);
+  const innodbAwaiting = loading || awaiting(innodbMetrics, innodb);
+  const bufferAwaiting = loading || awaiting(bufferMetrics, buffer);
 
-  const innodbCard = innodbHasLoad(metricMap) || loading ? (
+  const innodbCard = innodbHasLoad(metricMap) || innodbAwaiting ? (
     <ThinTimeSeries
       title="InnoDB 读写"
       hint="读、写与 Redo 刷盘。近窗接近零时不放大噪声。"
-      loading={loading}
+      loading={innodbAwaiting}
       unit="cps"
       data={innodb}
       legends={[
@@ -116,76 +141,103 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
     </section>
   );
 
+  const showConnections = connectionAwaiting || connection.length > 0;
+  const showThroughput = throughputAwaiting || throughput.length > 0;
+  const showWrites = writesAwaiting || statementMix.length > 0;
+  const showInnodb = innodbAwaiting || innodb.length > 0;
+  const showBuffer = bufferAwaiting || buffer.length > 0;
+  const cardClass = (wide: boolean) => (wide ? `min-w-0 ${pro.perfWide}` : 'min-w-0');
+
   return (
-    <div className={pro.perfGrid}>
-      <div id="mysql-perf-connections" className="min-w-0">
-        <ThinTimeSeries
-          title="连接与活跃会话"
-          hint="当前连接数与 Threads_running。"
-          loading={loading}
-          unit="counts"
-          data={connection}
-          emptyText="暂无采集数据"
-          legends={[
-            { label: '当前连接', color: HOST_SERIES_COLOR.memUsed },
-            { label: '活跃会话', color: HOST_SERIES_COLOR.load1 }
-          ]}
-        />
-      </div>
-      <div id="mysql-perf-throughput" className="min-w-0">
-        <ThinTimeSeries
-          title="QPS / TPS"
-          hint="QPS 为实例 Queries/s。TPS 为 INSERT、UPDATE、DELETE 速率之和。"
-          loading={loading}
-          unit="cps"
-          data={throughput}
-          emptyText="暂无采集数据"
-          legends={[
-            { label: 'QPS', color: HOST_SERIES_COLOR.memAvailable },
-            { label: 'TPS', color: HOST_PALETTE.orange }
-          ]}
-        />
-      </div>
-      <div className="min-w-0">
-        <ThinTimeSeries
-          title="写入语句"
-          loading={loading}
-          unit="cps"
-          data={statementMix}
-          emptyText="暂无采集数据"
-          legends={[
-            { label: 'INSERT', color: HOST_PALETTE.orange },
-            { label: 'UPDATE', color: HOST_SERIES_COLOR.load5 },
-            { label: 'DELETE', color: HOST_PALETTE.rose }
-          ]}
-        />
-      </div>
-      <div id="mysql-perf-innodb" className="min-w-0">
-        {innodbCard}
-      </div>
-      <div id="mysql-perf-buffer" className={`min-w-0${replication.length > 0 ? '' : ` ${pro.perfWide}`}`}>
-        <ThinTimeSeries
-          title="缓冲池命中"
-          hint="InnoDB buffer pool 命中率。"
-          loading={loading}
-          unit="percent"
-          data={buffer}
-          emptyText="暂无采集数据"
-          legends={[{ label: '命中率', color: HOST_SERIES_COLOR.cpu }]}
-        />
-      </div>
-      {replication.length > 0 ? (
-        <div id="mysql-perf-replication" className="min-w-0">
-          <ThinTimeSeries
-            title="复制延迟"
-            loading={loading}
-            unit="s"
-            data={replication}
-            emptyText="暂无采集数据"
-            legends={[{ label: '复制延迟', color: HOST_SERIES_COLOR.memUsed }]}
-          />
-        </div>
+    <>
+      {showConnections || showThroughput ? (
+        <>
+          <ProSectionTitle>连接与吞吐</ProSectionTitle>
+          <div className={pro.perfGrid}>
+            {showConnections ? (
+              <div id="mysql-perf-connections" className={cardClass(!showThroughput)}>
+                <ThinTimeSeries
+                  title="连接与活跃会话"
+                  hint="当前连接数与 Threads_running。"
+                  loading={connectionAwaiting}
+                  unit="counts"
+                  data={connection}
+                  emptyText="暂无采集数据"
+                  legends={[
+                    { label: '当前连接', color: HOST_SERIES_COLOR.memUsed },
+                    { label: '活跃会话', color: HOST_SERIES_COLOR.load1 }
+                  ]}
+                />
+              </div>
+            ) : null}
+            {showThroughput ? (
+              <div id="mysql-perf-throughput" className={cardClass(!showConnections)}>
+                <ThinTimeSeries
+                  title="QPS / TPS"
+                  hint="QPS 为实例 Queries/s。TPS 为 INSERT、UPDATE、DELETE 速率之和。"
+                  loading={throughputAwaiting}
+                  unit="cps"
+                  data={throughput}
+                  emptyText="暂无采集数据"
+                  legends={[
+                    { label: 'QPS', color: HOST_SERIES_COLOR.memAvailable },
+                    { label: 'TPS', color: HOST_PALETTE.orange }
+                  ]}
+                />
+              </div>
+            ) : null}
+          </div>
+        </>
       ) : null}
-    </div>
+      {showWrites ? (
+        <>
+          <ProSectionTitle>写入与语句</ProSectionTitle>
+          <div className={pro.perfGrid}>
+            <div className={cardClass(true)}>
+              <ThinTimeSeries
+                title="写入语句"
+                loading={writesAwaiting}
+                unit="cps"
+                data={statementMix}
+                emptyText="暂无采集数据"
+                legends={[
+                  { label: 'INSERT', color: HOST_PALETTE.orange },
+                  { label: 'UPDATE', color: HOST_SERIES_COLOR.load5 },
+                  { label: 'DELETE', color: HOST_PALETTE.rose }
+                ]}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
+      {showInnodb ? (
+        <>
+          <ProSectionTitle>InnoDB</ProSectionTitle>
+          <div className={pro.perfGrid}>
+            <div id="mysql-perf-innodb" className={cardClass(true)}>
+              {innodbCard}
+            </div>
+          </div>
+        </>
+      ) : null}
+      {showBuffer ? (
+        <>
+          <ProSectionTitle>缓冲池</ProSectionTitle>
+          <div className={pro.perfGrid}>
+            <div id="mysql-perf-buffer" className={cardClass(true)}>
+              <ThinTimeSeries
+                title="缓冲池命中"
+                hint="InnoDB buffer pool 命中率。"
+                loading={bufferAwaiting}
+                unit="percent"
+                data={buffer}
+                emptyText="暂无采集数据"
+                legends={[{ label: '命中率', color: HOST_SERIES_COLOR.cpu }]}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
+    </>
   );
 }
