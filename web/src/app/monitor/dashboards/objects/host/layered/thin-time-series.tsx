@@ -16,6 +16,7 @@ import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
 import { describeFocusAxis, seriesSampleValues } from './focus-axis';
 import { useProTimeWindow } from './pro-time-window';
 import { useThemeColors } from './theme-color';
+import ProDashLoading from './pro-dash-loading';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -378,7 +379,7 @@ export default function ThinTimeSeries({
       <div className={styles.chartBody}>
         {suspend || !plotted.length ? (
           <div className={styles.chartEmpty}>
-            {suspend || loading ? '加载中' : emptyText}
+            {suspend || loading ? <ProDashLoading /> : emptyText}
             {!loading && onRetry ? (
               <button
                 type="button"

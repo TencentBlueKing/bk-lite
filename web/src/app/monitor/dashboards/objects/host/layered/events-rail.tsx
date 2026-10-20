@@ -8,6 +8,7 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { alertEventInsideWindow } from '../../../shared/utils/pro-chart-window';
 import { hostCategoryText } from './category-copy';
 import { useProTimeWindow } from './pro-time-window';
+import ProDashLoading from './pro-dash-loading';
 import styles from './layered.module.scss';
 
 export type HostAlertRailAction = 'triggered' | 'recovered' | 'closed';
@@ -201,8 +202,8 @@ export default function EventsRail({
   if (loading || proTime?.suspend) {
     return (
       <div className={styles.eventsRail} data-events-rail="" data-events-empty="" aria-busy="true">
-        <div className={styles.eventsRow}>
-          <span className={styles.eventsEmpty}>加载中</span>
+        <div className={`${styles.eventsRow} w-full justify-center`}>
+          <ProDashLoading layout="inline" />
         </div>
       </div>
     );

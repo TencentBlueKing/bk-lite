@@ -5,6 +5,7 @@ import { Tooltip } from 'antd';
 import { alertKpiHintLines, ProInfoHint } from './alert-event-hint';
 import { CardAlertDot, cardAlertClass } from './card-alert';
 import type { TabAlertLevel } from './tab-level';
+import ProDashLoading from './pro-dash-loading';
 import styles from './layered.module.scss';
 
 export interface KpiCardModel {
@@ -69,9 +70,8 @@ export function KpiStrip({ items, loading = false }: { items: KpiCardModel[]; lo
               key={item.key}
               className={`${styles.kpiCard} ${styles.kpiCardLoading}`}
               data-kpi={item.key}
-              aria-label="加载中"
             >
-              加载中
+              <ProDashLoading />
             </div>
           );
         }

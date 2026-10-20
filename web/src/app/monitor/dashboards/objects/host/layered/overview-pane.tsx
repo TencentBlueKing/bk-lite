@@ -15,6 +15,7 @@ import {
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
 import { metricBlockPhase } from './performance-scope';
+import ProDashLoading from './pro-dash-loading';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
 import { ProEventsSectionTitle } from './alert-event-hint';
 import { ProSectionTitle } from './section-title';
@@ -327,8 +328,10 @@ export default function OverviewPane({
                   查看磁盘
                 </button>
               </>
+            ) : diskLoading ? (
+              <ProDashLoading size="small" />
             ) : (
-              <div className={styles.shortcutSub}>{diskLoading ? '加载中' : '暂无挂载数据'}</div>
+              <div className={styles.shortcutSub}>暂无挂载数据</div>
             )}
           </div>
           {worst ? (
@@ -359,8 +362,10 @@ export default function OverviewPane({
                   查看网络
                 </button>
               </>
+            ) : netLoading ? (
+              <ProDashLoading size="small" />
             ) : (
-              <div className={styles.shortcutSub}>{netLoading ? '加载中' : '暂无网卡数据'}</div>
+              <div className={styles.shortcutSub}>暂无网卡数据</div>
             )}
           </div>
           {busiest ? (
@@ -392,8 +397,10 @@ export default function OverviewPane({
                     查看进程
                   </button>
                 </>
+              ) : processLoading ? (
+                <ProDashLoading size="small" />
               ) : (
-                <div className={styles.shortcutSub}>{processLoading ? '加载中' : '暂无进程数据'}</div>
+                <div className={styles.shortcutSub}>暂无进程数据</div>
               )}
             </div>
             {topProcess ? (

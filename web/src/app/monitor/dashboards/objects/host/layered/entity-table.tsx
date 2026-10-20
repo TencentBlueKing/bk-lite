@@ -8,6 +8,7 @@ import { hostThresholdColor } from '../config';
 import type { MetricUnit } from '../../../shared/types';
 import type { EntityTableRow } from '../entity-series';
 import { CardAlertDot, cardAlertClass } from './card-alert';
+import ProDashLoading from './pro-dash-loading';
 import type { TabAlertLevel } from './tab-level';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -134,7 +135,10 @@ export default function LayeredEntityTable({
     : undefined;
 
   return (
-    <div className={`${classic.panel} ${styles.tableWrap} ${cardAlertClass(alertLevel)}`}>
+    <div
+      className={`${classic.panel} ${styles.tableWrap} ${cardAlertClass(alertLevel)}`}
+      aria-busy={loading && rows.length === 0 ? true : undefined}
+    >
       <CardAlertDot level={alertLevel} />
       {title ? (
         <div className={`${styles.tableFrameHead}${alertLevel && alertLevel !== 'none' ? ` ${styles.cardAlertPad}` : ''}`}>
@@ -149,12 +153,18 @@ export default function LayeredEntityTable({
       <Table<EntityTableRow>
         size="small"
         rowKey="key"
-        loading={loading && rows.length === 0}
+        loading={false}
         pagination={false}
         columns={tableColumns}
         dataSource={rows}
         scroll={{ x: 'max-content', y: 280 }}
-        locale={{ emptyText: loading ? '加载中' : emptyText }}
+        locale={{
+          emptyText: loading ? (
+            <div className="flex min-h-[240px] items-center justify-center">
+              <ProDashLoading />
+            </div>
+          ) : emptyText
+        }}
         rowClassName={(row) => (row.key === selectedKey ? styles.rowActive : styles.rowIdle)}
         onRow={(row) => ({ onClick: () => onSelect(row.key) })}
         expandable={expandable}

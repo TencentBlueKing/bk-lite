@@ -23,6 +23,7 @@ import {
   primaryChartSeries,
   resolveMemoryUsage
 } from './readings';
+import ProDashLoading from './pro-dash-loading';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -526,6 +527,8 @@ export default function SystemPane({
     metrics.mem_used?.loadState
   ]);
   const memoryBytes = memoryCompose.parts.reduce((sum, item) => sum + item.bytes, 0);
+  const composeNames = ['mem_used', 'mem_cached', 'mem_buffered', 'mem_shared', 'mem_total', 'mem_available'] as const;
+  const composeLoading = phaseFor(composeNames, memoryCompose.series.length > 0) === 'loading';
   const cpuCompose = useMemo(() => {
     const series = CPU_BREAKDOWN.flatMap((item) => {
       const data = primaryChartSeries(metrics[item.key]?.viewData);
@@ -564,11 +567,7 @@ export default function SystemPane({
             <CardAlertDot level={card.alertLevel} valueColor={card.valueColor} />
             <div className={styles.instantKpiLabel}>{card.label}</div>
             {card.phase === 'loading' ? (
-              <span
-                className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
-                aria-busy="true"
-                aria-label="加载中"
-              />
+              <ProDashLoading size="small" layout="inline" />
             ) : card.phase === 'error' ? (
               <button
                 type="button"
@@ -612,10 +611,17 @@ export default function SystemPane({
               bare
               title=""
               unit="bytes"
+              loading={composeLoading}
               data={memoryCompose.trend}
               emptyText="暂无数据"
               legends={memoryCompose.series.map((item) => ({ label: item.label, color: item.color }))}
             />
+          ) : composeLoading ? (
+            <div className={styles.chartBody}>
+              <div className={styles.chartEmpty}>
+                <ProDashLoading />
+              </div>
+            </div>
           ) : memoryBytes > 0 ? (
             <CompositionDonut
               slices={memoryCompose.parts.map((item) => ({
@@ -641,11 +647,11 @@ export default function SystemPane({
             />
           </div>
           {breakdownPhase === 'loading' ? (
-            <span
-              className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
-              aria-busy="true"
-              aria-label="加载中"
-            />
+            <div className={styles.chartBody}>
+              <div className={styles.chartEmpty}>
+                <ProDashLoading />
+              </div>
+            </div>
           ) : breakdownPhase === 'error' ? (
             <button
               type="button"

@@ -2,9 +2,10 @@
 
 import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
-import { GrayTabEmptyState, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { GrayTabEmptyState, ProDashLoading, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import host from '../../host/layered/layered.module.scss';
+import classic from '../../host/index.module.scss';
 import {
   formatMysqlReplicationLag,
   MYSQL_REPLICATION_EXTRA_METRICS,
@@ -102,12 +103,21 @@ function CardRow({ cards }: { cards: MysqlReplicationCard[] }) {
 }
 
 function FillState({ title }: { title: string }) {
+  const loading = title === '加载中';
   return (
     <div
       className="[&>section>div]:flex [&>section>div]:min-h-[280px] [&>section>div]:items-center [&>section>div]:justify-center"
-      data-replication-state={title === '加载中' ? 'loading' : 'empty'}
+      data-replication-state={loading ? 'loading' : 'empty'}
     >
-      <GrayTabEmptyState title={title} />
+      {loading ? (
+        <section className={`${classic.panel} ${host.chartPanel}`}>
+          <div className={host.chartEmpty}>
+            <ProDashLoading />
+          </div>
+        </section>
+      ) : (
+        <GrayTabEmptyState title={title} />
+      )}
     </div>
   );
 }
@@ -151,6 +161,7 @@ function TrendCard({
   color: string;
   data: ChartData[];
   note?: string;
+  loading?: boolean;
 }) {
   return (
     <div className={trend === 'delay' ? `${pro.perfWide} min-w-0` : 'min-w-0'} data-replication-trend={trend}>
@@ -158,6 +169,7 @@ function TrendCard({
         title={title}
         unit={unit}
         numericAxis
+        loading={loading}
         data={data}
         reading={note}
         emptyText="暂无数据"
@@ -231,6 +243,7 @@ export default function ReplicationPane({
               color={HOST_SERIES_COLOR.memUsed}
               data={trends.delay}
               note={trends.delayNote}
+              loading={trends.delay.length === 0 && pendingMetricNames.has('mysql_slave_seconds_behind_master')}
             />
             <TrendCard
               trend="relay"
@@ -239,6 +252,7 @@ export default function ReplicationPane({
               color={HOST_SERIES_COLOR.memAvailable}
               data={trends.relay}
               note={trends.relayNote}
+              loading={trends.relay.length === 0 && pendingMetricNames.has('mysql_slave_relay_log_pos')}
             />
             <TrendCard
               trend="binlog"
@@ -247,6 +261,7 @@ export default function ReplicationPane({
               color={HOST_SERIES_COLOR.diskUsed}
               data={trends.binlog}
               note={trends.binlogNote}
+              loading={trends.binlog.length === 0 && pendingMetricNames.has('mysql_replication_source_log_pos')}
             />
           </div>
         </>

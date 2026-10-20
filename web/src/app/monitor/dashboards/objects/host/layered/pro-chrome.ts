@@ -2,3 +2,4 @@ export { KpiStrip as KpiTileRow, type KpiCardModel as KpiTileModel } from './sig
 export { default as ThinTimeSeries } from './thin-time-series';
 export { ProSectionTitle } from './section-title';
 export { GrayTabEmptyState } from './gray-tab-empty';
+export { default as ProDashLoading, PRO_DASH_LOADING_LABEL } from './pro-dash-loading';

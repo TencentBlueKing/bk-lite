@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { ProDashLoading } from '../../host/layered/pro-chrome';
 import type { MysqlHostCandidate } from './ia';
 import shell from '../../host/layered/layered.module.scss';
 
@@ -54,7 +55,9 @@ export default function MysqlHostRail({
           </Link>
         </>
       ) : (
-        <span className={shell.eventsEmpty}>加载中</span>
+        <span className="flex min-w-0 flex-1 items-center justify-center">
+          <ProDashLoading layout="inline" />
+        </span>
       )}
     </div>
   );

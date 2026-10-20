@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { ProDashLoading } from '../../host/layered/pro-chrome';
 import type { MysqlProHeader } from './ia';
 import styles from '../index.module.scss';
 
@@ -12,7 +13,7 @@ interface MysqlInstanceStateRailProps {
 /**
  * 顶栏标题区之下、内容 Tab 之上的实例态窄条。
  * 与所属主机条分开：不复用事件轨，也不进宿主条。
- * 条宽贴内容。加载时只在「实例态」旁写「加载中」，不留灰骨架、不进顶栏 meta。
+ * 条宽贴内容。加载时在「实例态」右侧放同一套四蓝点 Spin（略缩小），不留灰骨架、不进顶栏 meta。
  * pending 时忽略 header，避免切实例还亮着上一份角色 / 只读 / Binlog。
  */
 export default function MysqlInstanceStateRail({
@@ -28,7 +29,7 @@ export default function MysqlInstanceStateRail({
     >
       <span className={`${styles.instanceStateLabel} shrink-0 text-xs font-medium`}>实例态</span>
       {pending ? (
-        <span className={styles.instanceStateLoading}>加载中</span>
+        <ProDashLoading size="small" layout="inline" />
       ) : (
         <>
           {header?.pill ? (
