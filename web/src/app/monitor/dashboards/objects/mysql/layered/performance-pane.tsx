@@ -88,6 +88,23 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
     { key: 'hit', label: '命中率', data: seriesOf(metricMap.mysql_buffer_pool_hit_ratio) }
   ]), [metricMap.mysql_buffer_pool_hit_ratio?.viewData]);
 
+  const abortedConnects = useMemo(
+    () => seriesOf(metricMap.mysql_aborted_connects_rate),
+    [metricMap.mysql_aborted_connects_rate?.viewData]
+  );
+  const abortedClients = useMemo(
+    () => seriesOf(metricMap.mysql_aborted_clients_rate),
+    [metricMap.mysql_aborted_clients_rate?.viewData]
+  );
+  const selectScan = useMemo(
+    () => seriesOf(metricMap.mysql_select_scan_rate),
+    [metricMap.mysql_select_scan_rate?.viewData]
+  );
+  const tableLockWaits = useMemo(
+    () => seriesOf(metricMap.mysql_table_locks_waited_rate),
+    [metricMap.mysql_table_locks_waited_rate?.viewData]
+  );
+
   const connectionMetrics = [metricMap.mysql_threads_connected, metricMap.mysql_threads_running];
   const throughputMetrics = [
     metricMap.mysql_queries_rate,
@@ -237,6 +254,68 @@ export default function PerformancePane({ metricMap, loading }: PerformancePaneP
                 legends={[{ label: '命中率', color: HOST_SERIES_COLOR.cpu }]}
               />
             </div>
+          </div>
+        </>
+      ) : null}
+      {abortedConnects.length > 0 || abortedClients.length > 0 ? (
+        <>
+          <ProSectionTitle>连接质量</ProSectionTitle>
+          <div className={pro.perfGrid} data-perf-section="quality">
+            {abortedConnects.length > 0 ? (
+              <div className={cardClass(abortedClients.length === 0)}>
+                <ThinTimeSeries
+                  title="中止连接"
+                  hint="还没连上就失败的尝试。"
+                  unit="cps"
+                  data={abortedConnects.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText="暂无采集数据"
+                  legends={[{ label: '中止连接', color: HOST_PALETTE.rose }]}
+                />
+              </div>
+            ) : null}
+            {abortedClients.length > 0 ? (
+              <div className={cardClass(abortedConnects.length === 0)}>
+                <ThinTimeSeries
+                  title="客户端断开"
+                  hint="已经连上之后异常断开。"
+                  unit="cps"
+                  data={abortedClients.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText="暂无采集数据"
+                  legends={[{ label: '客户端断开', color: HOST_PALETTE.orange }]}
+                />
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+      {selectScan.length > 0 || tableLockWaits.length > 0 ? (
+        <>
+          <ProSectionTitle>扫描与锁</ProSectionTitle>
+          <div className={pro.perfGrid} data-perf-section="scan-lock">
+            {selectScan.length > 0 ? (
+              <div className={cardClass(tableLockWaits.length === 0)}>
+                <ThinTimeSeries
+                  title="全表扫描"
+                  hint="没有走索引、扫整张表的查询。"
+                  unit="cps"
+                  data={selectScan.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText="暂无采集数据"
+                  legends={[{ label: '全表扫描', color: HOST_SERIES_COLOR.memAvailable }]}
+                />
+              </div>
+            ) : null}
+            {tableLockWaits.length > 0 ? (
+              <div className={cardClass(selectScan.length === 0)}>
+                <ThinTimeSeries
+                  title="表锁等待"
+                  hint="语句等到表锁才继续的次数。"
+                  unit="cps"
+                  data={tableLockWaits.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText="暂无采集数据"
+                  legends={[{ label: '表锁等待', color: HOST_PALETTE.orange }]}
+                />
+              </div>
+            ) : null}
           </div>
         </>
       ) : null}

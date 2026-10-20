@@ -7,7 +7,10 @@ import { KpiStrip, type KpiCardModel } from '../../host/layered/signal-bar';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import {
   formatMysqlReplicationLag,
+  readMysqlReplicationExtras,
   readMysqlRoleBlock,
+  replicationExtrasPending,
+  type MysqlReplicationCard,
   type MysqlRoleField,
   type MysqlRoleTone
 } from './ia';
@@ -49,6 +52,38 @@ const replicaFields = (fields: MysqlRoleField[]) => REPLICA_LABELS.map((label) =
   fields.find((field) => field.label === label) || { label, value: '--', tone: 'muted' as const }
 ));
 
+function NoteCard({ card }: { card: MysqlReplicationCard }) {
+  return (
+    <section
+      className="flex min-w-0 flex-col items-start rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2"
+      data-replication-card={card.key}
+    >
+      <div className="text-[12px] font-medium leading-[14px] text-[var(--color-text-2)]">{card.label}</div>
+      <div
+        className="mt-1 break-words text-[16px] font-semibold leading-6 text-[var(--color-text-1)]"
+        style={card.tone && card.tone !== 'muted' ? { color: TONE_COLOR[card.tone] } : undefined}
+      >
+        {card.value}
+      </div>
+      {card.detail ? (
+        <div className="mt-1 break-words text-[12px] leading-4 text-[var(--color-text-3)]">{card.detail}</div>
+      ) : null}
+    </section>
+  );
+}
+
+function CardRow({ cards }: { cards: MysqlReplicationCard[] }) {
+  return (
+    <div className={`mt-3 ${pro.perfGrid}`}>
+      {cards.map((card) => (
+        <div key={card.key} className={cards.length === 1 ? pro.perfWide : 'min-w-0'}>
+          <NoteCard card={card} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FillState({ title }: { title: string }) {
   return (
     <div
@@ -71,12 +106,18 @@ export default function ReplicationPane({
     () => (loading ? null : readMysqlRoleBlock(metricMap)),
     [loading, metricMap]
   );
+  const extras = useMemo(
+    () => (loading ? null : readMysqlReplicationExtras(metricMap)),
+    [loading, metricMap]
+  );
 
   if (loading) return <FillState title="加载中" />;
-  if (!block || block.fields.length === 0) return <FillState title="暂无复制数据" />;
 
-  const fields = block.kind === 'replica' ? replicaFields(block.fields) : block.fields;
-  const change = lagChange(block.delay);
+  const statusBlock = block && block.kind !== 'primary' && block.fields.length > 0 ? block : null;
+  const fields = statusBlock
+    ? (statusBlock.kind === 'replica' ? replicaFields(statusBlock.fields) : statusBlock.fields)
+    : [];
+  const change = lagChange(statusBlock?.delay);
   const items: KpiCardModel[] = fields.map((field) => ({
     key: field.label,
     label: field.label,
@@ -84,14 +125,45 @@ export default function ReplicationPane({
     tone: toneColor(field),
     subtitle: field.label === '复制延迟' ? change : undefined
   }));
-  const showTrend = block.kind === 'replica' || Boolean(block.delay?.length);
+  const showTrend = Boolean(statusBlock && (statusBlock.kind === 'replica' || statusBlock.delay?.length));
+  const hasContent = items.length > 0
+    || Boolean(extras?.error)
+    || Boolean(extras?.logs.length)
+    || Boolean(extras?.downstream.length)
+    || showTrend;
+
+  if (!hasContent && replicationExtrasPending(metricMap)) return <FillState title="加载中" />;
+  if (!hasContent) return <FillState title="暂无复制数据" />;
 
   return (
     <div data-replication-state="ready">
-      <ProSectionTitle>状态</ProSectionTitle>
-      <div className="mt-3 [&>div]:!grid-cols-3">
-        <KpiStrip items={items} />
-      </div>
+      {items.length > 0 || extras?.error ? (
+        <>
+          <ProSectionTitle>状态</ProSectionTitle>
+          {items.length > 0 ? (
+            <div className="mt-3 [&>div]:!grid-cols-3">
+              <KpiStrip items={items} />
+            </div>
+          ) : null}
+          {extras?.error ? <CardRow cards={[extras.error]} /> : null}
+        </>
+      ) : null}
+      {extras && extras.logs.length > 0 ? (
+        <>
+          <div className="mt-3">
+            <ProSectionTitle>位点与日志</ProSectionTitle>
+          </div>
+          <CardRow cards={extras.logs} />
+        </>
+      ) : null}
+      {extras && extras.downstream.length > 0 ? (
+        <>
+          <div className="mt-3">
+            <ProSectionTitle>主库下游</ProSectionTitle>
+          </div>
+          <CardRow cards={extras.downstream} />
+        </>
+      ) : null}
       {showTrend ? (
         <>
           <div className="mt-3">
@@ -102,7 +174,7 @@ export default function ReplicationPane({
               <ThinTimeSeries
                 title="复制延迟"
                 unit="s"
-                data={block.delay || []}
+                data={statusBlock?.delay || []}
                 emptyText="暂无数据"
                 legends={[{ label: '延迟', color: HOST_SERIES_COLOR.memUsed }]}
               />

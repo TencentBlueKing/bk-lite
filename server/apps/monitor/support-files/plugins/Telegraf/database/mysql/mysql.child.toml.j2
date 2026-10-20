@@ -51,6 +51,8 @@
       "com_insert",
       "com_update",
       "com_delete",
+      "select_scan",
+      "table_locks_waited",
 
       # InnoDB 性能
       "innodb_row_lock_time_avg",
@@ -100,6 +102,19 @@
       "slave_seconds_behind_master",
       "slave_slave_io_running",
       "slave_slave_sql_running",
+      "slave_relay_log_pos",
+      "slave_relay_log_space",
+      "slave_read_master_log_pos",
+      "slave_exec_master_log_pos",
+      "slave_master_log_pos",
+      "slave_read_source_log_pos",
+      "slave_exec_source_log_pos",
+      "slave_last_errno",
+      "slave_last_io_errno",
+      "slave_last_sql_errno",
+      "slaves_connected",
+      "rpl_semi_sync_master_clients",
+      "rpl_semi_sync_master_status",
 
       # Binary Log（需 gather_binary_logs）
       "binary_files_count",

@@ -247,6 +247,39 @@ monitor_object_metric:
     mysql_table_lock_waits_seconds_rate:
       name: 表锁等待耗时速率
       desc: 实例汇总的 SQL 表锁等待耗时增长速率；需开启「表锁 Wait」
+    mysql_select_scan_rate:
+      name: 全表扫描速率
+      desc: 没有走索引、扫整张表的查询速率
+    mysql_table_locks_waited_rate:
+      name: 表锁等待速率
+      desc: 语句等到表锁才继续执行的次数速率
+    mysql_slave_relay_log_pos:
+      name: Relay 日志位置
+      desc: 从库中继日志当前位置；需开启复制状态采集
+    mysql_slave_relay_log_space:
+      name: Relay 日志空间
+      desc: 从库中继日志占用空间；需开启复制状态采集
+    mysql_replication_source_log_pos:
+      name: Binlog 位点
+      desc: 从库已执行或已读取的主库二进制日志位置；需开启复制状态采集
+    mysql_slave_last_errno:
+      name: 复制错误号
+      desc: 复制状态行上的错误号；0 表示当前没有复制错误
+    mysql_slave_last_io_errno:
+      name: 复制 IO 错误号
+      desc: 复制 IO 线程错误号；0 表示当前没有 IO 错误
+    mysql_slave_last_sql_errno:
+      name: 复制 SQL 错误号
+      desc: 复制 SQL 线程错误号；0 表示当前没有 SQL 错误
+    mysql_slaves_connected:
+      name: 已连从库数
+      desc: 当前连到这台主库的从库数量；实例没有该状态时不采集
+    mysql_rpl_semi_sync_master_clients:
+      name: 半同步从库数
+      desc: 半同步下连着的从库数量；未启用半同步时不采集
+    mysql_rpl_semi_sync_master_status:
+      name: 半同步状态
+      desc: 主库半同步是否开启；未启用半同步时不采集
 monitor_object_metric_group:
   Mysql:
     Base: 基础信息

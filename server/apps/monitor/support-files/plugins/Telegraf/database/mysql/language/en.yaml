@@ -283,6 +283,39 @@ monitor_object_metric:
     mysql_table_lock_waits_seconds_rate:
       name: Table SQL Lock Wait Time Rate
       desc: Instance-wide rate of SQL table lock wait time; enable Table Lock Waits
+    mysql_select_scan_rate:
+      name: Full Table Scan Rate
+      desc: Rate of queries that scan a whole table without using an index
+    mysql_table_locks_waited_rate:
+      name: Table Lock Wait Rate
+      desc: Rate of statements that waited for a table lock
+    mysql_slave_relay_log_pos:
+      name: Relay Log Position
+      desc: Current relay log position; enable replica status collection
+    mysql_slave_relay_log_space:
+      name: Relay Log Space
+      desc: Relay log space in bytes; enable replica status collection
+    mysql_replication_source_log_pos:
+      name: Source Binlog Position
+      desc: Source binary log position applied or read by the replica
+    mysql_slave_last_errno:
+      name: Replication Error Number
+      desc: Replication error number from replica status; 0 means no current error
+    mysql_slave_last_io_errno:
+      name: Replication IO Error Number
+      desc: Replication IO thread error number; 0 means no current IO error
+    mysql_slave_last_sql_errno:
+      name: Replication SQL Error Number
+      desc: Replication SQL thread error number; 0 means no current SQL error
+    mysql_slaves_connected:
+      name: Connected Replicas
+      desc: Number of replicas connected to this source; absent when the server does not expose it
+    mysql_rpl_semi_sync_master_clients:
+      name: Semi-sync Replica Clients
+      desc: Connected semi-sync replica clients; absent when semi-sync is not enabled
+    mysql_rpl_semi_sync_master_status:
+      name: Semi-sync Status
+      desc: Whether source semi-sync is on; absent when semi-sync is not enabled
 monitor_object_metric_group:
   Mysql:
     Base: Base

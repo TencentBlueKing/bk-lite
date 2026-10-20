@@ -47,7 +47,7 @@ import {
   writeObjectDashboardMode
 } from '../../shared/utils/pro-dashboard';
 import MysqlProLayout from './layered/mysql-pro-layout';
-import { readMysqlHeaderIdentity, readMysqlProHeader } from './layered/ia';
+import { MYSQL_PERF_AUX_METRICS, MYSQL_REPLICATION_EXTRA_METRICS, readMysqlHeaderIdentity, readMysqlProHeader } from './layered/ia';
 import MysqlLegacyLayout from './legacy-layout';
 
 interface MysqlInstanceOption {
@@ -401,7 +401,10 @@ export default function MysqlDashboardPage() {
         }
 
         MYSQL_METRIC_GROUPS.slice(1).forEach((group) => {
-          loadMetricGroup(group.names, frozenTimeValues).then((results) => {
+          const names = group.key === 'details' && displayMode === 'category'
+            ? [...group.names, ...MYSQL_PERF_AUX_METRICS, ...MYSQL_REPLICATION_EXTRA_METRICS]
+            : group.names;
+          loadMetricGroup(names, frozenTimeValues).then((results) => {
             if (!loadSequence.isCurrent(loadSeq)) {
               return;
             }
@@ -429,7 +432,7 @@ export default function MysqlDashboardPage() {
     }
 
     setLoading(false);
-  }, [currentInstanceInterval, instanceId, idValuesKey, timeValues, isDashboardMode]);
+  }, [currentInstanceInterval, instanceId, idValuesKey, timeValues, isDashboardMode, displayMode]);
 
   useEffect(() => {
     if (timerRef.current) {
@@ -449,7 +452,7 @@ export default function MysqlDashboardPage() {
         timerRef.current = null;
       }
     };
-  }, [currentInstanceInterval, frequence, timeValues, instanceId, idValuesKey, isDashboardMode]);
+  }, [currentInstanceInterval, frequence, timeValues, instanceId, idValuesKey, isDashboardMode, displayMode]);
 
   const metricMap = useMemo(() => series, [series]);
   const dashboardMetrics = useMemo(

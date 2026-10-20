@@ -114,6 +114,13 @@
       "template": "sum by (instance_id) (rate(influxdb_httpd_writeReq{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:033e49db",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slaves_connected{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:0374ac4e",
       "object_names": [
         "Host"
@@ -1445,6 +1452,13 @@
         "Haproxy"
       ],
       "template": "avg by (instance_id) (haproxy_ctime{svname=\"BACKEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:32b29a14",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_table_locks_waited{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:32fb7fd4",
@@ -3217,6 +3231,13 @@
       "template": "topk(5, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k3s\",__$labels__}))"
     },
     {
+      "id": "dashboard:v1:736d942c",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_last_errno{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:73aa4208",
       "object_names": [
         "Node"
@@ -3852,6 +3873,13 @@
       "template": "sum by (instance_id) (rate(oracledb_activity_execute_count_gauge{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:8b870a9a",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_binary_size_bytes{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:8bf22e36",
       "object_names": [
         "RabbitMQ"
@@ -4144,6 +4172,13 @@
         "Oracle"
       ],
       "template": "sum by (instance_id) (rate(oracledb_activity_user_commits_gauge{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:97e48533",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_last_io_errno{__$labels__})"
     },
     {
       "id": "dashboard:v1:98078440",
@@ -4651,6 +4686,13 @@
       "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}) by (instance_id, src_ip, src_port, dst_ip, header_protocol, dst_port))[__$window__]))"
     },
     {
+      "id": "dashboard:v1:aa80705c",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_exec_master_log_pos{__$labels__} or mysql_slave_exec_source_log_pos{__$labels__} or mysql_slave_read_master_log_pos{__$labels__} or mysql_slave_read_source_log_pos{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:ab0b93c6",
       "object_names": [
         "Tomcat"
@@ -4679,11 +4721,25 @@
       "template": "processes_running{instance_type=\"os\", __$labels__} or processes_running_gauge{instance_type=\"os\", __$labels__} or processes_running_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:add70628",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_rpl_semi_sync_master_clients{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:ae5d2ac6",
       "object_names": [
         "Host"
       ],
       "template": "sum by (instance_id) (rate(diskio_read_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type=\"os\", config_type!~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:aee251f4",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_relay_log_pos{__$labels__})"
     },
     {
       "id": "dashboard:v1:af0b870f",
@@ -4975,6 +5031,13 @@
         "Cluster"
       ],
       "template": "topk(10, prometheus_remote_write_mem_used_percent{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:b870d6af",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_last_sql_errno{__$labels__})"
     },
     {
       "id": "dashboard:v1:b8d124d3",
@@ -5711,6 +5774,13 @@
       "template": "avg(net_response_response_time{__$labels__}) * 1000"
     },
     {
+      "id": "dashboard:v1:d28ec226",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_binary_files_count{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:d2a98c20",
       "object_names": [
         "MSSQL"
@@ -6366,6 +6436,13 @@
       "template": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_examined_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
     },
     {
+      "id": "dashboard:v1:ee047ea2",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_rpl_semi_sync_master_status{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:ef9da161",
       "object_names": [
         "InfluxDB"
@@ -6690,6 +6767,13 @@
       "template": "tomcat_connector_bytes_received{__$labels__}"
     },
     {
+      "id": "dashboard:v1:fca7cb80",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_select_scan{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:fd17a5d0",
       "object_names": [
         "Mysql"
@@ -6716,6 +6800,13 @@
         "MSSQL"
       ],
       "template": "sqlserver_performance_value{counter=\"Free Space in tempdb (KB)\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:fd7c89e8",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_relay_log_space{__$labels__})"
     },
     {
       "id": "dashboard:v1:fe0b89f4",

@@ -806,7 +806,6 @@ const GALERA = /wsrep|galera/i;
 const CONNECTED_SLAVES = /connected_slaves|slaves_connected|slave_connections|replica_count|semi_sync_master_clients/i;
 const SEMISYNC = /semi_?sync/i;
 const BINLOG_POSITION = /binlog_(file|pos)|master_log_(file|pos)|file_position|gtid_executed/i;
-const REPLICA_POSITION = /relay_log_pos|relay_master_log_pos|read_master_log_pos|exec_master_log_pos/i;
 const THREAD_TEXT = (value: number) => (value > 0 ? '运行中' : '已停止');
 const THREAD_TONE = (value: number): MysqlRoleTone => (value > 0 ? 'ok' : 'warn');
 
@@ -912,8 +911,9 @@ const primaryDownstreamFields = (
 };
 
 /**
- * 复制 Tab 的采点。无从库线程、也没有主库下游采点时返回 null，
- * 页上显示「暂无复制数据」。只有 log_bin 开关时同样返回 null（页头已表达）。
+ * 复制状态条。无从库线程、也没有主库下游采点时返回 null。
+ * 只有 log_bin 开关时同样返回 null（页头已表达）。
+ * 位点、错误号和 Relay 不进这条，由 readMysqlReplicationExtras 决定。
  */
 export const readMysqlRoleBlock = (
   metricMap: Record<string, MetricSeries | undefined>
@@ -944,10 +944,6 @@ export const readMysqlRoleBlock = (
     }
     if (io != null) fields.push({ label: 'IO 线程', value: THREAD_TEXT(io), tone: THREAD_TONE(io) });
     if (sql != null) fields.push({ label: 'SQL 线程', value: THREAD_TEXT(sql), tone: THREAD_TONE(sql) });
-    const position = collectedNamed(metricMap, (name) => REPLICA_POSITION.test(name))[0];
-    if (position) {
-      fields.push({ label: '位点', value: formatPlainNumber(position.value), tone: 'muted' });
-    }
     const delayPoints = collectedPoints(metricMap.mysql_slave_seconds_behind_master);
     return {
       kind: 'replica',
@@ -959,6 +955,170 @@ export const readMysqlRoleBlock = (
   const downstream = primaryDownstreamFields(metricMap);
   if (!downstream.length) return null;
   return { kind: 'primary', fields: downstream };
+};
+
+/** 专业盘复制加深查询。传统盘不加载这组。 */
+export const MYSQL_REPLICATION_EXTRA_METRICS = [
+  'mysql_slave_relay_log_pos',
+  'mysql_slave_relay_log_space',
+  'mysql_replication_source_log_pos',
+  'mysql_binary_size_bytes',
+  'mysql_binary_files_count',
+  'mysql_slave_last_errno',
+  'mysql_slave_last_io_errno',
+  'mysql_slave_last_sql_errno',
+  'mysql_slaves_connected',
+  'mysql_rpl_semi_sync_master_clients',
+  'mysql_rpl_semi_sync_master_status'
+] as const;
+
+export const MYSQL_PERF_AUX_METRICS = [
+  'mysql_select_scan_rate',
+  'mysql_table_locks_waited_rate'
+] as const;
+
+export const replicationExtrasPending = (
+  metricMap: Record<string, MetricSeries | undefined>
+) => {
+  const extrasMissing = MYSQL_REPLICATION_EXTRA_METRICS.some((name) => metricMap[name] == null);
+  if (!extrasMissing) return false;
+  return Object.keys(metricMap).some((name) => metricMap[name] != null);
+};
+
+export interface MysqlReplicationCard {
+  key: string;
+  label: string;
+  value: string;
+  detail?: string;
+  tone?: MysqlRoleTone;
+}
+
+export interface MysqlReplicationExtras {
+  error: MysqlReplicationCard | null;
+  logs: MysqlReplicationCard[];
+  downstream: MysqlReplicationCard[];
+}
+
+const REPLICATION_ERROR_COPY: Record<number, string> = {
+  1032: '找不到对应记录',
+  1045: '复制账号被拒绝',
+  1049: '库不存在',
+  1054: '列不存在',
+  1062: '主键或唯一键冲突',
+  1146: '表不存在',
+  1205: '锁等待超时',
+  1213: '发生死锁',
+  1236: '读不到主库日志',
+  1396: '账号状态冲突',
+  1594: '中继日志读失败',
+  1872: '中继日志初始化失败',
+  2003: '连不上主库'
+};
+
+const formatPosition = (value: number) => Math.round(value).toLocaleString('zh-CN');
+
+const formatBytes = (value: number) => {
+  const formatted = formatMetricValue(value, 'bytes');
+  return `${formatted.value}${formatted.unit ? ` ${formatted.unit}` : ''}`;
+};
+
+const explainReplicationError = (errno: number) => REPLICATION_ERROR_COPY[errno] || '复制已报错';
+
+const positiveErrno = (value: number | null) => (
+  value != null && value > 0 ? Math.round(value) : null
+);
+
+/**
+ * 复制签加深。错误号为 0 或不存在时不占卡。
+ * 位点与日志、主库下游都是有采才出；从库视角不渲染主库下游。
+ */
+export const readMysqlReplicationExtras = (
+  metricMap: Record<string, MetricSeries | undefined>
+): MysqlReplicationExtras => {
+  const sqlErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_sql_errno));
+  const ioErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_io_errno));
+  const lastErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_errno));
+  const primaryError = sqlErrno != null
+    ? { errno: sqlErrno, thread: 'SQL 线程' }
+    : ioErrno != null
+      ? { errno: ioErrno, thread: 'IO 线程' }
+      : lastErrno != null
+        ? { errno: lastErrno, thread: '' }
+        : null;
+  let error: MysqlReplicationCard | null = null;
+  if (primaryError) {
+    const other = primaryError.thread === 'SQL 线程' && ioErrno != null && ioErrno !== primaryError.errno
+      ? { errno: ioErrno, thread: 'IO 线程' }
+      : primaryError.thread === 'IO 线程' && sqlErrno != null && sqlErrno !== primaryError.errno
+        ? { errno: sqlErrno, thread: 'SQL 线程' }
+        : null;
+    const detailParts = [
+      primaryError.thread,
+      other ? `${other.thread}还有错误号 ${other.errno} · ${explainReplicationError(other.errno)}` : ''
+    ].filter(Boolean);
+    error = {
+      key: 'error',
+      label: '复制错误',
+      value: `错误号 ${primaryError.errno} · ${explainReplicationError(primaryError.errno)}`,
+      detail: detailParts.join(' · ') || undefined,
+      tone: 'warn'
+    };
+  }
+
+  const logs: MysqlReplicationCard[] = [];
+  const relayPos = latestNumber(metricMap.mysql_slave_relay_log_pos);
+  const relaySpace = latestNumber(metricMap.mysql_slave_relay_log_space);
+  if (relayPos != null || relaySpace != null) {
+    const parts = [
+      relayPos != null ? `位置 ${formatPosition(relayPos)}` : '',
+      relaySpace != null ? `空间 ${formatBytes(relaySpace)}` : ''
+    ].filter(Boolean);
+    logs.push({ key: 'relay', label: 'Relay 日志', value: parts.join(' · '), tone: 'muted' });
+  }
+  const sourcePos = latestNumber(metricMap.mysql_replication_source_log_pos);
+  const binlogSize = latestNumber(metricMap.mysql_binary_size_bytes);
+  const binlogFiles = latestNumber(metricMap.mysql_binary_files_count);
+  if (sourcePos != null || binlogSize != null || binlogFiles != null) {
+    const parts = [
+      sourcePos != null ? `位置 ${formatPosition(sourcePos)}` : '',
+      binlogSize != null ? `体积 ${formatBytes(binlogSize)}` : '',
+      binlogFiles != null ? `${formatPosition(binlogFiles)} 个文件` : ''
+    ].filter(Boolean);
+    logs.push({ key: 'binlog', label: 'Binlog', value: parts.join(' · '), tone: 'muted' });
+  }
+
+  const replicaView = latestNumber(metricMap.mysql_slave_io_running) != null
+    || latestNumber(metricMap.mysql_slave_sql_running) != null
+    || latestNumber(metricMap.mysql_slave_seconds_behind_master) != null;
+  const groupView = collectedNamed(
+    metricMap,
+    (name) => GROUP_REPLICATION.test(name) || GALERA.test(name)
+  ).length > 0;
+  const downstream: MysqlReplicationCard[] = [];
+  if (!replicaView && !groupView) {
+    const slaves = latestNumber(metricMap.mysql_slaves_connected);
+    const clients = latestNumber(metricMap.mysql_rpl_semi_sync_master_clients);
+    const count = slaves ?? clients;
+    if (count != null) {
+      downstream.push({
+        key: 'slaves',
+        label: '已连从库',
+        value: formatPosition(count),
+        tone: 'muted'
+      });
+    }
+    const semisync = latestNumber(metricMap.mysql_rpl_semi_sync_master_status);
+    if (semisync != null) {
+      downstream.push({
+        key: 'semisync',
+        label: '半同步',
+        value: semisync > 0 ? '已开启' : '已关闭',
+        tone: semisync > 0 ? 'ok' : 'muted'
+      });
+    }
+  }
+
+  return { error, logs, downstream };
 };
 
 export const waitStatementIds = (event: MysqlWaitEventRow) => {

@@ -572,6 +572,110 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     query:
       'clamp_max(100 * max by (instance_id) (mysql_open_tables{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_table_open_cache{__$labels__}), 1), 100)',
     color: '#2f6bff'
+  },
+  {
+    name: 'mysql_select_scan_rate',
+    display_name: '全表扫描速率',
+    description: '没有走索引、扫整张表的查询速率。',
+    unit: 'cps',
+    query: 'rate(mysql_select_scan{__$labels__}[__$window__])',
+    color: '#2f6bff'
+  },
+  {
+    name: 'mysql_table_locks_waited_rate',
+    display_name: '表锁等待速率',
+    description: '语句等到表锁才继续执行的次数速率。',
+    unit: 'cps',
+    query: 'rate(mysql_table_locks_waited{__$labels__}[__$window__])',
+    color: '#ff8a1f'
+  },
+  {
+    name: 'mysql_slave_relay_log_pos',
+    display_name: 'Relay 日志位置',
+    description: '从库中继日志当前位置。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_relay_log_pos{__$labels__})',
+    color: '#597ef7'
+  },
+  {
+    name: 'mysql_slave_relay_log_space',
+    display_name: 'Relay 日志空间',
+    description: '从库中继日志占用空间。',
+    unit: 'bytes',
+    query: 'max by (instance_id) (mysql_slave_relay_log_space{__$labels__})',
+    color: '#597ef7'
+  },
+  {
+    name: 'mysql_replication_source_log_pos',
+    display_name: 'Binlog 位点',
+    description: '从库已执行或已读取的主库二进制日志位置。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_exec_master_log_pos{__$labels__} or mysql_slave_exec_source_log_pos{__$labels__} or mysql_slave_read_master_log_pos{__$labels__} or mysql_slave_read_source_log_pos{__$labels__})',
+    color: '#2f6bff'
+  },
+  {
+    name: 'mysql_binary_files_count',
+    display_name: '二进制日志文件数',
+    description: '二进制日志文件数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_binary_files_count{__$labels__})',
+    color: '#597ef7'
+  },
+  {
+    name: 'mysql_binary_size_bytes',
+    display_name: '二进制日志总大小',
+    description: '全部二进制日志文件大小之和。',
+    unit: 'bytes',
+    query: 'max by (instance_id) (mysql_binary_size_bytes{__$labels__})',
+    color: '#2f6bff'
+  },
+  {
+    name: 'mysql_slave_last_errno',
+    display_name: '复制错误号',
+    description: '复制状态行上的错误号。0 表示当前没有复制错误。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_last_errno{__$labels__})',
+    color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_slave_last_io_errno',
+    display_name: '复制 IO 错误号',
+    description: '复制 IO 线程错误号。0 表示当前没有 IO 错误。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_last_io_errno{__$labels__})',
+    color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_slave_last_sql_errno',
+    display_name: '复制 SQL 错误号',
+    description: '复制 SQL 线程错误号。0 表示当前没有 SQL 错误。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_last_sql_errno{__$labels__})',
+    color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_slaves_connected',
+    display_name: '已连从库数',
+    description: '当前连到这台主库的从库数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slaves_connected{__$labels__})',
+    color: '#27c274'
+  },
+  {
+    name: 'mysql_rpl_semi_sync_master_clients',
+    display_name: '半同步从库数',
+    description: '半同步下连着的从库数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_rpl_semi_sync_master_clients{__$labels__})',
+    color: '#27c274'
+  },
+  {
+    name: 'mysql_rpl_semi_sync_master_status',
+    display_name: '半同步状态',
+    description: '主库半同步是否开启。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_rpl_semi_sync_master_status{__$labels__})',
+    color: '#27c274'
   }
 ];
 
@@ -634,6 +738,19 @@ export const DASHBOARD_FALLBACK_GROUPS: Record<string, string> = {
   mysql_open_files: 'TableCache',
   mysql_open_files_utilization: 'TableCache',
   mysql_table_open_cache_utilization: 'TableCache',
+  mysql_select_scan_rate: 'QueryPerf',
+  mysql_table_locks_waited_rate: 'QueryPerf',
+  mysql_slave_relay_log_pos: 'Replication',
+  mysql_slave_relay_log_space: 'Replication',
+  mysql_replication_source_log_pos: 'Replication',
+  mysql_binary_files_count: 'Replication',
+  mysql_binary_size_bytes: 'Replication',
+  mysql_slave_last_errno: 'Replication',
+  mysql_slave_last_io_errno: 'Replication',
+  mysql_slave_last_sql_errno: 'Replication',
+  mysql_slaves_connected: 'Replication',
+  mysql_rpl_semi_sync_master_clients: 'Replication',
+  mysql_rpl_semi_sync_master_status: 'Replication',
   mysql_table_open_cache_hits_rate: 'TableCache',
   mysql_table_open_cache_misses_rate: 'TableCache',
   mysql_key_reads_rate: 'KeyCache',

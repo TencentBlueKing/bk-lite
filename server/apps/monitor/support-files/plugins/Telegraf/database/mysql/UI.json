@@ -196,8 +196,8 @@
       "required": false,
       "default_value": false,
       "description": "采集传统主从复制延迟与 IO/SQL 线程状态。",
-      "guide_short": "默认关闭。传统 SHOW SLAVE STATUS（MySQL 5.7 / 部分 MariaDB）。开启后可采 mysql_slave_seconds_behind_master、mysql_slave_io_running、mysql_slave_sql_running。仅从库需要复制监控时开启，需查看复制权限（REPLICATION CLIENT）；非复制实例开启可能导致采集失败。MySQL 8+ 也可改用「Replica 状态」。",
-      "guide_short_en": "Off by default. Classic SHOW SLAVE STATUS. Metrics: mysql_slave_seconds_behind_master, mysql_slave_io_running, mysql_slave_sql_running. For replicas only; needs REPLICATION CLIENT to view replication. Non-replicas may fail. On MySQL 8+ you may use Replica Status instead.",
+      "guide_short": "默认关闭。传统 SHOW SLAVE STATUS（MySQL 5.7 / 部分 MariaDB）。开启后可采 mysql_slave_seconds_behind_master、mysql_slave_io_running、mysql_slave_sql_running，以及状态行里的 Relay 空间、Binlog 位点和错误号。仅从库需要复制监控时开启，需查看复制权限（REPLICATION CLIENT）；非复制实例开启可能导致采集失败。MySQL 8+ 也可改用「Replica 状态」。",
+      "guide_short_en": "Off by default. Classic SHOW SLAVE STATUS. Metrics: mysql_slave_seconds_behind_master, mysql_slave_io_running, mysql_slave_sql_running, plus relay space, binlog position, and error number when the status row has them. For replicas only; needs REPLICATION CLIENT to view replication. Non-replicas may fail. On MySQL 8+ you may use Replica Status instead.",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.gather_slave_status"
@@ -213,8 +213,8 @@
       "required": false,
       "default_value": false,
       "description": "采集 MySQL 8+ 复制延迟与线程状态。",
-      "guide_short": "默认关闭。面向 MySQL 8+ SHOW REPLICA STATUS，指标与 Slave 状态同类（复制延迟、IO/SQL 线程）。需查看复制权限（REPLICATION CLIENT）；与「Slave 状态」按目标版本择一即可，一般不必两个都开。非复制实例开启可能导致采集失败。",
-      "guide_short_en": "Off by default. MySQL 8+ SHOW REPLICA STATUS for lag/thread state (same class as slave metrics). Needs REPLICATION CLIENT to view replication. Prefer one of Slave or Replica by version; non-replicas may fail.",
+      "guide_short": "默认关闭。面向 MySQL 8+ SHOW REPLICA STATUS，指标与 Slave 状态同类（复制延迟、IO/SQL 线程，以及 Relay 空间、Binlog 位点和错误号）。需查看复制权限（REPLICATION CLIENT）；与「Slave 状态」按目标版本择一即可，一般不必两个都开。非复制实例开启可能导致采集失败。",
+      "guide_short_en": "Off by default. MySQL 8+ SHOW REPLICA STATUS for lag, thread state, relay space, binlog position, and error number (same class as slave metrics). Needs REPLICATION CLIENT to view replication. Prefer one of Slave or Replica by version; non-replicas may fail.",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.gather_replica_status"
