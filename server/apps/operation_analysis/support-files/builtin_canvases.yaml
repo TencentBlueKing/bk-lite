@@ -198,11 +198,6 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-      interaction:
-        kind: title
-        name: 查看实例规模
-        url: '/cmdb/assetOverview'
-        openMode: newTab
       selectedFields:
       - model_with_instance_count
       thresholdColors:
@@ -223,11 +218,6 @@ dashboards:
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-      interaction:
-        kind: title
-        name: 查看实例规模
-        url: '/cmdb/assetOverview'
-        openMode: newTab
       selectedFields:
       - empty_model_count
       thresholdColors:
@@ -250,11 +240,6 @@ dashboards:
       unit: '%'
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-      interaction:
-        kind: title
-        name: 查看实例规模
-        url: '/cmdb/assetOverview'
-        openMode: newTab
       selectedFields:
       - model_coverage_rate
       thresholdColors:
