@@ -30,6 +30,7 @@ import {
   StarOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
+import InstUuidCopy from './instUuidCopy';
 import { useSearchParams, usePathname } from 'next/navigation';
 import { useScreenAwareRouter } from '@/console-layout';
 import CustomTable from '@/components/custom-table';
@@ -56,7 +57,8 @@ import {
   ensureCollectTaskMap,
 } from '@/app/cmdb/utils/collectTask';
 import { useCommon, useCmdbUserList } from '@/app/cmdb/context/common';
-import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
+import { INST_UUID_COLUMN_KEY, resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
+import { instanceUuidFilterAttr } from './searchFilterAttrs';
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
 import { isMultiIpSearchAttr } from './list/multiIpSearch';
 import { useModelApi, useClassificationApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
@@ -433,8 +435,12 @@ const AssetDataContent = () => {
     exportRef.current?.showModal({
       title,
       modelId,
-      columns: columns.filter((col) => col.key !== EXTERNAL_ID_COLUMN_KEY),
-      displayFieldKeys: displayFieldKeys.filter((key) => key !== EXTERNAL_ID_COLUMN_KEY),
+      columns: columns.filter(
+        (col) => col.key !== EXTERNAL_ID_COLUMN_KEY && col.key !== INST_UUID_COLUMN_KEY,
+      ),
+      displayFieldKeys: displayFieldKeys.filter(
+        (key) => key !== EXTERNAL_ID_COLUMN_KEY && key !== INST_UUID_COLUMN_KEY,
+      ),
       selectedKeys,
       exportType,
       tableData,
@@ -1237,7 +1243,22 @@ const AssetDataContent = () => {
         </div>
       ),
     };
-    const tableColumns = [...columnsWithFollow, ...(externalIdColumn ? [externalIdColumn] : []), actionColumn];
+    const uuidColumn: ColumnItem = {
+      title: t('Model.instanceUuid'),
+      key: INST_UUID_COLUMN_KEY,
+      dataIndex: INST_UUID_COLUMN_KEY,
+      width: 240,
+      ellipsis: true,
+      render: (value: unknown) => (
+        <InstUuidCopy value={value ? String(value) : ''} className="font-mono text-[12px]" />
+      ),
+    };
+    const tableColumns = [
+      ...columnsWithFollow,
+      uuidColumn,
+      ...(externalIdColumn ? [externalIdColumn] : []),
+      actionColumn,
+    ];
     setColumns(tableColumns);
 
     const orderedColumns = tableColumns
@@ -1430,9 +1451,14 @@ const AssetDataContent = () => {
                       userList={userList}
                       modelId={modelId}
                       displayFieldKeys={displayFieldKeys}
-                      attrList={propertyList.filter(
-                        (item) => item.attr_type !== 'organization'
-                      )}
+                      attrList={
+                        displayFieldKeys.includes(INST_UUID_COLUMN_KEY)
+                          ? [
+                            ...propertyList.filter((item) => item.attr_type !== 'organization'),
+                            instanceUuidFilterAttr(t('Model.instanceUuid')),
+                          ]
+                          : propertyList.filter((item) => item.attr_type !== 'organization')
+                      }
                       onSearch={handleSearch}
                       onChange={handleFilterBarChange}
                       onFilterChange={handleFilterBarChange}
@@ -1527,7 +1553,7 @@ const AssetDataContent = () => {
 
           <div className="w-full">
             <FilterBar
-              attrList={propertyList}
+              attrList={[...propertyList, instanceUuidFilterAttr(t('Model.instanceUuid'))]}
               userList={userList}
               proxyOptions={proxyOptions}
               modelId={modelId}

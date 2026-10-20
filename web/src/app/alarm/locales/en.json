@@ -334,7 +334,7 @@
     "resolved": "Resolved",
     "closed": "Closed",
     "close": "close",
-    "closeReasonLabel": "Close reason (optional)",
+    "closeReasonLabel": "Close reason",
     "closeReasonPlaceholder": "Enter a close reason",
     "reassign": "reassign",
     "acknowledge": "acknowledge",

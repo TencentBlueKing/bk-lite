@@ -246,6 +246,7 @@
         "baseInfo": "基本信息",
         "systemLinkage": "模块关联",
         "systemLinkageExternalId": "外联 ID",
+        "instanceUuid": "UUID",
         "systemLinkageHint": "以下为系统内置关联 ID。可点建立监控关联，按身份探测已有监控并只写关联，不会新建；ID 仍只读。",
         "systemLinkageNodeId": "节点 ID",
         "systemLinkageMonitorId": "监控实例 ID",
