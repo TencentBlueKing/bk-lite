@@ -181,7 +181,7 @@ export function StatementPane({
   const hasRows = rows.length > 0;
   return (
     <div className={pro.chartStack}>
-      <ProSectionTitle>语句</ProSectionTitle>
+      <ProSectionTitle>趋势</ProSectionTitle>
       <MountTrend
         title={selected?.sql || '语句趋势'}
         unit={rows.some((row) => row.totalTimeMs != null) ? 'ms' : 'counts'}
@@ -194,8 +194,8 @@ export function StatementPane({
       {primaryWait ? (
         <div className="text-[12px] text-[var(--color-text-3)]">{`主要等待 ${primaryWait}`}</div>
       ) : null}
+      <ProSectionTitle>语句列表</ProSectionTitle>
       <LayeredEntityTable
-        title="语句列表"
         rows={entities}
         columns={columns}
         loading={loading}
@@ -251,9 +251,9 @@ export function WaitPane({
     : emptyCopy(MYSQL_EMPTY_COPY.statements);
   return (
     <div className={pro.chartStack}>
-      <ProSectionTitle>等待</ProSectionTitle>
+      <ProSectionTitle>趋势</ProSectionTitle>
       <MountTrend
-        title={selected?.name || '等待趋势'}
+        title={selected?.name || ''}
         unit="counts"
         points={selected?.trend}
         legendLabel="等待"
@@ -261,8 +261,8 @@ export function WaitPane({
         loading={loading && !hasRows}
         emptyText={!hasRows ? '暂无数据' : selected ? '该等待事件暂无趋势' : '选中后上图跟随'}
       />
+      <ProSectionTitle>等待列表</ProSectionTitle>
       <LayeredEntityTable
-        title="等待列表"
         rows={waitTableRows}
         columns={waitTableColumns}
         loading={loading}
@@ -287,7 +287,6 @@ export function WaitPane({
       />
       <ProSectionTitle>相关语句</ProSectionTitle>
       <LayeredEntityTable
-        title="相关语句"
         rows={relatedTableRows}
         columns={relatedTableColumns}
         loading={loading && statements.length === 0 && rows.length === 0}
