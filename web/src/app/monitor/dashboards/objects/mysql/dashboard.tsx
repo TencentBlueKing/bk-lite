@@ -655,6 +655,9 @@ export default function MysqlDashboardPage() {
                     monitorObjectId={monitorObjectId}
                     nodeId={currentInstanceOption?.nodeId || ''}
                     ip={currentInstanceOption?.ip || ''}
+                    instanceName={resolvedInstanceName}
+                    idValues={idValues}
+                    instanceIdKeys={instanceIdKeys}
                     timeValues={timeValues}
                     minStepSeconds={currentInstanceInterval}
                   />

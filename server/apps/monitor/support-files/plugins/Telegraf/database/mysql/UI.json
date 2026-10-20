@@ -255,6 +255,40 @@
       },
       "label_en": "Table Lock Waits",
       "description_en": "Collect per-table SQL lock wait for read and write."
+    },
+    {
+      "name": "gather_perf_events_statements",
+      "advanced": true,
+      "label": "语句采集",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "采集语句耗时、执行次数和扫描行，供实例详情「语句」查看。",
+      "guide_short": "默认关闭。开启后，实例详情「语句」可查看语句耗时、执行次数和扫描行。需要实例已启用 Performance Schema，且监控账号具备 performance_schema 的 SELECT。未开启时该页没有语句数据；连接、QPS 等常规指标不受影响。",
+      "guide_short_en": "Off by default. When enabled, the Statements tab shows statement time, execution count, and rows examined. Requires Performance Schema and SELECT on performance_schema. Connections, QPS, and other routine metrics still collect when this is off.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_perf_events_statements"
+      },
+      "label_en": "Statement Collection",
+      "description_en": "Collect statement time, execution count, and rows examined for the Statements tab."
+    },
+    {
+      "name": "gather_event_waits",
+      "advanced": true,
+      "label": "等待/会话采集",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "采集等待事件的次数与耗时，供实例详情「等待」查看。",
+      "guide_short": "默认关闭。开启后，实例详情「等待」可查看等待事件的次数与耗时。需要实例已启用 Performance Schema，且监控账号具备 performance_schema 的 SELECT。未开启时该页没有等待数据；与「表 IO Wait」「表锁 Wait」相互独立。",
+      "guide_short_en": "Off by default. When enabled, the Waits tab shows wait-event counts and time. Requires Performance Schema and SELECT on performance_schema. This is separate from Table IO Waits and Table Lock Waits.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.gather_event_waits"
+      },
+      "label_en": "Wait and Session Collection",
+      "description_en": "Collect wait-event counts and time for the Waits tab."
     }
   ],
   "advanced_panel": {

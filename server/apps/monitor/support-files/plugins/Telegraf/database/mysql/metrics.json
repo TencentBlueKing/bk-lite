@@ -933,6 +933,268 @@
       "dimensions": [],
       "description": "Instance-wide rate of SQL table lock wait time for read and write classes; requires gather_table_lock_waits",
       "query": "sum by (instance_id) (rate(mysql_perf_schema_read_normal{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_read_with_shared_locks{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_read_high_priority{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_read_no_insert{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_write_normal{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_write_allow_write{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_write_concurrent_insert{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_write_low_priority{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_time",
+      "display_name": "Statement Time",
+      "metric_zh_name": "语句耗时",
+      "metric_en_name": "Statement Time",
+      "metric_zh_desc": "单条语句的累计耗时，单位秒。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative time for one statement, in seconds. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative time for one statement, in seconds. Enable Statement Collection under advanced collection",
+      "query": "topk(20, max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_calls",
+      "display_name": "Statement Executions",
+      "metric_zh_name": "语句执行次数",
+      "metric_en_name": "Statement Executions",
+      "metric_zh_desc": "单条语句的累计执行次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative executions for one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative executions for one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_rows_examined",
+      "display_name": "Statement Rows Examined",
+      "metric_zh_name": "语句扫描行数",
+      "metric_en_name": "Statement Rows Examined",
+      "metric_zh_desc": "单条语句累计扫描的行数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative rows examined by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows examined by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_examined_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_rows_affected",
+      "display_name": "Statement Rows Affected",
+      "metric_zh_name": "语句影响行数",
+      "metric_en_name": "Statement Rows Affected",
+      "metric_zh_desc": "单条语句累计影响的行数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative rows affected by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows affected by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_affected_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_rows_sent",
+      "display_name": "Statement Rows Sent",
+      "metric_zh_name": "语句返回行数",
+      "metric_en_name": "Statement Rows Sent",
+      "metric_zh_desc": "单条语句累计返回的行数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative rows sent by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows sent by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_sent_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_errors",
+      "display_name": "Statement Errors",
+      "metric_zh_name": "语句错误次数",
+      "metric_en_name": "Statement Errors",
+      "metric_zh_desc": "单条语句累计错误次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative errors for one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative errors for one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_errors_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_warnings",
+      "display_name": "Statement Warnings",
+      "metric_zh_name": "语句警告次数",
+      "metric_en_name": "Statement Warnings",
+      "metric_zh_desc": "单条语句累计警告次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative warnings for one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative warnings for one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_warnings_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_tmp_tables",
+      "display_name": "Statement Temporary Tables",
+      "metric_zh_name": "语句临时表次数",
+      "metric_en_name": "Statement Temporary Tables",
+      "metric_zh_desc": "单条语句累计创建的临时表次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative temporary tables created by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative temporary tables created by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_tmp_tables_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_tmp_disk_tables",
+      "display_name": "Statement Disk Temporary Tables",
+      "metric_zh_name": "语句磁盘临时表次数",
+      "metric_en_name": "Statement Disk Temporary Tables",
+      "metric_zh_desc": "单条语句累计创建的磁盘临时表次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative on-disk temporary tables created by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative on-disk temporary tables created by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_tmp_disk_tables_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_sort_merge_passes",
+      "display_name": "Statement Sort Merge Passes",
+      "metric_zh_name": "语句排序合并次数",
+      "metric_en_name": "Statement Sort Merge Passes",
+      "metric_zh_desc": "单条语句累计排序合并次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative sort merge passes for one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative sort merge passes for one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_sort_merge_passes_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_sort_rows",
+      "display_name": "Statement Sorted Rows",
+      "metric_zh_name": "语句排序行数",
+      "metric_en_name": "Statement Sorted Rows",
+      "metric_zh_desc": "单条语句累计排序的行数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative rows sorted by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows sorted by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_sort_rows_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_no_index_used",
+      "display_name": "Statement No Index Used",
+      "metric_zh_name": "语句未走索引次数",
+      "metric_en_name": "Statement No Index Used",
+      "metric_zh_desc": "单条语句累计未使用索引的次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative executions of one statement that did not use an index. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative executions of one statement that did not use an index. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_no_index_used_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "WaitEvent",
+      "name": "mysql_wait_event_time",
+      "display_name": "Wait Event Time",
+      "metric_zh_name": "等待事件耗时",
+      "metric_en_name": "Wait Event Time",
+      "metric_zh_desc": "单个等待事件的累计耗时，单位秒。需在高级采集中开启「等待/会话采集」",
+      "metric_en_desc": "Cumulative time for one wait event, in seconds. Enable Wait and Session Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "event_name", "description": "等待事件"}
+      ],
+      "description": "Cumulative time for one wait event, in seconds. Enable Wait and Session Collection under advanced collection",
+      "query": "topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "WaitEvent",
+      "name": "mysql_wait_event_count",
+      "display_name": "Wait Event Count",
+      "metric_zh_name": "等待事件次数",
+      "metric_en_name": "Wait Event Count",
+      "metric_zh_desc": "单个等待事件的累计次数。需在高级采集中开启「等待/会话采集」",
+      "metric_en_desc": "Cumulative count for one wait event. Enable Wait and Session Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "event_name", "description": "等待事件"}
+      ],
+      "description": "Cumulative count for one wait event. Enable Wait and Session Collection under advanced collection",
+      "query": "max by (instance_id, event_name) (mysql_perf_schema_events_waits_total{__$labels__}) and on (instance_id, event_name) topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))"
     }
   ]
 }

@@ -80,6 +80,117 @@ export const hasStatementCollection = (rows: readonly MysqlStatementRow[]) => ro
 
 export const hasWaitCollection = (rows: readonly MysqlWaitEventRow[]) => rows.length > 0;
 
+const DIGEST_ROW_LIMIT = 20;
+
+interface LabeledPoints {
+  id: string;
+  labels: Record<string, string>;
+  points: Array<{ time: number; value: number }>;
+}
+
+const labeledSeries = (
+  series: MetricSeries | undefined,
+  idOf: (labels: Record<string, string>) => string
+): LabeledPoints[] => {
+  if (!series || series.loadState !== 'success' || !series.viewData?.length) return [];
+  const keys = new Set<string>();
+  series.viewData.forEach((point) => {
+    Object.keys(point.seriesMetrics || {}).forEach((key) => keys.add(key));
+  });
+  return Array.from(keys).flatMap((key) => {
+    const labels = series.viewData.find((point) => point.seriesMetrics?.[key])?.seriesMetrics?.[key];
+    if (!labels) return [];
+    const id = idOf(labels).trim();
+    if (!id) return [];
+    const points = series.viewData.flatMap((point) => {
+      const value = point[key];
+      return typeof value === 'number' && Number.isFinite(value)
+        ? [{ time: Number(point.time), value }]
+        : [];
+    }).filter((point) => Number.isFinite(point.time));
+    if (!points.length) return [];
+    return [{ id, labels, points }];
+  });
+};
+
+const latestOf = (points: Array<{ time: number; value: number }>) => {
+  const sorted = [...points].sort((left, right) => left.time - right.time);
+  return sorted.length ? sorted[sorted.length - 1].value : null;
+};
+
+const statementIdentity = (labels: Record<string, string>) => {
+  const digest = String(labels.digest || '').trim();
+  const schema = String(labels.schema || '').trim();
+  if (digest) return schema ? `${schema}|${digest}` : digest;
+  return String(labels.digest_text || '').trim();
+};
+
+/** 把语句耗时、次数、扫描行按摘要对齐成表行。无序列时返回空数组。 */
+export const readMysqlStatementRows = (
+  timeSeries: MetricSeries | undefined,
+  callSeries: MetricSeries | undefined,
+  examinedSeries: MetricSeries | undefined
+): MysqlStatementRow[] => {
+  const times = labeledSeries(timeSeries, statementIdentity);
+  const calls = labeledSeries(callSeries, statementIdentity);
+  const examined = labeledSeries(examinedSeries, statementIdentity);
+  const ids = new Set([...times, ...calls, ...examined].map((item) => item.id));
+  return Array.from(ids).flatMap((id) => {
+    const time = times.find((item) => item.id === id);
+    const call = calls.find((item) => item.id === id);
+    const examinedRow = examined.find((item) => item.id === id);
+    const labels = time?.labels || call?.labels || examinedRow?.labels;
+    if (!labels) return [];
+    const sql = String(labels.digest_text || labels.digest || id).trim();
+    if (!sql) return [];
+    const seconds = time ? latestOf(time.points) : null;
+    const trendSource = time?.points || call?.points || [];
+    return [{
+      id,
+      sql,
+      totalTimeMs: seconds == null ? null : seconds * 1000,
+      calls: call ? latestOf(call.points) : null,
+      rowsExamined: examinedRow ? latestOf(examinedRow.points) : null,
+      trend: [...trendSource]
+        .sort((left, right) => left.time - right.time)
+        .map((point) => ({ time: point.time, value: time ? point.value * 1000 : point.value }))
+    }];
+  }).sort((left, right) => (
+    (right.totalTimeMs || 0) - (left.totalTimeMs || 0)
+    || (right.calls || 0) - (left.calls || 0)
+  )).slice(0, DIGEST_ROW_LIMIT);
+};
+
+/** 把等待次数与耗时按事件名对齐成表行。无序列时返回空数组。 */
+export const readMysqlWaitRows = (
+  countSeries: MetricSeries | undefined,
+  timeSeries: MetricSeries | undefined
+): MysqlWaitEventRow[] => {
+  const eventId = (labels: Record<string, string>) => String(labels.event_name || '').trim();
+  const counts = labeledSeries(countSeries, eventId);
+  const times = labeledSeries(timeSeries, eventId);
+  const ids = new Set([...counts, ...times].map((item) => item.id));
+  return Array.from(ids).flatMap((id) => {
+    const count = counts.find((item) => item.id === id);
+    const time = times.find((item) => item.id === id);
+    const name = String(time?.labels.event_name || count?.labels.event_name || id).trim();
+    if (!name) return [];
+    const seconds = time ? latestOf(time.points) : null;
+    return [{
+      id,
+      name,
+      waits: count ? latestOf(count.points) : null,
+      timeMs: seconds == null ? null : seconds * 1000,
+      trend: count
+        ? [...count.points].sort((left, right) => left.time - right.time)
+        : []
+    }];
+  }).sort((left, right) => (
+    (right.timeMs || 0) - (left.timeMs || 0)
+    || (right.waits || 0) - (left.waits || 0)
+  )).slice(0, DIGEST_ROW_LIMIT);
+};
+
 export interface MysqlOverviewReadings {
   threadsConnected: number | null;
   maxConnections: number | null;

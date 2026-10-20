@@ -51,9 +51,13 @@ interface StatementPaneProps {
   rows: readonly MysqlStatementRow[];
   selectedId: string;
   onSelect: (id: string) => void;
+  loading?: boolean;
 }
 
-export function StatementPane({ rows, selectedId, onSelect }: StatementPaneProps) {
+export function StatementPane({ rows, selectedId, onSelect, loading = false }: StatementPaneProps) {
+  if (loading && rows.length === 0) {
+    return <GrayTabEmptyState title="加载中" />;
+  }
   if (!rows.length) {
     return <GrayTabEmptyState {...MYSQL_EMPTY_COPY.statements} />;
   }
@@ -101,6 +105,7 @@ interface WaitPaneProps {
   selectedId: string;
   onSelect: (id: string) => void;
   onOpenStatement: (statementId: string) => void;
+  loading?: boolean;
 }
 
 export function WaitPane({
@@ -108,8 +113,12 @@ export function WaitPane({
   statements,
   selectedId,
   onSelect,
-  onOpenStatement
+  onOpenStatement,
+  loading = false
 }: WaitPaneProps) {
+  if (loading && rows.length === 0) {
+    return <GrayTabEmptyState title="加载中" />;
+  }
   if (!rows.length) {
     return <GrayTabEmptyState {...MYSQL_EMPTY_COPY.waits} />;
   }

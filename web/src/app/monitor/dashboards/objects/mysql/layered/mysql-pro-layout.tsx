@@ -19,6 +19,7 @@ import {
 } from '../../../shared/utils';
 import { buildInstanceDisplayName } from '../../../shared/utils/instance';
 import type { MetricSeries } from '../types';
+import { MYSQL_DIGEST_METRICS } from '../queries';
 import OverviewPane from './overview-pane';
 import PerformancePane from './performance-pane';
 import ReplicationPane from './replication-pane';
@@ -32,6 +33,8 @@ import {
   isMysqlIaTab,
   matchMysqlHost,
   readMysqlOverview,
+  readMysqlStatementRows,
+  readMysqlWaitRows,
   type MysqlHostCandidate,
   type MysqlIaTab,
   type MysqlStatementRow,
@@ -48,6 +51,9 @@ interface MysqlProLayoutProps {
   monitorObjectId?: React.Key;
   nodeId: string;
   ip: string;
+  instanceName: string;
+  idValues: string[];
+  instanceIdKeys: string[];
   timeValues: TimeValuesProps;
   minStepSeconds?: number;
 }
@@ -55,15 +61,6 @@ interface MysqlProLayoutProps {
 const TAB_QUERY = 'mysqlTab';
 
 const hostMetric = (name: string) => HOST_DASHBOARD_CONFIG.metrics.find((metric) => metric.name === name);
-
-/**
- * 语句摘要与等待事件还没有采集目录。
- * 空结果表示无采：不发占位查询，也不补假行。
- */
-const EMPTY_DIGEST: { statements: MysqlStatementRow[]; waits: MysqlWaitEventRow[] } = {
-  statements: [],
-  waits: []
-};
 
 export default function MysqlProLayout({
   metricMap,
@@ -73,6 +70,9 @@ export default function MysqlProLayout({
   monitorObjectId,
   nodeId,
   ip,
+  instanceName,
+  idValues,
+  instanceIdKeys,
   timeValues,
   minStepSeconds
 }: MysqlProLayoutProps) {
@@ -80,9 +80,12 @@ export default function MysqlProLayout({
   const searchParams = useSearchParams();
   const { getMonitorObject, getInstanceList, getMonitorAlert } = useMonitorApi();
   const { getInstanceQuery } = useViewApi();
-  const digest = EMPTY_DIGEST;
-  const statementsCollected = hasStatementCollection(digest.statements);
-  const waitsCollected = hasWaitCollection(digest.waits);
+  const [statements, setStatements] = useState<MysqlStatementRow[]>([]);
+  const [waits, setWaits] = useState<MysqlWaitEventRow[]>([]);
+  const [digestStatus, setDigestStatus] = useState<'loading' | 'ready'>('loading');
+  const statementsCollected = hasStatementCollection(statements);
+  const waitsCollected = hasWaitCollection(waits);
+  const digestLoading = digestStatus === 'loading';
   const requestedTab = searchParams.get(TAB_QUERY);
   const tabFromUrl: MysqlIaTab = isMysqlIaTab(requestedTab) ? requestedTab : 'overview';
   const [tab, setTab] = useState<MysqlIaTab>(tabFromUrl);
@@ -262,6 +265,66 @@ export default function MysqlProLayout({
     };
   }, [getMonitorAlert, instanceId, tab]);
 
+  const digestIdentity = `${idValues.join('\u0001')}::${instanceIdKeys.join('\u0001')}`;
+  useEffect(() => {
+    const [valueKey, keyKey = ''] = digestIdentity.split('::');
+    const values = valueKey ? valueKey.split('\u0001') : [];
+    const keys = keyKey ? keyKey.split('\u0001') : [];
+    if (!monitorObjectId || !instanceId || !values.length) {
+      setStatements([]);
+      setWaits([]);
+      setDigestStatus('ready');
+      return undefined;
+    }
+    let active = true;
+    setDigestStatus('loading');
+    const context = { monitorObjectId: String(monitorObjectId), instanceId };
+    const loadOne = (metric: (typeof MYSQL_DIGEST_METRICS)[number]) => getInstanceQuery(buildSearchParams(
+      metric.query,
+      metric.unit,
+      values,
+      keys,
+      timeValues,
+      undefined,
+      false,
+      minStepSeconds,
+      context
+    )).then((result) => toMetricSeries(
+      metric,
+      result,
+      instanceId,
+      instanceName,
+      values,
+      keys
+    )).catch(() => ({ ...metric, viewData: [], loadState: 'error' as const }));
+
+    Promise.all(MYSQL_DIGEST_METRICS.map((metric) => loadOne(metric))).then((series) => {
+      if (!active) return;
+      const byName = Object.fromEntries(series.map((item) => [item.name, item]));
+      setStatements(readMysqlStatementRows(
+        byName.mysql_statement_time,
+        byName.mysql_statement_calls,
+        byName.mysql_statement_rows_examined
+      ));
+      setWaits(readMysqlWaitRows(
+        byName.mysql_wait_event_count,
+        byName.mysql_wait_event_time
+      ));
+      setDigestStatus('ready');
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    digestIdentity,
+    getInstanceQuery,
+    instanceId,
+    instanceName,
+    minStepSeconds,
+    monitorObjectId,
+    timeValues
+  ]);
+
   const openStatement = (id: string) => {
     setStatementId(id);
     selectTab('statements');
@@ -277,17 +340,19 @@ export default function MysqlProLayout({
     if (tab === 'statements') {
       return (
         <StatementPane
-          rows={digest.statements}
+          rows={statements}
           selectedId={statementId}
           onSelect={setStatementId}
+          loading={digestLoading}
         />
       );
     }
     if (tab === 'waits') {
       return (
         <WaitPane
-          rows={digest.waits}
-          statements={digest.statements}
+          rows={waits}
+          statements={statements}
+          loading={digestLoading}
           selectedId={waitId}
           onSelect={setWaitId}
           onOpenStatement={openStatement}
@@ -332,8 +397,10 @@ export default function MysqlProLayout({
             if (isMysqlIaTab(key)) selectTab(key);
           }}
           items={MYSQL_IA_TABS.map((item) => {
-            const dimmed = (item.key === 'statements' && !statementsCollected)
-              || (item.key === 'waits' && !waitsCollected);
+            const dimmed = digestStatus === 'ready' && (
+              (item.key === 'statements' && !statementsCollected)
+              || (item.key === 'waits' && !waitsCollected)
+            );
             return {
               key: item.key,
               label: (

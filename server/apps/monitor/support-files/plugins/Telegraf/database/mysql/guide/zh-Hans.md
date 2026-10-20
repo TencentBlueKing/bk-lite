@@ -7,6 +7,7 @@
 - 采集节点能够访问目标 MySQL 主机和实际端口。
 - 准备可登录实例并读取全局状态、全局变量及模板所需统计的专用监控账号。
 - 进程列表统计通常需要 `PROCESS`；复制统计通常需要 `REPLICATION CLIENT`。按实际启用的数据遵循最小权限原则。
+- 语句与等待/会话采集需要实例启用 Performance Schema，且监控账号具备 `SELECT ON performance_schema.*`（以及现有 `PROCESS` 等权限）。
 - 当前模板固定 `tls=false`，页面没有 TLS、数据库名或自定义连接参数字段。
 - 模板会采集进程列表、InnoDB、旧版复制状态、二进制日志、全局变量及表等待统计；不会采集用户统计或新版 replica 状态查询。
 

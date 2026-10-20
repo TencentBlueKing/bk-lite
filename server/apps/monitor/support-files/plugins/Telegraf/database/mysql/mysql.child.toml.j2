@@ -17,6 +17,8 @@
     gather_table_schema = false
     gather_table_io_waits = {{ gather_table_io_waits | default(false, true) | lower }}
     gather_table_lock_waits = {{ gather_table_lock_waits | default(false, true) | lower }}
+    gather_perf_events_statements = {{ gather_perf_events_statements | default(false, true) | lower }}
+    gather_event_waits = {{ gather_event_waits | default(false, true) | lower }}
 
     # 慢速 SQL 相关采集间隔
     interval_slow = "10s"
@@ -121,7 +123,25 @@
       "write_normal",
       "write_allow_write",
       "write_concurrent_insert",
-      "write_low_priority"
+      "write_low_priority",
+
+      # 语句摘要（需 gather_perf_events_statements，measurement=mysql_perf_schema）
+      "events_statements_total",
+      "events_statements_seconds_total",
+      "events_statements_errors_total",
+      "events_statements_warnings_total",
+      "events_statements_rows_affected_total",
+      "events_statements_rows_sent_total",
+      "events_statements_rows_examined_total",
+      "events_statements_tmp_tables_total",
+      "events_statements_tmp_disk_tables_total",
+      "events_statements_sort_merge_passes_total",
+      "events_statements_sort_rows_total",
+      "events_statements_no_index_used_total",
+
+      # 等待事件（需 gather_event_waits，measurement=mysql_perf_schema）
+      "events_waits_total",
+      "events_waits_seconds_total"
     ]
 
     [inputs.mysql.tags]
