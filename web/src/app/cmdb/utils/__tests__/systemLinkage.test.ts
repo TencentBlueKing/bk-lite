@@ -3,6 +3,8 @@ import { HandledRequestError } from '@/utils/request';
 import {
   canSyncMonitor,
   canOpenMonitorLink,
+  canOpenCmdbLink,
+  builtinCmdbModelId,
   isPlatformTreeModel,
   showNodeId,
   resolveMonitorLinkMessage,
@@ -96,6 +98,18 @@ describe('systemLinkage', () => {
     expect(canOpenMonitorLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'k8s_cluster')).toBe(false);
     expect(canOpenMonitorLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'host')).toBe(true);
     expect(canOpenMonitorLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'weblogic')).toBe(true);
+  });
+
+  it('hides the cmdb-link entry unless both apps are licensed and the object is mapped', () => {
+    expect(builtinCmdbModelId('Host')).toBe('host');
+    expect(builtinCmdbModelId('Weblogic')).toBeNull();
+    expect(canOpenCmdbLink(undefined, false, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([], false, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, true, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'cmdb' } as never], false, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'monitor' } as never], false, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'Weblogic')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'Host')).toBe(true);
   });
 
   it('treats empty client list as monitor sold', () => {

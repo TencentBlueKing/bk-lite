@@ -31,6 +31,17 @@
     "instName": "Name",
     "model": "Model",
     "ip": "IP",
-    "monitorId": "Monitor ID"
+    "monitorId": "Monitor ID",
+    "reverseTitle": "Sync to CMDB",
+    "reverseSubtitle": "Link existing CIs first. Anything still missing can be created after you confirm.",
+    "reverseNotFound": "Needs create",
+    "reverseNotFoundHint": "No matching CI. Confirming will create one from the monitor name, IP, organization, and cloud region.",
+    "reverseOkHint": "This task matched an existing CI and wrote the link.",
+    "reverseAlreadyLinkedHint": "This monitor instance already had a CMDB ID. No CMDB fields were changed.",
+    "createMissing": "Create selected CIs",
+    "createMissingConfirm": "This creates CIs from the monitor name, IP, organization, and cloud region, then writes the link. Existing CI fields are not overwritten.",
+    "createMissingSuccess": "Selected CIs were created",
+    "cmdbId": "CMDB ID",
+    "rowMessage": "Reason"
   }
 }

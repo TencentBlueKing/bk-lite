@@ -42,7 +42,10 @@ import TimeSelector from '@/components/time-selector';
 import { DownOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useClientData } from '@/context/client';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
+import { useModuleLinkApi } from '@/app/module-link/api';
+import { canOpenCmdbLink } from '@/app/cmdb/utils/systemLinkage';
 import {
   showGroupName,
   getBaseInstanceColumn
@@ -123,6 +126,8 @@ const Asset = () => {
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const { isSuperUser } = useUserInfoContext();
+  const { clientData, loading: clientLoading } = useClientData();
+  const { createMonitorCmdbTask } = useModuleLinkApi();
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
@@ -175,6 +180,10 @@ const Asset = () => {
       batchUpdateCollectConfigs();
       return;
     }
+    if (e.key === 'batchSyncCmdb') {
+      batchSyncCmdbConfirm();
+      return;
+    }
     openInstanceModal(
       {
         keys: selectedRowKeys
@@ -183,8 +192,24 @@ const Asset = () => {
     );
   };
 
+  const objectName = findByMonitorId(objects, objectId)?.name || '';
+  const showBatchSyncCmdb = canOpenCmdbLink(clientData, clientLoading, objectName);
+  const assetMenuWithCmdb = useMemo(() => {
+    const items = [...(assetMenuItems || [])];
+    if (!showBatchSyncCmdb) return items;
+    items.push({
+      key: 'batchSyncCmdb',
+      label: (
+        <Permission className="customMenuItem" requiredPermissions={['Edit']}>
+          {t('monitor.integrations.syncToCmdb')}
+        </Permission>
+      )
+    });
+    return items;
+  }, [assetMenuItems, showBatchSyncCmdb, t]);
+
   const assetMenuProps = {
-    items: assetMenuItems,
+    items: assetMenuWithCmdb,
     onClick: handleAssetMenuClick
   };
 
@@ -1223,6 +1248,37 @@ const Asset = () => {
           discardHandEdited: true,
           pluginId
         })
+    });
+  };
+
+  const batchSyncCmdbConfirm = () => {
+    const monitorIds = selectedRowKeys.map((key) => String(key));
+    if (!monitorIds.length) return;
+    const currentObjectName = findByMonitorId(objects, objectId)?.name || '';
+    if (!currentObjectName) {
+      message.error(t('monitor.integrations.selectMonitorObject'));
+      return;
+    }
+    modal.confirm({
+      title: t('monitor.integrations.syncToCmdbConfirm', '', {
+        count: monitorIds.length
+      }),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      async onOk() {
+        try {
+          const task = await createMonitorCmdbTask(monitorIds, currentObjectName);
+          const taskId = String(task?.id || '').trim();
+          if (!taskId) {
+            message.error(t('monitor.integrations.syncToCmdbFailed'));
+            return;
+          }
+          router.push(`/module-link/monitor-cmdb/tasks/${taskId}`);
+        } catch {
+          message.error(t('monitor.integrations.syncToCmdbFailed'));
+        }
+      }
     });
   };
 

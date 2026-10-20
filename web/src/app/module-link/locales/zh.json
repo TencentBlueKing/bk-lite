@@ -31,6 +31,17 @@
     "instName": "实例名",
     "model": "模型",
     "ip": "IP",
-    "monitorId": "监控 ID"
+    "monitorId": "监控 ID",
+    "reverseTitle": "同步到 CMDB",
+    "reverseSubtitle": "先自动关联已有配置项，没有的再确认后按监控名称和 IP 新建。",
+    "reverseNotFound": "待新建",
+    "reverseNotFoundHint": "CMDB 里没有对得上的配置项。确认后会按监控侧的名称、IP、组织和云区域新建。",
+    "reverseOkHint": "这次任务按身份对上了配置项，并写上了关联。",
+    "reverseAlreadyLinkedHint": "进来之前这条监控实例就已经有 CMDB ID，这次没有改台账字段。",
+    "createMissing": "写入所选 CI",
+    "createMissingConfirm": "将按监控侧的名称、IP、组织和云区域新建配置项，并写上关联。不会覆盖已有台账字段。",
+    "createMissingSuccess": "已写入所选配置项",
+    "cmdbId": "CMDB ID",
+    "rowMessage": "原因"
   }
 }
