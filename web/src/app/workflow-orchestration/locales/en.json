@@ -73,6 +73,12 @@
       "startedAt": "Start Time",
       "finishedAt": "End Time",
       "duration": "Duration",
+      "artifacts": "Artifacts",
+      "artifactSearch": "Search files",
+      "artifactGeneratedAt": "Generated: {time}",
+      "artifactExpiresIn": "Valid for {count} more days",
+      "artifactExpiresSoon": "Expires in less than 1 day",
+      "artifactDownload": "Download {filename}",
       "startedBySystem": {
         "scheduler": "Scheduled trigger",
         "mvpVerifier": "MVP verifier",

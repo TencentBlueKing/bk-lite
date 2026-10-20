@@ -317,6 +317,8 @@ export interface DownloadableArtifact {
   format: 'docx' | 'xlsx';
   filename: string;
   size: number;
+  created_at: string;
+  expires_at: string;
   download_url: string;
 }
 

@@ -329,7 +329,7 @@ class DownloadableArtifactSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ExecutionArtifact
-        fields = ("id", "format", "filename", "size", "download_url")
+        fields = ("id", "format", "filename", "size", "created_at", "expires_at", "download_url")
         read_only_fields = fields
 
 
