@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
@@ -24,7 +24,8 @@ import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject
 import assetStyle from '../strategy/index.module.scss';
 import ThresholdList, { ThresholdItem } from '../strategy/detail/thresholdList';
 import SelectCard from '../strategy/detail/selectCard';
-import { shouldRequireNoticeUsers } from '../strategy/detail/strategyDetailUtils';
+import { seedNoticeUsersFromHandlers, shouldRequireNoticeUsers } from '../strategy/detail/strategyDetailUtils';
+import { buildPolicyGroupNoticePayload } from './policyGroupNotice';
 import { ChannelItem } from '@/app/monitor/types/event';
 import { formatUserName } from '@/utils/userDisplay';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -48,6 +49,8 @@ interface PolicyGroupRow {
   notice_type_ids?: number[];
   notice_users?: Array<string | number>;
   notice_uniform?: boolean;
+  handlers?: Array<string | number>;
+  handlers_uniform?: boolean;
   enable?: boolean;
   enable_uniform?: boolean;
   open_alert_count?: number;
@@ -191,6 +194,8 @@ const PolicyGroupPage: React.FC = () => {
   const [noticeEnabled, setNoticeEnabled] = useState(false);
   const [noticeTypeIds, setNoticeTypeIds] = useState<number[]>([]);
   const [noticeUserIds, setNoticeUserIds] = useState<string[]>([]);
+  const [handlerIds, setHandlerIds] = useState<string[]>([]);
+  const noticeUsersSeeded = useRef(false);
   const [noticeChannels, setNoticeChannels] = useState<ChannelItem[]>([]);
   const [noticeUserOptions, setNoticeUserOptions] = useState<UserItem[]>([]);
   const [noticeLoading, setNoticeLoading] = useState(false);
@@ -362,10 +367,12 @@ const PolicyGroupPage: React.FC = () => {
   };
 
   const openNotice = (group: PolicyGroupRow) => {
+    noticeUsersSeeded.current = false;
     setNoticeGroup(group);
     setNoticeEnabled(Boolean(group.notice));
     setNoticeTypeIds((group.notice_type_ids || []).map((item) => Number(item)));
     setNoticeUserIds((group.notice_users || []).map((item) => String(item)));
+    setHandlerIds((group.handlers || []).map((item) => String(item)));
     setNoticeLoading(true);
     Promise.all([
       getSystemChannelList(),
@@ -376,14 +383,14 @@ const PolicyGroupPage: React.FC = () => {
         const nextUsers = Array.isArray(userList) ? userList : [];
         setNoticeChannels(nextChannels);
         setNoticeUserOptions(nextUsers);
-        setNoticeUserIds((prev) =>
-          prev.map((value) => {
-            const matched = nextUsers.find(
-              (item) => String(item.id) === value || item.username === value
-            );
-            return matched ? String(matched.id) : value;
-          })
-        );
+        const matchUserId = (value: string) => {
+          const matched = nextUsers.find(
+            (item) => String(item.id) === value || item.username === value
+          );
+          return matched ? String(matched.id) : value;
+        };
+        setNoticeUserIds((prev) => prev.map(matchUserId));
+        setHandlerIds((prev) => prev.map(matchUserId));
       })
       .finally(() => setNoticeLoading(false));
   };
@@ -394,18 +401,35 @@ const PolicyGroupPage: React.FC = () => {
     channelList: noticeChannels,
   });
 
+  useEffect(() => {
+    if (!noticeGroup || !noticeUsersRequired) {
+      noticeUsersSeeded.current = false;
+      return;
+    }
+    if (noticeUsersSeeded.current) return;
+    const seeded = seedNoticeUsersFromHandlers(noticeUserIds, handlerIds);
+    noticeUsersSeeded.current = true;
+    if (seeded) {
+      setNoticeUserIds(seeded.map((item) => String(item)));
+    }
+  }, [handlerIds, noticeGroup, noticeUserIds, noticeUsersRequired]);
+
   const saveNotice = async () => {
     if (!noticeGroup || noticeSaving) return;
     const selectedChannels = noticeChannels.filter((item) => noticeTypeIds.includes(item.id));
     setNoticeSaving(true);
     try {
-      await updatePolicyGroupNotice({
-        group_id: noticeGroup.id,
-        notice: noticeEnabled,
-        notice_type: selectedChannels[0]?.channel_type || '',
-        notice_type_ids: noticeEnabled ? noticeTypeIds : [],
-        notice_users: noticeEnabled && noticeUsersRequired ? noticeUserIds : [],
-      });
+      await updatePolicyGroupNotice(
+        buildPolicyGroupNoticePayload({
+          groupId: noticeGroup.id,
+          noticeEnabled,
+          noticeType: selectedChannels[0]?.channel_type || '',
+          noticeTypeIds,
+          noticeUsersRequired,
+          noticeUserIds,
+          handlerIds,
+        })
+      );
       message.success('已写入这一组的全部规则');
       setNoticeGroup(null);
       await loadGroups(objectId);
@@ -523,7 +547,7 @@ const PolicyGroupPage: React.FC = () => {
       title: t('common.action'),
       dataIndex: 'action',
       key: 'action',
-      width: 340,
+      width: 400,
       render: (_, record) => (
         <Permission requiredPermissions={['Edit']}>
           <Button
@@ -535,7 +559,7 @@ const PolicyGroupPage: React.FC = () => {
             默认
           </Button>
           <Button type="link" onClick={() => openNotice(record as PolicyGroupRow)}>
-            通知
+            通知与处理人
           </Button>
           <Button
             type="link"
@@ -969,7 +993,7 @@ const PolicyGroupPage: React.FC = () => {
         )}
       </Drawer>
       <Drawer
-        title={noticeGroup ? `${noticeGroup.name} 的通知` : '通知'}
+        title={noticeGroup ? `${noticeGroup.name} 的通知与处理人` : '通知与处理人'}
         open={Boolean(noticeGroup)}
         width={760}
         closable={false}
@@ -998,6 +1022,28 @@ const PolicyGroupPage: React.FC = () => {
           {noticeGroup?.notice_uniform === false ? (
             <div className="mb-3 text-[var(--color-text-3)]">组内规则的通知不一致，保存后会写成同一套。</div>
           ) : null}
+          {noticeGroup?.handlers_uniform === false ? (
+            <div className="mb-3 text-[var(--color-text-3)]">组内规则的处理人不一致，保存后会写成同一套。</div>
+          ) : null}
+          <div className="mb-3">
+            <div className="mb-1">处理人</div>
+            <Select
+              mode="multiple"
+              className="w-full"
+              showSearch
+              allowClear
+              optionFilterProp="label"
+              value={handlerIds}
+              options={noticeUserOptions.map((item) => ({
+                value: String(item.id),
+                label: formatUserName(item),
+              }))}
+              onChange={setHandlerIds}
+            />
+            <div className="mt-2 text-[var(--color-text-3)]">
+              之后新产生的告警会带上这些处理人。已经在响的告警不变。
+            </div>
+          </div>
           <div className="mb-3">
             <div className="mb-1">通知</div>
             <Switch checked={noticeEnabled} onChange={setNoticeEnabled} />

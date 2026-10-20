@@ -84,6 +84,7 @@ const useIntegrationApi = () => {
         notice_type?: string;
         notice_type_ids?: number[];
         notice_users?: Array<string | number>;
+        handlers?: Array<string | number>;
       }) => {
         return await post(`/monitor/api/policy_group/update_notice/`, payload);
       },

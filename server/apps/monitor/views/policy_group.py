@@ -94,10 +94,22 @@ def _serialize_group(group, default_id, metric_names=None, plugin_id=None, colle
     }
 
 
+def _handler_ids(policy):
+    return tuple(str(item) for item in (policy.handlers or []))
+
+
 def _group_notice(rules):
     policies = [rule.policy for rule in rules]
     if not policies:
-        return {"notice": False, "notice_type": "", "notice_type_ids": [], "notice_users": [], "notice_uniform": True}
+        return {
+            "notice": False,
+            "notice_type": "",
+            "notice_type_ids": [],
+            "notice_users": [],
+            "notice_uniform": True,
+            "handlers": [],
+            "handlers_uniform": True,
+        }
 
     def snapshot(policy):
         return (
@@ -108,15 +120,28 @@ def _group_notice(rules):
         )
 
     first = policies[0]
-    uniform = all(snapshot(policy) == snapshot(first) for policy in policies)
-    if not uniform:
-        return {"notice": False, "notice_type": "", "notice_type_ids": [], "notice_users": [], "notice_uniform": False}
+    notice_uniform = all(snapshot(policy) == snapshot(first) for policy in policies)
+    handlers_uniform = all(_handler_ids(policy) == _handler_ids(first) for policy in policies)
+    if notice_uniform:
+        notice = {
+            "notice": bool(first.notice),
+            "notice_type": first.notice_type or "",
+            "notice_type_ids": list(first.notice_type_ids or []),
+            "notice_users": list(first.notice_users or []),
+            "notice_uniform": True,
+        }
+    else:
+        notice = {
+            "notice": False,
+            "notice_type": "",
+            "notice_type_ids": [],
+            "notice_users": [],
+            "notice_uniform": False,
+        }
     return {
-        "notice": bool(first.notice),
-        "notice_type": first.notice_type or "",
-        "notice_type_ids": list(first.notice_type_ids or []),
-        "notice_users": list(first.notice_users or []),
-        "notice_uniform": True,
+        **notice,
+        "handlers": list(first.handlers or []) if handlers_uniform else [],
+        "handlers_uniform": handlers_uniform,
     }
 
 
@@ -342,6 +367,12 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         raw_users = request.data.get("notice_users") or []
         if not isinstance(raw_ids, list) or not isinstance(raw_users, list):
             raise BaseAppException("通知方式不正确")
+        if "handlers" in request.data:
+            raw_handlers = request.data.get("handlers")
+            if not isinstance(raw_handlers, list):
+                raise ValidationAppException("处理人不正确")
+        else:
+            raw_handlers = None
         try:
             notice_type_ids = [int(item) for item in raw_ids]
         except (TypeError, ValueError):
@@ -352,6 +383,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             notice_type=str(request.data.get("notice_type") or ""),
             notice_type_ids=notice_type_ids,
             notice_users=raw_users,
+            handlers=raw_handlers,
             operator=_operator(scope),
         )
         return WebUtils.response_success({"id": group.id})

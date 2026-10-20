@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count
 from django.utils import timezone
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import (
     CollectConfig,
@@ -513,23 +513,49 @@ class PolicyGroupService:
         return rule
 
     @staticmethod
-    def update_notice(group, *, notice, notice_type="", notice_type_ids=None, notice_users=None, operator="system"):
-        """把同一套通知写到组内每条策略上。不结束未恢复告警。"""
+    def update_notice(
+        group,
+        *,
+        notice,
+        notice_type="",
+        notice_type_ids=None,
+        notice_users=None,
+        handlers=None,
+        operator="system",
+    ):
+        """把同一套通知写到组内每条策略上。传入处理人时一并写入，不改已有告警。"""
         enabled = bool(notice)
         channel_ids = [] if not enabled else [int(item) for item in (notice_type_ids or [])]
         users = [] if not enabled else [str(item) for item in (notice_users or []) if str(item) != ""]
         if enabled and not channel_ids:
             raise BaseAppException("请选择通知方式")
+        resolved_handlers = None
+        if handlers is not None:
+            resolved_handlers = PolicyGroupService._handlers_for_group(group, handlers)
+        fields = {
+            "notice": enabled,
+            "notice_type": "" if not enabled else (notice_type or "")[:50],
+            "notice_type_ids": channel_ids,
+            "notice_users": users,
+            "updated_by": operator,
+            "updated_at": timezone.now(),
+        }
+        if resolved_handlers is not None:
+            fields["handlers"] = resolved_handlers
         with transaction.atomic():
-            MonitorPolicy.objects.filter(group_rule__group=group).update(
-                notice=enabled,
-                notice_type="" if not enabled else (notice_type or "")[:50],
-                notice_type_ids=channel_ids,
-                notice_users=users,
-                updated_by=operator,
-                updated_at=timezone.now(),
-            )
+            MonitorPolicy.objects.filter(group_rule__group=group).update(**fields)
         return group
+
+    @staticmethod
+    def _handlers_for_group(group, handlers):
+        from apps.monitor.services.alert_handlers import AlertHandlerInvalid, normalize_policy_handlers
+
+        if not isinstance(handlers, list):
+            raise ValidationAppException("处理人不正确")
+        try:
+            return normalize_policy_handlers(handlers, [group.organization])
+        except AlertHandlerInvalid as exc:
+            raise ValidationAppException(str(exc)) from exc
 
     @staticmethod
     def update_enable(group, *, enable, operator="system"):

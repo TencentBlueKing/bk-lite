@@ -20,7 +20,7 @@ from apps.monitor.models import (
 )
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_group import PolicyGroupService
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 
 pytestmark = pytest.mark.django_db
 
@@ -99,6 +99,7 @@ def test_create_group_keeps_one_policy_per_rule_and_skips_notice_users():
     policies = [rule.policy for rule in group.rules.select_related("policy")]
     assert len(policies) == 2
     assert all(policy.notice_users == [] for policy in policies)
+    assert all(policy.handlers == [] for policy in policies)
     assert all(policy.source_template_id is None for policy in policies)
     assert all(policy.source == {"type": "instance", "values": []} for policy in policies)
 
@@ -480,6 +481,7 @@ def test_copy_keeps_the_current_rule_after_the_template_is_gone():
     policy.algorithm = "max"
     policy.schedule = {"type": "min", "value": 15}
     policy.notice_users = ["alice"]
+    policy.handlers = [7]
     policy.threshold = [{"level": "warning", "value": 95, "method": ">="}]
     policy.save()
     template.config = {**template.config, "metric_name": "mem_used", "threshold": [{"level": "warning", "value": 1, "method": ">="}]}
@@ -496,6 +498,7 @@ def test_copy_keeps_the_current_rule_after_the_template_is_gone():
     assert cloned.algorithm == "max"
     assert cloned.schedule == {"type": "min", "value": 15}
     assert cloned.notice_users == ["alice"]
+    assert cloned.handlers == [7]
     assert cloned.query_condition["metric_id"] == metric_id
     assert cloned.source == {"type": "instance", "values": []}
     assert cloned.source_template_id is None
@@ -701,6 +704,133 @@ def test_update_notice_writes_every_policy_and_keeps_open_alerts():
 
     with pytest.raises(BaseAppException):
         PolicyGroupService.update_notice(group, notice=True, notice_type_ids=[], notice_users=["12"])
+
+
+def test_update_notice_writes_handlers_and_leaves_existing_alerts():
+    from apps.monitor.views.policy_group import _group_notice
+    from apps.system_mgmt.models import User
+
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    ssh = _plugin(monitor_object, "SSH")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU"), _template(monitor_object, ssh, "SSH CPU")],
+    )
+    other = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="另一组",
+        templates=[_template(monitor_object, wmi, "WMI 内存")],
+    )
+    assignee = User.objects.create(
+        username="group-handler",
+        display_name="组处理人",
+        email="group-handler@example.com",
+        password="x",
+        group_list=[1],
+    )
+    outsider = User.objects.create(
+        username="group-outsider",
+        display_name="组外",
+        email="group-outsider@example.com",
+        password="x",
+        group_list=[99],
+    )
+    host = _instance(monitor_object, "web-01", 1)
+    policy = group.rules.filter(plugin=wmi).get().policy
+    alert = MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id=host.id,
+        status="new",
+        alert_type="alert",
+        handlers=[999],
+    )
+
+    PolicyGroupService.update_notice(group, notice=False, handlers=[assignee.id, str(assignee.id)])
+
+    for rule in group.rules.select_related("policy"):
+        rule.policy.refresh_from_db()
+        assert rule.policy.notice is False
+        assert rule.policy.notice_users == []
+        assert rule.policy.handlers == [assignee.id]
+    alert.refresh_from_db()
+    assert alert.status == "new"
+    assert alert.handlers == [999]
+    other.rules.get().policy.refresh_from_db()
+    assert other.rules.get().policy.handlers == []
+
+    listed = _group_notice(list(group.rules.select_related("policy")))
+    assert listed["handlers"] == [assignee.id]
+    assert listed["handlers_uniform"] is True
+
+    PolicyGroupService.update_notice(
+        group,
+        notice=True,
+        notice_type="email",
+        notice_type_ids=[9],
+        notice_users=["12"],
+    )
+    policy.refresh_from_db()
+    assert policy.handlers == [assignee.id]
+    assert policy.notice_users == ["12"]
+
+    with pytest.raises(ValidationAppException, match="不属于策略所属组织"):
+        PolicyGroupService.update_notice(group, notice=False, handlers=[outsider.id])
+    policy.refresh_from_db()
+    assert policy.handlers == [assignee.id]
+    assert policy.notice_users == ["12"]
+
+    PolicyGroupService.update_notice(group, notice=False, handlers=[])
+    for rule in group.rules.select_related("policy"):
+        rule.policy.refresh_from_db()
+        assert rule.policy.handlers == []
+        assert rule.policy.notice is False
+
+
+def test_group_notice_keeps_handler_uniformity_separate_from_notice():
+    from apps.monitor.views.policy_group import _group_notice
+
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    ssh = _plugin(monitor_object, "SSH")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU"), _template(monitor_object, ssh, "SSH CPU")],
+    )
+    policies = [rule.policy for rule in group.rules.select_related("policy")]
+    policies[0].handlers = [3]
+    policies[0].save(update_fields=["handlers"])
+    policies[1].handlers = [4]
+    policies[1].notice = True
+    policies[1].notice_type_ids = [9]
+    policies[1].notice_users = ["4"]
+    policies[1].save(update_fields=["handlers", "notice", "notice_type_ids", "notice_users"])
+
+    mixed = _group_notice(list(group.rules.select_related("policy")))
+    assert mixed["handlers_uniform"] is False
+    assert mixed["handlers"] == []
+    assert mixed["notice_uniform"] is False
+
+    policies[0].notice = False
+    policies[0].notice_type = ""
+    policies[0].notice_type_ids = []
+    policies[0].notice_users = []
+    policies[0].save(update_fields=["notice", "notice_type", "notice_type_ids", "notice_users"])
+    policies[1].handlers = [3]
+    policies[1].notice = False
+    policies[1].notice_type = ""
+    policies[1].notice_type_ids = []
+    policies[1].notice_users = []
+    policies[1].save(update_fields=["handlers", "notice", "notice_type", "notice_type_ids", "notice_users"])
+    aligned = _group_notice(list(group.rules.select_related("policy")))
+    assert aligned["handlers"] == [3]
+    assert aligned["handlers_uniform"] is True
+    assert aligned["notice_uniform"] is True
 
 
 def test_update_enable_stops_the_group_and_resumes_from_now():
