@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Alert, Form, Input, InputNumber, Segmented, Select } from 'antd';
+import { Alert, Button, Form, Input, InputNumber, Modal, Segmented, Select } from 'antd';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import CodeEditor from '@/components/code-editor';
@@ -9,6 +9,14 @@ import {
   SCRIPT_MIN_INTERVAL_SECONDS,
   parseScriptDurationSeconds
 } from './scriptCollectTimeout';
+import ScriptCollectGuide from './scriptCollectGuide';
+import {
+  SCRIPT_COLLECT_DEMO_BUTTONS,
+  defaultDemoIdForOs,
+  matchingScriptDemoId,
+  resolveScriptCollectDemo,
+  type ScriptDemoId
+} from './scriptCollectDemos';
 
 export const LINUX_INTERPRETERS = [
   { label: '/bin/sh', value: '/bin/sh' },
@@ -300,6 +308,13 @@ export const ScriptOsSegmented: React.FC<{
         if (!interpreters.some((item) => item.value === current)) {
           form.setFieldValue('interpreter', interpreters[0].value);
         }
+        if (!String(form.getFieldValue('script') || '').trim()) {
+          const demo = resolveScriptCollectDemo(defaultDemoIdForOs(os), os);
+          form.setFieldsValue({
+            interpreter: demo.interpreter,
+            script: demo.body
+          });
+        }
       }}
     />
   );
@@ -377,6 +392,17 @@ export const ScriptRunAsInput: React.FC<{
   );
 };
 
+const applyScriptDemoToForm = (form: FormInstance, id: ScriptDemoId) => {
+  const os = String(form.getFieldValue('script_os') || 'linux');
+  const demo = resolveScriptCollectDemo(id, os);
+  form.setFieldsValue({
+    script_os: demo.os,
+    interpreter: demo.interpreter,
+    script: demo.body
+  });
+  syncScriptRunAsForOs(form, demo.os);
+};
+
 export const ScriptBodyEditor: React.FC<{
   value?: string;
   onChange?: (value: string) => void;
@@ -384,11 +410,55 @@ export const ScriptBodyEditor: React.FC<{
   placeholder?: string;
   height?: string;
 }> = ({ value, onChange, readOnly, placeholder, height }) => {
+  const { t } = useTranslation();
+  const form = Form.useFormInstance();
   const os = Form.useWatch('script_os');
+  const interpreter = String(Form.useWatch('interpreter') || '');
+  const mode = interpreter.toLowerCase().includes('python')
+    ? 'python'
+    : os === 'windows' || interpreter.toLowerCase().includes('powershell')
+      ? 'powershell'
+      : 'sh';
+  const activeDemoId = matchingScriptDemoId(value, os);
+
+  const handleDemoClick = (id: ScriptDemoId) => {
+    if (readOnly) return;
+    const current = String(form.getFieldValue('script') || value || '').replace(/\s+$/, '');
+    const next = resolveScriptCollectDemo(id, form.getFieldValue('script_os'));
+    if (!current || current === next.body.replace(/\s+$/, '')) {
+      applyScriptDemoToForm(form, id);
+      return;
+    }
+    Modal.confirm({
+      title: t('monitor.integrations.scriptDemoOverwriteTitle', '覆盖当前脚本？'),
+      content: t(
+        'monitor.integrations.scriptDemoOverwriteContent',
+        '插入该示例将覆盖编辑区已有内容。'
+      ),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: () => applyScriptDemoToForm(form, id)
+    });
+  };
+
   return (
     <div style={{ maxWidth: 640 }} className="w-full">
+      <ScriptCollectGuide />
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {SCRIPT_COLLECT_DEMO_BUTTONS.map((item) => (
+          <Button
+            key={item.id}
+            size="small"
+            type={activeDemoId === item.id ? 'primary' : 'default'}
+            disabled={Boolean(readOnly)}
+            onClick={() => handleDemoClick(item.id)}
+          >
+            {t(item.labelKey, item.defaultLabel)}
+          </Button>
+        ))}
+      </div>
       <CodeEditor
-        mode={os === 'windows' ? 'powershell' : 'sh'}
+        mode={mode}
         theme="monokai"
         height={height || '200px'}
         width="100%"

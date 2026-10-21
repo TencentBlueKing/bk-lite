@@ -13,7 +13,8 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
-import { parseScriptMetrics, BusinessMetricItem, cleanMeasurementName, isReservedScriptMetricId, unionVisibleDimensionNames } from './scriptMetricsParser';
+import { parseScriptMetrics, BusinessMetricItem, cleanMeasurementName, formatScriptMetricLabels, isReservedScriptMetricId, unionVisibleDimensionNames, SCRIPT_MAX_SERIES, type ParsedScriptOutput, type ScriptOutputLineIssueCode } from './scriptMetricsParser';
+import { SCRIPT_PROM_TEXT_EXAMPLE } from './scriptCollectDemos';
 import {
   applyDefaultCatalogDrafts,
   buildUnitCascaderOptions,
@@ -332,6 +333,127 @@ const TrialActionsBlockedNote: React.FC = () => {
         'monitor.integrations.trialRunActionsUnavailable',
         '调试未通过，确认不可用。'
       )}
+    </div>
+  );
+};
+
+const PARSE_ISSUE_PREVIEW = 20;
+
+const scriptParseIssueReason = (
+  code: ScriptOutputLineIssueCode,
+  t: (id: string, fallback?: string, values?: Record<string, string | number>) => string
+) => {
+  switch (code) {
+    case 'influx':
+      return t(
+        'monitor.integrations.scriptParseLineInflux',
+        '这是 Influx 行协议，不是 Prometheus 文本。'
+      );
+    case 'key_value':
+      return t(
+        'monitor.integrations.scriptParseLineKeyValue',
+        '这是 key=value 格式，不是 Prometheus 文本。'
+      );
+    case 'unquoted_labels':
+      return t(
+        'monitor.integrations.scriptParseLineUnquoted',
+        '标签值需要用双引号包裹。'
+      );
+    case 'missing_value':
+      return t(
+        'monitor.integrations.scriptParseLineMissingValue',
+        '缺少数值。'
+      );
+    case 'invalid_name':
+      return t(
+        'monitor.integrations.scriptParseLineInvalidName',
+        '指标名不合法。'
+      );
+    case 'invalid_value':
+      return t(
+        'monitor.integrations.scriptParseLineInvalidValue',
+        '指标值必须是数字。'
+      );
+    default:
+      return t(
+        'monitor.integrations.scriptParseLineInvalid',
+        '无法识别为 Prometheus 样本。'
+      );
+  }
+};
+
+const ScriptParseFeedback: React.FC<{ parsed?: ParsedScriptOutput | null }> = ({
+  parsed
+}) => {
+  const { t } = useTranslation();
+  if (!parsed) return null;
+  const issues = parsed.lineIssues || [];
+  const showUnsupported = Boolean(parsed.unsupportedProductionFormat);
+  const showLimit = Boolean(parsed.exceedsSeriesLimit);
+  if (!showUnsupported && !showLimit && !issues.length) {
+    return null;
+  }
+  const visible = issues.slice(0, PARSE_ISSUE_PREVIEW);
+  const remaining = Math.max(0, issues.length - visible.length);
+  return (
+    <div className="mb-3 space-y-2">
+      {showUnsupported ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={t(
+            'monitor.integrations.scriptParseUnsupportedFormat',
+            '正式采集只支持 Prometheus 格式，上线后将无数据'
+          )}
+        />
+      ) : null}
+      {showLimit ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={t(
+            'monitor.integrations.scriptOutputTooManySeries',
+            '样本数 {count} 超过 {max} 条上限，多余样本不会入库。',
+            { count: parsed.seriesCount, max: SCRIPT_MAX_SERIES }
+          )}
+        />
+      ) : null}
+      {visible.length ? (
+        <div className="rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)] px-3 py-2">
+          <div className="mb-1 text-[12px] font-medium text-[var(--color-text-2)]">
+            {t('monitor.integrations.scriptParseIssuesTitle', '解析问题')}
+          </div>
+          <ul className="mb-0 list-none space-y-2 p-0">
+            {visible.map((issue) => (
+              <li key={`${issue.line}-${issue.code}-${issue.text}`} className="text-[12px] leading-[18px]">
+                <div className="text-[var(--color-text-1)]">
+                  {t('monitor.integrations.scriptParseLinePrefix', '第 {line} 行：{reason}', {
+                    line: issue.line,
+                    reason: scriptParseIssueReason(issue.code, t)
+                  })}
+                </div>
+                <div className="mt-0.5 font-mono text-[11px] text-[var(--color-text-3)] break-all">
+                  {issue.text}
+                </div>
+                <div className="mt-0.5 text-[var(--color-text-2)]">
+                  {t(
+                    'monitor.integrations.scriptParseLineHint',
+                    '正确写法：{example}',
+                    { example: SCRIPT_PROM_TEXT_EXAMPLE }
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {remaining > 0 ? (
+            <div className="mt-2 text-[12px] text-[var(--color-text-3)]">
+              {t('monitor.integrations.scriptParseIssueMore', '还有 {count} 条', {
+                count: remaining
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -985,6 +1107,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           />
         </div>
         {catalogErrorAlert}
+        <ScriptParseFeedback parsed={parsedOutput} />
         <Alert
           type="error"
           showIcon
@@ -1047,6 +1170,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           />
         </div>
         {catalogErrorAlert}
+        <ScriptParseFeedback parsed={parsedOutput} />
         {/* 仍展示自身指标概览 */}
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
@@ -1126,6 +1250,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         />
       </div>
 
+      <ScriptParseFeedback parsed={parsedOutput} />
+
       {/* 自监控指标仅展示，不可勾选落库 */}
       <div className="mb-4" aria-disabled="true">
         <div className="text-[12px] font-medium text-[var(--color-text-3)] mb-2">
@@ -1152,6 +1278,50 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         </div>
       </div>
 
+      {businessMetrics.length > 0 ? (
+        <div className="mb-4">
+          <div className="mb-2 text-[12px] font-medium text-[var(--color-text-3)]">
+            {t('monitor.integrations.trialRunParseResult', '解析结果')}
+          </div>
+          <div className="overflow-x-auto rounded-md border border-[var(--color-border-1)]">
+            <table className="w-full border-separate border-spacing-0 text-[12px] leading-4">
+              <thead>
+                <tr>
+                  <th className="border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-left font-medium text-[var(--color-text-2)]">
+                    {t('monitor.integrations.trialRunMetricName', '指标名称')}
+                  </th>
+                  <th className="border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-left font-medium text-[var(--color-text-2)]">
+                    {t('monitor.integrations.trialRunMetricTags', '标签')}
+                  </th>
+                  <th className="border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-right font-medium text-[var(--color-text-2)]">
+                    {t('monitor.integrations.trialRunParseValue', '值')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {businessMetrics.flatMap((item) =>
+                  (item.samples?.length ? item.samples : [{ value: item.value, tags: item.tags }]).map(
+                    (sample, index) => (
+                      <tr key={`${item.key}-${index}`}>
+                        <td className="border-b border-[var(--color-border-1)] px-3 py-2 font-mono text-[var(--color-text-1)]">
+                          {item.name}
+                        </td>
+                        <td className="border-b border-[var(--color-border-1)] px-3 py-2 font-mono text-[var(--color-text-2)]">
+                          {formatScriptMetricLabels(sample.tags) || '--'}
+                        </td>
+                        <td className="border-b border-[var(--color-border-1)] px-3 py-2 text-right font-mono tabular-nums text-[var(--color-text-1)]">
+                          {String(sample.value)}
+                        </td>
+                      </tr>
+                    )
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
       {/* Business metrics with trial-run checkboxes */}
       <div>
         {catalogErrorAlert}
@@ -1176,8 +1346,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                 className={`${BUSINESS_METRIC_GRID} border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] py-2 text-[12px] font-medium text-[var(--color-text-2)]`}
               >
                 <div />
-                <div className="min-w-0">{t('monitor.integrations.trialRunMetricId', '指标 ID')}</div>
-                <div className="min-w-0">{t('monitor.integrations.trialRunMetricDimensions', '维度')}</div>
+                <div className="min-w-0">{t('monitor.integrations.trialRunMetricName', '指标名称')}</div>
+                <div className="min-w-0">{t('monitor.integrations.trialRunMetricTags', '标签')}</div>
                 <div className="min-w-0">{t('monitor.integrations.metricGroup', '分组')}</div>
                 <div className="min-w-0">{t('common.unit', '单位')}</div>
                 <div className="min-w-0 text-right">
@@ -1202,6 +1372,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                     item.samples
                   );
                   const sampleCount = item.samples?.length || 1;
+                  const tagChips =
+                    sampleCount > 1
+                      ? visibleDimensionNames
+                      : visibleDimensionNames.map((name) => {
+                          const raw = item.tags?.[name];
+                          return raw == null || String(raw) === ''
+                            ? name
+                            : `${name}="${raw}"`;
+                        });
                   const showSamplePreview = visibleDimensionNames.length > 0;
                   const previewSamples =
                     item.samples?.length
@@ -1283,7 +1462,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         ) : null}
                       </div>
                       <div className="min-w-0">
-                        <DimensionTagLine names={visibleDimensionNames} />
+                        <DimensionTagLine names={tagChips} />
                         {Boolean(item.reservedTagKeys?.length) && (
                           <div
                             className="mt-0.5 text-[11px] text-[var(--color-fail)]"
