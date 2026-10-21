@@ -34,6 +34,10 @@ export const HOST_PERFORMANCE_METRIC_NAMES = [
   'mem_used_percent',
   'mem_available',
   'mem_total',
+  'mem_used',
+  'mem_cached',
+  'mem_buffered',
+  'mem_shared',
   'host_mem_swap_used_bytes',
   'host_mem_swap_total_bytes',
   'mem_swap_free'
