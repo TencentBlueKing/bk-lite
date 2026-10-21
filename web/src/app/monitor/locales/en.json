@@ -947,7 +947,7 @@
       "trialRunActionsUnavailable": "Debug did not pass, so Confirm is unavailable.",
       "trialRunBoundInstance": "Instance {index}",
       "trialRunSelfMetrics": "Self-monitoring Metrics",
-      "trialRunBusinessMetrics": "Business Metrics",
+      "trialRunBusinessMetrics": "Collected Metrics",
       "trialRunMetricName": "Metric Name",
       "trialRunMetricId": "Metric ID",
       "trialRunMetricValue": "Sample Value",

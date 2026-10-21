@@ -1256,7 +1256,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               onChange={(e) => toggleAllMetrics(e.target.checked)}
             />
             <span className="text-[12px] font-medium text-[var(--color-text-2)]">
-              {t('monitor.integrations.trialRunBusinessMetrics', '业务指标')} (
+              {t('monitor.integrations.trialRunBusinessMetrics', '采集指标')} (
               {selectableMetrics.filter((m) => selectedMetrics[m.key] !== false).length}/
               {selectableMetrics.length})
             </span>
