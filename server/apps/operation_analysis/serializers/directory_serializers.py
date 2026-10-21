@@ -13,7 +13,7 @@ from apps.operation_analysis.constants.import_export import ObjectType
 from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
 from apps.operation_analysis.services.builtin_i18n import apply_canvas_representation, apply_directory_representation
-from apps.operation_analysis.services.import_export.view_sets import normalize_canvas_view_sets_for_storage
+from apps.operation_analysis.services.import_export.view_sets import drop_architecture_rectangle_bindings, normalize_canvas_view_sets_for_storage
 from apps.operation_analysis.services.report_view_sets import normalize_report_view_sets
 from apps.operation_analysis.services.user_messages import oa_message
 
@@ -194,6 +194,12 @@ class ArchitectureModelSerializer(CanvasObjectSerializer):
 
     class Meta(CanvasObjectSerializer.Meta):
         model = Architecture
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if "view_sets" in attrs:
+            attrs["view_sets"] = drop_architecture_rectangle_bindings(attrs["view_sets"])
+        return attrs
 
 
 class ScreenModelSerializer(CanvasRefreshIntervalSerializerMixin, CanvasObjectSerializer):

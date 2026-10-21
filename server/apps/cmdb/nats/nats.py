@@ -1773,26 +1773,34 @@ def get_monitor_ids_by_inst_uuids(inst_uuids=None, user_info=None, **kwargs):
         }
 
     if not unique:
-        return {"result": True, "data": {"items": []}, "message": ""}
+        return {"result": True, "data": {"items": [], "forbidden_inst_uuids": []}, "message": ""}
 
     permission_map = _build_nats_permission_map(user_info)
+    # 没有可用权限上下文时不读取实例，避免带出名称。调用方已持有这些 uuid，
+    # 统一记为无权，而不是把「查不到」说成已删除。
     if permission_map is None:
-        return {"result": True, "data": {"items": []}, "message": ""}
+        return {"result": True, "data": {"items": [], "forbidden_inst_uuids": list(unique)}, "message": ""}
     user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
     entities = InstanceManage.query_entity_by_uuids(unique)
     items = []
+    forbidden = []
     for entity in entities:
+        inst_uuid = entity.get("inst_uuid")
         if not InstanceManage._has_topology_view_permission(entity, permission_map, user=user):
+            if inst_uuid not in (None, ""):
+                forbidden.append(inst_uuid)
             continue
         monitor_id = entity.get("monitor_id")
+        inst_name = entity.get("inst_name")
         items.append(
             {
-                "inst_uuid": entity.get("inst_uuid"),
+                "inst_uuid": inst_uuid,
                 "model_id": entity.get("model_id"),
                 "monitor_id": "" if monitor_id in (None, "") else str(monitor_id),
+                "inst_name": "" if inst_name in (None, "") else str(inst_name),
             }
         )
-    return {"result": True, "data": {"items": items}, "message": ""}
+    return {"result": True, "data": {"items": items, "forbidden_inst_uuids": forbidden}, "message": ""}
 
 
 @nats_client.register

@@ -106,6 +106,7 @@
   "exclude": [
     "node_modules",
     "scripts",
+    "packages",
     "src/app/*/node_modules",
     "src/app/*/package.json"
   ]
