@@ -1,7 +1,6 @@
 export type ScriptDemoId =
   | 'linux_host'
   | 'windows_host'
-  | 'process_port'
   | 'python_biz';
 
 export type ScriptLangTab = 'shell' | 'python' | 'powershell' | 'cmd';
@@ -31,11 +30,6 @@ export const SCRIPT_COLLECT_DEMO_BUTTONS: Array<{
     defaultLabel: 'Windows 基础资源'
   },
   {
-    id: 'process_port',
-    labelKey: 'monitor.integrations.scriptDemoProcessPort',
-    defaultLabel: '进程/端口存活'
-  },
-  {
     id: 'python_biz',
     labelKey: 'monitor.integrations.scriptDemoPythonBiz',
     defaultLabel: 'Python 业务指标'
@@ -47,37 +41,27 @@ const SHELL_FORMAT_HEADER = [
   '#',
   'export LC_ALL=C',
   'export LANG=C',
-  '# default language is C',
   '#',
-  '# Text format:',
-  '# metric_name{label_name="label_value"} metric_value',
+  '# 标准输出：一行一条指标，名称 {标签="值"} 数值',
+  '# 例如：echo \'host_cpu_usage_percent{cpu="0"} 12.5\'',
   '#',
-  '# Example:',
-  '# echo "disk_usage{disk_name=\\"/data\\"} 0.8"',
-  '#',
-  '# Write every dollar as $$ so Telegraf envsubst cannot blank samples.',
+  '# 脚本里的美元符号请写成两个，例如 awk 字段用 $$5，环境变量用 $$KEY。',
   ''
 ].join('\n');
 
 const POWERSHELL_FORMAT_HEADER = [
-  '# Text format:',
-  '# metric_name{label_name="label_value"} metric_value',
+  '# 标准输出：一行一条指标，名称 {标签="值"} 数值',
+  '# 例如：Write-Output \'host_cpu_usage_percent{cpu="0"} 12.5\'',
   '#',
-  '# Example:',
-  '# Write-Output "disk_usage{disk_name=\\"/data\\"} 0.8"',
-  '#',
-  '# Write every dollar as $$ so Telegraf envsubst cannot blank samples.',
+  '# 脚本里的美元符号请写成两个，例如变量用 $$cpu，环境变量用 $$env:KEY。',
   ''
 ].join('\n');
 
 const PYTHON_FORMAT_HEADER = [
-  '# Text format:',
-  '# metric_name{label_name="label_value"} metric_value',
+  '# 标准输出：一行一条指标，名称 {标签="值"} 数值',
+  '# 例如：print(\'host_cpu_usage_percent{cpu="0"} 12.5\')',
   '#',
-  '# Example:',
-  '# print(\'disk_usage{disk_name="/data"} 0.8\')',
-  '#',
-  '# Read env with os.environ.get("KEY"); no dollar sign needed.',
+  '# 环境变量用 os.environ.get("KEY") 读取，不需要美元符号。',
   ''
 ].join('\n');
 
@@ -163,51 +147,6 @@ export const WINDOWS_HOST_SCRIPT = [
   'Write-Output ("host_disk_used_percent{drive=`"" + $$driveLabel + "`"} " + (Format-PromValue $$disk))',
   'Write-Output "# TYPE host_uptime_seconds gauge"',
   'Write-Output ("host_uptime_seconds " + (Format-PromValue $$uptime))'
-].join('\n');
-
-export const LINUX_PROCESS_PORT_SCRIPT = [
-  SHELL_FORMAT_HEADER,
-  'echo "# TYPE process_up gauge"',
-  'if command -v pgrep >/dev/null 2>&1 && pgrep -x sshd >/dev/null 2>&1; then',
-  '  echo \'process_up{name="sshd"} 1\'',
-  'elif ps -eo comm= 2>/dev/null | awk \'$$0 == "sshd" { found = 1 } END { exit !found }\'; then',
-  '  echo \'process_up{name="sshd"} 1\'',
-  'else',
-  '  echo \'process_up{name="sshd"} 0\'',
-  'fi',
-  '',
-  'echo "# TYPE port_listen_up gauge"',
-  'if command -v ss >/dev/null 2>&1 && ss -lnt 2>/dev/null | awk \'NR > 1 && index($$4, ":22") { found = 1 } END { exit !found }\'; then',
-  '  echo \'port_listen_up{port="22"} 1\'',
-  'elif command -v netstat >/dev/null 2>&1 && netstat -lnt 2>/dev/null | awk \'index($$0, ":22") { found = 1 } END { exit !found }\'; then',
-  '  echo \'port_listen_up{port="22"} 1\'',
-  'else',
-  '  echo \'port_listen_up{port="22"} 0\'',
-  'fi'
-].join('\n');
-
-export const WINDOWS_PROCESS_PORT_SCRIPT = [
-  POWERSHELL_FORMAT_HEADER,
-  "$$ErrorActionPreference = 'SilentlyContinue'",
-  "$$procName = if ($$env:PROCESS_NAME) { $$env:PROCESS_NAME } else { 'svchost' }",
-  "$$port = if ($$env:LISTEN_PORT) { $$env:LISTEN_PORT } else { '135' }",
-  '',
-  '$$procUp = 0',
-  'if (Get-Process -Name $$procName -ErrorAction SilentlyContinue) { $$procUp = 1 }',
-  '',
-  '$$portUp = 0',
-  'try {',
-  '  $$portNumber = [int]$$port',
-  '  $$listeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue',
-  '  if ($$listeners | Where-Object { $$_.LocalPort -eq $$portNumber }) { $$portUp = 1 }',
-  '} catch {}',
-  '',
-  '$$procLabel = ([string]$$procName).Replace(\'\\\\\', \'\\\\\\\\\').Replace(\'"\', \'\\\\"\')',
-  '$$portLabel = ([string]$$port).Replace(\'\\\\\', \'\\\\\\\\\').Replace(\'"\', \'\\\\"\')',
-  'Write-Output "# TYPE process_up gauge"',
-  'Write-Output ("process_up{name=`"" + $$procLabel + "`"} " + $$procUp)',
-  'Write-Output "# TYPE port_listen_up gauge"',
-  'Write-Output ("port_listen_up{port=`"" + $$portLabel + "`"} " + $$portUp)'
 ].join('\n');
 
 export const PYTHON_BIZ_SCRIPT = [
@@ -305,19 +244,11 @@ export const resolveScriptCollectDemo = (
     };
   }
   const os = normalizeOs(currentOs);
-  if (id === 'python_biz') {
-    return {
-      id,
-      os,
-      interpreter: os === 'windows' ? 'python.exe' : '/usr/bin/python3',
-      body: PYTHON_BIZ_SCRIPT
-    };
-  }
   return {
-    id,
+    id: 'python_biz',
     os,
-    interpreter: os === 'windows' ? 'powershell.exe' : '/bin/sh',
-    body: os === 'windows' ? WINDOWS_PROCESS_PORT_SCRIPT : LINUX_PROCESS_PORT_SCRIPT
+    interpreter: os === 'windows' ? 'python.exe' : '/usr/bin/python3',
+    body: PYTHON_BIZ_SCRIPT
   };
 };
 

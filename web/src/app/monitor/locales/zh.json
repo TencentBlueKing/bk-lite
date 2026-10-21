@@ -893,7 +893,6 @@
       "scriptPlaceholder": "粘贴或输入脚本内容",
       "scriptDemoLinuxHost": "Linux 基础资源",
       "scriptDemoWindowsHost": "Windows 基础资源",
-      "scriptDemoProcessPort": "进程/端口存活",
       "scriptDemoPythonBiz": "Python 业务指标",
       "scriptDemoBadge": "示例脚本",
       "scriptDemoHint": "可插入编辑区的示例，插入后可按需修改。",
