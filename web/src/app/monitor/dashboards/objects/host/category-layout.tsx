@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import {
+  buildCpuCoreLoad,
   buildDiskDeviceRows,
   buildLabelRows,
   buildMountDiskRows,
@@ -62,9 +63,15 @@ const busiestFirst = (rows: EntityTableRow[]) => [...rows].sort((left, right) =>
   return score(right) - score(left);
 });
 
-const usePinnedRow = (rows: EntityTableRow[]) => {
+const usePinnedRow = (rows: EntityTableRow[], identity: string) => {
   const [selectedKey, setSelectedKey] = useState('');
   const [pendingKey, setPendingKey] = useState('');
+  const [seenIdentity, setSeenIdentity] = useState(identity);
+  if (identity !== seenIdentity) {
+    setSeenIdentity(identity);
+    setSelectedKey('');
+    setPendingKey('');
+  }
   useEffect(() => {
     if (!rows.length) return;
     if (pendingKey && rows.some((row) => row.key === pendingKey)) {
@@ -81,11 +88,23 @@ const usePinnedRow = (rows: EntityTableRow[]) => {
 };
 
 /** 磁盘双选中：挂载与设备各自保持一行。设备只在首次或当前行失效时按挂载关联名默认。 */
-const useDiskDualSelection = (mountRows: EntityTableRow[], deviceRows: EntityTableRow[]) => {
+const useDiskDualSelection = (
+  mountRows: EntityTableRow[],
+  deviceRows: EntityTableRow[],
+  identity: string
+) => {
   const [mountKey, setMountKey] = useState('');
   const [deviceKey, setDeviceKey] = useState('');
   const [pendingMountKey, setPendingMountKey] = useState('');
   const [devicePinned, setDevicePinned] = useState(false);
+  const [seenIdentity, setSeenIdentity] = useState(identity);
+  if (identity !== seenIdentity) {
+    setSeenIdentity(identity);
+    setMountKey('');
+    setDeviceKey('');
+    setPendingMountKey('');
+    setDevicePinned(false);
+  }
 
   const resolvedMountKey = (
     (pendingMountKey && mountRows.some((row) => row.key === pendingMountKey) ? pendingMountKey : '')
@@ -147,6 +166,8 @@ export default function HostCategoryLayout({
   netState,
   processReady,
   processState = EMPTY_ENTITY,
+  coreState = EMPTY_ENTITY,
+  gpuState = EMPTY_ENTITY,
   categoryTab = 'overview',
   onCategoryTabChange
 }: HostDetailLayoutProps) {
@@ -157,6 +178,14 @@ export default function HostCategoryLayout({
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const [alertRefreshKey, setAlertRefreshKey] = useState(0);
   const [focusAlertId, setFocusAlertId] = useState('');
+  const instanceKey = String(dashboard.instanceId || '');
+  const [seenInstance, setSeenInstance] = useState(instanceKey);
+  if (instanceKey !== seenInstance) {
+    setSeenInstance(instanceKey);
+    setAlertCount(null);
+    setAlertEvents([]);
+    setFocusAlertId('');
+  }
   const openHostAlerts = useCallback(() => {
     setFocusAlertId('');
     setAlertDrawerOpen(true);
@@ -202,9 +231,17 @@ export default function HostCategoryLayout({
     () => buildLabelRows(processState.byMetric, 'process_name', 'process_cpu_usage', ['pattern']),
     [processState.byMetric]
   );
-  const diskSelection = useDiskDualSelection(diskRows, diskDeviceRows);
-  const netSelection = usePinnedRow(netRows);
-  const processSelection = usePinnedRow(processRows);
+  const gpuRows = useMemo(() => {
+    const byIndex = buildLabelRows(gpuState.byMetric, 'index', 'nvidia_smi_utilization_gpu', ['name', 'uuid']);
+    if (byIndex.length) return byIndex;
+    const byName = buildLabelRows(gpuState.byMetric, 'name', 'nvidia_smi_utilization_gpu', ['uuid', 'index']);
+    if (byName.length) return byName;
+    return buildLabelRows(gpuState.byMetric, 'uuid', 'nvidia_smi_utilization_gpu', ['name', 'index']);
+  }, [gpuState.byMetric]);
+  const coreLoad = useMemo(() => buildCpuCoreLoad(coreState.byMetric), [coreState.byMetric]);
+  const diskSelection = useDiskDualSelection(diskRows, diskDeviceRows, instanceKey);
+  const netSelection = usePinnedRow(netRows, instanceKey);
+  const processSelection = usePinnedRow(processRows, instanceKey);
   const diskLoading = diskState.status === 'idle' || diskState.status === 'loading';
   const netLoading = netState.status === 'idle' || netState.status === 'loading';
   const processLoading = processState.status === 'idle' || processState.status === 'loading';
@@ -215,7 +252,7 @@ export default function HostCategoryLayout({
       metrics.mem_total?.viewData,
       metrics.mem_used_percent
     ).usedNow,
-    disk_used_percent: latestNumber(metrics.disk_used_percent),
+    disk_used_percent: maxRowValue(diskRows, 'disk_used_percent') ?? latestNumber(metrics.disk_used_percent),
     system_load1_per_core: loadPerCore(
       latestNumber(metrics.system_load1),
       latestNumber(metrics.cpu_n)
@@ -230,7 +267,7 @@ export default function HostCategoryLayout({
     processes_zombies: latestPreferCount(metrics.processes_zombies),
     process_cpu_usage: maxRowValue(processRows, 'process_cpu_usage'),
     process_mem_usage: maxRowValue(processRows, 'process_mem_usage')
-  }), [metrics, processRows]);
+  }), [diskRows, metrics, processRows]);
   const surfaceAlerts = useMemo(() => resolveHostSurfaceAlerts(tabReadings), [tabReadings]);
 
   useEffect(() => {
@@ -259,10 +296,6 @@ export default function HostCategoryLayout({
   }, [activeTab, alertDrawerOpen, dashboard.instanceId, getMonitorAlert]);
 
   useEffect(() => {
-    setAlertEvents([]);
-  }, [dashboard.instanceId]);
-
-  useEffect(() => {
     if (activeTab !== 'overview') return undefined;
     const instanceId = String(dashboard.instanceId || '');
     if (!instanceId) {
@@ -270,11 +303,7 @@ export default function HostCategoryLayout({
       return undefined;
     }
     let active = true;
-    getMonitorAlert({
-      monitor_instance_id: instanceId,
-      page: 1,
-      page_size: 20
-    })
+    getMonitorAlert(activeHostAlertParams(instanceId, 1, 20))
       .then((data) => {
         if (!active) return;
         setAlertEvents(hostAlertRailEvents(data?.results));
@@ -320,6 +349,9 @@ export default function HostCategoryLayout({
           pendingMetricNames={dashboard.pendingMetricNames}
           onRetryMetrics={dashboard.refetchMetricNames}
           alerts={surfaceAlerts.system}
+          coreLoad={coreLoad}
+          gpuRows={gpuRows}
+          gpuLoading={gpuState.status === 'idle' || gpuState.status === 'loading'}
         />
       );
     }
