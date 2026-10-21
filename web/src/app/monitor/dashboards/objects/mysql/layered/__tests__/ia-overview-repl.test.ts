@@ -6,6 +6,8 @@ import {
   REPL_LAG_WARN_S,
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
+  isSlowQueryAlertText,
+  readMysqlReplicationGap,
   type MysqlOverviewReadings
 } from '../ia';
 import { MYSQL_CATEGORY_COPY, type MysqlCategoryCopyKey } from '../mysql-copy';
@@ -70,7 +72,7 @@ describe('mysql overview replication KPI', () => {
       'mysql_aborted_connects_rate',
       'mysql_aborted_clients_rate',
       'mysql_tmp_disk_table_ratio',
-      'mysql_slow_queries_rate',
+      'mysql_innodb_row_lock_waits_rate',
       'mysql_table_locks_waited_rate'
     ]);
     expect(REPL_LAG_WARN_S).toBe(30);
@@ -125,16 +127,20 @@ describe('mysql overview replication KPI', () => {
 describe('mysql overview focus cards', () => {
   it('always returns four exception cards and switches the fourth by role', () => {
     const replica = buildMysqlFocusCards(replicaMap(12, 1, 1, {
-      mysql_slow_queries_rate: gauge('mysql_slow_queries_rate', 0.5)
+      mysql_innodb_row_lock_waits_rate: gauge('mysql_innodb_row_lock_waits_rate', 0.5),
+      mysql_innodb_row_lock_time_avg: gauge('mysql_innodb_row_lock_time_avg', 12)
     }), {}, text);
     expect(replica).toHaveLength(4);
-    expect(replica.map((card) => card.key)).toEqual(['lockWait', 'aborted', 'tmpDisk', 'slow']);
+    expect(replica.map((card) => card.key)).toEqual(['lockWait', 'aborted', 'tmpDisk', 'rowLock']);
     expect(replica[0].value).toBe('—');
     expect(replica[0].subtitle).toBe('未采集');
-    expect(replica[3].label).toBe('慢查询');
-    expect(replica[3].tab).toBe('statements');
-    expect(replica[3].hint).toBe('查看语句');
-    expect(replica[3].value).toBe('0.50 次/秒');
+    expect(replica[3].label).toBe('行锁等待');
+    expect(replica[3].tab).toBe('performance');
+    expect(replica[3].anchor).toBe('scan-lock');
+    expect(replica[3].hint).toBe('查看锁');
+    expect(replica[3].value).toBe('0.50');
+    expect(replica[3].subtitle).toBe('平均 12 ms');
+    expect(replica[3].tone).toBeUndefined();
 
     const primary = buildMysqlFocusCards({
       mysql_slaves_connected: gauge('mysql_slaves_connected', 2),
@@ -163,16 +169,61 @@ describe('mysql overview focus cards', () => {
     }, {}, text)[0];
     expect(lockCrit.tone).toBe(HOST_THRESHOLD_COLOR.crit);
 
-    const slowQuiet = buildMysqlFocusCards(replicaMap(0, 1, 1, {
-      mysql_slow_queries_rate: gauge('mysql_slow_queries_rate', 0)
+    const rowQuiet = buildMysqlFocusCards(replicaMap(0, 1, 1, {
+      mysql_innodb_row_lock_waits_rate: gauge('mysql_innodb_row_lock_waits_rate', 0)
     }), {}, text)[3];
-    expect(slowQuiet.key).toBe('slow');
-    expect(slowQuiet.tone).toBeUndefined();
+    expect(rowQuiet.key).toBe('rowLock');
+    expect(rowQuiet.tone).toBeUndefined();
 
-    const slowWarn = buildMysqlFocusCards(replicaMap(0, 1, 1, {
-      mysql_slow_queries_rate: gauge('mysql_slow_queries_rate', 1.2)
+    const rowActive = buildMysqlFocusCards(replicaMap(0, 1, 1, {
+      mysql_innodb_row_lock_waits_rate: gauge('mysql_innodb_row_lock_waits_rate', 1.2)
     }), {}, text)[3];
-    expect(slowWarn.tone).toBe(HOST_THRESHOLD_COLOR.warn);
-    expect(slowWarn.value).toBe('1.20 次/秒');
+    expect(rowActive.key).toBe('rowLock');
+    expect(rowActive.value).toBe('1.20');
+    expect(rowActive.tone).toBeUndefined();
+  });
+});
+
+describe('mysql slow query KPI', () => {
+  const slowReadings: MysqlOverviewReadings = { ...readings, slowPerSecond: 1.2 };
+  const slowCard = (slowAlertActive: boolean) => (
+    buildMysqlOverviewKpis(slowReadings, {}, text, slowAlertActive).find((card) => card.key === 'slow')!
+  );
+
+  it('keeps a positive rate dark unless this instance has an unrecovered slow alert', () => {
+    const quiet = slowCard(false);
+    expect(quiet.value).toBe('1.20 次/秒');
+    expect(quiet.subtitle).toBeUndefined();
+    expect(quiet.tone).toBeUndefined();
+
+    const warned = slowCard(true);
+    expect(warned.value).toBe('1.20 次/秒');
+    expect(warned.tone).toBe(HOST_THRESHOLD_COLOR.warn);
+
+    expect(isSlowQueryAlertText('出现慢查询', '')).toBe(true);
+    expect(isSlowQueryAlertText('', 'mysql_slow_queries')).toBe(true);
+    expect(isSlowQueryAlertText('Slow query', 'threads')).toBe(true);
+    expect(isSlowQueryAlertText('connection aborted', 'threads')).toBe(false);
+  });
+});
+
+describe('mysql replication empty copy', () => {
+  it('uses unconfigured and partial copy instead of one empty sentence', () => {
+    expect(readMysqlReplicationGap({})).toBe('unconfigured');
+    expect(readMysqlReplicationGap({
+      mysql_slaves_connected: gauge('mysql_slaves_connected', 0),
+      mysql_variables_log_bin: gauge('mysql_variables_log_bin', 1)
+    })).toBe('unconfigured');
+    expect(text('replicationUnconfigured')).toBe('当前未配置复制');
+    expect(text('replicationUnconfiguredHint')).toBe('单机写入源；配置从库后将显示下游与位点');
+
+    expect(readMysqlReplicationGap({
+      mysql_variables_read_only: gauge('mysql_variables_read_only', 1)
+    })).toBe('partial');
+    expect(readMysqlReplicationGap({
+      mysql_replication_source_log_pos: gauge('mysql_replication_source_log_pos', 80)
+    })).toBe('partial');
+    expect(text('replicationPartial')).toBe('复制指标未齐');
+    expect(text('replicationPartialHint')).toBe('请确认采集已包含复制/半同步项');
   });
 });
