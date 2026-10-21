@@ -64,6 +64,15 @@ const zh: Record<string, string> = {
   'chat.floatingDragHint': '打开对话，按住可拖动',
   'chat.floatingNewChat': '新对话',
   'chat.floatingClose': '关闭',
+  'chat.generatedFiles': '已生成文件',
+  'chat.closeGeneratedFiles': '关闭文件列表',
+  'chat.collapseFiles': '收起文件',
+  'chat.searchGeneratedFiles': '搜索文件……',
+  'chat.noMatchingFiles': '没有匹配的文件',
+  'chat.noGeneratedFiles': '当前会话还没有生成文件',
+  'chat.fileGeneratedAt': '生成时间：{time}',
+  'chat.fileSource': '对话：{source}',
+  'chat.downloadFile': '下载 {name}',
 
   // ── 消息状态 ────────────────────────────────────────────────────────────
   'chat.thinking': '思考中',
@@ -187,6 +196,15 @@ const en: Record<string, string> = {
   'chat.floatingDragHint': 'Open chat, hold to drag',
   'chat.floatingNewChat': 'New chat',
   'chat.floatingClose': 'Close',
+  'chat.generatedFiles': 'Generated files',
+  'chat.closeGeneratedFiles': 'Close file list',
+  'chat.collapseFiles': 'Hide files',
+  'chat.searchGeneratedFiles': 'Search files...',
+  'chat.noMatchingFiles': 'No matching files',
+  'chat.noGeneratedFiles': 'This chat has no generated files yet',
+  'chat.fileGeneratedAt': 'Created: {time}',
+  'chat.fileSource': 'Chat: {source}',
+  'chat.downloadFile': 'Download {name}',
 
   // ── Message status ──────────────────────────────────────────────────────
   'chat.thinking': 'Thinking',

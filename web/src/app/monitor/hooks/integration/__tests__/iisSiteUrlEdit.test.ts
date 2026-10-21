@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DataMapper } from '../useDataMapper';
 
-type FormField = {
+interface FormField {
   name: string;
   editable?: boolean;
   transform_on_edit?:
