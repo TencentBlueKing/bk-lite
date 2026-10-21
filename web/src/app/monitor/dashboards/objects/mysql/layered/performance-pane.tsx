@@ -6,13 +6,11 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { MetricSeries } from '../types';
 import { formatMetricValue } from '../../../shared/utils/format';
-import { ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { GrayTabEmptyState, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
 import { latestNumber, numericValue, primaryChartSeries } from '../../host/layered/readings';
 import { innodbHasLoad } from './ia';
 import { mysqlCategoryText } from './mysql-copy';
-import classic from '../../host/index.module.scss';
-import host from '../../host/layered/layered.module.scss';
 import pro from './pro.module.scss';
 
 interface PerformancePaneProps {
@@ -202,19 +200,12 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       ]}
     />
   ) : (
-    <section className={`${classic.panel} ${host.chartPanel} flex h-full flex-col max-[720px]:h-auto`}>
-      <div className={host.chartHead}>
-        <div className={host.chartTitle}>{mysqlCategoryText(t, 'innodbRw')}</div>
-      </div>
-      <div className="flex min-h-[156px] grow flex-col items-center justify-center text-center">
-        <div className="text-[13px] font-semibold text-[var(--color-text-2)]">
-          {innodb.length > 0 ? mysqlCategoryText(t, 'innodbQuiet') : empty}
-        </div>
-        {innodb.length > 0 ? (
-          <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{mysqlCategoryText(t, 'innodbQuietHint')}</div>
-        ) : null}
-      </div>
-    </section>
+    <div className="h-full max-[720px]:h-auto">
+      <GrayTabEmptyState
+        title={innodb.length > 0 ? mysqlCategoryText(t, 'innodbQuiet') : empty}
+        hint={innodb.length > 0 ? mysqlCategoryText(t, 'innodbQuietHint') : undefined}
+      />
+    </div>
   );
 
   const showConnections = connectionAwaiting || connection.length > 0;

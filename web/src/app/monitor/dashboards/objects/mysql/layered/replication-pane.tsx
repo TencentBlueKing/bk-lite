@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
-import { GrayTabEmptyState, KpiTileRow, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { GrayTabEmptyState, KpiTileRow, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import {
   formatMysqlReplicationLag,
@@ -68,8 +68,8 @@ const lagChange = (points: ChartData[] | undefined) => {
   if (typeof previous !== 'number' || typeof latest !== 'number') return undefined;
   const delta = latest - previous;
   if (Math.abs(delta) < 0.05) return '较上一点持平';
-  const text = formatMysqlReplicationLag(Math.abs(delta));
-  return `较上一点 ${delta > 0 ? '+' : '−'}${text}`;
+  const formatted = formatMysqlReplicationLag(Math.abs(delta));
+  return `较上一点 ${delta > 0 ? '+' : '−'}${formatted}`;
 };
 
 const replicaFields = (fields: MysqlRoleField[]) => REPLICA_LABELS.map((label) => (
@@ -90,54 +90,39 @@ const hasReplicationTrends = (
   || trends.binlogNote
 );
 
-function NoteCard({ card }: { card: MysqlReplicationCard }) {
+const REPL_LOADING_ITEMS: KpiTileModel[] = ['lag', 'io', 'sql'].map((key) => ({
+  key,
+  label: key,
+  value: ''
+}));
+
+function FittedKpiRow({
+  items,
+  loading = false
+}: {
+  items: KpiTileModel[];
+  loading?: boolean;
+}) {
   return (
-    <section
-      className="flex min-w-0 flex-col items-start rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2"
-      data-replication-card={card.key}
+    <div
+      className={pro.kpiFit}
+      style={{ ['--kpi-cols' as string]: String(Math.max(items.length, 1)) }}
     >
-      <div className="text-[12px] font-medium leading-[14px] text-[var(--color-text-2)]">{card.label}</div>
-      <div
-        className="mt-1 break-words text-[16px] font-semibold leading-6 text-[var(--color-text-1)]"
-        style={card.tone && card.tone !== 'muted' ? { color: TONE_COLOR[card.tone] } : undefined}
-      >
-        {card.value}
-      </div>
-      {card.detail ? (
-        <div className="mt-1 break-words text-[12px] leading-4 text-[var(--color-text-3)]">{card.detail}</div>
-      ) : null}
-    </section>
-  );
-}
-
-function CardRow({ cards }: { cards: MysqlReplicationCard[] }) {
-  return (
-    <div className={`mt-3 ${pro.perfGrid}`}>
-      {cards.map((card) => (
-        <div key={card.key} className={cards.length === 1 ? pro.perfWide : 'min-w-0'}>
-          <NoteCard card={card} />
-        </div>
-      ))}
+      <KpiTileRow loading={loading} items={items} />
     </div>
   );
 }
 
-const REPL_LOADING_ITEMS = ['lag', 'io', 'sql'].map((key) => ({ key, label: key, value: '' }));
-
-function FillState({ title, loading = false }: { title: string; loading?: boolean }) {
-  if (loading) {
-    return (
-      <div data-replication-state="loading">
-        <KpiTileRow loading columns={3} items={REPL_LOADING_ITEMS} />
-      </div>
-    );
-  }
-  return (
-    <div data-replication-state="empty">
-      <GrayTabEmptyState title={title} />
-    </div>
-  );
-}
+const extraItems = (cards: MysqlReplicationCard[]): KpiTileModel[] => (
+  cards.map((card) => ({
+    key: card.key,
+    label: card.label,
+    value: card.value,
+    detail: card.detail,
+    tone: TONE_COLOR[card.tone || 'muted'],
+    alertLevel: card.tone === 'warn' ? 'warn' as const : undefined
+  }))
+);
 
 function TrendCard({
   trend,
@@ -222,65 +207,100 @@ export default function ReplicationPane({
       value: formatMysqlReplicationLag(Math.abs(delta), lagUnits)
     });
   })();
-  const items = fields.map((field) => ({
+  const items: KpiTileModel[] = fields.map((field) => ({
     key: field.label,
     label: localizeLabel(field.label),
     value: localizeValue(displayValue(field)),
     tone: toneColor(field),
-    subtitle: field.label === '复制延迟' ? change : undefined
+    subtitle: field.label === '复制延迟' ? change : undefined,
+    alertLevel: THREAD_LABELS.has(field.label) && field.tone === 'warn'
+      ? 'critical' as const
+      : (field.tone === 'warn' ? 'warn' as const : undefined)
   }));
+  const errorItems = extras?.error
+    ? extraItems([{ ...extras.error, label: localizeLabel(extras.error.label) }])
+    : [];
+  const downstreamItems = extras?.downstream.length
+    ? extraItems(extras.downstream.map((card) => ({
+      ...card,
+      label: localizeLabel(card.label),
+      value: localizeValue(card.value)
+    })))
+    : [];
   const showTrends = hasReplicationTrends(statusBlock?.kind, trends);
   const hasContent = items.length > 0
-    || Boolean(extras?.error)
-    || Boolean(extras?.downstream.length)
+    || errorItems.length > 0
+    || downstreamItems.length > 0
     || showTrends;
 
   const replicationLoading = blocksUntilReady(MYSQL_ROLE_METRICS, pendingMetricNames)
     || blocksUntilReady(MYSQL_REPLICATION_EXTRA_METRICS, pendingMetricNames);
-  if (!hasContent && replicationLoading) return <FillState title={text('loading')} loading />;
-  if (!hasContent) return <FillState title={text('noReplicationData')} />;
-
   const empty = text('noTrend');
+  if (!hasContent && replicationLoading) {
+    return (
+      <div data-replication-state="loading">
+        <ProSectionTitle>{text('status')}</ProSectionTitle>
+        <FittedKpiRow loading items={REPL_LOADING_ITEMS} />
+        <ProSectionTitle>{text('trend')}</ProSectionTitle>
+        <div className={pro.perfGrid}>
+          <TrendCard
+            trend="delay"
+            title={text('replicationLag')}
+            unit="s"
+            color={HOST_SERIES_COLOR.memUsed}
+            data={[]}
+            emptyText={empty}
+            loading
+          />
+          <TrendCard
+            trend="relay"
+            title={text('relayPosition')}
+            unit="counts"
+            color={HOST_SERIES_COLOR.memAvailable}
+            data={[]}
+            emptyText={empty}
+            loading
+          />
+          <TrendCard
+            trend="binlog"
+            title={text('binlogPosition')}
+            unit="counts"
+            color={HOST_SERIES_COLOR.diskUsed}
+            data={[]}
+            emptyText={empty}
+            loading
+          />
+        </div>
+      </div>
+    );
+  }
+  if (!hasContent) {
+    return (
+      <div data-replication-state="empty">
+        <GrayTabEmptyState title={text('noReplicationData')} />
+      </div>
+    );
+  }
+
   return (
     <div data-replication-state="ready">
-      {items.length > 0 || extras?.error ? (
+      {items.length > 0 || errorItems.length > 0 ? (
         <>
           <ProSectionTitle>{text('status')}</ProSectionTitle>
-          {items.length > 0 ? (
-            <KpiTileRow
-              columns={Math.min(items.length, 6)}
-              items={items.map((item) => ({
-                key: item.key,
-                label: item.label,
-                value: item.value,
-                tone: item.tone,
-                subtitle: item.subtitle
-              }))}
-            />
-          ) : null}
-          {extras?.error ? (
-            <CardRow cards={[{ ...extras.error, label: localizeLabel(extras.error.label) }]} />
-          ) : null}
+          {items.length > 0 ? <FittedKpiRow items={items} /> : null}
+          {errorItems.length > 0 ? <FittedKpiRow items={errorItems} /> : null}
         </>
       ) : null}
-      {extras && extras.downstream.length > 0 ? (
+      {downstreamItems.length > 0 ? (
         <>
-          <div className="mt-3">
-            <ProSectionTitle>{text('primaryDownstream')}</ProSectionTitle>
-          </div>
-          <CardRow cards={extras.downstream.map((card) => ({
-            ...card,
-            label: localizeLabel(card.label),
-            value: localizeValue(card.value)
-          }))} />
+          <ProSectionTitle>{text('primaryDownstream')}</ProSectionTitle>
+          <FittedKpiRow items={downstreamItems} />
         </>
       ) : null}
       {showTrends ? (
         <>
-          <div className="mt-3">
-            <ProSectionTitle>{text('trend')}</ProSectionTitle>
-          </div>
-          <div className={`mt-3 ${pro.perfGrid}`}>
+          <ProSectionTitle>{text('trend')}</ProSectionTitle>
+          <div className={pro.perfGrid}>
             <TrendCard
               trend="delay"
               title={text('replicationLag')}

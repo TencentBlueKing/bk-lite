@@ -2,7 +2,7 @@
 
 import React, { useCallback, useMemo } from 'react';
 import { ProEventsSectionTitle } from '../../host/layered/alert-event-hint';
-import { KpiTileRow, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
+import { KpiTileRow, ProDashLoading, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
 import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
 import { primaryChartSeries } from '../../host/layered/readings';
@@ -184,13 +184,13 @@ export default function OverviewPane({
           <ProSectionTitle>{text('focus')}</ProSectionTitle>
           <div className={host.shortcutGrid}>
             {FOCUS_LOADING.map((titleKey) => (
-              <ThinTimeSeries
-                key={titleKey}
-                title={text(titleKey)}
-                loading
-                data={[]}
-                legends={[]}
-              />
+              <div key={titleKey} className={`${classic.panel} ${host.shortcutCard}`}>
+                <div className={host.shortcutCopy}>
+                  <FocusShortcutTitle label={text(titleKey)} unit="" />
+                  <ProDashLoading size="small" />
+                </div>
+                <div className={host.focusChart} />
+              </div>
             ))}
           </div>
         </>
@@ -239,7 +239,9 @@ export default function OverviewPane({
                       data={plotted}
                       legends={sparks.map((spark) => ({ label: text(spark.label), color: spark.color }))}
                     />
-                  ) : null}
+                  ) : (
+                    <div className={host.focusChart} />
+                  )}
                 </div>
               );
             })}

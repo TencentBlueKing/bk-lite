@@ -40,7 +40,7 @@ const WAIT_TITLE_KEYS: Record<WaitColumn, MysqlCategoryCopyKey> = {
   timeMs: 'columnWaitTime'
 };
 
-const TEXT_BUTTON = '!h-auto shrink-0 !px-1 !text-[13px] !text-[var(--color-text-2)] hover:!text-[var(--color-primary)]';
+const TEXT_BUTTON = `!h-auto shrink-0 !px-1 ${host.shortcutSub} hover:!text-[var(--color-primary)]`;
 
 const trendData = (points: Array<{ time: number; value: number }> | undefined, label: string) => (
   mergeChartSeries([{
@@ -53,10 +53,7 @@ const trendData = (points: Array<{ time: number; value: number }> | undefined, l
 );
 
 const emptyCopy = (copy: { title: string; hint?: string }) => (
-  <div className="px-3 py-2 text-center">
-    <div className="text-[13px] font-semibold text-[var(--color-text-2)]">{copy.title}</div>
-    {copy.hint ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{copy.hint}</div> : null}
-  </div>
+  <GrayTabEmptyState title={copy.title} hint={copy.hint} />
 );
 
 const statementLabel = (key: StatementColumn, row: MysqlStatementRow) => {
@@ -210,7 +207,7 @@ export function StatementPane({
         emptyText={trendEmpty}
       />
       {primaryWait ? (
-        <div className="text-[12px] text-[var(--color-text-3)]">
+        <div className={host.shortcutSub}>
           {mysqlCategoryText(t, 'primaryWait', { name: primaryWait })}
         </div>
       ) : null}
