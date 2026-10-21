@@ -227,6 +227,7 @@
     "remark": "^15.0.1",
     "remark-gfm": "^4.0.0",
     "remark-html": "^16.0.1",
+    "sm-crypto": "0.3.13",
     "uuid": "^11.0.3",
     "zustand": "5.0.9"
   },
