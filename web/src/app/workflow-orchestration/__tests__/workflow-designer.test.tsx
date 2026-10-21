@@ -1063,6 +1063,9 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     const httpWorkflow = {
       ...workflow,
       is_builtin: true,
+      current_version: 1,
+      enabled: true,
+      has_draft: false,
       definition: {
         ...workflow.definition,
         tasks: [{
@@ -1094,6 +1097,19 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     const title = container.querySelector<HTMLElement>('[data-workflow-node="atom"] [data-workflow-node-title]');
     expect(title?.textContent).toBe('检查服务状态');
     expect(title?.classList.contains('nopan')).toBe(true);
+    fireEvent.click(node);
+    expect(screen.queryByRole('button', { name: '执行记录' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /版本/ })).toBeNull();
+    expect(screen.queryByText(/已启用/)).toBeNull();
+    expect(screen.queryByText('发布版本不受草稿修改影响')).toBeNull();
+    expect(screen.queryByText('调试输出')).toBeNull();
+    expect(screen.queryByText('运行后可查看执行详情')).toBeNull();
+    expect(screen.queryByRole('button', { name: '配置' })).toBeNull();
+    expect(screen.getByRole('button', { name: '查看原子详情' })).not.toBeNull();
+    expect(container.querySelector('.react-flow__handle.connectablestart')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    expect(mocks.push).toHaveBeenCalledWith('/workflow-orchestration/workflows');
+    expect(screen.queryByText('离开并丢失未保存修改？')).toBeNull();
 
     fireEvent.doubleClick(title!);
     const nameFromTitle = await screen.findByDisplayValue('检查服务状态');

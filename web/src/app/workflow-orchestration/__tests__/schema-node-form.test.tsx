@@ -220,6 +220,48 @@ describe('原子 Schema 参数表单', () => {
     expect((editor as HTMLTextAreaElement).value).toBe('SELECT 1');
   });
 
+  it('只读时文本、数字、下拉和 JSON 都不能改，拖入引用也不会写入', () => {
+    render(<Harness
+      readOnly
+      schema={{
+        type: 'object',
+        properties: {
+          owner: { type: 'string', title: '负责人' },
+          count: { type: 'integer', title: '次数' },
+          level: { type: 'string', title: '级别', enum: ['low', 'high'], 'x-binding': 'literal-only' },
+          payload: { type: 'object', title: '数据', 'x-widget': 'json', jsonEditorAllowed: true, 'x-binding': 'literal-only' },
+        },
+      }}
+      initial={{ owner: 'keep', count: 3, level: 'low', payload: { ok: true } }}
+    />);
+
+    expect(screen.getByDisplayValue('keep').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('spinbutton').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('combobox').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByDisplayValue(/"ok": true/).hasAttribute('disabled')).toBe(true);
+
+    const dataTransfer = {
+      dropEffect: 'none',
+      types: [WORKFLOW_REFERENCE_MIME],
+      getData: vi.fn().mockImplementation((format: string) => format === WORKFLOW_REFERENCE_MIME ? '${workflow.input.owner}' : ''),
+    };
+    fireEvent.drop(screen.getByTestId('workflow-reference-dropzone'), { dataTransfer });
+    expect(screen.getByDisplayValue('keep')).not.toBeNull();
+    expect(screen.queryByDisplayValue(/workflow\.input\.owner/)).toBeNull();
+  });
+
+  it('只读时带图标的引用输入框也使用禁用样式', () => {
+    render(<Harness
+      readOnly
+      schema={{ type: 'object', properties: { artifact: { type: 'object', title: '附件' } } }}
+      initial={{ artifact: '${workflow.input.owner}' }}
+    />);
+
+    const input = screen.getByDisplayValue('${workflow.input.owner}');
+    expect(input.hasAttribute('disabled')).toBe(true);
+    expect(input.closest('.ant-input-affix-wrapper')?.className).toContain('ant-input-affix-wrapper-disabled');
+  });
+
   it('只读时查询 SQL 仍可查看但不能改', () => {
     render(<Harness
       readOnly

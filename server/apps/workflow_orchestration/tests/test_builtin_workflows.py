@@ -3,12 +3,13 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory
 
 from apps.system_mgmt.models import Channel, ChannelChoices
-from apps.workflow_orchestration.models import Workflow
+from apps.workflow_orchestration.models import Workflow, WorkflowExecution
 from apps.workflow_orchestration.services.builtin_workflows import (
     BUILTIN_EXECUTOR_RECIPIENT,
     BUILTIN_LINUX_KEY,
     BUILTIN_WINDOWS_KEY,
     builtin_engine_name,
+    collapse_builtin_workflow_versions,
     ensure_builtin_health_workflows,
 )
 from apps.workflow_orchestration.views import WorkflowViewSet
@@ -127,6 +128,63 @@ def test_ensure_builtin_publishes_next_version_when_template_snapshot_changes(bu
     assert "BK_LITE_RESULT=" not in script
     assert linux.versions.filter(version=1).exists()
     assert linux.versions.filter(version=2).exists()
+
+
+@pytest.mark.django_db
+def test_collapse_builtin_versions_keeps_current_body_as_v1(builtin_user, builtin_channels, mocker):
+    snapshots = {"generation": "first"}
+
+    def snapshot(fmt, team_id):
+        return {
+            "object_key": f"workflow-orchestration/templates/demo/team-{team_id}/health-{snapshots['generation']}.{fmt}",
+            "format": fmt,
+            "sha256": "a" * 64,
+            "size": 128,
+            "filename_prefix": f"health-{fmt}",
+        }
+
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ConductorClient").return_value
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.seed_builtin_health_template_snapshot", side_effect=snapshot)
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ensure_platform_atom")
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.sync_published_triggers")
+
+    ensure_builtin_health_workflows(team_id=1, username=builtin_user.username, domain=builtin_user.domain)
+    snapshots["generation"] = "second"
+    ensure_builtin_health_workflows(team_id=1, username=builtin_user.username, domain=builtin_user.domain)
+    linux = Workflow.objects.get(engine_name=builtin_engine_name(1, BUILTIN_LINUX_KEY))
+    custom = Workflow.objects.create(
+        name="自定义流程",
+        team=[1],
+        definition={"name": "custom", "version": 3, "tasks": []},
+        current_version=3,
+        draft_base_version=3,
+        is_builtin=False,
+        engine_name="bklite_workflow_custom",
+    )
+    custom.versions.create(version=3, definition=custom.definition, canvas_metadata={})
+    execution = WorkflowExecution.objects.create(
+        workflow=linux,
+        workflow_version=2,
+        status=WorkflowExecution.Status.SUCCEEDED,
+        team=[1],
+        started_by=builtin_user.username,
+    )
+
+    assert collapse_builtin_workflow_versions() == 2
+
+    linux.refresh_from_db()
+    custom.refresh_from_db()
+    execution.refresh_from_db()
+    assert linux.current_version == 1
+    assert linux.draft_base_version == 1
+    assert linux.definition["version"] == 1
+    report = next(task for task in linux.definition["tasks"] if task["taskReferenceName"] == "report")
+    assert report["inputParameters"]["template_snapshot"]["object_key"].endswith("health-second.xlsx")
+    assert list(linux.versions.values_list("version", flat=True)) == [1]
+    assert linux.versions.get(version=1).definition["version"] == 1
+    assert execution.workflow_version == 1
+    assert custom.current_version == 3
+    assert custom.versions.filter(version=3).exists()
 
 
 @pytest.mark.django_db

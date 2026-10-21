@@ -106,8 +106,9 @@ describe('流程列表', () => {
     expect(screen.queryByPlaceholderText('触发器')).toBeNull();
     expect(screen.getByRole('columnheader', { name: /^发布状态/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: /^启用状态/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
-    expect(screen.getByRole('columnheader', { name: /^是否内置/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /^是否内置/ })).toBeNull();
     expect(screen.getByRole('columnheader', { name: /^触发器/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
+    expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('is_builtin=false'), expect.anything());
   });
 
   it('行内展示高频的编辑和运行，更多菜单按使用频率排列', async () => {
@@ -187,27 +188,37 @@ describe('流程列表', () => {
     ));
   });
 
-  it('是否内置表头筛选使用服务端列表查询', async () => {
-    renderPage();
-    await screen.findByText(workflow.name);
-    mocks.get.mockClear();
+  it('流程市场只列出内置流程，查看进入只读，复制说明结果且不发布', async () => {
+    const builtin = { ...workflow, is_builtin: true, name: 'Linux 主机巡检（Excel）' };
+    const copied = { ...workflow, id: 2, name: '巡检副本', is_builtin: false, current_version: 0, enabled: false };
+    mocks.get.mockResolvedValue({ count: 1, items: [builtin] });
+    mocks.post.mockResolvedValue(copied);
+    render(
+      <IntlProvider locale="zh-CN" messages={{ 'common.total': '共', 'common.items': '项' }}>
+        <App><WorkflowListPage catalog="market" /></App>
+      </IntlProvider>,
+    );
+    await screen.findByText(builtin.name);
 
-    const filterTrigger = screen.getByRole('columnheader', { name: /^是否内置/ }).querySelector<HTMLElement>('.ant-table-filter-trigger');
-    expect(filterTrigger).not.toBeNull();
-    fireEvent.click(filterTrigger!);
+    expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('is_builtin=true'), expect.anything());
+    expect(screen.queryByRole('button', { name: /新建/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '运行' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /^启用状态/ })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /^发布状态/ })).toBeNull();
 
-    const dropdown = await waitFor(() => {
-      const element = document.querySelector<HTMLElement>('.ant-table-filter-dropdown');
-      expect(element).not.toBeNull();
-      return element!;
-    });
-    fireEvent.click(within(dropdown).getByText('内置'));
-    fireEvent.click(within(dropdown).getByRole('button', { name: /OK|确定/ }));
+    fireEvent.click(screen.getByRole('button', { name: /查看/ }));
+    expect(mocks.push).toHaveBeenCalledWith('/workflow-orchestration/market/1?mode=view');
 
-    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
-      expect.stringContaining('is_builtin=true'),
-      expect.anything(),
-    ));
+    fireEvent.click(screen.getByRole('button', { name: '复制到流程' }));
+    expect(screen.getByRole('columnheader', { name: '模版名称' })).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '流程名称' })).toBeNull();
+    expect(await screen.findByText('复制后出现在「流程」里，状态是纯草稿，不会发布，也不会改动这条内置流程。')).not.toBeNull();
+    fireEvent.change(screen.getByLabelText('流程名称'), { target: { value: copied.name } });
+    fireEvent.click(screen.getByRole('button', { name: '确认复制' }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/workflow_orchestration/api/workflows/1/duplicate/', { name: copied.name }));
+    expect(await screen.findByText('已复制为新的纯草稿')).not.toBeNull();
+    expect(screen.queryByText(copied.name)).toBeNull();
   });
 
   it('内置流程操作列展示查看并进入只读模式', async () => {

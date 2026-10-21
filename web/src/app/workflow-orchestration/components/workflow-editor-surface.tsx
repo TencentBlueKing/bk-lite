@@ -381,8 +381,12 @@ export function WorkflowNodeInspector({
                     type="button"
                     draggable={!readOnly}
                     aria-label={t('workflowOrchestration.editor.dragField', '拖拽字段 {field}', { field: item.displayName || item.label })}
-                    className="group w-full cursor-grab rounded-md bg-[var(--color-bg)] px-3 py-2 text-left outline-none transition hover:ring-1 hover:ring-[var(--color-primary)] focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] active:cursor-grabbing"
+                    className={`group w-full rounded-md bg-[var(--color-bg)] px-3 py-2 text-left outline-none transition hover:ring-1 hover:ring-[var(--color-primary)] focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] ${readOnly ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
                     onDragStart={(event) => {
+                      if (readOnly) {
+                        event.preventDefault();
+                        return;
+                      }
                       event.dataTransfer.effectAllowed = 'copy';
                       event.dataTransfer.setData(WORKFLOW_REFERENCE_MIME, item.value);
                       event.dataTransfer.setData('text/plain', item.value);
