@@ -35,6 +35,76 @@
   grid-template-columns: repeat(var(--kpi-cols, 6), minmax(0, 1fr));
 }
 
+.identityBadges {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 280px;
+  min-height: 24px;
+  margin-left: auto;
+}
+
+.hostStrip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px;
+}
+
+.hostStripName {
+  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-1);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hostMeter {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hostMeterValue {
+  color: var(--color-text-1);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.hostMeterTrack {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-fill-2);
+}
+
+.hostMeterFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.hostStripJump {
+  margin-top: 0;
+  margin-left: auto;
+  width: fit-content;
+  flex: none;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
 @media (max-width: 1100px) {
   .perfGrid {
     grid-template-columns: minmax(0, 1fr);

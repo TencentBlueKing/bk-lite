@@ -47,12 +47,14 @@ import {
   writeObjectDashboardMode
 } from '../../shared/utils/pro-dashboard';
 import MysqlProLayout from './layered/mysql-pro-layout';
-import { MYSQL_PERF_AUX_METRICS, MYSQL_REPLICATION_EXTRA_METRICS, readMysqlHeaderIdentity } from './layered/ia';
+import { MysqlInstanceBadges } from './layered/instance-identity';
+import { MYSQL_PERF_AUX_METRICS, MYSQL_REPLICATION_EXTRA_METRICS, readMysqlHeaderIdentity, readMysqlProHeader } from './layered/ia';
 import {
   MYSQL_FOCUS_METRICS,
   MYSQL_HEADER_METRICS,
   MYSQL_HEALTH_METRICS,
-  MYSQL_ROLE_METRICS
+  MYSQL_ROLE_METRICS,
+  blocksUntilReady
 } from './layered/section-loading';
 import MysqlLegacyLayout from './legacy-layout';
 
@@ -594,12 +596,14 @@ export default function MysqlDashboardPage() {
   const proPending = instanceSwitching ? MYSQL_CATEGORY_PENDING_ALL : pendingMetricNames;
   const mysqlIdentity = readMysqlHeaderIdentity(metricMap, resolvedInstanceName);
   const proMode = displayMode === 'category';
+  const identityPending = blocksUntilReady(MYSQL_HEADER_METRICS, proPending);
+  const identityHeader = identityPending ? null : readMysqlProHeader(proMetricMap);
   // 实例 ID 与展示名仅分隔符不同时（mysql_3306 vs mysql-3306）视为重复，不再展示。
   const normalizeIdentityKey = (value: string) => value.trim().toLowerCase().replace(/[-_\s]+/g, '');
   const showInstanceId =
     Boolean(instanceIdText) &&
     normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
-  // 专业盘角色、只读、Binlog、版本在概览「实例摘要」卡。传统盘与全量指标仍用拓扑身份。
+  // 专业盘角色 / 读写 / Binlog / 版本挂实例白卡右侧。传统盘与全量指标仍用拓扑身份。
   const identityMetaItems = proMode
     ? []
     : mysqlIdentity.deployment === '单节点'
@@ -735,6 +739,9 @@ export default function MysqlDashboardPage() {
               onFrequenceChange,
               onRefresh: refreshDashboard
             }}
+            identityExtra={proMode ? (
+              <MysqlInstanceBadges header={identityHeader} pending={identityPending} />
+            ) : undefined}
             styles={chrome}
           />
           </div>

@@ -16,17 +16,15 @@ import host from '../../host/layered/layered.module.scss';
 import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
-  readMysqlProHeader,
   type MysqlFocusCard,
   type MysqlFocusSpark,
   type MysqlHostCandidate,
   type MysqlOverviewReadings
 } from './ia';
-import MysqlInstanceSummaryCard from './instance-summary-card';
+import { MysqlHostStrip } from './instance-identity';
 import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import {
   MYSQL_FOCUS_METRICS,
-  MYSQL_HEADER_METRICS,
   MYSQL_HEALTH_METRICS,
   blocksUntilReady
 } from './section-loading';
@@ -153,16 +151,12 @@ export default function OverviewPane({
   );
   const healthLoading = blocksUntilReady(MYSQL_HEALTH_METRICS, pendingMetricNames);
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
-  const headerPending = blocksUntilReady(MYSQL_HEADER_METRICS, pendingMetricNames);
-  const header = headerPending ? null : readMysqlProHeader(metricMap);
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
 
   return (
     <>
-      <MysqlInstanceSummaryCard
-        header={header}
-        headerPending={headerPending}
+      <MysqlHostStrip
         host={linkedHost}
         href={hostHref}
         cpuPercent={cpuPercent}
