@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.cmdb.constants.monitor_link import CMDB_MODEL_TO_MONITOR_OBJECT
 from apps.module_link.constants import BATCH_LIMIT, ITEM_NEEDS_OBJECT, ITEM_NOT_FOUND, STATUS_CANCELLED
 from apps.module_link.models import ModuleLinkModelMap, MonitorAccessDraft, MonitorLinkTask, MonitorLinkTaskItem
-from apps.module_link.services.cmdb_monitor import CmdbMonitorTaskService, can_see_task, resolved_current_team, serialize_draft
+from apps.module_link.services.cmdb_monitor import CmdbMonitorTaskService, can_see_task, resolved_current_team, serialize_draft, serialize_task
 
 pytestmark = pytest.mark.django_db
 
@@ -79,6 +79,8 @@ def test_query_failure_log_stays_one_line_and_keeps_uuid(mocker, caplog):
     item = task.items.get()
     assert item.inst_uuid == raw
     assert item.status == "failed"
+    assert item.message == "查询配置项失败"
+    assert secret not in item.message
     records = [row for row in caplog.records if row.msg == ROW_FAILED]
     assert len(records) == 1
     record = records[0]
@@ -128,12 +130,22 @@ def test_buckets_and_drafts(mocker, caplog):
 
     by_uuid = {item.inst_uuid: item for item in task.items.all()}
     assert by_uuid["u-ok"].status == "ok"
+    assert by_uuid["u-ok"].message == ""
     assert by_uuid["u-linked"].status == "already_linked"
+    assert by_uuid["u-linked"].message == ""
     assert by_uuid["u-miss"].status == ITEM_NOT_FOUND
+    assert by_uuid["u-miss"].message == "没有按身份命中对端对象"
     assert by_uuid["u-conflict"].status == "conflict"
+    assert by_uuid["u-conflict"].message == "身份命中多条，需要手动关联"
     assert by_uuid["u-skip"].status == "skipped_model"
+    assert by_uuid["u-skip"].message == "平台树对象不进入本任务"
     assert by_uuid["u-custom"].status == ITEM_NEEDS_OBJECT
+    assert by_uuid["u-custom"].message == "这个模型没有内置监控对象映射"
     assert by_uuid["u-fail"].status == "failed"
+    assert by_uuid["u-fail"].message == "没有这条实例的操作权限"
+    payload_by_uuid = {row["inst_uuid"]: row["message"] for row in serialize_task(task)["items"]}
+    assert payload_by_uuid["u-fail"] == "没有这条实例的操作权限"
+    assert payload_by_uuid["u-ok"] == ""
     drafts = list(task.drafts.all())
     assert len(drafts) == 1
     assert drafts[0].object_name == "Host"
@@ -207,6 +219,7 @@ def test_assign_object_without_unique_name_creates_draft(mocker):
     )
     item.refresh_from_db()
     assert item.status == ITEM_NOT_FOUND
+    assert item.message == "没有按身份命中对端对象"
     draft = task.drafts.get()
     assert draft.object_name == "Tomcat"
     assert draft.rows[0]["instance_name"] == "wl-1"

@@ -465,6 +465,72 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(screen.queryByText('manual:11')).toBeNull();
   });
 
+  it('上游表单只允许 Linux 时，作业节点选择主机弹窗禁用 Windows', async () => {
+    const linuxHost = { id: 'node:l1', source: 'node_mgmt', source_id: 'l1', name: 'linux-01', ip: '10.0.0.8', operating_system: 'linux', connected: true };
+    const windowsHost = { id: 'node:w1', source: 'node_mgmt', source_id: 'w1', name: 'win-01', ip: '10.0.0.9', operating_system: 'windows', connected: true };
+    const jobWorkflow = {
+      ...workflow,
+      definition: {
+        ...workflow.definition,
+        tasks: [{
+          name: 'bklite_job_execute',
+          taskReferenceName: 'scan',
+          type: 'SIMPLE',
+          inputParameters: {
+            targets: '${workflow.input.targets}',
+            script_type: 'powershell',
+            script_content: 'Write-Output ok',
+          },
+        }],
+      },
+      canvas_metadata: {
+        node_titles: { scan: '作业执行' },
+        trigger_nodes: [{
+          id: 'trigger_form',
+          name: 'Linux 健康巡检表单',
+          trigger_type: 'FORM',
+          input_schema: {
+            type: 'object',
+            properties: {
+              targets: {
+                type: 'array',
+                title: '目标主机',
+                'x-target-binding': {
+                  mode: 'runtime',
+                  allowedSources: ['node_mgmt', 'job_mgmt'],
+                  allowedOperatingSystems: ['linux'],
+                  minCount: 1,
+                  maxCount: 100,
+                },
+              },
+            },
+            required: ['targets'],
+          },
+          config: {},
+        }],
+      },
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/workflows/1/')) return Promise.resolve(jobWorkflow);
+      if (url.includes('/workflows/atoms/')) return Promise.resolve(atoms);
+      if (url.includes('source=node_mgmt')) return Promise.resolve({ source: 'node_mgmt', count: 2, items: [linuxHost, windowsHost] });
+      return Promise.resolve({ source: 'job_mgmt', count: 0, items: [] });
+    });
+    const { container } = render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
+    const node = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('[data-workflow-node="atom"] button[aria-label="作业执行"]');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    fireEvent.doubleClick(node);
+    fireEvent.click(await screen.findByRole('button', { name: /选择主机/ }));
+
+    const linuxRow = (await screen.findByText('linux-01')).closest('tr');
+    const windowsRow = (await screen.findByText('win-01')).closest('tr');
+    expect(within(linuxRow!).getByRole('checkbox')).toHaveProperty('disabled', false);
+    expect(within(windowsRow!).getByRole('checkbox')).toHaveProperty('disabled', true);
+  });
+
   it('Webhook 只保留自动接口与响应模式，并仅在等待模式开放响应节点', async () => {
     const { container } = render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="Webhook 流程" /></App>);
 
@@ -1063,6 +1129,9 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     const httpWorkflow = {
       ...workflow,
       is_builtin: true,
+      current_version: 1,
+      enabled: true,
+      has_draft: false,
       definition: {
         ...workflow.definition,
         tasks: [{
@@ -1094,6 +1163,19 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     const title = container.querySelector<HTMLElement>('[data-workflow-node="atom"] [data-workflow-node-title]');
     expect(title?.textContent).toBe('检查服务状态');
     expect(title?.classList.contains('nopan')).toBe(true);
+    fireEvent.click(node);
+    expect(screen.queryByRole('button', { name: '执行记录' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /版本/ })).toBeNull();
+    expect(screen.queryByText(/已启用/)).toBeNull();
+    expect(screen.queryByText('发布版本不受草稿修改影响')).toBeNull();
+    expect(screen.queryByText('调试输出')).toBeNull();
+    expect(screen.queryByText('运行后可查看执行详情')).toBeNull();
+    expect(screen.queryByRole('button', { name: '配置' })).toBeNull();
+    expect(screen.getByRole('button', { name: '查看原子详情' })).not.toBeNull();
+    expect(container.querySelector('.react-flow__handle.connectablestart')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    expect(mocks.push).toHaveBeenCalledWith('/workflow-orchestration/workflows');
+    expect(screen.queryByText('离开并丢失未保存修改？')).toBeNull();
 
     fireEvent.doubleClick(title!);
     const nameFromTitle = await screen.findByDisplayValue('检查服务状态');

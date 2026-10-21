@@ -46,6 +46,36 @@ test('collects attachment files from the current conversation, including history
   assert.equal(files[0].filename, '子网地址使用率.xlsx');
   assert.equal(files[0].fileUrl, fileUrl);
   assert.equal(files[0].ext, 'xlsx');
+  assert.equal(files[0].createdAt, undefined);
+  assert.equal(files[0].source, undefined);
+});
+
+test('keeps the user prompt and message time with each generated file', () => {
+  const files = collectSessionAttachmentFiles([
+    {
+      id: 'ask',
+      sender: 'user',
+      content: '列出主机并导出清单',
+      timestamp: 1,
+    },
+    {
+      id: 'answer',
+      sender: 'bot',
+      timestamp: 1_760_000_000_000,
+      metadata: {
+        contentChunks: [{
+          type: 'toolCalls',
+          toolCalls: [{
+            id: 'call-2',
+            name: 'generate_attachment_file',
+            result: JSON.stringify({ filename: '主机清单.xlsx', file_url: fileUrl }),
+          }],
+        }],
+      },
+    },
+  ]);
+  assert.equal(files[0].source, '列出主机并导出清单');
+  assert.equal(files[0].createdAt, 1_760_000_000_000);
 });
 
 test('omits the bar source when the conversation has no generated files', () => {

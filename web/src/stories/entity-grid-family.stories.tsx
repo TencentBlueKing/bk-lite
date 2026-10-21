@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button } from 'antd';
+import { expect } from 'storybook/test';
 import GridEntityCard from '@/components/grid-entity-card';
 import ListPageHeader from '@/components/list-page-header';
 import CardGridSkeleton from '@/components/card-grid-skeleton';
@@ -41,6 +42,36 @@ export const CompactCatalog: Story = {
   args: {
     name: '电子邮件',
     description: '通过 SMTP 发送邮件通知。',
+  },
+};
+
+export const CustomActionFooter: StoryObj = {
+  render: () => (
+    <div className="grid max-w-[1120px] grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {['系统日志', '文件采集', 'SNMP Trap', 'Kafka 日志订阅'].map((name) => (
+        <GridEntityCard
+          key={name}
+          name={name}
+          description="用于集中式日志记录、监控与分析。"
+          metaLabels={['通用']}
+          footerClassName="w-full"
+          footer={<Button type="primary" className="w-full">接入</Button>}
+        />
+      ))}
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const cards = Array.from(canvasElement.querySelectorAll('article'));
+    expect(cards).toHaveLength(4);
+
+    cards.forEach((card) => {
+      const button = card.querySelector('button');
+      expect(button).not.toBeNull();
+      const cardRect = card.getBoundingClientRect();
+      const buttonRect = button!.getBoundingClientRect();
+      expect(buttonRect.top).toBeGreaterThanOrEqual(cardRect.top);
+      expect(buttonRect.bottom).toBeLessThanOrEqual(cardRect.bottom);
+    });
   },
 };
 

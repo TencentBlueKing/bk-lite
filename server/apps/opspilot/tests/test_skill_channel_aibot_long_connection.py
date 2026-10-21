@@ -389,8 +389,10 @@ def test_upload_wecom_file_chunks_and_returns_media_id():
     chunks = [item for item in sent if item["cmd"] == "aibot_upload_media_chunk"]
     assert [item["body"]["chunk_index"] for item in chunks] == [0, 1]
     assert base64.b64decode(chunks[1]["body"]["base64_data"]) == b"a" * 10
-    with pytest.raises(WecomMediaRejected):
+    with pytest.raises(WecomMediaRejected) as rejected:
         upload_wecom_file(exchange, filename="x.bin", content=b"1234")
+    assert rejected.value.stage == "validate_size"
+    assert rejected.value.reason == "out_of_range"
 
     parsed = generated_file_from_agui_event(
         {
@@ -409,6 +411,112 @@ def test_upload_wecom_file_chunks_and_returns_media_id():
     )
     assert attachment_from_tool_result({"type": "TOOL_CALL_RESULT", "content": tool_result}) == ("广州介绍_v1.0.txt", "tok.en:1:sig")
     assert attachment_from_tool_result({"type": "TOOL_CALL_RESULT", "content": '{"skipped": true}'}) is None
+
+
+def test_resolve_download_origin_prefers_channel_then_env(monkeypatch):
+    from django.test import RequestFactory
+
+    from apps.opspilot.services.skill_channel_aibot import resolve_download_origin
+
+    request = RequestFactory().get("/")
+    config = {"webhook": {"publicBaseUrl": "https://files.example.com/"}}
+    assert resolve_download_origin(request, config) == "https://files.example.com"
+    monkeypatch.setenv("WECOM_AIBOT_PUBLIC_BASE_URL", "https://env.example.com")
+    assert resolve_download_origin(request, {"webhook": {}}) == "https://env.example.com"
+    monkeypatch.delenv("WECOM_AIBOT_PUBLIC_BASE_URL", raising=False)
+    assert resolve_download_origin(request, {}) == "http://testserver"
+
+
+def test_append_short_connection_file_links_logs_skip_without_origin(monkeypatch, caplog):
+    from apps.opspilot.services.skill_channel_aibot import (
+        SHORT_CONNECTION_FILE_SKIPPED_LOG,
+        append_short_connection_file_links,
+    )
+
+    asset = type("Asset", (), {"filename": "a.txt"})()
+
+    class _Query:
+        def order_by(self, *args):
+            return [asset]
+
+    class _Manager:
+        def filter(self, **kwargs):
+            return _Query()
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot.WorkflowAttachmentAsset.objects",
+        _Manager(),
+    )
+    caplog.set_level(logging.WARNING, logger="opspilot")
+    text = append_short_connection_file_links("已生成", "exec-1", 7, origin="")
+    assert text == "已生成"
+    records = [record for record in caplog.records if record.msg == SHORT_CONNECTION_FILE_SKIPPED_LOG]
+    assert len(records) == 1
+    assert records[0].args == (7, 1)
+
+
+def test_deliver_files_failure_notifies_user_and_logs(caplog):
+    from apps.opspilot.services.skill_channel_aibot_long_connection import (
+        FILE_DELIVERY_FAILED_TEXT,
+        FILE_FAILED_LOG_TEMPLATE,
+        WecomAibotConnection,
+    )
+
+    delivered = []
+
+    def exchange(payload):
+        delivered.append(payload)
+        cmd = payload["cmd"]
+        if cmd == "aibot_upload_media_init":
+            return {"errcode": 0, "body": {"upload_id": "up-1"}}
+        if cmd == "aibot_upload_media_chunk":
+            return {"errcode": 0, "body": {}}
+        if cmd == "aibot_upload_media_finish":
+            return {"errcode": 45009, "errmsg": "quota exceeded"}
+        return {"errcode": 0, "body": {}}
+
+    transport = FakeTransport()
+    transport.exchange = exchange
+    session = WecomAibotConnection(_channel(), transport, RecordingAgent())
+    turn = SimpleNamespace(req_id="req-1")
+    caplog.set_level(logging.WARNING, logger="opspilot")
+    session._deliver_files(turn, [("report.docx", b"hello-file")])
+
+    notice = delivered[-1]
+    assert notice["headers"]["req_id"] == "req-1"
+    assert FILE_DELIVERY_FAILED_TEXT in notice["body"]["markdown"]["content"]
+    records = [record for record in caplog.records if record.msg == FILE_FAILED_LOG_TEMPLATE]
+    assert len(records) == 1
+    assert records[0].args[1] == "upload_finish"
+    assert records[0].args[3] == "45009"
+
+
+def test_upload_wecom_file_retries_failed_chunks(monkeypatch):
+    from apps.opspilot.services.skill_channel_aibot_long_connection_media import (
+        _CHUNK_UPLOAD_MAX_RETRIES,
+        upload_wecom_file,
+    )
+
+    content = b"x" * 6
+    chunk_attempts = {"count": 0}
+
+    def exchange(payload):
+        cmd = payload["cmd"]
+        if cmd == "aibot_upload_media_init":
+            return {"errcode": 0, "body": {"upload_id": "up-1"}}
+        if cmd == "aibot_upload_media_chunk":
+            chunk_attempts["count"] += 1
+            if chunk_attempts["count"] <= _CHUNK_UPLOAD_MAX_RETRIES:
+                return {"errcode": 40001, "errmsg": "temporary"}
+            return {"errcode": 0, "body": {}}
+        return {"errcode": 0, "body": {"media_id": "media-1"}}
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot_long_connection_media.time.sleep",
+        lambda *_args, **_kwargs: None,
+    )
+    assert upload_wecom_file(exchange, filename="a.txt", content=content) == "media-1"
+    assert chunk_attempts["count"] == _CHUNK_UPLOAD_MAX_RETRIES + 1
 
 
 def test_visible_answer_keeps_final_text_only():
@@ -741,6 +849,33 @@ def test_wecom_answer_sends_generated_attachment_tool_result(monkeypatch):
     )
     _run(request)
     assert collected == [("广州介绍_v1.0.txt", b"guangzhou")]
+
+
+def test_files_for_execution_reads_in_memory_attachment(monkeypatch):
+    import io
+
+    from apps.opspilot.services.skill_channel_aibot_long_connection_agent import _files_for_execution
+
+    class _File:
+        def open(self, mode="rb"):
+            return io.BytesIO(b"guangzhou-v2")
+
+    asset = SimpleNamespace(filename="广州介绍_v1.2.txt", file=_File())
+
+    class _Query:
+        def order_by(self, *args):
+            return [asset]
+
+    class _Manager:
+        def filter(self, **kwargs):
+            assert kwargs == {"execution_id": "exec-1"}
+            return _Query()
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_aibot_long_connection_agent.WorkflowAttachmentAsset.objects",
+        _Manager(),
+    )
+    assert _files_for_execution("exec-1", 7) == [("广州介绍_v1.2.txt", b"guangzhou-v2")]
 
 
 def test_wecom_answer_sends_file_saved_for_this_execution(monkeypatch):

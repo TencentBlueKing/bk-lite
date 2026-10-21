@@ -10,7 +10,6 @@ import { useCallback, useMemo, useState } from 'react';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import OperateModal from '@/components/operate-modal';
-import SourceOriginBadge from '@/components/source-origin-badge';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -24,9 +23,9 @@ import { WorkflowTablePanel } from './workflow-table-panel';
 const API = '/workflow_orchestration/api';
 type ListStatus = 'DRAFT' | 'PUBLISHED';
 type EnabledFilter = 'true' | 'false';
-type BuiltinFilter = 'true' | 'false';
+type WorkflowCatalog = 'custom' | 'market';
 
-export function WorkflowListPage() {
+export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCatalog }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { message, modal } = App.useApp();
@@ -43,8 +42,9 @@ export function WorkflowListPage() {
     return initial === 'DRAFT' || initial === 'PUBLISHED' ? initial : undefined;
   });
   const [enabledFilter, setEnabledFilter] = useState<EnabledFilter>();
-  const [builtinFilter, setBuiltinFilter] = useState<BuiltinFilter>();
   const [triggerType, setTriggerType] = useState<WorkflowTriggerType>();
+  const isMarket = catalog === 'market';
+  const permissionArea = isMarket ? 'market' : 'workflows';
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [busyId, setBusyId] = useState<number>();
   const [duplicateWorkflow, setDuplicateWorkflow] = useState<WorkflowRecord>();
@@ -66,7 +66,7 @@ export function WorkflowListPage() {
       if (query.trim()) params.set('query', query.trim());
       if (status) params.set('status', status);
       if (enabledFilter) params.set('enabled', enabledFilter);
-      if (builtinFilter) params.set('is_builtin', builtinFilter);
+      params.set('is_builtin', isMarket ? 'true' : 'false');
       if (triggerType) params.set('trigger_type', triggerType);
       const response = await get<PaginatedResponse<WorkflowRecord>>(`${API}/workflows/?${params.toString()}`, { signal: ticket.signal });
       if (!requestCoordinator.shouldApply(ticket)) return;
@@ -76,11 +76,11 @@ export function WorkflowListPage() {
       setRecords([]);
       setCount(0);
     } finally { requestCoordinator.finish(ticket); }
-  }, [builtinFilter, enabledFilter, get, pagination.current, pagination.pageSize, query, requestCoordinator, status, triggerType]);
+  }, [enabledFilter, get, isMarket, pagination.current, pagination.pageSize, query, requestCoordinator, status, triggerType]);
 
   const requestKey = useMemo(
-    () => JSON.stringify([pagination.current, pagination.pageSize, query, status, enabledFilter, builtinFilter, triggerType]),
-    [builtinFilter, enabledFilter, pagination.current, pagination.pageSize, query, status, triggerType],
+    () => JSON.stringify([pagination.current, pagination.pageSize, query, status, enabledFilter, isMarket, triggerType]),
+    [enabledFilter, isMarket, pagination.current, pagination.pageSize, query, status, triggerType],
   );
   useAutoRequest(requestKey, load);
 
@@ -106,8 +106,10 @@ export function WorkflowListPage() {
     setBusyId(duplicateWorkflow.id);
     try {
       const copied = await post<WorkflowRecord>(`${API}/workflows/${duplicateWorkflow.id}/duplicate/`, { name });
-      setRecords((items) => [copied, ...items]);
-      setCount((value) => value + 1);
+      if (!isMarket) {
+        setRecords((items) => [copied, ...items]);
+        setCount((value) => value + 1);
+      }
       setDuplicateWorkflow(undefined);
       setDuplicateName('');
       message.success(t('workflowOrchestration.workflow.duplicatedSuccess', '已复制为新的纯草稿'));
@@ -186,27 +188,13 @@ export function WorkflowListPage() {
 
   const columns: ColumnsType<WorkflowRecord> = [
     {
-      title: t('workflowOrchestration.workflow.name', '流程名称'),
+      title: isMarket
+        ? t('workflowOrchestration.workflow.templateName', '模版名称')
+        : t('workflowOrchestration.workflow.name', '流程名称'),
       dataIndex: 'name',
       key: 'name',
       width: 220,
       render: (value: string) => <EllipsisWithTooltip text={value || '--'} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />,
-    },
-    {
-      title: t('workflowOrchestration.workflow.builtin', '是否内置'),
-      key: 'is_builtin',
-      width: 96,
-      filters: [
-        { value: 'true', text: t('common.builtin', '内置') },
-        { value: 'false', text: t('workflowOrchestration.workflow.custom', '自定义') },
-      ],
-      filterMultiple: false,
-      filteredValue: builtinFilter ? [builtinFilter] : null,
-      render: (_, record) => (
-        record.is_builtin
-          ? <SourceOriginBadge kind="builtin" />
-          : <SourceOriginBadge kind="custom" label={t('workflowOrchestration.workflow.custom', '自定义')} />
-      ),
     },
     {
       title: t('workflowOrchestration.workflow.publishStatus', '发布状态'),
@@ -296,53 +284,75 @@ export function WorkflowListPage() {
     {
       title: t('common.actions', '操作'),
       key: 'actions',
-      width: 136,
+      width: isMarket ? 168 : 136,
       fixed: 'right',
       render: (_, record) => (
-        <div className="flex items-center gap-1 whitespace-nowrap">
-          <WorkflowPermission operation={record.is_builtin ? 'View' : 'Edit'} instancePermissions={record.permission}>
-            <Button
-              type="link"
-              size="small"
-              onClick={() => router.push(`/workflow-orchestration/workflows/${record.id}?mode=${record.is_builtin ? 'view' : 'edit'}`)}
-            >
-              {record.is_builtin ? t('common.view', '查看') : t('common.edit', '编辑')}
-            </Button>
-          </WorkflowPermission>
-          <WorkflowPermission operation="Execute" instancePermissions={record.permission}>
-            <Tooltip title={runDisabledReason(record) || undefined}>
-              <span><Button type="link" size="small" disabled={Boolean(runDisabledReason(record))} onClick={() => void execute(record)}>{t('workflowOrchestration.action.run', '运行')}</Button></span>
-            </Tooltip>
-          </WorkflowPermission>
-          <WorkflowPermission operation="View" instancePermissions={record.permission}>
-            <Dropdown
-              trigger={['click']}
-              menu={{ items: moreActions(record), onClick: ({ key }) => openMoreAction(key, record) }}
-            >
+        isMarket ? (
+          <div className="flex items-center gap-1 whitespace-nowrap">
+            <WorkflowPermission operation="View" area="market" instancePermissions={record.permission}>
+              <Button type="link" size="small" onClick={() => router.push(`/workflow-orchestration/market/${record.id}?mode=view`)}>
+                {t('common.view', '查看')}
+              </Button>
+            </WorkflowPermission>
+            <WorkflowPermission operation="Add" area="market">
               <Button
-              type="text"
-              size="small"
-              loading={busyId === record.id}
-              aria-label={t('workflowOrchestration.action.moreFor', '更多操作：{name}', { name: record.name })}
-              icon={<MoreOutlined />}
-              />
-            </Dropdown>
-          </WorkflowPermission>
-        </div>
+                type="link"
+                size="small"
+                loading={busyId === record.id}
+                onClick={() => openMoreAction('duplicate', record)}
+              >
+                {t('workflowOrchestration.action.copyToWorkflows', '复制到流程')}
+              </Button>
+            </WorkflowPermission>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 whitespace-nowrap">
+            <WorkflowPermission operation={record.is_builtin ? 'View' : 'Edit'} instancePermissions={record.permission}>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => router.push(`/workflow-orchestration/workflows/${record.id}?mode=${record.is_builtin ? 'view' : 'edit'}`)}
+              >
+                {record.is_builtin ? t('common.view', '查看') : t('common.edit', '编辑')}
+              </Button>
+            </WorkflowPermission>
+            <WorkflowPermission operation="Execute" instancePermissions={record.permission}>
+              <Tooltip title={runDisabledReason(record) || undefined}>
+                <span><Button type="link" size="small" disabled={Boolean(runDisabledReason(record))} onClick={() => void execute(record)}>{t('workflowOrchestration.action.run', '运行')}</Button></span>
+              </Tooltip>
+            </WorkflowPermission>
+            <WorkflowPermission operation="View" instancePermissions={record.permission}>
+              <Dropdown
+                trigger={['click']}
+                menu={{ items: moreActions(record), onClick: ({ key }) => openMoreAction(key, record) }}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  loading={busyId === record.id}
+                  aria-label={t('workflowOrchestration.action.moreFor', '更多操作：{name}', { name: record.name })}
+                  icon={<MoreOutlined />}
+                />
+              </Dropdown>
+            </WorkflowPermission>
+          </div>
+        )
       ),
     },
   ];
+  const visibleColumns = isMarket
+    ? columns.filter((column) => !['status', 'enabled', 'version'].includes(String(column.key)))
+    : columns;
 
   return <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-4">
     <WorkflowTablePanel
       filters={<Input.Search className="w-[220px]" allowClear enterButton placeholder={t('workflowOrchestration.workflow.searchPlaceholder', '搜索流程名称')} value={queryDraft} onChange={(event) => { const value = event.target.value; setQueryDraft(value); if (!value) { setPagination((item) => ({ ...item, current: 1 })); setQuery(''); } }} onSearch={(value) => { setPagination((item) => ({ ...item, current: 1 })); setQuery(value.trim()); }} />}
-      actions={<><WorkflowPermission operation="View"><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission><WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={create}>{t('common.new', '新建')}</Button></WorkflowPermission></>}
+      actions={<><WorkflowPermission operation="View" area={permissionArea}><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission>{isMarket ? null : <WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={create}>{t('common.new', '新建')}</Button></WorkflowPermission>}</>}
     >
-      <CustomTable rowKey="id" loading={loading} columns={columns} dataSource={records} className="[&_.ant-table-cell]:whitespace-nowrap" locale={{ emptyText: <Empty description={t('workflowOrchestration.workflow.empty', '当前组织还没有流程')} /> }} pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: count, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], onChange: (current, pageSize) => setPagination({ current, pageSize }) }} onChange={(_, tableFilters, __, extra) => {
+      <CustomTable rowKey="id" loading={loading} columns={visibleColumns} dataSource={records} className="[&_.ant-table-cell]:whitespace-nowrap" locale={{ emptyText: <Empty description={isMarket ? t('workflowOrchestration.workflow.marketEmpty', '还没有内置流程') : t('workflowOrchestration.workflow.empty', '当前组织还没有流程')} /> }} pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: count, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], onChange: (current, pageSize) => setPagination({ current, pageSize }) }} onChange={(_, tableFilters, __, extra) => {
         if (extra.action !== 'filter') return;
         setStatus(tableFilters.status?.[0] as ListStatus | undefined);
         setEnabledFilter(tableFilters.enabled?.[0] as EnabledFilter | undefined);
-        setBuiltinFilter(tableFilters.is_builtin?.[0] as BuiltinFilter | undefined);
         setTriggerType(tableFilters.trigger_type?.[0] as WorkflowTriggerType | undefined);
         setPagination((item) => ({ ...item, current: 1 }));
       }} />
@@ -358,6 +368,7 @@ export function WorkflowListPage() {
       onOk={() => void duplicate()}
       onCancel={() => { setDuplicateWorkflow(undefined); setDuplicateName(''); }}
     >
+      {isMarket ? <p className="mb-3 text-sm text-[var(--color-text-3)]">{t('workflowOrchestration.workflow.marketDuplicateHint', '复制后出现在「流程」里，状态是纯草稿，不会发布，也不会改动这条内置流程。')}</p> : null}
       <label className="mb-2 block text-sm" htmlFor="duplicate-workflow-name">{t('workflowOrchestration.workflow.name', '流程名称')}</label>
       <Input id="duplicate-workflow-name" autoFocus maxLength={120} value={duplicateName} onChange={(event) => setDuplicateName(event.target.value)} />
     </OperateModal>

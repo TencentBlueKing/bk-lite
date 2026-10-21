@@ -6,7 +6,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
 import ApplicationFormModal from '@/app/system-manager/components/application/modify-applicaiton';
-import { applicationListSearchText, useApplicationPage } from '@/app/system-manager/hooks/useApplicationPage';
+import { applicationListSearchText, useApplicationPage, type ApplicationClientData } from '@/app/system-manager/hooks/useApplicationPage';
 import SystemManagerEntityGrid from '@/app/system-manager/components/system-manager-entity-grid';
 import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
@@ -38,7 +38,7 @@ const ApplicationPage = () => {
 
   return (
     <div className="w-full">
-      <SystemManagerEntityGrid
+      <SystemManagerEntityGrid<ApplicationClientData>
         title={t('system.application.pageTitle')}
         description={t('system.application.pageDesc')}
         items={dataList}

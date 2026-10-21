@@ -10,7 +10,21 @@
       "title": "流程",
       "icon": "jiqiren2",
       "url": "/workflow-orchestration/workflows",
-      "name": "workflow"
+      "name": "workflow",
+      "children": [
+        {
+          "title": "流程",
+          "url": "/workflow-orchestration/workflows",
+          "name": "workflow",
+          "withParentPermission": true
+        },
+        {
+          "title": "模版",
+          "url": "/workflow-orchestration/market",
+          "name": "workflow",
+          "withParentPermission": true
+        }
+      ]
     },
     {
       "title": "执行记录",
@@ -36,7 +50,21 @@
       "title": "Workflows",
       "icon": "jiqiren2",
       "url": "/workflow-orchestration/workflows",
-      "name": "workflow"
+      "name": "workflow",
+      "children": [
+        {
+          "title": "Workflows",
+          "url": "/workflow-orchestration/workflows",
+          "name": "workflow",
+          "withParentPermission": true
+        },
+        {
+          "title": "Templates",
+          "url": "/workflow-orchestration/market",
+          "name": "workflow",
+          "withParentPermission": true
+        }
+      ]
     },
     {
       "title": "Executions",

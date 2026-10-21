@@ -298,6 +298,11 @@ class TestAppPyEnterpriseWiring:
         )
         mod = _load_app(tmp_path, monkeypatch)
         assert "apps.license_mgmt" in mod.INSTALLED_APPS
+        inherit = "apps.module_link.middleware.ModuleLinkLicenseInheritMiddleware"
+        app_guard = "apps.license_mgmt.middleware.license_guard.LicenseAppGuardMiddleware"
+        assert inherit in mod.MIDDLEWARE
+        assert app_guard in mod.MIDDLEWARE
+        assert mod.MIDDLEWARE.index(inherit) < mod.MIDDLEWARE.index(app_guard)
 
     def test_license_mgmt_not_added_when_no_footprint(self, tmp_path, monkeypatch):
         """license_mgmt dir alone (no enterprise content) must NOT inject the license middleware."""
@@ -305,6 +310,7 @@ class TestAppPyEnterpriseWiring:
         mod = _load_app(tmp_path, monkeypatch)
         license_middleware = [mw for mw in mod.MIDDLEWARE if "license_mgmt" in mw]
         assert license_middleware == [], f"Unexpected license middleware: {license_middleware}"
+        assert "apps.module_link.middleware.ModuleLinkLicenseInheritMiddleware" not in mod.MIDDLEWARE
 
     def test_explicit_install_apps_license_mgmt_blocked_without_footprint(self, tmp_path, monkeypatch):
         """INSTALL_APPS=license_mgmt must NOT bypass the enterprise gate in app.py.

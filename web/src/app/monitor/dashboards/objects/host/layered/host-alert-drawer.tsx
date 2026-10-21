@@ -182,6 +182,14 @@ export default function HostAlertDrawer({
   const objectId = typeof monitorObjectId === 'string' || typeof monitorObjectId === 'number'
     ? String(monitorObjectId)
     : '';
+  const instanceFilter = String(instanceId || '').trim();
+  const alertCenterParams = new URLSearchParams();
+  if (objectId) alertCenterParams.set('objId', objectId);
+  if (instanceFilter) alertCenterParams.set('instanceId', instanceFilter);
+  const alertQuery = alertCenterParams.toString();
+  const alertCenterHref = alertQuery
+    ? `/monitor/event/alert?${alertQuery}`
+    : '/monitor/event/alert';
   const absolute = (value?: string | null) => {
     if (!value) return '—';
     return convertToLocalizedTime(value) || '—';
@@ -278,9 +286,9 @@ export default function HostAlertDrawer({
       }}
       footer={(
         <div className="flex items-center justify-between gap-3">
-          {objectId ? (
+          {objectId || instanceFilter ? (
             <Link
-              href={`/monitor/event/alert?objId=${encodeURIComponent(objectId)}`}
+              href={alertCenterHref}
               className="text-[13px] leading-5 text-[var(--color-primary)]"
             >
               在告警中心查看 →

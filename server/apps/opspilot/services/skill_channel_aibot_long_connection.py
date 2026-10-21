@@ -12,13 +12,18 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.services.skill_channel_aibot_long_connection_media import upload_wecom_file
+from apps.opspilot.services.skill_channel_aibot_long_connection_media import WecomMediaRejected, upload_wecom_file
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 
 
-def _upload_error_code(exc: BaseException) -> str:
+def _file_failure_fields(exc: BaseException, default_stage: str) -> tuple[str, str, str]:
+    if isinstance(exc, WecomMediaRejected):
+        code = exc.errcode if exc.errcode is not None else "-"
+        message = exc.errmsg or exc.reason or type(exc).__name__
+        return exc.stage or default_stage, str(code), message[:200]
     matched = re.search(r"errcode=(\d+)", str(exc))
-    return matched.group(1) if matched else "-"
+    code = matched.group(1) if matched else "-"
+    return default_stage, code, type(exc).__name__
 
 
 DEFAULT_LONG_CONNECTION_URL = "wss://openws.work.weixin.qq.com"
@@ -31,6 +36,7 @@ TIMEOUT_TEXT = "处理超时，请再发一次"
 UNSUPPORTED_TEXT = "当前仅支持文本消息"
 FAILURE_TEXT = "处理失败，请稍后重试"
 EMPTY_ANSWER_TEXT = "处理完成，但未产生可展示内容"
+FILE_DELIVERY_FAILED_TEXT = "文件发送失败，请稍后重试或联系管理员"
 
 STREAM_REFRESH_SECONDS = 2
 STREAM_DEADLINE_SECONDS = 10 * 60
@@ -45,7 +51,12 @@ CONNECT_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_connect_failed 
 TRANSPORT_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_transport_failed channel_id=%s failed_stage=read error_type=%s"
 REPLY_FINISHED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_reply_finished channel_id=%s outcome=%s"
 FILE_SENT_LOG_TEMPLATE = "event=wecom_aibot_long_connection_file_sent channel_id=%s"
-FILE_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_file_failed channel_id=%s failed_stage=upload error_type=%s error_code=%s"
+FILE_FAILED_LOG_TEMPLATE = (
+    "event=wecom_aibot_long_connection_file_failed channel_id=%s failed_stage=%s error_type=%s error_code=%s error_msg=%s"
+)
+FILE_NOTICE_FAILED_LOG_TEMPLATE = (
+    "event=wecom_aibot_long_connection_file_notice_failed channel_id=%s failed_stage=notify error_type=%s"
+)
 
 _RENEW_LOCK_SCRIPT = """
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -373,8 +384,10 @@ class WecomAibotConnection:
         if not files or exchange is None:
             return
         for filename, content in files:
+            stage = "upload"
             try:
                 media_id = upload_wecom_file(exchange, filename=filename, content=content)
+                stage = "send"
                 exchange(
                     {
                         "cmd": "aibot_respond_msg",
@@ -383,9 +396,32 @@ class WecomAibotConnection:
                     }
                 )
             except Exception as exc:
-                logger.warning(FILE_FAILED_LOG_TEMPLATE, self.channel.id, type(exc).__name__, _upload_error_code(exc))
+                failed_stage, error_code, error_msg = _file_failure_fields(exc, stage)
+                logger.warning(
+                    FILE_FAILED_LOG_TEMPLATE,
+                    self.channel.id,
+                    failed_stage,
+                    type(exc).__name__,
+                    error_code,
+                    error_msg,
+                )
+                self._notify_file_delivery_failed(turn, filename, exchange)
                 continue
             logger.info(FILE_SENT_LOG_TEMPLATE, self.channel.id)
+
+    def _notify_file_delivery_failed(self, turn: Turn, filename: str, exchange) -> None:
+        label = (filename or "file").replace("\\", "/").rsplit("/", 1)[-1].strip() or "文件"
+        notice = f"{FILE_DELIVERY_FAILED_TEXT}（{label}）"
+        try:
+            exchange(
+                {
+                    "cmd": "aibot_respond_msg",
+                    "headers": {"req_id": turn.req_id},
+                    "body": {"msgtype": "markdown", "markdown": {"content": notice}},
+                }
+            )
+        except Exception as exc:
+            logger.warning(FILE_NOTICE_FAILED_LOG_TEMPLATE, self.channel.id, type(exc).__name__)
 
     def _send_stream(self, turn: Turn, content: str, *, finish: bool) -> None:
         text = EnterpriseWechatAibotChatFlowUtils.truncate_markdown(content or "")

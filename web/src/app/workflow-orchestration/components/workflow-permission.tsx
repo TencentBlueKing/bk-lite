@@ -5,11 +5,12 @@ import type { PropsWithChildren } from 'react';
 import PermissionWrapper from '@/components/permission';
 
 type WorkflowOperation = 'View' | 'Add' | 'Edit' | 'Delete' | 'Execute' | 'Publish' | 'Approve' | 'Manage';
-type WorkflowPermissionArea = 'home' | 'workflows' | 'executions';
+type WorkflowPermissionArea = 'home' | 'workflows' | 'market' | 'executions';
 
 const PERMISSION_PATH: Record<WorkflowPermissionArea, string> = {
   home: '/workflow-orchestration/home',
   workflows: '/workflow-orchestration/workflows',
+  market: '/workflow-orchestration/market',
   executions: '/workflow-orchestration/executions',
 };
 

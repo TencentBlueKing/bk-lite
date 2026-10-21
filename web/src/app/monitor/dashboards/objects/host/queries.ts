@@ -43,6 +43,7 @@ const WIN_LOGICAL_DISK = 'instance=~"[A-Z]:"';
 /**
  * 磁盘繁忙度。对齐 Telegraf host/os：Linux 用 rate(diskio_io_time)/10，
  * Windows 空闲时间优先，并用 unless 丢掉 io_time 零值。
+ * 队列长度（avgqu-sz / iops_in_progress）采集侧未登记，专业盘不造假序列。
  */
 const diskIoUtilEntityQuery = () => {
   const windowsIdle = `win_logicaldisk_idle_percent{instance_type="os", ${WIN_LOGICAL_DISK}, __$labels__}`;
@@ -217,6 +218,34 @@ export const HOST_CPU_CORE_ENTITY_QUERIES: HostEntityMetricQuery[] = [
     unit: 'percent',
     labelKeys: ['cpu'],
     query: '100 - cpu_usage_idle{cpu!="cpu-total", instance_type="os", __$labels__}'
+  }
+];
+
+/** GPU：按 index 保留多卡，禁止 max 折成一台。 */
+export const HOST_GPU_ENTITY_QUERIES: HostEntityMetricQuery[] = [
+  {
+    key: 'nvidia_smi_utilization_gpu',
+    unit: 'percent',
+    labelKeys: ['index', 'name', 'uuid'],
+    query: 'nvidia_smi_utilization_gpu{instance_type="os", __$labels__}'
+  },
+  {
+    key: 'nvidia_smi_memory_used',
+    unit: 'mebibytes',
+    labelKeys: ['index', 'name', 'uuid'],
+    query: 'nvidia_smi_memory_used{instance_type="os", __$labels__}'
+  },
+  {
+    key: 'nvidia_smi_memory_total',
+    unit: 'mebibytes',
+    labelKeys: ['index', 'name', 'uuid'],
+    query: 'nvidia_smi_memory_total{instance_type="os", __$labels__}'
+  },
+  {
+    key: 'nvidia_smi_temperature_gpu',
+    unit: 'celsius',
+    labelKeys: ['index', 'name', 'uuid'],
+    query: 'nvidia_smi_temperature_gpu{instance_type="os", __$labels__}'
   }
 ];
 

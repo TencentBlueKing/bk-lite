@@ -924,6 +924,42 @@
     },
     {
       "metric_group": "Nvidia GPU",
+      "name": "nvidia_smi_utilization_gpu",
+      "query": "nvidia_smi_utilization_gpu{instance_type=\"os\", __$labels__}",
+      "display_name": "GPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "序号"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Represents the GPU compute utilization percentage for each GPU device."
+    },
+    {
+      "metric_group": "Nvidia GPU",
+      "name": "nvidia_smi_memory_used",
+      "query": "nvidia_smi_memory_used{instance_type=\"os\", __$labels__}",
+      "display_name": "GPU Memory Used",
+      "data_type": "Number",
+      "unit": "mebibytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "序号"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Represents the amount of GPU memory currently in use on each GPU device."
+    },
+    {
+      "metric_group": "Nvidia GPU",
       "name": "nvidia_smi_memory_total",
       "query": "nvidia_smi_memory_total{instance_type=\"os\", __$labels__}",
       "display_name": "GPU Memory Total",

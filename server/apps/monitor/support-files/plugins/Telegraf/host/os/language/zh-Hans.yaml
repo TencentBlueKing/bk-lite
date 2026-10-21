@@ -130,6 +130,12 @@ monitor_object_metric:
     net_drop_out_rate:
       name: 网络发送丢包速率
       desc: 表示网络接口单位时间内被丢弃的发送数据包数量。
+    nvidia_smi_utilization_gpu:
+      name: GPU使用率
+      desc: 表示各张 GPU 计算单元的使用率。
+    nvidia_smi_memory_used:
+      name: GPU显存已用量
+      desc: 表示各张 GPU 当前已使用的显存容量。
     nvidia_smi_memory_total:
       name: GPU显存总容量
       desc: 表示 GPU 可用的显存总容量，是 GPU 资源评估的基础指标。

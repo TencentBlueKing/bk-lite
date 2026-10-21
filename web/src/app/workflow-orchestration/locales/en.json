@@ -17,10 +17,12 @@
     "action": {
       "run": "Run",
       "moreFor": "More actions: {name}",
+      "copyToWorkflows": "Copy to Workflows",
       "confirmDuplicate": "Duplicate"
     },
     "workflow": {
       "name": "Workflow Name",
+      "templateName": "Template Name",
       "shortName": "Workflow",
       "deleted": "Workflow Deleted",
       "status": "Workflow Status",
@@ -30,6 +32,8 @@
       "custom": "Custom",
       "create": "New Workflow",
       "duplicate": "Duplicate Workflow",
+      "marketDuplicateHint": "After copying, it appears under Workflows as a draft only. It is not published and does not change this built-in workflow.",
+      "marketEmpty": "No built-in workflows",
       "runTitle": "Run Workflow · {name}",
       "searchPlaceholder": "Search workflow name",
       "refresh": "Refresh workflow list",

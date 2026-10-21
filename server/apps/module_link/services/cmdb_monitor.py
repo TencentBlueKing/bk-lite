@@ -33,6 +33,7 @@ from apps.module_link.constants import (
     is_platform_tree_model,
 )
 from apps.module_link.models import ModuleLinkModelMap, MonitorAccessDraft, MonitorLinkTask, MonitorLinkTaskItem
+from apps.module_link.services.row_message import item_message
 from apps.rpc.monitor import Monitor
 
 _CREATE_DONE = (
@@ -183,10 +184,10 @@ def _mapped_object_name(model_id: str, team: int | None) -> str | None:
     return mapping.object_name
 
 
-def _claim_by_unique_name(entity: dict[str, Any], object_name: str, actor_scope: dict[str, Any]) -> tuple[str, str]:
+def _claim_by_unique_name(entity: dict[str, Any], object_name: str, actor_scope: dict[str, Any]) -> tuple[str, str, str]:
     inst_name = _as_text(entity.get("inst_name"))
     if not inst_name or not object_name:
-        return ITEM_NOT_FOUND, ""
+        return ITEM_NOT_FOUND, "", item_message(stage="identity_not_found")
     allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
     try:
         rows = Monitor().list_cmdb_bind_candidates(
@@ -203,15 +204,15 @@ def _claim_by_unique_name(entity: dict[str, Any], object_name: str, actor_scope:
             type(exc).__name__,
             exc_info=_safe_exc_info(exc),
         )
-        return ITEM_FAILED, ""
+        return ITEM_FAILED, "", item_message(stage="list_candidates", exc=exc)
     if not isinstance(rows, list):
-        return ITEM_FAILED, ""
+        return ITEM_FAILED, "", item_message(stage="list_candidates")
     unbound = [row for row in rows if isinstance(row, dict) and _as_text(row.get("name")) == inst_name and not _as_text(row.get("cmdb_id"))]
     if len(unbound) != 1:
-        return ITEM_NOT_FOUND, ""
+        return ITEM_NOT_FOUND, "", item_message(stage="identity_not_found")
     monitor_id = _as_text(unbound[0].get("id"))
     if not monitor_id:
-        return ITEM_NOT_FOUND, ""
+        return ITEM_NOT_FOUND, "", item_message(stage="identity_not_found")
     try:
         bind_result = Monitor().bind_cmdb_id(
             monitor_id=monitor_id,
@@ -227,13 +228,13 @@ def _claim_by_unique_name(entity: dict[str, Any], object_name: str, actor_scope:
             type(exc).__name__,
             exc_info=_safe_exc_info(exc),
         )
-        return ITEM_FAILED, ""
+        return ITEM_FAILED, "", item_message(stage="bind_cmdb_id", exc=exc)
     if not isinstance(bind_result, dict):
-        return ITEM_FAILED, ""
+        return ITEM_FAILED, "", item_message(stage="bind_cmdb_id")
     if bind_result.get("status") == "occupied":
-        return ITEM_CONFLICT, ""
+        return ITEM_CONFLICT, "", item_message(stage="bind_occupied")
     if bind_result.get("status") != "ok":
-        return ITEM_NOT_FOUND, ""
+        return ITEM_NOT_FOUND, "", item_message(stage="bind_mismatch")
     bound_id = _as_text(bind_result.get("monitor_id")) or monitor_id
     updated = CmdbToMonitorPushService._backfill_monitor_id(
         entity,
@@ -242,11 +243,21 @@ def _claim_by_unique_name(entity: dict[str, Any], object_name: str, actor_scope:
         allowed_org_ids=allowed_org_ids,
     )
     if _as_text((updated or {}).get("monitor_id")) != bound_id:
-        return ITEM_FAILED, ""
-    return ITEM_OK, bound_id
+        return ITEM_FAILED, "", item_message(stage="backfill")
+    return ITEM_OK, bound_id, ""
 
 
-def _item_kwargs(task, snapshot: dict[str, Any], status: str, object_name: str, monitor_id: str) -> dict[str, Any]:
+def _push_row_message(status: str) -> str:
+    if status in {ITEM_OK, ITEM_ALREADY_LINKED}:
+        return ""
+    if status == ITEM_NOT_FOUND:
+        return item_message(stage="identity_not_found")
+    if status == ITEM_CONFLICT:
+        return item_message(stage="identity_conflict")
+    return item_message(stage="push")
+
+
+def _item_kwargs(task, snapshot: dict[str, Any], status: str, object_name: str, monitor_id: str, message: str = "") -> dict[str, Any]:
     return {
         "task": task,
         "inst_uuid": snapshot["inst_uuid"],
@@ -259,6 +270,7 @@ def _item_kwargs(task, snapshot: dict[str, Any], status: str, object_name: str, 
         "cloud_region_id": snapshot["cloud_region_id"],
         "status": status,
         "monitor_id": monitor_id or "",
+        "message": message or "",
     }
 
 
@@ -316,6 +328,7 @@ def serialize_task(task: MonitorLinkTask) -> dict[str, Any]:
                 "ip": item.ip,
                 "status": item.status,
                 "monitor_id": item.monitor_id,
+                "message": item.message or "",
             }
             for item in items
         ],
@@ -410,6 +423,7 @@ class CmdbMonitorTaskService:
                         "status": ITEM_FAILED,
                         "object_name": "",
                         "monitor_id": "",
+                        "message": item_message(stage="unauthorized"),
                     }
                 )
                 continue
@@ -429,6 +443,7 @@ class CmdbMonitorTaskService:
                         "status": ITEM_FAILED,
                         "object_name": "",
                         "monitor_id": "",
+                        "message": item_message(stage="query_entity", exc=exc),
                     }
                 )
                 continue
@@ -439,6 +454,7 @@ class CmdbMonitorTaskService:
                         "status": ITEM_FAILED,
                         "object_name": "",
                         "monitor_id": "",
+                        "message": item_message(stage="missing_entity"),
                     }
                 )
                 continue
@@ -451,6 +467,7 @@ class CmdbMonitorTaskService:
                         "status": ITEM_SKIPPED,
                         "object_name": "",
                         "monitor_id": "",
+                        "message": item_message(stage="platform"),
                     }
                 )
                 continue
@@ -462,6 +479,7 @@ class CmdbMonitorTaskService:
                         "status": ITEM_ALREADY_LINKED,
                         "object_name": _mapped_object_name(model_id, current_team) or "",
                         "monitor_id": existing,
+                        "message": "",
                     }
                 )
                 continue
@@ -474,18 +492,20 @@ class CmdbMonitorTaskService:
                         "object_name": builtin_object_name(model_id) or "",
                         "monitor_id": "",
                         "entity": entity,
+                        "message": "",
                     }
                 )
                 continue
             assigned = _mapped_object_name(model_id, current_team)
             if assigned:
-                status, monitor_id = _claim_by_unique_name(entity, assigned, actor_scope)
+                status, monitor_id, message = _claim_by_unique_name(entity, assigned, actor_scope)
                 prepared.append(
                     {
                         "snapshot": snapshot,
                         "status": status,
                         "object_name": assigned,
                         "monitor_id": monitor_id,
+                        "message": message,
                     }
                 )
                 continue
@@ -495,6 +515,7 @@ class CmdbMonitorTaskService:
                     "status": ITEM_NEEDS_OBJECT,
                     "object_name": "",
                     "monitor_id": "",
+                    "message": item_message(stage="needs_object"),
                 }
             )
 
@@ -518,6 +539,7 @@ class CmdbMonitorTaskService:
             status = row["status"]
             monitor_id = row["monitor_id"]
             object_name = row["object_name"]
+            message = row.get("message") or ""
             if status == "pending_builtin":
                 pushed = push_by_uuid.get(row["snapshot"]["inst_uuid"]) or {}
                 status = pushed.get("status") or ITEM_FAILED
@@ -526,7 +548,8 @@ class CmdbMonitorTaskService:
                 monitor_id = _as_text(pushed.get("monitor_id"))
                 if not object_name:
                     object_name = builtin_object_name(row["snapshot"]["model_id"]) or ""
-            items.append(MonitorLinkTaskItem(**_item_kwargs(task, row["snapshot"], status, object_name, monitor_id)))
+                message = _push_row_message(status)
+            items.append(MonitorLinkTaskItem(**_item_kwargs(task, row["snapshot"], status, object_name, monitor_id, message)))
         MonitorLinkTaskItem.objects.bulk_create(items)
         _sync_drafts(task)
         task.status = _task_status_from_items(items)
@@ -560,7 +583,8 @@ class CmdbMonitorTaskService:
                 continue
             item.status = ITEM_OK
             item.monitor_id = monitor_id
-            item.save(update_fields=["status", "monitor_id"])
+            item.message = ""
+            item.save(update_fields=["status", "monitor_id", "message"])
             changed = True
         if changed:
             items = list(task.items.all())
@@ -613,21 +637,24 @@ class CmdbMonitorTaskService:
                 )
                 item.status = ITEM_FAILED
                 item.object_name = object_name
-                item.save(update_fields=["status", "object_name"])
+                item.message = item_message(stage="query_entity", exc=exc)
+                item.save(update_fields=["status", "object_name", "message"])
                 continue
             if not isinstance(entity, dict) or not entity:
                 item.status = ITEM_FAILED
                 item.object_name = object_name
-                item.save(update_fields=["status", "object_name"])
+                item.message = item_message(stage="missing_entity")
+                item.save(update_fields=["status", "object_name", "message"])
                 continue
-            status, monitor_id = _claim_by_unique_name(entity, object_name, actor_scope)
+            status, monitor_id, message = _claim_by_unique_name(entity, object_name, actor_scope)
             item.status = status
             item.object_name = object_name
             item.monitor_id = monitor_id
+            item.message = "" if status == ITEM_OK else message
             item.inst_name = _as_text(entity.get("inst_name")) or item.inst_name
             item.ip = _first_ip(entity.get("ip")) or _first_ip(entity.get("ip_addr")) or item.ip
             item.port = _first_port(entity.get("port")) or _first_port(entity.get("listen_port")) or item.port
-            item.save(update_fields=["status", "object_name", "monitor_id", "inst_name", "ip", "port"])
+            item.save(update_fields=["status", "object_name", "monitor_id", "message", "inst_name", "ip", "port"])
             if remember and item.model_id:
                 remembered_models.add(item.model_id)
         team_id = resolved_current_team(request)

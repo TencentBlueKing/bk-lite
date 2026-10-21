@@ -7,7 +7,7 @@ from typing import Any
 
 from django.db import transaction
 
-from apps.workflow_orchestration.models import Workflow, WorkflowVersion
+from apps.workflow_orchestration.models import Workflow, WorkflowExecution, WorkflowVersion
 from apps.workflow_orchestration.services.atom_registry import ensure_platform_atom
 from apps.workflow_orchestration.services.atoms import TASK_DEFINITIONS, atom_catalog_payload
 from apps.workflow_orchestration.services.conductor import (
@@ -98,6 +98,41 @@ def _publish_builtin_definition(raw_definition: dict[str, Any], *, engine_name: 
     if existing is None or not existing.current_version or _same_published_body(definition, existing.definition or {}):
         return definition
     return prepare_definition_for_publish(raw_definition, engine_name=engine_name, version=version + 1)
+
+
+def collapse_builtin_workflow_versions(
+    workflow_model=Workflow,
+    version_model=WorkflowVersion,
+    execution_model=WorkflowExecution,
+) -> int:
+    """把已发布的内置流程收成一条 v1，保留当前定义，删掉更高版本。"""
+    collapsed = 0
+    published = workflow_model.objects.filter(is_builtin=True).exclude(current_version=0)
+    for workflow in published:
+        definition = dict(workflow.definition or {})
+        definition["version"] = 1
+        current_snapshot = version_model.objects.filter(workflow_id=workflow.pk, version=workflow.current_version).first()
+        version_model.objects.filter(workflow_id=workflow.pk).exclude(version=1).delete()
+        version_model.objects.update_or_create(
+            workflow_id=workflow.pk,
+            version=1,
+            defaults={
+                "definition": definition,
+                "canvas_metadata": workflow.canvas_metadata or {},
+                "resource_snapshot": getattr(current_snapshot, "resource_snapshot", None) or {"builtin": True},
+                "change_summary": getattr(current_snapshot, "change_summary", None) or {"summary": "平台内置巡检"},
+                "created_by": workflow.created_by or "",
+                "domain": workflow.domain or "domain.com",
+            },
+        )
+        workflow_model.objects.filter(pk=workflow.pk).update(
+            definition=definition,
+            current_version=1,
+            draft_base_version=1,
+        )
+        execution_model.objects.filter(workflow_id=workflow.pk).exclude(workflow_version=1).update(workflow_version=1)
+        collapsed += 1
+    return collapsed
 
 
 def ensure_builtin_health_workflows(

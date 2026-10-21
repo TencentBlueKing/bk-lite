@@ -34,6 +34,7 @@ import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges,
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
 import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
+import { jobTargetOperatingSystems } from '../lib/job-target-operating-systems';
 import { buildNodeTestInputContract, materializeNodeTestInputs } from '../lib/node-test-input-contract';
 import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
@@ -262,7 +263,7 @@ function ConditionEditor({
   </Form>;
 }
 
-export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = 'edit' }: { workflowId: number | null; initialName?: string; mode?: 'view' | 'edit' }) {
+export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = 'edit', listHref = '/workflow-orchestration/workflows' }: { workflowId: number | null; initialName?: string; mode?: 'view' | 'edit'; listHref?: string }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { get, patch, post } = useApiClient();
@@ -417,6 +418,10 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const inspectorTriggers = useMemo(() => workflowTriggerNodes(metadata), [metadata]);
   const inspectorTestTrigger = inspectorTriggers.find((item) => item.id === nodeTestTriggerId) || inspectorTriggers.find((item) => item.trigger_type === 'FORM') || inspectorTriggers[0];
   const nodeTestInputContract = useMemo(() => buildNodeTestInputContract(selectedTask, selectedAtom?.input_schema, inspectorTestTrigger?.input_schema), [inspectorTestTrigger, selectedAtom?.input_schema, selectedTask]);
+  const jobHostOperatingSystems = useMemo(() => jobTargetOperatingSystems({
+    targets: selectedTask?.inputParameters?.targets,
+    triggers: workflowTriggerNodes(metadata),
+  }), [metadata, selectedTask]);
   const inspectorTestData = metadata.node_test_data || {};
   const inspectorTestInputs = inspectorTestTrigger && inspectorTestData[inspectorTestTrigger.id] && typeof inspectorTestData[inspectorTestTrigger.id] === 'object' && !Array.isArray(inspectorTestData[inspectorTestTrigger.id])
     ? inspectorTestData[inspectorTestTrigger.id] as Record<string, unknown>
@@ -635,13 +640,13 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   };
 
   const changeTaskInputs = (value: Record<string, unknown>) => {
-    if (!definition || !selectedTask) return;
+    if (readOnly || !definition || !selectedTask) return;
     setDefinition({ ...definition, tasks: updateTask(definition.tasks, selectedTask.taskReferenceName, (task) => ({ ...task, inputParameters: value })) });
     setDirty(true);
   };
 
   const changeTaskTitle = (value: string) => {
-    if (!selectedTask) return;
+    if (readOnly || !selectedTask) return;
     const nodeTitles = { ...(metadata.node_titles || {}) };
     nodeTitles[selectedTask.taskReferenceName] = value;
     changeMetadata({ ...snapshotMetadata(), node_titles: nodeTitles });
@@ -1000,7 +1005,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   };
 
   const changeTrigger = (patch: Partial<WorkflowTriggerNode>) => {
-    if (!selectedTrigger) return;
+    if (readOnly || !selectedTrigger) return;
     const currentCanvas = snapshotMetadata();
     const triggers = workflowTriggerNodes(currentCanvas).map((item) => item.id === selectedTrigger.id ? { ...item, ...patch } : item);
     const nextMetadata = { ...currentCanvas, trigger_nodes: triggers };
@@ -1008,20 +1013,20 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   };
 
   const changeReturn = (patch: Partial<WorkflowReturnNode>) => {
-    if (!selectedReturn) return;
+    if (readOnly || !selectedReturn) return;
     const currentCanvas = snapshotMetadata();
     changeMetadata({ ...currentCanvas, return_nodes: (currentCanvas.return_nodes || []).map((item) => item.id === selectedReturn.id ? { ...item, ...patch } : item) });
   };
 
   const changeCondition = (config: ConditionConfiguration) => {
-    if (!definition || !selectedTask || selectedTask.type !== 'SWITCH') return;
+    if (readOnly || !definition || !selectedTask || selectedTask.type !== 'SWITCH') return;
     setDefinition(configureConditionTask(definition, selectedTask.taskReferenceName, config));
     setMetadata((current) => ({ ...current, condition_nodes: { ...(current.condition_nodes || {}), [selectedTask.taskReferenceName]: config } }));
     setDirty(true);
   };
 
   const changeApproval = (patch: Partial<{ title: string; description: string; candidates: string[]; publicContext: Record<string, string> }>) => {
-    if (!definition || !selectedTask || selectedTask.type !== 'HUMAN') return;
+    if (readOnly || !definition || !selectedTask || selectedTask.type !== 'HUMAN') return;
     const inputs = selectedTask.inputParameters || {};
     setDefinition(configureApprovalTask(definition, selectedTask.taskReferenceName, {
       title: patch.title ?? String(inputs.title || ''),
@@ -1201,7 +1206,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     data: { ...node.data, readOnly, locked: Boolean(debugExecution), onAction: action },
   }));
   const removeEdge = (edgeId: string) => {
-    if (!definition) return;
+    if (readOnly || !definition) return;
     const nextEdges = edges.filter((edge) => edge.id !== edgeId);
     setEdges(nextEdges);
     setMetadata((current) => ({
@@ -1270,16 +1275,16 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
 
   return <main className="flex h-full min-h-0 max-h-full w-full flex-col overflow-hidden bg-[var(--color-bg-1)]">
     <header className="relative flex h-[65px] shrink-0 items-center gap-3 border-b border-[var(--color-border-1)] bg-[var(--color-bg)] px-5">
-      <WorkflowPermission operation="View"><Button type="text" aria-label={t('common.back', '返回')} icon={<ArrowLeftOutlined />} onClick={() => dirty ? modal.confirm({ title: t('workflowOrchestration.editor.leaveConfirm', '离开并丢失未保存修改？'), okText: t('workflowOrchestration.editor.leave', '离开'), okButtonProps: { danger: true }, onOk: () => router.push('/workflow-orchestration/workflows') }) : router.push('/workflow-orchestration/workflows')} /></WorkflowPermission>
+      <WorkflowPermission operation="View"><Button type="text" aria-label={t('common.back', '返回')} icon={<ArrowLeftOutlined />} onClick={() => !readOnly && dirty ? modal.confirm({ title: t('workflowOrchestration.editor.leaveConfirm', '离开并丢失未保存修改？'), okText: t('workflowOrchestration.editor.leave', '离开'), okButtonProps: { danger: true }, onOk: () => router.push(listHref) }) : router.push(listHref)} /></WorkflowPermission>
       <div className="min-w-0 flex-1">
         <Input variant="borderless" className="max-w-96 font-semibold" value={workflow.name} readOnly={readOnly} onChange={(event) => { setWorkflow({ ...workflow, name: event.target.value }); setDirty(true); }} />
-        <div className="flex items-center gap-2 px-3 text-xs text-[var(--color-text-3)]">
+        {workflow.is_builtin ? null : <div className="flex items-center gap-2 px-3 text-xs text-[var(--color-text-3)]">
           {workflow.current_version ? <Tag color={workflow.enabled ? 'success' : 'default'}>{workflow.enabled ? t('workflowOrchestration.status.enabled', '已启用') : t('workflowOrchestration.status.disabled', '已停用')} · v{workflow.current_version}</Tag> : <Tag>{t('workflowOrchestration.status.draftOnly', '纯草稿')}</Tag>}
           {(workflow.has_draft || dirty) && workflow.current_version > 0 ? t('workflowOrchestration.editor.hasUnpublishedChanges', '有未发布更改') : t('workflowOrchestration.editor.publishedUnaffected', '发布版本不受草稿修改影响')}
-        </div>
+        </div>}
       </div>
-      <WorkflowPermission operation="View" instancePermissions={workflow.permission}><Button disabled={!workflow.id} onClick={() => router.push(`/workflow-orchestration/executions?query=${encodeURIComponent(workflow.name)}`)}>{t('workflowOrchestration.execution.records', '执行记录')}</Button></WorkflowPermission>
-      <WorkflowPermission operation="View" instancePermissions={workflow.permission}><Button disabled={!workflow.id} icon={<HistoryOutlined />} onClick={() => void openVersions()}>{t('common.version', '版本')}</Button></WorkflowPermission>
+      {workflow.is_builtin ? null : <WorkflowPermission operation="View" instancePermissions={workflow.permission}><Button disabled={!workflow.id} onClick={() => router.push(`/workflow-orchestration/executions?query=${encodeURIComponent(workflow.name)}`)}>{t('workflowOrchestration.execution.records', '执行记录')}</Button></WorkflowPermission>}
+      {workflow.is_builtin ? null : <WorkflowPermission operation="View" instancePermissions={workflow.permission}><Button disabled={!workflow.id} icon={<HistoryOutlined />} onClick={() => void openVersions()}>{t('common.version', '版本')}</Button></WorkflowPermission>}
       {!readOnly && <>
         {showValidateButton ? <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => void validate()}>{t('workflowOrchestration.editor.validate', '校验')}</Button></WorkflowPermission> : null}
         <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button icon={<SaveOutlined />} loading={busy} onClick={() => void save()}>{t('workflowOrchestration.editor.saveDraft', '保存草稿')}</Button></WorkflowPermission>
@@ -1289,9 +1294,20 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     <div className="flex min-h-0 flex-1">
       <section className="relative min-w-0 flex-1 bg-[var(--color-fill-1)]">
         <WorkflowCanvasActionRail readOnly={readOnly} onOpenPicker={() => { setPendingSource(undefined); closeInspector(); setPickerOpen(true); }} />
-        <ReactFlow className="h-[calc(100%-37px)]!" nodes={interactive} edges={interactiveEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} connectionLineStyle={connectionLineStyle} fitView fitViewOptions={{ maxZoom: 1 }} proOptions={{ hideAttribution: true }} deleteKeyCode={null} nodesDraggable={!readOnly} nodesConnectable={!readOnly}
-          onNodesChange={(changes) => { if (changes.some((item) => item.type === 'position')) setDirty(true); onNodesChange(changes); }}
+        <ReactFlow className={workflow.is_builtin ? 'h-full!' : 'h-[calc(100%-37px)]!'} nodes={interactive} edges={interactiveEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} connectionLineStyle={connectionLineStyle} fitView fitViewOptions={{ maxZoom: 1 }} proOptions={{ hideAttribution: true }} deleteKeyCode={null} nodesDraggable={!readOnly} nodesConnectable={!readOnly} edgesReconnectable={!readOnly}
+          onNodesChange={(changes) => {
+            if (readOnly) {
+              onNodesChange(changes.filter((item) => item.type !== 'position' && item.type !== 'remove'));
+              return;
+            }
+            if (changes.some((item) => item.type === 'position')) setDirty(true);
+            onNodesChange(changes);
+          }}
           onEdgesChange={(changes: EdgeChange<Edge>[]) => {
+            if (readOnly) {
+              onEdgesChange(changes.filter((item) => item.type === 'select'));
+              return;
+            }
             const nextEdges = applyEdgeChanges(changes, edges);
             onEdgesChange(changes);
             setDirty(true);
@@ -1304,6 +1320,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
             }
           }}
           onConnect={(connection: Connection) => {
+            if (readOnly) return;
             if (!connection.source || !connection.target || connection.source === connection.target) return;
             if (edges.some((edge) => edge.source === connection.source && edge.target === connection.target)) { message.warning(t('workflowOrchestration.editor.pathExists', '这条路径已经存在')); return; }
             const topLevel = new Set(definition.tasks.map((task) => task.taskReferenceName));
@@ -1345,7 +1362,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
           icon={<PlayCircleOutlined />}
           onClick={openDebugDialog}
         >{t('workflowOrchestration.editor.debugWorkflow', '调试流程')}</Button></WorkflowPermission>}
-        <div className="absolute inset-x-0 bottom-0 z-20 flex h-[37px] items-center justify-between border-t border-[var(--color-border-1)] bg-[var(--color-bg)] px-3 text-xs text-[var(--color-text-2)]">
+        {workflow.is_builtin ? null : <div className="absolute inset-x-0 bottom-0 z-20 flex h-[37px] items-center justify-between border-t border-[var(--color-border-1)] bg-[var(--color-bg)] px-3 text-xs text-[var(--color-text-2)]">
           <span>{t('workflowOrchestration.editor.debugOutput', '调试输出')}</span>
           <WorkflowPermission operation="View" area="executions" instancePermissions={debugExecution?.permission}>
             <Button
@@ -1358,7 +1375,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               {debugExecution ? t('common.viewDetails', '查看详情') : t('workflowOrchestration.editor.runToViewDetails', '运行后可查看执行详情')}
             </Button>
           </WorkflowPermission>
-        </div>
+        </div>}
         {issues.length > 0 && <Alert className="absolute bottom-[53px] left-1/2 z-10 w-[min(640px,calc(100%-32px))] -translate-x-1/2" type="error" showIcon closable message={t('workflowOrchestration.editor.pendingIssues', '流程存在待处理问题')} description={issues[0]} onClose={() => setIssues([])} />}
 
         <WorkflowNodePickerPanel firstNodeOnly={firstNodeOnly} open={pickerOpen} query={query} groups={pickerGroups} onQueryChange={setQuery} onClose={() => { setPendingSource(undefined); setPickerOpen(false); }} />
@@ -1678,6 +1695,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     </OperateModal>
     <JobTargetSelectionDialog
       open={jobTargetSelectorOpen}
+      allowedOperatingSystems={jobHostOperatingSystems}
       value={jobTargetSelectorPurpose === 'test' && jobTestTargetsField
         ? (Array.isArray(nodeTestInputs[jobTestTargetsField]) ? (nodeTestInputs[jobTestTargetsField] as unknown[]).map(String) : EMPTY_TARGET_REFERENCES)
         : (Array.isArray(selectedTask?.inputParameters?.targets) ? selectedTask.inputParameters.targets as string[] : EMPTY_TARGET_REFERENCES)}

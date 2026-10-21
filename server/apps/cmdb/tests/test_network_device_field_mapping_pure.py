@@ -8,12 +8,16 @@
 """
 import json
 import os
+from collections import defaultdict
+from types import SimpleNamespace
 
 import openpyxl
 import pytest
 
 from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
-from apps.cmdb.collection.plugins.community.network.plugins import NETWORK_DEVICE_MAPPING
+from apps.cmdb.collection.collect_tasks.base import BaseCollect
+from apps.cmdb.collection.plugins.base import bind_collection_mapping
+from apps.cmdb.collection.plugins.community.network.plugins import NETWORK_DEVICE_MAPPING, NETWORK_INTERFACE_MAPPING
 from apps.cmdb.models import OidMapping
 from apps.cmdb.services.oid_catalog import load_oid_catalog, sync_oid_catalog
 
@@ -237,8 +241,9 @@ def test_network_doc_describes_actual_unknown_oid_fallback():
     with open(NETWORK_DOC, encoding="utf-8") as fp:
         document = fp.read()
 
-    assert "未知 SOID 会保留原始 OID" in document
-    assert "品牌和型号标记为 `未知`，设备类型按 `switch` 兼容处理" in document
+    assert "未命中特征库的 SOID 不入库" in document
+    assert "再写入特征库和对应模型" in document
+    assert "设备类型按 `switch` 兼容处理" not in document
 
 
 def test_network_doc_keeps_custom_overrides_out_of_unchanged_count():
@@ -402,3 +407,149 @@ def test_format_data_applies_normalized_prefix_match():
     assert metric["brand"] == "Raisecom"
     assert metric["model"] == "未知"
     assert metric["device_type"] == "switch"
+    assert metric.get("_unresolved") is not True
+
+
+def _network_plugin(monkeypatch):
+    plugin = CollectNetworkMetrics.__new__(CollectNetworkMetrics)
+    plugin.interface_status_map = {"1": "UP", "2": "Down", "3": "Testing"}
+    plugin.instance_id_map = {}
+    plugin.result = {}
+    plugin.interfaces_data = {}
+    plugin.interface_index_map = {}
+    plugin.interface_name_map = defaultdict(dict)
+    plugin.is_topo = False
+    plugin.unresolved_by_soid = {}
+    plugin.unresolved_ips = set()
+    plugin.unresolved_groups = []
+    plugin.collection_metrics_dict = {}
+    device_mapping = bind_collection_mapping(plugin, NETWORK_DEVICE_MAPPING)
+    interface_mapping = bind_collection_mapping(plugin, NETWORK_INTERFACE_MAPPING)
+    monkeypatch.setattr(CollectNetworkMetrics, "device_map", property(lambda self: device_mapping))
+    monkeypatch.setattr(CollectNetworkMetrics, "model_field_mapping", property(lambda self: interface_mapping))
+    return plugin
+
+
+def test_library_row_matching_default_shape_is_still_a_hit():
+    oid = "1.3.6.1.4.1.9.1.1"
+    row = CollectNetworkMetrics.get_default_oid_map(oid)
+    assert CollectNetworkMetrics.lookup_library_mapping(oid, {oid: dict(row)}) == row
+    assert CollectNetworkMetrics.lookup_library_mapping("1.3.6.1.4.1.99999.1", {}) is None
+    assert CollectNetworkMetrics.get_default_oid_map(oid)["device_type"] == "switch"
+
+
+def test_prefix_unknown_model_still_enters_firewall_result(monkeypatch):
+    plugin = _network_plugin(monkeypatch)
+    device = {
+        "instance_id": "10.1.1.1",
+        "ip_addr": "10.1.1.1",
+        "sysobjectid": "1.3.6.1.4.1.28557.1",
+        "device_type": "firewall",
+        "brand": "未知",
+        "model": "未知",
+        "port": "161",
+        "sysdescr": "hillstone",
+    }
+    plugin.instance_id_map[device["instance_id"]] = device
+    plugin.collection_metrics_dict = {"device": [device]}
+
+    plugin.format_metrics()
+
+    assert plugin.result["firewall"][0]["inst_name"] == "10.1.1.1-firewall"
+    assert "switch" not in plugin.result
+    assert plugin.unresolved_groups == []
+
+
+def test_synthetic_default_holds_device_and_interface(monkeypatch):
+    plugin = _network_plugin(monkeypatch)
+    device = {
+        "instance_id": "10.9.9.9",
+        "ip_addr": "10.9.9.9",
+        "sysobjectid": "1.3.6.1.4.1.99999.1",
+        "oid": "1.3.6.1.4.1.99999.1",
+        "device_type": "switch",
+        "brand": "未知",
+        "model": "未知",
+        "port": "161",
+        "sysdescr": "mystery box",
+        "_unresolved": True,
+    }
+    interface = {
+        "instance_id": "10.9.9.9",
+        "index": "1",
+        "description": "Gi0/1",
+        "alias": "uplink",
+        "mac_address": "aabbccddeeff",
+        "oper_status": "1",
+    }
+    plugin.instance_id_map[device["instance_id"]] = device
+    plugin.collection_metrics_dict = {"device": [device], "interface": [interface]}
+
+    plugin.format_metrics()
+
+    assert "switch" not in plugin.result
+    assert "interface" not in plugin.result
+    group = plugin.unresolved_groups[0]
+    assert group["soid"] == "1.3.6.1.4.1.99999.1"
+    assert group["devices"][0]["ip_addr"] == "10.9.9.9"
+    assert group["devices"][0]["sys_desc"] == "mystery box"
+    assert group["devices"][0]["interfaces"] == [{"name": "Gi0/1", "description": "uplink", "mac": "aabbccddeeff", "status": "UP"}]
+
+
+def test_unresolved_endpoint_is_dropped_from_topology(monkeypatch):
+    plugin = CollectNetworkMetrics.__new__(CollectNetworkMetrics)
+    plugin.unresolved_ips = {"10.9.9.9"}
+    plugin.interface_index_map = {
+        ("10.0.0.1", "1"): "10.0.0.1-firewall-Gi0",
+        ("10.0.0.2", "3"): "10.0.0.2-router-Gi0",
+        ("10.9.9.9", "2"): "10.9.9.9-switch-Gi1",
+    }
+    plugin.task_id = 1
+    plugin.collect_inst = SimpleNamespace(topology_contract={"min_confidence": 0})
+    saved = {}
+    plugin.get_previous_topology_links = lambda: []
+    plugin.save_topology_snapshot = lambda snapshot: saved.update(snapshot)
+    plugin.collect_nic_connect_relationships = lambda parsed: ([], [], [])
+    keep = {
+        "relationship_type": "authoritative",
+        "confidence": 100,
+        "source_port_id": "10.0.0.1:1",
+        "target_port_id": "10.0.0.2:3",
+    }
+    drop = {
+        "relationship_type": "authoritative",
+        "confidence": 100,
+        "source_port_id": "10.0.0.1:1",
+        "target_port_id": "10.9.9.9:2",
+    }
+    monkeypatch.setattr("apps.cmdb.collection.collect_plugin.network.build_pipeline_aggregate", lambda topo_data: {})
+    monkeypatch.setattr(
+        "apps.cmdb.collection.collect_plugin.network.parse_aggregate_result",
+        lambda aggregate, previous_links=None: {
+            "normalized": {"ports": []},
+            "summary": {},
+            "topology": {
+                "authoritative_links": [keep, drop],
+                "inferred_links": [],
+                "stale_links": [],
+                "unresolved_neighbors": [],
+            },
+        },
+    )
+
+    relations = plugin.collect_topology_relationships([], [])
+
+    assert [item["target_inst_name"] for item in relations] == ["10.0.0.2-router-Gi0"]
+    reasons = [item.get("drop_reason") for item in saved["dropped"]]
+    assert reasons == ["unresolved_soid"]
+
+
+def test_format_collect_data_keeps_unresolved_out_of_add():
+    collector = BaseCollect.__new__(BaseCollect)
+    formatted = collector.format_collect_data({"__raw_data__": [], "all": 0})
+    plugin = SimpleNamespace(unresolved_groups=[{"soid": "1.3.6.1.4.1.99999.1", "devices": [{"ip_addr": "10.9.9.9", "interfaces": []}]}])
+
+    BaseCollect.attach_unresolved_groups(formatted, plugin)
+
+    assert formatted["add"] == []
+    assert formatted["unresolved"][0]["devices"][0]["ip_addr"] == "10.9.9.9"

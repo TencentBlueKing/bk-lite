@@ -98,6 +98,7 @@ _enterprise_status = detect_enterprise_footprint(BASE_DIR)
 if _enterprise_status.should_enable_license_mgmt:
     INSTALLED_APPS += ("apps.license_mgmt",)
     MIDDLEWARE += (
+        "apps.module_link.middleware.ModuleLinkLicenseInheritMiddleware",
         "apps.license_mgmt.middleware.license_guard.LicenseAppGuardMiddleware",
         "apps.license_mgmt.middleware.license_guard.LicenseCreateGuardMiddleware",
         "apps.license_mgmt.middleware.license_guard.LicenseCapacityGuardMiddleware",
