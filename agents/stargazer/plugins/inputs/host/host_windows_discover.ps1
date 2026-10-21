@@ -21,6 +21,31 @@ function Get-HostMachineType {
     return "unknown"
 }
 
+function Get-CollectedHostName {
+    param(
+        [AllowEmptyString()]
+        [string]$ComputerName = $env:COMPUTERNAME,
+        [AllowEmptyString()]
+        [string]$DnsHostName
+    )
+    if (-not [string]::IsNullOrWhiteSpace($ComputerName)) {
+        return $ComputerName.Trim()
+    }
+    if ($PSBoundParameters.ContainsKey("DnsHostName")) {
+        $resolved = $DnsHostName
+    } else {
+        try {
+            $resolved = [System.Net.Dns]::GetHostName()
+        } catch {
+            $resolved = ""
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        return ""
+    }
+    return $resolved.Trim()
+}
+
 if ($env:HOST_DISCOVER_SOURCE_ONLY -eq '1') {
     return
 }
@@ -37,11 +62,8 @@ function Get-ValueOrUnknown {
     return $Value.ToString().Trim()
 }
 
-# Hostname
-$hostname = $env:COMPUTERNAME
-if ([string]::IsNullOrWhiteSpace($hostname)) {
-    $hostname = [System.Net.Dns]::GetHostName()
-}
+# Hostname：计算机名优先，否则 DNS 主机名。都没有时留空。
+$hostname = Get-CollectedHostName
 
 # OS Information
 $os = Get-WmiObject -Class Win32_OperatingSystem
@@ -140,7 +162,7 @@ $machineType = Get-HostMachineType `
 
 # Build JSON output
 $json = @{
-    hostname = Get-ValueOrUnknown $hostname
+    hostname = $hostname
     os_type = Get-ValueOrUnknown $os_type
     os_name = Get-ValueOrUnknown $os_name
     os_version = Get-ValueOrUnknown $os_version
