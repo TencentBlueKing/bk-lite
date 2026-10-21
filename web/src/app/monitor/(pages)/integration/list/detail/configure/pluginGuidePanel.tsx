@@ -6,18 +6,22 @@ import useIntegrationApi from '@/app/monitor/api/integration';
 import MarkdownRenderer from '@/components/markdown';
 import OperateDrawer from '@/components/operate-drawer';
 import { PluginGuideDoc } from '@/app/monitor/types/integration';
+import { getStoredLocale } from '@/utils/userPreferences';
 import { PluginGuideContext } from './pluginContext';
+import { scriptCollectGuideMarkdown } from './scriptCollectGuideContent';
 import styles from './pluginGuidePanel.module.scss';
 
 interface PluginGuidePanelProps {
   pluginId: string;
   pluginName?: string;
+  enableScriptFallback?: boolean;
   children?: React.ReactNode;
 }
 
 const PluginGuidePanel: React.FC<PluginGuidePanelProps> = ({
   pluginId,
   pluginName,
+  enableScriptFallback,
   children
 }) => {
   const { t } = useTranslation();
@@ -72,26 +76,39 @@ const PluginGuidePanel: React.FC<PluginGuidePanelProps> = ({
   }, [guide, pluginName, t]);
 
   const getGuideTitle = useCallback(() => {
+    if (enableScriptFallback) {
+      return t(
+        'monitor.integrations.scriptCollectGuideTitle',
+        '自定义脚本监控配置指引'
+      );
+    }
     const fallback = t('monitor.integrations.guideFallbackName');
     const safeName =
       (guideName && String(guideName).trim()) || fallback || 'Monitor';
     return t('monitor.integrations.accessAndTroubleshootGuide', undefined, {
       name: safeName
     });
-  }, [t, guideName]);
+  }, [t, guideName, enableScriptFallback]);
+
+  const fallbackContent = enableScriptFallback
+    ? scriptCollectGuideMarkdown(getStoredLocale())
+    : '';
+  const guideContent =
+    guide?.has_guide && guide.content ? guide.content : fallbackContent;
+  const hasGuide = Boolean(guideContent);
 
   const contextValue = useMemo(
     () => ({
       openGuide,
-      hasGuide: Boolean(guide?.has_guide && guide.content)
+      hasGuide
     }),
-    [openGuide, guide]
+    [openGuide, hasGuide]
   );
 
   return (
     <PluginGuideContext.Provider value={contextValue}>
       {children}
-      {guide?.has_guide && guide.content && (
+      {hasGuide && (
         <OperateDrawer
           title={getGuideTitle()}
           visible={visible}
@@ -101,7 +118,7 @@ const PluginGuidePanel: React.FC<PluginGuidePanelProps> = ({
         >
           <div className={styles.guideContent}>
             <MarkdownRenderer
-              content={guide.content}
+              content={guideContent}
               stripDocumentTitle
               enableCodeCopy
             />
