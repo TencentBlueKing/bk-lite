@@ -21,7 +21,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_microsens', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -39,7 +39,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_microsens', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -62,7 +62,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "max(snmp_device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='switch', collect_type='snmp_microsens', __$labels__}) by (instance_id)",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Chassis temperature of the MICROSENS G6 industrial switch in degrees Celsius (G6-SYSTEM systemTemperature scalar)."
@@ -80,7 +80,7 @@
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_microsens', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Power-supply state of the MICROSENS G6 industrial switch (G6-HARDWARE hardwarePowerSupply1Status / hardwarePowerSupply2Status), normalised to 1=normal / 2=abnormal. Slots reported as notApplicable or notInstalled are skipped."
@@ -98,7 +98,7 @@
       ],
       "name": "device_fan_state",
       "display_name": "风扇状态",
-      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_state{instance_type='switch', collect_type='snmp_microsens', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Cooling-fan state of the MICROSENS G6 industrial switch (G6-HARDWARE hardwareFanStatus), normalised to 1=normal / 2=abnormal (degraded, fail or missing). Fanless models report unused and the metric is skipped."
@@ -106,7 +106,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_microsens', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

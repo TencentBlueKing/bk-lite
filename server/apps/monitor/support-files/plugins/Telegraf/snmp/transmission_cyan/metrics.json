@@ -26,7 +26,7 @@
     {
       "metric_group": "Temperature",
       "name": "intake_temperature_celsius",
-      "query": "intake_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "intake_temperature_celsius{instance_type='transmission', collect_type='snmp_cyan', __$labels__}",
       "display_name": "Intake Air Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -44,7 +44,7 @@
     {
       "metric_group": "Temperature",
       "name": "exhaust_temperature_celsius",
-      "query": "exhaust_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "exhaust_temperature_celsius{instance_type='transmission', collect_type='snmp_cyan', __$labels__}",
       "display_name": "Exhaust Air Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Temperature",
       "name": "psu_temperature_celsius",
-      "query": "psu_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "psu_temperature_celsius{instance_type='transmission', collect_type='snmp_cyan', __$labels__}",
       "display_name": "PSU Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -80,7 +80,7 @@
     {
       "metric_group": "Power",
       "name": "device_current_amps",
-      "query": "device_current_amps{instance_type='transmission', __$labels__}",
+      "query": "device_current_amps{instance_type='transmission', collect_type='snmp_cyan', __$labels__}",
       "display_name": "Module Current",
       "data_type": "Number",
       "unit": "none",
@@ -98,7 +98,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='transmission', __$labels__}",
+      "query": "device_psu_state{instance_type='transmission', collect_type='snmp_cyan', __$labels__}",
       "display_name": "Power Feed Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -120,7 +120,7 @@
     {
       "metric_group": "Power",
       "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='transmission', __$labels__}",
+      "query": "device_voltage_volts{instance_type='transmission', collect_type='snmp_cyan', __$labels__}",
       "display_name": "Power Feed Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -142,7 +142,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_cyan', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -160,7 +160,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_cyan', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -178,7 +178,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_cyan', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -191,7 +191,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_cyan', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -204,7 +204,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_cyan', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

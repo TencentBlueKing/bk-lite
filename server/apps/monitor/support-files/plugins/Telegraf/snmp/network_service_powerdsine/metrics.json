@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='network_service', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='network_service', collect_type='snmp_powerdsine', __$labels__}",
       "display_name": "Unit Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -40,7 +40,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='network_service', __$labels__}",
+      "query": "device_voltage_volts{instance_type='network_service', collect_type='snmp_powerdsine', __$labels__}",
       "display_name": "Supply Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -58,7 +58,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='network_service', __$labels__}",
+      "query": "device_psu_state{instance_type='network_service', collect_type='snmp_powerdsine', __$labels__}",
       "display_name": "Power Source Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -80,7 +80,7 @@
     {
       "metric_group": "Power",
       "name": "poe_max_power_watts",
-      "query": "poe_max_power_watts{instance_type='network_service', __$labels__}",
+      "query": "poe_max_power_watts{instance_type='network_service', collect_type='snmp_powerdsine', __$labels__}",
       "display_name": "PoE Max Power",
       "data_type": "Number",
       "unit": "watts",
@@ -98,7 +98,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_powerdsine', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -116,7 +116,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_powerdsine', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -134,7 +134,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_powerdsine', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -34,7 +34,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -52,7 +52,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -75,7 +75,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "snmp_device_memory_used{instance_type='switch', __$labels__} * 1024",
+      "query": "snmp_device_memory_used{instance_type='switch', collect_type='snmp_hirschmann', __$labels__} * 1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used memory of the Hirschmann switch in bytes (hmMemoryAllocated, KB*1024)."
@@ -88,7 +88,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "snmp_device_memory_free{instance_type='switch', __$labels__} * 1024",
+      "query": "snmp_device_memory_free{instance_type='switch', collect_type='snmp_hirschmann', __$labels__} * 1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free memory of the Hirschmann switch in bytes (hmMemoryFree, KB*1024)."
@@ -101,7 +101,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "snmp_device_memory_used{instance_type='switch', __$labels__} / (snmp_device_memory_used{instance_type='switch', __$labels__} + snmp_device_memory_free{instance_type='switch', __$labels__}) * 100",
+      "query": "snmp_device_memory_used{instance_type='switch', collect_type='snmp_hirschmann', __$labels__} / (snmp_device_memory_used{instance_type='switch', collect_type='snmp_hirschmann', __$labels__} + snmp_device_memory_free{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Hirschmann switch, derived as used/(used+free)."
@@ -114,7 +114,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Chassis temperature of the Hirschmann switch in degrees Celsius (hmTemperature)."
@@ -132,7 +132,7 @@
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "data_type": "Enum",
       "description": "Power-supply state of the Hirschmann switch (hmPSState), normalised to 1=normal or notInstalled (empty slots keep a row), 2=failed (abnormal), 3=unknown (gray, no alert)."
@@ -140,7 +140,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_sfp_temperature_celsius",
-      "query": "device_sfp_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_sfp_temperature_celsius{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}",
       "display_name": "SFP Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -158,7 +158,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_sfp_tx_power",
-      "query": "device_sfp_tx_power{instance_type='switch', __$labels__}",
+      "query": "device_sfp_tx_power{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}",
       "display_name": "SFP TX Power",
       "data_type": "Number",
       "unit": "none",
@@ -176,7 +176,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_sfp_rx_power",
-      "query": "device_sfp_rx_power{instance_type='switch', __$labels__}",
+      "query": "device_sfp_rx_power{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}",
       "display_name": "SFP RX Power",
       "data_type": "Number",
       "unit": "none",
@@ -194,7 +194,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_sfp_rx_power_state",
-      "query": "device_sfp_rx_power_state{instance_type='switch', __$labels__}",
+      "query": "device_sfp_rx_power_state{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}",
       "display_name": "SFP RX Power State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -212,7 +212,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_state{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -230,7 +230,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_hirschmann', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "max(device_cpu_usage{instance_type='wireless', __$labels__, index='2'}) by (instance_id)",
+      "query": "max(device_cpu_usage{instance_type='wireless', collect_type='snmp_ubiquiti_airos', __$labels__, index='2'}) by (instance_id)",
       "display_name": "CPU load (5-min avg)",
       "data_type": "Number",
       "unit": "none",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "max(device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(device_memory_usage{instance_type='wireless', collect_type='snmp_ubiquiti_airos', __$labels__}) by (instance_id)",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "max(device_memory_total{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(device_memory_total{instance_type='wireless', collect_type='snmp_ubiquiti_airos', __$labels__}) by (instance_id)",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "max(device_memory_used{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(device_memory_used{instance_type='wireless', collect_type='snmp_ubiquiti_airos', __$labels__}) by (instance_id)",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "max(device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(device_memory_free{instance_type='wireless', collect_type='snmp_ubiquiti_airos', __$labels__}) by (instance_id)",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_ubiquiti_airos', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_ubiquiti_airos', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_ubiquiti_airos', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

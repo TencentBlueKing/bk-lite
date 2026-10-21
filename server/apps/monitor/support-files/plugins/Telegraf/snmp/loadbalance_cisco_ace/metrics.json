@@ -25,7 +25,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='loadbalance', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='loadbalance', collect_type='snmp_cisco_ace', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -38,7 +38,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='loadbalance', __$labels__}",
+      "query": "device_cpu_usage{instance_type='loadbalance', collect_type='snmp_cisco_ace', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -56,7 +56,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_used",
-      "query": "device_memory_used{instance_type='loadbalance', __$labels__}",
+      "query": "device_memory_used{instance_type='loadbalance', collect_type='snmp_cisco_ace', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='loadbalance', __$labels__}",
+      "query": "device_memory_free{instance_type='loadbalance', collect_type='snmp_cisco_ace', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -92,7 +92,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='loadbalance', __$labels__}",
+      "query": "device_memory_usage{instance_type='loadbalance', collect_type='snmp_cisco_ace', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "ace_np_cpu_usage",
-      "query": "ace_np_cpu_usage{instance_type='loadbalance', __$labels__}",
+      "query": "ace_np_cpu_usage{instance_type='loadbalance', collect_type='snmp_cisco_ace', __$labels__}",
       "display_name": "NP CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -128,7 +128,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "ace_np_buffer_usage",
-      "query": "ace_np_buffer_usage{instance_type='loadbalance', __$labels__}",
+      "query": "ace_np_buffer_usage{instance_type='loadbalance', collect_type='snmp_cisco_ace', __$labels__}",
       "display_name": "NP Buffer Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -146,7 +146,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "lb_current_connections",
-      "query": "sum(lb_current_connections{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "sum(lb_current_connections{instance_type='loadbalance', collect_type='snmp_cisco_ace', __$labels__}) by (instance_id)",
       "display_name": "Current Connections",
       "data_type": "Number",
       "unit": "short",

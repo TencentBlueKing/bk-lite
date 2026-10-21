@@ -27,7 +27,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_korenix', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -40,7 +40,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu1_status",
-      "query": "max(psu1_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(psu1_status{instance_type='switch', collect_type='snmp_korenix', __$labels__}) by (instance_id)",
       "display_name": "PSU1 Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"on\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"blinkNormal\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"blinkFast\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"off\",\"id\":4,\"color\":\"#ff4d4f\"}]",
@@ -53,7 +53,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu2_status",
-      "query": "max(psu2_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(psu2_status{instance_type='switch', collect_type='snmp_korenix', __$labels__}) by (instance_id)",
       "display_name": "PSU2 Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"on\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"blinkNormal\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"blinkFast\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"off\",\"id\":4,\"color\":\"#ff4d4f\"}]",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Temperature",
       "name": "sfp_temperature_celsius",
-      "query": "sfp_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "sfp_temperature_celsius{instance_type='switch', collect_type='snmp_korenix', __$labels__}",
       "display_name": "SFP Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "sfp_tx_power",
-      "query": "sfp_tx_power{instance_type='switch', __$labels__}",
+      "query": "sfp_tx_power{instance_type='switch', collect_type='snmp_korenix', __$labels__}",
       "display_name": "SFP TX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "sfp_rx_power",
-      "query": "sfp_rx_power{instance_type='switch', __$labels__}",
+      "query": "sfp_rx_power{instance_type='switch', collect_type='snmp_korenix', __$labels__}",
       "display_name": "SFP RX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -132,7 +132,7 @@
     {
       "metric_group": "Status",
       "name": "interface_ifAdminStatus",
-      "query": "interface_ifAdminStatus{instance_type='switch', __$labels__}",
+      "query": "interface_ifAdminStatus{instance_type='switch', collect_type='snmp_korenix', __$labels__}",
       "display_name": "Interface Admin Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
@@ -150,7 +150,7 @@
     {
       "metric_group": "Status",
       "name": "interface_ifOperStatus",
-      "query": "interface_ifOperStatus{instance_type='switch', __$labels__}",
+      "query": "interface_ifOperStatus{instance_type='switch', collect_type='snmp_korenix', __$labels__}",
       "display_name": "Interface Oper Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
@@ -168,7 +168,7 @@
     {
       "metric_group": "Bandwidth",
       "name": "interface_ifSpeed",
-      "query": "interface_ifSpeed{instance_type='switch', __$labels__}",
+      "query": "interface_ifSpeed{instance_type='switch', collect_type='snmp_korenix', __$labels__}",
       "display_name": "Interface Bandwidth",
       "data_type": "Number",
       "unit": "bitps",
@@ -186,7 +186,7 @@
     {
       "metric_group": "Packet Error",
       "name": "interface_ifInErrors",
-      "query": "rate(interface_ifInErrors{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifInErrors{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Incoming Errors Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -204,7 +204,7 @@
     {
       "metric_group": "Packet Error",
       "name": "interface_ifOutErrors",
-      "query": "rate(interface_ifOutErrors{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifOutErrors{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Outgoing Errors Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -222,7 +222,7 @@
     {
       "metric_group": "Packet Loss",
       "name": "interface_ifInDiscards",
-      "query": "rate(interface_ifInDiscards{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifInDiscards{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Incoming Discards Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -240,7 +240,7 @@
     {
       "metric_group": "Packet Loss",
       "name": "interface_ifOutDiscards",
-      "query": "rate(interface_ifOutDiscards{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifOutDiscards{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Outgoing Discards Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -258,7 +258,7 @@
     {
       "metric_group": "Packet",
       "name": "interface_ifInUcastPkts",
-      "query": "rate(interface_ifInUcastPkts{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifInUcastPkts{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Incoming Unicast Packets Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -276,7 +276,7 @@
     {
       "metric_group": "Packet",
       "name": "interface_ifOutUcastPkts",
-      "query": "rate(interface_ifOutUcastPkts{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifOutUcastPkts{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Outgoing Unicast Packets Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -294,7 +294,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifInOctets",
-      "query": "rate(interface_ifInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifInOctets{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -312,7 +312,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifOutOctets",
-      "query": "rate(interface_ifOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifOutOctets{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -330,7 +330,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -348,7 +348,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -366,7 +366,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -379,7 +379,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_korenix', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",

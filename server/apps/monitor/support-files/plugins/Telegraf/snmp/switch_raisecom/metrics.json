@@ -23,7 +23,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='switch', collect_type='snmp_raisecom_switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='switch', collect_type='snmp_raisecom_switch', __$labels__}",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "snmp_device_memory_free{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_free{instance_type='switch', collect_type='snmp_raisecom_switch', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "(sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(snmp_device_memory_total{instance_type='switch', collect_type='snmp_raisecom_switch', __$labels__}) by (instance_id) - sum(snmp_device_memory_free{instance_type='switch', collect_type='snmp_raisecom_switch', __$labels__}) by (instance_id)) / sum(snmp_device_memory_total{instance_type='switch', collect_type='snmp_raisecom_switch', __$labels__}) by (instance_id) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', collect_type='snmp_raisecom_switch', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_raisecom_switch', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -23,7 +23,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_cpu_usage",
-      "query": "avg(snmp_device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id) or avg(device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_device_cpu_usage{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) or avg(device_cpu_usage{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_memory_total",
-      "query": "(avg(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id) * 1024) or ((avg(device_memory_used{instance_type='wireless', __$labels__}) by (instance_id) + avg(device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)) * 1024)",
+      "query": "(avg(snmp_device_memory_total{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) * 1024) or ((avg(device_memory_used{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) + avg(device_memory_free{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id)) * 1024)",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_memory_free",
-      "query": "(avg(snmp_device_memory_free{instance_type='wireless', __$labels__}) by (instance_id) * 1024) or (avg(device_memory_free{instance_type='wireless', __$labels__}) by (instance_id) * 1024)",
+      "query": "(avg(snmp_device_memory_free{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) * 1024) or (avg(device_memory_free{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) * 1024)",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_memory_used",
-      "query": "((avg(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id) - avg(snmp_device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)) * 1024) or (avg(device_memory_used{instance_type='wireless', __$labels__}) by (instance_id) * 1024)",
+      "query": "((avg(snmp_device_memory_total{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) - avg(snmp_device_memory_free{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id)) * 1024) or (avg(device_memory_used{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) * 1024)",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_memory_usage",
-      "query": "(100 * (avg(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id) - avg(snmp_device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)) / avg(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id)) or (100 * avg(device_memory_used{instance_type='wireless', __$labels__}) by (instance_id) / (avg(device_memory_used{instance_type='wireless', __$labels__}) by (instance_id) + avg(device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)))",
+      "query": "(100 * (avg(snmp_device_memory_total{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) - avg(snmp_device_memory_free{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id)) / avg(snmp_device_memory_total{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id)) or (100 * avg(device_memory_used{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) / (avg(device_memory_used{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id) + avg(device_memory_free{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id)))",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -101,7 +101,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_ap_count",
-      "query": "avg(snmp_wireless_ap_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_wireless_ap_count{instance_type='wireless', collect_type='snmp_cisco_wireless', __$labels__}) by (instance_id)",
       "display_name": "Connected AP Count",
       "data_type": "Number",
       "unit": "counts",

@@ -24,7 +24,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_proxim', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_cpu_usage",
-      "query": "max(snmp_device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='wireless', collect_type='snmp_proxim', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -50,7 +50,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_memory_usage",
-      "query": "max(snmp_device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='wireless', collect_type='snmp_proxim', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -63,7 +63,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(snmp_device_temperature_celsius{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='wireless', collect_type='snmp_proxim', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_proxim', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -94,7 +94,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_proxim', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -112,7 +112,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_proxim', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -125,7 +125,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_proxim', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",

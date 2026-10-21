@@ -26,7 +26,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "max(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='switch', collect_type='snmp_cern_wrs', __$labels__}) by (instance_id)",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -39,7 +39,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "max(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_total{instance_type='switch', collect_type='snmp_cern_wrs', __$labels__}) by (instance_id)",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -52,7 +52,7 @@
     {
       "metric_group": "CPU",
       "name": "cern_wrs_cpu_load_1min",
-      "query": "max(snmp_cern_wrs_cpu_load_1min{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_cern_wrs_cpu_load_1min{instance_type='switch', collect_type='snmp_cern_wrs', __$labels__}) by (instance_id)",
       "display_name": "CPU Load Average (1 min)",
       "data_type": "Number",
       "unit": "none",
@@ -65,7 +65,7 @@
     {
       "metric_group": "CPU",
       "name": "cern_wrs_cpu_load_5min",
-      "query": "max(snmp_cern_wrs_cpu_load_5min{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_cern_wrs_cpu_load_5min{instance_type='switch', collect_type='snmp_cern_wrs', __$labels__}) by (instance_id)",
       "display_name": "CPU Load Average (5 min)",
       "data_type": "Number",
       "unit": "none",
@@ -78,7 +78,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_cern_wrs', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -96,7 +96,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "cern_wrs_system_status",
-      "query": "max(snmp_cern_wrs_system_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_cern_wrs_system_status{instance_type='switch', collect_type='snmp_cern_wrs', __$labels__}) by (instance_id)",
       "display_name": "Main System Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -109,7 +109,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_cern_wrs', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -127,7 +127,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_cern_wrs', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -145,7 +145,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_cern_wrs', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

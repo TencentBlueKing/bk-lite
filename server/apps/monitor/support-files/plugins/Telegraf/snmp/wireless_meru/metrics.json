@@ -27,7 +27,7 @@
       ],
       "name": "device_cpu_usage",
       "display_name": "CPU Utilization",
-      "query": "max(snmp_device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='wireless', collect_type='snmp_meru', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
       "description": "CPU utilization of the Meru WLAN controller, computed as 100 minus idle percent when idle is in 0-100, otherwise user plus system when both are in range. Sustained high CPU usage can affect WLAN management responsiveness."
@@ -40,7 +40,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "Memory Utilization",
-      "query": "max(snmp_device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='wireless', collect_type='snmp_meru', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilization of the Meru WLAN controller, computed as used/total x 100 from mwSystemResource memory sizes. High memory pressure can degrade controller services."
@@ -53,7 +53,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "Memory Total",
-      "query": "max(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_total{instance_type='wireless', collect_type='snmp_meru', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total memory of the Meru WLAN controller in bytes (mwSystemResourceMemoryTotalSize, KB converted to bytes)."
@@ -66,7 +66,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "Memory Used",
-      "query": "max(snmp_device_memory_used{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_used{instance_type='wireless', collect_type='snmp_meru', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used memory of the Meru WLAN controller in bytes (mwSystemResourceMemoryUsedSize, KB converted to bytes)."
@@ -79,7 +79,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "Memory Free",
-      "query": "max(snmp_device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_free{instance_type='wireless', collect_type='snmp_meru', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free memory of the Meru WLAN controller in bytes (mwSystemResourceMemoryFreeSize, KB converted to bytes)."
@@ -87,7 +87,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_meru', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_meru', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_meru', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
