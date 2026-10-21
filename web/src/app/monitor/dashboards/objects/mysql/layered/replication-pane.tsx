@@ -12,8 +12,9 @@ import {
   readMysqlReplicationGap,
   readMysqlReplicationSeries,
   readMysqlRoleBlock,
+  visibleReplicationTrends,
   type MysqlReplicationCard,
-  type MysqlReplicationSeries,
+  type MysqlReplicationTrendKey,
   type MysqlRoleField
 } from './ia';
 import type { MetricSeries } from '../types';
@@ -72,16 +73,31 @@ const replicaFields = (fields: MysqlRoleField[]) => REPLICA_LABELS.map((label) =
   fields.find((field) => field.label === label) || { label, value: '--', tone: 'muted' as const }
 ));
 
-/** 从库铺三张趋势卡。主库只在容量序列真有点时出卡。空数组不补零线。 */
-const hasReplicationTrends = (
-  kind: 'primary' | 'replica' | 'group' | undefined,
-  trends: MysqlReplicationSeries
-) => Boolean(
-  kind === 'replica'
-  || trends.delay.length
-  || trends.relay.length
-  || trends.binlog.length
-);
+const TREND_SPEC: Record<MysqlReplicationTrendKey, {
+  title: MysqlCategoryCopyKey;
+  unit: 's' | 'bytes';
+  color: string;
+  metric: string;
+}> = {
+  delay: {
+    title: 'replicationLag',
+    unit: 's',
+    color: HOST_SERIES_COLOR.memUsed,
+    metric: 'mysql_slave_seconds_behind_master'
+  },
+  relay: {
+    title: 'relaySpace',
+    unit: 'bytes',
+    color: HOST_SERIES_COLOR.memAvailable,
+    metric: 'mysql_slave_relay_log_space'
+  },
+  binlog: {
+    title: 'binlogSize',
+    unit: 'bytes',
+    color: HOST_SERIES_COLOR.diskUsed,
+    metric: 'mysql_binary_size_bytes'
+  }
+};
 
 const REPL_LOADING_ITEMS: KpiTileModel[] = ['lag', 'io', 'sql'].map((key) => ({
   key,
@@ -176,18 +192,20 @@ function TrendCard({
   color,
   data,
   loading,
-  emptyText
+  emptyText,
+  wide
 }: {
-  trend: 'delay' | 'relay' | 'binlog';
+  trend: MysqlReplicationTrendKey;
   title: string;
   unit: 's' | 'counts' | 'bytes';
   color: string;
   data: ChartData[];
   loading?: boolean;
   emptyText: string;
+  wide?: boolean;
 }) {
   return (
-    <div className={trend === 'delay' ? `${pro.perfWide} min-w-0` : 'min-w-0'} data-replication-trend={trend}>
+    <div className={wide ? `${pro.perfWide} min-w-0` : 'min-w-0'} data-replication-trend={trend}>
       <ThinTimeSeries
         title={title}
         unit={unit}
@@ -250,7 +268,8 @@ export default function ReplicationPane({
     : [];
   const showStatus = items.length > 0 || errorItems.length > 0;
   const showDownstream = downstreamItems.length > 0;
-  const showTrends = hasReplicationTrends(statusBlock?.kind, trends);
+  const slots = visibleReplicationTrends(statusBlock?.kind, trends);
+  const showTrends = slots.length > 0;
   const hasContent = items.length > 0
     || errorItems.length > 0
     || downstreamItems.length > 0
@@ -265,49 +284,14 @@ export default function ReplicationPane({
         <ReplicationBlock title={text('status')}>
           <FittedKpiRow loading items={REPL_LOADING_ITEMS} />
         </ReplicationBlock>
-        <ReplicationBlock title={text('trend')} spaced>
-          <div className={pro.perfGrid}>
-            <TrendCard
-              trend="delay"
-              title={text('replicationLag')}
-              unit="s"
-              color={HOST_SERIES_COLOR.memUsed}
-              data={[]}
-              emptyText={empty}
-              loading
-            />
-            <TrendCard
-              trend="relay"
-              title={text('relaySpace')}
-              unit="bytes"
-              color={HOST_SERIES_COLOR.memAvailable}
-              data={[]}
-              emptyText={empty}
-              loading
-            />
-            <TrendCard
-              trend="binlog"
-              title={text('binlogSize')}
-              unit="bytes"
-              color={HOST_SERIES_COLOR.diskUsed}
-              data={[]}
-              emptyText={empty}
-              loading
-            />
-          </div>
-        </ReplicationBlock>
       </div>
     );
   }
   if (!hasContent) {
     const gap = readMysqlReplicationGap(metricMap);
-    const gapCopy = gap === 'primaryNoDownstream'
-      ? { title: text('primaryNoDownstream'), hint: text('primaryNoDownstreamHint') }
-      : gap === 'collectionOff'
-        ? { title: text('replicationCollectionOff'), hint: text('replicationCollectionOffHint') }
-        : gap === 'binlogOff'
-          ? { title: text('replicationBinlogOff'), hint: text('replicationBinlogOffHint') }
-          : { title: text('noReplicationData'), hint: undefined };
+    const gapCopy = gap === 'partial'
+      ? { title: text('replicationPartial'), hint: text('replicationPartialHint') }
+      : { title: text('replicationUnconfigured'), hint: text('replicationUnconfiguredHint') };
     return (
       <div data-replication-state="empty" data-replication-gap={gap}>
         <GrayTabEmptyState title={gapCopy.title} hint={gapCopy.hint} />
@@ -330,34 +314,24 @@ export default function ReplicationPane({
       ) : null}
       {showTrends ? (
         <ReplicationBlock title={text('trend')} spaced={showStatus || showDownstream}>
-          <div className={pro.perfGrid}>
-            <TrendCard
-              trend="delay"
-              title={text('replicationLag')}
-              unit="s"
-              color={HOST_SERIES_COLOR.memUsed}
-              data={trends.delay}
-              emptyText={empty}
-              loading={trends.delay.length === 0 && pendingMetricNames.has('mysql_slave_seconds_behind_master')}
-            />
-            <TrendCard
-              trend="relay"
-              title={text('relaySpace')}
-              unit="bytes"
-              color={HOST_SERIES_COLOR.memAvailable}
-              data={trends.relay}
-              emptyText={empty}
-              loading={trends.relay.length === 0 && pendingMetricNames.has('mysql_slave_relay_log_space')}
-            />
-            <TrendCard
-              trend="binlog"
-              title={text('binlogSize')}
-              unit="bytes"
-              color={HOST_SERIES_COLOR.diskUsed}
-              data={trends.binlog}
-              emptyText={empty}
-              loading={trends.binlog.length === 0 && pendingMetricNames.has('mysql_binary_size_bytes')}
-            />
+          <div className={pro.perfGrid} data-replication-trends={slots.join(',')}>
+            {slots.map((slot) => {
+              const spec = TREND_SPEC[slot];
+              const data = trends[slot];
+              return (
+                <TrendCard
+                  key={slot}
+                  trend={slot}
+                  title={text(spec.title)}
+                  unit={spec.unit}
+                  color={spec.color}
+                  data={data}
+                  emptyText={empty}
+                  wide={slots.length === 1 || slot === 'delay'}
+                  loading={data.length === 0 && pendingMetricNames.has(spec.metric)}
+                />
+              );
+            })}
           </div>
         </ReplicationBlock>
       ) : null}

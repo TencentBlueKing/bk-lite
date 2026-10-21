@@ -1322,39 +1322,59 @@ export const readMysqlReplicationSeries = (
   };
 };
 
-export type MysqlReplicationGap = 'primaryNoDownstream' | 'collectionOff' | 'binlogOff' | 'noPoints';
+export type MysqlReplicationTrendKey = 'delay' | 'relay' | 'binlog';
 
 /**
- * 复制签没有任何可画内容时怎么说。
- * 可写主库且 Binlog 开着、没有从库线程也没有下游，是主库无下游。
- * 只读但缺从库指标，或 Binlog 明确关闭，是没开复制采集。
- * 角色和复制指标都没有，才是真正无点。
+ * 从库固定出延迟、Relay 空间、Binlog 体积。
+ * 主库和组复制不出 Relay；Binlog 体积和延迟只在真有点时出。
+ * 位点序列不在这三条里。
+ */
+export const visibleReplicationTrends = (
+  kind: 'primary' | 'replica' | 'group' | undefined,
+  trends: Pick<MysqlReplicationSeries, 'delay' | 'relay' | 'binlog'>
+): MysqlReplicationTrendKey[] => {
+  const replica = kind === 'replica';
+  const slots: MysqlReplicationTrendKey[] = [];
+  if (replica || trends.delay.length > 0) slots.push('delay');
+  if (replica) slots.push('relay');
+  if (replica || trends.binlog.length > 0) slots.push('binlog');
+  return slots;
+};
+
+export type MysqlReplicationGap = 'unconfigured' | 'partial';
+
+/**
+ * 复制签画不出内容时的空态分级。有下游或趋势时不走这里。
+ * L1 未配置：没有从库线程、下游、半同步、位点、容量，也不是只读。
+ * L2 未采全：已经能看到复制相关采点，但这页仍然空着。
+ * 只读且没有从库指标算 L2，避免把从库说成单机写入源。
  */
 export const readMysqlReplicationGap = (
   metricMap: Record<string, MetricSeries | undefined>
 ): MysqlReplicationGap => {
-  const slaveThread = latestNumber(metricMap.mysql_slave_io_running) != null
-    || latestNumber(metricMap.mysql_slave_sql_running) != null
-    || latestNumber(metricMap.mysql_slave_seconds_behind_master) != null;
-  const slaves = latestNumber(metricMap.mysql_slaves_connected);
-  const logBin = latestNumber(metricMap.mysql_variables_log_bin);
-  const readOnlyKnown = latestNumber(metricMap.mysql_variables_read_only) != null
-    || latestNumber(metricMap.mysql_variables_super_read_only) != null;
-  const replicationSample = slaveThread
-    || slaves != null
-    || latestNumber(metricMap.mysql_rpl_semi_sync_master_status) != null
-    || latestNumber(metricMap.mysql_slave_relay_log_space) != null
-    || latestNumber(metricMap.mysql_binary_size_bytes) != null;
-  if (!slaveThread && logBin != null && logBin <= 0) return 'binlogOff';
-  if (!slaveThread && slaves != null && slaves <= 0) return 'primaryNoDownstream';
-  if (!slaveThread && slaves == null && logBin != null && logBin > 0 && !readonlyOn(metricMap)) {
-    return 'primaryNoDownstream';
+  const valueOf = (name: string) => latestNumber(metricMap[name]);
+  const slaveThread = valueOf('mysql_slave_io_running') != null
+    || valueOf('mysql_slave_sql_running') != null
+    || valueOf('mysql_slave_seconds_behind_master') != null;
+  const slaves = valueOf('mysql_slaves_connected');
+  const semisyncClients = valueOf('mysql_rpl_semi_sync_master_clients');
+  const downstream = (slaves != null && slaves > 0) || (semisyncClients != null && semisyncClients > 0);
+  const semisync = valueOf('mysql_rpl_semi_sync_master_status') != null;
+  const position = valueOf('mysql_slave_relay_log_pos') != null
+    || valueOf('mysql_replication_source_log_pos') != null
+    || collectedNamed(metricMap, (name) => BINLOG_POSITION.test(name) && !isLogBinToggle(name)).length > 0;
+  const capacity = valueOf('mysql_slave_relay_log_space') != null
+    || valueOf('mysql_binary_size_bytes') != null
+    || valueOf('mysql_binary_files_count') != null;
+  const errno = [
+    valueOf('mysql_slave_last_errno'),
+    valueOf('mysql_slave_last_io_errno'),
+    valueOf('mysql_slave_last_sql_errno')
+  ].some((errnoValue) => errnoValue != null && errnoValue > 0);
+  if (slaveThread || downstream || semisync || position || capacity || errno || readonlyOn(metricMap)) {
+    return 'partial';
   }
-  if (!slaveThread && !replicationSample && (logBin != null || readOnlyKnown || readonlyOn(metricMap))) {
-    return 'collectionOff';
-  }
-  if (logBin == null && !readOnlyKnown && !replicationSample) return 'noPoints';
-  return 'noPoints';
+  return 'unconfigured';
 };
 
 export const waitStatementIds = (event: MysqlWaitEventRow) => {

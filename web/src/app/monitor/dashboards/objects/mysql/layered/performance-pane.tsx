@@ -62,16 +62,14 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     () => seriesOf(metricMap.mysql_max_used_connections),
     [metricMap.mysql_max_used_connections?.viewData]
   );
+  const threadsCreated = useMemo(
+    () => seriesOf(metricMap.mysql_threads_created_rate),
+    [metricMap.mysql_threads_created_rate?.viewData]
+  );
   const connection = useMemo(() => mergeChartSeries([
     { key: 'connected', label: mysqlCategoryText(t, 'currentConnections'), data: seriesOf(metricMap.mysql_threads_connected) },
-    { key: 'running', label: mysqlCategoryText(t, 'activeSessions'), data: seriesOf(metricMap.mysql_threads_running) },
-    ...(maxUsed.length ? [{
-      key: 'maxUsed',
-      label: mysqlCategoryText(t, 'maxUsedConnections'),
-      data: maxUsed
-    }] : [])
+    { key: 'running', label: mysqlCategoryText(t, 'activeSessions'), data: seriesOf(metricMap.mysql_threads_running) }
   ]), [
-    maxUsed,
     metricMap.mysql_threads_connected?.viewData,
     metricMap.mysql_threads_running?.viewData,
     t
@@ -182,10 +180,9 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     points.length === 0 && names.some((name) => pendingMetricNames.has(name))
   );
   const connectionAwaiting = slotLoading(
-    ['mysql_threads_connected', 'mysql_threads_running', 'mysql_max_used_connections'],
+    ['mysql_threads_connected', 'mysql_threads_running'],
     connection
   );
-  const threadsCreatedReading = rateReading(metricMap.mysql_threads_created_rate);
   const throughputAwaiting = slotLoading(
     ['mysql_queries_rate', 'mysql_tps_rate', 'mysql_com_commit_rate', 'mysql_com_rollback_rate'],
     throughput
@@ -241,6 +238,9 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   );
 
   const showConnections = connectionAwaiting || connection.length > 0;
+  const showMaxUsed = maxUsed.length > 0;
+  const showThreadsCreated = threadsCreated.length > 0;
+  const connectionAuxCount = [showMaxUsed, showThreadsCreated].filter(Boolean).length;
   const showThroughput = throughputAwaiting || throughput.length > 0;
   const showTps = tpsAwaiting || tpsMix.length > 0 || tpsTotal.length > 0;
   const showWrites = writesAwaiting || statementMix.length > 0;
@@ -264,9 +264,10 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
 
   return (
     <>
-      {showConnections || showThroughput ? (
+      {showConnections || showThroughput || connectionAuxCount > 0 ? (
         <>
           <ProSectionTitle>{mysqlCategoryText(t, 'connectionsAndThroughput')}</ProSectionTitle>
+          {showConnections || showThroughput ? (
           <div className={pro.perfGrid}>
             {showConnections ? (
               <div id="mysql-perf-connections" className={cardClass(!showThroughput)}>
@@ -277,17 +278,9 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                   unit="counts"
                   data={connection}
                   emptyText={empty}
-                  reading={threadsCreatedReading
-                    ? `${mysqlCategoryText(t, 'threadsCreated')} ${threadsCreatedReading}`
-                    : undefined}
                   legends={[
                     { label: mysqlCategoryText(t, 'currentConnections'), color: HOST_SERIES_COLOR.memUsed },
-                    { label: mysqlCategoryText(t, 'activeSessions'), color: HOST_SERIES_COLOR.load1 },
-                    ...(maxUsed.length ? [{
-                      label: mysqlCategoryText(t, 'maxUsedConnections'),
-                      color: HOST_PALETTE.neutral,
-                      dashed: true
-                    }] : [])
+                    { label: mysqlCategoryText(t, 'activeSessions'), color: HOST_SERIES_COLOR.load1 }
                   ]}
                 />
               </div>
@@ -309,6 +302,43 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
           </div>
+          ) : null}
+          {connectionAuxCount > 0 ? (
+            <div
+              className={showConnections || showThroughput ? `${pro.perfGrid} mt-3` : pro.perfGrid}
+              data-perf-section="connection-aux"
+            >
+              {showMaxUsed ? (
+                <div className={cardClass(connectionAuxCount === 1)}>
+                  <ThinTimeSeries
+                    title={mysqlCategoryText(t, 'maxUsedConnections')}
+                    unit="counts"
+                    data={maxUsed.map((point) => ({ time: point.time, value1: point.value1 }))}
+                    emptyText={empty}
+                    legends={[{
+                      label: mysqlCategoryText(t, 'maxUsedConnections'),
+                      color: HOST_PALETTE.neutral
+                    }]}
+                  />
+                </div>
+              ) : null}
+              {showThreadsCreated ? (
+                <div className={cardClass(connectionAuxCount === 1)}>
+                  <ThinTimeSeries
+                    title={mysqlCategoryText(t, 'threadsCreated')}
+                    unit="cps"
+                    data={threadsCreated.map((point) => ({ time: point.time, value1: point.value1 }))}
+                    emptyText={empty}
+                    legends={[{
+                      label: mysqlCategoryText(t, 'threadsCreated'),
+                      color: HOST_SERIES_COLOR.load5,
+                      reading: rateReading(metricMap.mysql_threads_created_rate)
+                    }]}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </>
       ) : null}
       {showTps || showInnodbRows ? (
