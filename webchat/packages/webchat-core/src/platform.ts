@@ -497,19 +497,44 @@ export const PLATFORM_DOCK_MAX_VIEWPORT_RATIO = 0.5;
 /** 历史和已生成文件共用这一栏，切换时窗口宽度不变。 */
 export const PLATFORM_HISTORY_RAIL_DOCK = 280;
 
+function platformDockHalf(viewportWidth?: number): number {
+  return typeof viewportWidth === 'number' && Number.isFinite(viewportWidth)
+    ? Math.round(viewportWidth * PLATFORM_DOCK_MAX_VIEWPORT_RATIO)
+    : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Dock 侧栏宽度。半屏预算小于默认轨宽时跟着收缩，
+ * 保证 chat + rail 不超过 PLATFORM_DOCK_MAX_VIEWPORT_RATIO。
+ */
+export function platformHistoryRailDockWidth(viewportWidth?: number): number {
+  const half = platformDockHalf(viewportWidth);
+  if (!Number.isFinite(half)) {
+    return PLATFORM_HISTORY_RAIL_DOCK;
+  }
+  return Math.max(0, Math.min(PLATFORM_HISTORY_RAIL_DOCK, half));
+}
+
 /** 对话栏宽度。历史轨只在展开时计入这 50% 上限。 */
 export function clampPlatformDockChatWidth(
   width: number,
   viewportWidth?: number,
   historyOpen = false
 ): number {
-  const half =
-    typeof viewportWidth === 'number' && Number.isFinite(viewportWidth)
-      ? Math.round(viewportWidth * PLATFORM_DOCK_MAX_VIEWPORT_RATIO)
-      : Number.POSITIVE_INFINITY;
-  const chatMax = half - (historyOpen ? PLATFORM_HISTORY_RAIL_DOCK : 0);
-  const max = Math.min(Math.max(PLATFORM_DOCK_CHAT_MIN_WIDTH, chatMax), half);
-  const min = Math.min(PLATFORM_DOCK_CHAT_MIN_WIDTH, max);
+  const half = platformDockHalf(viewportWidth);
+  const rail = historyOpen ? platformHistoryRailDockWidth(viewportWidth) : 0;
+  const chatMax = Number.isFinite(half) ? half - rail : Number.POSITIVE_INFINITY;
+  // 侧栏展开时遵守 chat + rail ≤ half；轨宽变大后可能低于 PLATFORM_DOCK_CHAT_MIN_WIDTH。
+  const max =
+    historyOpen && Number.isFinite(half)
+      ? Math.max(0, chatMax)
+      : Number.isFinite(half)
+        ? Math.min(Math.max(PLATFORM_DOCK_CHAT_MIN_WIDTH, chatMax), half)
+        : Number.POSITIVE_INFINITY;
+  const min =
+    historyOpen && Number.isFinite(half)
+      ? Math.min(PLATFORM_DOCK_CHAT_MIN_WIDTH, max)
+      : PLATFORM_DOCK_CHAT_MIN_WIDTH;
   if (!Number.isFinite(width)) {
     return Math.min(max, Math.max(min, PLATFORM_DOCK_CHAT_WIDTH));
   }
@@ -569,12 +594,18 @@ export function platformDockInsetWidth(input: {
   fullscreen?: boolean;
   historyOpen?: boolean;
   chatWidth?: number;
+  viewportWidth?: number;
 }): number {
   if (!input.visible || input.fullscreen) {
     return 0;
   }
-  const chatWidth = clampPlatformDockChatWidth(input.chatWidth ?? PLATFORM_DOCK_CHAT_WIDTH);
-  return input.historyOpen ? chatWidth + PLATFORM_HISTORY_RAIL_DOCK : chatWidth;
+  const chatWidth = clampPlatformDockChatWidth(
+    input.chatWidth ?? PLATFORM_DOCK_CHAT_WIDTH,
+    input.viewportWidth,
+    Boolean(input.historyOpen)
+  );
+  const rail = input.historyOpen ? platformHistoryRailDockWidth(input.viewportWidth) : 0;
+  return chatWidth + rail;
 }
 
 export const FAB_SIZE = 72;

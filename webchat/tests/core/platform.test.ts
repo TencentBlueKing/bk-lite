@@ -13,10 +13,12 @@ import {
   mergePlatformCurrentApp,
   PLATFORM_DOCK_CHAT_MIN_WIDTH,
   PLATFORM_DOCK_CHAT_WIDTH,
+  PLATFORM_DOCK_MAX_VIEWPORT_RATIO,
   PLATFORM_HISTORY_RAIL_DOCK,
   clampPlatformDockChatWidth,
   nextPlatformDockChatWidth,
   platformDockInsetWidth,
+  platformHistoryRailDockWidth,
   readPlatformWebchatWidth,
   resolvePlatformWebchatWidthUrl,
   shouldShowPlatformLauncher,
@@ -557,13 +559,52 @@ test('dock inset matches the open pane and drops to zero when collapsed or fulls
     platformDockInsetWidth({ visible: true, historyOpen: true, chatWidth: 520 }),
     520 + PLATFORM_HISTORY_RAIL_DOCK,
   );
+  const insetViewport = 1000;
+  const insetHalf = Math.round(insetViewport * PLATFORM_DOCK_MAX_VIEWPORT_RATIO);
+  assert.equal(
+    platformDockInsetWidth({
+      visible: true,
+      historyOpen: true,
+      viewportWidth: insetViewport,
+    }),
+    insetHalf,
+  );
+  assert.equal(
+    platformDockInsetWidth({
+      visible: true,
+      historyOpen: true,
+      chatWidth: 520,
+      viewportWidth: insetViewport,
+    }),
+    insetHalf,
+  );
 });
 
 test('dock chat width clamps and grows when the pointer moves left', () => {
+  const viewport = 1000;
+  const half = Math.round(viewport * PLATFORM_DOCK_MAX_VIEWPORT_RATIO);
   assert.equal(clampPlatformDockChatWidth(200), 320);
   assert.equal(clampPlatformDockChatWidth(1200), 1200);
-  assert.equal(clampPlatformDockChatWidth(1200, 1000), 500);
-  assert.equal(clampPlatformDockChatWidth(1200, 1000, true), PLATFORM_DOCK_CHAT_MIN_WIDTH);
+  assert.equal(clampPlatformDockChatWidth(1200, viewport), half);
+  const historyChat = clampPlatformDockChatWidth(1200, viewport, true);
+  assert.equal(historyChat, half - PLATFORM_HISTORY_RAIL_DOCK);
+  assert.equal(historyChat + PLATFORM_HISTORY_RAIL_DOCK, half);
+  assert.ok(historyChat < PLATFORM_DOCK_CHAT_MIN_WIDTH);
+  const narrow = 400;
+  const narrowHalf = Math.round(narrow * PLATFORM_DOCK_MAX_VIEWPORT_RATIO);
+  const narrowRail = platformHistoryRailDockWidth(narrow);
+  const narrowChat = clampPlatformDockChatWidth(1200, narrow, true);
+  assert.equal(narrowRail, narrowHalf);
+  assert.equal(narrowChat + narrowRail, narrowHalf);
+  assert.equal(
+    platformDockInsetWidth({
+      visible: true,
+      historyOpen: true,
+      chatWidth: 1200,
+      viewportWidth: narrow,
+    }),
+    narrowHalf,
+  );
   assert.equal(clampPlatformDockChatWidth(Number.NaN), PLATFORM_DOCK_CHAT_WIDTH);
   assert.equal(nextPlatformDockChatWidth(380, -40), 420);
   assert.equal(nextPlatformDockChatWidth(380, 100), 320);
