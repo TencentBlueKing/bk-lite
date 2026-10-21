@@ -18,6 +18,12 @@ export const MYSQL_HEADER_METRICS = [
   'mysql_slave_sql_running'
 ] as const;
 
+export const MYSQL_ROLE_METRICS = [
+  'mysql_slave_seconds_behind_master',
+  'mysql_slave_io_running',
+  'mysql_slave_sql_running'
+] as const;
+
 /** 健康概览一行。告警条数是另一条请求，不放进这组。 */
 export const MYSQL_HEALTH_METRICS = [
   'mysql_uptime',
@@ -25,15 +31,14 @@ export const MYSQL_HEALTH_METRICS = [
   'mysql_variables_max_connections',
   'mysql_queries_rate',
   'mysql_slow_queries_rate',
-  'mysql_buffer_pool_hit_ratio'
+  ...MYSQL_ROLE_METRICS
 ] as const;
 
 export const MYSQL_FOCUS_METRICS = [
-  'mysql_slow_queries_rate'
-] as const;
-
-export const MYSQL_ROLE_METRICS = [
+  'mysql_process_list_threads_waiting_for_lock',
+  'mysql_aborted_connects_rate',
+  'mysql_aborted_clients_rate',
+  'mysql_tmp_disk_table_ratio',
   'mysql_slave_seconds_behind_master',
-  'mysql_slave_io_running',
-  'mysql_slave_sql_running'
+  'mysql_table_locks_waited_rate'
 ] as const;

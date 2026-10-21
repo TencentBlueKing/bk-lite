@@ -4,6 +4,7 @@ import { normalizeDashboardKey } from '../../../shared/utils';
 import { getLatestChartValue } from '../../../shared/utils/chart-data';
 import { encodeInstanceIdValuesParam } from '../../../shared/utils/instance';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
+import type { TabAlertLevel } from '../../host/layered/tab-level';
 import type { MetricSeries } from '../types';
 import { latestNumber, primaryChartSeries } from '../../host/layered/readings';
 import type { MysqlCategoryCopyKey } from './mysql-copy';
@@ -312,13 +313,20 @@ export const readMysqlOverview = (
   alertCount: finite(alertCount)
 });
 
+export const REPL_LAG_WARN_S = 30;
+export const REPL_LAG_CRIT_S = 300;
+const MUTED_VALUE = 'var(--color-text-3)';
+const EMPTY_VALUE = '—';
+
 export interface MysqlKpiCard {
-  key: 'connections' | 'qps' | 'slow' | 'bufferHit' | 'uptime' | 'alerts';
+  key: 'connections' | 'qps' | 'slow' | 'replication' | 'uptime' | 'alerts';
   label: string;
   value: string;
   /** 与主值同一行的辅文。不另起第三行，避免把卡撑得比主机健康卡高。 */
   subtitle?: string;
   tone?: string;
+  alertLevel?: TabAlertLevel;
+  clickable?: boolean;
 }
 
 const formatCount = (value: number) => {
@@ -339,7 +347,7 @@ const KPI_ORDER: MysqlKpiCard['key'][] = [
   'connections',
   'qps',
   'slow',
-  'bufferHit',
+  'replication',
   'uptime',
   'alerts'
 ];
@@ -361,7 +369,6 @@ export const hasMysqlOverviewSample = (readings: MysqlOverviewReadings) => (
   finite(readings.threadsConnected) != null
   || finite(readings.qps) != null
   || finite(readings.slowPerSecond) != null
-  || finite(readings.bufferPoolHit) != null
   || finite(readings.uptimeSeconds) != null
   || finite(readings.alertCount) != null
 );
@@ -400,64 +407,145 @@ export const formatAverageLatency = (seconds: number | null | undefined) => {
   return `${trimDigits(seconds, seconds >= 10 ? 1 : 2)} s`;
 };
 
+const joinSubtitle = (parts: Array<string | null | undefined>) => (
+  parts.filter((part): part is string => Boolean(part && part.trim())).join(' · ')
+);
+
+const replicaErrno = (metricMap: Record<string, MetricSeries | undefined>) => {
+  for (const name of ['mysql_slave_last_sql_errno', 'mysql_slave_last_io_errno', 'mysql_slave_last_errno']) {
+    const value = latestNumber(metricMap[name]);
+    if (value != null && value > 0) return Math.round(value);
+  }
+  return null;
+};
+
+const replicaLagTone = (delay: number | null, stopped: boolean, errno: number | null) => {
+  if (stopped || errno != null || (delay != null && delay > REPL_LAG_CRIT_S)) {
+    return { tone: HOST_THRESHOLD_COLOR.crit, alertLevel: 'critical' as const };
+  }
+  if (delay != null && delay > REPL_LAG_WARN_S) {
+    return { tone: HOST_THRESHOLD_COLOR.warn, alertLevel: 'warn' as const };
+  }
+  if (delay != null) {
+    return { tone: HOST_THRESHOLD_COLOR.ok, alertLevel: 'none' as const };
+  }
+  return { tone: undefined, alertLevel: 'none' as const };
+};
+
+const replicaThreadPart = (
+  value: number | null,
+  running: string,
+  stopped: string
+) => {
+  if (value == null) return null;
+  return value > 0 ? running : stopped;
+};
+
+/** 健康六格第 4 格。非复制实例也占格，避免和主机六卡错位。 */
+export const buildMysqlReplicationKpi = (
+  metricMap: Record<string, MetricSeries | undefined>,
+  text: MysqlText
+): Pick<MysqlKpiCard, 'value' | 'subtitle' | 'tone' | 'alertLevel' | 'clickable'> => {
+  const units = { millisecond: text('millisecond'), second: text('second') };
+  const block = readMysqlRoleBlock(metricMap);
+  if (block?.kind === 'replica') {
+    const io = latestNumber(metricMap.mysql_slave_io_running);
+    const sql = latestNumber(metricMap.mysql_slave_sql_running);
+    const delay = latestNumber(metricMap.mysql_slave_seconds_behind_master);
+    const errno = replicaErrno(metricMap);
+    const stopped = (io != null && io <= 0) || (sql != null && sql <= 0);
+    const { tone, alertLevel } = replicaLagTone(delay, stopped, errno);
+    const subtitle = joinSubtitle([
+      replicaThreadPart(io, text('ioRunning'), text('ioStopped')),
+      replicaThreadPart(sql, text('sqlRunning'), text('sqlStopped')),
+      errno != null ? text('replicaError', { errno }) : null
+    ]);
+    return {
+      value: delay == null ? EMPTY_VALUE : formatMysqlReplicationLag(delay, units),
+      subtitle: subtitle || undefined,
+      tone,
+      alertLevel: alertLevel === 'none' ? undefined : alertLevel,
+      clickable: true
+    };
+  }
+  if (block?.kind === 'group') {
+    const gr = collectedNamed(metricMap, (name) => GROUP_REPLICATION.test(name));
+    return {
+      value: gr.length ? text('roleGr') : text('roleGalera'),
+      subtitle: block.fields[0]?.value,
+      clickable: true
+    };
+  }
+  const slaves = latestNumber(metricMap.mysql_slaves_connected);
+  if (slaves != null && slaves > 0) {
+    return {
+      value: text('rolePrimary'),
+      subtitle: text('replicaCount', { n: formatCount(slaves) }),
+      clickable: true
+    };
+  }
+  return {
+    value: text('notConfigured'),
+    subtitle: text('singleInstance'),
+    tone: MUTED_VALUE,
+    clickable: false
+  };
+};
+
 /**
- * 连接 / QPS / 慢查询 / 缓冲池命中 / 告警：有采才出卡。
- * 运行时间与主机专业盘同名，格位保留；有采才出主值。
+ * 连接 / QPS / 慢查询 / 复制 / 运行时间 / 告警：六格占位固定。
+ * 缺采只空主值，避免加载后整卡消失、和主机六卡错位。
  */
 export const buildMysqlOverviewKpis = (
   readings: MysqlOverviewReadings,
+  metricMap: Record<string, MetricSeries | undefined>,
   text: MysqlText
 ): MysqlKpiCard[] => {
   const cards: MysqlKpiCard[] = [];
   const connected = finite(readings.threadsConnected);
   const maxConnections = finite(readings.maxConnections);
-  if (connected != null) {
-    const occupancy = maxConnections != null && maxConnections > 0
-      ? (connected / maxConnections) * 100
-      : null;
-    cards.push({
-      key: 'connections',
-      label: text('kpiConnections'),
-      value: formatCount(connected),
-      subtitle: occupancy == null || !Number.isFinite(occupancy)
-        ? undefined
-        : text('connectionSubtitle', {
-          max: formatCount(maxConnections as number),
-          occupancy: occupancy.toFixed(1)
-        }),
-      tone: HOST_SERIES_COLOR.memUsed
-    });
-  }
+  const occupancy = connected != null && maxConnections != null && maxConnections > 0
+    ? (connected / maxConnections) * 100
+    : null;
+  cards.push({
+    key: 'connections',
+    label: text('kpiConnections'),
+    value: connected == null ? EMPTY_VALUE : formatCount(connected),
+    subtitle: occupancy == null || !Number.isFinite(occupancy)
+      ? undefined
+      : text('connectionSubtitle', {
+        max: formatCount(maxConnections as number),
+        occupancy: occupancy.toFixed(1)
+      }),
+    tone: connected == null ? undefined : HOST_SERIES_COLOR.memUsed
+  });
 
   const qps = finite(readings.qps);
-  if (qps != null) {
-    cards.push({
-      key: 'qps',
-      label: text('kpiQps'),
-      value: formatRate(qps),
-      tone: HOST_SERIES_COLOR.memAvailable
-    });
-  }
+  cards.push({
+    key: 'qps',
+    label: text('kpiQps'),
+    value: qps == null ? EMPTY_VALUE : formatRate(qps),
+    tone: qps == null ? undefined : HOST_SERIES_COLOR.memAvailable
+  });
 
   const slow = finite(readings.slowPerSecond);
-  if (slow != null) {
-    cards.push({
-      key: 'slow',
-      label: text('kpiSlow'),
-      value: text('slowPerSecond', { value: formatRate(slow) }),
-      tone: slow > 0 ? HOST_THRESHOLD_COLOR.warn : undefined
-    });
-  }
+  cards.push({
+    key: 'slow',
+    label: text('kpiSlow'),
+    value: slow == null ? EMPTY_VALUE : text('slowPerSecond', { value: formatRate(slow) }),
+    tone: slow != null && slow > 0 ? HOST_THRESHOLD_COLOR.warn : undefined
+  });
 
-  const hit = finite(readings.bufferPoolHit);
-  if (hit != null) {
-    cards.push({
-      key: 'bufferHit',
-      label: text('kpiBufferHit'),
-      value: formatPercent(hit),
-      tone: hit >= 95 ? HOST_SERIES_COLOR.cpu : HOST_THRESHOLD_COLOR.warn
-    });
-  }
+  const replication = buildMysqlReplicationKpi(metricMap, text);
+  cards.push({
+    key: 'replication',
+    label: text('kpiReplication'),
+    value: replication.value,
+    subtitle: replication.subtitle,
+    tone: replication.tone,
+    alertLevel: replication.alertLevel,
+    clickable: replication.clickable
+  });
 
   const uptime = finite(readings.uptimeSeconds);
   cards.push({
@@ -467,35 +555,33 @@ export const buildMysqlOverviewKpis = (
   });
 
   const alerts = finite(readings.alertCount);
-  if (alerts != null) {
-    cards.push({
-      key: 'alerts',
-      label: text('kpiAlerts'),
-      value: String(Math.max(0, Math.round(alerts))),
-      tone: alerts > 0 ? 'var(--color-fail)' : 'var(--color-success)'
-    });
-  }
+  cards.push({
+    key: 'alerts',
+    label: text('kpiAlerts'),
+    value: alerts == null ? EMPTY_VALUE : String(Math.max(0, Math.round(alerts))),
+    tone: alerts == null
+      ? undefined
+      : (alerts > 0 ? 'var(--color-fail)' : 'var(--color-success)')
+  });
 
   return KPI_ORDER.flatMap((key) => cards.filter((card) => card.key === key));
 };
 
+export type MysqlFocusSpark = 'lockWait' | 'aborted' | 'tmpDisk' | 'replLag' | 'tableLock';
+export type MysqlFocusAnchor = 'scan-lock' | 'quality';
+
 export interface MysqlFocusCard {
-  key: 'slow';
+  key: 'lockWait' | 'aborted' | 'tmpDisk' | 'replLag' | 'tableLock';
   label: string;
   value: string;
+  subtitle?: string;
+  tone?: string;
   delta?: string;
   deltaTone?: string;
   hint: string;
   tab: MysqlIaTab;
-  anchor?: 'connections' | 'throughput' | 'buffer';
-  spark?: 'slow';
-}
-
-export interface MysqlReplicationHealthCard {
-  key: string;
-  label: string;
-  value: string;
-  tone?: string;
+  anchor?: MysqlFocusAnchor;
+  spark?: MysqlFocusSpark;
 }
 
 const rateDelta = (current: number, previous: number) => {
@@ -506,89 +592,175 @@ const rateDelta = (current: number, previous: number) => {
   return `较上期 ${sign}${(Math.abs(ratio) * 100).toFixed(0)}%`;
 };
 
-export const buildMysqlFocusCards = (
-  current: MysqlOverviewReadings,
-  previous: Pick<MysqlOverviewReadings, 'slowPerSecond'>,
-  text: MysqlText
-): MysqlFocusCard[] => {
-  const cards: MysqlFocusCard[] = [];
-  const slow = finite(current.slowPerSecond);
-  if (slow != null) {
-    const previousSlow = finite(previous.slowPerSecond);
-    const delta = previousSlow == null ? null : rateDelta(slow, previousSlow);
-    cards.push({
-      key: 'slow',
-      label: text('focusSlow'),
-      value: formatRate(slow),
-      delta: delta || undefined,
-      deltaTone: delta && slow > (previousSlow || 0) ? 'var(--color-fail)' : undefined,
-      hint: text('viewStatements'),
-      tab: 'statements',
-      spark: 'slow'
-    });
-  }
-  return cards;
-};
-
-const ROLE_FIELD_COPY: Record<string, MysqlCategoryCopyKey> = {
-  复制延迟: 'replicationLag',
-  'IO 线程': 'ioThread',
-  'SQL 线程': 'sqlThread',
-  已连接从库: 'connectedReplicas',
-  半同步: 'semisync',
-  'Binlog 位点': 'binlogPosition',
-  成员角色: 'memberRole',
-  成员: 'members',
-  流控: 'flowControl',
-  冲突: 'conflict'
-};
-
-const ROLE_VALUE_COPY: Record<string, MysqlCategoryCopyKey> = {
-  运行中: 'running',
-  已停止: 'stopped',
-  已开启: 'enabled',
-  已关闭: 'disabled'
-};
-
-const healthTone = (tone: MysqlRoleTone) => {
-  if (tone === 'ok') return HOST_THRESHOLD_COLOR.ok;
-  if (tone === 'warn') return HOST_THRESHOLD_COLOR.warn;
+const focusTone = (level: TabAlertLevel) => {
+  if (level === 'critical') return HOST_THRESHOLD_COLOR.crit;
+  if (level === 'warn') return HOST_THRESHOLD_COLOR.warn;
   return undefined;
 };
 
-const localizeRoleValue = (value: string, text: MysqlText) => {
-  const key = ROLE_VALUE_COPY[value];
-  return key ? text(key) : value;
+const uncollectedFocus = (
+  key: MysqlFocusCard['key'],
+  label: string,
+  hint: string,
+  tab: MysqlIaTab,
+  anchor?: MysqlFocusAnchor
+): MysqlFocusCard => ({
+  key,
+  label,
+  value: EMPTY_VALUE,
+  subtitle: undefined,
+  hint,
+  tab,
+  anchor
+});
+
+const collectedFocus = (
+  card: Omit<MysqlFocusCard, 'subtitle'> & { valueNumber: number; previousNumber: number | null }
+): MysqlFocusCard => {
+  const delta = card.previousNumber == null ? null : rateDelta(card.valueNumber, card.previousNumber);
+  return {
+    key: card.key,
+    label: card.label,
+    value: card.value,
+    tone: card.tone,
+    delta: delta || undefined,
+    deltaTone: delta && card.valueNumber > (card.previousNumber || 0) ? 'var(--color-fail)' : undefined,
+    hint: card.hint,
+    tab: card.tab,
+    anchor: card.anchor,
+    spark: card.spark
+  };
 };
 
-/** 概览复制健康。有从库线程或主库下游才出卡，点进复制签。 */
-export const buildMysqlReplicationHealthCards = (
+const lockWaitLevel = (value: number): TabAlertLevel => {
+  if (value >= 5) return 'critical';
+  if (value >= 1) return 'warn';
+  return 'none';
+};
+
+const abortedLevel = (value: number): TabAlertLevel => {
+  if (value >= 1) return 'critical';
+  if (value > 0) return 'warn';
+  return 'none';
+};
+
+const tmpDiskLevel = (value: number): TabAlertLevel => {
+  if (value >= 25) return 'critical';
+  if (value >= 10) return 'warn';
+  return 'none';
+};
+
+const tableLockLevel = (value: number): TabAlertLevel => (
+  value > 0 ? 'warn' : 'none'
+);
+
+/** 重点关注恒为 4 张异常信号卡。缺采占位，不让卡数跳动。 */
+export const buildMysqlFocusCards = (
   metricMap: Record<string, MetricSeries | undefined>,
+  previousMetricMap: Record<string, MetricSeries | undefined>,
   text: MysqlText
-): MysqlReplicationHealthCard[] => {
-  const block = readMysqlRoleBlock(metricMap);
-  if (!block) return [];
-  const fields = block.kind === 'replica'
-    ? (['复制延迟', 'IO 线程', 'SQL 线程'] as const).flatMap((label) => {
-      const field = block.fields.find((item) => item.label === label);
-      return field && field.value !== '--' ? [field] : [];
-    })
-    : block.fields.filter((field) => field.value !== '--');
-  return fields.map((field) => {
-    const labelKey = ROLE_FIELD_COPY[field.label];
-    const delay = latestNumber(metricMap.mysql_slave_seconds_behind_master);
-    const value = field.label === '复制延迟' && delay != null
-      ? formatMysqlReplicationLag(delay, { millisecond: text('millisecond'), second: text('second') })
-      : localizeRoleValue(field.value, text);
-    return {
-      key: field.label,
-      label: labelKey ? text(labelKey) : field.label,
-      value,
-      tone: field.label === 'IO 线程' || field.label === 'SQL 线程'
-        ? (field.tone === 'warn' ? HOST_THRESHOLD_COLOR.crit : healthTone(field.tone))
-        : healthTone(field.tone)
-    };
-  });
+): MysqlFocusCard[] => {
+  const lockWait = finite(latestNumber(metricMap.mysql_process_list_threads_waiting_for_lock));
+  const abortedConnects = finite(latestNumber(metricMap.mysql_aborted_connects_rate));
+  const abortedClients = finite(latestNumber(metricMap.mysql_aborted_clients_rate));
+  const aborted = abortedConnects == null && abortedClients == null
+    ? null
+    : (abortedConnects || 0) + (abortedClients || 0);
+  const tmpDisk = finite(latestNumber(metricMap.mysql_tmp_disk_table_ratio));
+  const replica = readMysqlRoleBlock(metricMap)?.kind === 'replica';
+  const io = latestNumber(metricMap.mysql_slave_io_running);
+  const sql = latestNumber(metricMap.mysql_slave_sql_running);
+  const replicaStopped = (io != null && io <= 0) || (sql != null && sql <= 0);
+  const replicaErrorNo = replicaErrno(metricMap);
+  const lag = finite(latestNumber(metricMap.mysql_slave_seconds_behind_master));
+  const tableLock = finite(latestNumber(metricMap.mysql_table_locks_waited_rate));
+  const previousLockWait = finite(latestNumber(previousMetricMap.mysql_process_list_threads_waiting_for_lock));
+  const previousAbortedConnects = finite(latestNumber(previousMetricMap.mysql_aborted_connects_rate));
+  const previousAbortedClients = finite(latestNumber(previousMetricMap.mysql_aborted_clients_rate));
+  const previousAborted = previousAbortedConnects == null && previousAbortedClients == null
+    ? null
+    : (previousAbortedConnects || 0) + (previousAbortedClients || 0);
+  const previousTmpDisk = finite(latestNumber(previousMetricMap.mysql_tmp_disk_table_ratio));
+  const previousLag = finite(latestNumber(previousMetricMap.mysql_slave_seconds_behind_master));
+  const previousTableLock = finite(latestNumber(previousMetricMap.mysql_table_locks_waited_rate));
+  const units = { millisecond: text('millisecond'), second: text('second') };
+
+  const fourth: MysqlFocusCard = replica
+    ? (lag == null
+      ? uncollectedFocus('replLag', text('focusReplLag'), text('viewReplication'), 'replication')
+      : collectedFocus({
+        key: 'replLag',
+        label: text('focusReplLag'),
+        value: formatMysqlReplicationLag(lag, units),
+        valueNumber: lag,
+        previousNumber: previousLag,
+        tone: replicaLagTone(lag, replicaStopped, replicaErrorNo).tone,
+        hint: text('viewReplication'),
+        tab: 'replication',
+        spark: 'replLag'
+      }))
+    : (tableLock == null
+      ? uncollectedFocus('tableLock', text('focusTableLock'), text('viewScanLock'), 'performance', 'scan-lock')
+      : collectedFocus({
+        key: 'tableLock',
+        label: text('focusTableLock'),
+        value: formatRate(tableLock),
+        valueNumber: tableLock,
+        previousNumber: previousTableLock,
+        tone: focusTone(tableLockLevel(tableLock)),
+        hint: text('viewScanLock'),
+        tab: 'performance',
+        anchor: 'scan-lock',
+        spark: 'tableLock'
+      }));
+
+  return [
+    lockWait == null
+      ? uncollectedFocus('lockWait', text('focusLockWait'), text('viewScanLock'), 'performance', 'scan-lock')
+      : collectedFocus({
+        key: 'lockWait',
+        label: text('focusLockWait'),
+        value: formatCount(lockWait),
+        valueNumber: lockWait,
+        previousNumber: previousLockWait,
+        tone: focusTone(lockWaitLevel(lockWait)),
+        hint: text('viewScanLock'),
+        tab: 'performance',
+        anchor: 'scan-lock',
+        spark: 'lockWait'
+      }),
+    aborted == null
+      ? uncollectedFocus('aborted', text('focusAborted'), text('viewQuality'), 'performance', 'quality')
+      : collectedFocus({
+        key: 'aborted',
+        label: text('focusAborted'),
+        value: formatRate(aborted),
+        valueNumber: aborted,
+        previousNumber: previousAborted,
+        tone: focusTone(abortedLevel(aborted)),
+        hint: text('viewQuality'),
+        tab: 'performance',
+        anchor: 'quality',
+        spark: 'aborted'
+      }),
+    tmpDisk == null
+      ? uncollectedFocus('tmpDisk', text('focusTmpDisk'), text('viewScanLock'), 'performance', 'scan-lock')
+      : collectedFocus({
+        key: 'tmpDisk',
+        label: text('focusTmpDisk'),
+        value: formatPercent(tmpDisk),
+        valueNumber: tmpDisk,
+        previousNumber: previousTmpDisk,
+        tone: focusTone(tmpDiskLevel(tmpDisk)),
+        hint: text('viewScanLock'),
+        tab: 'performance',
+        anchor: 'scan-lock',
+        spark: 'tmpDisk'
+      }),
+    fourth
+  ].map((card) => (
+    card.value === EMPTY_VALUE ? { ...card, subtitle: text('notCollected') } : card
+  ));
 };
 
 export interface MysqlHostCandidate {
@@ -919,7 +1091,7 @@ export const readMysqlRoleBlock = (
       fields.push({
         label: '复制延迟',
         value: formatMysqlReplicationLag(delay),
-        tone: delay > 30 ? 'warn' : 'ok'
+        tone: delay > REPL_LAG_WARN_S ? 'warn' : 'ok'
       });
     }
     if (io != null) fields.push({ label: 'IO 线程', value: THREAD_TEXT(io), tone: THREAD_TONE(io) });

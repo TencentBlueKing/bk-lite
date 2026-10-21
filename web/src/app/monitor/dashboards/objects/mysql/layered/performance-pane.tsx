@@ -134,6 +134,10 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     () => seriesOf(metricMap.mysql_aborted_clients_rate),
     [metricMap.mysql_aborted_clients_rate?.viewData]
   );
+  const slowQueries = useMemo(
+    () => seriesOf(metricMap.mysql_slow_queries_rate),
+    [metricMap.mysql_slow_queries_rate?.viewData]
+  );
   const selectScan = useMemo(
     () => seriesOf(metricMap.mysql_select_scan_rate),
     [metricMap.mysql_select_scan_rate?.viewData]
@@ -180,6 +184,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     innodbRows
   );
   const bufferAwaiting = slotLoading(['mysql_buffer_pool_hit_ratio'], buffer);
+  const slowAwaiting = slotLoading(['mysql_slow_queries_rate'], slowQueries);
   const empty = mysqlCategoryText(t, 'noCollectData');
 
   const innodbCard = innodbHasLoad(metricMap) || innodbAwaiting ? (
@@ -362,7 +367,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
         </>
       ) : null}
       {abortedConnects.length > 0 || abortedClients.length > 0 ? (
-        <>
+        <div id="mysql-perf-quality">
           <ProSectionTitle>{mysqlCategoryText(t, 'connectionQuality')}</ProSectionTitle>
           <div className={pro.perfGrid} data-perf-section="quality">
             {abortedConnects.length > 0 ? (
@@ -390,12 +395,25 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
           </div>
-        </>
+        </div>
       ) : null}
-      {selectScan.length > 0 || rowLockWaits.length > 0 || rowLockTime.length > 0 ? (
-        <>
+      {slowQueries.length > 0 || slowAwaiting || selectScan.length > 0 || rowLockWaits.length > 0 || rowLockTime.length > 0 ? (
+        <div id="mysql-perf-scan-lock">
           <ProSectionTitle>{mysqlCategoryText(t, 'scanAndLock')}</ProSectionTitle>
           <div className={pro.perfGrid} data-perf-section="scan-lock">
+            {slowQueries.length > 0 || slowAwaiting ? (
+              <div className="min-w-0">
+                <ThinTimeSeries
+                  title={mysqlCategoryText(t, 'kpiSlow')}
+                  hint={mysqlCategoryText(t, 'slowQueriesHint')}
+                  loading={slowAwaiting}
+                  unit="cps"
+                  data={slowQueries.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText={empty}
+                  legends={[{ label: mysqlCategoryText(t, 'kpiSlow'), color: HOST_SERIES_COLOR.load1 }]}
+                />
+              </div>
+            ) : null}
             {selectScan.length > 0 ? (
               <div className="min-w-0">
                 <ThinTimeSeries
@@ -441,7 +459,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
           </div>
-        </>
+        </div>
       ) : null}
     </>
   );

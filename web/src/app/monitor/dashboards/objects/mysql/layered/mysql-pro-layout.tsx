@@ -133,8 +133,6 @@ export default function MysqlProLayout({
     () => readMysqlOverview(metricMap, alertCount),
     [alertCount, metricMap]
   );
-  const previous = useMemo(() => readMysqlOverview(previousMetricMap, null), [previousMetricMap]);
-
   useEffect(() => {
     setTab(tabFromUrl);
   }, [tabFromUrl]);
@@ -429,8 +427,8 @@ export default function MysqlProLayout({
     return (
       <OverviewPane
         readings={readings}
-        previous={previous}
         metricMap={metricMap}
+        previousMetricMap={previousMetricMap}
         pendingMetricNames={pendingMetricNames}
         host={linkedHost}
         hostHref={buildHostDashboardHref(linkedHost)}
