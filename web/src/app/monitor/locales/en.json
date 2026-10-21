@@ -1007,6 +1007,7 @@
       "accessAndTroubleshootGuide": "{name} Monitoring Guide",
       "guideFallbackName": "Current Monitor",
       "configGuide": "Configuration Guide",
+      "scriptCollectGuideTitle": "Custom Script Monitoring Configuration Guide",
       "exactMatch": "Exact match",
       "rulesCount": "rule(s)",
       "batchEditEmptyWarning": "The submitted form cannot be empty",

@@ -66,9 +66,15 @@ def render_preflight_telegraf_config(template_content: str, context: dict) -> st
 
 
 def render_telegraf_config_template(template_content: str, context: dict) -> str:
+    render_context = context
+    if isinstance(context, dict) and isinstance(context.get("script"), str) and context.get("script"):
+        from apps.monitor.services.custom_script_plugin import escape_script_dollars_for_sidecar_then_telegraf
+
+        render_context = dict(context)
+        render_context["script"] = escape_script_dollars_for_sidecar_then_telegraf(render_context["script"])
     return Controller({}).render_template(
         template_content,
-        context,
+        render_context,
         escape_toml_strings=True,
     )
 

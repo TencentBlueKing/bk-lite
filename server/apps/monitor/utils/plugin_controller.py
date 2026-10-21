@@ -687,7 +687,11 @@ class Controller:
                             config_info.get("ENV_GROUP_METRICS_TIMEOUT") or env_config.get("GROUP_METRICS_TIMEOUT"),
                             config_info.get("interval"),
                         )
-                    script_collect = str(collect_type or "") == "script"
+                    script_collect = (
+                        str(collect_type or "").casefold() == "script"
+                        or str(getattr(plugin_obj, "template_type", "") or "").casefold() == "script"
+                        or str(getattr(plugin_obj, "collect_type", "") or "").casefold() == "script"
+                    )
                     if script_collect and is_child:
                         from apps.monitor.services.custom_script_plugin import CustomScriptPluginService, assert_script_interval
 

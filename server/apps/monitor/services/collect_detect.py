@@ -175,7 +175,7 @@ class CollectDetectService:
             )
             cls._ensure_required_render_vars(plugin, config_context)
             env = cls._build_preflight_env(config_context, runtime_payload.get("env") or {}, config_id)
-            if cls._is_script_plugin(plugin):
+            if cls._is_script_plugin(plugin) or str(config_context.get("script") or "").strip():
                 config_content = disable_real_outputs(CustomScriptPluginService.render_child_template(config_context))
             else:
                 templates = cls._get_child_templates(plugin, cls._resolve_config_types(config_context, plugin))
@@ -360,7 +360,10 @@ class CollectDetectService:
 
     @staticmethod
     def _is_script_plugin(plugin) -> bool:
-        return plugin.template_type == "script" or plugin.collect_type == "script"
+        return (
+            str(getattr(plugin, "template_type", "") or "").casefold() == "script"
+            or str(getattr(plugin, "collect_type", "") or "").casefold() == "script"
+        )
 
     @classmethod
     def _script_run_as_targets_windows(cls, context) -> bool:

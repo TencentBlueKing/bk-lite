@@ -76,13 +76,19 @@ const PluginGuidePanel: React.FC<PluginGuidePanelProps> = ({
   }, [guide, pluginName, t]);
 
   const getGuideTitle = useCallback(() => {
+    if (enableScriptFallback) {
+      return t(
+        'monitor.integrations.scriptCollectGuideTitle',
+        '自定义脚本监控配置指引'
+      );
+    }
     const fallback = t('monitor.integrations.guideFallbackName');
     const safeName =
       (guideName && String(guideName).trim()) || fallback || 'Monitor';
     return t('monitor.integrations.accessAndTroubleshootGuide', undefined, {
       name: safeName
     });
-  }, [t, guideName]);
+  }, [t, guideName, enableScriptFallback]);
 
   const fallbackContent = enableScriptFallback
     ? scriptCollectGuideMarkdown(getStoredLocale())
