@@ -379,3 +379,47 @@ def test_empty_or_condition_runs_like_empty_and_and_compiler_true():
     assert result.event["copied"]["and"] == "hello"
     assert result.event["copied"]["match"] == "hello"
     assert "miss" not in result.event["copied"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("pattern", "replacement", "payload", "expected"),
+    [
+        (r"(a)", "${1}", "a", "a"),
+        (r"user=(?P<user>\w+)", "user=${user}-masked", "user=alice", "user=alice-masked"),
+        (r"(a)", "$$", "a", "$"),
+        (r"(a)?(b)", "${1}${2}", "b", "b"),
+    ],
+    ids=["numbered", "named", "literal-dollar", "unmatched-optional"],
+)
+def test_regex_replace_expands_capture_references(pattern, replacement, payload, expected):
+    rule = normalize_rule(
+        {
+            "extractor_type": "regex_replace",
+            "source_field": "payload",
+            "target_field": "result",
+            "condition": {},
+            "config": {"pattern": pattern, "replacement": replacement},
+            "delete_source": False,
+        }
+    )
+
+    result = execute_rules({"payload": payload}, [rule])
+
+    assert result.results[0].status == "success"
+    assert result.event == {"payload": payload, "result": expected}
+
+
+@pytest.mark.unit
+def test_regex_replace_rejects_missing_numbered_group():
+    with pytest.raises(RuleValidationError, match="不存在的捕获组"):
+        normalize_rule(
+            {
+                "extractor_type": "regex_replace",
+                "source_field": "payload",
+                "target_field": "result",
+                "condition": {},
+                "config": {"pattern": r"(a)", "replacement": "${2}"},
+                "delete_source": False,
+            }
+        )
