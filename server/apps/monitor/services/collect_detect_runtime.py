@@ -35,12 +35,17 @@ def sidecar_node_render_variables(node) -> dict:
 
 
 def substitute_sidecar_node_variables(config_content: str, node) -> str:
-    """探测不走 Sidecar 拉配置，用正式下发同一套 ${node.*} 替换。"""
-    if node is None or not config_content:
+    """探测不走 Sidecar 拉配置，用正式下发同一套 ${node.*} 替换。
+
+    即使 node 为空也走 string.Template：它会把 $$ 收成 $，与正式 sidecar 下发一致，
+    这样脚本正文里为 Telegraf 预留的 $$ 不会多剩一层。
+    """
+    if not config_content:
         return config_content
     from apps.node_mgmt.services.sidecar import Sidecar
 
-    return Sidecar.render_template(config_content, sidecar_node_render_variables(node))
+    variables = sidecar_node_render_variables(node) if node is not None else {}
+    return Sidecar.render_template(config_content, variables)
 
 
 def script_isolation_name_prefixes(config_id) -> list:

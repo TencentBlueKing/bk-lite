@@ -65,18 +65,46 @@ class PluginGuideService:
         return collect_type.casefold() == "script" or template_type.casefold() == "script"
 
     @staticmethod
+    def _plugin_search_roots() -> tuple[Path, ...]:
+        """相对 CWD、Django BASE_DIR、本文件位置都试一遍，避免工作目录不是 server/ 时扫不到。"""
+        raw_roots = (PluginConstants.DIRECTORY, PluginConstants.ENTERPRISE_DIRECTORY)
+        candidates: list[Path] = [Path(item) for item in raw_roots]
+        monitor_app = Path(__file__).resolve().parents[1]
+        candidates.append(monitor_app / "support-files" / "plugins")
+        candidates.append(monitor_app / "enterprise" / "support-files" / "plugins")
+        try:
+            from django.conf import settings
+
+            base = getattr(settings, "BASE_DIR", None)
+            if base:
+                candidates.extend(Path(base) / item for item in raw_roots)
+        except Exception:
+            pass
+        seen: set[str] = set()
+        ordered: list[Path] = []
+        for path in candidates:
+            key = str(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(path)
+        return tuple(ordered)
+
+    @staticmethod
     def _lookup_script_shared_dir(collector: str) -> Optional[Path]:
         """用户自建脚本模板没有独立插件目录，共用 Telegraf/script/default 指引。"""
-        collector = (collector or "").strip()
-        if not collector:
-            return None
-        for root in (PluginConstants.DIRECTORY, PluginConstants.ENTERPRISE_DIRECTORY):
-            candidate = Path(root) / collector / "script" / "default"
-            if any(
-                (candidate / "guide" / f"{locale}.md").is_file()
-                for locale in SUPPORTED_GUIDE_LOCALES
-            ):
-                return candidate
+        names: list[str] = []
+        for item in ((collector or "").strip(), "Telegraf"):
+            if item and item not in names:
+                names.append(item)
+        for root in PluginGuideService._plugin_search_roots():
+            for name in names:
+                candidate = Path(root) / name / "script" / "default"
+                if any(
+                    (candidate / "guide" / f"{locale}.md").is_file()
+                    for locale in SUPPORTED_GUIDE_LOCALES
+                ):
+                    return candidate
         return None
 
     @staticmethod
@@ -87,7 +115,13 @@ class PluginGuideService:
         if not collector or not collect_type or not plugin_name:
             return None
 
-        cache_key = (collector, collect_type, plugin_name)
+        cache_key = (
+            str(PluginConstants.DIRECTORY),
+            str(PluginConstants.ENTERPRISE_DIRECTORY),
+            collector,
+            collect_type,
+            plugin_name,
+        )
         now = time.monotonic()
         cached = _plugin_dir_cache.get(cache_key)
         if cached and now - cached[0] < _PLUGIN_DIR_CACHE_TTL_SECONDS:
@@ -112,10 +146,13 @@ class PluginGuideService:
         # 同一插件可能有多个采集类型 / 多个实例，必须稳定且可读。
         name = (getattr(plugin, "name", "") or "").strip()
         plugin_dir = cls.resolve_plugin_dir(plugin)
-        if plugin_dir is None and cls._is_script_collect(plugin):
-            plugin_dir = cls._lookup_script_shared_dir(
+        shared_dir = None
+        if cls._is_script_collect(plugin):
+            shared_dir = cls._lookup_script_shared_dir(
                 (getattr(plugin, "collector", "") or "").strip()
             )
+            if plugin_dir is None:
+                plugin_dir = shared_dir
         if plugin_dir is not None:
             for meta_file in ("UI.json", "metrics.json"):
                 meta_path = plugin_dir / meta_file
@@ -129,38 +166,34 @@ class PluginGuideService:
                 if meta_name:
                     name = meta_name
                     break
-        if plugin_dir is None:
-            return {
-                "has_guide": False,
-                "content": "",
-                "locale": preferred_locale,
-                "source": None,
-                "name": name,
-            }
-
-        candidates = [
-            (f"guide/{preferred_locale}.md", plugin_dir / "guide" / f"{preferred_locale}.md"),
-        ]
-        # README 的语言无法可靠判定。中文环境可继续以 README 作为历史兼容回退；
-        # 英文环境宁可隐藏没有英文 guide 的入口，也不能把中文 README 伪装成英文指引。
-        if preferred_locale == "zh-Hans":
-            candidates.append(("README.md", plugin_dir / "README.md"))
-        for source, path in candidates:
-            if not path.is_file():
-                continue
-            try:
-                content = path.read_text(encoding="utf-8").strip()
-            except OSError:
-                continue
-            if not content:
-                continue
-            return {
-                "has_guide": True,
-                "content": content,
-                "locale": preferred_locale,
-                "source": source,
-                "name": name,
-            }
+        dirs: list[Path] = []
+        for item in (plugin_dir, shared_dir):
+            if item is not None and item not in dirs:
+                dirs.append(item)
+        for current_dir in dirs:
+            candidates = [
+                (f"guide/{preferred_locale}.md", current_dir / "guide" / f"{preferred_locale}.md"),
+            ]
+            # README 的语言无法可靠判定。中文环境可继续以 README 作为历史兼容回退；
+            # 英文环境宁可隐藏没有英文 guide 的入口，也不能把中文 README 伪装成英文指引。
+            if preferred_locale == "zh-Hans":
+                candidates.append(("README.md", current_dir / "README.md"))
+            for source, path in candidates:
+                if not path.is_file():
+                    continue
+                try:
+                    content = path.read_text(encoding="utf-8").strip()
+                except OSError:
+                    continue
+                if not content:
+                    continue
+                return {
+                    "has_guide": True,
+                    "content": content,
+                    "locale": preferred_locale,
+                    "source": source,
+                    "name": name,
+                }
 
         return {
             "has_guide": False,

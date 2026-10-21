@@ -172,7 +172,7 @@ export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
     default_value: previousRunAs.default_value || 'telegraf',
     os_driven: true,
     rules: [],
-    description: 'Linux 必填，且不能为 root 或 UID 0。',
+    description: 'Linux 必填，须是采集端已有的非 root 用户，默认 telegraf。',
     widget_props: {
       ...(previousRunAs.widget_props || {}),
       placeholder: 'telegraf'

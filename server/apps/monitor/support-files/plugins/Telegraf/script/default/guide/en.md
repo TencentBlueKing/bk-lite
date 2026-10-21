@@ -32,7 +32,7 @@ Set KEY and VALUE in Environment. Read them in the script as follows:
 
 ## Run-as user
 
-The Linux default run-as user is `telegraf`. The target host must already have that user. If the machine has no `telegraf` user, change **Run As** to an existing non-root user, or create the `telegraf` user first. Scripts cannot run as root.
+The Linux default run-as user is `telegraf`. That user must exist on the **collector** (the node / sidecar container), not on the platform web host. If the collector has no `telegraf` user, change **Run As** to an existing non-root user on the collector, or create that user there. Scripts cannot run as root.
 
 Windows runs as the service account; Run As cannot be changed.
 

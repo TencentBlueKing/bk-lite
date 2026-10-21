@@ -32,7 +32,7 @@ Python 使用 `os.environ.get("KEY")` 时不需要 `$`。
 
 ## 执行用户
 
-Linux 默认执行用户是 `telegraf`。目标主机必须已有该用户。若本机没有 `telegraf` 用户，请把「执行用户」改成已存在的非 root 用户，或先创建 `telegraf` 用户。不能以 root 运行。
+Linux 默认执行用户是 `telegraf`。该用户必须存在于**采集端**（采集节点 / sidecar 容器），不是平台 Web 所在机器。若采集端没有 `telegraf`，请把「执行用户」改成采集端已有的非 root 用户，或在采集端创建该用户。不能以 root 运行。
 
 Windows 以服务账号运行，执行用户不可修改。
 

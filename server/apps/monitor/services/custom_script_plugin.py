@@ -248,8 +248,8 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
             "type": "input",
             "required": False,
             "default_value": "telegraf",
-            "description": "Linux 必填，且不能为 root 或 UID 0。",
-            "description_en": "Required on Linux. Cannot be root or UID 0.",
+            "description": "Linux 必填，须是采集端已有的非 root 用户，默认 telegraf。",
+            "description_en": "Required on Linux. Must be an existing non-root user on the collector, default telegraf.",
             "widget_props": {
                 "placeholder": "telegraf",
             },
@@ -442,6 +442,14 @@ def prepare_script_child_content_for_save(content):
     return prepared
 
 
+def escape_script_dollars_for_sidecar_then_telegraf(script: str) -> str:
+    """Sidecar 用 string.Template 先把 $$ 收成 $，Telegraf envsubst 再展开一次。
+
+    产品约定编辑器里 $ 写成 $$；这里再翻一倍，下发后 Telegraf 仍能看到 $$。
+    """
+    return script.replace("$", "$$")
+
+
 def _child_render_context(context: dict) -> dict:
     """渲染键以 script 为准；仅当 script 为空时把旧字段 command 迁入 script。"""
     render_context = dict(context)
@@ -449,6 +457,9 @@ def _child_render_context(context: dict) -> dict:
         command = render_context.get("command")
         if command not in (None, ""):
             render_context["script"] = command
+    script = render_context.get("script")
+    if isinstance(script, str) and script:
+        render_context["script"] = escape_script_dollars_for_sidecar_then_telegraf(script)
     interval_seconds = parse_script_duration_seconds(render_context.get("interval"))
     if interval_seconds is not None:
         render_context["interval"] = interval_seconds
