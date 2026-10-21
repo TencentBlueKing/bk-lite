@@ -147,6 +147,11 @@ class TestElement {
   removeEventListener() {}
   focus() {}
   scrollIntoView() { globalThis.__chatTest.scrolls += 1; }
+  set scrollTop(value) {
+    this._scrollTop = value;
+    globalThis.__chatTest.scrolls += 1;
+  }
+  get scrollTop() { return this._scrollTop || 0; }
   get firstChild() { return this.childNodes[0] || null; }
   get lastChild() { return this.childNodes.at(-1) || null; }
 }

@@ -166,7 +166,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const sessionManagerRef = useRef<SessionManager | null>(null);
   const stateMachineRef = useRef<StateMachine | null>(null);
   const aguiHandlerRef = useRef<AGUIHandler | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollerRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
   const choiceMessageIdRef = useRef<string | null>(null);
@@ -954,9 +954,11 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onFullscreenChange?.(next);
   }, [onFullscreenChange, panelFullscreen]);
 
-  // Scroll to bottom
+  // 只滚动消息区。scrollIntoView 会连外层 overflow 一起滚，侧栏撑开后输入框会被顶到对话区顶部。
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const scroller = messagesScrollerRef.current;
+    if (!scroller) return;
+    scroller.scrollTop = scroller.scrollHeight;
   }, [messages]);
 
   return (
@@ -1021,7 +1023,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Messages Area */}
       <div
-        className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${wideLayout || panelFullscreen ? 'px-6 pb-2 pt-5' : 'px-4 pb-1.5 pt-4'}`}
+        ref={messagesScrollerRef}
+        className={`flex min-h-0 flex-1 basis-0 flex-col overflow-y-auto ${wideLayout || panelFullscreen ? 'px-6 pb-2 pt-5' : 'px-4 pb-1.5 pt-4'}`}
         style={{ background: WC.stage }}
       >
         <div className="flex min-h-0 w-full flex-1 flex-col space-y-5">
@@ -1117,8 +1120,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           onSendMessage={handleSendMessage}
           onResolved={() => setHitlEvent(null)}
         />
-        
-        <div ref={messagesEndRef} />
         </div>
       </div>
 
