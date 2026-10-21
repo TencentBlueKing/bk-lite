@@ -27,9 +27,11 @@ def test_health_showcase_workflow_binds_format_specific_template_and_script():
     tasks = item["definition"]["tasks"]
     assert tasks[0]["inputParameters"]["script_type"] == "powershell"
     assert tasks[0]["inputParameters"]["script_content"] == "Write-Output ok"
-    assert tasks[1]["inputParameters"]["template_snapshot"]["format"] == "docx"
-    assert tasks[2]["inputParameters"]["channel_id"] == 3
-    assert tasks[2]["inputParameters"]["recipients"] == ["42"]
+    assert tasks[1]["name"] == "bklite_data_transform"
+    assert tasks[1]["inputParameters"]["data"] == "${scan.output}"
+    assert tasks[2]["inputParameters"]["template_snapshot"]["format"] == "docx"
+    assert tasks[3]["inputParameters"]["channel_id"] == 3
+    assert tasks[3]["inputParameters"]["recipients"] == ["42"]
 
 
 def test_health_showcase_omits_channel_when_missing():
@@ -51,8 +53,8 @@ def test_health_showcase_omits_channel_when_missing():
         operating_system="windows",
         recipients=["${workflow.input.__system.actor_name}"],
     )
-    assert "channel_id" not in item["definition"]["tasks"][2]["inputParameters"]
-    assert item["definition"]["tasks"][2]["inputParameters"]["recipients"] == ["${workflow.input.__system.actor_name}"]
+    assert "channel_id" not in item["definition"]["tasks"][3]["inputParameters"]
+    assert item["definition"]["tasks"][3]["inputParameters"]["recipients"] == ["${workflow.input.__system.actor_name}"]
     targets = item["metadata"]["trigger_nodes"][0]["input_schema"]["properties"]["targets"]
     assert targets["x-target-binding"]["allowedOperatingSystems"] == ["windows"]
 

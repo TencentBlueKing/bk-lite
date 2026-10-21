@@ -36,9 +36,10 @@ from apps.cmdb.services.collect_object_tree import get_collect_obj_tree
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.cmdb.services.network_config_file_policy import get_supported_brand_options
+from apps.cmdb.services.network_unknown_soid import save_unknown_soid_mappings, write_unknown_devices
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ForbiddenException, ValidationAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.team_utils import get_current_team
@@ -401,6 +402,30 @@ class CollectModelViewSet(AuthViewSet):
             raise BaseAppException("您没有操作该采集任务的权限！")
         result = CollectModelService.exec_task(instance=instance, operator=request.user.username)
         return result
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["POST"], detail=True, url_path="unknown_soid_mappings")
+    def unknown_soid_mappings(self, request, *args, **kwargs):
+        return self._run_unknown_soid(request, save_unknown_soid_mappings, request.data.get("items"))
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["POST"], detail=True, url_path="write_unknown_devices")
+    def write_unknown_devices(self, request, *args, **kwargs):
+        return self._run_unknown_soid(request, write_unknown_devices, request.data.get("ip_addrs"))
+
+    def _run_unknown_soid(self, request, handler, payload):
+        instance = self.get_object()
+        user = request.user
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        if not self.get_has_permission(user, instance, current_team, include_children=include_children):
+            return WebUtils.response_403("您没有操作该采集任务的权限！")
+        try:
+            return WebUtils.response_success(handler(instance, user, payload))
+        except ForbiddenException as exc:
+            return WebUtils.response_403(exc.message)
+        except ValidationAppException as exc:
+            return WebUtils.response_error(exc.render_data() or {}, error_message=exc.message)
 
     @HasPermission("auto_collection-Execute")
     @action(methods=["POST"], detail=False, url_path="pc_test_connection")

@@ -195,9 +195,9 @@ error:
   is_builtin_invalid: is_builtin 非法
   job_actor_missing: 作业执行缺少可信执行人上下文
   job_context_missing: 作业执行缺少可信流程上下文
-  job_result_depth: BK_LITE_RESULT 嵌套超过 10 层
-  job_result_json: BK_LITE_RESULT 后必须是有效 JSON
-  job_result_object: BK_LITE_RESULT 必须是 JSON 对象
+  job_result_depth: result= 嵌套超过 10 层
+  job_result_json: result= 后必须是有效 JSON
+  job_result_object: result= 必须是 JSON 对象
   job_target_count: 作业执行必须选择 1 到 100 台目标主机
   job_target_id_invalid: 作业平台目标 ID 非法
   job_target_source_missing: 作业目标缺少受控来源

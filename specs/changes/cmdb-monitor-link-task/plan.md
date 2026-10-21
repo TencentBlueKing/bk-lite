@@ -17,13 +17,13 @@
 
 1. **独立胶水模块，不是新的可售卖应用。** 后端 `apps.module_link`，前端路由 `/module-link/cmdb-monitor/tasks/[id]`。不进顶栏应用列表，不单独许可。
 2. **对端不可见则入口不出现（fail-closed）。** `clientData` 加载中、为空、或不含 `monitor` 时，CMDB 列表/详情的同步按钮都不渲染。监控侧将来的反向入口同理看 `cmdb`。现网 `isMonitorSold` 空列表当 true，本入口不再沿用。
-3. **服务端始终装入胶水模块。** `module_link` 与 `system_mgmt` / `console_mgmt` 一样 always-on；入口只按 CMDB、监控许可控制。许可闸对 `/api/v1/module_link/` 继承 cmdb+monitor 授权，不把胶水当成可售卖应用。
+3. **服务端始终装入胶水模块。** `module_link` 与 `system_mgmt` / `console_mgmt` 一样 always-on；入口只按 CMDB、监控许可控制。许可闸对 `/api/v1/module_link/` 继承 cmdb+monitor 授权，不把胶水当成可售卖应用。EE `LicenseAppGuard` 按 URL 第一段当 SKU，OSS 把该前缀写入 `LICENSE_EXEMPT_PREFIXES`，再由 `ModuleLinkLicenseInheritMiddleware` 要求 cmdb+monitor 都已授权。
 4. **CMDB / 监控只留薄适配。** 详情手绑、单条 `push_to_monitor`、ingest 身份规则仍留在各自核心。任务表、任务页、草稿、回收、读草稿接口搬出 CMDB。
 5. **100 条同步跑完。** 与现网 `BATCH_PUSH_LIMIT` 相同，不上 Celery 执行第一段。
 6. **草稿一组一个监控对象，但接入前先选模板。** 「去配置」跳到该对象的监控接入列表（带着 `cmdb_draft`），人选内置插件或 DIY 模板后再进配置页。任务不默认同名内置插件。
 7. **无内置映射的自定义模型：任务内指定对象，不改常量映射表。** 进「待指定对象」桶；人选监控对象后才生成草稿，并可把 `model_id → object_name` 记在胶水模块。自动关联只用已有 ID + 该对象下唯一实例名；仅当选中的对象本身已有内置身份规则才套 IP 等规则。K8s / 云 / vCenter 仍 skipped，不走指定对象。
 8. **延时回收 7 天。** 从任务创建起算；每日 Beat 删除到期的任务、行、草稿。不拆 CI / 监控实例上已写的关联 ID。过期草稿读取失败。
-9. **反向后置。** 同一模块以后可接监控 → CMDB，本期不做。
+9. **反向另开变更。** 同一胶水模块可接监控 → CMDB；正向本计划不做。见 `specs/changes/monitor-cmdb-link-task/`。
 
 ---
 
@@ -160,7 +160,7 @@ CMDB 资产页  --薄按钮-->  module_link 任务页/API
 ### Task 6: 收口
 
 - spec → implemented；产品记忆去掉拟决议。
-- 不实现反向任务。
+- 反向任务见 `specs/changes/monitor-cmdb-link-task/`。
 
 ---
 

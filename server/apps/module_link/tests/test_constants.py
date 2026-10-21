@@ -1,5 +1,5 @@
 from apps.cmdb.constants.monitor_link import CMDB_MODEL_TO_MONITOR_OBJECT
-from apps.module_link.constants import builtin_object_name, is_builtin_mapped_model, is_platform_tree_model
+from apps.module_link.constants import builtin_model_id, builtin_object_name, is_builtin_mapped_model, is_platform_tree_model
 
 
 def test_platform_tree_models_are_skipped():
@@ -19,3 +19,9 @@ def test_builtin_mapping_unchanged_for_host():
     assert is_builtin_mapped_model("host") is True
     assert is_builtin_mapped_model("weblogic") is False
     assert "weblogic" not in CMDB_MODEL_TO_MONITOR_OBJECT
+
+
+def test_builtin_model_id_does_not_default_unknown_to_host():
+    assert builtin_model_id("Host") == "host"
+    assert builtin_model_id("Weblogic") is None
+    assert builtin_model_id("") is None

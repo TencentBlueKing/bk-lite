@@ -298,7 +298,7 @@ def test_health_job_chain_submits_multi_linux_targets_together(live_user, mocker
         ),
     )
     execution = _execution(output={})
-    fake_atom = SimpleNamespace(output={"summary": {"total": 2, "succeeded": 2, "failed": 0}, "results": []})
+    fake_atom = SimpleNamespace(output={"summary": {"total": 2, "succeeded": 2, "failed": 0}, "data": []})
     mocker.patch(
         "apps.workflow_orchestration.models.AtomExecution.objects.filter",
         return_value=SimpleNamespace(order_by=lambda *args, **kwargs: SimpleNamespace(first=lambda: fake_atom)),
@@ -378,7 +378,7 @@ def test_run_live_acceptance_aggregates_honest_failures(live_user, mocker):
 
 def test_sample_job_envelope_includes_host_contract_for_health_templates():
     envelope = _sample_job_envelope()
-    host_data = envelope["results"][0]["data"]
+    host_data = envelope["data"][0]["result"]
     assert "hostname" in host_data["host"]
     assert host_data["metric_count"] == 1
     assert host_data["normal_count"] == 1

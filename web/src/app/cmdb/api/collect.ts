@@ -66,6 +66,14 @@ export const useCollectApi = () => {
   const getNetworkConfigBrands = () =>
     get('/cmdb/api/collect/network_config_file_supported_brands/');
 
+  const saveUnknownSoidMappings = (
+    collectId: string,
+    params: { items: Array<{ soid: string; device_type: string; brand: string; model: string }> }
+  ) => post(`/cmdb/api/collect/${collectId}/unknown_soid_mappings/`, params);
+
+  const writeUnknownDevices = (collectId: string, params: { ip_addrs: string[] }) =>
+    post(`/cmdb/api/collect/${collectId}/write_unknown_devices/`, params);
+
   // PC 发现连接测试（未落库表单直连，不写 CMDB）
   const pcTestConnection = (params: any) =>
     post('/cmdb/api/collect/pc_test_connection/', params);
@@ -87,6 +95,8 @@ export const useCollectApi = () => {
     getTaskOverview,
     getCollectTaskNames,
     getNetworkConfigBrands,
+    saveUnknownSoidMappings,
+    writeUnknownDevices,
     pcTestConnection,
   };
 };

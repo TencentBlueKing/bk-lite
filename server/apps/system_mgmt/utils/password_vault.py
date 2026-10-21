@@ -1,13 +1,14 @@
 from django.conf import settings
 
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
+from apps.system_mgmt.utils.i18n import system_mgmt_message
 
 
 def _get_cipher() -> PasswordCrypto:
     """从 Django settings.SECRET_KEY 派生 AES 密钥;空 key 抛 ValueError。"""
     key = getattr(settings, "SECRET_KEY", "") or ""
     if not key:
-        raise ValueError("SECRET_KEY 未配置,无法加解密 vault")
+        raise ValueError(system_mgmt_message(None, "error.vault_secret_key_not_configured"))
     return PasswordCrypto(key=key)
 
 

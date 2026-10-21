@@ -202,6 +202,36 @@ def test_duplicate_uses_validated_name_from_confirmation(superuser):
 
 
 @pytest.mark.django_db
+def test_duplicate_builtin_creates_unpublished_custom_draft(superuser):
+    source = Workflow.objects.create(
+        name="Linux 主机巡检（Excel）",
+        team=[7],
+        definition={"name": "builtin", "schemaVersion": 2, "version": 3, "tasks": []},
+        canvas_metadata={"positions": {}},
+        is_builtin=True,
+        status=Workflow.Status.PUBLISHED,
+        current_version=3,
+        enabled=True,
+    )
+    duplicate = WorkflowViewSet.as_view({"post": "duplicate"})
+
+    response = duplicate(
+        _request(APIRequestFactory(), "post", f"/workflows/{source.id}/duplicate/", superuser, {"name": "巡检副本"}),
+        pk=source.id,
+    )
+
+    assert response.status_code == 201
+    copied = Workflow.objects.get(pk=response.data["id"])
+    assert copied.is_builtin is False
+    assert copied.status == Workflow.Status.DRAFT
+    assert copied.current_version == 0
+    assert copied.enabled is False
+    source.refresh_from_db()
+    assert source.is_builtin is True
+    assert source.enabled is True
+
+
+@pytest.mark.django_db
 def test_duplicate_rejects_blank_name(superuser):
     source = Workflow.objects.create(
         name="源流程",
@@ -1538,7 +1568,7 @@ def test_execution_list_returns_only_live_artifacts_for_download(superuser):
     ready_files = rows[str(ready.id)]["downloadable_artifacts"]
     assert [item["filename"] for item in ready_files] == ["health-a.xlsx", "health-b.docx"]
     assert ready_files[0]["download_url"] == f"/workflow_orchestration/api/artifacts/{first.id}/download/"
-    assert set(ready_files[0]) == {"id", "format", "filename", "size", "download_url"}
+    assert set(ready_files[0]) == {"id", "format", "filename", "size", "created_at", "expires_at", "download_url"}
     assert rows[str(expired_execution.id)]["downloadable_artifacts"] == []
     assert rows[str(removed_execution.id)]["downloadable_artifacts"] == []
     assert rows[str(empty.id)]["downloadable_artifacts"] == []

@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import PermissionWrapper from '@/components/permission';
 import TopSection from '@/components/top-section';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
@@ -26,10 +27,12 @@ type EditingTarget =
   | { kind: 'personal'; row: PersonalOpenApiTokenRow }
   | { kind: 'system'; row: SystemOpenApiTokenRow };
 
+interface OpenApiTokenTabItem {
+  key: OpenApiTokenTab;
+  label: string;
+}
+
 interface OpenApiTokensPageShellProps {
-  canViewSystem?: boolean;
-  canManagePersonal?: boolean;
-  canManageSystem?: boolean;
   personalRows?: PersonalOpenApiTokenRow[];
   systemRows?: SystemOpenApiTokenRow[];
   scopeCatalog?: OpenApiTokenServiceCatalog[];
@@ -59,9 +62,6 @@ const toFormValues = (
 });
 
 const OpenApiTokensPageShell: React.FC<OpenApiTokensPageShellProps> = ({
-  canViewSystem = false,
-  canManagePersonal = true,
-  canManageSystem = true,
   personalRows = [],
   systemRows = [],
   personalLoading = false,
@@ -80,7 +80,6 @@ const OpenApiTokensPageShell: React.FC<OpenApiTokensPageShellProps> = ({
   const [revealSecret, setRevealSecret] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const canManageCurrent = tab === 'system' ? canManageSystem : canManagePersonal;
   const formKind = editing?.kind ?? tab;
   const formOpen = createOpen || Boolean(editing);
   const allLabel = t('system.settings.secret.scopeAll');
@@ -110,13 +109,14 @@ const OpenApiTokensPageShell: React.FC<OpenApiTokensPageShellProps> = ({
   const renderActions = (
     onEditClick: () => void,
     onDelete: () => void,
-    canManage: boolean,
   ) => (
-    canManage ? (
-      <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3">
+      <PermissionWrapper requiredPermissions={['Add']}>
         <Button type="link" className="px-0" onClick={onEditClick}>
           {t('common.edit')}
         </Button>
+      </PermissionWrapper>
+      <PermissionWrapper requiredPermissions={['Delete']}>
         <Popconfirm
           title={t('system.settings.secret.deleteConfirm')}
           onConfirm={onDelete}
@@ -127,8 +127,8 @@ const OpenApiTokensPageShell: React.FC<OpenApiTokensPageShellProps> = ({
             {t('common.delete')}
           </Button>
         </Popconfirm>
-      </div>
-    ) : null
+      </PermissionWrapper>
+    </div>
   );
 
   const renderScope = (scope: OpenApiTokenScope | null) => (
@@ -195,7 +195,6 @@ const OpenApiTokensPageShell: React.FC<OpenApiTokensPageShellProps> = ({
       render: (_, record) => renderActions(
         () => setEditing({ kind: 'personal', row: record }),
         () => onRevokePersonal?.(record.id),
-        canManagePersonal,
       ),
     },
   ];
@@ -258,27 +257,14 @@ const OpenApiTokensPageShell: React.FC<OpenApiTokensPageShellProps> = ({
       render: (_, record) => renderActions(
         () => setEditing({ kind: 'system', row: record }),
         () => onRevokeSystem?.(record.id),
-        canManageSystem,
       ),
     },
   ];
 
-  const tabItems = useMemo(() => {
-    const personal = {
-      key: 'personal',
-      label: t('system.settings.secret.personalTab'),
-    };
-    if (!canViewSystem) {
-      return [personal];
-    }
-    return [
-      personal,
-      {
-        key: 'system',
-        label: t('system.settings.secret.systemTab'),
-      },
-    ];
-  }, [canViewSystem, t]);
+  const tabItems = useMemo<OpenApiTokenTabItem[]>(() => [
+    { key: 'personal', label: t('system.settings.secret.personalTab') },
+    { key: 'system', label: t('system.settings.secret.systemTab') },
+  ], [t]);
 
   const closeForm = useCallback(() => {
     setCreateOpen(false);
@@ -319,11 +305,13 @@ const OpenApiTokensPageShell: React.FC<OpenApiTokensPageShellProps> = ({
       <section className="flex min-h-0 flex-1 flex-col rounded-md bg-[var(--color-bg)] p-4">
         <Tabs
           activeKey={tab}
-          onChange={(key) => setTab(key as OpenApiTokenTab)}
+          onChange={(key) => {
+            if (key === 'personal' || key === 'system') setTab(key);
+          }}
           items={tabItems}
           className="[&>.ant-tabs-nav]:mb-4 [&>.ant-tabs-content-holder]:hidden"
-          tabBarExtraContent={
-            canManageCurrent ? (
+          tabBarExtraContent={(
+            <PermissionWrapper requiredPermissions={['Add']}>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -334,8 +322,8 @@ const OpenApiTokensPageShell: React.FC<OpenApiTokensPageShellProps> = ({
               >
                 {t('common.new')}
               </Button>
-            ) : null
-          }
+            </PermissionWrapper>
+          )}
         />
         <div className="min-h-0 flex-1 overflow-auto">
           {tab === 'system' ? (

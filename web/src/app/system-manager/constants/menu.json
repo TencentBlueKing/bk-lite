@@ -3,7 +3,7 @@
     {
       "title": "用户管理",
       "icon": "yonghu1",
-      "name": "structure",
+      "name": "Organization",
       "url": "/system-manager/user",
       "children": [
         {
@@ -156,7 +156,7 @@
     {
       "title": "User Management",
       "icon": "yonghu1",
-      "name": "organization",
+      "name": "Organization",
       "url": "/system-manager/user",
       "children": [
         {

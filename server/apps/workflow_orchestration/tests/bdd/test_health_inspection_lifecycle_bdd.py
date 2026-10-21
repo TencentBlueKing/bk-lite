@@ -11,7 +11,9 @@ from openpyxl import load_workbook
 from pytest_bdd import given, scenarios, then, when
 
 from apps.workflow_orchestration.models import Workflow, WorkflowExecution, WorkflowInteraction
+from apps.workflow_orchestration.services.data_transform import run_data_transform
 from apps.workflow_orchestration.services.demo_templates import BUILTIN_TEMPLATE_DIR
+from apps.workflow_orchestration.services.health_summary_sql import health_summary_queries
 from apps.workflow_orchestration.services.reports import parse_report_template, render_report
 
 FEATURE = str(Path(__file__).parent / "health_inspection_lifecycle.feature")
@@ -126,7 +128,7 @@ def word_and_excel_health_workflows():
 def multidimensional_health_data(ctx):
     execution = WorkflowExecution.objects.get(trigger_id="health-word-success")
     ctx["health_data"] = execution.output["job"]
-    data = ctx["health_data"]["results"][0]["data"]
+    data = ctx["health_data"]["data"][0]["result"]
     categories = {metric["category"] for metric in data["metrics"]}
     assert categories >= {"计算", "内存", "磁盘", "网络", "系统健康", "基础服务", "安全浅检", "更新账龄"}
     assert data["host"]["hostname"]
@@ -138,9 +140,13 @@ def builtin_templates_render(ctx):
     for fmt in ("xlsx", "docx"):
         content = (TEMPLATE_DIR / f"health-inspection-example.{fmt}").read_bytes()
         parsed = parse_report_template(content, fmt)
-        rendered = render_report(content, fmt, ctx["health_data"])
+        rendered = render_report(
+            content,
+            fmt,
+            run_data_transform(ctx["health_data"], health_summary_queries(), 30),
+        )
         text = _rendered_text(fmt, rendered)
-        assert "results" in parsed.loops
+        assert "data" in parsed.loops
         assert "metric_summary" in parsed.loops
         assert "10.10.90.120" in text
         assert "CPU Total" in text
@@ -180,7 +186,7 @@ def scoped_idempotent_rebuild(ctx):
 @then("多磁盘告警执行应当标记告警并保留具体磁盘维度")
 def warning_evidence():
     execution = WorkflowExecution.objects.get(trigger_id="health-warning")
-    metrics = execution.output["job"]["results"][0]["data"]["metrics"]
+    metrics = execution.output["job"]["data"][0]["result"]["metrics"]
     disk_warning = next(metric for metric in metrics if metric["category"] == "磁盘" and metric["object_name"] == "D:")
     assert execution.has_warnings is True
     assert execution.warning_count == 1

@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorObject, MonitorPlugin, MonitorPolicy, PolicyTemplate
 from apps.monitor.models.monitor_metrics import Metric
@@ -761,8 +761,26 @@ class PolicyService:
         )
 
     @staticmethod
+    def _ensure_issued_threshold(threshold):
+        """复用策略保存的阈值规则。非法配置在模板或已下发策略写库前拒绝，并返回 400。"""
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+
+        from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+
+        try:
+            MonitorPolicySerializer().validate_threshold(threshold)
+        except DRFValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, (list, tuple)):
+                message = "; ".join(str(item) for item in detail)
+            else:
+                message = str(detail)
+            raise ValidationAppException(message) from exc
+
+    @staticmethod
     def sync_issued_policies_from_template(template, user):
         recipe = PolicyService.recipe_fields_from_template(template)
+        PolicyService._ensure_issued_threshold(recipe.get("threshold") or [])
         operator = getattr(user, "username", "") or "system"
         updated_count = 0
         last_id = 0
@@ -830,13 +848,16 @@ class PolicyService:
             raise BaseAppException("内置模版不可编辑")
         if template.organization != organization:
             raise BaseAppException("无权限访问指定模板")
-        template.name = name
-        template.description = description or ""
-        template.config = PolicyService.portable_config(
+        portable = PolicyService.portable_config(
             config,
             monitor_object=template.monitor_object,
             plugin=template.plugin,
         )
+        stored_threshold = portable["threshold"] if "threshold" in portable else []
+        PolicyService._ensure_issued_threshold(stored_threshold)
+        template.name = name
+        template.description = description or ""
+        template.config = portable
         template.updated_by = user.username
         template.updated_by_domain = getattr(user, "domain", "domain.com")
         with transaction.atomic():

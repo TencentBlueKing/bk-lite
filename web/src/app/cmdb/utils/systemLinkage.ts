@@ -73,6 +73,53 @@ export const canOpenMonitorLink = (
   return !isPlatformTreeModel(modelId);
 };
 
+const MONITOR_OBJECT_TO_CMDB_MODEL: Record<string, string> = {
+  Host: 'host',
+  Switch: 'switch',
+  Router: 'router',
+  Firewall: 'firewall',
+  Loadbalance: 'loadbalance',
+  'Hardware Server': 'physcial_server',
+  Mysql: 'mysql',
+  Postgres: 'postgresql',
+  MSSQL: 'mssql',
+  InfluxDB: 'influxdb',
+  Oracle: 'oracle',
+  Redis: 'redis',
+  MongoDB: 'mongodb',
+  ElasticSearch: 'es',
+  Apache: 'apache',
+  Tomcat: 'tomcat',
+  Nginx: 'nginx',
+  RabbitMQ: 'rabbitmq',
+  Kafka: 'kafka',
+  Zookeeper: 'zookeeper',
+  ActiveMQ: 'activemq',
+  Minio: 'minio',
+  Etcd: 'etcd',
+  Haproxy: 'haproxy',
+  'Docker Container': 'docker',
+};
+
+export const builtinCmdbModelId = (objectName: string) => {
+  const text = String(objectName || '').trim();
+  if (!text) return null;
+  return MONITOR_OBJECT_TO_CMDB_MODEL[text] || null;
+};
+
+export const canOpenCmdbLink = (
+  clientData: ClientData[] | undefined | null,
+  clientLoading: boolean,
+  objectName: string,
+) => {
+  if (clientLoading) return false;
+  if (!hasAppAccess(clientData, 'cmdb')) return false;
+  if (!hasAppAccess(clientData, 'monitor')) return false;
+  const modelId = builtinCmdbModelId(objectName);
+  if (!modelId) return false;
+  return !isPlatformTreeModel(modelId);
+};
+
 export const EXTERNAL_ID_COLUMN_KEY = 'external_id';
 export const EXTERNAL_ID_EMPTY = '--';
 const SYSTEM_LINK_ATTR_IDS = new Set(['node_id', 'monitor_id']);

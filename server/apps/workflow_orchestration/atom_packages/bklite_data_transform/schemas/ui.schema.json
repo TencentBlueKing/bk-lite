@@ -1,0 +1,15 @@
+{
+  "data": {
+    "ui:label": "输入数据",
+    "ui:help": "拖入上游 JSON 对象，或直接填写。整份对象会放进临时库的 input.payload。"
+  },
+  "queries": {
+    "ui:widget": "query-list",
+    "ui:label": "查询",
+    "ui:help": "每条只写一条 SELECT，结果名会成为输出字段。多行是数组；一行多列是对象；一行一列且单元格是 JSON 时按 JSON 使用。要稳定得到数组，用 json_group_array。"
+  },
+  "timeout_seconds": {
+    "ui:label": "超时（秒）",
+    "ui:help": "留空时按 30 秒执行，最长 120 秒。超时后中断查询并删除临时库。"
+  }
+}

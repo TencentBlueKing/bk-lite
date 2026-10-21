@@ -1,8 +1,10 @@
 "use client";
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Button, Input, Form, Tabs } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
+import { useMenus } from '@/context/menus';
+import { localizePermissionMenus } from '@/app/system-manager/utils/permissionMenuTitles';
 import OperateModal from '@/components/operate-modal';
 import PermissionWrapper from "@/components/permission";
 import PermissionTable from './permissionTable';
@@ -24,6 +26,7 @@ const RoleManagement: React.FC = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const clientId = searchParams?.get('clientId') || '';
+  const { configMenus } = useMenus();
 
   const [roleForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('1');
@@ -42,6 +45,11 @@ const RoleManagement: React.FC = () => {
     handleUpdateRole,
     handleDeleteRole
   } = useRoleList({ clientId, t });
+
+  const localizedMenuData = useMemo(
+    () => localizePermissionMenus(menuData, configMenus, clientId),
+    [menuData, configMenus, clientId],
+  );
 
   const userTab = useUserTab({ selectedRole, t });
   const permissionTab = usePermissionTab({ selectedRole, t });
@@ -163,7 +171,7 @@ const RoleManagement: React.FC = () => {
                   <PermissionTable
                     t={t}
                     loading={permissionTab.loading}
-                    menuData={menuData}
+                    menuData={localizedMenuData}
                     permissionsCheckedKeys={permissionTab.permissionsCheckedKeys}
                     setPermissionsCheckedKeys={permissionTab.setPermissionsCheckedKeys}
                   />

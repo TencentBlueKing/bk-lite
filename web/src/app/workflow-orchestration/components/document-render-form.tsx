@@ -186,6 +186,7 @@ export function DocumentRenderForm({ schema, value, references, nodeTitle, readO
           schema={{ ...field(schema, 'data'), 'x-widget': 'json', 'x-rows': 12, jsonEditorAllowed: true }}
           value={value.data}
           references={references}
+          disabled={readOnly}
           onChange={(next) => setField('data', next)}
         />
         <div className="self-start">

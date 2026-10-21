@@ -5,7 +5,7 @@
 
 import pytest
 
-from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.models.collect_model import CollectModels, OidMapping
 from apps.cmdb.models.field_group import FieldGroup
 from apps.cmdb.models.public_enum_library import PublicEnumLibrary
 from apps.cmdb.models.subscription_rule import SubscriptionRule
@@ -78,6 +78,37 @@ def test_collect_model_info_property():
     assert info["delete"]["count"] == 0
     assert info["relation"]["count"] == 1
     assert info["raw_data"]["count"] == 3
+    assert info["unresolved"] == {"data": [], "count": 0}
+
+
+@pytest.mark.django_db
+def test_collect_model_info_counts_unresolved_devices_and_shows_library_mapping():
+    OidMapping.objects.create(oid="1.3.6.1.4.1.9", model="C9300", brand="Cisco", device_type="switch", built_in=False)
+    task = CollectModels(
+        task_type="snmp",
+        driver_type="protocol",
+        model_id="network",
+        params={},
+        format_data={
+            "add": [1],
+            "unresolved": [
+                {
+                    "soid": "1.3.6.1.4.1.9",
+                    "devices": [{"ip_addr": "10.0.0.1"}, {"ip_addr": "10.0.0.2"}],
+                },
+                {"soid": "1.3.6.1.4.1.99999", "devices": [{"ip_addr": "10.9.9.9"}]},
+            ],
+        },
+    )
+    info = task.info
+    assert info["add"]["count"] == 1
+    assert info["unresolved"]["count"] == 3
+    mapped = {group["soid"]: group for group in info["unresolved"]["data"]}
+    assert mapped["1.3.6.1.4.1.9"]["mapped"] is True
+    assert mapped["1.3.6.1.4.1.9"]["brand"] == "Cisco"
+    assert mapped["1.3.6.1.4.1.9"]["model"] == "C9300"
+    assert mapped["1.3.6.1.4.1.99999"]["mapped"] is False
+    assert mapped["1.3.6.1.4.1.99999"]["brand"] == ""
 
 
 def test_collect_model_topology_contract_properties():

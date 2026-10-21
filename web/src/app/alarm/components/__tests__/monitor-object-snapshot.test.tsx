@@ -41,6 +41,12 @@ const renderWithIntl = (node: React.ReactNode) => render(
       'alarms.cmdbId': 'CMDB 实例 ID',
       'alarms.enrichment': '丰富信息',
       'alarms.rawData': '原始数据',
+      'alarms.state': '状态',
+      'alarms.shield': '屏蔽',
+      'alarms.owners': '责任人',
+      'alarms.ownersTip': '负责人说明',
+      'alarms.operatorTip': '处理人说明',
+      'alarmCommon.operator': '处理人',
       'integration.pushSourceId': '监控源',
     }}
     onError={() => undefined}
@@ -140,6 +146,8 @@ describe('告警关联监控对象快照', () => {
 
     expect(screen.getByText('主机：ip1')).toBeTruthy();
     expect(screen.queryByText('对象类型')).toBeNull();
+    expect(screen.getByRole('button', { name: '处理人' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '责任人' })).toBeTruthy();
   });
 
   it('没有快照时保持旧的对象类型与对象展示', () => {
@@ -152,6 +160,8 @@ describe('告警关联监控对象快照', () => {
     expect(screen.getByText('对象类型')).toBeTruthy();
     expect(screen.getByText('主机')).toBeTruthy();
     expect(screen.getByText('legacy-host')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '处理人' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '责任人' })).toBeTruthy();
   });
 
   it('告警详情展示命名空间化的丰富结果', () => {
@@ -210,6 +220,7 @@ describe('告警关联监控对象快照', () => {
             level: 'critical',
             raw_data: { title: 'cpu' },
             enrichment: { cmdb: { ip_addr: '10.11.27.147' } },
+            assignee: ['admin', 'xxxxxx1'],
           },
         ]}
         levelOptions={[{ label: '严重', value: 'critical' }]}
@@ -222,6 +233,7 @@ describe('告警关联监控对象快照', () => {
 
     expect(screen.getByText(/"title": "cpu"/)).toBeTruthy();
     expect(screen.getByText(/"ip_addr": "10.11.27.147"/)).toBeTruthy();
+    expect(screen.getByText(/"assignee": \[\s*"admin",\s*"xxxxxx1"\s*\]/)).toBeTruthy();
   });
 
   it('集成详情事件表展示监控身份和监控源', () => {
@@ -247,7 +259,7 @@ describe('告警关联监控对象快照', () => {
       resource_name: 'ip1',
       monitor_id: '0001',
       cmdb_id: null,
-      status: 'new',
+      status: 'shield',
       value: 81,
     } as EventTableItem;
 
@@ -262,6 +274,8 @@ describe('告警关联监控对象快照', () => {
     expect(screen.getAllByText('监控实例 ID').length).toBeGreaterThan(0);
     expect(screen.getAllByText('CMDB 实例 ID').length).toBeGreaterThan(0);
     expect(screen.getAllByText('监控源').length).toBeGreaterThan(0);
+    expect(screen.getByText('状态')).toBeTruthy();
+    expect(screen.getByText('屏蔽')).toBeTruthy();
     expect(screen.getByText('cluster-prod-01')).toBeTruthy();
     expect(screen.getByText('0001')).toBeTruthy();
     expect(screen.getAllByText('--').length).toBeGreaterThan(0);
