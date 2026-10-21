@@ -947,7 +947,7 @@
       "trialRunActionsUnavailable": "调试未通过，确认不可用。",
       "trialRunBoundInstance": "实例 {index}",
       "trialRunSelfMetrics": "自监控指标",
-      "trialRunBusinessMetrics": "采集指标",
+      "trialRunBusinessMetrics": "调试结果",
       "trialRunMetricName": "指标名称",
       "trialRunMetricId": "指标 ID",
       "trialRunMetricValue": "采样值",
