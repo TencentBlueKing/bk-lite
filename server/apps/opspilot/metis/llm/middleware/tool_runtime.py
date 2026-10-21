@@ -87,8 +87,26 @@ def _canonical_tool_args(args: Any) -> str:
 _OR_SEARCH_TOOLS = frozenset({"alerts_list_alerts", "log_search_structured"})
 
 
+def _or_search_succeeded(content: str) -> bool:
+    """调用失败不是空结果，允许改正参数后再查。"""
+    text = str(content or "").strip()
+    if not text:
+        return False
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return True
+    if not isinstance(payload, dict):
+        return True
+    if payload.get("success") is False or payload.get("result") is False:
+        return False
+    if payload.get("error") and payload.get("success") is not True:
+        return False
+    return True
+
+
 def repeated_or_search_denial(request: Any) -> ToolMessage | None:
-    """词表已经或检索过一次，换关键字再调同名工具不会得到新范围。"""
+    """词表已经成功或检索过一次，换关键字再调同名工具不会得到新范围。"""
     call = getattr(request, "tool_call", None) or {}
     name = str(call.get("name") or "")
     if name not in _OR_SEARCH_TOOLS:
@@ -101,10 +119,10 @@ def repeated_or_search_denial(request: Any) -> ToolMessage | None:
         if str(getattr(message, "status", "") or "").lower() == "error":
             continue
         content = str(getattr(message, "content", "") or "")
-        if POLICY_RESULT_MARKER in content:
+        if POLICY_RESULT_MARKER in content or not _or_search_succeeded(content):
             continue
         return ToolMessage(
-            content=(f"{POLICY_RESULT_MARKER} 工具 {name} 已按用户原问的词表做过或检索。" "不要换关键字再搜。空结果就是这些词都未命中，直接根据已有结果回答。"),
+            content=(f"{POLICY_RESULT_MARKER} 工具 {name} 已成功按用户原问的词表做过或检索。" "不要换关键字再搜。成功且结果为空才表示这些词都未命中；调用失败不是空结果。"),
             tool_call_id=str(call.get("id") or ""),
             name=name,
             status="error",

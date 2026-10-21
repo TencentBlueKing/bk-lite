@@ -88,6 +88,28 @@ def test_user_message_from_config_strips_page_context():
     assert user_message_from_config(config) == "查询最近24小时的error日志"
 
 
+def test_failed_log_search_does_not_block_a_corrected_retry():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {
+                "id": "call-2",
+                "name": "log_search_structured",
+                "args": {"start": "2026-10-21T14:53:09+08:00", "end": "2026-10-21T15:03:09+08:00"},
+            },
+            "messages": [
+                ToolMessage(
+                    content='{"success": false, "error": "time range values must be RFC3339 timestamps with explicit timezones"}',
+                    tool_call_id="call-1",
+                    name="log_search_structured",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+
 def test_second_log_search_is_denied_after_success():
     request = type(
         "Req",

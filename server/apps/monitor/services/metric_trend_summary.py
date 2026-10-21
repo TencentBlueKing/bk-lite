@@ -55,8 +55,8 @@ def summarize_trend_rows(
     threshold: float,
     horizon_days: float,
 ) -> dict[str, Any]:
-    """只保留预测跨度内会到达阈值的序列，并给出扫描量。"""
-    hits: list[dict[str, Any]] = []
+    """每条有效序列都返回当前值、斜率和到达阈值的天数。within_horizon 标记预测跨度内会到达阈值的序列。"""
+    rows: list[dict[str, Any]] = []
     scanned = 0
     for series in series_list or []:
         if not isinstance(series, dict):
@@ -69,9 +69,8 @@ def summarize_trend_rows(
         current = points[-1][1]
         if slope is None:
             continue
-        days: float | None
         if current >= threshold:
-            days = 0.0
+            days: float | None = 0.0
             within = True
         elif slope <= MIN_SLOPE_PER_DAY:
             days = None
@@ -79,27 +78,34 @@ def summarize_trend_rows(
         else:
             days = (threshold - current) / slope
             within = 0 <= days <= horizon_days
-        if not within or days is None:
-            continue
         labels = _labels_of(series)
-        hits.append(
+        rows.append(
             {
                 "instance_id": labels.get("instance_id") or "",
                 "labels": labels,
                 "current": round(current, 2),
                 "slope_per_day": round(slope, 4),
-                "days_to_threshold": round(days, 2),
-                "within_horizon": True,
+                "days_to_threshold": None if days is None else round(days, 2),
+                "within_horizon": within,
             }
         )
-    hits.sort(key=lambda row: (row["days_to_threshold"], row["instance_id"], str(row["labels"])))
-    truncated = len(hits) > MAX_TREND_ROWS
+    hit_count = sum(1 for row in rows if row["within_horizon"])
+    rows.sort(
+        key=lambda row: (
+            0 if row["within_horizon"] else 1,
+            row["days_to_threshold"] if row["days_to_threshold"] is not None else float("inf"),
+            -row["current"],
+            row["instance_id"],
+            str(row["labels"]),
+        )
+    )
+    truncated = len(rows) > MAX_TREND_ROWS
     return {
         "scanned_series": scanned,
-        "hit_count": len(hits),
+        "hit_count": hit_count,
         "truncated": truncated,
-        "omitted_count": max(0, len(hits) - MAX_TREND_ROWS),
+        "omitted_count": max(0, len(rows) - MAX_TREND_ROWS),
         "threshold": threshold,
         "horizon_days": horizon_days,
-        "rows": hits[:MAX_TREND_ROWS],
+        "rows": rows[:MAX_TREND_ROWS],
     }

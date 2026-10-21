@@ -264,7 +264,7 @@ tools:
       monitor_query_metric_data:
         description: Query time series for a selected metric.
       monitor_summarize_metric_trend:
-        description: Summarize a metric trend from full history and return only series that reach the threshold within the horizon.
+        description: Estimate current value, daily change, and days to a threshold from recent history. Series that will not reach it are included.
       monitor_list_active_alerts:
         description: List active instance alerts from monitor policies (host detail alert tab; not alert-center tickets).
       monitor_query_alert_segments:
@@ -339,7 +339,7 @@ tools:
       log_list_groups:
         description: List accessible log groups.
       log_search_structured:
-        description: Search logs by keyword and time range.
+        description: Search logs by keyword. Pass start and end as RFC3339 with a timezone, for example 2026-10-21T15:03:09+08:00. Omit both to search the last 24 hours.
       log_search_raw:
         description: Search logs with native LogsQL.
   ops_analysis_dashboard:
