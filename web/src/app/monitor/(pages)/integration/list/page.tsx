@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
   Alert,
   Button,
+  Spin,
   Tooltip,
   message,
   Modal,
@@ -24,6 +25,7 @@ import { useScreenAwareRouter } from '@/console-layout';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import {
   isMonitorObjectTypeQueryKey,
+  readMonitorObjectQueryId,
   resolveMonitorObjectQueryId
 } from '@/app/monitor/utils/monitorObjectQuery';
 import {
@@ -44,11 +46,8 @@ import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import {
   buildMonitorObjectSidebarTree,
-  collectCloudFamilyPlatformIds,
   isCloudFamilySidebarType,
-  resolveCloudFamilyTypeQueryValues,
-  UNIFIED_CLOUD_ROOT_TYPE,
-  uniqueMonitorRecords
+  UNIFIED_CLOUD_ROOT_TYPE
 } from '@/app/monitor/utils/monitorObject';
 import { sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import { cloneDeep } from 'lodash';
@@ -69,6 +68,22 @@ import { resolvePluginSourceBadge } from '@/app/monitor/utils/pluginSourceBadge'
 import { downloadPluginConfig } from './exportDownload';
 
 const { confirm } = Modal;
+
+const resolveInitialObjectSelection = (
+  searchParams: Pick<URLSearchParams, 'get'> | null
+) => {
+  const key = readMonitorObjectQueryId(searchParams);
+  if (!key || key === 'all') {
+    return { objectId: '' as React.Key, objectType: '' };
+  }
+  if (isMonitorObjectTypeQueryKey(key)) {
+    return {
+      objectId: '' as React.Key,
+      objectType: isCloudFamilySidebarType(key) ? UNIFIED_CLOUD_ROOT_TYPE : key
+    };
+  }
+  return { objectId: key as React.Key, objectType: '' };
+};
 
 const expandCloudFamilySortData = (
   sortData: TreeSortData[],
@@ -123,6 +138,7 @@ const Integration = () => {
   const pluginRequestIdRef = useRef<number>(0);
   const searchParams = useSearchParams();
   const { syncObjectId } = useMonitorObjectQuery();
+  const initialSelection = resolveInitialObjectSelection(searchParams);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
   const [exportDisabled, setExportDisabled] = useState<boolean>(true);
@@ -132,8 +148,10 @@ const Integration = () => {
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [pluginList, setPluginList] = useState<ObjectItem[]>([]);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
-  const [objectId, setObjectId] = useState<React.Key>('');
-  const [objectType, setObjectType] = useState<string>('');
+  const [objectId, setObjectId] = useState<React.Key>(initialSelection.objectId);
+  const [objectType, setObjectType] = useState<string>(
+    initialSelection.objectType
+  );
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -149,14 +167,7 @@ const Integration = () => {
   useEffect(() => {
     if (isLoading) return;
     getPluginList();
-  }, [
-    isLoading,
-    objectId,
-    objectType,
-    objects,
-    pagination.current,
-    pagination.pageSize
-  ]);
+  }, [isLoading, objectId, objectType, pagination.current, pagination.pageSize]);
 
   useEffect(() => {
     return () => {
@@ -184,7 +195,11 @@ const Integration = () => {
 
   const handleObjectChange = async (id: string) => {
     const nextObjectType =
-      id && id !== 'all' && isTypeNodeKey(String(id)) ? String(id) : '';
+      id && id !== 'all' && isTypeNodeKey(String(id))
+        ? isCloudFamilySidebarType(String(id))
+          ? UNIFIED_CLOUD_ROOT_TYPE
+          : String(id)
+        : '';
     const nextObjectId = !id || id === 'all' || nextObjectType ? '' : id;
     // URL 回写同一节点时不要 abort 刚发出的插件列表请求，否则右侧会停在上一对象。
     if (
@@ -195,6 +210,8 @@ const Integration = () => {
       return;
     }
     cancelAllRequests();
+    setPluginList([]);
+    setPageLoading(true);
     setPagination((prev) => ({ ...prev, current: 1 }));
     syncObjectId(id || 'all');
     setObjectId(nextObjectId);
@@ -214,7 +231,7 @@ const Integration = () => {
     pluginAbortControllerRef.current = abortController;
     const currentRequestId = ++pluginRequestIdRef.current;
     const page = params.page ?? pagination.current;
-    // 翻页保留旧列表,仅 Spin overlay,避免闪 Empty
+    // 翻页保留旧列表，仅 Spin overlay，避免闪 Empty；切对象已在 handleObjectChange 清空。
     setSelectedApp(null);
     setExportDisabled(true);
     setPageLoading(true);
@@ -227,78 +244,22 @@ const Integration = () => {
         params.monitor_object_type !== undefined
           ? params.monitor_object_type
           : objectType;
-      const keyword =
-        params.keyword !== undefined ? params.keyword : searchText;
-      const familyPlatformIds =
-        !monitorObjectId && isCloudFamilySidebarType(String(monitorObjectType))
-          ? collectCloudFamilyPlatformIds(objects)
-          : [];
-      const familyTypeIds =
-        !monitorObjectId &&
-        isCloudFamilySidebarType(String(monitorObjectType)) &&
-        !familyPlatformIds.length
-          ? resolveCloudFamilyTypeQueryValues(String(monitorObjectType))
-          : [];
-      const fetchPluginPage = (
-        query: {
-          monitor_object_id?: React.Key | null;
-          monitor_object_type?: string | null;
-          page?: number;
-          page_size?: number;
+      // 点「云」根只发 1 个请求。BE filter_monitor_object_type 已把 Cloud /
+      // Tencent Cloud / Aliyun Cloud 收成同一组，SCP/CNware 本身 type=Cloud。
+      const data = await getMonitorPlugin(
+        {
+          ...(monitorObjectId ? { monitor_object_id: monitorObjectId } : {}),
+          ...(monitorObjectType
+            ? { monitor_object_type: monitorObjectType }
+            : {}),
+          keyword: params.keyword !== undefined ? params.keyword : searchText,
+          page,
+          page_size: pagination.pageSize
+        },
+        {
+          signal: abortController.signal
         }
-      ) =>
-        getMonitorPlugin(
-          {
-            ...(query.monitor_object_id
-              ? { monitor_object_id: query.monitor_object_id }
-              : {}),
-            ...(query.monitor_object_type
-              ? { monitor_object_type: query.monitor_object_type }
-              : {}),
-            keyword,
-            page: query.page ?? page,
-            page_size: query.page_size ?? pagination.pageSize
-          },
-          {
-            signal: abortController.signal
-          }
-        );
-      // 点「云」根：按侧栏 4 个平台对象（或云族 type）并集取卡，避免只命中 type=Cloud 的 SCP/CNware。
-      if (familyPlatformIds.length || familyTypeIds.length) {
-        const pages = await Promise.all(
-          familyPlatformIds.length
-            ? familyPlatformIds.map((id) =>
-              fetchPluginPage({
-                monitor_object_id: id,
-                page: 1,
-                page_size: -1
-              })
-            )
-            : familyTypeIds.map((typeId) =>
-              fetchPluginPage({
-                monitor_object_type: typeId,
-                page: 1,
-                page_size: -1
-              })
-            )
-        );
-        if (currentRequestId !== pluginRequestIdRef.current) return;
-        const all = uniqueMonitorRecords(
-          pages.flatMap((data) => unwrapMonitorPluginList<ObjectItem>(data))
-        );
-        const start = (page - 1) * pagination.pageSize;
-        setPluginList(all.slice(start, start + pagination.pageSize));
-        setPagination((prev) => ({
-          ...prev,
-          current: page,
-          total: all.length
-        }));
-        return;
-      }
-      const data = await fetchPluginPage({
-        monitor_object_id: monitorObjectId,
-        monitor_object_type: monitorObjectType
-      });
+      );
       if (currentRequestId !== pluginRequestIdRef.current) return;
       const items = unwrapMonitorPluginList<ObjectItem>(data);
       const count = Array.isArray(data)
@@ -614,11 +575,12 @@ const Integration = () => {
             {t('common.export')}
           </Button>
         </div>
-        {pageLoading && !pluginList.length ? (
-          <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" />
-        ) : !pluginList.length ? (
-          <CompactEmptyState description={t('common.noData')} />
-        ) : (
+        <Spin spinning={pageLoading}>
+          {pageLoading && !pluginList.length ? (
+            <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" />
+          ) : !pluginList.length ? (
+            <CompactEmptyState description={t('common.noData')} />
+          ) : (
             <div className="flex min-h-0 flex-1 flex-col">
               <div
                 className="grid min-h-0 w-full flex-1 gap-4 overflow-y-auto"
@@ -833,7 +795,8 @@ const Integration = () => {
                 />
               </div>
             </div>
-        )}
+          )}
+        </Spin>
       </div>
       <ImportModal ref={importRef} onSuccess={onTxtClear} />
       <CreateTemplateModal
