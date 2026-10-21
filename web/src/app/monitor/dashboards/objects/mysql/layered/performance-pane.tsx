@@ -324,9 +324,9 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                 data={statementMix}
                 emptyText={empty}
                 legends={[
-                  { label: 'INSERT', color: HOST_PALETTE.orange },
-                  { label: 'UPDATE', color: HOST_SERIES_COLOR.load5 },
-                  { label: 'DELETE', color: HOST_PALETTE.rose }
+                  { label: 'INSERT', color: HOST_PALETTE.orange, reading: rateReading(metricMap.mysql_com_insert_rate) },
+                  { label: 'UPDATE', color: HOST_SERIES_COLOR.load5, reading: rateReading(metricMap.mysql_com_update_rate) },
+                  { label: 'DELETE', color: HOST_PALETTE.rose, reading: rateReading(metricMap.mysql_com_delete_rate) }
                 ]}
               />
             </div>
