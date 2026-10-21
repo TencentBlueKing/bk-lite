@@ -7,7 +7,6 @@ import { CardAlertDot, cardAlertClass } from '../../host/layered/card-alert';
 import hostStyles from '../../host/layered/layered.module.scss';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import {
-  formatMysqlReplicationLag,
   MYSQL_REPLICATION_EXTRA_METRICS,
   readMysqlReplicationExtras,
   readMysqlReplicationSeries,
@@ -66,17 +65,6 @@ const VALUE_COPY: Record<string, MysqlCategoryCopyKey> = {
   已停止: 'stopped',
   已开启: 'enabled',
   已关闭: 'disabled'
-};
-
-const lagChange = (points: ChartData[] | undefined) => {
-  if (!points || points.length < 2) return undefined;
-  const previous = points[points.length - 2]?.value1;
-  const latest = points[points.length - 1]?.value1;
-  if (typeof previous !== 'number' || typeof latest !== 'number') return undefined;
-  const delta = latest - previous;
-  if (Math.abs(delta) < 0.05) return '较上一点持平';
-  const formatted = formatMysqlReplicationLag(Math.abs(delta));
-  return `较上一点 ${delta > 0 ? '+' : '−'}${formatted}`;
 };
 
 const replicaFields = (fields: MysqlRoleField[]) => REPLICA_LABELS.map((label) => (
@@ -216,7 +204,6 @@ export default function ReplicationPane({
     const key = VALUE_COPY[value];
     return key ? text(key) : value;
   };
-  const lagUnits = { millisecond: text('millisecond'), second: text('second') };
   const block = useMemo(() => readMysqlRoleBlock(metricMap), [metricMap]);
   const extras = useMemo(() => readMysqlReplicationExtras(metricMap), [metricMap]);
   const trends = useMemo(() => readMysqlReplicationSeries(metricMap), [metricMap]);
@@ -225,28 +212,12 @@ export default function ReplicationPane({
   const fields = statusBlock
     ? (statusBlock.kind === 'replica' ? replicaFields(statusBlock.fields) : statusBlock.fields)
     : [];
-  const change = (() => {
-    const raw = lagChange(statusBlock?.delay);
-    if (!raw) return undefined;
-    if (raw === '较上一点持平') return text('lagUnchanged');
-    const points = statusBlock?.delay;
-    if (!points || points.length < 2) return raw;
-    const previous = points[points.length - 2]?.value1;
-    const latest = points[points.length - 1]?.value1;
-    if (typeof previous !== 'number' || typeof latest !== 'number') return raw;
-    const delta = latest - previous;
-    return text('lagDelta', {
-      sign: delta > 0 ? '+' : '−',
-      value: formatMysqlReplicationLag(Math.abs(delta), lagUnits)
-    });
-  })();
   const items: StatusTile[] = fields.map((field) => ({
     key: field.label,
     label: localizeLabel(field.label),
     value: localizeValue(field.value),
     tone: statusTone(field),
     dot: threadDot(field),
-    subtitle: field.label === '复制延迟' ? change : undefined,
     alertLevel: THREAD_LABELS.has(field.label) && field.tone === 'warn'
       ? 'critical' as const
       : (field.tone === 'warn' ? 'warn' as const : undefined)

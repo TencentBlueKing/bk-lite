@@ -4160,8 +4160,6 @@
         "mysqlCategoryLoading": "Loading",
         "mysqlCategoryMillisecond": "ms",
         "mysqlCategorySecond": "s",
-        "mysqlCategoryLagUnchanged": "Unchanged from the previous point",
-        "mysqlCategoryLagDelta": "{sign}{value} from the previous point",
         "mysqlCategoryMemberRole": "Member role",
         "mysqlCategoryMembers": "Members",
         "mysqlCategoryFlowControl": "Flow control",

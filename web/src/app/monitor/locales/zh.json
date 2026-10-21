@@ -4160,8 +4160,6 @@
         "mysqlCategoryLoading": "加载中",
         "mysqlCategoryMillisecond": "毫秒",
         "mysqlCategorySecond": "秒",
-        "mysqlCategoryLagUnchanged": "较上一点持平",
-        "mysqlCategoryLagDelta": "较上一点 {sign}{value}",
         "mysqlCategoryMemberRole": "成员角色",
         "mysqlCategoryMembers": "成员",
         "mysqlCategoryFlowControl": "流控",

@@ -316,7 +316,7 @@ export default function MysqlProLayout({
 
   return (
     <ProTimeWindowProvider timeValues={timeValues} queryTimeRange={queryTimeRange}>
-    <div className={host.root}>
+    <div className={`${host.root} ${pro.fitContent}`}>
       <div className={host.tabBand}>
         <Tabs
           className={host.partitionTabs}

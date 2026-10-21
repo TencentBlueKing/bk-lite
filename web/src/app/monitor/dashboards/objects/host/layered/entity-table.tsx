@@ -70,7 +70,8 @@ export default function LayeredEntityTable({
   rowExpandable,
   toolbar,
   title,
-  alertLevel
+  alertLevel,
+  scrollY = 280
 }: {
   rows: EntityTableRow[];
   columns: LayeredColumn[];
@@ -87,6 +88,11 @@ export default function LayeredEntityTable({
   toolbar?: React.ReactNode;
   /** 本表达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
+  /**
+   * 表体纵向滚动上限。false 时表体跟行数走，不预留空高，避免外层再滚过假空白。
+   * 主机盘默认仍是 280。
+   */
+  scrollY?: number | false;
 }) {
   const tableColumns: ColumnsType<EntityTableRow> = columns.map((column) => ({
     title: column.title,
@@ -157,7 +163,7 @@ export default function LayeredEntityTable({
         pagination={false}
         columns={tableColumns}
         dataSource={rows}
-        scroll={{ x: 'max-content', y: 280 }}
+        scroll={scrollY === false ? { x: 'max-content' } : { x: 'max-content', y: scrollY }}
         locale={{
           emptyText: loading ? (
             <div className="flex min-h-[240px] items-center justify-center">

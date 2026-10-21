@@ -17,6 +17,16 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: none;
+  height: auto;
+  min-height: 0;
+}
+
+/* 盖过主机 .root 的 min-height:100%。短 Tab 只跟内容高，不把外层撑出一屏空白再滚。 */
+.fitContent.fitContent {
+  flex: none;
+  height: auto;
+  min-height: 0;
 }
 
 .perfGrid {

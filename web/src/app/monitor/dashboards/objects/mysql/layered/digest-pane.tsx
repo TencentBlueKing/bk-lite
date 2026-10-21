@@ -49,8 +49,12 @@ const trendData = (points: Array<{ time: number; value: number }> | undefined, l
   }])
 );
 
+/** 表内空态按文案高度走。不要套趋势卡的 min-height，否则表底被撑出一块空白。 */
 const emptyCopy = (copy: { title: string; hint?: string }) => (
-  <GrayTabEmptyState title={copy.title} hint={copy.hint} />
+  <div className="px-3 py-4 text-center">
+    <div className="text-[13px] font-semibold text-[var(--color-text-2)]">{copy.title}</div>
+    {copy.hint ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{copy.hint}</div> : null}
+  </div>
 );
 
 const statementLabel = (key: StatementColumn, row: MysqlStatementRow) => {
@@ -213,6 +217,7 @@ export function StatementPane({
         rows={entities}
         columns={columns}
         loading={loading}
+        scrollY={false}
         selectedKey={selected?.id || ''}
         onSelect={onSelect}
         emptyText={emptyCopy({
@@ -318,6 +323,7 @@ export function WaitPane({
         rows={waitTableRows}
         columns={waitTableColumns}
         loading={loading}
+        scrollY={false}
         selectedKey={selected?.id || ''}
         onSelect={(key) => {
           if (key) onSelect(key);
@@ -340,6 +346,7 @@ export function WaitPane({
         rows={relatedTableRows}
         columns={relatedTableColumns}
         loading={loading && statements.length === 0 && rows.length === 0}
+        scrollY={false}
         selectedKey=""
         onSelect={() => undefined}
         emptyText={relatedEmpty}

@@ -168,8 +168,6 @@ export const MYSQL_CATEGORY_COPY = {
   loading: [textId('mysqlCategoryLoading'), '加载中'],
   millisecond: [textId('mysqlCategoryMillisecond'), '毫秒'],
   second: [textId('mysqlCategorySecond'), '秒'],
-  lagUnchanged: [textId('mysqlCategoryLagUnchanged'), '较上一点持平'],
-  lagDelta: [textId('mysqlCategoryLagDelta'), '较上一点 {sign}{value}'],
   memberRole: [textId('mysqlCategoryMemberRole'), '成员角色'],
   members: [textId('mysqlCategoryMembers'), '成员'],
   flowControl: [textId('mysqlCategoryFlowControl'), '流控'],
