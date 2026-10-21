@@ -39,70 +39,155 @@
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
+  align-self: flex-start;
   gap: 8px;
-  min-width: 280px;
-  min-height: 24px;
+  min-width: 168px;
+  height: 22px;
+  min-height: 22px;
+  margin-top: 1px;
   margin-left: auto;
 }
 
-.hostStrip {
-  display: flex;
+.identityPill {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-width: 0;
-  padding: 8px 12px;
+  height: 22px;
+  padding-inline: 8px;
+  line-height: 20px;
+  border-radius: 999px;
 }
 
-.hostStripName {
+.identitySkeleton {
+  display: inline-block;
   flex: none;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--color-text-1);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hostMeter {
-  display: flex;
-  flex: 1 1 0;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.hostMeterValue {
-  color: var(--color-text-1);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.hostMeterTrack {
-  display: block;
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 6px;
-  overflow: hidden;
+  height: 22px;
   border-radius: 999px;
   background: var(--color-fill-2);
 }
 
-.hostMeterFill {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
+.identitySkeletonRole {
+  width: 40px;
 }
 
-.hostStripJump {
-  margin-top: 0;
-  margin-left: auto;
-  width: fit-content;
-  flex: none;
+.identitySkeletonAside {
+  width: 52px;
+}
+
+.identitySkeletonMore {
+  width: 48px;
+}
+
+.identityMoreBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-1);
+  border-radius: 999px;
+  background: var(--color-fill-1);
+  color: var(--color-text-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.identityMoreBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.identityMoreCaret {
+  font-size: 10px;
+}
+
+.identityMorePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-1);
+  border-radius: 8px;
+  background: var(--color-bg);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-text-1) 8%, transparent);
+}
+
+.identityMoreRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.identityMoreLabel {
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.identityMoreValue {
+  min-width: 0;
+  color: var(--color-text-1);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: right;
+  word-break: break-all;
+}
+
+.identityMoreValue[data-warning] {
+  color: var(--color-warning);
+}
+
+.healthBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hostNote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 28px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.hostNoteName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-1);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hostNoteJump {
+  flex: none;
+  color: var(--color-primary);
   text-decoration: none;
+  white-space: nowrap;
+}
+
+.hostNoteJump:hover {
+  text-decoration: underline;
+}
+
+.hostNoteSkeleton {
+  display: inline-block;
+  width: 160px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--color-fill-2);
 }
 
 @media (max-width: 1100px) {

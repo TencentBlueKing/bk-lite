@@ -603,7 +603,7 @@ export default function MysqlDashboardPage() {
   const showInstanceId =
     Boolean(instanceIdText) &&
     normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
-  // 专业盘角色 / 读写 / Binlog / 版本挂实例白卡右侧。传统盘与全量指标仍用拓扑身份。
+  // 专业盘常显角色 / 读写，其余进「更多」。传统盘与全量指标仍用拓扑身份。
   const identityMetaItems = proMode
     ? []
     : mysqlIdentity.deployment === '单节点'
@@ -620,19 +620,24 @@ export default function MysqlDashboardPage() {
           {mysqlIdentity.role}
         </span>
       ];
+  const mysqlDisplayTimezone = 'Asia/Shanghai';
   const instanceMetaItems = [
     <span key="object-name" className={chrome.instanceMetaInline}>
       {objectDisplayText}
     </span>,
-    showInstanceId ? (
-      <span key="instance-id" className={chrome.instanceMetaMuted}>
-        {instanceIdText}
-      </span>
-    ) : null,
-    ...identityMetaItems,
-    <span key="timezone" className={chrome.instanceMetaMuted}>
-      时区 Asia/Shanghai
-    </span>
+    ...(proMode
+      ? []
+      : [
+        showInstanceId ? (
+          <span key="instance-id" className={chrome.instanceMetaMuted}>
+            {instanceIdText}
+          </span>
+        ) : null,
+        ...identityMetaItems,
+        <span key="timezone" className={chrome.instanceMetaMuted}>
+          时区 {mysqlDisplayTimezone}
+        </span>
+      ])
   ].filter(Boolean) as React.ReactNode[];
   const metricsOverviewGuide = [
     { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' },
@@ -740,7 +745,12 @@ export default function MysqlDashboardPage() {
               onRefresh: refreshDashboard
             }}
             identityExtra={proMode ? (
-              <MysqlInstanceBadges header={identityHeader} pending={identityPending} />
+              <MysqlInstanceBadges
+                header={identityHeader}
+                pending={identityPending}
+                instanceId={instanceIdText}
+                timezone={mysqlDisplayTimezone}
+              />
             ) : undefined}
             styles={chrome}
           />

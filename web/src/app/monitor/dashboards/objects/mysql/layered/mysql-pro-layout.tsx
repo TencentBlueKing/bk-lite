@@ -6,8 +6,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import type { TimeValuesProps } from '@/app/monitor/types';
-import { HOST_DASHBOARD_CONFIG } from '../../host/config';
-import { latestNumber } from '../../host/layered/readings';
 import HostAlertDrawer from '../../host/layered/host-alert-drawer';
 import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { ProTimeWindowProvider } from '../../host/layered/pro-time-window';
@@ -75,8 +73,6 @@ const TAB_COPY: Record<MysqlIaTab, MysqlCategoryCopyKey> = {
   waits: 'tabWaits'
 };
 
-const hostMetric = (name: string) => HOST_DASHBOARD_CONFIG.metrics.find((metric) => metric.name === name);
-
 export default function MysqlProLayout({
   metricMap,
   previousMetricMap,
@@ -114,8 +110,6 @@ export default function MysqlProLayout({
   const [hostPhase, setHostPhase] = useState<'loading' | 'ready'>(() => (
     nodeId.trim() || ip.trim() ? 'loading' : 'ready'
   ));
-  const [cpuPercent, setCpuPercent] = useState<number | null>(null);
-  const [memPercent, setMemPercent] = useState<number | null>(null);
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
   const [eventsPhase, setEventsPhase] = useState<'loading' | 'ready'>('loading');
@@ -155,15 +149,11 @@ export default function MysqlProLayout({
     let active = true;
     if (!nodeId.trim() && !ip.trim()) {
       setLinkedHost(null);
-      setCpuPercent(null);
-      setMemPercent(null);
       setHostPhase('ready');
       return undefined;
     }
     setHostPhase('loading');
     setLinkedHost(null);
-    setCpuPercent(null);
-    setMemPercent(null);
     const load = async () => {
       try {
         const objects = await getMonitorObject({ include_invisible: true });
@@ -215,53 +205,6 @@ export default function MysqlProLayout({
       active = false;
     };
   }, [getInstanceList, getMonitorObject, ip, nodeId]);
-
-  useEffect(() => {
-    if (!linkedHost) {
-      setCpuPercent(null);
-      setMemPercent(null);
-      return undefined;
-    }
-    const cpu = hostMetric('cpu_usage_total');
-    const mem = hostMetric('mem_used_percent');
-    if (!cpu || !mem || !linkedHost.instanceIdValues.length) {
-      setCpuPercent(null);
-      setMemPercent(null);
-      return undefined;
-    }
-    let active = true;
-    const context = {
-      monitorObjectId: linkedHost.monitorObjectId,
-      instanceId: linkedHost.instanceId
-    };
-    const loadOne = (metric: NonNullable<typeof cpu>) => getInstanceQuery(buildSearchParams(
-      metric.query,
-      metric.unit,
-      linkedHost.instanceIdValues,
-      linkedHost.instanceIdKeys,
-      timeValues,
-      undefined,
-      false,
-      minStepSeconds,
-      context
-    )).then((result) => latestNumber(toMetricSeries(
-      metric,
-      result,
-      linkedHost.instanceId,
-      linkedHost.name,
-      linkedHost.instanceIdValues,
-      linkedHost.instanceIdKeys
-    ))).catch(() => null);
-
-    Promise.all([loadOne(cpu), loadOne(mem)]).then(([cpuValue, memValue]) => {
-      if (!active) return;
-      setCpuPercent(cpuValue);
-      setMemPercent(memValue);
-    });
-    return () => {
-      active = false;
-    };
-  }, [getInstanceQuery, linkedHost, minStepSeconds, reloadKey, timeValues]);
 
   useEffect(() => {
     if (tab !== 'overview' || alertDrawerOpen) return undefined;
@@ -433,8 +376,6 @@ export default function MysqlProLayout({
         host={linkedHost}
         hostHref={buildHostDashboardHref(linkedHost)}
         hostLoading={hostPhase === 'loading' || (instanceListLoading && !linkedHost)}
-        cpuPercent={cpuPercent}
-        memPercent={memPercent}
         alertsOpen={alertDrawerOpen}
         alertEvents={alertEvents}
         eventsLoading={eventsPhase === 'loading'}

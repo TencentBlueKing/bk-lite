@@ -13,6 +13,7 @@ import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import classic from '../../host/index.module.scss';
 import host from '../../host/layered/layered.module.scss';
+import pro from './pro.module.scss';
 import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
@@ -21,7 +22,7 @@ import {
   type MysqlHostCandidate,
   type MysqlOverviewReadings
 } from './ia';
-import { MysqlHostStrip } from './instance-identity';
+import { MysqlHostNote } from './instance-identity';
 import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import {
   MYSQL_FOCUS_METRICS,
@@ -39,8 +40,6 @@ interface OverviewPaneProps {
   host: MysqlHostCandidate | null;
   hostHref: string;
   hostLoading: boolean;
-  cpuPercent: number | null;
-  memPercent: number | null;
   alertsOpen: boolean;
   alertEvents: HostAlertRailEvent[];
   eventsLoading: boolean;
@@ -117,8 +116,6 @@ export default function OverviewPane({
   host: linkedHost,
   hostHref,
   hostLoading,
-  cpuPercent,
-  memPercent,
   alertsOpen,
   alertEvents,
   eventsLoading,
@@ -156,14 +153,14 @@ export default function OverviewPane({
 
   return (
     <>
-      <MysqlHostStrip
-        host={linkedHost}
-        href={hostHref}
-        cpuPercent={cpuPercent}
-        memPercent={memPercent}
-        hostLoading={hostLoading}
-      />
-      <ProSectionTitle>{text('healthOverview')}</ProSectionTitle>
+      <div className={pro.healthBlock}>
+        <ProSectionTitle>{text('healthOverview')}</ProSectionTitle>
+        <MysqlHostNote
+          host={linkedHost}
+          href={hostHref}
+          hostLoading={hostLoading}
+        />
+      </div>
       {healthLoading ? (
         <KpiTileRow loading items={MYSQL_LOADING_KPIS} />
       ) : (
