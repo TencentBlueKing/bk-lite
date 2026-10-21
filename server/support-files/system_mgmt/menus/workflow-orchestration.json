@@ -1,6 +1,6 @@
 {
   "client_id": "workflow-orchestration",
-  "name": "Workflow Orchestration",
+  "name": "Workflow",
   "url": "/workflow-orchestration",
   "icon": "liuchengguanli1",
   "tags": [
@@ -12,7 +12,7 @@
   "description": "app.workflow-orchestration",
   "menus": [
     {
-      "name": "Workflow Orchestration",
+      "name": "Workflow",
       "children": [
         {
           "id": "workflow",

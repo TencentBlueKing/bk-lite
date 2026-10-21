@@ -193,6 +193,23 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(mocks.replace).toHaveBeenCalledWith('/workflow-orchestration/workflows/7?mode=edit');
   });
 
+  it('保存草稿时只有保存按钮转圈，发布按钮禁用', async () => {
+    let resolveSave: (value: unknown) => void = () => undefined;
+    mocks.post.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="空白流程" /></App>);
+
+    fireEvent.click(await screen.findByRole('button', { name: /保存草稿/ }));
+
+    const saveButton = await screen.findByRole('button', { name: /保存草稿/ });
+    const publishButton = screen.getByRole('button', { name: /发布/ });
+    expect(saveButton.className).toContain('ant-btn-loading');
+    expect(publishButton.className).not.toContain('ant-btn-loading');
+    expect(publishButton).toHaveProperty('disabled', true);
+
+    resolveSave({ ...workflow, id: 7, name: '空白流程' });
+    await waitFor(() => expect(screen.getByRole('button', { name: /发布/ })).toHaveProperty('disabled', false));
+  });
+
   it('新建流程的第一个节点只能选择触发器', async () => {
     const { container } = render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="空白流程" /></App>);
 

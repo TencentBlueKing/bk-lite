@@ -73,7 +73,7 @@
       "name": "workflow"
     },
     {
-      "title": "Workflow Orchestration Entry",
+      "title": "Workflow Entry",
       "url": "/workflow-orchestration",
       "name": "workflow",
       "isNotMenuItem": true

@@ -112,7 +112,7 @@ describe('AppTopNav builtin app labels', () => {
         apps={[
           {
             name: 'workflow-orchestration',
-            display_name: 'Workflow Orchestration',
+            display_name: 'Workflow',
             url: '/workflow-orchestration',
             icon: 'liuchengguanli1',
             is_build_in: true,
@@ -123,7 +123,7 @@ describe('AppTopNav builtin app labels', () => {
     );
 
     expect(screen.getByRole('link', { name: '编排中心' })).toBeTruthy();
-    expect(screen.queryByText('Workflow Orchestration')).toBeNull();
+    expect(screen.queryByText('Workflow')).toBeNull();
   });
 });
 
