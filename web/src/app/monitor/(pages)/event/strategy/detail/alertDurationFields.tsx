@@ -35,6 +35,7 @@ interface AlertDurationFieldsProps {
   }) => void;
   allowedRecoveryMethods: RecoveryMethodOption[];
   recoveryThresholdUnitLabel: string;
+  hideRecoveryThreshold?: boolean;
   noDataAlert: number | null;
   nodataUnit: string;
   noDataRecovery: number | null;
@@ -96,6 +97,7 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
           addonAfter={consecutivePeriodUnit(t, recoveryCount)}
         />
       </Form.Item>
+      {props.hideRecoveryThreshold ? null : (
       <Form.Item label={fieldLabel(t('monitor.events.recoveryThreshold'))}>
         <RecoveryThresholdInput
           recoveryThreshold={props.recoveryThreshold}
@@ -106,6 +108,7 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
           onRecoveryThresholdChange={props.onRecoveryThresholdChange}
         />
       </Form.Item>
+      )}
       <Form.Item label={fieldLabel(t('monitor.events.noDataAlertLevel'))}>
         <Switch
           checked={noDataEnabled}

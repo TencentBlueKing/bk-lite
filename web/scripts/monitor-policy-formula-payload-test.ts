@@ -5,17 +5,32 @@ import {
   buildMetricDimensionVariables,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
 import {
+  alignFollowerGroupBy,
   assignMetricRowRefs,
   buildMetricExpressionPreviewPayload,
   buildMetricExpressionQueryCondition,
+  buildMultiConditionSentence,
+  buildMultiQueryCondition,
+  conditionLayersFromQueryType,
+  createMetricRow,
+  derivedQueryType,
+  omitMultiMirrorFields,
   DEFAULT_FORMULA_RESULT_NAME,
   extractFormulaRefs,
   getMetricExpressionModeForRows,
+  rowsAfterEnteringFormula,
+  rowsAfterEnteringMulti,
+  rowsAfterLeavingMulti,
+  shouldShowConditionSourceSwitch,
   shouldShowFormulaEditor,
+  shouldWarnQueryTypeChange,
+  switchConditionSource,
   toMetricExpressionStateFromQueryCondition,
   toMetricRowsFromMetricCondition,
   validateMetricExpressionPayload
 } from '../src/app/monitor/(pages)/event/strategy/detail/formulaExpressionUtils';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const assertValidationIncludes = (
   errors: string[],
@@ -108,10 +123,12 @@ assert.deepEqual(
   formulaRows.map((row) => row.ref),
   ['a', 'b']
 );
-assert.equal(getMetricExpressionModeForRows(formulaRows), 'formula');
+assert.equal(getMetricExpressionModeForRows(formulaRows), 'metric');
+assert.equal(getMetricExpressionModeForRows(formulaRows, 'formula'), 'formula');
 assert.equal(getMetricExpressionModeForRows(formulaRows.slice(0, 1)), 'metric');
 
 const formulaPayload = buildMetricExpressionQueryCondition({
+  mode: 'formula',
   resultName: 'HTTP 5xx 错误率',
   expression: 'a / b * 100',
   rows: formulaRows
@@ -737,5 +754,413 @@ assert.deepEqual(timeleftPreviewPayload?.forecast_lookback, {
   value: 4
 });
 assert.deepEqual(timeleftPreviewPayload?.count_predicate, {});
+
+const implicitMultiRows = buildMetricExpressionQueryCondition({
+  resultName: 'CPU 与内存双高',
+  expression: 'a / b',
+  rows: formulaRows
+});
+assert.equal(implicitMultiRows.type, 'metric');
+
+const multiRows = [
+  {
+    ref: 'a',
+    metricId: 1,
+    metricName: 'cpu_usage',
+    filters: [],
+    groupAlgorithm: 'avg',
+    groupBy: ['instance_id', 'device'],
+    algorithm: 'avg_over_time',
+    metricUnit: 'percent',
+    calculationUnit: 'percent',
+    thresholdUnit: '%',
+    role: 'level' as const,
+    threshold: [
+      { level: 'critical', method: '>', value: 90 },
+      { level: 'warning', method: '>', value: 80 }
+    ]
+  },
+  {
+    ref: 'b',
+    metricId: 2,
+    metricName: 'mem_used',
+    filters: [],
+    groupAlgorithm: 'avg',
+    groupBy: ['instance_id'],
+    algorithm: 'avg_over_time',
+    metricUnit: 'percent',
+    calculationUnit: 'percent',
+    thresholdUnit: '%',
+    role: 'level' as const,
+    threshold: [
+      { level: 'warning', method: '>', value: 85 },
+      { level: 'critical', method: '>', value: 95 }
+    ]
+  },
+  {
+    ref: 'c',
+    metricId: 3,
+    metricName: '系统运行时长',
+    filters: [],
+    groupAlgorithm: 'avg',
+    groupBy: ['instance_id'],
+    algorithm: 'avg_over_time',
+    metricUnit: 's',
+    calculationUnit: 's',
+    thresholdUnit: 's',
+    role: 'gate' as const,
+    threshold: [{ method: '>', value: 600 }]
+  }
+];
+
+const multiPayload = buildMultiQueryCondition({
+  resultName: 'CPU 与内存双高',
+  rows: multiRows
+});
+assert.equal(multiPayload.type, 'multi');
+assert.equal(multiPayload.combinator, 'all');
+assert.equal(multiPayload.queries[2].role, 'gate');
+assert.equal(multiPayload.queries[2].threshold.length, 1);
+assert.equal('level' in multiPayload.queries[2].threshold[0], false);
+assert.equal(
+  omitMultiMirrorFields({
+    ...multiPayload,
+    algorithm: 'avg_over_time',
+    group_by: ['instance_id'],
+    threshold: [{ level: 'warning', method: '>', value: 1 }],
+    compare_mode: 'absolute',
+    recovery_threshold: { method: '<', value: 1 },
+    name: 'kept'
+  }).algorithm,
+  undefined
+);
+
+const restoredMulti = toMetricExpressionStateFromQueryCondition(multiPayload);
+assert.equal(restoredMulti.rows[0].role, 'level');
+assert.equal(restoredMulti.rows[2].role, 'gate');
+assert.equal(restoredMulti.rows[0].threshold?.[1].level, 'warning');
+assert.equal(restoredMulti.rows[2].thresholdUnit, 's');
+assert.equal(
+  getMetricExpressionModeForRows(restoredMulti.rows, multiPayload.type),
+  'multi'
+);
+
+assert.equal(
+  buildMultiConditionSentence(multiRows),
+  '当 cpu_usage > 80%（警告起）且 mem_used > 85%（警告起）且 系统运行时长 > 600s 时触发；级别取各条件命中级别的最低者'
+);
+
+assert.throws(
+  () => buildMultiQueryCondition({ resultName: '双高', rows: multiRows.slice(0, 1) }),
+  (error) => error instanceof Error && error.message.includes('2 到 5')
+);
+assert.throws(
+  () =>
+    buildMultiQueryCondition({
+      resultName: '双高',
+      rows: multiRows.map((row) => ({ ...row, role: 'gate' as const, threshold: [{ method: '>', value: 1 }] }))
+    }),
+  (error) => error instanceof Error && error.message.includes('常规条件')
+);
+assert.throws(
+  () =>
+    buildMultiQueryCondition({
+      resultName: '双高',
+      rows: [
+        multiRows[0],
+        { ...multiRows[1], groupBy: ['instance_id', 'mount'] }
+      ]
+    }),
+  (error) => error instanceof Error && error.message.includes('锚点外额外维度')
+);
+
+const multiPreview = buildMetricExpressionPreviewPayload({
+  monitorObjId: 'linux',
+  source: { type: 'instance', values: ['host-1'] },
+  metrics: [
+    { id: 1, name: 'cpu_usage', display_name: 'CPU', unit: 'percent', dimensions: [], instance_id_keys: ['instance_id'] },
+    { id: 2, name: 'mem_used', display_name: '内存', unit: 'percent', dimensions: [], instance_id_keys: ['instance_id'] },
+    { id: 3, name: '系统运行时长', display_name: '运行时长', unit: 's', dimensions: [], instance_id_keys: ['instance_id'] }
+  ],
+  mode: 'multi',
+  resultName: 'CPU 与内存双高',
+  expression: '',
+  rows: multiRows,
+  selectedInstance: previewInstance,
+  period: 5,
+  periodUnit: 'min',
+  algorithm: null,
+  groupAlgorithm: null,
+  groupBy: []
+});
+assert.equal(multiPreview?.query_condition.type, 'multi');
+assert.equal('algorithm' in (multiPreview || {}), false);
+assert.equal('threshold' in (multiPreview || {}), false);
+
+assert.equal(derivedQueryType('single', 'metric'), 'metric');
+assert.equal(derivedQueryType('single', 'formula'), 'formula');
+assert.equal(derivedQueryType('multi', 'metric'), 'multi');
+assert.equal(derivedQueryType('multi', 'formula'), 'multi');
+assert.deepEqual(conditionLayersFromQueryType(singlePayload.type), {
+  count: 'single',
+  source: 'metric'
+});
+assert.deepEqual(conditionLayersFromQueryType(formulaPayload.type), {
+  count: 'single',
+  source: 'formula'
+});
+assert.deepEqual(conditionLayersFromQueryType(multiPayload.type), {
+  count: 'multi',
+  source: 'metric'
+});
+assert.equal(shouldShowConditionSourceSwitch('single'), true);
+assert.equal(shouldShowConditionSourceSwitch('multi'), true);
+assert.equal(
+  shouldWarnQueryTypeChange({
+    isPersisted: true,
+    savedType: 'metric',
+    nextType: 'formula'
+  }),
+  true
+);
+assert.equal(
+  shouldWarnQueryTypeChange({
+    isPersisted: true,
+    savedType: 'formula',
+    nextType: 'metric'
+  }),
+  true
+);
+assert.equal(
+  shouldWarnQueryTypeChange({
+    isPersisted: true,
+    savedType: 'metric',
+    nextType: 'multi'
+  }),
+  true
+);
+assert.equal(
+  shouldWarnQueryTypeChange({
+    isPersisted: true,
+    savedType: 'multi',
+    nextType: 'metric'
+  }),
+  true
+);
+assert.equal(
+  shouldWarnQueryTypeChange({
+    isPersisted: true,
+    savedType: 'multi',
+    nextType: 'multi'
+  }),
+  false
+);
+assert.equal(
+  shouldWarnQueryTypeChange({
+    isPersisted: false,
+    savedType: 'metric',
+    nextType: 'formula'
+  }),
+  false
+);
+
+const nativeRow = createMetricRow(0, {
+  metricId: 11,
+  metricName: 'cpu_usage',
+  groupBy: ['instance_id']
+});
+const enteredMulti = rowsAfterEnteringMulti([nativeRow], {
+  algorithm: 'avg_over_time',
+  groupBy: ['instance_id']
+});
+assert.equal(enteredMulti.length, 2);
+assert.equal(enteredMulti[0].metricId, 11);
+assert.equal(enteredMulti[0].threshold?.length, 3);
+assert.equal(enteredMulti[1].ref, 'b');
+assert.equal(enteredMulti[1].role, 'level');
+const enteredFormula = rowsAfterEnteringFormula([
+  nativeRow,
+  createMetricRow(1, { metricId: 99, metricName: 'hidden' })
+]);
+assert.equal(enteredFormula.length, 2);
+assert.equal(enteredFormula[0].ref, 'a');
+assert.equal(enteredFormula[0].metricId, 11);
+assert.equal(enteredFormula[1].ref, 'b');
+assert.equal(enteredFormula[1].metricId, null);
+assert.equal(
+  buildMultiConditionSentence([
+    { ...nativeRow, threshold: [{ level: 'warning', method: '>', value: null }] },
+    { ...createMetricRow(1), role: 'gate', threshold: [{ method: '>', value: null }] }
+  ]),
+  '当 cpu_usage 未设阈值且 b 未设阈值 时触发；级别取各条件命中级别的最低者'
+);
+assert.match(
+  buildMultiConditionSentence([
+    {
+      ...nativeRow,
+      ref: 'a',
+      source: 'formula',
+      resultName: '',
+      operands: [{ ...nativeRow, ref: 'a1', metricLabel: 'CPU使用率' }]
+    }
+  ]),
+  /^当 CPU使用率 未设阈值/
+);
+assert.match(
+  buildMultiConditionSentence([
+    {
+      ...nativeRow,
+      ref: 'a',
+      source: 'formula',
+      resultName: '',
+      operands: [createMetricRow(0, { ref: 'a1' })]
+    }
+  ]),
+  /^当 未命名结果 未设阈值/
+);
+const keptOperands = rowsAfterEnteringMulti(
+  [
+    createMetricRow(0, { metricId: 1, groupBy: ['instance_id', 'status'] }),
+    createMetricRow(1, { metricId: 2, groupBy: ['instance_id'] })
+  ],
+  { algorithm: 'max_over_time', groupBy: ['instance_id'] }
+);
+assert.equal(keptOperands.length, 2);
+assert.equal(keptOperands[0].algorithm, 'max_over_time');
+assert.deepEqual(keptOperands[1].groupBy, ['instance_id']);
+assert.equal(rowsAfterLeavingMulti(keptOperands).length, 1);
+assert.equal(rowsAfterLeavingMulti(keptOperands)[0].metricId, 1);
+assert.deepEqual(
+  alignFollowerGroupBy(
+    [
+      { ...keptOperands[0], groupBy: ['instance_id'] },
+      { ...keptOperands[1], groupBy: ['instance_id', 'mount'] }
+    ],
+    ['instance_id']
+  )[1].groupBy,
+  ['instance_id']
+);
+
+const zhEvents = JSON.parse(
+  readFileSync(resolve('src/app/monitor/locales/zh.json'), 'utf8')
+).monitor.events;
+const enEvents = JSON.parse(
+  readFileSync(resolve('src/app/monitor/locales/en.json'), 'utf8')
+).monitor.events;
+for (const key of [
+  'conditionCountSingle',
+  'conditionCountSingleHint',
+  'conditionCountMulti',
+  'conditionCountMultiHint',
+  'conditionSourceMetric',
+  'conditionSourceFormula',
+  'multiAlignHint'
+]) {
+  assert.equal(typeof zhEvents[key], 'string', key);
+  assert.equal(typeof enEvents[key], 'string', key);
+  assert.notEqual(zhEvents[key], '');
+  assert.notEqual(enEvents[key], '');
+}
+assert.equal(zhEvents.conditionCountSingle, '单条件');
+assert.equal(zhEvents.conditionCountMulti, '多条件');
+assert.equal(zhEvents.conditionSourceMetric, '原生指标');
+assert.equal(zhEvents.conditionSourceFormula, '计算指标');
+assert.equal(zhEvents.multiAlignHint, '其余条件按第一条的实例对齐');
+assert.equal(zhEvents.multiAlignHint.includes('锚点'), false);
+assert.equal(multiPayload.queries[0].source, undefined);
+
+const formulaRow = switchConditionSource(
+  createMetricRow(0, {
+    ref: 'a',
+    metricId: 11,
+    metricName: 'error_total',
+    metricLabel: '错误数',
+    groupAlgorithm: 'sum',
+    groupBy: ['instance_id'],
+    algorithm: 'avg_over_time',
+    role: 'level',
+    calculationUnit: 'percent',
+    thresholdUnit: 'percent',
+    threshold: [
+      { level: 'warning', method: '>', value: 5 },
+      { level: 'error', method: '>', value: 10 },
+      { level: 'critical', method: '>', value: 20 }
+    ]
+  }),
+  'formula'
+);
+formulaRow.resultName = '错误率';
+if (formulaRow.operands?.[0] && formulaRow.operands?.[1]) {
+  formulaRow.operands[0].groupBy = ['instance_id', 'device'];
+  formulaRow.operands[1].metricId = 12;
+  formulaRow.operands[1].metricName = 'request_total';
+  formulaRow.operands[1].groupBy = ['instance_id'];
+  formulaRow.groupBy = ['instance_id', 'device'];
+}
+const formulaMulti = buildMultiQueryCondition({
+  resultName: '错误率与请求数',
+  rows: [formulaRow, multiRows[2]]
+});
+assert.equal(formulaMulti.type, 'multi');
+assert.equal(formulaMulti.queries[0].source, 'formula');
+assert.equal(formulaMulti.queries[0].metric_name, '错误率');
+assert.equal(formulaMulti.queries[0].expression, 'a1 / a2 * 100');
+assert.equal(formulaMulti.queries[0].metric_unit, '');
+assert.equal('group_algorithm' in formulaMulti.queries[0], false);
+assert.deepEqual(formulaMulti.queries[0].group_by, ['instance_id', 'device']);
+assert.deepEqual(formulaMulti.queries[0].operands?.[0].group_by, ['instance_id', 'device']);
+assert.deepEqual(formulaMulti.queries[0].operands?.[1].group_by, ['instance_id']);
+assert.equal(formulaMulti.queries[0].operands?.[1].metric_id, 12);
+assert.equal(formulaMulti.queries[1].source, undefined);
+assert.equal(
+  derivedQueryType('multi', formulaRow.source || 'metric'),
+  'multi'
+);
+assert.equal(
+  shouldWarnQueryTypeChange({
+    isPersisted: true,
+    savedType: 'multi',
+    nextType: derivedQueryType('multi', 'formula')
+  }),
+  false
+);
+
+const echoedFormula = toMetricExpressionStateFromQueryCondition(formulaMulti);
+assert.equal(echoedFormula.rows[0].source, 'formula');
+assert.equal(echoedFormula.rows[0].resultName, '错误率');
+assert.equal(echoedFormula.rows[0].expression, 'a1 / a2 * 100');
+assert.equal(echoedFormula.rows[0].operands?.[0].metricId, 11);
+assert.equal(echoedFormula.rows[1].source, undefined);
+assert.equal(
+  buildMultiConditionSentence([
+    { ...formulaRow, resultName: '错误率' },
+    multiRows[2]
+  ]).includes('错误率'),
+  true
+);
+assert.throws(
+  () =>
+    buildMultiQueryCondition({
+      resultName: '错误率与请求数',
+      rows: [{ ...formulaRow, algorithm: 'rate' }, multiRows[2]]
+    }),
+  /逐序列/
+);
+assert.throws(
+  () =>
+    buildMultiQueryCondition({
+      resultName: '错误率与请求数',
+      rows: [
+        {
+          ...formulaRow,
+          operands: (formulaRow.operands || []).map((operand, index) =>
+            index === 1 ? { ...operand, groupBy: ['instance_id', 'mount'] } : operand
+          )
+        },
+        multiRows[2]
+      ]
+    }),
+  /锚点外额外维度/
+);
 
 console.log('monitor-policy-formula-payload-test passed');

@@ -40,6 +40,12 @@ import {
   timeleftRequiresLowSideThresholds
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
+import { MetricExpressionRow } from './metricExpressionTypes';
+import {
+  buildMultiConditionSentence,
+  MetricExpressionMode,
+  validateMultiConditionRows
+} from './formulaExpressionUtils';
 import AlertDurationFields, {
   STRATEGY_CONDITION_LABEL_CLASS,
   STRATEGY_CONDITION_LABEL_WIDTH,
@@ -63,6 +69,9 @@ interface AlertConditionsFormProps {
   functionDelayMinutes: number | null;
   metricUnit: string | null;
   isFormulaMode: boolean;
+  metricExpressionMode?: MetricExpressionMode;
+  metricRows?: MetricExpressionRow[];
+  onMetricRowsChange?: (rows: MetricExpressionRow[]) => void;
   period: number | null;
   periodUnit: string;
   compareMode: string;
@@ -112,6 +121,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   functionDelayMinutes,
   metricUnit,
   isFormulaMode,
+  metricExpressionMode = 'metric',
+  metricRows = [],
+  onMetricRowsChange,
   period,
   periodUnit,
   compareMode,
@@ -138,7 +150,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onForecastTargetUnitChange,
   onForecastLookbackChange,
   onRecoveryThresholdChange,
-  onCountPredicateChange,
   isTrap
 }) => {
   const { t } = useTranslation();
@@ -180,6 +191,19 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
 
   // 三个级别都展示，但只校验填了数值的行。空行忽略，至少一行即可提交。
   const validateThreshold = async () => {
+    if (metricExpressionMode === 'multi') {
+      const errors = validateMultiConditionRows({
+        resultName: 'kept',
+        rows: metricRows
+      }).filter(
+        (message) =>
+          message.includes('阈值') || message.includes('常规条件')
+      );
+      if (errors.length) {
+        return Promise.reject(new Error(errors[0]));
+      }
+      return Promise.resolve();
+    }
     const filled = completedThresholds(threshold);
     if (!filled.length) {
       return Promise.reject(new Error(t('monitor.events.thresholdRequired')));
@@ -541,7 +565,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         {({ getFieldValue }) =>
           isTrap(getFieldValue) ? null : (
             <>
-              {!isEnumMetric && (
+              {metricExpressionMode !== 'multi' && !isEnumMetric && (
                 <>
                 <Form.Item
                   required
@@ -642,7 +666,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 ) : null}
                 </>
               )}
-              {compareMode === COMPARE_MODE_TIMELEFT && !isEnumMetric && (
+              {metricExpressionMode !== 'multi' && compareMode === COMPARE_MODE_TIMELEFT && !isEnumMetric && (
                 <>
                   <Form.Item
                     required
@@ -738,6 +762,100 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 }
                 rules={[{ validator: validateThreshold }]}
               >
+                {metricExpressionMode === 'multi' ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="text-sm text-[var(--color-text-2)]">
+                      {t('monitor.events.multiCombinatorAll')}
+                    </div>
+                    {metricRows.map((row, rowIndex) => (
+                      <div key={row.ref} className="flex flex-col gap-2">
+                        <span className="text-sm text-[var(--color-text-1)]">
+                          {row.ref} {row.metricLabel || row.metricName || ''}
+                          {row.role === 'gate' ? ` · ${t('monitor.events.multiRoleGate')}` : ''}
+                        </span>
+                        {row.role === 'gate' ? (
+                          <div className="flex gap-2">
+                            <Select
+                              className="w-[120px]"
+                              value={row.threshold?.[0]?.method || '>'}
+                              options={COMPARISON_METHOD.map((item) => ({
+                                label: item.label,
+                                value: item.value
+                              }))}
+                              onChange={(method) =>
+                                onMetricRowsChange?.(
+                                  metricRows.map((item, index) =>
+                                    index === rowIndex
+                                      ? {
+                                        ...item,
+                                        threshold: [{
+                                          method,
+                                          value: item.threshold?.[0]?.value ?? null
+                                        }]
+                                      }
+                                      : item
+                                  )
+                                )
+                              }
+                            />
+                            <InputNumber
+                              className="w-[160px]"
+                              addonAfter={
+                                resolveMetricDisplayUnit(row.thresholdUnit, unitList) ||
+                                undefined
+                              }
+                              value={row.threshold?.[0]?.value ?? null}
+                              onChange={(value) =>
+                                onMetricRowsChange?.(
+                                  metricRows.map((item, index) =>
+                                    index === rowIndex
+                                      ? {
+                                        ...item,
+                                        threshold: [{
+                                          method: item.threshold?.[0]?.method || '>',
+                                          value: typeof value === 'number' ? value : null
+                                        }]
+                                      }
+                                      : item
+                                  )
+                                )
+                              }
+                            />
+                          </div>
+                        ) : (
+                          <ThresholdList
+                            data={(row.threshold || []).filter(
+                              (item): item is ThresholdField => Boolean(item.level)
+                            )}
+                            onChange={(next) =>
+                              onMetricRowsChange?.(
+                                metricRows.map((item, index) =>
+                                  index === rowIndex ? { ...item, threshold: next } : item
+                                )
+                              )
+                            }
+                            thresholdUnit={row.thresholdUnit || null}
+                            onThresholdUnitChange={(unit) =>
+                              onMetricRowsChange?.(
+                                metricRows.map((item, index) =>
+                                  index === rowIndex
+                                    ? { ...item, thresholdUnit: unit, calculationUnit: unit }
+                                    : item
+                                )
+                              )
+                            }
+                            unitOptions={filteredUnitOptions}
+                            showUnitSelector={false}
+                            unitAddonLabel={
+                              resolveMetricDisplayUnit(row.thresholdUnit, unitList) ||
+                              ''
+                            }
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
                 <ThresholdList
                   data={threshold}
                   onChange={onThresholdChange}
@@ -752,14 +870,34 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   }
                   unitAddonLabel={thresholdValueUnitLabel}
                 />
+                )}
               </Form.Item>
               <p
                 className="mb-4 text-[13px] leading-[22px] text-[var(--color-text-3)]"
                 style={{ marginLeft: STRATEGY_CONDITION_LABEL_WIDTH }}
               >
-                {restatement}
+                {metricExpressionMode === 'multi'
+                  ? buildMultiConditionSentence(
+                    metricRows.map((row) => ({
+                      ...row,
+                      thresholdUnit:
+                          resolveMetricDisplayUnit(row.thresholdUnit, unitList) ||
+                          ''
+                    })),
+                    {
+                      levelNames: {
+                        warning: t('monitor.events.warning'),
+                        error: t('monitor.events.error'),
+                        critical: t('monitor.events.critical')
+                      },
+                      unsetThreshold: t('monitor.events.multiThresholdUnset'),
+                      unnamedResult: t('monitor.events.multiResultUnnamed')
+                    }
+                  )
+                  : restatement}
               </p>
               <AlertDurationFields
+                hideRecoveryThreshold={metricExpressionMode === 'multi'}
                 recoveryThreshold={recoveryThreshold}
                 onRecoveryThresholdChange={onRecoveryThresholdChange}
                 allowedRecoveryMethods={allowedRecoveryMethods}
