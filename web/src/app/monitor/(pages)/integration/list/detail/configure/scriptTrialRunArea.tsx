@@ -1295,6 +1295,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                     item.samples
                   );
                   const sampleCount = item.samples?.length || 1;
+                  const showSampleCountHint = visibleDimensionNames.length > 0;
                   const previewSamples =
                     item.samples?.length
                       ? item.samples.map((sample) => ({ value: sample.value }))
@@ -1305,7 +1306,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         <div className="min-w-0 max-w-full truncate text-right font-mono text-xs leading-4 tabular-nums text-[var(--color-text-3)]">
                           {String(item.value)}
                         </div>
-                        {sampleCount > 1 ? (
+                        {showSampleCountHint ? (
                           <Popover
                             placement="bottomRight"
                             arrow={false}
@@ -1313,7 +1314,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                               <span className="text-xs font-medium text-[var(--color-text-1)]">
                                 {t(
                                   'monitor.integrations.trialRunSampleCount',
-                                  '共 {count} 条',
+                                  '共 {count} 条维度',
                                   { count: sampleCount }
                                 )}
                               </span>
@@ -1331,7 +1332,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                             <div className="cursor-help text-right text-[11px] leading-[14px] text-[var(--color-text-3)] underline decoration-dashed decoration-[var(--color-text-3)] underline-offset-2">
                               {t(
                                 'monitor.integrations.trialRunSampleCount',
-                                '共 {count} 条',
+                                '共 {count} 条维度',
                                 { count: sampleCount }
                               )}
                             </div>

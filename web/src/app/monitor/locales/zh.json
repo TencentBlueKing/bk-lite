@@ -951,7 +951,7 @@
       "trialRunMetricName": "指标名称",
       "trialRunMetricId": "指标 ID",
       "trialRunMetricValue": "采样值",
-      "trialRunSampleCount": "共 {count} 条",
+      "trialRunSampleCount": "共 {count} 条维度",
       "trialRunSampleMore": "还有 {count} 条",
       "trialRunMetricDimensions": "维度",
       "trialRunMetricDescription": "指标描述",

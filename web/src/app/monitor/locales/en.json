@@ -951,7 +951,7 @@
       "trialRunMetricName": "Metric Name",
       "trialRunMetricId": "Metric ID",
       "trialRunMetricValue": "Sample Value",
-      "trialRunSampleCount": "{count} samples",
+      "trialRunSampleCount": "{count} dimensions",
       "trialRunSampleMore": "{count} more",
       "trialRunMetricDimensions": "Dimensions",
       "trialRunMetricDescription": "Metric Description",
