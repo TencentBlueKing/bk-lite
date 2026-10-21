@@ -7,7 +7,7 @@ import { ClientData } from '@/types/index';
 import { useRoleApi } from '@/app/system-manager/api/application';
 import { resolveAppDescription, resolveAppDisplayName, resolveAppTag } from '@/utils/appDisplayName';
 
-interface ApplicationClientData extends ClientData {
+export interface ApplicationClientData extends ClientData {
   source_display_name: string;
   source_description: string;
   tagList: string[];

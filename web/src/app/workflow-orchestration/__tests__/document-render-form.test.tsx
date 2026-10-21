@@ -75,6 +75,28 @@ describe('文档生成节点配置', () => {
     expect(screen.getByText('数据如何进模板')).not.toBeNull();
   });
 
+  it('只读时文档数据不能改', () => {
+    render(<IntlProvider locale="zh-CN" messages={{}}><App><DocumentRenderForm
+      schema={{
+        type: 'object',
+        properties: {
+          template: { type: 'object', title: 'Word / Excel 模板' },
+          data: { type: 'object', title: '文档数据' },
+        },
+        required: ['template', 'data'],
+      }}
+      value={{ data: { host: 'a' } }}
+      references={[]}
+      nodeTitle="文档生成"
+      readOnly
+      onChange={vi.fn()}
+      onNodeTitleChange={vi.fn()}
+    /></App></IntlProvider>);
+
+    expect(document.querySelector('textarea.font-mono')?.hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByRole('button', { name: '上传 Word / Excel 模板' })).toBeNull();
+  });
+
   it('已上传模板时回显文件名，并可移除后重新上传', () => {
     const onChange = vi.fn();
     render(<IntlProvider locale="zh-CN" messages={{}}><App><DocumentRenderForm

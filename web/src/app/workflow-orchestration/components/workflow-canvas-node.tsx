@@ -53,6 +53,7 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<WorkflowNod
   const defaultSourceConnections = useNodeConnections({ handleType: 'source' });
   const act = (action: WorkflowNodeAction, sourceHandle?: string) => data.onAction?.(action, id, sourceHandle);
   const executableNode = (data.kind === 'atom' || data.kind === 'trigger') && !data.readOnly && !data.locked;
+  const connectable = !data.readOnly && !data.locked;
   const handleClassName = 'h-4! w-4! border! border-[var(--color-border-4)]! bg-[var(--color-bg)]!';
   const cardShape = data.kind === 'trigger' ? 'rounded-[36px_8px_8px_36px]' : 'rounded-lg';
   const branches = (data.branches?.length
@@ -81,16 +82,17 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<WorkflowNod
                   : branch.label;
     return { ...branch, label };
   });
+  const showToolbar = executableNode || connectable || data.kind === 'atom';
   return <div className="relative h-24 w-24 text-center" data-workflow-node={data.kind}>
-    {data.kind !== 'trigger' && <Handle type="target" position={Position.Left} className={handleClassName} />}
-    <NodeToolbar isVisible={selected} position={Position.Top} offset={12}>
+    {data.kind !== 'trigger' && <Handle type="target" position={Position.Left} className={handleClassName} isConnectable={connectable} isConnectableStart={connectable} isConnectableEnd={connectable} />}
+    {showToolbar ? <NodeToolbar isVisible={selected} position={Position.Top} offset={12}>
       <div className="flex h-7 items-center overflow-hidden rounded bg-[var(--color-fill-2)]">
         {executableNode && <ToolbarButton label={t('workflowOrchestration.editor.singleStep', '单步执行')} operation="Execute" icon={<PlayCircleOutlined />} onClick={() => act('test')} />}
-        <ToolbarButton label={data.readOnly ? t('common.view', '查看') : t('workflowOrchestration.editor.configure', '配置')} operation={data.readOnly ? 'View' : 'Edit'} icon={<EditOutlined />} onClick={() => act('configure')} />
+        {connectable ? <ToolbarButton label={t('workflowOrchestration.editor.configure', '配置')} operation="Edit" icon={<EditOutlined />} onClick={() => act('configure')} /> : null}
         {data.kind === 'atom' && <ToolbarButton label={t('workflowOrchestration.editor.viewAtomDetails', '查看原子详情')} operation="View" icon={<EyeOutlined />} onClick={() => act('detail')} />}
-        {!data.readOnly && !data.locked && <ToolbarButton label={t('workflowOrchestration.editor.deleteNode', '删除节点')} operation="Edit" danger icon={<DeleteOutlined />} onClick={() => act('delete')} />}
+        {connectable ? <ToolbarButton label={t('workflowOrchestration.editor.deleteNode', '删除节点')} operation="Edit" danger icon={<DeleteOutlined />} onClick={() => act('delete')} /> : null}
       </div>
-    </NodeToolbar>
+    </NodeToolbar> : null}
     <WorkflowPermission operation="View" className="block"><button
       type="button"
       aria-label={data.title}
@@ -111,13 +113,13 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<WorkflowNod
       const top = `${((index + 1) / (branches.length + 1)) * 100}%`;
       const connected = defaultSourceConnections.some((connection) => connection.sourceHandle === branch.id);
       return <div key={branch.id}>
-        <Handle id={branch.id} type="source" position={Position.Right} className={handleClassName} style={{ top }} />
+        <Handle id={branch.id} type="source" position={Position.Right} className={handleClassName} style={{ top }} isConnectable={connectable} isConnectableStart={connectable} isConnectableEnd={connectable} />
         {!connected && !data.readOnly && !data.locked
           ? <HandleExtension top={top} label={branch.label} onClick={() => act('add', branch.id)} />
           : <span className="pointer-events-none absolute left-[108px] z-10 -translate-y-1/2 bg-[var(--color-fill-1)]/85 text-xs leading-3 text-[var(--color-text-3)]" style={{ top }}>{branch.label}</span>}
       </div>;
     })}</> : data.kind !== 'return' && <>
-      <Handle type="source" position={Position.Right} className={handleClassName} />
+      <Handle type="source" position={Position.Right} className={handleClassName} isConnectable={connectable} isConnectableStart={connectable} isConnectableEnd={connectable} />
       {!defaultSourceConnections.length && !data.readOnly && !data.locked ? <HandleExtension top="50%" onClick={() => act('add')} /> : null}
     </>}
   </div>;

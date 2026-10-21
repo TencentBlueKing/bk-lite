@@ -17,10 +17,12 @@
     "action": {
       "run": "运行",
       "moreFor": "更多操作：{name}",
+      "copyToWorkflows": "复制到流程",
       "confirmDuplicate": "确认复制"
     },
     "workflow": {
       "name": "流程名称",
+      "templateName": "模版名称",
       "shortName": "流程",
       "deleted": "流程已删除",
       "status": "流程状态",
@@ -30,6 +32,8 @@
       "custom": "自定义",
       "create": "新建流程",
       "duplicate": "复制流程",
+      "marketDuplicateHint": "复制后出现在「流程」里，状态是纯草稿，不会发布，也不会改动这条内置流程。",
+      "marketEmpty": "还没有内置流程",
       "runTitle": "运行流程 · {name}",
       "searchPlaceholder": "搜索流程名称",
       "refresh": "刷新流程列表",
