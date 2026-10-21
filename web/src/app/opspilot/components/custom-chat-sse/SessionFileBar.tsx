@@ -89,12 +89,12 @@ const SessionFileBar: React.FC<{ files: SessionFileItem[] }> = ({ files }) => {
                 </div>
                 {generatedAt ? (
                   <div className="mt-0.5 truncate text-[11px] text-[var(--color-text-3)]">
-                    {t('chat.fileGeneratedAt', '生成时间 {time}').replace('{time}', generatedAt)}
+                    {t('chat.fileGeneratedAt', '生成时间 {time}', { time: generatedAt })}
                   </div>
                 ) : null}
                 {file.source ? (
                   <div className="truncate text-[11px] text-[var(--color-text-3)]" title={file.source}>
-                    {t('chat.fileSource', '对话：{source}').replace('{source}', file.source)}
+                    {t('chat.fileSource', '对话：{source}', { source: file.source })}
                   </div>
                 ) : null}
               </div>
