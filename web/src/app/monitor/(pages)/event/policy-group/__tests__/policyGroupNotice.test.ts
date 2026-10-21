@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPolicyGroupNoticePayload } from '../policyGroupNotice';
+import { buildPolicyGroupNoticePayload, policyGroupListBadges } from '../policyGroupNotice';
 
 describe('策略组通知与处理人', () => {
   it('关闭通知仍提交处理人，并清空通知人和通知方式', () => {
@@ -58,5 +58,27 @@ describe('策略组通知与处理人', () => {
       notice_users: [],
       handlers: [],
     });
+  });
+});
+
+describe('策略组列表缺口', () => {
+  it('通知关闭或已经配好时不在名称旁罗列渠道和人员', () => {
+    expect(policyGroupListBadges({ notice: false, noticeTypeIds: [], handlersUniform: true })).toEqual([]);
+    expect(policyGroupListBadges({ notice: true, noticeTypeIds: [3], handlersUniform: true })).toEqual([]);
+  });
+
+  it('通知开着但没选方式时只标这个缺口', () => {
+    expect(policyGroupListBadges({ notice: true, noticeTypeIds: [] })).toEqual(['未选通知方式']);
+  });
+
+  it('组内不一致时分别标出通知和处理人', () => {
+    expect(
+      policyGroupListBadges({
+        notice: true,
+        noticeUniform: false,
+        noticeTypeIds: [3],
+        handlersUniform: false,
+      })
+    ).toEqual(['通知不一致', '处理人不一致']);
   });
 });

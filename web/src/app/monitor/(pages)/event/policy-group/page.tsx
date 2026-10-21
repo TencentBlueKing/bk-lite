@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
+import { Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
@@ -25,7 +25,7 @@ import assetStyle from '../strategy/index.module.scss';
 import ThresholdList, { ThresholdItem } from '../strategy/detail/thresholdList';
 import SelectCard from '../strategy/detail/selectCard';
 import { seedNoticeUsersFromHandlers, shouldRequireNoticeUsers } from '../strategy/detail/strategyDetailUtils';
-import { buildPolicyGroupNoticePayload } from './policyGroupNotice';
+import { buildPolicyGroupNoticePayload, policyGroupListBadges } from './policyGroupNotice';
 import { ChannelItem } from '@/app/monitor/types/event';
 import { formatUserName } from '@/utils/userDisplay';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -35,6 +35,8 @@ interface PolicyGroupRule {
   name: string;
   plugin_name: string;
   threshold: Array<{ level?: string; method?: string; value?: number }>;
+  query_type?: string;
+  condition_thresholds?: Record<string, Array<{ level?: string; method?: string; value?: number | null }>>;
   open_alert_count?: number;
 }
 
@@ -109,6 +111,10 @@ const CHANNEL_ICON: Record<string, string> = {
   custom_webhook: 'webhook',
   nats: 'dongzuo1',
 };
+
+const NAME_COLUMN_WIDTH = 162;
+const COMPACT_COLUMN_WIDTH = 120;
+const ACTION_COLUMN_WIDTH = 260;
 
 const CHANNEL_TYPE_KEY: Record<string, string> = {
   email: 'monitor.events.channelTypeEmail',
@@ -190,6 +196,9 @@ const PolicyGroupPage: React.FC = () => {
   const [rule, setRule] = useState<PolicyGroupRule | null>(null);
   const [ruleSaving, setRuleSaving] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState<ThresholdItem[]>([]);
+  const [conditionDraft, setConditionDraft] = useState<
+    Record<string, Array<{ level?: string; method?: string; value?: number | null }>>
+  >({});
   const [noticeGroup, setNoticeGroup] = useState<PolicyGroupRow | null>(null);
   const [noticeEnabled, setNoticeEnabled] = useState(false);
   const [noticeTypeIds, setNoticeTypeIds] = useState<number[]>([]);
@@ -476,26 +485,36 @@ const PolicyGroupPage: React.FC = () => {
       title: t('common.name'),
       dataIndex: 'name',
       key: 'name',
-      render: (_, record) => (
-        <span className="inline-flex items-center gap-2">
-          <span>{record.name}</span>
-          {record.notice_uniform !== false && !(record.notice_type_ids || []).length ? (
-            <StatusToneBadge tone="warning" label="未配置通知" />
-          ) : null}
-        </span>
-      ),
+      width: NAME_COLUMN_WIDTH,
+      render: (_, record) => {
+        const badges = policyGroupListBadges({
+          notice: record.notice,
+          noticeUniform: record.notice_uniform,
+          noticeTypeIds: record.notice_type_ids,
+          handlersUniform: record.handlers_uniform,
+        });
+        return (
+          <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
+            <span>{record.name}</span>
+            {badges.map((label) => (
+              <StatusToneBadge key={label} tone="warning" label={label} />
+            ))}
+          </span>
+        );
+      },
     },
     {
       title: '默认',
       dataIndex: 'is_default',
       key: 'is_default',
-      width: 90,
+      width: COMPACT_COLUMN_WIDTH,
       render: (_, record) => (record.is_default ? <StatusToneBadge tone="primary" label="默认" /> : <span>--</span>),
     },
     {
       title: '规则',
       dataIndex: 'rules',
       key: 'rules',
+      width: COMPACT_COLUMN_WIDTH,
       render: (_, record) => (
         <Button
           type="link"
@@ -514,7 +533,7 @@ const PolicyGroupPage: React.FC = () => {
       title: '实例',
       dataIndex: 'member_count',
       key: 'member_count',
-      width: 120,
+      width: COMPACT_COLUMN_WIDTH,
       render: (_, record) => (
         <Button type="link" className="px-0" onClick={() => void openMembers(record as PolicyGroupRow)}>
           {record.member_count || 0}
@@ -525,7 +544,7 @@ const PolicyGroupPage: React.FC = () => {
       title: t('monitor.events.effective'),
       dataIndex: 'enable',
       key: 'enable',
-      width: 110,
+      width: COMPACT_COLUMN_WIDTH,
       render: (_, record) => {
         const mixed = record.enable_uniform === false;
         const control = (
@@ -547,7 +566,8 @@ const PolicyGroupPage: React.FC = () => {
       title: t('common.action'),
       dataIndex: 'action',
       key: 'action',
-      width: 400,
+      width: ACTION_COLUMN_WIDTH,
+      fixed: 'right',
       render: (_, record) => (
         <Permission requiredPermissions={['Edit']}>
           <Button
@@ -559,7 +579,7 @@ const PolicyGroupPage: React.FC = () => {
             默认
           </Button>
           <Button type="link" onClick={() => openNotice(record as PolicyGroupRow)}>
-            通知与处理人
+            响应配置
           </Button>
           <Button
             type="link"
@@ -614,11 +634,19 @@ const PolicyGroupPage: React.FC = () => {
     if (!rule || !ruleGroup || ruleSaving) return;
     setRuleSaving(true);
     try {
-      await updatePolicyGroupRule({
-        group_id: ruleGroup.id,
-        rule_id: rule.id,
-        threshold: thresholdDraft,
-      });
+      await updatePolicyGroupRule(
+        rule.query_type === 'multi'
+          ? {
+            group_id: ruleGroup.id,
+            rule_id: rule.id,
+            condition_thresholds: conditionDraft,
+          }
+          : {
+            group_id: ruleGroup.id,
+            rule_id: rule.id,
+            threshold: thresholdDraft,
+          }
+      );
       message.success('已修改当前规则，未恢复告警会结束');
       const items = await loadGroups(objectId);
       const next = (items || []).find((item) => item.id === ruleGroup.id);
@@ -937,6 +965,63 @@ const PolicyGroupPage: React.FC = () => {
       >
         {rule ? (
           <>
+            {rule.query_type === 'multi' ? (
+              <div className="flex flex-col gap-3">
+                {Object.entries(conditionDraft).map(([ref, rows]) => {
+                  const gate = rows.length <= 1 && !rows[0]?.level;
+                  return (
+                    <div key={ref}>
+                      <div className="mb-1">
+                        {ref}
+                        {gate ? ' · 前置条件' : ''}
+                      </div>
+                      {gate ? (
+                        <div className="flex gap-2">
+                          <Select
+                            className="w-[120px]"
+                            value={rows[0]?.method || '>'}
+                            options={['>', '<', '=', '!=', '>=', '<='].map((method) => ({
+                              label: method,
+                              value: method,
+                            }))}
+                            onChange={(method) =>
+                              setConditionDraft((current) => ({
+                                ...current,
+                                [ref]: [{ method, value: rows[0]?.value ?? null }],
+                              }))
+                            }
+                          />
+                          <InputNumber
+                            className="w-[160px]"
+                            value={rows[0]?.value ?? null}
+                            onChange={(value) =>
+                              setConditionDraft((current) => ({
+                                ...current,
+                                [ref]: [{
+                                  method: rows[0]?.method || '>',
+                                  value: typeof value === 'number' ? value : null,
+                                }],
+                              }))
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <ThresholdList
+                          data={rows as ThresholdItem[]}
+                          onChange={(next) =>
+                            setConditionDraft((current) => ({ ...current, [ref]: next }))
+                          }
+                          thresholdUnit={null}
+                          onThresholdUnitChange={() => undefined}
+                          showUnitSelector={false}
+                          allowStructureEdit
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="mb-3">
               <div className="mb-1">阈值</div>
               <ThresholdList
@@ -948,6 +1033,7 @@ const PolicyGroupPage: React.FC = () => {
                 allowStructureEdit
               />
             </div>
+            )}
           </>
         ) : (
           <CustomTable
@@ -982,6 +1068,7 @@ const PolicyGroupPage: React.FC = () => {
                     onClick={() => {
                       setRule(record);
                       setThresholdDraft(cloneDeep(record.threshold || []) as ThresholdItem[]);
+                      setConditionDraft(cloneDeep(record.condition_thresholds || {}));
                     }}
                   >
                     修改
@@ -993,7 +1080,7 @@ const PolicyGroupPage: React.FC = () => {
         )}
       </Drawer>
       <Drawer
-        title={noticeGroup ? `${noticeGroup.name} 的通知与处理人` : '通知与处理人'}
+        title={noticeGroup ? `${noticeGroup.name} 的响应配置` : '响应配置'}
         open={Boolean(noticeGroup)}
         width={760}
         closable={false}

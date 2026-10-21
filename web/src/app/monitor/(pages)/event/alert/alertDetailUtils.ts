@@ -3,6 +3,12 @@ import { attachGapIntervals } from '@/app/monitor/utils/gapIntervals';
 
 export type AlertSnapshotPoint = [number, string];
 
+export const alertConditionTabLabel = (ref: string, metricName?: string | null): string => {
+  const name = String(metricName || '').trim();
+  const identity = String(ref || '').trim();
+  return name ? `${identity} ${name}`.trim() : identity;
+};
+
 interface AlertSnapshot {
   type?: string;
   event_time?: string;
@@ -13,6 +19,7 @@ interface AlertSnapshot {
   result_unit?: string;
   raw_data?: {
     values?: AlertSnapshotPoint[];
+    series?: Record<string, { values?: AlertSnapshotPoint[] }>;
   } | Record<string, never>;
 }
 
@@ -20,6 +27,15 @@ export interface AlertSnapshotOverlay {
   currentValue?: number | null;
   baselineValue?: number | null;
   comparedValue?: number | null;
+}
+
+export interface AlertConditionChart {
+  ref: string;
+  label: string;
+  unit: string;
+  threshold: Array<{ level: string; method: string; value: number | null }>;
+  data: ChartData[];
+  overlay?: AlertSnapshotOverlay;
 }
 
 export interface AlertSnapshotChartModel {
@@ -48,18 +64,58 @@ const toUnixSeconds = (value: unknown): number | null => {
   return Math.floor(parsed / 1000);
 };
 
-const readSnapshotPoints = (snapshot: AlertSnapshot): AlertSnapshotPoint[] => {
-  if (!hasRawData(snapshot.raw_data)) {
-    return [];
-  }
+const readPointList = (values: AlertSnapshotPoint[] | undefined): AlertSnapshotPoint[] => {
   const points: AlertSnapshotPoint[] = [];
-  (snapshot.raw_data?.values || []).forEach((point) => {
+  (values || []).forEach((point) => {
     if (!Array.isArray(point) || point.length < 2) return;
     const timestamp = toUnixSeconds(Number(point[0]));
     if (timestamp == null) return;
     points.push([timestamp, String(point[1])]);
   });
   return points;
+};
+
+const snapshotSeries = (
+  snapshot: AlertSnapshot
+): Record<string, { values?: AlertSnapshotPoint[] }> | undefined => {
+  const raw = snapshot.raw_data;
+  if (!raw || !('series' in raw) || !raw.series || Array.isArray(raw.series)) {
+    return undefined;
+  }
+  return raw.series;
+};
+
+export const listAlertSnapshotSeriesRefs = (
+  snapshots: AlertSnapshot[] = []
+): string[] => {
+  const refs: string[] = [];
+  snapshots.forEach((snapshot) => {
+    const series = snapshotSeries(snapshot);
+    if (!series) return;
+    Object.keys(series).forEach((ref) => {
+      if (!refs.includes(ref)) refs.push(ref);
+    });
+  });
+  return refs;
+};
+
+const readSnapshotPoints = (
+  snapshot: AlertSnapshot,
+  seriesRef?: string
+): AlertSnapshotPoint[] => {
+  if (!hasRawData(snapshot.raw_data)) {
+    return [];
+  }
+  const series = snapshotSeries(snapshot);
+  if (seriesRef) {
+    return readPointList(series?.[seriesRef]?.values);
+  }
+  const raw = snapshot.raw_data;
+  if (raw && 'values' in raw && Array.isArray(raw.values) && raw.values.length) {
+    return readPointList(raw.values);
+  }
+  const first = series ? Object.values(series)[0] : undefined;
+  return readPointList(first?.values);
 };
 
 const buildNoDataGapIntervals = (
@@ -114,7 +170,7 @@ const buildNoDataGapIntervals = (
 
 export const buildAlertSnapshotChartModel = (
   snapshots: AlertSnapshot[] = [],
-  options?: { alertType?: string }
+  options?: { alertType?: string; seriesRef?: string }
 ): AlertSnapshotChartModel => {
   const isNoDataAlert = options?.alertType === 'no_data';
   const preAlertPoints = new Map<number, string>();
@@ -133,7 +189,7 @@ export const buildAlertSnapshotChartModel = (
     }
 
     const target = snapshot.type === 'pre_alert' ? preAlertPoints : otherPoints;
-    const points = readSnapshotPoints(snapshot);
+    const points = readSnapshotPoints(snapshot, options?.seriesRef);
     points.forEach(([timestamp, value]) => {
       target.set(timestamp, value);
     });

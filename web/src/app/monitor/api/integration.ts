@@ -75,6 +75,7 @@ const useIntegrationApi = () => {
         group_id: number;
         rule_id: number;
         threshold?: unknown;
+        condition_thresholds?: Record<string, unknown>;
       }) => {
         return await post(`/monitor/api/policy_group/update_rule/`, payload);
       },
