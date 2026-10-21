@@ -49,12 +49,33 @@ const durationReading = (metric: MetricSeries | undefined) => {
   return `${formatted.value}${formatted.unit || ''}`;
 };
 
+const percentReading = (metric: MetricSeries | undefined) => {
+  const value = latestNumber(metric);
+  if (value == null) return undefined;
+  const formatted = formatMetricValue(value, 'percent');
+  return `${formatted.value}${formatted.unit || ''}`;
+};
+
 export default function PerformancePane({ metricMap, pendingMetricNames }: PerformancePaneProps) {
   const { t } = useDashboardText();
+  const maxUsed = useMemo(
+    () => seriesOf(metricMap.mysql_max_used_connections),
+    [metricMap.mysql_max_used_connections?.viewData]
+  );
   const connection = useMemo(() => mergeChartSeries([
     { key: 'connected', label: mysqlCategoryText(t, 'currentConnections'), data: seriesOf(metricMap.mysql_threads_connected) },
-    { key: 'running', label: mysqlCategoryText(t, 'activeSessions'), data: seriesOf(metricMap.mysql_threads_running) }
-  ]), [metricMap.mysql_threads_connected?.viewData, metricMap.mysql_threads_running?.viewData, t]);
+    { key: 'running', label: mysqlCategoryText(t, 'activeSessions'), data: seriesOf(metricMap.mysql_threads_running) },
+    ...(maxUsed.length ? [{
+      key: 'maxUsed',
+      label: mysqlCategoryText(t, 'maxUsedConnections'),
+      data: maxUsed
+    }] : [])
+  ]), [
+    maxUsed,
+    metricMap.mysql_threads_connected?.viewData,
+    metricMap.mysql_threads_running?.viewData,
+    t
+  ]);
 
   const writes = useMemo(() => ({
     insert: seriesOf(metricMap.mysql_com_insert_rate),
@@ -123,6 +144,14 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const buffer = useMemo(() => mergeChartSeries([
     { key: 'hit', label: mysqlCategoryText(t, 'hitRate'), data: seriesOf(metricMap.mysql_buffer_pool_hit_ratio) }
   ]), [metricMap.mysql_buffer_pool_hit_ratio?.viewData, t]);
+  const dirty = useMemo(
+    () => seriesOf(metricMap.mysql_buffer_pool_dirty_ratio),
+    [metricMap.mysql_buffer_pool_dirty_ratio?.viewData]
+  );
+  const deadlocks = useMemo(
+    () => seriesOf(metricMap.mysql_innodb_deadlocks_rate),
+    [metricMap.mysql_innodb_deadlocks_rate?.viewData]
+  );
 
   const abortedConnects = useMemo(
     () => seriesOf(metricMap.mysql_aborted_connects_rate),
@@ -153,9 +182,10 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     points.length === 0 && names.some((name) => pendingMetricNames.has(name))
   );
   const connectionAwaiting = slotLoading(
-    ['mysql_threads_connected', 'mysql_threads_running'],
+    ['mysql_threads_connected', 'mysql_threads_running', 'mysql_max_used_connections'],
     connection
   );
+  const threadsCreatedReading = rateReading(metricMap.mysql_threads_created_rate);
   const throughputAwaiting = slotLoading(
     ['mysql_queries_rate', 'mysql_tps_rate', 'mysql_com_commit_rate', 'mysql_com_rollback_rate'],
     throughput
@@ -182,6 +212,8 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     innodbRows
   );
   const bufferAwaiting = slotLoading(['mysql_buffer_pool_hit_ratio'], buffer);
+  const dirtyAwaiting = slotLoading(['mysql_buffer_pool_dirty_ratio'], dirty);
+  const deadlockAwaiting = slotLoading(['mysql_innodb_deadlocks_rate'], deadlocks);
   const slowAwaiting = slotLoading(['mysql_slow_queries_rate'], slowQueries);
   const empty = mysqlCategoryText(t, 'noCollectData');
 
@@ -215,11 +247,13 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const showInnodb = innodbAwaiting || innodb.length > 0;
   const showInnodbRows = innodbRowsAwaiting || innodbRows.length > 0;
   const showBuffer = bufferAwaiting || buffer.length > 0;
+  const showDirty = dirtyAwaiting || dirty.length > 0;
+  const showDeadlocks = deadlockAwaiting || deadlocks.length > 0;
   const showSlow = slowQueries.length > 0 || slowAwaiting;
   const showSelectScan = selectScan.length > 0;
   const showRowLockWaits = rowLockWaits.length > 0;
   const showRowLockTime = rowLockTime.length > 0;
-  const scanLockCount = [showSlow, showSelectScan, showRowLockWaits, showRowLockTime].filter(Boolean).length;
+  const scanLockCount = [showSlow, showSelectScan, showRowLockWaits, showRowLockTime, showDeadlocks].filter(Boolean).length;
   const cardClass = (wide: boolean) => (wide ? `min-w-0 ${pro.perfWide}` : 'min-w-0');
   const scanLockClass = cardClass(scanLockCount === 1);
   const writeInnodbPair = showWrites && showInnodb;
@@ -243,9 +277,17 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                   unit="counts"
                   data={connection}
                   emptyText={empty}
+                  reading={threadsCreatedReading
+                    ? `${mysqlCategoryText(t, 'threadsCreated')} ${threadsCreatedReading}`
+                    : undefined}
                   legends={[
                     { label: mysqlCategoryText(t, 'currentConnections'), color: HOST_SERIES_COLOR.memUsed },
-                    { label: mysqlCategoryText(t, 'activeSessions'), color: HOST_SERIES_COLOR.load1 }
+                    { label: mysqlCategoryText(t, 'activeSessions'), color: HOST_SERIES_COLOR.load1 },
+                    ...(maxUsed.length ? [{
+                      label: mysqlCategoryText(t, 'maxUsedConnections'),
+                      color: HOST_PALETTE.neutral,
+                      dashed: true
+                    }] : [])
                   ]}
                 />
               </div>
@@ -345,21 +387,40 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
           ) : null}
         </div>
       ) : null}
-      {showBuffer ? (
+      {showBuffer || showDirty ? (
         <>
           <ProSectionTitle>{mysqlCategoryText(t, 'bufferPool')}</ProSectionTitle>
           <div className={pro.perfGrid}>
-            <div id="mysql-perf-buffer" className={cardClass(true)}>
-              <ThinTimeSeries
-                title={mysqlCategoryText(t, 'bufferHit')}
-                hint={mysqlCategoryText(t, 'bufferHitHint')}
-                loading={bufferAwaiting}
-                unit="percent"
-                data={buffer}
-                emptyText={empty}
-                legends={[{ label: mysqlCategoryText(t, 'hitRate'), color: HOST_SERIES_COLOR.cpu }]}
-              />
-            </div>
+            {showBuffer ? (
+              <div id="mysql-perf-buffer" className={cardClass(!showDirty)}>
+                <ThinTimeSeries
+                  title={mysqlCategoryText(t, 'bufferHit')}
+                  hint={mysqlCategoryText(t, 'bufferHitHint')}
+                  loading={bufferAwaiting}
+                  unit="percent"
+                  data={buffer}
+                  emptyText={empty}
+                  legends={[{ label: mysqlCategoryText(t, 'hitRate'), color: HOST_SERIES_COLOR.cpu }]}
+                />
+              </div>
+            ) : null}
+            {showDirty ? (
+              <div id="mysql-perf-dirty" className={cardClass(!showBuffer)}>
+                <ThinTimeSeries
+                  title={mysqlCategoryText(t, 'dirtyRatio')}
+                  hint={mysqlCategoryText(t, 'dirtyRatioHint')}
+                  loading={dirtyAwaiting}
+                  unit="percent"
+                  data={dirty.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText={empty}
+                  legends={[{
+                    label: mysqlCategoryText(t, 'dirtyRatio'),
+                    color: HOST_PALETTE.amber,
+                    reading: percentReading(metricMap.mysql_buffer_pool_dirty_ratio)
+                  }]}
+                />
+              </div>
+            ) : null}
           </div>
         </>
       ) : null}
@@ -435,6 +496,23 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                     label: mysqlCategoryText(t, 'rowLockWaits'),
                     color: HOST_PALETTE.orange,
                     reading: rateReading(metricMap.mysql_innodb_row_lock_waits_rate)
+                  }]}
+                />
+              </div>
+            ) : null}
+            {showDeadlocks ? (
+              <div className={scanLockClass}>
+                <ThinTimeSeries
+                  title={mysqlCategoryText(t, 'deadlocks')}
+                  hint={mysqlCategoryText(t, 'deadlocksHint')}
+                  loading={deadlockAwaiting}
+                  unit="cps"
+                  data={deadlocks.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText={empty}
+                  legends={[{
+                    label: mysqlCategoryText(t, 'deadlocks'),
+                    color: HOST_PALETTE.rose,
+                    reading: rateReading(metricMap.mysql_innodb_deadlocks_rate)
                   }]}
                 />
               </div>

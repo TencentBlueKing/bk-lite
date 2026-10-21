@@ -529,11 +529,13 @@ export const buildMysqlOverviewKpis = (
   });
 
   const slow = finite(readings.slowPerSecond);
+  const slowActive = slow != null && slow > 0;
   cards.push({
     key: 'slow',
     label: text('kpiSlow'),
     value: slow == null ? EMPTY_VALUE : text('slowPerSecond', { value: formatRate(slow) }),
-    tone: slow != null && slow > 0 ? HOST_THRESHOLD_COLOR.warn : undefined
+    subtitle: slowActive ? text('slowRecent') : undefined,
+    tone: slowActive ? MUTED_VALUE : undefined
   });
 
   const replication = buildMysqlReplicationKpi(metricMap, text);
@@ -567,11 +569,11 @@ export const buildMysqlOverviewKpis = (
   return KPI_ORDER.flatMap((key) => cards.filter((card) => card.key === key));
 };
 
-export type MysqlFocusSpark = 'lockWait' | 'aborted' | 'tmpDisk' | 'slow' | 'tableLock';
+export type MysqlFocusSpark = 'lockWait' | 'aborted' | 'tmpDisk' | 'slow' | 'tableLock' | 'rowLock';
 export type MysqlFocusAnchor = 'scan-lock' | 'quality';
 
 export interface MysqlFocusCard {
-  key: 'lockWait' | 'aborted' | 'tmpDisk' | 'slow' | 'tableLock';
+  key: 'lockWait' | 'aborted' | 'tmpDisk' | 'slow' | 'tableLock' | 'rowLock';
   label: string;
   value: string;
   subtitle?: string;
@@ -668,7 +670,8 @@ export const buildMysqlFocusCards = (
     : (abortedConnects || 0) + (abortedClients || 0);
   const tmpDisk = finite(latestNumber(metricMap.mysql_tmp_disk_table_ratio));
   const replica = readMysqlRoleBlock(metricMap)?.kind === 'replica';
-  const slow = finite(latestNumber(metricMap.mysql_slow_queries_rate));
+  const rowLock = finite(latestNumber(metricMap.mysql_innodb_row_lock_waits_rate));
+  const rowLockTime = finite(latestNumber(metricMap.mysql_innodb_row_lock_time_avg));
   const tableLock = finite(latestNumber(metricMap.mysql_table_locks_waited_rate));
   const previousLockWait = finite(latestNumber(previousMetricMap.mysql_process_list_threads_waiting_for_lock));
   const previousAbortedConnects = finite(latestNumber(previousMetricMap.mysql_aborted_connects_rate));
@@ -677,23 +680,29 @@ export const buildMysqlFocusCards = (
     ? null
     : (previousAbortedConnects || 0) + (previousAbortedClients || 0);
   const previousTmpDisk = finite(latestNumber(previousMetricMap.mysql_tmp_disk_table_ratio));
-  const previousSlow = finite(latestNumber(previousMetricMap.mysql_slow_queries_rate));
+  const previousRowLock = finite(latestNumber(previousMetricMap.mysql_innodb_row_lock_waits_rate));
   const previousTableLock = finite(latestNumber(previousMetricMap.mysql_table_locks_waited_rate));
+  const rowLockTimeText = rowLockTime == null
+    ? undefined
+    : text('rowLockAvg', { value: formatMetricValue(rowLockTime, 'ms').value });
 
   const fourth: MysqlFocusCard = replica
-    ? (slow == null
-      ? uncollectedFocus('slow', text('focusSlow'), text('viewStatements'), 'statements')
-      : collectedFocus({
-        key: 'slow',
-        label: text('focusSlow'),
-        value: text('slowPerSecond', { value: formatRate(slow) }),
-        valueNumber: slow,
-        previousNumber: previousSlow,
-        tone: slow > 0 ? HOST_THRESHOLD_COLOR.warn : undefined,
-        hint: text('viewStatements'),
-        tab: 'statements',
-        spark: 'slow'
-      }))
+    ? (rowLock == null
+      ? uncollectedFocus('rowLock', text('focusRowLock'), text('viewScanLock'), 'performance', 'scan-lock')
+      : {
+        ...collectedFocus({
+          key: 'rowLock',
+          label: text('focusRowLock'),
+          value: formatRate(rowLock),
+          valueNumber: rowLock,
+          previousNumber: previousRowLock,
+          hint: text('viewScanLock'),
+          tab: 'performance',
+          anchor: 'scan-lock',
+          spark: 'rowLock'
+        }),
+        subtitle: rowLockTimeText
+      })
     : (tableLock == null
       ? uncollectedFocus('tableLock', text('focusTableLock'), text('viewScanLock'), 'performance', 'scan-lock')
       : collectedFocus({
@@ -1124,6 +1133,10 @@ export const MYSQL_PERF_AUX_METRICS = [
   'mysql_select_scan_rate',
   'mysql_innodb_row_lock_waits_rate',
   'mysql_innodb_row_lock_time_avg',
+  'mysql_innodb_deadlocks_rate',
+  'mysql_buffer_pool_dirty_ratio',
+  'mysql_max_used_connections',
+  'mysql_threads_created_rate',
   'mysql_com_commit_rate',
   'mysql_com_rollback_rate',
   'mysql_tps_rate',
@@ -1258,7 +1271,7 @@ export const readMysqlReplicationExtras = (
     const slaves = latestNumber(metricMap.mysql_slaves_connected);
     const clients = latestNumber(metricMap.mysql_rpl_semi_sync_master_clients);
     const count = slaves ?? clients;
-    if (count != null) {
+    if (count != null && count > 0) {
       downstream.push({
         key: 'slaves',
         label: '已连从库',
@@ -1289,40 +1302,59 @@ export interface MysqlReplicationSeries {
   binlogNote?: string;
 }
 
-const noteLine = (parts: string[]) => {
-  const text = parts.filter(Boolean).join(' · ');
-  return text || undefined;
-};
-
 /**
- * 复制趋势三条线：延迟、Relay 位点、Binlog 位点。
- * 体积和文件数不单独成线，也不再写进标题。没有采点就留空数组，不补 0。
- * note 只用来判断「采到了位点摘要、但序列还空」时仍铺出标题卡，界面不渲染。
+ * 复制趋势三条线：延迟、Relay 空间、Binlog 体积。
+ * 位点不拿来画 Size。没有容量采点就留空数组，不补 0。
  */
 export const readMysqlReplicationSeries = (
   metricMap: Record<string, MetricSeries | undefined>
 ): MysqlReplicationSeries => {
   const delayLatest = latestNumber(metricMap.mysql_slave_seconds_behind_master);
-  const relayPos = latestNumber(metricMap.mysql_slave_relay_log_pos);
   const relaySpace = latestNumber(metricMap.mysql_slave_relay_log_space);
-  const sourcePos = latestNumber(metricMap.mysql_replication_source_log_pos);
   const binlogSize = latestNumber(metricMap.mysql_binary_size_bytes);
-  const binlogFiles = latestNumber(metricMap.mysql_binary_files_count);
   return {
     delay: collectedPoints(metricMap.mysql_slave_seconds_behind_master),
-    relay: collectedPoints(metricMap.mysql_slave_relay_log_pos),
-    binlog: collectedPoints(metricMap.mysql_replication_source_log_pos),
+    relay: collectedPoints(metricMap.mysql_slave_relay_log_space),
+    binlog: collectedPoints(metricMap.mysql_binary_size_bytes),
     delayNote: delayLatest == null ? undefined : formatMysqlReplicationLag(delayLatest),
-    relayNote: noteLine([
-      relayPos != null ? `位置 ${formatPosition(relayPos)}` : '',
-      relaySpace != null ? formatBytes(relaySpace) : ''
-    ]),
-    binlogNote: noteLine([
-      sourcePos != null ? `位置 ${formatPosition(sourcePos)}` : '',
-      binlogSize != null ? formatBytes(binlogSize) : '',
-      binlogFiles != null ? `${formatPosition(binlogFiles)} 文件` : ''
-    ])
+    relayNote: relaySpace == null ? undefined : formatBytes(relaySpace),
+    binlogNote: binlogSize == null ? undefined : formatBytes(binlogSize)
   };
+};
+
+export type MysqlReplicationGap = 'primaryNoDownstream' | 'collectionOff' | 'binlogOff' | 'noPoints';
+
+/**
+ * 复制签没有任何可画内容时怎么说。
+ * 可写主库且 Binlog 开着、没有从库线程也没有下游，是主库无下游。
+ * 只读但缺从库指标，或 Binlog 明确关闭，是没开复制采集。
+ * 角色和复制指标都没有，才是真正无点。
+ */
+export const readMysqlReplicationGap = (
+  metricMap: Record<string, MetricSeries | undefined>
+): MysqlReplicationGap => {
+  const slaveThread = latestNumber(metricMap.mysql_slave_io_running) != null
+    || latestNumber(metricMap.mysql_slave_sql_running) != null
+    || latestNumber(metricMap.mysql_slave_seconds_behind_master) != null;
+  const slaves = latestNumber(metricMap.mysql_slaves_connected);
+  const logBin = latestNumber(metricMap.mysql_variables_log_bin);
+  const readOnlyKnown = latestNumber(metricMap.mysql_variables_read_only) != null
+    || latestNumber(metricMap.mysql_variables_super_read_only) != null;
+  const replicationSample = slaveThread
+    || slaves != null
+    || latestNumber(metricMap.mysql_rpl_semi_sync_master_status) != null
+    || latestNumber(metricMap.mysql_slave_relay_log_space) != null
+    || latestNumber(metricMap.mysql_binary_size_bytes) != null;
+  if (!slaveThread && logBin != null && logBin <= 0) return 'binlogOff';
+  if (!slaveThread && slaves != null && slaves <= 0) return 'primaryNoDownstream';
+  if (!slaveThread && slaves == null && logBin != null && logBin > 0 && !readonlyOn(metricMap)) {
+    return 'primaryNoDownstream';
+  }
+  if (!slaveThread && !replicationSample && (logBin != null || readOnlyKnown || readonlyOn(metricMap))) {
+    return 'collectionOff';
+  }
+  if (logBin == null && !readOnlyKnown && !replicationSample) return 'noPoints';
+  return 'noPoints';
 };
 
 export const waitStatementIds = (event: MysqlWaitEventRow) => {

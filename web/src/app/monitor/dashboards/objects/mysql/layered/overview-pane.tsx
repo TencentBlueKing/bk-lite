@@ -94,6 +94,12 @@ const SPARK_METRIC: Record<MysqlFocusSpark, Array<{
     color: HOST_SERIES_COLOR.load1,
     label: 'focusSlow'
   }],
+  rowLock: [{
+    name: 'mysql_innodb_row_lock_waits_rate',
+    unit: 'cps',
+    color: HOST_PALETTE.orange,
+    label: 'focusRowLock'
+  }],
   tableLock: [{
     name: 'mysql_table_locks_waited_rate',
     unit: 'cps',
@@ -141,7 +147,7 @@ export default function OverviewPane({
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
   const focusLoadingTitles: MysqlCategoryCopyKey[] = [
     ...FOCUS_LOADING_LEAD,
-    readMysqlRoleBlock(metricMap)?.kind === 'replica' ? 'focusSlow' : 'focusTableLock'
+    readMysqlRoleBlock(metricMap)?.kind === 'replica' ? 'focusRowLock' : 'focusTableLock'
   ];
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;

@@ -39,6 +39,6 @@ export const MYSQL_FOCUS_METRICS = [
   'mysql_aborted_connects_rate',
   'mysql_aborted_clients_rate',
   'mysql_tmp_disk_table_ratio',
-  'mysql_slow_queries_rate',
+  'mysql_innodb_row_lock_waits_rate',
   'mysql_table_locks_waited_rate'
 ] as const;

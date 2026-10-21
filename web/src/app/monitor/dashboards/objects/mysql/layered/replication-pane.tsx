@@ -9,6 +9,7 @@ import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import {
   MYSQL_REPLICATION_EXTRA_METRICS,
   readMysqlReplicationExtras,
+  readMysqlReplicationGap,
   readMysqlReplicationSeries,
   readMysqlRoleBlock,
   type MysqlReplicationCard,
@@ -71,7 +72,7 @@ const replicaFields = (fields: MysqlRoleField[]) => REPLICA_LABELS.map((label) =
   fields.find((field) => field.label === label) || { label, value: '--', tone: 'muted' as const }
 ));
 
-/** 从库，或已经采到延迟/位点时，铺三张趋势卡。缺的那张留空，不补零线。 */
+/** 从库铺三张趋势卡。主库只在容量序列真有点时出卡。空数组不补零线。 */
 const hasReplicationTrends = (
   kind: 'primary' | 'replica' | 'group' | undefined,
   trends: MysqlReplicationSeries
@@ -80,9 +81,6 @@ const hasReplicationTrends = (
   || trends.delay.length
   || trends.relay.length
   || trends.binlog.length
-  || trends.delayNote
-  || trends.relayNote
-  || trends.binlogNote
 );
 
 const REPL_LOADING_ITEMS: KpiTileModel[] = ['lag', 'io', 'sql'].map((key) => ({
@@ -182,7 +180,7 @@ function TrendCard({
 }: {
   trend: 'delay' | 'relay' | 'binlog';
   title: string;
-  unit: 's' | 'counts';
+  unit: 's' | 'counts' | 'bytes';
   color: string;
   data: ChartData[];
   loading?: boolean;
@@ -280,8 +278,8 @@ export default function ReplicationPane({
             />
             <TrendCard
               trend="relay"
-              title={text('relayPosition')}
-              unit="counts"
+              title={text('relaySpace')}
+              unit="bytes"
               color={HOST_SERIES_COLOR.memAvailable}
               data={[]}
               emptyText={empty}
@@ -289,8 +287,8 @@ export default function ReplicationPane({
             />
             <TrendCard
               trend="binlog"
-              title={text('binlogPosition')}
-              unit="counts"
+              title={text('binlogSize')}
+              unit="bytes"
               color={HOST_SERIES_COLOR.diskUsed}
               data={[]}
               emptyText={empty}
@@ -302,9 +300,17 @@ export default function ReplicationPane({
     );
   }
   if (!hasContent) {
+    const gap = readMysqlReplicationGap(metricMap);
+    const gapCopy = gap === 'primaryNoDownstream'
+      ? { title: text('primaryNoDownstream'), hint: text('primaryNoDownstreamHint') }
+      : gap === 'collectionOff'
+        ? { title: text('replicationCollectionOff'), hint: text('replicationCollectionOffHint') }
+        : gap === 'binlogOff'
+          ? { title: text('replicationBinlogOff'), hint: text('replicationBinlogOffHint') }
+          : { title: text('noReplicationData'), hint: undefined };
     return (
-      <div data-replication-state="empty">
-        <GrayTabEmptyState title={text('noReplicationData')} />
+      <div data-replication-state="empty" data-replication-gap={gap}>
+        <GrayTabEmptyState title={gapCopy.title} hint={gapCopy.hint} />
       </div>
     );
   }
@@ -336,21 +342,21 @@ export default function ReplicationPane({
             />
             <TrendCard
               trend="relay"
-              title={text('relayPosition')}
-              unit="counts"
+              title={text('relaySpace')}
+              unit="bytes"
               color={HOST_SERIES_COLOR.memAvailable}
               data={trends.relay}
               emptyText={empty}
-              loading={trends.relay.length === 0 && pendingMetricNames.has('mysql_slave_relay_log_pos')}
+              loading={trends.relay.length === 0 && pendingMetricNames.has('mysql_slave_relay_log_space')}
             />
             <TrendCard
               trend="binlog"
-              title={text('binlogPosition')}
-              unit="counts"
+              title={text('binlogSize')}
+              unit="bytes"
               color={HOST_SERIES_COLOR.diskUsed}
               data={trends.binlog}
               emptyText={empty}
-              loading={trends.binlog.length === 0 && pendingMetricNames.has('mysql_replication_source_log_pos')}
+              loading={trends.binlog.length === 0 && pendingMetricNames.has('mysql_binary_size_bytes')}
             />
           </div>
         </ReplicationBlock>
