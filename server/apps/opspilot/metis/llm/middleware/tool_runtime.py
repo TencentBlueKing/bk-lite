@@ -19,7 +19,11 @@ from apps.opspilot.metis.llm.agent.tool_execution_planner import (
     _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
     compact_planned_execution_messages,
 )
-from apps.opspilot.metis.llm.common.tool_failure import POLICY_RESULT_MARKER, is_non_replanable_tool_failure
+from apps.opspilot.metis.llm.common.tool_failure import (
+    POLICY_RESULT_MARKER,
+    is_non_replanable_tool_failure,
+    is_tool_result_failure,
+)
 
 # 兼容旧导入路径（实现见 planned_execution_limits）。
 from apps.opspilot.metis.llm.middleware.planned_execution_limits import (  # noqa: F401
@@ -92,15 +96,13 @@ def _or_search_succeeded(content: str) -> bool:
     text = str(content or "").strip()
     if not text:
         return False
+    if is_tool_result_failure(content):
+        return False
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
         return True
-    if not isinstance(payload, dict):
-        return True
-    if payload.get("success") is False or payload.get("result") is False:
-        return False
-    if payload.get("error") and payload.get("success") is not True:
+    if isinstance(payload, dict) and (payload.get("success") is False or payload.get("result") is False):
         return False
     return True
 

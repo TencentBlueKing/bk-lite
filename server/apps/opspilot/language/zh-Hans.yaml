@@ -336,7 +336,7 @@ tools:
       log_search_structured:
         description: 按关键词查询日志。时间用带时区的 RFC3339，例如 2026-10-21T15:03:09+08:00；不传则查近 24 小时。
       log_search_raw:
-        description: 使用原生 LogsQL 查询日志。
+        description: 使用原生 LogsQL 查询日志。时间用带时区的 RFC3339，例如 2026-10-21T15:03:09+08:00；不传则查近 24 小时。
   ops_analysis_dashboard:
     name: 运营分析仪表盘
     description: |

@@ -76,6 +76,19 @@ def test_log_search_structured_maps_to_rpc():
     assert query_data["time_range"][0].startswith("2026-09-11")
 
 
+def test_log_search_raw_rejects_time_without_timezone():
+    out = log_search_raw.invoke(
+        {
+            "query": 'host:"web-1"',
+            "start": "2026-10-21 14:53:09",
+            "end": "2026-10-21 15:03:09",
+        },
+        config=cfg(),
+    )
+    assert "RFC3339" in out["error"]
+    assert "2026-10-21T15:03:09+08:00" in out["error"]
+
+
 def test_log_search_raw_requires_query():
     out = log_search_raw.invoke({"query": ""}, config=cfg())
     assert out["error"] == "query is required"

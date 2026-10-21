@@ -110,6 +110,24 @@ def test_failed_log_search_does_not_block_a_corrected_retry():
     assert repeated_or_search_denial(request) is None
 
 
+def test_failed_alerts_list_does_not_block_a_corrected_retry():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "alerts_list_alerts", "args": {"status": "active", "page": 1}},
+            "messages": [
+                ToolMessage(
+                    content='{"result": false, "data": {}, "message": "查询告警列表失败"}',
+                    tool_call_id="call-1",
+                    name="alerts_list_alerts",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+
 def test_second_log_search_is_denied_after_success():
     request = type(
         "Req",

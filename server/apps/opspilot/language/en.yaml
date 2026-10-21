@@ -341,7 +341,7 @@ tools:
       log_search_structured:
         description: Search logs by keyword. Pass start and end as RFC3339 with a timezone, for example 2026-10-21T15:03:09+08:00. Omit both to search the last 24 hours.
       log_search_raw:
-        description: Search logs with native LogsQL.
+        description: Search logs with native LogsQL. Pass start and end as RFC3339 with a timezone, for example 2026-10-21T15:03:09+08:00. Omit both to search the last 24 hours.
   ops_analysis_dashboard:
     name: Operations Analytics Dashboard
     description: |
