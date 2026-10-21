@@ -55,6 +55,7 @@ export interface HostDetailLayoutProps {
   netState: EntityLoadState;
   processReady: boolean;
   processState?: EntityLoadState;
+  gpuState?: EntityLoadState;
   layout?: HostDetailLayout;
   onLayoutChange?: (mode: string) => void;
   categoryTab?: string;

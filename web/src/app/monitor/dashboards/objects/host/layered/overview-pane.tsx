@@ -148,9 +148,6 @@ export default function OverviewPane({
   const uptime = latestNumber(metrics.system_uptime);
   const showLoad = metricHasPoints(metrics.system_load1);
   const diskUsagePoints = useMemo(() => hostDiskUsagePoints(diskRows), [diskRows]);
-  const diskUsageLatest = diskUsagePoints.length
-    ? diskUsagePoints[diskUsagePoints.length - 1].value
-    : null;
   const diskCurrent = readingOfRow(worst, 'disk_used_percent');
   const mountName = worst?.labels.path || worst?.labels.mount || '';
 
@@ -183,8 +180,10 @@ export default function OverviewPane({
     items.push({
       key: 'disk',
       label: hostCategoryText(t, 'diskTotalUsage'),
-      value: formatPercent(diskUsageLatest),
+      hint: hostCategoryText(t, 'diskUsageHint'),
+      value: formatPercent(diskCurrent),
       tone: HOST_SERIES_COLOR.diskUsed,
+      subtitle: mountName || undefined,
       alertLevel: alerts.disk
     });
     const alertTone = alertCount == null
@@ -211,7 +210,8 @@ export default function OverviewPane({
     alertCount,
     alertsOpen,
     cpu,
-    diskUsageLatest,
+    diskCurrent,
+    mountName,
     load,
     mem,
     alerts,
@@ -385,8 +385,8 @@ export default function OverviewPane({
           legends={[MEM_SERIES]}
         />
         <ThinTimeSeries
-          title="磁盘使用率"
-          hint="总使用率 = 100% × 各挂载已用之和 / 总量之和，与挂载表已用容量同一口径。不是单个挂载。"
+          title={hostCategoryText(t, 'diskWeightedUsage')}
+          hint="总使用率 = 100% × 各挂载已用之和 / 总量之和。概览 KPI 与告警色点用最满挂载，不是这个合计。"
           loading={diskLoading}
           unit="percent"
           emptyText="暂无挂载数据"
