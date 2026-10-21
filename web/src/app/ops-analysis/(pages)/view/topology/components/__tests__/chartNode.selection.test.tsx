@@ -4,6 +4,10 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setTopologyCsvExportHoverEnabled } from '../../utils/topologyCsvExportHover';
+import {
+  resetInteractionRuntime,
+  setInteractionRuntime,
+} from '@/app/ops-analysis/context/interactionRuntime';
 import type { Node } from '@antv/x6';
 import ChartNode from '../chartNode';
 import {
@@ -108,6 +112,7 @@ afterEach(cleanup);
 describe('ChartNode selection chrome', () => {
   afterEach(() => {
     setTopologyCsvExportHoverEnabled(false);
+    resetInteractionRuntime('title-link-test');
     cleanup();
   });
 
@@ -299,5 +304,94 @@ describe('ChartNode selection chrome', () => {
       setTopologyCsvExportHoverEnabled(true);
     });
     expect(container.querySelector('[data-csv-export-hover]')).toBeNull();
+  });
+});
+
+const titleInteraction = {
+  kind: 'title' as const,
+  name: '查看详情',
+  url: '/ops',
+  openMode: 'sameTab' as const,
+};
+
+const chartWithTitleLink = (
+  overrides: Record<string, unknown> = {},
+) => {
+  const node = createChartNode();
+  const data = node.getData() as {
+    valueConfig: Record<string, unknown>;
+    name?: string;
+  };
+  node.getData = (() => ({
+    ...data,
+    ...overrides,
+    valueConfig: {
+      ...data.valueConfig,
+      chartThemeMode: 'screen-dark',
+      interaction: titleInteraction,
+      ...(overrides.valueConfig as Record<string, unknown> | undefined),
+    },
+  })) as Node['getData'];
+  return node;
+};
+
+describe('ChartNode title link', () => {
+  afterEach(() => {
+    setTopologyCsvExportHoverEnabled(false);
+    resetInteractionRuntime('title-link-test');
+    cleanup();
+  });
+
+  it('places the chevron after the csv download and colors it with the title', () => {
+    const node = chartWithTitleLink();
+    const { container } = render(<ChartNode node={node} />);
+    act(() => {
+      setTopologyCsvExportHoverEnabled(true);
+    });
+
+    const link = container.querySelector('button[aria-label="查看详情"]') as HTMLButtonElement;
+    const title = container.querySelector('.truncate') as HTMLElement;
+    const csv = container.querySelector('[data-csv-export-hover]') as HTMLElement;
+
+    expect(link.querySelector('.anticon-right')).toBeTruthy();
+    expect(link.querySelector('.anticon-link')).toBeNull();
+    expect(link.className).not.toContain('absolute');
+    expect(link.className).not.toContain('text-(--color-text-3)');
+    expect(title.textContent).toBe('CPU');
+    expect(link.style.color).toBe('rgb(232, 238, 247)');
+    expect(link.style.color).toBe(title.style.color);
+    expect(link.getAttribute('data-export-hidden')).toBe('true');
+    expect(link.className).toContain('no-drag');
+    const row = title.parentElement?.parentElement as HTMLElement;
+    expect(csv.compareDocumentPosition(link) & globalThis.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row.lastElementChild === link || row.lastElementChild?.contains(link)).toBe(true);
+    expect(title.closest('button')).toBeNull();
+  });
+
+  it('keeps an untitled chevron at the top right and still follows the title color', () => {
+    const node = chartWithTitleLink({ name: '' });
+    const { container } = render(<ChartNode node={node} />);
+    const link = container.querySelector('button[aria-label="查看详情"]') as HTMLButtonElement;
+
+    expect(link.querySelector('.anticon-right')).toBeTruthy();
+    expect(link.className).toContain('absolute');
+    expect(link.className).toContain('right-2');
+    expect(link.className).toContain('top-2');
+    expect(link.style.color).toBe('rgb(232, 238, 247)');
+    expect(link.className).not.toContain('text-(--color-text-3)');
+    expect(container.querySelector('[data-csv-export-hover]')).toBeNull();
+  });
+
+  it('hides the chevron on the share surface', () => {
+    setInteractionRuntime({
+      surface: 'share',
+      definitions: [],
+      values: {},
+    }, 'title-link-test');
+    const node = chartWithTitleLink();
+    const { container } = render(<ChartNode node={node} />);
+
+    expect(container.textContent).toContain('CPU');
+    expect(container.querySelector('button[aria-label="查看详情"]')).toBeNull();
   });
 });
