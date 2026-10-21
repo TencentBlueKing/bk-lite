@@ -4037,7 +4037,7 @@
         "mysqlCategoryReadOnly": "Read-only",
         "mysqlCategoryHost": "Host",
         "mysqlCategoryHostUnlinked": "No linked host",
-        "mysqlCategoryViewHost": "View host →",
+        "mysqlCategoryViewHost": "View",
         "mysqlCategoryCpu": "CPU",
         "mysqlCategoryMemory": "Memory",
         "mysqlCategoryHealthOverview": "Health overview",

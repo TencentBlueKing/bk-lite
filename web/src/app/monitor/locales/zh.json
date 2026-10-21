@@ -4037,7 +4037,7 @@
         "mysqlCategoryReadOnly": "只读",
         "mysqlCategoryHost": "所属主机",
         "mysqlCategoryHostUnlinked": "未关联主机",
-        "mysqlCategoryViewHost": "查看主机 →",
+        "mysqlCategoryViewHost": "查看",
         "mysqlCategoryCpu": "CPU",
         "mysqlCategoryMemory": "内存",
         "mysqlCategoryHealthOverview": "健康概览",

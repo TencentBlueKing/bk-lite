@@ -15,11 +15,8 @@ import { activeHostAlertParams } from '../../host/layered/host-alert-list';
 import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import {
   buildSearchParams,
-  fetchDashboardInstancePages,
-  resolveDashboardInstanceIdValues,
   toMetricSeries
 } from '../../../shared/utils';
-import { buildInstanceDisplayName } from '../../../shared/utils/instance';
 import type { MetricSeries } from '../types';
 import { MYSQL_DIGEST_METRICS } from '../queries';
 import OverviewPane from './overview-pane';
@@ -28,16 +25,12 @@ import ReplicationPane from './replication-pane';
 import { StatementPane, WaitPane } from './digest-pane';
 import {
   MYSQL_IA_TABS,
-  buildHostDashboardHref,
   hasStatementCollection,
   hasWaitCollection,
-  isHostMonitorObject,
   isMysqlIaTab,
-  matchMysqlHost,
   readMysqlOverview,
   readMysqlStatementRows,
   readMysqlWaitRows,
-  type MysqlHostCandidate,
   type MysqlIaTab,
   type MysqlStatementRow,
   type MysqlWaitEventRow
@@ -49,17 +42,14 @@ interface MysqlProLayoutProps {
   metricMap: Record<string, MetricSeries | undefined>;
   previousMetricMap: Record<string, MetricSeries | undefined>;
   pendingMetricNames: ReadonlySet<string>;
-  instanceListLoading?: boolean;
   instanceId: string;
   monitorObjectId?: React.Key;
-  nodeId: string;
-  ip: string;
   instanceName: string;
   idValues: string[];
   instanceIdKeys: string[];
   timeValues: TimeValuesProps;
   queryTimeRange?: { startMs: number; endMs: number } | null;
-  /** 刷新按钮。时间档位不变时也要按当前窗口重拉语句、等待和所属主机读数。 */
+  /** 刷新按钮。时间档位不变时也要按当前窗口重拉语句和等待。 */
   reloadKey?: number;
   minStepSeconds?: number;
 }
@@ -77,11 +67,8 @@ export default function MysqlProLayout({
   metricMap,
   previousMetricMap,
   pendingMetricNames,
-  instanceListLoading = false,
   instanceId,
   monitorObjectId,
-  nodeId,
-  ip,
   instanceName,
   idValues,
   instanceIdKeys,
@@ -93,7 +80,7 @@ export default function MysqlProLayout({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useDashboardText();
-  const { getMonitorObject, getInstanceList, getMonitorAlert } = useMonitorApi();
+  const { getMonitorAlert } = useMonitorApi();
   const { getInstanceQuery } = useViewApi();
   const [statements, setStatements] = useState<MysqlStatementRow[]>([]);
   const [waits, setWaits] = useState<MysqlWaitEventRow[]>([]);
@@ -106,10 +93,6 @@ export default function MysqlProLayout({
   const [tab, setTab] = useState<MysqlIaTab>(tabFromUrl);
   const [statementId, setStatementId] = useState('');
   const [waitId, setWaitId] = useState('');
-  const [linkedHost, setLinkedHost] = useState<MysqlHostCandidate | null>(null);
-  const [hostPhase, setHostPhase] = useState<'loading' | 'ready'>(() => (
-    nodeId.trim() || ip.trim() ? 'loading' : 'ready'
-  ));
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
   const [eventsPhase, setEventsPhase] = useState<'loading' | 'ready'>('loading');
@@ -144,67 +127,6 @@ export default function MysqlProLayout({
       });
     }
   };
-
-  useEffect(() => {
-    let active = true;
-    if (!nodeId.trim() && !ip.trim()) {
-      setLinkedHost(null);
-      setHostPhase('ready');
-      return undefined;
-    }
-    setHostPhase('loading');
-    setLinkedHost(null);
-    const load = async () => {
-      try {
-        const objects = await getMonitorObject({ include_invisible: true });
-        if (!active) return;
-        if (!Array.isArray(objects)) {
-          setLinkedHost(null);
-          setHostPhase('ready');
-          return;
-        }
-        const hostObject = objects.find((item: { name?: string; display_name?: string }) => isHostMonitorObject(item));
-        if (!hostObject?.id) {
-          setLinkedHost(null);
-          setHostPhase('ready');
-          return;
-        }
-        const pages = await fetchDashboardInstancePages(getInstanceList, hostObject.id);
-        if (!active) return;
-        const keys = Array.isArray(hostObject.instance_id_keys) && hostObject.instance_id_keys.length
-          ? hostObject.instance_id_keys.map((key: unknown) => String(key))
-          : ['instance_id'];
-        const hosts: MysqlHostCandidate[] = (pages.results || []).map((item) => {
-          const row = item as {
-            instance_id?: unknown;
-            node_id?: unknown;
-            ip?: unknown;
-            instance_id_values?: unknown;
-          };
-          return {
-            instanceId: String(row.instance_id || ''),
-            name: buildInstanceDisplayName(row),
-            nodeId: String(row.node_id || '').trim(),
-            ip: String(row.ip || '').trim(),
-            instanceIdValues: resolveDashboardInstanceIdValues(row),
-            instanceIdKeys: keys,
-            monitorObjectId: String(hostObject.id)
-          };
-        }).filter((host) => host.instanceId);
-        setLinkedHost(matchMysqlHost({ nodeId, ip }, hosts));
-        setHostPhase('ready');
-      } catch {
-        if (active) {
-          setLinkedHost(null);
-          setHostPhase('ready');
-        }
-      }
-    };
-    load();
-    return () => {
-      active = false;
-    };
-  }, [getInstanceList, getMonitorObject, ip, nodeId]);
 
   useEffect(() => {
     if (tab !== 'overview' || alertDrawerOpen) return undefined;
@@ -373,9 +295,6 @@ export default function MysqlProLayout({
         metricMap={metricMap}
         previousMetricMap={previousMetricMap}
         pendingMetricNames={pendingMetricNames}
-        host={linkedHost}
-        hostHref={buildHostDashboardHref(linkedHost)}
-        hostLoading={hostPhase === 'loading' || (instanceListLoading && !linkedHost)}
         alertsOpen={alertDrawerOpen}
         alertEvents={alertEvents}
         eventsLoading={eventsPhase === 'loading'}

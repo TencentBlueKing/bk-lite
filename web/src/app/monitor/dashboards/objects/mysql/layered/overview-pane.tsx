@@ -13,16 +13,13 @@ import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import classic from '../../host/index.module.scss';
 import host from '../../host/layered/layered.module.scss';
-import pro from './pro.module.scss';
 import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
   type MysqlFocusCard,
   type MysqlFocusSpark,
-  type MysqlHostCandidate,
   type MysqlOverviewReadings
 } from './ia';
-import { MysqlHostNote } from './instance-identity';
 import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import {
   MYSQL_FOCUS_METRICS,
@@ -37,9 +34,6 @@ interface OverviewPaneProps {
   metricMap: Record<string, MysqlMetricSeries | undefined>;
   previousMetricMap: Record<string, MysqlMetricSeries | undefined>;
   pendingMetricNames: ReadonlySet<string>;
-  host: MysqlHostCandidate | null;
-  hostHref: string;
-  hostLoading: boolean;
   alertsOpen: boolean;
   alertEvents: HostAlertRailEvent[];
   eventsLoading: boolean;
@@ -113,9 +107,6 @@ export default function OverviewPane({
   metricMap,
   previousMetricMap,
   pendingMetricNames,
-  host: linkedHost,
-  hostHref,
-  hostLoading,
   alertsOpen,
   alertEvents,
   eventsLoading,
@@ -153,14 +144,7 @@ export default function OverviewPane({
 
   return (
     <>
-      <div className={pro.healthBlock}>
-        <ProSectionTitle>{text('healthOverview')}</ProSectionTitle>
-        <MysqlHostNote
-          host={linkedHost}
-          href={hostHref}
-          hostLoading={hostLoading}
-        />
-      </div>
+      <ProSectionTitle>{text('healthOverview')}</ProSectionTitle>
       {healthLoading ? (
         <KpiTileRow loading items={MYSQL_LOADING_KPIS} />
       ) : (

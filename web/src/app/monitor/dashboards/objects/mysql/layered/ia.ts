@@ -902,18 +902,19 @@ export interface MysqlProHeader {
   pill: '主库' | '从库' | 'GR' | 'Galera';
   aside?: '写入源' | '只读';
   binlog?: 'Binlog · 已开启' | 'Binlog · 已关闭';
-  /** 主版本，如 5.7 / 8.0。标签缺失或无法截取时为「未知」。 */
+  /** 版本，如 8.0.36 / 8.0。标签缺失或无法截取时为「未知」。 */
   version: string;
 }
 
 export const MYSQL_VERSION_UNKNOWN = '未知';
 const INNODB_VERSION_LABEL = 'innodb_version';
 
-/** innodb_version（如 5.7.43 / 8.0.32）截成「大.小」。截不到返回「未知」。 */
+/** innodb_version 有补丁时保留「大.小.补丁」（8.0.36），只有主次时退「大.小」。截不到返回「未知」。 */
 export const formatMysqlMajorMinorVersion = (raw: string | null | undefined) => {
   const text = String(raw || '').trim();
-  const match = text.match(/^(\d+)\.(\d+)/);
-  return match ? `${match[1]}.${match[2]}` : MYSQL_VERSION_UNKNOWN;
+  const match = text.match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (!match) return MYSQL_VERSION_UNKNOWN;
+  return match[3] != null ? `${match[1]}.${match[2]}.${match[3]}` : `${match[1]}.${match[2]}`;
 };
 
 const innodbVersionFromSeries = (series: MetricSeries | undefined) => {
@@ -929,7 +930,7 @@ const innodbVersionFromSeries = (series: MetricSeries | undefined) => {
   return '';
 };
 
-/** 从已有 mysql_variables_* 序列的 innodb_version label 读主版本。不另发查询。 */
+/** 从已有 mysql_variables_* 序列的 innodb_version label 读版本。不另发查询。 */
 export const readMysqlMajorMinorVersion = (
   metricMap: Record<string, MetricSeries | undefined>
 ) => {

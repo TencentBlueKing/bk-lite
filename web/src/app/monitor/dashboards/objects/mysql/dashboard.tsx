@@ -48,6 +48,7 @@ import {
 } from '../../shared/utils/pro-dashboard';
 import MysqlProLayout from './layered/mysql-pro-layout';
 import { MysqlInstanceBadges } from './layered/instance-identity';
+import { useMysqlLinkedHost } from './layered/use-linked-host';
 import { MYSQL_PERF_AUX_METRICS, MYSQL_REPLICATION_EXTRA_METRICS, readMysqlHeaderIdentity, readMysqlProHeader } from './layered/ia';
 import {
   MYSQL_FOCUS_METRICS,
@@ -596,6 +597,12 @@ export default function MysqlDashboardPage() {
   const proPending = instanceSwitching ? MYSQL_CATEGORY_PENDING_ALL : pendingMetricNames;
   const mysqlIdentity = readMysqlHeaderIdentity(metricMap, resolvedInstanceName);
   const proMode = displayMode === 'category';
+  const linkedHost = useMysqlLinkedHost(
+    currentInstanceOption?.nodeId || '',
+    currentInstanceOption?.ip || '',
+    proMode && !instanceLoading
+  );
+  const hostPending = instanceLoading || linkedHost.pending;
   const identityPending = blocksUntilReady(MYSQL_HEADER_METRICS, proPending);
   const identityHeader = identityPending ? null : readMysqlProHeader(proMetricMap);
   // 实例 ID 与展示名仅分隔符不同时（mysql_3306 vs mysql-3306）视为重复，不再展示。
@@ -603,42 +610,38 @@ export default function MysqlDashboardPage() {
   const showInstanceId =
     Boolean(instanceIdText) &&
     normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
-  // 专业盘常显角色 / 读写，其余进「更多」。传统盘与全量指标仍用拓扑身份。
-  const identityMetaItems = proMode
-    ? []
-    : mysqlIdentity.deployment === '单节点'
-      ? [
-        <span key="topology" className={chrome.instanceMetaInline}>
-          单节点
-        </span>
-      ]
-      : [
-        <span key="topology" className={chrome.instanceMetaInline}>
-          主从复制
-        </span>,
-        <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
-          {mysqlIdentity.role}
-        </span>
-      ];
+  // 专业盘身份在 identityExtra。传统盘与全量指标仍用拓扑身份和时区。
   const mysqlDisplayTimezone = 'Asia/Shanghai';
-  const instanceMetaItems = [
-    <span key="object-name" className={chrome.instanceMetaInline}>
-      {objectDisplayText}
-    </span>,
-    ...(proMode
-      ? []
-      : [
-        showInstanceId ? (
-          <span key="instance-id" className={chrome.instanceMetaMuted}>
-            {instanceIdText}
-          </span>
-        ) : null,
-        ...identityMetaItems,
-        <span key="timezone" className={chrome.instanceMetaMuted}>
-          时区 {mysqlDisplayTimezone}
+  const classicIdentityMeta = mysqlIdentity.deployment === '单节点'
+    ? [
+      <span key="topology" className={chrome.instanceMetaInline}>
+        单节点
+      </span>
+    ]
+    : [
+      <span key="topology" className={chrome.instanceMetaInline}>
+        主从复制
+      </span>,
+      <span key="role" className={`${styles.identityPill} ${styles.identityPillRole}`}>
+        {mysqlIdentity.role}
+      </span>
+    ];
+  const instanceMetaItems = (proMode
+    ? []
+    : [
+      <span key="object-name" className={chrome.instanceMetaInline}>
+        {objectDisplayText}
+      </span>,
+      showInstanceId ? (
+        <span key="instance-id" className={chrome.instanceMetaMuted}>
+          {instanceIdText}
         </span>
-      ])
-  ].filter(Boolean) as React.ReactNode[];
+      ) : null,
+      ...classicIdentityMeta,
+      <span key="timezone" className={chrome.instanceMetaMuted}>
+        时区 {mysqlDisplayTimezone}
+      </span>
+    ]).filter(Boolean) as React.ReactNode[];
   const metricsOverviewGuide = [
     { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' },
     { label: '适用场景', detail: '如果仪表盘只给出方向，这里负责补足细节与完整上下文。' }
@@ -748,8 +751,9 @@ export default function MysqlDashboardPage() {
               <MysqlInstanceBadges
                 header={identityHeader}
                 pending={identityPending}
-                instanceId={instanceIdText}
-                timezone={mysqlDisplayTimezone}
+                host={linkedHost.host}
+                hostHref={linkedHost.href}
+                hostPending={hostPending}
               />
             ) : undefined}
             styles={chrome}
@@ -782,11 +786,8 @@ export default function MysqlDashboardPage() {
                     metricMap={proMetricMap}
                     previousMetricMap={proPreviousMetricMap}
                     pendingMetricNames={proPending}
-                    instanceListLoading={instanceLoading}
                     instanceId={String(instanceId || '')}
                     monitorObjectId={monitorObjectId}
-                    nodeId={currentInstanceOption?.nodeId || ''}
-                    ip={currentInstanceOption?.ip || ''}
                     instanceName={resolvedInstanceName}
                     idValues={idValues}
                     instanceIdKeys={instanceIdKeys}
