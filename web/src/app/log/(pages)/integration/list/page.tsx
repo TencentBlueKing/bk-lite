@@ -165,6 +165,7 @@ const Integration = () => {
         data={treeData}
         defaultSelectedKey={defaultSelectObj as string}
         loading={treeLoading}
+        searchPlaceholder={t('log.integration.searchCategory')}
         onNodeSelect={handleObjectChange}
       />
       <div className="min-w-0 flex-1 bg-[var(--color-bg)] p-5">
@@ -172,14 +173,14 @@ const Integration = () => {
           searchProps={{
             allowClear: true,
             enterButton: true,
-            placeholder: `${t('common.search')}...`,
+            placeholder: t('log.integration.searchCollectType'),
             onSearch: onTxtPressEnter,
           }}
         />
         {pageLoading ? (
           <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" />
         ) : collectTypes.length ? (
-          <div className="grid h-[calc(100vh-236px)] w-full grid-cols-1 content-start gap-4 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid h-[calc(100vh-236px)] w-full auto-rows-max grid-cols-1 content-start gap-4 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {collectTypes.map((app) => {
               const categoryLabel =
                 categoryMap[app.display_category] || app.display_category;
