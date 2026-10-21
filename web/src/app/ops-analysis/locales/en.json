@@ -1060,7 +1060,6 @@
     "interactionActionColumn": "Actions",
     "interactionChartTooltipHint": "{name} ↗ Click to open",
     "interactionHoverHint": "Click to open: {name}",
-    "interactionContextHint": "Right-click to open link",
     "eventTableStructureMismatch": "Data structure mismatch: an event table expects an array, or a paged object with an items array.",
     "gaugeStructureMismatch": "Data structure mismatch: a gauge expects a number, or an object or array that contains a numeric field (select a display field).",
     "cardListStructureMismatch": "Data structure mismatch: a card list expects an array of objects, or a record list with an items array.",

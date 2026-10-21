@@ -66,9 +66,6 @@ export const useWidgetDataLink = (config?: object | null) => {
   const hoverHint = showDataLinkHint
     ? t('dashboard.interactionHoverHint', '点击打开：{name}', { name: hintName })
     : undefined;
-  const contextHint = showDataLinkHint
-    ? t('dashboard.interactionContextHint', '右键打开链接')
-    : '';
   const openPoint = useCallback((point?: ChartLinkPoint) => {
     if (!active || !point) return;
     open(point);
@@ -85,7 +82,6 @@ export const useWidgetDataLink = (config?: object | null) => {
     showDataLinkHint,
     chartTooltipHint,
     hoverHint,
-    contextHint,
   };
 };
 

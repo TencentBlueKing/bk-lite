@@ -114,13 +114,12 @@ describe('application topology node links', () => {
     expect(openNavigation).not.toHaveBeenCalled();
   });
 
-  it('shows the right-click hint and opens the CMDB link only from a node in view mode', () => {
+  it('highlights a node without a hover hint and opens the CMDB link from the context menu', () => {
     renderGraph();
     fireEvent.mouseEnter(serviceNode(), { clientX: 48, clientY: 64 });
-    const hover = document.querySelector('.app3d-link-hover');
-    expect(hover?.textContent).toContain('订单服务');
-    expect(hover?.textContent).toContain('右键打开链接');
-    expect(hover?.className).toContain('app3d-link-hover');
+    expect(document.querySelector('.app3d-link-hover')).toBeNull();
+    expect(document.body.textContent).not.toContain('右键打开链接');
+    expect(serviceNode().style.outlineStyle).toBe('solid');
 
     const edge = document.querySelector('svg path');
     expect(edge).toBeTruthy();
@@ -128,8 +127,11 @@ describe('application topology node links', () => {
     expect(screen.queryByRole('menuitem')).toBeNull();
 
     expect(fireEvent.contextMenu(serviceNode(), { clientX: 30, clientY: 40 })).toBe(false);
+    const item = screen.getByRole('menuitem', { name: '查看 CMDB 详情' });
+    expect(item.textContent).toBe('查看 CMDB 详情');
+    expect(item.querySelector('.anticon-link')).toBeTruthy();
     expect(document.querySelector('.app3d-link-hover')).toBeNull();
-    fireEvent.click(screen.getByRole('menuitem', { name: /查看 CMDB 详情/ }));
+    fireEvent.click(item);
     expect(openNavigation).toHaveBeenCalledWith(
       expect.objectContaining({
         href: `/cmdb/assetData/detail/baseInfo?model_id=application&inst_uuid=${NODE_ID}&inst_name=${encodeURIComponent('订单服务')}`,
@@ -138,12 +140,23 @@ describe('application topology node links', () => {
     );
   });
 
-  it('keeps the menu as a view-mode hint while editing and hides it when shared', () => {
+  it('closes the node menu on Escape without opening the link', () => {
+    renderGraph();
+    fireEvent.contextMenu(serviceNode(), { clientX: 30, clientY: 40 });
+    expect(screen.getByRole('menuitem', { name: '查看 CMDB 详情' })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('menuitem')).toBeNull();
+    expect(openNavigation).not.toHaveBeenCalled();
+  });
+
+  it('keeps the menu item disabled while editing and hides it when shared', () => {
     const editing = renderGraph({ editing: true });
     fireEvent.mouseEnter(serviceNode(), { clientX: 20, clientY: 20 });
     expect(document.querySelector('.app3d-link-hover')).toBeNull();
+    expect(serviceNode().style.outlineStyle).toBe('solid');
     expect(fireEvent.contextMenu(serviceNode())).toBe(false);
-    const item = screen.getByRole('menuitem', { name: /查看 CMDB 详情/ });
+    const item = screen.getByRole('menuitem', { name: '查看 CMDB 详情' });
+    expect(item.getAttribute('aria-disabled')).toBe('true');
     expect(item.getAttribute('title')).toBe('查看模式下可跳转');
     fireEvent.click(item);
     expect(openNavigation).not.toHaveBeenCalled();

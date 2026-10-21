@@ -2,13 +2,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { canOpenRoom3DRackLink } from '@/app/ops-analysis/components/widgets/room3D/room3DData';
 import {
   appendDataLinkTooltipFooter,
-  application3DHoverTitle,
-  composeNativeHint,
   resolveDataLinkTooltipTheme,
-  shouldShowContextLinkHint,
   shouldShowDataLinkHint,
   wrapDataLinkTooltipFormatter,
 } from '@/app/ops-analysis/utils/interactionLinkHint';
@@ -124,49 +120,6 @@ describe('appendDataLinkTooltipFooter', () => {
   it('leaves non-string tooltip results untouched', () => {
     const node = { tag: 'div' };
     expect(appendDataLinkTooltipFooter(node, footer, 'light')).toBe(node);
-  });
-});
-
-describe('data link hint gating for 3D', () => {
-  it('skips placeholder racks and non-view surfaces', () => {
-    expect(shouldShowContextLinkHint(
-      'view',
-      { kind: 'data' },
-      canOpenRoom3DRackLink({ is_conflict: false }),
-    )).toBe(true);
-    expect(shouldShowContextLinkHint(
-      'view',
-      { kind: 'data' },
-      canOpenRoom3DRackLink({}),
-    )).toBe(true);
-    expect(shouldShowContextLinkHint(
-      'view',
-      { kind: 'data' },
-      canOpenRoom3DRackLink({ is_conflict: true }),
-    )).toBe(false);
-    expect(shouldShowContextLinkHint(
-      'edit',
-      { kind: 'data' },
-      canOpenRoom3DRackLink({ is_conflict: false }),
-    )).toBe(false);
-    expect(shouldShowContextLinkHint(
-      'share',
-      { kind: 'data' },
-      canOpenRoom3DRackLink({ is_conflict: false }),
-    )).toBe(false);
-    expect(shouldShowContextLinkHint('view', { kind: 'title' }, true)).toBe(false);
-  });
-
-  it('adds the right-click line only on objects that open the menu', () => {
-    expect(application3DHoverTitle('门户', 'wall', '右键打开链接')).toBe('门户\n右键打开链接');
-    expect(application3DHoverTitle('web-1', 'host', '右键打开链接')).toBe('web-1\n右键打开链接');
-    expect(application3DHoverTitle('订单', 'application', '右键打开链接')).toBe('订单\n右键打开链接');
-    expect(application3DHoverTitle('系统', 'system', '右键打开链接')).toBe('系统\n右键打开链接');
-    expect(application3DHoverTitle('机柜', 'cabinet', '右键打开链接')).toBe('机柜');
-    expect(application3DHoverTitle('门户', 'wall', '')).toBe('门户');
-    expect(application3DHoverTitle('门户', 'wall', undefined)).toBe('门户');
-    expect(composeNativeHint('名称', '点击打开：详情')).toBe('名称\n点击打开：详情');
-    expect(composeNativeHint(undefined, undefined)).toBeUndefined();
   });
 });
 
