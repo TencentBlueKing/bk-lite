@@ -34,6 +34,7 @@ import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges,
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
 import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
+import { jobTargetOperatingSystems } from '../lib/job-target-operating-systems';
 import { buildNodeTestInputContract, materializeNodeTestInputs } from '../lib/node-test-input-contract';
 import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
@@ -417,6 +418,10 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const inspectorTriggers = useMemo(() => workflowTriggerNodes(metadata), [metadata]);
   const inspectorTestTrigger = inspectorTriggers.find((item) => item.id === nodeTestTriggerId) || inspectorTriggers.find((item) => item.trigger_type === 'FORM') || inspectorTriggers[0];
   const nodeTestInputContract = useMemo(() => buildNodeTestInputContract(selectedTask, selectedAtom?.input_schema, inspectorTestTrigger?.input_schema), [inspectorTestTrigger, selectedAtom?.input_schema, selectedTask]);
+  const jobHostOperatingSystems = useMemo(() => jobTargetOperatingSystems({
+    targets: selectedTask?.inputParameters?.targets,
+    triggers: workflowTriggerNodes(metadata),
+  }), [metadata, selectedTask]);
   const inspectorTestData = metadata.node_test_data || {};
   const inspectorTestInputs = inspectorTestTrigger && inspectorTestData[inspectorTestTrigger.id] && typeof inspectorTestData[inspectorTestTrigger.id] === 'object' && !Array.isArray(inspectorTestData[inspectorTestTrigger.id])
     ? inspectorTestData[inspectorTestTrigger.id] as Record<string, unknown>
@@ -1690,6 +1695,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     </OperateModal>
     <JobTargetSelectionDialog
       open={jobTargetSelectorOpen}
+      allowedOperatingSystems={jobHostOperatingSystems}
       value={jobTargetSelectorPurpose === 'test' && jobTestTargetsField
         ? (Array.isArray(nodeTestInputs[jobTestTargetsField]) ? (nodeTestInputs[jobTestTargetsField] as unknown[]).map(String) : EMPTY_TARGET_REFERENCES)
         : (Array.isArray(selectedTask?.inputParameters?.targets) ? selectedTask.inputParameters.targets as string[] : EMPTY_TARGET_REFERENCES)}

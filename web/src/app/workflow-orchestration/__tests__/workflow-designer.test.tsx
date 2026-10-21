@@ -465,6 +465,72 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(screen.queryByText('manual:11')).toBeNull();
   });
 
+  it('上游表单只允许 Linux 时，作业节点选择主机弹窗禁用 Windows', async () => {
+    const linuxHost = { id: 'node:l1', source: 'node_mgmt', source_id: 'l1', name: 'linux-01', ip: '10.0.0.8', operating_system: 'linux', connected: true };
+    const windowsHost = { id: 'node:w1', source: 'node_mgmt', source_id: 'w1', name: 'win-01', ip: '10.0.0.9', operating_system: 'windows', connected: true };
+    const jobWorkflow = {
+      ...workflow,
+      definition: {
+        ...workflow.definition,
+        tasks: [{
+          name: 'bklite_job_execute',
+          taskReferenceName: 'scan',
+          type: 'SIMPLE',
+          inputParameters: {
+            targets: '${workflow.input.targets}',
+            script_type: 'powershell',
+            script_content: 'Write-Output ok',
+          },
+        }],
+      },
+      canvas_metadata: {
+        node_titles: { scan: '作业执行' },
+        trigger_nodes: [{
+          id: 'trigger_form',
+          name: 'Linux 健康巡检表单',
+          trigger_type: 'FORM',
+          input_schema: {
+            type: 'object',
+            properties: {
+              targets: {
+                type: 'array',
+                title: '目标主机',
+                'x-target-binding': {
+                  mode: 'runtime',
+                  allowedSources: ['node_mgmt', 'job_mgmt'],
+                  allowedOperatingSystems: ['linux'],
+                  minCount: 1,
+                  maxCount: 100,
+                },
+              },
+            },
+            required: ['targets'],
+          },
+          config: {},
+        }],
+      },
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/workflows/1/')) return Promise.resolve(jobWorkflow);
+      if (url.includes('/workflows/atoms/')) return Promise.resolve(atoms);
+      if (url.includes('source=node_mgmt')) return Promise.resolve({ source: 'node_mgmt', count: 2, items: [linuxHost, windowsHost] });
+      return Promise.resolve({ source: 'job_mgmt', count: 0, items: [] });
+    });
+    const { container } = render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
+    const node = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('[data-workflow-node="atom"] button[aria-label="作业执行"]');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    fireEvent.doubleClick(node);
+    fireEvent.click(await screen.findByRole('button', { name: /选择主机/ }));
+
+    const linuxRow = (await screen.findByText('linux-01')).closest('tr');
+    const windowsRow = (await screen.findByText('win-01')).closest('tr');
+    expect(within(linuxRow!).getByRole('checkbox')).toHaveProperty('disabled', false);
+    expect(within(windowsRow!).getByRole('checkbox')).toHaveProperty('disabled', true);
+  });
+
   it('Webhook 只保留自动接口与响应模式，并仅在等待模式开放响应节点', async () => {
     const { container } = render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="Webhook 流程" /></App>);
 
