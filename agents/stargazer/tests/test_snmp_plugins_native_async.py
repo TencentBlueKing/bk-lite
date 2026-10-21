@@ -156,9 +156,11 @@ async def test_snmp_facts_collect_does_not_stall(monkeypatch):
     result = await _heartbeat_during(facts.list_all_resources())
     assert result["success"] is True
     assert result["result"]["network_system"][0]["sysname"] == "sw"
+    assert result["result"]["network_system"][0]["sn_collected"] == "true"
     assert result["result"]["network_interfaces"] == []
+    assert "network_sn" not in result["result"]
     assert len(engines) == 1
-    assert io_engines == [engines[0], engines[0]]
+    assert io_engines == [engines[0], engines[0], engines[0]]
     assert closed == []
     assert metrics.snapshot()["snmp_collect_to_first_io_seconds_p99"] >= 0
 
@@ -301,8 +303,9 @@ async def test_snmp_facts_getbulk_reduces_repetitions_before_getnext_fallback(mo
     result = await SnmpFacts({"host": "127.0.0.1", "version": "v2c", "community": "public"}).collect()
 
     assert result["interfaces"] == []
-    assert repetitions == [25, 12, 6, 3, 1]
-    assert next_calls == 1
+    assert result["sn_collected"] is True
+    assert repetitions == [25, 12, 6, 3, 1, 25, 12, 6, 3, 1]
+    assert next_calls == 2
 
 
 @pytest.mark.asyncio
@@ -339,7 +342,8 @@ async def test_snmp_facts_getbulk_non_increasing_oid_falls_back_once(monkeypatch
     result = await SnmpFacts({"host": "127.0.0.1", "version": "v2c", "community": "public"}).collect()
 
     assert result["interfaces"] == []
-    assert next_calls == 1
+    assert result["sn_collected"] is True
+    assert next_calls == 2
 
 
 @pytest.mark.asyncio
@@ -398,7 +402,7 @@ async def test_snmp_facts_walk_failure_keeps_shared_engine_for_next_target(monke
     result = await next_facts.collect()
     assert result["system"]["ip_addr"] == "127.0.0.2"
     assert len(engines) == 1
-    assert io_engines == [engines[0]] * 3
+    assert io_engines == [engines[0]] * 4
     assert closed == []
 
 
@@ -466,12 +470,14 @@ async def test_160_concurrent_snmp_walks_keep_the_loop_responsive(monkeypatch):
     async def fake_get(*_args, **_kwargs):
         return (None, 0, 0, _system_var_binds())
 
-    async def fake_bulk(_engine, _auth, _target, context, *_args, **_kwargs):
+    async def fake_bulk(_engine, _auth, _target, context, *args, **_kwargs):
         pdu = pdu_by_context.get(id(context), 0) + 1
         pdu_by_context[id(context)] = pdu
         if pdu > 20:
             return (None, 0, 0, [])
-        row = [(FakeOid(f"{root}.{pdu}"), FakeVal(f"value-{pdu}-{column}")) for column, root in enumerate(roots)]
+        requested = [arg for arg in args if not isinstance(arg, int)]
+        width = len(requested) or len(roots)
+        row = [(FakeOid(f"{roots[column % len(roots)]}.{pdu}"), FakeVal(f"value-{pdu}-{column}")) for column in range(width)]
         return (None, 0, 0, [row])
 
     async def heartbeat():
@@ -502,7 +508,7 @@ async def test_160_concurrent_snmp_walks_keep_the_loop_responsive(monkeypatch):
     stop_heartbeat = True
     await heartbeat_task
 
-    assert len(pdu_by_context) == 160
+    assert len(pdu_by_context) >= 160
     assert all(len(result["interfaces"]) == 20 for result in results)
     assert heartbeat_ticks >= 20
     assert max(lag_samples, default=0.0) < 0.1
@@ -655,7 +661,7 @@ async def test_snmp_facts_ignores_legacy_inline_topology_parameters(monkeypatch)
     assert result == {
         "success": True,
         "result": {
-            "network_system": [{"sysname": "edge-sw-1"}],
+            "network_system": [{"sysname": "edge-sw-1", "sn_collected": "false"}],
             "network_interfaces": [{"index": "7"}],
         },
     }

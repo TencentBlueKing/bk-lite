@@ -2,12 +2,13 @@
 # @File: network.py
 # @Time: 2025/11/12 14:00
 # @Author: windyzhao
+import json
 from collections import defaultdict
 
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_plugin.topology import build_pipeline_aggregate, parse_aggregate_result
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
-from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS, NETWORK_TOPOLOGY_FACTS
+from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS, NETWORK_SN_METRICS, NETWORK_TOPOLOGY_FACTS
 from apps.cmdb.collection.interface_nic_link import (
     _ENSURE_FAILED_STAGE,
     _ENSURE_FAILED_TEMPLATE,
@@ -35,6 +36,13 @@ _NUMERIC_ENTERPRISE_ROOT = "1.3.6.1.4.1"
 _MIN_PREFIX_ARCS = 7
 
 
+class _OmitField:
+    """采集映射返回此值时，本次不写该字段。"""
+
+
+OMIT_FIELD = _OmitField()
+
+
 class CollectNetworkMetrics(CollectBase):
     ROOT = "root"  # 根oid
     KEY = "key"  # oid
@@ -58,6 +66,7 @@ class CollectNetworkMetrics(CollectBase):
         self.interfaces_data = {}
         self.interface_index_map = {}
         self.interface_name_map = defaultdict(dict)
+        self.sn_rows = {}
         self.unresolved_by_soid = {}
         self.unresolved_ips = set()
         self.unresolved_groups = []
@@ -136,6 +145,29 @@ class CollectNetworkMetrics(CollectBase):
         if hit is not None:
             return hit
         return cls.get_default_oid_map(cls.normalize_sysobjectid(sysobjectid))
+
+    def get_device_sn(self, data, *args, **kwargs):
+        """sn_collected=true 时写入实体序列号表；否则本次不带该字段。"""
+        del args, kwargs
+        if str(data.get("sn_collected") or "").strip().lower() != "true":
+            return OMIT_FIELD
+        host = data.get("instance_id") or data.get("host") or ""
+        rows = getattr(self, "sn_rows", {}).get(host, [])
+        return json.dumps(rows, ensure_ascii=False)
+
+    def _append_sn_row(self, data):
+        host = data.get("host") or data.get("instance_id") or ""
+        oid = str(data.get("oid") or "").strip()
+        serial = str(data.get("serial") or "").strip()
+        if not host or not oid or not serial:
+            return
+        row = {"oid": oid, "serial": serial, "entity": str(data.get("entity") or "").strip()}
+        bucket = self.sn_rows.setdefault(host, [])
+        for existing in bucket:
+            if existing.get("oid") == oid:
+                existing.update(row)
+                return
+        bucket.append(row)
 
     @staticmethod
     def set_inst_name(*args, **kwargs):
@@ -225,6 +257,10 @@ class CollectNetworkMetrics(CollectBase):
             if "sysobjectid" in index_dict:
                 self.instance_id_map[index_dict["instance_id"]] = index_dict
 
+            if metric_name in NETWORK_SN_METRICS:
+                self._append_sn_row(index_dict)
+                continue
+
             self.collection_metrics_dict[metric_name].append(index_dict)
 
     def _parent_is_unresolved(self, index_data):
@@ -313,7 +349,10 @@ class CollectNetworkMetrics(CollectBase):
                     if isinstance(key_or_func, tuple):
                         data[field] = key_or_func[0](index_data[key_or_func[1]])
                     elif callable(key_or_func):
-                        data[field] = key_or_func(index_data)
+                        value = key_or_func(index_data)
+                        if value is OMIT_FIELD:
+                            continue
+                        data[field] = value
                     else:
                         data[field] = index_data.get(key_or_func, "")
 

@@ -16,7 +16,7 @@ import pytest
 from django.utils import timezone
 
 from apps.cmdb.constants.subscription import FilterType, TriggerType
-from apps.cmdb.models.change_record import UPDATE_INST, ChangeRecord
+from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.subscription_rule import SubscriptionRule
 from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService, TriggerEvent
 
@@ -179,28 +179,93 @@ class TestCheckAttributeChange:
         svc = SubscriptionTriggerService(rule)
         assert svc._check_attribute_change([{"_id": 1}], timezone.now()) == []
 
-    def test_过滤条件模式_检测集合增减(self, patch_model_info):
+    def test_过滤条件命中变化按修改而不是新增删除(self, patch_model_info):
         now = timezone.now()
         rule = make_rule(
             name="attr_cond",
             filter_type=FilterType.CONDITION.value,
-            trigger_types=[TriggerType.ATTRIBUTE_CHANGE.value],
+            trigger_types=[
+                TriggerType.INSTANCE_ADDED.value,
+                TriggerType.ATTRIBUTE_CHANGE.value,
+                TriggerType.INSTANCE_DELETED.value,
+            ],
             trigger_config={"attribute_change": {"fields": ["cpu"]}},
             last_check_time=now - timedelta(hours=1),
-            snapshot_data={"instances": [1, 2]},  # 旧集合
+            snapshot_data={"instances": [1, 2]},
         )
-        # 合并模式下，集合增减事件与字段变更事件统一在窗口扫描后 flush；
-        # 需窗口内存在至少一条变更记录，flush 才会执行（否则提前返回）。
         make_change_record("host", 3, {"cpu": "1"}, {"cpu": "2", "inst_name": "主机3"}, now - timedelta(minutes=5))
         svc = SubscriptionTriggerService(rule)
-        # 当前实例集合 {2,3} -> 新增 3，删除 1
         instances = [{"_id": 2, "inst_name": "主机2"}, {"_id": 3, "inst_name": "主机3"}]
         events = svc._check_attribute_change(instances, now)
-        ids = {e.inst_id for e in events}
-        assert 3 in ids  # 进入范围
-        assert 1 in ids  # 离开范围
-        added_event = next(e for e in events if e.inst_id == 3)
-        assert "进入订阅范围" in added_event.change_summary
+        assert [(e.inst_id, e.trigger_type) for e in events] == [(3, TriggerType.ATTRIBUTE_CHANGE.value)]
+        assert "进入订阅范围" not in events[0].change_summary
+        assert "cpu: 1 → 2" in events[0].change_summary
+
+    def test_字段变化离开范围仍是修改(self, patch_model_info):
+        now = timezone.now()
+        rule = make_rule(
+            name="leave_by_update",
+            filter_type=FilterType.CONDITION.value,
+            trigger_types=[
+                TriggerType.INSTANCE_ADDED.value,
+                TriggerType.ATTRIBUTE_CHANGE.value,
+                TriggerType.INSTANCE_DELETED.value,
+            ],
+            trigger_config={"attribute_change": {"fields": ["cpu"]}},
+            last_check_time=now - timedelta(hours=1),
+            snapshot_data={"instances": [1]},
+        )
+        make_change_record(
+            "host",
+            1,
+            {"cpu": "1", "inst_name": "主机1"},
+            {"cpu": "2", "inst_name": "主机1"},
+            now - timedelta(minutes=5),
+        )
+        events = SubscriptionTriggerService(rule)._check_attribute_change([], now)
+        assert [(event.inst_id, event.trigger_type) for event in events] == [(1, TriggerType.ATTRIBUTE_CHANGE.value)]
+
+    def test_只勾新增或删除时字段修改不通知(self, patch_model_info):
+        now = timezone.now()
+        make_change_record("host", 1, {"cpu": "1"}, {"cpu": "2", "inst_name": "主机1"}, now - timedelta(minutes=5))
+        for name, trigger_type in (("added_only", TriggerType.INSTANCE_ADDED.value), ("deleted_only", TriggerType.INSTANCE_DELETED.value)):
+            rule = make_rule(
+                name=name,
+                trigger_types=[trigger_type],
+                trigger_config={"attribute_change": {"fields": ["cpu"]}},
+                last_check_time=now - timedelta(hours=1),
+                snapshot_data={"instances": [1]},
+            )
+            events = SubscriptionTriggerService(rule)._check_attribute_change([{"_id": 1, "inst_name": "主机1"}], now)
+            assert events == []
+
+    def test_只勾新增且仍有实例时扫描会通知新建(self, mocker, patch_model_info):
+        now = timezone.now()
+        rule = make_rule(
+            name="added_with_instances",
+            trigger_types=[TriggerType.INSTANCE_ADDED.value],
+            trigger_config={"attribute_change": {"fields": ["cpu", "memo"]}},
+            last_check_time=now - timedelta(hours=1),
+            snapshot_data={"instances": [1]},
+        )
+        make_change_record(
+            "host",
+            3,
+            {},
+            {"cpu": "4", "memo": "", "inst_name": "主机3"},
+            now - timedelta(minutes=5),
+            type=CREATE_INST,
+        )
+        mocker.patch.object(
+            SubscriptionTriggerService,
+            "_get_current_instances",
+            return_value=[{"_id": 1, "inst_name": "主机1"}, {"_id": 3, "inst_name": "主机3"}],
+        )
+        events = SubscriptionTriggerService(rule).process()
+        added = [event for event in events if event.trigger_type == TriggerType.INSTANCE_ADDED.value]
+        assert [event.inst_id for event in added] == [3]
+        assert "cpu: 4" in added[0].change_summary
+        assert "memo" not in added[0].change_summary
 
     def test_过滤条件模式_数字快照映射到当前UUID不误报增减(self, patch_model_info):
         now = timezone.now()
@@ -221,6 +286,123 @@ class TestCheckAttributeChange:
         )
         assert all("进入订阅范围" not in e.change_summary for e in events)
         assert all("离开订阅范围" not in e.change_summary for e in events)
+
+    def test_新建只在勾选新增时通知(self, patch_model_info):
+        now = timezone.now()
+        rule = make_rule(
+            name="only_update",
+            trigger_types=[TriggerType.ATTRIBUTE_CHANGE.value],
+            trigger_config={"attribute_change": {"fields": ["cpu"]}},
+            last_check_time=now - timedelta(hours=1),
+            snapshot_data={"instances": []},
+        )
+        make_change_record(
+            "host",
+            3,
+            {},
+            {"cpu": "4", "inst_name": "主机3"},
+            now - timedelta(minutes=5),
+            type=CREATE_INST,
+        )
+        svc = SubscriptionTriggerService(rule)
+        assert svc._check_attribute_change([{"_id": 3, "inst_name": "主机3"}], now) == []
+
+        rule.trigger_types = [TriggerType.INSTANCE_ADDED.value]
+        rule.save(update_fields=["trigger_types"])
+        events = SubscriptionTriggerService(rule)._check_attribute_change([{"_id": 3, "inst_name": "主机3"}], now)
+        assert len(events) == 1
+        assert events[0].trigger_type == TriggerType.INSTANCE_ADDED.value
+        assert events[0].inst_id == 3
+        assert "cpu: 4" in events[0].change_summary
+
+    def test_删除只通知曾经在范围内的实例(self, patch_model_info):
+        now = timezone.now()
+        rule = make_rule(
+            name="only_delete",
+            trigger_types=[TriggerType.INSTANCE_DELETED.value],
+            trigger_config={"attribute_change": {"fields": ["cpu"]}},
+            last_check_time=now - timedelta(hours=1),
+            snapshot_data={"instances": [1]},
+        )
+        make_change_record(
+            "host",
+            1,
+            {"cpu": "2", "inst_name": "主机1"},
+            {},
+            now - timedelta(minutes=5),
+            type=DELETE_INST,
+        )
+        make_change_record(
+            "host",
+            9,
+            {"cpu": "8", "inst_name": "主机9"},
+            {},
+            now - timedelta(minutes=4),
+            type=DELETE_INST,
+        )
+        events = SubscriptionTriggerService(rule)._check_attribute_change([{"_id": 2, "inst_name": "主机2"}], now)
+        assert [(e.inst_id, e.trigger_type) for e in events] == [(1, TriggerType.INSTANCE_DELETED.value)]
+        assert "cpu: 2" in events[0].change_summary
+
+    def test_当前实例为空仍通知删除(self, mocker, patch_model_info):
+        now = timezone.now()
+        rule = make_rule(
+            name="empty_delete",
+            trigger_types=[TriggerType.INSTANCE_DELETED.value],
+            trigger_config={"attribute_change": {"fields": ["cpu"]}},
+            last_check_time=now - timedelta(hours=1),
+            snapshot_data={"instances": [1]},
+        )
+        make_change_record(
+            "host",
+            1,
+            {"cpu": "2", "inst_name": "主机1"},
+            {},
+            now - timedelta(minutes=5),
+            type=DELETE_INST,
+        )
+        mocker.patch.object(SubscriptionTriggerService, "_get_current_instances", return_value=[])
+        events = SubscriptionTriggerService(rule).process()
+        assert [(e.inst_id, e.trigger_type) for e in events] == [(1, TriggerType.INSTANCE_DELETED.value)]
+        rule.refresh_from_db()
+        assert rule.snapshot_data["instances"] == []
+
+    def test_空过滤条件查询带上所属组织(self, mocker, patch_model_info):
+        rule = make_rule(
+            name="all_in_org",
+            organization=7,
+            filter_type=FilterType.CONDITION.value,
+            instance_filter={"query_list": []},
+        )
+        captured = {}
+
+        def fake_list(model_id, params, page, page_size, order, permission_map, creator="", case_sensitive=True):
+            captured["model_id"] = model_id
+            captured["params"] = params
+            return [], 0
+
+        mocker.patch("apps.cmdb.services.subscription_trigger.InstanceManage.instance_list", side_effect=fake_list)
+        assert SubscriptionTriggerService(rule)._get_current_instances() == []
+        assert captured["model_id"] == "host"
+        assert captured["params"] == [{"field": "organization", "type": "list[]", "value": [7]}]
+
+    def test_已填写过滤条件不追加组织(self, mocker, patch_model_info):
+        condition = {"field": "ip", "type": "str=", "value": "10.0.0.1"}
+        rule = make_rule(
+            name="kept_condition",
+            organization=7,
+            filter_type=FilterType.CONDITION.value,
+            instance_filter={"query_list": [condition]},
+        )
+        captured = {}
+
+        def fake_list(model_id, params, page, page_size, order, permission_map, creator="", case_sensitive=True):
+            captured["params"] = list(params)
+            return [], 0
+
+        mocker.patch("apps.cmdb.services.subscription_trigger.InstanceManage.instance_list", side_effect=fake_list)
+        SubscriptionTriggerService(rule)._get_current_instances()
+        assert captured["params"] == [condition]
 
 
 class TestBuildCurrentSnapshot:
