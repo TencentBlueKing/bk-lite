@@ -673,20 +673,9 @@ export default function SystemPane({
           <CoreLoadCard rows={coreLoad.rows} spread={coreLoad.spread} />
         </div>
       ) : null}
-      <div className={styles.detailFull} data-surface="gpu">
-        {gpuLoading && !gpuRows.length ? (
-          <>
-            <div className={styles.gpuBandTitle}>GPU</div>
-            <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.gpuBand}`}>
-              <span
-                className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
-                aria-busy="true"
-                aria-label="加载中"
-              />
-            </section>
-          </>
-        ) : gpuRows.length ? (
-          gpuRows.map((row) => {
+      {gpuRows.length ? (
+        <div className={styles.detailFull} data-surface="gpu">
+          {gpuRows.map((row) => {
             const bandTitle = gpuRows.length > 1 ? gpuCardTitle(row, 'GPU') : 'GPU';
             return (
               <div key={row.key}>
@@ -718,16 +707,18 @@ export default function SystemPane({
                 </div>
               </div>
             );
-          })
-        ) : (
-          <>
-            <div className={styles.gpuBandTitle}>GPU</div>
-            <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.gpuBand}`}>
-              <div className={styles.gpuEmpty}>{hostCategoryText(t, 'noGpu')}</div>
-            </section>
-          </>
-        )}
-      </div>
+          })}
+        </div>
+      ) : gpuLoading ? (
+        <div className={styles.detailFull} data-surface="gpu">
+          <div className={styles.gpuBandTitle}>GPU</div>
+          <span
+            className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
+            aria-busy="true"
+            aria-label="加载中"
+          />
+        </div>
+      ) : null}
     </>
   );
 }

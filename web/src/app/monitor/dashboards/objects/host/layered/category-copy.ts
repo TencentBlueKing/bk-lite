@@ -14,7 +14,6 @@ export const HOST_CATEGORY_COPY = {
   memAvailable: [textId('hostCategoryMemAvailable'), '可用'],
   composePie: [textId('hostCategoryComposePie'), '饼图'],
   composeLine: [textId('hostCategoryComposeLine'), '折线'],
-  noGpu: [textId('hostCategoryNoGpu'), '无 GPU'],
   swapUtilization: [textId('hostCategorySwapUtilization'), '交换已用'],
   swapUsedHint: [textId('hostCategorySwapUsedHint'), '交换已用：交换分区当前已用相对总量。主值展示已用/总量（GiB）；折线为已用容量趋势。升高通常表示物理内存紧张。'],
   swapAbsentHint: [textId('hostCategorySwapAbsentHint'), '交换已用：当前主机未配置交换分区，或暂无采集。卡片保留；有数据后显示已用/总量与容量趋势。'],
