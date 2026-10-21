@@ -60,9 +60,22 @@ const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
 );
 
 /** 概览 KPI：六张数字卡，标题贴顶、主值紧跟。不含环图、饼图或 sparkline。 */
-export function KpiStrip({ items, loading = false }: { items: KpiCardModel[]; loading?: boolean }) {
+export function KpiStrip({
+  items,
+  loading = false,
+  columns
+}: {
+  items: KpiCardModel[];
+  loading?: boolean;
+  /** 可选列数。不传时保持主机六卡栅格，默认关闭任何额外占位。 */
+  columns?: number;
+}) {
   return (
-    <div className={styles.kpiGrid} aria-busy={loading || undefined}>
+    <div
+      className={styles.kpiGrid}
+      style={columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}
+      aria-busy={loading || undefined}
+    >
       {items.map((item) => {
         if (loading) {
           return (

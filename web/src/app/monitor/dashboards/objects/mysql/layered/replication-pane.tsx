@@ -2,10 +2,8 @@
 
 import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
-import { GrayTabEmptyState, ProDashLoading, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { GrayTabEmptyState, KpiTileRow, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
-import host from '../../host/layered/layered.module.scss';
-import classic from '../../host/index.module.scss';
 import {
   formatMysqlReplicationLag,
   MYSQL_REPLICATION_EXTRA_METRICS,
@@ -124,46 +122,19 @@ function CardRow({ cards }: { cards: MysqlReplicationCard[] }) {
   );
 }
 
-function FillState({ title, loading = false }: { title: string; loading?: boolean }) {
-  return (
-    <div
-      className="[&>section>div]:flex [&>section>div]:min-h-[280px] [&>section>div]:items-center [&>section>div]:justify-center"
-      data-replication-state={loading ? 'loading' : 'empty'}
-    >
-      {loading ? (
-        <section className={`${classic.panel} ${host.chartPanel}`}>
-          <div className={host.chartEmpty}>
-            <ProDashLoading />
-          </div>
-        </section>
-      ) : (
-        <GrayTabEmptyState title={title} />
-      )}
-    </div>
-  );
-}
+const REPL_LOADING_ITEMS = ['lag', 'io', 'sql'].map((key) => ({ key, label: key, value: '' }));
 
-function StatusCards({
-  items
-}: {
-  items: Array<{ key: string; label: string; value: string; tone?: string; subtitle?: string }>;
-}) {
+function FillState({ title, loading = false }: { title: string; loading?: boolean }) {
+  if (loading) {
+    return (
+      <div data-replication-state="loading">
+        <KpiTileRow loading columns={3} items={REPL_LOADING_ITEMS} />
+      </div>
+    );
+  }
   return (
-    <div className="mt-3 grid grid-cols-3 gap-3">
-      {items.map((item) => (
-        <section key={item.key} className={host.kpiCard} data-kpi={item.key}>
-          <div className={host.kpiLabel}>{item.label}</div>
-          <div
-            className="mt-1 max-w-full truncate text-[18px] font-semibold leading-6 tracking-[-0.02em] text-[var(--color-text-1)] [font-variant-numeric:tabular-nums]"
-            style={item.tone ? { color: item.tone } : undefined}
-          >
-            {item.value}
-          </div>
-          {item.subtitle ? (
-            <div className="mt-1 max-w-full truncate text-[12px] leading-4 text-[var(--color-text-3)]">{item.subtitle}</div>
-          ) : null}
-        </section>
-      ))}
+    <div data-replication-state="empty">
+      <GrayTabEmptyState title={title} />
     </div>
   );
 }
@@ -275,7 +246,18 @@ export default function ReplicationPane({
       {items.length > 0 || extras?.error ? (
         <>
           <ProSectionTitle>{text('status')}</ProSectionTitle>
-          {items.length > 0 ? <StatusCards items={items} /> : null}
+          {items.length > 0 ? (
+            <KpiTileRow
+              columns={Math.min(items.length, 6)}
+              items={items.map((item) => ({
+                key: item.key,
+                label: item.label,
+                value: item.value,
+                tone: item.tone,
+                subtitle: item.subtitle
+              }))}
+            />
+          ) : null}
           {extras?.error ? (
             <CardRow cards={[{ ...extras.error, label: localizeLabel(extras.error.label) }]} />
           ) : null}

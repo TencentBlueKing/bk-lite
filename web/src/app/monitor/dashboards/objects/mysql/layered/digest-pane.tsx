@@ -7,7 +7,7 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import type { EntityTableRow } from '../../host/entity-series';
 import LayeredEntityTable from '../../host/layered/entity-table';
 import TableCsvExportButton from '../../host/layered/table-csv-export';
-import { ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { GrayTabEmptyState, ProDashLoading, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
 import { HOST_SERIES_COLOR } from '../../host/config';
 import {
@@ -100,6 +100,25 @@ const waitEntities = (rows: readonly MysqlWaitEventRow[]): EntityTableRow[] => (
 
 const csvHost = (instanceName: string) => instanceName.trim() || 'mysql';
 
+function TabFill({
+  loading,
+  title,
+  hint
+}: {
+  loading: boolean;
+  title: string;
+  hint?: string;
+}) {
+  if (loading) {
+    return (
+      <div className={`${host.kpiCard} ${host.kpiCardLoading}`} data-digest-state="loading">
+        <ProDashLoading />
+      </div>
+    );
+  }
+  return <GrayTabEmptyState title={title} hint={hint} />;
+}
+
 /** 主机磁盘挂载点短图：绘图区 160px，通栏，不另做第三套图壳。 */
 function MountTrend({
   title,
@@ -166,9 +185,18 @@ export function StatementPane({
   }));
   const primaryWait = selected ? primaryWaitForStatement(selected.id, waits) : null;
   const hasRows = rows.length > 0;
-  const trendEmpty = !hasRows
-    ? mysqlCategoryText(t, 'noTrend')
-    : (selected?.trend?.length ? mysqlCategoryText(t, 'statementNoTrend') : mysqlCategoryText(t, 'insufficientData'));
+  if (!hasRows) {
+    return (
+      <TabFill
+        loading={loading}
+        title={mysqlCategoryText(t, 'emptyStatementsTitle')}
+        hint={mysqlCategoryText(t, 'emptyStatementsHint')}
+      />
+    );
+  }
+  const trendEmpty = selected?.trend?.length
+    ? mysqlCategoryText(t, 'statementNoTrend')
+    : mysqlCategoryText(t, 'insufficientData');
   return (
     <div className={pro.chartStack}>
       <ProSectionTitle>{mysqlCategoryText(t, 'trend')}</ProSectionTitle>
@@ -257,6 +285,15 @@ export function WaitPane({
   }));
   const exportHost = csvHost(instanceName);
   const hasRows = rows.length > 0;
+  if (!hasRows) {
+    return (
+      <TabFill
+        loading={loading}
+        title={mysqlCategoryText(t, 'emptyWaitsTitle')}
+        hint={mysqlCategoryText(t, 'emptyWaitsHint')}
+      />
+    );
+  }
   const relatedEmpty = selected
     ? emptyCopy({
       title: mysqlCategoryText(t, 'noRelatedStatements'),
@@ -266,11 +303,9 @@ export function WaitPane({
       title: mysqlCategoryText(t, 'emptyStatementsTitle'),
       hint: mysqlCategoryText(t, 'emptyStatementsHint')
     });
-  const waitTrendEmpty = !hasRows
-    ? mysqlCategoryText(t, 'noTrend')
-    : selected
-      ? (selected.trend?.length ? mysqlCategoryText(t, 'waitNoTrend') : mysqlCategoryText(t, 'insufficientData'))
-      : mysqlCategoryText(t, 'selectToFollow');
+  const waitTrendEmpty = selected
+    ? (selected.trend?.length ? mysqlCategoryText(t, 'waitNoTrend') : mysqlCategoryText(t, 'insufficientData'))
+    : mysqlCategoryText(t, 'selectToFollow');
   return (
     <div className={pro.chartStack}>
       <ProSectionTitle>{mysqlCategoryText(t, 'trend')}</ProSectionTitle>
