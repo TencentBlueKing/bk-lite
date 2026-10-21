@@ -13,7 +13,7 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
-import { parseScriptMetrics, BusinessMetricItem, cleanMeasurementName, formatScriptMetricLabels, isReservedScriptMetricId, unionVisibleDimensionNames, SCRIPT_MAX_SERIES, type ParsedScriptOutput, type ScriptOutputLineIssueCode } from './scriptMetricsParser';
+import { parseScriptMetrics, BusinessMetricItem, cleanMeasurementName, isReservedScriptMetricId, unionVisibleDimensionNames, SCRIPT_MAX_SERIES, type ParsedScriptOutput, type ScriptOutputLineIssueCode } from './scriptMetricsParser';
 import { SCRIPT_PROM_TEXT_EXAMPLE } from './scriptCollectDemos';
 import {
   applyDefaultCatalogDrafts,
@@ -210,36 +210,20 @@ const SAMPLE_PREVIEW_HEAD_CLASS =
   'sticky top-0 z-[1] h-7 whitespace-nowrap border-b border-[var(--color-border-1)] [background:linear-gradient(var(--color-fill-1),var(--color-fill-1)),var(--color-bg)] px-2 font-medium text-[var(--color-text-2)]';
 const SAMPLE_PREVIEW_CELL_CLASS =
   'h-7 border-b border-[var(--color-border-1)] px-2 align-middle';
-const SAMPLE_PREVIEW_EMPTY = '--';
 
-interface SamplePreviewItem {
-  value: number | string;
-  tags?: Record<string, string>;
-}
-
-/** 维度值弹层：每个维度一列，末列为采样值；表头吸顶，超出高度内部滚动。 */
+/** 采样值弹层：只展示采样数字，不展示标签具体值。 */
 const SamplePreviewTable: React.FC<{
-  dimensionNames: string[];
-  samples: SamplePreviewItem[];
-}> = ({ dimensionNames, samples }) => {
+  samples: Array<{ value: number | string }>;
+}> = ({ samples }) => {
   const { t } = useTranslation();
   const visible = samples.slice(0, SAMPLE_PREVIEW_MAX);
   const remaining = Math.max(0, samples.length - SAMPLE_PREVIEW_MAX);
   return (
-    <div className="min-w-[200px] max-w-[480px]">
+    <div className="min-w-[120px] max-w-[480px]">
       <div className="max-h-[240px] overflow-auto">
         <table className="w-full border-separate border-spacing-0 text-xs leading-4">
           <thead>
             <tr>
-              {dimensionNames.map((name) => (
-                <th
-                  key={name}
-                  title={name}
-                  className={`${SAMPLE_PREVIEW_HEAD_CLASS} text-left`}
-                >
-                  <div className="max-w-[160px] truncate font-mono">{name}</div>
-                </th>
-              ))}
               <th className={`${SAMPLE_PREVIEW_HEAD_CLASS} text-right`}>
                 {t('monitor.integrations.trialRunMetricValue', '采样值')}
               </th>
@@ -248,23 +232,6 @@ const SamplePreviewTable: React.FC<{
           <tbody>
             {visible.map((sample, index) => (
               <tr key={index}>
-                {dimensionNames.map((name) => {
-                  const raw = sample.tags?.[name];
-                  const text =
-                    raw === undefined || raw === null || String(raw) === ''
-                      ? SAMPLE_PREVIEW_EMPTY
-                      : String(raw);
-                  return (
-                    <td
-                      key={name}
-                      className={`${SAMPLE_PREVIEW_CELL_CLASS} text-left text-[var(--color-text-1)]`}
-                    >
-                      <div className="max-w-[160px] truncate" title={text}>
-                        {text}
-                      </div>
-                    </td>
-                  );
-                })}
                 <td
                   className={`${SAMPLE_PREVIEW_CELL_CLASS} whitespace-nowrap text-right font-mono tabular-nums text-[var(--color-text-1)]`}
                 >
@@ -1278,50 +1245,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         </div>
       </div>
 
-      {businessMetrics.length > 0 ? (
-        <div className="mb-4">
-          <div className="mb-2 text-[12px] font-medium text-[var(--color-text-3)]">
-            {t('monitor.integrations.trialRunParseResult', '解析结果')}
-          </div>
-          <div className="overflow-x-auto rounded-md border border-[var(--color-border-1)]">
-            <table className="w-full border-separate border-spacing-0 text-[12px] leading-4">
-              <thead>
-                <tr>
-                  <th className="border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-left font-medium text-[var(--color-text-2)]">
-                    {t('monitor.integrations.trialRunMetricName', '指标名称')}
-                  </th>
-                  <th className="border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-left font-medium text-[var(--color-text-2)]">
-                    {t('monitor.integrations.trialRunMetricTags', '标签')}
-                  </th>
-                  <th className="border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-right font-medium text-[var(--color-text-2)]">
-                    {t('monitor.integrations.trialRunParseValue', '值')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {businessMetrics.flatMap((item) =>
-                  (item.samples?.length ? item.samples : [{ value: item.value, tags: item.tags }]).map(
-                    (sample, index) => (
-                      <tr key={`${item.key}-${index}`}>
-                        <td className="border-b border-[var(--color-border-1)] px-3 py-2 font-mono text-[var(--color-text-1)]">
-                          {item.name}
-                        </td>
-                        <td className="border-b border-[var(--color-border-1)] px-3 py-2 font-mono text-[var(--color-text-2)]">
-                          {formatScriptMetricLabels(sample.tags) || '--'}
-                        </td>
-                        <td className="border-b border-[var(--color-border-1)] px-3 py-2 text-right font-mono tabular-nums text-[var(--color-text-1)]">
-                          {String(sample.value)}
-                        </td>
-                      </tr>
-                    )
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
       {/* Business metrics with trial-run checkboxes */}
       <div>
         {catalogErrorAlert}
@@ -1372,35 +1295,25 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                     item.samples
                   );
                   const sampleCount = item.samples?.length || 1;
-                  const tagChips =
-                    sampleCount > 1
-                      ? visibleDimensionNames
-                      : visibleDimensionNames.map((name) => {
-                          const raw = item.tags?.[name];
-                          return raw == null || String(raw) === ''
-                            ? name
-                            : `${name}="${raw}"`;
-                        });
-                  const showSamplePreview = visibleDimensionNames.length > 0;
                   const previewSamples =
                     item.samples?.length
-                      ? item.samples
-                      : [{ value: item.value, tags: item.tags }];
+                      ? item.samples.map((sample) => ({ value: sample.value }))
+                      : [{ value: item.value }];
                   const sampleStack = (
                     <div className={SAMPLE_VALUE_CELL_CLASS}>
                       <div className="flex min-w-0 flex-col items-end">
                         <div className="min-w-0 max-w-full truncate text-right font-mono text-xs leading-4 tabular-nums text-[var(--color-text-3)]">
                           {String(item.value)}
                         </div>
-                        {showSamplePreview ? (
+                        {sampleCount > 1 ? (
                           <Popover
                             placement="bottomRight"
                             arrow={false}
                             title={(
                               <span className="text-xs font-medium text-[var(--color-text-1)]">
                                 {t(
-                                  'monitor.integrations.trialRunDimensionValues',
-                                  '维度值（{count}）',
+                                  'monitor.integrations.trialRunSampleCount',
+                                  '共 {count} 条',
                                   { count: sampleCount }
                                 )}
                               </span>
@@ -1412,10 +1325,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                               }
                             }}
                             content={(
-                              <SamplePreviewTable
-                                dimensionNames={visibleDimensionNames}
-                                samples={previewSamples}
-                              />
+                              <SamplePreviewTable samples={previewSamples} />
                             )}
                           >
                             <div className="cursor-help text-right text-[11px] leading-[14px] text-[var(--color-text-3)] underline decoration-dashed decoration-[var(--color-text-3)] underline-offset-2">
@@ -1462,7 +1372,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         ) : null}
                       </div>
                       <div className="min-w-0">
-                        <DimensionTagLine names={tagChips} />
+                        <DimensionTagLine names={visibleDimensionNames} />
                         {Boolean(item.reservedTagKeys?.length) && (
                           <div
                             className="mt-0.5 text-[11px] text-[var(--color-fail)]"
