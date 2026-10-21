@@ -492,6 +492,13 @@ export const buildMysqlReplicationKpi = (
   };
 };
 
+const SLOW_QUERY_ALERT = /慢查询|slow[_\s-]*quer|mysql_slow/i;
+
+/** 慢查询 KPI 的警示色只认告警文案，不认速率。 */
+export const isSlowQueryAlertText = (content: string, policyName = '') => (
+  SLOW_QUERY_ALERT.test(content) || SLOW_QUERY_ALERT.test(policyName)
+);
+
 /**
  * 连接 / QPS / 慢查询 / 复制 / 运行时间 / 告警：六格占位固定。
  * 缺采只空主值，避免加载后整卡消失、和主机六卡错位。
@@ -499,7 +506,8 @@ export const buildMysqlReplicationKpi = (
 export const buildMysqlOverviewKpis = (
   readings: MysqlOverviewReadings,
   metricMap: Record<string, MetricSeries | undefined>,
-  text: MysqlText
+  text: MysqlText,
+  slowAlertActive = false
 ): MysqlKpiCard[] => {
   const cards: MysqlKpiCard[] = [];
   const connected = finite(readings.threadsConnected);
@@ -529,13 +537,11 @@ export const buildMysqlOverviewKpis = (
   });
 
   const slow = finite(readings.slowPerSecond);
-  const slowActive = slow != null && slow > 0;
   cards.push({
     key: 'slow',
     label: text('kpiSlow'),
     value: slow == null ? EMPTY_VALUE : text('slowPerSecond', { value: formatRate(slow) }),
-    subtitle: slowActive ? text('slowRecent') : undefined,
-    tone: slowActive ? MUTED_VALUE : undefined
+    tone: slowAlertActive ? HOST_THRESHOLD_COLOR.warn : undefined
   });
 
   const replication = buildMysqlReplicationKpi(metricMap, text);

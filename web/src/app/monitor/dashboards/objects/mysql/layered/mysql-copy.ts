@@ -45,7 +45,6 @@ export const MYSQL_CATEGORY_COPY = {
   kpiNoData: [textId('mysqlCategoryKpiNoData'), '暂无数据'],
   connectionSubtitle: [textId('mysqlCategoryConnectionSubtitle'), '上限 {max} · 占用率 {occupancy}%'],
   slowPerSecond: [textId('mysqlCategorySlowPerSecond'), '{value} 次/秒'],
-  slowRecent: [textId('mysqlCategorySlowRecent'), '近期有慢查询'],
   focusSlow: [textId('mysqlCategoryFocusSlow'), '慢查询'],
   focusConnections: [textId('mysqlCategoryFocusConnections'), '连接使用率'],
   focusBuffer: [textId('mysqlCategoryFocusBuffer'), '缓冲池命中'],

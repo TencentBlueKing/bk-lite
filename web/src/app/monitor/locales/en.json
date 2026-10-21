@@ -4053,7 +4053,6 @@
         "mysqlCategoryKpiNoData": "No data",
         "mysqlCategoryConnectionSubtitle": "Max {max} · utilization {occupancy}%",
         "mysqlCategorySlowPerSecond": "{value} /s",
-        "mysqlCategorySlowRecent": "Recent slow queries",
         "mysqlCategoryFocusSlow": "Slow queries",
         "mysqlCategoryFocusConnections": "Connection utilization",
         "mysqlCategoryFocusBuffer": "Buffer pool hit",

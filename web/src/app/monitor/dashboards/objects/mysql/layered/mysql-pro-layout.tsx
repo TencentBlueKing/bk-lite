@@ -11,7 +11,7 @@ import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered
 import { ProTimeWindowProvider } from '../../host/layered/pro-time-window';
 import { selectProChartWindow } from '../../../shared/utils/pro-chart-window';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
-import { activeHostAlertParams } from '../../host/layered/host-alert-list';
+import { activeHostAlertParams, HOST_ALERT_PAGE_SIZE, normalizeHostAlerts } from '../../host/layered/host-alert-list';
 import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import {
   buildSearchParams,
@@ -28,6 +28,7 @@ import {
   hasStatementCollection,
   hasWaitCollection,
   isMysqlIaTab,
+  isSlowQueryAlertText,
   readMysqlOverview,
   readMysqlStatementRows,
   readMysqlWaitRows,
@@ -94,6 +95,7 @@ export default function MysqlProLayout({
   const [statementId, setStatementId] = useState('');
   const [waitId, setWaitId] = useState('');
   const [alertCount, setAlertCount] = useState<number | null>(null);
+  const [slowAlertActive, setSlowAlertActive] = useState(false);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
   const [eventsPhase, setEventsPhase] = useState<'loading' | 'ready'>('loading');
   const eventsScopeRef = useRef<string | null>(null);
@@ -132,16 +134,36 @@ export default function MysqlProLayout({
     if (tab !== 'overview' || alertDrawerOpen) return undefined;
     if (!instanceId) {
       setAlertCount(null);
+      setSlowAlertActive(false);
       return undefined;
     }
     let active = true;
-    getMonitorAlert(activeHostAlertParams(instanceId, 1, 1))
-      .then((data) => {
-        if (active) setAlertCount(typeof data?.count === 'number' ? data.count : null);
-      })
-      .catch(() => {
-        if (active) setAlertCount(null);
-      });
+    setSlowAlertActive(false);
+    const loadAlerts = async () => {
+      const pageSize = HOST_ALERT_PAGE_SIZE;
+      let matched = false;
+      let total = 0;
+      for (let page = 1; page <= 4; page += 1) {
+        const data = await getMonitorAlert(activeHostAlertParams(instanceId, page, pageSize));
+        if (!active) return;
+        if (page === 1) {
+          total = typeof data?.count === 'number' ? data.count : 0;
+          setAlertCount(typeof data?.count === 'number' ? data.count : null);
+        }
+        const rows = normalizeHostAlerts(data?.results);
+        if (rows.some((row) => isSlowQueryAlertText(row.content, row.policy?.name || ''))) {
+          matched = true;
+          break;
+        }
+        if (rows.length === 0 || page * pageSize >= total) break;
+      }
+      if (active) setSlowAlertActive(matched);
+    };
+    loadAlerts().catch(() => {
+      if (!active) return;
+      setAlertCount(null);
+      setSlowAlertActive(false);
+    });
     return () => {
       active = false;
     };
@@ -298,6 +320,7 @@ export default function MysqlProLayout({
         alertsOpen={alertDrawerOpen}
         alertEvents={alertEvents}
         eventsLoading={eventsPhase === 'loading'}
+        slowAlertActive={slowAlertActive}
         onOpenAlerts={() => {
           setFocusAlertId('');
           setAlertDrawerOpen(true);

@@ -38,6 +38,7 @@ interface OverviewPaneProps {
   alertsOpen: boolean;
   alertEvents: HostAlertRailEvent[];
   eventsLoading: boolean;
+  slowAlertActive: boolean;
   onOpenAlerts: () => void;
   onFocusAlert: (alertId: string) => void;
   onOpenFocus: (card: MysqlFocusCard) => void;
@@ -116,6 +117,7 @@ export default function OverviewPane({
   alertsOpen,
   alertEvents,
   eventsLoading,
+  slowAlertActive,
   onOpenAlerts,
   onFocusAlert,
   onOpenFocus,
@@ -126,7 +128,7 @@ export default function OverviewPane({
     mysqlCategoryText(t, key, values)
   ), [t]);
   const cards = useMemo<KpiTileModel[]>(() => (
-    buildMysqlOverviewKpis(readings, metricMap, text).map((card) => ({
+    buildMysqlOverviewKpis(readings, metricMap, text, slowAlertActive).map((card) => ({
       key: card.key,
       label: card.label,
       value: card.value,
@@ -138,7 +140,7 @@ export default function OverviewPane({
         : (card.key === 'replication' && card.clickable ? onOpenReplication : undefined),
       expanded: card.key === 'alerts' ? alertsOpen : undefined
     }))
-  ), [alertsOpen, metricMap, onOpenAlerts, onOpenReplication, readings, text]);
+  ), [alertsOpen, metricMap, onOpenAlerts, onOpenReplication, readings, slowAlertActive, text]);
   const focus = useMemo(
     () => buildMysqlFocusCards(metricMap, previousMetricMap, text),
     [metricMap, previousMetricMap, text]

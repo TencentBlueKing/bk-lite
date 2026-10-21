@@ -4053,7 +4053,6 @@
         "mysqlCategoryKpiNoData": "暂无数据",
         "mysqlCategoryConnectionSubtitle": "上限 {max} · 占用率 {occupancy}%",
         "mysqlCategorySlowPerSecond": "{value} 次/秒",
-        "mysqlCategorySlowRecent": "近期有慢查询",
         "mysqlCategoryFocusSlow": "慢查询",
         "mysqlCategoryFocusConnections": "连接使用率",
         "mysqlCategoryFocusBuffer": "缓冲池命中",
