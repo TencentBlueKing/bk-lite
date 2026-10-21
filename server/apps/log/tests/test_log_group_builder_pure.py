@@ -348,6 +348,26 @@ def test_combine_query_aggregation_merges_filter_part():
     assert out == '(level:error) AND (host:"web") | stats count()'
 
 
+def test_combine_query_keeps_pipe_inside_quotes():
+    out = LogGroupQueryBuilder._combine_query_and_groups('message:"alpha|beta"', ['host:"web"'])
+    assert out == '(message:"alpha|beta") AND (host:"web")'
+
+
+def test_combine_query_splits_only_pipe_after_quoted_pipe():
+    out = LogGroupQueryBuilder._combine_query_and_groups('message:"alpha|beta" | stats count()', ['host:"web"'])
+    assert out == '(message:"alpha|beta") AND (host:"web") | stats count()'
+
+
+def test_combine_query_keeps_pipe_after_escaped_quote():
+    out = LogGroupQueryBuilder._combine_query_and_groups('message:"alpha\\" | beta"', ['host:"web"'])
+    assert out == '(message:"alpha\\" | beta") AND (host:"web")'
+
+
+def test_combine_query_splits_after_escaped_backslash_closes_quote():
+    out = LogGroupQueryBuilder._combine_query_and_groups('message:"alpha\\\\" | stats count()', ['host:"web"'])
+    assert out == '(message:"alpha\\\\") AND (host:"web") | stats count()'
+
+
 def test_combine_query_aggregation_no_filter_part():
     out = LogGroupQueryBuilder._combine_query_and_groups("| stats count()", ['host:"web"'])
     assert out == 'host:"web" | stats count()'
