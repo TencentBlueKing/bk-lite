@@ -25,7 +25,6 @@ import { useScreenAwareRouter } from '@/console-layout';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import {
   isMonitorObjectTypeQueryKey,
-  readMonitorObjectQueryId,
   resolveMonitorObjectQueryId
 } from '@/app/monitor/utils/monitorObjectQuery';
 import {
@@ -72,7 +71,12 @@ const { confirm } = Modal;
 const resolveInitialObjectSelection = (
   searchParams: Pick<URLSearchParams, 'get'> | null
 ) => {
-  const key = readMonitorObjectQueryId(searchParams);
+  const key = resolveMonitorObjectQueryId({
+    searchParams,
+    allowAll: true,
+    allowTypeKeys: true,
+    fallback: 'all'
+  });
   if (!key || key === 'all') {
     return { objectId: '' as React.Key, objectType: '' };
   }
@@ -352,7 +356,10 @@ const Integration = () => {
   };
 
   const onTxtPressEnter = () => {
-    setPagination((prev) => ({ ...prev, current: 1 }));
+    if (pagination.current !== 1) {
+      setPagination((prev) => ({ ...prev, current: 1 }));
+      return;
+    }
     getPluginList({
       monitor_object_id: objectId,
       monitor_object_type: objectType,
@@ -363,7 +370,10 @@ const Integration = () => {
 
   const onTxtClear = () => {
     setSearchText('');
-    setPagination((prev) => ({ ...prev, current: 1 }));
+    if (pagination.current !== 1) {
+      setPagination((prev) => ({ ...prev, current: 1 }));
+      return;
+    }
     getPluginList({
       monitor_object_id: objectId,
       monitor_object_type: objectType,
@@ -575,7 +585,11 @@ const Integration = () => {
             {t('common.export')}
           </Button>
         </div>
-        <Spin spinning={pageLoading}>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <Spin
+            spinning={pageLoading}
+            wrapperClassName="flex h-full min-h-0 flex-1 flex-col [&_.ant-spin-container]:flex [&_.ant-spin-container]:h-full [&_.ant-spin-container]:min-h-0 [&_.ant-spin-container]:flex-1 [&_.ant-spin-container]:flex-col"
+          >
           {pageLoading && !pluginList.length ? (
             <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" />
           ) : !pluginList.length ? (
@@ -796,7 +810,8 @@ const Integration = () => {
               </div>
             </div>
           )}
-        </Spin>
+          </Spin>
+        </div>
       </div>
       <ImportModal ref={importRef} onSuccess={onTxtClear} />
       <CreateTemplateModal
