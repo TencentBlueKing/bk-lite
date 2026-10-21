@@ -379,7 +379,9 @@ export default function ThinTimeSeries({
       <div className={styles.chartBody}>
         {suspend || !plotted.length ? (
           <div className={styles.chartEmpty}>
-            {suspend || loading ? <ProDashLoading /> : emptyText}
+            {suspend || loading ? <ProDashLoading /> : (
+              <span className="text-[13px] font-semibold text-[var(--color-text-2)]">{emptyText}</span>
+            )}
             {!loading && onRetry ? (
               <button
                 type="button"

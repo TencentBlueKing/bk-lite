@@ -153,6 +153,24 @@ const extraItems = (cards: MysqlReplicationCard[]): KpiTileModel[] => (
   }))
 );
 
+/** 标题后直接接内容。spaced 只拉开上一整块到本块标题，不进标题和卡之间。 */
+function ReplicationBlock({
+  title,
+  spaced = false,
+  children
+}: {
+  title: string;
+  spaced?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={spaced ? `${pro.replBlock} ${pro.replBreak}` : pro.replBlock}>
+      <ProSectionTitle>{title}</ProSectionTitle>
+      {children}
+    </div>
+  );
+}
+
 function TrendCard({
   trend,
   title,
@@ -246,40 +264,40 @@ export default function ReplicationPane({
   if (!hasContent && replicationLoading) {
     return (
       <div data-replication-state="loading">
-        <ProSectionTitle>{text('status')}</ProSectionTitle>
-        <FittedKpiRow loading items={REPL_LOADING_ITEMS} />
-        <div className="mt-5">
-        <ProSectionTitle>{text('trend')}</ProSectionTitle>
-        <div className={pro.perfGrid}>
-          <TrendCard
-            trend="delay"
-            title={text('replicationLag')}
-            unit="s"
-            color={HOST_SERIES_COLOR.memUsed}
-            data={[]}
-            emptyText={empty}
-            loading
-          />
-          <TrendCard
-            trend="relay"
-            title={text('relayPosition')}
-            unit="counts"
-            color={HOST_SERIES_COLOR.memAvailable}
-            data={[]}
-            emptyText={empty}
-            loading
-          />
-          <TrendCard
-            trend="binlog"
-            title={text('binlogPosition')}
-            unit="counts"
-            color={HOST_SERIES_COLOR.diskUsed}
-            data={[]}
-            emptyText={empty}
-            loading
-          />
-        </div>
-        </div>
+        <ReplicationBlock title={text('status')}>
+          <FittedKpiRow loading items={REPL_LOADING_ITEMS} />
+        </ReplicationBlock>
+        <ReplicationBlock title={text('trend')} spaced>
+          <div className={pro.perfGrid}>
+            <TrendCard
+              trend="delay"
+              title={text('replicationLag')}
+              unit="s"
+              color={HOST_SERIES_COLOR.memUsed}
+              data={[]}
+              emptyText={empty}
+              loading
+            />
+            <TrendCard
+              trend="relay"
+              title={text('relayPosition')}
+              unit="counts"
+              color={HOST_SERIES_COLOR.memAvailable}
+              data={[]}
+              emptyText={empty}
+              loading
+            />
+            <TrendCard
+              trend="binlog"
+              title={text('binlogPosition')}
+              unit="counts"
+              color={HOST_SERIES_COLOR.diskUsed}
+              data={[]}
+              emptyText={empty}
+              loading
+            />
+          </div>
+        </ReplicationBlock>
       </div>
     );
   }
@@ -294,21 +312,18 @@ export default function ReplicationPane({
   return (
     <div data-replication-state="ready">
       {showStatus ? (
-        <>
-          <ProSectionTitle>{text('status')}</ProSectionTitle>
+        <ReplicationBlock title={text('status')}>
           {items.length > 0 ? <StatusKpiRow items={items} /> : null}
           {errorItems.length > 0 ? <FittedKpiRow items={errorItems} /> : null}
-        </>
+        </ReplicationBlock>
       ) : null}
       {showDownstream ? (
-        <div className={showStatus ? 'mt-5' : undefined}>
-          <ProSectionTitle>{text('primaryDownstream')}</ProSectionTitle>
+        <ReplicationBlock title={text('primaryDownstream')} spaced={showStatus}>
           <FittedKpiRow items={downstreamItems} />
-        </div>
+        </ReplicationBlock>
       ) : null}
       {showTrends ? (
-        <div className={showStatus || showDownstream ? 'mt-5' : undefined}>
-          <ProSectionTitle>{text('trend')}</ProSectionTitle>
+        <ReplicationBlock title={text('trend')} spaced={showStatus || showDownstream}>
           <div className={pro.perfGrid}>
             <TrendCard
               trend="delay"
@@ -338,7 +353,7 @@ export default function ReplicationPane({
               loading={trends.binlog.length === 0 && pendingMetricNames.has('mysql_replication_source_log_pos')}
             />
           </div>
-        </div>
+        </ReplicationBlock>
       ) : null}
     </div>
   );

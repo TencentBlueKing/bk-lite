@@ -4018,6 +4018,7 @@
         "mysqlCategoryTabReplication": "复制",
         "mysqlCategoryTabStatements": "语句",
         "mysqlCategoryTabWaits": "等待",
+        "mysqlCategoryNotCollected": "未采集",
         "mysqlCategoryInstanceSummary": "实例摘要",
         "mysqlCategoryRole": "角色",
         "mysqlCategoryReadWrite": "读写",

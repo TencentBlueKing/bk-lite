@@ -94,27 +94,27 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 28px;
+  height: 26px;
   margin: 0;
-  padding: 0 12px;
-  border: 1px solid #1677ff;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   background: var(--color-bg);
-  color: #1677ff;
+  color: var(--color-text-3);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .viewModePill:hover {
-  background: color-mix(in srgb, #1677ff 8%, var(--color-bg));
+  background: color-mix(in srgb, var(--color-text-3) 8%, var(--color-bg));
 }
 
 .viewModeCaret {
   font-size: 10px;
-  color: #1677ff;
+  color: var(--color-text-3);
 }
 
 .backLink {

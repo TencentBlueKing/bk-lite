@@ -711,9 +711,13 @@ export default function MysqlDashboardPage() {
     router.push(`/monitor/view/dashboard/mysql?${params.toString()}`);
   };
 
+  const proChrome = displayMode === 'category';
   return (
-    <div className={chrome.page} data-mysql-chrome={displayMode === 'category' ? 'host' : 'classic'}>
-      <div className={chrome.shell}>
+    <div
+      className={proChrome ? `${chrome.page} ${styles.proPage}` : chrome.page}
+      data-mysql-chrome={proChrome ? 'host' : 'classic'}
+    >
+      <div className={proChrome ? `${chrome.shell} ${styles.proShell}` : chrome.shell}>
         <div className={chrome.unifiedShell} data-dashboard-shell="unified">
           <div className={chrome.pageIntro}>
           <DashboardPageHeader

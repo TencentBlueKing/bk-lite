@@ -8,7 +8,7 @@ import host from './layered.module.scss';
 export function GrayTabEmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
     <section className={`${classic.panel} ${host.chartPanel}`}>
-      <div className={host.chartEmpty}>
+      <div className={`${host.chartEmpty} ${host.emptyShell}`}>
         <div className="text-center">
           <div className="text-[13px] font-semibold text-[var(--color-text-2)]">{title}</div>
           {hint ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{hint}</div> : null}

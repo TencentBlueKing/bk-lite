@@ -896,6 +896,13 @@ button.kpiCard {
   font-size: 13px;
 }
 
+/* 只给 GrayTabEmpty。吃满卡内最小高并居中，不改主机系统盘里直接挂在 chartPanel 下的空字。 */
+.emptyShell {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
 .statusPanel {
   width: 100%;
   gap: 12px;
@@ -1294,7 +1301,7 @@ button.kpiCard {
   }
 }
 
-/* 概览事件轻轨。没有事件时仍留一行矮轨，文案左对齐，不撑高。 */
+/* 概览事件轻轨。没有事件时仍留一行矮轨，主文字阶对齐空态壳，不撑高。 */
 .eventsRail {
   position: relative;
   box-sizing: border-box;
@@ -1318,10 +1325,16 @@ button.kpiCard {
 
 .eventsEmpty {
   flex: none;
-  color: var(--color-text-3);
-  font-size: 12px;
-  line-height: 16px;
+  color: var(--color-text-2);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
   white-space: nowrap;
+}
+
+.eventsRail[data-events-empty] .eventsRow {
+  justify-content: center;
+  width: 100%;
 }
 
 .eventsMeasure {

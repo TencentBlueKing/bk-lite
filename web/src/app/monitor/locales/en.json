@@ -4018,6 +4018,7 @@
         "mysqlCategoryTabReplication": "Replication",
         "mysqlCategoryTabStatements": "Statements",
         "mysqlCategoryTabWaits": "Waits",
+        "mysqlCategoryNotCollected": "Not collected",
         "mysqlCategoryInstanceSummary": "Instance summary",
         "mysqlCategoryRole": "Role",
         "mysqlCategoryReadWrite": "Read/write",

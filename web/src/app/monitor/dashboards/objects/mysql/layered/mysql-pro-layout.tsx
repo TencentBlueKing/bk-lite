@@ -334,6 +334,9 @@ export default function MysqlProLayout({
               label: (
                 <span className={`${host.tabLabel}${dimmed ? ` ${pro.tabGhost}` : ''}`}>
                   {mysqlCategoryText(t, TAB_COPY[item.key])}
+                  {dimmed ? (
+                    <span className={pro.tabBadge}>{mysqlCategoryText(t, 'notCollected')}</span>
+                  ) : null}
                 </span>
               )
             };

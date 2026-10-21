@@ -200,7 +200,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       ]}
     />
   ) : (
-    <div className="h-full max-[720px]:h-auto">
+    <div className={pro.innodbEmpty}>
       <GrayTabEmptyState
         title={innodb.length > 0 ? mysqlCategoryText(t, 'innodbQuiet') : empty}
         hint={innodb.length > 0 ? mysqlCategoryText(t, 'innodbQuietHint') : undefined}
@@ -215,7 +215,13 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const showInnodb = innodbAwaiting || innodb.length > 0;
   const showInnodbRows = innodbRowsAwaiting || innodbRows.length > 0;
   const showBuffer = bufferAwaiting || buffer.length > 0;
+  const showSlow = slowQueries.length > 0 || slowAwaiting;
+  const showSelectScan = selectScan.length > 0;
+  const showRowLockWaits = rowLockWaits.length > 0;
+  const showRowLockTime = rowLockTime.length > 0;
+  const scanLockCount = [showSlow, showSelectScan, showRowLockWaits, showRowLockTime].filter(Boolean).length;
   const cardClass = (wide: boolean) => (wide ? `min-w-0 ${pro.perfWide}` : 'min-w-0');
+  const scanLockClass = cardClass(scanLockCount === 1);
   const writeInnodbPair = showWrites && showInnodb;
   const pairCol = writeInnodbPair
     ? 'grid h-full min-w-0 grid-rows-[auto_minmax(auto,1fr)] gap-3 max-[720px]:h-auto max-[720px]:grid-rows-[auto_auto]'
@@ -388,12 +394,12 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
           </div>
         </div>
       ) : null}
-      {slowQueries.length > 0 || slowAwaiting || selectScan.length > 0 || rowLockWaits.length > 0 || rowLockTime.length > 0 ? (
+      {scanLockCount > 0 ? (
         <div id="mysql-perf-scan-lock">
           <ProSectionTitle>{mysqlCategoryText(t, 'scanAndLock')}</ProSectionTitle>
-          <div className={pro.perfGrid} data-perf-section="scan-lock">
-            {slowQueries.length > 0 || slowAwaiting ? (
-              <div className="min-w-0">
+          <div className={pro.perfGrid} data-perf-section="scan-lock" data-perf-count={scanLockCount}>
+            {showSlow ? (
+              <div className={scanLockClass}>
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'kpiSlow')}
                   hint={mysqlCategoryText(t, 'slowQueriesHint')}
@@ -405,8 +411,8 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                 />
               </div>
             ) : null}
-            {selectScan.length > 0 ? (
-              <div className="min-w-0">
+            {showSelectScan ? (
+              <div className={scanLockClass}>
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'selectScan')}
                   hint={mysqlCategoryText(t, 'selectScanHint')}
@@ -417,8 +423,8 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                 />
               </div>
             ) : null}
-            {rowLockWaits.length > 0 ? (
-              <div className="min-w-0">
+            {showRowLockWaits ? (
+              <div className={scanLockClass}>
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'rowLockWaits')}
                   hint={mysqlCategoryText(t, 'rowLockWaitsHint')}
@@ -433,8 +439,8 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                 />
               </div>
             ) : null}
-            {rowLockTime.length > 0 ? (
-              <div className="min-w-0">
+            {showRowLockTime ? (
+              <div className={scanLockClass}>
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'rowLockTime')}
                   hint={mysqlCategoryText(t, 'rowLockTimeHint')}
