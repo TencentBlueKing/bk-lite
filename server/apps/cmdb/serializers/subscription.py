@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.cmdb.constants.subscription import FilterType, TriggerType
+from apps.cmdb.constants.subscription import INSTANCE_LIFECYCLE_TRIGGER_TYPES, FilterType, TriggerType
 from apps.cmdb.models.subscription_rule import SubscriptionRule
 from apps.cmdb.utils.subscription_utils import check_subscription_manage_permission
 from apps.core.utils.team_utils import get_current_team
@@ -68,12 +68,14 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
 
         if filter_type == FilterType.CONDITION.value:
             query_list = value.get("query_list", [])
+            if query_list is None:
+                query_list = []
             if not isinstance(query_list, list):
                 raise serializers.ValidationError("query_list 必须为列表")
-            if not query_list:
-                raise serializers.ValidationError("至少配置一个筛选条件")
             if len(query_list) > 8:
                 raise serializers.ValidationError("筛选条件最多支持 8 个")
+            value = dict(value)
+            value["query_list"] = query_list
         elif filter_type == FilterType.INSTANCES.value:
             instance_uuids = value.get("instance_uuids", [])
             instance_ids = value.get("instance_ids", [])
@@ -105,6 +107,8 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
             TriggerType.RELATION_CHANGE.value,
             TriggerType.EXPIRATION.value,
             TriggerType.CONFIG_FILE.value,
+            TriggerType.INSTANCE_ADDED.value,
+            TriggerType.INSTANCE_DELETED.value,
         }
         if not isinstance(value, list) or not value:
             raise serializers.ValidationError("至少选择一种触发类型")
@@ -124,11 +128,13 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
         if trigger_types is None and self.instance:
             trigger_types = self.instance.trigger_types
         trigger_types = trigger_types or []
-        if TriggerType.ATTRIBUTE_CHANGE.value in trigger_types:
+        if INSTANCE_LIFECYCLE_TRIGGER_TYPES.intersection(trigger_types):
             attr_change = normalized_value.get("attribute_change", {})
+            if not isinstance(attr_change, dict):
+                raise serializers.ValidationError("需配置监听字段")
             fields = attr_change.get("fields", [])
             if not isinstance(fields, list) or not fields:
-                raise serializers.ValidationError("属性变化需配置监听字段")
+                raise serializers.ValidationError("需配置监听字段")
         if TriggerType.RELATION_CHANGE.value in trigger_types:
             relation_change = normalized_value.get("relation_change", {})
             normalized_relation_change = self._normalize_relation_change_config(relation_change)
