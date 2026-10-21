@@ -52,6 +52,21 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None):
     metric_name = ""
     if metric_id and metric_names is not None:
         metric_name = metric_names.get(metric_id) or ""
+    metric_name_list = []
+    if metric_names is not None:
+        metric_name_list = [
+            metric_names[item]
+            for item in PolicyGroupService.metric_ids_for_policy(rule.policy)
+            if item in metric_names
+        ]
+    query = rule.policy.query_condition if isinstance(rule.policy.query_condition, dict) else {}
+    condition_thresholds = {}
+    if query.get("type") == "multi":
+        condition_thresholds = {
+            item.get("ref"): item.get("threshold") or []
+            for item in query.get("queries") or []
+            if isinstance(item, dict)
+        }
     plugin = rule.plugin
     counts = alert_counts or {}
     return {
@@ -61,6 +76,9 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None):
         "plugin_name": plugin.name,
         "collect_type": plugin.collect_type or rule.policy.collect_type or "",
         "metric_name": metric_name,
+        "metric_names": metric_name_list,
+        "query_type": query.get("type") or "",
+        "condition_thresholds": condition_thresholds,
         "threshold": rule.policy.threshold,
         "policy_id": rule.policy_id,
         "open_alert_count": counts.get(rule.policy_id, 0),
@@ -342,11 +360,12 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         rule = group.rules.select_related("policy").filter(id=request.data.get("rule_id")).first()
         if rule is None:
             raise BaseAppException("规则不存在")
-        PolicyGroupService.update_rule(
-            rule,
-            threshold=request.data.get("threshold", rule.policy.threshold),
-            operator=_operator(scope),
-        )
+        update_kwargs = {"operator": _operator(scope)}
+        if "condition_thresholds" in request.data:
+            update_kwargs["condition_thresholds"] = request.data.get("condition_thresholds")
+        else:
+            update_kwargs["threshold"] = request.data.get("threshold", rule.policy.threshold)
+        PolicyGroupService.update_rule(rule, **update_kwargs)
         log_operation(
             request,
             "update",

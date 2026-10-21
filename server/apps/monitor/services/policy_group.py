@@ -21,6 +21,7 @@ from apps.monitor.models import (
     PolicyOrganization,
     PolicyTemplate,
 )
+from apps.monitor.tasks.utils.policy_multi import query_metric_items
 
 _POLICY_CLONE_FIELDS = (
     "alert_name",
@@ -502,15 +503,48 @@ class PolicyGroupService:
         return PolicyInstanceBaseline.objects.filter(policy_id=policy.id, monitor_instance_id=instance_id).exists()
 
     @staticmethod
-    def update_rule(rule, *, threshold=None, operator="system"):
+    def update_rule(rule, *, threshold=None, condition_thresholds=None, operator="system"):
         policy = rule.policy
-        if threshold is not None:
+        update_fields = ["updated_by", "updated_at"]
+        if condition_thresholds is not None:
+            PolicyGroupService._replace_condition_thresholds(policy, condition_thresholds)
+            update_fields.append("query_condition")
+        elif threshold is not None:
             policy.threshold = threshold
+            update_fields.append("threshold")
         policy.updated_by = operator
-        policy.save(update_fields=["threshold", "updated_by", "updated_at"])
+        policy.save(update_fields=update_fields)
         alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
         PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
         return rule
+
+    @staticmethod
+    def _replace_condition_thresholds(policy, condition_thresholds):
+        from apps.monitor.expression.errors import FormulaError
+        from apps.monitor.expression.validators import validate_multi_condition
+        from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+
+        query = policy.query_condition if isinstance(policy.query_condition, dict) else {}
+        if query.get("type") != "multi":
+            raise ValidationAppException("只有多指标条件可以按条件改阈值")
+        if not isinstance(condition_thresholds, dict):
+            raise ValidationAppException("条件阈值格式不正确")
+        queries = [item for item in query.get("queries") or [] if isinstance(item, dict)]
+        refs = [str(item.get("ref") or "") for item in queries]
+        if set(condition_thresholds) != set(refs) or any(not ref for ref in refs):
+            raise ValidationAppException("条件阈值与条件不对应")
+        replaced = copy.deepcopy(query)
+        for item in replaced.get("queries") or []:
+            item["threshold"] = condition_thresholds[item.get("ref")]
+        try:
+            validate_multi_condition(replaced)
+        except FormulaError as exc:
+            raise ValidationAppException(str(exc)) from exc
+        errors = {}
+        MonitorPolicySerializer()._validate_multi_condition_metrics(replaced, errors)
+        if errors:
+            raise ValidationAppException(str(errors.get("query_condition") or "多指标条件不合法"))
+        policy.query_condition = replaced
 
     @staticmethod
     def update_notice(
@@ -583,22 +617,24 @@ class PolicyGroupService:
         return group
 
     @staticmethod
-    def metric_id_for_policy(policy):
+    def metric_ids_for_policy(policy):
         query = policy.query_condition if isinstance(policy.query_condition, dict) else {}
-        if query.get("type") == "formula":
-            for item in query.get("queries") or []:
-                if isinstance(item, dict) and item.get("metric_id"):
-                    return item["metric_id"]
-            return None
-        return query.get("metric_id") or None
+        return [
+            item.get("metric_id")
+            for item in query_metric_items(query)
+            if isinstance(item, dict) and item.get("metric_id")
+        ]
+
+    @staticmethod
+    def metric_id_for_policy(policy):
+        ids = PolicyGroupService.metric_ids_for_policy(policy)
+        return ids[0] if ids else None
 
     @staticmethod
     def metric_names_for_policies(policies):
         ids = []
         for policy in policies:
-            metric_id = PolicyGroupService.metric_id_for_policy(policy)
-            if metric_id:
-                ids.append(metric_id)
+            ids.extend(PolicyGroupService.metric_ids_for_policy(policy))
         if not ids:
             return {}
         return {row["id"]: row["name"] for row in Metric.objects.filter(id__in=ids).values("id", "name")}
