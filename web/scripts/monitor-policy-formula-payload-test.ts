@@ -24,6 +24,7 @@ import {
   shouldShowConditionSourceSwitch,
   shouldShowFormulaEditor,
   shouldWarnQueryTypeChange,
+  groupByAfterSelectingMetric,
   switchConditionSource,
   toMetricExpressionStateFromQueryCondition,
   toMetricRowsFromMetricCondition,
@@ -1161,6 +1162,47 @@ assert.throws(
       ]
     }),
   /锚点外额外维度/
+);
+
+const secondFormula = switchConditionSource(
+  createMetricRow(1, {
+    ref: 'b',
+    metricId: 3,
+    metricName: 'cpu_iowait',
+    groupAlgorithm: 'avg',
+    groupBy: ['instance_id'],
+    algorithm: 'avg_over_time',
+    role: 'level',
+    calculationUnit: 'percent',
+    thresholdUnit: 'percent',
+    threshold: [{ level: 'warning', method: '>', value: 4 }]
+  }),
+  'formula'
+);
+secondFormula.resultName = '等待比';
+if (secondFormula.operands?.[1]) {
+  secondFormula.operands[1].metricId = 4;
+  secondFormula.operands[1].metricName = 'cpu_core';
+}
+const bothFormula = buildMultiQueryCondition({
+  resultName: '两个比值',
+  rows: [formulaRow, secondFormula]
+});
+assert.equal(bothFormula.queries.length, 2);
+assert.equal(bothFormula.queries.every((query) => query.source === 'formula'), true);
+assert.equal(bothFormula.queries[0].metric_name, '错误率');
+assert.equal(bothFormula.queries[1].metric_name, '等待比');
+assert.deepEqual(
+  groupByAfterSelectingMetric(['instance_id', 'cpu'], ['instance_id'], true),
+  ['instance_id']
+);
+assert.deepEqual(
+  groupByAfterSelectingMetric(['cpu'], ['instance_id'], true),
+  ['instance_id']
+);
+assert.deepEqual(
+  groupByAfterSelectingMetric(['instance_id', 'cpu'], ['instance_id'], false),
+  ['instance_id', 'cpu']
 );
 
 console.log('monitor-policy-formula-payload-test passed');

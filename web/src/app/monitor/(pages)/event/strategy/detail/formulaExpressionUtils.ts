@@ -255,6 +255,18 @@ export const rowsAfterLeavingMulti = (
   rows: MetricExpressionRow[]
 ): MetricExpressionRow[] => (rows.length ? rows.slice(0, 1) : [createMetricRow(0)]);
 
+/** 后续条件选指标时只保留锚点已有维度；没有交集时沿用锚点。 */
+export const groupByAfterSelectingMetric = (
+  availableGroupBy: string[],
+  anchorGroupBy: string[],
+  constrainToAnchor: boolean
+): string[] => {
+  const next = constrainToAnchor
+    ? availableGroupBy.filter((item) => anchorGroupBy.includes(item))
+    : availableGroupBy;
+  return next.length ? next : anchorGroupBy;
+};
+
 export const alignFollowerGroupBy = (
   rows: MetricExpressionRow[],
   anchorGroupBy: string[]
@@ -971,7 +983,8 @@ export const validateMultiConditionRows = ({
   resultName: string;
   rows: MetricExpressionRow[];
 }): string[] => {
-  const errors = validateMetricRows(rows.filter((row) => row.source !== 'formula'));
+  const nativeRows = rows.filter((row) => row.source !== 'formula');
+  const errors = nativeRows.length ? validateMetricRows(nativeRows) : [];
   rows.filter((row) => row.source === 'formula').forEach((row) => {
     errors.push(...validateFormulaConditionRow(row));
   });

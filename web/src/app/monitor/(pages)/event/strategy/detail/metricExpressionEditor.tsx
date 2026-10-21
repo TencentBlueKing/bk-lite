@@ -20,6 +20,7 @@ import {
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
   alignFollowerGroupBy,
+  groupByAfterSelectingMetric,
   ConditionSource,
   createMetricRow,
   DEFAULT_MULTI_LEVEL_THRESHOLD,
@@ -200,10 +201,11 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
       ? sanitizeGroupBy([...groupByOptions, ...labels])
       : groupByOptions;
     const anchorGroupBy = rows[0]?.groupBy || [];
-    const nextGroupBy =
-      showFormula && !showMulti && rowIndex > 0
-        ? availableGroupBy.filter((item) => anchorGroupBy.includes(item))
-        : availableGroupBy;
+    const nextGroupBy = groupByAfterSelectingMetric(
+      availableGroupBy,
+      anchorGroupBy,
+      rowIndex > 0 && (showMulti || showFormula)
+    );
     const metricUnit =
       resolveEffectiveCalculationUnit({
         isFormulaMode: false,
