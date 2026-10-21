@@ -26,16 +26,23 @@ const TONE_COLOR = {
   warn: HOST_THRESHOLD_COLOR.warn
 };
 
-/** 状态三卡：正常不染色，沿用 KPI 深色。延迟超阈用警告色，线程停止用告警红。 */
+/** 延迟正常保持深色。线程运行中用成功绿，停止用告警红。 */
 const statusTone = (field: MysqlRoleField) => {
-  if (field.value === '--' || field.tone !== 'warn') return undefined;
-  if (THREAD_LABELS.has(field.label)) return HOST_THRESHOLD_COLOR.crit;
-  return HOST_THRESHOLD_COLOR.warn;
+  if (field.value === '--') return undefined;
+  if (THREAD_LABELS.has(field.label)) {
+    if (field.tone === 'ok') return HOST_THRESHOLD_COLOR.ok;
+    if (field.tone === 'warn') return HOST_THRESHOLD_COLOR.crit;
+    return undefined;
+  }
+  if (field.tone === 'warn') return HOST_THRESHOLD_COLOR.warn;
+  return undefined;
 };
 
-const threadDot = (field: MysqlRoleField): 'neutral' | 'alarm' | undefined => {
+const threadDot = (field: MysqlRoleField): 'running' | 'stopped' | undefined => {
   if (field.value === '--' || !THREAD_LABELS.has(field.label)) return undefined;
-  return field.tone === 'warn' ? 'alarm' : 'neutral';
+  if (field.tone === 'ok') return 'running';
+  if (field.tone === 'warn') return 'stopped';
+  return undefined;
 };
 
 const REPLICA_LABELS = ['复制延迟', 'IO 线程', 'SQL 线程'] as const;
@@ -113,7 +120,7 @@ function FittedKpiRow({
   );
 }
 
-type StatusTile = KpiTileModel & { dot?: 'neutral' | 'alarm' };
+type StatusTile = KpiTileModel & { dot?: 'running' | 'stopped' };
 
 /** 与健康 KPI 同壳。圆点单独着色，避免正常态把整段数值染成成功绿。 */
 function StatusKpiRow({ items }: { items: StatusTile[] }) {
@@ -134,12 +141,7 @@ function StatusKpiRow({ items }: { items: StatusTile[] }) {
             <div className={item.subtitle ? hostStyles.kpiValueRow : undefined}>
               <div className={hostStyles.kpiValue} style={item.tone ? { color: item.tone } : undefined}>
                 {item.dot ? (
-                  <span
-                    className={item.dot === 'alarm' ? `${pro.threadDot} ${pro.threadDotAlarm}` : pro.threadDot}
-                    aria-hidden="true"
-                  >
-                    ●
-                  </span>
+                  <span className={pro.threadDot} aria-hidden="true">●</span>
                 ) : null}
                 {item.value}
               </div>
@@ -259,6 +261,8 @@ export default function ReplicationPane({
       value: localizeValue(card.value)
     })))
     : [];
+  const showStatus = items.length > 0 || errorItems.length > 0;
+  const showDownstream = downstreamItems.length > 0;
   const showTrends = hasReplicationTrends(statusBlock?.kind, trends);
   const hasContent = items.length > 0
     || errorItems.length > 0
@@ -273,6 +277,7 @@ export default function ReplicationPane({
       <div data-replication-state="loading">
         <ProSectionTitle>{text('status')}</ProSectionTitle>
         <FittedKpiRow loading items={REPL_LOADING_ITEMS} />
+        <div className="mt-5">
         <ProSectionTitle>{text('trend')}</ProSectionTitle>
         <div className={pro.perfGrid}>
           <TrendCard
@@ -303,6 +308,7 @@ export default function ReplicationPane({
             loading
           />
         </div>
+        </div>
       </div>
     );
   }
@@ -316,21 +322,21 @@ export default function ReplicationPane({
 
   return (
     <div data-replication-state="ready">
-      {items.length > 0 || errorItems.length > 0 ? (
+      {showStatus ? (
         <>
           <ProSectionTitle>{text('status')}</ProSectionTitle>
           {items.length > 0 ? <StatusKpiRow items={items} /> : null}
           {errorItems.length > 0 ? <FittedKpiRow items={errorItems} /> : null}
         </>
       ) : null}
-      {downstreamItems.length > 0 ? (
-        <>
+      {showDownstream ? (
+        <div className={showStatus ? 'mt-5' : undefined}>
           <ProSectionTitle>{text('primaryDownstream')}</ProSectionTitle>
           <FittedKpiRow items={downstreamItems} />
-        </>
+        </div>
       ) : null}
       {showTrends ? (
-        <>
+        <div className={showStatus || showDownstream ? 'mt-5' : undefined}>
           <ProSectionTitle>{text('trend')}</ProSectionTitle>
           <div className={pro.perfGrid}>
             <TrendCard
@@ -361,7 +367,7 @@ export default function ReplicationPane({
               loading={trends.binlog.length === 0 && pendingMetricNames.has('mysql_replication_source_log_pos')}
             />
           </div>
-        </>
+        </div>
       ) : null}
     </div>
   );
