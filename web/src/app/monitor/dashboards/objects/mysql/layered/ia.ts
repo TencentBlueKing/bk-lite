@@ -1301,7 +1301,8 @@ const noteLine = (parts: string[]) => {
 
 /**
  * 复制趋势三条线：延迟、Relay 位点、Binlog 位点。
- * 体积和文件数只进标题旁注，不单独成线。没有采点就留空数组，不补 0。
+ * 体积和文件数不单独成线，也不再写进标题。没有采点就留空数组，不补 0。
+ * note 只用来判断「采到了位点摘要、但序列还空」时仍铺出标题卡，界面不渲染。
  */
 export const readMysqlReplicationSeries = (
   metricMap: Record<string, MetricSeries | undefined>
@@ -1316,7 +1317,7 @@ export const readMysqlReplicationSeries = (
     delay: collectedPoints(metricMap.mysql_slave_seconds_behind_master),
     relay: collectedPoints(metricMap.mysql_slave_relay_log_pos),
     binlog: collectedPoints(metricMap.mysql_replication_source_log_pos),
-    delayNote: delayLatest == null ? undefined : `当前 ${formatMysqlReplicationLag(delayLatest)}`,
+    delayNote: delayLatest == null ? undefined : formatMysqlReplicationLag(delayLatest),
     relayNote: noteLine([
       relayPos != null ? `位置 ${formatPosition(relayPos)}` : '',
       relaySpace != null ? formatBytes(relaySpace) : ''

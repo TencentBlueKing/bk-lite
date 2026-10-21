@@ -3,6 +3,8 @@
 import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
 import { GrayTabEmptyState, KpiTileRow, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
+import { CardAlertDot, cardAlertClass } from '../../host/layered/card-alert';
+import hostStyles from '../../host/layered/layered.module.scss';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import {
   formatMysqlReplicationLag,
@@ -12,8 +14,7 @@ import {
   readMysqlRoleBlock,
   type MysqlReplicationCard,
   type MysqlReplicationSeries,
-  type MysqlRoleField,
-  type MysqlRoleTone
+  type MysqlRoleField
 } from './ia';
 import type { MetricSeries } from '../types';
 import { MYSQL_ROLE_METRICS, blocksUntilReady } from './section-loading';
@@ -21,10 +22,20 @@ import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import pro from './pro.module.scss';
 
-const TONE_COLOR: Record<MysqlRoleTone, string | undefined> = {
-  ok: HOST_THRESHOLD_COLOR.ok,
-  warn: HOST_THRESHOLD_COLOR.warn,
-  muted: undefined
+const TONE_COLOR = {
+  warn: HOST_THRESHOLD_COLOR.warn
+};
+
+/** 状态三卡：正常不染色，沿用 KPI 深色。延迟超阈用警告色，线程停止用告警红。 */
+const statusTone = (field: MysqlRoleField) => {
+  if (field.value === '--' || field.tone !== 'warn') return undefined;
+  if (THREAD_LABELS.has(field.label)) return HOST_THRESHOLD_COLOR.crit;
+  return HOST_THRESHOLD_COLOR.warn;
+};
+
+const threadDot = (field: MysqlRoleField): 'neutral' | 'alarm' | undefined => {
+  if (field.value === '--' || !THREAD_LABELS.has(field.label)) return undefined;
+  return field.tone === 'warn' ? 'alarm' : 'neutral';
 };
 
 const REPLICA_LABELS = ['复制延迟', 'IO 线程', 'SQL 线程'] as const;
@@ -48,17 +59,6 @@ const VALUE_COPY: Record<string, MysqlCategoryCopyKey> = {
   已停止: 'stopped',
   已开启: 'enabled',
   已关闭: 'disabled'
-};
-
-const toneColor = (field: MysqlRoleField) => {
-  if (field.value === '--') return undefined;
-  if (THREAD_LABELS.has(field.label) && field.tone === 'warn') return HOST_THRESHOLD_COLOR.crit;
-  return TONE_COLOR[field.tone];
-};
-
-const displayValue = (field: MysqlRoleField) => {
-  if (field.value === '--' || !THREAD_LABELS.has(field.label)) return field.value;
-  return `● ${field.value}`;
 };
 
 const lagChange = (points: ChartData[] | undefined) => {
@@ -113,13 +113,52 @@ function FittedKpiRow({
   );
 }
 
+type StatusTile = KpiTileModel & { dot?: 'neutral' | 'alarm' };
+
+/** 与健康 KPI 同壳。圆点单独着色，避免正常态把整段数值染成成功绿。 */
+function StatusKpiRow({ items }: { items: StatusTile[] }) {
+  return (
+    <div
+      className={pro.kpiFit}
+      style={{ ['--kpi-cols' as string]: String(Math.max(items.length, 1)) }}
+    >
+      <div className={hostStyles.kpiGrid}>
+        {items.map((item) => (
+          <div
+            key={item.key}
+            className={`${hostStyles.kpiCard} ${cardAlertClass(item.alertLevel)}`}
+            data-kpi={item.key}
+          >
+            <CardAlertDot level={item.alertLevel} valueColor={item.tone} />
+            <div className={hostStyles.kpiLabel}>{item.label}</div>
+            <div className={item.subtitle ? hostStyles.kpiValueRow : undefined}>
+              <div className={hostStyles.kpiValue} style={item.tone ? { color: item.tone } : undefined}>
+                {item.dot ? (
+                  <span
+                    className={item.dot === 'alarm' ? `${pro.threadDot} ${pro.threadDotAlarm}` : pro.threadDot}
+                    aria-hidden="true"
+                  >
+                    ●
+                  </span>
+                ) : null}
+                {item.value}
+              </div>
+              {item.subtitle ? <div className={hostStyles.kpiAside}>{item.subtitle}</div> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const extraItems = (cards: MysqlReplicationCard[]): KpiTileModel[] => (
   cards.map((card) => ({
     key: card.key,
     label: card.label,
     value: card.value,
     detail: card.detail,
-    tone: TONE_COLOR[card.tone || 'muted'],
+    tone: card.tone === 'warn' ? TONE_COLOR.warn : undefined,
     alertLevel: card.tone === 'warn' ? 'warn' as const : undefined
   }))
 );
@@ -130,7 +169,6 @@ function TrendCard({
   unit,
   color,
   data,
-  note,
   loading,
   emptyText
 }: {
@@ -139,7 +177,6 @@ function TrendCard({
   unit: 's' | 'counts';
   color: string;
   data: ChartData[];
-  note?: string;
   loading?: boolean;
   emptyText: string;
 }) {
@@ -151,7 +188,6 @@ function TrendCard({
         numericAxis
         loading={loading}
         data={data}
-        reading={note}
         emptyText={emptyText}
         legends={[{ label: title, color }]}
       />
@@ -175,11 +211,6 @@ export default function ReplicationPane({
     return key ? text(key) : label;
   };
   const localizeValue = (value: string) => {
-    if (value.startsWith('● ')) {
-      const inner = value.slice(2);
-      const key = VALUE_COPY[inner];
-      return key ? `● ${text(key)}` : value;
-    }
     const key = VALUE_COPY[value];
     return key ? text(key) : value;
   };
@@ -207,11 +238,12 @@ export default function ReplicationPane({
       value: formatMysqlReplicationLag(Math.abs(delta), lagUnits)
     });
   })();
-  const items: KpiTileModel[] = fields.map((field) => ({
+  const items: StatusTile[] = fields.map((field) => ({
     key: field.label,
     label: localizeLabel(field.label),
-    value: localizeValue(displayValue(field)),
-    tone: toneColor(field),
+    value: localizeValue(field.value),
+    tone: statusTone(field),
+    dot: threadDot(field),
     subtitle: field.label === '复制延迟' ? change : undefined,
     alertLevel: THREAD_LABELS.has(field.label) && field.tone === 'warn'
       ? 'critical' as const
@@ -287,7 +319,7 @@ export default function ReplicationPane({
       {items.length > 0 || errorItems.length > 0 ? (
         <>
           <ProSectionTitle>{text('status')}</ProSectionTitle>
-          {items.length > 0 ? <FittedKpiRow items={items} /> : null}
+          {items.length > 0 ? <StatusKpiRow items={items} /> : null}
           {errorItems.length > 0 ? <FittedKpiRow items={errorItems} /> : null}
         </>
       ) : null}
@@ -307,7 +339,6 @@ export default function ReplicationPane({
               unit="s"
               color={HOST_SERIES_COLOR.memUsed}
               data={trends.delay}
-              note={trends.delayNote}
               emptyText={empty}
               loading={trends.delay.length === 0 && pendingMetricNames.has('mysql_slave_seconds_behind_master')}
             />
@@ -317,7 +348,6 @@ export default function ReplicationPane({
               unit="counts"
               color={HOST_SERIES_COLOR.memAvailable}
               data={trends.relay}
-              note={trends.relayNote}
               emptyText={empty}
               loading={trends.relay.length === 0 && pendingMetricNames.has('mysql_slave_relay_log_pos')}
             />
@@ -327,7 +357,6 @@ export default function ReplicationPane({
               unit="counts"
               color={HOST_SERIES_COLOR.diskUsed}
               data={trends.binlog}
-              note={trends.binlogNote}
               emptyText={empty}
               loading={trends.binlog.length === 0 && pendingMetricNames.has('mysql_replication_source_log_pos')}
             />

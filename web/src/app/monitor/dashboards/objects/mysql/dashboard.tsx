@@ -610,7 +610,7 @@ export default function MysqlDashboardPage() {
   const showInstanceId =
     Boolean(instanceIdText) &&
     normalizeIdentityKey(instanceIdText) !== normalizeIdentityKey(primaryInstanceText);
-  // 专业盘身份在 identityExtra。传统盘与全量指标仍用拓扑身份和时区。
+  // 专业盘身份在标题下的灰字行。传统盘与全量指标仍用拓扑身份和时区。
   const mysqlDisplayTimezone = 'Asia/Shanghai';
   const classicIdentityMeta = mysqlIdentity.deployment === '单节点'
     ? [
@@ -627,7 +627,16 @@ export default function MysqlDashboardPage() {
       </span>
     ];
   const instanceMetaItems = (proMode
-    ? []
+    ? [
+      <MysqlInstanceBadges
+        key="pro-identity"
+        header={identityHeader}
+        pending={identityPending}
+        host={linkedHost.host}
+        hostHref={linkedHost.href}
+        hostPending={hostPending}
+      />
+    ]
     : [
       <span key="object-name" className={chrome.instanceMetaInline}>
         {objectDisplayText}
@@ -747,15 +756,6 @@ export default function MysqlDashboardPage() {
               onFrequenceChange,
               onRefresh: refreshDashboard
             }}
-            identityExtra={proMode ? (
-              <MysqlInstanceBadges
-                header={identityHeader}
-                pending={identityPending}
-                host={linkedHost.host}
-                hostHref={linkedHost.href}
-                hostPending={hostPending}
-              />
-            ) : undefined}
             styles={chrome}
           />
           </div>
