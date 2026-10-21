@@ -99,13 +99,15 @@ def summarize_trend_rows(
             str(row["labels"]),
         )
     )
-    truncated = len(rows) > MAX_TREND_ROWS
+    returned_rows = rows[:MAX_TREND_ROWS]
+    hits_in_returned = sum(1 for row in returned_rows if row["within_horizon"])
+    omitted_hits = max(0, hit_count - hits_in_returned)
     return {
         "scanned_series": scanned,
         "hit_count": hit_count,
-        "truncated": truncated,
-        "omitted_count": max(0, len(rows) - MAX_TREND_ROWS),
+        "truncated": omitted_hits > 0,
+        "omitted_count": omitted_hits,
         "threshold": threshold,
         "horizon_days": horizon_days,
-        "rows": rows[:MAX_TREND_ROWS],
+        "rows": returned_rows,
     }
