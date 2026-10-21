@@ -60,9 +60,9 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const modalRef = useRef<ModalRef>(null);
   const hexGridRef = useRef<HTMLDivElement>(null);
-  const isFetchingRef = useRef<boolean>(false); // 用于标记是否正在加载数据
+  const isFetchingRef = useRef<boolean>(false); // identity+回填全程在途，对齐 viewList listInFlight
+  const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const fillAbortRef = useRef<AbortController | null>(null);
   const unassignedOnlyRef = useRef(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [chartData, setChartData] = useState<HexagonData[]>([]);
@@ -118,7 +118,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     return () => {
       window.removeEventListener('resize', updatePageSize);
       abortControllerRef.current?.abort();
-      fillAbortRef.current?.abort();
     };
   }, []);
 
@@ -167,13 +166,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     pagination.pageSize,
     unassignedOnly
   ]);
-
-  // 加载更多节流
-  useEffect(() => {
-    if (!tableLoading) {
-      isFetchingRef.current = false;
-    }
-  }, [tableLoading]);
 
   const handleScroll = useCallback(() => {
     if (!hexGridRef.current) return;
@@ -230,36 +222,24 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     };
   };
 
-  const beginFillSession = (reset: boolean) => {
-    if (reset) {
-      fillAbortRef.current?.abort();
-      const next = new AbortController();
-      fillAbortRef.current = next;
-      return next;
-    }
-    if (!fillAbortRef.current || fillAbortRef.current.signal.aborted) {
-      fillAbortRef.current = new AbortController();
-    }
-    return fillAbortRef.current;
-  };
-
   const fillHexagonMetrics = async ({
     rows,
     startIndex,
-    replace,
+    requestId,
     toChart,
     signal
   }: {
     rows: TableDataItem[];
     startIndex: number;
-    replace: boolean;
+    requestId: number;
     toChart: (filled: TableDataItem[]) => HexagonData[];
     signal: AbortSignal;
   }) => {
     const filled = await fillInstanceListDisplayMetrics({
       rows,
       signal,
-      isCurrent: () => !signal.aborted,
+      isCurrent: () =>
+        !signal.aborted && requestId === requestIdRef.current,
       fetchBatch: async (instanceIds, batchSignal) => {
         const payload = await getInstanceDisplayMetrics(
           objectId,
@@ -272,14 +252,12 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         return payload?.results || [];
       }
     });
-    if (signal.aborted) {
+    if (signal.aborted || requestId !== requestIdRef.current) {
       return;
     }
     const nextChart = toChart(filled);
+    // 只覆盖本页格子，避免 replace 整表擦掉已 append 的后续页。
     setChartData((prev) => {
-      if (replace) {
-        return nextChart;
-      }
       const merged = [...prev];
       merged.splice(startIndex, nextChart.length, ...nextChart);
       return merged;
@@ -287,16 +265,30 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   };
 
   const getInitData = async (name: string) => {
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const currentRequestId = ++requestIdRef.current;
     const params = getParams();
     const objParams = {
       monitor_object_id: String(objectId),
       name: isPod ? 'pod_status_phase' : 'node_status_condition'
     };
-    const getInstList = await getInstanceSearch(objectId, params);
-    const getQueryParams = await getInstanceQueryParams(name, objParams);
+    isFetchingRef.current = true;
     setTableLoading(true);
     try {
-      const { items: metricsData } = await getMonitorMetrics(objParams);
+      const getInstList = getInstanceSearch(objectId, params, {
+        signal: abortController.signal
+      });
+      const getQueryParams = getInstanceQueryParams(name, objParams, {
+        signal: abortController.signal
+      });
+      const { items: metricsData } = await getMonitorMetrics(objParams, {
+        signal: abortController.signal
+      });
+      if (currentRequestId !== requestIdRef.current) {
+        return;
+      }
       setMertics(metricsData || []);
       const tagetMerticItem = metricsData.find(
         (item: MetricItem) =>
@@ -313,28 +305,30 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         setQueryMetric(tagetMerticItem.name);
       }
       const res = await Promise.all([getInstList, getQueryParams]);
+      if (currentRequestId !== requestIdRef.current) {
+        return;
+      }
       const k8sQuery = res[1];
       if (k8sQuery?.cluster) {
         setNodeList(k8sQuery?.node || []);
       }
+      const identityRows = res[0]?.results || [];
       const chartConfig = {
-        data: res[0]?.results || [],
+        data: identityRows,
         metricsData,
         hexColor,
         queryMetric: queryMetric as string
       };
-      const identityRows = res[0]?.results || [];
       setChartData(dealChartData(chartConfig));
       setPagination((prev: Pagination) => ({
         ...prev,
         total: res[0]?.count || 0
       }));
       setTableLoading(false);
-      const fillSession = beginFillSession(true);
       await fillHexagonMetrics({
         rows: identityRows,
         startIndex: 0,
-        replace: true,
+        requestId: currentRequestId,
         toChart: (filled) =>
           dealChartData({
             data: filled,
@@ -342,12 +336,19 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
             hexColor,
             queryMetric: (tagetMerticItem?.name || queryMetric) as string
           }),
-        signal: fillSession.signal
+        signal: abortController.signal
       });
     } catch {
-      setMertics([]);
+      if (currentRequestId === requestIdRef.current) {
+        setMertics([]);
+      }
     } finally {
-      setTableLoading(false);
+      if (abortControllerRef.current === abortController) {
+        isFetchingRef.current = false;
+      }
+      if (currentRequestId === requestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -430,17 +431,14 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     if (type === 'timer' && shouldSkipPeriodicRefresh(isFetchingRef.current)) {
       return;
     }
-    if (type !== 'timer' && type !== 'more') {
+    if (type !== 'timer') {
       abortControllerRef.current?.abort();
-      fillAbortRef.current?.abort();
-    } else if (type === 'timer' && isFetchingRef.current) {
+    } else if (isFetchingRef.current) {
       return;
-    } else if (type !== 'timer') {
-      abortControllerRef.current?.abort();
     }
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
-    const fillSession = beginFillSession(type !== 'more');
+    const currentRequestId = ++requestIdRef.current;
     const params = getParams();
     if (type === 'refresh') {
       params.page = 1;
@@ -454,6 +452,10 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       const data = await getInstanceSearch(objectId, params, {
         signal: abortController.signal
       });
+      const applied = currentRequestId === requestIdRef.current;
+      if (!applied) {
+        return;
+      }
       const identityRows = data.results || [];
       const chartConfig = {
         data: identityRows,
@@ -474,7 +476,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       await fillHexagonMetrics({
         rows: identityRows,
         startIndex,
-        replace: type !== 'more',
+        requestId: currentRequestId,
         toChart: (filled) =>
           dealChartData({
             data: filled,
@@ -482,13 +484,15 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
             hexColor,
             queryMetric: queryMetric as string
           }),
-        signal: fillSession.signal
+        signal: abortController.signal
       });
     } finally {
       if (abortControllerRef.current === abortController) {
         isFetchingRef.current = false;
       }
-      setTableLoading(false);
+      if (currentRequestId === requestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 
