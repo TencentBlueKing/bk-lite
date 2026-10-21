@@ -70,7 +70,7 @@ describe('mysql overview replication KPI', () => {
       'mysql_aborted_connects_rate',
       'mysql_aborted_clients_rate',
       'mysql_tmp_disk_table_ratio',
-      'mysql_slave_seconds_behind_master',
+      'mysql_slow_queries_rate',
       'mysql_table_locks_waited_rate'
     ]);
     expect(REPL_LAG_WARN_S).toBe(30);
@@ -124,13 +124,17 @@ describe('mysql overview replication KPI', () => {
 
 describe('mysql overview focus cards', () => {
   it('always returns four exception cards and switches the fourth by role', () => {
-    const replica = buildMysqlFocusCards(replicaMap(12), {}, text);
+    const replica = buildMysqlFocusCards(replicaMap(12, 1, 1, {
+      mysql_slow_queries_rate: gauge('mysql_slow_queries_rate', 0.5)
+    }), {}, text);
     expect(replica).toHaveLength(4);
-    expect(replica.map((card) => card.key)).toEqual(['lockWait', 'aborted', 'tmpDisk', 'replLag']);
+    expect(replica.map((card) => card.key)).toEqual(['lockWait', 'aborted', 'tmpDisk', 'slow']);
     expect(replica[0].value).toBe('—');
     expect(replica[0].subtitle).toBe('未采集');
-    expect(replica[3].tab).toBe('replication');
-    expect(replica[3].value).toBe('12 秒');
+    expect(replica[3].label).toBe('慢查询');
+    expect(replica[3].tab).toBe('statements');
+    expect(replica[3].hint).toBe('查看语句');
+    expect(replica[3].value).toBe('0.50 次/秒');
 
     const primary = buildMysqlFocusCards({
       mysql_slaves_connected: gauge('mysql_slaves_connected', 2),
@@ -159,13 +163,16 @@ describe('mysql overview focus cards', () => {
     }, {}, text)[0];
     expect(lockCrit.tone).toBe(HOST_THRESHOLD_COLOR.crit);
 
-    const lagOk = buildMysqlFocusCards(replicaMap(REPL_LAG_WARN_S), {}, text)[3];
-    expect(lagOk.tone).toBe(HOST_THRESHOLD_COLOR.ok);
+    const slowQuiet = buildMysqlFocusCards(replicaMap(0, 1, 1, {
+      mysql_slow_queries_rate: gauge('mysql_slow_queries_rate', 0)
+    }), {}, text)[3];
+    expect(slowQuiet.key).toBe('slow');
+    expect(slowQuiet.tone).toBeUndefined();
 
-    const lagWarn = buildMysqlFocusCards(replicaMap(REPL_LAG_WARN_S + 1), {}, text)[3];
-    expect(lagWarn.tone).toBe(HOST_THRESHOLD_COLOR.warn);
-
-    const lagCrit = buildMysqlFocusCards(replicaMap(REPL_LAG_CRIT_S + 1), {}, text)[3];
-    expect(lagCrit.tone).toBe(HOST_THRESHOLD_COLOR.crit);
+    const slowWarn = buildMysqlFocusCards(replicaMap(0, 1, 1, {
+      mysql_slow_queries_rate: gauge('mysql_slow_queries_rate', 1.2)
+    }), {}, text)[3];
+    expect(slowWarn.tone).toBe(HOST_THRESHOLD_COLOR.warn);
+    expect(slowWarn.value).toBe('1.20 次/秒');
   });
 });

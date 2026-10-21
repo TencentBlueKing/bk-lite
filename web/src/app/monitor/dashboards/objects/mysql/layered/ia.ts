@@ -567,11 +567,11 @@ export const buildMysqlOverviewKpis = (
   return KPI_ORDER.flatMap((key) => cards.filter((card) => card.key === key));
 };
 
-export type MysqlFocusSpark = 'lockWait' | 'aborted' | 'tmpDisk' | 'replLag' | 'tableLock';
+export type MysqlFocusSpark = 'lockWait' | 'aborted' | 'tmpDisk' | 'slow' | 'tableLock';
 export type MysqlFocusAnchor = 'scan-lock' | 'quality';
 
 export interface MysqlFocusCard {
-  key: 'lockWait' | 'aborted' | 'tmpDisk' | 'replLag' | 'tableLock';
+  key: 'lockWait' | 'aborted' | 'tmpDisk' | 'slow' | 'tableLock';
   label: string;
   value: string;
   subtitle?: string;
@@ -668,11 +668,7 @@ export const buildMysqlFocusCards = (
     : (abortedConnects || 0) + (abortedClients || 0);
   const tmpDisk = finite(latestNumber(metricMap.mysql_tmp_disk_table_ratio));
   const replica = readMysqlRoleBlock(metricMap)?.kind === 'replica';
-  const io = latestNumber(metricMap.mysql_slave_io_running);
-  const sql = latestNumber(metricMap.mysql_slave_sql_running);
-  const replicaStopped = (io != null && io <= 0) || (sql != null && sql <= 0);
-  const replicaErrorNo = replicaErrno(metricMap);
-  const lag = finite(latestNumber(metricMap.mysql_slave_seconds_behind_master));
+  const slow = finite(latestNumber(metricMap.mysql_slow_queries_rate));
   const tableLock = finite(latestNumber(metricMap.mysql_table_locks_waited_rate));
   const previousLockWait = finite(latestNumber(previousMetricMap.mysql_process_list_threads_waiting_for_lock));
   const previousAbortedConnects = finite(latestNumber(previousMetricMap.mysql_aborted_connects_rate));
@@ -681,23 +677,22 @@ export const buildMysqlFocusCards = (
     ? null
     : (previousAbortedConnects || 0) + (previousAbortedClients || 0);
   const previousTmpDisk = finite(latestNumber(previousMetricMap.mysql_tmp_disk_table_ratio));
-  const previousLag = finite(latestNumber(previousMetricMap.mysql_slave_seconds_behind_master));
+  const previousSlow = finite(latestNumber(previousMetricMap.mysql_slow_queries_rate));
   const previousTableLock = finite(latestNumber(previousMetricMap.mysql_table_locks_waited_rate));
-  const units = { millisecond: text('millisecond'), second: text('second') };
 
   const fourth: MysqlFocusCard = replica
-    ? (lag == null
-      ? uncollectedFocus('replLag', text('focusReplLag'), text('viewReplication'), 'replication')
+    ? (slow == null
+      ? uncollectedFocus('slow', text('focusSlow'), text('viewStatements'), 'statements')
       : collectedFocus({
-        key: 'replLag',
-        label: text('focusReplLag'),
-        value: formatMysqlReplicationLag(lag, units),
-        valueNumber: lag,
-        previousNumber: previousLag,
-        tone: replicaLagTone(lag, replicaStopped, replicaErrorNo).tone,
-        hint: text('viewReplication'),
-        tab: 'replication',
-        spark: 'replLag'
+        key: 'slow',
+        label: text('focusSlow'),
+        value: text('slowPerSecond', { value: formatRate(slow) }),
+        valueNumber: slow,
+        previousNumber: previousSlow,
+        tone: slow > 0 ? HOST_THRESHOLD_COLOR.warn : undefined,
+        hint: text('viewStatements'),
+        tab: 'statements',
+        spark: 'slow'
       }))
     : (tableLock == null
       ? uncollectedFocus('tableLock', text('focusTableLock'), text('viewScanLock'), 'performance', 'scan-lock')

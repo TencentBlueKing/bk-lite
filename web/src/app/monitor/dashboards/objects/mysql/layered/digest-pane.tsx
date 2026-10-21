@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { Button } from 'antd';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import type { EntityTableRow } from '../../host/entity-series';
@@ -39,8 +38,6 @@ const WAIT_TITLE_KEYS: Record<WaitColumn, MysqlCategoryCopyKey> = {
   waits: 'columnWaitCount',
   timeMs: 'columnWaitTime'
 };
-
-const TEXT_BUTTON = `!h-auto shrink-0 !px-1 ${host.shortcutSub} hover:!text-[var(--color-primary)]`;
 
 const trendData = (points: Array<{ time: number; value: number }> | undefined, label: string) => (
   mergeChartSeries([{
@@ -255,7 +252,8 @@ export function WaitPane({
   statementsCollected
 }: WaitPaneProps) {
   const { t } = useDashboardText();
-  const selected = rows.find((row) => row.id === selectedId) || null;
+  // 有列表就选中一行。当前 id 还在就保留，否则用排序后的第一行（常见是 idle）。
+  const selected = rows.find((row) => row.id === selectedId) || rows[0] || null;
   const related = relatedStatementRows(selected, statements);
   const relatedRows = related ?? [];
   const waitTableRows = waitEntities(rows);
@@ -321,25 +319,20 @@ export function WaitPane({
         columns={waitTableColumns}
         loading={loading}
         selectedKey={selected?.id || ''}
-        onSelect={(key) => onSelect(key === selectedId ? '' : key)}
+        onSelect={(key) => {
+          if (key) onSelect(key);
+        }}
         emptyText={emptyCopy({
           title: mysqlCategoryText(t, 'emptyWaitsTitle'),
           hint: mysqlCategoryText(t, 'emptyWaitsHint')
         })}
         toolbar={(
-          <>
-            {selected ? (
-              <Button type="text" size="small" className={TEXT_BUTTON} onClick={() => onSelect('')}>
-                {mysqlCategoryText(t, 'clearSelection')}
-              </Button>
-            ) : null}
-            <TableCsvExportButton
-              host={exportHost}
-              slug="waits"
-              columns={waitTableColumns}
-              rows={waitTableRows}
-            />
-          </>
+          <TableCsvExportButton
+            host={exportHost}
+            slug="waits"
+            columns={waitTableColumns}
+            rows={waitTableRows}
+          />
         )}
       />
       <ProSectionTitle>{mysqlCategoryText(t, 'relatedStatements')}</ProSectionTitle>

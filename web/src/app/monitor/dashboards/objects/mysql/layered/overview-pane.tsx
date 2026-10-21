@@ -16,6 +16,7 @@ import host from '../../host/layered/layered.module.scss';
 import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
+  readMysqlRoleBlock,
   type MysqlFocusCard,
   type MysqlFocusSpark,
   type MysqlOverviewReadings
@@ -49,11 +50,10 @@ const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'repli
   value: ''
 }));
 
-const FOCUS_LOADING: MysqlCategoryCopyKey[] = [
+const FOCUS_LOADING_LEAD: MysqlCategoryCopyKey[] = [
   'focusLockWait',
   'focusAborted',
-  'focusTmpDisk',
-  'focusReplLag'
+  'focusTmpDisk'
 ];
 
 const SPARK_METRIC: Record<MysqlFocusSpark, Array<{
@@ -88,11 +88,11 @@ const SPARK_METRIC: Record<MysqlFocusSpark, Array<{
     color: HOST_PALETTE.rose,
     label: 'focusTmpDisk'
   }],
-  replLag: [{
-    name: 'mysql_slave_seconds_behind_master',
-    unit: 's',
-    color: HOST_SERIES_COLOR.memUsed,
-    label: 'focusReplLag'
+  slow: [{
+    name: 'mysql_slow_queries_rate',
+    unit: 'cps',
+    color: HOST_SERIES_COLOR.load1,
+    label: 'focusSlow'
   }],
   tableLock: [{
     name: 'mysql_table_locks_waited_rate',
@@ -139,6 +139,10 @@ export default function OverviewPane({
   );
   const healthLoading = blocksUntilReady(MYSQL_HEALTH_METRICS, pendingMetricNames);
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
+  const focusLoadingTitles: MysqlCategoryCopyKey[] = [
+    ...FOCUS_LOADING_LEAD,
+    readMysqlRoleBlock(metricMap)?.kind === 'replica' ? 'focusSlow' : 'focusTableLock'
+  ];
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
 
@@ -158,7 +162,7 @@ export default function OverviewPane({
         <>
           <ProSectionTitle>{text('focus')}</ProSectionTitle>
           <div className={host.shortcutGrid}>
-            {FOCUS_LOADING.map((titleKey) => (
+            {focusLoadingTitles.map((titleKey) => (
               <div key={titleKey} className={`${classic.panel} ${host.shortcutCard}`}>
                 <div className={host.shortcutCopy}>
                   <FocusShortcutTitle label={text(titleKey)} unit="" />

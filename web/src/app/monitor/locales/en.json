@@ -4061,6 +4061,8 @@
         "mysqlCategoryViewConnections": "View connections",
         "mysqlCategoryViewBuffer": "View buffer pool",
         "mysqlCategoryViewReplication": "View replication",
+        "mysqlCategoryViewScanLock": "View locks",
+        "mysqlCategoryViewQuality": "View connections",
         "mysqlCategoryConnectionsAndThroughput": "Connections and throughput",
         "mysqlCategoryConnectionsAndSessions": "Connections and active sessions",
         "mysqlCategoryConnectionsHint": "Current connections and sessions that are executing.",

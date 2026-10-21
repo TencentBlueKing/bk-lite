@@ -4061,6 +4061,8 @@
         "mysqlCategoryViewConnections": "查看连接",
         "mysqlCategoryViewBuffer": "查看缓冲池",
         "mysqlCategoryViewReplication": "查看复制",
+        "mysqlCategoryViewScanLock": "查看锁",
+        "mysqlCategoryViewQuality": "查看连接",
         "mysqlCategoryConnectionsAndThroughput": "连接与吞吐",
         "mysqlCategoryConnectionsAndSessions": "连接与活跃会话",
         "mysqlCategoryConnectionsHint": "当前连接数与正在执行的会话。",
