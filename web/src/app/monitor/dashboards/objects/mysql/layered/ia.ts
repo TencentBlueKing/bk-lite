@@ -335,9 +335,6 @@ const formatRate = (value: number) => {
 
 const formatPercent = (value: number) => `${Math.min(100, Math.max(0, value)).toFixed(1)}%`;
 
-/** 重点关注主值只要数字。百分号写在标题括号里。 */
-const formatFocusPercent = (value: number) => Math.min(100, Math.max(0, value)).toFixed(1);
-
 const KPI_ORDER: MysqlKpiCard['key'][] = [
   'connections',
   'qps',
@@ -483,7 +480,7 @@ export const buildMysqlOverviewKpis = (
 };
 
 export interface MysqlFocusCard {
-  key: 'slow' | 'connections' | 'buffer' | 'active';
+  key: 'slow';
   label: string;
   value: string;
   delta?: string;
@@ -491,15 +488,15 @@ export interface MysqlFocusCard {
   hint: string;
   tab: MysqlIaTab;
   anchor?: 'connections' | 'throughput' | 'buffer';
-  spark?: 'slow' | 'connections' | 'buffer' | 'active';
+  spark?: 'slow';
 }
 
-const percentPointDelta = (current: number, previous: number) => {
-  const delta = current - previous;
-  if (!Number.isFinite(delta) || Math.abs(delta) < 0.05) return null;
-  const sign = delta > 0 ? '+' : '−';
-  return `较上期 ${sign}${Math.abs(delta).toFixed(1)}pt`;
-};
+export interface MysqlReplicationHealthCard {
+  key: string;
+  label: string;
+  value: string;
+  tone?: string;
+}
 
 const rateDelta = (current: number, previous: number) => {
   if (!Number.isFinite(previous) || previous === 0) return null;
@@ -511,8 +508,7 @@ const rateDelta = (current: number, previous: number) => {
 
 export const buildMysqlFocusCards = (
   current: MysqlOverviewReadings,
-  previous: Pick<MysqlOverviewReadings, 'slowPerSecond' | 'connectionUtilization' | 'bufferPoolHit'>,
-  statementsCollected: boolean,
+  previous: Pick<MysqlOverviewReadings, 'slowPerSecond'>,
   text: MysqlText
 ): MysqlFocusCard[] => {
   const cards: MysqlFocusCard[] = [];
@@ -526,57 +522,73 @@ export const buildMysqlFocusCards = (
       value: formatRate(slow),
       delta: delta || undefined,
       deltaTone: delta && slow > (previousSlow || 0) ? 'var(--color-fail)' : undefined,
-      hint: statementsCollected ? text('viewStatements') : text('viewThroughput'),
-      tab: statementsCollected ? 'statements' : 'performance',
-      anchor: statementsCollected ? undefined : 'throughput',
+      hint: text('viewStatements'),
+      tab: 'statements',
       spark: 'slow'
     });
   }
-
-  const utilization = finite(current.connectionUtilization);
-  if (utilization != null) {
-    cards.push({
-      key: 'connections',
-      label: text('focusConnections'),
-      value: formatFocusPercent(utilization),
-      hint: text('viewConnections'),
-      tab: 'performance',
-      anchor: 'connections',
-      spark: 'connections'
-    });
-  }
-
-  const hit = finite(current.bufferPoolHit);
-  if (hit != null) {
-    const previousHit = finite(previous.bufferPoolHit);
-    const delta = previousHit == null ? null : percentPointDelta(hit, previousHit);
-    cards.push({
-      key: 'buffer',
-      label: text('focusBuffer'),
-      value: formatFocusPercent(hit),
-      delta: delta || undefined,
-      deltaTone: delta && previousHit != null && hit < previousHit ? HOST_THRESHOLD_COLOR.warn : undefined,
-      hint: text('viewBuffer'),
-      tab: 'performance',
-      anchor: 'buffer',
-      spark: 'buffer'
-    });
-  }
-
-  const running = finite(current.threadsRunning);
-  if (running != null) {
-    const rounded = Math.round(running);
-    cards.push({
-      key: 'active',
-      label: text('focusActive'),
-      value: Math.abs(running - rounded) < 0.05 ? String(rounded) : running.toFixed(1),
-      hint: text('viewConnections'),
-      tab: 'performance',
-      anchor: 'connections',
-      spark: 'active'
-    });
-  }
   return cards;
+};
+
+const ROLE_FIELD_COPY: Record<string, MysqlCategoryCopyKey> = {
+  复制延迟: 'replicationLag',
+  'IO 线程': 'ioThread',
+  'SQL 线程': 'sqlThread',
+  已连接从库: 'connectedReplicas',
+  半同步: 'semisync',
+  'Binlog 位点': 'binlogPosition',
+  成员角色: 'memberRole',
+  成员: 'members',
+  流控: 'flowControl',
+  冲突: 'conflict'
+};
+
+const ROLE_VALUE_COPY: Record<string, MysqlCategoryCopyKey> = {
+  运行中: 'running',
+  已停止: 'stopped',
+  已开启: 'enabled',
+  已关闭: 'disabled'
+};
+
+const healthTone = (tone: MysqlRoleTone) => {
+  if (tone === 'ok') return HOST_THRESHOLD_COLOR.ok;
+  if (tone === 'warn') return HOST_THRESHOLD_COLOR.warn;
+  return undefined;
+};
+
+const localizeRoleValue = (value: string, text: MysqlText) => {
+  const key = ROLE_VALUE_COPY[value];
+  return key ? text(key) : value;
+};
+
+/** 概览复制健康。有从库线程或主库下游才出卡，点进复制签。 */
+export const buildMysqlReplicationHealthCards = (
+  metricMap: Record<string, MetricSeries | undefined>,
+  text: MysqlText
+): MysqlReplicationHealthCard[] => {
+  const block = readMysqlRoleBlock(metricMap);
+  if (!block) return [];
+  const fields = block.kind === 'replica'
+    ? (['复制延迟', 'IO 线程', 'SQL 线程'] as const).flatMap((label) => {
+      const field = block.fields.find((item) => item.label === label);
+      return field && field.value !== '--' ? [field] : [];
+    })
+    : block.fields.filter((field) => field.value !== '--');
+  return fields.map((field) => {
+    const labelKey = ROLE_FIELD_COPY[field.label];
+    const delay = latestNumber(metricMap.mysql_slave_seconds_behind_master);
+    const value = field.label === '复制延迟' && delay != null
+      ? formatMysqlReplicationLag(delay, { millisecond: text('millisecond'), second: text('second') })
+      : localizeRoleValue(field.value, text);
+    return {
+      key: field.label,
+      label: labelKey ? text(labelKey) : field.label,
+      value,
+      tone: field.label === 'IO 线程' || field.label === 'SQL 线程'
+        ? (field.tone === 'warn' ? HOST_THRESHOLD_COLOR.crit : healthTone(field.tone))
+        : healthTone(field.tone)
+    };
+  });
 };
 
 export interface MysqlHostCandidate {

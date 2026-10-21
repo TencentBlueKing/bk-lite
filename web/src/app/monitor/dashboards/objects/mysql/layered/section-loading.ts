@@ -29,10 +29,7 @@ export const MYSQL_HEALTH_METRICS = [
 ] as const;
 
 export const MYSQL_FOCUS_METRICS = [
-  'mysql_slow_queries_rate',
-  'mysql_connection_utilization',
-  'mysql_buffer_pool_hit_ratio',
-  'mysql_threads_running'
+  'mysql_slow_queries_rate'
 ] as const;
 
 export const MYSQL_ROLE_METRICS = [

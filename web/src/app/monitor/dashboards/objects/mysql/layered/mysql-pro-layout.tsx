@@ -432,7 +432,6 @@ export default function MysqlProLayout({
         previous={previous}
         metricMap={metricMap}
         pendingMetricNames={pendingMetricNames}
-        statementsCollected={statementsCollected}
         host={linkedHost}
         hostHref={buildHostDashboardHref(linkedHost)}
         hostLoading={hostPhase === 'loading' || (instanceListLoading && !linkedHost)}
@@ -452,6 +451,7 @@ export default function MysqlProLayout({
           setAlertRefreshKey((key) => key + 1);
         }}
         onOpenFocus={(card) => selectTab(card.tab, card.anchor)}
+        onOpenReplication={() => selectTab('replication')}
       />
     );
   };

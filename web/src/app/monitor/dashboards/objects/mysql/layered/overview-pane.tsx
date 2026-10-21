@@ -15,6 +15,7 @@ import host from '../../host/layered/layered.module.scss';
 import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
+  buildMysqlReplicationHealthCards,
   readMysqlProHeader,
   type MysqlFocusCard,
   type MysqlHostCandidate,
@@ -26,6 +27,7 @@ import {
   MYSQL_FOCUS_METRICS,
   MYSQL_HEADER_METRICS,
   MYSQL_HEALTH_METRICS,
+  MYSQL_ROLE_METRICS,
   blocksUntilReady
 } from './section-loading';
 import type { MetricSeries as MysqlMetricSeries } from '../types';
@@ -33,10 +35,9 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 
 interface OverviewPaneProps {
   readings: MysqlOverviewReadings;
-  previous: Pick<MysqlOverviewReadings, 'slowPerSecond' | 'connectionUtilization' | 'bufferPoolHit'>;
+  previous: Pick<MysqlOverviewReadings, 'slowPerSecond'>;
   metricMap: Record<string, MysqlMetricSeries | undefined>;
   pendingMetricNames: ReadonlySet<string>;
-  statementsCollected: boolean;
   host: MysqlHostCandidate | null;
   hostHref: string;
   hostLoading: boolean;
@@ -48,6 +49,7 @@ interface OverviewPaneProps {
   onOpenAlerts: () => void;
   onFocusAlert: (alertId: string) => void;
   onOpenFocus: (card: MysqlFocusCard) => void;
+  onOpenReplication: () => void;
 }
 
 const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'buffer', 'uptime', 'alerts'].map((key) => ({
@@ -56,26 +58,23 @@ const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'buffe
   value: ''
 }));
 
-const FOCUS_LOADING: MysqlCategoryCopyKey[] = [
-  'focusSlow',
-  'focusConnections',
-  'focusBuffer',
-  'focusActive'
-];
+const FOCUS_LOADING: MysqlCategoryCopyKey[] = ['focusSlow'];
 
 const SPARK_METRIC: Record<NonNullable<MysqlFocusCard['spark']>, { name: string; unit: 'counts' | 'cps' | 'percent'; color: string }> = {
-  slow: { name: 'mysql_slow_queries_rate', unit: 'cps', color: HOST_SERIES_COLOR.load1 },
-  connections: { name: 'mysql_connection_utilization', unit: 'percent', color: HOST_SERIES_COLOR.memUsed },
-  buffer: { name: 'mysql_buffer_pool_hit_ratio', unit: 'percent', color: HOST_SERIES_COLOR.cpu },
-  active: { name: 'mysql_threads_running', unit: 'counts', color: HOST_SERIES_COLOR.load1 }
+  slow: { name: 'mysql_slow_queries_rate', unit: 'cps', color: HOST_SERIES_COLOR.load1 }
 };
+
+const REPL_LOADING_KPIS: KpiTileModel[] = ['lag', 'io', 'sql'].map((key) => ({
+  key,
+  label: key,
+  value: ''
+}));
 
 export default function OverviewPane({
   readings,
   previous,
   metricMap,
   pendingMetricNames,
-  statementsCollected,
   host: linkedHost,
   hostHref,
   hostLoading,
@@ -86,7 +85,8 @@ export default function OverviewPane({
   eventsLoading,
   onOpenAlerts,
   onFocusAlert,
-  onOpenFocus
+  onOpenFocus,
+  onOpenReplication
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
   const text = useCallback((key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => (
@@ -104,10 +104,15 @@ export default function OverviewPane({
     }))
   ), [alertsOpen, onOpenAlerts, readings, text]);
   const focus = useMemo(
-    () => buildMysqlFocusCards(readings, previous, statementsCollected, text),
-    [previous, readings, statementsCollected, text]
+    () => buildMysqlFocusCards(readings, previous, text),
+    [previous, readings, text]
   );
   const healthLoading = blocksUntilReady(MYSQL_HEALTH_METRICS, pendingMetricNames);
+  const replicationLoading = blocksUntilReady(MYSQL_ROLE_METRICS, pendingMetricNames);
+  const replicationHealth = useMemo(
+    () => (replicationLoading ? [] : buildMysqlReplicationHealthCards(metricMap, text)),
+    [metricMap, replicationLoading, text]
+  );
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
   const headerPending = blocksUntilReady(MYSQL_HEADER_METRICS, pendingMetricNames);
   const header = headerPending ? null : readMysqlProHeader(metricMap);
@@ -131,6 +136,25 @@ export default function OverviewPane({
       ) : (
         <KpiTileRow items={cards} />
       )}
+
+      {replicationLoading || replicationHealth.length > 0 ? (
+        <>
+          <ProSectionTitle>{text('replicationHealth')}</ProSectionTitle>
+          {replicationLoading ? (
+            <KpiTileRow loading items={REPL_LOADING_KPIS} />
+          ) : (
+            <KpiTileRow
+              items={replicationHealth.map((card) => ({
+                key: card.key,
+                label: card.label,
+                value: card.value,
+                tone: card.tone,
+                onActivate: onOpenReplication
+              }))}
+            />
+          )}
+        </>
+      ) : null}
 
       <ProEventsSectionTitle title={text('events')} />
       <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
