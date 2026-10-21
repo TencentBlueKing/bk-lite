@@ -59,6 +59,27 @@ class PluginGuideService:
         return None
 
     @staticmethod
+    def _is_script_collect(plugin: MonitorPlugin) -> bool:
+        collect_type = (getattr(plugin, "collect_type", "") or "").strip()
+        template_type = (getattr(plugin, "template_type", "") or "").strip()
+        return collect_type.casefold() == "script" or template_type.casefold() == "script"
+
+    @staticmethod
+    def _lookup_script_shared_dir(collector: str) -> Optional[Path]:
+        """用户自建脚本模板没有独立插件目录，共用 Telegraf/script/default 指引。"""
+        collector = (collector or "").strip()
+        if not collector:
+            return None
+        for root in (PluginConstants.DIRECTORY, PluginConstants.ENTERPRISE_DIRECTORY):
+            candidate = Path(root) / collector / "script" / "default"
+            if any(
+                (candidate / "guide" / f"{locale}.md").is_file()
+                for locale in SUPPORTED_GUIDE_LOCALES
+            ):
+                return candidate
+        return None
+
+    @staticmethod
     def resolve_plugin_dir(plugin: MonitorPlugin) -> Optional[Path]:
         collector = (plugin.collector or "").strip()
         collect_type = (plugin.collect_type or "").strip()
@@ -91,6 +112,10 @@ class PluginGuideService:
         # 同一插件可能有多个采集类型 / 多个实例，必须稳定且可读。
         name = (getattr(plugin, "name", "") or "").strip()
         plugin_dir = cls.resolve_plugin_dir(plugin)
+        if plugin_dir is None and cls._is_script_collect(plugin):
+            plugin_dir = cls._lookup_script_shared_dir(
+                (getattr(plugin, "collector", "") or "").strip()
+            )
         if plugin_dir is not None:
             for meta_file in ("UI.json", "metrics.json"):
                 meta_path = plugin_dir / meta_file

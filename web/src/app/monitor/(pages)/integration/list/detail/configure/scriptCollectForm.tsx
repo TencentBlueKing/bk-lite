@@ -9,7 +9,6 @@ import {
   SCRIPT_MIN_INTERVAL_SECONDS,
   parseScriptDurationSeconds
 } from './scriptCollectTimeout';
-import ScriptCollectGuide from './scriptCollectGuide';
 import {
   SCRIPT_COLLECT_DEMO_BUTTONS,
   defaultDemoIdForOs,
@@ -443,7 +442,6 @@ export const ScriptBodyEditor: React.FC<{
 
   return (
     <div style={{ maxWidth: 640 }} className="w-full">
-      <ScriptCollectGuide />
       <div className="mb-2 flex flex-wrap items-center gap-2">
         {SCRIPT_COLLECT_DEMO_BUTTONS.map((item) => (
           <Button
