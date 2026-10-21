@@ -12,7 +12,9 @@ import HostAlertDrawer from '../../host/layered/host-alert-drawer';
 import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { ProTimeWindowProvider } from '../../host/layered/pro-time-window';
 import { selectProChartWindow } from '../../../shared/utils/pro-chart-window';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { activeHostAlertParams } from '../../host/layered/host-alert-list';
+import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import {
   buildSearchParams,
   fetchDashboardInstancePages,
@@ -65,6 +67,13 @@ interface MysqlProLayoutProps {
 }
 
 const TAB_QUERY = 'mysqlTab';
+const TAB_COPY: Record<MysqlIaTab, MysqlCategoryCopyKey> = {
+  overview: 'tabOverview',
+  performance: 'tabPerformance',
+  replication: 'tabReplication',
+  statements: 'tabStatements',
+  waits: 'tabWaits'
+};
 
 const hostMetric = (name: string) => HOST_DASHBOARD_CONFIG.metrics.find((metric) => metric.name === name);
 
@@ -87,6 +96,7 @@ export default function MysqlProLayout({
 }: MysqlProLayoutProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useDashboardText();
   const { getMonitorObject, getInstanceList, getMonitorAlert } = useMonitorApi();
   const { getInstanceQuery } = useViewApi();
   const [statements, setStatements] = useState<MysqlStatementRow[]>([]);
@@ -355,11 +365,13 @@ export default function MysqlProLayout({
       setStatements(readMysqlStatementRows(
         byName.mysql_statement_time,
         byName.mysql_statement_calls,
-        byName.mysql_statement_rows_examined
+        byName.mysql_statement_rows_examined,
+        byName.mysql_statement_time_rate
       ));
       setWaits(readMysqlWaitRows(
         byName.mysql_wait_event_count,
-        byName.mysql_wait_event_time
+        byName.mysql_wait_event_time,
+        byName.mysql_wait_event_time_rate
       ));
       setDigestStatus('ready');
     });
@@ -463,7 +475,7 @@ export default function MysqlProLayout({
               key: item.key,
               label: (
                 <span className={`${host.tabLabel}${dimmed ? ` ${pro.tabGhost}` : ''}`}>
-                  {item.label}
+                  {mysqlCategoryText(t, TAB_COPY[item.key])}
                 </span>
               )
             };
@@ -479,7 +491,10 @@ export default function MysqlProLayout({
         focusAlertId={focusAlertId}
         onClose={() => setAlertDrawerOpen(false)}
         onCount={setAlertCount}
-        emptyHint="本实例暂无活跃告警"
+        title={mysqlCategoryText(t, 'alertTitle')}
+        footerHint={mysqlCategoryText(t, 'alertFooter')}
+        emptyCopy={mysqlCategoryText(t, 'alertEmpty')}
+        emptyHint={mysqlCategoryText(t, 'alertEmptyHint')}
       />
     </div>
     </ProTimeWindowProvider>

@@ -6,6 +6,9 @@ import { encodeInstanceIdValuesParam } from '../../../shared/utils/instance';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import type { MetricSeries } from '../types';
 import { latestNumber, primaryChartSeries } from '../../host/layered/readings';
+import type { MysqlCategoryCopyKey } from './mysql-copy';
+
+type MysqlText = (key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => string;
 
 export const MYSQL_IA_TABS = [
   { key: 'overview', label: '概览' },
@@ -118,24 +121,30 @@ const labeledSeries = (
   });
 };
 
-/** 计数器在当前查询窗口内的增量。单点无法做差，退回该点读数。 */
-const counterIncrease = (points: Array<{ time: number; value: number }>): number | null => {
+/** increase() 序列取窗口终点。单点也是窗口总量，不再把累计值冒充增量。 */
+const windowTotal = (points: Array<{ time: number; value: number }>): number | null => {
   const sorted = points
     .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value))
     .sort((left, right) => left.time - right.time);
   if (!sorted.length) return null;
-  if (sorted.length === 1) return sorted[0].value;
-  let total = 0;
-  for (let index = 1; index < sorted.length; index += 1) {
-    const delta = sorted[index].value - sorted[index - 1].value;
-    total += delta >= 0 ? delta : sorted[index].value;
-  }
-  return total;
+  return sorted[sorted.length - 1].value;
 };
 
 const roundedCount = (points: Array<{ time: number; value: number }>): number | null => {
-  const value = counterIncrease(points);
+  const value = windowTotal(points);
   return value == null ? null : Math.round(value);
+};
+
+/** rate() 趋势。少于两个点无法画速率，交给界面显示「数据不足」。 */
+const rateTrend = (
+  points: Array<{ time: number; value: number }>,
+  scale = 1
+): Array<{ time: number; value: number }> => {
+  const sorted = [...points]
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value))
+    .sort((left, right) => left.time - right.time)
+    .map((point) => ({ time: point.time, value: point.value * scale }));
+  return sorted.length >= 2 ? sorted : [];
 };
 
 /** 只认 digest 标签。没有该字段就不生成语句 id，避免用事件名或文本凑关联。 */
@@ -161,12 +170,23 @@ const sumIncrease = (items: readonly LabeledPoints[]) => {
   let total = 0;
   let any = false;
   items.forEach((item) => {
-    const value = counterIncrease(item.points);
+    const value = windowTotal(item.points);
     if (value == null) return;
     any = true;
     total += value;
   });
   return any ? total : null;
+};
+
+const mergeRateTrend = (items: readonly LabeledPoints[], scale = 1) => {
+  const buckets = new Map<number, number>();
+  items.forEach((item) => {
+    item.points.forEach((point) => {
+      if (!Number.isFinite(point.time) || !Number.isFinite(point.value)) return;
+      buckets.set(point.time, (buckets.get(point.time) || 0) + point.value * scale);
+    });
+  });
+  return rateTrend(Array.from(buckets.entries()).map(([time, value]) => ({ time, value })));
 };
 
 const sumCount = (items: readonly LabeledPoints[]) => {
@@ -178,11 +198,13 @@ const sumCount = (items: readonly LabeledPoints[]) => {
 export const readMysqlStatementRows = (
   timeSeries: MetricSeries | undefined,
   callSeries: MetricSeries | undefined,
-  examinedSeries: MetricSeries | undefined
+  examinedSeries: MetricSeries | undefined,
+  rateSeries?: MetricSeries
 ): MysqlStatementRow[] => {
   const times = labeledSeries(timeSeries, statementIdentity);
   const calls = labeledSeries(callSeries, statementIdentity);
   const examined = labeledSeries(examinedSeries, statementIdentity);
+  const rates = groupLabeled(labeledSeries(rateSeries, statementIdentity));
   const ids = new Set([...times, ...calls, ...examined].map((item) => item.id));
   const rows = Array.from(ids).flatMap((id) => {
     const time = times.find((item) => item.id === id);
@@ -192,18 +214,15 @@ export const readMysqlStatementRows = (
     if (!labels) return [];
     const sql = String(labels.digest_text || labels.digest || id).trim();
     if (!sql) return [];
-    const seconds = time ? counterIncrease(time.points) : null;
+    const seconds = time ? windowTotal(time.points) : null;
     const callCount = call ? roundedCount(call.points) : null;
-    const trendSource = time?.points || call?.points || [];
     return [{
       id,
       sql,
       totalTimeMs: seconds == null ? null : seconds * 1000,
       calls: callCount,
       rowsExamined: examinedRow ? roundedCount(examinedRow.points) : null,
-      trend: [...trendSource]
-        .sort((left, right) => left.time - right.time)
-        .map((point) => ({ time: point.time, value: time ? point.value * 1000 : point.value }))
+      trend: mergeRateTrend(rates.get(id) || [], 1000)
     }];
   });
   const totalMs = rows.reduce((sum, row) => sum + (row.totalTimeMs && row.totalTimeMs > 0 ? row.totalTimeMs : 0), 0);
@@ -230,14 +249,16 @@ const groupLabeled = (items: readonly LabeledPoints[]) => {
   return groups;
 };
 
-/** 把等待次数与耗时按事件名对齐成表行。无序列时返回空数组。 */
+/** 把等待次数与耗时按事件名对齐成表行。相关语句只认同 event_name 下真实的 digest。 */
 export const readMysqlWaitRows = (
   countSeries: MetricSeries | undefined,
-  timeSeries: MetricSeries | undefined
+  timeSeries: MetricSeries | undefined,
+  rateSeries?: MetricSeries
 ): MysqlWaitEventRow[] => {
   const eventId = (labels: Record<string, string>) => String(labels.event_name || '').trim();
   const counts = groupLabeled(labeledSeries(countSeries, eventId));
   const times = groupLabeled(labeledSeries(timeSeries, eventId));
+  const rates = groupLabeled(labeledSeries(rateSeries, eventId));
   const ids = new Set([...counts.keys(), ...times.keys()]);
   return Array.from(ids).flatMap((id) => {
     const countGroup = counts.get(id) || [];
@@ -249,9 +270,6 @@ export const readMysqlWaitRows = (
     const statementIds = [...new Set(
       [...timeGroup, ...countGroup].map((item) => digestStatementId(item.labels)).filter(Boolean)
     )];
-    const trend = countGroup.length
-      ? [...countGroup[0].points].sort((left, right) => left.time - right.time)
-      : [];
     return [{
       id,
       name,
@@ -259,7 +277,7 @@ export const readMysqlWaitRows = (
       timeMs: seconds == null ? null : seconds * 1000,
       statementId: statementIds.length === 1 ? statementIds[0] : undefined,
       statementIds: statementIds.length ? statementIds : undefined,
-      trend
+      trend: mergeRateTrend(rates.get(id) || [], 1000)
     }];
   }).sort((left, right) => (
     (right.timeMs || 0) - (left.timeMs || 0)
@@ -389,7 +407,10 @@ export const formatAverageLatency = (seconds: number | null | undefined) => {
  * 连接 / QPS / 慢查询 / 缓冲池命中 / 告警：有采才出卡。
  * 运行时间与主机专业盘同名，格位保留；有采才出主值。
  */
-export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKpiCard[] => {
+export const buildMysqlOverviewKpis = (
+  readings: MysqlOverviewReadings,
+  text: MysqlText
+): MysqlKpiCard[] => {
   const cards: MysqlKpiCard[] = [];
   const connected = finite(readings.threadsConnected);
   const maxConnections = finite(readings.maxConnections);
@@ -399,11 +420,14 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
       : null;
     cards.push({
       key: 'connections',
-      label: '连接',
+      label: text('kpiConnections'),
       value: formatCount(connected),
       subtitle: occupancy == null || !Number.isFinite(occupancy)
         ? undefined
-        : `上限 ${formatCount(maxConnections as number)} · 占用率 ${occupancy.toFixed(1)}%`,
+        : text('connectionSubtitle', {
+          max: formatCount(maxConnections as number),
+          occupancy: occupancy.toFixed(1)
+        }),
       tone: HOST_SERIES_COLOR.memUsed
     });
   }
@@ -412,7 +436,7 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
   if (qps != null) {
     cards.push({
       key: 'qps',
-      label: 'QPS',
+      label: text('kpiQps'),
       value: formatRate(qps),
       tone: HOST_SERIES_COLOR.memAvailable
     });
@@ -422,8 +446,8 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
   if (slow != null) {
     cards.push({
       key: 'slow',
-      label: '慢查询',
-      value: `${formatRate(slow)} 次/秒`,
+      label: text('kpiSlow'),
+      value: text('slowPerSecond', { value: formatRate(slow) }),
       tone: slow > 0 ? HOST_THRESHOLD_COLOR.warn : undefined
     });
   }
@@ -432,7 +456,7 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
   if (hit != null) {
     cards.push({
       key: 'bufferHit',
-      label: '缓冲池命中',
+      label: text('kpiBufferHit'),
       value: formatPercent(hit),
       tone: hit >= 95 ? HOST_SERIES_COLOR.cpu : HOST_THRESHOLD_COLOR.warn
     });
@@ -441,15 +465,15 @@ export const buildMysqlOverviewKpis = (readings: MysqlOverviewReadings): MysqlKp
   const uptime = finite(readings.uptimeSeconds);
   cards.push({
     key: 'uptime',
-    label: '运行时间',
-    value: uptime == null ? MYSQL_UPTIME_EMPTY : formatUptime(uptime)
+    label: text('kpiUptime'),
+    value: uptime == null ? text('kpiNoData') : formatUptime(uptime)
   });
 
   const alerts = finite(readings.alertCount);
   if (alerts != null) {
     cards.push({
       key: 'alerts',
-      label: '告警',
+      label: text('kpiAlerts'),
       value: String(Math.max(0, Math.round(alerts))),
       tone: alerts > 0 ? 'var(--color-fail)' : 'var(--color-success)'
     });
@@ -488,7 +512,8 @@ const rateDelta = (current: number, previous: number) => {
 export const buildMysqlFocusCards = (
   current: MysqlOverviewReadings,
   previous: Pick<MysqlOverviewReadings, 'slowPerSecond' | 'connectionUtilization' | 'bufferPoolHit'>,
-  statementsCollected: boolean
+  statementsCollected: boolean,
+  text: MysqlText
 ): MysqlFocusCard[] => {
   const cards: MysqlFocusCard[] = [];
   const slow = finite(current.slowPerSecond);
@@ -497,11 +522,11 @@ export const buildMysqlFocusCards = (
     const delta = previousSlow == null ? null : rateDelta(slow, previousSlow);
     cards.push({
       key: 'slow',
-      label: '慢查询',
+      label: text('focusSlow'),
       value: formatRate(slow),
       delta: delta || undefined,
       deltaTone: delta && slow > (previousSlow || 0) ? 'var(--color-fail)' : undefined,
-      hint: statementsCollected ? '查看语句' : '查看吞吐',
+      hint: statementsCollected ? text('viewStatements') : text('viewThroughput'),
       tab: statementsCollected ? 'statements' : 'performance',
       anchor: statementsCollected ? undefined : 'throughput',
       spark: 'slow'
@@ -512,9 +537,9 @@ export const buildMysqlFocusCards = (
   if (utilization != null) {
     cards.push({
       key: 'connections',
-      label: '连接使用率',
+      label: text('focusConnections'),
       value: formatFocusPercent(utilization),
-      hint: '查看连接',
+      hint: text('viewConnections'),
       tab: 'performance',
       anchor: 'connections',
       spark: 'connections'
@@ -527,11 +552,11 @@ export const buildMysqlFocusCards = (
     const delta = previousHit == null ? null : percentPointDelta(hit, previousHit);
     cards.push({
       key: 'buffer',
-      label: '缓冲池命中',
+      label: text('focusBuffer'),
       value: formatFocusPercent(hit),
       delta: delta || undefined,
       deltaTone: delta && previousHit != null && hit < previousHit ? HOST_THRESHOLD_COLOR.warn : undefined,
-      hint: '查看缓冲池',
+      hint: text('viewBuffer'),
       tab: 'performance',
       anchor: 'buffer',
       spark: 'buffer'
@@ -543,9 +568,9 @@ export const buildMysqlFocusCards = (
     const rounded = Math.round(running);
     cards.push({
       key: 'active',
-      label: '活跃会话',
+      label: text('focusActive'),
       value: Math.abs(running - rounded) < 0.05 ? String(rounded) : running.toFixed(1),
-      hint: '查看连接',
+      hint: text('viewConnections'),
       tab: 'performance',
       anchor: 'connections',
       spark: 'active'
@@ -747,14 +772,19 @@ const THREAD_TEXT = (value: number) => (value > 0 ? '运行中' : '已停止');
 const THREAD_TONE = (value: number): MysqlRoleTone => (value > 0 ? 'ok' : 'warn');
 
 /** 复制延迟主值。不足 1 秒用毫秒，其余用秒。 */
-export const formatMysqlReplicationLag = (seconds: number) => {
+export const formatMysqlReplicationLag = (
+  seconds: number,
+  units?: { millisecond: string; second: string }
+) => {
   if (!Number.isFinite(seconds)) return '--';
-  if (Math.abs(seconds) < 1) return `${Math.round(seconds * 1000)} 毫秒`;
+  const millisecond = units?.millisecond || '毫秒';
+  const second = units?.second || '秒';
+  if (Math.abs(seconds) < 1) return `${Math.round(seconds * 1000)} ${millisecond}`;
   const rounded = Math.round(seconds * 10) / 10;
   const text = Math.abs(rounded - Math.round(rounded)) < 0.05
     ? String(Math.round(rounded))
     : rounded.toFixed(1);
-  return `${text} 秒`;
+  return `${text} ${second}`;
 };
 
 const isLogBinToggle = (name: string) => /(?:^|_)log_bin$/.test(name);
@@ -912,7 +942,17 @@ export const MYSQL_REPLICATION_EXTRA_METRICS = [
 
 export const MYSQL_PERF_AUX_METRICS = [
   'mysql_select_scan_rate',
-  'mysql_table_locks_waited_rate'
+  'mysql_innodb_row_lock_waits_rate',
+  'mysql_innodb_row_lock_time_avg',
+  'mysql_com_commit_rate',
+  'mysql_com_rollback_rate',
+  'mysql_tps_rate',
+  'mysql_innodb_rows_read_rate',
+  'mysql_innodb_rows_inserted_rate',
+  'mysql_innodb_rows_updated_rate',
+  'mysql_innodb_rows_deleted_rate',
+  'mysql_aborted_connects_rate',
+  'mysql_aborted_clients_rate'
 ] as const;
 
 export const replicationExtrasPending = (

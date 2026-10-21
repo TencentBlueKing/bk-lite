@@ -28,6 +28,14 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     color: '#ff8a1f'
   },
   {
+    name: 'mysql_threads_created_rate',
+    display_name: '线程创建速率',
+    description: '新建连接线程的速率。升高通常表示连接复用不足。',
+    unit: 'cps',
+    query: 'rate(mysql_threads_created{__$labels__}[__$window__])',
+    color: '#8a5cff'
+  },
+  {
     name: 'mysql_variables_max_connections',
     display_name: '最大连接配置值',
     description: 'max_connections 配置值，用作真实连接容量基线。',
@@ -149,6 +157,30 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     color: '#ff7875'
   },
   {
+    name: 'mysql_com_commit_rate',
+    display_name: '事务提交速率',
+    description: '每秒提交的事务数。',
+    unit: 'cps',
+    query: 'rate(mysql_com_commit{__$labels__}[__$window__])',
+    color: '#52c41a'
+  },
+  {
+    name: 'mysql_com_rollback_rate',
+    display_name: '事务回滚速率',
+    description: '每秒回滚的事务数。',
+    unit: 'cps',
+    query: 'rate(mysql_com_rollback{__$labels__}[__$window__])',
+    color: '#ff7875'
+  },
+  {
+    name: 'mysql_tps_rate',
+    display_name: 'TPS',
+    description: '每秒提交与回滚的事务数之和。',
+    unit: 'cps',
+    query: 'rate(mysql_com_commit{__$labels__}[__$window__]) + rate(mysql_com_rollback{__$labels__}[__$window__])',
+    color: '#ff9f43'
+  },
+  {
     name: 'mysql_innodb_row_lock_time_avg',
     display_name: '平均行锁等待时间',
     description: '行锁等待平均耗时，过高通常意味着锁争用。',
@@ -163,6 +195,54 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     unit: 'cps',
     query: 'rate(mysql_innodb_row_lock_waits{__$labels__}[__$window__])',
     color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_innodb_rows_read_rate',
+    display_name: 'InnoDB 行读取速率',
+    description: '引擎每秒读取的行数。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_rows_read{__$labels__}[__$window__])',
+    color: '#2f6bff'
+  },
+  {
+    name: 'mysql_innodb_rows_inserted_rate',
+    display_name: 'InnoDB 行插入速率',
+    description: '引擎每秒插入的行数。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_rows_inserted{__$labels__}[__$window__])',
+    color: '#ff9f43'
+  },
+  {
+    name: 'mysql_innodb_rows_updated_rate',
+    display_name: 'InnoDB 行更新速率',
+    description: '引擎每秒更新的行数。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_rows_updated{__$labels__}[__$window__])',
+    color: '#faad14'
+  },
+  {
+    name: 'mysql_innodb_rows_deleted_rate',
+    display_name: 'InnoDB 行删除速率',
+    description: '引擎每秒删除的行数。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_rows_deleted{__$labels__}[__$window__])',
+    color: '#ff7875'
+  },
+  {
+    name: 'mysql_innodb_deadlocks_rate',
+    display_name: 'InnoDB 死锁速率',
+    description: 'InnoDB 发生死锁的速率。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_deadlocks{__$labels__}[__$window__])',
+    color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_innodb_log_waits_rate',
+    display_name: 'InnoDB 日志等待速率',
+    description: '因 Redo 日志缓冲不足而等待的速率。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_log_waits{__$labels__}[__$window__])',
+    color: '#fa8c16'
   },
   {
     name: 'mysql_innodb_data_reads_rate',
@@ -687,6 +767,7 @@ export const DASHBOARD_FALLBACK_GROUPS: Record<string, string> = {
   mysql_uptime: 'Base',
   mysql_threads_connected: 'ConnStatus',
   mysql_threads_running: 'ConnStatus',
+  mysql_threads_created_rate: 'ConnStatus',
   mysql_threads_cached: 'ConnStatus',
   mysql_process_list_threads_idle: 'ConnStatus',
   mysql_process_list_threads_executing: 'ConnStatus',
@@ -715,8 +796,17 @@ export const DASHBOARD_FALLBACK_GROUPS: Record<string, string> = {
   mysql_com_insert_rate: 'QueryPerf',
   mysql_com_update_rate: 'QueryPerf',
   mysql_com_delete_rate: 'QueryPerf',
+  mysql_com_commit_rate: 'QueryPerf',
+  mysql_com_rollback_rate: 'QueryPerf',
+  mysql_tps_rate: 'QueryPerf',
   mysql_innodb_row_lock_time_avg: 'InnoDBPerf',
   mysql_innodb_row_lock_waits_rate: 'InnoDBPerf',
+  mysql_innodb_rows_read_rate: 'InnoDBPerf',
+  mysql_innodb_rows_inserted_rate: 'InnoDBPerf',
+  mysql_innodb_rows_updated_rate: 'InnoDBPerf',
+  mysql_innodb_rows_deleted_rate: 'InnoDBPerf',
+  mysql_innodb_deadlocks_rate: 'InnoDBPerf',
+  mysql_innodb_log_waits_rate: 'InnoDBPerf',
   mysql_innodb_data_reads_rate: 'InnoDBPerf',
   mysql_innodb_data_writes_rate: 'InnoDBPerf',
   mysql_innodb_data_fsyncs_rate: 'InnoDBPerf',

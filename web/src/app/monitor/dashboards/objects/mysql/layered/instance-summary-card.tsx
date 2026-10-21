@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { Tag } from 'antd';
 import { ProDashLoading, ProSectionTitle } from '../../host/layered/pro-chrome';
 import { MYSQL_VERSION_UNKNOWN, type MysqlHostCandidate, type MysqlProHeader } from './ia';
+import { mysqlCategoryText } from './mysql-copy';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import classic from '../../host/index.module.scss';
 import shell from '../../host/layered/layered.module.scss';
 
@@ -86,6 +88,13 @@ function HostUsageMeter({
  * 左徽章贴内容，右宿主段 flex 吃满剩余宽；进度条再在宿主段里吃满。
  * pending 时忽略 header，避免切实例还亮着上一份角色 / 只读 / Binlog / 版本。
  */
+const ROLE_COPY: Record<MysqlProHeader['pill'], 'rolePrimary' | 'roleReplica' | 'roleGr' | 'roleGalera'> = {
+  主库: 'rolePrimary',
+  从库: 'roleReplica',
+  GR: 'roleGr',
+  Galera: 'roleGalera'
+};
+
 export default function MysqlInstanceSummaryCard({
   header,
   headerPending,
@@ -95,6 +104,7 @@ export default function MysqlInstanceSummaryCard({
   memPercent,
   hostLoading = false
 }: MysqlInstanceSummaryCardProps) {
+  const { t } = useDashboardText();
   const binlog = binlogStatus(header?.binlog);
   const hostPending = hostLoading && !host;
 
@@ -107,30 +117,38 @@ export default function MysqlInstanceSummaryCard({
     >
       <div className="flex w-full min-w-0 flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-6">
         <div className="flex shrink-0 flex-col gap-3">
-          <ProSectionTitle>实例摘要</ProSectionTitle>
+          <ProSectionTitle>{mysqlCategoryText(t, 'instanceSummary')}</ProSectionTitle>
           {headerPending ? (
             <ProDashLoading size="small" layout="inline" />
           ) : (
             <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
               {header?.pill ? (
-                <BadgeField label="角色">
-                  <Tag className="!m-0" color={ROLE_TAG_COLOR[header.pill]}>{header.pill}</Tag>
+                <BadgeField label={mysqlCategoryText(t, 'role')}>
+                  <Tag className="!m-0" color={ROLE_TAG_COLOR[header.pill]}>
+                    {mysqlCategoryText(t, ROLE_COPY[header.pill])}
+                  </Tag>
                 </BadgeField>
               ) : null}
               {header?.aside ? (
-                <BadgeField label="读写">
+                <BadgeField label={mysqlCategoryText(t, 'readWrite')}>
                   <Tag className="!m-0" color={header.aside === '只读' ? 'blue' : 'gold'}>
-                    {header.aside}
+                    {mysqlCategoryText(t, header.aside === '只读' ? 'readOnly' : 'writable')}
                   </Tag>
                 </BadgeField>
               ) : null}
               {binlog ? (
-                <BadgeField label="Binlog">
-                  <Tag className="!m-0" color={binlog.color}>{binlog.label}</Tag>
+                <BadgeField label={mysqlCategoryText(t, 'binlog')}>
+                  <Tag className="!m-0" color={binlog.color}>
+                    {mysqlCategoryText(t, binlog.label === '已开启' ? 'binlogOn' : 'binlogOff')}
+                  </Tag>
                 </BadgeField>
               ) : null}
-              <BadgeField label="版本">
-                <Tag className="!m-0">{header?.version || MYSQL_VERSION_UNKNOWN}</Tag>
+              <BadgeField label={mysqlCategoryText(t, 'version')}>
+                <Tag className="!m-0">
+                  {header?.version && header.version !== MYSQL_VERSION_UNKNOWN
+                    ? header.version
+                    : mysqlCategoryText(t, 'versionUnknown')}
+                </Tag>
               </BadgeField>
             </div>
           )}
@@ -146,25 +164,29 @@ export default function MysqlInstanceSummaryCard({
             <ProDashLoading layout="inline" />
           ) : host ? (
             <>
-              <span className="text-xs leading-4 text-[var(--color-text-3)]">所属主机</span>
+              <span className="text-xs leading-4 text-[var(--color-text-3)]">
+                {mysqlCategoryText(t, 'host')}
+              </span>
               <span className="min-w-0 truncate font-medium text-[var(--color-text-1)]" title={host.name}>
                 {host.name}
               </span>
               <div className="flex w-full min-w-0 items-center gap-6">
-                <HostUsageMeter label="CPU" value={cpuPercent} />
-                <HostUsageMeter label="内存" value={memPercent} />
+                <HostUsageMeter label={mysqlCategoryText(t, 'cpu')} value={cpuPercent} />
+                <HostUsageMeter label={mysqlCategoryText(t, 'memory')} value={memPercent} />
               </div>
               <Link
                 className={`${shell.jumpBtn} !mt-0 w-fit shrink-0 self-start whitespace-nowrap no-underline`}
                 href={href}
               >
-                查看主机 →
+                {mysqlCategoryText(t, 'viewHost')}
               </Link>
             </>
           ) : (
             <>
-              <span className="text-xs leading-4 text-[var(--color-text-3)]">所属主机</span>
-              <span className="text-[var(--color-text-3)]">未关联主机</span>
+              <span className="text-xs leading-4 text-[var(--color-text-3)]">
+                {mysqlCategoryText(t, 'host')}
+              </span>
+              <span className="text-[var(--color-text-3)]">{mysqlCategoryText(t, 'hostUnlinked')}</span>
             </>
           )}
         </div>

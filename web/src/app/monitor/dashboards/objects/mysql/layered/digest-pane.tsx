@@ -3,14 +3,14 @@
 import React from 'react';
 import { Button } from 'antd';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import type { EntityTableRow } from '../../host/entity-series';
-import LayeredEntityTable, { type LayeredColumn } from '../../host/layered/entity-table';
+import LayeredEntityTable from '../../host/layered/entity-table';
 import TableCsvExportButton from '../../host/layered/table-csv-export';
 import { ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
 import { HOST_SERIES_COLOR } from '../../host/config';
 import {
-  MYSQL_EMPTY_COPY,
   formatAverageLatency,
   formatCallCount,
   formatTimeShare,
@@ -23,28 +23,29 @@ import {
   type StatementColumn,
   type WaitColumn
 } from './ia';
+import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import pro from './pro.module.scss';
 
-const STATEMENT_TITLES: Record<StatementColumn, string> = {
-  sql: '语句',
-  timeShare: '耗时占比',
-  calls: '调用次数',
-  avgSeconds: '平均耗时',
-  rowsExamined: '扫描行'
+const STATEMENT_TITLE_KEYS: Record<StatementColumn, MysqlCategoryCopyKey> = {
+  sql: 'columnSql',
+  timeShare: 'columnTimeShare',
+  calls: 'columnCalls',
+  avgSeconds: 'columnAvg',
+  rowsExamined: 'columnRows'
 };
 
-const WAIT_TITLES: Record<WaitColumn, string> = {
-  name: '等待事件',
-  waits: '次数',
-  timeMs: '耗时 (ms)'
+const WAIT_TITLE_KEYS: Record<WaitColumn, MysqlCategoryCopyKey> = {
+  name: 'columnWaitName',
+  waits: 'columnWaitCount',
+  timeMs: 'columnWaitTime'
 };
 
 const TEXT_BUTTON = '!h-auto shrink-0 !px-1 !text-[13px] !text-[var(--color-text-2)] hover:!text-[var(--color-primary)]';
 
-const trendData = (points: Array<{ time: number; value: number }> | undefined) => (
+const trendData = (points: Array<{ time: number; value: number }> | undefined, label: string) => (
   mergeChartSeries([{
     key: 'value',
-    label: '趋势',
+    label,
     data: (points || [])
       .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value))
       .map((point) => ({ time: point.time, value1: point.value }))
@@ -76,21 +77,6 @@ const statementEntities = (rows: readonly MysqlStatementRow[]): EntityTableRow[]
   })
 );
 
-const statementLayerColumns = (rows: readonly MysqlStatementRow[]): LayeredColumn[] => (
-  statementColumns(rows).map((key) => ({
-    key,
-    title: STATEMENT_TITLES[key],
-    align: key === 'sql' ? 'left' : 'right',
-    ellipsis: key !== 'sql',
-    render: (entity) => (
-      key === 'sql'
-        ? <span className={pro.sqlCell}>{entity.labels.sql || '--'}</span>
-        : (entity.labels[key] || '--')
-    ),
-    csvValue: (entity) => entity.labels[key] || '--'
-  }))
-);
-
 const formatWaitMs = (value: number | null | undefined) => {
   if (value == null || !Number.isFinite(value)) return '--';
   return Number(value.toFixed(1)).toString();
@@ -110,17 +96,6 @@ const waitEntities = (rows: readonly MysqlWaitEventRow[]): EntityTableRow[] => (
     });
     return { key: row.id, labels, values: {}, series: {} };
   })
-);
-
-const waitLayerColumns = (rows: readonly MysqlWaitEventRow[]): LayeredColumn[] => (
-  waitColumns(rows).map((key) => ({
-    key,
-    title: WAIT_TITLES[key],
-    align: key === 'name' ? 'left' as const : 'right' as const,
-    ellipsis: key !== 'name',
-    render: (entity) => entity.labels[key] || '--',
-    csvValue: (entity) => entity.labels[key] || '--'
-  }))
 );
 
 const csvHost = (instanceName: string) => instanceName.trim() || 'mysql';
@@ -149,7 +124,7 @@ function MountTrend({
         title={title}
         unit={unit}
         loading={loading}
-        data={trendData(points)}
+        data={trendData(points, legendLabel)}
         legends={[{ label: legendLabel, color }]}
         emptyText={emptyText}
       />
@@ -174,34 +149,54 @@ export function StatementPane({
   loading = false,
   instanceName
 }: StatementPaneProps) {
+  const { t } = useDashboardText();
   const selected = rows.find((row) => row.id === selectedId) || rows[0];
   const entities = statementEntities(rows);
-  const columns = statementLayerColumns(rows);
+  const columns = statementColumns(rows).map((key) => ({
+    key,
+    title: mysqlCategoryText(t, STATEMENT_TITLE_KEYS[key]),
+    align: key === 'sql' ? 'left' as const : 'right' as const,
+    ellipsis: key !== 'sql',
+    render: (entity: EntityTableRow) => (
+      key === 'sql'
+        ? <span className={pro.sqlCell}>{entity.labels.sql || '--'}</span>
+        : (entity.labels[key] || '--')
+    ),
+    csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
+  }));
   const primaryWait = selected ? primaryWaitForStatement(selected.id, waits) : null;
   const hasRows = rows.length > 0;
+  const trendEmpty = !hasRows
+    ? mysqlCategoryText(t, 'noTrend')
+    : (selected?.trend?.length ? mysqlCategoryText(t, 'statementNoTrend') : mysqlCategoryText(t, 'insufficientData'));
   return (
     <div className={pro.chartStack}>
-      <ProSectionTitle>趋势</ProSectionTitle>
+      <ProSectionTitle>{mysqlCategoryText(t, 'trend')}</ProSectionTitle>
       <MountTrend
-        title={selected?.sql || '语句趋势'}
+        title={selected?.sql || mysqlCategoryText(t, 'statementTrend')}
         unit={rows.some((row) => row.totalTimeMs != null) ? 'ms' : 'counts'}
         points={selected?.trend}
-        legendLabel="选中语句"
+        legendLabel={mysqlCategoryText(t, 'selectedStatement')}
         color={HOST_SERIES_COLOR.memUsed}
         loading={loading && !hasRows}
-        emptyText={hasRows ? '该语句暂无趋势' : '暂无数据'}
+        emptyText={trendEmpty}
       />
       {primaryWait ? (
-        <div className="text-[12px] text-[var(--color-text-3)]">{`主要等待 ${primaryWait}`}</div>
+        <div className="text-[12px] text-[var(--color-text-3)]">
+          {mysqlCategoryText(t, 'primaryWait', { name: primaryWait })}
+        </div>
       ) : null}
-      <ProSectionTitle>语句列表</ProSectionTitle>
+      <ProSectionTitle>{mysqlCategoryText(t, 'statementList')}</ProSectionTitle>
       <LayeredEntityTable
         rows={entities}
         columns={columns}
         loading={loading}
         selectedKey={selected?.id || ''}
         onSelect={onSelect}
-        emptyText={emptyCopy(MYSQL_EMPTY_COPY.statements)}
+        emptyText={emptyCopy({
+          title: mysqlCategoryText(t, 'emptyStatementsTitle'),
+          hint: mysqlCategoryText(t, 'emptyStatementsHint')
+        })}
         toolbar={(
           <TableCsvExportButton
             host={csvHost(instanceName)}
@@ -234,46 +229,76 @@ export function WaitPane({
   instanceName,
   statementsCollected
 }: WaitPaneProps) {
+  const { t } = useDashboardText();
   const selected = rows.find((row) => row.id === selectedId) || null;
   const related = relatedStatementRows(selected, statements);
   const relatedRows = related ?? [];
   const waitTableRows = waitEntities(rows);
-  const waitTableColumns = waitLayerColumns(rows);
+  const waitTableColumns = waitColumns(rows).map((key) => ({
+    key,
+    title: mysqlCategoryText(t, WAIT_TITLE_KEYS[key]),
+    align: key === 'name' ? 'left' as const : 'right' as const,
+    ellipsis: key !== 'name',
+    render: (entity: EntityTableRow) => entity.labels[key] || '--',
+    csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
+  }));
   const relatedTableRows = statementEntities(relatedRows);
-  const relatedTableColumns = statementLayerColumns(relatedRows);
+  const relatedTableColumns = statementColumns(relatedRows).map((key) => ({
+    key,
+    title: mysqlCategoryText(t, STATEMENT_TITLE_KEYS[key]),
+    align: key === 'sql' ? 'left' as const : 'right' as const,
+    ellipsis: key !== 'sql',
+    render: (entity: EntityTableRow) => (
+      key === 'sql'
+        ? <span className={pro.sqlCell}>{entity.labels.sql || '--'}</span>
+        : (entity.labels[key] || '--')
+    ),
+    csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
+  }));
   const exportHost = csvHost(instanceName);
   const hasRows = rows.length > 0;
   const relatedEmpty = selected
     ? emptyCopy({
-      title: '暂无与该等待关联的语句',
-      hint: statementsCollected ? undefined : '需已开启语句采集'
+      title: mysqlCategoryText(t, 'noRelatedStatements'),
+      hint: statementsCollected ? undefined : mysqlCategoryText(t, 'needStatementCollection')
     })
-    : emptyCopy(MYSQL_EMPTY_COPY.statements);
+    : emptyCopy({
+      title: mysqlCategoryText(t, 'emptyStatementsTitle'),
+      hint: mysqlCategoryText(t, 'emptyStatementsHint')
+    });
+  const waitTrendEmpty = !hasRows
+    ? mysqlCategoryText(t, 'noTrend')
+    : selected
+      ? (selected.trend?.length ? mysqlCategoryText(t, 'waitNoTrend') : mysqlCategoryText(t, 'insufficientData'))
+      : mysqlCategoryText(t, 'selectToFollow');
   return (
     <div className={pro.chartStack}>
-      <ProSectionTitle>趋势</ProSectionTitle>
+      <ProSectionTitle>{mysqlCategoryText(t, 'trend')}</ProSectionTitle>
       <MountTrend
         title={selected?.name || ''}
-        unit="counts"
+        unit="ms"
         points={selected?.trend}
-        legendLabel="等待"
+        legendLabel={mysqlCategoryText(t, 'wait')}
         color={HOST_SERIES_COLOR.load1}
         loading={loading && !hasRows}
-        emptyText={!hasRows ? '暂无数据' : selected ? '该等待事件暂无趋势' : '选中后上图跟随'}
+        emptyText={waitTrendEmpty}
       />
-      <ProSectionTitle>等待列表</ProSectionTitle>
+      <ProSectionTitle>{mysqlCategoryText(t, 'waitList')}</ProSectionTitle>
       <LayeredEntityTable
         rows={waitTableRows}
         columns={waitTableColumns}
         loading={loading}
         selectedKey={selected?.id || ''}
         onSelect={(key) => onSelect(key === selectedId ? '' : key)}
-        emptyText={emptyCopy(MYSQL_EMPTY_COPY.waits)}
+        emptyText={emptyCopy({
+          title: mysqlCategoryText(t, 'emptyWaitsTitle'),
+          hint: mysqlCategoryText(t, 'emptyWaitsHint')
+        })}
         toolbar={(
           <>
             {selected ? (
               <Button type="text" size="small" className={TEXT_BUTTON} onClick={() => onSelect('')}>
-                清除
+                {mysqlCategoryText(t, 'clearSelection')}
               </Button>
             ) : null}
             <TableCsvExportButton
@@ -285,7 +310,7 @@ export function WaitPane({
           </>
         )}
       />
-      <ProSectionTitle>相关语句</ProSectionTitle>
+      <ProSectionTitle>{mysqlCategoryText(t, 'relatedStatements')}</ProSectionTitle>
       <LayeredEntityTable
         rows={relatedTableRows}
         columns={relatedTableColumns}

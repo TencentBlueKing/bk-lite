@@ -7,54 +7,91 @@ const statementDimensions = [
 ];
 
 const waitDimensions = [
-  { name: 'event_name', description: '等待事件' }
+  { name: 'event_name', description: '等待事件' },
+  { name: 'schema', description: '库名' },
+  { name: 'digest', description: '语句摘要' },
+  { name: 'digest_text', description: '语句文本' }
 ];
+
+const STATEMENT_BY = 'instance_id, schema, digest, digest_text';
+const STATEMENT_DIGEST = 'instance_id, digest';
+const WAIT_BY = 'instance_id, event_name, schema, digest, digest_text';
+const WAIT_EVENT = 'instance_id, event_name';
+
+const statementIncrease = (metric: string) => (
+  `sum by (${STATEMENT_BY}) (increase(${metric}{__$labels__}[__$window__]))`
+);
+const statementTopk = `topk(20, ${statementIncrease('mysql_perf_schema_events_statements_seconds_total')})`;
+const statementTopkDigest = `topk(20, sum by (${STATEMENT_DIGEST}) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))`;
+
+const waitIncrease = (metric: string) => (
+  `sum by (${WAIT_BY}) (increase(${metric}{__$labels__}[__$window__]))`
+);
+const waitTopk = `topk(20, sum by (${WAIT_EVENT}) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])))`;
 
 /** 专业盘语句/等待查询。传统盘不加载这组指标。 */
 export const MYSQL_DIGEST_METRICS: BaseMetricConfig[] = [
   {
     name: 'mysql_statement_time',
     display_name: '语句耗时',
-    description: '单条语句的累计耗时，单位秒。',
+    description: '所选时间范围内，该语句花费的总时间。',
     unit: 's',
     color: '#2f6bff',
     dimensions: statementDimensions,
-    query: 'topk(20, max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))'
+    query: statementTopk
   },
   {
     name: 'mysql_statement_calls',
     display_name: '语句执行次数',
-    description: '单条语句的累计执行次数。',
+    description: '所选时间范围内，该语句被执行的次数。',
     unit: 'counts',
     color: '#ff9f43',
     dimensions: statementDimensions,
-    query: 'max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))'
+    query: `${statementIncrease('mysql_perf_schema_events_statements_total')} and on (${STATEMENT_DIGEST}) ${statementTopkDigest}`
   },
   {
     name: 'mysql_statement_rows_examined',
     display_name: '语句扫描行数',
-    description: '单条语句累计扫描的行数。',
+    description: '所选时间范围内，该语句扫描过的行数。',
     unit: 'counts',
     color: '#faad14',
     dimensions: statementDimensions,
-    query: 'max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_examined_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))'
+    query: `${statementIncrease('mysql_perf_schema_events_statements_rows_examined_total')} and on (${STATEMENT_DIGEST}) ${statementTopkDigest}`
+  },
+  {
+    name: 'mysql_statement_time_rate',
+    display_name: '语句耗时速率',
+    description: '该语句每秒消耗的时间，用来看窗口内负载变化。',
+    unit: 's',
+    color: '#2f6bff',
+    dimensions: statementDimensions,
+    query: `sum by (${STATEMENT_BY}) (rate(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])) and on (${STATEMENT_DIGEST}) ${statementTopkDigest}`
   },
   {
     name: 'mysql_wait_event_time',
     display_name: '等待事件耗时',
-    description: '单个等待事件的累计耗时，单位秒。',
+    description: '所选时间范围内，该等待事件花费的总时间。',
     unit: 's',
     color: '#ff7875',
     dimensions: waitDimensions,
-    query: 'topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))'
+    query: `${waitIncrease('mysql_perf_schema_events_waits_seconds_total')} and on (${WAIT_EVENT}) ${waitTopk}`
   },
   {
     name: 'mysql_wait_event_count',
     display_name: '等待事件次数',
-    description: '单个等待事件的累计次数。',
+    description: '所选时间范围内，该等待事件发生的次数。',
     unit: 'counts',
     color: '#722ed1',
     dimensions: waitDimensions,
-    query: 'max by (instance_id, event_name) (mysql_perf_schema_events_waits_total{__$labels__}) and on (instance_id, event_name) topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))'
+    query: `${waitIncrease('mysql_perf_schema_events_waits_total')} and on (${WAIT_EVENT}) ${waitTopk}`
+  },
+  {
+    name: 'mysql_wait_event_time_rate',
+    display_name: '等待事件耗时速率',
+    description: '该等待事件每秒消耗的时间，用来看窗口内负载变化。',
+    unit: 's',
+    color: '#ff7875',
+    dimensions: waitDimensions,
+    query: `sum by (${WAIT_BY}) (rate(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])) and on (${WAIT_EVENT}) ${waitTopk}`
   }
 ];

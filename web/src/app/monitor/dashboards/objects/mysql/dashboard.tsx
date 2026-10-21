@@ -48,7 +48,12 @@ import {
 } from '../../shared/utils/pro-dashboard';
 import MysqlProLayout from './layered/mysql-pro-layout';
 import { MYSQL_PERF_AUX_METRICS, MYSQL_REPLICATION_EXTRA_METRICS, readMysqlHeaderIdentity } from './layered/ia';
-import { MYSQL_HEALTH_METRICS } from './layered/section-loading';
+import {
+  MYSQL_FOCUS_METRICS,
+  MYSQL_HEADER_METRICS,
+  MYSQL_HEALTH_METRICS,
+  MYSQL_ROLE_METRICS
+} from './layered/section-loading';
 import MysqlLegacyLayout from './legacy-layout';
 
 interface MysqlInstanceOption {
@@ -145,11 +150,24 @@ const MYSQL_COMPARE_METRICS = [
   'mysql_buffer_pool_hit_ratio'
 ];
 const MYSQL_METRIC_CONFIG_BY_NAME = new Map(DASHBOARD_METRICS.map((metric) => [metric.name, metric]));
+/** 专业盘只拉自己用到的指标。传统盘仍走 MYSQL_METRIC_GROUPS，互不影响。 */
+const MYSQL_PRO_CHART_METRICS = [
+  'mysql_com_insert_rate',
+  'mysql_com_update_rate',
+  'mysql_com_delete_rate',
+  'mysql_innodb_data_reads_rate',
+  'mysql_innodb_data_writes_rate',
+  'mysql_innodb_os_log_fsyncs_rate',
+  'mysql_variables_log_slave_updates'
+] as const;
 const MYSQL_CATEGORY_METRIC_NAMES = [...new Set([
   ...MYSQL_HEALTH_METRICS,
-  ...MYSQL_METRIC_GROUPS.flatMap((group) => group.names),
+  ...MYSQL_HEADER_METRICS,
+  ...MYSQL_FOCUS_METRICS,
+  ...MYSQL_ROLE_METRICS,
   ...MYSQL_PERF_AUX_METRICS,
-  ...MYSQL_REPLICATION_EXTRA_METRICS
+  ...MYSQL_REPLICATION_EXTRA_METRICS,
+  ...MYSQL_PRO_CHART_METRICS
 ])].filter((name) => MYSQL_METRIC_CONFIG_BY_NAME.has(name));
 const MYSQL_CATEGORY_PENDING_ALL: ReadonlySet<string> = new Set(MYSQL_CATEGORY_METRIC_NAMES);
 

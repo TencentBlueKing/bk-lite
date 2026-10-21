@@ -19,6 +19,8 @@ import {
 } from './ia';
 import type { MetricSeries } from '../types';
 import { MYSQL_ROLE_METRICS, blocksUntilReady } from './section-loading';
+import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import pro from './pro.module.scss';
 
 const TONE_COLOR: Record<MysqlRoleTone, string | undefined> = {
@@ -29,6 +31,26 @@ const TONE_COLOR: Record<MysqlRoleTone, string | undefined> = {
 
 const REPLICA_LABELS = ['复制延迟', 'IO 线程', 'SQL 线程'] as const;
 const THREAD_LABELS = new Set<string>(['IO 线程', 'SQL 线程']);
+const FIELD_COPY: Record<string, MysqlCategoryCopyKey> = {
+  复制延迟: 'replicationLag',
+  'IO 线程': 'ioThread',
+  'SQL 线程': 'sqlThread',
+  已连接从库: 'connectedReplicas',
+  已连从库: 'connectedReplicas',
+  半同步: 'semisync',
+  'Binlog 位点': 'binlogPosition',
+  成员角色: 'memberRole',
+  成员: 'members',
+  流控: 'flowControl',
+  冲突: 'conflict',
+  复制错误: 'replicationError'
+};
+const VALUE_COPY: Record<string, MysqlCategoryCopyKey> = {
+  运行中: 'running',
+  已停止: 'stopped',
+  已开启: 'enabled',
+  已关闭: 'disabled'
+};
 
 const toneColor = (field: MysqlRoleField) => {
   if (field.value === '--') return undefined;
@@ -102,8 +124,7 @@ function CardRow({ cards }: { cards: MysqlReplicationCard[] }) {
   );
 }
 
-function FillState({ title }: { title: string }) {
-  const loading = title === '加载中';
+function FillState({ title, loading = false }: { title: string; loading?: boolean }) {
   return (
     <div
       className="[&>section>div]:flex [&>section>div]:min-h-[280px] [&>section>div]:items-center [&>section>div]:justify-center"
@@ -154,7 +175,8 @@ function TrendCard({
   color,
   data,
   note,
-  loading
+  loading,
+  emptyText
 }: {
   trend: 'delay' | 'relay' | 'binlog';
   title: string;
@@ -163,6 +185,7 @@ function TrendCard({
   data: ChartData[];
   note?: string;
   loading?: boolean;
+  emptyText: string;
 }) {
   return (
     <div className={trend === 'delay' ? `${pro.perfWide} min-w-0` : 'min-w-0'} data-replication-trend={trend}>
@@ -173,7 +196,7 @@ function TrendCard({
         loading={loading}
         data={data}
         reading={note}
-        emptyText="暂无数据"
+        emptyText={emptyText}
         legends={[{ label: title, color }]}
       />
     </div>
@@ -187,6 +210,24 @@ export default function ReplicationPane({
   metricMap: Record<string, MetricSeries | undefined>;
   pendingMetricNames: ReadonlySet<string>;
 }) {
+  const { t } = useDashboardText();
+  const text = (key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => (
+    mysqlCategoryText(t, key, values)
+  );
+  const localizeLabel = (label: string) => {
+    const key = FIELD_COPY[label];
+    return key ? text(key) : label;
+  };
+  const localizeValue = (value: string) => {
+    if (value.startsWith('● ')) {
+      const inner = value.slice(2);
+      const key = VALUE_COPY[inner];
+      return key ? `● ${text(key)}` : value;
+    }
+    const key = VALUE_COPY[value];
+    return key ? text(key) : value;
+  };
+  const lagUnits = { millisecond: text('millisecond'), second: text('second') };
   const block = useMemo(() => readMysqlRoleBlock(metricMap), [metricMap]);
   const extras = useMemo(() => readMysqlReplicationExtras(metricMap), [metricMap]);
   const trends = useMemo(() => readMysqlReplicationSeries(metricMap), [metricMap]);
@@ -195,11 +236,25 @@ export default function ReplicationPane({
   const fields = statusBlock
     ? (statusBlock.kind === 'replica' ? replicaFields(statusBlock.fields) : statusBlock.fields)
     : [];
-  const change = lagChange(statusBlock?.delay);
+  const change = (() => {
+    const raw = lagChange(statusBlock?.delay);
+    if (!raw) return undefined;
+    if (raw === '较上一点持平') return text('lagUnchanged');
+    const points = statusBlock?.delay;
+    if (!points || points.length < 2) return raw;
+    const previous = points[points.length - 2]?.value1;
+    const latest = points[points.length - 1]?.value1;
+    if (typeof previous !== 'number' || typeof latest !== 'number') return raw;
+    const delta = latest - previous;
+    return text('lagDelta', {
+      sign: delta > 0 ? '+' : '−',
+      value: formatMysqlReplicationLag(Math.abs(delta), lagUnits)
+    });
+  })();
   const items = fields.map((field) => ({
     key: field.label,
-    label: field.label,
-    value: displayValue(field),
+    label: localizeLabel(field.label),
+    value: localizeValue(displayValue(field)),
     tone: toneColor(field),
     subtitle: field.label === '复制延迟' ? change : undefined
   }));
@@ -211,57 +266,67 @@ export default function ReplicationPane({
 
   const replicationLoading = blocksUntilReady(MYSQL_ROLE_METRICS, pendingMetricNames)
     || blocksUntilReady(MYSQL_REPLICATION_EXTRA_METRICS, pendingMetricNames);
-  if (!hasContent && replicationLoading) return <FillState title="加载中" />;
-  if (!hasContent) return <FillState title="暂无复制数据" />;
+  if (!hasContent && replicationLoading) return <FillState title={text('loading')} loading />;
+  if (!hasContent) return <FillState title={text('noReplicationData')} />;
 
+  const empty = text('noTrend');
   return (
     <div data-replication-state="ready">
       {items.length > 0 || extras?.error ? (
         <>
-          <ProSectionTitle>状态</ProSectionTitle>
+          <ProSectionTitle>{text('status')}</ProSectionTitle>
           {items.length > 0 ? <StatusCards items={items} /> : null}
-          {extras?.error ? <CardRow cards={[extras.error]} /> : null}
+          {extras?.error ? (
+            <CardRow cards={[{ ...extras.error, label: localizeLabel(extras.error.label) }]} />
+          ) : null}
         </>
       ) : null}
       {extras && extras.downstream.length > 0 ? (
         <>
           <div className="mt-3">
-            <ProSectionTitle>主库下游</ProSectionTitle>
+            <ProSectionTitle>{text('primaryDownstream')}</ProSectionTitle>
           </div>
-          <CardRow cards={extras.downstream} />
+          <CardRow cards={extras.downstream.map((card) => ({
+            ...card,
+            label: localizeLabel(card.label),
+            value: localizeValue(card.value)
+          }))} />
         </>
       ) : null}
       {showTrends ? (
         <>
           <div className="mt-3">
-            <ProSectionTitle>趋势</ProSectionTitle>
+            <ProSectionTitle>{text('trend')}</ProSectionTitle>
           </div>
           <div className={`mt-3 ${pro.perfGrid}`}>
             <TrendCard
               trend="delay"
-              title="复制延迟"
+              title={text('replicationLag')}
               unit="s"
               color={HOST_SERIES_COLOR.memUsed}
               data={trends.delay}
               note={trends.delayNote}
+              emptyText={empty}
               loading={trends.delay.length === 0 && pendingMetricNames.has('mysql_slave_seconds_behind_master')}
             />
             <TrendCard
               trend="relay"
-              title="Relay 位点"
+              title={text('relayPosition')}
               unit="counts"
               color={HOST_SERIES_COLOR.memAvailable}
               data={trends.relay}
               note={trends.relayNote}
+              emptyText={empty}
               loading={trends.relay.length === 0 && pendingMetricNames.has('mysql_slave_relay_log_pos')}
             />
             <TrendCard
               trend="binlog"
-              title="Binlog 位点"
+              title={text('binlogPosition')}
               unit="counts"
               color={HOST_SERIES_COLOR.diskUsed}
               data={trends.binlog}
               note={trends.binlogNote}
+              emptyText={empty}
               loading={trends.binlog.length === 0 && pendingMetricNames.has('mysql_replication_source_log_pos')}
             />
           </div>

@@ -49,6 +49,17 @@
     },
     {
       "metric_group": "ConnStatus",
+      "name": "mysql_threads_created_rate",
+      "display_name": "Threads Created Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rate of newly created connection threads. A rise usually means connections are not being reused.",
+      "query": "rate(mysql_threads_created{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "ConnStatus",
       "name": "mysql_threads_cached",
       "display_name": "Cached Threads",
       "instance_id_keys": ["instance_id"],
@@ -400,6 +411,39 @@
       "query": "rate(mysql_com_delete{__$labels__}[5m])"
     },
     {
+      "metric_group": "QueryPerf",
+      "name": "mysql_com_commit_rate",
+      "display_name": "Transaction Commit Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Committed transactions per second",
+      "query": "rate(mysql_com_commit{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "QueryPerf",
+      "name": "mysql_com_rollback_rate",
+      "display_name": "Transaction Rollback Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rolled-back transactions per second",
+      "query": "rate(mysql_com_rollback{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "QueryPerf",
+      "name": "mysql_tps_rate",
+      "display_name": "TPS",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Committed plus rolled-back transactions per second",
+      "query": "rate(mysql_com_commit{__$labels__}[5m]) + rate(mysql_com_rollback{__$labels__}[5m])"
+    },
+    {
       "metric_group": "InnoDBPerf",
       "name": "mysql_innodb_row_lock_time_avg",
       "display_name": "Avg Row Lock Wait Time",
@@ -420,6 +464,72 @@
       "dimensions": [],
       "description": "Number of InnoDB row lock waits",
       "query": "rate(mysql_innodb_row_lock_waits{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_rows_read_rate",
+      "display_name": "InnoDB Rows Read Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rows read by the InnoDB engine per second",
+      "query": "rate(mysql_innodb_rows_read{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_rows_inserted_rate",
+      "display_name": "InnoDB Rows Inserted Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rows inserted by the InnoDB engine per second",
+      "query": "rate(mysql_innodb_rows_inserted{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_rows_updated_rate",
+      "display_name": "InnoDB Rows Updated Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rows updated by the InnoDB engine per second",
+      "query": "rate(mysql_innodb_rows_updated{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_rows_deleted_rate",
+      "display_name": "InnoDB Rows Deleted Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rows deleted by the InnoDB engine per second",
+      "query": "rate(mysql_innodb_rows_deleted{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_deadlocks_rate",
+      "display_name": "InnoDB Deadlocks Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "InnoDB deadlocks per second",
+      "query": "rate(mysql_innodb_deadlocks{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_log_waits_rate",
+      "display_name": "InnoDB Log Waits Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Waits caused by insufficient InnoDB redo log buffer",
+      "query": "rate(mysql_innodb_log_waits{__$labels__}[5m])"
     },
     {
       "metric_group": "InnoDBPerf",

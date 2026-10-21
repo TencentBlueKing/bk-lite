@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { ProEventsSectionTitle } from '../../host/layered/alert-event-hint';
 import { KpiTileRow, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
 import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
@@ -21,6 +21,7 @@ import {
   type MysqlOverviewReadings
 } from './ia';
 import MysqlInstanceSummaryCard from './instance-summary-card';
+import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import {
   MYSQL_FOCUS_METRICS,
   MYSQL_HEADER_METRICS,
@@ -28,6 +29,7 @@ import {
   blocksUntilReady
 } from './section-loading';
 import type { MetricSeries as MysqlMetricSeries } from '../types';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 
 interface OverviewPaneProps {
   readings: MysqlOverviewReadings;
@@ -54,7 +56,12 @@ const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'buffe
   value: ''
 }));
 
-const FOCUS_LOADING = ['慢查询', '连接使用率', '缓冲池命中', '活跃会话'] as const;
+const FOCUS_LOADING: MysqlCategoryCopyKey[] = [
+  'focusSlow',
+  'focusConnections',
+  'focusBuffer',
+  'focusActive'
+];
 
 const SPARK_METRIC: Record<NonNullable<MysqlFocusCard['spark']>, { name: string; unit: 'counts' | 'cps' | 'percent'; color: string }> = {
   slow: { name: 'mysql_slow_queries_rate', unit: 'cps', color: HOST_SERIES_COLOR.load1 },
@@ -81,8 +88,12 @@ export default function OverviewPane({
   onFocusAlert,
   onOpenFocus
 }: OverviewPaneProps) {
+  const { t } = useDashboardText();
+  const text = useCallback((key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => (
+    mysqlCategoryText(t, key, values)
+  ), [t]);
   const cards = useMemo<KpiTileModel[]>(() => (
-    buildMysqlOverviewKpis(readings).map((card) => ({
+    buildMysqlOverviewKpis(readings, text).map((card) => ({
       key: card.key,
       label: card.label,
       value: card.value,
@@ -91,10 +102,10 @@ export default function OverviewPane({
       onActivate: card.key === 'alerts' ? onOpenAlerts : undefined,
       expanded: card.key === 'alerts' ? alertsOpen : undefined
     }))
-  ), [alertsOpen, onOpenAlerts, readings]);
+  ), [alertsOpen, onOpenAlerts, readings, text]);
   const focus = useMemo(
-    () => buildMysqlFocusCards(readings, previous, statementsCollected),
-    [previous, readings, statementsCollected]
+    () => buildMysqlFocusCards(readings, previous, statementsCollected, text),
+    [previous, readings, statementsCollected, text]
   );
   const healthLoading = blocksUntilReady(MYSQL_HEALTH_METRICS, pendingMetricNames);
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
@@ -114,24 +125,24 @@ export default function OverviewPane({
         memPercent={memPercent}
         hostLoading={hostLoading}
       />
-      <ProSectionTitle>健康概览</ProSectionTitle>
+      <ProSectionTitle>{text('healthOverview')}</ProSectionTitle>
       {healthLoading ? (
         <KpiTileRow loading items={MYSQL_LOADING_KPIS} />
       ) : (
         <KpiTileRow items={cards} />
       )}
 
-      <ProEventsSectionTitle title="事件" />
+      <ProEventsSectionTitle title={text('events')} />
       <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
 
       {focusLoading ? (
         <>
-          <ProSectionTitle>重点关注</ProSectionTitle>
+          <ProSectionTitle>{text('focus')}</ProSectionTitle>
           <div className={host.shortcutGrid}>
-            {FOCUS_LOADING.map((title) => (
+            {FOCUS_LOADING.map((titleKey) => (
               <ThinTimeSeries
-                key={title}
-                title={title}
+                key={titleKey}
+                title={text(titleKey)}
                 loading
                 data={[]}
                 legends={[]}
@@ -141,7 +152,7 @@ export default function OverviewPane({
         </>
       ) : focus.length > 0 ? (
         <>
-          <ProSectionTitle>重点关注</ProSectionTitle>
+          <ProSectionTitle>{text('focus')}</ProSectionTitle>
           <div className={host.shortcutGrid}>
             {focus.map((card) => {
               const spark = card.spark ? SPARK_METRIC[card.spark] : undefined;

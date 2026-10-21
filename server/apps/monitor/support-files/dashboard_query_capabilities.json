@@ -214,6 +214,13 @@
       "template": "clamp_max(100 * sum by (instance_id) (consul_health_checks_passing{__$labels__}) / clamp_min(count by (instance_id) (consul_health_checks_status{__$labels__}), 1), 100)"
     },
     {
+      "id": "dashboard:v1:066d4ff3",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_com_commit{__$labels__}[__$window__]) + rate(mysql_com_rollback{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:069588ce",
       "object_names": [
         "ElasticSearch"
@@ -317,6 +324,13 @@
         "Kafka"
       ],
       "template": "count({instance_type='kafka', collect_type='exporter', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:0a1f3d7a",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_log_waits{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:0a50a530",
@@ -1349,6 +1363,13 @@
       "template": "elasticsearch_cluster_health_active_primary_shards{__$labels__}"
     },
     {
+      "id": "dashboard:v1:2eb79f6c",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_rows_deleted{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:2ed76a43",
       "object_names": [
         "IIS"
@@ -1433,6 +1454,13 @@
       "template": "clamp_min(100 * (1 - minio_cluster_health_capacity_usable_free_bytes_gauge{__$labels__} / clamp_min(minio_cluster_health_capacity_usable_total_bytes_gauge{__$labels__}, 1)), 0) or clamp_min(100 * (1 - minio_cluster_capacity_usable_free_bytes_gauge{__$labels__} / clamp_min(minio_cluster_capacity_usable_total_bytes_gauge{__$labels__}, 1)), 0)"
     },
     {
+      "id": "dashboard:v1:31fe7587",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "sum by (instance_id, schema, digest, digest_text) (rate(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])) and on (instance_id, digest) topk(20, sum by (instance_id, digest) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))"
+    },
+    {
       "id": "dashboard:v1:32353bb7",
       "object_names": [
         "Kafka"
@@ -1452,6 +1480,13 @@
         "Haproxy"
       ],
       "template": "avg by (instance_id) (haproxy_ctime{svname=\"BACKEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:32a4da29",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_com_commit{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:32b29a14",
@@ -1706,13 +1741,6 @@
         "Pod"
       ],
       "template": "100 * ( sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k8s\", resource=\"memory\",__$labels__}) by (instance_id,pod) )"
-    },
-    {
-      "id": "dashboard:v1:3a01d2db",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
     },
     {
       "id": "dashboard:v1:3a71e903",
@@ -2197,6 +2225,13 @@
       "template": "win_ad_ATQ_Outstanding_Queued_Requests{instance_type=\"active_directory\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:4c20ee96",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_threads_created{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:4c6c3c5d",
       "object_names": [
         "nginx"
@@ -2316,13 +2351,6 @@
         "Node"
       ],
       "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[5m])))"
-    },
-    {
-      "id": "dashboard:v1:507d0ffc",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "max by (instance_id, event_name) (mysql_perf_schema_events_waits_total{__$labels__}) and on (instance_id, event_name) topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))"
     },
     {
       "id": "dashboard:v1:50d24874",
@@ -2598,13 +2626,6 @@
       "template": "sum by (instance_id) (minio_api_requests_incoming_total_gauge{__$labels__}) or sum by (instance_id) (minio_s3_requests_incoming_total_gauge{__$labels__})"
     },
     {
-      "id": "dashboard:v1:5b1f4429",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))"
-    },
-    {
       "id": "dashboard:v1:5b208122",
       "object_names": [
         "Etcd"
@@ -2778,6 +2799,13 @@
         "Cluster"
       ],
       "template": "topk(10, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:619aab06",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_rows_updated{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:619c6393",
@@ -3193,13 +3221,6 @@
         "Node"
       ],
       "template": "rate(prometheus_remote_write_diskio_read_bytes{instance_type=\"k8s\", __$labels__}[__$window__])"
-    },
-    {
-      "id": "dashboard:v1:7138f6d2",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "topk(20, max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
     },
     {
       "id": "dashboard:v1:7172dcbe",
@@ -3680,6 +3701,13 @@
         "ActiveMQ"
       ],
       "template": "rate(activemq_topics_enqueue_count{__$labels__}[__$window__]) - rate(activemq_topics_dequeue_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:8450a8b7",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "sum by (instance_id, event_name, schema, digest, digest_text) (rate(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])) and on (instance_id, event_name) topk(20, sum by (instance_id, event_name) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])))"
     },
     {
       "id": "dashboard:v1:856f14b7",
@@ -4286,6 +4314,13 @@
       "template": "rate(redis_total_net_input_bytes{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:9b95a6ed",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_rows_read{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:9b9e334f",
       "object_names": [
         "VLLM"
@@ -4608,6 +4643,13 @@
       "template": "http_response_result_code{instance_type=\"iis\", endpoint=\"site\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:a8460301",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_rows_inserted{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:a859975e",
       "object_names": [
         "Host"
@@ -4691,6 +4733,13 @@
         "Mysql"
       ],
       "template": "max by (instance_id) (mysql_slave_exec_master_log_pos{__$labels__} or mysql_slave_exec_source_log_pos{__$labels__} or mysql_slave_read_master_log_pos{__$labels__} or mysql_slave_read_source_log_pos{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:aadc2f7e",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "topk(20, sum by (instance_id, schema, digest, digest_text) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))"
     },
     {
       "id": "dashboard:v1:ab0b93c6",
@@ -5068,6 +5117,13 @@
       "template": "rate(sqlserver_performance_value{counter=\"Log Flushes/sec\", __$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:b9c0b9cb",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "sum by (instance_id, schema, digest, digest_text) (increase(mysql_perf_schema_events_statements_total{__$labels__}[__$window__])) and on (instance_id, digest) topk(20, sum by (instance_id, digest) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))"
+    },
+    {
       "id": "dashboard:v1:b9e65408",
       "object_names": [
         "Minio"
@@ -5159,6 +5215,13 @@
       "template": "sum(win_iis_w3wp_Active_Requests{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
     },
     {
+      "id": "dashboard:v1:bcedd9ff",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "sum by (instance_id, event_name, schema, digest, digest_text) (increase(mysql_perf_schema_events_waits_total{__$labels__}[__$window__])) and on (instance_id, event_name) topk(20, sum by (instance_id, event_name) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])))"
+    },
+    {
       "id": "dashboard:v1:bd2bc914",
       "object_names": [
         "Mysql"
@@ -5192,6 +5255,13 @@
         "Etcd"
       ],
       "template": "sum by (instance_id) (rate(etcd_server_proposals_applied_total_gauge{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:be11fa93",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "sum by (instance_id, schema, digest, digest_text) (increase(mysql_perf_schema_events_statements_rows_examined_total{__$labels__}[__$window__])) and on (instance_id, digest) topk(20, sum by (instance_id, digest) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))"
     },
     {
       "id": "dashboard:v1:be564564",
@@ -6077,6 +6147,13 @@
       "template": "mysql_connection_errors_internal{__$labels__}"
     },
     {
+      "id": "dashboard:v1:dea0c021",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "sum by (instance_id, event_name, schema, digest, digest_text) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])) and on (instance_id, event_name) topk(20, sum by (instance_id, event_name) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])))"
+    },
+    {
       "id": "dashboard:v1:df2dee47",
       "object_names": [
         "Mysql"
@@ -6429,13 +6506,6 @@
       "template": "sum by (instance_id) (oracledb_sessions_value_gauge{__$labels__})"
     },
     {
-      "id": "dashboard:v1:edadd403",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_examined_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
-    },
-    {
       "id": "dashboard:v1:ee047ea2",
       "object_names": [
         "Mysql"
@@ -6497,6 +6567,13 @@
         "Apache"
       ],
       "template": "rate(apache_scboard_open{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:f209b046",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_com_rollback{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:f20b0627",
@@ -6695,6 +6772,13 @@
         "Router"
       ],
       "template": "count({instance_type='router', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:f8a36e39",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "rate(mysql_innodb_deadlocks{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:f8bf91af",

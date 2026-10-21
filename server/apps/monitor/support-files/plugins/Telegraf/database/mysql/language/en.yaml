@@ -16,6 +16,10 @@ monitor_object_metric:
       name: Running Threads
       desc: Number of threads currently executing queries, reflecting concurrent processing
         capacity
+    mysql_threads_created_rate:
+      name: Threads Created Rate
+      desc: Rate of newly created connection threads. A rise usually means connections
+        are not being reused.
     mysql_threads_cached:
       name: Cached Threads
       desc: Number of reusable cached threads, reflecting connection reuse efficiency
@@ -133,12 +137,39 @@ monitor_object_metric:
     mysql_com_delete_rate:
       name: DELETE Delete Rate
       desc: DELETE operations; a spike requires checking data cleanup rationality
+    mysql_com_commit_rate:
+      name: Transaction Commit Rate
+      desc: Committed transactions per second
+    mysql_com_rollback_rate:
+      name: Transaction Rollback Rate
+      desc: Rolled-back transactions per second
+    mysql_tps_rate:
+      name: TPS
+      desc: Committed plus rolled-back transactions per second
     mysql_innodb_row_lock_time_avg:
       name: Avg Row Lock Wait Time
       desc: Average row lock wait time; >50ms indicates severe lock contention
     mysql_innodb_row_lock_waits_rate:
       name: Row Lock Waits Rate
       desc: Number of InnoDB row lock waits
+    mysql_innodb_rows_read_rate:
+      name: InnoDB Rows Read Rate
+      desc: Rows read by the InnoDB engine per second
+    mysql_innodb_rows_inserted_rate:
+      name: InnoDB Rows Inserted Rate
+      desc: Rows inserted by the InnoDB engine per second
+    mysql_innodb_rows_updated_rate:
+      name: InnoDB Rows Updated Rate
+      desc: Rows updated by the InnoDB engine per second
+    mysql_innodb_rows_deleted_rate:
+      name: InnoDB Rows Deleted Rate
+      desc: Rows deleted by the InnoDB engine per second
+    mysql_innodb_deadlocks_rate:
+      name: InnoDB Deadlocks Rate
+      desc: InnoDB deadlocks per second
+    mysql_innodb_log_waits_rate:
+      name: InnoDB Log Waits Rate
+      desc: Waits caused by insufficient InnoDB redo log buffer
     mysql_innodb_data_reads_rate:
       name: InnoDB Data Reads Rate
       desc: Rate of physical read operations issued by InnoDB

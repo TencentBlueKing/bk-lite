@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { MetricSeries } from '../types';
 import { formatMetricValue } from '../../../shared/utils/format';
@@ -9,6 +10,7 @@ import { ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
 import { latestNumber, numericValue, primaryChartSeries } from '../../host/layered/readings';
 import { innodbHasLoad } from './ia';
+import { mysqlCategoryText } from './mysql-copy';
 import classic from '../../host/index.module.scss';
 import host from '../../host/layered/layered.module.scss';
 import pro from './pro.module.scss';
@@ -42,11 +44,19 @@ const rateReading = (metric: MetricSeries | undefined) => {
   return `${formatted.value}${formatted.unit || ''}`;
 };
 
+const durationReading = (metric: MetricSeries | undefined) => {
+  const value = latestNumber(metric);
+  if (value == null) return undefined;
+  const formatted = formatMetricValue(value, 'ms');
+  return `${formatted.value}${formatted.unit || ''}`;
+};
+
 export default function PerformancePane({ metricMap, pendingMetricNames }: PerformancePaneProps) {
+  const { t } = useDashboardText();
   const connection = useMemo(() => mergeChartSeries([
-    { key: 'connected', label: '当前连接', data: seriesOf(metricMap.mysql_threads_connected) },
-    { key: 'running', label: '活跃会话', data: seriesOf(metricMap.mysql_threads_running) }
-  ]), [metricMap.mysql_threads_connected?.viewData, metricMap.mysql_threads_running?.viewData]);
+    { key: 'connected', label: mysqlCategoryText(t, 'currentConnections'), data: seriesOf(metricMap.mysql_threads_connected) },
+    { key: 'running', label: mysqlCategoryText(t, 'activeSessions'), data: seriesOf(metricMap.mysql_threads_running) }
+  ]), [metricMap.mysql_threads_connected?.viewData, metricMap.mysql_threads_running?.viewData, t]);
 
   const writes = useMemo(() => ({
     insert: seriesOf(metricMap.mysql_com_insert_rate),
@@ -58,10 +68,29 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     metricMap.mysql_com_delete_rate?.viewData
   ]);
 
+  const tpsParts = useMemo(() => ({
+    commit: seriesOf(metricMap.mysql_com_commit_rate),
+    rollback: seriesOf(metricMap.mysql_com_rollback_rate),
+    total: seriesOf(metricMap.mysql_tps_rate)
+  }), [
+    metricMap.mysql_com_commit_rate?.viewData,
+    metricMap.mysql_com_rollback_rate?.viewData,
+    metricMap.mysql_tps_rate?.viewData
+  ]);
+
+  const tpsTotal = tpsParts.total.length
+    ? tpsParts.total
+    : sumSeries([tpsParts.commit, tpsParts.rollback]);
+
   const throughput = useMemo(() => mergeChartSeries([
-    { key: 'qps', label: 'QPS', data: seriesOf(metricMap.mysql_queries_rate) },
-    { key: 'tps', label: 'TPS', data: sumSeries([writes.insert, writes.update, writes.delete]) }
-  ]), [metricMap.mysql_queries_rate?.viewData, writes]);
+    { key: 'qps', label: mysqlCategoryText(t, 'qps'), data: seriesOf(metricMap.mysql_queries_rate) },
+    { key: 'tps', label: mysqlCategoryText(t, 'tps'), data: tpsTotal }
+  ]), [metricMap.mysql_queries_rate?.viewData, t, tpsTotal]);
+
+  const tpsMix = useMemo(() => mergeChartSeries([
+    { key: 'commit', label: mysqlCategoryText(t, 'commit'), data: tpsParts.commit },
+    { key: 'rollback', label: mysqlCategoryText(t, 'rollback'), data: tpsParts.rollback }
+  ]), [t, tpsParts.commit, tpsParts.rollback]);
 
   const statementMix = useMemo(() => mergeChartSeries([
     { key: 'insert', label: 'INSERT', data: writes.insert },
@@ -70,18 +99,32 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   ]), [writes]);
 
   const innodb = useMemo(() => mergeChartSeries([
-    { key: 'read', label: '读', data: seriesOf(metricMap.mysql_innodb_data_reads_rate) },
-    { key: 'write', label: '写', data: seriesOf(metricMap.mysql_innodb_data_writes_rate) },
-    { key: 'redo', label: 'Redo 刷盘', data: seriesOf(metricMap.mysql_innodb_os_log_fsyncs_rate) }
+    { key: 'read', label: mysqlCategoryText(t, 'innodbRead'), data: seriesOf(metricMap.mysql_innodb_data_reads_rate) },
+    { key: 'write', label: mysqlCategoryText(t, 'innodbWrite'), data: seriesOf(metricMap.mysql_innodb_data_writes_rate) },
+    { key: 'redo', label: mysqlCategoryText(t, 'innodbRedo'), data: seriesOf(metricMap.mysql_innodb_os_log_fsyncs_rate) }
   ]), [
     metricMap.mysql_innodb_data_reads_rate?.viewData,
     metricMap.mysql_innodb_data_writes_rate?.viewData,
-    metricMap.mysql_innodb_os_log_fsyncs_rate?.viewData
+    metricMap.mysql_innodb_os_log_fsyncs_rate?.viewData,
+    t
+  ]);
+
+  const innodbRows = useMemo(() => mergeChartSeries([
+    { key: 'read', label: mysqlCategoryText(t, 'rowsRead'), data: seriesOf(metricMap.mysql_innodb_rows_read_rate) },
+    { key: 'insert', label: mysqlCategoryText(t, 'rowsInserted'), data: seriesOf(metricMap.mysql_innodb_rows_inserted_rate) },
+    { key: 'update', label: mysqlCategoryText(t, 'rowsUpdated'), data: seriesOf(metricMap.mysql_innodb_rows_updated_rate) },
+    { key: 'delete', label: mysqlCategoryText(t, 'rowsDeleted'), data: seriesOf(metricMap.mysql_innodb_rows_deleted_rate) }
+  ]), [
+    metricMap.mysql_innodb_rows_read_rate?.viewData,
+    metricMap.mysql_innodb_rows_inserted_rate?.viewData,
+    metricMap.mysql_innodb_rows_updated_rate?.viewData,
+    metricMap.mysql_innodb_rows_deleted_rate?.viewData,
+    t
   ]);
 
   const buffer = useMemo(() => mergeChartSeries([
-    { key: 'hit', label: '命中率', data: seriesOf(metricMap.mysql_buffer_pool_hit_ratio) }
-  ]), [metricMap.mysql_buffer_pool_hit_ratio?.viewData]);
+    { key: 'hit', label: mysqlCategoryText(t, 'hitRate'), data: seriesOf(metricMap.mysql_buffer_pool_hit_ratio) }
+  ]), [metricMap.mysql_buffer_pool_hit_ratio?.viewData, t]);
 
   const abortedConnects = useMemo(
     () => seriesOf(metricMap.mysql_aborted_connects_rate),
@@ -95,9 +138,13 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     () => seriesOf(metricMap.mysql_select_scan_rate),
     [metricMap.mysql_select_scan_rate?.viewData]
   );
-  const tableLockWaits = useMemo(
-    () => seriesOf(metricMap.mysql_table_locks_waited_rate),
-    [metricMap.mysql_table_locks_waited_rate?.viewData]
+  const rowLockWaits = useMemo(
+    () => seriesOf(metricMap.mysql_innodb_row_lock_waits_rate),
+    [metricMap.mysql_innodb_row_lock_waits_rate?.viewData]
+  );
+  const rowLockTime = useMemo(
+    () => seriesOf(metricMap.mysql_innodb_row_lock_time_avg),
+    [metricMap.mysql_innodb_row_lock_time_avg?.viewData]
   );
 
   const slotLoading = (names: readonly string[], points: { length: number }) => (
@@ -108,8 +155,12 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     connection
   );
   const throughputAwaiting = slotLoading(
-    ['mysql_queries_rate', 'mysql_com_insert_rate', 'mysql_com_update_rate', 'mysql_com_delete_rate'],
+    ['mysql_queries_rate', 'mysql_tps_rate', 'mysql_com_commit_rate', 'mysql_com_rollback_rate'],
     throughput
+  );
+  const tpsAwaiting = slotLoading(
+    ['mysql_tps_rate', 'mysql_com_commit_rate', 'mysql_com_rollback_rate'],
+    tpsMix
   );
   const writesAwaiting = slotLoading(
     ['mysql_com_insert_rate', 'mysql_com_update_rate', 'mysql_com_delete_rate'],
@@ -119,33 +170,43 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     ['mysql_innodb_data_reads_rate', 'mysql_innodb_data_writes_rate', 'mysql_innodb_os_log_fsyncs_rate'],
     innodb
   );
+  const innodbRowsAwaiting = slotLoading(
+    [
+      'mysql_innodb_rows_read_rate',
+      'mysql_innodb_rows_inserted_rate',
+      'mysql_innodb_rows_updated_rate',
+      'mysql_innodb_rows_deleted_rate'
+    ],
+    innodbRows
+  );
   const bufferAwaiting = slotLoading(['mysql_buffer_pool_hit_ratio'], buffer);
+  const empty = mysqlCategoryText(t, 'noCollectData');
 
   const innodbCard = innodbHasLoad(metricMap) || innodbAwaiting ? (
     <ThinTimeSeries
       className="h-full max-[720px]:h-auto"
-      title="InnoDB 读写"
-      hint="读、写与 Redo 刷盘。近窗接近零时不放大噪声。"
+      title={mysqlCategoryText(t, 'innodbRw')}
+      hint={mysqlCategoryText(t, 'innodbRwHint')}
       loading={innodbAwaiting}
       unit="cps"
       data={innodb}
       legends={[
-        { label: '读', color: HOST_SERIES_COLOR.diskRead, reading: rateReading(metricMap.mysql_innodb_data_reads_rate) },
-        { label: '写', color: HOST_SERIES_COLOR.diskWrite, reading: rateReading(metricMap.mysql_innodb_data_writes_rate) },
-        { label: 'Redo', color: HOST_SERIES_COLOR.load1, reading: rateReading(metricMap.mysql_innodb_os_log_fsyncs_rate) }
+        { label: mysqlCategoryText(t, 'innodbRead'), color: HOST_SERIES_COLOR.diskRead, reading: rateReading(metricMap.mysql_innodb_data_reads_rate) },
+        { label: mysqlCategoryText(t, 'innodbWrite'), color: HOST_SERIES_COLOR.diskWrite, reading: rateReading(metricMap.mysql_innodb_data_writes_rate) },
+        { label: mysqlCategoryText(t, 'innodbRedoShort'), color: HOST_SERIES_COLOR.load1, reading: rateReading(metricMap.mysql_innodb_os_log_fsyncs_rate) }
       ]}
     />
   ) : (
     <section className={`${classic.panel} ${host.chartPanel} flex h-full flex-col max-[720px]:h-auto`}>
       <div className={host.chartHead}>
-        <div className={host.chartTitle}>InnoDB 读写</div>
+        <div className={host.chartTitle}>{mysqlCategoryText(t, 'innodbRw')}</div>
       </div>
       <div className="flex min-h-[156px] grow flex-col items-center justify-center text-center">
         <div className="text-[13px] font-semibold text-[var(--color-text-2)]">
-          {innodb.length > 0 ? '近窗无明显 InnoDB 读写' : '暂无采集数据'}
+          {innodb.length > 0 ? mysqlCategoryText(t, 'innodbQuiet') : empty}
         </div>
         {innodb.length > 0 ? (
-          <div className="mt-1 text-[12px] text-[var(--color-text-3)]">有负载时将显示读/写/Redo</div>
+          <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{mysqlCategoryText(t, 'innodbQuietHint')}</div>
         ) : null}
       </div>
     </section>
@@ -153,12 +214,13 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
 
   const showConnections = connectionAwaiting || connection.length > 0;
   const showThroughput = throughputAwaiting || throughput.length > 0;
+  const showTps = tpsAwaiting || tpsMix.length > 0 || tpsTotal.length > 0;
   const showWrites = writesAwaiting || statementMix.length > 0;
   const showInnodb = innodbAwaiting || innodb.length > 0;
+  const showInnodbRows = innodbRowsAwaiting || innodbRows.length > 0;
   const showBuffer = bufferAwaiting || buffer.length > 0;
   const cardClass = (wide: boolean) => (wide ? `min-w-0 ${pro.perfWide}` : 'min-w-0');
   const writeInnodbPair = showWrites && showInnodb;
-  // 桌面并排：列拉到同行较高侧，卡填满列高。窄屏折行后各卡自高。
   const pairCol = writeInnodbPair
     ? 'grid h-full min-w-0 grid-rows-[auto_minmax(auto,1fr)] gap-3 max-[720px]:h-auto max-[720px]:grid-rows-[auto_auto]'
     : 'flex min-w-0 flex-col gap-3';
@@ -168,20 +230,20 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     <>
       {showConnections || showThroughput ? (
         <>
-          <ProSectionTitle>连接与吞吐</ProSectionTitle>
+          <ProSectionTitle>{mysqlCategoryText(t, 'connectionsAndThroughput')}</ProSectionTitle>
           <div className={pro.perfGrid}>
             {showConnections ? (
               <div id="mysql-perf-connections" className={cardClass(!showThroughput)}>
                 <ThinTimeSeries
-                  title="连接与活跃会话"
-                  hint="当前连接数与 Threads_running。"
+                  title={mysqlCategoryText(t, 'connectionsAndSessions')}
+                  hint={mysqlCategoryText(t, 'connectionsHint')}
                   loading={connectionAwaiting}
                   unit="counts"
                   data={connection}
-                  emptyText="暂无采集数据"
+                  emptyText={empty}
                   legends={[
-                    { label: '当前连接', color: HOST_SERIES_COLOR.memUsed },
-                    { label: '活跃会话', color: HOST_SERIES_COLOR.load1 }
+                    { label: mysqlCategoryText(t, 'currentConnections'), color: HOST_SERIES_COLOR.memUsed },
+                    { label: mysqlCategoryText(t, 'activeSessions'), color: HOST_SERIES_COLOR.load1 }
                   ]}
                 />
               </div>
@@ -189,15 +251,58 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
             {showThroughput ? (
               <div id="mysql-perf-throughput" className={cardClass(!showConnections)}>
                 <ThinTimeSeries
-                  title="QPS / TPS"
-                  hint="QPS 为实例 Queries/s。TPS 为 INSERT、UPDATE、DELETE 速率之和。"
+                  title={mysqlCategoryText(t, 'qpsTps')}
+                  hint={mysqlCategoryText(t, 'qpsTpsHint')}
                   loading={throughputAwaiting}
                   unit="cps"
                   data={throughput}
-                  emptyText="暂无采集数据"
+                  emptyText={empty}
                   legends={[
-                    { label: 'QPS', color: HOST_SERIES_COLOR.memAvailable },
-                    { label: 'TPS', color: HOST_PALETTE.orange }
+                    { label: mysqlCategoryText(t, 'qps'), color: HOST_SERIES_COLOR.memAvailable },
+                    { label: mysqlCategoryText(t, 'tps'), color: HOST_PALETTE.orange }
+                  ]}
+                />
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+      {showTps || showInnodbRows ? (
+        <>
+          <ProSectionTitle>{showTps ? mysqlCategoryText(t, 'tpsChart') : mysqlCategoryText(t, 'innodbRows')}</ProSectionTitle>
+          <div className={pro.perfGrid}>
+            {showTps ? (
+              <div id="mysql-perf-tps" className={cardClass(!showInnodbRows)}>
+                <ThinTimeSeries
+                  title={mysqlCategoryText(t, 'tpsChart')}
+                  hint={mysqlCategoryText(t, 'tpsHint')}
+                  loading={tpsAwaiting}
+                  unit="cps"
+                  data={tpsMix.length ? tpsMix : mergeChartSeries([{ key: 'tps', label: mysqlCategoryText(t, 'tps'), data: tpsTotal }])}
+                  emptyText={empty}
+                  legends={tpsMix.length ? [
+                    { label: mysqlCategoryText(t, 'commit'), color: HOST_SERIES_COLOR.memAvailable, reading: rateReading(metricMap.mysql_com_commit_rate) },
+                    { label: mysqlCategoryText(t, 'rollback'), color: HOST_PALETTE.rose, reading: rateReading(metricMap.mysql_com_rollback_rate) }
+                  ] : [
+                    { label: mysqlCategoryText(t, 'tps'), color: HOST_PALETTE.orange, reading: rateReading(metricMap.mysql_tps_rate) }
+                  ]}
+                />
+              </div>
+            ) : null}
+            {showInnodbRows ? (
+              <div id="mysql-perf-rows" className={cardClass(!showTps)}>
+                <ThinTimeSeries
+                  title={mysqlCategoryText(t, 'innodbRows')}
+                  hint={mysqlCategoryText(t, 'innodbRowsHint')}
+                  loading={innodbRowsAwaiting}
+                  unit="cps"
+                  data={innodbRows}
+                  emptyText={empty}
+                  legends={[
+                    { label: mysqlCategoryText(t, 'rowsRead'), color: HOST_SERIES_COLOR.memUsed, reading: rateReading(metricMap.mysql_innodb_rows_read_rate) },
+                    { label: mysqlCategoryText(t, 'rowsInserted'), color: HOST_PALETTE.orange, reading: rateReading(metricMap.mysql_innodb_rows_inserted_rate) },
+                    { label: mysqlCategoryText(t, 'rowsUpdated'), color: HOST_SERIES_COLOR.load5, reading: rateReading(metricMap.mysql_innodb_rows_updated_rate) },
+                    { label: mysqlCategoryText(t, 'rowsDeleted'), color: HOST_PALETTE.rose, reading: rateReading(metricMap.mysql_innodb_rows_deleted_rate) }
                   ]}
                 />
               </div>
@@ -214,14 +319,14 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
         >
           {showWrites ? (
             <div className={pairCol}>
-              <ProSectionTitle>写入与语句</ProSectionTitle>
+              <ProSectionTitle>{mysqlCategoryText(t, 'writesAndStatements')}</ProSectionTitle>
               <ThinTimeSeries
                 className={pairCard}
-                title="写入语句"
+                title={mysqlCategoryText(t, 'writeStatements')}
                 loading={writesAwaiting}
                 unit="cps"
                 data={statementMix}
-                emptyText="暂无采集数据"
+                emptyText={empty}
                 legends={[
                   { label: 'INSERT', color: HOST_PALETTE.orange },
                   { label: 'UPDATE', color: HOST_SERIES_COLOR.load5 },
@@ -232,7 +337,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
           ) : null}
           {showInnodb ? (
             <div id="mysql-perf-innodb" className={pairCol}>
-              <ProSectionTitle>InnoDB</ProSectionTitle>
+              <ProSectionTitle>{mysqlCategoryText(t, 'innodb')}</ProSectionTitle>
               {innodbCard}
             </div>
           ) : null}
@@ -240,17 +345,17 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       ) : null}
       {showBuffer ? (
         <>
-          <ProSectionTitle>缓冲池</ProSectionTitle>
+          <ProSectionTitle>{mysqlCategoryText(t, 'bufferPool')}</ProSectionTitle>
           <div className={pro.perfGrid}>
             <div id="mysql-perf-buffer" className={cardClass(true)}>
               <ThinTimeSeries
-                title="缓冲池命中"
-                hint="InnoDB buffer pool 命中率。"
+                title={mysqlCategoryText(t, 'bufferHit')}
+                hint={mysqlCategoryText(t, 'bufferHitHint')}
                 loading={bufferAwaiting}
                 unit="percent"
                 data={buffer}
-                emptyText="暂无采集数据"
-                legends={[{ label: '命中率', color: HOST_SERIES_COLOR.cpu }]}
+                emptyText={empty}
+                legends={[{ label: mysqlCategoryText(t, 'hitRate'), color: HOST_SERIES_COLOR.cpu }]}
               />
             </div>
           </div>
@@ -258,60 +363,80 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       ) : null}
       {abortedConnects.length > 0 || abortedClients.length > 0 ? (
         <>
-          <ProSectionTitle>连接质量</ProSectionTitle>
+          <ProSectionTitle>{mysqlCategoryText(t, 'connectionQuality')}</ProSectionTitle>
           <div className={pro.perfGrid} data-perf-section="quality">
             {abortedConnects.length > 0 ? (
               <div className={cardClass(abortedClients.length === 0)}>
                 <ThinTimeSeries
-                  title="中止连接"
-                  hint="还没连上就失败的尝试。"
+                  title={mysqlCategoryText(t, 'abortedConnects')}
+                  hint={mysqlCategoryText(t, 'abortedConnectsHint')}
                   unit="cps"
                   data={abortedConnects.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText="暂无采集数据"
-                  legends={[{ label: '中止连接', color: HOST_PALETTE.rose }]}
+                  emptyText={empty}
+                  legends={[{ label: mysqlCategoryText(t, 'abortedConnects'), color: HOST_PALETTE.rose }]}
                 />
               </div>
             ) : null}
             {abortedClients.length > 0 ? (
               <div className={cardClass(abortedConnects.length === 0)}>
                 <ThinTimeSeries
-                  title="客户端断开"
-                  hint="已经连上之后异常断开。"
+                  title={mysqlCategoryText(t, 'abortedClients')}
+                  hint={mysqlCategoryText(t, 'abortedClientsHint')}
                   unit="cps"
                   data={abortedClients.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText="暂无采集数据"
-                  legends={[{ label: '客户端断开', color: HOST_PALETTE.orange }]}
+                  emptyText={empty}
+                  legends={[{ label: mysqlCategoryText(t, 'abortedClients'), color: HOST_PALETTE.orange }]}
                 />
               </div>
             ) : null}
           </div>
         </>
       ) : null}
-      {selectScan.length > 0 || tableLockWaits.length > 0 ? (
+      {selectScan.length > 0 || rowLockWaits.length > 0 || rowLockTime.length > 0 ? (
         <>
-          <ProSectionTitle>扫描与锁</ProSectionTitle>
+          <ProSectionTitle>{mysqlCategoryText(t, 'scanAndLock')}</ProSectionTitle>
           <div className={pro.perfGrid} data-perf-section="scan-lock">
             {selectScan.length > 0 ? (
-              <div className={cardClass(tableLockWaits.length === 0)}>
+              <div className="min-w-0">
                 <ThinTimeSeries
-                  title="全表扫描"
-                  hint="没有走索引、扫整张表的查询。"
+                  title={mysqlCategoryText(t, 'selectScan')}
+                  hint={mysqlCategoryText(t, 'selectScanHint')}
                   unit="cps"
                   data={selectScan.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText="暂无采集数据"
-                  legends={[{ label: '全表扫描', color: HOST_SERIES_COLOR.memAvailable }]}
+                  emptyText={empty}
+                  legends={[{ label: mysqlCategoryText(t, 'selectScan'), color: HOST_SERIES_COLOR.memAvailable }]}
                 />
               </div>
             ) : null}
-            {tableLockWaits.length > 0 ? (
-              <div className={cardClass(selectScan.length === 0)}>
+            {rowLockWaits.length > 0 ? (
+              <div className="min-w-0">
                 <ThinTimeSeries
-                  title="表锁等待"
-                  hint="语句等到表锁才继续的次数。"
+                  title={mysqlCategoryText(t, 'rowLockWaits')}
+                  hint={mysqlCategoryText(t, 'rowLockWaitsHint')}
                   unit="cps"
-                  data={tableLockWaits.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText="暂无采集数据"
-                  legends={[{ label: '表锁等待', color: HOST_PALETTE.orange }]}
+                  data={rowLockWaits.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText={empty}
+                  legends={[{
+                    label: mysqlCategoryText(t, 'rowLockWaits'),
+                    color: HOST_PALETTE.orange,
+                    reading: rateReading(metricMap.mysql_innodb_row_lock_waits_rate)
+                  }]}
+                />
+              </div>
+            ) : null}
+            {rowLockTime.length > 0 ? (
+              <div className="min-w-0">
+                <ThinTimeSeries
+                  title={mysqlCategoryText(t, 'rowLockTime')}
+                  hint={mysqlCategoryText(t, 'rowLockTimeHint')}
+                  unit="ms"
+                  data={rowLockTime.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText={empty}
+                  legends={[{
+                    label: mysqlCategoryText(t, 'rowLockTime'),
+                    color: HOST_PALETTE.rose,
+                    reading: durationReading(metricMap.mysql_innodb_row_lock_time_avg)
+                  }]}
                 />
               </div>
             ) : null}
