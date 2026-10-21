@@ -579,7 +579,7 @@ class TestGetClientView:
                 },
                 {
                     "name": "workflow-orchestration",
-                    "display_name": "Workflow Orchestration",
+                    "display_name": "Workflow",
                     "is_build_in": True,
                     "description": "app.workflow-orchestration",
                     "tags": ["tag.workflow_design", "tag.approval"],

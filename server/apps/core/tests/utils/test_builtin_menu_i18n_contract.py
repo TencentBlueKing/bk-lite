@@ -17,7 +17,7 @@ def test_workflow_orchestration_menu_i18n_keys_resolve_in_core_language():
 
     assert payload["client_id"] == "workflow-orchestration"
     assert zh.get("app_name.workflow-orchestration") == "编排中心"
-    assert en.get("app_name.workflow-orchestration") == "Workflow Orchestration"
+    assert en.get("app_name.workflow-orchestration") == "Workflow"
     assert zh.get(payload["description"])
     assert en.get(payload["description"])
     for tag in payload["tags"]:
