@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Alert, Button, Form, Input, InputNumber, Modal, Segmented, Select } from 'antd';
+import { Alert, Button, Form, Input, InputNumber, Modal, Segmented, Select, Tag } from 'antd';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import CodeEditor from '@/components/code-editor';
@@ -442,6 +442,15 @@ export const ScriptBodyEditor: React.FC<{
 
   return (
     <div style={{ maxWidth: 640 }} className="w-full">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Tag className="m-0">{t('monitor.integrations.scriptDemoBadge', '示例脚本')}</Tag>
+        <span className="text-xs text-[var(--color-text-3)]">
+          {t(
+            'monitor.integrations.scriptDemoHint',
+            '可插入编辑区的示例，插入后可按需修改。'
+          )}
+        </span>
+      </div>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         {SCRIPT_COLLECT_DEMO_BUTTONS.map((item) => (
           <Button

@@ -895,6 +895,8 @@
       "scriptDemoWindowsHost": "Windows host resources",
       "scriptDemoProcessPort": "Process / port liveness",
       "scriptDemoPythonBiz": "Python business metrics",
+      "scriptDemoBadge": "Example script",
+      "scriptDemoHint": "Example scripts you can insert into the editor, then edit as needed.",
       "scriptDemoOverwriteTitle": "Overwrite the current script?",
       "scriptDemoOverwriteContent": "Inserting this example will replace the current editor content.",
       "scriptParseUnsupportedFormat": "Production collection only supports Prometheus text; this output will produce no data after go-live",

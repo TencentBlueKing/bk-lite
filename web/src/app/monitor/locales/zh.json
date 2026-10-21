@@ -895,6 +895,8 @@
       "scriptDemoWindowsHost": "Windows 基础资源",
       "scriptDemoProcessPort": "进程/端口存活",
       "scriptDemoPythonBiz": "Python 业务指标",
+      "scriptDemoBadge": "示例脚本",
+      "scriptDemoHint": "可插入编辑区的示例，插入后可按需修改。",
       "scriptDemoOverwriteTitle": "覆盖当前脚本？",
       "scriptDemoOverwriteContent": "插入该示例将覆盖编辑区已有内容。",
       "scriptParseUnsupportedFormat": "正式采集只支持 Prometheus 格式，上线后将无数据",

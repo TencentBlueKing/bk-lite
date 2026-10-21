@@ -519,6 +519,79 @@ const looksLikeKeyValueLine = (line: string): boolean =>
   !line.includes('{') &&
   /^[A-Za-z0-9_:][A-Za-z0-9_:]*\s*[:=]\s*\S+$/.test(line);
 
+/** 探测侧车把 Telegraf 日志 / Influx dump 写进 stdout，不能当成脚本 stdout。 */
+export const isCollectorSidecarNoise = (line: string): boolean => {
+  const text = String(line || '').trim();
+  if (!text) {
+    return false;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\S+\s+[IWED]!/.test(text)) {
+    return true;
+  }
+  if (/^[IWED]!(?:\s|$)/.test(text)) {
+    return true;
+  }
+  if (/^time=/.test(text)) {
+    return true;
+  }
+  if (/\blevel=(?:debug|info|warn|warning|error)\b/i.test(text) && /\bmsg=/.test(text)) {
+    return true;
+  }
+  if (/^Loading config\b/i.test(text)) {
+    return true;
+  }
+  if (/^Starting Telegraf\b/i.test(text)) {
+    return true;
+  }
+  if (/^Available plugins\b/i.test(text)) {
+    return true;
+  }
+  if (/^Loaded (?:inputs|outputs|processors|aggregators|secretstores)\b/i.test(text)) {
+    return true;
+  }
+  if (/^Tags enabled\b/i.test(text)) {
+    return true;
+  }
+  if (/^Error running agent\b/i.test(text)) {
+    return true;
+  }
+  if (/^\[(?:inputs|outputs|processors|aggregators|agent)\b/i.test(text)) {
+    return true;
+  }
+  return false;
+};
+
+const COLLECTOR_IDENTITY_TAG_KEYS = new Set([
+  'collect_type',
+  'instance_id',
+  'config_id',
+  'plugin_id',
+  'agent_id',
+  'instance_type',
+  'config_type'
+]);
+
+const hasCollectorIdentityTags = (tags: Record<string, string>): boolean =>
+  Object.keys(tags).some((key) => COLLECTOR_IDENTITY_TAG_KEYS.has(key.toLowerCase()));
+
+const INFLUX_VALUE_FIELD_PREFERENCE = ['value', 'gauge', 'counter', 'untyped', 'untimed'];
+
+const numericFieldEntries = (fields: Record<string, any>): Array<[string, number]> =>
+  Object.entries(fields).flatMap(([key, raw]) =>
+    typeof raw === 'number' && Number.isFinite(raw) ? [[key, raw] as [string, number]] : []
+  );
+
+const pickInfluxSampleValue = (fields: Record<string, any>): number | undefined => {
+  for (const key of INFLUX_VALUE_FIELD_PREFERENCE) {
+    const raw = fields[key];
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      return raw;
+    }
+  }
+  const numeric = numericFieldEntries(fields);
+  return numeric.length ? numeric[0][1] : undefined;
+};
+
 export const parseScriptMetrics = (
   result: Record<string, any> = {},
   startedAt?: string | null,
@@ -595,13 +668,60 @@ export const parseScriptMetrics = (
   let sawPrometheus = false;
   let sawInflux = false;
   let sawKeyValue = false;
+  let sawCollectorInflux = false;
   let seriesCount = 0;
+
+  const applySelfMetricValue = (name: string, value: number) => {
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('up')) up = value;
+    if (lowerName.includes('exit_code')) exitCode = value;
+    if (lowerName.includes('duration')) {
+      durationMs = lowerName.includes('second') ? Math.round(value * 1000) : value;
+    }
+  };
+
+  const ingestCollectorInflux = (line: string): boolean => {
+    const parsed = parseInfluxLine(line, isolationPrefixes);
+    if (!parsed) {
+      return false;
+    }
+    sawCollectorInflux = true;
+    const { measurement, tags, fields } = parsed;
+    const numeric = numericFieldEntries(fields);
+    if (isSelfMetricName(measurement, isolationPrefixes)) {
+      numeric.forEach(([fieldName, value]) => {
+        applySelfMetricValue(fieldName.includes('up') || fieldName.includes('duration') || fieldName.includes('exit')
+          ? fieldName
+          : measurement, value);
+      });
+      return true;
+    }
+    if (measurement.toLowerCase() === 'prometheus') {
+      numeric.forEach(([fieldName, value]) => {
+        if (isSelfMetricName(fieldName, isolationPrefixes)) {
+          applySelfMetricValue(fieldName, value);
+          return;
+        }
+        seriesCount += 1;
+        pushBusinessMetric(fieldName, value, tags);
+      });
+      return true;
+    }
+    const value = pickInfluxSampleValue(fields);
+    if (value === undefined) {
+      return true;
+    }
+    seriesCount += 1;
+    pushBusinessMetric(measurement, value, tags);
+    return true;
+  };
 
   if (stdout) {
     const lines = stdout.split(/\r?\n/);
     lines.forEach((rawLine, index) => {
       const line = rawLine.trim();
       if (!line || line.startsWith('#')) return;
+      if (isCollectorSidecarNoise(line)) return;
       const lineNo = index + 1;
       const pushIssue = (code: ScriptOutputLineIssueCode) => {
         lineIssues.push({ line: lineNo, text: line, code });
@@ -611,12 +731,9 @@ export const parseScriptMetrics = (
       if (promData.status === 'ok') {
         sawPrometheus = true;
         const { name, value, tags } = promData;
-        const lowerName = name.toLowerCase();
         if (isSelfMetricName(name, isolationPrefixes)) {
-          if (lowerName.includes('up') && typeof value === 'number') up = value;
-          if (lowerName.includes('exit_code') && typeof value === 'number') exitCode = value;
-          if (lowerName.includes('duration') && typeof value === 'number') {
-            durationMs = lowerName.includes('second') ? Math.round(value * 1000) : value;
+          if (typeof value === 'number') {
+            applySelfMetricValue(name, value);
           }
           return;
         }
@@ -628,10 +745,17 @@ export const parseScriptMetrics = (
         pushIssue(promData.status);
         return;
       }
-      if (looksLikeInfluxLine(line) && parseInfluxLine(line, isolationPrefixes)) {
-        sawInflux = true;
-        pushIssue('influx');
-        return;
+      if (looksLikeInfluxLine(line)) {
+        const influx = parseInfluxLine(line, isolationPrefixes);
+        if (influx && hasCollectorIdentityTags(influx.tags)) {
+          ingestCollectorInflux(line);
+          return;
+        }
+        if (influx) {
+          sawInflux = true;
+          pushIssue('influx');
+          return;
+        }
       }
       if (looksLikeKeyValueLine(line)) {
         sawKeyValue = true;
@@ -646,7 +770,7 @@ export const parseScriptMetrics = (
   let outputFormat: ScriptOutputFormat = 'empty';
   if (formatFlags > 1) {
     outputFormat = 'mixed';
-  } else if (sawPrometheus) {
+  } else if (sawPrometheus || (sawCollectorInflux && !sawInflux && !sawKeyValue && !lineIssues.length)) {
     outputFormat = 'prometheus';
   } else if (sawInflux) {
     outputFormat = 'influx';
@@ -654,6 +778,8 @@ export const parseScriptMetrics = (
     outputFormat = 'key_value';
   } else if (lineIssues.length) {
     outputFormat = 'unknown';
+  } else if (sawCollectorInflux) {
+    outputFormat = 'prometheus';
   }
 
   const businessMetrics = Array.from(metricsByName.values());
