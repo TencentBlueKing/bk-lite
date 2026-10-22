@@ -694,6 +694,7 @@ const QuickExecPage = () => {
               <Form.Item
                 label={t('job.scriptContent')}
                 name="scriptContent"
+                tooltip={t('job.builtinScriptVarsHint')}
                 validateTrigger="onBlur"
                 rules={[{ validator: validateScriptContent }]}
               >

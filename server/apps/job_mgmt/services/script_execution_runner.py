@@ -7,6 +7,7 @@ from django.utils import timezone
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
 from apps.job_mgmt.models import JobExecution
+from apps.job_mgmt.services.builtin_script_vars import render_builtin_script_vars, resolve_builtin_script_var_values
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.services.execution_stream_service import (
@@ -43,7 +44,12 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         if self._handle_dangerous_command(execution, target_list):
             return
 
-        script_content = self.merge_script_with_params(execution.script_content, execution.params, execution.script_type)
+        script_content = render_builtin_script_vars(
+            execution.script_content,
+            execution.script_type,
+            resolve_builtin_script_var_values(execution),
+        )
+        script_content = self.merge_script_with_params(script_content, execution.params, execution.script_type)
         if self._run_via_ansible_if_needed(execution, target_list, script_content):
             return
 
