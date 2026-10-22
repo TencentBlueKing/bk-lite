@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useCallback, useMemo } from 'react';
+import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Tooltip } from 'antd';
 import { ProEventsSectionTitle } from '../../host/layered/alert-event-hint';
 import { KpiTileRow, ProDashLoading, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
 import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
@@ -166,17 +168,40 @@ export default function OverviewPane({
   ];
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
+  const focusPaths = [
+    { label: text('focusLockWait'), body: text('focusLockWaitPath') },
+    { label: text('focusAborted'), body: text('focusAbortedPath') },
+    { label: text('focusTmpDisk'), body: text('focusTmpDiskPath') },
+    {
+      label: `${text('focusRowLock')} / ${text('focusTableLock')}`,
+      body: text('focusRowLockPath')
+    }
+  ];
+  const focusPathLabel = focusPaths.map((item) => `${item.label}：${item.body}`).join(' ');
   const focusTitle = (
-    <ProSectionTitle>{text('focus')}</ProSectionTitle>
+    <ProSectionTitle>
+      <span className="inline-flex min-w-0 items-center gap-1">
+        <span>{text('focus')}</span>
+        <Tooltip
+          title={(
+            <div className="flex max-w-[360px] flex-col gap-1.5">
+              {focusPaths.map((item) => (
+                <p key={item.label} className="m-0">
+                  {item.label}：{item.body}
+                </p>
+              ))}
+            </div>
+          )}
+          styles={{ body: { maxWidth: 360 } }}
+        >
+          <QuestionCircleOutlined
+            className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+            aria-label={focusPathLabel}
+          />
+        </Tooltip>
+      </span>
+    </ProSectionTitle>
   );
-  const loadingHint = (titleKey: MysqlCategoryCopyKey) => {
-    if (titleKey === 'focusLockWait') return text('focusLockWaitPath');
-    if (titleKey === 'focusAborted') return text('focusAbortedPath');
-    if (titleKey === 'focusTmpDisk') return text('focusTmpDiskPath');
-    if (titleKey === 'focusRowLock') return text('focusRowLockPath');
-    if (titleKey === 'focusTableLock') return text('focusTableLockPath');
-    return undefined;
-  };
 
   return (
     <>
@@ -197,7 +222,7 @@ export default function OverviewPane({
             {focusLoadingTitles.map((titleKey) => (
               <div key={titleKey} className={`${classic.panel} ${host.shortcutCard}`}>
                 <div className={host.shortcutCopy}>
-                  <FocusShortcutTitle label={text(titleKey)} unit="" hint={loadingHint(titleKey)} />
+                  <FocusShortcutTitle label={text(titleKey)} unit="" />
                   <ProDashLoading size="small" />
                 </div>
                 <div className={host.focusChart} />
@@ -225,7 +250,7 @@ export default function OverviewPane({
               return (
                 <div key={card.key} className={`${classic.panel} ${host.shortcutCard}`}>
                   <div className={host.shortcutCopy}>
-                    <FocusShortcutTitle label={card.label} unit={axisUnit} hint={card.titleHint} />
+                    <FocusShortcutTitle label={card.label} unit={axisUnit} />
                     <div className={host.shortcutValue} style={card.tone ? { color: card.tone } : undefined}>
                       {card.value}
                     </div>

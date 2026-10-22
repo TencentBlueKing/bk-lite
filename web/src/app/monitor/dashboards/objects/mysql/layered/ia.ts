@@ -692,8 +692,6 @@ export interface MysqlFocusCard {
   delta?: string;
   deltaTone?: string;
   hint: string;
-  /** 标题旁 ? 的排查说明。不占用 CTA `hint`。 */
-  titleHint?: string;
   tab: MysqlIaTab;
   anchor?: MysqlFocusAnchor;
   spark?: MysqlFocusSpark;
@@ -831,14 +829,6 @@ export const buildMysqlFocusCards = (
         spark: 'tableLock'
       }));
 
-  const pathKey: Record<MysqlFocusCard['key'], MysqlCategoryCopyKey | null> = {
-    lockWait: 'focusLockWaitPath',
-    aborted: 'focusAbortedPath',
-    tmpDisk: 'focusTmpDiskPath',
-    rowLock: 'focusRowLockPath',
-    tableLock: 'focusTableLockPath',
-    slow: null
-  };
   return [
     lockWait == null
       ? uncollectedFocus('lockWait', text('focusLockWait'), text('viewScanLock'), 'performance', 'scan-lock')
@@ -883,13 +873,9 @@ export const buildMysqlFocusCards = (
         spark: 'tmpDisk'
       }),
     fourth
-  ].map((card) => {
-    const hinted = pathKey[card.key];
-    const withHint = hinted ? { ...card, titleHint: text(hinted) } : card;
-    return withHint.value === EMPTY_VALUE
-      ? { ...withHint, subtitle: text('notCollected') }
-      : withHint;
-  });
+  ].map((card) => (
+    card.value === EMPTY_VALUE ? { ...card, subtitle: text('notCollected') } : card
+  ));
 };
 
 export interface MysqlHostCandidate {
