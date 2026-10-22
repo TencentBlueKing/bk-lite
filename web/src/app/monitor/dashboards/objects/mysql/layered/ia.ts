@@ -8,6 +8,7 @@ import type { TabAlertLevel } from '../../host/layered/tab-level';
 import type { MetricSeries } from '../types';
 import { latestNumber, primaryChartSeries } from '../../host/layered/readings';
 import type { MysqlCategoryCopyKey } from './mysql-copy';
+import { MYSQL_CATEGORY_COPY } from './mysql-copy';
 import { MYSQL_ROLE_METRICS } from './section-loading';
 
 type MysqlText = (key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => string;
@@ -447,7 +448,7 @@ const threadIsStopped = (value: number | null) => value != null && Number.isFini
 
 interface ActiveReplicaError {
   errno: number;
-  thread: 'SQL 线程' | 'IO 线程' | '';
+  thread: 'sql' | 'io' | '';
 }
 
 /**
@@ -464,8 +465,8 @@ const activeReplicaErrors = (
   const ioErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_io_errno));
   const lastErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_errno));
   const errors: ActiveReplicaError[] = [];
-  if (sqlErrno != null && threadIsStopped(sql)) errors.push({ errno: sqlErrno, thread: 'SQL 线程' });
-  if (ioErrno != null && threadIsStopped(io)) errors.push({ errno: ioErrno, thread: 'IO 线程' });
+  if (sqlErrno != null && threadIsStopped(sql)) errors.push({ errno: sqlErrno, thread: 'sql' });
+  if (ioErrno != null && threadIsStopped(io)) errors.push({ errno: ioErrno, thread: 'io' });
   if (!errors.length && lastErrno != null && (threadIsStopped(io) || threadIsStopped(sql))) {
     errors.push({ errno: lastErrno, thread: '' });
   }
@@ -1306,20 +1307,36 @@ export interface MysqlReplicationExtras {
   downstream: MysqlReplicationCard[];
 }
 
-const REPLICATION_ERROR_COPY: Record<number, string> = {
-  1032: '找不到对应记录',
-  1045: '复制账号被拒绝',
-  1049: '库不存在',
-  1054: '列不存在',
-  1062: '主键或唯一键冲突',
-  1146: '表不存在',
-  1205: '锁等待超时',
-  1213: '发生死锁',
-  1236: '读不到主库日志',
-  1396: '账号状态冲突',
-  1594: '中继日志读失败',
-  1872: '中继日志初始化失败',
-  2003: '连不上主库'
+const fallbackMysqlText: MysqlText = (key, values) => {
+  const template = MYSQL_CATEGORY_COPY[key][1];
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(values[name] ?? ''));
+};
+
+const REPLICA_ERRNO_KEY: Record<number, MysqlCategoryCopyKey> = {
+  1032: 'replicaErrno1032',
+  1045: 'replicaErrno1045',
+  1049: 'replicaErrno1049',
+  1054: 'replicaErrno1054',
+  1062: 'replicaErrno1062',
+  1146: 'replicaErrno1146',
+  1205: 'replicaErrno1205',
+  1213: 'replicaErrno1213',
+  1236: 'replicaErrno1236',
+  1396: 'replicaErrno1396',
+  1594: 'replicaErrno1594',
+  1872: 'replicaErrno1872',
+  2003: 'replicaErrno2003'
+};
+
+const explainReplicationError = (errno: number, text: MysqlText) => (
+  text(REPLICA_ERRNO_KEY[errno] ?? 'replicaErrnoGeneric')
+);
+
+const replicaThreadLabel = (thread: 'sql' | 'io' | '', text: MysqlText) => {
+  if (thread === 'sql') return text('sqlThread');
+  if (thread === 'io') return text('ioThread');
+  return '';
 };
 
 const formatPosition = (value: number) => Math.round(value).toLocaleString('zh-CN');
@@ -1329,8 +1346,6 @@ const formatBytes = (value: number) => {
   return `${formatted.value}${formatted.unit ? ` ${formatted.unit}` : ''}`;
 };
 
-const explainReplicationError = (errno: number) => REPLICATION_ERROR_COPY[errno] || '复制已报错';
-
 /**
  * 复制签加深。无真错误时 error 为 null，调用方不渲染通栏、不占位。
  * 副文只写仍停止的线程；运行中的线程不出现在错误文案里。
@@ -1338,7 +1353,8 @@ const explainReplicationError = (errno: number) => REPLICATION_ERROR_COPY[errno]
  * 位点走趋势卡，不在这里铺文案。
  */
 export const readMysqlReplicationExtras = (
-  metricMap: Record<string, MetricSeries | undefined>
+  metricMap: Record<string, MetricSeries | undefined>,
+  text: MysqlText = fallbackMysqlText
 ): MysqlReplicationExtras => {
   const io = latestNumber(metricMap.mysql_slave_io_running);
   const sql = latestNumber(metricMap.mysql_slave_sql_running);
@@ -1346,19 +1362,28 @@ export const readMysqlReplicationExtras = (
   let error: MysqlReplicationCard | null = null;
   if (primaryError) {
     const stopped = [
-      threadIsStopped(sql) ? 'SQL 线程' : '',
-      threadIsStopped(io) ? 'IO 线程' : ''
+      threadIsStopped(sql) ? replicaThreadLabel('sql', text) : '',
+      threadIsStopped(io) ? replicaThreadLabel('io', text) : ''
     ].filter(Boolean);
     const other = restErrors.find((item) => item.thread && item.errno !== primaryError.errno);
-    const owner = primaryError.thread || stopped.join('、');
+    const owner = replicaThreadLabel(primaryError.thread, text) || stopped.join('、');
     const detailParts = [
-      owner ? `${owner}已停止` : '',
-      other ? `${other.thread}还有错误号 ${other.errno} · ${explainReplicationError(other.errno)}` : ''
+      owner ? text('replicaErrorStopped', { thread: owner }) : '',
+      other
+        ? text('replicaErrorOther', {
+          thread: replicaThreadLabel(other.thread, text),
+          errno: other.errno,
+          reason: explainReplicationError(other.errno, text)
+        })
+        : ''
     ].filter(Boolean);
     error = {
       key: 'error',
-      label: '复制错误',
-      value: `错误号 ${primaryError.errno} · ${explainReplicationError(primaryError.errno)}`,
+      label: text('replicationError'),
+      value: text('replicaErrorValue', {
+        errno: primaryError.errno,
+        reason: explainReplicationError(primaryError.errno, text)
+      }),
       detail: detailParts.join(' · ') || undefined,
       tone: 'warn',
       alertLevel: 'critical'

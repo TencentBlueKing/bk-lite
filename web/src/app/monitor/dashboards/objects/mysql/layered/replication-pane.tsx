@@ -284,7 +284,7 @@ export default function ReplicationPane({
     return key ? text(key) : value;
   };
   const block = useMemo(() => readMysqlRoleBlock(metricMap), [metricMap]);
-  const extras = useMemo(() => readMysqlReplicationExtras(metricMap), [metricMap]);
+  const extras = useMemo(() => readMysqlReplicationExtras(metricMap, text), [metricMap, text]);
   const trends = useMemo(() => readMysqlReplicationSeries(metricMap), [metricMap]);
 
   const statusBlock = block && block.kind !== 'primary'
