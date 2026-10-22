@@ -29,7 +29,7 @@ const TONE_COLOR = {
   warn: HOST_THRESHOLD_COLOR.warn
 };
 
-/** 延迟正常保持深色。WARN 用 load1 橙以便折角描边；超过 300 秒用告警红。线程运行中用成功绿，停止用告警红。 */
+/** 延迟正常保持深色。WARN 用告警橙，实心折角；超过 300 秒用告警红。线程运行中用成功绿，停止用告警红。 */
 const statusTone = (field: MysqlRoleField) => {
   if (field.value === '--') return undefined;
   if (THREAD_LABELS.has(field.label)) {
@@ -38,7 +38,7 @@ const statusTone = (field: MysqlRoleField) => {
     return undefined;
   }
   if (field.alertLevel === 'critical') return HOST_THRESHOLD_COLOR.crit;
-  if (field.alertLevel === 'warn') return HOST_SERIES_COLOR.load1;
+  if (field.alertLevel === 'warn') return HOST_THRESHOLD_COLOR.warn;
   return undefined;
 };
 

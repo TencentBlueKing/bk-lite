@@ -482,7 +482,7 @@ const replicaLagTone = (delay: number | null, stopped: boolean, errno: number | 
     return { tone: HOST_THRESHOLD_COLOR.crit, alertLevel: 'critical' as const };
   }
   if (delay != null && delay > REPL_LAG_WARN_S) {
-    return { tone: HOST_SERIES_COLOR.load1, alertLevel: 'warn' as const };
+    return { tone: HOST_THRESHOLD_COLOR.warn, alertLevel: 'warn' as const };
   }
   return { tone: undefined, alertLevel: 'none' as const };
 };
