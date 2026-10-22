@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "cpu_temperature_celsius",
-      "query": "max(cpu_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(cpu_temperature_celsius{instance_type='switch', collect_type='snmp_transition', __$labels__}) by (instance_id)",
       "display_name": "CPU Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='switch', collect_type='snmp_transition', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_transition', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

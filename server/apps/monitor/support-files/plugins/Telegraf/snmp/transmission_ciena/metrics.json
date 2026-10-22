@@ -24,7 +24,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='transmission', collect_type='snmp_ciena', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "device_memory_used{instance_type='transmission', __$labels__} * 1024",
+      "query": "device_memory_used{instance_type='transmission', collect_type='snmp_ciena', __$labels__} * 1024",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -55,7 +55,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='transmission', collect_type='snmp_ciena', __$labels__}",
       "display_name": "Device Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -73,7 +73,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='transmission', __$labels__}",
+      "query": "device_fan_state{instance_type='transmission', collect_type='snmp_ciena', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -91,7 +91,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='transmission', __$labels__}",
+      "query": "device_psu_state{instance_type='transmission', collect_type='snmp_ciena', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -109,7 +109,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_ciena', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -127,7 +127,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_ciena', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -145,7 +145,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_ciena', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -158,7 +158,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_ciena', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -171,7 +171,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_ciena', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

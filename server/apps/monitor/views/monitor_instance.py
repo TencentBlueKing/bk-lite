@@ -30,6 +30,8 @@ from apps.monitor.utils.pagination import parse_page_params
 
 # 已选资产回填等批量精确查询的单次上限，避免超长 URL / 过大 IN 子句。
 _MAX_INSTANCE_ID_IN = 200
+# 列表展示指标异步回填的单次实例上限，避免一批打满 PG/VM。
+_MAX_DISPLAY_METRICS_INSTANCE_IDS = 50
 
 
 def _normalize_storage_instance_keys(raw_ids):
@@ -307,9 +309,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
                 include_children=scope.include_children,
             )
         )
-        unassigned = is_persisted_superuser(request.user) and not MonitorInstanceOrganization.objects.filter(
-            monitor_instance_id=instance.pk
-        ).exists()
+        unassigned = is_persisted_superuser(request.user) and not MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.pk).exists()
         if not unassigned:
             qs = scope_permission_queryset(
                 MonitorInstance,
@@ -412,6 +412,43 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             MetricsService.convert_instance_list_metrics(int(monitor_object_id), data["results"])
 
         return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/display_metrics")
+    @with_user_query_slot()
+    def monitor_instance_display_metrics(self, request, monitor_object_id):
+        """按实例 ID 批次回填展示指标；列表主路径不再同步打满。"""
+        raw_ids = request.data.get("instance_ids") if isinstance(getattr(request, "data", None), dict) else None
+        if not isinstance(raw_ids, list):
+            raise BaseAppException("instance_ids is required")
+        keys = _normalize_storage_instance_keys(raw_ids[:_MAX_DISPLAY_METRICS_INSTANCE_IDS])
+        if not keys:
+            return WebUtils.response_success({"results": []})
+
+        scope = resolve_current_team_data_scope(request)
+        permission = (
+            {"team": list(scope.data_team_ids), "instance": []}
+            if request.user.is_superuser
+            else get_permission_rules(
+                request.user,
+                scope.current_team,
+                "monitor",
+                f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+                include_children=scope.include_children,
+            )
+        )
+        qs = _monitor_catalog_queryset(request, permission, scope)
+        authorized = set(
+            qs.filter(
+                monitor_object_id=int(monitor_object_id),
+                is_deleted=False,
+                is_active=True,
+                id__in=keys,
+            ).values_list("id", flat=True)
+        )
+        ordered_ids = [instance_id for instance_id in keys if instance_id in authorized]
+        rows = MonitorObjectService.fill_display_metrics_for_instance_ids(int(monitor_object_id), ordered_ids)
+        MetricsService.convert_instance_list_metrics(int(monitor_object_id), rows)
+        return WebUtils.response_success({"results": rows})
 
     @action(methods=["post"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/search")
     @with_user_query_slot()

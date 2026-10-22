@@ -23,7 +23,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wanopt', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wanopt', collect_type='snmp_venturi', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -36,7 +36,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='wanopt', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='wanopt', collect_type='snmp_venturi', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Memory",
       "name": "venturi_vbuf_usage_percent",
-      "query": "snmp_venturi_vbuf_usage_percent{instance_type='wanopt', __$labels__}",
+      "query": "snmp_venturi_vbuf_usage_percent{instance_type='wanopt', collect_type='snmp_venturi', __$labels__}",
       "display_name": "Venturi Buffer (VBuf) Usage",
       "data_type": "Number",
       "unit": "percent",

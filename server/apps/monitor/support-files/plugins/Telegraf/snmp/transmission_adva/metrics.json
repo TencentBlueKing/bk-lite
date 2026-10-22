@@ -23,7 +23,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "snmp_device_memory_total{instance_type='transmission', __$labels__} * 1024",
+      "query": "snmp_device_memory_total{instance_type='transmission', collect_type='snmp_adva', __$labels__} * 1024",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "snmp_device_memory_free{instance_type='transmission', __$labels__} * 1024",
+      "query": "snmp_device_memory_free{instance_type='transmission', collect_type='snmp_adva', __$labels__} * 1024",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "(snmp_device_memory_total{instance_type='transmission', __$labels__} - snmp_device_memory_free{instance_type='transmission', __$labels__}) * 1024",
+      "query": "(snmp_device_memory_total{instance_type='transmission', collect_type='snmp_adva', __$labels__} - snmp_device_memory_free{instance_type='transmission', collect_type='snmp_adva', __$labels__}) * 1024",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "100 * (snmp_device_memory_total{instance_type='transmission', __$labels__} - snmp_device_memory_free{instance_type='transmission', __$labels__}) / snmp_device_memory_total{instance_type='transmission', __$labels__}",
+      "query": "100 * (snmp_device_memory_total{instance_type='transmission', collect_type='snmp_adva', __$labels__} - snmp_device_memory_free{instance_type='transmission', collect_type='snmp_adva', __$labels__}) / snmp_device_memory_total{instance_type='transmission', collect_type='snmp_adva', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_adva', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -93,7 +93,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_adva', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -111,7 +111,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_adva', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -124,7 +124,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_adva', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -137,7 +137,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_adva', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -24,7 +24,7 @@
     {
       "metric_group": "Temperature",
       "name": "temperature_celsius",
-      "query": "max(temperature_celsius{instance_type='transmission', __$labels__} != -1) by (instance_id)",
+      "query": "max(temperature_celsius{instance_type='transmission', collect_type='snmp_alcoma', __$labels__} != -1) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Radio",
       "name": "rx_level_db",
-      "query": "max(rx_level_db{instance_type='transmission', __$labels__} != -128) by (instance_id)",
+      "query": "max(rx_level_db{instance_type='transmission', collect_type='snmp_alcoma', __$labels__} != -128) by (instance_id)",
       "display_name": "Receive Level",
       "data_type": "Number",
       "unit": "none",
@@ -50,7 +50,7 @@
     {
       "metric_group": "Radio",
       "name": "tx_power_db",
-      "query": "max(tx_power_db{instance_type='transmission', __$labels__} != -128) by (instance_id)",
+      "query": "max(tx_power_db{instance_type='transmission', collect_type='snmp_alcoma', __$labels__} != -128) by (instance_id)",
       "display_name": "Transmit Power",
       "data_type": "Number",
       "unit": "none",
@@ -63,7 +63,7 @@
     {
       "metric_group": "Radio",
       "name": "snr_db",
-      "query": "max(snr_db{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snr_db{instance_type='transmission', collect_type='snmp_alcoma', __$labels__}) by (instance_id)",
       "display_name": "SNR",
       "data_type": "Number",
       "unit": "none",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_alcoma', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -94,7 +94,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_alcoma', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -112,7 +112,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_alcoma', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

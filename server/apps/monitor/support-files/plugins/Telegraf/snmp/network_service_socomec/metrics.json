@@ -23,7 +23,7 @@
     {
       "metric_group": "Power",
       "name": "ups_battery_charge_percent",
-      "query": "ups_battery_charge_percent{instance_type='network_service', __$labels__}",
+      "query": "ups_battery_charge_percent{instance_type='network_service', collect_type='snmp_socomec', __$labels__}",
       "display_name": "UPS Battery Charge Remaining",
       "data_type": "Number",
       "unit": "percent",
@@ -41,7 +41,7 @@
     {
       "metric_group": "Status",
       "name": "ups_battery_status",
-      "query": "ups_battery_status{instance_type='network_service', __$labels__}",
+      "query": "ups_battery_status{instance_type='network_service', collect_type='snmp_socomec', __$labels__}",
       "display_name": "UPS Battery Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"unknown\",\"id\":1,\"color\":\"#8c8c8c\"},{\"name\":\"batteryNormal\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"batteryLow\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"batteryDepleted\",\"id\":4,\"color\":\"#ff4d4f\"}]",
@@ -59,7 +59,7 @@
     {
       "metric_group": "Power",
       "name": "ups_output_load_percent",
-      "query": "ups_output_load_percent{instance_type='network_service', __$labels__}",
+      "query": "ups_output_load_percent{instance_type='network_service', collect_type='snmp_socomec', __$labels__}",
       "display_name": "UPS Output Load",
       "data_type": "Number",
       "unit": "percent",
@@ -81,7 +81,7 @@
     {
       "metric_group": "Power",
       "name": "ups_battery_voltage",
-      "query": "ups_battery_voltage{instance_type='network_service', __$labels__} / 10",
+      "query": "ups_battery_voltage{instance_type='network_service', collect_type='snmp_socomec', __$labels__} / 10",
       "display_name": "UPS Battery Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -99,7 +99,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_socomec', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -117,7 +117,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_socomec', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -135,7 +135,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_socomec', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

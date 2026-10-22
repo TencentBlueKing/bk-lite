@@ -25,7 +25,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_oneaccess', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -38,7 +38,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='router', collect_type='snmp_oneaccess', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -51,7 +51,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_core_usage",
-      "query": "device_cpu_core_usage{instance_type='router', __$labels__}",
+      "query": "device_cpu_core_usage{instance_type='router', collect_type='snmp_oneaccess', __$labels__}",
       "display_name": "Per-Core CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -69,7 +69,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_core_usage_1min",
-      "query": "device_cpu_core_usage_1min{instance_type='router', __$labels__}",
+      "query": "device_cpu_core_usage_1min{instance_type='router', collect_type='snmp_oneaccess', __$labels__}",
       "display_name": "Per-Core CPU Utilization (1 min)",
       "data_type": "Number",
       "unit": "percent",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "snmp_device_memory_usage{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_usage{instance_type='router', collect_type='snmp_oneaccess', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -100,7 +100,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "snmp_device_memory_total{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='router', collect_type='snmp_oneaccess', __$labels__}",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -113,7 +113,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "snmp_device_memory_free{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_free{instance_type='router', collect_type='snmp_oneaccess', __$labels__}",
       "display_name": "Free Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -126,7 +126,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_allocated",
-      "query": "snmp_device_memory_allocated{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_allocated{instance_type='router', collect_type='snmp_oneaccess', __$labels__}",
       "display_name": "Allocated Memory",
       "data_type": "Number",
       "unit": "bytes",

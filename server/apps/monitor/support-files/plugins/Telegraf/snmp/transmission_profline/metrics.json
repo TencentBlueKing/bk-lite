@@ -23,7 +23,7 @@
     {
       "metric_group": "Environment",
       "name": "profline_rf_level_dbuv",
-      "query": "snmp_profline_rf_level_dbuv{instance_type='transmission', __$labels__}",
+      "query": "snmp_profline_rf_level_dbuv{instance_type='transmission', collect_type='snmp_profline', __$labels__}",
       "display_name": "RF Input Level (dBuV)",
       "data_type": "Number",
       "unit": "none",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Environment",
       "name": "profline_audio_left_level_dbfs",
-      "query": "snmp_profline_audio_left_level_dbfs{instance_type='transmission', __$labels__}",
+      "query": "snmp_profline_audio_left_level_dbfs{instance_type='transmission', collect_type='snmp_profline', __$labels__}",
       "display_name": "Audio Left Level (dBFS)",
       "data_type": "Number",
       "unit": "none",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Environment",
       "name": "profline_audio_right_level_dbfs",
-      "query": "snmp_profline_audio_right_level_dbfs{instance_type='transmission', __$labels__}",
+      "query": "snmp_profline_audio_right_level_dbfs{instance_type='transmission', collect_type='snmp_profline', __$labels__}",
       "display_name": "Audio Right Level (dBFS)",
       "data_type": "Number",
       "unit": "none",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "profline_rf_low_alarm_state",
-      "query": "snmp_profline_rf_low_alarm_state{instance_type='transmission', __$labels__}",
+      "query": "snmp_profline_rf_low_alarm_state{instance_type='transmission', collect_type='snmp_profline', __$labels__}",
       "display_name": "RF Input Low Alarm",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "profline_rf_high_alarm_state",
-      "query": "snmp_profline_rf_high_alarm_state{instance_type='transmission', __$labels__}",
+      "query": "snmp_profline_rf_high_alarm_state{instance_type='transmission', collect_type='snmp_profline', __$labels__}",
       "display_name": "RF Input High Alarm",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_profline', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -106,7 +106,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_profline', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -124,7 +124,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_profline', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

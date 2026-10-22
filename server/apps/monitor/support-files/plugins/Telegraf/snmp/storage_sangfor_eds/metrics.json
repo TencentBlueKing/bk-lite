@@ -85,7 +85,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='storage', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -98,7 +98,7 @@
     {
       "metric_group": "Cluster",
       "name": "sangfor_eds_cluster_host_num",
-      "query": "sangfor_eds_cluster_host_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_host_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Cluster Host Count",
       "data_type": "Number",
       "unit": "short",
@@ -111,7 +111,7 @@
     {
       "metric_group": "Cluster",
       "name": "sangfor_eds_cluster_used_ssd_num",
-      "query": "sangfor_eds_cluster_used_ssd_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_used_ssd_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Used SSD Count",
       "data_type": "Number",
       "unit": "short",
@@ -124,7 +124,7 @@
     {
       "metric_group": "Cluster",
       "name": "sangfor_eds_cluster_free_ssd_num",
-      "query": "sangfor_eds_cluster_free_ssd_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_free_ssd_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Free SSD Count",
       "data_type": "Number",
       "unit": "short",
@@ -137,7 +137,7 @@
     {
       "metric_group": "Cluster",
       "name": "sangfor_eds_cluster_used_hdd_num",
-      "query": "sangfor_eds_cluster_used_hdd_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_used_hdd_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Used HDD Count",
       "data_type": "Number",
       "unit": "short",
@@ -150,7 +150,7 @@
     {
       "metric_group": "Cluster",
       "name": "sangfor_eds_cluster_free_hdd_num",
-      "query": "sangfor_eds_cluster_free_hdd_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_free_hdd_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Free HDD Count",
       "data_type": "Number",
       "unit": "short",
@@ -163,7 +163,7 @@
     {
       "metric_group": "Network Health",
       "name": "sangfor_eds_cluster_normal_manage_nic_num",
-      "query": "sangfor_eds_cluster_normal_manage_nic_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_normal_manage_nic_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Normal Management NICs",
       "data_type": "Number",
       "unit": "short",
@@ -176,7 +176,7 @@
     {
       "metric_group": "Network Health",
       "name": "sangfor_eds_cluster_abnormal_manage_nic_num",
-      "query": "sangfor_eds_cluster_abnormal_manage_nic_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_abnormal_manage_nic_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Abnormal Management NICs",
       "data_type": "Number",
       "unit": "short",
@@ -189,7 +189,7 @@
     {
       "metric_group": "Network Health",
       "name": "sangfor_eds_cluster_normal_public_nic_num",
-      "query": "sangfor_eds_cluster_normal_public_nic_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_normal_public_nic_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Normal Public NICs",
       "data_type": "Number",
       "unit": "short",
@@ -202,7 +202,7 @@
     {
       "metric_group": "Network Health",
       "name": "sangfor_eds_cluster_abnormal_public_nic_num",
-      "query": "sangfor_eds_cluster_abnormal_public_nic_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_abnormal_public_nic_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Abnormal Public NICs",
       "data_type": "Number",
       "unit": "short",
@@ -215,7 +215,7 @@
     {
       "metric_group": "Network Health",
       "name": "sangfor_eds_cluster_normal_private_nic_num",
-      "query": "sangfor_eds_cluster_normal_private_nic_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_normal_private_nic_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Normal Private NICs",
       "data_type": "Number",
       "unit": "short",
@@ -228,7 +228,7 @@
     {
       "metric_group": "Network Health",
       "name": "sangfor_eds_cluster_abnormal_private_nic_num",
-      "query": "sangfor_eds_cluster_abnormal_private_nic_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_abnormal_private_nic_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Abnormal Private NICs",
       "data_type": "Number",
       "unit": "short",
@@ -241,7 +241,7 @@
     {
       "metric_group": "Capacity",
       "name": "sangfor_eds_cluster_total_physical_bytes",
-      "query": "sangfor_eds_cluster_total_physical_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_total_physical_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Total Physical Capacity",
       "data_type": "Number",
       "unit": "bytes",
@@ -254,7 +254,7 @@
     {
       "metric_group": "Capacity",
       "name": "sangfor_eds_cluster_used_physical_bytes",
-      "query": "sangfor_eds_cluster_used_physical_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_used_physical_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Used Physical Capacity",
       "data_type": "Number",
       "unit": "bytes",
@@ -267,7 +267,7 @@
     {
       "metric_group": "Capacity",
       "name": "sangfor_eds_cluster_free_physical_bytes",
-      "query": "sangfor_eds_cluster_free_physical_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_free_physical_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Free Physical Capacity",
       "data_type": "Number",
       "unit": "bytes",
@@ -280,7 +280,7 @@
     {
       "metric_group": "Capacity",
       "name": "sangfor_eds_cluster_physical_usage_percent",
-      "query": "sangfor_eds_cluster_used_physical_bytes{instance_type='storage', __$labels__} / sangfor_eds_cluster_total_physical_bytes{instance_type='storage', __$labels__} * 100",
+      "query": "sangfor_eds_cluster_used_physical_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__} / sangfor_eds_cluster_total_physical_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__} * 100",
       "display_name": "Physical Capacity Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -293,7 +293,7 @@
     {
       "metric_group": "Cluster",
       "name": "sangfor_eds_cluster_block_pool_num",
-      "query": "sangfor_eds_cluster_block_pool_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_block_pool_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Storage Pool Count",
       "data_type": "Number",
       "unit": "short",
@@ -306,7 +306,7 @@
     {
       "metric_group": "Cluster",
       "name": "sangfor_eds_cluster_capacity_pool_num",
-      "query": "sangfor_eds_cluster_capacity_pool_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_cluster_capacity_pool_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Capacity Pool Count",
       "data_type": "Number",
       "unit": "short",
@@ -319,7 +319,7 @@
     {
       "metric_group": "Block Pool",
       "name": "sangfor_eds_block_pool_total_bytes",
-      "query": "sangfor_eds_block_pool_total_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_block_pool_total_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Pool Total Capacity",
       "data_type": "Number",
       "unit": "bytes",
@@ -332,7 +332,7 @@
     {
       "metric_group": "Block Pool",
       "name": "sangfor_eds_block_pool_used_bytes",
-      "query": "sangfor_eds_block_pool_used_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_block_pool_used_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Pool Used Capacity",
       "data_type": "Number",
       "unit": "bytes",
@@ -345,7 +345,7 @@
     {
       "metric_group": "Block Pool",
       "name": "sangfor_eds_block_pool_available_bytes",
-      "query": "sangfor_eds_block_pool_available_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_block_pool_available_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Pool Available Capacity",
       "data_type": "Number",
       "unit": "bytes",
@@ -358,7 +358,7 @@
     {
       "metric_group": "Block Pool",
       "name": "sangfor_eds_block_pool_usage_rate",
-      "query": "sangfor_eds_block_pool_usage_rate{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_block_pool_usage_rate{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Pool Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -371,7 +371,7 @@
     {
       "metric_group": "Block Pool",
       "name": "sangfor_eds_block_pool_recovery_task_num",
-      "query": "sangfor_eds_block_pool_recovery_task_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_block_pool_recovery_task_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Pool Recovery Tasks",
       "data_type": "Number",
       "unit": "short",
@@ -384,7 +384,7 @@
     {
       "metric_group": "Block Pool",
       "name": "sangfor_eds_block_pool_sync_task_num",
-      "query": "sangfor_eds_block_pool_sync_task_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_block_pool_sync_task_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Pool Sync Tasks",
       "data_type": "Number",
       "unit": "short",
@@ -397,7 +397,7 @@
     {
       "metric_group": "Block Pool",
       "name": "sangfor_eds_block_pool_rebalance_task_num",
-      "query": "sangfor_eds_block_pool_rebalance_task_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_block_pool_rebalance_task_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Pool Rebalance Tasks",
       "data_type": "Number",
       "unit": "short",
@@ -410,7 +410,7 @@
     {
       "metric_group": "Block Pool",
       "name": "sangfor_eds_block_pool_subhealth_task_num",
-      "query": "sangfor_eds_block_pool_subhealth_task_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_block_pool_subhealth_task_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Pool Sub-health Tasks",
       "data_type": "Number",
       "unit": "short",
@@ -423,7 +423,7 @@
     {
       "metric_group": "Block Pool",
       "name": "sangfor_eds_block_pool_status",
-      "query": "sangfor_eds_block_pool_status{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_block_pool_status{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Block Pool Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -436,7 +436,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_total_bytes",
-      "query": "sangfor_eds_capacity_pool_total_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_total_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Capacity Pool Total Capacity",
       "data_type": "Number",
       "unit": "bytes",
@@ -449,7 +449,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_used_bytes",
-      "query": "sangfor_eds_capacity_pool_used_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_used_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Capacity Pool Used Capacity",
       "data_type": "Number",
       "unit": "bytes",
@@ -462,7 +462,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_available_bytes",
-      "query": "sangfor_eds_capacity_pool_available_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_available_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Capacity Pool Available Capacity",
       "data_type": "Number",
       "unit": "bytes",
@@ -475,7 +475,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_usage_rate",
-      "query": "sangfor_eds_capacity_pool_usage_rate{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_usage_rate{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Capacity Pool Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -488,7 +488,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_recovery_task_num",
-      "query": "sangfor_eds_capacity_pool_recovery_task_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_recovery_task_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Capacity Pool Recovery Tasks",
       "data_type": "Number",
       "unit": "short",
@@ -501,7 +501,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_rebalance_task_num",
-      "query": "sangfor_eds_capacity_pool_rebalance_task_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_rebalance_task_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Capacity Pool Rebalance Tasks",
       "data_type": "Number",
       "unit": "short",
@@ -514,7 +514,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_subhealth_task_num",
-      "query": "sangfor_eds_capacity_pool_subhealth_task_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_subhealth_task_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Capacity Pool Sub-health Tasks",
       "data_type": "Number",
       "unit": "short",
@@ -527,7 +527,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_daemon_status",
-      "query": "sangfor_eds_capacity_pool_daemon_status{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_daemon_status{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Storage Daemon Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -540,7 +540,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_pg_status",
-      "query": "sangfor_eds_capacity_pool_pg_status{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_pg_status{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Replicated Group Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -553,7 +553,7 @@
     {
       "metric_group": "Capacity Pool",
       "name": "sangfor_eds_capacity_pool_status",
-      "query": "sangfor_eds_capacity_pool_status{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_capacity_pool_status{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Capacity Pool Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -566,7 +566,7 @@
     {
       "metric_group": "File Protocol",
       "name": "sangfor_eds_fs_nfs_con_num",
-      "query": "sangfor_eds_fs_nfs_con_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_fs_nfs_con_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "NFS Connections",
       "data_type": "Number",
       "unit": "short",
@@ -579,7 +579,7 @@
     {
       "metric_group": "File Protocol",
       "name": "sangfor_eds_fs_cifs_con_num",
-      "query": "sangfor_eds_fs_cifs_con_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_fs_cifs_con_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "CIFS Connections",
       "data_type": "Number",
       "unit": "short",
@@ -592,7 +592,7 @@
     {
       "metric_group": "File Protocol",
       "name": "sangfor_eds_fs_ftp_con_num",
-      "query": "sangfor_eds_fs_ftp_con_num{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_fs_ftp_con_num{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "FTP Connections",
       "data_type": "Number",
       "unit": "short",
@@ -605,7 +605,7 @@
     {
       "metric_group": "LUN",
       "name": "sangfor_eds_lun_usage_rate",
-      "query": "sangfor_eds_lun_usage_rate{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_lun_usage_rate{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "LUN Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -623,7 +623,7 @@
     {
       "metric_group": "Disk",
       "name": "sangfor_eds_disk_status",
-      "query": "sangfor_eds_disk_status{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_disk_status{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Disk Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -653,7 +653,7 @@
     {
       "metric_group": "Disk",
       "name": "sangfor_eds_disk_size_bytes",
-      "query": "sangfor_eds_disk_size_bytes{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_disk_size_bytes{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Disk Size",
       "data_type": "Number",
       "unit": "bytes",
@@ -683,7 +683,7 @@
     {
       "metric_group": "Disk",
       "name": "sangfor_eds_disk_usage_rate",
-      "query": "sangfor_eds_disk_usage_rate{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_disk_usage_rate{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -713,7 +713,7 @@
     {
       "metric_group": "Disk",
       "name": "sangfor_eds_disk_bad_sector",
-      "query": "sangfor_eds_disk_bad_sector{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_disk_bad_sector{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Disk Bad Sector Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -743,7 +743,7 @@
     {
       "metric_group": "Disk",
       "name": "sangfor_eds_disk_life_percent",
-      "query": "sangfor_eds_disk_life_percent{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_disk_life_percent{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Disk Remaining Life",
       "data_type": "Number",
       "unit": "percent",
@@ -773,7 +773,7 @@
     {
       "metric_group": "Host",
       "name": "sangfor_eds_host_online_status",
-      "query": "sangfor_eds_host_online_status{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_host_online_status{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Host Online Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -791,7 +791,7 @@
     {
       "metric_group": "Host",
       "name": "sangfor_eds_host_cpu_usage",
-      "query": "sangfor_eds_host_cpu_usage{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_host_cpu_usage{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Host CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -809,7 +809,7 @@
     {
       "metric_group": "Host",
       "name": "sangfor_eds_host_mem_usage",
-      "query": "sangfor_eds_host_mem_usage{instance_type='storage', __$labels__}",
+      "query": "sangfor_eds_host_mem_usage{instance_type='storage', collect_type='snmp_storage_sangfor_eds', __$labels__}",
       "display_name": "Host Memory Usage",
       "data_type": "Number",
       "unit": "percent",

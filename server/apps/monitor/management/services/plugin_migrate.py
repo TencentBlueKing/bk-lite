@@ -28,11 +28,26 @@ COMMON_IFMIB_TABLE_DIRECTIVE = "# @bk_include_ifmib_table"
 _IFMIB_METRICS_BY_INSTANCE_TYPE = {}
 
 
-def _build_common_ifmib_metrics(instance_type):
-    """Build the complete public IF-MIB metric catalog for one runtime object."""
-    cached = _IFMIB_METRICS_BY_INSTANCE_TYPE.get(instance_type)
+def _ifmib_label_selector(instance_type, collect_type):
+    """PromQL selector shared by generated IF-MIB queries."""
+    selector = f"instance_type='{instance_type}'"
+    if collect_type:
+        selector = f"{selector}, collect_type='{collect_type}'"
+    return selector
+
+
+def _build_common_ifmib_metrics(instance_type, collect_type):
+    """Build the public IF-MIB catalog for one runtime object and collector.
+
+    ``collect_type`` is the literal tag from the plugin template. An empty value
+    keeps the historical selector that only filters ``instance_type``.
+    """
+    collect_type = collect_type or ""
+    cache_key = (instance_type, collect_type)
+    cached = _IFMIB_METRICS_BY_INSTANCE_TYPE.get(cache_key)
     if cached is not None:
         return deepcopy(cached)
+    labels = _ifmib_label_selector(instance_type, collect_type)
     metrics = []
     interface_dimensions = [
         {"name": "ifIndex", "description": "ifIndex"},
@@ -42,28 +57,28 @@ def _build_common_ifmib_metrics(instance_type):
         if name.startswith("device_total_"):
             direction = "In" if name.endswith("incoming_traffic") else "Out"
             query = (
-                f"sum(rate(interface_ifHC{direction}Octets{{instance_type='{instance_type}', __$labels__}}[5m]) "
-                f"or rate(interface_if{direction}Octets{{instance_type='{instance_type}', __$labels__}}[5m])) by (instance_id)"
+                f"sum(rate(interface_ifHC{direction}Octets{{{labels}, __$labels__}}[5m]) "
+                f"or rate(interface_if{direction}Octets{{{labels}, __$labels__}}[5m])) by (instance_id)"
             )
             dimensions = []
         elif name == "interface_ifSpeed":
             query = (
-                f"(interface_ifHighSpeed{{instance_type='{instance_type}', __$labels__}} > 0) * 1000000 "
-                f"or interface_ifSpeed{{instance_type='{instance_type}', __$labels__}}"
+                f"(interface_ifHighSpeed{{{labels}, __$labels__}} > 0) * 1000000 "
+                f"or interface_ifSpeed{{{labels}, __$labels__}}"
             )
             dimensions = interface_dimensions
         elif name in {"interface_ifAdminStatus", "interface_ifOperStatus"}:
-            query = f"{name}{{instance_type='{instance_type}', __$labels__}}"
+            query = f"{name}{{{labels}, __$labels__}}"
             dimensions = interface_dimensions
         elif name in {"interface_ifInUcastPkts", "interface_ifOutUcastPkts"}:
             direction = "In" if "InUcast" in name else "Out"
             query = (
-                f"rate(interface_ifHC{direction}UcastPkts{{instance_type='{instance_type}', __$labels__}}[5m]) "
-                f"or rate({name}{{instance_type='{instance_type}', __$labels__}}[5m])"
+                f"rate(interface_ifHC{direction}UcastPkts{{{labels}, __$labels__}}[5m]) "
+                f"or rate({name}{{{labels}, __$labels__}}[5m])"
             )
             dimensions = interface_dimensions
         else:
-            query = f"rate({name}{{instance_type='{instance_type}', __$labels__}}[5m])"
+            query = f"rate({name}{{{labels}, __$labels__}}[5m])"
             dimensions = interface_dimensions
         metrics.append(
             {
@@ -79,17 +94,46 @@ def _build_common_ifmib_metrics(instance_type):
                 "is_ifmib": True,
             }
         )
-    _IFMIB_METRICS_BY_INSTANCE_TYPE[instance_type] = metrics
+    _IFMIB_METRICS_BY_INSTANCE_TYPE[cache_key] = metrics
     return deepcopy(metrics)
 
 
-def merge_common_ifmib_metrics(plugin_data):
+def _collect_type_from_plugin_templates(plugin_dir):
+    """Return the single literal collect_type from ``*.child.toml.j2``.
+
+    Missing, templated, or conflicting declarations yield an empty string so the
+    caller can keep the historical unfiltered IF-MIB query.
+    """
+    if not plugin_dir:
+        return ""
+    plugin_dir = Path(plugin_dir)
+    if not plugin_dir.is_dir():
+        return ""
+    found = []
+    for template_path in sorted(plugin_dir.glob("*.child.toml.j2")):
+        if not template_path.is_file():
+            continue
+        content = template_path.read_text(encoding="utf-8")
+        for match in TEMPLATE_COLLECT_TYPE_PATTERN.finditer(content):
+            declared = str(match.group(1)).strip()
+            if not declared or "{" in declared or "}" in declared:
+                continue
+            if declared not in found:
+                found.append(declared)
+    if len(found) != 1:
+        return ""
+    return found[0]
+
+
+def merge_common_ifmib_metrics(plugin_data, plugin_dir=None):
     """Inject the internal IF-MIB metric catalog into every Network Device SNMP template."""
     result = deepcopy(plugin_data)
     if not is_ifmib_capable_plugin_data(result):
         return result
 
-    common_metrics = _build_common_ifmib_metrics(re.sub(r"(?<!^)(?=[A-Z])", "_", result["name"]).lower())
+    instance_type = re.sub(r"(?<!^)(?=[A-Z])", "_", result["name"]).lower()
+    collect_type = _collect_type_from_plugin_templates(plugin_dir)
+    common_metrics = _build_common_ifmib_metrics(instance_type, collect_type)
     common_metrics_by_name = {metric["name"]: metric for metric in common_metrics}
     merged_metrics = []
     existing_common_names = set()
@@ -222,7 +266,7 @@ def _import_plugins_from_files(path_list):
 
             collector, collect_type = _resolve_plugin_identity(file_path, plugin_data)
             _validate_plugin_identity(file_path, collector, collect_type)
-            plugin_data = merge_common_ifmib_metrics(plugin_data)
+            plugin_data = merge_common_ifmib_metrics(plugin_data, Path(file_path).parent)
 
             plugin_name = plugin_data.get("plugin")
             from apps.monitor.models import MonitorPlugin
