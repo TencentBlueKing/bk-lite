@@ -1,6 +1,6 @@
 import ipaddress
 import socket
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_FAMILY, SCAN_MIDDLEWARE_TYPES, ScanFamilyRun, ScanHit, ScanTask
 
@@ -96,13 +96,23 @@ def probe_open_ports(hosts, ports, timeout=0.2, max_workers=64) -> dict[str, lis
         except OSError:
             return host, port, False
 
-    workers = max(1, min(int(max_workers or 1), len(host_list) * len(port_list)))
+    combinations = [(host, port) for host in host_list for port in port_list]
+    workers = max(1, min(int(max_workers or 1), len(combinations)))
+    pending = set()
+    next_index = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_probe, host, port) for host in host_list for port in port_list]
-        for future in as_completed(futures):
-            host, port, ok = future.result()
-            if ok:
-                opened[host].append(port)
+        while next_index < len(combinations) or pending:
+            while next_index < len(combinations) and len(pending) < workers:
+                host, port = combinations[next_index]
+                next_index += 1
+                pending.add(pool.submit(_probe, host, port))
+            if not pending:
+                break
+            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            for future in done:
+                host, port, ok = future.result()
+                if ok:
+                    opened[host].append(port)
     return {host: ports_found for host, ports_found in opened.items() if ports_found}
 
 
