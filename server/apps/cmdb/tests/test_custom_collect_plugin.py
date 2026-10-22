@@ -1,13 +1,17 @@
 from types import SimpleNamespace
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework.exceptions import ValidationError
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.change_record import ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.custom_collect_plugin import CustomCollectPlugin
 from apps.cmdb.serializers.custom_collect_plugin import CustomCollectPluginSerializer
-from apps.cmdb.services.custom_collect_plugin import ensure_deletable, ensure_model_deletable, validate_plugin_payload
+from apps.cmdb.services.custom_collect_plugin import ensure_deletable, ensure_model_deletable, reference_count, validate_plugin_payload
+from apps.cmdb.views.custom_collect_plugin import CustomCollectPluginViewSet
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 SCRIPT = '#!/bin/bash\necho \'[{"inst_name":"demo"}]\'\n'
@@ -113,3 +117,129 @@ def test_serializer_rejects_invalid_plugin(monkeypatch):
     serializer = CustomCollectPluginSerializer(data=_payload(plugin_id="a"), context={"request": _request()})
     with pytest.raises(ValidationError):
         serializer.is_valid(raise_exception=True)
+
+
+def _list_user():
+    return SimpleNamespace(
+        username="alice",
+        domain="domain.com",
+        is_superuser=True,
+        is_active=True,
+        is_authenticated=True,
+        locale="en",
+        group_list=[{"id": 1, "name": "org-a"}],
+        permission={"cmdb": {"auto_collection-View", "auto_collection-Delete"}},
+        roles=["admin"],
+    )
+
+
+def _create_plugin(index, *, team=None):
+    created = validate_plugin_payload(
+        _payload(
+            name=f"列表插件{index}",
+            plugin_id=f"custom_list_{index:02d}",
+            team=team or [1],
+        )
+    )
+    return CustomCollectPlugin.objects.create(**created)
+
+
+def _reference_plugin(plugin, task_index):
+    CollectModels.objects.create(
+        name=f"list-task-{plugin.id}-{task_index}",
+        model_id="host",
+        driver_type="job",
+        task_type="custom_script",
+        cycle_value_type="cycle",
+        params={"custom_plugin_pk": plugin.id},
+    )
+
+
+def _plugin_request(method, path, user):
+    request = getattr(APIRequestFactory(), method)(path)
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=user)
+    return request
+
+
+def _collect_model_count_queries(captured):
+    table = CollectModels._meta.db_table.lower()
+    matched = []
+    for query in captured:
+        sql = " ".join(query["sql"].lower().split())
+        if table in sql and "count(" in sql:
+            matched.append(sql)
+    return matched
+
+
+def _assert_list_counts(items, expected):
+    assert [item["id"] for item in items] == sorted(expected, reverse=True)
+    for item in items:
+        assert "content" not in item
+        assert item["reference_count"] == expected[item["id"]]
+        assert item["reference_count"] == reference_count(item["id"])
+
+
+@pytest.mark.django_db
+def test_list_reference_count_queries_stay_flat_for_one_twenty_and_fifty():
+    """列表引用数与单插件 COUNT 口径一致，CollectModels COUNT 不随条数增加。"""
+    user = _list_user()
+    outside = _create_plugin(0, team=[2])
+    primary = _create_plugin(1)
+    for task_index in range(3):
+        _reference_plugin(primary, task_index)
+    expected = {primary.id: 3}
+    view = CustomCollectPluginViewSet.as_view({"get": "list"})
+
+    def measure(size):
+        request = _plugin_request("get", "/api/v1/cmdb/api/custom_collect_plugin/", user)
+        with CaptureQueriesContext(connection) as captured:
+            response = view(request)
+        assert response.status_code == 200
+        assert isinstance(response.data, list)
+        assert len(response.data) == size
+        assert outside.id not in {item["id"] for item in response.data}
+        _assert_list_counts(response.data, expected)
+        return len(_collect_model_count_queries(captured.captured_queries))
+
+    counts = {1: measure(1)}
+    for index in range(2, 21):
+        plugin = _create_plugin(index)
+        expected[plugin.id] = 0
+    counts[20] = measure(20)
+    for index in range(21, 51):
+        plugin = _create_plugin(index)
+        expected[plugin.id] = 0
+    counts[50] = measure(50)
+
+    assert 0 in expected.values()
+    assert counts[1] == counts[20] == counts[50]
+    assert counts[50] < 50
+
+    page_request = _plugin_request("get", "/api/v1/cmdb/api/custom_collect_plugin/?page_size=2", user)
+    page = view(page_request)
+    assert page.status_code == 200
+    assert page.data["count"] == 50
+    assert len(page.data["items"]) == 2
+    for item in page.data["items"]:
+        assert item["reference_count"] == expected[item["id"]]
+        assert "content" not in item
+
+    unbounded = view(_plugin_request("get", "/api/v1/cmdb/api/custom_collect_plugin/", user))
+    assert isinstance(unbounded.data, list)
+    assert len(unbounded.data) == 50
+
+    detail_view = CustomCollectPluginViewSet.as_view({"get": "retrieve"})
+    detail_request = _plugin_request("get", f"/api/v1/cmdb/api/custom_collect_plugin/{primary.id}/", user)
+    with CaptureQueriesContext(connection) as detail_captured:
+        detail = detail_view(detail_request, pk=primary.id)
+    assert detail.status_code == 200
+    assert detail.data["reference_count"] == 3
+    assert detail.data["content"]
+    assert len(_collect_model_count_queries(detail_captured.captured_queries)) == 1
+
+    destroy_view = CustomCollectPluginViewSet.as_view({"delete": "destroy"})
+    destroy_request = _plugin_request("delete", f"/api/v1/cmdb/api/custom_collect_plugin/{primary.id}/", user)
+    destroyed = destroy_view(destroy_request, pk=primary.id)
+    assert destroyed.status_code == 400
+    assert CustomCollectPlugin.objects.filter(id=primary.id).exists()
