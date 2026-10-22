@@ -1461,13 +1461,6 @@
       "template": "clamp_min(100 * (1 - minio_cluster_health_capacity_usable_free_bytes_gauge{__$labels__} / clamp_min(minio_cluster_health_capacity_usable_total_bytes_gauge{__$labels__}, 1)), 0) or clamp_min(100 * (1 - minio_cluster_capacity_usable_free_bytes_gauge{__$labels__} / clamp_min(minio_cluster_capacity_usable_total_bytes_gauge{__$labels__}, 1)), 0)"
     },
     {
-      "id": "dashboard:v1:31fe7587",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "sum by (instance_id, schema, digest, digest_text) (rate(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])) and on (instance_id, digest) topk(20, sum by (instance_id, digest) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))"
-    },
-    {
       "id": "dashboard:v1:32353bb7",
       "object_names": [
         "Kafka"
@@ -1748,6 +1741,13 @@
         "Pod"
       ],
       "template": "100 * ( sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k8s\", resource=\"memory\",__$labels__}) by (instance_id,pod) )"
+    },
+    {
+      "id": "dashboard:v1:3a01d2db",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
     },
     {
       "id": "dashboard:v1:3a6fe79e",
@@ -2104,6 +2104,13 @@
         "VLLM"
       ],
       "template": "sum by (instance_id) (rate(vllm:prompt_tokens_total_counter{__$labels__}[5m])) * 60"
+    },
+    {
+      "id": "dashboard:v1:4775887b",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "sum by (instance_id, schema, digest, digest_text) (rate(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
     },
     {
       "id": "dashboard:v1:47b2b657",
@@ -3263,6 +3270,13 @@
         "Node"
       ],
       "template": "rate(prometheus_remote_write_diskio_read_bytes{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:7138f6d2",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "topk(20, max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
     },
     {
       "id": "dashboard:v1:7172dcbe",
@@ -4784,13 +4798,6 @@
       "template": "max by (instance_id) (mysql_slave_exec_master_log_pos{__$labels__} or mysql_slave_exec_source_log_pos{__$labels__} or mysql_slave_read_master_log_pos{__$labels__} or mysql_slave_read_source_log_pos{__$labels__})"
     },
     {
-      "id": "dashboard:v1:aadc2f7e",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "topk(20, sum by (instance_id, schema, digest, digest_text) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))"
-    },
-    {
       "id": "dashboard:v1:ab0b93c6",
       "object_names": [
         "Tomcat"
@@ -5166,13 +5173,6 @@
       "template": "rate(sqlserver_performance_value{counter=\"Log Flushes/sec\", __$labels__}[__$window__])"
     },
     {
-      "id": "dashboard:v1:b9c0b9cb",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "sum by (instance_id, schema, digest, digest_text) (increase(mysql_perf_schema_events_statements_total{__$labels__}[__$window__])) and on (instance_id, digest) topk(20, sum by (instance_id, digest) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))"
-    },
-    {
       "id": "dashboard:v1:b9e65408",
       "object_names": [
         "Minio"
@@ -5297,13 +5297,6 @@
         "Etcd"
       ],
       "template": "sum by (instance_id) (rate(etcd_server_proposals_applied_total_gauge{__$labels__}[__$window__]))"
-    },
-    {
-      "id": "dashboard:v1:be11fa93",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "sum by (instance_id, schema, digest, digest_text) (increase(mysql_perf_schema_events_statements_rows_examined_total{__$labels__}[__$window__])) and on (instance_id, digest) topk(20, sum by (instance_id, digest) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))"
     },
     {
       "id": "dashboard:v1:be564564",
@@ -6525,6 +6518,13 @@
         "Oracle"
       ],
       "template": "sum by (instance_id) (oracledb_sessions_value_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:edadd403",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_examined_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
     },
     {
       "id": "dashboard:v1:ee047ea2",

@@ -14,13 +14,9 @@ const STATEMENT_BY = 'instance_id, schema, digest, digest_text';
 const STATEMENT_DIGEST = 'instance_id, digest';
 const WAIT_EVENT = 'instance_id, event_name';
 
-const statementIncrease = (metric: string) => (
-  `sum by (${STATEMENT_BY}) (increase(${metric}{__$labels__}[__$window__]))`
-);
-const statementTopk = `topk(20, ${statementIncrease('mysql_perf_schema_events_statements_seconds_total')})`;
-const statementTopkDigest = `topk(20, sum by (${STATEMENT_DIGEST}) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))`;
-
 /** 有 last 点即入选。不用 increase 窗口增量，避免已采集却被判成未采集。 */
+const statementPresent = `topk(20, max by (${STATEMENT_BY}) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))`;
+const statementPresentDigest = `topk(20, max by (${STATEMENT_DIGEST}) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))`;
 const waitPresent = `topk(20, max by (${WAIT_EVENT}) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))`;
 
 /** 专业盘语句/等待查询。传统盘不加载这组指标。 */
@@ -28,29 +24,29 @@ export const MYSQL_DIGEST_METRICS: BaseMetricConfig[] = [
   {
     name: 'mysql_statement_time',
     display_name: '语句耗时',
-    description: '所选时间范围内，该语句花费的总时间。',
+    description: '该语句的累计耗时。有采点即显示，不按窗口增量判断是否采集。',
     unit: 's',
     color: '#2f6bff',
     dimensions: statementDimensions,
-    query: statementTopk
+    query: statementPresent
   },
   {
     name: 'mysql_statement_calls',
     display_name: '语句执行次数',
-    description: '所选时间范围内，该语句被执行的次数。',
+    description: '该语句的累计执行次数。有采点即显示，不按窗口增量判断是否采集。',
     unit: 'counts',
     color: '#ff9f43',
     dimensions: statementDimensions,
-    query: `${statementIncrease('mysql_perf_schema_events_statements_total')} and on (${STATEMENT_DIGEST}) ${statementTopkDigest}`
+    query: `max by (${STATEMENT_BY}) (mysql_perf_schema_events_statements_total{__$labels__}) and on (${STATEMENT_DIGEST}) ${statementPresentDigest}`
   },
   {
     name: 'mysql_statement_rows_examined',
     display_name: '语句扫描行数',
-    description: '所选时间范围内，该语句扫描过的行数。',
+    description: '该语句累计扫描的行数。有采点即显示，不按窗口增量判断是否采集。',
     unit: 'counts',
     color: '#faad14',
     dimensions: statementDimensions,
-    query: `${statementIncrease('mysql_perf_schema_events_statements_rows_examined_total')} and on (${STATEMENT_DIGEST}) ${statementTopkDigest}`
+    query: `max by (${STATEMENT_BY}) (mysql_perf_schema_events_statements_rows_examined_total{__$labels__}) and on (${STATEMENT_DIGEST}) ${statementPresentDigest}`
   },
   {
     name: 'mysql_statement_time_rate',
@@ -59,7 +55,7 @@ export const MYSQL_DIGEST_METRICS: BaseMetricConfig[] = [
     unit: 's',
     color: '#2f6bff',
     dimensions: statementDimensions,
-    query: `sum by (${STATEMENT_BY}) (rate(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])) and on (${STATEMENT_DIGEST}) ${statementTopkDigest}`
+    query: `sum by (${STATEMENT_BY}) (rate(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])) and on (${STATEMENT_DIGEST}) ${statementPresentDigest}`
   },
   {
     name: 'mysql_wait_event_time',
