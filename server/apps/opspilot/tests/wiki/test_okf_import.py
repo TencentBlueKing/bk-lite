@@ -163,6 +163,19 @@ def test_map_okf_page_type_matches_schema_case_insensitively():
     assert extra == ["okf:BigQuery Table"]
 
 
+def test_map_okf_page_type_aligns_common_document_types():
+    schema = ["entity", "concept", "query", "comparison", "synthesis"]
+    assert map_okf_page_type("Troubleshooting", schema)[0] == "concept"
+    assert map_okf_page_type("How-to", schema)[0] == "concept"
+    assert map_okf_page_type("User Guide", schema)[0] == "concept"
+    assert map_okf_page_type("Policy", schema)[0] == "synthesis"
+    assert map_okf_page_type("Standard", schema)[0] == "synthesis"
+    assert map_okf_page_type("Reference", schema)[0] == "entity"
+    page_type, matched, extra = map_okf_page_type("Troubleshooting", schema)
+    assert (page_type, matched, extra) == ("concept", False, ["okf:Troubleshooting"])
+    assert map_okf_page_type("Policy", ["entity", "concept"])[0] == "concept"
+
+
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"payload"
 
 

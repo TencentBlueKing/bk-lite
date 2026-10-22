@@ -133,6 +133,29 @@ class TestGemmaOpenAIClientThinkMode:
 
         assert "chat_template_kwargs" not in (mock_llm.extra_body or {})
 
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.OpenAI")
+    def test_wiki_suppress_flag_disables_thinking_for_unknown_model(self, mock_openai_cls):
+        """Wiki 资料构建对未识别模型也要显式关闭思考。"""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_cls.return_value = mock_client
+
+        request = BasicLLMRequest(
+            model="custom-reasoner",
+            openai_api_key="sk-test",
+            openai_api_base="http://localhost:8000/v1",
+            extra_config={"show_think": False, "suppress_default_thinking": True},
+        )
+        LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hi")])
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert call_kwargs["extra_body"]["enable_thinking"] is False
+        assert call_kwargs["extra_body"]["chat_template_kwargs"] == {"enable_thinking": False}
+        assert call_kwargs["extra_body"]["thinking"] == {"type": "disabled"}
+
     @patch("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI")
     def test_qwen_model_dual_writes_enable_thinking_and_chat_template_kwargs(self, mock_cls):
         """Qwen 双写 DashScope 顶层字段与 vLLM chat_template_kwargs。"""
@@ -226,6 +249,29 @@ class TestQwenThinkModeDualWrite:
             model="qwen3.8-27b",
             openai_api_key="sk-test",
             openai_api_base="http://localhost:8000/v1",
+        )
+        LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hi")])
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert call_kwargs["extra_body"] == {
+            "enable_thinking": False,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.OpenAI")
+    def test_auto_model_id_uses_qwen_thinking_toggles(self, mock_openai_cls):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_cls.return_value = mock_client
+
+        request = BasicLLMRequest(
+            model="auto",
+            openai_api_key="sk-test",
+            openai_api_base="http://localhost:8000/v1",
+            extra_config={"show_think": False, "suppress_default_thinking": True},
         )
         LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hi")])
 

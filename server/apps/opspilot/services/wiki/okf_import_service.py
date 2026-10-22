@@ -178,13 +178,74 @@ def derive_trust_tier(verified):
     return "machine_confirmed"
 
 
+def _normalize_type_label(value):
+    text = str(value or "").strip().casefold().replace("_", " ").replace("-", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+# 常见文档类型到固定目录类型。只在知识库确实有该类型时采用。
+_OKF_SIMILAR_PAGE_TYPES = (
+    ("entity", ("entity", "entities", "reference", "references", "glossary", "参考资料", "名词解释")),
+    ("query", ("query", "question", "open question", "待研究问题")),
+    ("comparison", ("comparison", "compare", "versus", "对比", "比较")),
+    ("synthesis", ("synthesis", "summary", "overview", "policy", "policies", "standard", "standards", "规范", "标准", "制度", "规定")),
+    (
+        "concept",
+        (
+            "concept",
+            "concepts",
+            "explanation",
+            "guide",
+            "user guide",
+            "how to",
+            "tutorial",
+            "troubleshooting",
+            "faq",
+            "procedure",
+            "runbook",
+            "指南",
+            "手册",
+            "教程",
+            "排障",
+            "故障处理",
+        ),
+    ),
+)
+
+
+def _similar_page_type(okf_type, lookup):
+    normalized = _normalize_type_label(okf_type)
+    if not normalized:
+        return ""
+    best = ""
+    best_len = -1
+    padded = f" {normalized} "
+    for canonical, aliases in _OKF_SIMILAR_PAGE_TYPES:
+        target = lookup.get(canonical)
+        if not target:
+            continue
+        for alias in aliases:
+            alias_norm = _normalize_type_label(alias)
+            if not alias_norm:
+                continue
+            if normalized == alias_norm or f" {alias_norm} " in padded:
+                if len(alias_norm) > best_len:
+                    best = target
+                    best_len = len(alias_norm)
+    return best
+
+
 def map_okf_page_type(okf_type, page_types):
     original = str(okf_type or "").strip()
     lookup = {str(item).casefold(): str(item) for item in page_types or [] if str(item).strip()}
-    matched = bool(original) and original.casefold() in lookup
-    page_type = lookup.get(original.casefold(), "concept") if original else "concept"
-    extra_tags = [] if matched else ([f"okf:{original}"] if original else [])
-    return page_type, matched, extra_tags
+    exact = lookup.get(original.casefold()) if original else None
+    if exact:
+        return exact, True, []
+    similar = _similar_page_type(original, lookup) if original else ""
+    fallback = lookup.get("concept") or next(iter(lookup.values()), "concept")
+    page_type = similar or fallback
+    extra_tags = [f"okf:{original}"] if original else []
+    return page_type, False, extra_tags
 
 
 def inject_description(body, description):
