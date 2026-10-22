@@ -6,6 +6,7 @@ from langchain_core.tools import tool
 
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, resolve_metric_window, wrap_error, wrap_success
 from apps.opspilot.metis.llm.tools.search_terms import user_message_from_config
+from apps.opspilot.metis.llm.tools.user_clock import timezone_name_from_config
 
 _METRIC_SUMMARY_KEYS = ("name", "display_name", "unit", "data_type", "metric_group")
 _METRIC_NAME_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
@@ -226,7 +227,8 @@ def monitor_list_instance_metrics(
         "metric 必须来自本步 monitor_list_object_metrics 返回的 name，禁止使用目录里没有的指标名。"
         "必填 monitor_obj_id、metric；instance_ids 只能原样复制 monitor_list_object_instances 返回记录的 instance_id 字段。"
         "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数，列表里没有的值不要编造。"
-        "可省略 start/end（默认近1小时）。禁止建议 top/htop/SSH。"
+        "可省略 start/end（默认近1小时）。没写时区的时间按当前用户时区理解，不要当成 UTC；写了 Z 或 ±HH:MM 则按该偏移。"
+        "禁止建议 top/htop/SSH。"
         "同一实例同一指标只查一次。空矩阵、无时序、空值是查询成功但没有数据，不是参数错误；"
         "禁止把空值写成参数无效，禁止让用户检查时间范围、step、instance_ids、dimensions，也禁止因此重试。"
         "只有缺参或类型不对才是参数错误。有数值就按数值回答。"
@@ -247,7 +249,7 @@ def monitor_query_metric_data(
     if not metric:
         return wrap_error("metric is required")
     try:
-        start_ms, end_ms = resolve_metric_window(start, end)
+        start_ms, end_ms = resolve_metric_window(start, end, tz_name=timezone_name_from_config(config))
     except ValueError as exc:
         return wrap_error(str(exc))
     query_data = {
