@@ -14,6 +14,8 @@ from dataclasses import dataclass
 OCCUPANCY_SLOT_MINUTES = 5
 # 仅供测试/诊断枚举，生产分配不使用规划窗。
 PLANNING_HORIZON_CAP_MINUTES = 7 * 24 * 60
+# 不超过该长度时逐个相位评分，保证既有小周期结果不变。
+_FULL_PHASE_SCAN_LIMIT = 4096
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,60 @@ def _window_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     return max(0, min(a_end, b_end) - max(a_start, b_start))
 
 
+def _circular_midpoints(positions: set[int], modulus: int) -> set[int]:
+    """相邻占位之间的整数弧中点。奇数弧长保留两个同样最大的间距点。"""
+    if modulus <= 0 or not positions:
+        return set()
+    ordered = sorted({position % modulus for position in positions})
+    bounds = ordered + [ordered[0] + modulus]
+    midpoints = set()
+    for start, end in zip(bounds, bounds[1:]):
+        span = end - start
+        if span <= 0:
+            continue
+        midpoints.add((start + span // 2) % modulus)
+        if span % 2:
+            midpoints.add((start + span // 2 + 1) % modulus)
+    return midpoints
+
+
+def _overlap_offsets(previous: int, new_tail: int, old_tail: int, common: int) -> set[int]:
+    """重叠窗口内的整数分钟，以及精确碰撞点。窗口宽度由忙时尾数决定。"""
+    if common <= 0:
+        return set()
+    base = previous % common
+    positions = {base}
+    if new_tail <= 0 or old_tail <= 0:
+        return positions
+    shift = 0
+    forward_limit = new_tail if new_tail < common else common
+    while shift < forward_limit:
+        positions.add((base - shift) % common)
+        shift += 1
+    back = 1
+    backward_limit = old_tail if old_tail < common else common
+    while back < backward_limit:
+        positions.add((base - (common - back)) % common)
+        back += 1
+    return positions
+
+
+def _large_phase_residues(pairs, phase_period: int, preferred: int | None) -> list[int]:
+    """超长相位的候选：各公约数圆周上的弧中点、重叠窗口和首选偏移。"""
+    residues = set()
+    occupied: dict[int, set[int]] = {}
+    for (common, _repeats, previous, new_tail, old_tail, _constant), _count in pairs.items():
+        occupied.setdefault(common, set()).add(previous % common)
+        residues.update(_overlap_offsets(previous, new_tail, old_tail, common))
+    for common, positions in occupied.items():
+        residues.update(_circular_midpoints(positions, common))
+    if preferred is not None:
+        residues.add(preferred % phase_period)
+    if not residues:
+        residues.add(0)
+    return [residue for residue in residues if 0 <= residue < phase_period]
+
+
 def assign_offset(
     *,
     task_id: int,
@@ -100,11 +156,16 @@ def assign_offset(
     if pairs:
         # 同周期/相位/忙时的通道合并计数；大量存量 offset=0 时避免重复评分。
         pairs = Counter(pairs)
-        # 所有评分只依赖 offset % gcd。等价候选折叠后仍覆盖每个整数分钟相位的评分，非采样。
+        # 评分只依赖 offset % gcd。相位不超过 4096 时逐分钟枚举，保持原结果。
+        # 更长相位只评弧中点、重叠窗口和首选偏移，评分次数不再随分钟数增长。
         phase_period = math.lcm(*(pair[0] for pair in pairs))
         seed = int.from_bytes(hashlib.sha256(f"{task_id}:{channel}".encode()).digest()[:8], "big") % cycle
         best = None
-        for residue in range(phase_period):
+        if phase_period <= _FULL_PHASE_SCAN_LIMIT:
+            residues = range(phase_period)
+        else:
+            residues = _large_phase_residues(pairs, phase_period, preferred)
+        for residue in residues:
             if preferred is not None and preferred % phase_period == residue:
                 offset = preferred
             else:
