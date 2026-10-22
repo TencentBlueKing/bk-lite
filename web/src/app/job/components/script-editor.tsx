@@ -158,6 +158,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({
   };
 
   const handleTabClick = (lang: ScriptLang) => {
+    if (readOnly) return;
     if (onLangChange) {
       onLangChange(lang);
     } else {

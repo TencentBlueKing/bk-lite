@@ -573,18 +573,34 @@ class NodeService:
     @staticmethod
     def get_nodes_with_child_config(node_ids, collector, collect_type):
         """返回关联了指定采集器子配置的节点 ID。"""
-        normalized_node_ids = list({str(node_id) for node_id in node_ids if node_id not in (None, "")})
+        return sorted({assignment["node_id"] for assignment in NodeService.get_child_config_assignments(node_ids, collector, collect_type)})
+
+    @staticmethod
+    def get_child_config_assignments(node_ids, collector, collect_type):
+        """返回节点上指定采集器子配置的分配。"""
+        if not isinstance(collector, str) or not collector.strip():
+            raise BaseAppException("collector 非法")
+        if not isinstance(collect_type, str) or not collect_type.strip():
+            raise BaseAppException("collect_type 非法")
+        normalized_node_ids = list(dict.fromkeys(str(node_id) for node_id in node_ids if node_id not in (None, "")))
         if not normalized_node_ids:
             return []
         if len(normalized_node_ids) > NodeService.NODE_LIST_PAGE_SIZE_MAX:
             raise BaseAppException(f"单次最多查询 {NodeService.NODE_LIST_PAGE_SIZE_MAX} 个节点")
 
-        configured_node_ids = ChildConfig.objects.filter(
-            collector_config__nodes__id__in=normalized_node_ids,
-            collector_config__collector__name=collector,
-            collect_type=collect_type,
-        ).values_list("collector_config__nodes__id", flat=True)
-        return sorted(set(configured_node_ids))
+        rows = (
+            ChildConfig.objects.filter(
+                collector_config__nodes__id__in=normalized_node_ids,
+                collector_config__collector__name=collector.strip(),
+                collect_type=collect_type.strip(),
+            )
+            .values_list("id", "collector_config__nodes__id")
+            .distinct()
+            .order_by("id", "collector_config__nodes__id")
+        )
+        return [
+            {"id": str(child_id), "node_id": str(node_id)} for child_id, node_id in rows if child_id not in (None, "") and node_id not in (None, "")
+        ]
 
     @staticmethod
     def _normalize_keyword(keyword):

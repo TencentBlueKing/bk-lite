@@ -202,6 +202,36 @@ def test_duplicate_uses_validated_name_from_confirmation(superuser):
 
 
 @pytest.mark.django_db
+def test_duplicate_builtin_creates_unpublished_custom_draft(superuser):
+    source = Workflow.objects.create(
+        name="Linux 主机巡检（Excel）",
+        team=[7],
+        definition={"name": "builtin", "schemaVersion": 2, "version": 3, "tasks": []},
+        canvas_metadata={"positions": {}},
+        is_builtin=True,
+        status=Workflow.Status.PUBLISHED,
+        current_version=3,
+        enabled=True,
+    )
+    duplicate = WorkflowViewSet.as_view({"post": "duplicate"})
+
+    response = duplicate(
+        _request(APIRequestFactory(), "post", f"/workflows/{source.id}/duplicate/", superuser, {"name": "巡检副本"}),
+        pk=source.id,
+    )
+
+    assert response.status_code == 201
+    copied = Workflow.objects.get(pk=response.data["id"])
+    assert copied.is_builtin is False
+    assert copied.status == Workflow.Status.DRAFT
+    assert copied.current_version == 0
+    assert copied.enabled is False
+    source.refresh_from_db()
+    assert source.is_builtin is True
+    assert source.enabled is True
+
+
+@pytest.mark.django_db
 def test_duplicate_rejects_blank_name(superuser):
     source = Workflow.objects.create(
         name="源流程",
@@ -218,6 +248,144 @@ def test_duplicate_rejects_blank_name(superuser):
 
     assert response.status_code == 400
     assert Workflow.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_create_accepts_selected_organizations_and_description(superuser):
+    create = WorkflowViewSet.as_view({"post": "create"})
+
+    response = create(
+        _request(
+            APIRequestFactory(),
+            "post",
+            "/workflows/",
+            superuser,
+            {"name": "多组织流程", "description": "巡检说明", "team": [8, 7, 7], "starter": "blank"},
+        )
+    )
+
+    assert response.status_code == 201
+    workflow = Workflow.objects.get()
+    assert workflow.team == [7, 8]
+    assert workflow.description == "巡检说明"
+    assert workflow.current_version == 0
+    assert workflow.enabled is False
+    assert workflow.definition["tasks"] == []
+
+
+@pytest.mark.django_db
+def test_create_rejects_name_that_overlaps_any_selected_organization(superuser):
+    Workflow.objects.create(name="重复流程", team=[7], definition={})
+    create = WorkflowViewSet.as_view({"post": "create"})
+
+    response = create(
+        _request(
+            APIRequestFactory(),
+            "post",
+            "/workflows/",
+            superuser,
+            {"name": "重复流程", "team": [8, 7], "starter": "blank"},
+        )
+    )
+
+    assert response.status_code == 400
+    assert response.data["name"] == ["同一组织下已存在同名流程"]
+
+
+@pytest.mark.django_db
+def test_create_rejects_empty_or_invalid_organization(superuser):
+    create = WorkflowViewSet.as_view({"post": "create"})
+
+    response = create(_request(APIRequestFactory(), "post", "/workflows/", superuser, {"name": "无组织", "team": [], "starter": "blank"}))
+
+    assert response.status_code == 400
+    assert response.data["detail"] == "请选择组织"
+    assert Workflow.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_rejects_organization_outside_user_groups():
+    user = get_user_model().objects.create(username="workflow-member", domain="example.com")
+    user.group_list = [{"id": 7, "name": "Current"}]
+    user.permission = {"workflow-orchestration": {"workflow-Add"}}
+    create = WorkflowViewSet.as_view({"post": "create"})
+
+    response = create(_request(APIRequestFactory(), "post", "/workflows/", user, {"name": "越权组织", "team": [8], "starter": "blank"}))
+
+    assert response.status_code == 403
+    assert Workflow.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_duplicate_uses_requested_organization_and_description(superuser):
+    source = Workflow.objects.create(
+        name="源流程",
+        description="原说明",
+        team=[7],
+        definition={"name": "source", "schemaVersion": 2, "version": 1, "tasks": []},
+        canvas_metadata={"positions": {}},
+    )
+    duplicate = WorkflowViewSet.as_view({"post": "duplicate"})
+
+    response = duplicate(
+        _request(
+            APIRequestFactory(),
+            "post",
+            f"/workflows/{source.id}/duplicate/",
+            superuser,
+            {"name": "用户填写的副本", "description": "新说明", "team": [8]},
+        ),
+        pk=source.id,
+    )
+
+    assert response.status_code == 201
+    copied = Workflow.objects.get(pk=response.data["id"])
+    assert copied.description == "新说明"
+    assert copied.team == [8]
+    assert copied.current_version == 0
+    assert copied.enabled is False
+    assert copied.is_builtin is False
+
+
+@pytest.mark.django_db
+def test_draft_can_change_organization_and_published_workflow_cannot(superuser):
+    draft = Workflow.objects.create(name="草稿", team=[7], description="原说明", definition={})
+    published = Workflow.objects.create(
+        name="已发布",
+        team=[7],
+        description="已发布说明",
+        definition={},
+        current_version=1,
+        has_draft=False,
+        status=Workflow.Status.PUBLISHED,
+    )
+    update = WorkflowViewSet.as_view({"patch": "partial_update"})
+
+    moved = update(
+        _request(APIRequestFactory(), "patch", f"/workflows/{draft.id}/", superuser, {"name": "草稿", "description": "新说明", "team": [8]}),
+        pk=draft.id,
+    )
+    locked = update(
+        _request(APIRequestFactory(), "patch", f"/workflows/{published.id}/", superuser, {"team": [8]}),
+        pk=published.id,
+    )
+    renamed = update(
+        _request(APIRequestFactory(), "patch", f"/workflows/{published.id}/", superuser, {"name": "已发布改名", "description": "只改说明", "team": [7]}),
+        pk=published.id,
+    )
+
+    assert moved.status_code == 200
+    draft.refresh_from_db()
+    assert draft.team == [8]
+    assert draft.description == "新说明"
+    assert locked.status_code == 409
+    assert locked.data["detail"] == "已发布流程不可修改组织"
+    assert renamed.status_code == 200
+    published.refresh_from_db()
+    assert published.name == "已发布改名"
+    assert published.description == "只改说明"
+    assert published.team == [7]
+    assert published.has_draft is False
 
 
 @pytest.mark.django_db
@@ -1538,7 +1706,7 @@ def test_execution_list_returns_only_live_artifacts_for_download(superuser):
     ready_files = rows[str(ready.id)]["downloadable_artifacts"]
     assert [item["filename"] for item in ready_files] == ["health-a.xlsx", "health-b.docx"]
     assert ready_files[0]["download_url"] == f"/workflow_orchestration/api/artifacts/{first.id}/download/"
-    assert set(ready_files[0]) == {"id", "format", "filename", "size", "download_url"}
+    assert set(ready_files[0]) == {"id", "format", "filename", "size", "created_at", "expires_at", "download_url"}
     assert rows[str(expired_execution.id)]["downloadable_artifacts"] == []
     assert rows[str(removed_execution.id)]["downloadable_artifacts"] == []
     assert rows[str(empty.id)]["downloadable_artifacts"] == []

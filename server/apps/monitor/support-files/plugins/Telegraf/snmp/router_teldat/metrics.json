@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='router', collect_type='snmp_teldat', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -35,7 +35,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage_1min",
-      "query": "snmp_device_cpu_usage_1min{instance_type='router', __$labels__}",
+      "query": "snmp_device_cpu_usage_1min{instance_type='router', collect_type='snmp_teldat', __$labels__}",
       "display_name": "CPU Utilization (1 min)",
       "data_type": "Number",
       "unit": "percent",
@@ -48,7 +48,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage_5sec",
-      "query": "snmp_device_cpu_usage_5sec{instance_type='router', __$labels__}",
+      "query": "snmp_device_cpu_usage_5sec{instance_type='router', collect_type='snmp_teldat', __$labels__}",
       "display_name": "CPU Utilization (5 sec)",
       "data_type": "Number",
       "unit": "percent",
@@ -66,7 +66,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "snmp_device_memory_total{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='router', collect_type='snmp_teldat', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total cache memory of the Teldat router in bytes (telProdNpMonSistemMemTotalcache)."
@@ -79,7 +79,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "snmp_device_memory_free{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_free{instance_type='router', collect_type='snmp_teldat', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free cache memory of the Teldat router in bytes (telProdNpMonSistemMemFreecache)."
@@ -92,7 +92,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "100 * (snmp_device_memory_total{instance_type='router', __$labels__} - snmp_device_memory_free{instance_type='router', __$labels__}) / snmp_device_memory_total{instance_type='router', __$labels__}",
+      "query": "100 * (snmp_device_memory_total{instance_type='router', collect_type='snmp_teldat', __$labels__} - snmp_device_memory_free{instance_type='router', collect_type='snmp_teldat', __$labels__}) / snmp_device_memory_total{instance_type='router', collect_type='snmp_teldat', __$labels__}",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Teldat router, derived as (total-free)/total from cache memory scalars."
@@ -100,7 +100,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_teldat', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

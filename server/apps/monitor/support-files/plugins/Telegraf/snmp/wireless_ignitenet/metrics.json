@@ -24,7 +24,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_ignitenet', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -42,7 +42,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_ignitenet', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -60,7 +60,7 @@
     {
       "metric_group": "Radio",
       "name": "ignitenet_radio_tx_power_dbm",
-      "query": "ignitenet_radio_tx_power_dbm{instance_type='wireless', __$labels__}",
+      "query": "ignitenet_radio_tx_power_dbm{instance_type='wireless', collect_type='snmp_ignitenet', __$labels__}",
       "display_name": "RF Transmit Power (dBm)",
       "data_type": "Number",
       "unit": "none",
@@ -78,7 +78,7 @@
     {
       "metric_group": "Radio",
       "name": "ignitenet_radio_rssi_local",
-      "query": "ignitenet_radio_rssi_local{instance_type='wireless', __$labels__}",
+      "query": "ignitenet_radio_rssi_local{instance_type='wireless', collect_type='snmp_ignitenet', __$labels__}",
       "display_name": "Local RSSI",
       "data_type": "Number",
       "unit": "none",
@@ -96,7 +96,7 @@
     {
       "metric_group": "Radio",
       "name": "ignitenet_radio_rssi_remote",
-      "query": "ignitenet_radio_rssi_remote{instance_type='wireless', __$labels__}",
+      "query": "ignitenet_radio_rssi_remote{instance_type='wireless', collect_type='snmp_ignitenet', __$labels__}",
       "display_name": "Remote RSSI",
       "data_type": "Number",
       "unit": "none",
@@ -114,7 +114,7 @@
     {
       "metric_group": "Radio",
       "name": "ignitenet_radio_failover_state",
-      "query": "ignitenet_radio_failover_state{instance_type='wireless', __$labels__}",
+      "query": "ignitenet_radio_failover_state{instance_type='wireless', collect_type='snmp_ignitenet', __$labels__}",
       "display_name": "60 GHz Failover State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -132,7 +132,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_ignitenet', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

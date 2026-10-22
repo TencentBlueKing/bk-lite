@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "transceiver_temperature_celsius",
-      "query": "max(snmp_transceiver_temperature_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "query": "max(snmp_transceiver_temperature_celsius{instance_type='access', collect_type='snmp_icotera', __$labels__}) by (instance_id)",
       "display_name": "Transceiver Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "transceiver_voltage_volts",
-      "query": "max(snmp_transceiver_voltage_volts{instance_type='access', __$labels__}) by (instance_id)",
+      "query": "max(snmp_transceiver_voltage_volts{instance_type='access', collect_type='snmp_icotera', __$labels__}) by (instance_id)",
       "display_name": "Transceiver Supply Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Access",
       "name": "transceiver_tx_power_mw",
-      "query": "max(snmp_transceiver_tx_power_mw{instance_type='access', __$labels__}) by (instance_id)",
+      "query": "max(snmp_transceiver_tx_power_mw{instance_type='access', collect_type='snmp_icotera', __$labels__}) by (instance_id)",
       "display_name": "Transceiver Tx Power (mW)",
       "data_type": "Number",
       "unit": "none",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Access",
       "name": "transceiver_rx_power_mw",
-      "query": "max(snmp_transceiver_rx_power_mw{instance_type='access', __$labels__}) by (instance_id)",
+      "query": "max(snmp_transceiver_rx_power_mw{instance_type='access', collect_type='snmp_icotera', __$labels__}) by (instance_id)",
       "display_name": "Transceiver Rx Power (mW)",
       "data_type": "Number",
       "unit": "none",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Access",
       "name": "transceiver_tx_bias_ma",
-      "query": "max(snmp_transceiver_tx_bias_ma{instance_type='access', __$labels__}) by (instance_id)",
+      "query": "max(snmp_transceiver_tx_bias_ma{instance_type='access', collect_type='snmp_icotera', __$labels__}) by (instance_id)",
       "display_name": "Transceiver Tx Bias (mA)",
       "data_type": "Number",
       "unit": "none",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', collect_type='snmp_icotera', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', collect_type='snmp_icotera', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='access', collect_type='snmp_icotera', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

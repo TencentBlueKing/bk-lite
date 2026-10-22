@@ -1,4 +1,5 @@
 import type { ChatState, Message, WebChatConfig, LlmContextUsage, Locale } from '@webchat/core';
+import type { SessionAttachmentFile } from './sessionFiles';
 
 export interface CompletedToolResult {
   toolCallId: string;
@@ -41,6 +42,8 @@ export interface ChatProps extends WebChatConfig {
    * call id, and raw result text, and does not interpret the payload.
    */
   onToolResult?: (result: CompletedToolResult) => void;
+  /** 当前会话里已生成的附件。平台助手用它渲染左侧文件栏。 */
+  onSessionFilesChange?: (files: SessionAttachmentFile[]) => void;
   /** @inheritdoc WebChatConfig.streamingTextBatching */
   streamingTextBatching?: WebChatConfig['streamingTextBatching'];
 }

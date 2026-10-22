@@ -79,7 +79,9 @@ Status: ready
   - 删除节点时 **必须** 向 CMDB 发 lifecycle：只清除 `node_id`，不删实例（悬挂 `node_id` 视为脏数据）。
   - 页面确认 `retire_linked` 后额外向监控发 lifecycle：监控侧软删/停采。
   - CMDB：只清除 `node_id`，不删实例。
-- **CMDB / 监控删除**：对端一律只清关联 ID（`node_id` / `cmdb_id` / `monitor_id`），不做真删。
+- **CMDB / 监控删除**：对端一律只清关联 ID（`node_id` / `cmdb_id` / `monitor_id`），不做真删。删除通知在操作者组织为空时，用被删对象自身组织作为 lifecycle 授权；lifecycle 按精确 ID 清指针，组织缺失也必须能清掉对端指针。
+- **节点 `retire_linked`**：监控侧软删后还要清本行 `cmdb_id`，并通知 CMDB 清 `monitor_id`；CMDB 资产保留。
+- **修改身份字段**：改 IP / 名称 / 组织不断开既有绑定，也不自动改绑；用户写路径不得覆盖 `monitor_id` / `cmdb_id` / `node_id`。
 - 节点侧 lifecycle 永不删节点，只清本侧关联指针。
 - ~~本能力就绪后关闭并退役 NodeMgmtSync 拉取同步；不得与推送长期并行双写。~~ 已被 [`cmdb-node-mgmt-sync-shared-identity`](../cmdb-node-mgmt-sync-shared-identity/spec.md) 取代：拉同步默认打开，与推送共用 `node_id` + ip/cloud 认实体，禁止双建。
 

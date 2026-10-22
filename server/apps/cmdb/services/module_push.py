@@ -10,7 +10,13 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import cmdb_link_identity, optional_inst_uuid
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.current_team_scope import build_request_push_actor_scope
-from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, IngestEnvelope, ingest_auth_kwargs
+from apps.node_mgmt.services.module_push_contract import (
+    EVENT_LIFECYCLE,
+    EVENT_UPSERT,
+    IngestEnvelope,
+    actor_scope_with_instance_orgs,
+    ingest_auth_kwargs,
+)
 from apps.rpc.monitor import Monitor
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -541,6 +547,7 @@ class CmdbToMonitorPushService:
             link_ids["monitor_id"] = monitor_id
 
         occurred_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        delete_scope = actor_scope_with_instance_orgs(actor_scope, instance.get("organization"))
         base = {
             "source_module": MODULE_NAME,
             "source_id": cmdb_id,
@@ -548,7 +555,7 @@ class CmdbToMonitorPushService:
             "occurred_at": occurred_at,
             "raw": raw,
             "link_ids": link_ids,
-            **ingest_auth_kwargs(actor_scope),
+            **ingest_auth_kwargs(delete_scope),
         }
 
         try:

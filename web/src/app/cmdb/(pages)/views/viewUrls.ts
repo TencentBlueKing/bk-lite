@@ -2,6 +2,8 @@ import type { RackRoomMode, ViewFocus, ViewType } from './viewTypes';
 
 export interface ParsedViewsSearch {
   model_id: string | undefined;
+  /** Aligned with inst_uuids when the URL lists one model per device; length 1 broadcasts. */
+  model_ids: string[];
   inst_uuid: string | undefined;
   inst_uuids: string[];
   mode: RackRoomMode | undefined;
@@ -33,22 +35,63 @@ export const parseInstUuids = (raw: string | null | undefined): string[] => {
   return uuids;
 };
 
+/** Keep order and duplicates. Model ids must stay aligned with inst_uuids. */
+export const parseModelIds = (raw: string | null | undefined): string[] => {
+  if (!raw) return [];
+  return raw.split(',').map((part) => part.trim()).filter(Boolean);
+};
+
+/**
+ * Pair devices with models.
+ * One model id applies to every uuid (rack compare, single-model views).
+ * Several model ids must be the same length as the uuid list; otherwise the link is invalid.
+ */
+export const alignViewFocusModels = (
+  modelIds: string[],
+  instUuids: string[]
+): { model_id: string; inst_uuid: string }[] => {
+  if (!modelIds.length || !instUuids.length) return [];
+  if (modelIds.length === 1) {
+    return instUuids.map((inst_uuid) => ({
+      model_id: modelIds[0],
+      inst_uuid,
+    }));
+  }
+  if (modelIds.length !== instUuids.length) return [];
+  return instUuids.map((inst_uuid, index) => ({
+    model_id: modelIds[index],
+    inst_uuid,
+  }));
+};
+
 const asFocusList = (focus: ViewFocus | ViewFocus[]): ViewFocus[] =>
   Array.isArray(focus) ? focus.filter((item) => item?.inst_uuid) : (focus?.inst_uuid ? [focus] : []);
 
-const appendFocusParams = (
+/** Detail links still carry instance identity. View pages keep the selection in browser storage. */
+const appendInstanceParams = (
   params: URLSearchParams,
   focus: ViewFocus | ViewFocus[],
 ): void => {
   const focuses = asFocusList(focus);
   const primary = focuses[0];
   if (!primary) return;
-  params.set('model_id', primary.model_id);
+  const modelIds = focuses.map((item) => item.model_id);
+  const sameModel = modelIds.every((modelId) => modelId === modelIds[0]);
+  params.set('model_id', sameModel ? modelIds[0] : modelIds.join(','));
   params.set('inst_uuid', focuses.map((item) => item.inst_uuid).join(','));
   if (primary.inst_name) params.set('inst_name', primary.inst_name);
   if (primary.model_name) params.set('model_name', primary.model_name);
   if (primary.icn) params.set('icn', primary.icn);
   if (primary.mode) params.set('mode', primary.mode);
+};
+
+/** Views URLs keep only the short rack/room mode. The instance list stays in localStorage. */
+const appendViewsFocusParams = (
+  params: URLSearchParams,
+  focus: ViewFocus | ViewFocus[],
+): void => {
+  const primary = asFocusList(focus)[0];
+  if (primary?.mode) params.set('mode', primary.mode);
 };
 
 const clearFocusParams = (params: URLSearchParams): void => {
@@ -62,13 +105,16 @@ export const buildViewsPath = (
   focus: ViewFocus | ViewFocus[],
 ): string => {
   const params = new URLSearchParams();
-  appendFocusParams(params, focus);
-  return `/cmdb/views/${viewType}?${params.toString()}`;
+  appendViewsFocusParams(params, focus);
+  const query = params.toString();
+  return query
+    ? `/cmdb/views/${viewType}?${query}`
+    : `/cmdb/views/${viewType}`;
 };
 
 /**
- * Sync focus into the views URL while preserving non-focus UI query keys
- * (e.g. K8S hub `sub`, `expanded_workloads`).
+ * Refresh the views URL: drop instance identity, keep rack/room mode and
+ * unrelated UI query keys (e.g. K8S hub `sub`, `expanded_workloads`).
  */
 export const buildViewsPathPreserving = (
   viewType: ViewType,
@@ -77,7 +123,7 @@ export const buildViewsPathPreserving = (
 ): string => {
   const params = new URLSearchParams(currentSearchParams.toString());
   clearFocusParams(params);
-  appendFocusParams(params, focus);
+  appendViewsFocusParams(params, focus);
   const query = params.toString();
   return query
     ? `/cmdb/views/${viewType}?${query}`
@@ -86,7 +132,7 @@ export const buildViewsPathPreserving = (
 
 export const buildBaseInfoPath = (focus: ViewFocus): string => {
   const params = new URLSearchParams();
-  appendFocusParams(params, focus);
+  appendInstanceParams(params, focus);
   return `/cmdb/assetData/detail/baseInfo?${params.toString()}`;
 };
 
@@ -97,8 +143,10 @@ const parseMode = (value: string | null): RackRoomMode | undefined => {
 
 export const parseViewsSearch = (searchParams: URLSearchParams): ParsedViewsSearch => {
   const inst_uuids = parseInstUuids(searchParams.get('inst_uuid'));
+  const model_ids = parseModelIds(searchParams.get('model_id'));
   return {
-    model_id: searchParams.get('model_id') ?? undefined,
+    model_id: model_ids[0],
+    model_ids,
     inst_uuid: inst_uuids[0],
     inst_uuids,
     mode: parseMode(searchParams.get('mode')),

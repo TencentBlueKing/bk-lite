@@ -190,23 +190,6 @@
   align-items: stretch;
 }
 
-.gpuBand {
-  display: flex;
-  flex-direction: column;
-  min-height: 220px;
-}
-
-.gpuEmpty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 156px;
-  font-size: 22px;
-  font-weight: 650;
-  color: var(--color-text-1);
-}
-
 .chartGrid4 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -23,7 +23,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='router', collect_type='snmp_teltonika', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -41,7 +41,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "Memory Total",
-      "query": "snmp_device_memory_total{instance_type='router', __$labels__}*1024",
+      "query": "snmp_device_memory_total{instance_type='router', collect_type='snmp_teltonika', __$labels__}*1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total physical memory of the Teltonika cellular router in bytes (UCD memTotalReal scalar, KB×1024)."
@@ -54,7 +54,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "Memory Free",
-      "query": "snmp_device_memory_free{instance_type='router', __$labels__}*1024",
+      "query": "snmp_device_memory_free{instance_type='router', collect_type='snmp_teltonika', __$labels__}*1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Available physical memory of the Teltonika cellular router in bytes (UCD memAvailReal scalar, KB×1024)."
@@ -67,7 +67,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "Memory Used",
-      "query": "(snmp_device_memory_total{instance_type='router', __$labels__} - snmp_device_memory_free{instance_type='router', __$labels__})*1024",
+      "query": "(snmp_device_memory_total{instance_type='router', collect_type='snmp_teltonika', __$labels__} - snmp_device_memory_free{instance_type='router', collect_type='snmp_teltonika', __$labels__})*1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used physical memory of the Teltonika cellular router in bytes (UCD memTotalReal − memAvailReal scalars, KB×1024)."
@@ -80,7 +80,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "Memory Utilization",
-      "query": "100 * (snmp_device_memory_total{instance_type='router', __$labels__} - snmp_device_memory_free{instance_type='router', __$labels__}) / snmp_device_memory_total{instance_type='router', __$labels__}",
+      "query": "100 * (snmp_device_memory_total{instance_type='router', collect_type='snmp_teltonika', __$labels__} - snmp_device_memory_free{instance_type='router', collect_type='snmp_teltonika', __$labels__}) / snmp_device_memory_total{instance_type='router', collect_type='snmp_teltonika', __$labels__}",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilization of the Teltonika cellular router, derived as 100×(total−free)/total from the UCD memTotalReal and memAvailReal scalars."
@@ -88,7 +88,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='router', collect_type='snmp_teltonika', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -106,7 +106,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_teltonika', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

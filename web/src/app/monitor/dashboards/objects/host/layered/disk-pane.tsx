@@ -26,7 +26,7 @@ export const countHotMounts = (rows: EntityTableRow[]) => (
 );
 
 type DiskSub = 'mount' | 'device';
-type RateUnit = 'byteps' | 'cps' | 'ms';
+type RateUnit = 'byteps' | 'cps' | 'ms' | 'percent';
 
 const formatLatencyPair = (row: EntityTableRow) => {
   const read = row.values.disk_read_latency;
@@ -102,6 +102,14 @@ const DEVICE_CHARTS: Array<{
     series: [
       { key: 'disk_read_latency', labelKey: 'read', color: HOST_SERIES_COLOR.diskRead },
       { key: 'disk_write_latency', labelKey: 'write', color: HOST_SERIES_COLOR.diskWrite }
+    ]
+  },
+  {
+    key: 'util',
+    titleKey: 'ioUtilization',
+    unit: 'percent',
+    series: [
+      { key: 'diskio_io_util', labelKey: 'ioUtilization', color: HOST_SERIES_COLOR.diskUsed }
     ]
   }
 ];
@@ -329,7 +337,7 @@ export default function DiskPane({
         </>
       ) : (
         <>
-          <div className={`${styles.chartGrid3} ${styles.diskDeviceCharts}`}>
+          <div className={`${styles.chartGrid2} ${styles.diskDeviceCharts}`}>
             {DEVICE_CHARTS.map((chart) => {
               const present = chart.series.filter((item) => (selectedDevice?.series[item.key] || []).length > 0);
               const legendSource = present.length ? present : chart.series;

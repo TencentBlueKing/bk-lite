@@ -1,7 +1,7 @@
 'use client';
 
 import './application3DChrome.css';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Select, Spin } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { ReloadOutlined } from '@ant-design/icons';
@@ -23,12 +23,6 @@ import type { ScreenRenderContext, ValueConfig } from '@/app/ops-analysis/types/
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import { isSceneWidgetAllowedOnSurface } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import type { Application3DSceneController } from './application3DScene';
-import {
-  application3DHoverReadableScale,
-  placeSceneHoverPopup,
-  shouldShowApplication3DLinkHover,
-  type Application3DLinkHoverState,
-} from './application3DLinkHover';
 import Application3DDetail from './application3DDetail';
 import { bindApplication3DTranslate } from './application3DLayout';
 import { application3DPageEffectLeadMs } from './application3DMotion';
@@ -91,27 +85,7 @@ export default function Application3D({
     active: dataLinkActive,
     link: dataLink,
     openPoint,
-    contextHint,
   } = useWidgetDataLink(config);
-  const [linkHover, setLinkHover] = useState<Application3DLinkHoverState | null>(null);
-  const [linkHoverSize, setLinkHoverSize] = useState({ width: 0, height: 0 });
-  const linkHoverReporterRef = useRef<(hit: Application3DLinkHoverState | null) => void>(() => undefined);
-  linkHoverReporterRef.current = (hit) => {
-    setLinkHover((previous) => {
-      if (!hit) return previous ? null : previous;
-      if (
-        previous
-        && previous.id === hit.id
-        && previous.kind === hit.kind
-        && previous.name === hit.name
-        && previous.x === hit.x
-        && previous.y === hit.y
-      ) {
-        return previous;
-      }
-      return hit;
-    });
-  };
   const [linkMenu, setLinkMenu] = useState<{
     x: number;
     y: number;
@@ -150,9 +124,7 @@ export default function Application3D({
     getAlarmDetail,
     getMetric,
   } = useApplication3DApi(shareMode ? params.sessionId : undefined);
-  const widgetRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const linkHoverTipRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<Application3DSceneController | null>(null);
   const resizeSceneRef = useRef<() => void>(() => undefined);
   const mountedRef = useRef(true);
@@ -283,7 +255,6 @@ export default function Application3D({
           setArchitectureHost(selection);
         },
         onLinkContextMenu: (hit) => linkMenuRef.current(hit),
-        onLinkHover: (hit) => linkHoverReporterRef.current(hit),
       });
       controllerRef.current = controller;
       resizeSceneRef.current = () => controller.resize();
@@ -757,52 +728,6 @@ export default function Application3D({
     [appliedFilters, filterDefinitions],
   );
 
-  const showApplicationLinkHover = shouldShowApplication3DLinkHover(
-    contextHint,
-    linkHover?.kind,
-    Boolean(linkMenu),
-  );
-  const linkHoverScale = application3DHoverReadableScale(screenRenderContext);
-  useLayoutEffect(() => {
-    if (!showApplicationLinkHover) return undefined;
-    const tip = linkHoverTipRef.current;
-    if (!tip) return undefined;
-    const updateSize = () => {
-      setLinkHoverSize((previous) => (
-        previous.width === tip.offsetWidth && previous.height === tip.offsetHeight
-          ? previous
-          : { width: tip.offsetWidth, height: tip.offsetHeight }
-      ));
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(tip);
-    return () => observer.disconnect();
-  }, [showApplicationLinkHover, linkHover?.name, contextHint, linkHoverScale]);
-  const linkHoverStyle = useMemo<CSSProperties | undefined>(() => {
-    if (!showApplicationLinkHover || !linkHover) return undefined;
-    const anchor = widgetRef.current;
-    const rect = anchor?.getBoundingClientRect();
-    const placed = placeSceneHoverPopup({
-      clientX: linkHover.x,
-      clientY: linkHover.y,
-      anchorLeft: rect?.left ?? 0,
-      anchorTop: rect?.top ?? 0,
-      anchorWidth: rect?.width ?? anchor?.offsetWidth ?? 0,
-      anchorHeight: rect?.height ?? anchor?.offsetHeight ?? 0,
-      offsetWidth: anchor?.offsetWidth || rect?.width || 0,
-      offsetHeight: anchor?.offsetHeight || rect?.height || 0,
-      popupWidth: linkHoverSize.width,
-      popupHeight: linkHoverSize.height,
-      readableScale: linkHoverScale,
-    });
-    return {
-      left: placed.left,
-      top: placed.top,
-      '--app3d-hover-scale': linkHoverScale,
-    } as CSSProperties;
-  }, [linkHover, linkHoverScale, linkHoverSize, showApplicationLinkHover]);
-
   const showWallPageChrome = pagedWall.totalPages > 1;
   const wallPageInteractive = !editMode && !selected && !detailOpen && !architectureOpen;
   const showWallPageWings = showWallPageChrome && wallPageInteractive;
@@ -810,7 +735,6 @@ export default function Application3D({
 
   return (
     <div
-      ref={widgetRef}
       className="relative h-full min-h-48 w-full overflow-hidden bg-[var(--screen-canvas-bg,#0c2138)] text-[var(--color-application3d-text)]"
     >
       <div
@@ -825,15 +749,7 @@ export default function Application3D({
         label={dataLink?.name || t('dashboard.interactionOpen', '打开链接')}
         onSelect={() => openPoint(linkMenu?.point)}
         onClose={() => setLinkMenu(null)}
-        variant="scene"
-        anchorRef={mountRef}
       />
-      {showApplicationLinkHover && linkHover && (
-        <div ref={linkHoverTipRef} className="app3d-link-hover" style={linkHoverStyle}>
-          <div className="app3d-link-hover__name">{linkHover.name}</div>
-          <div className="app3d-link-hover__hint">{contextHint}</div>
-        </div>
-      )}
       {!allowedOnSurface && (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-6">
           <Alert type="error" showIcon message={t('dashboard.application3DScreenOnly')} />

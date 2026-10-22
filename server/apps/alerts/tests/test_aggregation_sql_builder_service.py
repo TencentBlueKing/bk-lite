@@ -13,8 +13,8 @@ pytestmark = pytest.mark.integration
 @pytest.mark.parametrize(
     ("window_type", "expected_sha256"),
     (
-        (WindowType.SLIDING, "f385d1f7127142f53d1853066f34da6bd244e4ef36ba25531d8a5e5e60c3f959"),
-        (WindowType.SESSION, "ff5ce8a85a269378fbd15c36015cbd94bd77f8f3535e66621bd85c684008a3f5"),
+        (WindowType.SLIDING, "206cffbc2a53e1ec33df64141924e0d9041e803f4cac6cef67b4ff6d9c2af076"),
+        (WindowType.SESSION, "16102be69201487bddae0708402f0bf41cbfa8fca5a6caa97e83c6d2359820c9"),
     ),
 )
 def test_sql_builder_output_matches_ordinary_environment_baseline(monkeypatch, window_type, expected_sha256):
@@ -22,6 +22,11 @@ def test_sql_builder_output_matches_ordinary_environment_baseline(monkeypatch, w
         WindowConfig,
         "get_window_start",
         lambda self: datetime.fromisoformat("2026-08-05T08:00:00+00:00"),
+    )
+    monkeypatch.setattr(
+        WindowConfig,
+        "get_window_end",
+        lambda self: datetime.fromisoformat("2026-08-05T08:10:00+00:00"),
     )
     monkeypatch.setattr(
         WindowConfig,

@@ -6,6 +6,7 @@ import { Button, Tooltip, message } from 'antd';
 import 'ace-builds/src-noconflict/mode-python';
 import 'ace-builds/src-noconflict/mode-powershell';
 import 'ace-builds/src-noconflict/mode-sh';
+import 'ace-builds/src-noconflict/mode-sql';
 import 'ace-builds/src-noconflict/mode-toml';
 import 'ace-builds/src-noconflict/theme-monokai';
 import 'ace-builds/src-noconflict/theme-textmate';

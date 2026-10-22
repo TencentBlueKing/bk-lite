@@ -1,104 +1,178 @@
 'use client';
 
-import { DeleteOutlined } from '@ant-design/icons';
-import { Button, Select, Tag } from 'antd';
+import { useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { Button, Form, Select } from 'antd';
 
 import type { RumNotificationChannel, RumNotificationRecipient, RumNotificationTarget } from '@/app/rum/api';
+import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
+
+const CHANNEL_ICONS: Record<string, string> = {
+  email: 'youjian',
+  enterprise_wechat_bot: 'qiwei2',
+  feishu_bot: 'feishu',
+  dingtalk_bot: 'dingding',
+  custom_webhook: 'webhook',
+  nats: 'dongzuo1',
+};
+
+function channelIcon(channelType?: string) {
+  return CHANNEL_ICONS[channelType || ''] || 'jiqiren3';
+}
+
+function needsRecipients(channel: { recipientMode?: string; deliveryMode?: string }) {
+  return channel.recipientMode !== 'none' && channel.deliveryMode !== 'alert_event_copy';
+}
+
+function toTarget(channel: RumNotificationChannel, recipients: string[]): RumNotificationTarget {
+  return {
+    channelId: channel.id,
+    channelName: channel.name,
+    channelType: channel.channel_type,
+    deliveryMode: channel.delivery_mode,
+    recipientMode: channel.recipient_mode,
+    recipients: needsRecipients({
+      recipientMode: channel.recipient_mode,
+      deliveryMode: channel.delivery_mode,
+    }) ? recipients : [],
+  };
+}
 
 export default function NotificationTargetFields({
   targets,
   channels,
   recipients,
+  handlers,
+  organizationsReady,
   onChange,
   onSearchRecipients,
 }: {
   targets: RumNotificationTarget[];
   channels: RumNotificationChannel[];
   recipients: RumNotificationRecipient[];
+  handlers: string[];
+  organizationsReady: boolean;
   onChange: (next: RumNotificationTarget[]) => void;
   onSearchRecipients: (search: string) => void;
 }) {
   const { t } = useTranslation();
-  const selected = new Set(targets.map((item) => item.channelId));
-  const available = channels.filter((channel) => !selected.has(channel.id) && channel.availability !== 'unavailable');
+  const seededRecipients = useRef(false);
+  const visibleChannels = channels.filter((channel) => (
+    channel.availability !== 'unavailable' || targets.some((target) => target.channelId === channel.id)
+  ));
+  const selectedIds = new Set(targets.map((target) => target.channelId));
+  const sharedRecipients = [...new Set(
+    targets.filter((target) => needsRecipients(target)).flatMap((target) => target.recipients),
+  )];
+  const selectedNeedRecipients = targets.some((target) => needsRecipients(target));
+  const freeText = targets.some((target) => needsRecipients(target) && target.recipientMode !== 'system_user');
 
-  function addChannel(channelId: number) {
-    const channel = channels.find((item) => item.id === channelId);
-    if (!channel) return;
-    onChange([
-      ...targets,
-      {
-        channelId: channel.id,
-        channelName: channel.name,
-        channelType: channel.channel_type,
-        deliveryMode: channel.delivery_mode,
-        recipientMode: channel.recipient_mode,
-        recipients: channel.recipient_mode === 'none' || channel.delivery_mode === 'alert_event_copy' ? [] : [],
-      },
-    ]);
+  useEffect(() => {
+    if (!selectedNeedRecipients) {
+      seededRecipients.current = false;
+      return;
+    }
+    if (seededRecipients.current || sharedRecipients.length || handlers.length === 0) return;
+    seededRecipients.current = true;
+    onChange(targets.map((target) => (
+      needsRecipients(target) ? { ...target, recipients: [...handlers] } : target
+    )));
+  }, [handlers, onChange, selectedNeedRecipients, sharedRecipients.length, targets]);
+
+  function toggle(channel: RumNotificationChannel) {
+    if (selectedIds.has(channel.id)) {
+      onChange(targets.filter((target) => target.channelId !== channel.id));
+      return;
+    }
+    onChange([...targets, toTarget(channel, sharedRecipients)]);
+  }
+
+  function changeRecipients(values: string[]) {
+    onChange(targets.map((target) => (
+      needsRecipients(target) ? { ...target, recipients: values } : target
+    )));
   }
 
   return (
-    <div className="space-y-3">
-      <Select
-        showSearch
-        value={undefined}
-        placeholder={t('rum.monitors.addChannel', '添加通知渠道')}
-        className="w-full"
-        options={available.map((channel) => ({
-          value: channel.id,
-          label: `${channel.name} · ${channel.delivery_mode === 'alert_event_copy' ? t('rum.monitors.alertCopy', '告警中心副本') : t('rum.monitors.plainNotice', '普通通知')}`,
-        }))}
-        onChange={(value) => addChannel(Number(value))}
-        optionFilterProp="label"
-      />
-      {targets.map((target) => {
-        const channel = channels.find((item) => item.id === target.channelId);
-        const mode = channel?.delivery_mode || target.deliveryMode;
-        const recipientMode = channel?.recipient_mode || target.recipientMode;
-        const copy = mode === 'alert_event_copy' || recipientMode === 'none';
-        return (
-          <div key={target.channelId} className="rounded-lg border border-[var(--color-border-2)] p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="truncate">{channel?.name || target.channelName || target.channelId}</span>
-                <Tag bordered={false} color={copy ? 'purple' : 'blue'}>
-                  {copy ? t('rum.monitors.alertCopy', '告警中心副本') : t('rum.monitors.plainNotice', '普通通知')}
-                </Tag>
-              </div>
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                aria-label={t('rum.monitors.removeChannel', '移除渠道')}
-                onClick={() => onChange(targets.filter((item) => item.channelId !== target.channelId))}
-              />
-            </div>
-            {copy ? (
-              <p className="text-[var(--color-text-3)]">{t('rum.monitors.alertCopyNoRecipients', '该渠道接收告警事件副本，无需配置接收人。')}</p>
-            ) : (
-              <Select
-                mode={recipientMode === 'system_user' ? 'multiple' : 'tags'}
-                className="w-full"
-                value={target.recipients}
-                showSearch
-                allowClear
-                placeholder={recipientMode === 'system_user' ? t('rum.monitors.selectSystemUser', '请选择系统用户') : t('rum.monitors.notificationRecipients', '通知对象')}
-                options={recipientMode === 'system_user' ? recipients.map((item) => ({
-                  value: String(item.id),
-                  label: item.display_name ? `${item.display_name} (${item.username})` : item.username,
-                })) : undefined}
-                filterOption={recipientMode === 'system_user' ? false : undefined}
-                onSearch={recipientMode === 'system_user' ? onSearchRecipients : undefined}
-                onChange={(values) => onChange(targets.map((item) => (
-                  item.channelId === target.channelId ? { ...item, recipients: values } : item
-                )))}
-              />
-            )}
+    <>
+      <Form.Item label={t('rum.monitors.methods', '通知渠道')}>
+        {!organizationsReady ? (
+          <span className="text-[var(--color-text-3)]">{t('rum.monitors.selectOrganizationFirst', '请先选择所属组织')}</span>
+        ) : visibleChannels.length ? (
+          <div className="grid grid-cols-3 gap-4">
+            {visibleChannels.map((channel) => {
+              const selected = selectedIds.has(channel.id);
+              const recipientMode = channel.recipient_mode;
+              const copy = channel.delivery_mode === 'alert_event_copy' || recipientMode === 'none';
+              return (
+                <button
+                  key={channel.id}
+                  type="button"
+                  onClick={() => toggle(channel)}
+                  style={{
+                    backgroundColor: selected
+                      ? 'color-mix(in srgb, var(--color-primary) 4%, transparent)'
+                      : undefined,
+                    boxShadow: selected
+                      ? '0 8px 24px color-mix(in srgb, var(--color-primary) 20%, transparent)'
+                      : undefined,
+                  }}
+                  className={`relative cursor-pointer rounded-lg border-2 bg-[var(--color-bg-1)] p-3 text-left shadow-md transition-all duration-300 hover:shadow-lg ${
+                    selected ? 'border-[var(--color-primary)]' : 'border-transparent'
+                  }`}
+                >
+                  <div className="flex h-full gap-3">
+                    <Icon type={channelIcon(channel.channel_type)} className="mt-1 shrink-0 text-2xl" />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm font-bold" title={channel.name}>{channel.name}</span>
+                      <span className="mt-1 inline-flex w-fit rounded bg-[var(--color-primary-bg)] px-1.5 py-0.5 text-xs text-[var(--color-primary)]">
+                        {copy
+                          ? t('rum.monitors.alertCopy', '告警中心副本')
+                          : t('rum.monitors.plainNotice', '普通通知')}
+                      </span>
+                      <span className="mt-1 line-clamp-2 flex-1 text-xs text-[var(--color-text-3)]" title={channel.description || '--'}>
+                        {channel.description || '--'}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
-        );
-      })}
-    </div>
+        ) : (
+          <span className="text-[var(--color-text-3)]">
+            {t('rum.monitors.noChannels', '暂无通知渠道，可去')}
+            <Link href="/system-manager/channel">
+              <Button type="link" className="!px-1">{t('rum.monitors.systemManage', '系统管理')}</Button>
+            </Link>
+            {t('rum.monitors.configureChannels', '配置。')}
+          </span>
+        )}
+      </Form.Item>
+      {selectedNeedRecipients ? (
+        <Form.Item label={t('rum.monitors.notifier', '通知者')}>
+          <Select
+            mode={freeText ? 'tags' : 'multiple'}
+            allowClear
+            showSearch
+            className="w-full"
+            maxTagCount="responsive"
+            value={sharedRecipients}
+            placeholder={freeText
+              ? t('rum.monitors.notifierTagsPlaceholder', '请输入通知者，按回车键添加')
+              : t('rum.monitors.notifier', '通知者')}
+            options={freeText ? undefined : recipients.map((item) => ({
+              value: String(item.id),
+              label: item.display_name ? `${item.display_name} (${item.username})` : item.username,
+            }))}
+            optionFilterProp="label"
+            filterOption={freeText ? undefined : false}
+            onSearch={freeText ? undefined : onSearchRecipients}
+            onChange={changeRecipients}
+          />
+        </Form.Item>
+      ) : null}
+    </>
   );
 }

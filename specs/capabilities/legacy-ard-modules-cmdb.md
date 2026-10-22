@@ -183,6 +183,7 @@
 ## 2026-09-07 网络状态拓扑闭集 NATS
 
 - `[cmdb#20260907-001]` 新增 NATS `network_topology_among_uuids`：入参 `inst_uuids` + `user_info`，按模型构建 permission_map，调用 `InstanceManage.network_topology_among_uuids`。无权 / 非网络设备 / 非法 UUID / 超上限 / 闭集不完整一律 `{result: False, data: {nodes:[], links:[]}}`，不返回空成功图。RPC 包装：`apps.rpc.cmdb.CMDB.network_topology_among_uuids`。消费方为运营分析网络状态拓扑场景。
+- `[cmdb#20261019-001]` 视图页网络拓扑多选走 HTTP `POST /cmdb/api/instance/network_topo/among/`，复用 `InstanceManage.network_topology_among_uuids`。节点等于勾选设备，边只保留两端都在名单内；超过 `NETWORK_TOPO_NODE_LIMIT`（100）或闭集不合法返回 400，任一设备无查看权限则整次拒绝。实例详情仍走 `network_topo/{model}/{uuid}` 单中心跳数展开。
 
 ## 2026-09-21 Code-ARD 校准
 - `[cmdb#20261012-001]` NATS `get_room_list` 重新作为运营分析内置选项源「CMDB 机房列表（选项）」暴露，`valueField=inst_uuid`、`labelField=inst_name`。`get_room3d_layout` 仍不作为用户可选出图数据源。NATS handler 本身不变。

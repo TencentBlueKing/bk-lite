@@ -58,7 +58,7 @@ def _token_user(locale):
         locale=locale,
         is_authenticated=True,
         is_superuser=False,
-        permission={"system-manager": {"system_api_secret-Edit"}},
+        permission={"system-manager": {"api_secret_key-Add"}},
     )
 
 

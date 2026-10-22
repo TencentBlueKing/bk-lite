@@ -24,7 +24,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_apc_battery_capacity",
-      "query": "avg(network_service_apc_battery_capacity{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "avg(network_service_apc_battery_capacity{instance_type='network_service', collect_type='snmp_apc', __$labels__}) by (instance_id)",
       "display_name": "APC Battery Charge",
       "data_type": "Number",
       "unit": "percent",
@@ -37,7 +37,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_apc_output_load",
-      "query": "avg(network_service_apc_output_load{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "avg(network_service_apc_output_load{instance_type='network_service', collect_type='snmp_apc', __$labels__}) by (instance_id)",
       "display_name": "APC Output Load",
       "data_type": "Number",
       "unit": "percent",
@@ -50,7 +50,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_apc_ats_selected_source",
-      "query": "max(snmp_network_service_apc_ats_selected_source{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_network_service_apc_ats_selected_source{instance_type='network_service', collect_type='snmp_apc', __$labels__}) by (instance_id)",
       "display_name": "ATS Selected Source",
       "data_type": "Enum",
       "unit": "[{\"name\":\"A\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"B\",\"id\":2,\"color\":\"#1677ff\"}]",
@@ -63,7 +63,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_apc_ats_input_voltage_volts",
-      "query": "network_service_apc_ats_input_voltage_volts{instance_type='network_service', __$labels__}",
+      "query": "network_service_apc_ats_input_voltage_volts{instance_type='network_service', collect_type='snmp_apc', __$labels__}",
       "display_name": "ATS Input Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -81,7 +81,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_apc_ats_input_current_amps",
-      "query": "network_service_apc_ats_input_current_amps{instance_type='network_service', __$labels__}",
+      "query": "network_service_apc_ats_input_current_amps{instance_type='network_service', collect_type='snmp_apc', __$labels__}",
       "display_name": "ATS Input Current",
       "data_type": "Number",
       "unit": "none",
@@ -99,7 +99,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_apc_ats_output_voltage_volts",
-      "query": "network_service_apc_ats_output_voltage_volts{instance_type='network_service', __$labels__}",
+      "query": "network_service_apc_ats_output_voltage_volts{instance_type='network_service', collect_type='snmp_apc', __$labels__}",
       "display_name": "ATS Output Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -117,7 +117,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_apc_ats_output_current_amps",
-      "query": "network_service_apc_ats_output_current_amps{instance_type='network_service', __$labels__}",
+      "query": "network_service_apc_ats_output_current_amps{instance_type='network_service', collect_type='snmp_apc', __$labels__}",
       "display_name": "ATS Output Current",
       "data_type": "Number",
       "unit": "none",
@@ -135,7 +135,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_apc_ats_output_load_percent",
-      "query": "network_service_apc_ats_output_load_percent{instance_type='network_service', __$labels__}",
+      "query": "network_service_apc_ats_output_load_percent{instance_type='network_service', collect_type='snmp_apc', __$labels__}",
       "display_name": "ATS Output Load",
       "data_type": "Number",
       "unit": "percent",
@@ -153,7 +153,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_apc', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -171,7 +171,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_apc', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -189,7 +189,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_apc', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

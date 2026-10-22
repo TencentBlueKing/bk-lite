@@ -33,7 +33,8 @@ describe('集成入口上下文', () => {
         pluginName: 'K8S',
         pluginDisplayName: 'Kubernetes',
         pluginDescription: '集群监控',
-        templateType: 'builtin'
+        templateType: 'builtin',
+        packVersion: ''
       }
     });
   });
@@ -77,6 +78,25 @@ describe('集成入口上下文', () => {
     expect(params.get('name')).toBe('Cluster');
     expect(params.get('plugin_name')).toBe('K8S');
     expect(params.get('plugin_id')).toBe('297');
+  });
+
+  it('把 cmdb_draft 带到配置页', () => {
+    const result = resolveIntegrationEntryContext(
+      {
+        id: 297,
+        name: 'Host Plugin',
+        parent_monitor_object: 1,
+        parent_monitor_object_name: 'Host'
+      },
+      []
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const url = buildIntegrationConfigureUrl(result.context, 'default-icon', {
+      cmdb_draft: 'draft-1'
+    });
+    const params = new URL(url, 'https://example.test').searchParams;
+    expect(params.get('cmdb_draft')).toBe('draft-1');
   });
 
   it.each([

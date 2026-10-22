@@ -939,6 +939,12 @@ def get_nodes_with_child_config(node_ids: list, collector: str, collect_type: st
 
 
 @nats_client.register
+def get_child_config_assignments(node_ids: list, collector: str, collect_type: str):
+    """查询节点上指定采集器子配置的分配。"""
+    return NodeService.get_child_config_assignments(node_ids, collector, collect_type)
+
+
+@nats_client.register
 def get_node_names_by_ids(node_ids: list):
     """按节点ID批量获取节点名称。"""
     return NodeService.get_node_names_by_ids(node_ids)

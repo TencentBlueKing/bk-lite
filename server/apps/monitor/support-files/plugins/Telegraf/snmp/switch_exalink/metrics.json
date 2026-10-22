@@ -30,7 +30,7 @@
       ],
       "name": "device_load_average",
       "display_name": "负载均值",
-      "query": "max(snmp_device_load_average{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_load_average{instance_type='switch', collect_type='snmp_exalink', __$labels__}) by (instance_id)",
       "unit": "none",
       "data_type": "Number",
       "description": "System load average of the ExaLINK Fusion switch (fusionSysInfoLoadAverage). The device reports load ×100; the stored value is already divided by 100."
@@ -43,7 +43,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲量",
-      "query": "max(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_free{instance_type='switch', collect_type='snmp_exalink', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Available memory of the ExaLINK Fusion switch in bytes (fusionSysInfoAvailMem). There is no total-memory object, so memory percent is not computed. Non-positive readings are dropped."
@@ -51,7 +51,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_exalink', __$labels__}",
       "display_name": "设备温度",
       "data_type": "Number",
       "unit": "celsius",
@@ -73,7 +73,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "query": "device_fan_speed{instance_type='switch', collect_type='snmp_exalink', __$labels__}",
       "display_name": "风扇转速",
       "data_type": "Number",
       "unit": "counts",
@@ -95,7 +95,7 @@
     {
       "metric_group": "Temperature",
       "name": "psu_temperature_celsius",
-      "query": "psu_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "psu_temperature_celsius{instance_type='switch', collect_type='snmp_exalink', __$labels__}",
       "display_name": "电源温度",
       "data_type": "Number",
       "unit": "celsius",
@@ -117,7 +117,7 @@
     {
       "metric_group": "Power",
       "name": "psu_power_in_watts",
-      "query": "psu_power_in_watts{instance_type='switch', __$labels__}",
+      "query": "psu_power_in_watts{instance_type='switch', collect_type='snmp_exalink', __$labels__}",
       "display_name": "电源输入功率",
       "data_type": "Number",
       "unit": "watts",
@@ -139,7 +139,7 @@
     {
       "metric_group": "Power",
       "name": "psu_power_out_watts",
-      "query": "psu_power_out_watts{instance_type='switch', __$labels__}",
+      "query": "psu_power_out_watts{instance_type='switch', collect_type='snmp_exalink', __$labels__}",
       "display_name": "电源输出功率",
       "data_type": "Number",
       "unit": "watts",
@@ -161,7 +161,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_exalink', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

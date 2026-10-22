@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { Form, Input, Radio, Select } from 'antd';
 import type { CmdbAttrField } from '@/app/cmdb/components/cmdb-shared';
 import { pruneRelationFieldsCache } from '@/app/cmdb/utils/relationFieldsCache';
+import { isInstanceFilterReady, lifecycleNeedsWatchFields } from '@/app/cmdb/utils/subscriptionLifecycle';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import TriggerTypeConfig from './triggerTypeConfig';
@@ -287,7 +288,7 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
     const errors: Record<string, string> = {};
     const requiredMsg = t('common.selectMsg');
 
-    if (triggerTypes.includes('attribute_change')) {
+    if (lifecycleNeedsWatchFields(triggerTypes)) {
       const fields = triggerConfig.attribute_change?.fields || [];
       if (fields.length === 0) {
         errors['attribute_change.fields'] = requiredMsg;
@@ -425,15 +426,11 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
             rules={[
               {
                 validator: async (_, value) => {
-                  if (currentFilterType === 'instances') {
-                    if (Array.isArray(value?.instance_uuids) && value.instance_uuids.length > 0) {
-                      return;
-                    }
-                    throw new Error(t('subscription.selectInstances'));
-                  }
-
-                  if (Array.isArray(value?.query_list) && value.query_list.length > 0) {
+                  if (isInstanceFilterReady(currentFilterType, value)) {
                     return;
+                  }
+                  if (currentFilterType === 'instances') {
+                    throw new Error(t('subscription.selectInstances'));
                   }
                   throw new Error(t('subscription.filterTypeCondition'));
                 },

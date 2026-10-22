@@ -20,7 +20,7 @@
     "gridstack": "^12.6.0",
     "react-rnd": "^10.5.3",
     "three": "^0.185.1",
-    "x-isoflow-react-19": "^1.1.1-patch-6"
+    "@bk-lite/isoflow": "workspace:*"
   },
   "devDependencies": {
     "@types/three": "^0.185.0"

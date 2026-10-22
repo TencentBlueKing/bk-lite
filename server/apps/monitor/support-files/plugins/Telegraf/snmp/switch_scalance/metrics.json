@@ -23,7 +23,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_scalance', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -41,7 +41,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_scalance', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -64,7 +64,7 @@
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(device_psu_state{instance_type='switch', collect_type='snmp_scalance', __$labels__}) by (instance_id)",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Power-supply state of the SCALANCE industrial switch from automationPSStatus, normalised so that active(2) maps to 1=normal and inactive(1)/other values map to 2=abnormal."
@@ -72,7 +72,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_scalance', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "scalance_fault_state",
-      "query": "snmp_scalance_fault_state{instance_type='switch', __$labels__}",
+      "query": "snmp_scalance_fault_state{instance_type='switch', collect_type='snmp_scalance', __$labels__}",
       "display_name": "Fault Signalling State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -103,7 +103,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_scalance', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

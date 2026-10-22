@@ -28,7 +28,11 @@ class PasswordVaultTest(TestCase):
         from unittest import mock
 
         from apps.system_mgmt.utils import password_vault
+        from apps.system_mgmt.utils.i18n import system_mgmt_message
 
+        expected = system_mgmt_message(None, "error.vault_secret_key_not_configured")
         with mock.patch.object(password_vault, "settings", new=mock.Mock(SECRET_KEY="")):
-            with self.assertRaises(ValueError):
+            with self.assertRaises(ValueError) as ctx:
                 encrypt_for_vault("anything")
+        self.assertEqual(str(ctx.exception), expected)
+        self.assertEqual(str(ctx.exception), "SECRET_KEY 未配置,无法加解密 vault")

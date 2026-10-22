@@ -27,6 +27,7 @@ from apps.opspilot.services.wiki.markdown_export_service import QuotaExceededErr
 from apps.opspilot.services.wiki.markdown_import_governance_service import (
     MarkdownImportGovernanceError,
     _release_preflight_after_failure,
+    accept_markdown_import,
     enqueue_markdown_import,
     persist_markdown_import_celery_task_id,
     preflight_markdown_import,
@@ -364,18 +365,31 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         knowledge_base = self.get_object()
         upload = request.FILES.get("file")
         token = request.data.get("token")
-        if not upload or not token:
-            return JsonResponse({"result": False, "message": "file 与 token 必填"}, status=400)
+        if not upload:
+            return JsonResponse({"result": False, "message": "file 必填"}, status=400)
         operator = getattr(request.user, "username", "") or ""
         filename = upload.name
+        raw_options = request.data.get("options") or "{}"
         try:
-            data, dispatch = enqueue_markdown_import(
-                knowledge_base,
-                token,
-                upload.read(),
-                filename=filename,
-                actor=operator,
-            )
+            if token:
+                data, dispatch = enqueue_markdown_import(
+                    knowledge_base,
+                    token,
+                    upload.read(),
+                    filename=filename,
+                    actor=operator,
+                )
+            else:
+                options = json.loads(raw_options) if isinstance(raw_options, str) else dict(raw_options)
+                data, dispatch = accept_markdown_import(
+                    knowledge_base,
+                    upload.read(),
+                    filename=filename,
+                    actor=operator,
+                    options=options,
+                )
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
+            return JsonResponse({"result": False, "message": str(error), "code": "import_options_invalid"}, status=400)
         except MarkdownImportGovernanceError as error:
             return _governance_error(error, status=error.status_code)
         except BuildGenerationError as error:

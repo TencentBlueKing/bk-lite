@@ -22,7 +22,7 @@
     {
       "metric_group": "Power",
       "name": "battery_voltage_volts",
-      "query": "max(snmp_battery_voltage_volts{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_battery_voltage_volts{instance_type='network_service', collect_type='snmp_eltek', __$labels__}) by (instance_id)",
       "display_name": "Battery Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Temperature",
       "name": "battery_temperature_celsius",
-      "query": "max(snmp_battery_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_battery_temperature_celsius{instance_type='network_service', collect_type='snmp_eltek', __$labels__}) by (instance_id)",
       "display_name": "Battery Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Power",
       "name": "rectifier_output_voltage_volts",
-      "query": "rectifier_output_voltage_volts{instance_type='network_service', __$labels__}",
+      "query": "rectifier_output_voltage_volts{instance_type='network_service', collect_type='snmp_eltek', __$labels__}",
       "display_name": "Rectifier Output Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Power",
       "name": "rectifier_output_current_amps",
-      "query": "rectifier_output_current_amps{instance_type='network_service', __$labels__}",
+      "query": "rectifier_output_current_amps{instance_type='network_service', collect_type='snmp_eltek', __$labels__}",
       "display_name": "Rectifier Output Current (A)",
       "data_type": "Number",
       "unit": "none",
@@ -84,7 +84,7 @@
     {
       "metric_group": "Temperature",
       "name": "rectifier_temperature_celsius",
-      "query": "rectifier_temperature_celsius{instance_type='network_service', __$labels__}",
+      "query": "rectifier_temperature_celsius{instance_type='network_service', collect_type='snmp_eltek', __$labels__}",
       "display_name": "Rectifier Inlet Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -102,7 +102,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "rectifier_state",
-      "query": "rectifier_state{instance_type='network_service', __$labels__}",
+      "query": "rectifier_state{instance_type='network_service', collect_type='snmp_eltek', __$labels__}",
       "display_name": "Rectifier Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -120,7 +120,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_eltek', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -138,7 +138,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_eltek', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -156,7 +156,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_eltek', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "device_cpu_usage{instance_type='switch', collect_type='snmp_nokia', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -39,7 +39,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_nokia', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -57,7 +57,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_nokia', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -85,7 +85,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "device_memory_usage{instance_type='switch', __$labels__}",
+      "query": "device_memory_usage{instance_type='switch', collect_type='snmp_nokia', __$labels__}",
       "unit": "percent",
       "data_type": "Number",
       "description": "This metric reports the memory utilisation percentage of the Nokia OmniSwitch (ALCATEL-IND1-HEALTH-MIB healthModuleMemoryLatest), reported directly as a percentage and aggregated as the average across modules. Sustained high memory may indicate a leak or resource pressure and can degrade device stability."
@@ -103,7 +103,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_nokia', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
       "description": "This metric reports the chassis temperature in degrees Celsius of the Nokia OmniSwitch (ALCATEL-IND1-CHASSIS-MIB chasChassisTemp), aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
@@ -121,7 +121,7 @@
       ],
       "name": "device_fan_state",
       "display_name": "风扇状态",
-      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_state{instance_type='switch', collect_type='snmp_nokia', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "This metric reports the fan operational state of the Nokia OmniSwitch (ALCATEL-IND1-CHASSIS-MIB chasEntPhysOperStatus for fan entities), normalised via telegraf processors.enum to 1=normal / 2=abnormal. An abnormal fan reduces cooling capacity and raises the risk of thermal shutdown."
@@ -139,7 +139,7 @@
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_nokia', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "This metric reports the power-supply state of the Nokia OmniSwitch (ALCATEL-IND1-CHASSIS-MIB chasEntPhysOperStatus for power-supply entities), normalised via telegraf processors.enum to 1=normal / 2=abnormal. A failed power supply removes redundancy and a single-supply failure can take the device offline."
@@ -147,7 +147,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_nokia', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -96,8 +96,8 @@ def test_candidate_with_view_only_workflow_scope_can_decide_approval(mocker):
     candidate.group_tree = []
     candidate.permission = {
         "workflow-orchestration": {
-            "workflow-View",
-            "workflow-Approve",
+            "workflow_execution-View",
+            "workflow_execution-Approve",
         }
     }
     interaction = _pending_approval()
@@ -128,8 +128,8 @@ def test_non_candidate_with_view_only_workflow_scope_cannot_decide_approval(mock
     non_candidate.group_tree = []
     non_candidate.permission = {
         "workflow-orchestration": {
-            "workflow-View",
-            "workflow-Approve",
+            "workflow_execution-View",
+            "workflow_execution-Approve",
         }
     }
     interaction = _pending_approval()

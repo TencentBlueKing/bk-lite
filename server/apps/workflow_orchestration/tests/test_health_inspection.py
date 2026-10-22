@@ -106,7 +106,7 @@ def test_health_job_envelope_keeps_multidimensional_disk_warning_evidence():
                         "target_key": "1",
                         "status": "success",
                         "exit_code": 0,
-                        "stdout": f"BK_LITE_RESULT={json.dumps(payload, ensure_ascii=False)}",
+                        "stdout": f"result={json.dumps(payload, ensure_ascii=False)}",
                     }
                 ]
             }
@@ -116,8 +116,8 @@ def test_health_job_envelope_keeps_multidimensional_disk_warning_evidence():
     output = execute_custom_script(_inputs(), executor=runner)
 
     assert output["summary"] == {"total": 1, "succeeded": 1, "failed": 0}
-    assert output["results"][0]["target"]["ip"] == "10.10.90.120"
-    data = output["results"][0]["data"]
+    assert output["data"][0]["target"]["ip"] == "10.10.90.120"
+    data = output["data"][0]["result"]
     assert {metric["category"] for metric in data["metrics"]} >= {"CPU", "磁盘", "网络"}
     disk = next(metric for metric in data["metrics"] if metric["object_name"] == "D:")
     assert disk["dimensions"] == "mount=D:"
@@ -144,9 +144,9 @@ def test_script_failure_stays_in_results_and_keeps_node_success_summary():
     output = execute_custom_script(_inputs(), executor=runner)
 
     assert output["summary"] == {"total": 1, "succeeded": 0, "failed": 1}
-    assert output["results"][0]["status"] == "FAILED"
-    assert output["results"][0]["data"] is None
-    assert "offline" in output["results"][0]["error"]
+    assert output["data"][0]["status"] == "FAILED"
+    assert output["data"][0]["result"] is None
+    assert "offline" in output["data"][0]["error"]
 
 
 def test_invalid_bk_lite_result_json_fails_the_job_node():
@@ -158,12 +158,12 @@ def test_invalid_bk_lite_result_json_fails_the_job_node():
                         "target_key": "1",
                         "status": "success",
                         "exit_code": 0,
-                        "stdout": "BK_LITE_RESULT={not-json",
+                        "stdout": "result={not-json",
                     }
                 ]
             }
         ]
     )
 
-    with pytest.raises(ValueError, match="BK_LITE_RESULT"):
+    with pytest.raises(ValueError, match="有效 JSON"):
         execute_custom_script(_inputs(), executor=runner)

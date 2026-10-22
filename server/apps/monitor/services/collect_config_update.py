@@ -194,7 +194,6 @@ class CollectConfigUpdateService:
         from apps.monitor.services.node_mgmt import InstanceConfigService
 
         plugin_fps: dict[int, str] = {}
-        object_ids: set = set()
         for plugin in plugins or []:
             plugin_id = getattr(plugin, "id", None)
             if plugin_id is None:
@@ -203,9 +202,15 @@ class CollectConfigUpdateService:
             if not fingerprint:
                 continue
             plugin_fps[plugin_id] = fingerprint
-            object_ids.update(plugin.monitor_object.values_list("id", flat=True))
         if not plugin_fps:
             return counts
+
+        field = MonitorPlugin._meta.get_field("monitor_object")
+        object_ids = set(
+            field.remote_field.through.objects.filter(
+                **{f"{field.m2m_column_name()}__in": plugin_fps}
+            ).values_list(field.m2m_reverse_name(), flat=True)
+        )
 
         authorized_ids: set[str] = set()
         for object_id in object_ids:

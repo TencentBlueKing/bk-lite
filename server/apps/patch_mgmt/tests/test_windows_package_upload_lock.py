@@ -19,6 +19,21 @@ from apps.patch_mgmt.services.windows_package import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _accept_package_identity(monkeypatch):
+    """锁契约不覆盖签名；签名由 windows_package_identity 测试锁定。"""
+
+    def accept(payload, *, expected_kb, file_name, declared_dotnet_version="", trust_store=None):
+        from apps.patch_mgmt.services.windows_package_identity import WindowsPackageIdentity
+
+        return WindowsPackageIdentity(kb_numbers=frozenset({expected_kb.upper()}), dotnet_version="")
+
+    monkeypatch.setattr(
+        "apps.patch_mgmt.services.windows_package.inspect_windows_update_package",
+        accept,
+    )
+
+
 def _msu_upload(name: str, payload: bytes) -> SimpleUploadedFile:
     return SimpleUploadedFile(name, b"PK\x03\x04" + payload)
 
@@ -92,8 +107,9 @@ class TestWindowsPackageUploadLock:
             "django_minio_backend.MinioBackend.save",
             return_value="windows/1/hash/kb5440002-second.msu",
         ):
-            with pytest.raises(WindowsPackageError, match="当前补丁状态不允许上传文件"):
+            with pytest.raises(WindowsPackageError) as blocked:
                 store_windows_package(stale, second)
+            assert blocked.value.code == "package_status_blocked"
 
         patch.refresh_from_db()
         assert patch.pkg_status == PackageStatus.READY
@@ -121,8 +137,9 @@ class TestWindowsPackageUploadLock:
             "django_minio_backend.MinioBackend.save",
             return_value="windows/1/hash/kb5440003-replace.msu",
         ):
-            with pytest.raises(WindowsPackageError, match="仅上传失败的补丁允许替换文件"):
+            with pytest.raises(WindowsPackageError) as blocked:
                 replace_failed_windows_package(stale, replacement)
+            assert blocked.value.code == "package_replace_only_failed"
 
         patch.refresh_from_db()
         assert patch.pkg_status == PackageStatus.READY
@@ -170,15 +187,16 @@ class TestWindowsPackageUploadLock:
         patch.refresh_from_db()
         assert result == 1
         assert patch.pkg_status == PackageStatus.DOWNLOAD_FAILED
-        assert "上传超时" in patch.windows_detail.package_error
+        assert "timed out" in patch.windows_detail.package_error
 
     def test_invalid_package_still_marks_failed(self):
         patch = _create_downloading_patch(kb_number="KB5440007", title="校验失败仍标记失败")
         upload = SimpleUploadedFile("kb5440007.txt", b"not-a-patch")
 
-        with pytest.raises(WindowsPackageError, match="仅支持 .msu 和 .cab 补丁包"):
+        with pytest.raises(WindowsPackageError) as rejected:
             store_windows_package(patch, upload)
+        assert rejected.value.code == "package_extension"
 
         patch.refresh_from_db()
         assert patch.pkg_status == PackageStatus.DOWNLOAD_FAILED
-        assert "仅支持 .msu 和 .cab 补丁包" in patch.windows_detail.package_error
+        assert "Only .msu and .cab" in patch.windows_detail.package_error

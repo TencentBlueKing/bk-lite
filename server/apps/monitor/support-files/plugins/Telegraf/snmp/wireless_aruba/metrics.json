@@ -27,7 +27,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_aruba_wireless', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -40,7 +40,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='wireless', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='wireless', collect_type='snmp_aruba_wireless', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -53,7 +53,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "snmp_device_memory_usage{instance_type='wireless', __$labels__}",
+      "query": "snmp_device_memory_usage{instance_type='wireless', collect_type='snmp_aruba_wireless', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "snmp_device_temperature_celsius{instance_type='wireless', __$labels__}",
+      "query": "snmp_device_temperature_celsius{instance_type='wireless', collect_type='snmp_aruba_wireless', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -79,7 +79,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_ap_count",
-      "query": "snmp_wireless_ap_count{instance_type='wireless', __$labels__}",
+      "query": "snmp_wireless_ap_count{instance_type='wireless', collect_type='snmp_aruba_wireless', __$labels__}",
       "display_name": "Access Point Count",
       "data_type": "Number",
       "unit": "counts",
@@ -92,7 +92,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_station_count",
-      "query": "snmp_wireless_station_count{instance_type='wireless', __$labels__}",
+      "query": "snmp_wireless_station_count{instance_type='wireless', collect_type='snmp_aruba_wireless', __$labels__}",
       "display_name": "Associated Station Count",
       "data_type": "Number",
       "unit": "counts",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "aruba_fan_state",
-      "query": "aruba_fan_state{instance_type='wireless', __$labels__}",
+      "query": "aruba_fan_state{instance_type='wireless', collect_type='snmp_aruba_wireless', __$labels__}",
       "display_name": "Fan State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "aruba_psu_state",
-      "query": "aruba_psu_state{instance_type='wireless', __$labels__}",
+      "query": "aruba_psu_state{instance_type='wireless', collect_type='snmp_aruba_wireless', __$labels__}",
       "display_name": "Power Supply State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",

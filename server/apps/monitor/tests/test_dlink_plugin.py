@@ -127,7 +127,7 @@ def test_shared_device_metrics_match_cisco_group_and_unit(metrics, cisco_metrics
 @pytest.mark.unit
 def test_cpu_query_matches_top_level_snmp_scalar(metrics, toml_text):
     metric = {m["name"]: m for m in metrics["metrics"]}["device_cpu_usage"]
-    assert metric["query"] == "snmp_device_cpu_usage{instance_type='switch', __$labels__}"
+    assert metric["query"] == f"snmp_device_cpu_usage{{instance_type='switch', collect_type='{COLLECT_TYPE}', __$labels__}}"
     assert metric["dimensions"] == []
     _, config = render_snmp_config(toml_text, DLINK_DIR)
     fields = {field["name"]: field for field in config["inputs"]["snmp"][0]["field"]}
@@ -154,13 +154,13 @@ def test_memory_preserves_stack_rows_and_kib_to_bytes_conversion(metrics):
     by_name = {m["name"]: m for m in metrics["metrics"]}
     usage = by_name["device_memory_usage"]
     assert usage["unit"] == "percent"
-    assert usage["query"] == "device_memory_usage{instance_type='switch', __$labels__}"
+    assert usage["query"] == f"device_memory_usage{{instance_type='switch', collect_type='{COLLECT_TYPE}', __$labels__}}"
     for name in ("device_memory_usage", "device_memory_used", "device_memory_total"):
         metric = by_name[name]
         assert [item["name"] for item in metric["dimensions"]] == ["unitID", "index"]
         if name != "device_memory_usage":
             assert metric["unit"] == "bytes"
-            assert metric["query"] == f"{name}{{instance_type='switch', __$labels__}} * 1024"
+            assert metric["query"] == f"{name}{{instance_type='switch', collect_type='{COLLECT_TYPE}', __$labels__}} * 1024"
     assert "device_memory_free" not in by_name
 
 

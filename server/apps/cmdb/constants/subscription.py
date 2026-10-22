@@ -31,12 +31,19 @@ class TriggerType(str, Enum):
 
 # 触发类型显示名称映射
 TRIGGER_TYPE_CHOICES = {
-    TriggerType.ATTRIBUTE_CHANGE.value: "属性变化",
+    TriggerType.ATTRIBUTE_CHANGE.value: "修改",
     TriggerType.RELATION_CHANGE.value: "关联变化",
     TriggerType.EXPIRATION.value: "临近到期",
-    TriggerType.INSTANCE_ADDED.value: "实例新增",
-    TriggerType.INSTANCE_DELETED.value: "实例删除",
+    TriggerType.INSTANCE_ADDED.value: "新增",
+    TriggerType.INSTANCE_DELETED.value: "删除",
     TriggerType.CONFIG_FILE.value: "配置文件",
+}
+
+# 实例生命周期：新增、修改、删除。三者共用 attribute_change.fields。
+INSTANCE_LIFECYCLE_TRIGGER_TYPES = {
+    TriggerType.INSTANCE_ADDED.value,
+    TriggerType.ATTRIBUTE_CHANGE.value,
+    TriggerType.INSTANCE_DELETED.value,
 }
 
 # ========== 任务调度与锁 ==========

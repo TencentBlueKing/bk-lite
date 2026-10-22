@@ -40,10 +40,11 @@ import TagCapsuleGroup from '@/components/tag-capsule-group';
 import {
   canSyncMonitor,
   showNodeId,
-  isMonitorSold,
+  canOpenMonitorLink,
   resolveMonitorLinkMessage,
 } from '@/app/cmdb/utils/systemLinkage';
 import MonitorBindModal from './MonitorBindModal';
+import InstUuidCopy from '../../instUuidCopy';
 import { HandledRequestError } from '@/utils/request';
 
 const InfoList: React.FC<AssetDataFieldProps> = ({
@@ -66,7 +67,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const [bindModalOpen, setBindModalOpen] = useState(false);
   const { t } = useTranslation();
   const { flatGroups } = useUserInfoContext();
-  const { clientData } = useClientData();
+  const { clientData, loading: clientLoading } = useClientData();
 
   const { updateInstance, getInstanceProxys, pushToMonitor, unbindMonitor } = useInstanceApi();
 
@@ -594,7 +595,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
 
   const isMonitorLinked = Boolean(String(instDetail?.monitor_id || '').trim());
   const canOperateMonitor =
-    canSyncMonitor(modelId) && isMonitorSold(clientData);
+    canSyncMonitor(modelId) && canOpenMonitorLink(clientData, clientLoading, modelId);
   const showManualBind = canOperateMonitor && !isMonitorLinked;
   const showRebind = canOperateMonitor && isMonitorLinked;
   const showUnbind = canOperateMonitor && isMonitorLinked;
@@ -689,6 +690,15 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           )}
         </div>
       )}
+      {instUuid ? (
+        <InstUuidCopy
+          value={instUuid}
+          showLabel
+          wrap
+          className="font-mono text-xs leading-4"
+          rowClassName="mb-3"
+        />
+      ) : null}
       {displayGroups && displayGroups.length > 0 && (
         <Collapse
           bordered={false}

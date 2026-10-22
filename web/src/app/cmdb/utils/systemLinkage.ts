@@ -1,4 +1,5 @@
 import type { ClientData } from '@/types';
+import { hasAppAccess } from '@/context/appCapabilities/access';
 import { HandledRequestError } from '@/utils/request';
 
 export const MONITOR_SYNC_MODEL_IDS = new Set([
@@ -32,6 +33,92 @@ export const MONITOR_SYNC_MODEL_IDS = new Set([
 export const showNodeId = (modelId: string) => modelId === 'host';
 
 export const canSyncMonitor = (modelId: string) => MONITOR_SYNC_MODEL_IDS.has(modelId);
+
+const PLATFORM_MODEL_IDS = new Set([
+  'k8s_cluster',
+  'k8s_namespace',
+  'k8s_workload',
+  'k8s_pod',
+  'k8s_node',
+  'vmware_vc',
+  'aliyun_account',
+  'qcloud',
+  'hwcloud',
+  'fusioninsight',
+]);
+const PLATFORM_MODEL_PREFIXES = [
+  'k8s_',
+  'aliyun',
+  'qcloud',
+  'hwcloud',
+  'vmware_',
+  'fusioninsight',
+];
+
+export const isPlatformTreeModel = (modelId: string) => {
+  const text = String(modelId || '').trim();
+  if (!text) return false;
+  if (PLATFORM_MODEL_IDS.has(text)) return true;
+  return PLATFORM_MODEL_PREFIXES.some((prefix) => text.startsWith(prefix));
+};
+
+export const canOpenMonitorLink = (
+  clientData: ClientData[] | undefined | null,
+  clientLoading: boolean,
+  modelId: string,
+) => {
+  if (clientLoading) return false;
+  if (!hasAppAccess(clientData, 'cmdb')) return false;
+  if (!hasAppAccess(clientData, 'monitor')) return false;
+  return !isPlatformTreeModel(modelId);
+};
+
+const MONITOR_OBJECT_TO_CMDB_MODEL: Record<string, string> = {
+  Host: 'host',
+  Switch: 'switch',
+  Router: 'router',
+  Firewall: 'firewall',
+  Loadbalance: 'loadbalance',
+  'Hardware Server': 'physcial_server',
+  Mysql: 'mysql',
+  Postgres: 'postgresql',
+  MSSQL: 'mssql',
+  InfluxDB: 'influxdb',
+  Oracle: 'oracle',
+  Redis: 'redis',
+  MongoDB: 'mongodb',
+  ElasticSearch: 'es',
+  Apache: 'apache',
+  Tomcat: 'tomcat',
+  Nginx: 'nginx',
+  RabbitMQ: 'rabbitmq',
+  Kafka: 'kafka',
+  Zookeeper: 'zookeeper',
+  ActiveMQ: 'activemq',
+  Minio: 'minio',
+  Etcd: 'etcd',
+  Haproxy: 'haproxy',
+  'Docker Container': 'docker',
+};
+
+export const builtinCmdbModelId = (objectName: string) => {
+  const text = String(objectName || '').trim();
+  if (!text) return null;
+  return MONITOR_OBJECT_TO_CMDB_MODEL[text] || null;
+};
+
+export const canOpenCmdbLink = (
+  clientData: ClientData[] | undefined | null,
+  clientLoading: boolean,
+  objectName: string,
+) => {
+  if (clientLoading) return false;
+  if (!hasAppAccess(clientData, 'cmdb')) return false;
+  if (!hasAppAccess(clientData, 'monitor')) return false;
+  const modelId = builtinCmdbModelId(objectName);
+  if (!modelId) return false;
+  return !isPlatformTreeModel(modelId);
+};
 
 export const EXTERNAL_ID_COLUMN_KEY = 'external_id';
 export const EXTERNAL_ID_EMPTY = '--';

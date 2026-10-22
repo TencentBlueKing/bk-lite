@@ -33,3 +33,13 @@ CMDB_MODEL_TO_MONITOR_OBJECT = {
 }
 
 CMDB_MONITOR_SYNC_MODEL_IDS = frozenset(CMDB_MODEL_TO_MONITOR_OBJECT)
+
+MONITOR_OBJECT_TO_CMDB_MODEL = {object_name: model_id for model_id, object_name in CMDB_MODEL_TO_MONITOR_OBJECT.items()}
+
+
+def builtin_model_id(object_name: str | None) -> str | None:
+    """倒内置映射。未知对象返回 None，绝不默认 host。"""
+    text = str(object_name or "").strip()
+    if not text:
+        return None
+    return MONITOR_OBJECT_TO_CMDB_MODEL.get(text)

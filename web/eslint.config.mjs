@@ -81,6 +81,7 @@ export default defineConfig([
     '**/*.config.js',
     '**/*.config.mjs',
     'scripts/**',
+    'packages/isoflow/**',
     'server.cert',
     'server.csr',
     'server.js',

@@ -22,7 +22,6 @@ from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import create_candidate
 from apps.opspilot.services.wiki.colloquial_alias_service import COLLOQUIAL_ALIAS_CONTRACT, ground_aliases, seed_aliases_from_tags
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
-from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.text_utils import split_text_by_estimated_tokens, split_text_for_llm
 from apps.opspilot.services.wiki.title_service import canonical_title as _canonical_title
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens
@@ -240,6 +239,8 @@ def _invoke_llm(
             "timeout": _wiki_llm_timeout(),
             "input_working_tokens": derived.input_working_tokens,
             "context_window_tokens": derived.window_tokens,
+            "show_think": False,
+            "suppress_default_thinking": True,
         }
         # OpenAI 兼容协议可请求 json_object；网关不支持时由 factory 自动降级。
         if force_json and protocol_type == "openai":

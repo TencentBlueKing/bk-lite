@@ -39,6 +39,21 @@ class MetricGroupSerializer(serializers.ModelSerializer):
         monitor_plugin = attrs.get("monitor_plugin", getattr(self.instance, "monitor_plugin", None))
         name = attrs.get("name", getattr(self.instance, "name", None))
 
+        if self.instance is not None:
+            scope_errors = {}
+            locked_message = "分组仍被指标引用，不能修改所属对象或插件"
+            if "monitor_object" in attrs:
+                new_object_id = getattr(attrs.get("monitor_object"), "id", None)
+                if new_object_id != self.instance.monitor_object_id:
+                    scope_errors["monitor_object"] = locked_message
+            if "monitor_plugin" in attrs:
+                plugin = attrs.get("monitor_plugin")
+                new_plugin_id = getattr(plugin, "id", None) if plugin is not None else None
+                if new_plugin_id != self.instance.monitor_plugin_id:
+                    scope_errors["monitor_plugin"] = locked_message
+            if scope_errors and Metric.objects.filter(metric_group_id=self.instance.id).exists():
+                raise serializers.ValidationError(scope_errors)
+
         if monitor_plugin and monitor_plugin.template_type == "api" and not monitor_plugin.template_id:
             raise serializers.ValidationError({"monitor_plugin": "自建API模板配置异常"})
 

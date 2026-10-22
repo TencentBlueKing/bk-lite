@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -16,6 +17,7 @@ from apps.opspilot.utils.enterprise_wechat_aibot_crypto import EnterpriseWechatA
 
 SHORT_CONNECTION_FILE_LINKED_LOG = "event=wecom_aibot_short_connection_file_linked channel_id=%s file_count=%s"
 SHORT_CONNECTION_FILE_SKIPPED_LOG = "event=wecom_aibot_short_connection_file_skipped channel_id=%s failed_stage=download_origin file_count=%s"
+DOWNLOAD_PUBLIC_BASE_URL_ENV = "WECOM_AIBOT_PUBLIC_BASE_URL"
 
 SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE = (
     "event=skill_channel_aibot_decrypt_failed channel_id=%s failed_stage=decrypt_callback "
@@ -34,6 +36,22 @@ def callback_download_origin(request: HttpRequest) -> str:
     if origin.startswith("http://") or origin.startswith("https://"):
         return origin
     return ""
+
+
+def resolve_download_origin(request: HttpRequest, config: dict[str, Any] | None) -> str:
+    """短连接下载外链优先用渠道/环境配置的公网地址，否则回退到本次回调 Host。"""
+    config = config or {}
+    webhook = config.get("webhook")
+    if isinstance(webhook, dict):
+        configured = webhook.get("publicBaseUrl") or webhook.get("downloadPublicBaseUrl") or ""
+        if isinstance(configured, str):
+            base = configured.strip().rstrip("/")
+            if base.startswith("http://") or base.startswith("https://"):
+                return base
+    env_base = (os.environ.get(DOWNLOAD_PUBLIC_BASE_URL_ENV) or "").strip().rstrip("/")
+    if env_base.startswith("http://") or env_base.startswith("https://"):
+        return env_base
+    return callback_download_origin(request)
 
 
 def append_short_connection_file_links(content: str, execution_id: str, channel_id: int, *, origin: str) -> str:
@@ -182,7 +200,7 @@ class SkillChannelAibotUtils(EnterpriseWechatAibotChatFlowUtils):
         task_config = {
             **config,
             "response_url": message.get("response_url") or "",
-            "download_origin": callback_download_origin(request),
+            "download_origin": resolve_download_origin(request, config),
         }
         from apps.opspilot.tasks import process_skill_channel_aibot_message
 

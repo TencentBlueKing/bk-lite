@@ -8,7 +8,7 @@ const ROOT = join(process.cwd(), 'src/app/rum');
 describe('rum alert alignment page skeleton', () => {
   const alerts = readFileSync(join(ROOT, 'alert-events/page.tsx'), 'utf8');
   const policies = readFileSync(join(ROOT, 'monitors/page.tsx'), 'utf8');
-  const form = readFileSync(join(ROOT, 'monitors/ui/monitor-form-drawer.tsx'), 'utf8');
+  const form = readFileSync(join(ROOT, 'monitors/ui/monitor-policy-editor.tsx'), 'utf8');
   const channels = readFileSync(join(ROOT, 'monitors/ui/notification-target-fields.tsx'), 'utf8');
   const actions = readFileSync(join(ROOT, 'alert-events/alert-handler-actions.tsx'), 'utf8');
 
@@ -58,6 +58,8 @@ describe('rum alert alignment page skeleton', () => {
     expect(form).toContain('forDurationSec');
     expect(form).toContain('noDataAfter');
     expect(form).toContain('NotificationTargetFields');
+    expect(form).toContain("t('rum.monitors.enableNotification', '启用通知')");
+    expect(form).toContain('noticeEnabled ? targets : []');
     expect(form).not.toContain('notifyChannels');
     expect(channels).toContain("t('rum.monitors.alertCopy', '告警中心副本')");
     expect(channels).toContain("t('rum.monitors.plainNotice', '普通通知')");

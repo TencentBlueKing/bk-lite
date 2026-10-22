@@ -91,6 +91,18 @@ import {
   countAccessAssets,
   mergeImportedAssetRows
 } from './automaticAssetCount';
+import {
+  applyNodeIdToEmptyRows,
+  buildAgentRowsFromNodes,
+  listUnusedAgentNodes,
+  nodeIdText,
+} from './accessNodeRows';
+import {
+  applyCmdbDraftNodeMatch,
+  isHostAgentTable,
+  mapCmdbAccessDraftRows,
+  projectCmdbDraftRowOntoTable,
+} from '@/app/monitor/utils/cmdbAccessDraft';
 import ScriptTrialRunArea, {
   scriptTrialBlocksMetricActions
 } from './scriptTrialRunArea';
@@ -236,6 +248,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const pluginName = searchParams.get('plugin_name') || '';
   const objectId = searchParams.get('id') || '';
   const objectName = searchParams.get('name') || '';
+  const cmdbDraftId = searchParams.get('cmdb_draft') || '';
   const enableIfmibFromUrl = searchParams.get('enable_ifmib') !== 'false';
   // URL 常见参数：name / plugin_name；兼容历史 plugin_display_name。
   const pluginDisplayName =
@@ -253,6 +266,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [initTableItems, setInitTableItems] =
     useState<IntegrationMonitoredObject>({});
   const [isTableInitialized, setIsTableInitialized] = useState<boolean>(false);
+  const [draftPrefillDone, setDraftPrefillDone] = useState(!cmdbDraftId);
+  const [draftRows, setDraftRows] = useState<IntegrationMonitoredObject[] | null>(
+    null
+  );
   const hasInitializedFormRef = useRef(false);
   const [storedScriptForm, setStoredScriptForm] = useState<
     Record<string, any> | undefined
@@ -304,12 +321,34 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     setCollectDetectTasks({});
   };
 
+  const isUniqueNodeTable = useMemo(
+    () =>
+      (currentConfig?.table_columns || []).some(
+        (column: { name?: string; enable_row_filter?: boolean }) =>
+          column.name === 'node_ids' && column.enable_row_filter === true
+      ),
+    [currentConfig]
+  );
+
   const onTableDataChange = (data: IntegrationMonitoredObject[]) => {
     setDataSource(data);
     clearCollectDetectState();
     if (data.length > 0 && (!activeTrialRowKey || !data.some((r) => r.key === activeTrialRowKey))) {
       setActiveTrialRowKey(data[0].key as string);
     }
+  };
+
+  const handleApplyNodeToEmptyRows = (nodeIds: unknown) => {
+    if (!nodeIdText(nodeIds)) {
+      message.warning(t('monitor.integrations.batchApplyNodeNeedSelect', '请先选择节点'));
+      return;
+    }
+    const next = applyNodeIdToEmptyRows(dataSource, nodeIds);
+    if (next === dataSource) {
+      message.info(t('monitor.integrations.batchApplyNodeEmpty', '没有可生效的空行'));
+      return;
+    }
+    setDataSource(next);
   };
 
   useEffect(() => {
@@ -1270,9 +1309,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return [];
     }
     const dataColumns = visibleTableColumns.map((columnConfig: any) =>
-      renderTableColumn(columnConfig, dataSource, onTableDataChange, {
-        node_ids_option: nodeList
-      })
+      renderTableColumn(
+        columnConfig,
+        dataSource,
+        onTableDataChange,
+        {
+          node_ids_option: nodeList
+        },
+        { onApplyNodeToEmptyRows: handleApplyNodeToEmptyRows }
+      )
     );
     // 检查是否有 enable_row_filter 为 true 的列
     const hasRowFilter = visibleTableColumns.some(
@@ -1408,21 +1453,59 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   }, [pluginId]);
 
   useEffect(() => {
-    if (
-      !configLoading &&
-      Object.keys(formConfig.initTableItems).length &&
-      !isTableInitialized
-    ) {
-      const initItems = {
-        ...formConfig.initTableItems,
-        group_ids: formConfig.initTableItems.group_ids || groupId,
-        key: uuidv4()
-      };
-      setInitTableItems(initItems);
-      setDataSource([initItems]);
-      setIsTableInitialized(true); // 避免无限初始化
+    if (!cmdbDraftId) {
+      setDraftRows(null);
+      setDraftPrefillDone(true);
+      return;
     }
-  }, [configLoading, formConfig.initTableItems, groupId]);
+    if (isLoading) return;
+    let cancelled = false;
+    setDraftPrefillDone(false);
+    (async () => {
+      try {
+        const data = await get(`/module_link/api/access_drafts/${cmdbDraftId}/`);
+        if (cancelled) return;
+        setDraftRows(mapCmdbAccessDraftRows(data?.rows, groupId));
+      } catch {
+        if (!cancelled) setDraftRows(null);
+      } finally {
+        if (!cancelled) setDraftPrefillDone(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cmdbDraftId, isLoading, get, groupId]);
+
+  useEffect(() => {
+    if (configLoading || !draftPrefillDone || isTableInitialized) return;
+    const hasTemplate = Object.keys(formConfig.initTableItems).length > 0;
+    if (!hasTemplate && !draftRows?.length) return;
+    const initItems = {
+      ...formConfig.initTableItems,
+      group_ids: formConfig.initTableItems.group_ids || groupId,
+      key: uuidv4()
+    };
+    setInitTableItems(initItems);
+    const tableColumns = currentConfig?.table_columns || [];
+    const matchNodeByIp = isHostAgentTable(initItems);
+    setDataSource(
+      draftRows?.length
+        ? applyCmdbDraftNodeMatch(
+          draftRows.map((row) => projectCmdbDraftRowOntoTable(row, initItems, tableColumns)),
+          nodeList,
+          matchNodeByIp
+        )
+        : [initItems]
+    );
+    setIsTableInitialized(true); // 避免无限初始化
+  }, [configLoading, formConfig.initTableItems, groupId, draftPrefillDone, draftRows, isTableInitialized, nodeList, currentConfig]);
+
+  useEffect(() => {
+    if (!cmdbDraftId || !isTableInitialized || !nodeList.length) return;
+    if (!isHostAgentTable(initTableItems)) return;
+    setDataSource((prev) => applyCmdbDraftNodeMatch(prev, nodeList, true));
+  }, [cmdbDraftId, isTableInitialized, nodeList, initTableItems]);
 
   // defaultForm 每次 buildPluginUI 都会新建对象引用；用序列化值做依赖，避免
   // effect 每轮 setFormSnapshot → 重渲染 → 再触发 effect 的死循环卡死页面。
@@ -1587,6 +1670,35 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         initTableItems
       )
     );
+  };
+
+  const handleAddUnusedAgentNodes = () => {
+    const unused = listUnusedAgentNodes(nodeList, dataSource);
+    if (!unused.length) {
+      message.info(t('monitor.integrations.addUnusedNodesEmpty'));
+      return;
+    }
+    confirm({
+      title: t('common.prompt'),
+      content: t('monitor.integrations.addUnusedNodesConfirm', '', {
+        count: unused.length
+      }),
+      centered: true,
+      onOk() {
+        const newRows = buildAgentRowsFromNodes(unused, {
+          ...initTableItems,
+          group_ids: initTableItems.group_ids || groupId
+        });
+        setDataSource(
+          mergeImportedAssetRows(
+            dataSource,
+            newRows,
+            visibleTableColumns,
+            initTableItems
+          )
+        );
+      }
+    });
   };
 
   const batchMenuItems: MenuProps['items'] = [
@@ -2151,6 +2263,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           </span>
         </div>
         <div className="flex gap-[8px]">
+          {isUniqueNodeTable && (
+            <Button onClick={handleAddUnusedAgentNodes}>
+              {t('monitor.integrations.addUnusedNodes')}
+            </Button>
+          )}
           <Button
             icon={<UploadOutlined />}
             type="primary"
@@ -2325,6 +2442,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         <PluginGuidePanel
           pluginId={pluginId}
           pluginName={pluginDisplayName}
+          enableScriptFallback={isScriptTemplate}
         >
           {configSection}
         </PluginGuidePanel>

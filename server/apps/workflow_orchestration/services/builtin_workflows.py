@@ -7,10 +7,15 @@ from typing import Any
 
 from django.db import transaction
 
-from apps.workflow_orchestration.models import Workflow, WorkflowVersion
+from apps.workflow_orchestration.models import Workflow, WorkflowExecution, WorkflowVersion
 from apps.workflow_orchestration.services.atom_registry import ensure_platform_atom
 from apps.workflow_orchestration.services.atoms import TASK_DEFINITIONS, atom_catalog_payload
-from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorUnavailable
+from apps.workflow_orchestration.services.conductor import (
+    ConductorClient,
+    ConductorUnavailable,
+    _comparable_workflow_definition,
+    workflow_definition_digest,
+)
 from apps.workflow_orchestration.services.definitions import _walk_tasks, prepare_definition_for_publish
 from apps.workflow_orchestration.services.demo_showcase import SHOWCASE_ATOM_KEYS, build_health_inspection_showcase_workflow
 from apps.workflow_orchestration.services.demo_templates import seed_builtin_health_template_snapshot
@@ -81,6 +86,55 @@ def _build_builtin_items(*, team_id: int, channel_id: int | None, username: str)
     return [windows, linux]
 
 
+def _same_published_body(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    return workflow_definition_digest(_comparable_workflow_definition(left)) == workflow_definition_digest(_comparable_workflow_definition(right))
+
+
+def _publish_builtin_definition(raw_definition: dict[str, Any], *, engine_name: str) -> dict[str, Any]:
+    """内容不变时复用当前版本；脚本或模板变了就登记下一个不可变版本。"""
+    existing = Workflow.all_objects.filter(engine_name=engine_name).only("current_version", "definition").first()
+    version = existing.current_version if existing is not None and existing.current_version else 1
+    definition = prepare_definition_for_publish(raw_definition, engine_name=engine_name, version=version)
+    if existing is None or not existing.current_version or _same_published_body(definition, existing.definition or {}):
+        return definition
+    return prepare_definition_for_publish(raw_definition, engine_name=engine_name, version=version + 1)
+
+
+def collapse_builtin_workflow_versions(
+    workflow_model=Workflow,
+    version_model=WorkflowVersion,
+    execution_model=WorkflowExecution,
+) -> int:
+    """把已发布的内置流程收成一条 v1，保留当前定义，删掉更高版本。"""
+    collapsed = 0
+    published = workflow_model.objects.filter(is_builtin=True).exclude(current_version=0)
+    for workflow in published:
+        definition = dict(workflow.definition or {})
+        definition["version"] = 1
+        current_snapshot = version_model.objects.filter(workflow_id=workflow.pk, version=workflow.current_version).first()
+        version_model.objects.filter(workflow_id=workflow.pk).exclude(version=1).delete()
+        version_model.objects.update_or_create(
+            workflow_id=workflow.pk,
+            version=1,
+            defaults={
+                "definition": definition,
+                "canvas_metadata": workflow.canvas_metadata or {},
+                "resource_snapshot": getattr(current_snapshot, "resource_snapshot", None) or {"builtin": True},
+                "change_summary": getattr(current_snapshot, "change_summary", None) or {"summary": "平台内置巡检"},
+                "created_by": workflow.created_by or "",
+                "domain": workflow.domain or "domain.com",
+            },
+        )
+        workflow_model.objects.filter(pk=workflow.pk).update(
+            definition=definition,
+            current_version=1,
+            draft_base_version=1,
+        )
+        execution_model.objects.filter(workflow_id=workflow.pk).exclude(workflow_version=1).update(workflow_version=1)
+        collapsed += 1
+    return collapsed
+
+
 def ensure_builtin_health_workflows(
     *,
     team_id: int,
@@ -111,11 +165,7 @@ def ensure_builtin_health_workflows(
             task["taskReferenceName"] for task in _walk_tasks(item["definition"].get("tasks") or []) if isinstance(task.get("taskReferenceName"), str)
         }
         metadata = validate_orchestration_metadata(item["metadata"], task_references=task_references)
-        definition = prepare_definition_for_publish(
-            item["definition"],
-            engine_name=item["engine_name"],
-            version=1,
-        )
+        definition = _publish_builtin_definition(item["definition"], engine_name=item["engine_name"])
         atom_keys = sorted({task["name"] for task in _walk_tasks(definition.get("tasks") or []) if task.get("type") == "SIMPLE"})
         prepared.append({**item, "definition": definition, "metadata": metadata, "atom_keys": atom_keys})
 
@@ -143,12 +193,12 @@ def ensure_builtin_health_workflows(
                     "definition": item["definition"],
                     "canvas_metadata": item["metadata"],
                     "trigger_types": [trigger["trigger_type"] for trigger in item["metadata"]["trigger_nodes"]],
-                    "current_version": 1,
+                    "current_version": item["definition"]["version"],
                     "enabled": True,
                     "is_builtin": True,
                     "has_draft": False,
                     "draft_revision": 1,
-                    "draft_base_version": 1,
+                    "draft_base_version": item["definition"]["version"],
                     "deleted_at": None,
                     "deleted_by": "",
                     "deleted_by_domain": "",
@@ -160,7 +210,7 @@ def ensure_builtin_health_workflows(
             )
             WorkflowVersion.objects.update_or_create(
                 workflow=workflow,
-                version=1,
+                version=item["definition"]["version"],
                 defaults={
                     "definition": item["definition"],
                     "canvas_metadata": item["metadata"],

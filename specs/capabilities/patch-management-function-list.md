@@ -151,7 +151,7 @@
 - 风险基于当前有效的主机—基线评估状态；存在逐要求快照时以快照判断具体补丁风险。
 - 基线当前只有生效中的固定清单，不提供历史版本管理。
 - Windows 已安装的替代 KB 可满足对应基线要求；替代关系由 WSUS 同步关系映射。
-- “不适用”状态不列为生产已实现能力：生产 Windows 解析当前不生成该事实，相关评估器与模型预留仍待确认。
+- Windows 不适用由两类已实现判断写入：目录产品、Build 或架构不匹配；带 .NET 标记的手工包与主机 Release 不匹配。其余 WUA 未解释的缺失仍是未知。
 - 功能清单不包含漏洞情报检索、任意第三方补丁源自动发现等未实现能力。
 
 > 证据来源：server/apps/patch_mgmt/services/wsus_sync.py:343-365，server/apps/patch_mgmt/services/assess_parsers.py:240-250，server/apps/patch_mgmt/services/assess_parsers.py:288-317，server/apps/patch_mgmt/services/compliance_evaluator.py:142-198　|　同步基线：d2769559　|　【已实现/待确认】

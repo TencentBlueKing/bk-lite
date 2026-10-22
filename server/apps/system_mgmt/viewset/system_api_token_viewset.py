@@ -34,15 +34,15 @@ class SystemAPITokenViewSet(viewsets.ModelViewSet):
             detail={"kind": "system", "name": instance.name or "", "system_id": instance.system_id},
         )
 
-    @HasPermission("system_api_secret-View", "system-manager")
+    @HasPermission("api_secret_key-View", "system-manager")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @HasPermission("system_api_secret-View", "system-manager")
+    @HasPermission("api_secret_key-View", "system-manager")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @HasPermission("system_api_secret-Add", "system-manager")
+    @HasPermission("api_secret_key-Add", "system-manager")
     def create(self, request, *args, **kwargs):
         secret = SystemAPIToken.generate_secret()
         serializer = self.get_serializer(data=request.data)
@@ -62,7 +62,7 @@ class SystemAPITokenViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    @HasPermission("system_api_secret-Edit", "system-manager")
+    @HasPermission("api_secret_key-Add", "system-manager")
     def update(self, request, *args, **kwargs):
         if not kwargs.get("partial"):
             loader = _get_loader(request)
@@ -83,7 +83,7 @@ class SystemAPITokenViewSet(viewsets.ModelViewSet):
         self._log(request, "update", serializer.instance)
         return Response(serializer.data)
 
-    @HasPermission("system_api_secret-Delete", "system-manager")
+    @HasPermission("api_secret_key-Delete", "system-manager")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         response = super().destroy(request, *args, **kwargs)

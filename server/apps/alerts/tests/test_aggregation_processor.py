@@ -126,7 +126,7 @@ def test_get_events_for_strategy_within_window(source):
     now = timezone.now()
     Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now, event_id="E1", action=EventAction.CREATED)
     strategy = AlarmStrategy.objects.create(name="s", strategy_type="smart_denoise", params={"window_size": 60})
-    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+    events = AggregationProcessor.get_events_for_strategy(strategy, timezone.now())
     assert events.filter(event_id="E1").exists()
 
 
@@ -159,7 +159,7 @@ def test_get_events_for_strategy_excludes_event_linked_to_closed_alert_of_same_s
     )
     alert.events.add(event)
 
-    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+    events = AggregationProcessor.get_events_for_strategy(strategy, timezone.now())
 
     assert not events.filter(pk=event.pk).exists()
 
@@ -192,7 +192,7 @@ def test_get_events_for_strategy_keeps_event_linked_to_active_alert_of_same_stra
     )
     alert.events.add(event)
 
-    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+    events = AggregationProcessor.get_events_for_strategy(strategy, timezone.now())
 
     assert events.filter(pk=event.pk).exists()
 
@@ -230,7 +230,7 @@ def test_get_events_for_strategy_keeps_event_linked_to_closed_alert_of_other_str
     )
     alert.events.add(event)
 
-    events = AggregationProcessor.get_events_for_strategy(current_strategy, now)
+    events = AggregationProcessor.get_events_for_strategy(current_strategy, timezone.now())
 
     assert events.filter(pk=event.pk).exists()
 
@@ -285,14 +285,8 @@ def test_duckdb_load_empty_returns_none(source):
     conn.close()
 
 
-def test_duckdb_load_with_future_infer_string():
-    """回归：pandas 3.0 的 future.infer_string=True 会把字符串列建成 'str' dtype，
-    而 duckdb 1.1.x 不识别该 dtype，register 会抛 NotImplementedException，
-    导致每条聚合策略整链失败、Alert 一条都生不出来。
-    load_events_to_memory 必须把扩展 string 列降级为 object，保证聚合正常装载。
-    用假 queryset 避免依赖 DB（与本用例无关的迁移状态）。"""
-    import pandas as pd
-
+def test_duckdb_load_string_values_without_pandas():
+    """字符串列必须能直接装入 DuckDB，不再经过 Pandas dtype。"""
     from apps.alerts.aggregation.engine.connection import DuckDBConnection
 
     class _FakeQS:
@@ -304,31 +298,21 @@ def test_duckdb_load_with_future_infer_string():
 
     rows = [
         {
+            "pk": 1,
             "event_id": "E1",
             "title": "主机 10.36.0.60-weopsx 磁盘使用率过高",
             "description": None,
             "level": "2",
             "resource_name": "10.36.0.60-weopsx",
-            "resource_id": "('YTFlY2Y3YWVjZGU5',)",
-            "resource_type": None,
-            "item": None,
             "external_id": "9",
             "received_at": timezone.now(),
             "action": EventAction.CREATED,
-            "source_id": 1,
-            "push_source_id": "lite-monitor",
-            "labels": {"k": "v"},
-            "service": "svc",
-            "location": None,
-            "event_type": 0,
-            "tags": {},
         }
     ]
     conn = DuckDBConnection()
-    with pd.option_context("future.infer_string", True):
-        ok = conn.load_events_to_memory(_FakeQS(rows))
+    ok = conn.load_events_to_memory(_FakeQS(rows), dimensions=["resource_name"])
     assert ok is True
-    assert conn.execute_query("SELECT count(*) AS c FROM events_table")[0]["c"] == 1
+    assert conn.execute_query("SELECT title FROM events_table")[0]["title"] == rows[0]["title"]
     conn.close()
 
 
@@ -720,7 +704,7 @@ def test_get_events_for_strategy_excludes_shielded(source):
     )
     strategy = AlarmStrategy.objects.create(name="s", strategy_type="smart_denoise", params={"window_size": 60})
 
-    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+    events = AggregationProcessor.get_events_for_strategy(strategy, timezone.now())
     ids = set(events.values_list("event_id", flat=True))
 
     assert "E-ok" in ids

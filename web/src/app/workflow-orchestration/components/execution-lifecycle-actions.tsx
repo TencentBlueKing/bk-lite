@@ -56,11 +56,15 @@ export function ExecutionLifecycleActions({ execution, presentation, onExecution
       <OperateModal
         title={t('workflowOrchestration.execution.terminateTitle', '终止本次执行')}
         open={terminateOpen}
-        okText={t('workflowOrchestration.execution.confirmTerminate', '确认终止')}
-        cancelText={t('common.cancel', '取消')}
-        okButtonProps={{ danger: true, disabled: !reason.trim(), loading: busy }}
         styles={{ footer: { marginTop: 20 } }}
-        onOk={() => void terminate()}
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button disabled={busy} onClick={() => { if (!busy) setTerminateOpen(false); }}>{t('common.cancel', '取消')}</Button>
+            <WorkflowPermission operation="Execute" area="executions" instancePermissions={execution.permission}>
+              <Button danger type="primary" disabled={!reason.trim()} loading={busy} onClick={() => void terminate()}>{t('workflowOrchestration.execution.confirmTerminate', '确认终止')}</Button>
+            </WorkflowPermission>
+          </div>
+        )}
         onCancel={() => { if (!busy) setTerminateOpen(false); }}
       >
         <p className="text-sm text-[var(--color-text-2)]">{t('workflowOrchestration.execution.terminateHint', '后续节点将停止，已发生的外部副作用不会自动回滚。终止原因会写入审计。')}</p>

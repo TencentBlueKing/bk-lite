@@ -52,6 +52,8 @@ function updateWorkspacePackages(content, activeApps) {
   const packageLines = activeApps.map(app =>
     app === '*' ? "  - 'src/app/*'" : `  - 'src/app/${app}'`
   );
+  // 内部包不随应用裁剪去掉，否则 @bk-lite/isoflow 的 workspace:* 无法解析。
+  packageLines.push("  - 'packages/*'");
   const suffix = lines.slice(packagesEnd);
 
   while (suffix[0] === '') {

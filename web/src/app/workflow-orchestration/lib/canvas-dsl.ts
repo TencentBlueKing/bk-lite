@@ -162,8 +162,11 @@ function enrichSchemaFromSample(schema: JsonSchema, sample: unknown): JsonSchema
   return { ...schema, properties };
 }
 
-/** 加号添加时，新节点左边缘相对源节点左边缘的水平距离。等高时贝塞尔呈直线。 */
-export const PLUS_ADD_OFFSET_X = 160;
+const DEFAULT_TRIGGER_X = 20;
+const DEFAULT_FIRST_TASK_X = 260;
+
+/** 节点右侧加号与右上角自动连线共用这段间距。短于加号残线时，删线后两个原子仍会贴在一起。 */
+export const PLUS_ADD_OFFSET_X = DEFAULT_FIRST_TASK_X - DEFAULT_TRIGGER_X;
 
 export function positionBesideSource(source: { x: number; y: number }): { x: number; y: number } {
   return { x: source.x + PLUS_ADD_OFFSET_X, y: source.y };
@@ -202,12 +205,12 @@ export function buildWorkflowFlow(
   const nodes: Array<Node<WorkflowCanvasNodeData>> = [
     ...triggers.map((trigger, index) => ({
       id: trigger.id, type: 'workflowCanvas',
-      position: metadata.positions?.[trigger.id] || { x: 20, y: 260 + index * 180 },
+      position: metadata.positions?.[trigger.id] || { x: DEFAULT_TRIGGER_X, y: 260 + index * 180 },
       data: { title: trigger.name, meta: trigger.trigger_type, kind: 'trigger' as const, triggerType: trigger.trigger_type },
     })),
     ...tasks.map((task, index) => ({
       id: task.taskReferenceName, type: 'workflowCanvas',
-      position: metadata.positions?.[task.taskReferenceName] || { x: 260 + index * 220, y: 260 },
+      position: metadata.positions?.[task.taskReferenceName] || { x: DEFAULT_FIRST_TASK_X + index * 220, y: 260 },
       data: {
         title: resolveCanvasNodeTitle(
           metadata.node_titles?.[task.taskReferenceName],
@@ -232,18 +235,24 @@ export function buildWorkflowFlow(
     })),
   ];
   const nodeIds = new Set(nodes.map((node) => node.id));
-  const persisted = projectApprovalCanvasEdges(definition, metadata.edges || []).filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
-  if (persisted.length) return { nodes, edges: persisted };
+  const visible = metadata.edges
+    ? projectApprovalCanvasEdges(definition, metadata.edges)
+    : implicitCanvasEdges(definition, metadata);
+  return { nodes, edges: visible.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)) };
+}
+
+/** 还没有保存过连线时，画布临时补上的那组线。记进 metadata.edges 后就成为真正的连线。 */
+export function implicitCanvasEdges(definition: ConductorDefinition, metadata: WorkflowCanvasMetadata = {}): Edge[] {
+  const triggers = workflowTriggerNodes(metadata);
+  const returns = metadata.return_nodes || [];
+  const approvalPairs = approvalDecisionPairs(definition.tasks);
   const taskEdges = projectApprovalCanvasEdges(definition, generatedTaskPairs(definition.tasks).map(([source, target]) => ({ id: `${source}-${target}`, source, target })));
   const first = definition.tasks[0]?.taskReferenceName;
   const rawLast = definition.tasks.at(-1)?.taskReferenceName;
   const last = approvalPairs.find(({ decision }) => decision.taskReferenceName === rawLast)?.approval.taskReferenceName || rawLast;
-  return {
-    nodes,
-    edges: [
-      ...(first ? triggers.map((item) => ({ id: `${item.id}-${first}`, source: item.id, target: first })) : []),
-      ...taskEdges,
-      ...(last ? returns.map((item) => ({ id: `${last}-${item.id}`, source: last, target: item.id })) : []),
-    ],
-  };
+  return [
+    ...(first ? triggers.map((item) => ({ id: `${item.id}-${first}`, source: item.id, target: first })) : []),
+    ...taskEdges,
+    ...(last ? returns.map((item) => ({ id: `${last}-${item.id}`, source: last, target: item.id })) : []),
+  ];
 }

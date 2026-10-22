@@ -59,7 +59,7 @@ def test_atom_catalog_lists_platform_actions_and_system_nodes(atom_admin):
     }
     assert "bklite_job_execute" in keys
     assert "bklite_rule_evaluate" not in keys
-    assert "bklite_data_transform" not in keys
+    assert "bklite_data_transform" in keys
     assert "bklite_document_render" in keys
     assert "bklite_http_request" in keys
     assert "bklite_inspection_group_targets" not in keys

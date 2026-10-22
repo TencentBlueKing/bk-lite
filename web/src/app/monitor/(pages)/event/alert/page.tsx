@@ -141,6 +141,7 @@ const Alert: React.FC = () => {
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
   const [myAlert, setMyAlert] = useState(false);
   const { syncObjectId, searchParams } = useMonitorObjectQuery();
+  const instanceIdFilter = String(searchParams.get('instanceId') || '').trim();
 
   const columns: ColumnItem[] = [
     {
@@ -280,7 +281,8 @@ const Alert: React.FC = () => {
     objectId,
     searchText,
     pagination.current,
-    pagination.pageSize
+    pagination.pageSize,
+    instanceIdFilter
   ]);
 
   useEffect(() => {
@@ -291,13 +293,14 @@ const Alert: React.FC = () => {
     timeValues,
     objectId,
     pagination.current,
-    pagination.pageSize
+    pagination.pageSize,
+    instanceIdFilter
   ]);
 
   useEffect(() => {
     if (isLoading || !objectId) return;
     getChartData('refresh');
-  }, [isLoading, timeValues, objectId]);
+  }, [isLoading, timeValues, objectId, instanceIdFilter]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -385,7 +388,8 @@ const Alert: React.FC = () => {
       page_size: pagination.pageSize,
       created_at_after: isActive ? '' : dayjs(recentTimeRange[0]).toISOString(),
       created_at_before: isActive ? '' : dayjs(recentTimeRange[1]).toISOString(),
-      ...(mine ? { my_alert: 1 } : {})
+      ...(mine ? { my_alert: 1 } : {}),
+      ...(instanceIdFilter ? { monitor_instance_id: instanceIdFilter } : {})
     };
     return params;
   };

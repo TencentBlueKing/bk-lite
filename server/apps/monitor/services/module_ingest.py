@@ -89,8 +89,9 @@ class MonitorModuleIngestService:
 
     @classmethod
     def ingest(cls, params: dict[str, Any]) -> dict[str, Any]:
+        event_type = str(params.get("event_type") or EVENT_UPSERT).strip()
         allowed_org_ids = params.get("allowed_org_ids")
-        if not allowed_org_ids:
+        if event_type != EVENT_LIFECYCLE and not allowed_org_ids:
             raise ValueError("authorization scope is required for monitor ingest")
 
         raw = params.get("raw") or {}
@@ -123,7 +124,6 @@ class MonitorModuleIngestService:
                 ignored=True,
             ).as_dict()
 
-        event_type = str(params.get("event_type") or EVENT_UPSERT).strip()
         if event_type == EVENT_LIFECYCLE:
             return cls._handle_lifecycle(
                 raw=raw,
@@ -138,6 +138,22 @@ class MonitorModuleIngestService:
         operator = str(params.get("operator") or "")
         allowed = [int(x) for x in allowed_org_ids]
         actor_context = params.get("actor_context")
+        source_module = str(params.get("source_module") or "")
+        credential = cls._extract_credential(raw) if source_module == "cmdb" else None
+        allow_cred = bool(params.get("allow_credential_create"))
+        create_enabled = CMDB_CREDENTIAL_CREATE_ENABLED or allow_cred
+        # 公开资产页的关联只落到启用中的实例。未启用实例上的 node_id / cmdb_id 不能抢先命中。
+        if source_module == "cmdb" and not (create_enabled and credential):
+            return cls._link_active_cmdb_instance(
+                raw=raw,
+                node_id=node_id,
+                cmdb_id=cmdb_id,
+                cmdb_aliases=cmdb_aliases,
+                operator=operator,
+                allowed_org_ids=allowed,
+                allow_credential_create=allow_cred,
+                actor_context=actor_context,
+            )
 
         by_node = cls._find_by_node_id(node_id) if node_id else None
         by_cmdb = cls._find_by_cmdb_id(cmdb_id, aliases=cmdb_aliases) if cmdb_id else None
@@ -180,19 +196,7 @@ class MonitorModuleIngestService:
                 existing = by_identity
 
         if existing:
-            source_module = str(params.get("source_module") or "")
-            credential = cls._extract_credential(raw) if source_module == "cmdb" else None
             model_id = cls._resolve_cmdb_model_id(raw) if source_module == "cmdb" else ""
-            allow_cred = bool(params.get("allow_credential_create"))
-            # 默认 False：节点/资产页推送不得突然建监控；仅扫描等显式 allow_credential_create 打开。
-            create_enabled = CMDB_CREDENTIAL_CREATE_ENABLED or allow_cred
-            if source_module == "cmdb" and not (create_enabled and credential):
-                return cls._link_association_ids(
-                    existing,
-                    node_id=node_id,
-                    cmdb_id=cmdb_id,
-                    operator=operator,
-                )
             has_collect = CollectConfig.objects.filter(monitor_instance_id=existing.id).exists()
             # 已按 cmdb_id/node_id 命中的空壳：扫描带凭据推送仍须补采集，不能只 update。
             needs_cmdb_collect = (
@@ -268,6 +272,96 @@ class MonitorModuleIngestService:
             allow_credential_create=bool(params.get("allow_credential_create")),
             actor_context=actor_context,
         )
+
+    @classmethod
+    def _link_active_cmdb_instance(
+        cls,
+        *,
+        raw: dict[str, Any],
+        node_id: str | None,
+        cmdb_id: str | None,
+        cmdb_aliases: list[str],
+        operator: str,
+        allowed_org_ids: list[int],
+        allow_credential_create: bool,
+        actor_context: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """CMDB 无凭据关联只写入启用中的实例，并让出未启用实例上的同一 cmdb_id。"""
+        by_node = cls._find_by_node_id(node_id, active_only=True) if node_id else None
+        by_cmdb = cls._find_by_cmdb_id(cmdb_id, aliases=cmdb_aliases, active_only=True) if cmdb_id else None
+        if by_node and by_cmdb and by_node.id != by_cmdb.id:
+            logger.warning(
+                "[MonitorModuleIngest] link_conflict node_id=%s cmdb_id=%s by_node=%s by_cmdb=%s",
+                node_id,
+                cmdb_id,
+                by_node.id,
+                by_cmdb.id,
+            )
+            return IngestResult(
+                id=by_node.id,
+                conflict=LINK_CONFLICT,
+                created=False,
+                updated=False,
+                claimed=False,
+            ).as_dict()
+
+        target = by_node or by_cmdb
+        if target is None:
+            by_identity = cls._find_by_type_identity(raw, active_only=True)
+            if by_identity is not None:
+                bound_node_id = cls._normalize_optional_str(by_identity.node_id)
+                if node_id and bound_node_id and bound_node_id != node_id:
+                    logger.warning(
+                        "[MonitorModuleIngest] link_conflict identity existing_node_id=%s incoming_node_id=%s instance_id=%s",
+                        bound_node_id,
+                        node_id,
+                        by_identity.id,
+                    )
+                    return IngestResult(
+                        id=by_identity.id,
+                        conflict=LINK_CONFLICT,
+                        created=False,
+                        updated=False,
+                        claimed=False,
+                    ).as_dict()
+                target = by_identity
+        if target is None:
+            return cls._create_for_source(
+                source_module="cmdb",
+                raw=raw,
+                node_id=node_id,
+                cmdb_id=cmdb_id,
+                operator=operator,
+                allowed_org_ids=allowed_org_ids,
+                allow_credential_create=allow_credential_create,
+                actor_context=actor_context,
+            )
+
+        claim_node_id = node_id
+        if node_id and MonitorInstance.objects.filter(node_id=node_id).exclude(pk=target.pk).exists():
+            claim_node_id = None
+
+        with transaction.atomic():
+            cls._release_inactive_cmdb_id(cmdb_id, aliases=cmdb_aliases, keep_id=target.id)
+            target = MonitorInstance.objects.select_for_update().get(pk=target.pk)
+            return cls._link_association_ids(
+                target,
+                node_id=claim_node_id,
+                cmdb_id=cmdb_id,
+                operator=operator,
+            )
+
+    @classmethod
+    def _release_inactive_cmdb_id(cls, cmdb_id: str | None, *, aliases: list[str] | None, keep_id: str) -> None:
+        from apps.cmdb.services.instance_identity import expand_cmdb_id_lookup_candidates
+
+        candidates = expand_cmdb_id_lookup_candidates(cmdb_id, aliases)
+        if not candidates:
+            return
+        holders = MonitorInstance.objects.select_for_update().filter(cmdb_id__in=candidates, is_active=False).exclude(pk=keep_id)
+        for holder in holders:
+            holder.cmdb_id = None
+            holder.save(update_fields=["cmdb_id", "updated_at"])
 
     @classmethod
     def _link_association_ids(
@@ -1010,21 +1104,30 @@ class MonitorModuleIngestService:
             )
             return IngestResult(id=monitor_id, ignored=True).as_dict()
 
-        # 节点删除确认清理：软删监控资产
+        # 节点删除确认清理：软删监控资产，并清对端 CMDB 指针（不动 CMDB 资产）
         if source_module == "node_mgmt" and action in ("retire", "archive", "stop", ""):
-            if existing.is_deleted and not existing.is_active:
+            leftover_cmdb_id = cls._normalize_optional_str(existing.cmdb_id)
+            already_retired = existing.is_deleted and not existing.is_active
+            if already_retired and not leftover_cmdb_id:
                 return IngestResult(id=existing.id, ignored=True).as_dict()
 
+            snapshot = cls._lifecycle_unlink_snapshot(existing) if leftover_cmdb_id else None
             update_fields = ["is_active", "is_deleted", "updated_at"]
             existing.is_active = False
             existing.is_deleted = True
+            if leftover_cmdb_id:
+                existing.cmdb_id = None
+                update_fields.append("cmdb_id")
             if operator:
                 existing.updated_by = operator
                 update_fields.append("updated_by")
             existing.save(update_fields=update_fields)
+            if snapshot:
+                cls._best_effort_notify_cmdb_unlink(snapshot, operator=operator)
             logger.info(
-                "[MonitorModuleIngest] lifecycle retire soft-deactivated instance_id=%s",
+                "[MonitorModuleIngest] lifecycle retire soft-deactivated instance_id=%s cmdb_id_cleared=%s",
                 existing.id,
+                bool(leftover_cmdb_id),
             )
             return IngestResult(id=existing.id, updated=True).as_dict()
 
@@ -1058,13 +1161,47 @@ class MonitorModuleIngestService:
         )
         return IngestResult(id=existing.id, updated=True).as_dict()
 
+    @staticmethod
+    def _lifecycle_unlink_snapshot(instance: MonitorInstance) -> dict[str, Any]:
+        return {
+            "id": str(instance.id),
+            "name": instance.name,
+            "ip": str(instance.ip) if instance.ip else None,
+            "cloud_region_id": instance.cloud_region_id,
+            "node_id": str(instance.node_id or "").strip() or None,
+            "cmdb_id": str(instance.cmdb_id or "").strip() or None,
+            "monitor_object_name": getattr(instance.monitor_object, "name", None),
+            "organization_ids": list(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True)),
+        }
+
+    @staticmethod
+    def _best_effort_notify_cmdb_unlink(snapshot: dict[str, Any], *, operator: str) -> None:
+        try:
+            from apps.monitor.services.module_push import MonitorToCmdbPushService
+
+            MonitorToCmdbPushService.best_effort_notify_on_delete(
+                [snapshot],
+                operator=operator or "",
+                allowed_org_ids=list(snapshot.get("organization_ids") or []),
+            )
+        except Exception as exc:
+            logger.exception(
+                "[MonitorModuleIngest] retire notify cmdb unlink failed monitor_id=%s failed_stage=%s error_type=%s",
+                snapshot.get("id"),
+                "cmdb_unlink_notify",
+                type(exc).__name__,
+            )
+
     @classmethod
     def _find_by_pk(cls, instance_id: str) -> MonitorInstance | None:
         return MonitorInstance.objects.filter(id=instance_id).select_related("monitor_object").first()
 
     @classmethod
-    def _find_by_node_id(cls, node_id: str) -> MonitorInstance | None:
-        return MonitorInstance.objects.filter(node_id=node_id, is_deleted=False).select_related("monitor_object").first()
+    def _find_by_node_id(cls, node_id: str, *, active_only: bool = False) -> MonitorInstance | None:
+        qs = MonitorInstance.objects.filter(node_id=node_id, is_deleted=False)
+        if active_only:
+            qs = qs.filter(is_active=True)
+        return qs.select_related("monitor_object").first()
 
     @classmethod
     def _find_by_cmdb_id(
@@ -1072,16 +1209,20 @@ class MonitorModuleIngestService:
         cmdb_id: str,
         *,
         aliases: list[str] | None = None,
+        active_only: bool = False,
     ) -> MonitorInstance | None:
         from apps.cmdb.services.instance_identity import expand_cmdb_id_lookup_candidates
 
         candidates = expand_cmdb_id_lookup_candidates(cmdb_id, aliases)
         if not candidates:
             return None
-        return MonitorInstance.objects.filter(cmdb_id__in=candidates, is_deleted=False).select_related("monitor_object").first()
+        qs = MonitorInstance.objects.filter(cmdb_id__in=candidates, is_deleted=False)
+        if active_only:
+            qs = qs.filter(is_active=True)
+        return qs.select_related("monitor_object").first()
 
     @classmethod
-    def _find_by_type_identity(cls, raw: dict[str, Any]) -> MonitorInstance | None:
+    def _find_by_type_identity(cls, raw: dict[str, Any], *, active_only: bool = False) -> MonitorInstance | None:
         """ID 之后的类型身份：主机 IP+云区域 → 唯一 IP；Docker 只按唯一实例名；其它对象唯一 IP。"""
         model_id = cls._resolve_cmdb_model_id(raw)
         object_name = CMDB_MODEL_TO_MONITOR_OBJECT.get(model_id)
@@ -1091,18 +1232,18 @@ class MonitorModuleIngestService:
         cloud = cls._extract_cloud_region_id(raw)
 
         if model_id == "host":
-            claimed = cls._find_host_by_ip_and_cloud(object_name, ip=ip, cloud=cloud)
+            claimed = cls._find_host_by_ip_and_cloud(object_name, ip=ip, cloud=cloud, active_only=active_only)
             if claimed is not None:
                 return claimed
 
         # Docker 容器与宿主机同 IP；按 IP 认领会误绑引擎/其它容器，只认唯一实例名。
         if ip and model_id != "docker":
-            claimed = cls._find_by_unique_ip(object_name, ip=ip)
+            claimed = cls._find_by_unique_ip(object_name, ip=ip, active_only=active_only)
             if claimed is not None:
                 return claimed
 
         explicit_name = str(raw.get("name") or raw.get("inst_name") or "").strip()
-        return cls._find_by_unique_instance_name(object_name, name=explicit_name or None)
+        return cls._find_by_unique_instance_name(object_name, name=explicit_name or None, active_only=active_only)
 
     @classmethod
     def _find_host_by_ip_and_cloud(
@@ -1111,6 +1252,7 @@ class MonitorModuleIngestService:
         *,
         ip: str | None,
         cloud: int | None,
+        active_only: bool = False,
     ) -> MonitorInstance | None:
         """主机优先按 IP+云区域认领；规范主键命中含软删，交给调用方回收或忽略。"""
         if not ip or cloud is None:
@@ -1126,25 +1268,24 @@ class MonitorModuleIngestService:
             except ValueError:
                 continue
             by_pk = cls._find_by_pk(storage_key)
-            if by_pk and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
+            if by_pk and by_pk.monitor_object and by_pk.monitor_object.name == object_name and not (active_only and not by_pk.is_active):
                 return by_pk
-        matches = list(
-            MonitorInstance.objects.filter(
-                ip=ip,
-                cloud_region_id=cloud,
-                is_deleted=False,
-                monitor_object__name=object_name,
-            ).select_related(
-                "monitor_object"
-            )[:2]
+        ip_cloud = MonitorInstance.objects.filter(
+            ip=ip,
+            cloud_region_id=cloud,
+            is_deleted=False,
+            monitor_object__name=object_name,
         )
+        if active_only:
+            ip_cloud = ip_cloud.filter(is_active=True)
+        matches = list(ip_cloud.select_related("monitor_object")[:2])
         if len(matches) == 1:
             return matches[0]
         return None
 
     @classmethod
-    def _find_by_unique_ip(cls, object_name: str, *, ip: str | None) -> MonitorInstance | None:
-        """同监控对象下按 IP 唯一认领，不要求云区域一致。"""
+    def _find_by_unique_ip(cls, object_name: str, *, ip: str | None, active_only: bool = False) -> MonitorInstance | None:
+        """同监控对象下按 IP 唯一认领，不要求云区域一致。关联时主机名等于 IP 也算。"""
         text = str(ip or "").strip()
         if not text:
             return None
@@ -1152,9 +1293,15 @@ class MonitorModuleIngestService:
         candidates = MonitorInstance.objects.filter(
             is_deleted=False,
             monitor_object__name=object_name,
-        ).select_related("monitor_object")
+        )
+        if active_only:
+            candidates = candidates.filter(is_active=True)
+        candidates = candidates.select_related("monitor_object")
         for instance in candidates:
-            if text not in cls._identity_ips(instance, object_name):
+            identity_ips = cls._identity_ips(instance, object_name)
+            if active_only and object_name == HOST_OBJECT_NAME and instance.name == text:
+                identity_ips.add(text)
+            if text not in identity_ips:
                 continue
             hits.append(instance)
             if len(hits) > 1:
@@ -1180,20 +1327,19 @@ class MonitorModuleIngestService:
         return {item for item in ips if item}
 
     @classmethod
-    def _find_by_unique_instance_name(cls, object_name: str, *, name: str | None) -> MonitorInstance | None:
+    def _find_by_unique_instance_name(cls, object_name: str, *, name: str | None, active_only: bool = False) -> MonitorInstance | None:
         """按监控对象类型 + 实例名精确认领；同名多条则放弃。"""
         text = str(name or "").strip()
         if not text:
             return None
-        matches = list(
-            MonitorInstance.objects.filter(
-                name=text,
-                is_deleted=False,
-                monitor_object__name=object_name,
-            ).select_related(
-                "monitor_object"
-            )[:2]
+        named = MonitorInstance.objects.filter(
+            name=text,
+            is_deleted=False,
+            monitor_object__name=object_name,
         )
+        if active_only:
+            named = named.filter(is_active=True)
+        matches = list(named.select_related("monitor_object")[:2])
         if len(matches) == 1:
             return matches[0]
         return None

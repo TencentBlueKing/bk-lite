@@ -30,6 +30,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import same_metric_field
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -163,7 +164,7 @@ def test_shared_metrics_byte_identical_to_baseline(metrics, base_metrics):
         if b is None:
             continue
         for field in ("metric_group", "unit", "query"):
-            if m[field] != b[field]:
+            if not same_metric_field(field, m[field], b[field]):
                 drift.append(f'{m["name"]}.{field}')
     assert drift == [], f"shared-metric drift vs firewall baseline: {drift}"
 

@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "metaswitch_ems_cpu_usage",
-      "query": "metaswitch_ems_cpu_usage{instance_type='voice_gateway', __$labels__}",
+      "query": "metaswitch_ems_cpu_usage{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}",
       "display_name": "EMS CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -40,7 +40,7 @@
     {
       "metric_group": "CPU",
       "name": "metaswitch_ems_cpu_usage_hwm",
-      "query": "metaswitch_ems_cpu_usage_hwm{instance_type='voice_gateway', __$labels__}",
+      "query": "metaswitch_ems_cpu_usage_hwm{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}",
       "display_name": "EMS CPU Usage High-Water Mark",
       "data_type": "Number",
       "unit": "percent",
@@ -58,7 +58,7 @@
     {
       "metric_group": "Memory",
       "name": "metaswitch_ems_mem_total_mb",
-      "query": "metaswitch_ems_mem_total_mb{instance_type='voice_gateway', __$labels__}",
+      "query": "metaswitch_ems_mem_total_mb{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}",
       "display_name": "EMS Physical Memory Total (MB)",
       "data_type": "Number",
       "unit": "mebibytes",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Memory",
       "name": "metaswitch_ems_mem_used_mb",
-      "query": "metaswitch_ems_mem_used_mb{instance_type='voice_gateway', __$labels__}",
+      "query": "metaswitch_ems_mem_used_mb{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}",
       "display_name": "EMS Physical Memory Used (MB)",
       "data_type": "Number",
       "unit": "mebibytes",
@@ -94,7 +94,7 @@
     {
       "metric_group": "Memory",
       "name": "metaswitch_ems_mem_usage_percent",
-      "query": "metaswitch_ems_mem_usage_percent{instance_type='voice_gateway', __$labels__}",
+      "query": "metaswitch_ems_mem_usage_percent{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}",
       "display_name": "EMS Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -112,7 +112,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -130,7 +130,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -148,7 +148,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='voice_gateway', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -161,7 +161,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='voice_gateway', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -174,7 +174,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='voice_gateway', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='voice_gateway', collect_type='snmp_metaswitch', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

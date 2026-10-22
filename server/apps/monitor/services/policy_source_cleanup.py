@@ -27,45 +27,27 @@ class PolicySourceCleanupService:
             "disabled_policy_ids": [],
         }
 
-        queryset = MonitorPolicy.objects.filter(source__type="instance").only(
-            "id", "source", "enable"
-        )
+        queryset = MonitorPolicy.objects.filter(source__type="instance").only("id", "source")
 
         if not queryset.exists():
             return result
 
-        updates = []
-
+        # 扫描只圈定候选。写回前锁行重读，按当前 values 删除，避免旧快照覆盖并发保存。
+        candidate_ids = []
         for policy in queryset.iterator(chunk_size=BATCH_SIZE):
-            source = policy.source
+            source = policy.source if isinstance(policy.source, dict) else None
             if not source or source.get("type") != "instance":
                 continue
+            values = source.get("values") or []
+            if any(value in deleted_set for value in values):
+                candidate_ids.append(policy.id)
 
-            old_values = set(source.get("values", []))
-            new_values = old_values - deleted_set
-
-            if old_values == new_values:
-                continue
-
-            policy.source = {
-                "type": "instance",
-                "values": list(new_values),
-            }
-
-            if not new_values:
-                policy.enable = False
-                result["disabled_count"] += 1
-                result["disabled_policy_ids"].append(policy.id)
-
-            updates.append(policy)
-            result["policy_ids"].append(policy.id)
-
-            if len(updates) >= BATCH_SIZE:
-                PolicySourceCleanupService._flush_updates(updates)
-                updates = []
-
-        if updates:
-            PolicySourceCleanupService._flush_updates(updates)
+        for start in range(0, len(candidate_ids), BATCH_SIZE):
+            PolicySourceCleanupService._apply_locked_updates(
+                candidate_ids[start : start + BATCH_SIZE],
+                deleted_set,
+                result,
+            )
 
         result["cleaned_count"] = len(result["policy_ids"])
 
@@ -95,6 +77,39 @@ class PolicySourceCleanupService:
                 for policy_id in policy_ids[start : start + BATCH_SIZE]
             ]
             PeriodicTask.objects.filter(name__in=names).update(enabled=False)
+
+    @staticmethod
+    def _apply_locked_updates(policy_ids: list, deleted_set: set, result: dict):
+        with transaction.atomic():
+            locked_policies = list(
+                MonitorPolicy.objects.select_for_update()
+                .filter(id__in=policy_ids)
+                .only("id", "source", "enable")
+                .order_by("id")
+            )
+            updates = []
+            for policy in locked_policies:
+                source = policy.source if isinstance(policy.source, dict) else {}
+                if source.get("type") != "instance":
+                    continue
+                old_values = list(source.get("values") or [])
+                new_values = [value for value in old_values if value not in deleted_set]
+                if new_values == old_values:
+                    continue
+
+                policy.source = {
+                    "type": "instance",
+                    "values": new_values,
+                }
+                if not new_values:
+                    policy.enable = False
+                    result["disabled_count"] += 1
+                    result["disabled_policy_ids"].append(policy.id)
+
+                updates.append(policy)
+                result["policy_ids"].append(policy.id)
+
+            PolicySourceCleanupService._flush_updates(updates)
 
     @staticmethod
     def _flush_updates(updates: list):

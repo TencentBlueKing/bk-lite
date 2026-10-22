@@ -27,6 +27,7 @@ from apps.operation_analysis.serializers.directory_serializers import (
     ScreenModelSerializer,
     TopologyModelSerializer,
 )
+from apps.operation_analysis.services.architecture_node_status import ArchitectureNodeStatusService
 from apps.operation_analysis.services.canvas.copy_service import copy_canvas
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from apps.operation_analysis.services.share_service import SharePermissionDenied, create_or_get_share
@@ -526,6 +527,13 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         return _execute_with_clean_validation_error(
             lambda: _copy_canvas_response(self, request, log_action="复制架构图: {name}"),
         )
+
+    @HasPermission("view-View")
+    @action(detail=False, methods=["post"], url_path="node_status")
+    def node_status(self, request, *args, **kwargs):
+        """查看态批量查询图标和区域绑定资源的运行状态。分享路由不暴露此接口。"""
+        payload = request.data if isinstance(request.data, dict) else {}
+        return Response(ArchitectureNodeStatusService.query(request, payload.get("inst_uuids")))
 
 
 class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):

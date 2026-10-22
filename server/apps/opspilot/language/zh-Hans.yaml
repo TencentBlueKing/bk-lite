@@ -259,7 +259,7 @@ tools:
       monitor_query_metric_data:
         description: 查询指定指标的时序数据。
       monitor_summarize_metric_trend:
-        description: 用完整历史汇总指标趋势，只返回会在预测跨度内到达阈值的序列。
+        description: 按最近的监控历史估算当前值、每天变化，以及还有几天会到阈值。没到阈值的也会列出。
       monitor_list_active_alerts:
         description: 查询监控策略产生的实例活跃告警（监控详情页告警列表，非告警中心工单）。
       monitor_query_alert_segments:
@@ -334,9 +334,9 @@ tools:
       log_list_groups:
         description: 列出可访问的日志分组。
       log_search_structured:
-        description: 按关键词和时间范围查询日志。
+        description: 按关键词查询日志。时间用带时区的 RFC3339，例如 2026-10-21T15:03:09+08:00；不传则查近 24 小时。
       log_search_raw:
-        description: 使用原生 LogsQL 查询日志。
+        description: 使用原生 LogsQL 查询日志。时间用带时区的 RFC3339，例如 2026-10-21T15:03:09+08:00；不传则查近 24 小时。
   ops_analysis_dashboard:
     name: 运营分析仪表盘
     description: |

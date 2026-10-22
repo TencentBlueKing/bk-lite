@@ -27,7 +27,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', collect_type='snmp_mpb', __$labels__}) by (instance_id)",
       "display_name": "Case Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -40,7 +40,7 @@
     {
       "metric_group": "Temperature",
       "name": "mpb_ld1_temperature_celsius",
-      "query": "max(snmp_mpb_ld1_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpb_ld1_temperature_celsius{instance_type='transmission', collect_type='snmp_mpb', __$labels__}) by (instance_id)",
       "display_name": "Pump Laser 1 Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -53,7 +53,7 @@
     {
       "metric_group": "Temperature",
       "name": "mpb_ld2_temperature_celsius",
-      "query": "max(snmp_mpb_ld2_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpb_ld2_temperature_celsius{instance_type='transmission', collect_type='snmp_mpb', __$labels__}) by (instance_id)",
       "display_name": "Pump Laser 2 Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "mpb_output_power_mw",
-      "query": "max(snmp_mpb_output_power_mw{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpb_output_power_mw{instance_type='transmission', collect_type='snmp_mpb', __$labels__}) by (instance_id)",
       "display_name": "Optical Output Power (mW)",
       "data_type": "Number",
       "unit": "none",
@@ -79,7 +79,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "mpb_input_power_mw",
-      "query": "max(snmp_mpb_input_power_mw{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpb_input_power_mw{instance_type='transmission', collect_type='snmp_mpb', __$labels__}) by (instance_id)",
       "display_name": "Optical Input Power (mW)",
       "data_type": "Number",
       "unit": "none",
@@ -92,7 +92,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "mpb_gain_db",
-      "query": "max(snmp_mpb_gain_db{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpb_gain_db{instance_type='transmission', collect_type='snmp_mpb', __$labels__}) by (instance_id)",
       "display_name": "Amplifier Gain (dB)",
       "data_type": "Number",
       "unit": "none",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "mpb_unit_state",
-      "query": "max(snmp_mpb_unit_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpb_unit_state{instance_type='transmission', collect_type='snmp_mpb', __$labels__}) by (instance_id)",
       "display_name": "Amplifier Unit State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -118,7 +118,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_mpb', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -136,7 +136,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_mpb', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -154,7 +154,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_mpb', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

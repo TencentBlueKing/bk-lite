@@ -2,6 +2,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.workflow_orchestration.models import (
     AtomConfigTemplate,
     AtomDefinition,
@@ -22,6 +23,27 @@ from apps.workflow_orchestration.services.workflow_projections import workflow_t
 from apps.workflow_orchestration.utils.i18n import serializer_message
 
 WORKFLOW_NAME_CONFLICT_MESSAGE = "同一组织下已存在同名流程"
+TEAM_REQUIRED_MESSAGE = "请选择组织"
+
+
+def normalize_team_ids(raw):
+    """把提交的组织收成去重后的正整数列表。非法或空列表返回 None。"""
+    if not isinstance(raw, list) or not raw:
+        return None
+    ids = []
+    for item in raw:
+        if isinstance(item, bool):
+            return None
+        if isinstance(item, int):
+            number = item
+        elif isinstance(item, str) and item.isdigit():
+            number = int(item)
+        else:
+            return None
+        if number <= 0:
+            return None
+        ids.append(number)
+    return sorted(set(ids))
 
 
 class SchedulePreviewRequestSerializer(serializers.Serializer):
@@ -48,20 +70,17 @@ class WebhookTestListenRequestSerializer(serializers.Serializer):
 
 
 def validate_workflow_name_available(name, *, team, exclude_id=None, request=None):
-    queryset = Workflow.all_objects.filter(
-        name__iexact=name,
-        team=team,
-        deleted_at__isnull=True,
-    )
+    queryset = Workflow.all_objects.filter(name__iexact=name, deleted_at__isnull=True)
     if exclude_id is not None:
         queryset = queryset.exclude(pk=exclude_id)
-    if queryset.exists():
+    if queryset.filter(build_json_membership_query(queryset, "team", team)).exists():
         raise serializers.ValidationError(render_known_message(request, WORKFLOW_NAME_CONFLICT_MESSAGE))
     return name
 
 
 class WorkflowDuplicateRequestSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=120, trim_whitespace=True)
+    description = serializers.CharField(max_length=500, required=False, allow_blank=True, trim_whitespace=True)
 
     def validate_name(self, value):
         return validate_workflow_name_available(value, team=self.context["team"], request=self.context.get("request"))
@@ -84,17 +103,18 @@ class WorkflowSerializer(serializers.ModelSerializer):
         return workflow_permissions(self.context.get("request"), workflow)
 
     def validate_name(self, value):
-        if self.instance is not None:
-            team = self.instance.team
-            exclude_id = self.instance.pk
-        else:
-            request = self.context.get("request")
-            try:
-                team = [int(get_current_team(request))]
-            except (TypeError, ValueError) as error:
-                raise serializers.ValidationError(render_known_message(request, "缺少或非法的 current_team")) from error
-            exclude_id = None
-        return validate_workflow_name_available(value, team=team, exclude_id=exclude_id, request=self.context.get("request"))
+        request = self.context.get("request")
+        team = self.context.get("team")
+        if team is None:
+            if self.instance is not None:
+                team = self.instance.team
+            else:
+                try:
+                    team = [int(get_current_team(request))]
+                except (TypeError, ValueError) as error:
+                    raise serializers.ValidationError(render_known_message(request, "缺少或非法的 current_team")) from error
+        exclude_id = self.instance.pk if self.instance is not None else None
+        return validate_workflow_name_available(value, team=team, exclude_id=exclude_id, request=request)
 
     class Meta:
         model = Workflow
@@ -329,7 +349,7 @@ class DownloadableArtifactSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ExecutionArtifact
-        fields = ("id", "format", "filename", "size", "download_url")
+        fields = ("id", "format", "filename", "size", "created_at", "expires_at", "download_url")
         read_only_fields = fields
 
 

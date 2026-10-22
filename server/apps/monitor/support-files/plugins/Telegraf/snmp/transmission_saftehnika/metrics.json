@@ -26,7 +26,7 @@
     {
       "metric_group": "CPU",
       "name": "cpu_usage_percent",
-      "query": "avg(100 - cpu_usage_idle{instance_type='transmission', __$labels__} / 10) by (instance_id) or avg(snmp_cpu_usage_percent{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "avg(100 - cpu_usage_idle{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__} / 10) by (instance_id) or avg(snmp_cpu_usage_percent{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -39,7 +39,7 @@
     {
       "metric_group": "Memory",
       "name": "memory_usage_percent",
-      "query": "avg(100 - memory_usage_free{instance_type='transmission', __$labels__} / 10) by (instance_id)",
+      "query": "avg(100 - memory_usage_free{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__} / 10) by (instance_id)",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -52,7 +52,7 @@
     {
       "metric_group": "Temperature",
       "name": "cpu_temperature_celsius",
-      "query": "avg(cpu_temperature_celsius{instance_type='transmission', __$labels__} / 10) by (instance_id)",
+      "query": "avg(cpu_temperature_celsius{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__} / 10) by (instance_id)",
       "display_name": "CPU Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -65,7 +65,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -83,7 +83,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -101,7 +101,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -119,7 +119,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -132,7 +132,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "avg(snmp_psu_voltage_mv{instance_type='transmission', __$labels__} > 0) by (instance_id) / 1000",
+      "query": "avg(snmp_psu_voltage_mv{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__} > 0) by (instance_id) / 1000",
       "display_name": "PSU Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -145,7 +145,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu_current_amps",
-      "query": "avg(snmp_psu_current_ma{instance_type='transmission', __$labels__} > 0) by (instance_id) / 1000",
+      "query": "avg(snmp_psu_current_ma{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__} > 0) by (instance_id) / 1000",
       "display_name": "PSU Current (A)",
       "data_type": "Number",
       "unit": "none",
@@ -158,7 +158,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu_power_watts",
-      "query": "avg(snmp_psu_power_mw{instance_type='transmission', __$labels__} > 0) by (instance_id) / 1000",
+      "query": "avg(snmp_psu_power_mw{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__} > 0) by (instance_id) / 1000",
       "display_name": "PSU Power",
       "data_type": "Number",
       "unit": "watts",
@@ -171,7 +171,7 @@
     {
       "metric_group": "Temperature",
       "name": "board_temperature_celsius",
-      "query": "avg(snmp_board_temperature{instance_type='transmission', __$labels__} > -600 < 1500) by (instance_id) / 10",
+      "query": "avg(snmp_board_temperature{instance_type='transmission', collect_type='snmp_saftehnika', __$labels__} > -600 < 1500) by (instance_id) / 10",
       "display_name": "Board Temperature",
       "data_type": "Number",
       "unit": "celsius",

@@ -98,9 +98,14 @@ function collectTasks(tasks: ConductorTask[], result: Map<string, ConductorTask>
   }
 }
 
-function collectEdgeAncestors(currentReference: string, edges: DataReferenceEdge[], taskReferences: Set<string>): Set<string> {
+function incomingEdges(edges: DataReferenceEdge[]): Map<string, string[]> {
   const incoming = new Map<string, string[]>();
   for (const edge of edges) incoming.set(edge.target, [...(incoming.get(edge.target) || []), edge.source]);
+  return incoming;
+}
+
+function collectEdgeAncestors(currentReference: string, edges: DataReferenceEdge[], taskReferences: Set<string>): Set<string> {
+  const incoming = incomingEdges(edges);
   const ancestors = new Set<string>();
   const pending = [...(incoming.get(currentReference) || [])];
   while (pending.length) {
@@ -110,6 +115,22 @@ function collectEdgeAncestors(currentReference: string, edges: DataReferenceEdge
     pending.push(...(incoming.get(reference) || []));
   }
   return new Set([...ancestors].filter((reference) => taskReferences.has(reference)));
+}
+
+function reachesCanvasTrigger(currentReference: string, edges: DataReferenceEdge[], taskReferences: Set<string>): boolean {
+  const incoming = incomingEdges(edges);
+  const pending = [currentReference];
+  const seen = new Set<string>();
+  while (pending.length) {
+    const reference = pending.pop()!;
+    if (seen.has(reference)) continue;
+    seen.add(reference);
+    for (const source of incoming.get(reference) || []) {
+      if (!taskReferences.has(source)) return true;
+      pending.push(source);
+    }
+  }
+  return false;
 }
 
 function definitionOrder(tasks: ConductorTask[]): Map<string, number> {
@@ -255,11 +276,14 @@ export function buildDataReferenceOptions(
   });
   const labelCounts = new Map<string, number>();
   baseLabels.forEach(({ base }) => labelCounts.set(base, (labelCounts.get(base) || 0) + 1));
+  const showTriggerInput = !edges || reachesCanvasTrigger(currentReference, edges, new Set(taskByReference.keys()));
   const triggerBase = triggerSourceLabel?.trim() || labels.triggerInput;
-  const hasTriggerFields = Object.keys(workflowInputSchema.properties || {}).length > 0;
+  const hasTriggerFields = showTriggerInput && Object.keys(workflowInputSchema.properties || {}).length > 0;
   if (hasTriggerFields) labelCounts.set(triggerBase, (labelCounts.get(triggerBase) || 0) + 1);
   const triggerLabel = hasTriggerFields && (labelCounts.get(triggerBase) || 0) > 1 ? `${triggerBase} · workflow.input` : triggerBase;
-  const options = schemaOptions(workflowInputSchema, triggerLabel, triggerLabel, '${workflow.input.', 'trigger', 'workflow.input');
+  const options = hasTriggerFields
+    ? schemaOptions(workflowInputSchema, triggerLabel, triggerLabel, '${workflow.input.', 'trigger', 'workflow.input')
+    : [];
   baseLabels.forEach(({ reference, base }) => {
     const sourceLabel = (labelCounts.get(base) || 0) > 1 ? `${base} · ${reference}` : base;
     const task = taskByReference.get(reference);

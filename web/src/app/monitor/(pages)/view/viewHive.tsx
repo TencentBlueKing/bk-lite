@@ -32,6 +32,7 @@ import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { Select, Spin } from 'antd';
 import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
 import { shouldSkipPeriodicRefresh } from '@/app/monitor/utils/metricRequestSlot';
+import { fillInstanceListDisplayMetrics } from '@/app/monitor/utils/fillListDisplayMetrics';
 import { ListItem } from '@/types';
 const { Option } = Select;
 
@@ -52,16 +53,21 @@ const readDisplayMetricCell = (item: TableDataItem, metricName: string) => {
 const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const { isLoading } = useApiClient();
   const { getMonitorMetrics } = useMonitorApi();
-  const { getInstanceQueryParams, getInstanceSearch } = useViewApi();
+  const { getInstanceQueryParams, getInstanceSearch, getInstanceDisplayMetrics } =
+    useViewApi();
   const { t } = useTranslation();
   const { getEnumValueUnit } = useUnitTransform();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const modalRef = useRef<ModalRef>(null);
   const hexGridRef = useRef<HTMLDivElement>(null);
-  const isFetchingRef = useRef<boolean>(false); // 用于标记是否正在加载数据
+  const isFetchingRef = useRef<boolean>(false); // identity+回填全程在途，对齐 viewList listInFlight
+  const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const unassignedOnlyRef = useRef(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [chartData, setChartData] = useState<HexagonData[]>([]);
+  const chartDataRef = useRef<HexagonData[]>([]);
+  chartDataRef.current = chartData;
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -74,6 +80,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const [queryMetric, setQueryMetric] = useState<string | null>(null);
   const [hexColor, setHexColor] = useState<NodeThresholdColor[]>([]);
   const [nodeList, setNodeList] = useState<ListItem[]>([]);
+  unassignedOnlyRef.current = unassignedOnly;
 
   const isPod = useMemo(() => {
     return findByMonitorId(objects, objectId)?.name === 'Pod';
@@ -160,13 +167,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     unassignedOnly
   ]);
 
-  // 加载更多节流
-  useEffect(() => {
-    if (!tableLoading) {
-      isFetchingRef.current = false;
-    }
-  }, [tableLoading]);
-
   const handleScroll = useCallback(() => {
     if (!hexGridRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = hexGridRef.current;
@@ -211,7 +211,8 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     return {
       page: pagination.current,
       page_size: pagination.pageSize,
-      add_metrics: true,
+      // 展示指标由限流异步批回填，主列表只返回实例行。
+      add_metrics: false,
       name: '',
       vm_params: {
         instance_id: '',
@@ -221,17 +222,73 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     };
   };
 
+  const fillHexagonMetrics = async ({
+    rows,
+    startIndex,
+    requestId,
+    toChart,
+    signal
+  }: {
+    rows: TableDataItem[];
+    startIndex: number;
+    requestId: number;
+    toChart: (filled: TableDataItem[]) => HexagonData[];
+    signal: AbortSignal;
+  }) => {
+    const filled = await fillInstanceListDisplayMetrics({
+      rows,
+      signal,
+      isCurrent: () =>
+        !signal.aborted && requestId === requestIdRef.current,
+      fetchBatch: async (instanceIds, batchSignal) => {
+        const payload = await getInstanceDisplayMetrics(
+          objectId,
+          {
+            instance_ids: instanceIds,
+            ...(unassignedOnlyRef.current ? { unassigned: true } : {})
+          },
+          { signal: batchSignal }
+        );
+        return payload?.results || [];
+      }
+    });
+    if (signal.aborted || requestId !== requestIdRef.current) {
+      return;
+    }
+    const nextChart = toChart(filled);
+    // 只覆盖本页格子，避免 replace 整表擦掉已 append 的后续页。
+    setChartData((prev) => {
+      const merged = [...prev];
+      merged.splice(startIndex, nextChart.length, ...nextChart);
+      return merged;
+    });
+  };
+
   const getInitData = async (name: string) => {
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const currentRequestId = ++requestIdRef.current;
     const params = getParams();
     const objParams = {
       monitor_object_id: String(objectId),
       name: isPod ? 'pod_status_phase' : 'node_status_condition'
     };
-    const getInstList = await getInstanceSearch(objectId, params);
-    const getQueryParams = await getInstanceQueryParams(name, objParams);
+    isFetchingRef.current = true;
     setTableLoading(true);
     try {
-      const { items: metricsData } = await getMonitorMetrics(objParams);
+      const getInstList = getInstanceSearch(objectId, params, {
+        signal: abortController.signal
+      });
+      const getQueryParams = getInstanceQueryParams(name, objParams, {
+        signal: abortController.signal
+      });
+      const { items: metricsData } = await getMonitorMetrics(objParams, {
+        signal: abortController.signal
+      });
+      if (currentRequestId !== requestIdRef.current) {
+        return;
+      }
       setMertics(metricsData || []);
       const tagetMerticItem = metricsData.find(
         (item: MetricItem) =>
@@ -248,12 +305,16 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         setQueryMetric(tagetMerticItem.name);
       }
       const res = await Promise.all([getInstList, getQueryParams]);
+      if (currentRequestId !== requestIdRef.current) {
+        return;
+      }
       const k8sQuery = res[1];
       if (k8sQuery?.cluster) {
         setNodeList(k8sQuery?.node || []);
       }
+      const identityRows = res[0]?.results || [];
       const chartConfig = {
-        data: res[0]?.results || [],
+        data: identityRows,
         metricsData,
         hexColor,
         queryMetric: queryMetric as string
@@ -263,10 +324,31 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         ...prev,
         total: res[0]?.count || 0
       }));
-    } catch {
-      setMertics([]);
-    } finally {
       setTableLoading(false);
+      await fillHexagonMetrics({
+        rows: identityRows,
+        startIndex: 0,
+        requestId: currentRequestId,
+        toChart: (filled) =>
+          dealChartData({
+            data: filled,
+            metricsData: metricsData || [],
+            hexColor,
+            queryMetric: (tagetMerticItem?.name || queryMetric) as string
+          }),
+        signal: abortController.signal
+      });
+    } catch {
+      if (currentRequestId === requestIdRef.current) {
+        setMertics([]);
+      }
+    } finally {
+      if (abortControllerRef.current === abortController) {
+        isFetchingRef.current = false;
+      }
+      if (currentRequestId === requestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -356,6 +438,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     }
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
+    const currentRequestId = ++requestIdRef.current;
     const params = getParams();
     if (type === 'refresh') {
       params.page = 1;
@@ -369,8 +452,13 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       const data = await getInstanceSearch(objectId, params, {
         signal: abortController.signal
       });
+      const applied = currentRequestId === requestIdRef.current;
+      if (!applied) {
+        return;
+      }
+      const identityRows = data.results || [];
       const chartConfig = {
-        data: data.results || [],
+        data: identityRows,
         metricsData: metricList,
         hexColor,
         queryMetric: queryMetric as string
@@ -380,14 +468,31 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         ...prev,
         total: data.count || 0
       }));
-      setChartData((prev: any) =>
-        type === 'more' ? [...prev, ...chartList] : chartList
+      const startIndex = type === 'more' ? chartDataRef.current.length : 0;
+      setChartData(
+        type === 'more' ? [...chartDataRef.current, ...chartList] : chartList
       );
+      setTableLoading(false);
+      await fillHexagonMetrics({
+        rows: identityRows,
+        startIndex,
+        requestId: currentRequestId,
+        toChart: (filled) =>
+          dealChartData({
+            data: filled,
+            metricsData: metricList,
+            hexColor,
+            queryMetric: queryMetric as string
+          }),
+        signal: abortController.signal
+      });
     } finally {
       if (abortControllerRef.current === abortController) {
         isFetchingRef.current = false;
       }
-      setTableLoading(false);
+      if (currentRequestId === requestIdRef.current) {
+        setTableLoading(false);
+      }
     }
   };
 

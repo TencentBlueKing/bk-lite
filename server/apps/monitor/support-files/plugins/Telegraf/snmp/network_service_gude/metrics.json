@@ -23,7 +23,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_active_power_watts",
-      "query": "pdu_active_power_watts{instance_type='network_service', __$labels__}",
+      "query": "pdu_active_power_watts{instance_type='network_service', collect_type='snmp_gude', __$labels__}",
       "display_name": "PDU Active Power",
       "data_type": "Number",
       "unit": "watts",
@@ -45,7 +45,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_channel_current_amps",
-      "query": "pdu_channel_current_amps{instance_type='network_service', __$labels__} / 1000",
+      "query": "pdu_channel_current_amps{instance_type='network_service', collect_type='snmp_gude', __$labels__} / 1000",
       "display_name": "PDU Channel Current",
       "data_type": "Number",
       "unit": "none",
@@ -67,7 +67,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_channel_voltage_volts",
-      "query": "pdu_channel_voltage_volts{instance_type='network_service', __$labels__}",
+      "query": "pdu_channel_voltage_volts{instance_type='network_service', collect_type='snmp_gude', __$labels__}",
       "display_name": "PDU Channel Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -89,7 +89,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_outlet_power_state",
-      "query": "pdu_outlet_power_state{instance_type='network_service', __$labels__}",
+      "query": "pdu_outlet_power_state{instance_type='network_service', collect_type='snmp_gude', __$labels__}",
       "display_name": "PDU Outlet Power State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"off\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"on\",\"id\":1,\"color\":\"#1ac44a\"}]",
@@ -115,7 +115,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_gude', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -133,7 +133,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_gude', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -151,7 +151,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_gude', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

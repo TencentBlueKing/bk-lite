@@ -557,9 +557,17 @@ def dispatch_notification(
         )
     except Exception:
         logger.exception("Public notification dispatch failed")
-        return _notification_failure("provider_unavailable", "通知传输暂不可用。", retryable=True)
+        return _notification_failure(
+            "provider_unavailable",
+            system_mgmt_message(None, "error.notification_provider_unavailable"),
+            retryable=True,
+        )
     if not isinstance(response, dict):
-        return _notification_failure("invalid_provider_response", "通知渠道返回格式无效。", retryable=True)
+        return _notification_failure(
+            "invalid_provider_response",
+            system_mgmt_message(None, "error.notification_invalid_provider_response"),
+            retryable=True,
+        )
     if response.get("result") is False:
         if capability["delivery_mode"] == "alert_event_copy" and ack_mode == "per_event_v1":
             event_results = (response.get("data") or {}).get("event_results") or []
@@ -568,12 +576,14 @@ def dispatch_notification(
                     "result": False,
                     "code": str(response.get("code") or "alert_copy_partial"),
                     "retryable": any(bool(item.get("retryable", True)) for item in event_results if isinstance(item, dict)),
-                    "message": str(response.get("message") or "告警中心仅接受了部分事件副本。")[:512],
+                    "message": str(
+                        response.get("message") or system_mgmt_message(None, "error.alert_copy_partial_accepted")
+                    )[:512],
                     "data": {"event_results": event_results},
                 }
         return _notification_failure(
             str(response.get("code") or "delivery_failed"),
-            str(response.get("message") or "通知渠道投递失败。")[:512],
+            str(response.get("message") or system_mgmt_message(None, "error.notification_delivery_failed"))[:512],
             retryable=bool(response.get("retryable", True)),
         )
     if capability["delivery_mode"] == "alert_event_copy":
@@ -581,7 +591,11 @@ def dispatch_notification(
         if ingestion and (
             int(ingestion.get("errored", 0) or 0) > 0 or int(ingestion.get("accepted", 0) or 0) + int(ingestion.get("skipped", 0) or 0) < 1
         ):
-            return _notification_failure("alert_copy_rejected", "告警中心未接受事件副本。", retryable=True)
+            return _notification_failure(
+                "alert_copy_rejected",
+                system_mgmt_message(None, "error.alert_copy_rejected"),
+                retryable=True,
+            )
     result = {"result": True, "code": "delivered", "retryable": False, "message": "success"}
     if capability["delivery_mode"] == "alert_event_copy":
         event_results = (response.get("data") or {}).get("event_results") or []

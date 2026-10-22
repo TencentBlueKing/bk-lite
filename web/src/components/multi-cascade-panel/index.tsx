@@ -89,7 +89,7 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
   columnWidth = 200,
   disabled = false,
   searchable = false,
-  searchPlaceholder = '搜索...',
+  searchPlaceholder = '搜索',
   single = false,
 }) => {
   const [selectedValue, setSelectedValue] = useState<number[]>(value);
@@ -258,7 +258,7 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
       <div
         key={node.value}
         className={`
-          flex items-center justify-between px-3 py-2 cursor-pointer
+          flex min-h-8 items-center justify-between px-3 py-1 cursor-pointer
           transition-colors duration-200
           hover:bg-[var(--color-fill-2)]
           ${isActive ? 'bg-[var(--color-fill-2)]' : ''}
@@ -300,36 +300,41 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
     handleCheckboxChange
   ]);
 
-  const renderColumn = useCallback((column: ColumnItem) => {
+  const renderColumn = useCallback((column: ColumnItem, stretch: boolean) => {
     return (
       <div
         key={`column-${column.level}`}
-        className="flex flex-col border-r border-[var(--color-border)] last:border-r-0"
+        className="flex flex-col overflow-auto border-r border-[var(--color-border)] last:border-r-0"
         style={{
-          width: columnWidth,
-          height: '100%',
-          flexShrink: 0
+          width: stretch ? '100%' : columnWidth,
+          minWidth: stretch ? 0 : columnWidth,
+          maxHeight: height,
+          flexShrink: 0,
         }}
       >
-        <div className="flex-1 overflow-auto">
+        <div className="overflow-auto">
           {column.nodes.length > 0 ? (
             column.nodes.map(node => renderNode(node, column.level))
           ) : (
-            <div className="flex items-center justify-center h-full text-[var(--color-text-3)]">
+            <div className="flex min-h-16 items-center justify-center text-[var(--color-text-3)]">
               暂无数据
             </div>
           )}
         </div>
       </div>
     );
-  }, [columnWidth, renderNode]);
+  }, [columnWidth, height, renderNode]);
+
+  const singleColumn = filteredColumns.length <= 1;
 
   return (
-    <div className="multi-cascade-panel">
+    <div className="multi-cascade-panel bg-[var(--color-bg)]">
       {searchable && (
-        <div className="p-2 border-b border-[var(--color-border)]">
+        <div className="border-b border-[var(--color-border)] px-2 py-1">
           <Input
-            prefix={<SearchOutlined />}
+            size="small"
+            variant="borderless"
+            prefix={<SearchOutlined className="text-[var(--color-text-3)]" />}
             placeholder={searchPlaceholder}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -338,11 +343,8 @@ const MultiCascadePanel: React.FC<MultiCascadePanelProps> = ({
         </div>
       )}
 
-      <div
-        className="flex overflow-x-auto border border-[var(--color-border)] rounded bg-[var(--color-bg)]"
-        style={{ height }}
-      >
-        {filteredColumns.map((column) => renderColumn(column))}
+      <div className="flex overflow-x-auto" style={{ maxHeight: height }}>
+        {filteredColumns.map((column) => renderColumn(column, singleColumn))}
       </div>
     </div>
   );
