@@ -328,6 +328,8 @@ export interface MysqlKpiCard {
   tone?: string;
   alertLevel?: TabAlertLevel;
   clickable?: boolean;
+  /** 值下的文字链。慢查询随语句采集切换，不另做按钮。 */
+  actionLabel?: string;
 }
 
 const formatCount = (value: number) => {
@@ -445,7 +447,8 @@ const replicaThreadPart = (
 /** 健康六格第 4 格。非复制实例也占格，避免和主机六卡错位。 */
 export const buildMysqlReplicationKpi = (
   metricMap: Record<string, MetricSeries | undefined>,
-  text: MysqlText
+  text: MysqlText,
+  instanceName = ''
 ): Pick<MysqlKpiCard, 'value' | 'subtitle' | 'tone' | 'alertLevel' | 'clickable'> => {
   const units = { millisecond: text('millisecond'), second: text('second') };
   const block = readMysqlRoleBlock(metricMap);
@@ -485,6 +488,33 @@ export const buildMysqlReplicationKpi = (
       clickable: true
     };
   }
+  if (!mysqlReplicationTabHasContent(metricMap)) {
+    return replicationGapKpi(readMysqlReplicationGap(metricMap, instanceName), text);
+  }
+  return {
+    value: text('rolePrimary'),
+    clickable: true
+  };
+};
+
+const replicationGapKpi = (
+  gap: MysqlReplicationGap,
+  text: MysqlText
+): Pick<MysqlKpiCard, 'value' | 'subtitle' | 'tone' | 'alertLevel' | 'clickable'> => {
+  if (gap === 'partial') {
+    return { value: text('replicationPartialShort'), tone: MUTED_VALUE, clickable: true };
+  }
+  if (gap === 'not_collected') {
+    return { value: text('notCollected'), tone: MUTED_VALUE, clickable: true };
+  }
+  if (gap === 'primary_no_slaves') {
+    return {
+      value: text('rolePrimary'),
+      subtitle: text('noDownstream'),
+      tone: MUTED_VALUE,
+      clickable: true
+    };
+  }
   return {
     value: text('notConfigured'),
     subtitle: text('singleInstance'),
@@ -504,11 +534,18 @@ export const isSlowQueryAlertText = (content: string, policyName = '') => (
  * 连接 / QPS / 慢查询 / 复制 / 运行时间 / 告警：六格占位固定。
  * 缺采只空主值，避免加载后整卡消失、和主机六卡错位。
  */
+export interface MysqlOverviewContext {
+  statementsReady?: boolean;
+  statementsCollected?: boolean;
+  instanceName?: string;
+}
+
 export const buildMysqlOverviewKpis = (
   readings: MysqlOverviewReadings,
   metricMap: Record<string, MetricSeries | undefined>,
   text: MysqlText,
-  slowAlertActive = false
+  slowAlertActive = false,
+  context: MysqlOverviewContext = {}
 ): MysqlKpiCard[] => {
   const cards: MysqlKpiCard[] = [];
   const connected = finite(readings.threadsConnected);
@@ -538,14 +575,18 @@ export const buildMysqlOverviewKpis = (
   });
 
   const slow = finite(readings.slowPerSecond);
+  const statementsMissing = context.statementsReady === true && context.statementsCollected !== true;
   cards.push({
     key: 'slow',
     label: text('kpiSlow'),
     value: slow == null ? EMPTY_VALUE : text('slowPerSecond', { value: formatRate(slow) }),
-    tone: slowAlertActive ? HOST_THRESHOLD_COLOR.warn : undefined
+    subtitle: statementsMissing ? text('statementsNotCollectedShort') : undefined,
+    tone: slowAlertActive ? HOST_THRESHOLD_COLOR.warn : undefined,
+    clickable: true,
+    actionLabel: statementsMissing ? text('enableStatementCollection') : text('viewStatements')
   });
 
-  const replication = buildMysqlReplicationKpi(metricMap, text);
+  const replication = buildMysqlReplicationKpi(metricMap, text, context.instanceName || '');
   cards.push({
     key: 'replication',
     label: text('kpiReplication'),
@@ -769,9 +810,17 @@ export const buildMysqlFocusCards = (
         spark: 'tmpDisk'
       }),
     fourth
-  ].map((card) => (
-    card.value === EMPTY_VALUE ? { ...card, subtitle: text('notCollected') } : card
-  ));
+  ].map((card) => {
+    const withGap = card.value === EMPTY_VALUE ? { ...card, subtitle: text('notCollected') } : card;
+    if (withGap.key !== 'slow') return withGap;
+    const missing = withGap.value === EMPTY_VALUE;
+    return {
+      ...withGap,
+      tab: 'statements' as const,
+      anchor: undefined,
+      hint: missing ? text('enableStatementCollection') : text('viewStatements')
+    };
+  });
 };
 
 export interface MysqlHostCandidate {
@@ -1363,16 +1412,22 @@ export const mysqlReplicationTabHasContent = (
     || slots.length > 0;
 };
 
-export type MysqlReplicationGap = 'unconfigured' | 'partial';
+export type MysqlReplicationGap = 'partial' | 'not_collected' | 'primary_no_slaves' | 'unconfigured';
+
+const nameSaysReplica = (instanceName: string) => (
+  /从库|从节点|slave|replica|secondary/i.test(instanceName)
+);
 
 /**
- * 复制签画不出内容时的空态分级。有下游或趋势时不走这里。
- * L1 未配置：没有从库线程、下游、半同步、位点、容量，也不是只读。
- * L2 未采全：已经能看到复制相关采点，但这页仍然空着。
- * 只读且没有从库指标算 L2，避免把从库说成单机写入源。
+ * 复制签画不出内容时的四态。有内容的页不走这里。
+ * 1 partial：已有复制采点，但这页仍空。
+ * 2 not_collected：没有复制采点，且只读、名字像从库，或页头身份是从库。
+ * 3 primary_no_slaves：页头身份是主库，且没有下游采点。
+ * 4 unconfigured：能接受的真单机。从库或只读不得落到这一态。
  */
 export const readMysqlReplicationGap = (
-  metricMap: Record<string, MetricSeries | undefined>
+  metricMap: Record<string, MetricSeries | undefined>,
+  instanceName = ''
 ): MysqlReplicationGap => {
   const valueOf = (name: string) => latestNumber(metricMap[name]);
   const slaveThread = valueOf('mysql_slave_io_running') != null
@@ -1393,25 +1448,38 @@ export const readMysqlReplicationGap = (
     valueOf('mysql_slave_last_io_errno'),
     valueOf('mysql_slave_last_sql_errno')
   ].some((errnoValue) => errnoValue != null && errnoValue > 0);
-  if (slaveThread || downstream || semisync || position || capacity || errno || readonlyOn(metricMap)) {
+  if (slaveThread || downstream || semisync || position || capacity || errno) {
     return 'partial';
   }
+  if (readonlyOn(metricMap) || nameSaysReplica(instanceName)) return 'not_collected';
+  const identity = readMysqlHeaderIdentity(metricMap, instanceName);
+  if (identity.role === '从库') return 'not_collected';
+  const downstreamKnown = slaves != null || semisyncClients != null;
+  if (identity.role === '主库' && !downstreamKnown) return 'primary_no_slaves';
   return 'unconfigured';
 };
 
 /**
  * 复制签角标。有内容或角色/加深指标还在加载时不挂。
- * L1 未配置，L2 未采齐。判定仍走 readMysqlReplicationGap。
+ * 未配置挂「未配置」；未采与未齐挂「未采集」；主库无下游不挂角标。
  */
 export const readMysqlReplicationTabBadge = (
   metricMap: Record<string, MetricSeries | undefined>,
-  pendingMetricNames: ReadonlySet<string>
+  pendingMetricNames: ReadonlySet<string>,
+  instanceName = ''
 ): MysqlReplicationGap | null => {
   if (mysqlReplicationTabHasContent(metricMap)) return null;
   const waiting = MYSQL_ROLE_METRICS.some((name) => pendingMetricNames.has(name))
     || MYSQL_REPLICATION_EXTRA_METRICS.some((name) => pendingMetricNames.has(name));
   if (waiting) return null;
-  return readMysqlReplicationGap(metricMap);
+  return readMysqlReplicationGap(metricMap, instanceName);
+};
+
+/** 实例采集配置页。没有插件参数时只带到该对象的接入资产，文案里点名开关。 */
+export const mysqlCollectionConfigPath = (monitorObjectId?: string | number | null) => {
+  const id = monitorObjectId == null ? '' : String(monitorObjectId).trim();
+  if (/^\d+$/.test(id)) return `/monitor/integration/asset?objId=${encodeURIComponent(id)}`;
+  return '/monitor/integration/asset';
 };
 
 export const waitStatementIds = (event: MysqlWaitEventRow) => {

@@ -22,6 +22,7 @@ import {
   type MysqlOverviewReadings
 } from './ia';
 import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
+import pro from './pro.module.scss';
 import {
   MYSQL_FOCUS_METRICS,
   MYSQL_HEALTH_METRICS,
@@ -39,10 +40,17 @@ interface OverviewPaneProps {
   alertEvents: HostAlertRailEvent[];
   eventsLoading: boolean;
   slowAlertActive: boolean;
+  instanceName: string;
+  statementsReady: boolean;
+  statementsCollected: boolean;
   onOpenAlerts: () => void;
   onFocusAlert: (alertId: string) => void;
   onOpenFocus: (card: MysqlFocusCard) => void;
   onOpenReplication: () => void;
+  onOpenSlow: () => void;
+  onOpenLoad: () => void;
+  onOpenStatements: () => void;
+  onOpenWaits: () => void;
 }
 
 const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'replication', 'uptime', 'alerts'].map((key) => ({
@@ -118,17 +126,28 @@ export default function OverviewPane({
   alertEvents,
   eventsLoading,
   slowAlertActive,
+  instanceName,
+  statementsReady,
+  statementsCollected,
   onOpenAlerts,
   onFocusAlert,
   onOpenFocus,
-  onOpenReplication
+  onOpenReplication,
+  onOpenSlow,
+  onOpenLoad,
+  onOpenStatements,
+  onOpenWaits
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
   const text = useCallback((key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => (
     mysqlCategoryText(t, key, values)
   ), [t]);
   const cards = useMemo<KpiTileModel[]>(() => (
-    buildMysqlOverviewKpis(readings, metricMap, text, slowAlertActive).map((card) => ({
+    buildMysqlOverviewKpis(readings, metricMap, text, slowAlertActive, {
+      statementsReady,
+      statementsCollected,
+      instanceName
+    }).map((card) => ({
       key: card.key,
       label: card.label,
       value: card.value,
@@ -137,10 +156,27 @@ export default function OverviewPane({
       alertLevel: card.alertLevel,
       onActivate: card.key === 'alerts'
         ? onOpenAlerts
-        : (card.key === 'replication' && card.clickable ? onOpenReplication : undefined),
-      expanded: card.key === 'alerts' ? alertsOpen : undefined
+        : card.key === 'slow'
+          ? onOpenSlow
+          : (card.key === 'replication' && card.clickable ? onOpenReplication : undefined),
+      expanded: card.key === 'alerts' ? alertsOpen : undefined,
+      extra: card.actionLabel ? (
+        <span className={pro.kpiLink} data-kpi-cta={card.key}>{card.actionLabel}</span>
+      ) : undefined
     }))
-  ), [alertsOpen, metricMap, onOpenAlerts, onOpenReplication, readings, slowAlertActive, text]);
+  ), [
+    alertsOpen,
+    instanceName,
+    metricMap,
+    onOpenAlerts,
+    onOpenReplication,
+    onOpenSlow,
+    readings,
+    slowAlertActive,
+    statementsCollected,
+    statementsReady,
+    text
+  ]);
   const focus = useMemo(
     () => buildMysqlFocusCards(metricMap, previousMetricMap, text),
     [metricMap, previousMetricMap, text]
@@ -153,6 +189,16 @@ export default function OverviewPane({
   ];
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
+  const diagPath = (
+    <div className={pro.diagPath} data-diag-path="p1">
+      <span className={pro.diagLabel}>{text('diagPath')}</span>
+      <button type="button" className={pro.diagChip} onClick={onOpenLoad}>{text('diagLoad')}</button>
+      <span className={pro.diagArrow} aria-hidden="true">→</span>
+      <button type="button" className={pro.diagChip} onClick={onOpenStatements}>{text('diagTopSql')}</button>
+      <span className={pro.diagArrow} aria-hidden="true">→</span>
+      <button type="button" className={pro.diagChip} onClick={onOpenWaits}>{text('diagWaits')}</button>
+    </div>
+  );
 
   return (
     <>
@@ -180,6 +226,7 @@ export default function OverviewPane({
               </div>
             ))}
           </div>
+          {diagPath}
         </>
       ) : (
         <>
@@ -233,6 +280,7 @@ export default function OverviewPane({
               );
             })}
           </div>
+          {diagPath}
         </>
       )}
     </>

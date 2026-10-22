@@ -29,6 +29,7 @@ import {
   hasWaitCollection,
   isMysqlIaTab,
   isSlowQueryAlertText,
+  mysqlCollectionConfigPath,
   readMysqlOverview,
   readMysqlReplicationTabBadge,
   readMysqlStatementRows,
@@ -90,8 +91,8 @@ export default function MysqlProLayout({
   const statementsCollected = hasStatementCollection(statements);
   const waitsCollected = hasWaitCollection(waits);
   const replicationBadge = useMemo(
-    () => readMysqlReplicationTabBadge(metricMap, pendingMetricNames),
-    [metricMap, pendingMetricNames]
+    () => readMysqlReplicationTabBadge(metricMap, pendingMetricNames, instanceName),
+    [instanceName, metricMap, pendingMetricNames]
   );
   const digestLoading = digestStatus === 'loading';
   const requestedTab = searchParams.get(TAB_QUERY);
@@ -130,9 +131,27 @@ export default function MysqlProLayout({
     router.replace(`?${params.toString()}`, { scroll: false });
     if (anchor) {
       window.requestAnimationFrame(() => {
-        document.getElementById(`mysql-perf-${anchor}`)?.scrollIntoView({ block: 'start' });
+        const named = document.getElementById(`mysql-perf-${anchor}`);
+        const fallback = anchor === 'throughput'
+          ? document.getElementById('mysql-perf-connections')
+          : null;
+        (named || fallback)?.scrollIntoView({ block: 'start' });
       });
     }
+  };
+
+  const openStatements = () => {
+    const top = statements[0];
+    if (top) setStatementId(top.id);
+    selectTab('statements');
+  };
+
+  const openCollectionConfig = () => {
+    router.push(mysqlCollectionConfigPath(
+      typeof monitorObjectId === 'string' || typeof monitorObjectId === 'number'
+        ? monitorObjectId
+        : null
+    ));
   };
 
   useEffect(() => {
@@ -288,6 +307,8 @@ export default function MysqlProLayout({
         <ReplicationPane
           metricMap={metricMap}
           pendingMetricNames={pendingMetricNames}
+          instanceName={instanceName}
+          onOpenCollection={openCollectionConfig}
         />
       );
     }
@@ -300,6 +321,7 @@ export default function MysqlProLayout({
           onSelect={setStatementId}
           loading={digestLoading}
           instanceName={instanceName}
+          onOpenCollection={openCollectionConfig}
         />
       );
     }
@@ -313,6 +335,7 @@ export default function MysqlProLayout({
           onSelect={setWaitId}
           instanceName={instanceName}
           statementsCollected={statementsCollected}
+          onOpenCollection={openCollectionConfig}
         />
       );
     }
@@ -326,6 +349,9 @@ export default function MysqlProLayout({
         alertEvents={alertEvents}
         eventsLoading={eventsPhase === 'loading'}
         slowAlertActive={slowAlertActive}
+        instanceName={instanceName}
+        statementsReady={!digestLoading}
+        statementsCollected={statementsCollected}
         onOpenAlerts={() => {
           setFocusAlertId('');
           setAlertDrawerOpen(true);
@@ -336,8 +362,18 @@ export default function MysqlProLayout({
           setAlertDrawerOpen(true);
           setAlertRefreshKey((key) => key + 1);
         }}
-        onOpenFocus={(card) => selectTab(card.tab, card.anchor)}
+        onOpenFocus={(card) => {
+          if (card.key === 'slow' || card.tab === 'statements') {
+            openStatements();
+            return;
+          }
+          selectTab(card.tab, card.anchor);
+        }}
         onOpenReplication={() => selectTab('replication')}
+        onOpenSlow={openStatements}
+        onOpenLoad={() => selectTab('performance', 'throughput')}
+        onOpenStatements={openStatements}
+        onOpenWaits={() => selectTab('waits')}
       />
     );
   };
@@ -358,12 +394,13 @@ export default function MysqlProLayout({
               || (item.key === 'waits' && !waitsCollected)
             );
             const replicationMark = item.key === 'replication' ? replicationBadge : null;
-            const dimmed = statementDimmed || replicationMark === 'partial';
+            const collectedGap = replicationMark === 'partial' || replicationMark === 'not_collected';
+            const dimmed = statementDimmed || collectedGap;
             const badgeKey = statementDimmed
               ? 'notCollected'
               : replicationMark === 'unconfigured'
                 ? 'notConfigured'
-                : replicationMark === 'partial'
+                : collectedGap
                   ? 'notCollected'
                   : null;
             return {

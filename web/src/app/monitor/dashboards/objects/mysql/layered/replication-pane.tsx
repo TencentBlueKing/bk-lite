@@ -14,6 +14,7 @@ import {
   readMysqlRoleBlock,
   visibleReplicationTrends,
   type MysqlReplicationCard,
+  type MysqlReplicationGap,
   type MysqlReplicationTrendKey,
   type MysqlRoleField
 } from './ia';
@@ -219,12 +220,48 @@ function TrendCard({
   );
 }
 
+const gapPresentation = (
+  gap: MysqlReplicationGap,
+  text: (key: MysqlCategoryCopyKey) => string
+) => {
+  if (gap === 'partial') {
+    return {
+      title: text('replicationPartial'),
+      hint: text('replicationPartialHint'),
+      actionLabel: text('viewCollectionConfig')
+    };
+  }
+  if (gap === 'not_collected') {
+    return {
+      title: text('replicationNotCollectedTitle'),
+      hint: text('replicationNotCollectedHint'),
+      actionLabel: text('enableReplicationCollection')
+    };
+  }
+  if (gap === 'primary_no_slaves') {
+    return {
+      title: text('replicationPrimaryNoSlavesTitle'),
+      hint: text('replicationPrimaryNoSlavesHint'),
+      actionLabel: text('viewCollectionConfig')
+    };
+  }
+  return {
+    title: text('replicationUnconfigured'),
+    hint: text('replicationUnconfiguredHint'),
+    actionLabel: undefined
+  };
+};
+
 export default function ReplicationPane({
   metricMap,
-  pendingMetricNames
+  pendingMetricNames,
+  instanceName,
+  onOpenCollection
 }: {
   metricMap: Record<string, MetricSeries | undefined>;
   pendingMetricNames: ReadonlySet<string>;
+  instanceName: string;
+  onOpenCollection: () => void;
 }) {
   const { t } = useDashboardText();
   const text = (key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => (
@@ -277,7 +314,12 @@ export default function ReplicationPane({
 
   const replicationLoading = blocksUntilReady(MYSQL_ROLE_METRICS, pendingMetricNames)
     || blocksUntilReady(MYSQL_REPLICATION_EXTRA_METRICS, pendingMetricNames);
-  const empty = text('noTrend');
+  const trendEmpty = (slot: MysqlReplicationTrendKey, metricName: string) => {
+    if (slot === 'delay') return text('noTrend');
+    const series = metricMap[metricName];
+    if (series?.loadState === 'success') return text('recentWindowEmpty');
+    return slot === 'relay' ? text('relayCollectionOff') : text('binlogCollectionOff');
+  };
   if (!hasContent && replicationLoading) {
     return (
       <div data-replication-state="loading">
@@ -288,13 +330,16 @@ export default function ReplicationPane({
     );
   }
   if (!hasContent) {
-    const gap = readMysqlReplicationGap(metricMap);
-    const gapCopy = gap === 'partial'
-      ? { title: text('replicationPartial'), hint: text('replicationPartialHint') }
-      : { title: text('replicationUnconfigured'), hint: text('replicationUnconfiguredHint') };
+    const gap = readMysqlReplicationGap(metricMap, instanceName);
+    const gapCopy = gapPresentation(gap, text);
     return (
       <div data-replication-state="empty" data-replication-gap={gap}>
-        <GrayTabEmptyState title={gapCopy.title} hint={gapCopy.hint} />
+        <GrayTabEmptyState
+          title={gapCopy.title}
+          hint={gapCopy.hint}
+          actionLabel={gapCopy.actionLabel}
+          onAction={gapCopy.actionLabel ? onOpenCollection : undefined}
+        />
       </div>
     );
   }
@@ -326,7 +371,7 @@ export default function ReplicationPane({
                   unit={spec.unit}
                   color={spec.color}
                   data={data}
-                  emptyText={empty}
+                  emptyText={trendEmpty(slot, spec.metric)}
                   wide={slots.length === 1 || slot === 'delay'}
                   loading={data.length === 0 && pendingMetricNames.has(spec.metric)}
                 />

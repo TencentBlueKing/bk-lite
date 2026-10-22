@@ -903,6 +903,23 @@ button.kpiCard {
   min-height: 0;
 }
 
+.emptyAction {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.emptyAction:hover {
+  text-decoration: underline;
+}
+
 .statusPanel {
   width: 100%;
   gap: 12px;

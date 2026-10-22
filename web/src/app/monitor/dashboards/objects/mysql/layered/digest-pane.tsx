@@ -50,10 +50,20 @@ const trendData = (points: Array<{ time: number; value: number }> | undefined, l
 );
 
 /** 表内空态按文案高度走。不要套趋势卡的 min-height，否则表底被撑出一块空白。 */
-const emptyCopy = (copy: { title: string; hint?: string }) => (
+const emptyCopy = (copy: {
+  title: string;
+  hint?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) => (
   <div className="px-3 py-4 text-center">
     <div className="text-[13px] font-semibold text-[var(--color-text-2)]">{copy.title}</div>
     {copy.hint ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{copy.hint}</div> : null}
+    {copy.actionLabel && copy.onAction ? (
+      <button type="button" className={host.emptyAction} onClick={copy.onAction}>
+        {copy.actionLabel}
+      </button>
+    ) : null}
   </div>
 );
 
@@ -101,11 +111,15 @@ const csvHost = (instanceName: string) => instanceName.trim() || 'mysql';
 function TabFill({
   loading,
   title,
-  hint
+  hint,
+  actionLabel,
+  onAction
 }: {
   loading: boolean;
   title: string;
   hint?: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   if (loading) {
     return (
@@ -114,7 +128,14 @@ function TabFill({
       </div>
     );
   }
-  return <GrayTabEmptyState title={title} hint={hint} />;
+  return (
+    <GrayTabEmptyState
+      title={title}
+      hint={hint}
+      actionLabel={actionLabel}
+      onAction={onAction}
+    />
+  );
 }
 
 /** 主机磁盘挂载点短图：绘图区 160px，通栏，不另做第三套图壳。 */
@@ -156,6 +177,7 @@ interface StatementPaneProps {
   onSelect: (id: string) => void;
   loading?: boolean;
   instanceName: string;
+  onOpenCollection?: () => void;
 }
 
 export function StatementPane({
@@ -164,7 +186,8 @@ export function StatementPane({
   selectedId,
   onSelect,
   loading = false,
-  instanceName
+  instanceName,
+  onOpenCollection
 }: StatementPaneProps) {
   const { t } = useDashboardText();
   const selected = rows.find((row) => row.id === selectedId) || rows[0];
@@ -189,6 +212,8 @@ export function StatementPane({
         loading={loading}
         title={mysqlCategoryText(t, 'emptyStatementsTitle')}
         hint={mysqlCategoryText(t, 'emptyStatementsHint')}
+        actionLabel={onOpenCollection ? mysqlCategoryText(t, 'enableStatementCollection') : undefined}
+        onAction={onOpenCollection}
       />
     );
   }
@@ -245,6 +270,7 @@ interface WaitPaneProps {
   loading?: boolean;
   instanceName: string;
   statementsCollected: boolean;
+  onOpenCollection?: () => void;
 }
 
 export function WaitPane({
@@ -254,7 +280,8 @@ export function WaitPane({
   onSelect,
   loading = false,
   instanceName,
-  statementsCollected
+  statementsCollected,
+  onOpenCollection
 }: WaitPaneProps) {
   const { t } = useDashboardText();
   // 有列表就选中一行。当前 id 还在就保留，否则用排序后的第一行（常见是 idle）。
@@ -291,13 +318,19 @@ export function WaitPane({
         loading={loading}
         title={mysqlCategoryText(t, 'emptyWaitsTitle')}
         hint={mysqlCategoryText(t, 'emptyWaitsHint')}
+        actionLabel={onOpenCollection ? mysqlCategoryText(t, 'enableWaitCollection') : undefined}
+        onAction={onOpenCollection}
       />
     );
   }
   const relatedEmpty = selected
     ? emptyCopy({
       title: mysqlCategoryText(t, 'noRelatedStatements'),
-      hint: statementsCollected ? undefined : mysqlCategoryText(t, 'needStatementCollection')
+      hint: statementsCollected ? undefined : mysqlCategoryText(t, 'needStatementCollection'),
+      actionLabel: statementsCollected || !onOpenCollection
+        ? undefined
+        : mysqlCategoryText(t, 'enableStatementCollection'),
+      onAction: onOpenCollection
     })
     : emptyCopy({
       title: mysqlCategoryText(t, 'emptyStatementsTitle'),

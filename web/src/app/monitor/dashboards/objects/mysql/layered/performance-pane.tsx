@@ -240,7 +240,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     <div className={pro.innodbEmpty}>
       <GrayTabEmptyState
         title={innodb.length > 0 ? mysqlCategoryText(t, 'innodbQuiet') : empty}
-        hint={innodb.length > 0 ? mysqlCategoryText(t, 'innodbQuietHint') : undefined}
+        hint={mysqlCategoryText(t, 'innodbQuietHint')}
       />
     </div>
   );
@@ -250,7 +250,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const showThreadsCreated = threadsCreated.length > 0;
   const showThroughput = throughputAwaiting || throughput.length > 0;
   const connectionRowCount = [showConnections, showThroughput, showMaxUsed].filter(Boolean).length;
-  const connectionRowClass = connectionRowCount >= 3 ? pro.perfGrid3 : pro.perfGrid;
+  const connectionRowClass = connectionRowCount >= 3 ? pro.perfGrid3 : `${pro.perfGrid} ${pro.perfFill}`;
   const connectionWide = connectionRowCount === 1;
   const showTps = tpsAwaiting || tpsMix.length > 0 || tpsTotal.length > 0;
   const showWrites = writesAwaiting || statementMix.length > 0;
@@ -355,7 +355,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
           </div>
           ) : null}
           {showThreadsCreated ? (
-            <div className={pro.perfGrid} data-perf-section="threads-created">
+            <div className={`${pro.perfGrid} ${pro.perfFill}`} data-perf-section="threads-created">
               <div className={cardClass(true)}>
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'threadsCreated')}
@@ -376,7 +376,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       {showTps || showInnodbRows ? (
         <>
           <ProSectionTitle>{showTps ? mysqlCategoryText(t, 'tpsChart') : mysqlCategoryText(t, 'innodbRows')}</ProSectionTitle>
-          <div className={pro.perfGrid}>
+          <div className={`${pro.perfGrid} ${pro.perfFill}`}>
             {showTps ? (
               <div id="mysql-perf-tps" className={cardClass(!showInnodbRows)}>
                 <ThinTimeSeries
@@ -452,7 +452,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       {showBuffer || showDirty ? (
         <>
           <ProSectionTitle>{mysqlCategoryText(t, 'bufferPool')}</ProSectionTitle>
-          <div className={pro.perfGrid}>
+          <div className={`${pro.perfGrid} ${pro.perfFill}`}>
             {showBuffer ? (
               <div id="mysql-perf-buffer" className={cardClass(!showDirty)}>
                 <ThinTimeSeries
@@ -489,7 +489,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       {abortedConnects.length > 0 || abortedClients.length > 0 ? (
         <div id="mysql-perf-quality">
           <ProSectionTitle>{mysqlCategoryText(t, 'connectionQuality')}</ProSectionTitle>
-          <div className={pro.perfGrid} data-perf-section="quality">
+          <div className={`${pro.perfGrid} ${pro.perfFill}`} data-perf-section="quality">
             {abortedConnects.length > 0 ? (
               <div className={cardClass(abortedClients.length === 0)}>
                 <ThinTimeSeries
@@ -520,7 +520,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
       {scanLockCount > 0 ? (
         <div id="mysql-perf-scan-lock">
           <ProSectionTitle>{mysqlCategoryText(t, 'scanAndLock')}</ProSectionTitle>
-          <div className={pro.perfGrid} data-perf-section="scan-lock" data-perf-count={scanLockCount}>
+          <div className={`${pro.perfGrid} ${pro.perfFill}`} data-perf-section="scan-lock" data-perf-count={scanLockCount}>
             {showSlow ? (
               <div className={scanLockClass}>
                 <ThinTimeSeries
