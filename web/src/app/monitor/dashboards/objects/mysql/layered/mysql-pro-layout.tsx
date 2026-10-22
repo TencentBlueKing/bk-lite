@@ -30,6 +30,7 @@ import {
   isMysqlIaTab,
   isSlowQueryAlertText,
   readMysqlOverview,
+  readMysqlReplicationTabBadge,
   readMysqlStatementRows,
   readMysqlWaitRows,
   type MysqlIaTab,
@@ -88,6 +89,10 @@ export default function MysqlProLayout({
   const [digestStatus, setDigestStatus] = useState<'loading' | 'ready'>('loading');
   const statementsCollected = hasStatementCollection(statements);
   const waitsCollected = hasWaitCollection(waits);
+  const replicationBadge = useMemo(
+    () => readMysqlReplicationTabBadge(metricMap, pendingMetricNames),
+    [metricMap, pendingMetricNames]
+  );
   const digestLoading = digestStatus === 'loading';
   const requestedTab = searchParams.get(TAB_QUERY);
   const tabFromUrl: MysqlIaTab = isMysqlIaTab(requestedTab) ? requestedTab : 'overview';
@@ -348,17 +353,26 @@ export default function MysqlProLayout({
             if (isMysqlIaTab(key)) selectTab(key);
           }}
           items={MYSQL_IA_TABS.map((item) => {
-            const dimmed = digestStatus === 'ready' && (
+            const statementDimmed = digestStatus === 'ready' && (
               (item.key === 'statements' && !statementsCollected)
               || (item.key === 'waits' && !waitsCollected)
             );
+            const replicationMark = item.key === 'replication' ? replicationBadge : null;
+            const dimmed = statementDimmed || replicationMark === 'partial';
+            const badgeKey = statementDimmed
+              ? 'notCollected'
+              : replicationMark === 'unconfigured'
+                ? 'notConfigured'
+                : replicationMark === 'partial'
+                  ? 'notCollected'
+                  : null;
             return {
               key: item.key,
               label: (
                 <span className={`${host.tabLabel}${dimmed ? ` ${pro.tabGhost}` : ''}`}>
                   {mysqlCategoryText(t, TAB_COPY[item.key])}
-                  {dimmed ? (
-                    <span className={pro.tabBadge}>{mysqlCategoryText(t, 'notCollected')}</span>
+                  {badgeKey ? (
+                    <span className={pro.tabBadge}>{mysqlCategoryText(t, badgeKey)}</span>
                   ) : null}
                 </span>
               )

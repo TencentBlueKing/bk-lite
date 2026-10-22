@@ -8,6 +8,7 @@ import type { TabAlertLevel } from '../../host/layered/tab-level';
 import type { MetricSeries } from '../types';
 import { latestNumber, primaryChartSeries } from '../../host/layered/readings';
 import type { MysqlCategoryCopyKey } from './mysql-copy';
+import { MYSQL_ROLE_METRICS } from './section-loading';
 
 type MysqlText = (key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => string;
 
@@ -1347,6 +1348,21 @@ export const visibleReplicationTrends = (
   return slots;
 };
 
+/** 复制签已经能画出状态、下游或趋势。空态角标只在这页还是空的时候出现。 */
+export const mysqlReplicationTabHasContent = (
+  metricMap: Record<string, MetricSeries | undefined>
+) => {
+  const block = readMysqlRoleBlock(metricMap);
+  const statusBlock = block && block.kind !== 'primary' && block.fields.length > 0 ? block : null;
+  const extras = readMysqlReplicationExtras(metricMap);
+  const trends = readMysqlReplicationSeries(metricMap);
+  const slots = visibleReplicationTrends(statusBlock?.kind, trends);
+  return Boolean(statusBlock)
+    || extras.error != null
+    || extras.downstream.length > 0
+    || slots.length > 0;
+};
+
 export type MysqlReplicationGap = 'unconfigured' | 'partial';
 
 /**
@@ -1381,6 +1397,21 @@ export const readMysqlReplicationGap = (
     return 'partial';
   }
   return 'unconfigured';
+};
+
+/**
+ * 复制签角标。有内容或角色/加深指标还在加载时不挂。
+ * L1 未配置，L2 未采齐。判定仍走 readMysqlReplicationGap。
+ */
+export const readMysqlReplicationTabBadge = (
+  metricMap: Record<string, MetricSeries | undefined>,
+  pendingMetricNames: ReadonlySet<string>
+): MysqlReplicationGap | null => {
+  if (mysqlReplicationTabHasContent(metricMap)) return null;
+  const waiting = MYSQL_ROLE_METRICS.some((name) => pendingMetricNames.has(name))
+    || MYSQL_REPLICATION_EXTRA_METRICS.some((name) => pendingMetricNames.has(name));
+  if (waiting) return null;
+  return readMysqlReplicationGap(metricMap);
 };
 
 export const waitStatementIds = (event: MysqlWaitEventRow) => {
