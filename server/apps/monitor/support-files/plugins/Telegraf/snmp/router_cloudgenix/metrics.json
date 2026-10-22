@@ -23,7 +23,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -41,7 +41,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -59,7 +59,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -72,7 +72,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='router', __$labels__}",
+      "query": "device_fan_state{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "cloudgenix_fan_speed_rpm",
-      "query": "cloudgenix_fan_speed_rpm{instance_type='router', __$labels__}",
+      "query": "cloudgenix_fan_speed_rpm{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}",
       "display_name": "Fan Speed (RPM)",
       "data_type": "Number",
       "unit": "none",
@@ -108,7 +108,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='router', __$labels__}",
+      "query": "device_psu_state{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -126,7 +126,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -144,7 +144,7 @@
     {
       "metric_group": "Temperature",
       "name": "cloudgenix_temperature_state",
-      "query": "cloudgenix_temperature_state{instance_type='router', __$labels__}",
+      "query": "cloudgenix_temperature_state{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}",
       "display_name": "Temperature Sensor Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -162,7 +162,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "cloudgenix_power_voltage_volts",
-      "query": "cloudgenix_power_voltage_volts{instance_type='router', __$labels__}",
+      "query": "cloudgenix_power_voltage_volts{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}",
       "display_name": "Power-Rail Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -180,7 +180,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "cloudgenix_power_state",
-      "query": "cloudgenix_power_state{instance_type='router', __$labels__}",
+      "query": "cloudgenix_power_state{instance_type='router', collect_type='snmp_cloudgenix', __$labels__}",
       "display_name": "Power-Rail Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",

@@ -24,7 +24,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='firewall', collect_type='snmp_juniper_firewall', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "query": "device_cpu_usage{instance_type='firewall', collect_type='snmp_juniper_firewall', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -59,7 +59,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='firewall', __$labels__}",
+      "query": "device_memory_usage{instance_type='firewall', collect_type='snmp_juniper_firewall', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -81,7 +81,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_active_sessions",
-      "query": "firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "query": "firewall_active_sessions{instance_type='firewall', collect_type='snmp_juniper_firewall', __$labels__}",
       "display_name": "Active Sessions",
       "data_type": "Number",
       "unit": "short",
@@ -103,7 +103,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_max_sessions",
-      "query": "firewall_max_sessions{instance_type='firewall', __$labels__}",
+      "query": "firewall_max_sessions{instance_type='firewall', collect_type='snmp_juniper_firewall', __$labels__}",
       "display_name": "Max Sessions",
       "data_type": "Number",
       "unit": "short",

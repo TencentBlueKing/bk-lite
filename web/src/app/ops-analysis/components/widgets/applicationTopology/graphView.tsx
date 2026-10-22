@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Tooltip } from 'antd';
-import type { CSSProperties } from 'react';
 import {
   ApiOutlined,
   AppstoreOutlined,
@@ -18,12 +17,7 @@ import { useTranslation } from '@/utils/i18n';
 import { getIconUrl } from '@/app/cmdb/utils/modelIcon';
 import InteractionDataMenu from '@/app/ops-analysis/components/interactionDataMenu';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
-import {
-  application3DHoverReadableScale,
-  placeSceneHoverPopup,
-} from '@/app/ops-analysis/components/widgets/application3D/application3DLinkHover';
-import '@/app/ops-analysis/components/widgets/application3D/application3DChrome.css';
-import type { ScreenRenderContext, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import {
   applicationTopologyLinkPoint,
   type ChartLinkPoint,
@@ -154,7 +148,6 @@ interface ApplicationTopologyGraphViewProps {
   usesScreenTheme: boolean;
   shareMode: boolean;
   config?: ValueConfig;
-  screenRenderContext?: ScreenRenderContext;
   screenScaleX?: number;
   screenScaleY?: number;
   onRefresh?: () => void;
@@ -167,7 +160,6 @@ const ApplicationTopologyGraphView = ({
   usesScreenTheme,
   shareMode,
   config,
-  screenRenderContext,
   screenScaleX,
   screenScaleY,
   onRefresh,
@@ -190,12 +182,7 @@ const ApplicationTopologyGraphView = ({
     active: dataLinkActive,
     link: dataLink,
     openPoint,
-    contextHint,
   } = useWidgetDataLink(config);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const linkHoverTipRef = useRef<HTMLDivElement>(null);
-  const [linkPointer, setLinkPointer] = useState<{ x: number; y: number } | null>(null);
-  const [linkHoverSize, setLinkHoverSize] = useState({ width: 0, height: 0 });
   const [linkMenu, setLinkMenu] = useState<{
     x: number;
     y: number;
@@ -375,54 +362,8 @@ const ApplicationTopologyGraphView = ({
     });
     return counts;
   }, [layout.nodes]);
-  const linkHoverNode = hover?.kind === 'node'
-    ? layout.nodes.find((node) => node.id === hover.id)
-    : undefined;
-  const showLinkHover = Boolean(contextHint.trim()) && !linkMenu && Boolean(linkHoverNode);
-  const linkHoverScale = application3DHoverReadableScale(screenRenderContext);
-  useLayoutEffect(() => {
-    if (!showLinkHover) return undefined;
-    const tip = linkHoverTipRef.current;
-    if (!tip) return undefined;
-    const updateSize = () => {
-      setLinkHoverSize((previous) => (
-        previous.width === tip.offsetWidth && previous.height === tip.offsetHeight
-          ? previous
-          : { width: tip.offsetWidth, height: tip.offsetHeight }
-      ));
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(tip);
-    return () => observer.disconnect();
-  }, [showLinkHover, linkHoverNode?.name, contextHint, linkHoverScale]);
-  const linkHoverStyle = useMemo<CSSProperties | undefined>(() => {
-    if (!showLinkHover || !linkPointer) return undefined;
-    const anchor = rootRef.current;
-    const rect = anchor?.getBoundingClientRect();
-    const placed = placeSceneHoverPopup({
-      clientX: linkPointer.x,
-      clientY: linkPointer.y,
-      anchorLeft: rect?.left ?? 0,
-      anchorTop: rect?.top ?? 0,
-      anchorWidth: rect?.width ?? anchor?.offsetWidth ?? 0,
-      anchorHeight: rect?.height ?? anchor?.offsetHeight ?? 0,
-      offsetWidth: anchor?.offsetWidth || rect?.width || 0,
-      offsetHeight: anchor?.offsetHeight || rect?.height || 0,
-      popupWidth: linkHoverSize.width,
-      popupHeight: linkHoverSize.height,
-      readableScale: linkHoverScale,
-    });
-    return {
-      left: placed.left,
-      top: placed.top,
-      '--app3d-hover-scale': linkHoverScale,
-    } as CSSProperties;
-  }, [linkHoverScale, linkHoverSize, linkPointer, showLinkHover]);
-
   return (
     <div
-      ref={rootRef}
       className="group relative flex h-full min-h-[280px] min-w-0 flex-col overflow-hidden"
       style={applicationTopologySurfaceStyle(usesScreenTheme)}
     >
@@ -703,13 +644,8 @@ const ApplicationTopologyGraphView = ({
                   ].filter(Boolean).join(', ') || undefined,
                   ...toneSurfaceStyle(node.tone),
                 }}
-                onMouseEnter={(event) => {
+                onMouseEnter={() => {
                   setHover({ kind: 'node', id: node.id });
-                  setLinkPointer({ x: event.clientX, y: event.clientY });
-                }}
-                onMouseMove={(event) => {
-                  if (!contextHint) return;
-                  setLinkPointer({ x: event.clientX, y: event.clientY });
                 }}
                 onMouseLeave={(event) => {
                   if (event.relatedTarget == null) return;
@@ -774,15 +710,7 @@ const ApplicationTopologyGraphView = ({
         label={dataLink?.name || t('dashboard.interactionOpen', '打开链接')}
         onSelect={() => openPoint(linkMenu?.point)}
         onClose={() => setLinkMenu(null)}
-        variant="scene"
-        anchorRef={rootRef}
       />
-      {showLinkHover && linkHoverNode ? (
-        <div ref={linkHoverTipRef} className="app3d-link-hover" style={linkHoverStyle}>
-          <div className="app3d-link-hover__name">{linkHoverNode.name}</div>
-          <div className="app3d-link-hover__hint">{contextHint}</div>
-        </div>
-      ) : null}
       {selected ? (
         <ApplicationTopologyDetailPanel
           node={selected}

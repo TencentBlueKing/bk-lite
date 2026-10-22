@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='switch', collect_type='snmp_dcn', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='switch', collect_type='snmp_dcn', __$labels__}",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "snmp_device_memory_used{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_used{instance_type='switch', collect_type='snmp_dcn', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "sum(snmp_device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "sum(snmp_device_memory_used{instance_type='switch', collect_type='snmp_dcn', __$labels__}) by (instance_id) / sum(snmp_device_memory_total{instance_type='switch', collect_type='snmp_dcn', __$labels__}) by (instance_id) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', collect_type='snmp_dcn', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_state{instance_type='switch', collect_type='snmp_dcn', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "query": "device_fan_speed{instance_type='switch', collect_type='snmp_dcn', __$labels__}",
       "display_name": "Fan Speed Grade",
       "data_type": "Enum",
       "unit": "[{\"name\":\"none\",\"id\":0,\"color\":\"#d9d9d9\"},{\"name\":\"low\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"medium-low\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"medium\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"medium-high\",\"id\":4,\"color\":\"#faad14\"},{\"name\":\"high\",\"id\":5,\"color\":\"#ff4d4f\"}]",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_dcn', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
@@ -141,7 +141,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_dcn', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -159,7 +159,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_dcn', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -177,7 +177,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_dcn', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

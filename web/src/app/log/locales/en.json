@@ -197,6 +197,8 @@
     },
     "integration": {
       "connect": "Connect",
+      "searchCategory": "Search categories",
+      "searchCollectType": "Search collection types",
       "sampleRate": "Sampling Rate",
       "processDes": "The System process metricset provides process statistics. One document is provided for each process.",
       "ruleCategories": "Preset Rule",

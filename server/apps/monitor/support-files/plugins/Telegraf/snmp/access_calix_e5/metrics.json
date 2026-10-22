@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='access', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='access', collect_type='snmp_calix_e5', __$labels__}",
       "display_name": "System Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -44,7 +44,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_rpm",
-      "query": "device_fan_rpm{instance_type='access', __$labels__}",
+      "query": "device_fan_rpm{instance_type='access', collect_type='snmp_calix_e5', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='access', __$labels__}",
+      "query": "device_voltage_volts{instance_type='access', collect_type='snmp_calix_e5', __$labels__}",
       "display_name": "Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', collect_type='snmp_calix_e5', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -106,7 +106,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', collect_type='snmp_calix_e5', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -124,7 +124,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='access', collect_type='snmp_calix_e5', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

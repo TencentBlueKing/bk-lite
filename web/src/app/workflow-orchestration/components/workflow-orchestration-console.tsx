@@ -34,6 +34,7 @@ import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges,
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
 import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
+import { jobTargetOperatingSystems } from '../lib/job-target-operating-systems';
 import { buildNodeTestInputContract, materializeNodeTestInputs } from '../lib/node-test-input-contract';
 import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
@@ -317,7 +318,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const [schedulePreviewError, setSchedulePreviewError] = useState('');
   const [issues, setIssues] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'save' | 'publish' | null>(null);
   const [dirty, setDirty] = useState(false);
   const requestCoordinator = useRequestCoordinator(setLoading);
   const versionsRequestCoordinator = useRequestCoordinator(setVersionsLoading);
@@ -417,6 +418,10 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const inspectorTriggers = useMemo(() => workflowTriggerNodes(metadata), [metadata]);
   const inspectorTestTrigger = inspectorTriggers.find((item) => item.id === nodeTestTriggerId) || inspectorTriggers.find((item) => item.trigger_type === 'FORM') || inspectorTriggers[0];
   const nodeTestInputContract = useMemo(() => buildNodeTestInputContract(selectedTask, selectedAtom?.input_schema, inspectorTestTrigger?.input_schema), [inspectorTestTrigger, selectedAtom?.input_schema, selectedTask]);
+  const jobHostOperatingSystems = useMemo(() => jobTargetOperatingSystems({
+    targets: selectedTask?.inputParameters?.targets,
+    triggers: workflowTriggerNodes(metadata),
+  }), [metadata, selectedTask]);
   const inspectorTestData = metadata.node_test_data || {};
   const inspectorTestInputs = inspectorTestTrigger && inspectorTestData[inspectorTestTrigger.id] && typeof inspectorTestData[inspectorTestTrigger.id] === 'object' && !Array.isArray(inspectorTestData[inspectorTestTrigger.id])
     ? inspectorTestData[inspectorTestTrigger.id] as Record<string, unknown>
@@ -1062,12 +1067,12 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   };
 
   const save = async () => {
-    setBusy(true);
+    setPendingAction('save');
     try {
       const saved = await persistDraft();
       if (!saved) return;
       message.success(t('workflowOrchestration.editor.draftSaved', '草稿已保存'));
-    } finally { setBusy(false); }
+    } finally { setPendingAction(null); }
   };
 
   const withPersistedDraft = (continueAction: (workflowId: number) => void) => {
@@ -1081,14 +1086,14 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       okText: t('workflowOrchestration.editor.saveAndContinueTest', '保存并继续'),
       cancelText: t('common.cancel', '取消'),
       onOk: async () => {
-        setBusy(true);
+        setPendingAction('save');
         try {
           const saved = await persistDraft({ syncUrl: false });
           if (!saved) return;
           message.success(t('workflowOrchestration.editor.draftSavedForTest', '草稿已保存，请继续测试'));
           continueAction(saved.id);
         } finally {
-          setBusy(false);
+          setPendingAction(null);
         }
       },
     });
@@ -1096,7 +1101,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
 
   const publish = async () => {
     if (!workflow || !definition) return;
-    setBusy(true);
+    setPendingAction('publish');
     try {
       const canvasMetadata = snapshotMetadata();
       const persisted = workflow.id
@@ -1106,7 +1111,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       setWorkflow(published); setDefinition(published.definition); setMetadata(published.canvas_metadata as WorkflowCanvasMetadata); setDirty(false);
       if (!workflow.id) router.replace(`/workflow-orchestration/workflows/${published.id}?mode=edit`);
       message.success(t('workflowOrchestration.editor.publishedAndEnabled', 'v{version} 已发布并启用', { version: published.current_version }));
-    } finally { setBusy(false); }
+    } finally { setPendingAction(null); }
   };
 
   const debug = async (persistedWorkflowId = workflow?.id) => {
@@ -1282,8 +1287,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       {workflow.is_builtin ? null : <WorkflowPermission operation="View" instancePermissions={workflow.permission}><Button disabled={!workflow.id} icon={<HistoryOutlined />} onClick={() => void openVersions()}>{t('common.version', '版本')}</Button></WorkflowPermission>}
       {!readOnly && <>
         {showValidateButton ? <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => void validate()}>{t('workflowOrchestration.editor.validate', '校验')}</Button></WorkflowPermission> : null}
-        <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button icon={<SaveOutlined />} loading={busy} onClick={() => void save()}>{t('workflowOrchestration.editor.saveDraft', '保存草稿')}</Button></WorkflowPermission>
-        <WorkflowPermission operation="Publish" instancePermissions={workflow.permission}><Popconfirm title={t('workflowOrchestration.editor.publishConfirm', '发布为新的不可变版本？')} description={t('workflowOrchestration.editor.publishHint', '未保存的当前画布也会一并发布，但不会自动启用流程。')} onConfirm={() => void publish()}><Button type="primary" icon={<SendOutlined />} loading={busy}>{t('workflowOrchestration.editor.publish', '发布')}</Button></Popconfirm></WorkflowPermission>
+        <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button icon={<SaveOutlined />} loading={pendingAction === 'save'} disabled={pendingAction === 'publish'} onClick={() => void save()}>{t('workflowOrchestration.editor.saveDraft', '保存草稿')}</Button></WorkflowPermission>
+        <WorkflowPermission operation="Publish" instancePermissions={workflow.permission}><Popconfirm title={t('workflowOrchestration.editor.publishConfirm', '发布为新的不可变版本？')} description={t('workflowOrchestration.editor.publishHint', '未保存的当前画布也会一并发布，但不会自动启用流程。')} onConfirm={() => void publish()}><Button type="primary" icon={<SendOutlined />} loading={pendingAction === 'publish'} disabled={pendingAction === 'save'}>{t('workflowOrchestration.editor.publish', '发布')}</Button></Popconfirm></WorkflowPermission>
       </>}
     </header>
     <div className="flex min-h-0 flex-1">
@@ -1690,6 +1695,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     </OperateModal>
     <JobTargetSelectionDialog
       open={jobTargetSelectorOpen}
+      allowedOperatingSystems={jobHostOperatingSystems}
       value={jobTargetSelectorPurpose === 'test' && jobTestTargetsField
         ? (Array.isArray(nodeTestInputs[jobTestTargetsField]) ? (nodeTestInputs[jobTestTargetsField] as unknown[]).map(String) : EMPTY_TARGET_REFERENCES)
         : (Array.isArray(selectedTask?.inputParameters?.targets) ? selectedTask.inputParameters.targets as string[] : EMPTY_TARGET_REFERENCES)}

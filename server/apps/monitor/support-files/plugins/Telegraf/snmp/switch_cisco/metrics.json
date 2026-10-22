@@ -24,7 +24,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "device_cpu_usage{instance_type='switch', collect_type='snmp_cisco', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -42,7 +42,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "query": "device_memory_used{instance_type='switch', collect_type='snmp_cisco', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -60,7 +60,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='switch', __$labels__}",
+      "query": "device_memory_free{instance_type='switch', collect_type='snmp_cisco', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -78,7 +78,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_used{instance_type='switch', __$labels__} / (device_memory_used{instance_type='switch', __$labels__} + device_memory_free{instance_type='switch', __$labels__}) * 100",
+      "query": "device_memory_used{instance_type='switch', collect_type='snmp_cisco', __$labels__} / (device_memory_used{instance_type='switch', collect_type='snmp_cisco', __$labels__} + device_memory_free{instance_type='switch', collect_type='snmp_cisco', __$labels__}) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -96,7 +96,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_cisco', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -114,7 +114,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_state{instance_type='switch', collect_type='snmp_cisco', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
@@ -132,7 +132,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_cisco', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
@@ -150,7 +150,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_rx_power",
-      "query": "(device_optical_value{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Rx Power|Receive Power).*\", __$labels__} != -1000000000) * (10 ^ ((device_optical_scale{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Rx Power|Receive Power).*\", __$labels__} - 9) * 3 - device_optical_precision{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Rx Power|Receive Power).*\", __$labels__}))",
+      "query": "(device_optical_value{instance_type='switch', collect_type='snmp_cisco', sensor_type=\"14\", descr=~\"(?i).*(Rx Power|Receive Power).*\", __$labels__} != -1000000000) * (10 ^ ((device_optical_scale{instance_type='switch', collect_type='snmp_cisco', sensor_type=\"14\", descr=~\"(?i).*(Rx Power|Receive Power).*\", __$labels__} - 9) * 3 - device_optical_precision{instance_type='switch', collect_type='snmp_cisco', sensor_type=\"14\", descr=~\"(?i).*(Rx Power|Receive Power).*\", __$labels__}))",
       "display_name": "SFP RX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -172,7 +172,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_tx_power",
-      "query": "(device_optical_value{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Tx Power|Transmit Power).*\", __$labels__} != -1000000000) * (10 ^ ((device_optical_scale{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Tx Power|Transmit Power).*\", __$labels__} - 9) * 3 - device_optical_precision{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Tx Power|Transmit Power).*\", __$labels__}))",
+      "query": "(device_optical_value{instance_type='switch', collect_type='snmp_cisco', sensor_type=\"14\", descr=~\"(?i).*(Tx Power|Transmit Power).*\", __$labels__} != -1000000000) * (10 ^ ((device_optical_scale{instance_type='switch', collect_type='snmp_cisco', sensor_type=\"14\", descr=~\"(?i).*(Tx Power|Transmit Power).*\", __$labels__} - 9) * 3 - device_optical_precision{instance_type='switch', collect_type='snmp_cisco', sensor_type=\"14\", descr=~\"(?i).*(Tx Power|Transmit Power).*\", __$labels__}))",
       "display_name": "SFP TX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -194,7 +194,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_cisco', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -212,7 +212,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_cisco', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -230,7 +230,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_cisco', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -29,7 +29,7 @@
     {
       "metric_group": "Radio",
       "name": "inovonics_rssi_dbuv",
-      "query": "max(snmp_inovonics_rssi_dbuv{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_inovonics_rssi_dbuv{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}) by (instance_id)",
       "display_name": "RSSI (dBuV)",
       "data_type": "Number",
       "unit": "none",
@@ -42,7 +42,7 @@
     {
       "metric_group": "Radio",
       "name": "inovonics_multipath_percent",
-      "query": "max(snmp_inovonics_multipath_percent{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_inovonics_multipath_percent{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}) by (instance_id)",
       "display_name": "Multipath (%)",
       "data_type": "Number",
       "unit": "percent",
@@ -55,7 +55,7 @@
     {
       "metric_group": "Radio",
       "name": "inovonics_noise_percent",
-      "query": "max(snmp_inovonics_noise_percent{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_inovonics_noise_percent{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}) by (instance_id)",
       "display_name": "Ultrasonic Noise (%)",
       "data_type": "Number",
       "unit": "percent",
@@ -68,7 +68,7 @@
     {
       "metric_group": "Audio",
       "name": "inovonics_left_level_db",
-      "query": "max(snmp_inovonics_left_level_db{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_inovonics_left_level_db{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}) by (instance_id)",
       "display_name": "Left Audio Level (dB)",
       "data_type": "Number",
       "unit": "none",
@@ -81,7 +81,7 @@
     {
       "metric_group": "Audio",
       "name": "inovonics_right_level_db",
-      "query": "max(snmp_inovonics_right_level_db{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_inovonics_right_level_db{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}) by (instance_id)",
       "display_name": "Right Audio Level (dB)",
       "data_type": "Number",
       "unit": "none",
@@ -94,7 +94,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "inovonics_audio_loss_state",
-      "query": "max(snmp_inovonics_audio_loss_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_inovonics_audio_loss_state{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}) by (instance_id)",
       "display_name": "Audio Loss State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -107,7 +107,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "inovonics_low_signal_state",
-      "query": "max(snmp_inovonics_low_signal_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_inovonics_low_signal_state{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}) by (instance_id)",
       "display_name": "Low Signal State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -120,7 +120,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "inovonics_rds_error_state",
-      "query": "max(snmp_inovonics_rds_error_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_inovonics_rds_error_state{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}) by (instance_id)",
       "display_name": "RDS Error State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -133,7 +133,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "inovonics_pilot_loss_state",
-      "query": "max(snmp_inovonics_pilot_loss_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_inovonics_pilot_loss_state{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}) by (instance_id)",
       "display_name": "Pilot Loss State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -146,7 +146,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -164,7 +164,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -182,7 +182,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_inovonics', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

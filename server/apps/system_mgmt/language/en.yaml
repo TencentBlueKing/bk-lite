@@ -209,7 +209,7 @@ app_name:
   patch: Patch Management
   apm: APM
   playground: Playground
-  workflow-orchestration: Workflow Orchestration
+  workflow-orchestration: Workflow
 app:
   ops-analysis: Integrate operation and maintenance data, analyze potential risks
     and optimization space from multiple dimensions through dashboards and canvases,

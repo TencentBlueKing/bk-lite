@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_load1",
-      "query": "max(snmp_device_cpu_load1{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_load1{instance_type='voice_gateway', collect_type='snmp_snom', __$labels__}) by (instance_id)",
       "display_name": "CPU Load Average (1 min)",
       "data_type": "Number",
       "unit": "none",
@@ -35,7 +35,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_load5",
-      "query": "max(snmp_device_cpu_load5{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_load5{instance_type='voice_gateway', collect_type='snmp_snom', __$labels__}) by (instance_id)",
       "display_name": "CPU Load Average (5 min)",
       "data_type": "Number",
       "unit": "none",
@@ -48,7 +48,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_load15",
-      "query": "max(snmp_device_cpu_load15{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_load15{instance_type='voice_gateway', collect_type='snmp_snom', __$labels__}) by (instance_id)",
       "display_name": "CPU Load Average (15 min)",
       "data_type": "Number",
       "unit": "none",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "max(snmp_device_memory_free{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_free{instance_type='voice_gateway', collect_type='snmp_snom', __$labels__}) by (instance_id)",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "none",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Voice",
       "name": "sip_registration_count",
-      "query": "max(snmp_sip_registration_count{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_sip_registration_count{instance_type='voice_gateway', collect_type='snmp_snom', __$labels__}) by (instance_id)",
       "display_name": "SIP Registration Count",
       "data_type": "Number",
       "unit": "short",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', collect_type='snmp_snom', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', collect_type='snmp_snom', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='voice_gateway', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='voice_gateway', collect_type='snmp_snom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='switch', collect_type='snmp_garretcom', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -34,7 +34,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_garretcom', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -52,7 +52,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_garretcom', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -75,7 +75,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "query": "sum(device_memory_used{instance_type='switch', collect_type='snmp_garretcom', __$labels__} * 1024) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used memory of the GarretCom industrial switch in bytes (Magnum used memory, KB*1024)."
@@ -88,7 +88,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "query": "sum(device_memory_free{instance_type='switch', collect_type='snmp_garretcom', __$labels__} * 1024) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free memory of the GarretCom industrial switch in bytes (Magnum free memory, KB*1024)."
@@ -101,7 +101,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "query": "sum(device_memory_used{instance_type='switch', collect_type='snmp_garretcom', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', collect_type='snmp_garretcom', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', collect_type='snmp_garretcom', __$labels__}) by (instance_id)) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the GarretCom industrial switch, derived as used/(used+free)."
@@ -114,7 +114,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='switch', collect_type='snmp_garretcom', __$labels__}) by (instance_id)",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Chassis temperature of the GarretCom industrial switch in degrees Celsius (Magnum chassis temperature)."
@@ -132,7 +132,7 @@
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_garretcom', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Power-supply state of the GarretCom industrial switch, normalised to 1=normal / 2=abnormal."
@@ -140,7 +140,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_garretcom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -25,7 +25,7 @@
     {
       "metric_group": "Access",
       "name": "device_cpu_usage",
-      "query": "max(snmp_device_cpu_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='access', collect_type='snmp_cdata', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -38,7 +38,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(snmp_device_temperature_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='access', collect_type='snmp_cdata', __$labels__}) by (instance_id)",
       "display_name": "Chassis Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -51,7 +51,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu_a_on",
-      "query": "(max(snmp_psu_status{instance_type='access', __$labels__}) by (instance_id) % 2)",
+      "query": "(max(snmp_psu_status{instance_type='access', collect_type='snmp_cdata', __$labels__}) by (instance_id) % 2)",
       "display_name": "PSU A On",
       "data_type": "Enum",
       "unit": "[{\"name\":\"关闭\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"开启\",\"id\":1,\"color\":\"#1ac44a\"}]",
@@ -64,7 +64,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu_b_on",
-      "query": "(floor(max(snmp_psu_status{instance_type='access', __$labels__}) by (instance_id) / 2) % 2)",
+      "query": "(floor(max(snmp_psu_status{instance_type='access', collect_type='snmp_cdata', __$labels__}) by (instance_id) / 2) % 2)",
       "display_name": "PSU B On",
       "data_type": "Enum",
       "unit": "[{\"name\":\"关闭\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"开启\",\"id\":1,\"color\":\"#1ac44a\"}]",
@@ -77,7 +77,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "fan_status_bitmap",
-      "query": "max(snmp_fan_status_bitmap{instance_type='access', __$labels__}) by (instance_id)",
+      "query": "max(snmp_fan_status_bitmap{instance_type='access', collect_type='snmp_cdata', __$labels__}) by (instance_id)",
       "display_name": "Fan Status Bitmap",
       "data_type": "Number",
       "unit": "",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', collect_type='snmp_cdata', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -108,7 +108,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', collect_type='snmp_cdata', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -126,7 +126,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='access', collect_type='snmp_cdata', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

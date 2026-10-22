@@ -89,6 +89,49 @@ def _normalize_screen_view_sets(view_sets: Any) -> dict:
     return normalized
 
 
+def drop_architecture_rectangle_bindings(view_sets: Any) -> Any:
+    """去掉区域自己的 bkBinding。图标绑定和 bkFollowAlert 保留。"""
+    if not isinstance(view_sets, dict):
+        return view_sets
+    views = view_sets.get("views")
+    if not isinstance(views, list):
+        return view_sets
+
+    next_views = []
+    changed = False
+    for view in views:
+        if not isinstance(view, dict):
+            next_views.append(view)
+            continue
+        rectangles = view.get("rectangles")
+        if not isinstance(rectangles, list):
+            next_views.append(view)
+            continue
+        next_rectangles = []
+        view_changed = False
+        for rectangle in rectangles:
+            if isinstance(rectangle, dict) and "bkBinding" in rectangle:
+                cleaned = dict(rectangle)
+                cleaned.pop("bkBinding", None)
+                next_rectangles.append(cleaned)
+                view_changed = True
+            else:
+                next_rectangles.append(rectangle)
+        if view_changed:
+            changed = True
+            copied = dict(view)
+            copied["rectangles"] = next_rectangles
+            next_views.append(copied)
+        else:
+            next_views.append(view)
+
+    if not changed:
+        return view_sets
+    copied_sets = dict(view_sets)
+    copied_sets["views"] = next_views
+    return copied_sets
+
+
 def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectType) -> list | dict:
     _validate_scene_widget_surfaces(view_sets, object_type)
     if object_type == ObjectType.DASHBOARD:
@@ -115,10 +158,12 @@ def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectTy
             return {"items": [], "views": []}
         items = view_sets.get("items", [])
         views = view_sets.get("views", [])
-        return {
-            "items": items if isinstance(items, list) else [],
-            "views": views if isinstance(views, list) else [],
-        }
+        return drop_architecture_rectangle_bindings(
+            {
+                "items": items if isinstance(items, list) else [],
+                "views": views if isinstance(views, list) else [],
+            }
+        )
 
     if object_type == ObjectType.SCREEN:
         normalized = _normalize_screen_view_sets(view_sets)

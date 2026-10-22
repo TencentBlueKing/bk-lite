@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='router', collect_type='snmp_versa', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "avg(device_memory_usage{instance_type='router', collect_type='snmp_versa', __$labels__}) by (instance_id)",
       "display_name": "内存使用率",
       "data_type": "Number",
       "unit": "percent",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Session",
       "name": "device_active_sessions",
-      "query": "sum(device_active_sessions{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(device_active_sessions{instance_type='router', collect_type='snmp_versa', __$labels__}) by (instance_id)",
       "display_name": "Active Sessions",
       "data_type": "Number",
       "unit": "short",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Session",
       "name": "device_failed_sessions",
-      "query": "sum(device_failed_sessions{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(device_failed_sessions{instance_type='router', collect_type='snmp_versa', __$labels__}) by (instance_id)",
       "display_name": "Failed Sessions",
       "data_type": "Number",
       "unit": "short",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Session",
       "name": "device_max_sessions",
-      "query": "sum(device_max_sessions{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(device_max_sessions{instance_type='router', collect_type='snmp_versa', __$labels__}) by (instance_id)",
       "display_name": "Max Sessions",
       "data_type": "Number",
       "unit": "short",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_versa', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

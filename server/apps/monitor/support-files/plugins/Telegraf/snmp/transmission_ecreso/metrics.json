@@ -23,7 +23,7 @@
     {
       "metric_group": "Temperature",
       "name": "ecreso_ambient_temperature_celsius",
-      "query": "snmp_ecreso_ambient_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "snmp_ecreso_ambient_temperature_celsius{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}",
       "display_name": "Ambient Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Temperature",
       "name": "ecreso_heatsink_temperature_celsius",
-      "query": "snmp_ecreso_heatsink_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "snmp_ecreso_heatsink_temperature_celsius{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}",
       "display_name": "Heatsink Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Temperature",
       "name": "ecreso_psu_temperature_celsius",
-      "query": "snmp_ecreso_psu_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "snmp_ecreso_psu_temperature_celsius{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}",
       "display_name": "PSU Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "snmp_device_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "snmp_device_temperature_celsius{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}",
       "display_name": "Internal Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Power",
       "name": "ecreso_psu_efficiency_percent",
-      "query": "snmp_ecreso_psu_efficiency_percent{instance_type='transmission', __$labels__}",
+      "query": "snmp_ecreso_psu_efficiency_percent{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}",
       "display_name": "PSU Efficiency",
       "data_type": "Number",
       "unit": "percent",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "ecreso_fan_speed_rpm",
-      "query": "ecreso_fan_speed_rpm{instance_type='transmission', __$labels__}",
+      "query": "ecreso_fan_speed_rpm{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}",
       "display_name": "Fan Speed (RPM)",
       "data_type": "Number",
       "unit": "none",
@@ -106,7 +106,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "ecreso_fan_alarm_state",
-      "query": "ecreso_fan_alarm_state{instance_type='transmission', __$labels__}",
+      "query": "ecreso_fan_alarm_state{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}",
       "display_name": "Fan Alarm State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -124,7 +124,7 @@
     {
       "metric_group": "Power",
       "name": "ecreso_driver_forward_power_watts",
-      "query": "ecreso_driver_forward_power_watts{instance_type='transmission', __$labels__}",
+      "query": "ecreso_driver_forward_power_watts{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}",
       "display_name": "Driver Forward Power",
       "data_type": "Number",
       "unit": "watts",
@@ -142,7 +142,7 @@
     {
       "metric_group": "Power",
       "name": "ecreso_driver_reflected_power_watts",
-      "query": "ecreso_driver_reflected_power_watts{instance_type='transmission', __$labels__}",
+      "query": "ecreso_driver_reflected_power_watts{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}",
       "display_name": "Driver Reflected Power",
       "data_type": "Number",
       "unit": "watts",
@@ -160,7 +160,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -178,7 +178,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -196,7 +196,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_ecreso', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

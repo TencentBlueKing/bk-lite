@@ -205,6 +205,27 @@ def test_device_mapping_carries_sysdescr_to_sys_desc():
     assert NETWORK_DEVICE_MAPPING.get("sys_desc") == "sysdescr"
 
 
+def test_network_models_define_sn_table():
+    wb = openpyxl.load_workbook(MODEL_CONFIG, read_only=True)
+    try:
+        for sheet in ("attr-switch", "attr-router", "attr-firewall", "attr-loadbalance"):
+            rows = list(wb[sheet].iter_rows(min_row=3, values_only=True))
+            matched = [row for row in rows if row and row[0] == "sn"]
+            assert len(matched) == 1, f"{sheet} 应有且仅有一个 sn 属性"
+            attr_id, attr_name, attr_type, option, attr_group, is_only, editable, is_required = matched[0][:8]
+            assert attr_name == "SN号"
+            assert attr_type == "table"
+            assert attr_group == "基本信息"
+            assert is_only is False
+            assert editable is True
+            assert is_required is False
+            columns = json.loads(option)
+            assert [item["column_id"] for item in columns] == ["oid", "serial", "entity"]
+            assert columns[0]["is_row_key"] is True
+    finally:
+        wb.close()
+
+
 def test_network_models_define_sys_desc_attr():
     wb = openpyxl.load_workbook(MODEL_CONFIG, read_only=True)
     try:

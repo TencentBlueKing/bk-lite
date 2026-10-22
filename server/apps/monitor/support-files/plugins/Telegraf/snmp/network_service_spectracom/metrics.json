@@ -23,7 +23,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_spectracom_sync_state",
-      "query": "max(network_service_spectracom_sync_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_spectracom_sync_state{instance_type='network_service', collect_type='snmp_spectracom', __$labels__}) by (instance_id)",
       "display_name": "Spectracom Sync Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -36,7 +36,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_spectracom_dc_power_state",
-      "query": "max(network_service_spectracom_dc_power_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_spectracom_dc_power_state{instance_type='network_service', collect_type='snmp_spectracom', __$labels__}) by (instance_id)",
       "display_name": "Spectracom DC Power Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -49,7 +49,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_spectracom_minor_alarm_state",
-      "query": "max(network_service_spectracom_minor_alarm_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_spectracom_minor_alarm_state{instance_type='network_service', collect_type='snmp_spectracom', __$labels__}) by (instance_id)",
       "display_name": "Spectracom Minor Alarm Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -62,7 +62,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_spectracom_major_alarm_state",
-      "query": "max(network_service_spectracom_major_alarm_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_spectracom_major_alarm_state{instance_type='network_service', collect_type='snmp_spectracom', __$labels__}) by (instance_id)",
       "display_name": "Spectracom Major Alarm Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -75,7 +75,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_spectracom_ntp_state",
-      "query": "max(network_service_spectracom_ntp_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_spectracom_ntp_state{instance_type='network_service', collect_type='snmp_spectracom', __$labels__}) by (instance_id)",
       "display_name": "Spectracom NTP Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -88,7 +88,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_spectracom_ntp_stratum",
-      "query": "max(network_service_spectracom_ntp_stratum{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_spectracom_ntp_stratum{instance_type='network_service', collect_type='snmp_spectracom', __$labels__}) by (instance_id)",
       "display_name": "Spectracom NTP Stratum",
       "data_type": "Number",
       "unit": "none",
@@ -101,7 +101,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_spectracom', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -119,7 +119,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_spectracom', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -137,7 +137,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_spectracom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

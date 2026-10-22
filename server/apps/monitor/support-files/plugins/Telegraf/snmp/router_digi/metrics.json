@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='router', collect_type='snmp_digi', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -40,7 +40,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "snmp_device_memory_total{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='router', collect_type='snmp_digi', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total memory of the Digi Connect/ConnectPort router in bytes (diTotalMemory)."
@@ -53,7 +53,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "snmp_device_memory_free{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_free{instance_type='router', collect_type='snmp_digi', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free memory of the Digi Connect/ConnectPort router in bytes (diFreeMemory)."
@@ -66,7 +66,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "snmp_device_memory_used{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_used{instance_type='router', collect_type='snmp_digi', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used memory of the Digi Connect/ConnectPort router in bytes (diUsedMemory)."
@@ -79,7 +79,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "100 * snmp_device_memory_used{instance_type='router', __$labels__} / snmp_device_memory_total{instance_type='router', __$labels__}",
+      "query": "100 * snmp_device_memory_used{instance_type='router', collect_type='snmp_digi', __$labels__} / snmp_device_memory_total{instance_type='router', collect_type='snmp_digi', __$labels__}",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Digi Connect/ConnectPort router, derived as used/total*100."
@@ -87,7 +87,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_digi', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

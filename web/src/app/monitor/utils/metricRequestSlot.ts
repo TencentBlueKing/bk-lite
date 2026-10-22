@@ -65,7 +65,9 @@ export function shouldLimitMonitorQueryUrl(url?: string): boolean {
   const path = url.split('?')[0];
   return (
     /\/monitor\/api\/metrics_instance\/query_by_metric(_range)?\/?$/.test(path) ||
-    /\/monitor\/api\/monitor_instance\/[^/]+\/(list|search|effective_plugins)\/?$/.test(path) ||
+    /\/monitor\/api\/monitor_instance\/[^/]+\/(list|search|effective_plugins|display_metrics)\/?$/.test(
+      path
+    ) ||
     /\/monitor\/api\/metrics\/[^/]+\/vm-fields\/?$/.test(path) ||
     /\/monitor\/api\/metrics\/?$/.test(path) ||
     /\/monitor\/api\/monitor_plugin\/?$/.test(path)

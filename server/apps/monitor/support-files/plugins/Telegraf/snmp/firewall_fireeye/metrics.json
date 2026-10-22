@@ -25,7 +25,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='firewall', collect_type='snmp_fireeye', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -38,7 +38,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='firewall', collect_type='snmp_fireeye', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -51,7 +51,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_temperature_state",
-      "query": "max(snmp_device_temperature_state{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_state{instance_type='firewall', collect_type='snmp_fireeye', __$labels__}) by (instance_id)",
       "display_name": "Temperature Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -64,7 +64,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "max(snmp_device_fan_state{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_fan_state{instance_type='firewall', collect_type='snmp_fireeye', __$labels__}) by (instance_id)",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -77,7 +77,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "max(snmp_device_psu_state{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_psu_state{instance_type='firewall', collect_type='snmp_fireeye', __$labels__}) by (instance_id)",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",

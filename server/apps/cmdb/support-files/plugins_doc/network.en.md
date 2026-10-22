@@ -87,6 +87,7 @@ SNMP credentials differ by version. Determine `version` first, then fill in the 
 | syscontact | Contact information (sysContact) |
 | model | Device model (from OID catalog match) |
 | brand | Device brand |
+| sn | Entity serial table. Columns: `oid` (full OID, row key), `serial`, `entity` (`chassis / description` for a chassis). Only rows with a non-empty `entPhysicalSerialNum` are kept. A failed ENTITY-MIB walk does not replace an existing table |
 
 **Interface (interface, related child of network)**
 

@@ -1144,7 +1144,11 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
         .screen-widget-frame__header:has(.screen-widget-frame__title-link) .screen-widget-frame__title {
           width: auto;
-          flex: 0 1 auto;
+          flex: 1 1 auto;
+        }
+
+        .screen-widget-frame--editable .screen-widget-frame__header:has(.screen-widget-frame__title-link) {
+          padding-right: calc((var(--screen-widget-title-padding, 10px) + 8px) * var(--screen-widget-ui-scale));
         }
 
         .screen-widget-frame__title-link {
@@ -1152,6 +1156,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           flex-shrink: 0;
           align-items: center;
           justify-content: center;
+          margin-left: auto;
           width: calc(14px * var(--screen-widget-ui-scale));
           height: calc(14px * var(--screen-widget-ui-scale));
           padding: 0;
