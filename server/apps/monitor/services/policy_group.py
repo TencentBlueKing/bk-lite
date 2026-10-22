@@ -1,4 +1,5 @@
 import copy
+import json
 
 from django.db import IntegrityError, transaction
 from django.db.models import Count
@@ -6,6 +7,7 @@ from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import monitor_logger as logger
+from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models import (
     CollectConfig,
     Metric,
@@ -61,8 +63,212 @@ _POLICY_CLONE_FIELDS = (
     "enable_alerts",
 )
 from apps.monitor.services.policy import PolicyService
-from apps.monitor.tasks.utils.policy_methods import source_has_dispatch_targets
+from apps.monitor.tasks.utils.policy_methods import period_to_seconds, source_has_dispatch_targets
 from apps.monitor.utils.dimension import normalize_instance_identity
+
+_SCHEDULE_LIMITS = {"min": 59, "hour": 23, "day": 1}
+_DURATION_TYPES = frozenset(_SCHEDULE_LIMITS)
+_NO_DATA_LEVELS = frozenset({"critical", "error", "warning"})
+_EMPTY_NO_DATA = {
+    "enabled": False,
+    "period": {},
+    "level": "",
+    "alert_name": "",
+    "recovery_period": {},
+}
+
+
+def _json_equal(left, right):
+    return json.dumps(left, sort_keys=True, default=str) == json.dumps(right, sort_keys=True, default=str)
+
+
+def _validation_text(exc):
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, list) and detail:
+        return str(detail[0])
+    if isinstance(detail, dict) and detail:
+        first = next(iter(detail.values()))
+        if isinstance(first, list) and first:
+            return str(first[0])
+        return str(first)
+    return str(exc)
+
+
+def _policy_group_by(rule):
+    policy = getattr(rule, "policy", None)
+    group_by = getattr(policy, "group_by", None) if policy is not None else None
+    if not isinstance(group_by, list):
+        return []
+    return group_by
+
+
+def no_data_carrier_rule_ids(rules):
+    """按插件选出承载无数据告警的规则 id。
+
+    同一插件优先取 group_by 恰为 ["instance_id"] 且 id 最小的规则；
+    没有实例级规则时取该插件 id 最小的规则。
+    """
+    by_plugin = {}
+    for rule in rules:
+        by_plugin.setdefault(rule.plugin_id, []).append(rule)
+    carrier_ids = set()
+    for plugin_rules in by_plugin.values():
+        instance_level = [rule for rule in plugin_rules if _policy_group_by(rule) == ["instance_id"]]
+        pool = instance_level or plugin_rules
+        carrier_ids.add(min(pool, key=lambda item: item.id).id)
+    return carrier_ids
+
+
+def _schedule_document(policy):
+    schedule = getattr(policy, "schedule", None)
+    if not isinstance(schedule, dict):
+        return {}
+    return copy.deepcopy(schedule)
+
+
+def _no_data_document(policy):
+    enable_alerts = getattr(policy, "enable_alerts", None) or []
+    period = policy.no_data_period if isinstance(getattr(policy, "no_data_period", None), dict) else {}
+    recovery = policy.no_data_recovery_period if isinstance(getattr(policy, "no_data_recovery_period", None), dict) else {}
+    return {
+        "enabled": AlertConstants.NO_DATA in enable_alerts,
+        "period": copy.deepcopy(period),
+        "level": policy.no_data_level or "",
+        "alert_name": policy.no_data_alert_name or "",
+        "recovery_period": copy.deepcopy(recovery),
+    }
+
+
+def group_detection_state(rules):
+    """组级检测频率与无数据配置，以及两者是否在组内一致。"""
+    ordered = sorted(rules, key=lambda rule: rule.id)
+    if not ordered:
+        return {
+            "schedule": {},
+            "schedule_uniform": True,
+            "no_data": copy.deepcopy(_EMPTY_NO_DATA),
+            "no_data_uniform": True,
+        }
+    schedules = [_schedule_document(rule.policy) for rule in ordered]
+    schedule_uniform = all(_json_equal(item, schedules[0]) for item in schedules)
+    carrier_ids = no_data_carrier_rule_ids(ordered)
+    carriers = [rule for rule in ordered if rule.id in carrier_ids]
+    carrier_docs = [_no_data_document(rule.policy) for rule in carriers]
+    non_carrier_has_no_data = any(
+        AlertConstants.NO_DATA in (rule.policy.enable_alerts or [])
+        for rule in ordered
+        if rule.id not in carrier_ids
+    )
+    no_data_uniform = bool(carrier_docs) and all(_json_equal(item, carrier_docs[0]) for item in carrier_docs)
+    if non_carrier_has_no_data:
+        no_data_uniform = False
+    return {
+        "schedule": copy.deepcopy(schedules[0]) if schedule_uniform else {},
+        "schedule_uniform": schedule_uniform,
+        "no_data": copy.deepcopy(carrier_docs[0]) if no_data_uniform else copy.deepcopy(_EMPTY_NO_DATA),
+        "no_data_uniform": no_data_uniform,
+    }
+
+
+def _require_positive_int(value, message):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValidationAppException(message)
+    return value
+
+
+def _validate_duration(value, label, *, limit=False):
+    if not isinstance(value, dict):
+        raise ValidationAppException(f"{label}不正确")
+    period_type = value.get("type")
+    if period_type not in _DURATION_TYPES:
+        raise ValidationAppException(f"{label}不正确")
+    number = _require_positive_int(value.get("value"), f"{label}必须是正整数")
+    if limit and number > _SCHEDULE_LIMITS[period_type]:
+        raise ValidationAppException(f"{label}超出范围")
+    return {"type": period_type, "value": number}
+
+
+def _validate_schedule(schedule):
+    return _validate_duration(schedule, "检测频率", limit=True)
+
+
+def _validate_no_data(payload):
+    if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
+        raise ValidationAppException("无数据告警格式不正确")
+    if not payload["enabled"]:
+        return {"enabled": False}
+    period = _validate_duration(payload.get("period"), "无数据检测窗")
+    recovery = _validate_duration(payload.get("recovery_period"), "无数据恢复窗")
+    try:
+        if period_to_seconds(period) < period_to_seconds(recovery):
+            raise ValidationAppException("无数据检测窗不能小于恢复窗")
+    except ValidationAppException:
+        raise
+    except BaseAppException as exc:
+        raise ValidationAppException("无数据检测窗不正确") from exc
+    level = payload.get("level")
+    if level not in _NO_DATA_LEVELS:
+        raise ValidationAppException("无数据告警级别不正确")
+    name = payload.get("alert_name")
+    max_length = MonitorPolicy._meta.get_field("no_data_alert_name").max_length
+    if not isinstance(name, str) or not name.strip():
+        raise ValidationAppException("请填写无数据告警名称")
+    if len(name) > max_length:
+        raise ValidationAppException("无数据告警名称过长")
+    return {
+        "enabled": True,
+        "period": period,
+        "level": level,
+        "alert_name": name,
+        "recovery_period": recovery,
+    }
+
+
+def _validate_alert_name(value):
+    max_length = MonitorPolicy._meta.get_field("alert_name").max_length
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationAppException("告警名称不能为空")
+    if len(value) > max_length:
+        raise ValidationAppException("告警名称过长")
+    return value
+
+
+def _validate_trigger_count(value):
+    from rest_framework import serializers
+
+    from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+
+    try:
+        return MonitorPolicySerializer().validate_trigger_count(value)
+    except serializers.ValidationError as exc:
+        raise ValidationAppException(_validation_text(exc)) from exc
+
+
+def _validate_recovery_condition(value):
+    return _require_positive_int(value, "recovery_condition 必须是大于等于 1 的正整数")
+
+
+def _validate_recovery_threshold(value):
+    from rest_framework import serializers
+
+    from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+
+    try:
+        return MonitorPolicySerializer().validate_recovery_threshold(value)
+    except serializers.ValidationError as exc:
+        raise ValidationAppException(_validation_text(exc)) from exc
+
+
+def _is_multi_policy(policy):
+    query = policy.query_condition if isinstance(policy.query_condition, dict) else {}
+    return query.get("type") == "multi"
+
+
+def _enable_alerts_with_no_data(enable_alerts, enabled):
+    current = [item for item in (enable_alerts or []) if item != AlertConstants.NO_DATA]
+    if enabled:
+        current.append(AlertConstants.NO_DATA)
+    return current
 
 
 class PolicyGroupService:
@@ -183,7 +389,6 @@ class PolicyGroupService:
             source_template=template,
             policy=policy,
             name=template.name[:100],
-            push_alert_center=True,
             created_by=operator,
             updated_by=operator,
         )
@@ -503,20 +708,171 @@ class PolicyGroupService:
         return PolicyInstanceBaseline.objects.filter(policy_id=policy.id, monitor_instance_id=instance_id).exists()
 
     @staticmethod
-    def update_rule(rule, *, threshold=None, condition_thresholds=None, operator="system"):
+    def update_rule(
+        rule,
+        *,
+        threshold=None,
+        condition_thresholds=None,
+        trigger_count=None,
+        recovery_condition=None,
+        recovery_threshold=None,
+        alert_name=None,
+        operator="system",
+    ):
+        # select_for_update 关闭告警必须在事务里。请求本身不包事务，写在保存之后会留下已改规则、告警仍未恢复。
+        with transaction.atomic():
+            locked = MonitorPolicy.objects.select_for_update().get(pk=rule.policy_id)
+            rule.policy = locked
+            return PolicyGroupService._update_rule_locked(
+                rule,
+                threshold=threshold,
+                condition_thresholds=condition_thresholds,
+                trigger_count=trigger_count,
+                recovery_condition=recovery_condition,
+                recovery_threshold=recovery_threshold,
+                alert_name=alert_name,
+                operator=operator,
+            )
+
+    @staticmethod
+    def _update_rule_locked(
+        rule,
+        *,
+        threshold=None,
+        condition_thresholds=None,
+        trigger_count=None,
+        recovery_condition=None,
+        recovery_threshold=None,
+        alert_name=None,
+        operator="system",
+    ):
         policy = rule.policy
         update_fields = ["updated_by", "updated_at"]
+        closes_alerts = False
         if condition_thresholds is not None:
+            before = copy.deepcopy(policy.query_condition)
             PolicyGroupService._replace_condition_thresholds(policy, condition_thresholds)
             update_fields.append("query_condition")
+            if not _json_equal(before, policy.query_condition):
+                closes_alerts = True
         elif threshold is not None:
-            policy.threshold = threshold
+            if not _json_equal(policy.threshold, threshold):
+                closes_alerts = True
+            policy.threshold = copy.deepcopy(threshold)
             update_fields.append("threshold")
+        if trigger_count is not None:
+            trigger_count = _validate_trigger_count(trigger_count)
+            if policy.trigger_count != trigger_count:
+                closes_alerts = True
+            policy.trigger_count = trigger_count
+            update_fields.append("trigger_count")
+        if recovery_condition is not None:
+            recovery_condition = _validate_recovery_condition(recovery_condition)
+            if policy.recovery_condition != recovery_condition:
+                closes_alerts = True
+            policy.recovery_condition = recovery_condition
+            update_fields.append("recovery_condition")
+        if recovery_threshold is not None:
+            if _is_multi_policy(policy):
+                raise ValidationAppException("多指标条件不支持恢复阈值")
+            cleaned = _validate_recovery_threshold(recovery_threshold) or {}
+            if not _json_equal(policy.recovery_threshold or {}, cleaned):
+                closes_alerts = True
+            policy.recovery_threshold = copy.deepcopy(cleaned)
+            update_fields.append("recovery_threshold")
+        if alert_name is not None:
+            policy.alert_name = _validate_alert_name(alert_name)
+            update_fields.append("alert_name")
         policy.updated_by = operator
         policy.save(update_fields=update_fields)
-        alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
-        PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
+        if closes_alerts:
+            alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
+            PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
         return rule
+
+    @staticmethod
+    def update_detection(group, *, schedule=None, no_data=None, operator="system"):
+        """把检测频率写到组内每条策略，把无数据告警写到每个插件的承载规则。"""
+        if schedule is None and no_data is None:
+            raise ValidationAppException("请至少设置检测频率或无数据告警")
+        validated_schedule = _validate_schedule(schedule) if schedule is not None else None
+        validated_no_data = _validate_no_data(no_data) if no_data is not None else None
+        with transaction.atomic():
+            rules = list(
+                PolicyGroupRule.objects.select_for_update()
+                .filter(group=group)
+                .order_by("id")
+            )
+            locked_policies = {
+                policy.id: policy
+                for policy in MonitorPolicy.objects.select_for_update().filter(
+                    id__in=[rule.policy_id for rule in rules]
+                ).order_by("id")
+            }
+            for rule in rules:
+                rule.policy = locked_policies[rule.policy_id]
+            if validated_schedule is not None:
+                PolicyGroupService._apply_group_schedule(rules, validated_schedule, operator)
+            if validated_no_data is not None:
+                PolicyGroupService._apply_group_no_data(rules, validated_no_data, operator)
+        return group
+
+    @staticmethod
+    def _apply_group_schedule(rules, schedule, operator):
+        from django_celery_beat.models import PeriodicTask
+
+        from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+
+        now = timezone.now()
+        for rule in rules:
+            policy = rule.policy
+            policy.schedule = copy.deepcopy(schedule)
+            policy.updated_by = operator
+            policy.updated_at = now
+            policy.save(update_fields=["schedule", "updated_by", "updated_at"])
+            MonitorPolicyViewSet().update_or_create_task(policy.id, policy.schedule)
+            if not policy.enable or not source_has_dispatch_targets(policy.source):
+                PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").update(enabled=False)
+
+    @staticmethod
+    def _apply_group_no_data(rules, no_data, operator):
+        from apps.monitor.services.policy_baseline import PolicyBaselineService
+
+        carrier_ids = no_data_carrier_rule_ids(rules)
+        now = timezone.now()
+        for rule in rules:
+            policy = rule.policy
+            was_enabled = AlertConstants.NO_DATA in (policy.enable_alerts or [])
+            should_enable = bool(no_data["enabled"]) and rule.id in carrier_ids
+            policy.enable_alerts = _enable_alerts_with_no_data(policy.enable_alerts, should_enable)
+            policy.updated_by = operator
+            policy.updated_at = now
+            update_fields = ["enable_alerts", "updated_by", "updated_at"]
+            if should_enable:
+                policy.no_data_period = copy.deepcopy(no_data["period"])
+                policy.no_data_level = no_data["level"]
+                policy.no_data_alert_name = no_data["alert_name"]
+                policy.no_data_recovery_period = copy.deepcopy(no_data["recovery_period"])
+                update_fields.extend(
+                    ["no_data_period", "no_data_level", "no_data_alert_name", "no_data_recovery_period"]
+                )
+            elif rule.id in carrier_ids:
+                policy.no_data_period = {}
+                policy.no_data_level = ""
+                policy.no_data_alert_name = ""
+                policy.no_data_recovery_period = {}
+                update_fields.extend(
+                    ["no_data_period", "no_data_level", "no_data_alert_name", "no_data_recovery_period"]
+                )
+            policy.save(update_fields=update_fields)
+            if should_enable and not was_enabled:
+                PolicyBaselineService(policy).refresh()
+            elif was_enabled and not should_enable:
+                alerts = list(
+                    MonitorAlert.objects.filter(policy_id=policy.id, alert_type=AlertConstants.NO_DATA, status="new")
+                )
+                PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "no_data_disabled")
+                PolicyBaselineService(policy).clear()
 
     @staticmethod
     def _replace_condition_thresholds(policy, condition_thresholds):
@@ -679,7 +1035,6 @@ class PolicyGroupService:
                     source_template=rule.source_template,
                     policy=policy,
                     name=rule.name,
-                    push_alert_center=rule.push_alert_center,
                     created_by=operator,
                     updated_by=operator,
                 )

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
+import { Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
@@ -12,6 +12,7 @@ import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
+import { COMPARISON_METHOD } from '@/app/monitor/constants/event';
 import { ColumnItem, ObjectItem, Pagination, TableDataItem, TreeItem, UserItem } from '@/app/monitor/types';
 import { findLabelById } from '@/app/monitor/utils/common';
 import CustomTable from '@/components/custom-table';
@@ -28,6 +29,24 @@ import { MetricExpressionRow } from '../strategy/detail/metricExpressionTypes';
 import SelectCard from '../strategy/detail/selectCard';
 import { seedNoticeUsersFromHandlers, shouldRequireNoticeUsers } from '../strategy/detail/strategyDetailUtils';
 import { buildPolicyGroupNoticePayload, policyGroupListBadges } from './policyGroupNotice';
+import {
+  DURATION_UNIT_OPTIONS,
+  NO_DATA_LEVEL_OPTIONS,
+  buildPolicyGroupDetectionPayload,
+  buildPolicyGroupRulePayload,
+  detectionConfirm,
+  detectionDraftFromGroup,
+  detectionSaveBlocker,
+  durationBounds,
+  policyGroupDetectionBadges,
+  policyGroupDetectionNotes,
+  ruleEditClosesAlerts,
+  ruleEditConfirm,
+  ruleEditDraftFromRule,
+  ruleSaveBlocker,
+  type DetectionDraft,
+  type RuleEditDraft,
+} from './policyGroupDetection';
 import { ChannelItem } from '@/app/monitor/types/event';
 import { formatUserName } from '@/utils/userDisplay';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -39,6 +58,11 @@ interface PolicyGroupRule {
   threshold: Array<{ level?: string; method?: string; value?: number }>;
   query_type?: string;
   condition_thresholds?: Record<string, Array<{ level?: string; method?: string; value?: number | null }>>;
+  alert_name?: string;
+  trigger_count?: number;
+  recovery_condition?: number;
+  recovery_threshold?: { method?: string; value?: number | null };
+  no_data_carrier?: boolean;
   open_alert_count?: number;
 }
 
@@ -57,6 +81,16 @@ interface PolicyGroupRow {
   handlers_uniform?: boolean;
   enable?: boolean;
   enable_uniform?: boolean;
+  schedule?: { type?: string; value?: number };
+  schedule_uniform?: boolean;
+  no_data?: {
+    enabled?: boolean;
+    period?: { type?: string; value?: number };
+    level?: string;
+    alert_name?: string;
+    recovery_period?: { type?: string; value?: number };
+  };
+  no_data_uniform?: boolean;
   open_alert_count?: number;
 }
 
@@ -116,7 +150,7 @@ const CHANNEL_ICON: Record<string, string> = {
 
 const NAME_COLUMN_WIDTH = 162;
 const COMPACT_COLUMN_WIDTH = 120;
-const ACTION_COLUMN_WIDTH = 260;
+const ACTION_COLUMN_WIDTH = 420;
 
 type ConditionThresholdDraft = Array<{
   level?: string;
@@ -181,6 +215,7 @@ const PolicyGroupPage: React.FC = () => {
     joinPolicyGroup,
     leavePolicyGroup,
     updatePolicyGroupRule,
+    updatePolicyGroupDetection,
     updatePolicyGroupNotice,
     updatePolicyGroupEnable,
     copyPolicyGroup,
@@ -245,6 +280,17 @@ const PolicyGroupPage: React.FC = () => {
   const [conditionDraft, setConditionDraft] = useState<
     Record<string, Array<{ level?: string; method?: string; value?: number | null }>>
   >({});
+  const [alertNameDraft, setAlertNameDraft] = useState('');
+  const [triggerCountDraft, setTriggerCountDraft] = useState<number | null>(1);
+  const [recoveryConditionDraft, setRecoveryConditionDraft] = useState<number | null>(1);
+  const [recoveryThresholdDraft, setRecoveryThresholdDraft] = useState<{ method?: string; value?: number | null }>({
+    method: '>',
+    value: null,
+  });
+  const [detectionGroup, setDetectionGroup] = useState<PolicyGroupRow | null>(null);
+  const [detectionInitial, setDetectionInitial] = useState<DetectionDraft>(() => detectionDraftFromGroup({}));
+  const [detectionDraft, setDetectionDraft] = useState<DetectionDraft>(() => detectionDraftFromGroup({}));
+  const [detectionSaving, setDetectionSaving] = useState(false);
   const [noticeGroup, setNoticeGroup] = useState<PolicyGroupRow | null>(null);
   const [noticeEnabled, setNoticeEnabled] = useState(false);
   const [noticeTypeIds, setNoticeTypeIds] = useState<number[]>([]);
@@ -493,6 +539,62 @@ const PolicyGroupPage: React.FC = () => {
     }
   };
 
+  const detectionScope = {
+    scheduleUniform: detectionGroup?.schedule_uniform,
+    noDataUniform: detectionGroup?.no_data_uniform,
+    initial: detectionInitial,
+  };
+
+  const openDetection = (group: PolicyGroupRow) => {
+    const next = detectionDraftFromGroup(group, {
+      scheduleUniform: group.schedule_uniform,
+      noDataUniform: group.no_data_uniform,
+    });
+    setDetectionInitial(next);
+    setDetectionDraft(next);
+    setDetectionGroup(group);
+  };
+
+  const patchDetection = (patch: Partial<DetectionDraft>) => {
+    setDetectionDraft((current) => ({ ...current, ...patch }));
+  };
+
+  const saveDetection = () => {
+    if (!detectionGroup || detectionSaving) return;
+    const blocker = detectionSaveBlocker(detectionDraft, detectionScope);
+    if (blocker) {
+      message.warning(blocker);
+      return;
+    }
+    const payload = buildPolicyGroupDetectionPayload(detectionGroup.id, detectionDraft, detectionScope);
+    const confirm = detectionConfirm(payload, detectionInitial);
+    Modal.confirm({
+      title: confirm.title,
+      content: confirm.content,
+      onOk: async () => {
+        setDetectionSaving(true);
+        try {
+          await updatePolicyGroupDetection(payload);
+          message.success('已写入这一组的检测配置');
+          setDetectionGroup(null);
+          await loadGroups(objectId);
+        } finally {
+          setDetectionSaving(false);
+        }
+      },
+    });
+  };
+
+  const currentRuleDraft = (source: PolicyGroupRule): RuleEditDraft => ({
+    ...ruleEditDraftFromRule(source),
+    threshold: thresholdDraft,
+    conditionThresholds: conditionDraft,
+    alertName: alertNameDraft,
+    triggerCount: triggerCountDraft,
+    recoveryCondition: recoveryConditionDraft,
+    recoveryThreshold: recoveryThresholdDraft,
+  });
+
   const submitGroupEnable = async (record: PolicyGroupRow, enable: boolean) => {
     if (enableSavingId != null) return;
     setEnableSavingId(record.id);
@@ -533,12 +635,18 @@ const PolicyGroupPage: React.FC = () => {
       key: 'name',
       width: NAME_COLUMN_WIDTH,
       render: (_, record) => {
-        const badges = policyGroupListBadges({
-          notice: record.notice,
-          noticeUniform: record.notice_uniform,
-          noticeTypeIds: record.notice_type_ids,
-          handlersUniform: record.handlers_uniform,
-        });
+        const badges = [
+          ...policyGroupListBadges({
+            notice: record.notice,
+            noticeUniform: record.notice_uniform,
+            noticeTypeIds: record.notice_type_ids,
+            handlersUniform: record.handlers_uniform,
+          }),
+          ...policyGroupDetectionBadges({
+            scheduleUniform: record.schedule_uniform,
+            noDataUniform: record.no_data_uniform,
+          }),
+        ];
         return (
           <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
             <span>{record.name}</span>
@@ -624,6 +732,9 @@ const PolicyGroupPage: React.FC = () => {
           >
             默认
           </Button>
+          <Button type="link" onClick={() => openDetection(record as PolicyGroupRow)}>
+            检测配置
+          </Button>
           <Button type="link" onClick={() => openNotice(record as PolicyGroupRow)}>
             响应配置
           </Button>
@@ -668,32 +779,33 @@ const PolicyGroupPage: React.FC = () => {
 
   const saveRule = () => {
     if (!rule || !ruleGroup || ruleSaving) return;
-    const count = rule.open_alert_count || 0;
+    const draft = currentRuleDraft(rule);
+    const blocker = ruleSaveBlocker(draft);
+    if (blocker) {
+      message.warning(blocker);
+      return;
+    }
+    const original = ruleEditDraftFromRule(rule);
+    const closesAlerts = ruleEditClosesAlerts(original, draft);
+    const confirm = ruleEditConfirm({
+      closesAlerts,
+      alertNameChanged: original.alertName !== draft.alertName,
+      openAlertCount: rule.open_alert_count || 0,
+    });
     Modal.confirm({
-      title: '修改阈值',
-      content: `保存后按新阈值检测，并结束这条规则上 ${count} 条未恢复告警。`,
-      onOk: () => persistRule(),
+      title: confirm.title,
+      content: confirm.content,
+      onOk: () => persistRule(closesAlerts),
     });
   };
 
-  const persistRule = async () => {
+  const persistRule = async (closesAlerts: boolean) => {
     if (!rule || !ruleGroup || ruleSaving) return;
+    const draft = currentRuleDraft(rule);
     setRuleSaving(true);
     try {
-      await updatePolicyGroupRule(
-        rule.query_type === 'multi'
-          ? {
-            group_id: ruleGroup.id,
-            rule_id: rule.id,
-            condition_thresholds: conditionDraft,
-          }
-          : {
-            group_id: ruleGroup.id,
-            rule_id: rule.id,
-            threshold: thresholdDraft,
-          }
-      );
-      message.success('已修改当前规则，未恢复告警会结束');
+      await updatePolicyGroupRule(buildPolicyGroupRulePayload(ruleGroup.id, rule.id, draft));
+      message.success(closesAlerts ? '已修改当前规则，未恢复告警会结束' : '已修改当前规则，正在响的告警不结束');
       const items = await loadGroups(objectId);
       const next = (items || []).find((item) => item.id === ruleGroup.id);
       setRule(null);
@@ -1030,6 +1142,63 @@ const PolicyGroupPage: React.FC = () => {
               />
             </div>
             )}
+            <div className="mb-3">
+              <div className="mb-1">告警名称</div>
+              <Input value={alertNameDraft} onChange={(event) => setAlertNameDraft(event.target.value)} />
+            </div>
+            <div className="mb-3 flex flex-wrap gap-4">
+              <div>
+                <div className="mb-1">连续触发周期</div>
+                <InputNumber
+                  className="w-[160px]"
+                  min={1}
+                  precision={0}
+                  value={triggerCountDraft}
+                  onChange={(value) => setTriggerCountDraft(typeof value === 'number' ? value : null)}
+                />
+              </div>
+              <div>
+                <div className="mb-1">连续恢复周期</div>
+                <InputNumber
+                  className="w-[160px]"
+                  min={1}
+                  precision={0}
+                  value={recoveryConditionDraft}
+                  onChange={(value) => setRecoveryConditionDraft(typeof value === 'number' ? value : null)}
+                />
+              </div>
+            </div>
+            {rule.query_type === 'multi' ? null : (
+              <div className="mb-3">
+                <div className="mb-1">恢复阈值</div>
+                <div className="flex items-center gap-2">
+                  <Select
+                    className="w-[88px]"
+                    value={recoveryThresholdDraft.method || '>'}
+                    options={COMPARISON_METHOD.map((item) => ({
+                      value: String(item.value),
+                      label: item.label,
+                    }))}
+                    onChange={(method) =>
+                      setRecoveryThresholdDraft((current) => ({ ...current, method: String(method) }))
+                    }
+                  />
+                  <InputNumber
+                    className="w-[160px]"
+                    value={recoveryThresholdDraft.value ?? null}
+                    onChange={(value) =>
+                      setRecoveryThresholdDraft((current) => ({
+                        ...current,
+                        value: typeof value === 'number' ? value : null,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            )}
+            <div className="text-[var(--color-text-3)]">
+              改连续周期、恢复阈值或阈值会结束这条规则上正在响的告警。只改告警名称不会。
+            </div>
           </>
         ) : (
           <CustomTable
@@ -1045,7 +1214,17 @@ const PolicyGroupPage: React.FC = () => {
               }));
             }}
             columns={[
-              { title: t('common.name'), dataIndex: 'name', key: 'name' },
+              {
+                title: t('common.name'),
+                dataIndex: 'name',
+                key: 'name',
+                render: (_, record) => (
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    <span>{record.name}</span>
+                    {record.no_data_carrier ? <StatusToneBadge tone="neutral" label="承载无数据" /> : null}
+                  </span>
+                ),
+              },
               {
                 title: '模板',
                 dataIndex: 'plugin_name',
@@ -1062,9 +1241,14 @@ const PolicyGroupPage: React.FC = () => {
                     type="link"
                     className="px-0"
                     onClick={() => {
+                      const nextDraft = ruleEditDraftFromRule(record);
                       setRule(record);
                       setThresholdDraft(cloneDeep(record.threshold || []) as ThresholdItem[]);
                       setConditionDraft(cloneDeep(record.condition_thresholds || {}));
+                      setAlertNameDraft(nextDraft.alertName);
+                      setTriggerCountDraft(nextDraft.triggerCount);
+                      setRecoveryConditionDraft(nextDraft.recoveryCondition);
+                      setRecoveryThresholdDraft(nextDraft.recoveryThreshold);
                     }}
                   >
                     修改
@@ -1074,6 +1258,170 @@ const PolicyGroupPage: React.FC = () => {
             ]}
           />
         )}
+      </Drawer>
+      <Drawer
+        title={detectionGroup ? `${detectionGroup.name} 的检测配置` : '检测配置'}
+        open={Boolean(detectionGroup)}
+        width={760}
+        closable={false}
+        onClose={() => setDetectionGroup(null)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              type="primary"
+              loading={detectionSaving}
+              disabled={Boolean(detectionSaveBlocker(detectionDraft, detectionScope))}
+              onClick={saveDetection}
+            >
+              确认
+            </Button>
+            <Button disabled={detectionSaving} onClick={() => setDetectionGroup(null)}>
+              取消
+            </Button>
+          </div>
+        }
+      >
+        {(() => {
+          const notes = policyGroupDetectionNotes({
+            scheduleUniform: detectionGroup?.schedule_uniform,
+            noDataUniform: detectionGroup?.no_data_uniform,
+          });
+          const scheduleNote = notes.find((note) => note.includes('检测频率'));
+          const noDataNote = notes.find((note) => note.includes('无数据'));
+          return (
+            <>
+        <div className="mb-3 text-[var(--color-text-3)]">
+          无数据告警按插件写到一条承载规则上，一台成员停止上报每个插件只产生一条告警。
+        </div>
+        <div className="mb-3">
+          <div className="mb-1">检测频率</div>
+          {scheduleNote ? <div className="mb-1 text-[var(--color-text-3)]">{scheduleNote}</div> : null}
+          <div className="flex items-center gap-2">
+            <InputNumber
+              className="w-[160px]"
+              min={durationBounds(detectionDraft.scheduleUnit).min}
+              max={durationBounds(detectionDraft.scheduleUnit).max}
+              precision={0}
+              value={detectionDraft.scheduleValue}
+              onChange={(value) => patchDetection({ scheduleValue: typeof value === 'number' ? value : null })}
+            />
+            <Select
+              className="w-[120px]"
+              value={detectionDraft.scheduleUnit}
+              options={[...DURATION_UNIT_OPTIONS]}
+              onChange={(unit) => {
+                const bounds = durationBounds(unit);
+                const next = detectionDraft.scheduleValue;
+                patchDetection({
+                  scheduleUnit: unit,
+                  scheduleValue: next == null || next < bounds.min || next > bounds.max ? null : next,
+                });
+              }}
+            />
+          </div>
+        </div>
+        <div className="mb-3">
+          <div className="mb-1">无数据告警</div>
+          {noDataNote ? <div className="mb-1 text-[var(--color-text-3)]">{noDataNote}</div> : null}
+          {detectionDraft.noDataEnabled == null ? (
+            <Select
+              className="w-[160px]"
+              placeholder="请选择"
+              options={[
+                { value: 'on', label: '开启' },
+                { value: 'off', label: '关闭' },
+              ]}
+              onChange={(value) => patchDetection({ noDataEnabled: value === 'on' })}
+            />
+          ) : (
+            <Switch
+              checked={detectionDraft.noDataEnabled}
+              onChange={(checked) => patchDetection({ noDataEnabled: checked })}
+            />
+          )}
+        </div>
+        {detectionDraft.noDataEnabled ? (
+          <>
+            <div className="mb-3">
+              <div className="mb-1">告警名称</div>
+              <Input
+                value={detectionDraft.noDataAlertName}
+                onChange={(event) => patchDetection({ noDataAlertName: event.target.value })}
+              />
+            </div>
+            <div className="mb-3">
+              <div className="mb-1">检测窗</div>
+              <div className="flex items-center gap-2">
+                <InputNumber
+                  className="w-[160px]"
+                  min={1}
+                  max={Math.max(durationBounds(detectionDraft.noDataPeriodUnit).max, detectionDraft.noDataPeriodValue)}
+                  precision={0}
+                  value={detectionDraft.noDataPeriodValue}
+                  onChange={(value) => {
+                    if (typeof value === 'number') patchDetection({ noDataPeriodValue: value });
+                  }}
+                />
+                <Select
+                  className="w-[120px]"
+                  value={detectionDraft.noDataPeriodUnit}
+                  options={[...DURATION_UNIT_OPTIONS]}
+                  onChange={(unit) => {
+                    const bounds = durationBounds(unit);
+                    const next = detectionDraft.noDataPeriodValue;
+                    patchDetection({
+                      noDataPeriodUnit: unit,
+                      noDataPeriodValue: next < bounds.min || next > bounds.max ? bounds.min : next,
+                    });
+                  }}
+                />
+              </div>
+            </div>
+            <div className="mb-3">
+              <div className="mb-1">级别</div>
+              <Select
+                className="w-[160px]"
+                value={detectionDraft.noDataLevel}
+                options={[...NO_DATA_LEVEL_OPTIONS]}
+                onChange={(level) => patchDetection({ noDataLevel: level })}
+              />
+            </div>
+            <div className="mb-3">
+              <div className="mb-1">恢复窗</div>
+              <div className="flex items-center gap-2">
+                <InputNumber
+                  className="w-[160px]"
+                  min={1}
+                  max={Math.max(durationBounds(detectionDraft.noDataRecoveryUnit).max, detectionDraft.noDataRecoveryValue)}
+                  precision={0}
+                  value={detectionDraft.noDataRecoveryValue}
+                  onChange={(value) => {
+                    if (typeof value === 'number') patchDetection({ noDataRecoveryValue: value });
+                  }}
+                />
+                <Select
+                  className="w-[120px]"
+                  value={detectionDraft.noDataRecoveryUnit}
+                  options={[...DURATION_UNIT_OPTIONS]}
+                  onChange={(unit) => {
+                    const bounds = durationBounds(unit);
+                    const next = detectionDraft.noDataRecoveryValue;
+                    patchDetection({
+                      noDataRecoveryUnit: unit,
+                      noDataRecoveryValue: next < bounds.min || next > bounds.max ? bounds.min : next,
+                    });
+                  }}
+                />
+              </div>
+            </div>
+          </>
+        ) : null}
+        {detectionSaveBlocker(detectionDraft, detectionScope) ? (
+          <div className="text-[var(--color-text-3)]">{detectionSaveBlocker(detectionDraft, detectionScope)}</div>
+        ) : null}
+            </>
+          );
+        })()}
       </Drawer>
       <Drawer
         title={noticeGroup ? `${noticeGroup.name} 的响应配置` : '响应配置'}

@@ -76,8 +76,25 @@ const useIntegrationApi = () => {
         rule_id: number;
         threshold?: unknown;
         condition_thresholds?: Record<string, unknown>;
+        trigger_count?: number;
+        recovery_condition?: number;
+        recovery_threshold?: { method?: string; value?: number | null } | Record<string, never>;
+        alert_name?: string;
       }) => {
         return await post(`/monitor/api/policy_group/update_rule/`, payload);
+      },
+      updatePolicyGroupDetection: async (payload: {
+        group_id: number;
+        schedule?: { type: string; value: number };
+        no_data?: {
+          enabled: boolean;
+          period?: { type: string; value: number };
+          level?: string;
+          alert_name?: string;
+          recovery_period?: { type: string; value: number };
+        };
+      }) => {
+        return await post(`/monitor/api/policy_group/update_detection/`, payload);
       },
       updatePolicyGroupNotice: async (payload: {
         group_id: number;

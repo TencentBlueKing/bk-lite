@@ -16,7 +16,7 @@ from apps.monitor.models import (
     PolicyGroupMembership,
     PolicyTemplate,
 )
-from apps.monitor.services.policy_group import PolicyGroupService
+from apps.monitor.services.policy_group import PolicyGroupService, group_detection_state, no_data_carrier_rule_ids
 from apps.monitor.utils.pagination import parse_page_params
 
 
@@ -47,7 +47,7 @@ def _optional_positive_id(raw, param_name):
     return value
 
 
-def _serialize_rule(rule, metric_names=None, alert_counts=None):
+def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=False):
     metric_id = PolicyGroupService.metric_id_for_policy(rule.policy)
     metric_name = ""
     if metric_id and metric_names is not None:
@@ -80,6 +80,11 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None):
         "query_type": query.get("type") or "",
         "condition_thresholds": condition_thresholds,
         "threshold": rule.policy.threshold,
+        "alert_name": rule.policy.alert_name or "",
+        "trigger_count": rule.policy.trigger_count,
+        "recovery_condition": rule.policy.recovery_condition,
+        "recovery_threshold": rule.policy.recovery_threshold or {},
+        "no_data_carrier": bool(no_data_carrier),
         "policy_id": rule.policy_id,
         "open_alert_count": counts.get(rule.policy_id, 0),
     }
@@ -93,11 +98,16 @@ def _serialize_group(group, default_id, metric_names=None, plugin_id=None, colle
     visible_rules = PolicyGroupService.filter_rules_for_access(
         loaded_rules, plugin_id=plugin_id, collect_type=collect_type
     )
-    rules = [_serialize_rule(rule, metric_names, alert_counts) for rule in visible_rules]
+    carrier_ids = no_data_carrier_rule_ids(loaded_rules)
+    rules = [
+        _serialize_rule(rule, metric_names, alert_counts, no_data_carrier=rule.id in carrier_ids)
+        for rule in visible_rules
+    ]
     counts = alert_counts or {}
     open_alert_count = sum(counts.get(rule.policy_id, 0) for rule in loaded_rules)
     notice = _group_notice(loaded_rules)
     enable = _group_enable(loaded_rules)
+    detection = group_detection_state(loaded_rules)
     return {
         "id": group.id,
         "name": group.name,
@@ -109,6 +119,7 @@ def _serialize_group(group, default_id, metric_names=None, plugin_id=None, colle
         "rules": rules,
         **notice,
         **enable,
+        **detection,
     }
 
 
@@ -363,19 +374,48 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         update_kwargs = {"operator": _operator(scope)}
         if "condition_thresholds" in request.data:
             update_kwargs["condition_thresholds"] = request.data.get("condition_thresholds")
-        else:
-            update_kwargs["threshold"] = request.data.get("threshold", rule.policy.threshold)
+        elif "threshold" in request.data:
+            update_kwargs["threshold"] = request.data.get("threshold")
+        for field in ("trigger_count", "recovery_condition", "recovery_threshold", "alert_name"):
+            if field in request.data:
+                update_kwargs[field] = request.data.get(field)
         PolicyGroupService.update_rule(rule, **update_kwargs)
         log_operation(
             request,
             "update",
             "monitor",
-            "修改策略组规则阈值",
+            "修改策略组规则",
             target_type="policy_group",
             target_id=group.id,
             detail={"group_id": group.id, "rule_id": rule.id, "policy_id": rule.policy_id},
         )
         return WebUtils.response_success({"id": rule.id})
+
+    @action(methods=["post"], detail=False, url_path="update_detection")
+    @HasPermission("strategy_list-Edit")
+    def update_detection(self, request):
+        scope = resolve_current_team_data_scope(request)
+        group = _group_in_scope(scope, request.data.get("group_id"))
+        has_schedule = "schedule" in request.data
+        has_no_data = "no_data" in request.data
+        if not has_schedule and not has_no_data:
+            raise ValidationAppException("请至少设置检测频率或无数据告警")
+        PolicyGroupService.update_detection(
+            group,
+            schedule=request.data.get("schedule") if has_schedule else None,
+            no_data=request.data.get("no_data") if has_no_data else None,
+            operator=_operator(scope),
+        )
+        log_operation(
+            request,
+            "update",
+            "monitor",
+            "修改策略组检测配置",
+            target_type="policy_group",
+            target_id=group.id,
+            detail={"group_id": group.id, "schedule": has_schedule, "no_data": has_no_data},
+        )
+        return WebUtils.response_success({"id": group.id})
 
     @action(methods=["post"], detail=False, url_path="update_notice")
     @HasPermission("strategy_list-Edit")
