@@ -450,7 +450,6 @@ def test_get_user_all_passes_team_and_include_children(mocker):
             "is_superuser": False,
             "group_list": [7, 8],
         },
-        group=12,
         include_children=True,
     )
     rpc.return_value.get_group_users.assert_not_called()
@@ -474,7 +473,6 @@ def test_get_user_all_defaults_include_children_false(mocker):
             "is_superuser": False,
             "group_list": [7, 8],
         },
-        group=12,
         include_children=False,
     )
     rpc.return_value.get_group_users.assert_not_called()
@@ -514,6 +512,161 @@ def test_get_user_all_scoped_failure_rejects_without_unscoped_fallback(mocker):
 
     assert str(exc.value.detail) == "current_team 对应组织已归档或不存在"
     rpc.return_value.get_group_users.assert_not_called()
+
+
+def _bind_real_group_users_scoped(mocker):
+    """视图只应转发 actor；范围收口由真实 get_group_users_scoped 完成。"""
+    from apps.system_mgmt.nats import users as nats_users
+
+    class _Client:
+        def get_group_users(self, *args, **kwargs):
+            raise AssertionError("unscoped lookup")
+
+        def get_group_users_scoped(self, actor_context, group=None, include_children=False, search=""):
+            return nats_users.get_group_users_scoped(
+                actor_context,
+                group=group,
+                include_children=include_children,
+                search=search,
+            )
+
+    mocker.patch("apps.log.views.system_mgmt.SystemMgmt", _Client)
+    return nats_users
+
+
+def _directory_usernames(response):
+    assert response.status_code == 200
+    data = _json(response)["data"]
+    for row in data:
+        assert set(row) <= {"id", "user_id", "username", "display_name"}
+    return {row["username"] for row in data}
+
+
+def test_get_user_all_member_current_team_excludes_other_org(mocker):
+    from apps.system_mgmt.models import Group, User
+
+    _bind_real_group_users_scoped(mocker)
+    home = Group.objects.create(name="pr6592-member-home", parent_id=0)
+    other = Group.objects.create(name="pr6592-member-other", parent_id=0)
+    User.objects.create(
+        username="pr6592-member-actor",
+        display_name="Member Actor",
+        email="pr6592-member-actor@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="pr6592-member-insider",
+        display_name="Insider",
+        email="pr6592-member-insider@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="pr6592-member-outsider",
+        display_name="Outsider",
+        email="pr6592-member-outsider@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[other.id],
+    )
+
+    class _Member:
+        username = "pr6592-member-actor"
+        domain = "domain.com"
+        is_superuser = False
+        group_list = [home.id]
+        is_authenticated = True
+
+    usernames = _directory_usernames(
+        SystemMgmtView().get_user_all(get_req(cookies={"current_team": str(home.id)}, user=_Member()))
+    )
+    assert "pr6592-member-insider" in usernames
+    assert "pr6592-member-outsider" not in usernames
+
+
+def test_get_user_all_forged_team_returns_empty_from_scoped_directory(mocker):
+    from apps.system_mgmt.models import Group, User
+
+    _bind_real_group_users_scoped(mocker)
+    home = Group.objects.create(name="pr6592-forged-home", parent_id=0)
+    other = Group.objects.create(name="pr6592-forged-other", parent_id=0)
+    User.objects.create(
+        username="pr6592-forged-actor",
+        display_name="Forged Actor",
+        email="pr6592-forged-actor@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="pr6592-forged-outsider",
+        display_name="Forged Outsider",
+        email="pr6592-forged-outsider@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[other.id],
+    )
+
+    class _Member:
+        username = "pr6592-forged-actor"
+        domain = "domain.com"
+        is_superuser = False
+        group_list = [other.id]
+        is_authenticated = True
+
+    usernames = _directory_usernames(
+        SystemMgmtView().get_user_all(get_req(cookies={"current_team": str(other.id)}, user=_Member()))
+    )
+    assert usernames == set()
+
+
+def test_get_user_all_superuser_outside_membership_returns_current_team_users(mocker, monkeypatch):
+    from apps.system_mgmt.models import Group, User
+
+    nats_users = _bind_real_group_users_scoped(mocker)
+    monkeypatch.setattr(nats_users, "_is_persisted_superuser", lambda user: getattr(user, "username", None) == "pr6592-super-actor")
+    home = Group.objects.create(name="pr6592-super-home", parent_id=0)
+    selected = Group.objects.create(name="pr6592-super-selected", parent_id=0)
+    User.objects.create(
+        username="pr6592-super-actor",
+        display_name="Super Actor",
+        email="pr6592-super-actor@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="pr6592-super-member",
+        display_name="Selected Member",
+        email="pr6592-super-member@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[selected.id],
+    )
+    User.objects.create(
+        username="pr6592-super-home-user",
+        display_name="Home User",
+        email="pr6592-super-home-user@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+
+    class _Super:
+        username = "pr6592-super-actor"
+        domain = "domain.com"
+        is_superuser = True
+        group_list = [home.id]
+        is_authenticated = True
+
+    usernames = _directory_usernames(
+        SystemMgmtView().get_user_all(get_req(cookies={"current_team": str(selected.id)}, user=_Super()))
+    )
+    assert "pr6592-super-member" in usernames
+    assert "pr6592-super-home-user" not in usernames
 
 
 class _ActorUser:

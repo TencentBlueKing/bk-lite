@@ -55,9 +55,10 @@ class SystemMgmtView(ViewSet):
         if actor_context is None:
             return WebUtils.response_success([])
 
+        # current_team 已写入 actor。再传 group 会按成员名单重滤，
+        # 超管选中自己不属于的当前组织时目录会被清空。
         result = SystemMgmt().get_group_users_scoped(
             actor_context,
-            group=actor_context["current_team"],
             include_children=actor_context["include_children"],
         )
         failure = "通知人查询失败"
