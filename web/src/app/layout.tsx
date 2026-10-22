@@ -21,6 +21,7 @@ import {
   useConsoleLayout,
   withScreenQuery,
 } from '@/console-layout';
+import { isDashboardHomepagePath } from '@/app/ops-analysis/utils/homepageLanding';
 import { useMenus } from '@/context/menus';
 import { useClientData } from '@/context/client';
 import { usePermissions } from '@/context/permissions';
@@ -190,7 +191,9 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
-  const screenMode = isScreenModeEnabled(searchParams);
+  // 仪表盘登录首页忽略 screen=true，始终保留平台顶栏。
+  const screenMode = isScreenModeEnabled(searchParams)
+    && !isDashboardHomepagePath(pathname, searchParams);
   const hidePathChrome = shouldHideConsoleTopNav(pathname);
   const hideConsoleChrome = shouldHideConsoleChrome(pathname, screenMode);
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);

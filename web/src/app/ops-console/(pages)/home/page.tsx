@@ -15,10 +15,14 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { usePortalBranding } from '@/hooks/usePortalBranding';
 import { resolveAppDescription, resolveAppDisplayName, resolveAppTag } from '@/utils/appDisplayName';
 import styles from './index.module.scss';
+import { useSearchParams } from 'next/navigation';
+import OpsHomepageDashboard from '@/app/ops-analysis/components/opsHomepageDashboard';
+import HomepageFallbackNotice from '@/app/ops-analysis/components/homepageFallbackNotice';
+import { hrefAfterOrgInit } from '@/app/ops-analysis/utils/homepageLanding';
 
 const ControlPage = () => {
   const { t } = useTranslation();
-  const { post } = useApiClient();
+  const { get, post } = useApiClient();
   const { clientData, appConfigList, loading, appConfigLoading, refreshAppConfig } = useClientData();
   const { loading: userLoading, isFirstLogin } = useUserInfoContext();
   const [isPopoverVisible, setIsPopoverVisible] = useState<boolean>(false);
@@ -127,6 +131,16 @@ const ControlPage = () => {
         group_name: values.group_name,
       });
       message.success(t('common.saveSuccess'));
+      try {
+        const landing = await get('/operation_analysis/api/homepage/landing/');
+        const nextHref = hrefAfterOrgInit(landing);
+        if (nextHref) {
+          window.location.href = nextHref;
+          return;
+        }
+      } catch {
+        // 组织已经创建成功。落地解析失败时仍刷新工作台。
+      }
       window.location.reload();
     } catch {
       message.error(t('common.saveFailed'));
@@ -457,4 +471,18 @@ const ControlPage = () => {
   );
 };
 
-export default ControlPage;
+const OpsConsoleHomePage = () => {
+  const searchParams = useSearchParams();
+  const dashboardId = searchParams.get('dashboard_id')?.trim();
+  if (dashboardId) {
+    return <OpsHomepageDashboard dashboardId={dashboardId} />;
+  }
+  return (
+    <>
+      <HomepageFallbackNotice />
+      <ControlPage />
+    </>
+  );
+};
+
+export default OpsConsoleHomePage;

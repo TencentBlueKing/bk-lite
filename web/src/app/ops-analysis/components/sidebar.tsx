@@ -68,6 +68,13 @@ import {
   BranchesOutlined,
 } from '@ant-design/icons';
 import { resolveSidebarTreeSelection } from '@/app/ops-analysis/utils/sidebarSelection';
+import { useHomepageApi } from '@/app/ops-analysis/api/homepage';
+import { useEffectiveHomepage } from '@/app/ops-analysis/context/effectiveHomepage';
+import {
+  homepageDirectoryActionKeys,
+  type HomepageDirectoryActionKey,
+  type HomepagePreferenceState,
+} from '@/app/ops-analysis/utils/homepageDirectoryActions';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
   ({ onSelect, onDataUpdate }, ref) => {
@@ -93,6 +100,23 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
     const { getDirectoryTree, createItem, updateItem, deleteItem, copyItem } =
       useDirectoryApi();
+    const { getState: getHomepageState, applyPersonal, applyGlobal } = useHomepageApi();
+    const { refresh: refreshEffectiveHomepage } = useEffectiveHomepage();
+    const [homepageState, setHomepageState] = useState<HomepagePreferenceState | null>(null);
+
+    useEffect(() => {
+      let cancelled = false;
+      void getHomepageState()
+        .then((next) => {
+          if (!cancelled) {
+            setHomepageState(next);
+          }
+        })
+        .catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    }, [getHomepageState, selectedGroup?.id]);
     const [currentDir, setCurrentDir] = useState<DirItem | null>(null);
     const [exportModalVisible, setExportModalVisible] = useState(false);
     const [exportItem, setExportItem] = useState<DirItem | null>(null);
@@ -429,6 +453,61 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       );
     };
 
+    const applyHomepageAction = async (item: DirItem, key: HomepageDirectoryActionKey) => {
+      const dashboardId = Number(item.data_id);
+      try {
+        if (key === 'setPersonal') {
+          setHomepageState(await applyPersonal({ action: 'set', dashboard_id: dashboardId }));
+          message.success(t('opsHomepage.setPersonalSuccess'));
+          await refreshEffectiveHomepage();
+          return;
+        }
+        if (key === 'clearPersonal') {
+          setHomepageState(await applyPersonal({ action: 'clear' }));
+          message.success(t('opsHomepage.clearPersonalSuccess'));
+          await refreshEffectiveHomepage();
+          return;
+        }
+        if (key === 'setGlobal') {
+          setHomepageState(await applyGlobal({ action: 'set', dashboard_id: dashboardId }));
+          message.success(t('opsHomepage.setGlobalSuccess'));
+          await refreshEffectiveHomepage();
+          return;
+        }
+        setHomepageState(await applyGlobal({ action: 'restore' }));
+        message.success(t('opsHomepage.restoreGlobalSuccess'));
+        await refreshEffectiveHomepage();
+      } catch {
+        // 请求层已经提示失败，设置首页后不跳转。
+      }
+    };
+
+    const withHomepageActions = (
+      item: DirItem,
+      items: MoreActionsDropdownItem[],
+    ): MoreActionsDropdownItem[] => {
+      const keys = homepageDirectoryActionKeys(item, homepageState);
+      if (!keys.length) {
+        return items;
+      }
+      const labels: Record<HomepageDirectoryActionKey, string> = {
+        setPersonal: t('opsHomepage.setPersonal'),
+        clearPersonal: t('opsHomepage.clearPersonal'),
+        setGlobal: t('opsHomepage.setGlobal'),
+        restoreGlobal: t('opsHomepage.restoreGlobal'),
+      };
+      return [
+        ...items,
+        ...keys.map((key) => ({
+          key: `homepage-${key}`,
+          label: labels[key],
+          onClick: () => {
+            void applyHomepageAction(item, key);
+          },
+        })),
+      ];
+    };
+
     const menuItemsFor = (
       item: DirItem,
       parentId: string | null = null,
@@ -458,7 +537,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       // 内置目录：有编辑权即可改所属组织；内置画布可复制为用户副本，内容仍只读。
       if (isBuiltIn) {
         if (isCatalogue) {
-          return [
+          return withHomepageActions(item, [
             {
               key: 'edit',
               label: t('common.edit'),
@@ -474,13 +553,13 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 );
               },
             },
-          ];
+          ]);
         }
-        return [
+        return withHomepageActions(item, [
           ...(shouldShowCanvasCopyAction(item) ? canvasResourceActions() : []),
           { key: 'edit', label: t('common.edit'), disabled: true },
           { key: 'delete', label: t('common.delete'), disabled: true },
-        ];
+        ]);
       }
 
       const items: MoreActionsDropdownItem[] = [];
@@ -562,7 +641,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       if (shouldShowCanvasCopyAction(item)) {
         items.push(...canvasResourceActions());
       }
-      return items;
+      return withHomepageActions(item, items);
     };
 
     const buildTreeData = (

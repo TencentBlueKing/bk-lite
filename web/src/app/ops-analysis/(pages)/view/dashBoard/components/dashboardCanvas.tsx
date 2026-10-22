@@ -124,6 +124,7 @@ interface DashboardWidgetCardProps {
   onWidgetRenderStatus?: DashboardCanvasProps['onWidgetRenderStatus'];
   renderMode?: boolean;
   pdfExportPreparing?: boolean;
+  csvExportHidden?: boolean;
 }
 
 const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
@@ -152,6 +153,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
   onWidgetRenderStatus,
   renderMode = false,
   pdfExportPreparing = false,
+  csvExportHidden = false,
 }: DashboardWidgetCardProps) {
   const { t } = useTranslation();
   const title = useFilterTemplateText(item.name);
@@ -171,7 +173,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
     sceneWidgetType: item.valueConfig?.sceneWidgetType,
     rawData: exportRawData,
   });
-  const showHoverExport = resolveWidgetCsvExportEntry({
+  const showHoverExport = !csvExportHidden && resolveWidgetCsvExportEntry({
     surface: 'dashboard',
     chartType,
     editMode: isEditMode,
@@ -321,6 +323,7 @@ interface DashboardCanvasProps {
   ) => void;
   renderMode?: boolean;
   pdfExportPreparing?: boolean;
+  csvExportHidden?: boolean;
   scrollRootRef: RefObject<HTMLDivElement | null>;
   onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
@@ -357,6 +360,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   onTopologyLayoutChange,
   renderMode = false,
   pdfExportPreparing = false,
+  csvExportHidden = false,
   scrollRootRef,
   onWidgetRenderStatus,
 }) => {
@@ -1296,6 +1300,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         onWidgetRenderStatus={onWidgetRenderStatus}
         renderMode={renderMode}
         pdfExportPreparing={pdfExportPreparing}
+        csvExportHidden={csvExportHidden}
       />,
       host,
       `widget:${id}`,
