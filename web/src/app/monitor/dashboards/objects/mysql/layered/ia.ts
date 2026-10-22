@@ -386,7 +386,7 @@ export const mysqlHealthKpiJump = (
 ): { tab: MysqlIaTab; anchor: string } | null => {
   if (key === 'connections') return { tab: 'performance', anchor: 'connections' };
   if (key === 'qps') return { tab: 'performance', anchor: 'throughput' };
-  if (key === 'slow') return { tab: 'performance', anchor: 'quality' };
+  if (key === 'slow') return { tab: 'performance', anchor: 'scan-lock' };
   if (key === 'replication') return { tab: 'replication', anchor: 'mysql-repl-trend' };
   return null;
 };
