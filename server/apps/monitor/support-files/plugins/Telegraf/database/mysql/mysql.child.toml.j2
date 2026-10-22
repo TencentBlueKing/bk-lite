@@ -17,7 +17,9 @@
     gather_table_schema = false
     gather_table_io_waits = {{ gather_table_io_waits | default(false, true) | lower }}
     gather_table_lock_waits = {{ gather_table_lock_waits | default(false, true) | lower }}
-    gather_perf_events_statements = {{ gather_perf_events_statements | default(false, true) | lower }}
+    # 内置语句查询会丢掉 SCHEMA_NAME 为空的摘要；DIGEST 为 NULL 时 Scan 失败，整批语句点都不发。
+    # 开关打开时改由文末 inputs.sql 写入同一 measurement，这里固定关闭，避免和那条查询双写。
+    gather_perf_events_statements = false
     gather_event_waits = {{ gather_event_waits | default(false, true) | lower }}
 
     # 慢速 SQL 相关采集间隔
@@ -229,3 +231,60 @@
             Yes = 1
             No = 0
             Preparing = 0
+
+{% set _statements_on = (gather_perf_events_statements | default(false, true) | lower) %}
+{% if _statements_on == 'true' or _statements_on == '1' %}
+# 语句摘要：绕过 inputs.mysql 的 digest 查询。字段名、measurement、标签与专业盘一致。
+[[inputs.sql]]
+    driver = "mysql"
+    dsn = "{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"
+    interval = "{{ interval }}s"
+    disconnected_servers_behavior = "ignore"
+    timeout = "10s"
+
+    [inputs.sql.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "database"
+        config_type = "mysql"
+
+    [[inputs.sql.query]]
+        measurement = "mysql_perf_schema"
+        tag_columns_include = ["schema", "digest", "digest_text"]
+        field_columns_exclude = ["schema", "digest", "digest_text"]
+        field_columns_float = [
+            "events_statements_total",
+            "events_statements_seconds_total",
+            "events_statements_errors_total",
+            "events_statements_warnings_total",
+            "events_statements_rows_affected_total",
+            "events_statements_rows_sent_total",
+            "events_statements_rows_examined_total",
+            "events_statements_tmp_tables_total",
+            "events_statements_tmp_disk_tables_total",
+            "events_statements_sort_merge_passes_total",
+            "events_statements_sort_rows_total",
+            "events_statements_no_index_used_total"
+        ]
+        query = """
+            SELECT
+                IFNULL(SCHEMA_NAME, 'NONE') AS `schema`,
+                IFNULL(DIGEST, 'none') AS digest,
+                IFNULL(NULLIF(LEFT(REPLACE(REPLACE(REPLACE(IFNULL(DIGEST_TEXT, ''), CHAR(10), ' '), CHAR(13), ' '), CHAR(9), ' '), 120), ''), 'none') AS digest_text,
+                CAST(COUNT_STAR AS DOUBLE) AS events_statements_total,
+                SUM_TIMER_WAIT / 1000000000000.0 AS events_statements_seconds_total,
+                CAST(SUM_ERRORS AS DOUBLE) AS events_statements_errors_total,
+                CAST(SUM_WARNINGS AS DOUBLE) AS events_statements_warnings_total,
+                CAST(SUM_ROWS_AFFECTED AS DOUBLE) AS events_statements_rows_affected_total,
+                CAST(SUM_ROWS_SENT AS DOUBLE) AS events_statements_rows_sent_total,
+                CAST(SUM_ROWS_EXAMINED AS DOUBLE) AS events_statements_rows_examined_total,
+                CAST(SUM_CREATED_TMP_TABLES AS DOUBLE) AS events_statements_tmp_tables_total,
+                CAST(SUM_CREATED_TMP_DISK_TABLES AS DOUBLE) AS events_statements_tmp_disk_tables_total,
+                CAST(SUM_SORT_MERGE_PASSES AS DOUBLE) AS events_statements_sort_merge_passes_total,
+                CAST(SUM_SORT_ROWS AS DOUBLE) AS events_statements_sort_rows_total,
+                CAST(SUM_NO_INDEX_USED AS DOUBLE) AS events_statements_no_index_used_total
+            FROM performance_schema.events_statements_summary_by_digest
+            ORDER BY SUM_TIMER_WAIT DESC
+            LIMIT 250
+        """
+{% endif %}
