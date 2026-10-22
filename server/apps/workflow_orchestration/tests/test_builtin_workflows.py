@@ -90,6 +90,9 @@ def test_ensure_builtin_health_workflows_are_idempotent(builtin_user, builtin_ch
     assert Workflow.objects.filter(is_builtin=True, team=[1]).count() == 2
     assert {item.pk for item in second} == {item.pk for item in first}
     assert all(not item.has_draft and item.enabled and item.current_version == 1 for item in second)
+    descriptions = {item.name: item.description for item in second}
+    assert descriptions["Linux 主机巡检（Excel）"] == "选择 Linux 主机采集后生成 Excel 巡检报告并通知。"
+    assert descriptions["Windows 主机巡检（Word）"] == "选择 Windows 主机采集后生成 Word 巡检报告并通知。"
     notify = first[0].definition["tasks"][3]["inputParameters"]
     assert notify["channel_id"] == builtin_channels["email_first"].id
     assert notify["recipients"] == [BUILTIN_EXECUTOR_RECIPIENT]
