@@ -84,6 +84,7 @@ export interface WorkflowRecord {
   id: number;
   name: string;
   description: string;
+  team?: number[];
   status: WorkflowStatus;
   current_version: number;
   enabled: boolean;
