@@ -8,6 +8,7 @@ import hostStyles from '../../host/layered/layered.module.scss';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import {
   MYSQL_REPLICATION_EXTRA_METRICS,
+  readMysqlBinlogTrendEmpty,
   readMysqlReplicationExtras,
   readMysqlReplicationGap,
   readMysqlReplicationSeries,
@@ -318,9 +319,12 @@ export default function ReplicationPane({
     || blocksUntilReady(MYSQL_REPLICATION_EXTRA_METRICS, pendingMetricNames);
   const trendEmpty = (slot: MysqlReplicationTrendKey, metricName: string) => {
     if (slot === 'delay') return text('lagUnknown');
+    if (slot === 'binlog') {
+      return text(readMysqlBinlogTrendEmpty(metricMap, metricMap[metricName]?.loadState));
+    }
     const series = metricMap[metricName];
     if (series?.loadState === 'success') return text('recentWindowEmpty');
-    return slot === 'relay' ? text('relayCollectionOff') : text('binlogCollectionOff');
+    return text('relayCollectionOff');
   };
   if (!hasContent && replicationLoading) {
     return (

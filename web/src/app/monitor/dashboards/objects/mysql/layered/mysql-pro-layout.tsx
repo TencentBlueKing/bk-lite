@@ -14,6 +14,7 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { activeHostAlertParams, HOST_ALERT_PAGE_SIZE, normalizeHostAlerts } from '../../host/layered/host-alert-list';
 import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
 import {
+  asRangeQueryResult,
   buildSearchParams,
   toMetricSeries
 } from '../../../shared/utils';
@@ -84,7 +85,7 @@ export default function MysqlProLayout({
   const searchParams = useSearchParams();
   const { t } = useDashboardText();
   const { getMonitorAlert } = useMonitorApi();
-  const { getInstanceQuery } = useViewApi();
+  const { getInstanceQuery, getInstanceInstantQuery } = useViewApi();
   const [statements, setStatements] = useState<MysqlStatementRow[]>([]);
   const [waits, setWaits] = useState<MysqlWaitEventRow[]>([]);
   const [digestStatus, setDigestStatus] = useState<'loading' | 'ready'>('loading');
@@ -260,24 +261,29 @@ export default function MysqlProLayout({
     setWaitsLoad('not_collected');
     setDigestStatus('loading');
     const context = { monitorObjectId: String(monitorObjectId), instanceId };
-    const loadOne = (metric: (typeof MYSQL_DIGEST_METRICS)[number]) => getInstanceQuery(buildSearchParams(
-      metric.query,
-      metric.unit,
-      values,
-      keys,
-      timeValues,
-      undefined,
-      false,
-      minStepSeconds,
-      context
-    )).then((result) => toMetricSeries(
-      metric,
-      result,
-      instanceId,
-      instanceName,
-      values,
-      keys
-    )).catch(() => ({ ...metric, viewData: [], loadState: 'error' as const }));
+    const loadOne = (metric: (typeof MYSQL_DIGEST_METRICS)[number]) => {
+      const params = buildSearchParams(
+        metric.query,
+        metric.unit,
+        values,
+        keys,
+        timeValues,
+        undefined,
+        false,
+        minStepSeconds,
+        context
+      );
+      const rangeQuery = metric.query.includes('__$window__');
+      const run = rangeQuery ? getInstanceQuery(params) : getInstanceInstantQuery(params);
+      return run.then((result) => toMetricSeries(
+        metric,
+        rangeQuery ? result : asRangeQueryResult(result),
+        instanceId,
+        instanceName,
+        values,
+        keys
+      )).catch(() => ({ ...metric, viewData: [], loadState: 'error' as const }));
+    };
 
     Promise.all(MYSQL_DIGEST_METRICS.map((metric) => loadOne(metric))).then((series) => {
       if (!active) return;
@@ -311,6 +317,7 @@ export default function MysqlProLayout({
     };
   }, [
     digestIdentity,
+    getInstanceInstantQuery,
     getInstanceQuery,
     instanceId,
     instanceName,

@@ -912,13 +912,16 @@ const seriesPresent = (metric: MetricSeries | undefined) => (
   metric?.loadState === 'success' && Array.isArray(metric.viewData) && metric.viewData.length > 0
 );
 
-/** 从库位点/Relay。MySQL 8 source 名已映射到这些专业盘指标。 */
+/** 从库位点/Relay。有序列或 last 点都算在跟，不要求 IO/SQL/延迟。 */
 export const replicaFollowPresent = (
   metricMap: Record<string, MetricSeries | undefined>
 ) => (
   latestNumber(metricMap.mysql_slave_relay_log_pos) != null
   || latestNumber(metricMap.mysql_slave_relay_log_space) != null
   || latestNumber(metricMap.mysql_replication_source_log_pos) != null
+  || seriesPresent(metricMap.mysql_slave_relay_log_pos)
+  || seriesPresent(metricMap.mysql_slave_relay_log_space)
+  || seriesPresent(metricMap.mysql_replication_source_log_pos)
 );
 
 /**
@@ -1105,7 +1108,8 @@ export const readMysqlProHeader = (
   const sql = latestNumber(metricMap.mysql_slave_sql_running);
   const delay = latestNumber(metricMap.mysql_slave_seconds_behind_master);
   const logBin = latestNumber(metricMap.mysql_variables_log_bin);
-  const replica = io != null || sql != null || delay != null || replicaFollowPresent(metricMap);
+  const follow = replicaFollowPresent(metricMap);
+  const replica = follow || io != null || sql != null || delay != null;
   const pill: MysqlProHeader['pill'] = gr.length
     ? 'GR'
     : galera.length
@@ -1391,6 +1395,27 @@ export const readMysqlReplicationSeries = (
 };
 
 export type MysqlReplicationTrendKey = 'delay' | 'relay' | 'binlog';
+
+/**
+ * Binlog 体积卡空态。顶栏已开、或有 binary_size/files 点，都不报「未开采集」。
+ */
+export const readMysqlBinlogTrendEmpty = (
+  metricMap: Record<string, MetricSeries | undefined>,
+  sizeLoadState?: string
+): 'recentWindowEmpty' | 'binlogCollectionOff' => {
+  const logBin = latestNumber(metricMap.mysql_variables_log_bin);
+  const hasBinary = latestNumber(metricMap.mysql_binary_size_bytes) != null
+    || latestNumber(metricMap.mysql_binary_files_count) != null;
+  if (
+    hasBinary
+    || (logBin != null && logBin > 0)
+    || sizeLoadState === 'success'
+    || metricMap.mysql_binary_files_count?.loadState === 'success'
+  ) {
+    return 'recentWindowEmpty';
+  }
+  return 'binlogCollectionOff';
+};
 
 /**
  * 从库固定出延迟、Relay 空间、Binlog 体积。
