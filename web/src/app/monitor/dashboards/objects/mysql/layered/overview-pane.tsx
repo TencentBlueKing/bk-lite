@@ -168,35 +168,15 @@ export default function OverviewPane({
   ];
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
-  const focusPaths = [
-    { label: text('focusLockWait'), body: text('focusLockWaitPath') },
-    { label: text('focusAborted'), body: text('focusAbortedPath') },
-    { label: text('focusTmpDisk'), body: text('focusTmpDiskPath') },
-    {
-      label: `${text('focusRowLock')} / ${text('focusTableLock')}`,
-      body: text('focusRowLockPath')
-    }
-  ];
-  const focusPathLabel = focusPaths.map((item) => `${item.label}：${item.body}`).join(' ');
+  const focusPath = text('focusPath');
   const focusTitle = (
     <ProSectionTitle>
       <span className="inline-flex min-w-0 items-center gap-1">
         <span>{text('focus')}</span>
-        <Tooltip
-          title={(
-            <div className="flex max-w-[360px] flex-col gap-1.5">
-              {focusPaths.map((item) => (
-                <p key={item.label} className="m-0">
-                  {item.label}：{item.body}
-                </p>
-              ))}
-            </div>
-          )}
-          styles={{ body: { maxWidth: 360 } }}
-        >
+        <Tooltip title={focusPath} styles={{ body: { maxWidth: 360 } }}>
           <QuestionCircleOutlined
             className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
-            aria-label={focusPathLabel}
+            aria-label={focusPath}
           />
         </Tooltip>
       </span>
