@@ -202,6 +202,9 @@ def normalize_user_logsql_query(query: str) -> str:
                 if field not in SPECIAL_LOGSQL_FIELDS and _empty_logsql_field_value(query, index):
                     result.append("*")
                 continue
+            result.append(field)
+            index = token_end
+            continue
 
         result.append(current)
         index += 1

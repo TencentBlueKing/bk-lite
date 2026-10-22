@@ -13,7 +13,8 @@ import {
 describe('related topology canvas chrome', () => {
   it('keeps the dashboard canvas on the default surface', () => {
     expect(relatedTopologyCanvasStyle(false)).toBe(RELATED_TOPOLOGY_CANVAS_STYLE);
-    expect(RELATED_TOPOLOGY_CANVAS_STYLE.background).toContain('radial-gradient');
+    expect(RELATED_TOPOLOGY_CANVAS_STYLE.background).toBe('var(--color-bg-1)');
+    expect(RELATED_TOPOLOGY_CANVAS_STYLE.border).toContain('var(--color-border-1)');
     expect(RELATED_TOPOLOGY_CANVAS_STYLE.background).not.toContain(
       '--screen-widget-bg',
     );
@@ -45,15 +46,14 @@ describe('related topology graph chrome', () => {
       RELATED_TOPOLOGY_DEFAULT_CHROME,
     );
     expect(RELATED_TOPOLOGY_DEFAULT_CHROME.cardDefaultBody.fill).toBe(
+      'var(--color-bg-1)',
+    );
+    expect(RELATED_TOPOLOGY_DEFAULT_CHROME.labelFill).toBe('var(--color-text-1)');
+    expect(RELATED_TOPOLOGY_DEFAULT_CHROME.edgeLabelFill).toBe('var(--color-text-2)');
+    expect(RELATED_TOPOLOGY_DEFAULT_CHROME.edgeLabelRectFill).toBe('var(--color-bg-1)');
+    expect(RELATED_TOPOLOGY_DEFAULT_CHROME.cardDefaultBody.fill).not.toBe(
       RELATED_TOPOLOGY_VISUAL.card.defaultBody.fill,
     );
-    expect(RELATED_TOPOLOGY_DEFAULT_CHROME.labelFill).toBe(
-      RELATED_TOPOLOGY_VISUAL.card.label.fill,
-    );
-    expect(RELATED_TOPOLOGY_DEFAULT_CHROME.edgeLabelFill).toBe(
-      RELATED_TOPOLOGY_VISUAL.labelFill,
-    );
-    expect(RELATED_TOPOLOGY_DEFAULT_CHROME.edgeLabelRectFill).toBe('#fcfeff');
   });
 
   it('uses the dark status-topology palette on the screen-dark surface', () => {

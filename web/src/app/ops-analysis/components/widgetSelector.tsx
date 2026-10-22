@@ -284,7 +284,6 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                   backgroundColor: 'transparent',
                   borderRight: 'none',
                 }}
-                theme="light"
               />
             )}
           </div>

@@ -286,8 +286,9 @@ describe('relatedNodeCardAppearance', () => {
     expect(unmapped.body.fill).toBe('var(--color-fill-2)');
     expect(unmapped.body.stroke).toBe('var(--color-border-3)');
     expect(unmapped.body.strokeDasharray).toBe('4 3');
-    expect(quiet.body.fill).toBe(RELATED_TOPOLOGY_VISUAL.card.defaultBody.fill);
-    expect(quiet.body.stroke).toBe(RELATED_TOPOLOGY_VISUAL.card.defaultBody.stroke);
+    expect(quiet.body.fill).toBe('var(--color-bg-1)');
+    expect(quiet.body.stroke).toBe('var(--color-border-1)');
+    expect(quiet.body.fill).not.toBe(RELATED_TOPOLOGY_VISUAL.card.defaultBody.fill);
     expect(quiet.body.strokeDasharray).toBeUndefined();
     expect(unmapped.body.fill).not.toBe(quiet.body.fill);
     expect(String(unmapped.body.fill)).not.toMatch(/success|green/i);

@@ -1402,5 +1402,144 @@
       {"key": "inst_uuid", "title": "主机UUID", "value_type": "string"},
       {"key": "monitor_id", "title": "监控实例ID", "value_type": "string"}
     ]
+},
+{
+    "key": "云区域列表::cmdb/get_cloud_region_options",
+    "name": "云区域列表（选项）",
+    "desc": "节点管理中的云区域，供参数下拉使用，本身不直接出图",
+    "rest_api": "cmdb/get_cloud_region_options",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+        {"key": "id", "title": "云区域 ID", "value_type": "number", "description": "主机 cloud 字段保存的云区域 ID"},
+        {"key": "name", "title": "云区域名称", "value_type": "string", "description": "云区域显示名称"}
+    ]
+},
+{
+    "key": "模型关联列表::cmdb/get_model_association_options",
+    "name": "模型关联列表（选项）",
+    "desc": "一端为指定模型的业务关联。值是模型关联 ID",
+    "rest_api": "cmdb/get_model_association_options",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [
+        {
+            "name": "model_id",
+            "type": "string",
+            "value": "host",
+            "alias_name": "模型",
+            "filterType": "fixed",
+            "required": true
+        }
+    ],
+    "field_schema": [
+        {"key": "model_asst_id", "title": "模型关联 ID", "value_type": "string", "description": "关联定义标识"},
+        {"key": "label", "title": "关联", "value_type": "string", "description": "源模型、关系名称和目标模型"},
+        {"key": "src_model_id", "title": "源模型", "value_type": "string", "description": "关联源模型标识"},
+        {"key": "dst_model_id", "title": "目标模型", "value_type": "string", "description": "关联目标模型标识"},
+        {"key": "asst_name", "title": "关系名称", "value_type": "string", "description": "关系显示名称"}
+    ]
+},
+{
+    "key": "分类实例合计::cmdb/get_classification_instance_counts",
+    "name": "分类实例合计",
+    "desc": "按所选模型分类返回可见实例总数，顺序与选择一致，数量为 0 也返回",
+    "rest_api": "cmdb/get_classification_instance_counts",
+    "tag": ["cmdb"],
+    "chart_type": ["single", "multiValue"],
+    "params": [
+        {
+            "name": "classification_ids",
+            "type": "string",
+            "value": [],
+            "alias_name": "模型分类",
+            "filterType": "params",
+            "required": true,
+            "inputConfig": {
+                "control": "select",
+                "multiple": true,
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_model_classification_options"},
+                    "valueField": "classification_id",
+                    "labelField": "classification_name"
+                }
+            }
+        }
+    ],
+    "field_schema": [
+        {"key": "classification_id", "title": "分类 ID", "value_type": "string", "description": "模型分类标识"},
+        {"key": "classification_name", "title": "分类名称", "value_type": "string", "description": "当前语言下的分类名称"},
+        {"key": "label", "title": "分类", "value_type": "string", "description": "与分类名称相同，供多值图使用"},
+        {"key": "value", "title": "实例数量", "value_type": "number", "description": "该分类下当前可见模型的实例总数"}
+    ]
+},
+{
+    "key": "云区域资源分布::cmdb/get_cloud_region_resource_counts",
+    "name": "云区域资源分布",
+    "desc": "统计所选云区域中的主机、沿模型关联找到的实例，以及带标签且没有主机关联的实例。按实例去重后按模型计数",
+    "rest_api": "cmdb/get_cloud_region_resource_counts",
+    "tag": ["cmdb"],
+    "chart_type": ["multiValue"],
+    "params": [
+        {
+            "name": "cloud_region_ids",
+            "type": "string",
+            "value": [],
+            "alias_name": "云区域",
+            "filterType": "params",
+            "required": true,
+            "inputConfig": {
+                "control": "select",
+                "multiple": true,
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_cloud_region_options"},
+                    "valueField": "id",
+                    "labelField": "name"
+                }
+            }
+        },
+        {
+            "name": "model_asst_ids",
+            "type": "string",
+            "value": [],
+            "alias_name": "模型关联",
+            "filterType": "params",
+            "required": true,
+            "inputConfig": {
+                "control": "select",
+                "multiple": true,
+                "picker": "table",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_model_association_options"},
+                    "valueField": "model_asst_id",
+                    "labelField": "label"
+                }
+            }
+        },
+        {
+            "name": "supplement_tag_key",
+            "type": "string",
+            "value": "",
+            "alias_name": "补充标签键",
+            "filterType": "params"
+        },
+        {
+            "name": "supplement_tag_value",
+            "type": "string",
+            "value": "",
+            "alias_name": "补充标签值",
+            "filterType": "params"
+        }
+    ],
+    "field_schema": [
+        {"key": "model_id", "title": "模型标识", "value_type": "string", "description": "模型 ID"},
+        {"key": "model_name", "title": "模型名称", "value_type": "string", "description": "当前语言下的模型名称"},
+        {"key": "label", "title": "模型", "value_type": "string", "description": "与模型名称相同，供多值图使用"},
+        {"key": "value", "title": "实例数量", "value_type": "number", "description": "去重后的实例数量，配置过的模型为 0 也返回"}
+    ]
 }
 ]

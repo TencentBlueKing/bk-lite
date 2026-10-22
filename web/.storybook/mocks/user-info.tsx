@@ -51,7 +51,7 @@ const flattenGroups = (groups: Group[]): Group[] =>
 
 const flatGroups = flattenGroups(groupTree);
 
-const UserInfoContext = createContext<UserInfoContextType | undefined>(undefined);
+export const UserInfoContext = createContext<UserInfoContextType | undefined>(undefined);
 
 export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(groupTree[0]);

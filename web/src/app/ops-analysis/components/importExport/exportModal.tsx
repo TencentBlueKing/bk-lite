@@ -63,12 +63,12 @@ const ExportModal: React.FC<ExportModalProps> = ({
     >
       <div className="py-2">
         <div className="mb-4 px-1 py-1">
-          <div className="text-[15px] leading-6 text-[rgba(0,0,0,0.88)]">
+          <div className="text-[15px] leading-6 text-[var(--color-text-1)]">
             {t('opsAnalysisSidebar.exportConfirmMsg')}
             <span className="mx-1 font-semibold break-all">{objectName}</span>
             ?
           </div>
-          <div className="mt-1 text-sm leading-6 text-[rgba(0,0,0,0.65)]">
+          <div className="mt-1 text-sm leading-6 text-[var(--color-text-2)]">
             {t('opsAnalysisSidebar.includeDependencies')}
           </div>
         </div>

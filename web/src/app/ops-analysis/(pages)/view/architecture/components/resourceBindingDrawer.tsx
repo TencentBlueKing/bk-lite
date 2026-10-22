@@ -293,7 +293,7 @@ const ResourceBindingDrawer = ({
               className={`relative flex h-14 w-full shrink-0 items-center justify-between gap-3 border-0 border-b border-solid border-[var(--color-border-1)] px-4 text-left [font:inherit] last:border-b-0 ${current
                 ? 'cursor-default bg-[var(--color-fill-1)]'
                 : active
-                  ? 'cursor-pointer bg-[#e6f4ff]'
+                  ? 'cursor-pointer bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg-1))]'
                   : 'cursor-pointer bg-transparent hover:bg-[var(--color-fill-1)]'}`}
               onClick={() => setSelected(hit)}
             >

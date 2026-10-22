@@ -28,10 +28,12 @@ class TestModelClassificationOptions:
         result = nats.get_model_classification_options(user_info=USER_INFO)
 
         assert result == {
-            "items": [
+            "result": True,
+            "data": [
                 {"classification_id": "host", "classification_name": "主机"},
                 {"classification_id": "middleware", "classification_name": "中间件"},
-            ]
+            ],
+            "message": "",
         }
         permission_mock.assert_called_once_with(USER_INFO)
         classifications_mock.assert_called_once_with(language="zh-Hans")
@@ -39,7 +41,11 @@ class TestModelClassificationOptions:
 
     @patch.object(nats, "_build_nats_model_permission_map", return_value=None)
     def test_returns_empty_items_without_model_permission(self, permission_mock):
-        assert nats.get_model_classification_options(user_info=USER_INFO) == {"items": []}
+        assert nats.get_model_classification_options(user_info=USER_INFO) == {
+            "result": True,
+            "data": [],
+            "message": "",
+        }
         permission_mock.assert_called_once_with(USER_INFO)
 
 
