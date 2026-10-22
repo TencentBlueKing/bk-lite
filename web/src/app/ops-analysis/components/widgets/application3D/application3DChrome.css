@@ -1036,38 +1036,3 @@
     transform: none !important;
   }
 }
-
-.app3d-link-hover {
-  position: absolute;
-  z-index: 40;
-  display: grid;
-  gap: calc(4px * var(--app3d-hover-scale, 1));
-  width: max-content;
-  max-width: calc(100% - (16px * var(--app3d-hover-scale, 1)));
-  padding: calc(8px * var(--app3d-hover-scale, 1)) calc(10px * var(--app3d-hover-scale, 1));
-  pointer-events: none;
-  color: var(--color-application3d-text);
-  background: var(--color-application3d-alarm-panel-bg);
-  border: 1px solid var(--color-application3d-alarm-panel-border);
-  border-radius: calc(6px * var(--app3d-hover-scale, 1));
-  box-shadow: var(--color-application3d-alarm-panel-shadow);
-  font-size: calc(12px * var(--app3d-hover-scale, 1));
-  line-height: calc(17px * var(--app3d-hover-scale, 1));
-}
-
-.app3d-link-hover__name {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app3d-link-hover__hint {
-  margin-top: calc(2px * var(--app3d-hover-scale, 1));
-  padding-top: calc(4px * var(--app3d-hover-scale, 1));
-  border-top: 1px solid var(--color-application3d-alarm-panel-border);
-  color: var(--color-application3d-text-muted);
-  font-size: calc(11px * var(--app3d-hover-scale, 1));
-  line-height: calc(15px * var(--app3d-hover-scale, 1));
-  font-weight: 400;
-}

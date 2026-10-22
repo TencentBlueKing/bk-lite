@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}/10) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='transmission', collect_type='snmp_smartoptics', __$labels__}/10) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "max(device_fan_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(device_fan_state{instance_type='transmission', collect_type='snmp_smartoptics', __$labels__}) by (instance_id)",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "max(device_fan_speed{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(device_fan_speed{instance_type='transmission', collect_type='snmp_smartoptics', __$labels__}) by (instance_id)",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Power",
       "name": "device_power_watts",
-      "query": "max(device_power_watts{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(device_power_watts{instance_type='transmission', collect_type='snmp_smartoptics', __$labels__}) by (instance_id)",
       "display_name": "Power Consumption",
       "data_type": "Number",
       "unit": "watts",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_smartoptics', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -92,7 +92,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_smartoptics', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_smartoptics', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -23,7 +23,7 @@
     {
       "metric_group": "Temperature",
       "name": "rf_temperature_celsius",
-      "query": "max(rf_temperature_celsius{instance_type='wireless', __$labels__} / 100) by (instance_id)",
+      "query": "max(rf_temperature_celsius{instance_type='wireless', collect_type='snmp_albentia', __$labels__} / 100) by (instance_id)",
       "display_name": "RF Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Temperature",
       "name": "sector_temperature_celsius",
-      "query": "sector_temperature_celsius{instance_type='wireless', __$labels__} / 100",
+      "query": "sector_temperature_celsius{instance_type='wireless', collect_type='snmp_albentia', __$labels__} / 100",
       "display_name": "Sector Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -58,7 +58,7 @@
     {
       "metric_group": "Wireless",
       "name": "tx_power",
-      "query": "tx_power{instance_type='wireless', __$labels__}",
+      "query": "tx_power{instance_type='wireless', collect_type='snmp_albentia', __$labels__}",
       "display_name": "Transmit Power",
       "data_type": "Number",
       "unit": "counts",
@@ -80,7 +80,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_albentia', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -98,7 +98,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_albentia', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -116,7 +116,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_albentia', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

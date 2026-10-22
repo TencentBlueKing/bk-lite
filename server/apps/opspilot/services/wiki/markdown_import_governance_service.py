@@ -1141,7 +1141,7 @@ def _complete_import_build(record, *, counts, affected_page_ids, generation_id, 
         return
     record.counts = dict(counts)
     record.affected_pages = list(affected_page_ids)
-    record.maintenance = {
+    maintenance = {
         **(record.maintenance or {}),
         "generation_relations": relation_result,
         "generation_import": {
@@ -1149,6 +1149,9 @@ def _complete_import_build(record, *, counts, affected_page_ids, generation_id, 
             "generation_id": generation_id,
         },
     }
+    if record.trigger == "markdown_import":
+        maintenance["search_enrichment"] = "running"
+    record.maintenance = maintenance
     record.stage = "done"
     record.status = "success"
     record.progress = 100
@@ -1323,6 +1326,9 @@ def _execute_generation_import(
         created_locators = _upload_okf_page_images(knowledge_base, inspected, archive_content)
         _touch_markdown_import_build(build)
         runtime_skipped = []
+        planned = sum(1 for document in inspected.documents if document["archive_path"] in preview_by_path)
+        finished = 0
+        _set_import_progress(build, 0, planned or 1)
         for document in inspected.documents:
             _assert_markdown_import_owns(build, expected_token)
             _touch_markdown_import_build(build)
@@ -1352,6 +1358,8 @@ def _execute_generation_import(
                     type(error).__name__,
                 )
                 runtime_skipped.append({"path": document.get("archive_path") or "", "reason": "import_failed"})
+            finished += 1
+            _set_import_progress(build, finished, planned or 1)
         if not page_actions:
             raise _okf_no_concepts_error([*((preview.get("okf") or {}).get("skipped") or []), *runtime_skipped])
 
@@ -1428,9 +1436,29 @@ def _import_search_page_ids(result):
     return [int(row["page_id"]) for row in (result or {}).get("pages") or [] if row.get("page_id")]
 
 
-def run_markdown_import_search_enrichment(knowledge_base_id, generation_id, page_ids):
+def _set_search_enrichment(build_record_id, state):
+    if not build_record_id:
+        return
+    record = BuildRecord.objects.filter(pk=build_record_id, trigger="markdown_import").only("id", "maintenance").first()
+    if record is None:
+        return
+    maintenance = dict(record.maintenance or {})
+    if maintenance.get("search_enrichment") == state:
+        return
+    maintenance["search_enrichment"] = state
+    BuildRecord.objects.filter(pk=record.pk).update(maintenance=maintenance, updated_at=timezone.now())
+
+
+def run_markdown_import_search_enrichment(knowledge_base_id, generation_id, page_ids, build_record_id=None):
     """Fill colloquial aliases and embeddings after imported pages are already visible."""
 
+    try:
+        return _run_markdown_import_search_enrichment(knowledge_base_id, generation_id, page_ids)
+    finally:
+        _set_search_enrichment(build_record_id, "done")
+
+
+def _run_markdown_import_search_enrichment(knowledge_base_id, generation_id, page_ids):
     page_ids = [int(page_id) for page_id in page_ids or [] if page_id]
     knowledge_base = WikiKnowledgeBase.objects.filter(pk=knowledge_base_id).first()
     if knowledge_base is None or not generation_id or not page_ids:
@@ -1481,8 +1509,16 @@ def _maybe_run_markdown_import_search_enrichment(knowledge_base, result, *, defe
         return result
     generation_id = result.get("generation_id")
     page_ids = _import_search_page_ids(result)
+    build_record_id = result.get("build_record_id")
     if generation_id and page_ids:
-        run_markdown_import_search_enrichment(knowledge_base.pk, generation_id, page_ids)
+        run_markdown_import_search_enrichment(
+            knowledge_base.pk,
+            generation_id,
+            page_ids,
+            build_record_id=build_record_id,
+        )
+    else:
+        _set_search_enrichment(build_record_id, "done")
     return result
 
 
@@ -1518,7 +1554,7 @@ def _claim_preflight(knowledge_base, token, inspected, actor, preview, *, prefli
                     "structure_revision_id": current.active_structure_revision_id,
                 },
             )
-        if record.preview_fingerprint != _fingerprint(preview):
+        if record.preview_fingerprint and record.preview_fingerprint != _fingerprint(preview):
             raise MarkdownImportGovernanceError("preflight_preview_changed", "导入预览已变化，请重新预检", status_code=409)
         record.status = "consumed"
         record.consumed_at = timezone.now()
@@ -1542,6 +1578,16 @@ def _touch_markdown_import_build(build) -> None:
     if build is None:
         return
     BuildRecord.objects.filter(pk=build.pk, trigger="markdown_import", status="running").update(updated_at=timezone.now())
+
+
+def _set_import_progress(build, done, total) -> None:
+    if build is None or total <= 0:
+        return
+    progress = min(99, max(1, int(done * 100 / total)))
+    BuildRecord.objects.filter(pk=build.pk, trigger="markdown_import", status="running").update(
+        progress=progress,
+        updated_at=timezone.now(),
+    )
 
 
 def _assert_markdown_import_owns(build, expected_token):
@@ -1746,6 +1792,58 @@ def _validate_preflight_for_enqueue(record, knowledge_base, *, actor, archive_sh
         raise MarkdownImportGovernanceError("preflight_token_invalid", "导入预检 token 无效", status_code=409)
     if record.actor != str(actor or "")[:150] or record.archive_sha256 != archive_sha256:
         raise MarkdownImportGovernanceError("preflight_binding_mismatch", "导入归档或操作者与预检不一致", status_code=409)
+
+
+def accept_markdown_import(
+    knowledge_base,
+    content,
+    *,
+    filename="",
+    actor="",
+    options=None,
+):
+    """Queue one import. The worker inspects the archive once; the API does not build a preview."""
+    options = _drop_retired_import_options(options)
+    if filename and not options.get("filename"):
+        options["filename"] = filename
+    if not isinstance(content, (bytes, bytearray)):
+        raise MarkdownImportGovernanceError("archive_content_invalid", "导入内容必须为 bytes")
+    content = bytes(content)
+    if not content:
+        raise MarkdownImportGovernanceError(
+            "archive_empty",
+            "导入归档为空",
+            details={"max_bytes": MAX_ARCHIVE_BYTES, "actual_bytes": 0},
+        )
+    if len(content) > MAX_ARCHIVE_BYTES:
+        raise MarkdownImportGovernanceError(
+            "archive_size_exceeded",
+            f"ZIP 超过大小限制（上限 {MAX_ARCHIVE_BYTES // (1024 * 1024)}MB）",
+            details={"max_bytes": MAX_ARCHIVE_BYTES, "actual_bytes": len(content)},
+        )
+    archive_sha256 = hashlib.sha256(content).hexdigest()
+    token = secrets.token_urlsafe(32)
+    with transaction.atomic():
+        current = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base.pk)
+        WikiImportPreflight.objects.create(
+            knowledge_base=current,
+            token_hash=_token_hash(token),
+            actor=str(actor or "")[:150],
+            archive_sha256=archive_sha256,
+            filename=PurePosixPath(filename or "import").name[:255],
+            archive_kind="okf" if options.get("import_format") == "okf" else "markdown",
+            base_generation=current.active_generation,
+            structure_revision=current.active_structure_revision,
+            structure_version=getattr(current.active_structure_revision, "revision_no", None),
+            classification_root_id=options.get("classification_root_id") or None,
+            options=options,
+            preview={},
+            preview_fingerprint="",
+            expires_at=timezone.now() + timedelta(minutes=TOKEN_TTL_MINUTES),
+            created_by=str(actor or "")[:32],
+            updated_by=str(actor or "")[:32],
+        )
+    return enqueue_markdown_import(knowledge_base, token, content, filename=filename, actor=actor)
 
 
 def enqueue_markdown_import(
@@ -2016,6 +2114,7 @@ __all__ = [
     "MarkdownImportGovernanceError",
     "build_import_preview",
     "enqueue_markdown_import",
+    "accept_markdown_import",
     "execute_markdown_import",
     "inspect_markdown_archive",
     "claim_markdown_import_execution",

@@ -95,7 +95,7 @@ describe('InteractionLinkSection', () => {
 
     await user.hover(screen.getByRole('img', { name: 'question-circle' }));
     expect(await screen.findByText('无：不设置跳转')).toBeTruthy();
-    expect(screen.getByText('标题链接：标题旁显示图标')).toBeTruthy();
+    expect(screen.getByText('标题链接：标题行最右侧显示 > 图标')).toBeTruthy();
     expect(screen.getByText('数据链接：点击数据点、柱、扇区或数字打开')).toBeTruthy();
   });
 
@@ -131,7 +131,7 @@ describe('InteractionLinkSection', () => {
 
     await user.hover(screen.getByRole('img', { name: 'question-circle' }));
     expect(await screen.findByText('无：不设置跳转')).toBeTruthy();
-    expect(screen.getByText('该组件仅支持标题链接，点击标题旁图标打开')).toBeTruthy();
+    expect(screen.getByText('该组件仅支持标题链接，点击标题行最右侧 > 打开')).toBeTruthy();
   });
 
   it('选无时只留提示，切回后保留已填的 URL，并可以清空输入', async () => {
@@ -327,8 +327,8 @@ describe('InteractionLinkSection', () => {
 
     expect(screen.queryByRole('radio', { name: '数据链接' })).toBeNull();
     await user.hover(screen.getByRole('img', { name: 'question-circle' }));
-    expect(await screen.findByText('标题链接：文本后显示图标')).toBeTruthy();
-    expect(screen.queryByText('该组件仅支持标题链接，点击标题旁图标打开')).toBeNull();
+    expect(await screen.findByText('标题链接：文本行最右侧显示 > 图标')).toBeTruthy();
+    expect(screen.queryByText('该组件仅支持标题链接，点击标题行最右侧 > 打开')).toBeNull();
 
     await user.click(screen.getByText('无'));
     await waitFor(() => {

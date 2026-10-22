@@ -22,7 +22,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu_status",
-      "query": "psu_status{instance_type='access', __$labels__}",
+      "query": "psu_status{instance_type='access', collect_type='snmp_rad', __$labels__}",
       "display_name": "PSU Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"notApplicable\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"failed\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"ok\",\"id\":3,\"color\":\"#1ac44a\"},{\"name\":\"degraded\",\"id\":4,\"color\":\"#faad14\"}]",
@@ -44,7 +44,7 @@
     {
       "metric_group": "Temperature",
       "name": "sfp_laser_temperature_celsius",
-      "query": "sfp_laser_temperature_celsius{instance_type='access', __$labels__} / 100",
+      "query": "sfp_laser_temperature_celsius{instance_type='access', collect_type='snmp_rad', __$labels__} / 100",
       "display_name": "SFP Laser Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', collect_type='snmp_rad', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -80,7 +80,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', collect_type='snmp_rad', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -98,7 +98,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='access', collect_type='snmp_rad', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

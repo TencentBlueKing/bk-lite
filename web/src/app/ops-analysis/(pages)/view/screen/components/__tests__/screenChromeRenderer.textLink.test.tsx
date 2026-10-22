@@ -83,7 +83,7 @@ describe('screen text title link', () => {
     expect(text.style.whiteSpace).toBe('pre-wrap');
   });
 
-  it('places the same link icon after the text and keeps it when the label is truncated', () => {
+  it('pins the chevron to the far right and keeps the label alignment when the text is truncated', () => {
     const long = '告警关联事件来源 TOP10'.repeat(12);
     const { container, rerender } = renderText(textItem({
       content: long,
@@ -93,7 +93,8 @@ describe('screen text title link', () => {
     const button = screen.getByRole('button', { name: '查看告警' });
     const label = container.querySelector('[data-screen-text-label]') as HTMLElement;
     const row = container.querySelector('[data-screen-text-link]') as HTMLElement;
-    expect(button.querySelector('.anticon-link')).toBeTruthy();
+    expect(button.querySelector('.anticon-right')).toBeTruthy();
+    expect(button.querySelector('.anticon-link')).toBeNull();
     expect(button.className).toContain('screen-widget-frame__title-link');
     expect(button.className).toContain('screen-text-item__title-link');
     expect(button.getAttribute('title')).toBeNull();
@@ -101,12 +102,13 @@ describe('screen text title link', () => {
     expect(label.textContent).toBe(long);
     expect(label.style.whiteSpace).toBe('nowrap');
     expect(label.style.textOverflow).toBe('ellipsis');
-    expect(label.style.flex).toBe('0 1 auto');
+    expect(label.style.flex).toBe('1 1 auto');
     expect(label.className).toContain('min-w-0');
     expect(row.className).toContain('overflow-hidden');
-    expect(row.style.justifyContent).toBe('flex-start');
+    expect(row.className).toContain('justify-start');
     expect(row.style.fontSize).toBe('30px');
     expect(row.style.gap).toBe('0.4em');
+    expect(row.lastElementChild).toBe(button);
     expect(label.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(label.contains(button)).toBe(false);
 
@@ -122,8 +124,11 @@ describe('screen text title link', () => {
     );
     const centered = container.querySelector('[data-screen-text-link]') as HTMLElement;
     const wrapped = container.querySelector('[data-screen-text-label]') as HTMLElement;
-    expect(centered.style.justifyContent).toBe('center');
+    expect(centered.className).toContain('justify-start');
     expect(centered.getAttribute('data-align')).toBe('center');
+    expect(wrapped.style.textAlign).toBe('center');
+    expect(wrapped.style.flex).toBe('1 1 auto');
+    expect(centered.lastElementChild).toBe(screen.getByRole('button', { name: '查看告警' }));
     expect(wrapped.style.whiteSpace).toBe('pre-wrap');
     expect(wrapped.style.textOverflow).toBe('clip');
 
@@ -136,8 +141,10 @@ describe('screen text title link', () => {
         />
       </IntlProvider>,
     );
-    expect((container.querySelector('[data-screen-text-link]') as HTMLElement).style.justifyContent).toBe('flex-end');
-    expect((container.querySelector('[data-screen-text-label]') as HTMLElement).style.textAlign).toBe('right');
+    const rightRow = container.querySelector('[data-screen-text-link]') as HTMLElement;
+    expect(rightRow.className).toContain('justify-start');
+    expect((rightRow.querySelector('[data-screen-text-label]') as HTMLElement).style.textAlign).toBe('right');
+    expect(rightRow.lastElementChild).toBe(screen.getByRole('button', { name: '查看告警' }));
   });
 
   it('hides data links, empty urls, and the icon on the share surface', () => {
@@ -193,6 +200,11 @@ describe('screen text title link', () => {
       </IntlProvider>,
     );
 
+    fireEvent.click(screen.getByText('告警关联事件来源 TOP10'));
+    expect(openNavigation).not.toHaveBeenCalled();
+    expect(parentClick).toHaveBeenCalled();
+    parentClick.mockClear();
+
     const button = screen.getByRole('button', { name: '查看告警' });
     fireEvent.pointerDown(button);
     expect(pointerDown).toHaveBeenCalled();
@@ -223,6 +235,10 @@ describe('screen text title link', () => {
         </FilterTemplateProvider>
       </IntlProvider>,
     );
+    fireEvent.click(screen.getByText('告警关联事件来源 TOP10'));
+    expect(openNavigation).not.toHaveBeenCalled();
+    expect(parentClick).toHaveBeenCalled();
+    parentClick.mockClear();
     fireEvent.click(screen.getByRole('button', { name: '查看告警' }));
     expect(parentClick).not.toHaveBeenCalled();
     expect(openNavigation).toHaveBeenCalledWith(
@@ -242,6 +258,12 @@ describe('screen text title link', () => {
           flex-shrink: 0;
           font-size: 1em;
           outline: none;`);
+    expect(source).toContain(`.screen-widget-frame__title-link {
+          display: inline-flex;
+          flex-shrink: 0;
+          align-items: center;
+          justify-content: center;
+          margin-left: auto;`);
     expect(source).toContain(`.screen-text-item__title-link:focus,
         .screen-text-item__title-link:focus-visible {
           outline: none;`);

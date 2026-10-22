@@ -1,8 +1,23 @@
 """SNMP 插件合同测试：验证实际展开、渲染后的下发配置。"""
 
+import re
 import tomllib
 
 from jinja2 import Template
+
+_COLLECT_TYPE_LABEL = re.compile(r",\s*collect_type='[^']*'")
+
+
+def query_formula(query: str) -> str:
+    """去掉采集器标签，便于比较各插件共享的 PromQL 公式。"""
+    return _COLLECT_TYPE_LABEL.sub("", query or "")
+
+
+def same_metric_field(field, left, right) -> bool:
+    """query 只比较公式。collect_type 按插件区分，不视为跨插件漂移。"""
+    if field == "query":
+        return query_formula(str(left)) == query_formula(str(right))
+    return left == right
 
 from apps.monitor.management.services.plugin_migrate import _expand_local_template_assets
 

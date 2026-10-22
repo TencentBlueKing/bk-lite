@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "cpu_usage_percent",
-      "query": "max(cpu_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(cpu_usage_percent{instance_type='voice_gateway', collect_type='snmp_polycom', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Memory",
       "name": "memory_used",
-      "query": "sum(memory_used{instance_type='voice_gateway', __$labels__}) by (instance_id) * 1024 * 1024",
+      "query": "sum(memory_used{instance_type='voice_gateway', collect_type='snmp_polycom', __$labels__}) by (instance_id) * 1024 * 1024",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Memory",
       "name": "memory_total",
-      "query": "sum(memory_total{instance_type='voice_gateway', __$labels__}) by (instance_id) * 1024 * 1024",
+      "query": "sum(memory_total{instance_type='voice_gateway', collect_type='snmp_polycom', __$labels__}) by (instance_id) * 1024 * 1024",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Memory",
       "name": "memory_free",
-      "query": "sum(memory_free{instance_type='voice_gateway', __$labels__}) by (instance_id) * 1024 * 1024",
+      "query": "sum(memory_free{instance_type='voice_gateway', collect_type='snmp_polycom', __$labels__}) by (instance_id) * 1024 * 1024",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Memory",
       "name": "memory_usage_percent",
-      "query": "sum(memory_used{instance_type='voice_gateway', __$labels__}) by (instance_id) / sum(memory_total{instance_type='voice_gateway', __$labels__}) by (instance_id) * 100",
+      "query": "sum(memory_used{instance_type='voice_gateway', collect_type='snmp_polycom', __$labels__}) by (instance_id) / sum(memory_total{instance_type='voice_gateway', collect_type='snmp_polycom', __$labels__}) by (instance_id) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', collect_type='snmp_polycom', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', collect_type='snmp_polycom', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='voice_gateway', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='voice_gateway', collect_type='snmp_polycom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

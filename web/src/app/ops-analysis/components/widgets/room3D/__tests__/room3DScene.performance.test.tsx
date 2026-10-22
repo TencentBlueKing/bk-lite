@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 
+import React from "react";
+import "@ant-design/v5-patch-for-react-19";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { IntlProvider } from "react-intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ValueConfig } from "@/app/ops-analysis/types/dashBoard";
 
 const testState = vi.hoisted(() => ({
   render: vi.fn(),
@@ -62,6 +67,15 @@ vi.mock("three", async (importOriginal) => {
     WebGLRenderer: WebGLRendererMock,
   };
 });
+
+vi.mock("@/app/ops-analysis/api/room3D", () => ({
+  useRoom3DApi: () => ({
+    getRooms: vi.fn(),
+    getLayout: vi.fn(),
+  }),
+}));
+
+vi.mock("next/navigation", () => ({ useParams: () => ({}) }));
 
 vi.mock("three/examples/jsm/controls/OrbitControls.js", () => {
   class ControlsTargetMock {
@@ -134,6 +148,7 @@ vi.mock("three/examples/jsm/controls/OrbitControls.js", () => {
 });
 
 import { createRoom3DScene } from "../room3DScene";
+import Room3D from "../index";
 
 const roomData = {
   room: { id: "room-1", name: "Room 1" },
@@ -192,9 +207,23 @@ describe("room3D scene rendering", () => {
       queuedFrames.delete(frameId);
     });
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -583,12 +612,24 @@ describe("room3D scene rendering", () => {
       new PointerEvent("pointermove", { clientX: 40, clientY: 40 }),
     );
     runNextFrame(16);
+    const closedHover = onHover.mock.calls.at(-1)?.[0] as {
+      device?: unknown;
+      x: number;
+      y: number;
+    };
+    expect(closedHover.device).toBeUndefined();
+    expect(closedHover.x).not.toBe(40);
+    expect(closedHover.y).not.toBe(40);
+
+    canvas?.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 80, clientY: 24, buttons: 1 }),
+    );
+    runNextFrame(24);
     expect(onHover.mock.calls.at(-1)?.[0]).toMatchObject({
-      device: { device_id: "dev-1", device_name: "srv-1" },
-      rackTooltip: true,
-      x: 40,
-      y: 40,
+      x: closedHover.x,
+      y: closedHover.y,
     });
+    expect(onHover).not.toHaveBeenCalledWith(null);
 
     canvas?.dispatchEvent(
       new PointerEvent("click", { clientX: 40, clientY: 40 }),
@@ -605,24 +646,7 @@ describe("room3D scene rendering", () => {
     );
     runNextFrame(32);
     runNextFrame(33);
-    expect(onHover.mock.calls.at(-1)?.[0]).toMatchObject({
-      device: { device_id: "dev-1" },
-      rackTooltip: false,
-      x: 48,
-      y: 52,
-    });
-
-    onHover.mockClear();
-    canvas?.dispatchEvent(
-      new PointerEvent("pointermove", {
-        clientX: 60,
-        clientY: 60,
-        buttons: 1,
-      }),
-    );
-    runNextFrame(40);
-    runNextFrame(41);
-    expect(onHover).toHaveBeenCalledWith(null);
+    expect(onHover).not.toHaveBeenCalled();
     controller.dispose();
 
     const conflictHover = vi.fn();
@@ -654,5 +678,138 @@ describe("room3D scene rendering", () => {
     expect(conflictState?.device).toBeUndefined();
     expect(conflictState?.rack?.is_conflict).toBe(true);
     conflict.dispose();
+  });
+
+  it("anchors the closed-rack hover card and hides it while the rack is open", async () => {
+    const device = {
+      device_id: "dev-1",
+      device_name: "srv-1",
+      rack_u_start: 1,
+      u_size: 1,
+    };
+    const data = {
+      room: { id: "room-1", name: "Room 1" },
+      racks: [
+        {
+          rack_id: "rack-1",
+          rack_name: "Rack 1",
+          row: 1,
+          col: 1,
+          u_count: 42,
+          devices: [device],
+        },
+      ],
+    };
+    const linkConfig: ValueConfig = {
+      chartType: "room3D",
+      sceneWidgetType: "room3D",
+      interaction: {
+        kind: "data",
+        name: "查看 CMDB 详情",
+        url: "/cmdb/detail",
+        openMode: "newTab",
+      },
+    };
+    let hit: "device" | "shell" = "device";
+    testState.intersectObjects.mockImplementation(
+      (targets: import("three").Object3D[]) => {
+        const deviceTarget = targets.find((item) => item.userData?.device);
+        const shellTarget = targets.find(
+          (item) => item.userData?.rack && !item.userData?.device,
+        );
+        const target = hit === "device" ? deviceTarget : shellTarget;
+        return target ? [{ object: target }] : [];
+      },
+    );
+
+    render(
+      <IntlProvider locale="zh" messages={{}}>
+        <Room3D rawData={data} config={linkConfig} />
+      </IntlProvider>,
+    );
+    const canvas = await waitFor(() => {
+      const node = document.querySelector("canvas");
+      expect(node).toBeTruthy();
+      return node as HTMLCanvasElement;
+    });
+
+    const flushFrames = () => {
+      act(() => {
+        for (let guard = 0; guard < 6 && queuedFrames.size > 0; guard += 1) {
+          runNextFrame(16 + guard);
+        }
+      });
+    };
+    const move = (x: number, y: number, buttons = 0) => {
+      act(() => {
+        canvas.dispatchEvent(
+          new PointerEvent("pointermove", {
+            clientX: x,
+            clientY: y,
+            buttons,
+            bubbles: true,
+          }),
+        );
+      });
+      flushFrames();
+    };
+    const card = () =>
+      screen.queryByText("Rack 1")?.parentElement as HTMLElement | undefined;
+
+    move(40, 40);
+    await waitFor(() => expect(card()).toBeTruthy());
+    const anchorLeft = card()?.style.left;
+    const anchorTop = card()?.style.top;
+    expect(anchorLeft).not.toBe("");
+    expect(screen.queryByText("srv-1")).toBeNull();
+    expect(document.body.textContent).not.toContain("右键打开链接");
+
+    move(88, 22);
+    expect(card()?.style.left).toBe(anchorLeft);
+    expect(card()?.style.top).toBe(anchorTop);
+
+    hit = "shell";
+    move(12, 70);
+    expect(card()?.style.left).toBe(anchorLeft);
+    expect(card()?.style.top).toBe(anchorTop);
+
+    hit = "device";
+    move(61, 33, 1);
+    expect(card()?.style.left).toBe(anchorLeft);
+    expect(card()?.style.top).toBe(anchorTop);
+
+    act(() => {
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          button: 2,
+          clientX: 40,
+          clientY: 40,
+          bubbles: true,
+        }),
+      );
+      canvas.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          button: 2,
+          clientX: 41,
+          clientY: 41,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(screen.getByRole("menuitem", { name: "查看 CMDB 详情" })).toBeTruthy();
+
+    hit = "shell";
+    act(() => {
+      canvas.dispatchEvent(
+        new PointerEvent("click", { clientX: 12, clientY: 70, bubbles: true }),
+      );
+    });
+    expect(screen.queryByText("Rack 1")).toBeNull();
+
+    hit = "device";
+    move(40, 40);
+    move(90, 18, 1);
+    expect(screen.queryByText("Rack 1")).toBeNull();
   });
 });

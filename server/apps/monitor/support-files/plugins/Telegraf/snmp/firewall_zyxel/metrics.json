@@ -23,7 +23,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='firewall', collect_type='snmp_zyxel_firewall', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='firewall', collect_type='snmp_zyxel_firewall', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage_5s",
-      "query": "snmp_device_cpu_usage_5s{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_cpu_usage_5s{instance_type='firewall', collect_type='snmp_zyxel_firewall', __$labels__}",
       "display_name": "CPU Usage (5s)",
       "data_type": "Number",
       "unit": "percent",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage_1m",
-      "query": "snmp_device_cpu_usage_1m{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_cpu_usage_1m{instance_type='firewall', collect_type='snmp_zyxel_firewall', __$labels__}",
       "display_name": "CPU Usage (1m)",
       "data_type": "Number",
       "unit": "percent",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage_5m",
-      "query": "snmp_device_cpu_usage_5m{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_cpu_usage_5m{instance_type='firewall', collect_type='snmp_zyxel_firewall', __$labels__}",
       "display_name": "CPU Usage (5m)",
       "data_type": "Number",
       "unit": "percent",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_usage",
-      "query": "snmp_device_memory_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_memory_usage{instance_type='firewall', collect_type='snmp_zyxel_firewall', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -101,7 +101,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_active_sessions",
-      "query": "snmp_firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_active_sessions{instance_type='firewall', collect_type='snmp_zyxel_firewall', __$labels__}",
       "display_name": "Active Sessions",
       "data_type": "Number",
       "unit": "short",

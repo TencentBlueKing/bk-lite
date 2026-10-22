@@ -123,7 +123,7 @@ def test_cpu_metric_preserves_each_table_row(metrics, toml_text):
     assert m["unit"] == "percent"
     assert m["metric_group"] == "CPU"
     q = m["query"].replace(" ", "")
-    assert q == f"{m['name']}{{instance_type='switch',__$labels__}}"
+    assert q == f"{m['name']}{{instance_type='switch',collect_type='{COLLECT_TYPE}',__$labels__}}"
     assert [item["name"] for item in m["dimensions"]] == ["index"]
     # npCpuUtilizationValue column
     assert "1.3.6.1.4.1.278.107.1.1.4.2.1.3" in toml_text
@@ -138,7 +138,7 @@ def test_temperature_metric_is_celsius_without_scaling(metrics, toml_text):
     assert m["unit"] == "celsius"
     assert m["metric_group"] == "Temperature"
     q = m["query"].replace(" ", "")
-    assert q == f"{m['name']}{{instance_type='switch',__$labels__}}"
+    assert q == f"{m['name']}{{instance_type='switch',collect_type='{COLLECT_TYPE}',__$labels__}}"
     assert [item["name"] for item in m["dimensions"]] == ["index"]
     # APRESIA temperature is already in Celsius -> NO /10 scaling
     assert "/10" not in q, "APRESIA npTemperatureCurrent is Celsius, must not divide by 10"

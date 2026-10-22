@@ -276,6 +276,33 @@ def test_import_markdown_execute_endpoint_enqueues_without_writing_pages(
     assert len(calls) == 1
 
 
+def test_import_without_preflight_is_inspected_once_by_the_worker(wiki_factory, import_storage):
+    from apps.opspilot.services.wiki.markdown_import_governance_service import accept_markdown_import
+    from apps.opspilot.tasks.wiki import wiki_execute_markdown_import_task
+
+    knowledge_base = _ready_kb(wiki_factory)
+    content = _okf_zip("直接导入")
+    payload, dispatch = accept_markdown_import(
+        knowledge_base,
+        content,
+        filename="direct.zip",
+        actor="admin",
+        options=OKF_OPTIONS,
+    )
+    preflight = WikiImportPreflight.objects.get(knowledge_base=knowledge_base)
+    assert preflight.preview_fingerprint == ""
+    assert payload["build_record_id"] == dispatch["build_record_id"]
+    assert not KnowledgePage.objects.filter(knowledge_base=knowledge_base).exists()
+
+    result = wiki_execute_markdown_import_task.run(
+        knowledge_base.id,
+        dispatch["build_record_id"],
+        operator="admin",
+    )
+    assert result["status"] == "success"
+    assert KnowledgePage.objects.filter(knowledge_base=knowledge_base, title="直接导入").exists()
+
+
 def test_enqueue_rejects_when_rebuild_is_running(wiki_factory, import_storage):
     knowledge_base = _ready_kb(wiki_factory)
     BuildRecord.objects.create(
@@ -892,7 +919,7 @@ def test_direct_execute_still_imports_synchronously(wiki_factory):
 def test_markdown_import_runs_search_enrichment_after_activation(wiki_factory, monkeypatch):
     seen = {}
 
-    def fake_enrich(knowledge_base_id, generation_id, page_ids):
+    def fake_enrich(knowledge_base_id, generation_id, page_ids, build_record_id=None):
         generation = WikiGeneration.objects.get(pk=generation_id)
         current = WikiKnowledgeBase.objects.get(pk=knowledge_base_id)
         seen["status"] = generation.status
@@ -938,7 +965,7 @@ def test_execute_task_defers_search_enrichment_until_pages_are_visible(
     delayed = []
     enrich_calls = []
 
-    def fake_delay(kb_id, generation_id, page_ids):
+    def fake_delay(kb_id, generation_id, page_ids, build_record_id=None):
         delayed.append((kb_id, generation_id, list(page_ids)))
 
     monkeypatch.setattr(
@@ -947,7 +974,7 @@ def test_execute_task_defers_search_enrichment_until_pages_are_visible(
     )
     monkeypatch.setattr(
         "apps.opspilot.services.wiki.markdown_import_governance_service.run_markdown_import_search_enrichment",
-        lambda *args: enrich_calls.append(args) or {"status": "ok"},
+        lambda *args, **kwargs: enrich_calls.append(args) or {"status": "ok"},
     )
     knowledge_base = _ready_kb(wiki_factory)
     content = _okf_zip("后台索引")
@@ -978,6 +1005,9 @@ def test_execute_task_defers_search_enrichment_until_pages_are_visible(
     assert delayed == [
         (knowledge_base.id, result["generation_id"], [result["pages"][0]["page_id"]]),
     ]
+    build = BuildRecord.objects.get(pk=dispatch["build_record_id"])
+    assert build.status == "success"
+    assert (build.maintenance or {}).get("search_enrichment") == "running"
 
 
 def test_execute_task_search_enrich_dispatch_failure_runs_inline(
@@ -999,7 +1029,7 @@ def test_execute_task_search_enrich_dispatch_failure_runs_inline(
     )
     monkeypatch.setattr(
         "apps.opspilot.services.wiki.markdown_import_governance_service.run_markdown_import_search_enrichment",
-        lambda *args: enrich_calls.append(args) or {"status": "ok"},
+        lambda *args, **kwargs: enrich_calls.append(args) or {"status": "ok"},
     )
     knowledge_base = _ready_kb(wiki_factory)
     content = _okf_zip("投递失败")

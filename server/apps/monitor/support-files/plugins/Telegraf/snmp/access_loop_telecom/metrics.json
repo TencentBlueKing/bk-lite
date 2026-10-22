@@ -23,7 +23,7 @@
     {
       "metric_group": "Power",
       "name": "power_consumption_watts",
-      "query": "max(snmp_power_consumption_watts{instance_type='access', __$labels__}) by (instance_id)",
+      "query": "max(snmp_power_consumption_watts{instance_type='access', collect_type='snmp_loop_telecom', __$labels__}) by (instance_id)",
       "display_name": "Power Consumption",
       "data_type": "Number",
       "unit": "watts",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='access', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='access', collect_type='snmp_loop_telecom', __$labels__}",
       "display_name": "Controller Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -54,7 +54,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_humidity_percent",
-      "query": "device_humidity_percent{instance_type='access', __$labels__}",
+      "query": "device_humidity_percent{instance_type='access', collect_type='snmp_loop_telecom', __$labels__}",
       "display_name": "Controller Relative Humidity",
       "data_type": "Number",
       "unit": "percent",
@@ -72,7 +72,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='access', __$labels__}",
+      "query": "device_psu_state{instance_type='access', collect_type='snmp_loop_telecom', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='access', __$labels__}",
+      "query": "device_fan_state{instance_type='access', collect_type='snmp_loop_telecom', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -108,7 +108,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', collect_type='snmp_loop_telecom', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -126,7 +126,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', collect_type='snmp_loop_telecom', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -144,7 +144,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='access', collect_type='snmp_loop_telecom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

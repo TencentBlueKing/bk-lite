@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='wireless', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='wireless', collect_type='snmp_airspan', __$labels__}",
       "display_name": "Sensor Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -44,7 +44,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_temperature_status",
-      "query": "device_temperature_status{instance_type='wireless', __$labels__}",
+      "query": "device_temperature_status{instance_type='wireless', collect_type='snmp_airspan', __$labels__}",
       "display_name": "Temperature Sensor Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"tooHigh\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"tooLow\",\"id\":2,\"color\":\"#faad14\"}]",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='wireless', __$labels__} / 1000",
+      "query": "device_voltage_volts{instance_type='wireless', collect_type='snmp_airspan', __$labels__} / 1000",
       "display_name": "DC Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_status",
-      "query": "device_voltage_status{instance_type='wireless', __$labels__}",
+      "query": "device_voltage_status{instance_type='wireless', collect_type='snmp_airspan', __$labels__}",
       "display_name": "DC Voltage Sensor Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"nominal\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"tooHigh\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"tooLow\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"outOfRange\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_airspan', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -128,7 +128,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_airspan', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -146,7 +146,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_airspan', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -27,7 +27,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "device_cpu_usage{instance_type='switch', collect_type='snmp_witek', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -45,7 +45,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "query": "device_memory_used{instance_type='switch', collect_type='snmp_witek', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -63,7 +63,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='switch', __$labels__}",
+      "query": "device_memory_free{instance_type='switch', collect_type='snmp_witek', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -81,7 +81,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_used{instance_type='switch', __$labels__} / (device_memory_used{instance_type='switch', __$labels__} + device_memory_free{instance_type='switch', __$labels__}) * 100",
+      "query": "device_memory_used{instance_type='switch', collect_type='snmp_witek', __$labels__} / (device_memory_used{instance_type='switch', collect_type='snmp_witek', __$labels__} + device_memory_free{instance_type='switch', collect_type='snmp_witek', __$labels__}) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -99,7 +99,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_witek', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -117,7 +117,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_state{instance_type='switch', collect_type='snmp_witek', __$labels__}",
       "display_name": "Fan State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -135,7 +135,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_witek', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -153,7 +153,7 @@
     {
       "metric_group": "Fan",
       "name": "device_fan_ac_state",
-      "query": "device_fan_ac_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_ac_state{instance_type='switch', collect_type='snmp_witek', __$labels__}",
       "display_name": "Fan AC Power State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -171,7 +171,7 @@
     {
       "metric_group": "Power",
       "name": "device_psu_ac_dc_state",
-      "query": "device_psu_ac_dc_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_ac_dc_state{instance_type='switch', collect_type='snmp_witek', __$labels__}",
       "display_name": "PSU AC/DC State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -189,7 +189,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_witek', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -207,7 +207,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_witek', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -225,7 +225,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_witek', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

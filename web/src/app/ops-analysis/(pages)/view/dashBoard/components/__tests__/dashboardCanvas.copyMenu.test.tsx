@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { ShareModeProvider } from '@/app/ops-analysis/context/shareMode';
 import DashboardCanvas from '../dashboardCanvas';
 import type { DashboardLayoutItem } from '@/app/ops-analysis/types/dashBoard';
 
@@ -317,5 +318,99 @@ describe('DashboardCanvas overlay re-render isolation', () => {
     rerender(<Parent overlayOpen={true} />);
     expect(screen.getByTestId('overlay-flag').textContent).toBe('true');
     expect(widgetRuntimeRenderCount.current).toBe(rendersAfterMount);
+  });
+});
+
+const titleLinkWidget: DashboardLayoutItem = {
+  ...dataWidget,
+  name: '告警源总数',
+  valueConfig: {
+    chartType: 'line',
+    dataSource: 7,
+    interaction: {
+      kind: 'title',
+      name: '查看详情',
+      url: '/ops',
+      openMode: 'sameTab',
+    },
+  },
+};
+
+const isLastIn = (node: HTMLElement, root: HTMLElement) => {
+  const last = root.lastElementChild;
+  return last === node || Boolean(last?.contains(node));
+};
+
+describe('Dashboard title link', () => {
+  it('places the chevron after the runtime slot and the csv download', async () => {
+    renderCanvas([titleLinkWidget], { isEditMode: false, renderMode: false });
+    const link = await screen.findByRole('button', { name: '查看详情' });
+    const header = link.closest('.widget-header') as HTMLElement;
+    const title = screen.getByRole('heading', { name: '告警源总数' });
+    const csv = screen.getByRole('button', { name: 'dashboard.exportCsv' });
+    const slot = header.querySelector('.overflow-x-auto') as HTMLElement;
+
+    expect(link.querySelector('.anticon-right')).toBeTruthy();
+    expect(link.querySelector('.anticon-link')).toBeNull();
+    expect(link.getAttribute('data-export-hidden')).toBe('true');
+    expect(link.className).toContain('no-drag');
+    expect(title.className).toContain('truncate');
+    expect(title.closest('button')).toBeNull();
+    expect(title.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(csv.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(isLastIn(link, header)).toBe(true);
+  });
+
+  it('places the chevron after the edit menu', async () => {
+    renderCanvas([titleLinkWidget], { isEditMode: true, renderMode: false });
+    const link = await screen.findByRole('button', { name: '查看详情' });
+    const more = screen.getByRole('button', { name: 'common.more' });
+
+    expect(more.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(isLastIn(link, link.closest('.widget-header') as HTMLElement)).toBe(true);
+    expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
+  });
+
+  it('hides the chevron on the share surface', async () => {
+    const scrollRootRef = createRef<HTMLDivElement | null>();
+    scrollRootRef.current = document.createElement('div');
+    render(
+      <ShareModeProvider value>
+        <DashboardCanvas
+          loading={false}
+          isEditMode={false}
+          isDarkTheme={false}
+          dashboardId={1}
+          layout={[titleLinkWidget]}
+          collapsedGroups={{}}
+          chartTheme={{ panelBg: '#fff', panelBorderColor: '#eee' }}
+          filterSearchVersion={0}
+          namespaceSearchVersion={0}
+          dashboardReloadVersion={0}
+          widgetReloadVersions={{}}
+          dataSourceResolver={() => undefined}
+          appliedFilterValues={{}}
+          appliedFilterDefinitions={[]}
+          appliedNamespaceId={undefined}
+          shareMode
+          onLayoutChange={vi.fn()}
+          onOpenAddModal={vi.fn()}
+          onToggleCollapsedGroup={vi.fn()}
+          onRenameGroup={vi.fn()}
+          onRemoveGroup={vi.fn()}
+          onDeleteEntireGroup={vi.fn()}
+          onEditWidget={vi.fn()}
+          onCopyWidget={vi.fn()}
+          onDeleteWidget={vi.fn()}
+          renderMode={false}
+          scrollRootRef={scrollRootRef}
+        />
+      </ShareModeProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('告警源总数')).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: '查看详情' })).toBeNull();
   });
 });

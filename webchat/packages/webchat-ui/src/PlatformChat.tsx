@@ -152,7 +152,7 @@ const HistoryRail: React.FC<{
 
   return (
     <aside
-      className="flex h-full min-h-0 flex-shrink-0 flex-col"
+      className="flex min-h-0 flex-shrink-0 flex-col self-stretch overflow-hidden"
       style={{
         width: wide ? HISTORY_RAIL_FULL : dockWidth,
         background: WC.historyRail,
@@ -1149,7 +1149,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
           ) : null}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 items-stretch overflow-hidden">
           {historyOpen ? (
             <HistoryRail
               items={listItems}
@@ -1167,7 +1167,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
             />
           ) : filePanelOpen ? (
             <div
-              className="flex h-full min-h-0 flex-shrink-0 flex-col"
+              className="flex min-h-0 flex-shrink-0 flex-col self-stretch overflow-hidden"
               style={{
                 width: isFullscreen ? HISTORY_RAIL_FULL : dockRailWidth,
                 background: WC.stage,
@@ -1177,7 +1177,9 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
               <SessionFileBar files={sessionFiles} />
             </div>
           ) : null}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ background: WC.stage }}>
+          <div className="relative min-h-0 min-w-0 flex-1 self-stretch" style={{ background: WC.stage }}>
+            {/* inset 给出确定高度。侧栏打开时 h-full 的百分比高度会失效，输入框就贴到顶部。 */}
+            <div className="absolute inset-0 flex min-h-0 flex-col overflow-hidden">
             {currentApp && sessionId && chatUrl ? (
               <React.Suspense
                 fallback={
@@ -1216,6 +1218,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
                 <ConversationSkeleton />
               </div>
             )}
+            </div>
           </div>
         </div>
       )}
