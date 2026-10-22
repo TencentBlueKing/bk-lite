@@ -134,7 +134,7 @@ import {
 } from "./utils/viewport";
 import ViewConfig from "@/app/ops-analysis/components/widgetConfig";
 import ViewSelector from "@/app/ops-analysis/components/widgetSelector";
-import { omitForeignChartTypeFields } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
+import { mergeScreenWidgetValueConfig } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
 import { useCanvasDraft } from "@/app/ops-analysis/hooks/useCanvasDraft";
 import {
   restoreDraftRefreshInterval,
@@ -142,6 +142,7 @@ import {
   type CanvasDraftPayload,
 } from "@/app/ops-analysis/api/canvasDraft";
 import { bindCanvasDraftControls } from "@/app/ops-analysis/components/canvasDraftControls";
+import { isSameScreenDataTarget } from "./utils/screenSelection";
 import { isSceneWidgetType } from "@/app/ops-analysis/types/sceneWidgetCapability";
 
 export interface ScreenRef {
@@ -1050,6 +1051,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
 
   const handleSelectCanvasItem = useCallback(
     (itemId: string | null) => {
+      // 拖动、缩放或再次点中当前组件都会重发选中。这不是切换数据配置。
+      if (isSameScreenDataTarget(inspectorRef.current.selectedItemId, itemId)) {
+        setInspectorCollapsed(false);
+        return;
+      }
       runAfterDataGuard(() => {
         setInspectorCollapsed(false);
         setSelectedItemId(itemId);
@@ -1228,9 +1234,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         ...currentConfigItem,
         chartType: nextChartType,
         title: values.name || currentConfigItem.title,
-        valueConfig: omitForeignChartTypeFields(
+        valueConfig: mergeScreenWidgetValueConfig(
+          currentConfigItem.valueConfig,
           {
-            ...currentConfigItem.valueConfig,
             ...values,
             interaction: values.interaction,
             actions: values.actions,

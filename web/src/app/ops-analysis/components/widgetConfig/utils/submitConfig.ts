@@ -475,9 +475,8 @@ export const omitForeignChartTypeFields = <T extends object>(
 };
 
 /**
- * Dashboard 编辑保存边界：先合并旧 valueConfig 与本次提交字段，
- * 再按最终 chartType 去掉其它图表专属配置。
- * 与 Screen 侧 omitForeignChartTypeFields(...) 语义一致，固定走 ValueConfig。
+ * Dashboard 编辑保存边界：调用方会把本次表单字段逐项写入 nextFields，
+ * 清空的项以 undefined 覆盖旧值。再按最终 chartType 去掉其它图表专属配置。
  */
 export const mergeSanitizedWidgetValueConfig = (
   existingValueConfig: ValueConfig | undefined,
@@ -491,6 +490,46 @@ export const mergeSanitizedWidgetValueConfig = (
     },
     chartType,
   );
+
+/**
+ * 提交结果故意不带这些键，表示用户清空了。大屏用对象展开合并时，
+ * 缺键不会覆盖旧值，所以要在这里删掉。
+ */
+const SCREEN_OPTIONAL_KEYS_CLEARED_WHEN_ABSENT = [
+  'descriptionField',
+  'dimensionField',
+  'valueField',
+  'nodeGraphTargetPortField',
+] as const;
+
+const isBlankOptionalValue = (value: unknown) =>
+  value == null || (typeof value === 'string' && value.trim() === '');
+
+/** 大屏组件数据配置保存：新提交覆盖旧 valueConfig，并丢掉已清空的可选项。 */
+export const mergeScreenWidgetValueConfig = (
+  existingValueConfig: ValueConfig | undefined,
+  submitted: WidgetConfig,
+  chartType: string,
+): ValueConfig => {
+  const merged = {
+    ...(existingValueConfig || {}),
+    ...submitted,
+    interaction: submitted.interaction,
+    actions: submitted.actions,
+    chartType,
+  } as ValueConfig & Record<string, unknown>;
+
+  for (const key of SCREEN_OPTIONAL_KEYS_CLEARED_WHEN_ABSENT) {
+    if (
+      !Object.prototype.hasOwnProperty.call(submitted, key)
+      || isBlankOptionalValue(merged[key])
+    ) {
+      delete merged[key];
+    }
+  }
+
+  return omitForeignChartTypeFields(merged, chartType);
+};
 
 const applyCardListConfig = (
   result: WidgetConfig,
