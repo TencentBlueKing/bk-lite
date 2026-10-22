@@ -70,10 +70,11 @@
   min-height: 0;
 }
 
-/* 复制签一块：标题后直接接内容。区段距只加在上一块整段到本块标题。 */
+/* 复制签一块：标题到卡片 12px，对齐概览/性能 .main gap。区段距仍由 replBreak 承担。 */
 .replBlock {
   display: flex;
   flex-direction: column;
+  gap: 12px;
 }
 
 .replBreak {
@@ -99,6 +100,20 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   align-items: stretch;
+}
+
+/* 仅「连接与吞吐」三卡同行。其它性能分区继续用两列 perfGrid。 */
+.perfGrid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+@media (max-width: 720px) {
+  .perfGrid3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .perfWide {

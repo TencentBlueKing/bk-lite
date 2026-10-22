@@ -63,6 +63,11 @@ interface ThinTimeSeriesProps {
    * 已不再打开图例。可见序列数等于 1 时整段图例不渲染，本开关和 reading 都不能把它打开。
    */
   showSeriesName?: boolean;
+  /**
+   * 双维卡即使只有一条线有采点，也保留全部图例名，并在 tooltip 里补上缺席的维度。
+   * 单维卡不要开，避免主机盘把本该隐藏的图例重新打开。
+   */
+  keepLegend?: boolean;
   /** 本图达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
   onRetry?: () => void;
@@ -102,6 +107,7 @@ export default function ThinTimeSeries({
   bare = false,
   numericAxis = false,
   independentAxes = false,
+  keepLegend = false,
   alertLevel,
   onRetry
 }: ThinTimeSeriesProps) {
@@ -257,7 +263,20 @@ export default function ThinTimeSeries({
         formatter: (params: any[]) => {
           if (!params.length) return '';
           const time = dayjs(Number(params[0].axisValue) * 1000).format('YYYY-MM-DD HH:mm:ss');
-          const rows = params
+          const items = keepLegend
+            ? keys.map((key, index) => {
+              const name = legends[index]?.title || legends[index]?.label || key;
+              const found = params.find((item) => item.seriesIndex === index)
+                || params.find((item) => item.seriesName === name);
+              return found || {
+                seriesName: name,
+                seriesIndex: index,
+                color: legends[index]?.color,
+                value: null
+              };
+            })
+            : params;
+          const rows = items
             .map((item) => {
               const raw = Array.isArray(item.value) ? item.value[1] : item.value;
               const name = item.seriesName || '';
@@ -291,13 +310,13 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, chartWindow, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit]);
+  }, [axisColor, chartWindow, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];
     return typeof value === 'number' && Number.isFinite(value);
   })).length;
-  const showLegend = drawnSeriesCount >= 2;
+  const showLegend = keepLegend ? legends.length > 0 : drawnSeriesCount >= 2;
   const chart = (
     <>
       {title || reading || showLegend ? (

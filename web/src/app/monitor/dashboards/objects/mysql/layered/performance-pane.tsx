@@ -3,12 +3,12 @@
 import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
-import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import { mergeChartSeries, mergeChartSeriesAligned } from '../../../shared/utils/chart-data';
 import type { MetricSeries } from '../types';
 import { formatMetricValue } from '../../../shared/utils/format';
 import { GrayTabEmptyState, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
-import { latestNumber, numericValue, primaryChartSeries } from '../../host/layered/readings';
+import { latestChartNumber, latestNumber, numericValue, primaryChartSeries } from '../../host/layered/readings';
 import { innodbHasLoad } from './ia';
 import { mysqlCategoryText } from './mysql-copy';
 import pro from './pro.module.scss';
@@ -42,6 +42,14 @@ const rateReading = (metric: MetricSeries | undefined) => {
   return `${formatted.value}${formatted.unit || ''}`;
 };
 
+/** 图例当前值跟已绘序列走。没有采点时用 `--`，名仍然留下。 */
+const seriesReading = (points: ChartData[], unit: 'counts' | 'cps') => {
+  const value = latestChartNumber(points);
+  if (value == null) return '--';
+  const formatted = formatMetricValue(value, unit);
+  return `${formatted.value}${formatted.unit || ''}`;
+};
+
 const durationReading = (metric: MetricSeries | undefined) => {
   const value = latestNumber(metric);
   if (value == null) return undefined;
@@ -66,7 +74,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     () => seriesOf(metricMap.mysql_threads_created_rate),
     [metricMap.mysql_threads_created_rate?.viewData]
   );
-  const connection = useMemo(() => mergeChartSeries([
+  const connection = useMemo(() => mergeChartSeriesAligned([
     { key: 'connected', label: mysqlCategoryText(t, 'currentConnections'), data: seriesOf(metricMap.mysql_threads_connected) },
     { key: 'running', label: mysqlCategoryText(t, 'activeSessions'), data: seriesOf(metricMap.mysql_threads_running) }
   ]), [
@@ -99,7 +107,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     ? tpsParts.total
     : sumSeries([tpsParts.commit, tpsParts.rollback]);
 
-  const throughput = useMemo(() => mergeChartSeries([
+  const throughput = useMemo(() => mergeChartSeriesAligned([
     { key: 'qps', label: mysqlCategoryText(t, 'qps'), data: seriesOf(metricMap.mysql_queries_rate) },
     { key: 'tps', label: mysqlCategoryText(t, 'tps'), data: tpsTotal }
   ]), [metricMap.mysql_queries_rate?.viewData, t, tpsTotal]);
@@ -240,8 +248,10 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const showConnections = connectionAwaiting || connection.length > 0;
   const showMaxUsed = maxUsed.length > 0;
   const showThreadsCreated = threadsCreated.length > 0;
-  const connectionAuxCount = [showMaxUsed, showThreadsCreated].filter(Boolean).length;
   const showThroughput = throughputAwaiting || throughput.length > 0;
+  const connectionRowCount = [showConnections, showThroughput, showMaxUsed].filter(Boolean).length;
+  const connectionRowClass = connectionRowCount >= 3 ? pro.perfGrid3 : pro.perfGrid;
+  const connectionWide = connectionRowCount === 1;
   const showTps = tpsAwaiting || tpsMix.length > 0 || tpsTotal.length > 0;
   const showWrites = writesAwaiting || statementMix.length > 0;
   const showInnodb = innodbAwaiting || innodb.length > 0;
@@ -264,79 +274,101 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
 
   return (
     <>
-      {showConnections || showThroughput || connectionAuxCount > 0 ? (
+      {connectionRowCount > 0 || showThreadsCreated ? (
         <>
           <ProSectionTitle>{mysqlCategoryText(t, 'connectionsAndThroughput')}</ProSectionTitle>
-          {showConnections || showThroughput ? (
-          <div className={pro.perfGrid}>
+          {connectionRowCount > 0 ? (
+          <div
+            className={connectionRowClass}
+            data-perf-section="connections"
+            data-perf-count={connectionRowCount}
+          >
             {showConnections ? (
-              <div id="mysql-perf-connections" className={cardClass(!showThroughput)}>
+              <div id="mysql-perf-connections" className={`${cardClass(connectionWide)} h-full`}>
                 <ThinTimeSeries
+                  className="h-full"
                   title={mysqlCategoryText(t, 'connectionsAndSessions')}
                   hint={mysqlCategoryText(t, 'connectionsHint')}
                   loading={connectionAwaiting}
                   unit="counts"
                   data={connection}
                   emptyText={empty}
+                  keepLegend
                   legends={[
-                    { label: mysqlCategoryText(t, 'currentConnections'), color: HOST_SERIES_COLOR.memUsed },
-                    { label: mysqlCategoryText(t, 'activeSessions'), color: HOST_SERIES_COLOR.load1 }
+                    {
+                      label: mysqlCategoryText(t, 'currentConnections'),
+                      color: HOST_SERIES_COLOR.memUsed,
+                      reading: seriesReading(seriesOf(metricMap.mysql_threads_connected), 'counts')
+                    },
+                    {
+                      label: mysqlCategoryText(t, 'activeSessions'),
+                      color: HOST_SERIES_COLOR.load1,
+                      reading: seriesReading(seriesOf(metricMap.mysql_threads_running), 'counts')
+                    }
                   ]}
                 />
               </div>
             ) : null}
             {showThroughput ? (
-              <div id="mysql-perf-throughput" className={cardClass(!showConnections)}>
+              <div id="mysql-perf-throughput" className={`${cardClass(connectionWide)} h-full`}>
                 <ThinTimeSeries
+                  className="h-full"
                   title={mysqlCategoryText(t, 'qpsTps')}
                   hint={mysqlCategoryText(t, 'qpsTpsHint')}
                   loading={throughputAwaiting}
                   unit="cps"
                   data={throughput}
                   emptyText={empty}
+                  keepLegend
                   legends={[
-                    { label: mysqlCategoryText(t, 'qps'), color: HOST_SERIES_COLOR.memAvailable },
-                    { label: mysqlCategoryText(t, 'tps'), color: HOST_PALETTE.orange }
+                    {
+                      label: mysqlCategoryText(t, 'qps'),
+                      color: HOST_SERIES_COLOR.memAvailable,
+                      reading: seriesReading(seriesOf(metricMap.mysql_queries_rate), 'cps')
+                    },
+                    {
+                      label: mysqlCategoryText(t, 'tps'),
+                      color: HOST_PALETTE.orange,
+                      reading: seriesReading(tpsTotal, 'cps')
+                    }
                   ]}
+                />
+              </div>
+            ) : null}
+            {showMaxUsed ? (
+              <div id="mysql-perf-max-used" className={`${cardClass(connectionWide)} h-full`}>
+                <ThinTimeSeries
+                  className="h-full"
+                  title={mysqlCategoryText(t, 'maxUsedConnections')}
+                  hint={mysqlCategoryText(t, 'maxUsedConnectionsHint')}
+                  unit="counts"
+                  data={maxUsed.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText={empty}
+                  legends={[{
+                    label: mysqlCategoryText(t, 'maxUsedConnections'),
+                    color: HOST_PALETTE.neutral,
+                    reading: seriesReading(maxUsed, 'counts')
+                  }]}
                 />
               </div>
             ) : null}
           </div>
           ) : null}
-          {connectionAuxCount > 0 ? (
-            <div
-              className={showConnections || showThroughput ? `${pro.perfGrid} mt-3` : pro.perfGrid}
-              data-perf-section="connection-aux"
-            >
-              {showMaxUsed ? (
-                <div className={cardClass(connectionAuxCount === 1)}>
-                  <ThinTimeSeries
-                    title={mysqlCategoryText(t, 'maxUsedConnections')}
-                    unit="counts"
-                    data={maxUsed.map((point) => ({ time: point.time, value1: point.value1 }))}
-                    emptyText={empty}
-                    legends={[{
-                      label: mysqlCategoryText(t, 'maxUsedConnections'),
-                      color: HOST_PALETTE.neutral
-                    }]}
-                  />
-                </div>
-              ) : null}
-              {showThreadsCreated ? (
-                <div className={cardClass(connectionAuxCount === 1)}>
-                  <ThinTimeSeries
-                    title={mysqlCategoryText(t, 'threadsCreated')}
-                    unit="cps"
-                    data={threadsCreated.map((point) => ({ time: point.time, value1: point.value1 }))}
-                    emptyText={empty}
-                    legends={[{
-                      label: mysqlCategoryText(t, 'threadsCreated'),
-                      color: HOST_SERIES_COLOR.load5,
-                      reading: rateReading(metricMap.mysql_threads_created_rate)
-                    }]}
-                  />
-                </div>
-              ) : null}
+          {showThreadsCreated ? (
+            <div className={pro.perfGrid} data-perf-section="threads-created">
+              <div className={cardClass(true)}>
+                <ThinTimeSeries
+                  title={mysqlCategoryText(t, 'threadsCreated')}
+                  unit="cps"
+                  data={threadsCreated.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText={empty}
+                  legends={[{
+                    label: mysqlCategoryText(t, 'threadsCreated'),
+                    color: HOST_SERIES_COLOR.load5,
+                    reading: rateReading(metricMap.mysql_threads_created_rate)
+                  }]}
+                />
+              </div>
             </div>
           ) : null}
         </>

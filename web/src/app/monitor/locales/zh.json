@@ -4070,6 +4070,7 @@
         "mysqlCategoryCurrentConnections": "当前连接",
         "mysqlCategoryActiveSessions": "活跃会话",
         "mysqlCategoryMaxUsedConnections": "最大曾用连接",
+        "mysqlCategoryMaxUsedConnectionsHint": "自实例启动以来，连接数曾达到的峰值。",
         "mysqlCategoryThreadsCreated": "线程创建速率",
         "mysqlCategoryQpsTps": "QPS / TPS",
         "mysqlCategoryQpsTpsHint": "QPS 是每秒查询数。TPS 是每秒提交与回滚的事务数。",

@@ -78,6 +78,7 @@ export const MYSQL_CATEGORY_COPY = {
   currentConnections: [textId('mysqlCategoryCurrentConnections'), '当前连接'],
   activeSessions: [textId('mysqlCategoryActiveSessions'), '活跃会话'],
   maxUsedConnections: [textId('mysqlCategoryMaxUsedConnections'), '最大曾用连接'],
+  maxUsedConnectionsHint: [textId('mysqlCategoryMaxUsedConnectionsHint'), '自实例启动以来，连接数曾达到的峰值。'],
   threadsCreated: [textId('mysqlCategoryThreadsCreated'), '线程创建速率'],
   qpsTps: [textId('mysqlCategoryQpsTps'), 'QPS / TPS'],
   qpsTpsHint: [textId('mysqlCategoryQpsTpsHint'), 'QPS 是每秒查询数。TPS 是每秒提交与回滚的事务数。'],

@@ -4070,6 +4070,7 @@
         "mysqlCategoryCurrentConnections": "Current connections",
         "mysqlCategoryActiveSessions": "Active sessions",
         "mysqlCategoryMaxUsedConnections": "Max connections used",
+        "mysqlCategoryMaxUsedConnectionsHint": "Peak connections since instance start.",
         "mysqlCategoryThreadsCreated": "Thread creation rate",
         "mysqlCategoryQpsTps": "QPS / TPS",
         "mysqlCategoryQpsTpsHint": "QPS is queries per second. TPS is committed plus rolled-back transactions per second.",
