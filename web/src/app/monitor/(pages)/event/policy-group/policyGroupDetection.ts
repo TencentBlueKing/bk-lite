@@ -262,6 +262,12 @@ export const policyGroupDetectionBadges = ({
   return badges;
 };
 
+export type PolicyGroupConfigTab = 'detection' | 'notice';
+
+/** 配置抽屉先停在有缺口的那一页。检测保存会结束告警，两页都有缺口时先看检测。 */
+export const defaultConfigTab = (detectionBadges: string[], noticeBadges: string[]): PolicyGroupConfigTab =>
+  detectionBadges.length === 0 && noticeBadges.length > 0 ? 'notice' : 'detection';
+
 export const policyGroupDetectionNotes = ({
   scheduleUniform = true,
   noDataUniform = true,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPolicyGroupDetectionPayload,
   buildPolicyGroupRulePayload,
+  defaultConfigTab,
   detectionConfirm,
   detectionDraftFromGroup,
   detectionSaveBlocker,
@@ -153,6 +154,12 @@ describe('策略组检测配置', () => {
       '组内检测频率不一致，保存后会写成同一套。',
       '组内无数据告警不一致，保存后会写成同一套。',
     ]);
+  });
+
+  it('配置抽屉只有响应有缺口时停在响应页，否则停在检测页', () => {
+    expect(defaultConfigTab([], ['处理人不一致'])).toBe('notice');
+    expect(defaultConfigTab(['频率不一致'], ['处理人不一致'])).toBe('detection');
+    expect(defaultConfigTab([], [])).toBe('detection');
   });
 });
 

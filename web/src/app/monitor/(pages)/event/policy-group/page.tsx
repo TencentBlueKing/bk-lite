@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
+import { Badge, Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Popconfirm, Select, Spin, Switch, Tabs, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
@@ -34,6 +34,7 @@ import {
   NO_DATA_LEVEL_OPTIONS,
   buildPolicyGroupDetectionPayload,
   buildPolicyGroupRulePayload,
+  defaultConfigTab,
   detectionConfirm,
   detectionDraftFromGroup,
   detectionSaveBlocker,
@@ -45,6 +46,7 @@ import {
   ruleEditDraftFromRule,
   ruleSaveBlocker,
   type DetectionDraft,
+  type PolicyGroupConfigTab,
   type RuleEditDraft,
 } from './policyGroupDetection';
 import { ChannelItem } from '@/app/monitor/types/event';
@@ -150,7 +152,14 @@ const CHANNEL_ICON: Record<string, string> = {
 
 const NAME_COLUMN_WIDTH = 162;
 const COMPACT_COLUMN_WIDTH = 120;
-const ACTION_COLUMN_WIDTH = 420;
+const ACTION_COLUMN_WIDTH = 260;
+
+const noticeSnapshot = (
+  enabled: boolean,
+  typeIds: number[],
+  userIds: string[],
+  handlers: string[]
+) => JSON.stringify({ enabled, typeIds, userIds, handlers });
 
 type ConditionThresholdDraft = Array<{
   level?: string;
@@ -287,11 +296,12 @@ const PolicyGroupPage: React.FC = () => {
     method: '>',
     value: null,
   });
-  const [detectionGroup, setDetectionGroup] = useState<PolicyGroupRow | null>(null);
+  const [configGroup, setConfigGroup] = useState<PolicyGroupRow | null>(null);
+  const [configTab, setConfigTab] = useState<PolicyGroupConfigTab>('detection');
   const [detectionInitial, setDetectionInitial] = useState<DetectionDraft>(() => detectionDraftFromGroup({}));
   const [detectionDraft, setDetectionDraft] = useState<DetectionDraft>(() => detectionDraftFromGroup({}));
   const [detectionSaving, setDetectionSaving] = useState(false);
-  const [noticeGroup, setNoticeGroup] = useState<PolicyGroupRow | null>(null);
+  const noticeInitial = useRef('');
   const [noticeEnabled, setNoticeEnabled] = useState(false);
   const [noticeTypeIds, setNoticeTypeIds] = useState<number[]>([]);
   const [noticeUserIds, setNoticeUserIds] = useState<string[]>([]);
@@ -467,13 +477,17 @@ const PolicyGroupPage: React.FC = () => {
     }
   };
 
-  const openNotice = (group: PolicyGroupRow) => {
+  const loadNotice = (group: PolicyGroupRow) => {
     noticeUsersSeeded.current = false;
-    setNoticeGroup(group);
-    setNoticeEnabled(Boolean(group.notice));
-    setNoticeTypeIds((group.notice_type_ids || []).map((item) => Number(item)));
-    setNoticeUserIds((group.notice_users || []).map((item) => String(item)));
-    setHandlerIds((group.handlers || []).map((item) => String(item)));
+    const enabled = Boolean(group.notice);
+    const typeIds = (group.notice_type_ids || []).map((item) => Number(item));
+    let userIds = (group.notice_users || []).map((item) => String(item));
+    let handlers = (group.handlers || []).map((item) => String(item));
+    setNoticeEnabled(enabled);
+    setNoticeTypeIds(typeIds);
+    setNoticeUserIds(userIds);
+    setHandlerIds(handlers);
+    noticeInitial.current = noticeSnapshot(enabled, typeIds, userIds, handlers);
     setNoticeLoading(true);
     Promise.all([
       getSystemChannelList(),
@@ -490,11 +504,19 @@ const PolicyGroupPage: React.FC = () => {
           );
           return matched ? String(matched.id) : value;
         };
-        setNoticeUserIds((prev) => prev.map(matchUserId));
-        setHandlerIds((prev) => prev.map(matchUserId));
+        userIds = userIds.map(matchUserId);
+        handlers = handlers.map(matchUserId);
+        setNoticeUserIds(userIds);
+        setHandlerIds(handlers);
+        noticeInitial.current = noticeSnapshot(enabled, typeIds, userIds, handlers);
       })
       .finally(() => setNoticeLoading(false));
   };
+
+  const noticeDirty = () =>
+    noticeSnapshot(noticeEnabled, noticeTypeIds, noticeUserIds, handlerIds) !== noticeInitial.current;
+
+  const detectionDirty = () => JSON.stringify(detectionDraft) !== JSON.stringify(detectionInitial);
 
   const noticeUsersRequired = shouldRequireNoticeUsers({
     notice: noticeEnabled,
@@ -503,7 +525,7 @@ const PolicyGroupPage: React.FC = () => {
   });
 
   useEffect(() => {
-    if (!noticeGroup || !noticeUsersRequired) {
+    if (!configGroup || !noticeUsersRequired) {
       noticeUsersSeeded.current = false;
       return;
     }
@@ -513,16 +535,15 @@ const PolicyGroupPage: React.FC = () => {
     if (seeded) {
       setNoticeUserIds(seeded.map((item) => String(item)));
     }
-  }, [handlerIds, noticeGroup, noticeUserIds, noticeUsersRequired]);
+  }, [handlerIds, configGroup, noticeUserIds, noticeUsersRequired]);
 
-  const saveNotice = async () => {
-    if (!noticeGroup || noticeSaving) return;
+  const submitNotice = async (group: PolicyGroupRow) => {
     const selectedChannels = noticeChannels.filter((item) => noticeTypeIds.includes(item.id));
     setNoticeSaving(true);
     try {
       await updatePolicyGroupNotice(
         buildPolicyGroupNoticePayload({
-          groupId: noticeGroup.id,
+          groupId: group.id,
           noticeEnabled,
           noticeType: selectedChannels[0]?.channel_type || '',
           noticeTypeIds,
@@ -532,27 +553,67 @@ const PolicyGroupPage: React.FC = () => {
         })
       );
       message.success('已写入这一组的全部规则');
-      setNoticeGroup(null);
+      setConfigGroup(null);
       await loadGroups(objectId);
     } finally {
       setNoticeSaving(false);
     }
   };
 
+  // 两页各自保存。另一页改了没存的，只提醒，不一起写入。
+  const saveNotice = () => {
+    if (!configGroup || noticeSaving) return;
+    const group = configGroup;
+    if (!detectionDirty()) {
+      void submitNotice(group);
+      return;
+    }
+    Modal.confirm({
+      title: '保存响应配置',
+      content: '检测页有未保存的改动，这次不会一起写入。',
+      onOk: () => submitNotice(group),
+    });
+  };
+
   const detectionScope = {
-    scheduleUniform: detectionGroup?.schedule_uniform,
-    noDataUniform: detectionGroup?.no_data_uniform,
+    scheduleUniform: configGroup?.schedule_uniform,
+    noDataUniform: configGroup?.no_data_uniform,
     initial: detectionInitial,
   };
 
-  const openDetection = (group: PolicyGroupRow) => {
+  const loadDetection = (group: PolicyGroupRow) => {
     const next = detectionDraftFromGroup(group, {
       scheduleUniform: group.schedule_uniform,
       noDataUniform: group.no_data_uniform,
     });
     setDetectionInitial(next);
     setDetectionDraft(next);
-    setDetectionGroup(group);
+  };
+
+  const openConfig = (group: PolicyGroupRow, tab?: PolicyGroupConfigTab) => {
+    loadDetection(group);
+    loadNotice(group);
+    setConfigTab(
+      tab ||
+        defaultConfigTab(
+          policyGroupDetectionBadges({
+            scheduleUniform: group.schedule_uniform,
+            noDataUniform: group.no_data_uniform,
+          }),
+          policyGroupListBadges({
+            notice: group.notice,
+            noticeUniform: group.notice_uniform,
+            noticeTypeIds: group.notice_type_ids,
+            handlersUniform: group.handlers_uniform,
+          })
+        )
+    );
+    setConfigGroup(group);
+  };
+
+  const closeConfig = () => {
+    if (detectionSaving || noticeSaving) return;
+    setConfigGroup(null);
   };
 
   const patchDetection = (patch: Partial<DetectionDraft>) => {
@@ -560,23 +621,24 @@ const PolicyGroupPage: React.FC = () => {
   };
 
   const saveDetection = () => {
-    if (!detectionGroup || detectionSaving) return;
+    if (!configGroup || detectionSaving) return;
     const blocker = detectionSaveBlocker(detectionDraft, detectionScope);
     if (blocker) {
       message.warning(blocker);
       return;
     }
-    const payload = buildPolicyGroupDetectionPayload(detectionGroup.id, detectionDraft, detectionScope);
+    const payload = buildPolicyGroupDetectionPayload(configGroup.id, detectionDraft, detectionScope);
     const confirm = detectionConfirm(payload, detectionInitial);
+    const noticePending = noticeDirty() ? '响应页有未保存的改动，这次不会一起写入。' : '';
     Modal.confirm({
       title: confirm.title,
-      content: confirm.content,
+      content: `${confirm.content}${noticePending}`,
       onOk: async () => {
         setDetectionSaving(true);
         try {
           await updatePolicyGroupDetection(payload);
           message.success('已写入这一组的检测配置');
-          setDetectionGroup(null);
+          setConfigGroup(null);
           await loadGroups(objectId);
         } finally {
           setDetectionSaving(false);
@@ -732,11 +794,8 @@ const PolicyGroupPage: React.FC = () => {
           >
             默认
           </Button>
-          <Button type="link" onClick={() => openDetection(record as PolicyGroupRow)}>
-            检测配置
-          </Button>
-          <Button type="link" onClick={() => openNotice(record as PolicyGroupRow)}>
-            响应配置
+          <Button type="link" onClick={() => openConfig(record as PolicyGroupRow)}>
+            配置
           </Button>
           <Button
             type="link"
@@ -1260,31 +1319,78 @@ const PolicyGroupPage: React.FC = () => {
         )}
       </Drawer>
       <Drawer
-        title={detectionGroup ? `${detectionGroup.name} 的检测配置` : '检测配置'}
-        open={Boolean(detectionGroup)}
+        title={configGroup ? `${configGroup.name} 的配置` : '配置'}
+        open={Boolean(configGroup)}
         width={760}
         closable={false}
-        onClose={() => setDetectionGroup(null)}
+        onClose={closeConfig}
         footer={
           <div className="flex justify-end gap-2">
-            <Button
-              type="primary"
-              loading={detectionSaving}
-              disabled={Boolean(detectionSaveBlocker(detectionDraft, detectionScope))}
-              onClick={saveDetection}
-            >
-              确认
-            </Button>
-            <Button disabled={detectionSaving} onClick={() => setDetectionGroup(null)}>
+            {configTab === 'detection' ? (
+              <Button
+                type="primary"
+                loading={detectionSaving}
+                disabled={Boolean(detectionSaveBlocker(detectionDraft, detectionScope))}
+                onClick={saveDetection}
+              >
+                确认
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                loading={noticeSaving}
+                disabled={
+                  noticeLoading ||
+                  (noticeEnabled && noticeTypeIds.length === 0) ||
+                  (noticeUsersRequired && noticeUserIds.length === 0)
+                }
+                onClick={saveNotice}
+              >
+                确认
+              </Button>
+            )}
+            <Button disabled={detectionSaving || noticeSaving} onClick={closeConfig}>
               取消
             </Button>
           </div>
         }
       >
         {(() => {
+          const detectionBadges = policyGroupDetectionBadges({
+            scheduleUniform: configGroup?.schedule_uniform,
+            noDataUniform: configGroup?.no_data_uniform,
+          });
+          const noticeBadges = policyGroupListBadges({
+            notice: configGroup?.notice,
+            noticeUniform: configGroup?.notice_uniform,
+            noticeTypeIds: configGroup?.notice_type_ids,
+            handlersUniform: configGroup?.handlers_uniform,
+          });
+          const tabLabel = (label: string, badges: string[]) =>
+            badges.length ? (
+              <Tooltip title={badges.join('、')}>
+                <Badge dot offset={[4, 0]}>
+                  {label}
+                </Badge>
+              </Tooltip>
+            ) : (
+              label
+            );
+          return (
+            <Tabs
+              activeKey={configTab}
+              onChange={(key) => setConfigTab(key as PolicyGroupConfigTab)}
+              items={[
+                { key: 'detection', label: tabLabel('检测', detectionBadges) },
+                { key: 'notice', label: tabLabel('响应', noticeBadges) },
+              ]}
+            />
+          );
+        })()}
+        {configTab === 'detection' ? (() => {
           const notes = policyGroupDetectionNotes({
-            scheduleUniform: detectionGroup?.schedule_uniform,
-            noDataUniform: detectionGroup?.no_data_uniform,
+            scheduleUniform: configGroup?.schedule_uniform,
+            noDataUniform: configGroup?.no_data_uniform,
           });
           const scheduleNote = notes.find((note) => note.includes('检测频率'));
           const noDataNote = notes.find((note) => note.includes('无数据'));
@@ -1421,39 +1527,12 @@ const PolicyGroupPage: React.FC = () => {
         ) : null}
             </>
           );
-        })()}
-      </Drawer>
-      <Drawer
-        title={noticeGroup ? `${noticeGroup.name} 的响应配置` : '响应配置'}
-        open={Boolean(noticeGroup)}
-        width={760}
-        closable={false}
-        onClose={() => setNoticeGroup(null)}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button
-              type="primary"
-              loading={noticeSaving}
-              disabled={
-                noticeLoading ||
-                (noticeEnabled && noticeTypeIds.length === 0) ||
-                (noticeUsersRequired && noticeUserIds.length === 0)
-              }
-              onClick={() => void saveNotice()}
-            >
-              确认
-            </Button>
-            <Button disabled={noticeSaving} onClick={() => setNoticeGroup(null)}>
-              取消
-            </Button>
-          </div>
-        }
-      >
+        })() : (
         <Spin spinning={noticeLoading}>
-          {noticeGroup?.notice_uniform === false ? (
+          {configGroup?.notice_uniform === false ? (
             <div className="mb-3 text-[var(--color-text-3)]">组内规则的通知不一致，保存后会写成同一套。</div>
           ) : null}
-          {noticeGroup?.handlers_uniform === false ? (
+          {configGroup?.handlers_uniform === false ? (
             <div className="mb-3 text-[var(--color-text-3)]">组内规则的处理人不一致，保存后会写成同一套。</div>
           ) : null}
           <div className="mb-3">
@@ -1520,6 +1599,7 @@ const PolicyGroupPage: React.FC = () => {
             </>
           ) : null}
         </Spin>
+        )}
       </Drawer>
       <Drawer
         title="新建策略组"
