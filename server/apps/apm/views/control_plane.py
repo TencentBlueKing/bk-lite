@@ -704,7 +704,7 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             ApmServiceInstanceOrganization,
             fk_name="instance_id",
             for_list=self.action == "list",
-        ).order_by("-last_seen_at", "id")
+        ).order_by("-created_at", "id")
 
     @HasPermission("integration_instances-View")
     def list(self, request, *args, **kwargs):

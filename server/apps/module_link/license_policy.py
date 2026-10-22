@@ -22,6 +22,12 @@ def _load_license_guard():
 
 def apply_module_link_license_exempt(guard_module=None) -> bool:
     """Let EE LicenseAppGuard skip glue URLs so they are not treated as a sellable SKU."""
+    if guard_module is None:
+        from django.apps import apps
+
+        # 社区版目录还在，但没有装入这个 app。直接导入会在模型声明时抛 RuntimeError。
+        if not apps.is_installed("apps.license_mgmt"):
+            return False
     try:
         module = _load_license_guard() if guard_module is None else guard_module
     except ImportError:

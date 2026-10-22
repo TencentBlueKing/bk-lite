@@ -729,6 +729,8 @@ class AlertLifecycleNotifier:
 
     def _resolve_alert_center_item(self, policy):
         query = getattr(policy, "query_condition", None) or {}
+        if isinstance(query, dict) and query.get("type") == "multi":
+            return str(query.get("result_name") or "").strip()
         if not isinstance(query, dict) or query.get("type", "metric") != "metric":
             return ""
         metric_name = str(query.get("metric_name") or "").strip()

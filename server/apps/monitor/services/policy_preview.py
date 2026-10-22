@@ -6,7 +6,10 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.expression.conditions import compile_filter_to_query
 from apps.monitor.expression.errors import FormulaError
 from apps.monitor.expression.query import build_formula_query
-from apps.monitor.expression.validators import validate_formula_condition
+from apps.monitor.expression.validators import (
+    validate_formula_condition,
+    validate_multi_condition,
+)
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.services.chart_unit import (
     convert_vm_result_copy,
@@ -17,6 +20,7 @@ from apps.monitor.tasks.utils.policy_methods import (
     period_to_seconds,
     resolve_result_unit,
 )
+from apps.monitor.tasks.utils.policy_multi import compile_condition_query, condition_policy_like
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
@@ -29,6 +33,8 @@ class PolicyPreviewService:
 
     def preview(self):
         query_condition = self._require_dict("query_condition")
+        if query_condition.get("type") == "multi":
+            return self._preview_multi(query_condition)
         period = self._require_dict("period")
         self._require_value("algorithm")
         step = self._format_period(period)
@@ -74,6 +80,120 @@ class PolicyPreviewService:
             "overlay": False,
             "threshold": self._preview_thresholds(),
             "warnings": self.warnings,
+        }
+
+    def _preview_multi(self, query_condition):
+        period = self._require_dict("period")
+        step = self._format_period(period)
+        try:
+            validated = validate_multi_condition(query_condition)
+        except FormulaError as exc:
+            raise BaseAppException(str(exc)) from exc
+        self.warnings.extend(validated.warnings)
+        queries = query_condition.get("queries") or []
+        filters_by_ref, metrics = self._instance_filters_for_queries(
+            [item for item in queries if item.get("source") != "formula"]
+        )
+        end = int(time.time())
+        points = self._preview_points()
+        start = end - period_to_seconds(period) * points
+        api = VictoriaMetricsAPI()
+        cards = []
+        for condition in queries:
+            if condition.get("source") == "formula":
+                cards.append(self._preview_formula_condition(condition, step, api, start, end))
+                continue
+            metric = metrics[condition["metric_id"]]
+            base_query = compile_filter_to_query(
+                metric.query or "",
+                deepcopy(condition.get("filter") or []),
+                base_filters=filters_by_ref.get(condition.get("ref")) or None,
+            )
+            query = compile_condition_query(self.payload, condition, base_query, step)
+            data = api.query_range(query, start, end, step)
+            self._raise_for_vm_error(data)
+            cards.append(self._preview_condition_card(condition, metric, query, data))
+        first = cards[0]
+        return {
+            "query": first["query"],
+            "data": first["data"],
+            "chart_unit": first["chart_unit"],
+            "result_unit": first["result_unit"],
+            "overlay": False,
+            "threshold": first["threshold"],
+            "warnings": self.warnings,
+            "conditions": cards,
+        }
+
+    def _instance_filters_for_queries(self, queries):
+        preview = self._require_dict("preview")
+        values = preview.get("instance_id_values")
+        if not values:
+            raise BaseAppException("preview.instance_id_values is required")
+        metric_ids = [item["metric_id"] for item in queries]
+        metrics = {metric.id: metric for metric in Metric.objects.filter(id__in=metric_ids)}
+        filters_by_ref = {}
+        for item in queries:
+            metric = metrics.get(item["metric_id"])
+            if not metric:
+                raise BaseAppException(f"metric does not exist [{item['metric_id']}]")
+            filters = []
+            for key, value in zip(getattr(metric, "instance_id_keys", []) or [], values):
+                filters.append(
+                    {
+                        "name": key,
+                        "method": "=~",
+                        "value": self._escape_regex_value(value),
+                    }
+                )
+            filters_by_ref[item.get("ref")] = filters
+        return filters_by_ref, metrics
+
+    def _preview_formula_condition(self, condition, step, api, start, end):
+        formula = {
+            "type": "formula",
+            "result_name": condition.get("metric_name") or condition.get("ref") or "",
+            "expression": condition.get("expression") or "",
+            "queries": condition.get("operands") or [],
+        }
+        compiled = build_formula_query(
+            formula,
+            base_filters_by_ref=self._build_formula_instance_filters(formula),
+        )
+        query = compile_condition_query(self.payload, condition, compiled.query, step)
+        data = api.query_range(query, start, end, step)
+        self._raise_for_vm_error(data)
+        return self._preview_condition_card(
+            condition,
+            None,
+            query,
+            data,
+            metric_name=str(condition.get("metric_name") or condition.get("ref") or ""),
+        )
+
+    def _preview_condition_card(self, condition, metric, query, data, metric_name=None):
+        result_unit = resolve_result_unit(condition_policy_like(self.payload, condition))
+        if not result_unit.conversion_enabled:
+            chart_unit = result_unit.unit or ""
+            source_unit = chart_unit
+        else:
+            chart_unit = condition.get("calculation_unit") or result_unit.unit or ""
+            source_unit = condition.get("metric_unit") or (getattr(metric, "unit", "") if metric else "") or chart_unit
+        data, chart_unit = self._convert_preview_chart(data, source_unit, chart_unit)
+        data["unit"] = UnitConverter.get_display_unit(chart_unit) if chart_unit else ""
+        if not metric_name:
+            metric_name = condition.get("ref")
+            if metric is not None:
+                metric_name = metric.display_name or metric.name or metric_name
+        return {
+            "ref": condition.get("ref"),
+            "role": condition.get("role"),
+            "metric_name": metric_name,
+            "query": query,
+            "data": data,
+            "chart_unit": chart_unit,
+            "result_unit": result_unit.unit,
+            "threshold": deepcopy(condition.get("threshold") or []),
         }
 
     def _comparison_chart_unit(self, result_unit):

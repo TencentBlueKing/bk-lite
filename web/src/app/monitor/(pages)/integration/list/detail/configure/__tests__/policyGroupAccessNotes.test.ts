@@ -30,4 +30,22 @@ describe('policyGroupAccessNotes', () => {
   it('does not warn about missing data before the metric catalog loads', () => {
     expect(policyGroupAccessNotes(rules, 10, [])).toEqual({ kind: 'none' });
   });
+
+  it('requires every condition metric of a multi-metric rule', () => {
+    const multi = [
+      {
+        name: 'CPU 与内存双高',
+        plugin_id: 10,
+        metric_name: 'cpu',
+        metric_names: ['cpu', 'mem'],
+      },
+    ];
+    expect(policyGroupAccessNotes(multi, 10, ['cpu', 'mem'])).toEqual({
+      kind: 'none',
+    });
+    expect(policyGroupAccessNotes(multi, 10, ['cpu'])).toEqual({
+      kind: 'missing',
+      names: ['CPU 与内存双高'],
+    });
+  });
 });

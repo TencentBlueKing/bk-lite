@@ -5,7 +5,7 @@ from typing import Any, Iterable
 import yaml
 
 from apps.log.services.log_event_contract import NORMALIZE_EVENT_VRL, PREPARE_VICTORIA_LOGS_VRL
-from apps.log.services.log_extractor.semantics import NormalizedRule, normalize_rule, parse_path
+from apps.log.services.log_extractor.semantics import PROTECTED_FIELDS, NormalizedRule, normalize_rule, parse_path
 
 SYSTEM_VECTOR_CONFIG_CONTRACT_VERSION = 1
 SYSTEM_VECTOR_CONFIG_VERSION_PREFIX = "# bk-lite-system-vector-contract-version: "
@@ -154,8 +154,10 @@ def _compile_assignments(rule: NormalizedRule) -> list[str]:
                     "    del(_parsed.timestamp)",
                     "    del(_parsed.collect_timestamp)",
                     "    if length(_parsed) > 0 {",
-                    "      . = merge(., _parsed)",
-                    "      _extract_ok = true",
+                    "      ., _merge_err = merge(., _parsed)",
+                    "      if _merge_err == null {",
+                    "        _extract_ok = true",
+                    "      }",
                     "    }",
                 ]
             )
@@ -168,27 +170,20 @@ def _compile_assignments(rule: NormalizedRule) -> list[str]:
                 "  if _err == null {",
             ]
         )
-        mapping = config["group_mapping"]
-        if mapping:
-            for key, output in sorted(mapping.items()):
-                lines.extend(
-                    [
-                        f"    _value, _get_err = get(_parsed, [{_vrl_string(key)}])",
-                        "    if _get_err == null && _value != null {",
-                        f"      {_vrl_path(output)} = _value",
-                        "      _extract_ok = true",
-                        "    }",
-                    ]
-                )
-        else:
+        mapping = dict(config["group_mapping"])
+        if not mapping:
+            # 捕获组名在保存时已经确定。逐个赋值与复制规则相同，避免把 `.` 当成 any 去做 merge。
+            mapping = {
+                name: name
+                for name in re.compile(config["pattern"]).groupindex
+                if name not in PROTECTED_FIELDS
+            }
+        for key, output in sorted(mapping.items()):
             lines.extend(
                 [
-                    "    del(_parsed.instance_id)",
-                    "    del(_parsed.source_type)",
-                    "    del(_parsed.timestamp)",
-                    "    del(_parsed.collect_timestamp)",
-                    "    if length(_parsed) > 0 {",
-                    "      . = merge(., _parsed)",
+                    f"    _value, _get_err = get(_parsed, [{_vrl_string(key)}])",
+                    "    if _get_err == null && _value != null {",
+                    f"      {_vrl_path(output)} = _value",
                     "      _extract_ok = true",
                     "    }",
                 ]
@@ -224,8 +219,10 @@ def _compile_assignments(rule: NormalizedRule) -> list[str]:
                     "    del(_parsed.timestamp)",
                     "    del(_parsed.collect_timestamp)",
                     "    if length(_parsed) > 0 {",
-                    "      . = merge(., _parsed)",
-                    "      _extract_ok = true",
+                    "      ., _merge_err = merge(., _parsed)",
+                    "      if _merge_err == null {",
+                    "        _extract_ok = true",
+                    "      }",
                     "    }",
                 ]
             )

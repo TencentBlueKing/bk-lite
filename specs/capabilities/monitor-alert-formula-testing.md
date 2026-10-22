@@ -136,4 +136,6 @@ cd web
 ## 口径说明
 
 - 多指标公式统一以 `query_condition.queries[0]` 作为 anchor。表达式变量出现顺序不改变最终告警身份、维度或实例归属。
+- 2026-10-20 起，策略页用显式模式选择单指标、计算指标、多指标条件。行数不再把两行以上自动升成 `formula`；计算指标必须显式选择。`query_condition.type=multi` 是另一条契约，见 `specs/changes/monitor-policy-multi-metric/spec.md`。本文件的公式用例仍要求显式 `formula`。
+- 2026-10-21 起，页面第一层是单条件 / 多条件，条件卡内再选原生指标 / 计算指标。单条件·计算仍保存为 `formula`。多条件里的计算条目是 `queries[].source = formula`，不是第四种 `query_condition.type`。见 `specs/changes/monitor-policy-condition-source/spec.md`。
 - 因此 `a / b`、`b / a`、`(b / a) * 100` 均可作为合法表达式；只要所有变量存在、均被引用、至少引用两个不同变量，且非 anchor 指标维度不包含 anchor 外额外维度即可。

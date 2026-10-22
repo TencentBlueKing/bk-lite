@@ -6,6 +6,7 @@ from django.db import transaction
 
 from apps.monitor.models import MonitorEventRawData, MonitorAlertMetricSnapshot
 from apps.monitor.tasks.utils.policy_calculate import _parse_finite_float
+from apps.monitor.tasks.utils.policy_multi import first_level_query, is_multi_query
 from apps.monitor.tasks.utils.policy_methods import (
     COMPARE_MODE_ABSOLUTE,
     period_to_seconds,
@@ -130,6 +131,9 @@ class SnapshotRecorder:
         if not wanted:
             return {}
 
+        if self._is_multi():
+            return self._query_multi_fallback_raw_data_map(wanted, list(dict.fromkeys(instance_ids)))
+
         data = self.metric_query_service.query_policy_window_metrics(
             self.policy.period, list(dict.fromkeys(instance_ids))
         )
@@ -247,6 +251,30 @@ class SnapshotRecorder:
         group_by_keys = self.metric_query_service.get_result_group_by()
         instance_ids = [monitor_instance_id] if monitor_instance_id else None
 
+        if self._is_multi():
+            try:
+                raw_data = self._query_multi_raw_for_instance(
+                    metric_instance_id,
+                    instance_ids,
+                    end_timestamp=int(pre_alert_time.timestamp()),
+                )
+            except Exception as exc:
+                logger.error(f"Failed to query pre-alert metrics for policy {self.policy.id}: {exc}")
+                return None
+            if not raw_data:
+                logger.warning(
+                    f"No pre-alert data found for policy {self.policy.id}, "
+                    f"metric_instance {metric_instance_id} at time {pre_alert_time.isoformat()}"
+                )
+                return None
+            snapshot = {
+                "type": "pre_alert",
+                "snapshot_time": pre_alert_time.isoformat(),
+                "raw_data": raw_data,
+            }
+            snapshot.update(self._compare_fields_for_raw(metric_instance_id, raw_data))
+            return snapshot
+
         try:
             pre_alert_metrics = self.metric_query_service.query_policy_window_metrics(
                 self.policy.period,
@@ -290,7 +318,72 @@ class SnapshotRecorder:
         event_value = getattr(event_obj, "value", None) if event_obj is not None else None
         return self._compare_fields_for_raw(metric_id, raw_data, event_value)
 
+    def _is_multi(self) -> bool:
+        return is_multi_query(getattr(self.policy, "query_condition", None) or {})
+
+    def _query_multi_fallback_raw_data_map(self, wanted, instance_ids):
+        fallback = {}
+        for metric_instance_id in wanted:
+            raw_data = self._query_multi_raw_for_instance(metric_instance_id, instance_ids)
+            if raw_data:
+                fallback[metric_instance_id] = raw_data
+        return fallback
+
+    def _query_multi_raw_for_instance(self, metric_instance_id, instance_ids, end_timestamp=None):
+        payloads = self.metric_query_service.query_multi_window_metrics(
+            self.policy.period,
+            instance_ids=instance_ids,
+            end_timestamp=end_timestamp,
+        )
+        converted = {}
+        for condition in self.metric_query_service.multi_conditions():
+            ref = condition.get("ref")
+            converted[ref] = self.metric_query_service.convert_condition_values(
+                payloads.get(ref) or {"data": {"result": []}},
+                condition,
+            )
+        return self._assemble_multi_raw(converted, metric_instance_id)
+
+    def _assemble_multi_raw(self, payloads_by_ref, metric_instance_id):
+        conditions = self.metric_query_service.multi_conditions()
+        if not conditions:
+            return {}
+        anchor = conditions[0]
+        anchor_group_by = list(anchor.get("group_by") or [])
+        anchor_item = None
+        for item in (payloads_by_ref.get(anchor.get("ref")) or {}).get("data", {}).get("result", []):
+            key = str(tuple((item.get("metric") or {}).get(label) for label in anchor_group_by))
+            if key == metric_instance_id:
+                anchor_item = item
+                break
+        if anchor_item is None:
+            return {}
+        series = {anchor.get("ref"): anchor_item}
+        condition_values = {}
+        anchor_value = _last_series_value(anchor_item)
+        if anchor_value is not None:
+            condition_values[anchor.get("ref")] = anchor_value
+        for condition in conditions[1:]:
+            ref = condition.get("ref")
+            group_by = list(condition.get("group_by") or [])
+            join_key = tuple((anchor_item.get("metric") or {}).get(label) for label in group_by)
+            matched = None
+            for item in (payloads_by_ref.get(ref) or {}).get("data", {}).get("result", []):
+                item_key = tuple((item.get("metric") or {}).get(label) for label in group_by)
+                if item_key == join_key:
+                    matched = item
+                    break
+            if matched is None:
+                return {}
+            series[ref] = matched
+            value = _last_series_value(matched)
+            if value is not None:
+                condition_values[ref] = value
+        return {"series": series, "condition_values": condition_values}
+
     def _compare_fields_for_raw(self, metric_instance_id, raw_data, event_value=None):
+        if isinstance(raw_data, dict) and isinstance(raw_data.get("series"), dict):
+            return self._multi_compare_fields(raw_data, event_value)
         compared = _parse_finite_float(event_value)
         if compared is None:
             values = (raw_data or {}).get("values") or []
@@ -310,3 +403,29 @@ class SnapshotRecorder:
             "compared_value": compared,
             "result_unit": result_unit,
         }
+
+    def _multi_compare_fields(self, raw_data, event_value=None):
+        primary = first_level_query(getattr(self.policy, "query_condition", None) or {})
+        ref = primary.get("ref")
+        series = (raw_data.get("series") or {}).get(ref) or {}
+        compared = _parse_finite_float(event_value)
+        if compared is None:
+            compared = _last_series_value(series)
+        condition_values = raw_data.get("condition_values") or {}
+        result_unit = ""
+        if primary and hasattr(self.metric_query_service, "condition_result_unit"):
+            result_unit = self.metric_query_service.condition_result_unit(primary) or ""
+        return {
+            "current_value": compared,
+            "baseline_value": None,
+            "compared_value": compared,
+            "result_unit": result_unit,
+            "condition_values": condition_values,
+        }
+
+
+def _last_series_value(series_item):
+    values = (series_item or {}).get("values") or []
+    if values and isinstance(values[-1], (list, tuple)) and len(values[-1]) >= 2:
+        return _parse_finite_float(values[-1][1])
+    return None

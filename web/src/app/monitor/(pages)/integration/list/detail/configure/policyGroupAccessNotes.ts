@@ -2,6 +2,7 @@ export interface PolicyGroupAccessRule {
   name: string;
   plugin_id: number | string;
   metric_name?: string;
+  metric_names?: string[];
 }
 
 export type PolicyGroupAccessNote =
@@ -19,13 +20,16 @@ export const policyGroupAccessNotes = (
   );
   if (!mine.length) return { kind: 'no-plugin-rules' };
   if (!pluginMetricNames.length) return { kind: 'none' };
-  const names = mine
-    .filter(
-      (rule) =>
-        Boolean(rule.metric_name) &&
-        !pluginMetricNames.includes(rule.metric_name || ''),
-    )
-    .map((rule) => rule.name);
+  const missingMetric = (rule: PolicyGroupAccessRule) => {
+    if (rule.metric_names?.length) {
+      return rule.metric_names.some((name) => !pluginMetricNames.includes(name));
+    }
+    return (
+      Boolean(rule.metric_name) &&
+      !pluginMetricNames.includes(rule.metric_name || '')
+    );
+  };
+  const names = mine.filter(missingMetric).map((rule) => rule.name);
   if (!names.length) return { kind: 'none' };
   return { kind: 'missing', names };
 };
