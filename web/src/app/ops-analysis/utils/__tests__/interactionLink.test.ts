@@ -1059,8 +1059,8 @@ test('interaction dropdown group names exist in Chinese and English', () => {
   assert.equal(en.interactionChartTooltipHint, '{name} ↗ Click to open');
   assert.equal(zh.interactionHoverHint, '点击打开：{name}');
   assert.equal(en.interactionHoverHint, 'Click to open: {name}');
-  assert.equal(zh.interactionContextHint, '右键打开链接');
-  assert.equal(en.interactionContextHint, 'Right-click to open link');
+  assert.equal(zh.interactionContextHint, undefined);
+  assert.equal(en.interactionContextHint, undefined);
   assert.equal(zh.interactionOpen, '打开链接');
   assert.equal(en.interactionOpen, 'Open link');
   assert.equal(zh.interactionUrlRequired, '请输入 URL');
@@ -1077,14 +1077,14 @@ test('interaction dropdown group names exist in Chinese and English', () => {
     assert.equal(zh[key], undefined);
     assert.equal(en[key], undefined);
   }
-  assert.equal(zh.interactionLinkTypeTitleTip, '标题链接：标题旁显示图标');
-  assert.equal(en.interactionLinkTypeTitleTip, 'Title link: an icon appears beside the title');
+  assert.equal(zh.interactionLinkTypeTitleTip, '标题链接：标题行最右侧显示 > 图标');
+  assert.equal(en.interactionLinkTypeTitleTip, 'Title link: a > icon appears at the far right of the title row');
   assert.equal(zh.interactionLinkTypeDataTip, '数据链接：点击数据点、柱、扇区或数字打开');
   assert.equal(en.interactionLinkTypeDataTip, 'Data link: click a point, bar, sector, or number to open');
-  assert.equal(zh.interactionTitleOnlyTip, '该组件仅支持标题链接，点击标题旁图标打开');
-  assert.equal(en.interactionTitleOnlyTip, 'This widget only supports a title link. Click the icon beside the title to open.');
-  assert.equal(zh.interactionTextTitleTip, '标题链接：文本后显示图标');
-  assert.equal(en.interactionTextTitleTip, 'Title link: an icon appears after the text');
+  assert.equal(zh.interactionTitleOnlyTip, '该组件仅支持标题链接，点击标题行最右侧 > 打开');
+  assert.equal(en.interactionTitleOnlyTip, 'This widget only supports a title link. Click the > at the far right of the title row to open.');
+  assert.equal(zh.interactionTextTitleTip, '标题链接：文本行最右侧显示 > 图标');
+  assert.equal(en.interactionTextTitleTip, 'Title link: a > icon appears at the far right of the text row');
   assert.equal(zh.interactionUrlPlaceholder, '输入 URL，键入 $ 插入变量');
   assert.equal(en.interactionUrlPlaceholder, 'Enter a URL, type $ to insert a variable');
   for (const key of [

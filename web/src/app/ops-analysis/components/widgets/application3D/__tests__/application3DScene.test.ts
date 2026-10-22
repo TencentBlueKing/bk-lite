@@ -561,13 +561,11 @@ describe('application3D architecture scene', () => {
     controller.dispose();
   });
 
-  it('reports wall-card hover through a callback and never writes the canvas title', () => {
-    const onLinkHover = vi.fn();
+  it('uses a pointer cursor on a wall card and never writes a hover title', () => {
     const controller = createApplication3DScene(mount, {
       interactive: true,
       translate: (_id, fallback = '') => fallback,
       onSelect: () => undefined,
-      onLinkHover,
     });
     controller.reconcile([wallItem], { playIntro: false });
     flushFrames();
@@ -576,48 +574,22 @@ describe('application3D architecture scene', () => {
 
     canvas.dispatchEvent(new PointerEvent('pointermove', point));
     expect(canvas.title).toBe('');
-    expect(onLinkHover).toHaveBeenCalled();
-    expect(onLinkHover.mock.calls.at(-1)?.[0]).toMatchObject({
-      id: 'sys-1',
-      name: '门户系统',
-      kind: 'wall',
-      x: 160,
-      y: 90,
-    });
+    expect(canvas.style.cursor).toBe('pointer');
 
-    let card: THREE.Object3D | undefined;
-    captured.scene?.traverse((child) => {
-      if (child.userData.applicationId === 'sys-1') card = child;
-    });
-    vi.spyOn(THREE.Raycaster.prototype, 'intersectObjects').mockImplementation(() => (
-      card
-        ? [{
-          object: card,
-          distance: 1,
-          point: new THREE.Vector3(),
-          distanceToRay: 0,
-        }] as THREE.Intersection[]
-        : []
-    ));
-    onLinkHover.mockClear();
+    const raycaster = vi.spyOn(THREE.Raycaster.prototype, 'intersectObjects').mockImplementation(() => []);
     canvas.dispatchEvent(new PointerEvent('pointermove', {
       clientX: 188,
       clientY: 104,
       bubbles: true,
     }));
-    expect(onLinkHover.mock.calls.at(-1)?.[0]).toMatchObject({
-      id: 'sys-1',
-      kind: 'wall',
-      x: 188,
-      y: 104,
-    });
+    expect(canvas.style.cursor).toBe('grab');
+    expect(canvas.title).toBe('');
 
-    onLinkHover.mockClear();
     canvas.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 0 }));
-    expect(onLinkHover).toHaveBeenCalledWith(null);
     canvas.dispatchEvent(new PointerEvent('pointerup', { ...point, button: 0 }));
     canvas.dispatchEvent(new PointerEvent('pointerleave'));
     expect(canvas.title).toBe('');
+    raycaster.mockRestore();
     controller.dispose();
   });
 
@@ -1530,13 +1502,11 @@ describe('application3D architecture host pick', () => {
     controller.dispose();
   });
 
-  it('reports architecture hover near the pointer and clears it while dragging', () => {
-    const onLinkHover = vi.fn();
+  it('keeps a pointer cursor in architecture and never writes a hover title', () => {
     const controller = createApplication3DScene(mount, {
       interactive: true,
       translate: (_id, fallback = '') => fallback,
       onSelect: () => undefined,
-      onLinkHover,
     });
     controller.reconcile([wallItem], { playIntro: false });
     flushFrames();
@@ -1547,30 +1517,18 @@ describe('application3D architecture host pick', () => {
     mockHit(findRackMesh('host-alarm'));
     canvas.dispatchEvent(new PointerEvent('pointermove', point));
     expect(canvas.title).toBe('');
-    expect(onLinkHover.mock.calls.at(-1)?.[0]).toMatchObject({
-      id: 'host-alarm',
-      name: 'web-alarm',
-      kind: 'host',
-      x: point.clientX,
-      y: point.clientY,
-    });
+    expect(canvas.style.cursor).toBe('pointer');
 
-    onLinkHover.mockClear();
     mockHit(findRackMesh('app-1'));
     canvas.dispatchEvent(new PointerEvent('pointermove', {
       clientX: point.clientX + 12,
       clientY: point.clientY + 8,
       bubbles: true,
     }));
-    expect(onLinkHover.mock.calls.at(-1)?.[0]).toMatchObject({
-      id: 'app-1',
-      name: '门户',
-      kind: 'application',
-    });
+    expect(canvas.style.cursor).toBe('pointer');
+    expect(canvas.title).toBe('');
 
-    onLinkHover.mockClear();
     canvas.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 0 }));
-    expect(onLinkHover).toHaveBeenCalledWith(null);
     expect(canvas.title).toBe('');
     controller.dispose();
   });

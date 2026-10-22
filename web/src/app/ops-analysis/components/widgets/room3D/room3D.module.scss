@@ -320,16 +320,6 @@
   white-space: nowrap;
 }
 
-.tooltipHint {
-  margin-top: calc(2px * var(--room3d-readable-scale));
-  padding-top: calc(4px * var(--room3d-readable-scale));
-  border-top: 1px solid var(--room3d-border);
-  color: var(--room3d-muted-text);
-  font-size: calc(11px * var(--room3d-readable-scale));
-  line-height: calc(15px * var(--room3d-readable-scale));
-  font-weight: 400;
-}
-
 .infoPanel {
   position: absolute;
   left: calc(10px * var(--room3d-readable-scale));
