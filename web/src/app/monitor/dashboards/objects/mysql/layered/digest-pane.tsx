@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import { Input } from 'antd';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import type { EntityTableRow } from '../../host/entity-series';
-import LayeredEntityTable from '../../host/layered/entity-table';
+import LayeredEntityTable, { type LayeredColumn } from '../../host/layered/entity-table';
 import TableCsvExportButton from '../../host/layered/table-csv-export';
 import { GrayTabEmptyState, ProDashLoading, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
@@ -75,13 +76,29 @@ const statementLabel = (key: StatementColumn, row: MysqlStatementRow) => {
   return formatCallCount(row.rowsExamined);
 };
 
+const compareNumber = (left: number | null | undefined, right: number | null | undefined) => {
+  const a = left == null || !Number.isFinite(left) ? Number.NEGATIVE_INFINITY : left;
+  const b = right == null || !Number.isFinite(right) ? Number.NEGATIVE_INFINITY : right;
+  return a - b;
+};
+
 const statementEntities = (rows: readonly MysqlStatementRow[]): EntityTableRow[] => (
   rows.map((row) => {
     const labels: Record<string, string> = {};
-    statementColumns(rows).forEach((key) => {
+    (['sql', 'timeShare', 'calls', 'avgSeconds', 'rowsExamined'] as const).forEach((key) => {
       labels[key] = statementLabel(key, row);
     });
-    return { key: row.id, labels, values: {}, series: {} };
+    return {
+      key: row.id,
+      labels,
+      values: {
+        timeShare: row.timeShare ?? null,
+        calls: row.calls ?? null,
+        avgSeconds: row.avgSeconds ?? null,
+        rowsExamined: row.rowsExamined ?? null
+      },
+      series: {}
+    };
   })
 );
 
@@ -99,12 +116,85 @@ const waitLabel = (key: WaitColumn, row: MysqlWaitEventRow) => {
 const waitEntities = (rows: readonly MysqlWaitEventRow[]): EntityTableRow[] => (
   rows.map((row) => {
     const labels: Record<string, string> = {};
-    waitColumns(rows).forEach((key) => {
+    (['name', 'waits', 'timeMs'] as const).forEach((key) => {
       labels[key] = waitLabel(key, row);
     });
-    return { key: row.id, labels, values: {}, series: {} };
+    return {
+      key: row.id,
+      labels,
+      values: {
+        waits: row.waits ?? null,
+        timeMs: row.timeMs ?? null
+      },
+      series: {}
+    };
   })
 );
+
+const matchesQuery = (value: string, query: string) => (
+  !query || value.toLowerCase().includes(query)
+);
+
+type DashText = Parameters<typeof mysqlCategoryText>[0];
+
+const statementTableColumns = (
+  t: DashText,
+  source: readonly MysqlStatementRow[],
+  defaultTimeShare: boolean
+): LayeredColumn[] => statementColumns(source).map((key) => ({
+  key,
+  title: mysqlCategoryText(t, STATEMENT_TITLE_KEYS[key]),
+  align: key === 'sql' ? 'left' as const : 'right' as const,
+  ellipsis: key !== 'sql',
+  defaultSortOrder: defaultTimeShare && key === 'timeShare' ? 'descend' as const : undefined,
+  sorter: key === 'sql'
+    ? (left, right) => (left.labels.sql || '').localeCompare(right.labels.sql || '')
+    : (left, right) => compareNumber(left.values[key], right.values[key]),
+  render: (entity: EntityTableRow) => (
+    key === 'sql'
+      ? <span className={pro.sqlCell}>{entity.labels.sql || '--'}</span>
+      : (entity.labels[key] || '--')
+  ),
+  csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
+}));
+
+const waitTableColumnsOf = (
+  t: DashText,
+  source: readonly MysqlWaitEventRow[]
+): LayeredColumn[] => waitColumns(source).map((key) => ({
+  key,
+  title: mysqlCategoryText(t, WAIT_TITLE_KEYS[key]),
+  align: key === 'name' ? 'left' as const : 'right' as const,
+  ellipsis: key !== 'name',
+  defaultSortOrder: key === 'timeMs' ? 'descend' as const : undefined,
+  sorter: key === 'name'
+    ? (left, right) => (left.labels.name || '').localeCompare(right.labels.name || '')
+    : (left, right) => (left.values[key] || 0) - (right.values[key] || 0),
+  render: (entity: EntityTableRow) => entity.labels[key] || '--',
+  csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
+}));
+
+function TableSearch({
+  value,
+  onChange,
+  placeholder
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <Input
+      allowClear
+      size="small"
+      value={value}
+      placeholder={placeholder}
+      aria-label={placeholder}
+      onChange={(event) => onChange(event.target.value)}
+      className="w-52"
+    />
+  );
+}
 
 const csvHost = (instanceName: string) => instanceName.trim() || 'mysql';
 
@@ -192,20 +282,12 @@ export function StatementPane({
   onOpenCollection
 }: StatementPaneProps) {
   const { t } = useDashboardText();
+  const [sqlQuery, setSqlQuery] = useState('');
+  const query = sqlQuery.trim().toLowerCase();
+  const visibleRows = rows.filter((row) => matchesQuery(row.sql || '', query));
   const selected = rows.find((row) => row.id === selectedId) || rows[0];
-  const entities = statementEntities(rows);
-  const columns = statementColumns(rows).map((key) => ({
-    key,
-    title: mysqlCategoryText(t, STATEMENT_TITLE_KEYS[key]),
-    align: key === 'sql' ? 'left' as const : 'right' as const,
-    ellipsis: key !== 'sql',
-    render: (entity: EntityTableRow) => (
-      key === 'sql'
-        ? <span className={pro.sqlCell}>{entity.labels.sql || '--'}</span>
-        : (entity.labels[key] || '--')
-    ),
-    csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
-  }));
+  const entities = statementEntities(visibleRows);
+  const columns = statementTableColumns(t, rows, true);
   const primaryWait = selected ? primaryWaitForStatement(selected.id, waits) : null;
   const hasRows = rows.length > 0;
   if (!hasRows) {
@@ -249,17 +331,21 @@ export function StatementPane({
         scrollY={false}
         selectedKey={selected?.id || ''}
         onSelect={onSelect}
-        emptyText={emptyCopy({
-          title: mysqlCategoryText(t, 'emptyStatementsTitle'),
-          hint: mysqlCategoryText(t, 'emptyStatementsHint')
-        })}
+        emptyText={emptyCopy({ title: mysqlCategoryText(t, 'noMatch') })}
         toolbar={(
-          <TableCsvExportButton
-            host={csvHost(instanceName)}
-            slug="statements"
-            columns={columns}
-            rows={entities}
-          />
+          <div className="flex items-center gap-2">
+            <TableSearch
+              value={sqlQuery}
+              onChange={setSqlQuery}
+              placeholder={mysqlCategoryText(t, 'searchSql')}
+            />
+            <TableCsvExportButton
+              host={csvHost(instanceName)}
+              slug="statements"
+              columns={columns}
+              rows={entities}
+            />
+          </div>
         )}
       />
     </div>
@@ -290,32 +376,17 @@ export function WaitPane({
   onOpenCollection
 }: WaitPaneProps) {
   const { t } = useDashboardText();
+  const [eventQuery, setEventQuery] = useState('');
+  const query = eventQuery.trim().toLowerCase();
+  const visibleRows = rows.filter((row) => matchesQuery(row.name || '', query));
   // 有列表就选中一行。当前 id 还在就保留，否则用排序后的第一行（常见是 idle）。
   const selected = rows.find((row) => row.id === selectedId) || rows[0] || null;
   const related = relatedStatementRows(selected, statements);
   const relatedRows = related ?? [];
-  const waitTableRows = waitEntities(rows);
-  const waitTableColumns = waitColumns(rows).map((key) => ({
-    key,
-    title: mysqlCategoryText(t, WAIT_TITLE_KEYS[key]),
-    align: key === 'name' ? 'left' as const : 'right' as const,
-    ellipsis: key !== 'name',
-    render: (entity: EntityTableRow) => entity.labels[key] || '--',
-    csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
-  }));
+  const waitTableRows = waitEntities(visibleRows);
+  const waitTableColumns = waitTableColumnsOf(t, rows);
   const relatedTableRows = statementEntities(relatedRows);
-  const relatedTableColumns = statementColumns(relatedRows).map((key) => ({
-    key,
-    title: mysqlCategoryText(t, STATEMENT_TITLE_KEYS[key]),
-    align: key === 'sql' ? 'left' as const : 'right' as const,
-    ellipsis: key !== 'sql',
-    render: (entity: EntityTableRow) => (
-      key === 'sql'
-        ? <span className={pro.sqlCell}>{entity.labels.sql || '--'}</span>
-        : (entity.labels[key] || '--')
-    ),
-    csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
-  }));
+  const relatedTableColumns = statementTableColumns(t, relatedRows, true);
   const exportHost = csvHost(instanceName);
   const hasRows = rows.length > 0;
   if (!hasRows) {
@@ -369,17 +440,21 @@ export function WaitPane({
         onSelect={(key) => {
           if (key) onSelect(key);
         }}
-        emptyText={emptyCopy({
-          title: mysqlCategoryText(t, 'emptyWaitsTitle'),
-          hint: mysqlCategoryText(t, 'emptyWaitsHint')
-        })}
+        emptyText={emptyCopy({ title: mysqlCategoryText(t, 'noMatch') })}
         toolbar={(
-          <TableCsvExportButton
-            host={exportHost}
-            slug="waits"
-            columns={waitTableColumns}
-            rows={waitTableRows}
-          />
+          <div className="flex items-center gap-2">
+            <TableSearch
+              value={eventQuery}
+              onChange={setEventQuery}
+              placeholder={mysqlCategoryText(t, 'searchWait')}
+            />
+            <TableCsvExportButton
+              host={exportHost}
+              slug="waits"
+              columns={waitTableColumns}
+              rows={waitTableRows}
+            />
+          </div>
         )}
       />
       <ProSectionTitle>{mysqlCategoryText(t, 'relatedStatements')}</ProSectionTitle>

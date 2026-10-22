@@ -17,7 +17,7 @@ export const MYSQL_IA_TABS = [
   { key: 'overview', label: '概览' },
   { key: 'performance', label: '性能' },
   { key: 'replication', label: '复制' },
-  { key: 'statements', label: '语句' },
+  { key: 'statements', label: 'Top SQL' },
   { key: 'waits', label: '等待' }
 ] as const;
 

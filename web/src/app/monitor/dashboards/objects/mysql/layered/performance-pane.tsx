@@ -228,6 +228,14 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     () => seriesOf(metricMap.mysql_innodb_row_lock_time_avg),
     [metricMap.mysql_innodb_row_lock_time_avg?.viewData]
   );
+  const scanSeries = useMemo(() => mergeChartSeriesAligned([
+    { key: 'slow', label: mysqlCategoryText(t, 'kpiSlow'), data: slowQueries },
+    { key: 'selectScan', label: mysqlCategoryText(t, 'selectScan'), data: selectScan }
+  ]), [slowQueries, selectScan, t]);
+  const lockSeries = useMemo(() => mergeChartSeriesAligned([
+    { key: 'rowLockWaits', label: mysqlCategoryText(t, 'rowLockWaits'), data: rowLockWaits },
+    { key: 'deadlocks', label: mysqlCategoryText(t, 'deadlocks'), data: deadlocks }
+  ]), [rowLockWaits, deadlocks, t]);
   const lockWaitThreads = useMemo(
     () => seriesOf(metricMap.mysql_process_list_threads_waiting_for_lock),
     [metricMap.mysql_process_list_threads_waiting_for_lock?.viewData]
@@ -293,8 +301,14 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const lockWaitAwaiting = slotLoading(['mysql_process_list_threads_waiting_for_lock'], lockWaitThreads);
   const tmpDiskAwaiting = slotLoading(['mysql_tmp_disk_table_ratio'], tmpDisk);
   const tableLockAwaiting = slotLoading(['mysql_table_locks_waited_rate'], tableLockWaits);
-  const deadlockAwaiting = slotLoading(['mysql_innodb_deadlocks_rate'], deadlocks);
-  const slowAwaiting = slotLoading(['mysql_slow_queries_rate'], slowQueries);
+  const scanAwaiting = slotLoading(
+    ['mysql_slow_queries_rate', 'mysql_select_scan_rate'],
+    scanSeries
+  );
+  const locksAwaiting = slotLoading(
+    ['mysql_innodb_row_lock_waits_rate', 'mysql_innodb_deadlocks_rate'],
+    lockSeries
+  );
   const empty = mysqlCategoryText(t, 'noCollectData');
 
   const innodbCard = innodbHasLoad(metricMap) || innodbAwaiting ? (
@@ -336,12 +350,11 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const showDirtyPages = dirtyPagesAwaiting || dirtyPages.length > 0;
   const showDataFsyncs = dataFsyncsAwaiting || dataFsyncs.length > 0;
   const showLogWaits = logWaitsAwaiting || logWaits.length > 0;
-  const showDeadlocks = deadlockAwaiting || deadlocks.length > 0;
-  const showSlow = slowQueries.length > 0 || slowAwaiting;
-  const showSelectScan = selectScan.length > 0;
-  const showRowLockWaits = rowLockWaits.length > 0;
+  const showScan = scanAwaiting || scanSeries.length > 0;
+  const showLocks = locksAwaiting || lockSeries.length > 0;
   const showRowLockTime = rowLockTime.length > 0;
-  const scanLockCount = 3 + [showSlow, showSelectScan, showRowLockWaits, showRowLockTime, showDeadlocks, showLogWaits].filter(Boolean).length;
+  const mergedScanLockCount = [showScan, showLocks, showRowLockTime].filter(Boolean).length;
+  const scanLockCount = 3 + (showLogWaits ? 1 : 0);
   const cardClass = (wide: boolean) => (wide ? `min-w-0 ${pro.perfWide}` : 'min-w-0');
   const sectionStack = 'flex min-w-0 flex-col gap-3';
   const writeInnodbPair = showWrites && showInnodb;
@@ -666,80 +679,6 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                 }]}
               />
             </div>
-            {showSlow ? (
-              <div className="min-w-0">
-                <ThinTimeSeries
-                  title={mysqlCategoryText(t, 'kpiSlow')}
-                  hint={mysqlCategoryText(t, 'slowQueriesHint')}
-                  loading={slowAwaiting}
-                  unit="cps"
-                  data={slowQueries.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText={empty}
-                  legends={[{ label: mysqlCategoryText(t, 'kpiSlow'), color: HOST_SERIES_COLOR.load1 }]}
-                />
-              </div>
-            ) : null}
-            {showSelectScan ? (
-              <div className="min-w-0">
-                <ThinTimeSeries
-                  title={mysqlCategoryText(t, 'selectScan')}
-                  hint={mysqlCategoryText(t, 'selectScanHint')}
-                  unit="cps"
-                  data={selectScan.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText={empty}
-                  legends={[{ label: mysqlCategoryText(t, 'selectScan'), color: HOST_SERIES_COLOR.memAvailable }]}
-                />
-              </div>
-            ) : null}
-            {showRowLockWaits ? (
-              <div className="min-w-0">
-                <ThinTimeSeries
-                  title={mysqlCategoryText(t, 'rowLockWaits')}
-                  hint={mysqlCategoryText(t, 'rowLockWaitsHint')}
-                  unit="cps"
-                  data={rowLockWaits.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText={empty}
-                  legends={[{
-                    label: mysqlCategoryText(t, 'rowLockWaits'),
-                    color: HOST_PALETTE.orange,
-                    reading: rateReading(metricMap.mysql_innodb_row_lock_waits_rate)
-                  }]}
-                />
-              </div>
-            ) : null}
-            {showDeadlocks ? (
-              <div className="min-w-0">
-                <ThinTimeSeries
-                  title={mysqlCategoryText(t, 'deadlocks')}
-                  hint={mysqlCategoryText(t, 'deadlocksHint')}
-                  loading={deadlockAwaiting}
-                  unit="cps"
-                  data={deadlocks.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText={empty}
-                  legends={[{
-                    label: mysqlCategoryText(t, 'deadlocks'),
-                    color: HOST_PALETTE.rose,
-                    reading: rateReading(metricMap.mysql_innodb_deadlocks_rate)
-                  }]}
-                />
-              </div>
-            ) : null}
-            {showRowLockTime ? (
-              <div className="min-w-0">
-                <ThinTimeSeries
-                  title={mysqlCategoryText(t, 'rowLockTime')}
-                  hint={mysqlCategoryText(t, 'rowLockTimeHint')}
-                  unit="ms"
-                  data={rowLockTime.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText={empty}
-                  legends={[{
-                    label: mysqlCategoryText(t, 'rowLockTime'),
-                    color: HOST_PALETTE.rose,
-                    reading: durationReading(metricMap.mysql_innodb_row_lock_time_avg)
-                  }]}
-                />
-              </div>
-            ) : null}
             {showLogWaits ? (
               <div id="mysql-perf-log-waits" className="min-w-0">
                 <ThinTimeSeries
@@ -758,6 +697,80 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
           </div>
+          {mergedScanLockCount > 0 ? (
+            <div
+              className={`${pro.perfGrid} ${pro.perfFill}`}
+              data-perf-section="scan-lock-merged"
+              data-perf-count={mergedScanLockCount}
+            >
+              {showScan ? (
+                <div className={cardClass(mergedScanLockCount === 1)}>
+                  <ThinTimeSeries
+                    title={mysqlCategoryText(t, 'scan')}
+                    hint={mysqlCategoryText(t, 'scanHint')}
+                    loading={scanAwaiting}
+                    unit="cps"
+                    data={scanSeries}
+                    emptyText={empty}
+                    keepLegend
+                    legends={[
+                      {
+                        label: mysqlCategoryText(t, 'kpiSlow'),
+                        color: HOST_SERIES_COLOR.load1,
+                        reading: rateReading(metricMap.mysql_slow_queries_rate)
+                      },
+                      {
+                        label: mysqlCategoryText(t, 'selectScan'),
+                        color: HOST_SERIES_COLOR.memAvailable,
+                        reading: rateReading(metricMap.mysql_select_scan_rate)
+                      }
+                    ]}
+                  />
+                </div>
+              ) : null}
+              {showLocks ? (
+                <div className={cardClass(mergedScanLockCount === 1)}>
+                  <ThinTimeSeries
+                    title={mysqlCategoryText(t, 'locks')}
+                    hint={mysqlCategoryText(t, 'locksHint')}
+                    loading={locksAwaiting}
+                    unit="cps"
+                    data={lockSeries}
+                    emptyText={empty}
+                    keepLegend
+                    legends={[
+                      {
+                        label: mysqlCategoryText(t, 'rowLockWaits'),
+                        color: HOST_PALETTE.orange,
+                        reading: rateReading(metricMap.mysql_innodb_row_lock_waits_rate)
+                      },
+                      {
+                        label: mysqlCategoryText(t, 'deadlocks'),
+                        color: HOST_PALETTE.rose,
+                        reading: rateReading(metricMap.mysql_innodb_deadlocks_rate)
+                      }
+                    ]}
+                  />
+                </div>
+              ) : null}
+              {showRowLockTime ? (
+                <div className={cardClass(mergedScanLockCount === 1)}>
+                  <ThinTimeSeries
+                    title={mysqlCategoryText(t, 'rowLockTime')}
+                    hint={mysqlCategoryText(t, 'rowLockTimeHint')}
+                    unit="ms"
+                    data={rowLockTime.map((point) => ({ time: point.time, value1: point.value1 }))}
+                    emptyText={empty}
+                    legends={[{
+                      label: mysqlCategoryText(t, 'rowLockTime'),
+                      color: HOST_PALETTE.rose,
+                      reading: durationReading(metricMap.mysql_innodb_row_lock_time_avg)
+                    }]}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
     </>
   );

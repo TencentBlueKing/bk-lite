@@ -27,6 +27,9 @@ export interface LayeredColumn {
   align?: 'left' | 'right' | 'center';
   fixed?: 'left' | 'right';
   render?: (row: EntityTableRow, index: number) => React.ReactNode;
+  /** 自定义排序。有 render 且无 unit 时默认不排序，数值列要显式传入。 */
+  sorter?: (left: EntityTableRow, right: EntityTableRow) => number;
+  defaultSortOrder?: 'ascend' | 'descend';
   /** 导出用的可读文本。缺省时跟 label / 单位格式化，不含色点和迷你条。 */
   csvValue?: (row: EntityTableRow) => string;
 }
@@ -101,11 +104,14 @@ export default function LayeredEntityTable({
     align: column.align,
     fixed: column.fixed,
     ellipsis: column.ellipsis !== false,
-    sorter: column.labelKey
-      ? (left, right) => (left.labels[column.labelKey!] || '').localeCompare(right.labels[column.labelKey!] || '')
-      : column.render && !column.unit
-        ? undefined
-        : (left, right) => (left.values[column.key] ?? Number.NEGATIVE_INFINITY) - (right.values[column.key] ?? Number.NEGATIVE_INFINITY),
+    defaultSortOrder: column.defaultSortOrder,
+    sorter: column.sorter
+      ? column.sorter
+      : column.labelKey
+        ? (left, right) => (left.labels[column.labelKey!] || '').localeCompare(right.labels[column.labelKey!] || '')
+        : column.render && !column.unit
+          ? undefined
+          : (left, right) => (left.values[column.key] ?? Number.NEGATIVE_INFINITY) - (right.values[column.key] ?? Number.NEGATIVE_INFINITY),
     render: (_, row, index) => {
       if (column.render) return column.render(row, index);
       if (column.labelKey) return row.labels[column.labelKey] || (column.emptyDash ? '—' : '--');
