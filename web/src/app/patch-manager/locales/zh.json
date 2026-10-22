@@ -439,7 +439,8 @@
       "descriptionPlaceholder": "请输入补丁描述",
       "severityRequired": "请选择严重级别",
       "select": "请选择",
-      "versionPlaceholder": "例如 Windows Server 2019",
+      "versionPlaceholder": "请选择 Windows Server 版本",
+      "versionRequired": "请选择适用版本",
       "distroRequired": "请输入发行版",
       "distroPlaceholder": "例如 Rocky 8",
       "minimumVersion": "最低版本要求",
@@ -455,7 +456,7 @@
       "editPatch": "编辑补丁",
       "saved": "已保存",
       "packageNotReplaceable": "补丁包已就绪或正在处理中，暂不能替换",
-      "packageRetryHelp": "上次上传失败，可删除旧文件后重新选择 MSU 或 CAB 文件",
+      "packageRetryHelp": "上次上传失败，请重新选择 MSU 或 CAB 文件",
       "packageReuploadRequired": "请重新上传 MSU 或 CAB 补丁文件",
       "selectFile": "选择文件"
     },

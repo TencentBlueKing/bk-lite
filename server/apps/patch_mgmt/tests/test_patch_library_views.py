@@ -10,17 +10,26 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 
 from apps.patch_mgmt.constants import OSType, PackageStatus
-from apps.patch_mgmt.models import (
-    BaselineRequirement,
-    LinuxPatchDetail,
-    Patch,
-    PatchBaseline,
-    WindowsPatchDetail,
-)
+from apps.patch_mgmt.models import BaselineRequirement, LinuxPatchDetail, Patch, PatchBaseline, WindowsPatchDetail
 from apps.patch_mgmt.services.windows_package import expire_stale_windows_package_uploads
 
 _BASE = "/api/v1/patch_mgmt"
 PATCH_URL = f"{_BASE}/api/patch/"
+
+
+@pytest.fixture(autouse=True)
+def _accept_package_identity(monkeypatch):
+    """元数据写路径不覆盖签名；未签名包的拒绝由 identity 测试锁定。"""
+
+    def accept(payload, *, expected_kb, file_name, declared_dotnet_version="", trust_store=None):
+        from apps.patch_mgmt.services.windows_package_identity import WindowsPackageIdentity
+
+        return WindowsPackageIdentity(kb_numbers=frozenset({expected_kb.upper()}), dotnet_version="")
+
+    monkeypatch.setattr(
+        "apps.patch_mgmt.services.windows_package.inspect_windows_update_package",
+        accept,
+    )
 
 
 @pytest.mark.django_db
@@ -232,6 +241,43 @@ class TestPatchMetadataOnlyViewApi:
         assert patch.pkg_status == PackageStatus.READY
         assert patch.windows_detail.architectures == ["x86_64"]
         assert resp.data["package_info"]["file_name"] == "windows-kb6000010.msu"
+
+    def test_windows_versions_are_the_released_ltsc_catalog(self, su_client):
+        resp = su_client.get(f"{PATCH_URL}windows_versions/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert [item["label"] for item in resp.data] == [
+            "Windows Server 2016",
+            "Windows Server 2019",
+            "Windows Server 2022",
+            "Windows Server 2025",
+        ]
+        assert [item["build"] for item in resp.data] == ["14393", "17763", "20348", "26100"]
+
+    def test_manual_windows_patch_rejects_two_server_versions(self, su_client):
+        content = b"MSCF" + b"two-versions"
+        upload = SimpleUploadedFile("windows-kb6000012.msu", content)
+        metadata = {
+            "title": "两个版本",
+            "os_type": OSType.WINDOWS,
+            "severity": "important",
+            "team": [1],
+            "windows_detail": {
+                "kb_number": "KB6000012",
+                "product_list": ["Windows Server 2019", "Windows Server 2025"],
+                "architectures": ["x64"],
+                "ms_bulletin": "",
+            },
+        }
+
+        resp = su_client.post(
+            PATCH_URL,
+            {"metadata": json.dumps(metadata), "file": upload},
+            format="multipart",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert not Patch.objects.filter(title="两个版本").exists()
 
     def test_update_failed_manual_windows_patch_in_one_multipart_request(self, su_client):
         patch = Patch.objects.create(
@@ -456,6 +502,7 @@ class TestPatchMetadataOnlyViewApi:
             "file_size": len(content),
             "sha256": hashlib.sha256(content).hexdigest(),
             "extension": ".msu",
+            "dotnet_version": "",
         }
         assert "url" not in resp.data["package_info"]
 
@@ -530,7 +577,7 @@ class TestPatchMetadataOnlyViewApi:
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         patch = Patch.objects.get(pk=created.data["id"])
         assert patch.pkg_status == PackageStatus.DOWNLOAD_FAILED
-        assert "补丁包存储失败" in patch.windows_detail.package_error
+        assert "Failed to store the patch package" in patch.windows_detail.package_error
 
     def test_failed_package_can_be_replaced_from_edit_flow(self, su_client):
         patch = Patch.objects.create(
@@ -596,7 +643,7 @@ class TestPatchMetadataOnlyViewApi:
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         patch.refresh_from_db()
         assert patch.pkg_status == PackageStatus.DOWNLOAD_FAILED
-        assert "补丁包存储失败" in patch.windows_detail.package_error
+        assert "Failed to store the patch package" in patch.windows_detail.package_error
 
     def test_stale_downloading_package_is_marked_failed(self):
         patch = Patch.objects.create(
@@ -615,7 +662,7 @@ class TestPatchMetadataOnlyViewApi:
         patch.refresh_from_db()
         assert result == 1
         assert patch.pkg_status == PackageStatus.DOWNLOAD_FAILED
-        assert "上传超时" in patch.windows_detail.package_error
+        assert "timed out" in patch.windows_detail.package_error
 
     def test_stale_pending_manual_windows_package_is_marked_failed(self):
         patch = Patch.objects.create(
@@ -634,4 +681,4 @@ class TestPatchMetadataOnlyViewApi:
         patch.refresh_from_db()
         assert result == 1
         assert patch.pkg_status == PackageStatus.DOWNLOAD_FAILED
-        assert "上传超时" in patch.windows_detail.package_error
+        assert "timed out" in patch.windows_detail.package_error
