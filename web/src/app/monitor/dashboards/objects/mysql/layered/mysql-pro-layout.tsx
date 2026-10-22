@@ -399,9 +399,6 @@ export default function MysqlProLayout({
           selectTab(card.tab, card.anchor);
         }}
         onOpenReplication={() => selectTab('replication')}
-        onOpenLoad={() => selectTab('performance', 'throughput')}
-        onOpenStatements={openStatements}
-        onOpenWaits={() => selectTab('waits')}
       />
     );
   };
@@ -445,7 +442,7 @@ export default function MysqlProLayout({
           })}
         />
       </div>
-      <div className={host.main}>{pane()}</div>
+      <div className={`${host.main} ${pro.stackMain}`}>{pane()}</div>
       <HostAlertDrawer
         open={alertDrawerOpen}
         refreshKey={alertRefreshKey}

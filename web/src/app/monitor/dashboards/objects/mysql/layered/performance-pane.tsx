@@ -228,6 +228,30 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     () => seriesOf(metricMap.mysql_innodb_row_lock_time_avg),
     [metricMap.mysql_innodb_row_lock_time_avg?.viewData]
   );
+  const lockWaitThreads = useMemo(
+    () => seriesOf(metricMap.mysql_process_list_threads_waiting_for_lock),
+    [metricMap.mysql_process_list_threads_waiting_for_lock?.viewData]
+  );
+  const tmpDisk = useMemo(
+    () => seriesOf(metricMap.mysql_tmp_disk_table_ratio),
+    [metricMap.mysql_tmp_disk_table_ratio?.viewData]
+  );
+  const tableLockWaits = useMemo(
+    () => seriesOf(metricMap.mysql_table_locks_waited_rate),
+    [metricMap.mysql_table_locks_waited_rate?.viewData]
+  );
+  const logWaits = useMemo(
+    () => seriesOf(metricMap.mysql_innodb_log_waits_rate),
+    [metricMap.mysql_innodb_log_waits_rate?.viewData]
+  );
+  const dirtyPages = useMemo(
+    () => seriesOf(metricMap.mysql_innodb_buffer_pool_pages_dirty),
+    [metricMap.mysql_innodb_buffer_pool_pages_dirty?.viewData]
+  );
+  const dataFsyncs = useMemo(
+    () => seriesOf(metricMap.mysql_innodb_data_fsyncs_rate),
+    [metricMap.mysql_innodb_data_fsyncs_rate?.viewData]
+  );
 
   const slotLoading = (names: readonly string[], points: { length: number }) => (
     points.length === 0 && names.some((name) => pendingMetricNames.has(name))
@@ -263,13 +287,19 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   );
   const bufferAwaiting = slotLoading(['mysql_buffer_pool_hit_ratio'], buffer);
   const dirtyAwaiting = slotLoading(['mysql_buffer_pool_dirty_ratio'], dirty);
+  const dirtyPagesAwaiting = slotLoading(['mysql_innodb_buffer_pool_pages_dirty'], dirtyPages);
+  const dataFsyncsAwaiting = slotLoading(['mysql_innodb_data_fsyncs_rate'], dataFsyncs);
+  const logWaitsAwaiting = slotLoading(['mysql_innodb_log_waits_rate'], logWaits);
+  const lockWaitAwaiting = slotLoading(['mysql_process_list_threads_waiting_for_lock'], lockWaitThreads);
+  const tmpDiskAwaiting = slotLoading(['mysql_tmp_disk_table_ratio'], tmpDisk);
+  const tableLockAwaiting = slotLoading(['mysql_table_locks_waited_rate'], tableLockWaits);
   const deadlockAwaiting = slotLoading(['mysql_innodb_deadlocks_rate'], deadlocks);
   const slowAwaiting = slotLoading(['mysql_slow_queries_rate'], slowQueries);
   const empty = mysqlCategoryText(t, 'noCollectData');
 
   const innodbCard = innodbHasLoad(metricMap) || innodbAwaiting ? (
     <ThinTimeSeries
-      className="h-full max-[720px]:h-auto"
+      className={pro.pairFill}
       title={mysqlCategoryText(t, 'innodbRw')}
       hint={mysqlCategoryText(t, 'innodbRwHint')}
       loading={innodbAwaiting}
@@ -301,26 +331,26 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const showWrites = writesAwaiting || statementMix.length > 0;
   const showInnodb = innodbAwaiting || innodb.length > 0;
   const showInnodbRows = innodbRowsAwaiting || innodbRows.length > 0;
-  const showBuffer = bufferAwaiting || buffer.length > 0;
+  const showBuffer = true;
   const showDirty = dirtyAwaiting || dirty.length > 0;
+  const showDirtyPages = dirtyPagesAwaiting || dirtyPages.length > 0;
+  const showDataFsyncs = dataFsyncsAwaiting || dataFsyncs.length > 0;
+  const showLogWaits = logWaitsAwaiting || logWaits.length > 0;
   const showDeadlocks = deadlockAwaiting || deadlocks.length > 0;
   const showSlow = slowQueries.length > 0 || slowAwaiting;
   const showSelectScan = selectScan.length > 0;
   const showRowLockWaits = rowLockWaits.length > 0;
   const showRowLockTime = rowLockTime.length > 0;
-  const scanLockCount = [showSlow, showSelectScan, showRowLockWaits, showRowLockTime, showDeadlocks].filter(Boolean).length;
+  const scanLockCount = 3 + [showSlow, showSelectScan, showRowLockWaits, showRowLockTime, showDeadlocks, showLogWaits].filter(Boolean).length;
   const cardClass = (wide: boolean) => (wide ? `min-w-0 ${pro.perfWide}` : 'min-w-0');
-  const scanLockClass = cardClass(scanLockCount === 1);
+  const sectionStack = 'flex min-w-0 flex-col gap-3';
   const writeInnodbPair = showWrites && showInnodb;
-  const pairCol = writeInnodbPair
-    ? 'grid h-full min-w-0 grid-rows-[auto_minmax(auto,1fr)] gap-3 max-[720px]:h-auto max-[720px]:grid-rows-[auto_auto]'
-    : 'flex min-w-0 flex-col gap-3';
-  const pairCard = writeInnodbPair ? 'h-full max-[720px]:h-auto' : undefined;
+  const bufferCount = [showBuffer, showDirty, showDirtyPages, showDataFsyncs].filter(Boolean).length;
 
   return (
     <>
       {connectionRowCount > 0 || showThreadsCreated ? (
-        <>
+        <div className={sectionStack}>
           <ProSectionTitle>{mysqlCategoryText(t, 'connectionsAndThroughput')}</ProSectionTitle>
           {connectionRowCount > 0 ? (
           <div
@@ -329,9 +359,8 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
             data-perf-count={connectionRowCount}
           >
             {showConnections ? (
-              <div id="mysql-perf-connections" className={`${cardClass(connectionWide)} h-full`}>
+              <div id="mysql-perf-connections" className={cardClass(connectionWide)}>
                 <ThinTimeSeries
-                  className="h-full"
                   title={mysqlCategoryText(t, 'connectionsAndSessions')}
                   hint={mysqlCategoryText(t, 'connectionsHint')}
                   loading={connectionAwaiting}
@@ -355,9 +384,8 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
             {showThroughput ? (
-              <div id="mysql-perf-throughput" className={`${cardClass(connectionWide)} h-full`}>
+              <div id="mysql-perf-throughput" className={cardClass(connectionWide)}>
                 <ThinTimeSeries
-                  className="h-full"
                   title={mysqlCategoryText(t, 'qpsTps')}
                   hint={mysqlCategoryText(t, 'qpsTpsHint')}
                   loading={throughputAwaiting}
@@ -381,9 +409,8 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
             {showMaxUsed ? (
-              <div id="mysql-perf-max-used" className={`${cardClass(connectionWide)} h-full`}>
+              <div id="mysql-perf-max-used" className={cardClass(connectionWide)}>
                 <ThinTimeSeries
-                  className="h-full"
                   title={mysqlCategoryText(t, 'maxUsedConnections')}
                   hint={mysqlCategoryText(t, 'maxUsedConnectionsHint')}
                   unit="counts"
@@ -416,10 +443,10 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             </div>
           ) : null}
-        </>
+        </div>
       ) : null}
       {showTps || showInnodbRows ? (
-        <>
+        <div className={sectionStack}>
           <ProSectionTitle>{showTps ? mysqlCategoryText(t, 'tpsChart') : mysqlCategoryText(t, 'innodbRows')}</ProSectionTitle>
           <div className={`${pro.perfGrid} ${pro.perfFill}`}>
             {showTps ? (
@@ -460,20 +487,18 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
           </div>
-        </>
+        </div>
       ) : null}
       {showWrites || showInnodb ? (
         <div
-          className={writeInnodbPair
-            ? 'grid grid-cols-2 items-stretch gap-3 max-[720px]:grid-cols-1'
-            : 'grid grid-cols-1 gap-3'}
+          className={writeInnodbPair ? pro.pairRowSide : pro.pairRow}
           data-perf-pair={writeInnodbPair ? 'side' : 'single'}
         >
           {showWrites ? (
-            <div className={pairCol}>
+            <div className={pro.pairCol}>
               <ProSectionTitle>{mysqlCategoryText(t, 'writesAndStatements')}</ProSectionTitle>
               <ThinTimeSeries
-                className={pairCard}
+                className={writeInnodbPair ? pro.pairFill : undefined}
                 title={mysqlCategoryText(t, 'writeStatements')}
                 loading={writesAwaiting}
                 unit="cps"
@@ -488,52 +513,82 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
             </div>
           ) : null}
           {showInnodb ? (
-            <div id="mysql-perf-innodb" className={pairCol}>
+            <div id="mysql-perf-innodb" className={pro.pairCol}>
               <ProSectionTitle>{mysqlCategoryText(t, 'innodb')}</ProSectionTitle>
               {innodbCard}
             </div>
           ) : null}
         </div>
       ) : null}
-      {showBuffer || showDirty ? (
-        <>
-          <ProSectionTitle>{mysqlCategoryText(t, 'bufferPool')}</ProSectionTitle>
-          <div className={`${pro.perfGrid} ${pro.perfFill}`}>
-            {showBuffer ? (
-              <div id="mysql-perf-buffer" className={cardClass(!showDirty)}>
-                <ThinTimeSeries
-                  title={mysqlCategoryText(t, 'bufferHit')}
-                  hint={mysqlCategoryText(t, 'bufferHitHint')}
-                  loading={bufferAwaiting}
-                  unit="percent"
-                  data={buffer}
-                  emptyText={empty}
-                  legends={[{ label: mysqlCategoryText(t, 'hitRate'), color: HOST_SERIES_COLOR.cpu }]}
-                />
-              </div>
-            ) : null}
-            {showDirty ? (
-              <div id="mysql-perf-dirty" className={cardClass(!showBuffer)}>
-                <ThinTimeSeries
-                  title={mysqlCategoryText(t, 'dirtyRatio')}
-                  hint={mysqlCategoryText(t, 'dirtyRatioHint')}
-                  loading={dirtyAwaiting}
-                  unit="percent"
-                  data={dirty.map((point) => ({ time: point.time, value1: point.value1 }))}
-                  emptyText={empty}
-                  legends={[{
-                    label: mysqlCategoryText(t, 'dirtyRatio'),
-                    color: HOST_PALETTE.amber,
-                    reading: percentReading(metricMap.mysql_buffer_pool_dirty_ratio)
-                  }]}
-                />
-              </div>
-            ) : null}
+      <div className={sectionStack}>
+        <ProSectionTitle>{mysqlCategoryText(t, 'bufferPool')}</ProSectionTitle>
+        <div className={`${pro.perfGrid} ${pro.perfFill}`} data-perf-count={bufferCount}>
+          <div id="mysql-perf-buffer" className={cardClass(bufferCount === 1)}>
+            <ThinTimeSeries
+              title={mysqlCategoryText(t, 'bufferHit')}
+              hint={mysqlCategoryText(t, 'bufferHitHint')}
+              loading={bufferAwaiting}
+              unit="percent"
+              data={buffer}
+              emptyText={empty}
+              legends={[{ label: mysqlCategoryText(t, 'hitRate'), color: HOST_SERIES_COLOR.cpu }]}
+            />
           </div>
-        </>
-      ) : null}
+          {showDirty ? (
+            <div id="mysql-perf-dirty" className="min-w-0">
+              <ThinTimeSeries
+                title={mysqlCategoryText(t, 'dirtyRatio')}
+                hint={mysqlCategoryText(t, 'dirtyRatioHint')}
+                loading={dirtyAwaiting}
+                unit="percent"
+                data={dirty.map((point) => ({ time: point.time, value1: point.value1 }))}
+                emptyText={empty}
+                legends={[{
+                  label: mysqlCategoryText(t, 'dirtyRatio'),
+                  color: HOST_PALETTE.amber,
+                  reading: percentReading(metricMap.mysql_buffer_pool_dirty_ratio)
+                }]}
+              />
+            </div>
+          ) : null}
+          {showDirtyPages ? (
+            <div id="mysql-perf-dirty-pages" className="min-w-0">
+              <ThinTimeSeries
+                title={mysqlCategoryText(t, 'dirtyPages')}
+                hint={mysqlCategoryText(t, 'dirtyPagesHint')}
+                loading={dirtyPagesAwaiting}
+                unit="counts"
+                data={dirtyPages.map((point) => ({ time: point.time, value1: point.value1 }))}
+                emptyText={empty}
+                legends={[{
+                  label: mysqlCategoryText(t, 'dirtyPages'),
+                  color: HOST_PALETTE.amber,
+                  reading: seriesReading(dirtyPages, 'counts')
+                }]}
+              />
+            </div>
+          ) : null}
+          {showDataFsyncs ? (
+            <div id="mysql-perf-data-fsyncs" className="min-w-0">
+              <ThinTimeSeries
+                title={mysqlCategoryText(t, 'dataFsyncs')}
+                hint={mysqlCategoryText(t, 'dataFsyncsHint')}
+                loading={dataFsyncsAwaiting}
+                unit="cps"
+                data={dataFsyncs.map((point) => ({ time: point.time, value1: point.value1 }))}
+                emptyText={empty}
+                legends={[{
+                  label: mysqlCategoryText(t, 'dataFsyncs'),
+                  color: HOST_SERIES_COLOR.diskWrite,
+                  reading: rateReading(metricMap.mysql_innodb_data_fsyncs_rate)
+                }]}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
       {abortedConnects.length > 0 || abortedClients.length > 0 ? (
-        <div id="mysql-perf-quality">
+        <div id="mysql-perf-quality" className={sectionStack}>
           <ProSectionTitle>{mysqlCategoryText(t, 'connectionQuality')}</ProSectionTitle>
           <div className={`${pro.perfGrid} ${pro.perfFill}`} data-perf-section="quality">
             {abortedConnects.length > 0 ? (
@@ -563,12 +618,56 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
           </div>
         </div>
       ) : null}
-      {scanLockCount > 0 ? (
-        <div id="mysql-perf-scan-lock">
+      <div id="mysql-perf-scan-lock" className={sectionStack}>
           <ProSectionTitle>{mysqlCategoryText(t, 'scanAndLock')}</ProSectionTitle>
           <div className={`${pro.perfGrid} ${pro.perfFill}`} data-perf-section="scan-lock" data-perf-count={scanLockCount}>
+            <div id="mysql-perf-lock-wait" className="min-w-0">
+              <ThinTimeSeries
+                title={mysqlCategoryText(t, 'lockWaitSessions')}
+                hint={mysqlCategoryText(t, 'lockWaitSessionsHint')}
+                loading={lockWaitAwaiting}
+                unit="counts"
+                data={lockWaitThreads.map((point) => ({ time: point.time, value1: point.value1 }))}
+                emptyText={empty}
+                legends={[{
+                  label: mysqlCategoryText(t, 'lockWaitSessions'),
+                  color: HOST_PALETTE.orange,
+                  reading: seriesReading(lockWaitThreads, 'counts')
+                }]}
+              />
+            </div>
+            <div id="mysql-perf-tmp-disk" className="min-w-0">
+              <ThinTimeSeries
+                title={mysqlCategoryText(t, 'tmpDiskRatio')}
+                hint={mysqlCategoryText(t, 'tmpDiskRatioHint')}
+                loading={tmpDiskAwaiting}
+                unit="percent"
+                data={tmpDisk.map((point) => ({ time: point.time, value1: point.value1 }))}
+                emptyText={empty}
+                legends={[{
+                  label: mysqlCategoryText(t, 'tmpDiskRatio'),
+                  color: HOST_SERIES_COLOR.load5,
+                  reading: percentReading(metricMap.mysql_tmp_disk_table_ratio)
+                }]}
+              />
+            </div>
+            <div id="mysql-perf-table-lock" className="min-w-0">
+              <ThinTimeSeries
+                title={mysqlCategoryText(t, 'tableLockWaits')}
+                hint={mysqlCategoryText(t, 'tableLockWaitsHint')}
+                loading={tableLockAwaiting}
+                unit="cps"
+                data={tableLockWaits.map((point) => ({ time: point.time, value1: point.value1 }))}
+                emptyText={empty}
+                legends={[{
+                  label: mysqlCategoryText(t, 'tableLockWaits'),
+                  color: HOST_PALETTE.amber,
+                  reading: rateReading(metricMap.mysql_table_locks_waited_rate)
+                }]}
+              />
+            </div>
             {showSlow ? (
-              <div className={scanLockClass}>
+              <div className="min-w-0">
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'kpiSlow')}
                   hint={mysqlCategoryText(t, 'slowQueriesHint')}
@@ -581,7 +680,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
             {showSelectScan ? (
-              <div className={scanLockClass}>
+              <div className="min-w-0">
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'selectScan')}
                   hint={mysqlCategoryText(t, 'selectScanHint')}
@@ -593,7 +692,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
             {showRowLockWaits ? (
-              <div className={scanLockClass}>
+              <div className="min-w-0">
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'rowLockWaits')}
                   hint={mysqlCategoryText(t, 'rowLockWaitsHint')}
@@ -609,7 +708,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
             {showDeadlocks ? (
-              <div className={scanLockClass}>
+              <div className="min-w-0">
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'deadlocks')}
                   hint={mysqlCategoryText(t, 'deadlocksHint')}
@@ -626,7 +725,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
             {showRowLockTime ? (
-              <div className={scanLockClass}>
+              <div className="min-w-0">
                 <ThinTimeSeries
                   title={mysqlCategoryText(t, 'rowLockTime')}
                   hint={mysqlCategoryText(t, 'rowLockTimeHint')}
@@ -641,9 +740,25 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                 />
               </div>
             ) : null}
+            {showLogWaits ? (
+              <div id="mysql-perf-log-waits" className="min-w-0">
+                <ThinTimeSeries
+                  title={mysqlCategoryText(t, 'logWaits')}
+                  hint={mysqlCategoryText(t, 'logWaitsHint')}
+                  loading={logWaitsAwaiting}
+                  unit="cps"
+                  data={logWaits.map((point) => ({ time: point.time, value1: point.value1 }))}
+                  emptyText={empty}
+                  legends={[{
+                    label: mysqlCategoryText(t, 'logWaits'),
+                    color: HOST_PALETTE.orange,
+                    reading: rateReading(metricMap.mysql_innodb_log_waits_rate)
+                  }]}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
-      ) : null}
     </>
   );
 }

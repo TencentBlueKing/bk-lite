@@ -438,25 +438,58 @@ const joinSubtitle = (parts: Array<string | null | undefined>) => (
   parts.filter((part): part is string => Boolean(part && part.trim())).join(' · ')
 );
 
-const replicaErrno = (metricMap: Record<string, MetricSeries | undefined>) => {
-  for (const name of ['mysql_slave_last_sql_errno', 'mysql_slave_last_io_errno', 'mysql_slave_last_errno']) {
-    const value = latestNumber(metricMap[name]);
-    if (value != null && value > 0) return Math.round(value);
+const positiveErrno = (value: number | null) => (
+  value != null && Number.isFinite(value) && value > 0 ? Math.round(value) : null
+);
+
+/** 已采样且数值不大于 0。缺采、NaN 不算停止，避免未知态冒出错误通栏。 */
+const threadIsStopped = (value: number | null) => value != null && Number.isFinite(value) && value <= 0;
+
+interface ActiveReplicaError {
+  errno: number;
+  thread: 'SQL 线程' | 'IO 线程' | '';
+}
+
+/**
+ * 真错误：errno 必须 >0，且对应线程当前已停止。
+ * IO 错只看 IO，SQL 错只看 SQL；只有 last 时，IO 或 SQL 任一已停止才算。
+ * 线程恢复后残留的历史号不算。0、缺采、NaN、双线程运行中都不出通栏。
+ */
+const activeReplicaErrors = (
+  metricMap: Record<string, MetricSeries | undefined>
+): ActiveReplicaError[] => {
+  const io = latestNumber(metricMap.mysql_slave_io_running);
+  const sql = latestNumber(metricMap.mysql_slave_sql_running);
+  const sqlErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_sql_errno));
+  const ioErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_io_errno));
+  const lastErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_errno));
+  const errors: ActiveReplicaError[] = [];
+  if (sqlErrno != null && threadIsStopped(sql)) errors.push({ errno: sqlErrno, thread: 'SQL 线程' });
+  if (ioErrno != null && threadIsStopped(io)) errors.push({ errno: ioErrno, thread: 'IO 线程' });
+  if (!errors.length && lastErrno != null && (threadIsStopped(io) || threadIsStopped(sql))) {
+    errors.push({ errno: lastErrno, thread: '' });
   }
-  return null;
+  return errors;
 };
+
+const replicaErrno = (metricMap: Record<string, MetricSeries | undefined>) => (
+  activeReplicaErrors(metricMap)[0]?.errno ?? null
+);
 
 const replicaLagTone = (delay: number | null, stopped: boolean, errno: number | null) => {
   if (stopped || errno != null || (delay != null && delay > REPL_LAG_CRIT_S)) {
     return { tone: HOST_THRESHOLD_COLOR.crit, alertLevel: 'critical' as const };
   }
   if (delay != null && delay > REPL_LAG_WARN_S) {
-    return { tone: HOST_THRESHOLD_COLOR.warn, alertLevel: 'warn' as const };
-  }
-  if (delay != null) {
-    return { tone: HOST_THRESHOLD_COLOR.ok, alertLevel: 'none' as const };
+    return { tone: HOST_SERIES_COLOR.load1, alertLevel: 'warn' as const };
   }
   return { tone: undefined, alertLevel: 'none' as const };
+};
+
+const replicaDelayLevel = (delay: number): TabAlertLevel => {
+  if (delay > REPL_LAG_CRIT_S) return 'critical';
+  if (delay > REPL_LAG_WARN_S) return 'warn';
+  return 'none';
 };
 
 const replicaThreadPart = (
@@ -659,6 +692,8 @@ export interface MysqlFocusCard {
   delta?: string;
   deltaTone?: string;
   hint: string;
+  /** 标题旁 ? 的排查说明。不占用 CTA `hint`。 */
+  titleHint?: string;
   tab: MysqlIaTab;
   anchor?: MysqlFocusAnchor;
   spark?: MysqlFocusSpark;
@@ -796,6 +831,14 @@ export const buildMysqlFocusCards = (
         spark: 'tableLock'
       }));
 
+  const pathKey: Record<MysqlFocusCard['key'], MysqlCategoryCopyKey | null> = {
+    lockWait: 'focusLockWaitPath',
+    aborted: 'focusAbortedPath',
+    tmpDisk: 'focusTmpDiskPath',
+    rowLock: 'focusRowLockPath',
+    tableLock: 'focusTableLockPath',
+    slow: null
+  };
   return [
     lockWait == null
       ? uncollectedFocus('lockWait', text('focusLockWait'), text('viewScanLock'), 'performance', 'scan-lock')
@@ -840,9 +883,13 @@ export const buildMysqlFocusCards = (
         spark: 'tmpDisk'
       }),
     fourth
-  ].map((card) => (
-    card.value === EMPTY_VALUE ? { ...card, subtitle: text('notCollected') } : card
-  ));
+  ].map((card) => {
+    const hinted = pathKey[card.key];
+    const withHint = hinted ? { ...card, titleHint: text(hinted) } : card;
+    return withHint.value === EMPTY_VALUE
+      ? { ...withHint, subtitle: text('notCollected') }
+      : withHint;
+  });
 };
 
 export interface MysqlHostCandidate {
@@ -985,6 +1032,8 @@ export interface MysqlRoleField {
   label: string;
   value: string;
   tone: MysqlRoleTone;
+  /** 复制延迟达档。线程卡仍用 tone，不在这里重复。 */
+  alertLevel?: TabAlertLevel;
 }
 
 export interface MysqlRoleBlockModel {
@@ -1186,10 +1235,12 @@ export const readMysqlRoleBlock = (
   if (io != null || sql != null || delay != null || replicaFollowPresent(metricMap)) {
     const fields: MysqlRoleField[] = [];
     if (delay != null) {
+      const alertLevel = replicaDelayLevel(delay);
       fields.push({
         label: '复制延迟',
         value: formatMysqlReplicationLag(delay),
-        tone: delay > REPL_LAG_WARN_S ? 'warn' : 'ok'
+        tone: alertLevel === 'none' ? 'ok' : 'warn',
+        alertLevel
       });
     }
     if (io != null) fields.push({ label: 'IO 线程', value: THREAD_TEXT(io), tone: THREAD_TONE(io) });
@@ -1227,7 +1278,11 @@ export const MYSQL_PERF_AUX_METRICS = [
   'mysql_innodb_row_lock_waits_rate',
   'mysql_innodb_row_lock_time_avg',
   'mysql_innodb_deadlocks_rate',
+  'mysql_buffer_pool_hit_ratio',
   'mysql_buffer_pool_dirty_ratio',
+  'mysql_innodb_buffer_pool_pages_dirty',
+  'mysql_innodb_log_waits_rate',
+  'mysql_innodb_data_fsyncs_rate',
   'mysql_max_used_connections',
   'mysql_threads_running',
   'mysql_threads_created_rate',
@@ -1256,6 +1311,8 @@ export interface MysqlReplicationCard {
   value: string;
   detail?: string;
   tone?: MysqlRoleTone;
+  /** 有错通栏达档。线程已停止时为 critical，与上方线程卡同色。 */
+  alertLevel?: 'warn' | 'critical';
 }
 
 export interface MysqlReplicationExtras {
@@ -1288,37 +1345,28 @@ const formatBytes = (value: number) => {
 
 const explainReplicationError = (errno: number) => REPLICATION_ERROR_COPY[errno] || '复制已报错';
 
-const positiveErrno = (value: number | null) => (
-  value != null && value > 0 ? Math.round(value) : null
-);
-
 /**
- * 复制签加深。错误号为 0 或不存在时不占卡。
+ * 复制签加深。无真错误时 error 为 null，调用方不渲染通栏、不占位。
+ * 副文只写仍停止的线程；运行中的线程不出现在错误文案里。
  * 主库下游有采才出；从库视角不渲染主库下游。
  * 位点走趋势卡，不在这里铺文案。
  */
 export const readMysqlReplicationExtras = (
   metricMap: Record<string, MetricSeries | undefined>
 ): MysqlReplicationExtras => {
-  const sqlErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_sql_errno));
-  const ioErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_io_errno));
-  const lastErrno = positiveErrno(latestNumber(metricMap.mysql_slave_last_errno));
-  const primaryError = sqlErrno != null
-    ? { errno: sqlErrno, thread: 'SQL 线程' }
-    : ioErrno != null
-      ? { errno: ioErrno, thread: 'IO 线程' }
-      : lastErrno != null
-        ? { errno: lastErrno, thread: '' }
-        : null;
+  const io = latestNumber(metricMap.mysql_slave_io_running);
+  const sql = latestNumber(metricMap.mysql_slave_sql_running);
+  const [primaryError, ...restErrors] = activeReplicaErrors(metricMap);
   let error: MysqlReplicationCard | null = null;
   if (primaryError) {
-    const other = primaryError.thread === 'SQL 线程' && ioErrno != null && ioErrno !== primaryError.errno
-      ? { errno: ioErrno, thread: 'IO 线程' }
-      : primaryError.thread === 'IO 线程' && sqlErrno != null && sqlErrno !== primaryError.errno
-        ? { errno: sqlErrno, thread: 'SQL 线程' }
-        : null;
+    const stopped = [
+      threadIsStopped(sql) ? 'SQL 线程' : '',
+      threadIsStopped(io) ? 'IO 线程' : ''
+    ].filter(Boolean);
+    const other = restErrors.find((item) => item.thread && item.errno !== primaryError.errno);
+    const owner = primaryError.thread || stopped.join('、');
     const detailParts = [
-      primaryError.thread,
+      owner ? `${owner}已停止` : '',
       other ? `${other.thread}还有错误号 ${other.errno} · ${explainReplicationError(other.errno)}` : ''
     ].filter(Boolean);
     error = {
@@ -1326,7 +1374,8 @@ export const readMysqlReplicationExtras = (
       label: '复制错误',
       value: `错误号 ${primaryError.errno} · ${explainReplicationError(primaryError.errno)}`,
       detail: detailParts.join(' · ') || undefined,
-      tone: 'warn'
+      tone: 'warn',
+      alertLevel: 'critical'
     };
   }
 

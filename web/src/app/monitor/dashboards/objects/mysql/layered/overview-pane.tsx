@@ -22,7 +22,6 @@ import {
   type MysqlOverviewReadings
 } from './ia';
 import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
-import pro from './pro.module.scss';
 import {
   MYSQL_FOCUS_METRICS,
   MYSQL_HEALTH_METRICS,
@@ -45,9 +44,6 @@ interface OverviewPaneProps {
   onFocusAlert: (alertId: string) => void;
   onOpenFocus: (card: MysqlFocusCard) => void;
   onOpenReplication: () => void;
-  onOpenLoad: () => void;
-  onOpenStatements: () => void;
-  onOpenWaits: () => void;
 }
 
 const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'replication', 'uptime', 'alerts'].map((key) => ({
@@ -127,10 +123,7 @@ export default function OverviewPane({
   onOpenAlerts,
   onFocusAlert,
   onOpenFocus,
-  onOpenReplication,
-  onOpenLoad,
-  onOpenStatements,
-  onOpenWaits
+  onOpenReplication
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
   const text = useCallback((key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => (
@@ -173,19 +166,17 @@ export default function OverviewPane({
   ];
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
-  const diagPath = (
-    <div className={pro.diagPath} data-diag-path="f1">
-      <span className={pro.diagLabel}>{text('diagPath')}</span>
-      <button type="button" className={pro.diagStep} onClick={onOpenLoad}>{text('diagLoad')}</button>
-      <span className={pro.diagArrow} aria-hidden="true">→</span>
-      <button type="button" className={pro.diagStep} onClick={onOpenStatements}>{text('diagTopSql')}</button>
-      <span className={pro.diagArrow} aria-hidden="true">→</span>
-      <button type="button" className={pro.diagStep} onClick={onOpenWaits}>{text('diagWaits')}</button>
-    </div>
-  );
   const focusTitle = (
-    <ProSectionTitle extra={diagPath}>{text('focus')}</ProSectionTitle>
+    <ProSectionTitle>{text('focus')}</ProSectionTitle>
   );
+  const loadingHint = (titleKey: MysqlCategoryCopyKey) => {
+    if (titleKey === 'focusLockWait') return text('focusLockWaitPath');
+    if (titleKey === 'focusAborted') return text('focusAbortedPath');
+    if (titleKey === 'focusTmpDisk') return text('focusTmpDiskPath');
+    if (titleKey === 'focusRowLock') return text('focusRowLockPath');
+    if (titleKey === 'focusTableLock') return text('focusTableLockPath');
+    return undefined;
+  };
 
   return (
     <>
@@ -206,7 +197,7 @@ export default function OverviewPane({
             {focusLoadingTitles.map((titleKey) => (
               <div key={titleKey} className={`${classic.panel} ${host.shortcutCard}`}>
                 <div className={host.shortcutCopy}>
-                  <FocusShortcutTitle label={text(titleKey)} unit="" />
+                  <FocusShortcutTitle label={text(titleKey)} unit="" hint={loadingHint(titleKey)} />
                   <ProDashLoading size="small" />
                 </div>
                 <div className={host.focusChart} />
@@ -234,7 +225,7 @@ export default function OverviewPane({
               return (
                 <div key={card.key} className={`${classic.panel} ${host.shortcutCard}`}>
                   <div className={host.shortcutCopy}>
-                    <FocusShortcutTitle label={card.label} unit={axisUnit} />
+                    <FocusShortcutTitle label={card.label} unit={axisUnit} hint={card.titleHint} />
                     <div className={host.shortcutValue} style={card.tone ? { color: card.tone } : undefined}>
                       {card.value}
                     </div>

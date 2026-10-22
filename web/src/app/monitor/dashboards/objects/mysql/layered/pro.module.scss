@@ -47,14 +47,55 @@
   flex: none;
   height: auto;
   min-height: 0;
+  overflow: visible;
+}
+
+/* 性能/复制内容区不再吃满页高。末卡之下只留 .main 自己的 16px。 */
+.stackMain {
+  flex: none;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* 写入 | InnoDB 并排只在这一行里拉齐，不把分区根拉成页高。 */
+.pairRow,
+.pairRowSide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  flex: none;
+  height: auto;
+  min-height: 0;
+}
+
+.pairRowSide {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pairCol {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+}
+
+.pairFill {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
 }
 
 /* 写入语句有图时，空态卡吃满同行剩余高度，文案在标题下的内容区里垂直居中。 */
 .innodbEmpty {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   width: 100%;
-  height: 100%;
+  height: auto;
   min-height: 0;
 }
 
@@ -89,6 +130,10 @@
 }
 
 @media (max-width: 720px) {
+  .pairRowSide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .innodbEmpty,
   .innodbEmpty > section {
     flex: none;
@@ -209,61 +254,6 @@
   font-weight: 400;
   line-height: 1;
   vertical-align: 2px;
-}
-
-.diagPath {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  min-width: 0;
-  white-space: nowrap;
-}
-
-.diagLabel {
-  margin-right: 6px;
-  color: var(--color-text-3);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 24px;
-  cursor: default;
-  user-select: none;
-}
-
-.diagStep {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  box-sizing: border-box;
-  height: 24px;
-  margin: 0;
-  padding: 0 10px;
-  border: 1px solid #e8e8e8;
-  border-radius: 999px;
-  background: #f5f5f5;
-  color: #262626;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 22px;
-  cursor: pointer;
-}
-
-.diagStep:hover,
-.diagStep:focus-visible,
-.diagStep:active {
-  border-color: #91caff;
-  background: #e6f4ff;
-  color: #1677ff;
-  font-weight: 600;
-  outline: none;
-}
-
-.diagArrow {
-  flex: none;
-  margin: 0 4px;
-  color: #bfbfbf;
-  font-size: 11px;
-  line-height: 24px;
 }
 
 @media (max-width: 1100px) {
