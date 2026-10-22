@@ -74,6 +74,7 @@ import {
   ScreenStyleInspector,
 } from "./components/screenEditorPanels";
 import DashboardSubscriptionModal from "@/app/ops-analysis/components/dashboardSubscriptionModal";
+import { getScreenTheme } from "./utils/screenTheme";
 import {
   addConfiguredScreenWidget,
   buildFiltersFromScreenItems,
@@ -1474,6 +1475,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           {editorOpen ? (
             <div className="relative flex h-full min-h-0 overflow-hidden" data-screen-editor>
               <ScreenElementPalette
+                stagePreviewBackground={String(
+                  getScreenTheme(draftViewSets.viewport.theme).variables["--screen-stage-bg"],
+                )}
                 selectedItemId={selectedItemId}
                 items={draftViewSets.items}
                 onSelectItem={handleSelectCanvasItem}

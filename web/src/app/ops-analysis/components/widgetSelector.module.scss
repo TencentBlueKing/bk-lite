@@ -10,9 +10,9 @@
   gap: 6px;
   padding: 3px;
   margin-bottom: 12px;
-  border: 1px solid #e3ebf5;
+  border: 1px solid var(--color-border-1);
   border-radius: 8px;
-  background: #f8fbff;
+  background: var(--color-fill-1);
 }
 
 .modeButton {
@@ -25,27 +25,27 @@
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: #64748b;
+  color: var(--color-text-2);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.16s ease;
 
   &:hover {
-    color: #1769e0;
-    background: rgba(255, 255, 255, 0.8);
+    color: var(--color-primary);
+    background: var(--color-fill-2);
   }
 }
 
 .activeModeButton {
-  border-color: #c8dcfb;
-  color: #1769e0;
-  background: #fff;
-  box-shadow: 0 4px 12px rgba(47, 111, 237, 0.08);
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border-1));
+  color: var(--color-primary);
+  background: var(--color-bg);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 12%, transparent);
 
   &:hover {
-    color: #1769e0;
-    background: #fff;
+    color: var(--color-primary);
+    background: var(--color-bg);
   }
 }
 
@@ -60,13 +60,13 @@
 .categoryPane {
   min-height: 0;
   padding-right: 12px;
-  border-right: 1px solid #e3ebf5;
+  border-right: 1px solid var(--color-border-1);
   overflow-y: auto;
 }
 
 .categoryTitle {
   margin: 2px 0 10px;
-  color: #8795a8;
+  color: var(--color-text-3);
   font-size: 12px;
   font-weight: 600;
 }
@@ -95,9 +95,9 @@
   align-items: flex-start;
   padding: 13px 14px !important;
   margin-bottom: 10px;
-  border: 1px solid #dfe8f4 !important;
+  border: 1px solid var(--color-border-1) !important;
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--color-bg);
   cursor: pointer;
   transition:
     border-color 0.16s ease,
@@ -107,9 +107,9 @@
 
   &:hover,
   &[data-active='true'] {
-    border-color: #c9def8 !important;
-    background: #f7fbff;
-    box-shadow: 0 4px 10px rgba(43, 83, 131, 0.06);
+    border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border-1)) !important;
+    background: var(--color-fill-1);
+    box-shadow: 0 4px 10px color-mix(in srgb, var(--color-text-1) 6%, transparent);
     transform: translateY(-1px);
   }
 }
@@ -119,8 +119,8 @@
   opacity: 0.56;
 
   &:hover {
-    border-color: #dfe8f4 !important;
-    background: #fbfdff;
+    border-color: var(--color-border-1) !important;
+    background: var(--color-bg);
     box-shadow: none;
     transform: none;
   }
@@ -133,10 +133,10 @@
   justify-content: center;
   width: 34px;
   height: 34px;
-  border: 1px solid #cfe2fa;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border-1));
   border-radius: 8px;
-  background: #edf6ff;
-  color: #2f6fed;
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg));
+  color: var(--color-primary);
   font-size: 16px;
 }
 
@@ -156,7 +156,7 @@
 }
 
 .cardTitle {
-  color: #253244;
+  color: var(--color-text-1);
   font-size: 13px;
   font-weight: 700;
   line-height: 20px;
@@ -165,13 +165,13 @@
 
 .apiText {
   margin-left: 4px;
-  color: #9aa8b8;
+  color: var(--color-text-4);
   font-size: 12px;
   font-weight: 400;
 }
 
 .cardDesc {
-  color: #64748b;
+  color: var(--color-text-3);
   font-size: 12px;
   line-height: 18px;
 }

@@ -149,12 +149,22 @@ const NETWORK_NODE_MAX_METRIC_ROWS = 6;
 const NETWORK_NODE_SHAPE_VERSION = 10;
 const NETWORK_NODE_SHAPE_NAME = "network-node-card-v8";
 
+const NETWORK_NODE_CHROME = {
+  primary: "var(--color-primary)",
+  surface: "var(--color-bg-1)",
+  border: "var(--color-border-1)",
+  title: "var(--color-text-1)",
+  muted: "var(--color-text-3)",
+  secondary: "var(--color-text-2)",
+  iconPlate: "var(--color-fill-2)",
+} as const;
+
 const edgeVertexTool = {
   name: "vertices",
   args: {
     attrs: {
-      fill: "#2d7df0",
-      stroke: "#ffffff",
+      fill: NETWORK_NODE_CHROME.primary,
+      stroke: NETWORK_NODE_CHROME.surface,
       strokeWidth: 1,
       r: 5,
       cursor: "move",
@@ -168,7 +178,7 @@ const edgeVertexTool = {
 
 const invisibleEndpointToolAttrs = {
   d: "M -6 -6 H 6 V 6 H -6 Z",
-  fill: "#2d7df0",
+  fill: NETWORK_NODE_CHROME.primary,
   opacity: 0,
   stroke: "none",
   cursor: "move",
@@ -280,7 +290,7 @@ const buildNodeAttrs = (
     attrs[`metric${index}Label`] = {
       display: row ? "block" : "none",
       text: row?.label ?? "",
-      fill: "#64748b",
+      fill: NETWORK_NODE_CHROME.muted,
       fontSize: 11,
       textAnchor: "start",
       textVerticalAnchor: "middle",
@@ -291,7 +301,7 @@ const buildNodeAttrs = (
     attrs[`metric${index}Value`] = {
       display: row && !row.loading ? "block" : "none",
       text: row?.value ?? "",
-      fill: "#192733",
+      fill: NETWORK_NODE_CHROME.title,
       fontSize: 11,
       fontWeight: 650,
       textAnchor: "end",
@@ -306,7 +316,7 @@ const buildNodeAttrs = (
       cy: y * nodeHeight,
       r: 3.5,
       fill: "none",
-      stroke: "#2563eb",
+      stroke: NETWORK_NODE_CHROME.primary,
       strokeWidth: 1.3,
       strokeDasharray: "7 5",
       opacity: 0.9,
@@ -321,9 +331,9 @@ const buildNodeAttrs = (
       y: 0,
       width: NETWORK_NODE_WIDTH,
       height: nodeHeight,
-      stroke: "#d6e1e8",
+      stroke: NETWORK_NODE_CHROME.border,
       strokeWidth: 1,
-      fill: "#ffffff",
+      fill: NETWORK_NODE_CHROME.surface,
       rx: 8,
       ry: 8,
     },
@@ -337,8 +347,8 @@ const buildNodeAttrs = (
     },
     icon: {
       display: "none",
-      fill: "#eef4f6",
-      stroke: "#d6e1e8",
+      fill: NETWORK_NODE_CHROME.iconPlate,
+      stroke: NETWORK_NODE_CHROME.border,
       strokeWidth: 1,
       rx: 6,
       ry: 6,
@@ -350,7 +360,7 @@ const buildNodeAttrs = (
     iconLabel: {
       display: "none",
       text: "",
-      fill: "#335364",
+      fill: NETWORK_NODE_CHROME.secondary,
       fontSize: 11,
       fontWeight: 700,
       textAnchor: "middle",
@@ -360,7 +370,7 @@ const buildNodeAttrs = (
     },
     title: {
       text: compactText(node.bk_inst_name || node.bk_obj_id, 24),
-      fill: "#1f2933",
+      fill: NETWORK_NODE_CHROME.title,
       fontSize: 13,
       fontWeight: 650,
       textAnchor: "start",
@@ -370,7 +380,7 @@ const buildNodeAttrs = (
     },
     subtitle: {
       text: compactText(metaText || node.bk_obj_id, 24),
-      fill: "#73808c",
+      fill: NETWORK_NODE_CHROME.muted,
       fontSize: 11,
       textAnchor: "start",
       textVerticalAnchor: "middle",
@@ -386,7 +396,7 @@ const buildNodeAttrs = (
       r: 5,
     },
     divider: {
-      stroke: "#e4ebf0",
+      stroke: NETWORK_NODE_CHROME.border,
       strokeWidth: 1,
       strokeDasharray: "3 3",
       x1: 12,
@@ -406,7 +416,7 @@ const buildNodeAttrs = (
               ? "opsAnalysis.networkTopology.nodeShape.editHint"
               : "opsAnalysis.networkTopology.nodeShape.clickHint",
           ),
-      fill: "#536270",
+      fill: NETWORK_NODE_CHROME.secondary,
       fontSize: 11,
       textAnchor: "start",
       textVerticalAnchor: "middle",
@@ -417,7 +427,7 @@ const buildNodeAttrs = (
     error: {
       display: "none",
       text: "",
-      fill: "#536270",
+      fill: NETWORK_NODE_CHROME.secondary,
       fontSize: 11,
       textAnchor: "end",
       refX: 190,
@@ -491,9 +501,9 @@ const registerNetworkNodeShapeOnce = () => {
                 r: 4,
                 magnet: false,
                 opacity: 0,
-                stroke: "#2d7df0",
+                stroke: NETWORK_NODE_CHROME.primary,
                 strokeWidth: 1.5,
-                fill: "#ffffff",
+                fill: NETWORK_NODE_CHROME.surface,
               },
             },
           },
@@ -504,9 +514,9 @@ const registerNetworkNodeShapeOnce = () => {
                 r: 4,
                 magnet: false,
                 opacity: 0,
-                stroke: "#2d7df0",
+                stroke: NETWORK_NODE_CHROME.primary,
                 strokeWidth: 1.5,
-                fill: "#ffffff",
+                fill: NETWORK_NODE_CHROME.surface,
               },
             },
           },
@@ -517,9 +527,9 @@ const registerNetworkNodeShapeOnce = () => {
                 r: 4,
                 magnet: false,
                 opacity: 0,
-                stroke: "#2d7df0",
+                stroke: NETWORK_NODE_CHROME.primary,
                 strokeWidth: 1.5,
-                fill: "#ffffff",
+                fill: NETWORK_NODE_CHROME.surface,
               },
             },
           },
@@ -530,9 +540,9 @@ const registerNetworkNodeShapeOnce = () => {
                 r: 4,
                 magnet: false,
                 opacity: 0,
-                stroke: "#2d7df0",
+                stroke: NETWORK_NODE_CHROME.primary,
                 strokeWidth: 1.5,
-                fill: "#ffffff",
+                fill: NETWORK_NODE_CHROME.surface,
               },
             },
           },
@@ -905,14 +915,14 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
       container: host,
       autoResize: true,
       background: {
-        color: '#ffffff',
+        color: 'var(--color-bg-1)',
       },
       // 点阵网格(对齐 OpsPilot 画布 Dots gap=12),点色放淡。
       grid: {
         visible: true,
         type: 'dot',
         size: 12,
-        args: { color: '#ccd6e0', thickness: 1.2 },
+        args: { color: 'var(--color-border-2)', thickness: 1.2 },
       },
       panning: true,
       mousewheel: {
@@ -933,7 +943,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
             data: { connecting: true },
             attrs: {
               line: {
-                stroke: '#2d7df0',
+                stroke: 'var(--color-primary)',
                 strokeWidth: 1.8,
                 strokeLinecap: 'round',
                 strokeLinejoin: 'round',

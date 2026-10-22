@@ -79,6 +79,15 @@ export const STATUS_TOPOLOGY_VISUAL = {
   },
 } as const;
 
+/** Dashboard chrome follows system tokens, so light and dark stay on the same canvas. */
+export const STATUS_TOPOLOGY_PALETTE_SYSTEM: StatusTopologyPalette = {
+  nameFill: 'var(--color-text-1)',
+  typeFill: 'var(--color-text-3)',
+  edgeStroke: 'var(--color-border-2)',
+  selectedStroke: 'var(--color-primary)',
+  portLabelFill: 'var(--color-text-2)',
+};
+
 export const STATUS_TOPOLOGY_PALETTE_LIGHT: StatusTopologyPalette = {
   nameFill: '#1f2a37',
   typeFill: '#6b7c90',

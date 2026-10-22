@@ -20,21 +20,21 @@ export const COLORS = {
   ERROR: '#ff4d4f',
 
   TEXT: {
-    PRIMARY: '#262626',
+    PRIMARY: 'var(--color-text-1)',
     SECONDARY: '#595959',
     DISABLED: '#bfbfbf',
     LIGHT: '#8c8c8c',
   },
 
   BACKGROUND: {
-    WHITE: '#ffffff',
+    WHITE: 'var(--color-bg-1)',
     LIGHT_GRAY: '#f5f5f5',
     GRAY: '#f0f0f0',
     TRANSPARENT: 'transparent',
   },
 
   BORDER: {
-    DEFAULT: '#e0ddddff',
+    DEFAULT: 'var(--color-border-1)',
     LIGHT: '#f0f0f0',
     DARK: '#434343',
     PRIMARY: '#1890FF',

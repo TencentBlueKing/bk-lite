@@ -162,7 +162,7 @@ export const ValueMappingsConfigSection: React.FC<
               />
             )}
 
-            <span className="text-sm text-gray-500">→</span>
+            <span className="text-sm text-[var(--color-text-3)]">→</span>
             <Input
               value={m.result?.text ?? ''}
               onChange={(e) => updateResult(index, { text: e.target.value })}
