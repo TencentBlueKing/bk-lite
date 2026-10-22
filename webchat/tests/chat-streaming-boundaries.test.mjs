@@ -146,7 +146,19 @@ class TestElement {
   addEventListener(name, listener) { this.listeners.set(name, listener); }
   removeEventListener() {}
   focus() {}
-  scrollIntoView() { globalThis.__chatTest.scrolls += 1; }
+  scrollIntoView() { globalThis.__chatTest.scrollIntoViews += 1; }
+  set scrollTop(value) {
+    this._scrollTop = value;
+    globalThis.__chatTest.scrolls += 1;
+    const className = this.className || this.attributes.class || this.attributes.className || '';
+    globalThis.__chatTest.scrollAssignments.push({
+      top: value,
+      height: this.scrollHeight,
+      className: String(className),
+    });
+  }
+  get scrollTop() { return this._scrollTop || 0; }
+  get scrollHeight() { return 640; }
   get firstChild() { return this.childNodes[0] || null; }
   get lastChild() { return this.childNodes.at(-1) || null; }
 }
@@ -184,7 +196,7 @@ Object.defineProperty(globalThis, 'navigator', {
   configurable: true,
   value: { userAgent: 'node' },
 });
-globalThis.__chatTest = { scrolls: 0 };
+globalThis.__chatTest = { scrolls: 0, scrollIntoViews: 0, scrollAssignments: [] };
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const ReactModule = await import('react');
@@ -260,6 +272,31 @@ test('mounted Chat clear and unmount cancel pending writes', async () => {
   assert.equal(globalThis.__chatTest.sessionManager.saveCount || 0, unmountSaveCount);
   globalThis.requestAnimationFrame = originalRequestAnimationFrame;
   globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
+});
+
+test('Chat 自动滚动只写消息区 scrollTop，源码不再调用 scrollIntoView', () => {
+  const source = fs.readFileSync(sourcePath, 'utf8');
+  assert.match(source, /const scroller = messagesScrollerRef\.current;/);
+  assert.match(source, /scroller\.scrollTop\s*=\s*scroller\.scrollHeight/);
+  assert.doesNotMatch(source, /scrollIntoView\s*\(/);
+});
+
+test('mounted Chat pins the transcript with the message scroller and does not scrollIntoView', async () => {
+  globalThis.__chatTest.scrolls = 0;
+  globalThis.__chatTest.scrollIntoViews = 0;
+  globalThis.__chatTest.scrollAssignments = [];
+  const { root } = await mountChat({ streamingTextBatching: false });
+  await emit({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
+  await emit({ type: 'TEXT_MESSAGE_CONTENT', delta: 'tail' });
+
+  assert.equal(globalThis.__chatTest.scrollIntoViews, 0);
+  assert.ok(globalThis.__chatTest.scrollAssignments.length >= 1);
+  for (const assignment of globalThis.__chatTest.scrollAssignments) {
+    assert.equal(assignment.top, assignment.height);
+    assert.equal(assignment.height, 640);
+    assert.match(assignment.className, /\boverflow-y-auto\b/);
+  }
+  await act(async () => root.unmount());
 });
 
 test('mounted Chat honors the rollback prop and auto-scrolls every immediate delta', async () => {

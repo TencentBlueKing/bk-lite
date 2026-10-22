@@ -205,9 +205,9 @@ def monitor_query_metric_data(
 
 @tool(
     description=(
-        "对监控对象下的指标做趋势汇总。服务端用完整历史计算当前值、每天变化量和到达阈值还要多少天，只返回汇总行。"
-        "用户问全部实例的趋势，或未来一段时间会不会超阈值、会不会耗尽时用本工具。"
-        "不要抽样调用 monitor_query_metric_data 再心算。"
+        "根据最近一段时间的监控历史，估算每条序列的当前值、每天变化量，以及还有几天到阈值。"
+        "没到阈值的序列也会返回，within_horizon 为 true 才是预测跨度内会到达阈值。"
+        "用户问未来会不会写满、超阈值或要出预测报告时用本工具，不要再用原始时序心算。"
         "metric 必须来自 monitor_list_object_metrics 返回的 name。"
         "instance_ids 省略或空列表表示该对象下全部已授权实例。"
         "lookback_days 默认 14，horizon_days 默认 7，threshold 默认 100。"
