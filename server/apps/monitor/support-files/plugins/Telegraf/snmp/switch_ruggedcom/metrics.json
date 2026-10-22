@@ -23,7 +23,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -41,7 +41,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total RAM of the RuggedCOM industrial switch in bytes (RUGGEDCOM-SYS-INFO-MIB rcDeviceInfoTotalRam)."
@@ -54,7 +54,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "snmp_device_memory_free{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_free{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Available/free RAM of the RuggedCOM industrial switch in bytes (RUGGEDCOM-SYS-INFO-MIB rcDeviceStsAvailableRam). This leaf is free memory, not used memory."
@@ -67,7 +67,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "snmp_device_memory_total{instance_type='switch', __$labels__} - snmp_device_memory_free{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__} - snmp_device_memory_free{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used RAM of the RuggedCOM industrial switch in bytes, derived as rcDeviceInfoTotalRam minus rcDeviceStsAvailableRam."
@@ -80,7 +80,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "100 * (snmp_device_memory_total{instance_type='switch', __$labels__} - snmp_device_memory_free{instance_type='switch', __$labels__}) / snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "query": "100 * (snmp_device_memory_total{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__} - snmp_device_memory_free{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}) / snmp_device_memory_total{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilization of the RuggedCOM industrial switch, derived as (total-available)/total*100 from rcDeviceInfoTotalRam and rcDeviceStsAvailableRam."
@@ -93,7 +93,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Chassis temperature of the RuggedCOM industrial switch in degrees Celsius (RUGGEDCOM-SYS-INFO-MIB rcDeviceStsTemperature)."
@@ -106,7 +106,7 @@
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "snmp_device_psu_state{instance_type='switch', __$labels__}",
+      "query": "snmp_device_psu_state{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Power-supply state of the RuggedCOM industrial switch (rcDeviceStsPowerSupply1/2). RcHardwareStatus functional(2) is normalized to 1=normal, notFunctional(3) to 2=abnormal; notPresent(1) is skipped. The reported value is the worst present module."
@@ -119,7 +119,7 @@
       ],
       "name": "device_fan_state",
       "display_name": "风扇状态",
-      "query": "snmp_device_fan_state{instance_type='switch', __$labels__}",
+      "query": "snmp_device_fan_state{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Fan-bank state of the RuggedCOM industrial switch (rcDeviceStsFanBank1/2). RcFanStatus on(5)/standby(3) is normalized to 1=normal, failed(2) to 2=abnormal; notPresent(1) is skipped. The reported value is the worst present bank."
@@ -127,7 +127,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_ruggedcom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

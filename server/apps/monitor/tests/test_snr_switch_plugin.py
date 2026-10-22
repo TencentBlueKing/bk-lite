@@ -33,6 +33,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import same_metric_field
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -57,8 +58,8 @@ ENUM_METRICS = ("device_fan_state", "device_psu_state")
 PSU_SUPPLY_OID = "1.3.6.1.4.1.40418.7.100.1.23.1.3"
 INDEX_DIMENSION = [{"name": "index", "description": "SNMP table row index"}]
 MEMORY_USAGE_QUERY = (
-    "device_memory_used{instance_type='switch', __$labels__} / "
-    "device_memory_total{instance_type='switch', __$labels__} * 100"
+    f"device_memory_used{{instance_type='switch', collect_type='{COLLECT_TYPE}', __$labels__}} / "
+    f"device_memory_total{{instance_type='switch', collect_type='{COLLECT_TYPE}', __$labels__}} * 100"
 )
 
 
@@ -175,9 +176,7 @@ def test_interface_hc_metrics_match_cisco(metrics, cisco_metrics):
     for name in INTERFACE_METRICS:
         assert name in ext, f"{name} must be declared"
         for field in ("metric_group", "unit", "query", "dimensions"):
-            assert ext[name][field] == cis[name][field], f"{name}.{field} drift vs Cisco"
-
-
+            assert same_metric_field(field, ext[name][field], cis[name][field]), f"{name}.{field} drift vs Cisco"
 # --------------------------------------------------------------------------- #
 # memory: total/used bytes, usage = used/total*100
 # --------------------------------------------------------------------------- #

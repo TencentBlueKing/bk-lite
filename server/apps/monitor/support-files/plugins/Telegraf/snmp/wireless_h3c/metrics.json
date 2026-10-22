@@ -24,7 +24,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_h3c', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -37,7 +37,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='wireless', __$labels__}",
+      "query": "device_cpu_usage{instance_type='wireless', collect_type='snmp_h3c', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -55,7 +55,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='wireless', __$labels__}",
+      "query": "device_memory_usage{instance_type='wireless', collect_type='snmp_h3c', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -73,7 +73,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_connect_count",
-      "query": "wlan_ap_connect_count{instance_type='wireless', __$labels__}",
+      "query": "wlan_ap_connect_count{instance_type='wireless', collect_type='snmp_h3c', __$labels__}",
       "display_name": "Connected AP Count",
       "data_type": "Number",
       "unit": "counts",
@@ -86,7 +86,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_station_connect_count",
-      "query": "wlan_station_connect_count{instance_type='wireless', __$labels__}",
+      "query": "wlan_station_connect_count{instance_type='wireless', collect_type='snmp_h3c', __$labels__}",
       "display_name": "Connected STA Count",
       "data_type": "Number",
       "unit": "counts",
@@ -99,7 +99,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_max_ap_num_permitted",
-      "query": "wlan_max_ap_num_permitted{instance_type='wireless', __$labels__}",
+      "query": "wlan_max_ap_num_permitted{instance_type='wireless', collect_type='snmp_h3c', __$labels__}",
       "display_name": "Max AP Number Permitted",
       "data_type": "Number",
       "unit": "counts",
@@ -112,7 +112,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_master_ap_count",
-      "query": "wlan_master_ap_count{instance_type='wireless', __$labels__}",
+      "query": "wlan_master_ap_count{instance_type='wireless', collect_type='snmp_h3c', __$labels__}",
       "display_name": "Master AP Count",
       "data_type": "Number",
       "unit": "counts",
@@ -125,7 +125,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_total_ap_connected",
-      "query": "wlan_total_ap_connected{instance_type='wireless', __$labels__}",
+      "query": "wlan_total_ap_connected{instance_type='wireless', collect_type='snmp_h3c', __$labels__}",
       "display_name": "Total APs Connected",
       "data_type": "Number",
       "unit": "counts",

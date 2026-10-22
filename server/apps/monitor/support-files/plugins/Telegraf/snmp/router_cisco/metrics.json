@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "device_cpu_usage{instance_type='router', collect_type='snmp_cisco_router', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -40,7 +40,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "device_memory_used{instance_type='router', __$labels__}",
+      "query": "device_memory_used{instance_type='router', collect_type='snmp_cisco_router', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -58,7 +58,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='router', __$labels__}",
+      "query": "device_memory_free{instance_type='router', collect_type='snmp_cisco_router', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_used{instance_type='router', __$labels__} / (device_memory_used{instance_type='router', __$labels__} + device_memory_free{instance_type='router', __$labels__}) * 100",
+      "query": "device_memory_used{instance_type='router', collect_type='snmp_cisco_router', __$labels__} / (device_memory_used{instance_type='router', collect_type='snmp_cisco_router', __$labels__} + device_memory_free{instance_type='router', collect_type='snmp_cisco_router', __$labels__}) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -94,7 +94,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='router', collect_type='snmp_cisco_router', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -112,7 +112,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='router', __$labels__}",
+      "query": "device_fan_state{instance_type='router', collect_type='snmp_cisco_router', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
@@ -130,7 +130,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='router', __$labels__}",
+      "query": "device_psu_state{instance_type='router', collect_type='snmp_cisco_router', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
@@ -148,7 +148,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_cisco_router', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

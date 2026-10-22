@@ -28,7 +28,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wanopt', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -41,7 +41,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='wanopt', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -54,7 +54,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_idle",
-      "query": "avg(device_cpu_idle{instance_type='wanopt', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_idle{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}) by (instance_id)",
       "display_name": "CPU Idle",
       "data_type": "Number",
       "unit": "percent",
@@ -67,7 +67,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "snmp_device_memory_total{instance_type='wanopt', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -80,7 +80,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "snmp_device_memory_sys_usage{instance_type='wanopt', __$labels__} + snmp_device_memory_cache_usage{instance_type='wanopt', __$labels__}",
+      "query": "snmp_device_memory_sys_usage{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__} + snmp_device_memory_cache_usage{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -93,7 +93,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_sys_usage",
-      "query": "snmp_device_memory_sys_usage{instance_type='wanopt', __$labels__}",
+      "query": "snmp_device_memory_sys_usage{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}",
       "display_name": "Memory System Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -106,7 +106,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_cache_usage",
-      "query": "snmp_device_memory_cache_usage{instance_type='wanopt', __$labels__}",
+      "query": "snmp_device_memory_cache_usage{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}",
       "display_name": "Memory Cache Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -119,7 +119,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "snmp_device_memory_usage{instance_type='wanopt', __$labels__}",
+      "query": "snmp_device_memory_usage{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -132,7 +132,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "bluecoat_sensor_celsius",
-      "query": "bluecoat_sensor_celsius{instance_type='wanopt', __$labels__}",
+      "query": "bluecoat_sensor_celsius{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}",
       "display_name": "Hardware Sensor Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -154,7 +154,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "bluecoat_sensor_volts",
-      "query": "bluecoat_sensor_volts{instance_type='wanopt', __$labels__}",
+      "query": "bluecoat_sensor_volts{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}",
       "display_name": "Hardware Sensor Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -176,7 +176,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "bluecoat_sensor_rpm",
-      "query": "bluecoat_sensor_rpm{instance_type='wanopt', __$labels__}",
+      "query": "bluecoat_sensor_rpm{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}",
       "display_name": "Hardware Sensor Fan Speed (RPM)",
       "data_type": "Number",
       "unit": "counts",
@@ -198,7 +198,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "bluecoat_sensor_state",
-      "query": "bluecoat_sensor_state{instance_type='wanopt', __$labels__}",
+      "query": "bluecoat_sensor_state{instance_type='wanopt', collect_type='snmp_bluecoat', __$labels__}",
       "display_name": "Hardware Sensor State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",

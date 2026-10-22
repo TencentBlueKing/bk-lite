@@ -22,7 +22,7 @@
     {
       "metric_group": "Environment",
       "name": "env_temperature_celsius",
-      "query": "max(snmp_env_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_env_temperature_celsius{instance_type='network_service', collect_type='snmp_comet', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Environment",
       "name": "env_humidity_percent",
-      "query": "max(snmp_env_humidity_percent{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_env_humidity_percent{instance_type='network_service', collect_type='snmp_comet', __$labels__}) by (instance_id)",
       "display_name": "Relative Humidity",
       "data_type": "Number",
       "unit": "percent",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "env_temperature_state",
-      "query": "max(snmp_env_temperature_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_env_temperature_state{instance_type='network_service', collect_type='snmp_comet', __$labels__}) by (instance_id)",
       "display_name": "Temperature Alarm",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "env_humidity_state",
-      "query": "max(snmp_env_humidity_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_env_humidity_state{instance_type='network_service', collect_type='snmp_comet', __$labels__}) by (instance_id)",
       "display_name": "Humidity Alarm",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_comet', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -92,7 +92,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_comet', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_comet', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

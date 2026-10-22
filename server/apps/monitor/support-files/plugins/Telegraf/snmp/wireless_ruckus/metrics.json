@@ -22,7 +22,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_ruckus_wireless', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='wireless', collect_type='snmp_ruckus_wireless', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(device_memory_usage{instance_type='wireless', collect_type='snmp_ruckus_wireless', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_ap_count",
-      "query": "avg(wireless_ap_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(wireless_ap_count{instance_type='wireless', collect_type='snmp_ruckus_wireless', __$labels__}) by (instance_id)",
       "display_name": "Associated AP Count",
       "data_type": "Number",
       "unit": "counts",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_registered_ap_count",
-      "query": "avg(wireless_registered_ap_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(wireless_registered_ap_count{instance_type='wireless', collect_type='snmp_ruckus_wireless', __$labels__}) by (instance_id)",
       "display_name": "Registered AP Count",
       "data_type": "Number",
       "unit": "counts",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_client_count",
-      "query": "avg(wireless_client_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(wireless_client_count{instance_type='wireless', collect_type='snmp_ruckus_wireless', __$labels__}) by (instance_id)",
       "display_name": "Client Station Count",
       "data_type": "Number",
       "unit": "counts",
@@ -100,7 +100,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_licensed_ap_count",
-      "query": "avg(wireless_licensed_ap_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(wireless_licensed_ap_count{instance_type='wireless', collect_type='snmp_ruckus_wireless', __$labels__}) by (instance_id)",
       "display_name": "Licensed AP Count",
       "data_type": "Number",
       "unit": "counts",

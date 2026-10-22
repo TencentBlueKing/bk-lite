@@ -23,7 +23,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='router', collect_type='snmp_lancom', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "snmp_device_memory_total{instance_type='router', __$labels__} * 1024",
+      "query": "snmp_device_memory_total{instance_type='router', collect_type='snmp_lancom', __$labels__} * 1024",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "snmp_device_memory_free{instance_type='router', __$labels__} * 1024",
+      "query": "snmp_device_memory_free{instance_type='router', collect_type='snmp_lancom', __$labels__} * 1024",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "100 * (snmp_device_memory_total{instance_type='router', __$labels__} - snmp_device_memory_free{instance_type='router', __$labels__}) / snmp_device_memory_total{instance_type='router', __$labels__}",
+      "query": "100 * (snmp_device_memory_total{instance_type='router', collect_type='snmp_lancom', __$labels__} - snmp_device_memory_free{instance_type='router', collect_type='snmp_lancom', __$labels__}) / snmp_device_memory_total{instance_type='router', collect_type='snmp_lancom', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -85,7 +85,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='router', collect_type='snmp_lancom', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Hardware temperature of the LANCOM router in degrees Celsius (LCOS-MIB lcsStatusHardwareInfoTemperatureDegrees)."
@@ -93,7 +93,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_lancom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

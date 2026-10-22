@@ -24,7 +24,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='switch', collect_type='snmp_lancom', __$labels__}) by (instance_id)",
       "display_name": "设备温度",
       "data_type": "Number",
       "unit": "celsius",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Memory",
       "name": "lancom_memory_free_mb",
-      "query": "max(snmp_lancom_memory_free_mb{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_lancom_memory_free_mb{instance_type='switch', collect_type='snmp_lancom', __$labels__}) by (instance_id)",
       "display_name": "空闲内存（MB）",
       "data_type": "Number",
       "unit": "mebibytes",
@@ -50,7 +50,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_state{instance_type='switch', collect_type='snmp_lancom', __$labels__}",
       "display_name": "风扇状态",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -68,7 +68,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "query": "device_fan_speed{instance_type='switch', collect_type='snmp_lancom', __$labels__}",
       "display_name": "风扇转速",
       "data_type": "Number",
       "unit": "counts",
@@ -86,7 +86,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_lancom', __$labels__}",
       "display_name": "电源状态",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -104,7 +104,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_lancom', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -122,7 +122,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_lancom', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -140,7 +140,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_lancom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

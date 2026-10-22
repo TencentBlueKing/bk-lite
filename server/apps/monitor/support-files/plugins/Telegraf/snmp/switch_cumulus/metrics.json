@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "device_cpu_usage{instance_type='switch', collect_type='snmp_cumulus', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -39,7 +39,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_cumulus', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -57,7 +57,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_cumulus', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -80,7 +80,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)*1024",
+      "query": "sum(device_memory_total{instance_type='switch', collect_type='snmp_cumulus', __$labels__}) by (instance_id)*1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memTotalReal, reported in kB and converted to bytes in the query)."
@@ -93,7 +93,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)*1024",
+      "query": "sum(device_memory_free{instance_type='switch', collect_type='snmp_cumulus', __$labels__}) by (instance_id)*1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memAvailReal, reported in kB and converted to bytes in the query)."
@@ -106,7 +106,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(device_memory_total{instance_type='switch', collect_type='snmp_cumulus', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', collect_type='snmp_cumulus', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', collect_type='snmp_cumulus', __$labels__}) by (instance_id) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Cumulus Linux switch, derived as (total-free)/total."
@@ -124,7 +124,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__} / 1000",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_cumulus', __$labels__} / 1000",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Chassis temperature of the Cumulus Linux switch in degrees Celsius (LM-SENSORS-MIB lmTempSensorsValue 1.3.6.1.4.1.2021.13.16.2.1.3). The sensor reports millidegrees Celsius (for example 42000 means 42 °C), so the query divides the raw value by 1000."
@@ -132,7 +132,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_cumulus', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
