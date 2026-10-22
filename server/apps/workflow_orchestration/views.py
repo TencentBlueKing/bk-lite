@@ -19,8 +19,10 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import workflow_orchestration_logger as logger
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet, build_json_membership_query
+from apps.core.utils.web_utils import WebUtils
 from apps.rpc.job_mgmt import JobMgmt
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -135,6 +137,21 @@ class WorkflowPageNumberPagination(PageNumberPagination):
 
 def _identity(request):
     return getattr(request.user, "username", ""), getattr(request.user, "domain", "domain.com")
+
+
+def _has_menu_permission(request, name: str) -> bool:
+    if getattr(request.user, "is_superuser", False):
+        return True
+    granted = getattr(request.user, "permission", set())
+    if isinstance(granted, dict):
+        granted = granted.get(APP_NAME, set())
+    return name in set(granted or [])
+
+
+def _deny_menu_permission(request):
+    locale = getattr(getattr(request, "user", None), "locale", None) or "en"
+    loader = LanguageLoader(app="core", default_lang=locale)
+    return WebUtils.response_403(loader.get("error.insufficient_permissions", "Insufficient permissions"))
 
 
 def _team_id(request) -> int:
@@ -305,7 +322,7 @@ class WorkflowViewSet(AuthViewSet):
             values.get("description", workflow.description),
         )
 
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow-View,workflow_market-View", app_name=APP_NAME)
     def list(self, request, *args, **kwargs):
         latest_execution = WorkflowExecution.objects.filter(workflow_id=OuterRef("pk")).order_by("-created_at")
         queryset = (
@@ -343,16 +360,33 @@ class WorkflowViewSet(AuthViewSet):
                 return Response({"detail": render_known_message(request, "trigger_type 非法")}, status=status.HTTP_400_BAD_REQUEST)
             queryset = queryset.filter(build_json_membership_query(queryset, "trigger_types", [trigger_type]))
         builtin_filter = str(request.query_params.get("is_builtin") or "").strip().lower()
-        if builtin_filter in {"true", "false"}:
-            queryset = queryset.filter(is_builtin=builtin_filter == "true")
+        if builtin_filter == "true":
+            if not _has_menu_permission(request, "workflow_market-View"):
+                return _deny_menu_permission(request)
+            queryset = queryset.filter(is_builtin=True)
+        elif builtin_filter == "false":
+            if not _has_menu_permission(request, "workflow-View"):
+                return _deny_menu_permission(request)
+            queryset = queryset.filter(is_builtin=False)
         elif builtin_filter:
             return Response({"detail": render_known_message(request, "is_builtin 非法")}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            can_workflow = _has_menu_permission(request, "workflow-View")
+            can_market = _has_menu_permission(request, "workflow_market-View")
+            if can_workflow and not can_market:
+                queryset = queryset.filter(is_builtin=False)
+            elif can_market and not can_workflow:
+                queryset = queryset.filter(is_builtin=True)
         page = self.paginate_queryset(queryset)
         return self.get_paginated_response(self.get_serializer(page, many=True).data)
 
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow-View,workflow_market-View", app_name=APP_NAME)
     def retrieve(self, request, *args, **kwargs):
-        return Response(self.get_serializer(self._scoped_object(request)).data)
+        workflow = self._scoped_object(request)
+        needed = "workflow_market-View" if workflow.is_builtin else "workflow-View"
+        if not _has_menu_permission(request, needed):
+            return _deny_menu_permission(request)
+        return Response(self.get_serializer(workflow).data)
 
     @HasPermission("workflow-Add", app_name=APP_NAME)
     def create(self, request, *args, **kwargs):
@@ -526,9 +560,12 @@ class WorkflowViewSet(AuthViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(methods=["POST"], detail=True)
-    @HasPermission("workflow-Add", app_name=APP_NAME)
+    @HasPermission("workflow-Add,workflow_market-Add", app_name=APP_NAME)
     def duplicate(self, request, pk=None):
         source = self._scoped_object(request)
+        needed = "workflow_market-Add" if source.is_builtin else "workflow-Add"
+        if not _has_menu_permission(request, needed):
+            return _deny_menu_permission(request)
         if "team" in request.data:
             team_ids, error = self._team_ids_from_payload(request, request.data.get("team"))
             if error is not None:
@@ -1005,7 +1042,7 @@ class WorkflowViewSet(AuthViewSet):
         return Response(reference, status=status.HTTP_201_CREATED)
 
     @action(methods=["POST"], detail=True, url_path="report-template-test-upload")
-    @HasPermission("workflow-Execute", app_name=APP_NAME)
+    @HasPermission("workflow-Edit,workflow-Execute", app_name=APP_NAME)
     def report_template_test_upload(self, request, pk=None):
         workflow = self._scoped_object(request, require_operate=True)
         uploaded_file = request.FILES.get("file")
@@ -1188,7 +1225,7 @@ class WorkflowViewSet(AuthViewSet):
         return Response(self.get_serializer(workflow).data)
 
     @action(methods=["GET"], detail=False)
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow-View,workflow_market-View", app_name=APP_NAME)
     def atoms(self, request):
         team = _team_id(request)
         catalog = available_atom_catalog(team)
@@ -1199,7 +1236,7 @@ class WorkflowViewSet(AuthViewSet):
         return Response(payload)
 
     @action(methods=["GET"], detail=False, url_path=r"sample-templates/(?P<fmt>docx|xlsx)")
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow-View,workflow_market-View", app_name=APP_NAME)
     def sample_templates(self, request, fmt=None):
         """下载后端维护的内置巡检示例模板（docx/xlsx）。"""
         _team_id(request)
@@ -1213,7 +1250,7 @@ class WorkflowViewSet(AuthViewSet):
         return FileResponse(BytesIO(path.read_bytes()), content_type=content_type, as_attachment=True, filename=path.name)
 
     @action(methods=["GET"], detail=False)
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow-View,workflow_market-View", app_name=APP_NAME)
     def targets(self, request):
         team = _team_id(request)
         source = request.query_params.get("source")
@@ -1579,10 +1616,11 @@ class WorkflowExecutionViewSet(AuthViewSet):
                 logger.warning("Conductor sync unavailable execution_id=%s", execution.id)
         return execution
 
+    @HasPermission("workflow-Execute", app_name=APP_NAME)
     def create(self, request, *args, **kwargs):
         return Response({"detail": render_known_message(request, "执行记录只能由流程或触发器创建")}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow_execution-View", app_name=APP_NAME)
     def list(self, request, *args, **kwargs):
         username, _ = _identity(request)
         actionable = (
@@ -1632,7 +1670,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
         return self.get_paginated_response(WorkflowExecutionListSerializer(page, many=True, context={"request": request}).data)
 
     @action(methods=["GET"], detail=False)
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow_home-View", app_name=APP_NAME)
     def dashboard(self, request):
         team = self._validate_current_team_permission(request)
         username, _ = _identity(request)
@@ -1745,20 +1783,20 @@ class WorkflowExecutionViewSet(AuthViewSet):
             }
         )
 
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow_execution-View", app_name=APP_NAME)
     def retrieve(self, request, *args, **kwargs):
         execution = self._sync_active_execution(self._scoped_object(request))
         return Response(self.get_serializer(execution).data)
 
     @action(methods=["GET"], detail=True)
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow_execution-View", app_name=APP_NAME)
     def nodes(self, request, pk=None):
         execution = self._sync_active_execution(self._scoped_object(request))
         username, _ = _identity(request)
         return Response(build_execution_node_summary(execution, username=username))
 
     @action(methods=["GET"], detail=True, url_path=r"nodes/(?P<node_reference>[^/.]+)")
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow_execution-View", app_name=APP_NAME)
     def node_detail(self, request, pk=None, node_reference=None):
         execution = self._scoped_object(request)
         username, _ = _identity(request)
@@ -1791,7 +1829,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
         return Response(self.get_serializer(execution).data)
 
     @action(methods=["POST"], detail=True)
-    @HasPermission("workflow-Execute", app_name=APP_NAME)
+    @HasPermission("workflow_execution-Execute", app_name=APP_NAME)
     def terminate(self, request, pk=None):
         execution = self._scoped_object(request, require_operate=True)
         if execution.status not in {
@@ -1843,7 +1881,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
         )
 
     @action(methods=["GET"], detail=True, url_path="launch-plan")
-    @HasPermission("workflow-Execute", app_name=APP_NAME)
+    @HasPermission("workflow_execution-Execute", app_name=APP_NAME)
     def launch_plan(self, request, pk=None):
         original = self._scoped_object(request, require_operate=True)
         if not self._rerunnable(original):
@@ -1874,7 +1912,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
         )
 
     @action(methods=["POST"], detail=True)
-    @HasPermission("workflow-Execute", app_name=APP_NAME)
+    @HasPermission("workflow_execution-Execute", app_name=APP_NAME)
     def rerun(self, request, pk=None):
         original = self._scoped_object(request, require_operate=True)
         if not self._rerunnable(original):
@@ -1984,10 +2022,11 @@ class WorkflowInteractionViewSet(AuthViewSet):
             pk=self.kwargs.get("pk"),
         )
 
+    @HasPermission("workflow_execution-View", app_name=APP_NAME)
     def create(self, request, *args, **kwargs):
         return Response({"detail": render_known_message(request, "人工处理项只能由执行引擎产生")}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow_execution-View", app_name=APP_NAME)
     def list(self, request, *args, **kwargs):
         username, _ = _identity(request)
         queryset = self._scoped_queryset(request)
@@ -2001,12 +2040,12 @@ class WorkflowInteractionViewSet(AuthViewSet):
         page = self.paginate_queryset(queryset)
         return self.get_paginated_response(self.get_serializer(page, many=True).data)
 
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow_execution-View", app_name=APP_NAME)
     def retrieve(self, request, *args, **kwargs):
         return Response(self.get_serializer(self._scoped_object(request)).data)
 
     @action(methods=["GET"], detail=False, url_path="pending-count")
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow_execution-View", app_name=APP_NAME)
     def pending_count(self, request):
         username, _ = _identity(request)
         queryset = (
@@ -2021,7 +2060,7 @@ class WorkflowInteractionViewSet(AuthViewSet):
         return Response({"count": queryset.count()})
 
     @action(methods=["POST"], detail=True)
-    @HasPermission("workflow-Approve", app_name=APP_NAME)
+    @HasPermission("workflow_execution-Approve", app_name=APP_NAME)
     def decide(self, request, pk=None):
         interaction = self._scoped_object(request)
         username, domain = _identity(request)
@@ -2282,7 +2321,7 @@ class ExecutionArtifactViewSet(AuthViewSet):
         return response
 
     @action(methods=["GET"], detail=True)
-    @HasPermission("workflow-View", app_name=APP_NAME)
+    @HasPermission("workflow_execution-View", app_name=APP_NAME)
     def download(self, request, pk=None):
         team = self._validate_current_team_permission(request)
         workflows = filter_workflow_queryset(request, Workflow.all_objects.all(), team)
