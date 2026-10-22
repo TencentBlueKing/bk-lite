@@ -301,7 +301,89 @@ def test_assess_windows_marks_definite_product_mismatch_not_applicable():
     result = parsers.assess_requirements(OSType.WINDOWS, stdout, [requirement])
 
     assert result[requirement.id].status == RequirementAssessmentStatus.NOT_APPLICABLE
-    assert "product" in result[requirement.id].reason.lower()
+    assert "17763" in result[requirement.id].reason
+    assert "20348" in result[requirement.id].reason
+
+
+@pytest.mark.django_db
+def test_assess_windows_dotnet_mismatch_precedes_wua_missing():
+    baseline = PatchBaseline.objects.create(name="windows-dotnet", os_type=OSType.WINDOWS, team=[1])
+    patch = Patch.objects.create(title="KB6000101", os_type=OSType.WINDOWS, team=[1])
+    WindowsPatchDetail.objects.create(
+        patch=patch,
+        kb_number="KB6000101",
+        product_list=["Windows Server 2022"],
+        architectures=["x64"],
+        package_dotnet_version="4.8",
+    )
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            "BKPATCH_HOST|WINDOWS|Microsoft Windows Server 2022 Standard|10.0|20348|AMD64",
+            "BKPATCH_DOTNET|533320",
+            "===WUA===",
+            "KB6000101|Important|2026-09 .NET Framework",
+            "===WUA_INSTALLED===",
+            "===HOTFIX===",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.WINDOWS, stdout, [requirement])
+
+    assert result[requirement.id].status == RequirementAssessmentStatus.NOT_APPLICABLE
+    assert "4.8" in result[requirement.id].reason
+    assert "533320" in result[requirement.id].reason
+    assert "4.8.1" in result[requirement.id].reason
+
+
+@pytest.mark.django_db
+def test_assess_windows_catalog_build_match_is_not_a_version_mismatch():
+    baseline = PatchBaseline.objects.create(name="windows-build-match", os_type=OSType.WINDOWS, team=[1])
+    patch = Patch.objects.create(title="Windows Server 2019 package", os_type=OSType.WINDOWS, team=[1])
+    WindowsPatchDetail.objects.create(
+        patch=patch,
+        kb_number="KB9999998",
+        product_list=["Windows Server 2019"],
+        architectures=["x64"],
+    )
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            "BKPATCH_HOST|WINDOWS|Microsoft Windows Server 2019 Standard|10.0|17763|AMD64",
+            "===WUA===",
+            "===WUA_INSTALLED===",
+            "===HOTFIX===",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.WINDOWS, stdout, [requirement])
+
+    assert result[requirement.id].status == RequirementAssessmentStatus.UNKNOWN
+
+
+@pytest.mark.django_db
+def test_assess_windows_non_catalog_product_still_uses_caption_substring():
+    baseline = PatchBaseline.objects.create(name="windows-non-catalog", os_type=OSType.WINDOWS, team=[1])
+    patch = Patch.objects.create(title="Windows 11 only", os_type=OSType.WINDOWS, team=[1])
+    WindowsPatchDetail.objects.create(
+        patch=patch,
+        kb_number="KB9999997",
+        product_list=["Windows 11"],
+        architectures=["x64"],
+    )
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            "BKPATCH_HOST|WINDOWS|Microsoft Windows Server 2022 Standard|10.0|20348|AMD64",
+            "===WUA===",
+            "===WUA_INSTALLED===",
+            "===HOTFIX===",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.WINDOWS, stdout, [requirement])
+
+    assert result[requirement.id].status == RequirementAssessmentStatus.NOT_APPLICABLE
 
 
 @pytest.mark.django_db

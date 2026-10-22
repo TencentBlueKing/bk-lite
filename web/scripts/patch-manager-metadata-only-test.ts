@@ -7,7 +7,7 @@ const assertAbsent = (content: string, pattern: RegExp, scope: string) => {
   if (pattern.test(content)) throw new Error(`${scope} 仍包含已废弃代码: ${pattern}`);
 };
 
-const libraryPage = read('src/app/patch-manager/(pages)/library/page.tsx');
+const libraryPage = read('src/app/patch-manager/(pages)/library/_components/library-content.tsx');
 const libraryPresentation = read('src/app/patch-manager/components/library-presentation.ts');
 const api = read('src/app/patch-manager/api/index.ts');
 const types = read('src/app/patch-manager/types/index.ts');
@@ -90,8 +90,8 @@ if (windowsFieldOrder.some((index) => index < 0)
 if (/label=\{t\('patchManager\.libraryPage\.description'\)\} name="desc" rules=/.test(createDrawer)) {
   throw new Error('Windows 新增补丁的描述应为非必填');
 }
-if (/label=\{t\('patchManager\.libraryPage\.applicableVersion'\)\} name="version" rules=/.test(createDrawer)) {
-  throw new Error('Windows 新增补丁的适用版本应为非必填');
+if (!createDrawer.includes("t('patchManager.libraryPage.versionRequired')")) {
+  throw new Error('Windows 新增补丁的适用版本应为必填');
 }
 
 const editDialog = libraryPage.match(
@@ -111,6 +111,16 @@ if (editWindowsFieldOrder.some((index) => index < 0)
 }
 if (/label=\{t\('patchManager\.libraryPage\.description'\)\} name="title" rules=/.test(editDialog)) {
   throw new Error('Windows 编辑补丁的描述应为非必填');
+}
+if (!editDialog.includes('editingPatch.sources.length === 0')
+  || !editDialog.includes("t('patchManager.libraryPage.versionRequired')")) {
+  throw new Error('Windows 手工补丁编辑的适用版本应为必填');
+}
+if (editDialog.includes("required: true, message: t('patchManager.libraryPage.packageReuploadRequired')")) {
+  throw new Error('重新上传只保留一条校验');
+}
+if (!editDialog.includes('windowsPackageReplacementSelected(editPackageFileList)')) {
+  throw new Error('已选择新补丁文件时不应继续提示上次上传失败');
 }
 
 for (const required of [

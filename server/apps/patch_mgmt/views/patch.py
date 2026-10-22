@@ -4,6 +4,11 @@ import json
 
 from django.db import transaction
 from django.db.models import Count, Q
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet, build_json_membership_query
@@ -11,29 +16,17 @@ from apps.patch_mgmt.constants import GovernanceTaskStatus, OSType, PackageStatu
 from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.filters.patch import PatchFilter
 from apps.patch_mgmt.models import GovernanceTask, Patch, WindowsPatchDetail
-from apps.patch_mgmt.serializers.patch import (
-    PatchBatchDeleteSerializer,
-    PatchDetailSerializer,
-    PatchListSerializer,
-)
+from apps.patch_mgmt.serializers.patch import PatchBatchDeleteSerializer, PatchDetailSerializer, PatchListSerializer
 from apps.patch_mgmt.services.manual_windows_patch_write import (
     ManualWindowsPatchStorageFailure,
     create_manual_windows_patch,
     update_manual_windows_patch,
 )
 from apps.patch_mgmt.services.target_access import GlobalSharedResourceMixin
-from apps.patch_mgmt.services.windows_package import (
-    WindowsPackageError,
-    replace_failed_windows_package,
-    store_windows_package,
-)
-from apps.patch_mgmt.utils.operation_log import log_patch_created, log_patch_deleted, log_patch_updated
+from apps.patch_mgmt.services.windows_package import WindowsPackageError, replace_failed_windows_package, store_windows_package
+from apps.patch_mgmt.services.windows_versions import windows_version_options
 from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
-from rest_framework import status
-from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.response import Response
+from apps.patch_mgmt.utils.operation_log import log_patch_created, log_patch_deleted, log_patch_updated
 
 
 class PatchViewSet(GlobalSharedResourceMixin, AuthViewSet):
@@ -49,20 +42,16 @@ class PatchViewSet(GlobalSharedResourceMixin, AuthViewSet):
     parser_classes = [JSONParser, FormParser, MultiPartParser]
 
     def get_queryset(self):
-        return super().get_queryset().annotate(
-            _baseline_requirement_count=Count("baseline_requirements", distinct=True)
-        )
+        return super().get_queryset().annotate(_baseline_requirement_count=Count("baseline_requirements", distinct=True))
 
     def _manual_windows_metadata(self, request):
         raw_metadata = request.data.get("metadata")
         try:
-            metadata = (
-                raw_metadata
-                if isinstance(raw_metadata, dict)
-                else json.loads(raw_metadata or "")
-            )
+            metadata = raw_metadata if isinstance(raw_metadata, dict) else json.loads(raw_metadata or "")
         except (TypeError, ValueError) as exc:
-            raise ValidationError({"metadata": patch_message(request, "error.invalid_metadata_json", "Patch metadata must be a valid JSON object")}) from exc
+            raise ValidationError(
+                {"metadata": patch_message(request, "error.invalid_metadata_json", "Patch metadata must be a valid JSON object")}
+            ) from exc
         if not isinstance(metadata, dict):
             raise ValidationError({"metadata": patch_message(request, "error.metadata_must_be_object", "Patch metadata must be a JSON object")})
 
@@ -101,6 +90,11 @@ class PatchViewSet(GlobalSharedResourceMixin, AuthViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
+    @action(detail=False, methods=["get"], url_path="windows_versions")
+    @HasPermission("patch-View")
+    def windows_versions(self, request):
+        return Response(windows_version_options())
+
     @HasPermission("patch-View")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
@@ -126,11 +120,7 @@ class PatchViewSet(GlobalSharedResourceMixin, AuthViewSet):
                 response_status=status.HTTP_201_CREATED,
             )
 
-        request.data["pkg_status"] = (
-            PackageStatus.DOWNLOADING
-            if request.data.get("os_type") == OSType.WINDOWS
-            else PackageStatus.READY
-        )
+        request.data["pkg_status"] = PackageStatus.DOWNLOADING if request.data.get("os_type") == OSType.WINDOWS else PackageStatus.READY
         if "team" not in request.data or not request.data.get("team"):
             current_team = self._parse_current_team_cookie(request)
             if current_team:
@@ -186,12 +176,8 @@ class PatchViewSet(GlobalSharedResourceMixin, AuthViewSet):
         external_references = Q(pk__in=[])
         candidate_references = Patch.objects.exclude(pk__in=patch_ids)
         for patch_id in patch_ids:
-            external_references |= build_json_membership_query(
-                candidate_references, "dependency_ids", [patch_id]
-            )
-            external_references |= build_json_membership_query(
-                candidate_references, "replacement_ids", [patch_id]
-            )
+            external_references |= build_json_membership_query(candidate_references, "dependency_ids", [patch_id])
+            external_references |= build_json_membership_query(candidate_references, "replacement_ids", [patch_id])
         if candidate_references.filter(external_references).exists():
             return Response(
                 {
@@ -271,11 +257,20 @@ class PatchViewSet(GlobalSharedResourceMixin, AuthViewSet):
         patch = self.get_object()
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
-            return Response({"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST
+            )
         try:
-            store_windows_package(patch, uploaded_file)
+            store_windows_package(
+                patch,
+                uploaded_file,
+                declared_dotnet_version=str(request.data.get("dotnet_version") or ""),
+            )
         except WindowsPackageError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": patch_message(request, f"error.{exc.code}", exc.default, **exc.params)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         patch.refresh_from_db()
         return Response(PatchDetailSerializer(patch, context={"request": request}).data)
 
@@ -285,10 +280,19 @@ class PatchViewSet(GlobalSharedResourceMixin, AuthViewSet):
         patch = self.get_object()
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
-            return Response({"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST
+            )
         try:
-            replace_failed_windows_package(patch, uploaded_file)
+            replace_failed_windows_package(
+                patch,
+                uploaded_file,
+                declared_dotnet_version=str(request.data.get("dotnet_version") or ""),
+            )
         except WindowsPackageError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": patch_message(request, f"error.{exc.code}", exc.default, **exc.params)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         patch.refresh_from_db()
         return Response(PatchDetailSerializer(patch, context={"request": request}).data)
