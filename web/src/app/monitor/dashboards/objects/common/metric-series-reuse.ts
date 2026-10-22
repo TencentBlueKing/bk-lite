@@ -42,3 +42,17 @@ export const metricNamesNeedingFetch = (
   inflight: ReadonlySet<string>
 ): string[] =>
   wanted.filter((name) => !inflight.has(name) && loadedGeneration.get(name) !== generation);
+
+/**
+ * 磁盘/网络页可见集为空。静默刷新若仍升代，会把其它页签已加载序列标成过期，
+ * 回切时整表重打。手动刷新不走这里，仍升代。
+ * wantedCount 为 null 表示未传作用域（其它仪表盘），恒不跳过。
+ */
+export const shouldSkipEmptyScopeSilentRefresh = (
+  reuseLoadedSeries: boolean,
+  sameDataset: boolean,
+  silent: boolean,
+  wantedCount: number | null
+): boolean => (
+  reuseLoadedSeries && sameDataset && silent && wantedCount === 0
+);

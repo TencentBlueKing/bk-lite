@@ -10,9 +10,12 @@ import { HOST_CATEGORY_TAB_METRIC_NAMES } from './layered/performance-scope';
 import type { HostCategoryTab } from './layered/tab-level';
 import {
   HOST_DISK_ENTITY_QUERIES,
+  HOST_DISK_OVERVIEW_ENTITY_QUERIES,
   HOST_GPU_ENTITY_QUERIES,
   HOST_NET_ENTITY_QUERIES,
-  HOST_PROCESS_ENTITY_QUERIES
+  HOST_NET_OVERVIEW_ENTITY_QUERIES,
+  HOST_PROCESS_ENTITY_QUERIES,
+  HOST_PROCESS_OVERVIEW_ENTITY_QUERIES
 } from './queries';
 import { useHostEntityMetrics } from './use-entity-metrics';
 import { resolveHostProcessMetricsTarget } from './host-process-metrics-tab';
@@ -62,6 +65,11 @@ export default function HostDashboardPage() {
   const categoryNet = entityOnCategory && (categoryTab === 'overview' || categoryTab === 'net');
   const categoryProcess = entityOnCategory && processReady && (categoryTab === 'overview' || categoryTab === 'process');
   const categorySystem = entityOnCategory && categoryTab === 'system';
+  const diskQueries = categoryTab === 'disk' ? HOST_DISK_ENTITY_QUERIES : HOST_DISK_OVERVIEW_ENTITY_QUERIES;
+  const netQueries = categoryTab === 'net' ? HOST_NET_ENTITY_QUERIES : HOST_NET_OVERVIEW_ENTITY_QUERIES;
+  const processQueries = processReady && categoryTab === 'process'
+    ? HOST_PROCESS_ENTITY_QUERIES
+    : HOST_PROCESS_OVERVIEW_ENTITY_QUERIES;
   const entityArgs = {
     idValues,
     instanceIdKeys,
@@ -75,17 +83,17 @@ export default function HostDashboardPage() {
   const diskState = useHostEntityMetrics({
     ...entityArgs,
     enabled: categoryDisk,
-    queries: HOST_DISK_ENTITY_QUERIES
+    queries: diskQueries
   });
   const netState = useHostEntityMetrics({
     ...entityArgs,
     enabled: categoryNet,
-    queries: HOST_NET_ENTITY_QUERIES
+    queries: netQueries
   });
   const processState = useHostEntityMetrics({
     ...entityArgs,
     enabled: categoryProcess,
-    queries: processReady ? HOST_PROCESS_ENTITY_QUERIES : []
+    queries: processReady ? processQueries : []
   });
   const gpuState = useHostEntityMetrics({
     ...entityArgs,
