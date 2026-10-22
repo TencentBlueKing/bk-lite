@@ -279,10 +279,12 @@ export default function ReplicationPane({
   const extras = useMemo(() => readMysqlReplicationExtras(metricMap), [metricMap]);
   const trends = useMemo(() => readMysqlReplicationSeries(metricMap), [metricMap]);
 
-  const statusBlock = block && block.kind !== 'primary' && block.fields.length > 0 ? block : null;
-  const fields = statusBlock
-    ? (statusBlock.kind === 'replica' ? replicaFields(statusBlock.fields) : statusBlock.fields)
-    : [];
+  const statusBlock = block && block.kind !== 'primary'
+    ? block
+    : null;
+  const fields = statusBlock?.kind === 'replica'
+    ? replicaFields(statusBlock.fields)
+    : (statusBlock?.fields || []);
   const items: StatusTile[] = fields.map((field) => ({
     key: field.label,
     label: localizeLabel(field.label),
@@ -315,7 +317,7 @@ export default function ReplicationPane({
   const replicationLoading = blocksUntilReady(MYSQL_ROLE_METRICS, pendingMetricNames)
     || blocksUntilReady(MYSQL_REPLICATION_EXTRA_METRICS, pendingMetricNames);
   const trendEmpty = (slot: MysqlReplicationTrendKey, metricName: string) => {
-    if (slot === 'delay') return text('noTrend');
+    if (slot === 'delay') return text('lagUnknown');
     const series = metricMap[metricName];
     if (series?.loadState === 'success') return text('recentWindowEmpty');
     return slot === 'relay' ? text('relayCollectionOff') : text('binlogCollectionOff');

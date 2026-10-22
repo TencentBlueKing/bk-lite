@@ -176,6 +176,7 @@ interface StatementPaneProps {
   selectedId: string;
   onSelect: (id: string) => void;
   loading?: boolean;
+  queryFailed?: boolean;
   instanceName: string;
   onOpenCollection?: () => void;
 }
@@ -186,6 +187,7 @@ export function StatementPane({
   selectedId,
   onSelect,
   loading = false,
+  queryFailed = false,
   instanceName,
   onOpenCollection
 }: StatementPaneProps) {
@@ -210,10 +212,12 @@ export function StatementPane({
     return (
       <TabFill
         loading={loading}
-        title={mysqlCategoryText(t, 'emptyStatementsTitle')}
-        hint={mysqlCategoryText(t, 'emptyStatementsHint')}
-        actionLabel={onOpenCollection ? mysqlCategoryText(t, 'enableStatementCollection') : undefined}
-        onAction={onOpenCollection}
+        title={mysqlCategoryText(t, queryFailed ? 'digestQueryFailedTitle' : 'emptyStatementsTitle')}
+        hint={mysqlCategoryText(t, queryFailed ? 'digestQueryFailedHint' : 'emptyStatementsHint')}
+        actionLabel={queryFailed || !onOpenCollection
+          ? undefined
+          : mysqlCategoryText(t, 'enableStatementCollection')}
+        onAction={queryFailed ? undefined : onOpenCollection}
       />
     );
   }
@@ -268,6 +272,7 @@ interface WaitPaneProps {
   selectedId: string;
   onSelect: (id: string) => void;
   loading?: boolean;
+  queryFailed?: boolean;
   instanceName: string;
   statementsCollected: boolean;
   onOpenCollection?: () => void;
@@ -279,6 +284,7 @@ export function WaitPane({
   selectedId,
   onSelect,
   loading = false,
+  queryFailed = false,
   instanceName,
   statementsCollected,
   onOpenCollection
@@ -316,10 +322,12 @@ export function WaitPane({
     return (
       <TabFill
         loading={loading}
-        title={mysqlCategoryText(t, 'emptyWaitsTitle')}
-        hint={mysqlCategoryText(t, 'emptyWaitsHint')}
-        actionLabel={onOpenCollection ? mysqlCategoryText(t, 'enableWaitCollection') : undefined}
-        onAction={onOpenCollection}
+        title={mysqlCategoryText(t, queryFailed ? 'digestQueryFailedTitle' : 'emptyWaitsTitle')}
+        hint={mysqlCategoryText(t, queryFailed ? 'digestQueryFailedHint' : 'emptyWaitsHint')}
+        actionLabel={queryFailed || !onOpenCollection
+          ? undefined
+          : mysqlCategoryText(t, 'enableWaitCollection')}
+        onAction={queryFailed ? undefined : onOpenCollection}
       />
     );
   }

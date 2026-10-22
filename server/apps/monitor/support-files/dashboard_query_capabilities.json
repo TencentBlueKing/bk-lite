@@ -657,6 +657,13 @@
       "template": "max((device_voltage_volts{__$labels__} != 65535) / 1000) by (instance_id) or max(device_voltage_volts{__$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:163a708b",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__} or mysql_slave_seconds_behind_source{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:164ec0ca",
       "object_names": [
         "Postgres"
@@ -1391,13 +1398,6 @@
       "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_decode_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_decode_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_decode_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
-      "id": "dashboard:v1:304100e9",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__})"
-    },
-    {
       "id": "dashboard:v1:3051fbde",
       "object_names": [
         "Docker"
@@ -1445,6 +1445,13 @@
         "Node"
       ],
       "template": "rate(prometheus_remote_write_net_packets_recv{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:31f0878e",
+      "object_names": [
+        "Host"
+      ],
+      "template": "nvidia_smi_utilization_gpu{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:31fafe6c",
@@ -1743,6 +1750,13 @@
       "template": "100 * ( sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k8s\", resource=\"memory\",__$labels__}) by (instance_id,pod) )"
     },
     {
+      "id": "dashboard:v1:3a6fe79e",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "sum by (instance_id, event_name) (rate(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])) and on (instance_id, event_name) topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))"
+    },
+    {
       "id": "dashboard:v1:3a71e903",
       "object_names": [
         "Loadbalance",
@@ -1918,6 +1932,13 @@
         "Firewall"
       ],
       "template": "firewall_vpn_tunnels{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:417b1754",
+      "object_names": [
+        "Host"
+      ],
+      "template": "nvidia_smi_temperature_gpu{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:419611c4",
@@ -2353,6 +2374,13 @@
       "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[5m])))"
     },
     {
+      "id": "dashboard:v1:507d0ffc",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id, event_name) (mysql_perf_schema_events_waits_total{__$labels__}) and on (instance_id, event_name) topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))"
+    },
+    {
       "id": "dashboard:v1:50d24874",
       "object_names": [
         "MSSQL"
@@ -2624,6 +2652,13 @@
         "Minio"
       ],
       "template": "sum by (instance_id) (minio_api_requests_incoming_total_gauge{__$labels__}) or sum by (instance_id) (minio_s3_requests_incoming_total_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:5b1f4429",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))"
     },
     {
       "id": "dashboard:v1:5b208122",
@@ -3083,6 +3118,13 @@
       "template": "win_iis_web_service_Current_Connections{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:6caa89c4",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__} or mysql_slave_replica_io_running_int{__$labels__} or mysql_slave_io_running_int{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:6cb43331",
       "object_names": [
         "MSSQL"
@@ -3341,6 +3383,13 @@
         "Mysql"
       ],
       "template": "max by (instance_id) (mysql_process_list_threads_waiting_for_lock{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:788f386e",
+      "object_names": [
+        "Host"
+      ],
+      "template": "nvidia_smi_memory_used{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:789b57a4",
@@ -3701,13 +3750,6 @@
         "ActiveMQ"
       ],
       "template": "rate(activemq_topics_enqueue_count{__$labels__}[__$window__]) - rate(activemq_topics_dequeue_count{__$labels__}[__$window__])"
-    },
-    {
-      "id": "dashboard:v1:8450a8b7",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "sum by (instance_id, event_name, schema, digest, digest_text) (rate(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])) and on (instance_id, event_name) topk(20, sum by (instance_id, event_name) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])))"
     },
     {
       "id": "dashboard:v1:856f14b7",
@@ -5215,13 +5257,6 @@
       "template": "sum(win_iis_w3wp_Active_Requests{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
     },
     {
-      "id": "dashboard:v1:bcedd9ff",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "sum by (instance_id, event_name, schema, digest, digest_text) (increase(mysql_perf_schema_events_waits_total{__$labels__}[__$window__])) and on (instance_id, event_name) topk(20, sum by (instance_id, event_name) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])))"
-    },
-    {
       "id": "dashboard:v1:bd2bc914",
       "object_names": [
         "Mysql"
@@ -5858,13 +5893,6 @@
       "template": "sqlserver_performance_value{counter=\"Processes blocked\", __$labels__}"
     },
     {
-      "id": "dashboard:v1:d306372b",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__})"
-    },
-    {
       "id": "dashboard:v1:d33dffa8",
       "object_names": [
         "RabbitMQ"
@@ -6147,13 +6175,6 @@
       "template": "mysql_connection_errors_internal{__$labels__}"
     },
     {
-      "id": "dashboard:v1:dea0c021",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "sum by (instance_id, event_name, schema, digest, digest_text) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])) and on (instance_id, event_name) topk(20, sum by (instance_id, event_name) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])))"
-    },
-    {
       "id": "dashboard:v1:df2dee47",
       "object_names": [
         "Mysql"
@@ -6359,13 +6380,6 @@
       "template": "rabbitmq_overview_channels{__$labels__}"
     },
     {
-      "id": "dashboard:v1:e657f024",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__})"
-    },
-    {
       "id": "dashboard:v1:e674aafc",
       "object_names": [
         "Haproxy"
@@ -6499,6 +6513,13 @@
       "template": "count(http_response_result_type{instance_type='web', collect_type='web', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:ed6af45c",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__} or mysql_slave_replica_sql_running_int{__$labels__} or mysql_slave_sql_running_int{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:ed9e1237",
       "object_names": [
         "Oracle"
@@ -6511,6 +6532,13 @@
         "Mysql"
       ],
       "template": "max by (instance_id) (mysql_rpl_semi_sync_master_status{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:ef765729",
+      "object_names": [
+        "Host"
+      ],
+      "template": "nvidia_smi_memory_total{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:ef9da161",

@@ -7,15 +7,11 @@ const statementDimensions = [
 ];
 
 const waitDimensions = [
-  { name: 'event_name', description: '等待事件' },
-  { name: 'schema', description: '库名' },
-  { name: 'digest', description: '语句摘要' },
-  { name: 'digest_text', description: '语句文本' }
+  { name: 'event_name', description: '等待事件' }
 ];
 
 const STATEMENT_BY = 'instance_id, schema, digest, digest_text';
 const STATEMENT_DIGEST = 'instance_id, digest';
-const WAIT_BY = 'instance_id, event_name, schema, digest, digest_text';
 const WAIT_EVENT = 'instance_id, event_name';
 
 const statementIncrease = (metric: string) => (
@@ -24,10 +20,8 @@ const statementIncrease = (metric: string) => (
 const statementTopk = `topk(20, ${statementIncrease('mysql_perf_schema_events_statements_seconds_total')})`;
 const statementTopkDigest = `topk(20, sum by (${STATEMENT_DIGEST}) (increase(mysql_perf_schema_events_statements_seconds_total{__$labels__}[__$window__])))`;
 
-const waitIncrease = (metric: string) => (
-  `sum by (${WAIT_BY}) (increase(${metric}{__$labels__}[__$window__]))`
-);
-const waitTopk = `topk(20, sum by (${WAIT_EVENT}) (increase(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])))`;
+/** 有 last 点即入选。不用 increase 窗口增量，避免已采集却被判成未采集。 */
+const waitPresent = `topk(20, max by (${WAIT_EVENT}) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))`;
 
 /** 专业盘语句/等待查询。传统盘不加载这组指标。 */
 export const MYSQL_DIGEST_METRICS: BaseMetricConfig[] = [
@@ -70,20 +64,20 @@ export const MYSQL_DIGEST_METRICS: BaseMetricConfig[] = [
   {
     name: 'mysql_wait_event_time',
     display_name: '等待事件耗时',
-    description: '所选时间范围内，该等待事件花费的总时间。',
+    description: '该等待事件的累计耗时。有采点即显示，不按窗口增量判断是否采集。',
     unit: 's',
     color: '#ff7875',
     dimensions: waitDimensions,
-    query: `${waitIncrease('mysql_perf_schema_events_waits_seconds_total')} and on (${WAIT_EVENT}) ${waitTopk}`
+    query: waitPresent
   },
   {
     name: 'mysql_wait_event_count',
     display_name: '等待事件次数',
-    description: '所选时间范围内，该等待事件发生的次数。',
+    description: '该等待事件的累计次数。有采点即显示，不按窗口增量判断是否采集。',
     unit: 'counts',
     color: '#722ed1',
     dimensions: waitDimensions,
-    query: `${waitIncrease('mysql_perf_schema_events_waits_total')} and on (${WAIT_EVENT}) ${waitTopk}`
+    query: `max by (${WAIT_EVENT}) (mysql_perf_schema_events_waits_total{__$labels__}) and on (${WAIT_EVENT}) ${waitPresent}`
   },
   {
     name: 'mysql_wait_event_time_rate',
@@ -92,6 +86,6 @@ export const MYSQL_DIGEST_METRICS: BaseMetricConfig[] = [
     unit: 's',
     color: '#ff7875',
     dimensions: waitDimensions,
-    query: `sum by (${WAIT_BY}) (rate(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])) and on (${WAIT_EVENT}) ${waitTopk}`
+    query: `sum by (${WAIT_EVENT}) (rate(mysql_perf_schema_events_waits_seconds_total{__$labels__}[__$window__])) and on (${WAIT_EVENT}) ${waitPresent}`
   }
 ];

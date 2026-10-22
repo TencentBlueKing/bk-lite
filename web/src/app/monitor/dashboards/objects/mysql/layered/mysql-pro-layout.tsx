@@ -25,6 +25,7 @@ import ReplicationPane from './replication-pane';
 import { StatementPane, WaitPane } from './digest-pane';
 import {
   MYSQL_IA_TABS,
+  digestQueryFailed,
   hasStatementCollection,
   hasWaitCollection,
   isMysqlIaTab,
@@ -88,6 +89,8 @@ export default function MysqlProLayout({
   const [statements, setStatements] = useState<MysqlStatementRow[]>([]);
   const [waits, setWaits] = useState<MysqlWaitEventRow[]>([]);
   const [digestStatus, setDigestStatus] = useState<'loading' | 'ready'>('loading');
+  const [statementsQueryFailed, setStatementsQueryFailed] = useState(false);
+  const [waitsQueryFailed, setWaitsQueryFailed] = useState(false);
   const statementsCollected = hasStatementCollection(statements);
   const waitsCollected = hasWaitCollection(waits);
   const replicationBadge = useMemo(
@@ -244,12 +247,16 @@ export default function MysqlProLayout({
     if (!monitorObjectId || !instanceId || !values.length) {
       setStatements([]);
       setWaits([]);
+      setStatementsQueryFailed(false);
+      setWaitsQueryFailed(false);
       setDigestStatus('ready');
       return undefined;
     }
     let active = true;
     setStatements([]);
     setWaits([]);
+    setStatementsQueryFailed(false);
+    setWaitsQueryFailed(false);
     setDigestStatus('loading');
     const context = { monitorObjectId: String(monitorObjectId), instanceId };
     const loadOne = (metric: (typeof MYSQL_DIGEST_METRICS)[number]) => getInstanceQuery(buildSearchParams(
@@ -274,17 +281,28 @@ export default function MysqlProLayout({
     Promise.all(MYSQL_DIGEST_METRICS.map((metric) => loadOne(metric))).then((series) => {
       if (!active) return;
       const byName = Object.fromEntries(series.map((item) => [item.name, item]));
-      setStatements(readMysqlStatementRows(
+      const statementRows = readMysqlStatementRows(
         byName.mysql_statement_time,
         byName.mysql_statement_calls,
         byName.mysql_statement_rows_examined,
         byName.mysql_statement_time_rate
-      ));
-      setWaits(readMysqlWaitRows(
+      );
+      const waitRows = readMysqlWaitRows(
         byName.mysql_wait_event_count,
         byName.mysql_wait_event_time,
         byName.mysql_wait_event_time_rate
-      ));
+      );
+      setStatements(statementRows);
+      setWaits(waitRows);
+      setStatementsQueryFailed(digestQueryFailed(statementRows.length, [
+        byName.mysql_statement_time,
+        byName.mysql_statement_calls,
+        byName.mysql_statement_rows_examined
+      ]));
+      setWaitsQueryFailed(digestQueryFailed(waitRows.length, [
+        byName.mysql_wait_event_count,
+        byName.mysql_wait_event_time
+      ]));
       setDigestStatus('ready');
     });
     return () => {
@@ -323,6 +341,7 @@ export default function MysqlProLayout({
           selectedId={statementId}
           onSelect={setStatementId}
           loading={digestLoading}
+          queryFailed={statementsQueryFailed}
           instanceName={instanceName}
           onOpenCollection={openCollectionConfig}
         />
@@ -334,6 +353,7 @@ export default function MysqlProLayout({
           rows={waits}
           statements={statements}
           loading={digestLoading}
+          queryFailed={waitsQueryFailed}
           selectedId={waitId}
           onSelect={setWaitId}
           instanceName={instanceName}
@@ -390,8 +410,8 @@ export default function MysqlProLayout({
           }}
           items={MYSQL_IA_TABS.map((item) => {
             const statementDimmed = digestStatus === 'ready' && (
-              (item.key === 'statements' && !statementsCollected)
-              || (item.key === 'waits' && !waitsCollected)
+              (item.key === 'statements' && !statementsCollected && !statementsQueryFailed)
+              || (item.key === 'waits' && !waitsCollected && !waitsQueryFailed)
             );
             const replicationMark = item.key === 'replication' ? replicationBadge : null;
             const collectedGap = replicationMark === 'partial' || replicationMark === 'not_collected';

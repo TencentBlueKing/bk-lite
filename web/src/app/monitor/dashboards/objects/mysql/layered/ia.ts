@@ -251,13 +251,24 @@ const groupLabeled = (items: readonly LabeledPoints[]) => {
   return groups;
 };
 
+const waitEventName = (labels: Record<string, string>) => (
+  String(labels.event_name || labels.event || labels.wait_event || '').trim()
+);
+
+export const digestQueryFailed = (
+  rowsLength: number,
+  series: Array<{ loadState?: string; viewData?: unknown[] } | undefined>
+) => (
+  rowsLength === 0 && series.some((item) => item?.loadState === 'error')
+);
+
 /** 把等待次数与耗时按事件名对齐成表行。相关语句只认同 event_name 下真实的 digest。 */
 export const readMysqlWaitRows = (
   countSeries: MetricSeries | undefined,
   timeSeries: MetricSeries | undefined,
   rateSeries?: MetricSeries
 ): MysqlWaitEventRow[] => {
-  const eventId = (labels: Record<string, string>) => String(labels.event_name || '').trim();
+  const eventId = waitEventName;
   const counts = groupLabeled(labeledSeries(countSeries, eventId));
   const times = groupLabeled(labeledSeries(timeSeries, eventId));
   const rates = groupLabeled(labeledSeries(rateSeries, eventId));
@@ -266,7 +277,7 @@ export const readMysqlWaitRows = (
     const countGroup = counts.get(id) || [];
     const timeGroup = times.get(id) || [];
     const labels = timeGroup[0]?.labels || countGroup[0]?.labels;
-    const name = String(labels?.event_name || id).trim();
+    const name = String(labels ? waitEventName(labels) : id).trim();
     if (!name) return [];
     const seconds = sumIncrease(timeGroup);
     const statementIds = [...new Set(
@@ -458,12 +469,20 @@ export const buildMysqlReplicationKpi = (
     const stopped = (io != null && io <= 0) || (sql != null && sql <= 0);
     const { tone, alertLevel } = replicaLagTone(delay, stopped, errno);
     const subtitle = joinSubtitle([
+      delay == null ? text('lagUnknown') : null,
       replicaThreadPart(io, text('ioRunning'), text('ioStopped')),
       replicaThreadPart(sql, text('sqlRunning'), text('sqlStopped')),
       errno != null ? text('replicaError', { errno }) : null
     ]);
+    const value = delay != null
+      ? formatMysqlReplicationLag(delay, units)
+      : errno != null
+        ? text('replicationError')
+        : stopped
+          ? text('stopped')
+          : text('running');
     return {
-      value: delay == null ? EMPTY_VALUE : formatMysqlReplicationLag(delay, units),
+      value,
       subtitle: subtitle || undefined,
       tone,
       alertLevel: alertLevel === 'none' ? undefined : alertLevel,
@@ -500,7 +519,11 @@ const replicationGapKpi = (
   text: MysqlText
 ): Pick<MysqlKpiCard, 'value' | 'subtitle' | 'tone' | 'alertLevel' | 'clickable'> => {
   if (gap === 'partial') {
-    return { value: text('replicationPartialShort'), tone: MUTED_VALUE, clickable: true };
+    return {
+      value: text('rolePrimary'),
+      tone: MUTED_VALUE,
+      clickable: true
+    };
   }
   if (gap === 'not_collected') {
     return { value: text('notCollected'), tone: MUTED_VALUE, clickable: true };
@@ -874,6 +897,15 @@ const seriesPresent = (metric: MetricSeries | undefined) => (
   metric?.loadState === 'success' && Array.isArray(metric.viewData) && metric.viewData.length > 0
 );
 
+/** 从库位点/Relay。MySQL 8 source 名已映射到这些专业盘指标。 */
+export const replicaFollowPresent = (
+  metricMap: Record<string, MetricSeries | undefined>
+) => (
+  latestNumber(metricMap.mysql_slave_relay_log_pos) != null
+  || latestNumber(metricMap.mysql_slave_relay_log_space) != null
+  || latestNumber(metricMap.mysql_replication_source_log_pos) != null
+);
+
 /**
  * 页头拓扑。没有从库状态行、也没有 log_slave_updates 时，
  * primary/master 等名字不打成主从。传统复制区仍用抽出时的判据。
@@ -884,7 +916,8 @@ export const readMysqlHeaderIdentity = (
 ) => {
   const hasReplicationMetrics = seriesPresent(metricMap.mysql_slave_seconds_behind_master)
     || seriesPresent(metricMap.mysql_slave_io_running)
-    || seriesPresent(metricMap.mysql_slave_sql_running);
+    || seriesPresent(metricMap.mysql_slave_sql_running)
+    || replicaFollowPresent(metricMap);
   const logSlaveUpdates = getLatestChartValue(metricMap.mysql_variables_log_slave_updates?.viewData || []);
   const nameSaysReplica = /从库|从节点|slave|replica|secondary/.test(instanceName.toLowerCase());
   const topologyEvidence = hasReplicationMetrics || logSlaveUpdates > 0;
@@ -1108,9 +1141,9 @@ const primaryDownstreamFields = (
 };
 
 /**
- * 复制状态条。无从库线程、也没有主库下游采点时返回 null。
+ * 复制状态条。无从库线程、位点/Relay、也没有主库下游采点时返回 null。
  * 只有 log_bin 开关时同样返回 null（页头已表达）。
- * 位点、错误号和 Relay 不进这条，由 readMysqlReplicationExtras 决定。
+ * 线程与延迟缺采时仍标从库，由卡片空态表达，不把整段藏掉。
  */
 export const readMysqlRoleBlock = (
   metricMap: Record<string, MetricSeries | undefined>
@@ -1130,7 +1163,7 @@ export const readMysqlRoleBlock = (
   const io = latestNumber(metricMap.mysql_slave_io_running);
   const sql = latestNumber(metricMap.mysql_slave_sql_running);
   const delay = latestNumber(metricMap.mysql_slave_seconds_behind_master);
-  if (io != null || sql != null || delay != null) {
+  if (io != null || sql != null || delay != null || replicaFollowPresent(metricMap)) {
     const fields: MysqlRoleField[] = [];
     if (delay != null) {
       fields.push({
@@ -1387,6 +1420,7 @@ export const mysqlReplicationTabHasContent = (
   metricMap: Record<string, MetricSeries | undefined>
 ) => {
   const block = readMysqlRoleBlock(metricMap);
+  if (block?.kind === 'replica') return true;
   const statusBlock = block && block.kind !== 'primary' && block.fields.length > 0 ? block : null;
   const extras = readMysqlReplicationExtras(metricMap);
   const trends = readMysqlReplicationSeries(metricMap);
