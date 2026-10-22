@@ -26,7 +26,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -39,7 +39,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -52,7 +52,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage_management",
-      "query": "snmp_device_cpu_usage_management{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_cpu_usage_management{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__}",
       "display_name": "Management CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -65,7 +65,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage_fwd_inspect",
-      "query": "snmp_device_cpu_usage_fwd_inspect{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_cpu_usage_fwd_inspect{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__}",
       "display_name": "Forward and Inspect CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -78,7 +78,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_usage",
-      "query": "snmp_device_memory_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_memory_usage{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -91,7 +91,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_active_sessions",
-      "query": "snmp_firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_active_sessions{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__}",
       "display_name": "Active Sessions",
       "data_type": "Number",
       "unit": "short",
@@ -104,7 +104,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_max_connections",
-      "query": "snmp_firewall_max_connections{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_max_connections{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__}",
       "display_name": "Max Connections",
       "data_type": "Number",
       "unit": "short",
@@ -117,7 +117,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_nat_translations",
-      "query": "snmp_firewall_nat_translations{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_nat_translations{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__}",
       "display_name": "NAT Translations",
       "data_type": "Number",
       "unit": "short",
@@ -130,7 +130,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_sensor_value",
-      "query": "device_sensor_value{instance_type='firewall', __$labels__}",
+      "query": "device_sensor_value{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__}",
       "display_name": "Hardware Sensor Value",
       "data_type": "Number",
       "unit": "short",
@@ -152,7 +152,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_sensor_value{instance_type='firewall', __$labels__, unit=~\"(?i)^(C|°C|Celsius|degC)$\"} or device_sensor_value{instance_type='firewall', __$labels__, device=~\"(?i).*temp.*\"}",
+      "query": "device_sensor_value{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__, unit=~\"(?i)^(C|°C|Celsius|degC)$\"} or device_sensor_value{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__, device=~\"(?i).*temp.*\"}",
       "display_name": "Device Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -174,7 +174,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_sensor_value{instance_type='firewall', __$labels__, unit=~\"(?i)^RPM$\"} or device_sensor_value{instance_type='firewall', __$labels__, device=~\"(?i).*fan.*\"}",
+      "query": "device_sensor_value{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__, unit=~\"(?i)^RPM$\"} or device_sensor_value{instance_type='firewall', collect_type='snmp_sonicwall', __$labels__, device=~\"(?i).*fan.*\"}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "short",

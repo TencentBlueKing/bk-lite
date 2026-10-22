@@ -132,7 +132,7 @@ const registerSingleValueNode = () => {
         textWrap: false,
       },
       nameLabel: {
-        fill: '#666666',
+        fill: 'var(--color-text-3)',
         fontSize: 12,
         fontFamily: SINGLE_VALUE_NODE.fontFamily,
         textAnchor: 'middle',
@@ -349,7 +349,7 @@ const createSingleValueNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseN
       },
       nameLabel: {
         text: hasName ? nodeConfig.name : '',
-        fill: nodeConfig.styleConfig?.nameColor || '#666666',
+        fill: nodeConfig.styleConfig?.nameColor || 'var(--color-text-3)',
         fontSize: nodeConfig.styleConfig?.nameFontSize || 12,
         display: hasName ? 'block' : 'none',
       },
@@ -573,7 +573,7 @@ const updateSingleValueNodeAttributes = (node: Node, nodeConfig: TopologyNodeDat
     },
     nameLabel: {
       text: hasName ? nodeConfig.name : '',
-      fill: nodeConfig.styleConfig?.nameColor || '#666666',
+      fill: nodeConfig.styleConfig?.nameColor || 'var(--color-text-3)',
       fontSize: nodeConfig.styleConfig?.nameFontSize || 12,
       display: hasName ? 'block' : 'none',
     },

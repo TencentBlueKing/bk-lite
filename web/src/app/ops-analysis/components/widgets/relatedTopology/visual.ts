@@ -26,7 +26,7 @@ export const RELATED_TOPOLOGY_VISUAL = {
 
 export const RELATED_TOPOLOGY_UNMAPPED_FILL = 'var(--color-fill-2)';
 export const RELATED_TOPOLOGY_UNMAPPED_STROKE = 'var(--color-border-3)';
-export const RELATED_TOPOLOGY_EDGE_LABEL_RECT_FILL = '#fcfeff';
+export const RELATED_TOPOLOGY_EDGE_LABEL_RECT_FILL = 'var(--color-bg-1)';
 
 export interface RelatedTopologyGraphChrome {
   cardDefaultBody: {
@@ -55,26 +55,28 @@ export interface RelatedTopologyGraphChrome {
 
 export const RELATED_TOPOLOGY_DEFAULT_CHROME: RelatedTopologyGraphChrome = {
   cardDefaultBody: {
-    stroke: RELATED_TOPOLOGY_VISUAL.card.defaultBody.stroke,
+    stroke: 'var(--color-border-1)',
     strokeWidth: RELATED_TOPOLOGY_VISUAL.card.defaultBody.strokeWidth,
-    fill: RELATED_TOPOLOGY_VISUAL.card.defaultBody.fill,
-    filter: RELATED_TOPOLOGY_VISUAL.card.defaultBody.filter,
+    fill: 'var(--color-bg-1)',
+    filter:
+      'drop-shadow(0 8px 18px color-mix(in srgb, var(--color-text-1) 8%, transparent))',
   },
   cardActiveBody: {
-    stroke: RELATED_TOPOLOGY_VISUAL.card.activeBody.stroke,
+    stroke: 'var(--color-primary)',
     strokeWidth: RELATED_TOPOLOGY_VISUAL.card.activeBody.strokeWidth,
-    fill: RELATED_TOPOLOGY_VISUAL.card.activeBody.fill,
-    filter: RELATED_TOPOLOGY_VISUAL.card.activeBody.filter,
+    fill: 'color-mix(in srgb, var(--color-primary) 8%, var(--color-bg-1))',
+    filter:
+      'drop-shadow(0 12px 24px color-mix(in srgb, var(--color-primary) 16%, transparent))',
   },
   unmappedFill: RELATED_TOPOLOGY_UNMAPPED_FILL,
   unmappedStroke: RELATED_TOPOLOGY_UNMAPPED_STROKE,
-  labelFill: RELATED_TOPOLOGY_VISUAL.card.label.fill,
-  subFill: RELATED_TOPOLOGY_VISUAL.card.label.subFill,
-  edgeStroke: RELATED_TOPOLOGY_VISUAL.edge.stroke,
+  labelFill: 'var(--color-text-1)',
+  subFill: 'var(--color-text-3)',
+  edgeStroke: 'var(--color-border-2)',
   edgeStrokeWidth: RELATED_TOPOLOGY_VISUAL.edge.strokeWidth,
-  edgeLabelFill: RELATED_TOPOLOGY_VISUAL.labelFill,
+  edgeLabelFill: 'var(--color-text-2)',
   edgeLabelRectFill: RELATED_TOPOLOGY_EDGE_LABEL_RECT_FILL,
-  gridColor: RELATED_TOPOLOGY_VISUAL.grid.color,
+  gridColor: 'var(--color-border-1)',
   gridThickness: RELATED_TOPOLOGY_VISUAL.grid.thickness,
 };
 
@@ -114,8 +116,8 @@ export const relatedTopologyGraphChrome = (
     : RELATED_TOPOLOGY_DEFAULT_CHROME;
 
 export const RELATED_TOPOLOGY_CANVAS_STYLE = {
-  background: NETWORK_TOPO_VISUAL.canvas.background,
-  border: NETWORK_TOPO_VISUAL.canvas.border,
+  background: 'var(--color-bg-1)',
+  border: '1px solid var(--color-border-1)',
   borderRadius: NETWORK_TOPO_VISUAL.canvas.borderRadius,
   overflow: NETWORK_TOPO_VISUAL.canvas.overflow,
 } as const;

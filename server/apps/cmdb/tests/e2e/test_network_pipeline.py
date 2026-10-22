@@ -392,7 +392,8 @@ def test_network_topology_disabled_keeps_existing_inventory_behavior(monkeypatch
     assert sql_calls == [
         "network_system_info_gauge{instance_id='cmdb_7001'} or "
         "network_interfaces_info_gauge{instance_id='cmdb_7001'} or "
-        "network_info_gauge{instance_id='cmdb_7001'}"
+        "network_info_gauge{instance_id='cmdb_7001'} or "
+        "network_sn_info_gauge{instance_id='cmdb_7001'}"
     ]
     assert runner.is_topo is False
     assert NETWORK_TOPOLOGY_METRIC not in "".join(sql_calls)

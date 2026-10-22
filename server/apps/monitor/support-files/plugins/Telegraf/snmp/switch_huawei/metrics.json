@@ -29,7 +29,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "device_cpu_usage{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -47,7 +47,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='switch', __$labels__}",
+      "query": "device_memory_usage{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -65,7 +65,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -83,7 +83,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='switch', __$labels__} / 1000",
+      "query": "device_voltage_volts{instance_type='switch', collect_type='snmp_huawei', __$labels__} / 1000",
       "display_name": "Input Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -101,7 +101,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='switch', __$labels__} and (device_fan_present{instance_type='switch', __$labels__} == 1)",
+      "query": "device_fan_state{instance_type='switch', collect_type='snmp_huawei', __$labels__} and (device_fan_present{instance_type='switch', collect_type='snmp_huawei', __$labels__} == 1)",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -119,7 +119,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='switch', __$labels__} and (device_fan_present{instance_type='switch', __$labels__} == 1)",
+      "query": "device_fan_speed{instance_type='switch', collect_type='snmp_huawei', __$labels__} and (device_fan_present{instance_type='switch', collect_type='snmp_huawei', __$labels__} == 1)",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "percent",
@@ -137,7 +137,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_present",
-      "query": "device_fan_present{instance_type='switch', __$labels__}",
+      "query": "device_fan_present{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Fan Present",
       "data_type": "Enum",
       "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
@@ -155,7 +155,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='switch', __$labels__} and (device_psu_present{instance_type='switch', __$labels__} == 1)",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_huawei', __$labels__} and (device_psu_present{instance_type='switch', collect_type='snmp_huawei', __$labels__} == 1)",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"supply\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"notSupply\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"sleep\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"未知\",\"id\":4,\"color\":\"#8c8c8c\"}]",
@@ -173,7 +173,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_present",
-      "query": "device_psu_present{instance_type='switch', __$labels__}",
+      "query": "device_psu_present{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Power Supply Present",
       "data_type": "Enum",
       "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
@@ -191,7 +191,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_current_mA",
-      "query": "device_psu_current_mA{instance_type='switch', __$labels__} and (device_psu_present{instance_type='switch', __$labels__} == 1)",
+      "query": "device_psu_current_mA{instance_type='switch', collect_type='snmp_huawei', __$labels__} and (device_psu_present{instance_type='switch', collect_type='snmp_huawei', __$labels__} == 1)",
       "display_name": "PSU Current",
       "data_type": "Number",
       "unit": "counts",
@@ -209,7 +209,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_voltage_mV",
-      "query": "device_psu_voltage_mV{instance_type='switch', __$labels__} and (device_psu_present{instance_type='switch', __$labels__} == 1)",
+      "query": "device_psu_voltage_mV{instance_type='switch', collect_type='snmp_huawei', __$labels__} and (device_psu_present{instance_type='switch', collect_type='snmp_huawei', __$labels__} == 1)",
       "display_name": "PSU Voltage",
       "data_type": "Number",
       "unit": "counts",
@@ -227,7 +227,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_rated_power_watts",
-      "query": "device_psu_rated_power_watts{instance_type='switch', __$labels__} and (device_psu_present{instance_type='switch', __$labels__} == 1)",
+      "query": "device_psu_rated_power_watts{instance_type='switch', collect_type='snmp_huawei', __$labels__} and (device_psu_present{instance_type='switch', collect_type='snmp_huawei', __$labels__} == 1)",
       "display_name": "PSU Rated Power",
       "data_type": "Number",
       "unit": "watts",
@@ -245,7 +245,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_power_used",
-      "query": "device_power_used{instance_type='switch', __$labels__}",
+      "query": "device_power_used{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Chassis Used Power",
       "data_type": "Number",
       "unit": "watts",
@@ -258,7 +258,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_power_total",
-      "query": "device_power_total{instance_type='switch', __$labels__}",
+      "query": "device_power_total{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Chassis Total Power",
       "data_type": "Number",
       "unit": "watts",
@@ -271,7 +271,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_entity_board_power",
-      "query": "device_entity_board_power{instance_type='switch', __$labels__}",
+      "query": "device_entity_board_power{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Board Power",
       "data_type": "Number",
       "unit": "watts",
@@ -289,7 +289,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_energy_current_power_mw",
-      "query": "device_energy_current_power_mw{instance_type='switch', __$labels__}",
+      "query": "device_energy_current_power_mw{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Chassis Current Energy (mW)",
       "data_type": "Number",
       "unit": "counts",
@@ -302,7 +302,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_energy_average_power_mw",
-      "query": "device_energy_average_power_mw{instance_type='switch', __$labels__}",
+      "query": "device_energy_average_power_mw{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Chassis Average Energy (mW)",
       "data_type": "Number",
       "unit": "counts",
@@ -315,7 +315,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_energy_rated_power_mw",
-      "query": "device_energy_rated_power_mw{instance_type='switch', __$labels__}",
+      "query": "device_energy_rated_power_mw{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Chassis Rated Energy (mW)",
       "data_type": "Number",
       "unit": "counts",
@@ -328,7 +328,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_board_current_power_mw",
-      "query": "device_board_current_power_mw{instance_type='switch', __$labels__}",
+      "query": "device_board_current_power_mw{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Board Current Energy (mW)",
       "data_type": "Number",
       "unit": "counts",
@@ -346,7 +346,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_board_rated_power_mw",
-      "query": "device_board_rated_power_mw{instance_type='switch', __$labels__}",
+      "query": "device_board_rated_power_mw{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Board Rated Energy (mW)",
       "data_type": "Number",
       "unit": "counts",
@@ -364,7 +364,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_rx_power",
-      "query": "10 * log10(device_optical_rx_power{instance_type='switch', __$labels__} / 1000) and (device_optical_rx_power{instance_type='switch', __$labels__} > 0) and (device_optical_rx_power{instance_type='switch', __$labels__} != 2147483647)",
+      "query": "10 * log10(device_optical_rx_power{instance_type='switch', collect_type='snmp_huawei', __$labels__} / 1000) and (device_optical_rx_power{instance_type='switch', collect_type='snmp_huawei', __$labels__} > 0) and (device_optical_rx_power{instance_type='switch', collect_type='snmp_huawei', __$labels__} != 2147483647)",
       "display_name": "SFP RX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -382,7 +382,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_tx_power",
-      "query": "10 * log10(device_optical_tx_power{instance_type='switch', __$labels__} / 1000) and (device_optical_tx_power{instance_type='switch', __$labels__} > 0) and (device_optical_tx_power{instance_type='switch', __$labels__} != 2147483647)",
+      "query": "10 * log10(device_optical_tx_power{instance_type='switch', collect_type='snmp_huawei', __$labels__} / 1000) and (device_optical_tx_power{instance_type='switch', collect_type='snmp_huawei', __$labels__} > 0) and (device_optical_tx_power{instance_type='switch', collect_type='snmp_huawei', __$labels__} != 2147483647)",
       "display_name": "SFP TX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -400,7 +400,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_temperature",
-      "query": "device_optical_temperature{instance_type='switch', __$labels__} and (device_optical_temperature{instance_type='switch', __$labels__} != 2147483647)",
+      "query": "device_optical_temperature{instance_type='switch', collect_type='snmp_huawei', __$labels__} and (device_optical_temperature{instance_type='switch', collect_type='snmp_huawei', __$labels__} != 2147483647)",
       "display_name": "Optical Module Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -418,7 +418,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_bias",
-      "query": "device_optical_bias{instance_type='switch', __$labels__} and (device_optical_bias{instance_type='switch', __$labels__} != 2147483647)",
+      "query": "device_optical_bias{instance_type='switch', collect_type='snmp_huawei', __$labels__} and (device_optical_bias{instance_type='switch', collect_type='snmp_huawei', __$labels__} != 2147483647)",
       "display_name": "Optical Module Bias",
       "data_type": "Number",
       "unit": "counts",
@@ -436,7 +436,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_voltage",
-      "query": "device_optical_voltage{instance_type='switch', __$labels__} / 1000 and (device_optical_voltage{instance_type='switch', __$labels__} != 2147483647)",
+      "query": "device_optical_voltage{instance_type='switch', collect_type='snmp_huawei', __$labels__} / 1000 and (device_optical_voltage{instance_type='switch', collect_type='snmp_huawei', __$labels__} != 2147483647)",
       "display_name": "Optical Module Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -454,7 +454,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_stack_member_role",
-      "query": "device_stack_member_role{instance_type='switch', __$labels__}",
+      "query": "device_stack_member_role{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Stack Member Role",
       "data_type": "Enum",
       "unit": "[{\"name\":\"master\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"standby\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"slave\",\"id\":3,\"color\":\"#d9d9d9\"}]",
@@ -472,7 +472,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_stack_port_state",
-      "query": "device_stack_port_state{instance_type='switch', __$labels__}",
+      "query": "device_stack_port_state{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "Stack Port Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -490,7 +490,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_css_member_role",
-      "query": "device_css_member_role{instance_type='switch', __$labels__}",
+      "query": "device_css_member_role{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "CSS Member Role",
       "data_type": "Enum",
       "unit": "[{\"name\":\"master\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"standby\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"slave\",\"id\":3,\"color\":\"#d9d9d9\"},{\"name\":\"single\",\"id\":4,\"color\":\"#d9d9d9\"},{\"name\":\"unknown\",\"id\":10,\"color\":\"#d9d9d9\"}]",
@@ -508,7 +508,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_css_port_state",
-      "query": "device_css_port_state{instance_type='switch', __$labels__}",
+      "query": "device_css_port_state{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "CSS Port Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"down\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"}]",
@@ -526,7 +526,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_mlag_port_state",
-      "query": "device_mlag_port_state{instance_type='switch', __$labels__}",
+      "query": "device_mlag_port_state{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "M-LAG Port Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"down\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"}]",
@@ -544,7 +544,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_mlag_member_heartbeat",
-      "query": "device_mlag_member_heartbeat{instance_type='switch', __$labels__}",
+      "query": "device_mlag_member_heartbeat{instance_type='switch', collect_type='snmp_huawei', __$labels__}",
       "display_name": "M-LAG Member Heartbeat",
       "data_type": "Enum",
       "unit": "[{\"name\":\"ok\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"lost\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -562,7 +562,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_huawei', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -580,7 +580,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_huawei', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -598,7 +598,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_huawei', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

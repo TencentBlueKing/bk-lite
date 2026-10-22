@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 class ResizeObserverStub {
@@ -13,6 +13,13 @@ vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 let chromeLayout: 'classic' | 'app-top' = 'classic';
 let pathname = '/cmdb/assetOverview';
 let search = '';
+const effectiveHomepage: {
+  entry: { dashboardId: number } | null;
+  refresh: () => Promise<void>;
+} = {
+  entry: null,
+  refresh: async () => {},
+};
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
@@ -22,7 +29,12 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, fallback?: string, values?: { name?: string }) => {
+      if (values?.name) {
+        return `${key}:${values.name}`;
+      }
+      return fallback || key;
+    },
   }),
 }));
 
@@ -57,6 +69,10 @@ vi.mock('@/context/userInfo', () => ({
 
 vi.mock('@/context/menus', () => ({
   useMenus: () => ({ configMenus: [], loading: false }),
+}));
+
+vi.mock('@/app/ops-analysis/context/effectiveHomepage', () => ({
+  useEffectiveHomepage: () => effectiveHomepage,
 }));
 
 vi.mock('@/hooks/usePortalBranding', () => ({
@@ -94,6 +110,7 @@ afterEach(() => {
   chromeLayout = 'classic';
   pathname = '/cmdb/assetOverview';
   search = '';
+  effectiveHomepage.entry = null;
 });
 
 describe('TopMenu chrome layouts', () => {
@@ -165,6 +182,30 @@ describe('TopMenu chrome layouts', () => {
     expect(screen.getByRole('link', { name: '搜索' }).getAttribute('href')).toBe(
       '/cmdb/assetSearch?screen=true',
     );
+  });
+
+  it('sends the logo to the workbench until an accessible dashboard homepage exists', () => {
+    render(<TopMenu />);
+    const brand = screen.getByTestId('portal-brand-link');
+    expect(brand.getAttribute('href')).toBe('/ops-console/home');
+    expect(brand.className).toContain('cursor-pointer');
+    expect(brand.getAttribute('target')).toBeNull();
+  });
+
+  it('shows the back-to-homepage tooltip on hover without a long delay', async () => {
+    effectiveHomepage.entry = { dashboardId: 12 };
+    render(<TopMenu />);
+    const brand = screen.getByTestId('portal-brand-link');
+    expect(brand.getAttribute('href')).toBe('/ops-console/home?dashboard_id=12');
+    expect(brand.className).toContain('hover:opacity-80');
+    expect(brand.className).not.toContain('hover:bg-');
+    expect(screen.queryByRole('tooltip')).toBeNull();
+
+    fireEvent.mouseEnter(brand);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(screen.getByRole('tooltip').textContent).toContain('opsHomepage.backToHomepage');
   });
 
   it('forwards screen=true on app-top same-tab app links', () => {

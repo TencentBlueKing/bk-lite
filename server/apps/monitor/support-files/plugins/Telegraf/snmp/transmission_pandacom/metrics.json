@@ -25,7 +25,7 @@
     {
       "metric_group": "Temperature",
       "name": "temperature_celsius",
-      "query": "max(temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(temperature_celsius{instance_type='transmission', collect_type='snmp_pandacom', __$labels__}) by (instance_id)",
       "display_name": "NMS Board Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -38,7 +38,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu1_status",
-      "query": "psu1_status{instance_type='transmission', __$labels__}",
+      "query": "psu1_status{instance_type='transmission', collect_type='snmp_pandacom', __$labels__}",
       "display_name": "PSU1 Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"notInstalled\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"fail\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"temperatureWarning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"pass\",\"id\":3,\"color\":\"#1ac44a\"}]",
@@ -51,7 +51,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu2_status",
-      "query": "psu2_status{instance_type='transmission', __$labels__}",
+      "query": "psu2_status{instance_type='transmission', collect_type='snmp_pandacom', __$labels__}",
       "display_name": "PSU2 Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"notInstalled\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"fail\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"temperatureWarning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"pass\",\"id\":3,\"color\":\"#1ac44a\"}]",
@@ -64,7 +64,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "fan_status",
-      "query": "fan_status{instance_type='transmission', __$labels__}",
+      "query": "fan_status{instance_type='transmission', collect_type='snmp_pandacom', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"notAvailable\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"pass\",\"id\":3,\"color\":\"#1ac44a\"},{\"name\":\"fail\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notInstalled\",\"id\":5,\"color\":\"#8c8c8c\"}]",
@@ -77,7 +77,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu3_status",
-      "query": "psu3_status{instance_type='transmission', __$labels__}",
+      "query": "psu3_status{instance_type='transmission', collect_type='snmp_pandacom', __$labels__}",
       "display_name": "PSU3 Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"notInstalled\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"fail\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"temperatureWarning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"pass\",\"id\":3,\"color\":\"#1ac44a\"},{\"name\":\"notAvailable\",\"id\":255,\"color\":\"#8c8c8c\"}]",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_pandacom', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -108,7 +108,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_pandacom', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -126,7 +126,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_pandacom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

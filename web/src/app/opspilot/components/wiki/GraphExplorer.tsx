@@ -216,9 +216,10 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
     active: boolean,
     icon: React.ReactNode,
     label: string,
+    tip: string,
     onClick: () => void,
   ) => (
-    <Tooltip title={label}>
+    <Tooltip title={tip}>
       <Button
         size="small"
         type={active ? "primary" : "default"}
@@ -279,20 +280,21 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
           )}
         </div>
         <div className="pointer-events-auto flex items-center gap-1.5">
-          {toggleBtn(showFilter, <FilterOutlined />, t("wiki.filters"), () =>
+          {toggleBtn(showFilter, <FilterOutlined />, t("wiki.filters"), t("wiki.filtersTip"), () =>
             setShowFilter((v) => !v),
           )}
           {toggleBtn(
             showLegend,
             <ApartmentOutlined />,
             t("wiki.communities"),
+            t("wiki.communitiesTip"),
             () => setShowLegend((v) => !v),
           )}
-          {toggleBtn(showInsights, <BulbOutlined />, t("wiki.insights"), () =>
+          {toggleBtn(showInsights, <BulbOutlined />, t("wiki.insights"), t("wiki.insightsTip"), () =>
             setShowInsights((v) => !v),
           )}
           {onCreateInsightChecks && (
-            <Tooltip title={t("wiki.createInsightChecks")}>
+            <Tooltip title={t("wiki.createInsightChecksTip")}>
               <Button
                 size="small"
                 icon={<BulbOutlined />}
@@ -304,7 +306,7 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
             </Tooltip>
           )}
           {onRebuild && (
-            <Tooltip title={t("wiki.rebuildRelations")}>
+            <Tooltip title={t("wiki.rebuildRelationsTip")}>
               <Button
                 size="small"
                 icon={<ReloadOutlined />}

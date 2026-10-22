@@ -47,6 +47,7 @@ class MonitorObjectService:
             "fallback_sampling_rate",
             "node_id",
             "cmdb_id",
+            "created_at",
         )
 
     @staticmethod
@@ -150,6 +151,18 @@ class MonitorObjectService:
             )
         except Exception:
             logger.exception("回填监控实例展示指标失败，列表将保留基础事实")
+
+    @staticmethod
+    def fill_display_metrics_for_instance_ids(monitor_object_id, instance_ids):
+        """只回填展示指标，不走列表身份/状态/排序主路径。"""
+        if not instance_ids:
+            return []
+        obj_metric_map = MonitorObject.objects.filter(id=monitor_object_id).values(*MonitorObjConstants.OBJ_KEYS).first()
+        if not obj_metric_map:
+            raise BaseAppException("Monitor object does not exist")
+        result = [{"instance_id": instance_id} for instance_id in instance_ids]
+        MonitorObjectService._safe_fill_display_metrics(monitor_object_id, obj_metric_map, result)
+        return result
 
     @staticmethod
     def _filter_visible_organizations(queryset, visible_organization_ids):
@@ -282,8 +295,10 @@ class MonitorObjectService:
             status_raw = vm_params.get("status")
         qs = InstanceSearch.apply_status_filter_to_qs(qs, instance_map, status_raw)
 
-        # 去除重复
-        qs = qs.distinct()
+        # 去除重复，并按创建时间倒序。用户指定列排序时，内存排序会覆盖这一默认序。
+        from apps.monitor.services.monitor_instance import order_monitor_instances
+
+        qs = order_monitor_instances(qs.distinct())
 
         count = qs.count()
         projected_qs = MonitorObjectService._project_instance_identity(qs)

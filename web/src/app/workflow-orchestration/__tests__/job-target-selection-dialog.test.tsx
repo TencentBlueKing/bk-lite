@@ -74,6 +74,22 @@ describe('作业目标选择弹窗', () => {
     ));
   });
 
+  it('Windows 作业禁用 Linux 主机', async () => {
+    const windowsTarget = { ...nodeTarget, id: 'node:w1', source_id: 'w1', name: 'node-win-01', operating_system: 'windows' as const };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.includes('source=node_mgmt')) return Promise.resolve({ source: 'node_mgmt', count: 2, items: [nodeTarget, windowsTarget] });
+      return Promise.resolve({ source: 'job_mgmt', count: 0, items: [] });
+    });
+    render(<App><JobTargetSelectionDialog open value={[]} allowedOperatingSystems={['windows']} onCancel={vi.fn()} onConfirm={vi.fn()} /></App>);
+
+    const linuxRow = (await screen.findByText(nodeTarget.name)).closest('tr');
+    const windowsRow = (await screen.findByText(windowsTarget.name)).closest('tr');
+    expect(linuxRow).not.toBeNull();
+    expect(windowsRow).not.toBeNull();
+    expect(within(linuxRow!).getByRole('checkbox')).toHaveProperty('disabled', true);
+    expect(within(windowsRow!).getByRole('checkbox')).toHaveProperty('disabled', false);
+  });
+
   it('切换来源会清空已选，并回填作业平台目标', async () => {
     const confirm = vi.fn();
     render(<App><JobTargetSelectionDialog open value={['node:n1']} onCancel={vi.fn()} onConfirm={confirm} /></App>);

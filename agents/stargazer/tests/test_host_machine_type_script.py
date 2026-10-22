@@ -49,6 +49,35 @@ def test_linux_classify_host_machine_type(virt, vendor, product, cpuinfo, expect
     assert _classify_linux(virt, vendor, product, cpuinfo) == expected
 
 
+def _collected_hostname(path):
+    completed = subprocess.run(
+        ["/bin/sh", "-c", '. "$1" && collected_hostname', "sh", str(LINUX_SCRIPT)],
+        env={**os.environ, "HOST_DISCOVER_SOURCE_ONLY": "1", "PATH": path},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout
+
+
+def test_linux_collected_hostname_prefers_fqdn_then_short_name(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    stub = bindir / "hostname"
+    stub.write_text("#!/bin/sh\nif [ \"$1\" = \"-f\" ]; then printf 'web.example.com'; exit 0; fi\nprintf 'web'\n", encoding="utf-8")
+    stub.chmod(0o755)
+    assert _collected_hostname(str(bindir)) == "web.example.com"
+
+    stub.write_text('#!/bin/sh\nif [ "$1" = "-f" ]; then exit 1; fi\nprintf \'web\'\n', encoding="utf-8")
+    assert _collected_hostname(str(bindir)) == "web"
+
+
+def test_linux_collected_hostname_is_empty_when_unresolved(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    assert _collected_hostname(str(bindir)) == ""
+
+
 def test_linux_discover_script_emits_machine_type():
     text = LINUX_SCRIPT.read_text(encoding="utf-8")
     assert "classify_host_machine_type" in text
@@ -150,6 +179,44 @@ def test_windows_discover_script_emits_machine_type():
 
 def _powershell():
     return shutil.which("pwsh") or shutil.which("powershell")
+
+
+@pytest.mark.skipif(_powershell() is None, reason="本机没有 PowerShell")
+def test_windows_collected_hostname_is_empty_when_unresolved():
+    script = f"""
+    $env:HOST_DISCOVER_SOURCE_ONLY = '1'
+    . '{WINDOWS_SCRIPT}'
+    $value = Get-CollectedHostName -ComputerName '' -DnsHostName ''
+    if ($null -eq $value) {{ $value = '' }}
+    Write-Output "HOSTNAME[$value]"
+    """
+    completed = subprocess.run(
+        [_powershell(), "-NoProfile", "-Command", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "HOSTNAME[]" in completed.stdout
+
+
+@pytest.mark.skipif(_powershell() is None, reason="本机没有 PowerShell")
+def test_windows_collected_hostname_prefers_computer_name_then_dns():
+    script = f"""
+    $env:HOST_DISCOVER_SOURCE_ONLY = '1'
+    . '{WINDOWS_SCRIPT}'
+    $primary = Get-CollectedHostName -ComputerName 'BOX' -DnsHostName 'dns.example'
+    $fallback = Get-CollectedHostName -ComputerName '' -DnsHostName 'dns.example'
+    Write-Output "PRIMARY[$primary]"
+    Write-Output "FALLBACK[$fallback]"
+    """
+    completed = subprocess.run(
+        [_powershell(), "-NoProfile", "-Command", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "PRIMARY[BOX]" in completed.stdout
+    assert "FALLBACK[dns.example]" in completed.stdout
 
 
 @pytest.mark.skipif(_powershell() is None, reason="本机没有 PowerShell")

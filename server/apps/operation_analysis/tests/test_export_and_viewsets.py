@@ -296,6 +296,93 @@ def test_normalize_report_rejects_unregistered_component_type():
         )
 
 
+def test_architecture_import_keeps_cmdb_binding():
+    from apps.operation_analysis.schemas.import_export_schema import ArchitectureItem
+
+    payload = {
+        "key": "arch-binding",
+        "name": "绑定往返",
+        "view_sets": {
+            "items": [{"id": "model-item"}],
+            "views": [
+                {
+                    "id": "view-1",
+                    "name": "主视图",
+                    "items": [
+                        {
+                            "id": "node-1",
+                            "tile": {"x": 1, "y": 2},
+                            "bkBinding": {"inst_uuid": "uuid-host", "model_id": "host"},
+                        }
+                    ],
+                    "rectangles": [
+                        {
+                            "id": "rect-1",
+                            "from": {"x": 0, "y": 0},
+                            "to": {"x": 3, "y": 3},
+                            "bkBinding": {"inst_uuid": "uuid-switch", "model_id": "switch"},
+                            "bkFollowAlert": True,
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+    item = ArchitectureItem.model_validate(payload)
+    view = item.view_sets["views"][0]
+    assert view["items"][0]["bkBinding"] == {"inst_uuid": "uuid-host", "model_id": "host"}
+    assert "bkBinding" not in view["rectangles"][0]
+    assert view["rectangles"][0]["bkFollowAlert"] is True
+    rewritten = vs.rewrite_canvas_view_sets_refs_for_yaml(item.view_sets, ObjectType.ARCHITECTURE, {})
+    stored = vs.rewrite_canvas_view_sets_refs_for_storage(rewritten, ObjectType.ARCHITECTURE, {})
+    assert stored["views"][0]["items"][0]["bkBinding"]["model_id"] == "host"
+    assert "bkBinding" not in stored["views"][0]["rectangles"][0]
+    assert stored["views"][0]["rectangles"][0]["bkFollowAlert"] is True
+
+
+def test_architecture_serializer_drops_rectangle_binding_only():
+    from apps.operation_analysis.serializers.directory_serializers import ArchitectureModelSerializer
+
+    original = {
+        "name": "绑定",
+        "view_sets": {
+            "title": "kept",
+            "items": [{"id": "model-item"}],
+            "views": [
+                {
+                    "id": "view-1",
+                    "extra": True,
+                    "items": [
+                        {"id": "node-1", "bkBinding": {"inst_uuid": "uuid-host", "model_id": "host"}},
+                    ],
+                    "rectangles": [
+                        {
+                            "id": "rect-1",
+                            "bkBinding": "legacy-region-binding",
+                            "bkFollowAlert": True,
+                        },
+                        {"id": "rect-plain"},
+                        "not-a-rectangle",
+                    ],
+                }
+            ],
+        },
+    }
+    source_rectangle = original["view_sets"]["views"][0]["rectangles"][0]
+    serializer = ArchitectureModelSerializer.__new__(ArchitectureModelSerializer)
+    serializer.instance = None
+    validated = ArchitectureModelSerializer.validate(serializer, original)
+    view = validated["view_sets"]["views"][0]
+    assert validated["view_sets"]["title"] == "kept"
+    assert view["extra"] is True
+    assert view["items"][0]["bkBinding"]["inst_uuid"] == "uuid-host"
+    assert "bkBinding" not in view["rectangles"][0]
+    assert view["rectangles"][0]["bkFollowAlert"] is True
+    assert view["rectangles"][1] == {"id": "rect-plain"}
+    assert view["rectangles"][2] == "not-a-rectangle"
+    assert source_rectangle["bkBinding"] == "legacy-region-binding"
+
+
 def test_normalize_architecture_fills_keys():
     out = vs.normalize_canvas_view_sets_for_storage({"items": [1]}, ObjectType.ARCHITECTURE)
     assert out == {"items": [1], "views": []}

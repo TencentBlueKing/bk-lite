@@ -403,6 +403,8 @@ error:
   write_batch_range: write_batch_size 必须在 1 到 500 之间
   interaction_create_unsupported: "人工处理项只能由执行引擎产生"
   workflow_name_conflict: "同一组织下已存在同名流程"
+  team_required: "请选择组织"
+  published_team_locked: "已发布流程不可修改组织"
   trigger_caller_forbidden: "触发器不存在或不属于调用方组织"
   execution_permission_required: "缺少流程实例操作权限"
   orchestration_unavailable: "编排服务暂不可用"

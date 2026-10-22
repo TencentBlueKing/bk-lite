@@ -27,7 +27,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='transmission', __$labels__}",
+      "query": "device_fan_speed{instance_type='transmission', collect_type='snmp_alpineoe', __$labels__}",
       "display_name": "风扇转速",
       "data_type": "Number",
       "unit": "counts",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='transmission', __$labels__}",
+      "query": "device_fan_state{instance_type='transmission', collect_type='snmp_alpineoe', __$labels__}",
       "display_name": "风扇状态",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -71,7 +71,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_input_state",
-      "query": "device_psu_input_state{instance_type='transmission', __$labels__}",
+      "query": "device_psu_input_state{instance_type='transmission', collect_type='snmp_alpineoe', __$labels__}",
       "display_name": "电源输入状态",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -89,7 +89,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_output_state",
-      "query": "device_psu_output_state{instance_type='transmission', __$labels__}",
+      "query": "device_psu_output_state{instance_type='transmission', collect_type='snmp_alpineoe', __$labels__}",
       "display_name": "电源输出状态",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -107,7 +107,7 @@
     {
       "metric_group": "Power",
       "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='transmission', __$labels__}",
+      "query": "device_voltage_volts{instance_type='transmission', collect_type='snmp_alpineoe', __$labels__}",
       "display_name": "电源输出电压",
       "data_type": "Number",
       "unit": "volts",
@@ -125,7 +125,7 @@
     {
       "metric_group": "Temperature",
       "name": "slot_temperature_celsius",
-      "query": "slot_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "slot_temperature_celsius{instance_type='transmission', collect_type='snmp_alpineoe', __$labels__}",
       "display_name": "槽位温度",
       "data_type": "Number",
       "unit": "celsius",
@@ -143,7 +143,7 @@
     {
       "metric_group": "Temperature",
       "name": "edfa_temperature_celsius",
-      "query": "edfa_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "edfa_temperature_celsius{instance_type='transmission', collect_type='snmp_alpineoe', __$labels__}",
       "display_name": "EDFA 温度",
       "data_type": "Number",
       "unit": "celsius",
@@ -161,7 +161,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_alpineoe', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

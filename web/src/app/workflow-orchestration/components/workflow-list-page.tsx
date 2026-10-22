@@ -9,15 +9,16 @@ import { useCallback, useMemo, useState } from 'react';
 
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import OperateModal from '@/components/operate-modal';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
-import type { ExecutionRecord, PaginatedResponse, WorkflowRecord, WorkflowTriggerType } from '../lib/types';
+import { organizationDisplayText } from '../lib/organization-display';
+import type { ExecutionRecord, PaginatedResponse, WorkflowRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
-import { createDefaultWorkflowName, createDuplicateWorkflowName } from '../lib/workflow-draft';
 import { WorkflowLaunchDialog } from './workflow-launch-dialog';
 import { WorkflowPermission } from './workflow-permission';
+import { WorkflowProfileDialog, type WorkflowProfileValue } from './workflow-profile-dialog';
 import { WorkflowTablePanel } from './workflow-table-panel';
 
 const API = '/workflow_orchestration/api';
@@ -31,7 +32,8 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
   const { message, modal } = App.useApp();
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const { get, post, del } = useApiClient();
+  const { selectedGroup, flatGroups } = useUserInfoContext();
+  const { get, post, patch, del } = useApiClient();
   const [records, setRecords] = useState<WorkflowRecord[]>([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -42,21 +44,14 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
     return initial === 'DRAFT' || initial === 'PUBLISHED' ? initial : undefined;
   });
   const [enabledFilter, setEnabledFilter] = useState<EnabledFilter>();
-  const [triggerType, setTriggerType] = useState<WorkflowTriggerType>();
   const isMarket = catalog === 'market';
   const permissionArea = isMarket ? 'market' : 'workflows';
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [busyId, setBusyId] = useState<number>();
-  const [duplicateWorkflow, setDuplicateWorkflow] = useState<WorkflowRecord>();
-  const [duplicateName, setDuplicateName] = useState('');
+  const [profile, setProfile] = useState<{ mode: 'create' | 'edit' | 'copy'; workflow?: WorkflowRecord } | null>(null);
+  const [profileBusy, setProfileBusy] = useState(false);
   const [runWorkflow, setRunWorkflow] = useState<WorkflowRecord>();
   const requestCoordinator = useRequestCoordinator(setLoading);
-  const triggerLabels: Record<WorkflowTriggerType, string> = {
-    FORM: t('workflowOrchestration.trigger.form', '表单'),
-    SCHEDULE: t('workflowOrchestration.trigger.schedule', '定时'),
-    WEBHOOK: 'Webhook',
-    NATS: 'NATS',
-  };
 
   const load = useCallback(async () => {
     const ticket = requestCoordinator.begin({ visible: true });
@@ -67,7 +62,6 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
       if (status) params.set('status', status);
       if (enabledFilter) params.set('enabled', enabledFilter);
       params.set('is_builtin', isMarket ? 'true' : 'false');
-      if (triggerType) params.set('trigger_type', triggerType);
       const response = await get<PaginatedResponse<WorkflowRecord>>(`${API}/workflows/?${params.toString()}`, { signal: ticket.signal });
       if (!requestCoordinator.shouldApply(ticket)) return;
       setRecords(response?.items || []); setCount(response?.count || 0);
@@ -76,17 +70,50 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
       setRecords([]);
       setCount(0);
     } finally { requestCoordinator.finish(ticket); }
-  }, [enabledFilter, get, isMarket, pagination.current, pagination.pageSize, query, requestCoordinator, status, triggerType]);
+  }, [enabledFilter, get, isMarket, pagination.current, pagination.pageSize, query, requestCoordinator, status]);
 
   const requestKey = useMemo(
-    () => JSON.stringify([pagination.current, pagination.pageSize, query, status, enabledFilter, isMarket, triggerType]),
-    [enabledFilter, isMarket, pagination.current, pagination.pageSize, query, status, triggerType],
+    () => JSON.stringify([pagination.current, pagination.pageSize, query, status, enabledFilter, isMarket]),
+    [enabledFilter, isMarket, pagination.current, pagination.pageSize, query, status],
   );
   useAutoRequest(requestKey, load);
 
-  const create = () => {
-    const name = createDefaultWorkflowName(new Date(), t('workflowOrchestration.workflow.defaultNamePrefix', '流程'));
-    router.push(`/workflow-orchestration/workflows/new?mode=edit&name=${encodeURIComponent(name)}`);
+  const includesCurrentOrganization = (team: number[]) => team.some((id) => String(id) === String(selectedGroup?.id));
+
+  const profileSavedMessage = (mode: 'create' | 'copy', team: number[]) => {
+    if (includesCurrentOrganization(team)) {
+      return mode === 'create'
+        ? t('workflowOrchestration.workflow.createdSuccess', '已创建为纯草稿')
+        : t('workflowOrchestration.workflow.duplicatedSuccess', '已复制为新的纯草稿');
+    }
+    const organizations = organizationDisplayText(team, flatGroups);
+    return mode === 'create'
+      ? t('workflowOrchestration.workflow.createdElsewhere', '已创建到 {organizations}，切换组织后可见', { organizations })
+      : t('workflowOrchestration.workflow.copiedElsewhere', '已复制到 {organizations}，切换组织后可见', { organizations });
+  };
+
+  const submitProfile = async (value: WorkflowProfileValue) => {
+    if (!profile) return;
+    setProfileBusy(true);
+    try {
+      if (profile.mode === 'create') {
+        await post(`${API}/workflows/`, { ...value, starter: 'blank' });
+        message.success(profileSavedMessage('create', value.team));
+      } else if (profile.mode === 'copy' && profile.workflow) {
+        await post(`${API}/workflows/${profile.workflow.id}/duplicate/`, value);
+        message.success(profileSavedMessage('copy', value.team));
+      } else if (profile.workflow) {
+        const body = profile.workflow.current_version
+          ? { name: value.name, description: value.description }
+          : value;
+        await patch(`${API}/workflows/${profile.workflow.id}/`, body);
+        message.success(t('workflowOrchestration.editor.draftSaved', '草稿已保存'));
+      }
+      setProfile(null);
+      await load();
+    } finally {
+      setProfileBusy(false);
+    }
   };
 
   const toggle = async (record: WorkflowRecord) => {
@@ -98,24 +125,6 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
         ? t('workflowOrchestration.workflow.enabledSuccess', '流程已启用')
         : t('workflowOrchestration.workflow.disabledSuccess', '流程已停用，不影响历史执行'));
     } finally { setBusyId(undefined); }
-  };
-
-  const duplicate = async () => {
-    const name = duplicateName.trim();
-    if (!duplicateWorkflow || !name) return;
-    setBusyId(duplicateWorkflow.id);
-    try {
-      const copied = await post<WorkflowRecord>(`${API}/workflows/${duplicateWorkflow.id}/duplicate/`, { name });
-      if (!isMarket) {
-        setRecords((items) => [copied, ...items]);
-        setCount((value) => value + 1);
-      }
-      setDuplicateWorkflow(undefined);
-      setDuplicateName('');
-      message.success(t('workflowOrchestration.workflow.duplicatedSuccess', '已复制为新的纯草稿'));
-    } finally {
-      setBusyId(undefined);
-    }
   };
 
   const remove = async (record: WorkflowRecord) => {
@@ -134,8 +143,11 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
       return;
     }
     if (key === 'duplicate') {
-      setDuplicateWorkflow(record);
-      setDuplicateName(createDuplicateWorkflowName(record.name));
+      setProfile({ mode: 'copy', workflow: record });
+      return;
+    }
+    if (key === 'profile') {
+      setProfile({ mode: 'edit', workflow: record });
       return;
     }
     if (key === 'delete') {
@@ -151,8 +163,9 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
   };
 
   const moreActions = (record: WorkflowRecord): MenuProps['items'] => [
-    { key: 'executions', label: <WorkflowPermission operation="View"><span>{t('workflowOrchestration.execution.records', '执行记录')}</span></WorkflowPermission> },
+    { key: 'executions', label: <WorkflowPermission operation="View" area="executions"><span>{t('workflowOrchestration.execution.records', '执行记录')}</span></WorkflowPermission> },
     { key: 'duplicate', label: <WorkflowPermission operation="Add"><span>{t('common.copy', '复制')}</span></WorkflowPermission> },
+    ...(record.is_builtin ? [] : [{ key: 'profile', label: <WorkflowPermission operation="Edit" instancePermissions={record.permission}><span>{t('workflowOrchestration.workflow.basicInfo', '基本信息')}</span></WorkflowPermission> }]),
     ...(record.is_builtin
       ? []
       : [
@@ -195,6 +208,20 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
       key: 'name',
       width: 220,
       render: (value: string) => <EllipsisWithTooltip text={value || '--'} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />,
+    },
+    {
+      title: t('workflowOrchestration.workflow.description', '描述'),
+      dataIndex: 'description',
+      key: 'description',
+      width: 200,
+      render: (value: string) => <EllipsisWithTooltip text={value || '--'} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />,
+    },
+    {
+      title: t('workflowOrchestration.workflow.organization', '组织'),
+      dataIndex: 'team',
+      key: 'organization',
+      width: 180,
+      render: (value: number[]) => <EllipsisWithTooltip text={organizationDisplayText(value, flatGroups)} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />,
     },
     {
       title: t('workflowOrchestration.workflow.publishStatus', '发布状态'),
@@ -258,19 +285,6 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
           ? `v${record.current_version}${record.has_draft ? t('workflowOrchestration.workflow.unpublishedSuffix', ' · 有未发布更改') : ''}`
           : '--';
         return <EllipsisWithTooltip text={value} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />;
-      },
-    },
-    {
-      title: t('workflowOrchestration.trigger.title', '触发器'),
-      dataIndex: 'trigger_summary',
-      key: 'trigger_type',
-      width: 150,
-      filters: Object.entries(triggerLabels).map(([value, text]) => ({ value, text })),
-      filterMultiple: false,
-      filteredValue: triggerType ? [triggerType] : null,
-      render: (value: WorkflowTriggerType[]) => {
-        const text = value?.length ? value.map((item) => triggerLabels[item] || '--').join(',') : '--';
-        return <EllipsisWithTooltip text={text} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />;
       },
     },
     {
@@ -341,37 +355,32 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
     },
   ];
   const visibleColumns = isMarket
-    ? columns.filter((column) => !['status', 'enabled', 'version'].includes(String(column.key)))
+    ? columns.filter((column) => !['status', 'enabled', 'version', 'organization'].includes(String(column.key)))
     : columns;
 
   return <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-4">
     <WorkflowTablePanel
       filters={<Input.Search className="w-[220px]" allowClear enterButton placeholder={t('workflowOrchestration.workflow.searchPlaceholder', '搜索流程名称')} value={queryDraft} onChange={(event) => { const value = event.target.value; setQueryDraft(value); if (!value) { setPagination((item) => ({ ...item, current: 1 })); setQuery(''); } }} onSearch={(value) => { setPagination((item) => ({ ...item, current: 1 })); setQuery(value.trim()); }} />}
-      actions={<><WorkflowPermission operation="View" area={permissionArea}><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission>{isMarket ? null : <WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={create}>{t('common.new', '新建')}</Button></WorkflowPermission>}</>}
+      actions={<><WorkflowPermission operation="View" area={permissionArea}><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission>{isMarket ? null : <WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={() => setProfile({ mode: 'create' })}>{t('common.new', '新建')}</Button></WorkflowPermission>}</>}
     >
       <CustomTable rowKey="id" loading={loading} columns={visibleColumns} dataSource={records} className="[&_.ant-table-cell]:whitespace-nowrap" locale={{ emptyText: <Empty description={isMarket ? t('workflowOrchestration.workflow.marketEmpty', '还没有内置流程') : t('workflowOrchestration.workflow.empty', '当前组织还没有流程')} /> }} pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: count, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], onChange: (current, pageSize) => setPagination({ current, pageSize }) }} onChange={(_, tableFilters, __, extra) => {
         if (extra.action !== 'filter') return;
         setStatus(tableFilters.status?.[0] as ListStatus | undefined);
         setEnabledFilter(tableFilters.enabled?.[0] as EnabledFilter | undefined);
-        setTriggerType(tableFilters.trigger_type?.[0] as WorkflowTriggerType | undefined);
         setPagination((item) => ({ ...item, current: 1 }));
       }} />
     </WorkflowTablePanel>
-    <OperateModal
-      title={t('workflowOrchestration.workflow.duplicate', '复制流程')}
-      open={Boolean(duplicateWorkflow)}
-      okText={t('workflowOrchestration.action.confirmDuplicate', '确认复制')}
-      cancelText={t('common.cancel', '取消')}
-      confirmLoading={Boolean(duplicateWorkflow && busyId === duplicateWorkflow.id)}
-      okButtonProps={{ disabled: !duplicateName.trim() }}
-      styles={{ footer: { marginTop: 20 } }}
-      onOk={() => void duplicate()}
-      onCancel={() => { setDuplicateWorkflow(undefined); setDuplicateName(''); }}
-    >
-      {isMarket ? <p className="mb-3 text-sm text-[var(--color-text-3)]">{t('workflowOrchestration.workflow.marketDuplicateHint', '复制后出现在「流程」里，状态是纯草稿，不会发布，也不会改动这条内置流程。')}</p> : null}
-      <label className="mb-2 block text-sm" htmlFor="duplicate-workflow-name">{t('workflowOrchestration.workflow.name', '流程名称')}</label>
-      <Input id="duplicate-workflow-name" autoFocus maxLength={120} value={duplicateName} onChange={(event) => setDuplicateName(event.target.value)} />
-    </OperateModal>
+    <WorkflowProfileDialog
+      open={Boolean(profile)}
+      mode={profile?.mode || 'create'}
+      workflow={profile?.workflow}
+      marketCopy={isMarket && profile?.mode === 'copy'}
+      confirmLoading={profileBusy}
+      permissionOperation={profile?.mode === 'edit' ? 'Edit' : 'Add'}
+      permissionArea={isMarket ? 'market' : 'workflows'}
+      onCancel={() => setProfile(null)}
+      onSubmit={(value) => void submitProfile(value)}
+    />
     {runWorkflow && <WorkflowLaunchDialog open title={t('workflowOrchestration.workflow.runTitle', '运行流程 · {name}', { name: runWorkflow.name })} planUrl={`${API}/workflows/${runWorkflow.id}/launch-plan/`} submitUrl={`${API}/workflows/${runWorkflow.id}/run/`} instancePermissions={runWorkflow.permission} onClose={() => setRunWorkflow(undefined)} onSubmittingChange={() => undefined} onStarted={(execution: ExecutionRecord) => { setRunWorkflow(undefined); router.push(`/workflow-orchestration/executions/${execution.id}`); }} />}
   </main>;
 }

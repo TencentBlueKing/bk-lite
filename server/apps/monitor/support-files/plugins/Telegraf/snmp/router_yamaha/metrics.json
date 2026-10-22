@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='router', collect_type='snmp_yamaha_router', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -40,7 +40,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "snmp_device_memory_usage{instance_type='router', __$labels__}",
+      "query": "snmp_device_memory_usage{instance_type='router', collect_type='snmp_yamaha_router', __$labels__}",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Yamaha RTX/NVR/FWX router (yrhMemoryUtil), reported directly as a 0-100 percentage."
@@ -53,7 +53,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "snmp_device_memory_total{instance_type='router', __$labels__} * 1048576",
+      "query": "snmp_device_memory_total{instance_type='router', collect_type='snmp_yamaha_router', __$labels__} * 1048576",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total memory of the Yamaha RTX/NVR/FWX router (yrhMemorySizeMB, reported in MB and converted to bytes). Present only on models that expose this scalar."
@@ -66,7 +66,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "snmp_device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "snmp_device_temperature_celsius{instance_type='router', collect_type='snmp_yamaha_router', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Inbox temperature of the Yamaha RTX/NVR/FWX router in degrees Celsius (yrhInboxTemperature). Present only on models that expose this scalar."
@@ -74,7 +74,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_yamaha_router', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -39,6 +39,7 @@ import {
 } from '@/app/monitor/utils/monitorObject';
 import { findByMonitorId, sameMonitorId } from '@/app/monitor/utils/monitorIds';
 import { shouldSkipPeriodicRefresh } from '@/app/monitor/utils/metricRequestSlot';
+import { fillInstanceListDisplayMetrics } from '@/app/monitor/utils/fillListDisplayMetrics';
 import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 import {
   DEFAULT_VIEW_FIXED_FIELD_KEYS,
@@ -70,6 +71,7 @@ const ViewList: React.FC<ViewListProps> = ({
   const { getPolicyGroups, joinPolicyGroup, leavePolicyGroup } = useIntegrationApi();
   const {
     getInstanceSearch,
+    getInstanceDisplayMetrics,
     getInstanceQueryParams,
     getViewColumnPreference,
     saveViewColumnPreference
@@ -606,7 +608,8 @@ const ViewList: React.FC<ViewListProps> = ({
     const params = {
       page: paginationRef.current.current,
       page_size: paginationRef.current.pageSize,
-      add_metrics: true,
+      // 展示指标由限流异步批回填，主列表只返回实例行。
+      add_metrics: false,
       name: searchTextRef.current,
       vm_params,
       ...(unassignedOnlyRef.current ? { unassigned: true } : {})
@@ -893,6 +896,32 @@ const ViewList: React.FC<ViewListProps> = ({
           ...prev,
           total: data.count || 0
         }));
+        setTableLoading(false);
+        const filled = await fillInstanceListDisplayMetrics({
+          rows: results,
+          signal: abortController.signal,
+          isCurrent: () =>
+            currentRequestId === requestIdRef.current &&
+            objectId === currentObjectIdRef.current,
+          fetchBatch: async (instanceIds, signal) => {
+            const payload = await getInstanceDisplayMetrics(
+              objectId,
+              {
+                instance_ids: instanceIds,
+                ...(unassignedOnlyRef.current ? { unassigned: true } : {})
+              },
+              { signal }
+            );
+            return payload?.results || [];
+          }
+        });
+        if (
+          currentRequestId === requestIdRef.current &&
+          objectId === currentObjectIdRef.current &&
+          !abortController.signal.aborted
+        ) {
+          setTableData(filled);
+        }
       }
     } finally {
       if (abortControllerRef.current === abortController) {

@@ -21,7 +21,7 @@
     {
       "metric_group": "Voice",
       "name": "active_b_channels",
-      "query": "active_b_channels{instance_type='voice_gateway', __$labels__}",
+      "query": "active_b_channels{instance_type='voice_gateway', collect_type='snmp_innovaphone', __$labels__}",
       "display_name": "Active B Channels",
       "data_type": "Number",
       "unit": "short",
@@ -39,7 +39,7 @@
     {
       "metric_group": "Voice",
       "name": "configured_b_channels",
-      "query": "configured_b_channels{instance_type='voice_gateway', __$labels__}",
+      "query": "configured_b_channels{instance_type='voice_gateway', collect_type='snmp_innovaphone', __$labels__}",
       "display_name": "Configured B Channels",
       "data_type": "Number",
       "unit": "short",
@@ -57,7 +57,7 @@
     {
       "metric_group": "Voice",
       "name": "calls_since_boot",
-      "query": "calls_since_boot{instance_type='voice_gateway', __$labels__}",
+      "query": "calls_since_boot{instance_type='voice_gateway', collect_type='snmp_innovaphone', __$labels__}",
       "display_name": "Calls Since Boot",
       "data_type": "Number",
       "unit": "short",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', collect_type='snmp_innovaphone', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -93,7 +93,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', collect_type='snmp_innovaphone', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -111,7 +111,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='voice_gateway', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='voice_gateway', collect_type='snmp_innovaphone', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

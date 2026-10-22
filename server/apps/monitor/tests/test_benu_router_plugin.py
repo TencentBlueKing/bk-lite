@@ -141,7 +141,7 @@ def test_temperature_fan_and_power_metric_contract(metrics):
     by_name = {metric["name"]: metric for metric in metrics["metrics"]}
     assert by_name["device_temperature_celsius"]["unit"] == "celsius"
     assert by_name["device_temperature_celsius"]["metric_group"] == "Temperature"
-    assert by_name["device_temperature_celsius"]["query"] == "device_temperature_celsius{instance_type='router', __$labels__}"
+    assert by_name["device_temperature_celsius"]["query"] == f"device_temperature_celsius{{instance_type='router', collect_type='{COLLECT_TYPE}', __$labels__}}"
     assert [item["name"] for item in by_name["device_temperature_celsius"]["dimensions"]] == ["sensor"]
 
     for name in ("device_fan_state", "device_psu_state"):
@@ -149,7 +149,7 @@ def test_temperature_fan_and_power_metric_contract(metrics):
         assert metric["metric_group"] == "Hardware Status"
         assert metric["data_type"] == "Enum"
         assert {opt["id"] for opt in json.loads(metric["unit"])} == {1, 2}
-        assert metric["query"] == f"{name}{{instance_type='router', __$labels__}}"
+        assert metric["query"] == f"{name}{{instance_type='router', collect_type='{COLLECT_TYPE}', __$labels__}}"
         assert [item["name"] for item in metric["dimensions"]] == [{"device_fan_state": "fan", "device_psu_state": "psu"}[name]]
 
 

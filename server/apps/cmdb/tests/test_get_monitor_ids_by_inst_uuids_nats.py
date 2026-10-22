@@ -15,8 +15,8 @@ def test_get_monitor_ids_rejects_more_than_node_limit():
 
 def test_get_monitor_ids_returns_empty_monitor_id_and_omits_missing(monkeypatch):
     visible = [
-        {"inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "model_id": "switch", "monitor_id": "mon-1"},
-        {"inst_uuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "model_id": "router", "monitor_id": ""},
+        {"inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "model_id": "switch", "monitor_id": "mon-1", "inst_name": "sw-01"},
+        {"inst_uuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "model_id": "router", "monitor_id": "", "inst_name": "rt-01"},
     ]
     monkeypatch.setattr(N, "_build_nats_permission_map", lambda _user_info: {1: {}})
     monkeypatch.setattr(N.InstanceManage, "query_entity_by_uuids", lambda uuids: visible)
@@ -44,21 +44,24 @@ def test_get_monitor_ids_returns_empty_monitor_id_and_omits_missing(monkeypatch)
                     "inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                     "model_id": "switch",
                     "monitor_id": "mon-1",
+                    "inst_name": "sw-01",
                 },
                 {
                     "inst_uuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
                     "model_id": "router",
                     "monitor_id": "",
+                    "inst_name": "rt-01",
                 },
-            ]
+            ],
+            "forbidden_inst_uuids": [],
         },
     }
 
 
 def test_get_monitor_ids_omits_unauthorized_instances(monkeypatch):
     entities = [
-        {"inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "model_id": "switch", "monitor_id": "mon-1"},
-        {"inst_uuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "model_id": "host", "monitor_id": "mon-2"},
+        {"inst_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "model_id": "switch", "monitor_id": "mon-1", "inst_name": "sw-01"},
+        {"inst_uuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "model_id": "host", "monitor_id": "mon-2", "inst_name": "secret-host"},
     ]
     monkeypatch.setattr(N, "_build_nats_permission_map", lambda _user_info: {1: {}})
     monkeypatch.setattr(N.InstanceManage, "query_entity_by_uuids", lambda uuids: entities)
@@ -77,6 +80,8 @@ def test_get_monitor_ids_omits_unauthorized_instances(monkeypatch):
     )
 
     assert [item["inst_uuid"] for item in result["data"]["items"]] == ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]
+    assert result["data"]["forbidden_inst_uuids"] == ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]
+    assert "secret-host" not in str(result)
 
 
 def test_get_monitor_ids_dedupes_and_does_not_pass_duplicates_to_query(monkeypatch):
@@ -126,4 +131,12 @@ def test_get_monitor_ids_returns_empty_when_permission_map_is_none(monkeypatch):
     )
 
     assert queried["called"] is False
-    assert result == {"result": True, "data": {"items": []}, "message": ""}
+    assert result == {
+        "result": True,
+        "data": {
+            "items": [],
+            "forbidden_inst_uuids": ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+        },
+        "message": "",
+    }
+    assert "mon-1" not in str(result)

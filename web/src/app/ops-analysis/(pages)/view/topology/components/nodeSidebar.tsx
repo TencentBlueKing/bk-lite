@@ -171,7 +171,7 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
         }`}
         style={{
           background:
-            'linear-gradient(180deg, color-mix(in srgb, var(--color-bg-1) 92%, #eef4ff 8%) 0%, var(--color-fill-1) 100%)',
+            'linear-gradient(180deg, color-mix(in srgb, var(--color-bg-1) 92%, var(--color-primary) 8%) 0%, var(--color-fill-1) 100%)',
         }}
       >
         <Button

@@ -33,12 +33,12 @@ export function buildBaselineComplianceWorkbook({
   if (perspective === 'host') {
     sheet.columns = [
       { header: translate('patchManager.baseline.complianceDetail.patch'), key: 'identifier', width: 20 },
-      { header: translate('patchManager.baseline.description'), key: 'title', width: 34 },
       { header: translate('patchManager.severity'), key: 'severity', width: 14 },
-      { header: translate('patchManager.baseline.complianceDetail.requirement'), key: 'condition', width: 34 },
+      { header: translate('patchManager.baseline.description'), key: 'title', width: 34 },
       { header: translate('patchManager.baseline.complianceDetail.assessmentStatus'), key: 'status', width: 16 },
       { header: translate('patchManager.baseline.complianceDetail.evidence'), key: 'evidence', width: 42 },
       { header: translate('patchManager.baseline.complianceDetail.reason'), key: 'reason', width: 34 },
+      { header: translate('patchManager.baseline.complianceDetail.requirement'), key: 'condition', width: 34 },
       { header: translate('patchManager.baseline.complianceDetail.assessedAt'), key: 'evaluatedAt', width: 22 },
     ];
     rows.forEach((item) => {

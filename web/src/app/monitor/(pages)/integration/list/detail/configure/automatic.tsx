@@ -2442,6 +2442,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         <PluginGuidePanel
           pluginId={pluginId}
           pluginName={pluginDisplayName}
+          enableScriptFallback={isScriptTemplate}
         >
           {configSection}
         </PluginGuidePanel>

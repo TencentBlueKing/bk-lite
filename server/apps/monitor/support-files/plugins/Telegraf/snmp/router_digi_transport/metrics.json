@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(snmp_device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_device_cpu_usage{instance_type='router', collect_type='snmp_digi_transport', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(snmp_device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='router', collect_type='snmp_digi_transport', __$labels__}) by (instance_id)",
       "display_name": "Device Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_processor_temperature_celsius",
-      "query": "max(snmp_device_processor_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_processor_temperature_celsius{instance_type='router', collect_type='snmp_digi_transport', __$labels__}) by (instance_id)",
       "display_name": "Processor Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_modem_temperature_celsius",
-      "query": "max(snmp_device_modem_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_modem_temperature_celsius{instance_type='router', collect_type='snmp_digi_transport', __$labels__}) by (instance_id)",
       "display_name": "Modem Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_digi_transport', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -127,6 +127,12 @@ class WindowsPatchDetail(models.Model):
     package_size = models.BigIntegerField(default=0, verbose_name="文件大小")
     package_sha256 = models.CharField(max_length=64, blank=True, default="", verbose_name="SHA-256")
     package_extension = models.CharField(max_length=8, blank=True, default="", verbose_name="文件扩展名")
+    package_dotnet_version = models.CharField(
+        max_length=8,
+        blank=True,
+        default="",
+        verbose_name=".NET 包版本",
+    )
     package_error = models.TextField(blank=True, default="", verbose_name="文件处理错误")
     package_uploaded_at = models.DateTimeField(null=True, blank=True, verbose_name="文件上传完成时间")
     kb_number_guard = models.BooleanField(null=True, default=None, editable=False)

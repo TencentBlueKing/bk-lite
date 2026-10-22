@@ -272,6 +272,53 @@ def test_large_collection_is_rejected_before_output_expansion():
         render_source("{{ enrichment.cmdb.owners }}", context, channel_type="enterprise_wechat_bot")
 
 
+@pytest.mark.parametrize(
+    ("level", "token"),
+    [("0", "warning"), ("1", "warning"), ("2", "comment"), ("3", "info"), ("提醒", "info")],
+)
+def test_wecom_color_follows_alert_level_id(level, token):
+    from apps.alerts.notification_templates.renderer import build_alert_context, render_source
+
+    context = build_alert_context(AlertStub(level=level), [], "assignment", level_display_name="级别")
+    result = render_source(
+        '<font color="{{ alert.wecom_color }}">{{ alert.level }}</font>',
+        context,
+        channel_type="enterprise_wechat_bot",
+    )
+
+    assert result.value == f'<font color="{token}">级别</font>'
+
+
+@pytest.mark.parametrize(
+    ("level", "token"),
+    [("0", "red"), ("1", "orange"), ("2", "yellow"), ("3", "green"), ("提醒", "green")],
+)
+def test_feishu_color_follows_alert_level_id(level, token):
+    from apps.alerts.notification_templates.renderer import build_alert_context, render_source
+
+    context = build_alert_context(AlertStub(level=level), [], "assignment", level_display_name="级别")
+    result = render_source(
+        "<font color='{{ alert.feishu_color }}'>{{ alert.level }}</font>",
+        context,
+        channel_type="feishu_bot",
+    )
+
+    assert result.value == f"<font color='{token}'>级别</font>"
+
+
+def test_feishu_operation_template_colors_level_only():
+    from apps.alerts.notification_templates.operation import _operation_base_content
+
+    _subject, feishu = _operation_base_content("feishu_bot")
+    _subject, dingtalk = _operation_base_content("dingtalk_bot")
+
+    assert "<font color='{{ alert.feishu_color }}'>{{ alert.level }}</font>" in feishu
+    assert "{{ alert.title }}" in feishu
+    assert "{{ notification.action_summary }}" in feishu
+    assert "<font" not in dingtalk
+    assert "｜{{ alert.level }}" in dingtalk
+
+
 def test_email_style_accepts_only_level_color_variable():
     from apps.alerts.notification_templates.renderer import TemplateValidationError, build_alert_context, render_source
 

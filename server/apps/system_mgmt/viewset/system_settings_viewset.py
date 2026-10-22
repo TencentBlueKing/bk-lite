@@ -1,4 +1,5 @@
 import json
+
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.http import JsonResponse
@@ -7,15 +8,13 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.services.gm_transport import SETTING_KEY, self_check_failure
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import Channel, ChannelChoices, SystemSettings, User
 from apps.system_mgmt.serializers.system_settings_serializer import SystemSettingsSerializer
-from apps.system_mgmt.utils.i18n import system_mgmt_request_message
+from apps.system_mgmt.utils.i18n import resolve_system_mgmt_language, system_mgmt_request_message
 from apps.system_mgmt.utils.operation_log_utils import log_operation
-from apps.system_mgmt.utils.otp_settings import (
-    DEFAULT_OTP_RECOMMENDED_APPS,
-    default_otp_whitelist_value,
-    parse_otp_recommended_apps,
-)
+from apps.system_mgmt.utils.otp_settings import DEFAULT_OTP_RECOMMENDED_APPS, default_otp_whitelist_value, parse_otp_recommended_apps
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.password_vault import encrypt_for_vault
 from apps.system_mgmt.utils.pwd_policy_cache import invalidate_pwd_policy_cache as _invalidate_pwd_policy_cache
@@ -85,6 +84,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
     @HasPermission("security_settings-View")
     def get_sys_set(self, request):
         self._ensure_portal_settings()
+        SystemSettings.objects.get_or_create(key=SETTING_KEY, defaults={"value": "0"})
         settings = dict(SystemSettings.objects.all().values_list("key", "value"))
         settings.pop("user_create_initial_password_enabled", None)
         password_hash = settings.pop(self.INITIAL_PASSWORD_HASH_KEY, "")
@@ -102,7 +102,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
 
     @action(methods=["POST"], detail=False)
     @HasPermission("security_settings-Edit")
-    def update_sys_set(self, request):
+    def update_sys_set(self, request):  # noqa: C901
         kwargs = dict(request.data)
         kwargs.pop("user_create_initial_password_enabled", None)
         initial_password = kwargs.pop(self.INITIAL_PASSWORD_INPUT_KEY, None)
@@ -174,10 +174,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
             # 切到 random/none 时,显式清空历史 hash,避免旧 hash 被误读。
             kwargs[self.INITIAL_PASSWORD_HASH_KEY] = ""
             kwargs[self.INITIAL_PASSWORD_ENCRYPTED_KEY] = ""
-        policy_changed = any(
-            key in kwargs and str(kwargs[key]) != current_settings.get(key)
-            for key in self.POLICY_REENTRY_KEYS
-        )
+        policy_changed = any(key in kwargs and str(kwargs[key]) != current_settings.get(key) for key in self.POLICY_REENTRY_KEYS)
 
         effective_policy = PasswordValidator.get_password_settings()
         try:
@@ -228,6 +225,13 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
             kwargs[self.INITIAL_PASSWORD_RANDOM_EMAIL_CHANNEL_ID_KEY] = ""
 
         kwargs[self.INITIAL_PASSWORD_MODE_KEY] = current_mode
+
+        if str(kwargs.get(SETTING_KEY, "")) == "1" and str(current_settings.get(SETTING_KEY, "0")) != "1":
+            failure = self_check_failure()
+            if failure:
+                locale = resolve_system_mgmt_language(getattr(getattr(request, "user", None), "locale", None))
+                message = LanguageLoader(app="core", default_lang=locale).get(f"error.{failure}") or failure
+                return JsonResponse({"result": False, "message": message, "code": failure}, status=400)
 
         with transaction.atomic():
             existing_settings = list(SystemSettings.objects.filter(key__in=list(kwargs.keys())))

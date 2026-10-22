@@ -43,11 +43,11 @@
 .popover {
   min-width: 188px;
   padding: 10px 12px;
-  border: 1px solid rgba(213, 226, 242, 0.96);
+  border: 1px solid var(--color-border-1);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 16px 34px rgba(39, 67, 104, 0.16);
-  color: #253244;
+  background: var(--color-bg-1);
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--color-text-1) 14%, transparent);
+  color: var(--color-text-1);
   font-size: 12px;
   line-height: 18px;
   backdrop-filter: blur(8px);
@@ -68,7 +68,7 @@
   align-items: center;
   min-width: 0;
   margin-top: 4px;
-  color: #607086;
+  color: var(--color-text-3);
 
   > span {
     flex: none;
@@ -76,7 +76,7 @@
 
   > strong {
     overflow: hidden;
-    color: #253244;
+    color: var(--color-text-1);
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -84,32 +84,32 @@
 }
 
 .alertCount {
-  color: #dc2626 !important;
+  color: var(--color-fail) !important;
 }
 
 .statusPill {
   padding: 1px 7px;
   border-radius: 999px;
-  background: #ecfdf5;
-  color: #047857 !important;
+  background: color-mix(in srgb, var(--color-success) 16%, var(--color-bg-1));
+  color: var(--color-success) !important;
   font-size: 11px;
   font-weight: 600;
 }
 
 .warning {
-  background: #fffbeb;
-  color: #b45309 !important;
+  background: color-mix(in srgb, var(--color-warning) 16%, var(--color-bg-1));
+  color: var(--color-warning) !important;
 }
 
 .error,
 .critical {
-  background: #fef2f2;
-  color: #dc2626 !important;
+  background: color-mix(in srgb, var(--color-fail) 16%, var(--color-bg-1));
+  color: var(--color-fail) !important;
 }
 
 .unknown {
-  background: #f1f5f9;
-  color: #64748b !important;
+  background: var(--color-fill-2);
+  color: var(--color-text-3) !important;
 }
 
 .centered {

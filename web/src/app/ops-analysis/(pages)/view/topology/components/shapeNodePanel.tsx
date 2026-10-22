@@ -284,7 +284,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
             <div className="flex items-center space-x-3">
               <div
                 onClick={handleSelectIcon}
-                className="w-20 h-20 border-2 border-dashed border-[#d9d9d9] hover:border-[#40a9ff] cursor-pointer flex flex-col items-center justify-center rounded-lg transition-colors duration-200 bg-[#fafafa] hover:bg-[#f0f0f0]"
+                className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[var(--color-border-2)] bg-[var(--color-fill-1)] transition-colors duration-200 hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-2)]"
               >
                 {selectedIcon ? (
                   <img
@@ -294,8 +294,8 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
                   />
                 ) : (
                   <>
-                    <AppstoreOutlined className="text-xl text-[#8c8c8c] mb-1" />
-                    <span className="text-xs text-[#8c8c8c]">
+                    <AppstoreOutlined className="mb-1 text-xl text-[var(--color-text-3)]" />
+                    <span className="text-xs text-[var(--color-text-3)]">
                       {t('topology.nodeConfig.selectIcon')}
                     </span>
                   </>
@@ -310,7 +310,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
                 beforeUpload={handleLogoUpload}
                 disabled={readonly}
               >
-                <div className="w-20 h-20 border-2 border-dashed border-[#d9d9d9] hover:border-[#40a9ff] cursor-pointer flex flex-col items-center justify-center rounded-lg transition-colors duration-200 bg-[#fafafa] hover:bg-[#f0f0f0]">
+                <div className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[var(--color-border-2)] bg-[var(--color-fill-1)] transition-colors duration-200 hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-2)]">
                   {logoPreview ? (
                     <img
                       src={logoPreview}
@@ -319,8 +319,8 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
                     />
                   ) : (
                     <>
-                      <UploadOutlined className="text-xl text-[#8c8c8c] mb-1" />
-                      <span className="text-xs text-[#8c8c8c]">
+                      <UploadOutlined className="mb-1 text-xl text-[var(--color-text-3)]" />
+                      <span className="text-xs text-[var(--color-text-3)]">
                         {t('topology.nodeConfig.uploadImage')}
                       </span>
                     </>

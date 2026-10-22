@@ -1028,10 +1028,14 @@ def wiki_execute_markdown_import_task(
 def _dispatch_markdown_import_search_enrichment(kb_id, result):
     generation_id = (result or {}).get("generation_id")
     page_ids = [int(row["page_id"]) for row in (result or {}).get("pages") or [] if row.get("page_id")]
+    build_record_id = (result or {}).get("build_record_id")
     if not generation_id or not page_ids:
+        from apps.opspilot.services.wiki.markdown_import_governance_service import run_markdown_import_search_enrichment
+
+        run_markdown_import_search_enrichment(kb_id, generation_id, page_ids, build_record_id=build_record_id)
         return
     try:
-        wiki_enrich_markdown_import_search_task.delay(kb_id, generation_id, page_ids)
+        wiki_enrich_markdown_import_search_task.delay(kb_id, generation_id, page_ids, build_record_id)
     except Exception as error:
         logger.warning(
             "wiki markdown import search enrich dispatch failed knowledge_base=%s generation_id=%s failed_stage=%s error_type=%s",
@@ -1042,15 +1046,20 @@ def _dispatch_markdown_import_search_enrichment(kb_id, result):
         )
         from apps.opspilot.services.wiki.markdown_import_governance_service import run_markdown_import_search_enrichment
 
-        run_markdown_import_search_enrichment(kb_id, generation_id, page_ids)
+        run_markdown_import_search_enrichment(kb_id, generation_id, page_ids, build_record_id=build_record_id)
 
 
 @shared_task(name="apps.opspilot.tasks.wiki_enrich_markdown_import_search_task", queue="opspilot_wiki")
-def wiki_enrich_markdown_import_search_task(kb_id, generation_id, page_ids):
+def wiki_enrich_markdown_import_search_task(kb_id, generation_id, page_ids, build_record_id=None):
     """Colloquial aliases and embeddings after imported pages are already visible."""
     from apps.opspilot.services.wiki.markdown_import_governance_service import run_markdown_import_search_enrichment
 
-    return run_markdown_import_search_enrichment(kb_id, generation_id, page_ids)
+    return run_markdown_import_search_enrichment(
+        kb_id,
+        generation_id,
+        page_ids,
+        build_record_id=build_record_id,
+    )
 
 
 @shared_task(name="apps.opspilot.tasks.wiki_refresh_web_materials_task", queue="opspilot_maintenance")

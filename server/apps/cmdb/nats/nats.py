@@ -47,6 +47,13 @@ from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVe
 from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services import rack_room
 from apps.cmdb.services.application_system import build_application_system_row
+from apps.cmdb.services.asset_overview_query import (
+    AssetOverviewQueryError,
+    build_classification_count_items,
+    list_model_association_options,
+    normalize_text_list,
+    query_cloud_region_resource_counts,
+)
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.host_zombie_whitelist import ensure_host_zombie_whitelist_attr
@@ -1773,26 +1780,34 @@ def get_monitor_ids_by_inst_uuids(inst_uuids=None, user_info=None, **kwargs):
         }
 
     if not unique:
-        return {"result": True, "data": {"items": []}, "message": ""}
+        return {"result": True, "data": {"items": [], "forbidden_inst_uuids": []}, "message": ""}
 
     permission_map = _build_nats_permission_map(user_info)
+    # 没有可用权限上下文时不读取实例，避免带出名称。调用方已持有这些 uuid，
+    # 统一记为无权，而不是把「查不到」说成已删除。
     if permission_map is None:
-        return {"result": True, "data": {"items": []}, "message": ""}
+        return {"result": True, "data": {"items": [], "forbidden_inst_uuids": list(unique)}, "message": ""}
     user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
     entities = InstanceManage.query_entity_by_uuids(unique)
     items = []
+    forbidden = []
     for entity in entities:
+        inst_uuid = entity.get("inst_uuid")
         if not InstanceManage._has_topology_view_permission(entity, permission_map, user=user):
+            if inst_uuid not in (None, ""):
+                forbidden.append(inst_uuid)
             continue
         monitor_id = entity.get("monitor_id")
+        inst_name = entity.get("inst_name")
         items.append(
             {
-                "inst_uuid": entity.get("inst_uuid"),
+                "inst_uuid": inst_uuid,
                 "model_id": entity.get("model_id"),
                 "monitor_id": "" if monitor_id in (None, "") else str(monitor_id),
+                "inst_name": "" if inst_name in (None, "") else str(inst_name),
             }
         )
-    return {"result": True, "data": {"items": items}, "message": ""}
+    return {"result": True, "data": {"items": items, "forbidden_inst_uuids": forbidden}, "message": ""}
 
 
 @nats_client.register
@@ -2499,7 +2514,7 @@ def get_model_classification_options(user_info=None, **kwargs):
     language = _resolve_nats_cmdb_language(user_info)
     model_permissions = _build_nats_model_permission_map(user_info)
     if model_permissions is None:
-        return {"items": []}
+        return {"result": True, "data": [], "message": ""}
 
     models = ModelManage.search_model(
         language=language,
@@ -2508,14 +2523,16 @@ def get_model_classification_options(user_info=None, **kwargs):
     allowed_classification_ids = {model.get("classification_id") for model in models if model.get("classification_id")}
     classifications = ClassificationManage.search_model_classification(language=language)
     return {
-        "items": [
+        "result": True,
+        "data": [
             {
                 "classification_id": item["classification_id"],
                 "classification_name": item["classification_name"],
             }
             for item in classifications
             if item.get("classification_id") in allowed_classification_ids
-        ]
+        ],
+        "message": "",
     }
 
 
@@ -2594,6 +2611,96 @@ def get_region_resource_overview(region=None, user_info=None, **kwargs):
         params=[{"field": "tag", "type": "list[]", "value": [f"region:{region}"]}],
     )
     return {"items": build_region_resource_items(models, classifications, counts)}
+
+
+@nats_client.register
+def get_cloud_region_options(user_info=None, **kwargs):
+    """云区域选项。数据来自节点管理，值是云区域 ID。"""
+    del user_info, kwargs
+    from apps.rpc.node_mgmt import NodeMgmt
+
+    items = []
+    for item in NodeMgmt().cloud_region_list() or []:
+        if not isinstance(item, dict) or item.get("id") is None or item.get("name") is None:
+            continue
+        items.append({"id": item["id"], "name": item["name"]})
+    return {"result": True, "data": items, "message": ""}
+
+
+@nats_client.register
+def get_model_association_options(model_id=None, user_info=None, **kwargs):
+    """返回一端为指定模型的业务关联。选项源把该模型固定为 host。"""
+    del kwargs
+    language = _resolve_nats_cmdb_language(user_info)
+    return {"result": True, "data": list_model_association_options(language, model_id), "message": ""}
+
+
+@nats_client.register
+def get_classification_instance_counts(classification_ids=None, user_info=None, **kwargs):
+    """按传入顺序返回所选分类的可见实例总数，包含 0。"""
+    del kwargs
+    selected = normalize_text_list(classification_ids)
+    if not selected:
+        raise AssetOverviewQueryError("分类不能为空")
+
+    language = _resolve_nats_cmdb_language(user_info)
+    model_permissions = _build_nats_model_permission_map(user_info)
+    if model_permissions is None:
+        return {"result": True, "data": [], "message": ""}
+    instance_permissions = _build_nats_permission_map(user_info)
+    if instance_permissions is None:
+        return {"result": True, "data": [], "message": ""}
+
+    models = ModelManage.search_model(language=language, permissions_map=model_permissions)
+    classifications = ClassificationManage.search_model_classification(language=language)
+    model_classification_ids = {model.get("classification_id") for model in models if model.get("classification_id")}
+    visible_classifications = [item for item in classifications if item.get("classification_id") in model_classification_ids]
+    known = {item.get("classification_id") for item in visible_classifications}
+    missing = [item for item in selected if item not in known]
+    if missing:
+        raise AssetOverviewQueryError(f"分类不存在或不可见: {', '.join(missing)}")
+
+    counts = InstanceManage.model_inst_count(permissions_map=instance_permissions)
+    return {
+        "result": True,
+        "data": build_classification_count_items(
+            selected,
+            visible_classifications,
+            models,
+            {str(key): value for key, value in counts.items()},
+        ),
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_cloud_region_resource_counts(
+    cloud_region_ids=None,
+    model_asst_ids=None,
+    supplement_tag_key=None,
+    supplement_tag_value=None,
+    user_info=None,
+    **kwargs,
+):
+    """云区域主机、指定主机关联和未挂主机的标签实例，按模型去重计数。"""
+    del kwargs
+    model_permissions = _build_nats_model_permission_map(user_info)
+    if model_permissions is None:
+        return {"result": True, "data": [], "message": ""}
+    instance_permissions = _build_nats_permission_map(user_info)
+    if instance_permissions is None:
+        return {"result": True, "data": [], "message": ""}
+    language = _resolve_nats_cmdb_language(user_info)
+    models = ModelManage.search_model(language=language, permissions_map=model_permissions)
+    items = query_cloud_region_resource_counts(
+        cloud_region_ids,
+        model_asst_ids,
+        supplement_tag_key,
+        supplement_tag_value,
+        instance_permission_map=instance_permissions,
+        visible_models=models,
+    )
+    return {"result": True, "data": items, "message": ""}
 
 
 @nats_client.register

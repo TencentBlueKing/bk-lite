@@ -50,7 +50,8 @@ class SubscriptionTaskService:
         if not count:
             if queued_delivery_ids:
                 cls._dispatch_send_notifications_async(
-                    source="recovery_scan", delivery_ids=queued_delivery_ids,
+                    source="recovery_scan",
+                    delivery_ids=queued_delivery_ids,
                 )
             else:
                 logger.info("[Subscription] 没有启用的订阅规则和待投递记录，跳过检查")
@@ -58,7 +59,10 @@ class SubscriptionTaskService:
         for rule_id in rule_ids:
             try:
                 with transaction.atomic():
-                    rule = SubscriptionRule.objects.select_for_update().get(id=rule_id, is_enabled=True,)
+                    rule = SubscriptionRule.objects.select_for_update().get(
+                        id=rule_id,
+                        is_enabled=True,
+                    )
                     logger.info(f"[Subscription] 处理规则 rule_id={rule.id}, name={rule.name}")
                     service = SubscriptionTriggerService(rule)
                     events = service.process()
@@ -72,7 +76,8 @@ class SubscriptionTaskService:
                         logger.info(f"[Subscription] 检测到触发事件 rule_id={rule.id}, trigger_type={event.trigger_type}")
             except Exception as exc:
                 logger.error(
-                    f"[Subscription] 处理规则失败 rule_id={rule_id}, error={exc}", exc_info=True,
+                    f"[Subscription] 处理规则失败 rule_id={rule_id}, error={exc}",
+                    exc_info=True,
                 )
         if queued_delivery_ids:
             queued_delivery_ids = list(dict.fromkeys(queued_delivery_ids))
@@ -95,12 +100,27 @@ class SubscriptionTaskService:
             cls._process_delivery(delivery_id, system_mgmt_client)
 
     @classmethod
-    def _process_delivery(cls, delivery_id: int, system_mgmt_client: SystemMgmt,) -> None:
+    def _process_delivery(
+        cls,
+        delivery_id: int,
+        system_mgmt_client: SystemMgmt,
+    ) -> None:
         now = timezone.now()
         claimed = (
-            SubscriptionDelivery.objects.filter(id=delivery_id, status__in=[SubscriptionDeliveryStatus.PENDING, SubscriptionDeliveryStatus.RETRY,],)
+            SubscriptionDelivery.objects.filter(
+                id=delivery_id,
+                status__in=[
+                    SubscriptionDeliveryStatus.PENDING,
+                    SubscriptionDeliveryStatus.RETRY,
+                ],
+            )
             .filter(Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
-            .update(status=SubscriptionDeliveryStatus.SENDING, attempt_count=F("attempt_count") + 1, last_error="", updated_at=now,)
+            .update(
+                status=SubscriptionDeliveryStatus.SENDING,
+                attempt_count=F("attempt_count") + 1,
+                last_error="",
+                updated_at=now,
+            )
         )
         if not claimed:
             return
@@ -119,29 +139,56 @@ class SubscriptionTaskService:
                 delay = cls.RETRY_BACKOFF_SECONDS[delivery.attempt_count - 1]
                 next_retry_at = timezone.now() + timedelta(seconds=delay)
             SubscriptionDelivery.objects.filter(
-                id=delivery_id, status=SubscriptionDeliveryStatus.SENDING, attempt_count=delivery.attempt_count,
+                id=delivery_id,
+                status=SubscriptionDeliveryStatus.SENDING,
+                attempt_count=delivery.attempt_count,
             ).update(
-                status=status, next_retry_at=next_retry_at, last_error=str(exc), updated_at=timezone.now(),
+                status=status,
+                next_retry_at=next_retry_at,
+                last_error=str(exc),
+                updated_at=timezone.now(),
             )
             logger.error("[Subscription] 投递失败 " f"delivery_id={delivery_id}, status={status}, error={exc}")
             return
 
-        SubscriptionDelivery.objects.filter(id=delivery_id, status=SubscriptionDeliveryStatus.SENDING, attempt_count=delivery.attempt_count,).update(
-            status=SubscriptionDeliveryStatus.SENT, next_retry_at=None, sent_at=timezone.now(), updated_at=timezone.now(),
+        SubscriptionDelivery.objects.filter(
+            id=delivery_id,
+            status=SubscriptionDeliveryStatus.SENDING,
+            attempt_count=delivery.attempt_count,
+        ).update(
+            status=SubscriptionDeliveryStatus.SENT,
+            next_retry_at=None,
+            sent_at=timezone.now(),
+            updated_at=timezone.now(),
         )
 
     @classmethod
-    def _send_delivery(cls, delivery: SubscriptionDelivery, system_mgmt_client: SystemMgmt,) -> None:
+    def _send_delivery(
+        cls,
+        delivery: SubscriptionDelivery,
+        system_mgmt_client: SystemMgmt,
+    ) -> None:
         events = cls._decode_event_dicts(delivery.events)
         if not events:
             raise ValueError("投递事件无法解码")
-        rule = SubscriptionRule.objects.filter(id=delivery.rule_id_snapshot, is_enabled=True,).first()
+        rule = SubscriptionRule.objects.filter(
+            id=delivery.rule_id_snapshot,
+            is_enabled=True,
+        ).first()
         if rule is None:
             raise ValueError("订阅规则不存在或已停用")
 
         title, content = cls._build_notification_content(rule, events)
-        receivers = cls._get_receivers_from_recipients(system_mgmt_client, delivery.recipients,)
-        result = system_mgmt_client.send_msg_with_channel(channel_id=delivery.channel_id, title=title, content=content, receivers=receivers,)
+        receivers = cls._get_receivers_from_recipients(
+            system_mgmt_client,
+            delivery.recipients,
+        )
+        result = system_mgmt_client.send_msg_with_channel(
+            channel_id=delivery.channel_id,
+            title=title,
+            content=content,
+            receivers=receivers,
+        )
         if not isinstance(result, dict) or not result.get("result"):
             error = result.get("message", "通知渠道返回失败") if isinstance(result, dict) else "通知渠道返回结果无效"
             raise RuntimeError(error)
@@ -152,19 +199,28 @@ class SubscriptionTaskService:
             from apps.core.celery import app
 
             app.send_task(
-                cls.SEND_TASK_NAME, kwargs={"delivery_ids": delivery_ids},
+                cls.SEND_TASK_NAME,
+                kwargs={"delivery_ids": delivery_ids},
             )
             logger.info("[Subscription] 异步派发通知发送成功 " f"source={source}, task={cls.SEND_TASK_NAME}, delivery_count={len(delivery_ids)}")
         except Exception as exc:
             logger.error(
-                f"[Subscription] 异步派发通知发送失败 source={source}, error={exc}", exc_info=True,
+                f"[Subscription] 异步派发通知发送失败 source={source}, error={exc}",
+                exc_info=True,
             )
 
     @classmethod
-    def _persist_event_groups(cls, rule: SubscriptionRule, event_groups: list[dict[str, Any]],) -> list[int]:
+    def _persist_event_groups(
+        cls,
+        rule: SubscriptionRule,
+        event_groups: list[dict[str, Any]],
+    ) -> list[int]:
         delivery_ids: list[int] = []
         for group in event_groups:
-            events = sorted(group.get("events", []), key=cls._canonical_json,)
+            events = sorted(
+                group.get("events", []),
+                key=cls._canonical_json,
+            )
             for channel_id in rule.channel_ids:
                 dedupe_payload = {
                     "rule_id": rule.id,
@@ -195,19 +251,33 @@ class SubscriptionTaskService:
     def _get_ready_delivery_ids(cls, now=None) -> list[int]:
         now = now or timezone.now()
         SubscriptionDelivery.objects.filter(
-            status=SubscriptionDeliveryStatus.SENDING, updated_at__lte=now - timedelta(seconds=cls.SENDING_LEASE_TIMEOUT_SECONDS),
+            status=SubscriptionDeliveryStatus.SENDING,
+            updated_at__lte=now - timedelta(seconds=cls.SENDING_LEASE_TIMEOUT_SECONDS),
         ).update(
-            status=SubscriptionDeliveryStatus.RETRY, next_retry_at=now, last_error="发送租约过期，等待重试", updated_at=now,
+            status=SubscriptionDeliveryStatus.RETRY,
+            next_retry_at=now,
+            last_error="发送租约过期，等待重试",
+            updated_at=now,
         )
         return list(
             SubscriptionDelivery.objects.filter(
-                Q(status=SubscriptionDeliveryStatus.PENDING) | Q(status=SubscriptionDeliveryStatus.RETRY, next_retry_at__lte=now,)
+                Q(status=SubscriptionDeliveryStatus.PENDING)
+                | Q(
+                    status=SubscriptionDeliveryStatus.RETRY,
+                    next_retry_at__lte=now,
+                )
             ).values_list("id", flat=True)
         )
 
     @staticmethod
     def _canonical_json(value: Any) -> str:
-        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str,)
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        )
 
     @staticmethod
     def _build_event_groups(events: list[TriggerEvent]) -> list[dict[str, Any]]:
@@ -217,7 +287,11 @@ class SubscriptionTaskService:
             grouped_events.setdefault(group_key, []).append(event.to_dict())
 
         event_groups = [
-            {"rule_id": rule_id, "trigger_type": trigger_type, "events": group_events,}
+            {
+                "rule_id": rule_id,
+                "trigger_type": trigger_type,
+                "events": group_events,
+            }
             for (rule_id, trigger_type), group_events in grouped_events.items()
         ]
         logger.info(
@@ -276,7 +350,7 @@ class SubscriptionTaskService:
                     summary = SubscriptionTaskService._format_change_summary(event)
                     content_lines.append(f"{i}）{event.inst_name}：{summary}")
 
-            times = sorted([e.triggered_at for e in events])
+            times = sorted(e.triggered_at for e in events)
             min_time = SubscriptionTaskService._format_triggered_at(times[0])
             max_time = SubscriptionTaskService._format_triggered_at(times[-1])
             if min_time == max_time:
@@ -293,7 +367,7 @@ class SubscriptionTaskService:
         event_count = len(events)
 
         type_display_map = {
-            TriggerType.ATTRIBUTE_CHANGE.value: ("属性变化", "个实例属性变化"),
+            TriggerType.ATTRIBUTE_CHANGE.value: ("修改", "个实例修改"),
             TriggerType.RELATION_CHANGE.value: ("关联对象变化", "个实例关联对象变化"),
             TriggerType.EXPIRATION.value: ("临近到期提醒", "个实例临近到期提醒"),
             TriggerType.INSTANCE_ADDED.value: ("出现新增实例", "个新增实例"),
@@ -354,15 +428,22 @@ class SubscriptionTaskService:
         summary = event.change_summary
 
         if trigger_type == TriggerType.INSTANCE_ADDED.value:
-            return f"+ {event.inst_name}"
+            return SubscriptionTaskService._format_lifecycle_summary("+", event)
 
         if trigger_type == TriggerType.INSTANCE_DELETED.value:
-            return f"- {event.inst_name}"
+            return SubscriptionTaskService._format_lifecycle_summary("-", event)
 
         if trigger_type == TriggerType.RELATION_CHANGE.value:
             return SubscriptionTaskService._format_relation_change_summary(summary)
 
         return summary
+
+    @staticmethod
+    def _format_lifecycle_summary(prefix: str, event: TriggerEvent) -> str:
+        summary = (event.change_summary or "").strip()
+        if summary:
+            return f"{prefix} {event.inst_name}（{summary}）"
+        return f"{prefix} {event.inst_name}"
 
     @staticmethod
     def _format_relation_change_summary(summary: str) -> str:
@@ -388,10 +469,20 @@ class SubscriptionTaskService:
         formatted = summary
         if added_match:
             added_names = [id_name_map.get(inst_id, str(inst_id)) for inst_id in added_ids]
-            formatted = re.sub(r"新增关联:\s*\[[^\]]*\]", f"新增关联: [{', '.join(added_names)}]", formatted, count=1,)
+            formatted = re.sub(
+                r"新增关联:\s*\[[^\]]*\]",
+                f"新增关联: [{', '.join(added_names)}]",
+                formatted,
+                count=1,
+            )
         if removed_match:
             removed_names = [id_name_map.get(inst_id, str(inst_id)) for inst_id in removed_ids]
-            formatted = re.sub(r"删除关联:\s*\[[^\]]*\]", f"删除关联: [{', '.join(removed_names)}]", formatted, count=1,)
+            formatted = re.sub(
+                r"删除关联:\s*\[[^\]]*\]",
+                f"删除关联: [{', '.join(removed_names)}]",
+                formatted,
+                count=1,
+            )
         return formatted
 
     @staticmethod
@@ -429,7 +520,8 @@ class SubscriptionTaskService:
             )
         except Exception as exc:
             logger.error(
-                f"[Subscription] 查询关联实例名称失败 model_id={model_id}, error={exc}", exc_info=True,
+                f"[Subscription] 查询关联实例名称失败 model_id={model_id}, error={exc}",
+                exc_info=True,
             )
             return {}
 
@@ -473,7 +565,8 @@ class SubscriptionTaskService:
                             all_users.add(username)
             except Exception as exc:
                 logger.error(
-                    f"[Subscription] 解析接收组织失败 group_id={group_id}, error={exc}", exc_info=True,
+                    f"[Subscription] 解析接收组织失败 group_id={group_id}, error={exc}",
+                    exc_info=True,
                 )
 
         return list(all_users)

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Alert, Form, Input, InputNumber, Segmented, Select } from 'antd';
+import { Alert, Button, Form, Input, InputNumber, Modal, Segmented, Select, Tabs, Tag } from 'antd';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import CodeEditor from '@/components/code-editor';
@@ -9,6 +9,17 @@ import {
   SCRIPT_MIN_INTERVAL_SECONDS,
   parseScriptDurationSeconds
 } from './scriptCollectTimeout';
+import {
+  SCRIPT_COLLECT_DEMO_BUTTONS,
+  editorModeFromInterpreter,
+  interpreterForLangTab,
+  langTabFromInterpreter,
+  languageTabsForOs,
+  matchingScriptDemoId,
+  resolveScriptCollectDemo,
+  type ScriptDemoId,
+  type ScriptLangTab
+} from './scriptCollectDemos';
 
 export const LINUX_INTERPRETERS = [
   { label: '/bin/sh', value: '/bin/sh' },
@@ -377,6 +388,18 @@ export const ScriptRunAsInput: React.FC<{
   );
 };
 
+const applyScriptDemoToForm = (form: FormInstance, id: ScriptDemoId) => {
+  const os = String(form.getFieldValue('script_os') || 'linux');
+  const demo = resolveScriptCollectDemo(id, os);
+  form.setFieldsValue({
+    script_os: demo.os,
+    interpreter: demo.interpreter,
+    script: demo.body
+  });
+  syncScriptRunAsForOs(form, demo.os);
+  void form.validateFields(['script']).catch(() => undefined);
+};
+
 export const ScriptBodyEditor: React.FC<{
   value?: string;
   onChange?: (value: string) => void;
@@ -384,20 +407,94 @@ export const ScriptBodyEditor: React.FC<{
   placeholder?: string;
   height?: string;
 }> = ({ value, onChange, readOnly, placeholder, height }) => {
+  const { t } = useTranslation();
+  const form = Form.useFormInstance();
   const os = Form.useWatch('script_os');
+  const interpreter = String(Form.useWatch('interpreter') || '');
+  const langTabs = languageTabsForOs(os);
+  const activeLangTab = langTabFromInterpreter(interpreter, os);
+  const mode = editorModeFromInterpreter(interpreter);
+  const activeDemoId = matchingScriptDemoId(value, os);
+
+  const handleDemoClick = (id: ScriptDemoId) => {
+    if (readOnly) return;
+    const current = String(form.getFieldValue('script') || value || '').replace(/\s+$/, '');
+    const next = resolveScriptCollectDemo(id, form.getFieldValue('script_os'));
+    if (!current || current === next.body.replace(/\s+$/, '')) {
+      applyScriptDemoToForm(form, id);
+      return;
+    }
+    Modal.confirm({
+      title: t('monitor.integrations.scriptDemoOverwriteTitle', '覆盖当前脚本？'),
+      content: t(
+        'monitor.integrations.scriptDemoOverwriteContent',
+        '插入该示例将覆盖编辑区已有内容。'
+      ),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: () => applyScriptDemoToForm(form, id)
+    });
+  };
+
+  const handleLangTab = (tab: string) => {
+    if (readOnly) return;
+    form.setFieldValue(
+      'interpreter',
+      interpreterForLangTab(tab as ScriptLangTab, os, interpreter)
+    );
+  };
+
   return (
     <div style={{ maxWidth: 640 }} className="w-full">
-      <CodeEditor
-        mode={os === 'windows' ? 'powershell' : 'sh'}
-        theme="monokai"
-        height={height || '200px'}
-        width="100%"
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        headerOptions={{ copy: true, fullscreen: true }}
-        readOnly={Boolean(readOnly)}
-      />
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Tag className="m-0">{t('monitor.integrations.scriptDemoBadge', '示例脚本')}</Tag>
+        <span className="text-xs text-[var(--color-text-3)]">
+          {t(
+            'monitor.integrations.scriptDemoHint',
+            '可插入编辑区的示例，插入后可按需修改。'
+          )}
+        </span>
+      </div>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {SCRIPT_COLLECT_DEMO_BUTTONS.map((item) => (
+          <Button
+            key={item.id}
+            size="small"
+            type={activeDemoId === item.id ? 'primary' : 'default'}
+            disabled={Boolean(readOnly)}
+            onClick={() => handleDemoClick(item.id)}
+          >
+            {t(item.labelKey, item.defaultLabel)}
+          </Button>
+        ))}
+      </div>
+      <div className="overflow-hidden rounded-md">
+        <div className="border-b border-[#1e1e1e] bg-[#2d2d30] px-3">
+          <Tabs
+            size="small"
+            activeKey={activeLangTab}
+            onChange={handleLangTab}
+            items={langTabs.map((tab) => ({
+              key: tab.key,
+              label: tab.label,
+              disabled: Boolean(readOnly)
+            }))}
+            tabBarStyle={{ marginBottom: 0 }}
+            className="script-collect-lang-tabs [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-nav::before]:border-transparent [&_.ant-tabs-tab]:text-[#9d9d9d] [&_.ant-tabs-tab-active_.ant-tabs-tab-btn]:text-white [&_.ant-tabs-tab-btn]:text-[12px] [&_.ant-tabs-ink-bar]:bg-[var(--color-primary)]"
+          />
+        </div>
+        <CodeEditor
+          mode={mode}
+          theme="monokai"
+          height={height || '200px'}
+          width="100%"
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          headerOptions={{ copy: true, fullscreen: true }}
+          readOnly={Boolean(readOnly)}
+        />
+      </div>
     </div>
   );
 };

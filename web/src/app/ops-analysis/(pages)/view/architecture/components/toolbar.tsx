@@ -1,11 +1,12 @@
 import React from 'react';
-import { Button, Tooltip, Tag } from 'antd';
+import { Button, Dropdown, Tooltip, Tag } from 'antd';
 import {
   SaveOutlined,
   EditOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
   ShareAltOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import { ArchitectureProps } from '@/app/ops-analysis/types/architecture';
 import PermissionWrapper from '@/components/permission';
@@ -24,6 +25,13 @@ interface ArchitectureToolbarProps {
   onSave: () => void;
   onFullscreenToggle: () => void;
   editExtra?: React.ReactNode;
+  bindingMeter?: {
+    bound: number;
+    total: number;
+    highlightUnbound: boolean;
+    unbound: number;
+    onToggleHighlight: () => void;
+  };
 }
 
 const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
@@ -39,6 +47,7 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
   onSave,
   onFullscreenToggle,
   editExtra,
+  bindingMeter,
 }) => {
   const { t } = useTranslation();
   return (
@@ -55,7 +64,7 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
                 </Tag>
               )}
             </h2>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-[var(--color-text-3)]">
               {selectedArchitecture.desc || '--'}
             </p>
           </div>
@@ -110,6 +119,29 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
         {!shareMode && isEditMode && (
           <PermissionWrapper requiredPermissions={['EditChart']}>
             <div className="flex items-center gap-2">
+              {bindingMeter ? (
+                <Dropdown
+                  trigger={['click']}
+                  menu={{
+                    items: [{
+                      key: 'highlight',
+                      label: t('opsAnalysis.architecture.highlightUnbound', undefined, {
+                        count: bindingMeter.unbound,
+                      }),
+                    }],
+                    selectedKeys: bindingMeter.highlightUnbound ? ['highlight'] : [],
+                    onClick: () => bindingMeter.onToggleHighlight(),
+                  }}
+                >
+                  <Button data-testid="architecture-binding-meter">
+                    {t('opsAnalysis.architecture.bindingCount', undefined, {
+                      bound: bindingMeter.bound,
+                      total: bindingMeter.total,
+                    })}
+                    <DownOutlined />
+                  </Button>
+                </Dropdown>
+              ) : null}
               {editExtra}
               {onCancel && (
                 <Button type="default" onClick={onCancel}>

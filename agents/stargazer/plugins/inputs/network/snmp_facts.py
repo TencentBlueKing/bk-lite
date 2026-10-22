@@ -41,6 +41,73 @@ class DefineOid:
         self.ifOperStatus = dp + "1.3.6.1.2.1.2.2.1.8"
         self.ifAlias = dp + "1.3.6.1.2.1.31.1.1.1.18"
 
+        # ENTITY-MIB entPhysicalTable：序列号、类型、描述、名称
+        self.entPhysicalDescr = dp + "1.3.6.1.2.1.47.1.1.1.1.2"
+        self.entPhysicalClass = dp + "1.3.6.1.2.1.47.1.1.1.1.5"
+        self.entPhysicalName = dp + "1.3.6.1.2.1.47.1.1.1.1.7"
+        self.entPhysicalSerialNum = dp + "1.3.6.1.2.1.47.1.1.1.1.11"
+
+
+_ENTITY_SERIAL_ROOT = "1.3.6.1.2.1.47.1.1.1.1.11"
+
+
+def _display_snmp_value(val) -> str:
+    raw = getattr(val, "_value", None)
+    if isinstance(raw, bytes):
+        try:
+            return raw.decode().strip()
+        except Exception:
+            pass
+    pretty = getattr(val, "prettyPrint", None)
+    text = pretty() if callable(pretty) else str(val)
+    return str(text).strip()
+
+
+def _column_index(oid_text: str, root: str) -> str:
+    root = root.lstrip(".")
+    if oid_text == root or not oid_text.startswith(root + "."):
+        return ""
+    return oid_text[len(root) + 1 :]
+
+
+def _is_chassis_class(value) -> bool:
+    text = str(value or "").strip().lower().replace(" ", "")
+    return text in {"3", "chassis", "chassis(3)"}
+
+
+def format_entity_label(physical_class, descr, name) -> str:
+    """机箱写成 chassis / 描述，其余实体只用描述，描述为空时用名称。"""
+    label = str(descr or "").strip() or str(name or "").strip()
+    if _is_chassis_class(physical_class):
+        return f"chassis / {label}" if label else "chassis"
+    return label
+
+
+def assemble_entity_serial_rows(raw_rows) -> list:
+    """按物理索引拼序列号行，丢掉空序列号。同一 OID 只保留第一行。"""
+    result = []
+    seen = set()
+    for row in raw_rows or []:
+        if not isinstance(row, dict):
+            continue
+        index = str(row.get("index") or "").strip().strip(".")
+        serial = str(row.get("serial") or "").strip()
+        if not index or not serial:
+            continue
+        oid = f"{_ENTITY_SERIAL_ROOT}.{index}"
+        if oid in seen:
+            continue
+        seen.add(oid)
+        result.append(
+            {
+                "index": index,
+                "oid": oid,
+                "serial": serial,
+                "entity": format_entity_label(row.get("physical_class"), row.get("descr"), row.get("name")),
+            }
+        )
+    return result
+
 
 def _oid_text(oid) -> str:
     pretty = getattr(oid, "prettyPrint", None)
@@ -405,6 +472,8 @@ class SnmpFacts:
         results = {
             "system": {},
             "interfaces": [],  # 确保 interfaces 是一个列表
+            "sn_collected": False,
+            "entity_serials": [],
         }
 
         # 系统 GET 与接口 WALK 共用进程级共享 Engine（见 core.infra.snmp_engine_pool），
@@ -543,7 +612,70 @@ class SnmpFacts:
             except Exception as e:
                 raise RuntimeError(f"Error during SNMP interface information collection: {str(e)}")
 
+            collected, serial_rows = await self._collect_entity_serials(engine, p, v)
+            results["sn_collected"] = collected
+            results["entity_serials"] = serial_rows
             return results
+
+    async def _collect_entity_serials(self, engine, dotted, plain):
+        """Walk ENTITY-MIB 序列号列。失败不抛出，交给调用方保留设备其余字段。"""
+        raw_rows = []
+
+        def append_entity(var_binds):
+            parsed = {}
+            for oid, val in var_binds:
+                current_oid = _oid_text(oid)
+                current_val = _display_snmp_value(val)
+                if _is_prefix_of(plain.entPhysicalDescr, current_oid):
+                    parsed["descr"] = current_val
+                    parsed["index"] = parsed.get("index") or _column_index(current_oid, plain.entPhysicalDescr)
+                elif _is_prefix_of(plain.entPhysicalClass, current_oid):
+                    parsed["physical_class"] = current_val
+                    parsed["index"] = parsed.get("index") or _column_index(current_oid, plain.entPhysicalClass)
+                elif _is_prefix_of(plain.entPhysicalName, current_oid):
+                    parsed["name"] = current_val
+                    parsed["index"] = parsed.get("index") or _column_index(current_oid, plain.entPhysicalName)
+                elif _is_prefix_of(plain.entPhysicalSerialNum, current_oid):
+                    parsed["serial"] = current_val
+                    parsed["index"] = _column_index(current_oid, plain.entPhysicalSerialNum) or parsed.get("index") or ""
+            if parsed.get("index"):
+                raw_rows.append(parsed)
+
+        columns = [
+            dotted.entPhysicalDescr,
+            dotted.entPhysicalClass,
+            dotted.entPhysicalName,
+            dotted.entPhysicalSerialNum,
+        ]
+        try:
+            error_indication, error_status, _error_index, _table = await self._bulk_walk(
+                engine,
+                columns,
+                timeout=self.timeout,
+                retries=self.retries,
+                row_consumer=append_entity,
+            )
+            walk_error = error_indication or error_status
+            if walk_error and self._is_getbulk_fallback_error(walk_error):
+                raw_rows.clear()
+                error_indication, error_status, _error_index, _table = await self._next_walk(
+                    engine,
+                    columns,
+                    timeout=self.timeout,
+                    retries=self.retries,
+                    lexicographic_mode=False,
+                    row_consumer=append_entity,
+                )
+            if error_indication or error_status:
+                return False, []
+        except Exception as exc:
+            logger.debug(
+                "event=snmp_entity_serial_walk_failed host=%s error_type=%s",
+                self.host,
+                type(exc).__name__,
+            )
+            return False, []
+        return True, assemble_entity_serial_rows(raw_rows)
 
     async def probe(self):
         """最小只读 SNMP GET（sysName），用于 CredentialAttempt。"""
@@ -640,10 +772,20 @@ class SnmpFacts:
             snmp_data = await self.collect()
             system_data = snmp_data.get("system", {})
             interfaces_data = snmp_data.get("interfaces", [])
+            system_data["sn_collected"] = "true" if snmp_data.get("sn_collected") else "false"
             model_data = {
                 "network_system": [system_data],
                 "network_interfaces": interfaces_data,
             }
+            serial_rows = []
+            for row in snmp_data.get("entity_serials") or []:
+                if not isinstance(row, dict):
+                    continue
+                published = dict(row)
+                published["ip_addr"] = system_data.get("ip_addr") or self.host
+                serial_rows.append(published)
+            if serial_rows:
+                model_data["network_sn"] = serial_rows
 
             inst_data = {"result": model_data, "success": True}
         except Exception as err:

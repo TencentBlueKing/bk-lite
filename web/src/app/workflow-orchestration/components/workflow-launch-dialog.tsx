@@ -63,7 +63,7 @@ function RuntimeFileUpload({ workflowId, fieldKey, launchToken, schema, value, o
   const maxSizeMiB = fileOptions?.maxSizeMiB || 5;
   const [uploading, setUploading] = useState(false);
   return <div className="space-y-3 rounded-lg border border-[var(--color-border-1)] p-4">
-    <Upload accept={acceptedFormats.map((item) => `.${item}`).join(',')} maxCount={fileOptions?.maxCount || 1} showUploadList={false} beforeUpload={async (file) => {
+    <WorkflowPermission operation="Execute"><Upload accept={acceptedFormats.map((item) => `.${item}`).join(',')} maxCount={fileOptions?.maxCount || 1} showUploadList={false} beforeUpload={async (file) => {
       if (file.size > maxSizeMiB * 1024 * 1024) { message.error(t('workflowOrchestration.launch.templateTooLarge', '文件不能超过 {size} MiB', { size: maxSizeMiB })); return Upload.LIST_IGNORE; }
       setUploading(true);
       try {
@@ -72,7 +72,7 @@ function RuntimeFileUpload({ workflowId, fieldKey, launchToken, schema, value, o
         onChange(uploaded); message.success(t('workflowOrchestration.launch.templateUploaded', '报告模板已上传'));
       } finally { setUploading(false); }
       return Upload.LIST_IGNORE;
-    }}><Button loading={uploading} icon={<UploadOutlined />}>{current.name ? t('workflowOrchestration.launch.replaceTemplate', '更换模板') : t('workflowOrchestration.launch.chooseTemplate', '选择 Word / Excel 模板')}</Button></Upload>
+    }}><Button loading={uploading} icon={<UploadOutlined />}>{current.name ? t('workflowOrchestration.launch.replaceTemplate', '更换模板') : t('workflowOrchestration.launch.chooseTemplate', '选择 Word / Excel 模板')}</Button></Upload></WorkflowPermission>
     {current.name ? <div className="text-xs text-[var(--color-text-3)]">{String(current.name)} · {Math.ceil(Number(current.size || 0) / 1024)} KiB</div> : null}
     <FileSampleLinks schema={schema} />
     <div className="text-xs leading-5 text-[var(--color-text-3)]">{t('workflowOrchestration.launch.templateHint', '支持 {formats}，单文件不超过 {size} MiB。', { formats: acceptedFormats.map((item) => `.${item}`).join(' / '), size: maxSizeMiB })}</div>

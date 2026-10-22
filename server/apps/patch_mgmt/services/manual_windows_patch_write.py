@@ -46,6 +46,14 @@ def _validated_serializer(*, metadata, context, instance=None) -> PatchListSeria
     return serializer
 
 
+def _declared_dotnet_version(metadata) -> str:
+    windows_detail = metadata.get("windows_detail")
+    if not isinstance(windows_detail, dict):
+        return ""
+    declared = windows_detail.pop("package_dotnet_version", "")
+    return "" if declared is None else str(declared)
+
+
 def _prepare_file(uploaded_file):
     try:
         return prepare_windows_package(uploaded_file)
@@ -62,13 +70,21 @@ def create_manual_windows_patch(*, metadata, uploaded_file, context) -> Patch:
             field="file",
         )
 
+    declared_dotnet_version = _declared_dotnet_version(metadata)
     serializer = _validated_serializer(metadata=metadata, context=context)
     prepared = _prepare_file(uploaded_file)
     patch = serializer.save(pkg_status=PackageStatus.DOWNLOADING)
     try:
-        store_windows_package(patch, uploaded_file, prepared=prepared)
+        store_windows_package(
+            patch,
+            uploaded_file,
+            prepared=prepared,
+            declared_dotnet_version=declared_dotnet_version,
+        )
     except WindowsPackageStorageError as exc:
         raise ManualWindowsPatchStorageFailure(patch, str(exc)) from exc
+    except WindowsPackageError as exc:
+        raise PatchBusinessError(exc.code, exc.default, params=exc.params, field="file") from exc
     return patch
 
 
@@ -80,6 +96,7 @@ def update_manual_windows_patch(
     context,
 ) -> Patch:
     """更新元数据；上次上传失败时，在同一次请求中替换文件。"""
+    declared_dotnet_version = _declared_dotnet_version(metadata)
     serializer = _validated_serializer(
         metadata=metadata,
         context=context,
@@ -111,7 +128,10 @@ def update_manual_windows_patch(
             patch,
             uploaded_file,
             prepared=prepared,
+            declared_dotnet_version=declared_dotnet_version,
         )
     except WindowsPackageStorageError as exc:
         raise ManualWindowsPatchStorageFailure(patch, str(exc)) from exc
+    except WindowsPackageError as exc:
+        raise PatchBusinessError(exc.code, exc.default, params=exc.params, field="file") from exc
     return patch

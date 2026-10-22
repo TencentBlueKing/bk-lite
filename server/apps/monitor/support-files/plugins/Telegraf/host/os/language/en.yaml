@@ -160,6 +160,12 @@ monitor_object_metric:
     net_drop_out_rate:
       name: Network Send Drop Rate
       desc: Represents the number of outgoing packets dropped per unit time on a network interface.
+    nvidia_smi_utilization_gpu:
+      name: GPU Utilization
+      desc: Represents the GPU compute utilization percentage for each GPU device.
+    nvidia_smi_memory_used:
+      name: GPU Memory Used
+      desc: Represents the amount of GPU memory currently in use on each GPU device.
     nvidia_smi_memory_total:
       name: GPU Memory Total
       desc: Represents the total available memory capacity of the GPU, serving as a baseline GPU resource

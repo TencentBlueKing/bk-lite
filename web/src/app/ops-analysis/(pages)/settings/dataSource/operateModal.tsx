@@ -60,6 +60,8 @@ import {
   SOURCE_TYPE_PROMETHEUS,
   SOURCE_TYPE_REST_API,
   TABLE_CHART_TYPE,
+  TABULAR_CHART_TYPES,
+  normalizeTabularChartTypes,
 } from "./operateModalUtils";
 import {
   FormSection,
@@ -479,7 +481,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           item.value as (typeof PROMETHEUS_DEFAULT_CHART_TYPES)[number],
         );
       }
-      return item.value === TABLE_CHART_TYPE;
+      return TABULAR_CHART_TYPES.includes(item.value);
     })
     .map((item) => ({
       label: t(item.label),
@@ -1059,7 +1061,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           ? values.chart_type || []
           : isPrometheusSource
             ? values.chart_type || [...PROMETHEUS_DEFAULT_CHART_TYPES]
-            : [TABLE_CHART_TYPE],
+            : normalizeTabularChartTypes(values.chart_type),
         groups: values.groups || [],
         field_schema: fieldSchema,
         params:

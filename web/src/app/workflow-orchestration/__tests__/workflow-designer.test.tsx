@@ -193,6 +193,23 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(mocks.replace).toHaveBeenCalledWith('/workflow-orchestration/workflows/7?mode=edit');
   });
 
+  it('保存草稿时只有保存按钮转圈，发布按钮禁用', async () => {
+    let resolveSave: (value: unknown) => void = () => undefined;
+    mocks.post.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="空白流程" /></App>);
+
+    fireEvent.click(await screen.findByRole('button', { name: /保存草稿/ }));
+
+    const saveButton = await screen.findByRole('button', { name: /保存草稿/ });
+    const publishButton = screen.getByRole('button', { name: /发布/ });
+    expect(saveButton.className).toContain('ant-btn-loading');
+    expect(publishButton.className).not.toContain('ant-btn-loading');
+    expect(publishButton).toHaveProperty('disabled', true);
+
+    resolveSave({ ...workflow, id: 7, name: '空白流程' });
+    await waitFor(() => expect(screen.getByRole('button', { name: /发布/ })).toHaveProperty('disabled', false));
+  });
+
   it('新建流程的第一个节点只能选择触发器', async () => {
     const { container } = render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="空白流程" /></App>);
 
@@ -463,6 +480,72 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
       expect(screen.getAllByText(/job-linux-01|作业目标 #11/).length).toBeGreaterThan(0);
     });
     expect(screen.queryByText('manual:11')).toBeNull();
+  });
+
+  it('上游表单只允许 Linux 时，作业节点选择主机弹窗禁用 Windows', async () => {
+    const linuxHost = { id: 'node:l1', source: 'node_mgmt', source_id: 'l1', name: 'linux-01', ip: '10.0.0.8', operating_system: 'linux', connected: true };
+    const windowsHost = { id: 'node:w1', source: 'node_mgmt', source_id: 'w1', name: 'win-01', ip: '10.0.0.9', operating_system: 'windows', connected: true };
+    const jobWorkflow = {
+      ...workflow,
+      definition: {
+        ...workflow.definition,
+        tasks: [{
+          name: 'bklite_job_execute',
+          taskReferenceName: 'scan',
+          type: 'SIMPLE',
+          inputParameters: {
+            targets: '${workflow.input.targets}',
+            script_type: 'powershell',
+            script_content: 'Write-Output ok',
+          },
+        }],
+      },
+      canvas_metadata: {
+        node_titles: { scan: '作业执行' },
+        trigger_nodes: [{
+          id: 'trigger_form',
+          name: 'Linux 健康巡检表单',
+          trigger_type: 'FORM',
+          input_schema: {
+            type: 'object',
+            properties: {
+              targets: {
+                type: 'array',
+                title: '目标主机',
+                'x-target-binding': {
+                  mode: 'runtime',
+                  allowedSources: ['node_mgmt', 'job_mgmt'],
+                  allowedOperatingSystems: ['linux'],
+                  minCount: 1,
+                  maxCount: 100,
+                },
+              },
+            },
+            required: ['targets'],
+          },
+          config: {},
+        }],
+      },
+    };
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/workflows/1/')) return Promise.resolve(jobWorkflow);
+      if (url.includes('/workflows/atoms/')) return Promise.resolve(atoms);
+      if (url.includes('source=node_mgmt')) return Promise.resolve({ source: 'node_mgmt', count: 2, items: [linuxHost, windowsHost] });
+      return Promise.resolve({ source: 'job_mgmt', count: 0, items: [] });
+    });
+    const { container } = render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
+    const node = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('[data-workflow-node="atom"] button[aria-label="作业执行"]');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    fireEvent.doubleClick(node);
+    fireEvent.click(await screen.findByRole('button', { name: /选择主机/ }));
+
+    const linuxRow = (await screen.findByText('linux-01')).closest('tr');
+    const windowsRow = (await screen.findByText('win-01')).closest('tr');
+    expect(within(linuxRow!).getByRole('checkbox')).toHaveProperty('disabled', false);
+    expect(within(windowsRow!).getByRole('checkbox')).toHaveProperty('disabled', true);
   });
 
   it('Webhook 只保留自动接口与响应模式，并仅在等待模式开放响应节点', async () => {

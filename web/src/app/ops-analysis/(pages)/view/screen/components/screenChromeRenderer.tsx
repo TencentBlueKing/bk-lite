@@ -7,7 +7,6 @@ import { useInteractionSurface } from '@/app/ops-analysis/context/interactionSur
 import type {
   ScreenClockItem,
   ScreenItem,
-  ScreenTextAlign,
   ScreenTextItem,
   ScreenTextStyleConfig,
 } from '@/app/ops-analysis/types/screen';
@@ -74,12 +73,6 @@ const ClockSkin: React.FC<{
   );
 };
 
-const TEXT_JUSTIFY: Record<ScreenTextAlign, React.CSSProperties['justifyContent']> = {
-  left: 'flex-start',
-  center: 'center',
-  right: 'flex-end',
-};
-
 const ScreenTextBody: React.FC<{ item: ScreenTextItem }> = ({ item }) => {
   const textContent = useFilterTemplateText(item.content);
   const surface = useInteractionSurface();
@@ -112,12 +105,11 @@ const ScreenTextBody: React.FC<{ item: ScreenTextItem }> = ({ item }) => {
       {...screenUniformTextProps(
         item.textStyle,
         undefined,
-        'flex h-full w-full min-w-0 flex-nowrap items-center overflow-hidden px-1 py-1',
+        'flex h-full w-full min-w-0 flex-nowrap items-center justify-start overflow-hidden px-1 py-1',
       )}
       data-screen-text-link=""
       style={{
         ...screenChromeTextStyle(item.textStyle),
-        justifyContent: TEXT_JUSTIFY[align],
         gap: '0.4em',
       }}
     >
@@ -125,7 +117,7 @@ const ScreenTextBody: React.FC<{ item: ScreenTextItem }> = ({ item }) => {
         data-screen-text-label=""
         className="min-w-0 overflow-hidden"
         style={{
-          flex: '0 1 auto',
+          flex: '1 1 auto',
           textAlign: align,
           whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
           wordBreak: multiline ? 'break-word' : 'normal',

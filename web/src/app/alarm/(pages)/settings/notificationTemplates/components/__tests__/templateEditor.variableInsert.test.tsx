@@ -164,6 +164,20 @@ describe('通知模板变量插入', () => {
     );
   });
 
+  it('颜色参考按当前渠道给出可抄写法，并插入正文', async () => {
+    render(<TemplateEditor templateId="4" />);
+    await screen.findByLabelText('template-editor');
+    fireEvent.click(screen.getByRole('button', { name: /colorTip$/ }));
+
+    expect(await screen.findByText('<strong style="color:#F43B2C;">{{ alert.level }}</strong>')).toBeTruthy();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'settings.notificationTemplate.colorTipInsert' })[1]);
+
+    expect((screen.getByLabelText('template-editor') as HTMLTextAreaElement).value).toContain(
+      '<strong style="color:#F43B2C;">{{ alert.level }}</strong>',
+    );
+  });
+
   it('告警详情链接悬停展示完整地址，点击后按光标插入', async () => {
     render(<TemplateEditor templateId="4" />);
     const hint = await screen.findByRole('button', { name: 'settings.notificationTemplate.alertDetailLinkHint' });

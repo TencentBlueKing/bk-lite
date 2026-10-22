@@ -34,11 +34,12 @@ import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges,
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
 import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
+import { jobTargetOperatingSystems } from '../lib/job-target-operating-systems';
 import { buildNodeTestInputContract, materializeNodeTestInputs } from '../lib/node-test-input-contract';
 import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
 import { createUnsavedWorkflowDraft } from '../lib/workflow-draft';
-import { WorkflowPermission } from './workflow-permission';
+import { WorkflowPermission, type WorkflowPermissionArea } from './workflow-permission';
 import { AtomConfigTemplateActions } from './atom-config-template-actions';
 import { WorkflowNodeTitleField } from './workflow-node-title-field';
 
@@ -262,7 +263,7 @@ function ConditionEditor({
   </Form>;
 }
 
-export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = 'edit', listHref = '/workflow-orchestration/workflows' }: { workflowId: number | null; initialName?: string; mode?: 'view' | 'edit'; listHref?: string }) {
+export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = 'edit', listHref = '/workflow-orchestration/workflows', permissionArea = 'workflows' }: { workflowId: number | null; initialName?: string; mode?: 'view' | 'edit'; listHref?: string; permissionArea?: WorkflowPermissionArea }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { get, patch, post } = useApiClient();
@@ -317,7 +318,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const [schedulePreviewError, setSchedulePreviewError] = useState('');
   const [issues, setIssues] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'save' | 'publish' | null>(null);
   const [dirty, setDirty] = useState(false);
   const requestCoordinator = useRequestCoordinator(setLoading);
   const versionsRequestCoordinator = useRequestCoordinator(setVersionsLoading);
@@ -417,6 +418,10 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const inspectorTriggers = useMemo(() => workflowTriggerNodes(metadata), [metadata]);
   const inspectorTestTrigger = inspectorTriggers.find((item) => item.id === nodeTestTriggerId) || inspectorTriggers.find((item) => item.trigger_type === 'FORM') || inspectorTriggers[0];
   const nodeTestInputContract = useMemo(() => buildNodeTestInputContract(selectedTask, selectedAtom?.input_schema, inspectorTestTrigger?.input_schema), [inspectorTestTrigger, selectedAtom?.input_schema, selectedTask]);
+  const jobHostOperatingSystems = useMemo(() => jobTargetOperatingSystems({
+    targets: selectedTask?.inputParameters?.targets,
+    triggers: workflowTriggerNodes(metadata),
+  }), [metadata, selectedTask]);
   const inspectorTestData = metadata.node_test_data || {};
   const inspectorTestInputs = inspectorTestTrigger && inspectorTestData[inspectorTestTrigger.id] && typeof inspectorTestData[inspectorTestTrigger.id] === 'object' && !Array.isArray(inspectorTestData[inspectorTestTrigger.id])
     ? inspectorTestData[inspectorTestTrigger.id] as Record<string, unknown>
@@ -1062,12 +1067,12 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   };
 
   const save = async () => {
-    setBusy(true);
+    setPendingAction('save');
     try {
       const saved = await persistDraft();
       if (!saved) return;
       message.success(t('workflowOrchestration.editor.draftSaved', '草稿已保存'));
-    } finally { setBusy(false); }
+    } finally { setPendingAction(null); }
   };
 
   const withPersistedDraft = (continueAction: (workflowId: number) => void) => {
@@ -1081,14 +1086,14 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       okText: t('workflowOrchestration.editor.saveAndContinueTest', '保存并继续'),
       cancelText: t('common.cancel', '取消'),
       onOk: async () => {
-        setBusy(true);
+        setPendingAction('save');
         try {
           const saved = await persistDraft({ syncUrl: false });
           if (!saved) return;
           message.success(t('workflowOrchestration.editor.draftSavedForTest', '草稿已保存，请继续测试'));
           continueAction(saved.id);
         } finally {
-          setBusy(false);
+          setPendingAction(null);
         }
       },
     });
@@ -1096,7 +1101,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
 
   const publish = async () => {
     if (!workflow || !definition) return;
-    setBusy(true);
+    setPendingAction('publish');
     try {
       const canvasMetadata = snapshotMetadata();
       const persisted = workflow.id
@@ -1106,7 +1111,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       setWorkflow(published); setDefinition(published.definition); setMetadata(published.canvas_metadata as WorkflowCanvasMetadata); setDirty(false);
       if (!workflow.id) router.replace(`/workflow-orchestration/workflows/${published.id}?mode=edit`);
       message.success(t('workflowOrchestration.editor.publishedAndEnabled', 'v{version} 已发布并启用', { version: published.current_version }));
-    } finally { setBusy(false); }
+    } finally { setPendingAction(null); }
   };
 
   const debug = async (persistedWorkflowId = workflow?.id) => {
@@ -1270,7 +1275,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
 
   return <main className="flex h-full min-h-0 max-h-full w-full flex-col overflow-hidden bg-[var(--color-bg-1)]">
     <header className="relative flex h-[65px] shrink-0 items-center gap-3 border-b border-[var(--color-border-1)] bg-[var(--color-bg)] px-5">
-      <WorkflowPermission operation="View"><Button type="text" aria-label={t('common.back', '返回')} icon={<ArrowLeftOutlined />} onClick={() => !readOnly && dirty ? modal.confirm({ title: t('workflowOrchestration.editor.leaveConfirm', '离开并丢失未保存修改？'), okText: t('workflowOrchestration.editor.leave', '离开'), okButtonProps: { danger: true }, onOk: () => router.push(listHref) }) : router.push(listHref)} /></WorkflowPermission>
+      <WorkflowPermission operation="View" area={permissionArea}><Button type="text" aria-label={t('common.back', '返回')} icon={<ArrowLeftOutlined />} onClick={() => !readOnly && dirty ? modal.confirm({ title: t('workflowOrchestration.editor.leaveConfirm', '离开并丢失未保存修改？'), okText: t('workflowOrchestration.editor.leave', '离开'), okButtonProps: { danger: true }, onOk: () => router.push(listHref) }) : router.push(listHref)} /></WorkflowPermission>
       <div className="min-w-0 flex-1">
         <Input variant="borderless" className="max-w-96 font-semibold" value={workflow.name} readOnly={readOnly} onChange={(event) => { setWorkflow({ ...workflow, name: event.target.value }); setDirty(true); }} />
         {workflow.is_builtin ? null : <div className="flex items-center gap-2 px-3 text-xs text-[var(--color-text-3)]">
@@ -1278,12 +1283,12 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
           {(workflow.has_draft || dirty) && workflow.current_version > 0 ? t('workflowOrchestration.editor.hasUnpublishedChanges', '有未发布更改') : t('workflowOrchestration.editor.publishedUnaffected', '发布版本不受草稿修改影响')}
         </div>}
       </div>
-      {workflow.is_builtin ? null : <WorkflowPermission operation="View" instancePermissions={workflow.permission}><Button disabled={!workflow.id} onClick={() => router.push(`/workflow-orchestration/executions?query=${encodeURIComponent(workflow.name)}`)}>{t('workflowOrchestration.execution.records', '执行记录')}</Button></WorkflowPermission>}
+      {workflow.is_builtin ? null : <WorkflowPermission operation="View" area="executions" instancePermissions={workflow.permission}><Button disabled={!workflow.id} onClick={() => router.push(`/workflow-orchestration/executions?query=${encodeURIComponent(workflow.name)}`)}>{t('workflowOrchestration.execution.records', '执行记录')}</Button></WorkflowPermission>}
       {workflow.is_builtin ? null : <WorkflowPermission operation="View" instancePermissions={workflow.permission}><Button disabled={!workflow.id} icon={<HistoryOutlined />} onClick={() => void openVersions()}>{t('common.version', '版本')}</Button></WorkflowPermission>}
       {!readOnly && <>
         {showValidateButton ? <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => void validate()}>{t('workflowOrchestration.editor.validate', '校验')}</Button></WorkflowPermission> : null}
-        <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button icon={<SaveOutlined />} loading={busy} onClick={() => void save()}>{t('workflowOrchestration.editor.saveDraft', '保存草稿')}</Button></WorkflowPermission>
-        <WorkflowPermission operation="Publish" instancePermissions={workflow.permission}><Popconfirm title={t('workflowOrchestration.editor.publishConfirm', '发布为新的不可变版本？')} description={t('workflowOrchestration.editor.publishHint', '未保存的当前画布也会一并发布，但不会自动启用流程。')} onConfirm={() => void publish()}><Button type="primary" icon={<SendOutlined />} loading={busy}>{t('workflowOrchestration.editor.publish', '发布')}</Button></Popconfirm></WorkflowPermission>
+        <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button icon={<SaveOutlined />} loading={pendingAction === 'save'} disabled={pendingAction === 'publish'} onClick={() => void save()}>{t('workflowOrchestration.editor.saveDraft', '保存草稿')}</Button></WorkflowPermission>
+        <WorkflowPermission operation="Publish" instancePermissions={workflow.permission}><Popconfirm title={t('workflowOrchestration.editor.publishConfirm', '发布为新的不可变版本？')} description={t('workflowOrchestration.editor.publishHint', '未保存的当前画布也会一并发布，但不会自动启用流程。')} onConfirm={() => void publish()}><Button type="primary" icon={<SendOutlined />} loading={pendingAction === 'publish'} disabled={pendingAction === 'save'}>{t('workflowOrchestration.editor.publish', '发布')}</Button></Popconfirm></WorkflowPermission>
       </>}
     </header>
     <div className="flex min-h-0 flex-1">
@@ -1343,7 +1348,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
           onNodeClick={(_, node) => setSelectedId(node.id)}
           onNodeDoubleClick={(_, node) => { setSelectedId(node.id); setInspectorOpen(true); }}>
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--color-border-3)" bgColor="var(--color-fill-1)" />
-          <WorkflowCanvasControls onTidy={tidyCanvas} />
+          <WorkflowCanvasControls viewArea={permissionArea} onTidy={tidyCanvas} />
         </ReactFlow>
         {nodes.length === 0 && !readOnly && (
           <WorkflowPermission operation="Edit" instancePermissions={workflow.permission} className="contents">
@@ -1469,10 +1474,10 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   readOnly={readOnly}
                   targetRecords={jobTargetRecords}
                   fieldActions={readOnly ? {} : {
-                    targets: <Button onClick={() => {
+                    targets: <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => {
                       setJobTargetSelectorPurpose('params');
                       setJobTargetSelectorOpen(true);
-                    }}>{t('workflowOrchestration.launch.selectTarget', '选择主机')}</Button>,
+                    }}>{t('workflowOrchestration.launch.selectTarget', '选择主机')}</Button></WorkflowPermission>,
                   }}
                   onChange={changeTaskInputs}
                   onNodeTitleChange={changeTaskTitle}
@@ -1533,13 +1538,25 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       destroyOnHidden
       zIndex={WORKFLOW_OVERLAY_MODAL_Z_INDEX}
       confirmLoading={nodeTestBusy}
-      okText={t('workflowOrchestration.editor.executeNode', '执行节点')}
-      okButtonProps={{ disabled: selectedTrigger?.trigger_type === 'FORM' ? false : !inspectorTestTrigger }}
-      onOk={() => selectedTrigger?.trigger_type === 'FORM' && nodeTestReference === selectedTrigger.id
-        ? runFormTriggerTest(selectedTrigger)
-        : selectedTask?.name === 'bklite_document_render'
-          ? runDocumentNodeTest()
-          : runConfiguredNodeTest()}
+      footer={(
+        <div className="flex justify-end gap-2">
+          <Button disabled={nodeTestBusy} onClick={() => { if (!nodeTestBusy) setNodeTestOpen(false); }}>{t('common.cancel', '取消')}</Button>
+          <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
+            <Button
+              type="primary"
+              loading={nodeTestBusy}
+              disabled={selectedTrigger?.trigger_type === 'FORM' ? false : !inspectorTestTrigger}
+              onClick={() => selectedTrigger?.trigger_type === 'FORM' && nodeTestReference === selectedTrigger.id
+                ? runFormTriggerTest(selectedTrigger)
+                : selectedTask?.name === 'bklite_document_render'
+                  ? runDocumentNodeTest()
+                  : runConfiguredNodeTest()}
+            >
+              {t('workflowOrchestration.editor.executeNode', '执行节点')}
+            </Button>
+          </WorkflowPermission>
+        </div>
+      )}
       onCancel={() => { if (!nodeTestBusy) setNodeTestOpen(false); }}
     >
       {selectedTrigger?.trigger_type === 'FORM' && nodeTestReference === selectedTrigger.id && workflow.id ? <WorkflowTriggerRuntimeForm workflowId={workflow.id} schema={selectedTrigger.input_schema} value={nodeTestInputs} onChange={setNodeTestInputs} /> : selectedTask?.name === 'bklite_document_render' ? <div className="flex flex-col gap-4">
@@ -1570,19 +1587,21 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   icon={<CloseOutlined />}
                   onClick={() => setDocumentTestTemplate(undefined)}
                 />
-              </div> : <Upload
-                accept=".docx,.xlsx"
-                maxCount={1}
-                showUploadList={false}
-                beforeUpload={(file) => {
-                  void uploadDocumentTestTemplate(file);
-                  return Upload.LIST_IGNORE;
-                }}
-              >
-                <Button loading={documentTemplateUploading} icon={<UploadOutlined />}>
-                  {t('workflowOrchestration.editor.uploadTestTemplate', '上传测试模板')}
-                </Button>
-              </Upload>}
+              </div> :               <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
+                <Upload
+                  accept=".docx,.xlsx"
+                  maxCount={1}
+                  showUploadList={false}
+                  beforeUpload={(file) => {
+                    void uploadDocumentTestTemplate(file);
+                    return Upload.LIST_IGNORE;
+                  }}
+                >
+                  <Button loading={documentTemplateUploading} icon={<UploadOutlined />}>
+                    {t('workflowOrchestration.editor.uploadTestTemplate', '上传测试模板')}
+                  </Button>
+                </Upload>
+              </WorkflowPermission>}
               <FileSampleLinks schema={{
                 'x-file-options': {
                   accept: ['docx', 'xlsx'],
@@ -1647,7 +1666,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
           ? selectedTask?.name === 'bklite_job_execute' && jobTestTargetsField
             ? <Form layout="vertical" className="flex flex-col gap-4">
               <Form.Item className="mb-0" label={t('workflowOrchestration.editor.targetHosts', '目标主机')} required>
-                <button
+                <WorkflowPermission operation="Execute" instancePermissions={workflow.permission} className="block w-full"><button
                   type="button"
                   className="flex w-full items-center justify-between gap-4 rounded-lg border border-[var(--color-border-1)] px-4 py-3 text-left transition-colors hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]"
                   onClick={() => {
@@ -1668,7 +1687,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   <span className="shrink-0 text-sm text-[var(--color-primary)]">
                     {t('workflowOrchestration.launch.selectTarget', '选择主机')}
                   </span>
-                </button>
+                </button></WorkflowPermission>
               </Form.Item>
               {Object.keys(nodeTestInputContract.schema.properties || {}).filter((key) => key !== jobTestTargetsField).length && workflow.id
                 ? <WorkflowTriggerRuntimeForm
@@ -1690,6 +1709,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     </OperateModal>
     <JobTargetSelectionDialog
       open={jobTargetSelectorOpen}
+      allowedOperatingSystems={jobHostOperatingSystems}
       value={jobTargetSelectorPurpose === 'test' && jobTestTargetsField
         ? (Array.isArray(nodeTestInputs[jobTestTargetsField]) ? (nodeTestInputs[jobTestTargetsField] as unknown[]).map(String) : EMPTY_TARGET_REFERENCES)
         : (Array.isArray(selectedTask?.inputParameters?.targets) ? selectedTask.inputParameters.targets as string[] : EMPTY_TARGET_REFERENCES)}
@@ -1713,9 +1733,14 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       open={debugOpen}
       destroyOnHidden
       zIndex={WORKFLOW_OVERLAY_MODAL_Z_INDEX}
-      okText={t('workflowOrchestration.editor.startDebug', '开始调试')}
-      okButtonProps={{ disabled: !debugTrigger }}
-      onOk={() => void debug()}
+      footer={(
+        <div className="flex justify-end gap-2">
+          <Button onClick={() => setDebugOpen(false)}>{t('common.cancel', '取消')}</Button>
+          <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
+            <Button type="primary" disabled={!debugTrigger} onClick={() => void debug()}>{t('workflowOrchestration.editor.startDebug', '开始调试')}</Button>
+          </WorkflowPermission>
+        </div>
+      )}
       onCancel={() => setDebugOpen(false)}
     >
       <Alert className="mb-4" type="info" showIcon message={t('workflowOrchestration.editor.debugSnapshotHint', '调试使用当前未保存快照，会生成 DEBUG 执行记录')} />

@@ -170,6 +170,13 @@ stable_pids() {
     '
 }
 
+# 完整域名优先，否则短主机名。两条都取不到时留空，主机名称不是必填。
+collected_hostname() {
+    name="$(hostname -f 2>/dev/null || true)"
+    [ -n "$name" ] || name="$(hostname 2>/dev/null || true)"
+    printf '%s' "$name"
+}
+
 if [ "${HOST_DISCOVER_SOURCE_ONLY:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
@@ -519,8 +526,7 @@ collect_proc_list() {
 # -----------------------------
 # Hostname
 # -----------------------------
-hostname_val="$(safe hostname -f)"
-[ -n "$hostname_val" ] || hostname_val="$(safe hostname)"
+hostname_val="$(collected_hostname)"
 
 # -----------------------------
 # OS
@@ -702,7 +708,7 @@ proc_json="$(collect_proc_list)"
 # -----------------------------
 cat >&3 <<EOF
 {
-  "hostname": "$(json_escape "$(value_or_unknown "$hostname_val")")",
+  "hostname": "$(json_escape "$hostname_val")",
   "os_type": "$(json_escape "$(value_or_unknown "$os_type")")",
   "os_name": "$(json_escape "$(value_or_unknown "$os_name")")",
   "os_version": "$(json_escape "$(value_or_unknown "$os_version")")",

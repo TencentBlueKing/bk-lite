@@ -44,6 +44,8 @@ ALERT_FIELDS = {
     "level",
     "level_id",
     "level_color",
+    "wecom_color",
+    "feishu_color",
     "status",
     "source_name",
     "resource_id",
@@ -258,6 +260,34 @@ def validate_source(source: str, *, channel_type: str, is_subject: bool = False,
     return paths
 
 
+def wecom_level_color(level_id: Any) -> str:
+    """企业微信 Markdown 只接受 info、comment、warning。"""
+    try:
+        raw_level = int(level_id)
+    except (TypeError, ValueError):
+        return "info"
+    if raw_level in (0, 1):
+        return "warning"
+    if raw_level == 2:
+        return "comment"
+    return "info"
+
+
+def feishu_level_color(level_id: Any) -> str:
+    """飞书卡片 Markdown 使用 red、orange、yellow、green，不接受企微颜色名。"""
+    try:
+        raw_level = int(level_id)
+    except (TypeError, ValueError):
+        return "green"
+    if raw_level == 0:
+        return "red"
+    if raw_level == 1:
+        return "orange"
+    if raw_level == 2:
+        return "yellow"
+    return "green"
+
+
 def normalize_level_color(value: Any) -> str:
     """只接受 #RGB / #RRGGBB，其它值回落到默认琥珀色。"""
     text = str(value or "").strip()
@@ -432,6 +462,8 @@ def build_alert_context(
         "level": level_display_name or raw_level,
         "level_id": raw_level,
         "level_color": normalize_level_color(level_color),
+        "wecom_color": wecom_level_color(raw_level),
+        "feishu_color": feishu_level_color(raw_level),
         "status": getattr(alert, "status", ""),
         "source_name": getattr(alert, "source_name", ""),
         "resource_id": getattr(alert, "resource_id", ""),

@@ -403,6 +403,8 @@ error:
   write_batch_range: write_batch_size must be between 1 and 500
   interaction_create_unsupported: "Manual tasks can only be created by the execution engine"
   workflow_name_conflict: "A workflow with this name already exists in the team"
+  team_required: "Select an organization"
+  published_team_locked: "Organization cannot be changed after the workflow is published"
   trigger_caller_forbidden: "The trigger does not exist or does not belong to the caller's team"
   execution_permission_required: "Missing permission to operate this execution"
   orchestration_unavailable: "The orchestration service is temporarily unavailable"

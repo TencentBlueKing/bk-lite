@@ -150,7 +150,7 @@ const OpsAnalysisSingle: React.FC<OpsAnalysisSingleProps> = ({
   const changePercent = config?.compare ? getChangePercent(toComparableNumber(rawValue), baselineNumericValue) : null;
 
   const thresholds: ThresholdColorConfig[] = config?.thresholdColors ?? DEFAULT_THRESHOLD_COLORS;
-  const color = getColorByThreshold(numericValue, thresholds, '#000000');
+  const color = getColorByThreshold(numericValue, thresholds, chartTheme.singleValueColor);
   const isDataReady = rawValue !== null;
   const displayValue = formatDisplayValue(
     numericValue,

@@ -82,6 +82,14 @@ const ALERT_OPERATION_MARKDOWN_BODY = `### {{ notification.scene_name }}｜待�
 告警 ID：{{ alert.alert_id }}
 
 **请进入告警中心认领并处理该告警。**`;
+const WECOM_ALERT_OPERATION_MARKDOWN_BODY = ALERT_OPERATION_MARKDOWN_BODY.replace(
+  '｜{{ alert.level }}',
+  '｜<font color="{{ alert.wecom_color }}">{{ alert.level }}</font>',
+);
+const FEISHU_ALERT_OPERATION_MARKDOWN_BODY = ALERT_OPERATION_MARKDOWN_BODY.replace(
+  '｜{{ alert.level }}',
+  "｜<font color='{{ alert.feishu_color }}'>{{ alert.level }}</font>",
+);
 const alertOperationTextBody = (prefix: string) => `${prefix}
 通知场景：{{ notification.scene_name }}
 处理状态：待认领
@@ -179,7 +187,7 @@ export const DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS: NotificationTemplateCont
   {
     channel_type: 'enterprise_wechat_bot',
     subject_template: '',
-    body_template: ALERT_OPERATION_MARKDOWN_BODY,
+    body_template: WECOM_ALERT_OPERATION_MARKDOWN_BODY,
   },
   {
     channel_type: 'dingtalk_bot',
@@ -189,7 +197,7 @@ export const DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS: NotificationTemplateCont
   {
     channel_type: 'feishu_bot',
     subject_template: ALERT_OPERATION_SUBJECT,
-    body_template: ALERT_OPERATION_MARKDOWN_BODY,
+    body_template: FEISHU_ALERT_OPERATION_MARKDOWN_BODY,
   },
   {
     channel_type: 'custom_webhook',
@@ -250,7 +258,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS: NotificationTemplateContent
   {
     channel_type: 'enterprise_wechat_bot',
     subject_template: '',
-    body_template: `### {{ notification.scene_name }}｜{{ alert.level }}
+    body_template: `### {{ notification.scene_name }}｜<font color="{{ alert.wecom_color }}">{{ alert.level }}</font>
 
 **{{ alert.title }}**
 
@@ -307,7 +315,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS: NotificationTemplateContent
     subject_template: '【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}',
     body_template: `**{{ notification.scene_name }}｜{{ alert.title }}**
 
-**告警级别：** {{ alert.level }}
+**告警级别：** <font color='{{ alert.feishu_color }}'>{{ alert.level }}</font>
 **告警资源：** {{ alert.resource_name }}（{{ alert.resource_type }}）
 **监控来源：** {{ alert.source_name }}
 **监控指标：** {{ alert.item }}

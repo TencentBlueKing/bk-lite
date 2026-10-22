@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.monitor.services.metric_trend_summary import linear_slope_per_day, summarize_trend_rows
+from apps.monitor.services.metric_trend_summary import MAX_TREND_ROWS, linear_slope_per_day, summarize_trend_rows
 from apps.monitor.services.metrics import MetricsQueryBudgetExceeded
 
 
@@ -27,7 +27,7 @@ def test_linear_slope_matches_daily_rise():
     assert abs(slope - 2) < 0.01
 
 
-def test_summary_keeps_only_series_that_hit_within_horizon():
+def test_summary_returns_current_and_slope_even_when_not_within_horizon():
     series = [
         _points("1_10.10.60.11", "/", 90, 2.5),
         _points("1_10.10.60.14", "/", 88, 0.1),
@@ -39,10 +39,38 @@ def test_summary_keeps_only_series_that_hit_within_horizon():
     assert out["hit_count"] == 2
     assert out["truncated"] is False
     ids = [row["instance_id"] for row in out["rows"]]
-    assert ids == ["1_10.10.60.11", "1_10.10.60.13"]
+    assert ids[:2] == ["1_10.10.60.11", "1_10.10.60.13"]
+    assert set(ids) == {"1_10.10.60.11", "1_10.10.60.13", "1_10.10.60.14", "1_10.10.60.16"}
     assert out["rows"][0]["days_to_threshold"] < out["rows"][1]["days_to_threshold"]
     assert out["rows"][0]["labels"]["path"] == "/"
+    flat = next(row for row in out["rows"] if row["instance_id"] == "1_10.10.60.14")
+    assert flat["within_horizon"] is False
+    assert flat["current"] == 88
+    assert flat["slope_per_day"] > 0
     assert "values" not in out["rows"][0]
+
+
+def test_summary_truncation_counts_only_omitted_hits_not_non_hits():
+    """非命中占满 MAX 窗口时不应误报 truncated。"""
+    hits = [_points(f"hit-{index}", "/", 90, 5) for index in range(3)]
+    non_hits = [_points(f"flat-{index}", "/", 40, 0.05) for index in range(MAX_TREND_ROWS + 5)]
+    out = summarize_trend_rows(hits + non_hits, threshold=100, horizon_days=7)
+    assert out["hit_count"] == 3
+    assert out["truncated"] is False
+    assert out["omitted_count"] == 0
+    returned_hits = [row for row in out["rows"] if row["within_horizon"]]
+    assert len(returned_hits) == 3
+    assert all(row["instance_id"].startswith("hit-") for row in returned_hits)
+
+
+def test_summary_truncates_when_hits_exceed_max_rows():
+    hits = [_points(f"hit-{index}", "/", 92, 4) for index in range(MAX_TREND_ROWS + 7)]
+    out = summarize_trend_rows(hits, threshold=100, horizon_days=7)
+    assert out["hit_count"] == len(hits)
+    assert out["truncated"] is True
+    assert out["omitted_count"] == 7
+    assert len(out["rows"]) == MAX_TREND_ROWS
+    assert all(row["within_horizon"] for row in out["rows"])
 
 
 def test_summary_marks_already_full_as_zero_days():
@@ -104,7 +132,10 @@ def test_handler_empty_instance_ids_covers_authorized_hosts(monkeypatch):
     assert captured["query"].startswith(f"limitk({nm.Metrics.RANGE_QUERY_MAX_SERIES + 1},")
     assert "1_10.10.60.11" in captured["query"]
     assert "1_10.10.60.14" in captured["query"]
-    assert [row["instance_id"] for row in out["data"]["rows"]] == ["1_10.10.60.11"]
+    ids = [row["instance_id"] for row in out["data"]["rows"]]
+    assert ids[0] == "1_10.10.60.11"
+    assert set(ids) == {"1_10.10.60.11", "1_10.10.60.14"}
+    assert out["data"]["hit_count"] == 1
     assert out["data"]["instance_count"] == 2
     assert out["data"]["scanned_series"] == 2
     assert "values" not in out["data"]["rows"][0]
@@ -294,9 +325,7 @@ def test_vm_error_returns_stable_message_and_omits_body(monkeypatch, caplog):
     assert record.levelno == logging.WARNING
     assert record.args == ("12", "vm_status_error")
     assert record.exc_info is None
-    assert record.getMessage() == (
-        "event=metric_trend_query_failed monitor_obj_id=12 failed_stage=query_range error_type=vm_status_error"
-    )
+    assert record.getMessage() == ("event=metric_trend_query_failed monitor_obj_id=12 failed_stage=query_range error_type=vm_status_error")
     assert sentinel not in record.msg
     assert sentinel not in str(record.args)
     assert sentinel not in record.getMessage()

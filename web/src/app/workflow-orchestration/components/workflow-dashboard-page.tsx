@@ -309,7 +309,7 @@ export function WorkflowDashboardPage() {
       </section>
 
       <section data-testid="dashboard-detail-row" className="grid h-[328px] grid-cols-3 items-stretch gap-4">
-        <Card data-testid="dashboard-recent-card" title={<span><UnorderedListOutlined className="mr-2" />{t('workflowOrchestration.dashboard.recentExecutions', '最近执行')}</span>} extra={<WorkflowPermission operation="View" area="home"><Button type="link" size="small" onClick={() => router.push('/workflow-orchestration/executions')}>{t('common.viewAll', '查看全部')}</Button></WorkflowPermission>} className="col-span-2 flex h-full min-w-0 flex-col" styles={{ body: { flex: 1, minHeight: 0, overflow: 'hidden', padding: 12 } }}>
+        <Card data-testid="dashboard-recent-card" title={<span><UnorderedListOutlined className="mr-2" />{t('workflowOrchestration.dashboard.recentExecutions', '最近执行')}</span>} extra={<WorkflowPermission operation="View" area="executions"><Button type="link" size="small" onClick={() => router.push('/workflow-orchestration/executions')}>{t('common.viewAll', '查看全部')}</Button></WorkflowPermission>} className="col-span-2 flex h-full min-w-0 flex-col" styles={{ body: { flex: 1, minHeight: 0, overflow: 'hidden', padding: 12 } }}>
           <CustomTable<ExecutionRecord>
             rowKey="id"
             size="small"

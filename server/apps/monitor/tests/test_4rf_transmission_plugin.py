@@ -132,13 +132,15 @@ def test_temperature_and_fan_metric_contract(metrics):
     by_name = {metric["name"]: metric for metric in metrics["metrics"]}
     assert by_name["device_temperature_celsius"]["unit"] == "celsius"
     assert by_name["device_temperature_celsius"]["metric_group"] == "Temperature"
-    assert by_name["device_temperature_celsius"]["query"] == "device_temperature_celsius{instance_type='transmission', __$labels__}"
+    assert by_name["device_temperature_celsius"]["query"] == (
+        f"device_temperature_celsius{{instance_type='transmission', collect_type='{COLLECT_TYPE}', __$labels__}}"
+    )
     assert [item["name"] for item in by_name["device_temperature_celsius"]["dimensions"]] == ["index"]
     fan = by_name["device_fan_state"]
     assert fan["metric_group"] == "Hardware Status"
     assert fan["data_type"] == "Enum"
     assert {option["id"] for option in json.loads(fan["unit"])} == {1, 2}
-    assert fan["query"] == "device_fan_state{instance_type='transmission', __$labels__}"
+    assert fan["query"] == f"device_fan_state{{instance_type='transmission', collect_type='{COLLECT_TYPE}', __$labels__}}"
     assert [item["name"] for item in fan["dimensions"]] == ["index"]
 
 

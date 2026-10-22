@@ -85,6 +85,8 @@ class TestInjectPageContext:
         assert "<current_page>" in text
         assert "主机 A" in text
         assert "仅当问题与页面相关时参考" in text
+        assert "不能代替全量数据" in text
+        assert "禁止因已有快照就跳过工具" in text
         assert "request_user_choice" in text
         assert "CPU" in text
 

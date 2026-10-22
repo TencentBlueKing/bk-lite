@@ -29,6 +29,15 @@ export interface DryRunItem {
     level?: string;
   } | null;
   reason?: string;
+  conditions?: Array<{
+    ref?: string;
+    metric_name?: string;
+    expression?: string;
+    value?: number | null;
+    result_unit?: string;
+    hit_level?: string | null;
+    gate_passed?: boolean;
+  }>;
   hit_count?: number;
   trigger_count?: number;
 }
@@ -55,6 +64,7 @@ const VERDICT_ORDER = [
   'ok',
   'no_data',
   'missing_baseline',
+  'missing_condition_data',
   'insufficient_samples',
 ];
 
@@ -65,6 +75,7 @@ const VERDICT_TAG_COLOR: Record<string, string> = {
   ok: 'default',
   no_data: 'warning',
   missing_baseline: 'warning',
+  missing_condition_data: 'warning',
   insufficient_samples: 'warning',
 };
 
@@ -172,6 +183,28 @@ const DryRunResultModal = ({
           {verdictLabel(verdict)}
         </Tag>
       ),
+    },
+    {
+      title: translate('monitor.events.dryRunConditions', '条件'),
+      key: 'conditions',
+      render: (_value, record) => {
+        if (!record.conditions?.length) return '—';
+        const text = record.conditions
+          .map((condition) => {
+            const status =
+              condition.gate_passed != null
+                ? condition.gate_passed
+                  ? 'pass'
+                  : 'fail'
+                : condition.hit_level || '—';
+            const value =
+              condition.value == null ? '—' : String(condition.value);
+            const expression = condition.expression ? ` = ${condition.expression}` : '';
+            return `${condition.ref || ''} ${condition.metric_name || ''}${expression} ${value} ${status}`.trim();
+          })
+          .join('；');
+        return <EllipsisWithTooltip className="truncate" text={text} />;
+      },
     },
     ...(showLevel
       ? [

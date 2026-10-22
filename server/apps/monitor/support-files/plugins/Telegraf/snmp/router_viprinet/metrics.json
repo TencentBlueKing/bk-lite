@@ -24,7 +24,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_load",
-      "query": "avg(device_cpu_load{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_load{instance_type='router', collect_type='snmp_viprinet', __$labels__}) by (instance_id)",
       "display_name": "CPU Load Average",
       "data_type": "Number",
       "unit": "none",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', collect_type='snmp_viprinet', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -55,7 +55,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', collect_type='snmp_viprinet', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -78,7 +78,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "sum(device_memory_used{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_used{instance_type='router', collect_type='snmp_viprinet', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used memory of the Viprinet router in bytes (vpnRouterMemoryUsage, reported in KB and converted to bytes). The MIB does not expose total, free, or utilization percentage."
@@ -96,7 +96,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='router', collect_type='snmp_viprinet', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Chassis temperature of the Viprinet router in degrees Celsius. System temperature is the primary reading; CPU temperature is collected as a second sensor. One series per sensor."
@@ -104,7 +104,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "max(device_psu_state{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(device_psu_state{instance_type='router', collect_type='snmp_viprinet', __$labels__}) by (instance_id)",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -117,7 +117,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='router', __$labels__}",
+      "query": "device_fan_state{instance_type='router', collect_type='snmp_viprinet', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -135,7 +135,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='router', __$labels__}",
+      "query": "device_fan_speed{instance_type='router', collect_type='snmp_viprinet', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -153,7 +153,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_viprinet', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -216,7 +216,7 @@ const ComGauge: React.FC<ComGaugeProps> = ({
               : layout.axisLabelDistance,
             color: usesScreenTheme
               ? chartTheme.singleValueMetaColor
-              : '#7A869A',
+              : chartTheme.axisLabelColor,
             fontSize: usesScreenTheme
               ? scaleScreenMetric(10, screenRenderContext)
               : 11,

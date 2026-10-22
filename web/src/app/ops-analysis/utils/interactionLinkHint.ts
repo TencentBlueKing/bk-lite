@@ -12,33 +12,6 @@ export const shouldShowDataLinkHint = (
   link: HintLink,
 ) => shouldNavigateInteraction(surface) && link?.kind === 'data';
 
-export const shouldShowContextLinkHint = (
-  surface: InteractionSurface,
-  link: HintLink,
-  menuAvailable: boolean,
-) => shouldShowDataLinkHint(surface, link) && menuAvailable;
-
-/** 3D 应用大屏里，只有已经支持右键菜单的对象才加提示。 */
-export const application3DHoverSupportsLinkMenu = (kind: string | undefined) =>
-  kind === 'host' || kind === 'system' || kind === 'application' || kind === 'wall';
-
-export const composeNativeHint = (label: string | undefined, hint?: string) => {
-  const extra = hint?.trim();
-  if (!extra) return label;
-  if (!label) return extra;
-  return `${label}\n${extra}`;
-};
-
-export const application3DHoverTitle = (
-  label: string,
-  kind: string | undefined,
-  hint?: string,
-) => (
-  hint && application3DHoverSupportsLinkMenu(kind)
-    ? composeNativeHint(label, hint) ?? label
-    : label
-);
-
 export const resolveDataLinkTooltipTheme = (
   chartThemeMode: string | undefined,
   appTheme: 'light' | 'dark' = 'light',

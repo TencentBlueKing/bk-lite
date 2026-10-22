@@ -17,13 +17,13 @@ allowBuilds:
 `;
 
 const selected = updateWorkspacePackages(original, parseActiveApps('cmdb, monitor,cmdb'));
-assert.match(selected, /packages:\n  - 'src\/app\/cmdb'\n  - 'src\/app\/monitor'/);
+assert.match(selected, /packages:\n  - 'src\/app\/cmdb'\n  - 'src\/app\/monitor'\n  - 'packages\/\*'/);
 assert.match(selected, /verifyDepsBeforeRun: false/);
 assert.match(selected, /overrides:\n  '@types\/react': 19\.2\.18/);
 assert.match(selected, /allowBuilds:\n  sharp: true/);
 
 const restored = updateWorkspacePackages(selected, parseActiveApps(''));
-assert.match(restored, /packages:\n  - 'src\/app\/\*'/);
+assert.match(restored, /packages:\n  - 'src\/app\/\*'\n  - 'packages\/\*'/);
 assert.match(restored, /verifyDepsBeforeRun: false/);
 assert.match(restored, /overrides:\n  '@types\/react': 19\.2\.18/);
 

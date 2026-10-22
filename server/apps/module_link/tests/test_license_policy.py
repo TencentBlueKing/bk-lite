@@ -62,8 +62,27 @@ def test_inject_inherit_middleware_skips_without_guard():
 
 
 def test_apply_exempt_import_error(monkeypatch):
+    monkeypatch.setattr("django.apps.apps.is_installed", lambda name: name == "apps.license_mgmt")
+
     def _boom():
         raise ImportError("no license_mgmt")
+
+    monkeypatch.setattr("apps.module_link.license_policy._load_license_guard", _boom)
+    assert apply_module_link_license_exempt() is False
+
+
+def test_urls_empty_when_cmdb_not_installed(monkeypatch):
+    from apps.module_link.urls import build_urlpatterns
+
+    monkeypatch.setattr("django.apps.apps.is_installed", lambda name: False)
+    assert build_urlpatterns() == []
+
+
+def test_apply_exempt_skips_when_license_app_not_installed(monkeypatch):
+    monkeypatch.setattr("django.apps.apps.is_installed", lambda name: False)
+
+    def _boom():
+        raise AssertionError("should not import")
 
     monkeypatch.setattr("apps.module_link.license_policy._load_license_guard", _boom)
     assert apply_module_link_license_exempt() is False

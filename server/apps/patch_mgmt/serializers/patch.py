@@ -8,10 +8,8 @@ from rest_framework import serializers
 from apps.patch_mgmt.constants import PackageManagerType
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, WindowsPatchDetail
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
-from apps.patch_mgmt.services.patch_origin import (
-    source_details_for_patch,
-    source_type_for_patch,
-)
+from apps.patch_mgmt.services.patch_origin import source_details_for_patch, source_type_for_patch
+from apps.patch_mgmt.services.windows_versions import catalog_build_for_product
 from apps.patch_mgmt.utils.architecture import X86_64, UnsupportedArchitecture, normalize_architectures, validate_os_architecture
 from apps.patch_mgmt.utils.i18n import serializer_message
 
@@ -21,10 +19,7 @@ class WindowsPatchDetailSerializer(serializers.ModelSerializer):
 
     def validate_architectures(self, values):
         try:
-            normalized = [
-                validate_os_architecture("windows", value, allow_blank=False)
-                for value in values
-            ]
+            normalized = [validate_os_architecture("windows", value, allow_blank=False) for value in values]
             return list(dict.fromkeys(normalized))
         except UnsupportedArchitecture as exc:
             raise serializers.ValidationError(
@@ -162,6 +157,7 @@ class PatchListSerializer(PatchPermissionSerializer):
             "file_size": detail.package_size,
             "sha256": detail.package_sha256,
             "extension": detail.package_extension,
+            "dotnet_version": detail.package_dotnet_version,
         }
 
     def validate(self, attrs):
@@ -194,15 +190,11 @@ class PatchListSerializer(PatchPermissionSerializer):
                 "repo_type": "包管理器",
             }
             missing = [label for field, label in labels.items() if not values.get(field)]
-            existing_complete = existing is not None and all(
-                getattr(existing, field, None) for field in labels
-            )
+            existing_complete = existing is not None and all(getattr(existing, field, None) for field in labels)
             # 新建补丁和原本完整的补丁必须保持元数据完整；历史不完整记录允许
             # 继续编辑，评估时会安全归为 unknown，避免升级后突然无法维护旧数据。
             if missing and (self.instance is None or existing is None or existing_complete):
-                raise serializers.ValidationError(
-                    {"linux_detail": f"Linux 补丁元数据缺少：{', '.join(missing)}"}
-                )
+                raise serializers.ValidationError({"linux_detail": f"Linux 补丁元数据缺少：{', '.join(missing)}"})
         windows_detail = attrs.get("windows_detail")
         if os_type != "windows" or windows_detail is None:
             return attrs
@@ -240,6 +232,32 @@ class PatchListSerializer(PatchPermissionSerializer):
                 }
             )
         windows_detail["kb_number"] = kb_number
+        products = windows_detail.get("product_list") or []
+        if not isinstance(products, list):
+            raise serializers.ValidationError(
+                {
+                    "windows_detail": {
+                        "product_list": serializer_message(
+                            self,
+                            "error.invalid_windows_version",
+                            "Applicable version must be a list",
+                        )
+                    }
+                }
+            )
+        catalog_products = [str(item) for item in products if catalog_build_for_product(str(item))]
+        if len(catalog_products) > 1:
+            raise serializers.ValidationError(
+                {
+                    "windows_detail": {
+                        "product_list": serializer_message(
+                            self,
+                            "error.multiple_windows_versions",
+                            "A Windows patch package applies to only one Windows Server version",
+                        )
+                    }
+                }
+            )
         return attrs
 
     def create(self, validated_data):
@@ -258,9 +276,7 @@ class PatchListSerializer(PatchPermissionSerializer):
 
     def _save_detail(self, patch, windows_detail_data, linux_detail_data):
         if patch.os_type == "windows" and windows_detail_data:
-            WindowsPatchDetail.objects.update_or_create(
-                patch=patch, defaults=windows_detail_data
-            )
+            WindowsPatchDetail.objects.update_or_create(patch=patch, defaults=windows_detail_data)
         if patch.os_type == "linux" and linux_detail_data:
             with transaction.atomic():
                 detail = LinuxPatchDetail.objects.select_for_update().filter(patch=patch).first()
