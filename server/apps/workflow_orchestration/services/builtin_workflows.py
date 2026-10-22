@@ -81,8 +81,8 @@ def _build_builtin_items(*, team_id: int, channel_id: int | None, username: str)
     linux["engine_name"] = builtin_engine_name(team_id, BUILTIN_LINUX_KEY)
     windows["name"] = "Windows 主机巡检（Word）"
     linux["name"] = "Linux 主机巡检（Excel）"
-    windows["description"] = "平台内置：选择 Windows 主机采集后生成 Word 巡检报告并通知。"
-    linux["description"] = "平台内置：选择 Linux 主机采集后生成 Excel 巡检报告并通知。"
+    windows["description"] = "选择 Windows 主机采集后生成 Word 巡检报告并通知。"
+    linux["description"] = "选择 Linux 主机采集后生成 Excel 巡检报告并通知。"
     return [windows, linux]
 
 
