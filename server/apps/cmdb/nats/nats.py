@@ -2353,6 +2353,146 @@ def get_instance_group_by(model_id=None, field=None, user_info=None, **kwargs):
     return {"result": True, "data": result_data, "message": ""}
 
 
+_DIRECTORY_MAIL_SUMMARY_MODELS = (
+    ("domain_controller_count", "ad_domain_controller"),
+    ("site_count", "ad_site"),
+    ("forest_count", "ad_exchange"),
+    ("domain_count", "ad_domain"),
+    ("trust_count", "ad_trust"),
+    ("exchange_server_count", "exchange_server"),
+    ("database_count", "exchange_database"),
+    ("dag_count", "exchange_dag"),
+    ("accepted_domain_count", "exchange_accepted_domain"),
+    ("certificate_total", "exchange_certificate"),
+)
+
+
+def _parse_certificate_not_after(value):
+    if value in (None, ""):
+        return None
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        parsed = _datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_timezone.utc)
+    return parsed
+
+
+def _list_model_instances(model_id, user_info, page_size=5000):
+    permission_map = _build_nats_permission_map(user_info, model_id=model_id)
+    if permission_map is None:
+        return []
+    rows, _count = InstanceManage.instance_list(
+        model_id=model_id,
+        params=[],
+        page=1,
+        page_size=page_size,
+        order="",
+        permission_map=permission_map,
+    )
+    return rows or []
+
+
+def _certificate_window_counts(user_info=None):
+    now = timezone.now()
+    expired = within_30 = between_30_90 = later = 0
+    for row in _list_model_instances("exchange_certificate", user_info):
+        not_after = _parse_certificate_not_after(row.get("not_after"))
+        if not_after is None:
+            continue
+        if not_after < now:
+            expired += 1
+        elif not_after < now + datetime.timedelta(days=30):
+            within_30 += 1
+        elif not_after < now + datetime.timedelta(days=90):
+            between_30_90 += 1
+        else:
+            later += 1
+    return {
+        "certificate_expired": expired,
+        "certificate_within_30_days": within_30,
+        "certificate_within_90_days": within_30 + between_30_90,
+        "certificate_later": later,
+        "expired": expired,
+        "within_30": within_30,
+        "within_90": within_30 + between_30_90,
+        "later": later,
+    }
+
+
+@nats_client.register
+def get_directory_mail_summary(user_info=None, **kwargs):
+    """目录与邮件配置数量：仪表盘 KPI 单值字段。"""
+    permission_map = _build_nats_permission_map(user_info)
+    empty = {key: 0 for key, _model in _DIRECTORY_MAIL_SUMMARY_MODELS}
+    empty.update(
+        {
+            "dns_zone_count": 0,
+            "forwarder_count": 0,
+            "certificate_expired": 0,
+            "certificate_within_90_days": 0,
+        }
+    )
+    if permission_map is None:
+        return {"result": True, "data": [empty], "message": ""}
+
+    counts = InstanceManage.model_inst_count(permissions_map=permission_map)
+    summary = {key: int(counts.get(model_id, 0) or 0) for key, model_id in _DIRECTORY_MAIL_SUMMARY_MODELS}
+    window = _certificate_window_counts(user_info)
+    summary["certificate_expired"] = window["certificate_expired"]
+    summary["certificate_within_90_days"] = window["certificate_within_90_days"]
+    summary["dns_zone_count"] = int(counts.get("ad_dns_zone", 0) or 0)
+    summary["forwarder_count"] = int(counts.get("ad_dns_forwarder", 0) or 0)
+    if summary["dns_zone_count"] == 0:
+        summary["dns_zone_count"] = sum(
+            len(str(row.get("dns_zones") or "").split(","))
+            for row in _list_model_instances("ad_domain_controller", user_info)
+            if str(row.get("dns_zones") or "").strip()
+        )
+    if summary["forwarder_count"] == 0:
+        summary["forwarder_count"] = sum(
+            len(str(row.get("dns_forwarders") or "").split(","))
+            for row in _list_model_instances("ad_domain_controller", user_info)
+            if str(row.get("dns_forwarders") or "").strip()
+        )
+    return {"result": True, "data": [summary], "message": ""}
+
+
+@nats_client.register
+def get_directory_mail_certificate_window(user_info=None, **kwargs):
+    """证书到期窗口分布。"""
+    window = _certificate_window_counts(user_info)
+    data = [
+        {"name": "已过期", "value": window["expired"]},
+        {"name": "30天内", "value": window["within_30"]},
+        {"name": "90天内", "value": window["within_90"]},
+        {"name": "90天以上", "value": window["later"]},
+    ]
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def get_directory_mail_runtime_gaps(scope=None, user_info=None, **kwargs):
+    """目录/邮件/主机采集空态。无数据时返回可渲染的占位，避免查询失败。"""
+    permission_map = _build_nats_permission_map(user_info)
+    counts = InstanceManage.model_inst_count(permissions_map=permission_map) if permission_map else {}
+    scope = str(scope or "").strip().lower()
+    if scope == "ad":
+        models = ("ad_exchange", "ad_domain", "ad_domain_controller", "ad_site")
+    elif scope == "exchange":
+        models = ("exchange_server", "exchange_database", "exchange_dag", "exchange_certificate")
+    else:
+        models = ("exchange_server", "ad_domain_controller")
+    missing = [model_id for model_id in models if int(counts.get(model_id, 0) or 0) == 0]
+    if not missing:
+        data = [{"name": "采集完整", "value": 1}]
+    else:
+        data = [{"name": f"{model_id} 无实例", "value": 1} for model_id in missing]
+    return {"result": True, "data": data, "message": ""}
+
+
 @nats_client.register
 def get_model_classification_options(user_info=None, **kwargs):
     """获取当前用户有权查看的可见模型分类，供数据源参数选项使用。"""
