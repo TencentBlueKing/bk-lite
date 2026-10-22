@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Input } from 'antd';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
@@ -136,17 +136,61 @@ const matchesQuery = (value: string, query: string) => (
 );
 
 type DashText = Parameters<typeof mysqlCategoryText>[0];
+type ColumnSort = { key: string; order: 'ascend' | 'descend' } | null;
+
+/** 缺数沉底：与主机表一样把 null 当作最小，降序时落在最后。相等时保持 ia 的次级顺序。 */
+export const sortDigestRows = <T,>(
+  rows: readonly T[],
+  sort: ColumnSort,
+  read: (row: T, key: string) => number | string | null | undefined
+): T[] => {
+  if (!sort) return [...rows];
+  const factor = sort.order === 'ascend' ? 1 : -1;
+  return [...rows].sort((left, right) => {
+    const a = read(left, sort.key);
+    const b = read(right, sort.key);
+    if (typeof a === 'string' || typeof b === 'string') {
+      return factor * String(a ?? '').localeCompare(String(b ?? ''));
+    }
+    return factor * compareNumber(typeof a === 'number' ? a : null, typeof b === 'number' ? b : null);
+  });
+};
+
+const statementSortValue = (row: MysqlStatementRow, key: string) => (
+  key === 'sql' ? row.sql || '' : row[key as StatementColumn]
+);
+
+const waitSortValue = (row: MysqlWaitEventRow, key: string) => (
+  key === 'name' ? row.name || '' : row[key as WaitColumn]
+);
+
+const columnSortOrder = (key: string, sort: ColumnSort) => (
+  sort?.key === key ? sort.order : null
+);
+
+const sameSort = (current: ColumnSort, next: ColumnSort): ColumnSort => (
+  current?.key === next?.key && current?.order === next?.order ? current : next
+);
+
+const readColumnSort = (
+  sorter: { columnKey?: React.Key; order?: 'ascend' | 'descend' | null }
+    | readonly { columnKey?: React.Key; order?: 'ascend' | 'descend' | null }[]
+): ColumnSort => {
+  const current = Array.isArray(sorter) ? sorter[0] : sorter;
+  if (!current?.order || current.columnKey == null) return null;
+  return { key: String(current.columnKey), order: current.order };
+};
 
 const statementTableColumns = (
   t: DashText,
   source: readonly MysqlStatementRow[],
-  defaultTimeShare: boolean
+  sort: ColumnSort
 ): LayeredColumn[] => statementColumns(source).map((key) => ({
   key,
   title: mysqlCategoryText(t, STATEMENT_TITLE_KEYS[key]),
   align: key === 'sql' ? 'left' as const : 'right' as const,
   ellipsis: key !== 'sql',
-  defaultSortOrder: defaultTimeShare && key === 'timeShare' ? 'descend' as const : undefined,
+  sortOrder: columnSortOrder(key, sort),
   sorter: key === 'sql'
     ? (left, right) => (left.labels.sql || '').localeCompare(right.labels.sql || '')
     : (left, right) => compareNumber(left.values[key], right.values[key]),
@@ -160,16 +204,17 @@ const statementTableColumns = (
 
 const waitTableColumnsOf = (
   t: DashText,
-  source: readonly MysqlWaitEventRow[]
+  source: readonly MysqlWaitEventRow[],
+  sort: ColumnSort
 ): LayeredColumn[] => waitColumns(source).map((key) => ({
   key,
   title: mysqlCategoryText(t, WAIT_TITLE_KEYS[key]),
   align: key === 'name' ? 'left' as const : 'right' as const,
   ellipsis: key !== 'name',
-  defaultSortOrder: key === 'timeMs' ? 'descend' as const : undefined,
+  sortOrder: columnSortOrder(key, sort),
   sorter: key === 'name'
     ? (left, right) => (left.labels.name || '').localeCompare(right.labels.name || '')
-    : (left, right) => (left.values[key] || 0) - (right.values[key] || 0),
+    : (left, right) => compareNumber(left.values[key], right.values[key]),
   render: (entity: EntityTableRow) => entity.labels[key] || '--',
   csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
 }));
@@ -191,7 +236,7 @@ function TableSearch({
       placeholder={placeholder}
       aria-label={placeholder}
       onChange={(event) => onChange(event.target.value)}
-      className="w-52"
+      className="w-60 max-w-full"
     />
   );
 }
@@ -283,11 +328,27 @@ export function StatementPane({
 }: StatementPaneProps) {
   const { t } = useDashboardText();
   const [sqlQuery, setSqlQuery] = useState('');
+  const [statementSort, setStatementSort] = useState<ColumnSort>({ key: 'timeShare', order: 'descend' });
   const query = sqlQuery.trim().toLowerCase();
-  const visibleRows = rows.filter((row) => matchesQuery(row.sql || '', query));
-  const selected = rows.find((row) => row.id === selectedId) || rows[0];
-  const entities = statementEntities(visibleRows);
-  const columns = statementTableColumns(t, rows, true);
+  const ordered = useMemo(
+    () => sortDigestRows(
+      rows.filter((row) => matchesQuery(row.sql || '', query)),
+      statementSort,
+      statementSortValue
+    ),
+    [rows, query, statementSort]
+  );
+  const selected = ordered.find((row) => row.id === selectedId)
+    || ordered[0]
+    || rows.find((row) => row.id === selectedId)
+    || rows[0];
+  useEffect(() => {
+    if (!ordered.length) return;
+    if (selectedId && ordered.some((row) => row.id === selectedId)) return;
+    onSelect(ordered[0].id);
+  }, [ordered, selectedId, onSelect]);
+  const entities = statementEntities(ordered);
+  const columns = statementTableColumns(t, rows, statementSort);
   const primaryWait = selected ? primaryWaitForStatement(selected.id, waits) : null;
   const hasRows = rows.length > 0;
   if (!hasRows) {
@@ -329,22 +390,27 @@ export function StatementPane({
         columns={columns}
         loading={loading}
         scrollY={false}
-        selectedKey={selected?.id || ''}
+        selectedKey={ordered.some((row) => row.id === selected?.id) ? selected?.id || '' : ''}
         onSelect={onSelect}
+        onChange={(_pagination, _filters, sorter) => {
+          setStatementSort((current) => sameSort(current, readColumnSort(sorter)));
+        }}
         emptyText={emptyCopy({ title: mysqlCategoryText(t, 'noMatch') })}
         toolbar={(
-          <div className="flex items-center gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             <TableSearch
               value={sqlQuery}
               onChange={setSqlQuery}
               placeholder={mysqlCategoryText(t, 'searchSql')}
             />
-            <TableCsvExportButton
-              host={csvHost(instanceName)}
-              slug="statements"
-              columns={columns}
-              rows={entities}
-            />
+            <div className="ml-auto">
+              <TableCsvExportButton
+                host={csvHost(instanceName)}
+                slug="statements"
+                columns={columns}
+                rows={entities}
+              />
+            </div>
           </div>
         )}
       />
@@ -377,16 +443,38 @@ export function WaitPane({
 }: WaitPaneProps) {
   const { t } = useDashboardText();
   const [eventQuery, setEventQuery] = useState('');
+  const [waitSort, setWaitSort] = useState<ColumnSort>({ key: 'timeMs', order: 'descend' });
+  const [relatedSort, setRelatedSort] = useState<ColumnSort>({ key: 'timeShare', order: 'descend' });
   const query = eventQuery.trim().toLowerCase();
-  const visibleRows = rows.filter((row) => matchesQuery(row.name || '', query));
-  // 有列表就选中一行。当前 id 还在就保留，否则用排序后的第一行（常见是 idle）。
-  const selected = rows.find((row) => row.id === selectedId) || rows[0] || null;
+  const ordered = useMemo(
+    () => sortDigestRows(
+      rows.filter((row) => matchesQuery(row.name || '', query)),
+      waitSort,
+      waitSortValue
+    ),
+    [rows, query, waitSort]
+  );
+  // 原选中还在过滤结果里就保持，否则用当前排序后的第一行。
+  const selected = ordered.find((row) => row.id === selectedId)
+    || ordered[0]
+    || rows.find((row) => row.id === selectedId)
+    || rows[0]
+    || null;
+  useEffect(() => {
+    if (!ordered.length) return;
+    if (selectedId && ordered.some((row) => row.id === selectedId)) return;
+    onSelect(ordered[0].id);
+  }, [ordered, selectedId, onSelect]);
   const related = relatedStatementRows(selected, statements);
   const relatedRows = related ?? [];
-  const waitTableRows = waitEntities(visibleRows);
-  const waitTableColumns = waitTableColumnsOf(t, rows);
-  const relatedTableRows = statementEntities(relatedRows);
-  const relatedTableColumns = statementTableColumns(t, relatedRows, true);
+  const relatedOrdered = useMemo(
+    () => sortDigestRows(relatedRows, relatedSort, statementSortValue),
+    [relatedRows, relatedSort]
+  );
+  const waitTableRows = waitEntities(ordered);
+  const waitTableColumns = waitTableColumnsOf(t, rows, waitSort);
+  const relatedTableRows = statementEntities(relatedOrdered);
+  const relatedTableColumns = statementTableColumns(t, relatedRows, relatedSort);
   const exportHost = csvHost(instanceName);
   const hasRows = rows.length > 0;
   if (!hasRows) {
@@ -436,24 +524,29 @@ export function WaitPane({
         columns={waitTableColumns}
         loading={loading}
         scrollY={false}
-        selectedKey={selected?.id || ''}
+        selectedKey={ordered.some((row) => row.id === selected?.id) ? selected?.id || '' : ''}
         onSelect={(key) => {
           if (key) onSelect(key);
         }}
+        onChange={(_pagination, _filters, sorter) => {
+          setWaitSort((current) => sameSort(current, readColumnSort(sorter)));
+        }}
         emptyText={emptyCopy({ title: mysqlCategoryText(t, 'noMatch') })}
         toolbar={(
-          <div className="flex items-center gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             <TableSearch
               value={eventQuery}
               onChange={setEventQuery}
               placeholder={mysqlCategoryText(t, 'searchWait')}
             />
-            <TableCsvExportButton
-              host={exportHost}
-              slug="waits"
-              columns={waitTableColumns}
-              rows={waitTableRows}
-            />
+            <div className="ml-auto">
+              <TableCsvExportButton
+                host={exportHost}
+                slug="waits"
+                columns={waitTableColumns}
+                rows={waitTableRows}
+              />
+            </div>
           </div>
         )}
       />
@@ -465,6 +558,9 @@ export function WaitPane({
         scrollY={false}
         selectedKey=""
         onSelect={() => undefined}
+        onChange={(_pagination, _filters, sorter) => {
+          setRelatedSort((current) => sameSort(current, readColumnSort(sorter)));
+        }}
         emptyText={relatedEmpty}
         toolbar={(
           <TableCsvExportButton

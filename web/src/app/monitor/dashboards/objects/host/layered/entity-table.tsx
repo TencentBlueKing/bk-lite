@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Table } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { ColumnsType, TableProps } from 'antd/es/table';
 import { formatMetricValue } from '../../../shared/utils/format';
 import { hostThresholdColor } from '../config';
 import type { MetricUnit } from '../../../shared/types';
@@ -30,6 +30,8 @@ export interface LayeredColumn {
   /** 自定义排序。有 render 且无 unit 时默认不排序，数值列要显式传入。 */
   sorter?: (left: EntityTableRow, right: EntityTableRow) => number;
   defaultSortOrder?: 'ascend' | 'descend';
+  /** 传入后该列受控。主机表不传，仍走 Ant 自己的表头状态。 */
+  sortOrder?: 'ascend' | 'descend' | null;
   /** 导出用的可读文本。缺省时跟 label / 单位格式化，不含色点和迷你条。 */
   csvValue?: (row: EntityTableRow) => string;
 }
@@ -74,7 +76,8 @@ export default function LayeredEntityTable({
   toolbar,
   title,
   alertLevel,
-  scrollY = 280
+  scrollY = 280,
+  onChange
 }: {
   rows: EntityTableRow[];
   columns: LayeredColumn[];
@@ -96,6 +99,7 @@ export default function LayeredEntityTable({
    * 主机盘默认仍是 280。
    */
   scrollY?: number | false;
+  onChange?: TableProps<EntityTableRow>['onChange'];
 }) {
   const tableColumns: ColumnsType<EntityTableRow> = columns.map((column) => ({
     title: column.title,
@@ -105,6 +109,7 @@ export default function LayeredEntityTable({
     fixed: column.fixed,
     ellipsis: column.ellipsis !== false,
     defaultSortOrder: column.defaultSortOrder,
+    ...(column.sortOrder !== undefined ? { sortOrder: column.sortOrder } : {}),
     sorter: column.sorter
       ? column.sorter
       : column.labelKey
@@ -179,6 +184,7 @@ export default function LayeredEntityTable({
         }}
         rowClassName={(row) => (row.key === selectedKey ? styles.rowActive : styles.rowIdle)}
         onRow={(row) => ({ onClick: () => onSelect(row.key) })}
+        onChange={onChange}
         expandable={expandable}
       />
     </div>
