@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, LogExtractor, SystemVectorConfigState
@@ -176,3 +177,93 @@ def test_type_rule_limit_is_enforced_without_dirty_generation(syslog_type):
         create_type_rule(syslog_type, _draft("overflow"), SimpleNamespace(username="alice", domain="default"))
 
     assert not SystemVectorConfigState.objects.exists()
+
+
+def _assert_reorder_rejected_before_write(mocker, reorder, scope, ordered_ids, expected_order):
+    atomic = mocker.spy(transaction, "atomic")
+
+    with pytest.raises(ValidationError) as caught:
+        reorder(scope, ordered_ids)
+
+    assert "ids" in caught.value.detail
+    atomic.assert_not_called()
+    assert list(LogExtractor.objects.order_by("sort_order", "id").values_list("id", "sort_order")) == expected_order
+    assert not SystemVectorConfigState.objects.exists()
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("ordered_ids", [[{}], [[]], [None], [True], ["1"]])
+def test_reorder_rules_rejects_malformed_ids_without_reordering(rule_instance, ordered_ids, mocker):
+    first = LogExtractor.objects.create(collect_instance=rule_instance, sort_order=0, **_draft("first"))
+    second = LogExtractor.objects.create(collect_instance=rule_instance, sort_order=1, **_draft("second"))
+
+    _assert_reorder_rejected_before_write(
+        mocker,
+        reorder_rules,
+        rule_instance,
+        ordered_ids,
+        [(first.id, 0), (second.id, 1)],
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+def test_reorder_rules_rejects_duplicate_ids_without_reordering(rule_instance, mocker):
+    first = LogExtractor.objects.create(collect_instance=rule_instance, sort_order=0, **_draft("first"))
+    second = LogExtractor.objects.create(collect_instance=rule_instance, sort_order=1, **_draft("second"))
+
+    _assert_reorder_rejected_before_write(
+        mocker,
+        reorder_rules,
+        rule_instance,
+        [first.id, first.id],
+        [(first.id, 0), (second.id, 1)],
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+def test_reorder_rules_rejects_bool_that_equals_integer_primary_key(rule_instance, mocker):
+    rule = LogExtractor.objects.create(id=1, collect_instance=rule_instance, sort_order=0, **_draft("only"))
+
+    _assert_reorder_rejected_before_write(mocker, reorder_rules, rule_instance, [True], [(rule.id, 0)])
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("ordered_ids", [[{}], [[]], [None], [True], ["1"]])
+def test_reorder_type_rules_rejects_malformed_ids_without_reordering(syslog_type, ordered_ids, mocker):
+    first = LogExtractor.objects.create(collect_type=syslog_type, collect_instance=None, sort_order=0, **_draft("first"))
+    second = LogExtractor.objects.create(collect_type=syslog_type, collect_instance=None, sort_order=1, **_draft("second"))
+
+    _assert_reorder_rejected_before_write(
+        mocker,
+        reorder_type_rules,
+        syslog_type,
+        ordered_ids,
+        [(first.id, 0), (second.id, 1)],
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+def test_reorder_type_rules_rejects_duplicate_ids_without_reordering(syslog_type, mocker):
+    first = LogExtractor.objects.create(collect_type=syslog_type, collect_instance=None, sort_order=0, **_draft("first"))
+    second = LogExtractor.objects.create(collect_type=syslog_type, collect_instance=None, sort_order=1, **_draft("second"))
+
+    _assert_reorder_rejected_before_write(
+        mocker,
+        reorder_type_rules,
+        syslog_type,
+        [first.id, first.id],
+        [(first.id, 0), (second.id, 1)],
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+def test_reorder_type_rules_rejects_bool_that_equals_integer_primary_key(syslog_type, mocker):
+    rule = LogExtractor.objects.create(id=1, collect_type=syslog_type, collect_instance=None, sort_order=0, **_draft("only"))
+
+    _assert_reorder_rejected_before_write(mocker, reorder_type_rules, syslog_type, [True], [(rule.id, 0)])
