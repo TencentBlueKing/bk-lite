@@ -24,6 +24,7 @@ vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 vi.mock('../SigninClient', () => ({ default: () => null }));
 vi.mock('../PopupAuthBridge', () => ({ default: () => null }));
 vi.mock('../LegacyThirdLoginAuthorizeBridge', () => ({ default: () => null }));
+vi.mock('../PostLoginHomepageRedirect', () => ({ default: () => null }));
 vi.mock('@/utils/authRedirect', () => ({
   buildThirdLoginCallbackUrl: vi.fn(),
   getLegacyThirdLoginCode: vi.fn(() => null),
@@ -38,6 +39,7 @@ import SigninPage from '../page';
 import { redirect } from 'next/navigation';
 import { getLegacyThirdLoginCode } from '@/utils/authRedirect';
 import LegacyThirdLoginAuthorizeBridge from '../LegacyThirdLoginAuthorizeBridge';
+import PostLoginHomepageRedirect from '../PostLoginHomepageRedirect';
 
 describe('SigninPage session configuration', () => {
   beforeEach(() => {
@@ -63,7 +65,7 @@ describe('SigninPage session configuration', () => {
       user: { id: 'u1', token: 'jwt-token' },
     });
 
-    await SigninPage({
+    const result = await SigninPage({
       searchParams: Promise.resolve({
         callbackUrl: '/ops-console/home',
         error: '',
@@ -71,7 +73,14 @@ describe('SigninPage session configuration', () => {
       }),
     });
 
-    expect(redirect).toHaveBeenCalledWith('/ops-console/home?screen=true');
+    expect(redirect).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      type: PostLoginHomepageRedirect,
+      props: expect.objectContaining({
+        targetUrl: '/ops-console/home?screen=true',
+        token: 'jwt-token',
+      }),
+    }));
   });
 
   it('does not send authenticated users to an external token callback', async () => {

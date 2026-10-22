@@ -146,9 +146,17 @@ def delete_rule(rule: LogExtractor) -> int:
         return mark_dirty()
 
 
-def reorder_rules(instance: CollectInstance, ordered_ids: list[int], locale=None) -> int:
-    if not isinstance(ordered_ids, list) or len(ordered_ids) != len(set(ordered_ids)):
+def _require_unique_int_ids(ordered_ids, locale=None) -> None:
+    # bool 是 int 子类；True 与主键 1 相等，必须在 set() 和事务之前拒绝。
+    ids_are_ints = isinstance(ordered_ids, list) and all(isinstance(item, int) and not isinstance(item, bool) for item in ordered_ids)
+    if not ids_are_ints:
         raise ValidationError({"ids": log_text(locale, "error.rule_ids_unique")})
+    if len(ordered_ids) != len(set(ordered_ids)):
+        raise ValidationError({"ids": log_text(locale, "error.rule_ids_unique")})
+
+
+def reorder_rules(instance: CollectInstance, ordered_ids: list[int], locale=None) -> int:
+    _require_unique_int_ids(ordered_ids, locale)
     with transaction.atomic():
         CollectInstance.objects.select_for_update().get(pk=instance.pk)
         rules = list(LogExtractor.objects.select_for_update().filter(collect_instance=instance).order_by("sort_order", "id"))
@@ -163,8 +171,7 @@ def reorder_rules(instance: CollectInstance, ordered_ids: list[int], locale=None
 
 
 def reorder_type_rules(collect_type: CollectType, ordered_ids: list[int], locale=None) -> int:
-    if not isinstance(ordered_ids, list) or len(ordered_ids) != len(set(ordered_ids)):
-        raise ValidationError({"ids": log_text(locale, "error.rule_ids_unique")})
+    _require_unique_int_ids(ordered_ids, locale)
     with transaction.atomic():
         CollectType.objects.select_for_update().get(pk=collect_type.pk)
         rules = list(

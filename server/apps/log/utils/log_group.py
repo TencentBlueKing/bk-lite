@@ -350,17 +350,17 @@ class LogGroupQueryBuilder:
 
         # 构建分组过滤器
         group_filter = f"({' OR '.join(group_conditions)})" if len(group_conditions) > 1 else group_conditions[0]
+        pipe_parts = LogGroupQueryBuilder._split_on_unquoted_pipe(user_query) if user_query else None
         logger.debug(
             "event=log_group_query_merged has_aggregation=%s group_condition_count=%s",
-            bool(user_query and "|" in user_query),
+            pipe_parts is not None,
             len(group_conditions),
         )
 
         # 聚合查询处理：将分组条件合并到过滤部分
-        if user_query and "|" in user_query:
-            query_parts = user_query.split("|", 1)
-            filter_part = query_parts[0].strip()
-            aggregation_part = query_parts[1].strip()
+        if pipe_parts is not None:
+            filter_part = pipe_parts[0].strip()
+            aggregation_part = pipe_parts[1].strip()
 
             # 构建合并的过滤条件
             if filter_part and group_filter:
@@ -378,6 +378,31 @@ class LogGroupQueryBuilder:
         if group_filter:
             return group_filter
         return user_query if user_query else "*"
+
+    @staticmethod
+    def _split_on_unquoted_pipe(query):
+        """在双引号外的第一个 | 处切开过滤与聚合。
+
+        引号内的竖线留在原文。反斜杠转义下一个字符，因此转义引号不结束字符串。
+        没有引号外管道时返回 None。
+        """
+        in_quote = False
+        escaped = False
+        for index, char in enumerate(query):
+            if in_quote:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_quote = False
+                continue
+            if char == '"':
+                in_quote = True
+                continue
+            if char == "|":
+                return query[:index], query[index + 1 :]
+        return None
 
     @staticmethod
     def validate_log_groups(log_group_ids):

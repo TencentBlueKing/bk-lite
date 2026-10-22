@@ -263,3 +263,179 @@ export const isBackgroundMarkdownImport = (
   }
   return result.counts == null;
 };
+
+/** 后台受理后若一直看不到运行中或终态，到点放开导入/导出。 */
+export const OKF_IMPORT_HOLD_TIMEOUT_MS = 45 * 60 * 1000;
+
+const OKF_IMPORT_ENRICH_FRESH_MS = 2 * 60 * 60 * 1000;
+const OKF_IMPORT_HOLD_MATCH_SKEW_MS = 60 * 1000;
+
+const OKF_IMPORT_FAILURE_STATUSES = new Set([
+  "failed",
+  "cancelled",
+  "canceled",
+  "partial",
+]);
+
+export interface OkfImportAcceptance {
+  buildRecordId?: number;
+  status?: string;
+}
+
+export interface OkfImportBuildSnapshot {
+  id?: number;
+  status?: string;
+  progress?: number;
+  updated_at?: string;
+  maintenance?: object | null;
+}
+
+export type OkfImportProgressPhase =
+  | { phase: "writing"; progress: number }
+  | { phase: "enriching" }
+  | { phase: "holding" }
+  | { phase: "completed"; outcome: "success" | "failed" }
+  | { phase: "idle" };
+
+export interface ResolveOkfImportProgressInput {
+  items: OkfImportBuildSnapshot[];
+  trackedBuildRecordId?: number | null;
+  acceptedStatus?: string | null;
+  holding: boolean;
+  holdStartedAt?: number | null;
+  seenActive: boolean;
+  now: number;
+}
+
+const normalizeImportStatus = (status?: string | null): string =>
+  String(status || "").trim().toLowerCase();
+
+const isActiveImportStatus = (status: string): boolean =>
+  status === "running" || status === "queued";
+
+const writingProgress = (progress?: number): number =>
+  Math.min(99, Math.max(0, Number(progress) || 0));
+
+const snapshotUpdatedAt = (item: OkfImportBuildSnapshot): number | null => {
+  const parsed = Date.parse(item.updated_at || "");
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const okfImportHoldTimedOut = (
+  holdStartedAt: number | null | undefined,
+  now: number,
+  holding: boolean,
+): boolean =>
+  holding &&
+  holdStartedAt != null &&
+  now - holdStartedAt >= OKF_IMPORT_HOLD_TIMEOUT_MS;
+
+const searchEnrichmentState = (item: OkfImportBuildSnapshot): unknown => {
+  const maintenance = item.maintenance;
+  if (!maintenance || typeof maintenance !== "object") return undefined;
+  return (maintenance as { search_enrichment?: unknown }).search_enrichment;
+};
+
+const enrichmentStillRunning = (
+  item: OkfImportBuildSnapshot,
+  now: number,
+): boolean => {
+  if (searchEnrichmentState(item) !== "running") return false;
+  const updated = snapshotUpdatedAt(item);
+  return updated == null || now - updated < OKF_IMPORT_ENRICH_FRESH_MS;
+};
+
+const phaseForImportRecord = (
+  item: OkfImportBuildSnapshot,
+  now: number,
+): OkfImportProgressPhase | null => {
+  const status = normalizeImportStatus(item.status);
+  if (isActiveImportStatus(status)) {
+    return { phase: "writing", progress: writingProgress(item.progress) };
+  }
+  if (
+    enrichmentStillRunning(item, now) &&
+    (status === "success" || status === "partial" || status === "")
+  ) {
+    return { phase: "enriching" };
+  }
+  if (status === "success") {
+    return { phase: "completed", outcome: "success" };
+  }
+  if (OKF_IMPORT_FAILURE_STATUSES.has(status)) {
+    return { phase: "completed", outcome: "failed" };
+  }
+  return null;
+};
+
+const newestTerminalSinceHold = (
+  items: OkfImportBuildSnapshot[],
+  holdStartedAt: number,
+): OkfImportBuildSnapshot | null => {
+  const cutoff = holdStartedAt - OKF_IMPORT_HOLD_MATCH_SKEW_MS;
+  const matches = items.filter((item) => {
+    const status = normalizeImportStatus(item.status);
+    if (status !== "success" && !OKF_IMPORT_FAILURE_STATUSES.has(status)) {
+      return false;
+    }
+    const updated = snapshotUpdatedAt(item);
+    return updated != null && updated >= cutoff;
+  });
+  matches.sort(
+    (left, right) =>
+      (snapshotUpdatedAt(right) || 0) - (snapshotUpdatedAt(left) || 0),
+  );
+  return matches[0] ?? null;
+};
+
+export const resolveOkfImportProgress = (
+  input: ResolveOkfImportProgressInput,
+): OkfImportProgressPhase => {
+  const trackedId = input.trackedBuildRecordId ?? null;
+  if (trackedId != null) {
+    const tracked = input.items.find((item) => item.id === trackedId);
+    if (tracked) {
+      const phase = phaseForImportRecord(tracked, input.now);
+      if (phase) return phase;
+      if (okfImportHoldTimedOut(input.holdStartedAt, input.now, input.holding)) {
+        return { phase: "completed", outcome: "failed" };
+      }
+      if (input.holding || input.seenActive) return { phase: "holding" };
+      return { phase: "idle" };
+    }
+    const accepted = normalizeImportStatus(input.acceptedStatus);
+    if (OKF_IMPORT_FAILURE_STATUSES.has(accepted)) {
+      return { phase: "completed", outcome: "failed" };
+    }
+  } else {
+    const writing = input.items.find((item) =>
+      isActiveImportStatus(normalizeImportStatus(item.status)),
+    );
+    if (writing) {
+      return { phase: "writing", progress: writingProgress(writing.progress) };
+    }
+    const enriching = input.items.find((item) =>
+      enrichmentStillRunning(item, input.now),
+    );
+    if (enriching) return { phase: "enriching" };
+    if (input.seenActive) {
+      return { phase: "completed", outcome: "success" };
+    }
+    if (input.holding && input.holdStartedAt != null) {
+      const matched = newestTerminalSinceHold(input.items, input.holdStartedAt);
+      if (matched) {
+        const phase = phaseForImportRecord(matched, input.now);
+        if (phase) return phase;
+      }
+    }
+  }
+
+  if (okfImportHoldTimedOut(input.holdStartedAt, input.now, input.holding)) {
+    return { phase: "completed", outcome: "failed" };
+  }
+  if (input.holding) return { phase: "holding" };
+  if (trackedId != null && input.seenActive) {
+    return { phase: "completed", outcome: "success" };
+  }
+  return { phase: "idle" };
+};

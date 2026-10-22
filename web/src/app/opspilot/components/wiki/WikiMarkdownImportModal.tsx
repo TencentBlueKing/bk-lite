@@ -16,6 +16,7 @@ import {
   markdownImportFilePattern,
   unwrapMarkdownImportExecuteResult,
   type MarkdownImportGovernanceErrorView,
+  type OkfImportAcceptance,
 } from "@/app/opspilot/utils/wikiMarkdownImport";
 
 interface WikiMarkdownImportModalProps {
@@ -25,7 +26,10 @@ interface WikiMarkdownImportModalProps {
   onCompleted: (
     result: WikiMarkdownImportExecuteResult,
   ) => void | Promise<void>;
-  onImportHoldChange?: (holding: boolean) => void;
+  onImportHoldChange?: (
+    holding: boolean,
+    acceptance?: OkfImportAcceptance,
+  ) => void;
 }
 
 const WikiMarkdownImportModal = ({
@@ -128,6 +132,13 @@ const WikiMarkdownImportModal = ({
       );
       if (isBackgroundMarkdownImport(result)) {
         message.info(t("wiki.markdownImportRunning"));
+        onImportHoldChange?.(true, {
+          buildRecordId:
+            typeof result.build_record_id === "number"
+              ? result.build_record_id
+              : undefined,
+          status: result.status,
+        });
         onCancel();
         return;
       }

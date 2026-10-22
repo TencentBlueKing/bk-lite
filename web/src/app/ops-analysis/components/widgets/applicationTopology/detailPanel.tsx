@@ -1,12 +1,31 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Button, ConfigProvider, Spin, Tabs, theme as antdTheme } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, ConfigProvider, Spin, Tabs } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import OperateDrawer from '@/components/operate-drawer';
+import {
+  buildScreenContentTokenStyle,
+  createScreenAntdTheme,
+} from '@/app/ops-analysis/utils/screenWidgetTokens';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
+import { useOptionalThemeTokens } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 import type { ApplicationTopologyBandNode } from './bandModel';
+import styles from './detailPanel.module.scss';
+
+/** 大屏抽屉门户到 body，用实色，避免半透明表面透出系统页。 */
+const SCREEN_DRAWER_SURFACE = {
+  'screen-dark': '#14243a',
+  'screen-light': '#ffffff',
+} as const;
+
+const applicationTopologyDrawerSurface = (mode?: OpsChartThemeMode) => (
+  mode === 'screen-dark' || mode === 'screen-light'
+    ? SCREEN_DRAWER_SURFACE[mode]
+    : 'var(--color-modal-header-color)'
+);
 
 export type ApplicationTopologyDetailTabKey = 'cmdb' | 'monitor' | 'alerts';
 
@@ -28,15 +47,9 @@ interface ApplicationTopologyDetailPanelProps {
   node: ApplicationTopologyBandNode;
   statusLabel: string;
   shareMode: boolean;
+  chartThemeMode?: OpsChartThemeMode;
   onClose: () => void;
 }
-
-/** 详情挂在大屏组件里，但不能吃大屏 ConfigProvider 的暗色算法。 */
-const detailDrawerTheme = {
-  inherit: false,
-  cssVar: { key: 'application-topology-detail' },
-  algorithm: antdTheme.defaultAlgorithm,
-} as const;
 
 const TAB_LABEL_KEY: Record<ApplicationTopologyDetailTabKey, string> = {
   cmdb: 'dashboard.applicationTopologyCmdbTab',
@@ -48,9 +61,18 @@ const ApplicationTopologyDetailPanel = ({
   node,
   statusLabel,
   shareMode,
+  chartThemeMode,
   onClose,
 }: ApplicationTopologyDetailPanelProps) => {
   const { t } = useTranslation();
+  const systemTokens = useOptionalThemeTokens();
+  const screenTheme = useMemo(() => {
+    const theme = createScreenAntdTheme(chartThemeMode, systemTokens);
+    if (!theme) return undefined;
+    return { ...theme, inherit: false as const };
+  }, [chartThemeMode, systemTokens]);
+  const contentTokenStyle = buildScreenContentTokenStyle(chartThemeMode);
+  const drawerSurface = applicationTopologyDrawerSurface(chartThemeMode);
   const [tab, setTab] = useState<ApplicationTopologyDetailTabKey>('cmdb');
   const [headerAction, setHeaderAction] = useState<React.ReactNode>(null);
   const baseInfo = useAppWidget('cmdb.baseInfo');
@@ -92,8 +114,7 @@ const ApplicationTopologyDetailPanel = ({
   const MonitorView = monitorWidget.Widget as React.ComponentType<{ monitorId: string }> | null;
   const AlertList = alertWidget.Widget as React.ComponentType<{ monitorId: string }> | null;
 
-  return (
-    <ConfigProvider theme={detailDrawerTheme}>
+  const drawer = (
     <OperateDrawer
       open
       width={800}
@@ -102,10 +123,12 @@ const ApplicationTopologyDetailPanel = ({
       subTitle={`${node.modelId} · ${statusLabel}`}
       destroyOnHidden
       onClose={onClose}
+      rootClassName={styles.shell}
+      style={{ '--ops-topology-drawer-surface': drawerSurface } as React.CSSProperties}
       classNames={{ body: 'flex min-h-0 flex-col overflow-hidden' }}
       styles={{
         header: { boxShadow: 'none' },
-        body: { overflow: 'hidden', padding: 0 },
+        body: { overflow: 'hidden', padding: 0, background: 'transparent' },
       }}
       footer={(
         <div>
@@ -113,6 +136,7 @@ const ApplicationTopologyDetailPanel = ({
         </div>
       )}
     >
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={contentTokenStyle}>
       {shareMode ? (
         <div className="flex min-h-[280px] flex-1 items-center justify-center">
           <CompactEmptyState description={t('dashboard.applicationTopologyShareDetail')} />
@@ -182,9 +206,12 @@ const ApplicationTopologyDetailPanel = ({
           </div>
         </>
       )}
+      </div>
     </OperateDrawer>
-    </ConfigProvider>
   );
+
+  if (!screenTheme) return drawer;
+  return <ConfigProvider theme={screenTheme}>{drawer}</ConfigProvider>;
 };
 
 const WidgetSlot = ({

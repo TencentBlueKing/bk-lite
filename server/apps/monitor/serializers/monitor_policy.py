@@ -44,6 +44,8 @@ _VALID_GROUP_AGGREGATION_ALGORITHMS = GROUP_AGGREGATION_ALGORITHMS
 _VALID_AGGREGATION_ALGORITHMS = POLICY_ALGORITHMS
 # PromQL/MetricsQL label 运算符白名单
 _VALID_LABEL_METHODS = {"=", "!=", "=~", "!~"}
+# 枚举指标阈值只能做等值比较，与策略页 ENUM_COMPARISON_METHOD 一致。
+_ENUM_THRESHOLD_METHODS = {"=", "!="}
 # label name 合法正则（Prometheus 规范）
 _LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
@@ -78,6 +80,39 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         if handlers_provided:
             attrs["handlers"] = resolved
         return attrs
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = self._inject_multi_mirror_fields(data)
+        return super().to_internal_value(data)
+
+    def _inject_multi_mirror_fields(self, data):
+        """多指标模式的策略级单值由锚点条件镜像，前端不另传一份。"""
+        query = data.get("query_condition")
+        if not isinstance(query, dict) or query.get("type") != "multi":
+            return data
+        queries = query.get("queries")
+        if not isinstance(queries, list) or not queries or not isinstance(queries[0], dict):
+            return data
+        anchor = queries[0]
+        copied = dict(data)
+        if anchor.get("algorithm"):
+            copied["algorithm"] = anchor["algorithm"]
+        if anchor.get("group_algorithm"):
+            copied["group_algorithm"] = anchor["group_algorithm"]
+        if isinstance(anchor.get("group_by"), list):
+            copied["group_by"] = list(anchor["group_by"])
+        for field in ("metric_unit", "calculation_unit", "threshold_unit"):
+            if field in anchor:
+                copied[field] = anchor.get(field) or ""
+        copied["threshold"] = []
+        if not copied.get("compare_mode"):
+            copied["compare_mode"] = "absolute"
+        if not copied.get("recovery_threshold"):
+            copied["recovery_threshold"] = {}
+        copied["count_predicate"] = {}
+        copied["compare_value_kind"] = ""
+        return copied
 
     class Meta:
         model = MonitorPolicy
@@ -241,6 +276,16 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             try:
                 build_formula_query(value)
             except BaseAppException as err:
+                raise serializers.ValidationError(str(err)) from err
+            return value
+
+        if query_type == "multi":
+            from apps.monitor.expression.errors import FormulaError
+            from apps.monitor.expression.validators import validate_multi_condition
+
+            try:
+                validate_multi_condition(value)
+            except FormulaError as err:
                 raise serializers.ValidationError(str(err)) from err
             return value
 
@@ -435,8 +480,13 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
 
     def _validate_calc_enrichment(self, attrs):
         collect_type = self._get_value(attrs, "collect_type", "") or ""
+        query_condition = self._get_value(attrs, "query_condition", {}) or {}
+        if isinstance(query_condition, dict) and query_condition.get("type") == "multi" and collect_type == "trap":
+            raise serializers.ValidationError({"collect_type": "多指标条件不支持 Trap 采集"})
         if collect_type == "trap":
             return self._clear_trap_enrichment(attrs)
+        if isinstance(query_condition, dict) and query_condition.get("type") == "multi":
+            return self._validate_multi_policy(attrs, query_condition)
 
         algorithm = self._get_value(attrs, "algorithm", "") or ""
         compare_mode = self._get_value(attrs, "compare_mode", "absolute") or "absolute"
@@ -618,6 +668,132 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         if errors:
             raise serializers.ValidationError(errors)
         return attrs
+
+    def _validate_multi_policy(self, attrs, query_condition):
+        errors = {}
+        compare_mode = self._get_value(attrs, "compare_mode", "absolute") or "absolute"
+        if compare_mode != "absolute":
+            errors["compare_mode"] = "多指标条件只允许比较基准为当前值"
+        recovery = self._get_value(attrs, "recovery_threshold", {}) or {}
+        if recovery:
+            errors["recovery_threshold"] = "多指标条件不支持恢复阈值"
+        if self.instance is None or "query_condition" in attrs:
+            self._validate_multi_condition_metrics(query_condition, errors)
+            if not errors:
+                self._mirror_multi_anchor_fields(attrs, query_condition)
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
+
+    def _validate_multi_condition_metrics(self, query_condition, errors):
+        from apps.monitor.expression.conditions import compile_filter_to_query
+        from apps.monitor.models.monitor_metrics import Metric
+        from apps.monitor.tasks.utils.policy_multi import condition_metric_items, is_formula_condition
+
+        queries = [item for item in query_condition.get("queries") or [] if isinstance(item, dict)]
+        metric_ids = []
+        for condition in queries:
+            metric_ids.extend(item.get("metric_id") for item in condition_metric_items(condition))
+        metrics = {item.id: item for item in Metric.objects.filter(id__in=metric_ids)}
+        for condition in queries:
+            ref = condition.get("ref")
+            if is_formula_condition(condition):
+                for operand in condition_metric_items(condition):
+                    metric = metrics.get(operand.get("metric_id"))
+                    if metric is None:
+                        errors["query_condition"] = f"条件 {ref} 的操作数指标不存在"
+                        return
+                    if metric.data_type == "Enum":
+                        errors["query_condition"] = f"条件 {ref} 的操作数不能是枚举指标"
+                        return
+                self._validate_condition_units(condition, errors)
+                if errors:
+                    return
+                continue
+            metric = metrics.get(condition.get("metric_id"))
+            if metric is None:
+                errors["query_condition"] = f"条件 {ref} 的指标不存在"
+                return
+            algorithm = condition.get("algorithm")
+            if metric.data_type == "Enum":
+                if algorithm in NEW_ALGORITHMS:
+                    errors["query_condition"] = f"条件 {ref} 是枚举指标，不能使用新的汇聚算法"
+                    return
+                for item in condition.get("threshold") or []:
+                    if isinstance(item, dict) and item.get("method") not in _ENUM_THRESHOLD_METHODS:
+                        errors["query_condition"] = f"条件 {ref} 是枚举指标，阈值运算符只允许 = / !="
+                        return
+                continue
+            if algorithm == "rate":
+                base_query = compile_filter_to_query(metric.query or "", condition.get("filter") or [])
+                if base_query_contains_rate_function(base_query):
+                    errors["query_condition"] = (
+                        f"条件 {ref} 的基础查询已包含 rate/irate/increase，不能再选速率类汇聚"
+                    )
+                    return
+            self._validate_condition_units(condition, errors)
+            if errors:
+                return
+
+    def _validate_condition_units(self, condition, errors):
+        ref = condition.get("ref")
+        result_unit = resolve_result_unit(self._condition_unit_policy_like(condition))
+        calculation_unit = condition.get("calculation_unit") or ""
+        threshold_unit = condition.get("threshold_unit") or ""
+        if not result_unit.conversion_enabled:
+            if result_unit.unit in {"hour", "count", ""}:
+                return
+            if result_unit.unit and not UnitConverter.is_known_unit(result_unit.unit):
+                errors["query_condition"] = f"条件 {ref} 的结果单位无效"
+                return
+            effective_threshold = threshold_unit or result_unit.unit
+            if result_unit.unit and effective_threshold and effective_threshold != result_unit.unit:
+                errors["query_condition"] = f"条件 {ref} 的阈值单位必须与结果单位 {result_unit.unit} 一致"
+            return
+        if not calculation_unit and not threshold_unit:
+            errors["query_condition"] = f"条件 {ref} 必须配置结果单位和阈值单位"
+            return
+        if not UnitConverter.is_known_unit(calculation_unit):
+            errors["query_condition"] = f"条件 {ref} 的结果单位无效"
+            return
+        if not UnitConverter.is_known_unit(threshold_unit):
+            errors["query_condition"] = f"条件 {ref} 的阈值单位无效"
+            return
+        if not UnitConverter.is_convertible(threshold_unit, calculation_unit):
+            errors["query_condition"] = (
+                f"条件 {ref} 的阈值单位 {threshold_unit} 不能转换为结果单位 {calculation_unit}"
+            )
+
+    def _condition_unit_policy_like(self, condition):
+        return {
+            "algorithm": condition.get("algorithm") or "",
+            "compare_mode": "absolute",
+            "compare_value_kind": "",
+            "metric_unit": condition.get("metric_unit") or "",
+            "calculation_unit": condition.get("calculation_unit") or "",
+        }
+
+    def _mirror_multi_anchor_fields(self, attrs, query_condition):
+        queries = query_condition.get("queries") or []
+        anchor = queries[0] if queries else {}
+        corrected = self.validate_group_by(list(anchor.get("group_by") or []))
+        anchor["group_by"] = corrected
+        if anchor.get("source") == "formula":
+            for operand in anchor.get("operands") or []:
+                if isinstance(operand, dict):
+                    operand["group_by"] = list(corrected)
+        attrs["query_condition"] = query_condition
+        attrs["group_by"] = corrected
+        attrs["algorithm"] = anchor.get("algorithm") or ""
+        attrs["group_algorithm"] = anchor.get("group_algorithm") or ""
+        attrs["metric_unit"] = anchor.get("metric_unit") or ""
+        attrs["calculation_unit"] = anchor.get("calculation_unit") or ""
+        attrs["threshold_unit"] = anchor.get("threshold_unit") or ""
+        attrs["threshold"] = []
+        attrs["compare_mode"] = "absolute"
+        attrs["compare_value_kind"] = ""
+        attrs["recovery_threshold"] = {}
+        attrs["count_predicate"] = {}
 
     def _get_monitor_object(self):
         """从请求数据或已有实例中获取关联的监控对象。"""

@@ -163,7 +163,7 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
   };
 
   const moreActions = (record: WorkflowRecord): MenuProps['items'] => [
-    { key: 'executions', label: <WorkflowPermission operation="View"><span>{t('workflowOrchestration.execution.records', '执行记录')}</span></WorkflowPermission> },
+    { key: 'executions', label: <WorkflowPermission operation="View" area="executions"><span>{t('workflowOrchestration.execution.records', '执行记录')}</span></WorkflowPermission> },
     { key: 'duplicate', label: <WorkflowPermission operation="Add"><span>{t('common.copy', '复制')}</span></WorkflowPermission> },
     ...(record.is_builtin ? [] : [{ key: 'profile', label: <WorkflowPermission operation="Edit" instancePermissions={record.permission}><span>{t('workflowOrchestration.workflow.basicInfo', '基本信息')}</span></WorkflowPermission> }]),
     ...(record.is_builtin
@@ -376,6 +376,8 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
       workflow={profile?.workflow}
       marketCopy={isMarket && profile?.mode === 'copy'}
       confirmLoading={profileBusy}
+      permissionOperation={profile?.mode === 'edit' ? 'Edit' : 'Add'}
+      permissionArea={isMarket ? 'market' : 'workflows'}
       onCancel={() => setProfile(null)}
       onSubmit={(value) => void submitProfile(value)}
     />

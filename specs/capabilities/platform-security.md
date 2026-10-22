@@ -7,6 +7,7 @@
 - 仅以 `*.example` / `*.template` 提供样例,**真实密钥永不入库**。
 - `.env`、`*.keystore`、`keystore.properties` 为敏感文件,已在 `.gitignore` / `mobile/.gitignore` 排除,不得绕过。
 - 所有凭据(DB / NATS / JWT / Redis / NPM_TOKEN / MinIO)经**部署环境注入**,不写入代码、不写入日志。
+- 国密私钥只经环境变量 `GM_SM2_PRIVATE_KEY` 注入，不写入 `SystemSettings`，不写入日志。浏览器业务 JSON 的覆盖范围见 [国密传输](gm-transport.md)。开关打开时，不得拒绝没有 `X-Gm-Transport: 1` 的 `/api/v1/` 明文。
 - 新增 env 走 `os.getenv` 默认值,**不改 `server/envs/.env.example`**(该文件易冲突,见团队约定)。
 
 ## 2. 认证与会话

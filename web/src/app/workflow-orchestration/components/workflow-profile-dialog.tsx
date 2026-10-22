@@ -1,6 +1,6 @@
 'use client';
 
-import { Form, Input } from 'antd';
+import { Button, Form, Input } from 'antd';
 import { useEffect } from 'react';
 
 import GroupTreeSelect from '@/components/group-tree-select';
@@ -9,6 +9,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 import type { WorkflowRecord } from '../lib/types';
 import { createDefaultWorkflowName } from '../lib/workflow-draft';
+import { WorkflowPermission, type WorkflowOperation, type WorkflowPermissionArea } from './workflow-permission';
 
 export interface WorkflowProfileValue {
   name: string;
@@ -24,6 +25,8 @@ export function WorkflowProfileDialog({
   workflow,
   marketCopy = false,
   confirmLoading,
+  permissionOperation,
+  permissionArea = 'workflows',
   onCancel,
   onSubmit,
 }: {
@@ -32,6 +35,8 @@ export function WorkflowProfileDialog({
   workflow?: WorkflowRecord;
   marketCopy?: boolean;
   confirmLoading: boolean;
+  permissionOperation: WorkflowOperation;
+  permissionArea?: WorkflowPermissionArea;
   onCancel: () => void;
   onSubmit: (value: WorkflowProfileValue) => void;
 }) {
@@ -39,6 +44,13 @@ export function WorkflowProfileDialog({
   const { selectedGroup } = useUserInfoContext();
   const [form] = Form.useForm<WorkflowProfileValue>();
   const organizationLocked = mode === 'edit' && Boolean(workflow?.current_version);
+  const submit = () => {
+    form.validateFields().then((values) => onSubmit({
+      name: values.name.trim(),
+      description: (values.description || '').trim(),
+      team: values.team,
+    })).catch(() => undefined);
+  };
   const title = mode === 'create'
     ? t('workflowOrchestration.workflow.create', '新建流程')
     : mode === 'copy'
@@ -73,13 +85,14 @@ export function WorkflowProfileDialog({
       styles={{ footer: { marginTop: 20 } }}
       destroyOnHidden
       onCancel={onCancel}
-      onOk={() => {
-        form.validateFields().then((values) => onSubmit({
-          name: values.name.trim(),
-          description: (values.description || '').trim(),
-          team: values.team,
-        })).catch(() => undefined);
-      }}
+      footer={(
+        <div className="flex justify-end gap-2">
+          <Button onClick={onCancel}>{t('common.cancel', '取消')}</Button>
+          <WorkflowPermission operation={permissionOperation} area={permissionArea} instancePermissions={mode === 'edit' ? workflow?.permission : undefined}>
+            <Button type="primary" loading={confirmLoading} onClick={submit}>{mode === 'copy' ? t('workflowOrchestration.action.confirmDuplicate', '确认复制') : t('common.confirm', '确定')}</Button>
+          </WorkflowPermission>
+        </div>
+      )}
     >
       {marketCopy ? <p className="mb-3 text-sm text-[var(--color-text-3)]">{t('workflowOrchestration.workflow.marketDuplicateHint', '复制后出现在「流程」里，状态是纯草稿，不会发布，也不会改动这条内置流程。')}</p> : null}
       <Form form={form} layout="vertical" requiredMark>

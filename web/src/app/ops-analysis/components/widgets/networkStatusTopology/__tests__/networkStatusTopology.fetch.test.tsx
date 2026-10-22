@@ -199,6 +199,7 @@ vi.mock('../statusTopologyGraph', () => ({
   STATUS_TOPOLOGY_NODE_SHAPE: 'topo-network-status-device-test',
   STATUS_TOPOLOGY_PALETTE_DARK: {},
   STATUS_TOPOLOGY_PALETTE_LIGHT: {},
+  STATUS_TOPOLOGY_PALETTE_SYSTEM: {},
   STATUS_TOPOLOGY_VISUAL: {},
   isStatusTopologyIconHoverTarget: () => true,
   isStatusTopologyBadgeTarget: (event: MouseEvent) =>

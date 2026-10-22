@@ -1,8 +1,8 @@
 import time
 from typing import Any
 
-from apps.core.logger import celery_logger as logger
 from apps.core.logger import log_logger
+from apps.core.logger import safe_exception_info
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.web import WebConstants
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
@@ -152,6 +152,31 @@ class LogAlertLifecycleNotifier:
 
         return True, ""
 
+    def _log_lifecycle_failure(
+        self,
+        *,
+        external_id,
+        action,
+        attempt,
+        max_attempts,
+        error_type,
+        exc=None,
+    ):
+        final = attempt >= max_attempts
+        log = log_logger.error if final else log_logger.warning
+        kwargs = {}
+        if final and exc is not None:
+            kwargs["exc_info"] = safe_exception_info(exc)
+        log(
+            "event=lifecycle_notify_failed policy_id=%s alert_id=%s action=%s attempt=%s failed_stage=send error_type=%s",
+            self.policy.id,
+            external_id,
+            action,
+            attempt,
+            error_type,
+            **kwargs,
+        )
+
     def _notify(self, event_payload: dict[str, Any], max_attempts=None) -> tuple[bool, dict]:
         channel = self._get_channel()
         if not self._is_alert_center_channel(channel):
@@ -180,7 +205,7 @@ class LogAlertLifecycleNotifier:
                 )
                 success, error_message = self._parse_channel_result(send_result)
                 if success:
-                    logger.info(
+                    log_logger.info(
                         "日志告警生命周期推送成功 policy=%s alert=%s action=%s attempt=%s/%s",
                         self.policy.id,
                         external_id,
@@ -194,26 +219,22 @@ class LogAlertLifecycleNotifier:
                     "result": False,
                     "message": error_message,
                 }
-                logger.error(
-                    "日志告警生命周期推送失败 policy=%s alert=%s action=%s attempt=%s/%s error=%s",
-                    self.policy.id,
-                    external_id,
-                    action,
-                    attempt,
-                    max_attempts,
-                    error_message,
+                self._log_lifecycle_failure(
+                    external_id=external_id,
+                    action=action,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    error_type="channel_result",
                 )
             except Exception as exc:
                 last_result = {"result": False, "message": str(exc)}
-                logger.error(
-                    "日志告警生命周期推送异常 policy=%s alert=%s action=%s attempt=%s/%s error=%s",
-                    self.policy.id,
-                    external_id,
-                    action,
-                    attempt,
-                    max_attempts,
-                    exc,
-                    exc_info=True,
+                self._log_lifecycle_failure(
+                    external_id=external_id,
+                    action=action,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    error_type=type(exc).__name__,
+                    exc=exc,
                 )
 
             if attempt < max_attempts:

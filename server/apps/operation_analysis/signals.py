@@ -5,6 +5,7 @@ from apps.operation_analysis.models.models import Architecture, Dashboard, Netwo
 from apps.operation_analysis.models.share_models import DashboardShareLink
 from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 from apps.operation_analysis.services.canvas_draft.service import delete_for_resource
+from apps.operation_analysis.services.homepage import clear_homepage_pointers
 
 _CANVAS_MODELS = (Dashboard, Topology, Architecture, Screen, Report, NetworkTopology)
 _MODEL_TO_RESOURCE_TYPE = {meta.model: object_type for object_type, meta in CANVAS_TYPE_REGISTRY.items()}
@@ -71,5 +72,16 @@ def _register_canvas_share_signals():
             dispatch_uid=f"canvas_share_invalidate_move_{resource_type}",
         )
 
+
+def _clear_homepage_on_dashboard_delete(sender, instance, **kwargs):
+    clear_homepage_pointers(instance.pk)
+
+
+post_delete.connect(
+    _clear_homepage_on_dashboard_delete,
+    sender=Dashboard,
+    weak=False,
+    dispatch_uid="ops_homepage_clear_on_dashboard_delete",
+)
 
 _register_canvas_share_signals()

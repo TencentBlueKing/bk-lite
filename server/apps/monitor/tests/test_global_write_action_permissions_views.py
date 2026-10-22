@@ -49,6 +49,7 @@ WRITE_ACTION_CASES = [
     pytest.param(PolicyGroupViewSet, "post", "join", {}, "strategy_list-Edit", id="policy-group-join"),
     pytest.param(PolicyGroupViewSet, "post", "leave", {}, "strategy_list-Edit", id="policy-group-leave"),
     pytest.param(PolicyGroupViewSet, "post", "update_rule", {}, "strategy_list-Edit", id="policy-group-update-rule"),
+    pytest.param(PolicyGroupViewSet, "post", "update_detection", {}, "strategy_list-Edit", id="policy-group-update-detection"),
     pytest.param(PolicyGroupViewSet, "post", "copy_group", {}, "strategy_list-Edit", id="policy-group-copy"),
     pytest.param(PolicyGroupViewSet, "post", "set_default", {}, "strategy_list-Edit", id="policy-group-default"),
     pytest.param(PolicyGroupViewSet, "post", "delete_group", {}, "strategy_list-Edit", id="policy-group-delete"),

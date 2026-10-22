@@ -174,3 +174,47 @@ def test_filebeat_at_fields_compile_to_quoted_vrl_paths():
 
     assert 'exists(."@metadata".beat)' in content
     assert '.beat_name = ."@metadata".beat' in content
+
+
+@pytest.mark.unit
+def test_unmapped_regex_assigns_each_named_group():
+    """捕获组名在编译期已知，直接赋值才能通过 Vector 0.48 的拓扑加载。"""
+    rule = SimpleNamespace(
+        id=1,
+        collect_instance_id="docker-local",
+        extractor_type="regex",
+        source_field="message",
+        target_field=None,
+        condition={},
+        config={"pattern": r"\[ERR\].*? - (?:lid|cid):\d+ - (?P<command>.+)", "group_mapping": {}},
+        delete_source=False,
+        sort_order=0,
+    )
+
+    content = compile_system_vector_config([rule])
+
+    assert 'get(_parsed, ["command"])' in content
+    assert ".command = _value" in content
+    assert "merge(" not in content
+
+
+@pytest.mark.unit
+def test_dynamic_root_merge_is_a_fallible_assignment():
+    """键值与 JSON 的输出名依赖事件内容，合并必须是可失败赋值，不能裸写 `. = merge(...)`。"""
+    rule = SimpleNamespace(
+        id=1,
+        collect_instance_id="docker-local",
+        extractor_type="json",
+        source_field="payload",
+        target_field=None,
+        condition={},
+        config={},
+        delete_source=False,
+        sort_order=0,
+    )
+
+    content = compile_system_vector_config([rule])
+
+    assert "., _merge_err = merge(., _parsed)" in content
+    assert ". = merge(., _parsed)" not in content
+    assert "if _merge_err == null" in content

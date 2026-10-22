@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useMemo, RefObject } from 'react';
-import { Select, Spin, Alert } from 'antd';
+import { Select, Spin, Alert, Tabs } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import ChartEmptyState from '@/components/chart-empty-state';
 import useMonitorApi from '@/app/monitor/api';
@@ -8,6 +8,7 @@ import useEventApi from '@/app/monitor/api/event';
 import LineChart from '@/app/monitor/components/charts/lineChart';
 import {
   ChartData,
+  ChartDataItem,
   MetricItem,
   ThresholdField,
   FilterItem,
@@ -122,6 +123,19 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   const [previewDisplayUnit, setPreviewDisplayUnit] = useState('');
   const [previewError, setPreviewError] = useState<string>('');
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
+  const [previewCards, setPreviewCards] = useState<
+    Array<{
+      ref?: string;
+      metric_name?: string;
+      chart_unit?: string;
+      threshold?: ThresholdField[];
+      data?: { unit?: string; data?: { result?: unknown[] } };
+    }>
+  >([]);
+  const [activePreviewRef, setActivePreviewRef] = useState('');
+  const [activePreviewThreshold, setActivePreviewThreshold] = useState<
+    ThresholdField[] | null
+  >(null);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [instances, setInstances] = useState<InstanceItem[]>([]);
   const [allInstances, setAllInstances] = useState<TableDataItem[]>([]);
@@ -197,15 +211,21 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   // 判断是否可以查询
   const canQuery = useMemo(() => {
     const previewGroupBy =
-      metricExpressionMode === 'formula'
-        ? sanitizeGroupBy(metricRows[0]?.groupBy || [])
-        : sanitizeGroupBy(groupBy);
+      metricExpressionMode === 'metric'
+        ? sanitizeGroupBy(groupBy)
+        : sanitizeGroupBy(metricRows[0]?.groupBy || []);
     const hasMetricExpression =
-      metricExpressionMode === 'formula' ? metricRows.length > 0 : !!metric;
+      metricExpressionMode === 'formula' || metricExpressionMode === 'multi'
+        ? metricRows.length > 0
+        : !!metric;
+    const hasAlgorithm =
+      metricExpressionMode === 'multi'
+        ? metricRows.every((row) => row.algorithm)
+        : !!algorithm;
     return !!(
       monitorObjId &&
       hasMetricExpression &&
-      algorithm &&
+      hasAlgorithm &&
       previewGroupBy.length > 0 &&
       selectedInstance &&
       instances.length > 0
@@ -361,8 +381,21 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       if (currentRequestId !== requestIdRef.current) {
         return;
       }
-      const vmData = responseData?.data || {};
+      const cards = Array.isArray(responseData?.conditions)
+        ? responseData.conditions
+        : [];
+      setPreviewCards(cards);
+      const activeCard =
+        cards.find((item: { ref?: string }) => item.ref === activePreviewRef) ||
+        cards[0];
+      const vmData = activeCard?.data || responseData?.data || {};
       const data = vmData.data?.result || [];
+      setActivePreviewThreshold(activeCard?.threshold || null);
+      if (activeCard?.ref) {
+        setActivePreviewRef(activeCard.ref);
+      } else {
+        setActivePreviewRef('');
+      }
       const partitioned =
         compareMode === COMPARE_MODE_TIMELEFT
           ? partitionTimeleftPreviewSeries(
@@ -383,7 +416,11 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       }
       setPreviewWarnings(warnings);
       setPreviewChartUnit(
-        responseData?.chart_unit != null ? responseData.chart_unit : null
+        activeCard?.chart_unit != null
+          ? activeCard.chart_unit
+          : responseData?.chart_unit != null
+            ? responseData.chart_unit
+            : null
       );
       setPreviewDisplayUnit(
         typeof vmData.unit === 'string' ? vmData.unit : ''
@@ -489,19 +526,31 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   // 如果不满足显示条件，返回 null
   if (
     instances.length === 0 ||
-    (metricExpressionMode !== 'formula' && !metric)
+    (metricExpressionMode !== 'formula' &&
+      metricExpressionMode !== 'multi' &&
+      !metric)
   ) {
     return null;
   }
 
   // 过滤掉空值的阈值
-  const validThreshold = threshold.filter(
+  const validThreshold = (activePreviewThreshold || threshold).filter(
     (item) => item.value !== null && item.value !== undefined
   );
   const effectiveChartUnit =
     previewChartUnit != null
       ? previewChartUnit || null
       : resolvePreviewChartUnit(null, thresholdUnit, calculationUnit);
+  const activePreviewCard =
+    previewCards.find(
+      (card) => card.ref === (activePreviewRef || previewCards[0]?.ref)
+    ) || previewCards[0];
+  const hasPreviewTabs = previewCards.length > 1;
+  const previewTitle = hasPreviewTabs
+    ? activePreviewCard?.metric_name || activePreviewCard?.ref || ''
+    : metricExpressionMode === 'formula'
+      ? resultName || currentMetric?.display_name || metric
+      : currentMetric?.display_name || metric;
 
   return (
     <div
@@ -539,14 +588,60 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
           </Select>
         </div>
       </div>
-      {/* 指标名称 */}
+      {hasPreviewTabs ? (
+        <Tabs
+          className="mb-1"
+          size="small"
+          activeKey={activePreviewRef || previewCards[0]?.ref}
+          items={previewCards.map((card) => ({
+            key: card.ref || '',
+            label: (
+              <span
+                className="inline-block min-w-6 px-2 text-center"
+                title={card.metric_name || undefined}
+              >
+                {card.ref || card.metric_name || '--'}
+              </span>
+            )
+          }))}
+          onChange={(ref) => {
+            const card = previewCards.find((item) => item.ref === ref);
+            setActivePreviewRef(ref);
+            setActivePreviewThreshold(card?.threshold || []);
+            setPreviewChartUnit(card?.chart_unit || null);
+            setPreviewDisplayUnit(
+              typeof card?.data?.unit === 'string' ? card.data.unit : ''
+            );
+            const selectedInst = instances.find(
+              (item) => item.instance_id === selectedInstance
+            );
+            const list = selectedInst
+              ? [
+                {
+                  instance_id_values: selectedInst.instance_id_values,
+                  instance_name: selectedInst.instance_name,
+                  instance_id: selectedInst.instance_id,
+                  instance_id_keys: currentMetric?.instance_id_keys || [],
+                  dimensions: currentMetric?.dimensions || [],
+                  title: card?.metric_name || '--',
+                  showInstName: true
+                }
+              ]
+              : [];
+            setChartData(
+              renderChart(
+                (card?.data?.data?.result || []) as ChartDataItem[],
+                list
+              )
+            );
+          }}
+        />
+      ) : null}
       {currentMetric && (
-        <div className="text-[12px] text-[var(--color-text-2)] mb-2">
-          {metricExpressionMode === 'formula'
-            ? resultName || currentMetric.display_name || metric
-            : currentMetric.display_name || metric}
+        <div className="mb-2 text-[12px] text-[var(--color-text-2)]">
+          {previewTitle}
           {previewDisplayUnit ? (
-            <span className="text-[var(--color-text-3)] ml-1">
+            <span className="ml-1 text-[var(--color-text-3)]">
               （{previewDisplayUnit}）
             </span>
           ) : null}

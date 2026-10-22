@@ -2,6 +2,7 @@ import React, { useEffect, useCallback, useMemo } from 'react';
 import {
   Form,
   Input,
+  Radio,
   Select,
   Tooltip,
   InputNumber,
@@ -21,6 +22,7 @@ import {
   useGroupMethodList
 } from '@/app/monitor/hooks/event';
 import { COMPARISON_METHOD, SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
+import { STRATEGY_HINT_TEXT_CLASS } from './alertDurationFields';
 import { useConditionList } from '@/app/monitor/hooks';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { debounce } from 'lodash';
@@ -29,6 +31,8 @@ import MetricExpressionEditor from './metricExpressionEditor';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
   buildMetricExpressionQueryCondition,
+  ConditionCount,
+  ConditionSource,
   MetricExpressionMode
 } from './formulaExpressionUtils';
 import {
@@ -62,6 +66,8 @@ interface MetricDefinitionFormProps {
   unitList: UnitListItem[];
   onCollectTypeChange: (id: string | number) => void;
   onMetricRowsChange: (rows: MetricExpressionRow[]) => void;
+  onConditionCountChange?: (count: ConditionCount) => void;
+  onSourceChange?: (source: ConditionSource) => void;
   onResultNameChange: (value: string) => void;
   onExpressionChange: (value: string) => void;
   onResultUnitChange: (value: string) => void;
@@ -92,6 +98,8 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   unitList,
   onCollectTypeChange,
   onMetricRowsChange,
+  onConditionCountChange,
+  onSourceChange,
   onResultNameChange,
   onExpressionChange,
   onResultUnitChange,
@@ -234,6 +242,40 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
             </Form.Item>
           ) : (
             <>
+              <Form.Item
+                label={
+                  <span className="w-[100px]">
+                    {t('monitor.events.conditionCount', '条件')}
+                  </span>
+                }
+                className="mb-[16px]"
+              >
+                <Radio.Group
+                  size="small"
+                  optionType="button"
+                  value={metricExpressionMode === 'multi' ? 'multi' : 'single'}
+                  onChange={(event) =>
+                    onConditionCountChange?.(event.target.value as ConditionCount)
+                  }
+                  options={[
+                    {
+                      label: t('monitor.events.conditionCountSingle'),
+                      value: 'single'
+                    },
+                    {
+                      label: t('monitor.events.conditionCountMulti'),
+                      value: 'multi'
+                    }
+                  ]}
+                />
+                <p className={`mb-0 mt-1 ${STRATEGY_HINT_TEXT_CLASS}`}>
+                  {t(
+                    metricExpressionMode === 'multi'
+                      ? 'monitor.events.conditionCountMultiHint'
+                      : 'monitor.events.conditionCountSingleHint'
+                  )}
+                </p>
+              </Form.Item>
               {/* 指标 */}
               <Form.Item<StrategyFields>
                 name="metric"
@@ -253,10 +295,12 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   groupByOptions={groupByOptions}
                   groupMethods={GROUP_METHOD_LIST}
                   conditionMethods={CONDITION_LIST}
+                  algorithmOptions={algorithmOptions}
                   metricsLoading={metricsLoading}
                   groupedUnitOptions={groupedUnitOptions}
                   unitList={unitList}
                   onRowsChange={onMetricRowsChange}
+                  onSourceChange={onSourceChange}
                   onResultNameChange={onResultNameChange}
                   onExpressionChange={onExpressionChange}
                   onResultUnitChange={onResultUnitChange}
@@ -307,7 +351,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
             }
           />
         </Form.Item>
-        <div className="text-[var(--color-text-3)] mt-[10px]">
+        <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
           {t('monitor.events.convergenceCycleTip')}
         </div>
       </Form.Item>
@@ -320,7 +364,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
         }
       >
         {({ getFieldValue }) =>
-          isTrap(getFieldValue) ? null : (
+          isTrap(getFieldValue) || metricExpressionMode === 'multi' ? null : (
             <Form.Item<StrategyFields>
               required
               label={
@@ -426,7 +470,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   ))}
                 </Select>
               </Form.Item>
-              <div className="text-[var(--color-text-3)] mt-[10px]">
+              <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
                 {t('monitor.events.convergenceMethodTip')}
               </div>
             </Form.Item>

@@ -35,6 +35,7 @@
   - `tasks/monitor_policy.py:retry_alert_center_lifecycle_notify_task`（告警中心生命周期通知重试，`monitor_policy.py:100`）—— 由 beat 每 5 分钟触发（`config.py:12-15`）。
   - `tasks/monitor_policy.py:scan_policy_task`（策略扫描评估）—— 不在静态 `config.py` 中，而是按每条策略的 `schedule`（min/hour/day）动态注册为 django-celery-beat 的 `PeriodicTask`（任务名 `scan_policy_task_{policy_id}`），在策略保存时由 `views/monitor_policy.py:380-395` 创建/更新（crontab 由 `format_crontab` 依策略调度生成，`views/monitor_policy.py:340-378`）；仍属周期调度，只是周期随策略而定，非 NATS 触发。
 - 策略扫描服务层 `tasks/services/policy_scan/`：`scanner.py`、`metric_query.py`、`alert_detector.py`、`event_alert_manager.py`、`snapshot_recorder.py`（入口 `MonitorPolicyScan`）。
+- 多指标条件【已实现】：`query_condition.type=multi`，2–5 个条件、组合方式仅全部满足、级别取最低、前置条件只做门槛。判定在 `tasks/utils/policy_calculate_multi.py`，事件形状与 `calculate_alerts` 一致。策略组按 `condition_thresholds` 改各条件阈值。条件条目可不带 `source`（原生指标）；`source: formula` 时该条是条件内公式，操作数在 `operands[]`，结果名称是条目 `metric_name`。契约见 `specs/changes/monitor-policy-multi-metric/spec.md` 与 `specs/changes/monitor-policy-condition-source/spec.md`。
 - `retry_alert_center_lifecycle_notify_task` 关键约束【已实现/已存在】：每次最多取 200 条待重试告警（`monitor_policy.py:110`）；单条最大重试 10 次（`alert_center_retry_count__lt=10`，`monitor_policy.py:109`）；达上限的告警以 ERROR 汇总告警并不再补偿，需人工介入（`monitor_policy.py:149-154`）。
 - 管理命令【已实现/已存在】：
   - `management/commands/plugin_init.py:9`：监控插件初始化入口，依次执行插件、策略与默认排序迁移。插件文件逐项解析失败会记录并汇总后跳过该文件；已形成的插件批次采用原子数据库写入，批量写入失败会向上抛出，因而不继续策略和默认排序阶段。
@@ -94,6 +95,10 @@
 
 ## 2026-10-09 Code-ARD 校准
 - `[monitor#20261009-001]` 采集配置可绑定凭据仓库。`CollectConfig.vault_*` 只存凭据 ID、分支、绑定人、名称快照和同步状态。UI 下发 `credential_binding`。编辑请求带 `credential`。NATS `monitor_count_credential_refs` 与 `monitor_refresh_credential_refs` 已注册。重下发与每 10 分钟对账按秘密版本差补齐。手填 env 与手填探测敏感键不变。
+
+## 2026-10-20 Code-ARD 校准
+- `[monitor#20261020-001]` 告警策略增加多指标条件 `query_condition.type=multi`。模式由页面显式选择，不再按指标行数推断公式。证据见 `specs/changes/monitor-policy-multi-metric/verification.md`。
+- `[monitor#20261021-001]` 策略「定义指标」改为单条件 / 多条件，条件卡内可选原生指标或计算指标。多条件计算条目使用 `source: formula`，不新增查询类型。证据见 `specs/changes/monitor-policy-condition-source/verification.md`。
 
 ## 2026-08-20 Code-ARD 校准
 - `[monitor#20260820-001]` 新增主机看板 NATS：`get_host_instance_list`、`get_host_metric_range`、`get_host_resource_snapshot`；`get_host_resource_top` 增加可选 `instance_ids` 收窄。未选主机的趋势/快照不退化为全量。权限与现有监控实例可见范围一致，fail-closed。
