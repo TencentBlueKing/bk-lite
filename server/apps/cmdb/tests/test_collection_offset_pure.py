@@ -177,6 +177,19 @@ def test_hundred_million_minute_cycle_returns_opposite_midpoint(monkeypatch):
     assert chosen.offset_minutes == (existing_offset + period // 2) % period
 
 
+def test_distinct_long_divisors_match_exhaustive_without_full_phase_scan(monkeypatch):
+    existing = [
+        CollectionSchedule(1, 15000, 20, 100, 5),
+        CollectionSchedule(3, 12000, 20, 50, 5),
+    ]
+    seen = _track_phase_ranges(monkeypatch)
+    for period in (20000, 40000):
+        seen.clear()
+        chosen = assign_offset(task_id=2, cycle_minutes=period, target_count=20, existing=existing)
+        assert all(stop <= 4096 for stop in seen), seen
+        assert chosen.offset_minutes == _exhaustive_best_offset(2, period, existing)
+
+
 def test_phase_period_up_to_4096_keeps_full_enumeration(monkeypatch):
     seen = _track_phase_ranges(monkeypatch)
     existing = [CollectionSchedule(1, 4096, 20, 10, 5)]

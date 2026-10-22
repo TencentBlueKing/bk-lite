@@ -113,14 +113,32 @@ def _overlap_offsets(previous: int, new_tail: int, old_tail: int, common: int) -
 
 
 def _large_phase_residues(pairs, phase_period: int, preferred: int | None) -> list[int]:
-    """超长相位的候选：各公约数圆周上的弧中点、重叠窗口和首选偏移。"""
+    """超长相位的候选：各公约数圆周上的弧中点、重叠窗口和首选偏移。
+
+    弧中点和重叠窗口按该公约数平移到整个 phase_period。公约数 1 的间距是常数，不展开。
+    平移结果是评分循环的 residue，不是最终分钟偏移。评分循环再换回
+    offset = (seed + (residue - seed) % phase_period) % cycle；
+    phase_period 等于周期时 residue 就是 offset。
+    """
     residues = set()
     occupied: dict[int, set[int]] = {}
+    local_points: dict[int, set[int]] = {}
     for (common, _repeats, previous, new_tail, old_tail, _constant), _count in pairs.items():
         occupied.setdefault(common, set()).add(previous % common)
-        residues.update(_overlap_offsets(previous, new_tail, old_tail, common))
+        local_points.setdefault(common, set()).update(
+            _overlap_offsets(previous, new_tail, old_tail, common)
+        )
     for common, positions in occupied.items():
-        residues.update(_circular_midpoints(positions, common))
+        local_points.setdefault(common, set()).update(_circular_midpoints(positions, common))
+    for common, points in local_points.items():
+        for point in points:
+            if common <= 1:
+                residues.add(point % phase_period)
+                continue
+            position = point % common
+            while position < phase_period:
+                residues.add(position)
+                position += common
     if preferred is not None:
         residues.add(preferred % phase_period)
     if not residues:
@@ -157,7 +175,8 @@ def assign_offset(
         # 同周期/相位/忙时的通道合并计数；大量存量 offset=0 时避免重复评分。
         pairs = Counter(pairs)
         # 评分只依赖 offset % gcd。相位不超过 4096 时逐分钟枚举，保持原结果。
-        # 更长相位只评弧中点、重叠窗口和首选偏移，评分次数不再随分钟数增长。
+        # 更长相位只评各公约数平移到整个相位后的弧中点、重叠窗口和首选偏移。
+        # 公约数 1 不展开。评分次数不随分钟数增长，比较顺序不变。
         phase_period = math.lcm(*(pair[0] for pair in pairs))
         seed = int.from_bytes(hashlib.sha256(f"{task_id}:{channel}".encode()).digest()[:8], "big") % cycle
         best = None
