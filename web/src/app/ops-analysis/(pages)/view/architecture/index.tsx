@@ -1059,7 +1059,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           }}
         >
           {loading && (
-            <div className="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-[color-mix(in_srgb,var(--color-bg-1)_80%,transparent)]">
               <Spin size="large" />
             </div>
           )}

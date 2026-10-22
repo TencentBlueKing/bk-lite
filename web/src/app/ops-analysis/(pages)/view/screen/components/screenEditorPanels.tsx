@@ -321,11 +321,20 @@ const CompactGeometryGrid: React.FC<{
 const PaletteThumb: React.FC<{
   label: string;
   heightClass?: string;
+  stagePreviewBackground?: string;
   dragPayload?: ScreenChromeDragPayload;
   onDragEnd?: () => void;
   onClick: () => void;
   children: React.ReactNode;
-}> = ({ label, heightClass = 'h-10', dragPayload, onDragEnd, onClick, children }) => {
+}> = ({
+  label,
+  heightClass = 'h-10',
+  stagePreviewBackground = 'var(--screen-stage-bg, #071422)',
+  dragPayload,
+  onDragEnd,
+  onClick,
+  children,
+}) => {
   const draggedRef = useRef(false);
   return (
     <button
@@ -353,7 +362,7 @@ const PaletteThumb: React.FC<{
         style={{
           ...palettePreviewStyle,
           isolation: 'isolate',
-          backgroundColor: '#071422',
+          backgroundColor: stagePreviewBackground,
         }}
       >
         {children}
@@ -399,6 +408,7 @@ interface ScreenElementPaletteProps {
   onOpenChartSelector: () => void;
   onOpenItemMenu: (itemId: string, point: { x: number; y: number }) => void;
   onReorderItem: (itemId: string, toIndex: number) => void;
+  stagePreviewBackground?: string;
 }
 
 export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
@@ -413,6 +423,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
   onOpenChartSelector,
   onOpenItemMenu,
   onReorderItem,
+  stagePreviewBackground,
 }) => {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLElement>(null);
@@ -496,6 +507,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
       return (
         <div className="grid grid-cols-2 gap-2">
           <PaletteThumb
+            stagePreviewBackground={stagePreviewBackground}
             heightClass="h-16"
             label={t('opsAnalysis.screen.elementText')}
             dragPayload={{ kind: 'text' }}
@@ -515,6 +527,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
             </div>
           </PaletteThumb>
           <PaletteThumb
+            stagePreviewBackground={stagePreviewBackground}
             heightClass="h-16"
             label={t('opsAnalysis.screen.elementClock')}
             dragPayload={{ kind: 'clock' }}
@@ -538,6 +551,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
         <div className="grid grid-cols-2 gap-2">
           {TITLE_FRAME_PRESETS.map((preset) => (
             <PaletteThumb
+            stagePreviewBackground={stagePreviewBackground}
               key={preset}
               heightClass="h-20"
               label={t(`opsAnalysis.screen.titleFrame.${preset}`)}
@@ -562,6 +576,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
         <div className="grid grid-cols-2 gap-2">
           {SCREEN_PANEL_FRAME_PRESETS.map((preset) => (
             <PaletteThumb
+            stagePreviewBackground={stagePreviewBackground}
               key={preset}
               heightClass="h-16"
               label={t(`opsAnalysis.screen.panelFrame.${preset}`)}
@@ -580,6 +595,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
         <div className="grid grid-cols-2 gap-2">
           {SCREEN_DIVIDER_PRESETS.map((preset) => (
             <PaletteThumb
+            stagePreviewBackground={stagePreviewBackground}
               key={preset}
               heightClass="h-10"
               label={t(`opsAnalysis.screen.divider.${preset}`)}
@@ -601,6 +617,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
         <div className="grid grid-cols-2 gap-2">
           {SCREEN_SHAPE_KINDS.map((shape) => (
             <PaletteThumb
+            stagePreviewBackground={stagePreviewBackground}
               key={shape}
               heightClass="h-16"
               label={t(`opsAnalysis.screen.shape.${shape}`)}
@@ -1606,6 +1623,9 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
   onFieldEditEnd,
 }) => {
   const { t } = useTranslation();
+  const stagePreviewBackground = String(
+    getScreenTheme(viewport.theme).variables['--screen-stage-bg'],
+  );
   const [changingTitlePreset, setChangingTitlePreset] = useState(false);
   const [changingDecoPreset, setChangingDecoPreset] = useState(false);
   const sampleClockDate = useMemo(() => new Date(), []);
@@ -1916,7 +1936,10 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
                           : 'border-(--color-border-1) bg-(--color-bg-1) hover:border-(--color-border-2)'
                       }`}
                     >
-                      <div className="h-10 w-full overflow-hidden rounded-[2px] bg-[#071422]">
+                      <div
+                        className="h-10 w-full overflow-hidden rounded-[2px]"
+                        style={{ backgroundColor: stagePreviewBackground }}
+                      >
                         <DecorationSkin item={{ decorationType: 'panelFrame', preset }} preview />
                       </div>
                       <span className={`mt-1 truncate text-[10px] ${isCur ? 'font-medium text-(--color-primary)' : 'text-(--color-text-2)'}`}>
@@ -1947,7 +1970,10 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
                           : 'border-(--color-border-1) bg-(--color-bg-1) hover:border-(--color-border-2)'
                       }`}
                     >
-                      <div className="flex h-8 w-full items-center justify-center overflow-hidden rounded-[2px] bg-[#071422] px-1">
+                      <div
+                        className="flex h-8 w-full items-center justify-center overflow-hidden rounded-[2px] px-1"
+                        style={{ backgroundColor: stagePreviewBackground }}
+                      >
                         <DecorationSkin item={{ decorationType: 'divider', preset }} preview />
                       </div>
                       <span className={`mt-1 truncate text-[10px] ${isCur ? 'font-medium text-(--color-primary)' : 'text-(--color-text-2)'}`}>

@@ -98,6 +98,38 @@ describe('screen edit history', () => {
     expect(removed.inspector.dataConfigOpen).toBe(false);
   });
 
+  it('keeps the opposite edge fixed when a top or left resize is committed', () => {
+    const session = createScreenEditSession(documentWith('标题', 10, 100));
+    const fromTop = screenViewSetsAfterResizeStop(
+      session.document.viewSets,
+      'title',
+      { w: 100, h: 48 },
+      { x: 10, y: 12 },
+    );
+    expect(fromTop.items[0]).toMatchObject({ x: 10, y: 12, w: 100, h: 48 });
+    expect((fromTop.items[0]?.y ?? 0) + (fromTop.items[0]?.h ?? 0)).toBe(60);
+
+    const fromLeft = screenViewSetsAfterResizeStop(
+      session.document.viewSets,
+      'title',
+      { w: 106, h: 40 },
+      { x: 4, y: 20 },
+    );
+    expect(fromLeft.items[0]).toMatchObject({ x: 4, y: 20, w: 106, h: 40 });
+    expect((fromLeft.items[0]?.x ?? 0) + (fromLeft.items[0]?.w ?? 0)).toBe(110);
+
+    const committed = commitScreenEdit(session, {
+      document: { ...session.document, viewSets: fromTop },
+      itemId: 'title',
+    });
+    expect(undoScreenEdit(committed).document.viewSets.items[0]).toMatchObject({
+      x: 10,
+      y: 20,
+      w: 100,
+      h: 40,
+    });
+  });
+
   it('restores both size and position with one undo after a resize stop', () => {
     const session = createScreenEditSession(documentWith('标题', 10, 100));
     const placed = screenViewSetsAfterResizeStop(

@@ -97,7 +97,7 @@ export const SingleValueSettingsSection: React.FC<
           <span>
             {t('dashboard.compareLabel')}
             <Tooltip title={t('dashboard.comparePreviousPeriodTip')}>
-              <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
+              <QuestionCircleOutlined className="ml-1 cursor-help text-[var(--color-text-4)]" />
             </Tooltip>
           </span>
         }

@@ -64,7 +64,7 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
                 </Tag>
               )}
             </h2>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-[var(--color-text-3)]">
               {selectedArchitecture.desc || '--'}
             </p>
           </div>

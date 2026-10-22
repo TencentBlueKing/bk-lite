@@ -14,7 +14,6 @@ import {
   InboxOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  ExclamationCircleFilled,
 } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -288,26 +287,22 @@ const OpsAnalysisImportModal: React.FC<OpsAnalysisImportModalProps> = ({
             )}
 
             {filteredWarnings.length > 0 && (
-              <div className="mb-4 rounded-lg border border-[#FFD591] bg-[#FFFBE6] px-5 py-4">
-                <div className="flex items-start gap-2">
-                  <ExclamationCircleFilled
-                    className="mt-1 text-base leading-none text-[#FAAD14]"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium leading-6 text-[rgba(0,0,0,0.88)]">
-                      {t('opsAnalysisSidebar.importWarnings')}
-                    </div>
-                    <ul className="mt-1 mb-0 text-sm leading-6 text-[rgba(0,0,0,0.65)]">
-                      {filteredWarnings.map((warning, idx) => (
-                        <li key={idx}>{warning.message}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
+              <Alert
+                className="mb-4"
+                type="warning"
+                showIcon
+                message={t('opsAnalysisSidebar.importWarnings')}
+                description={(
+                  <ul className="mt-1 mb-0 text-sm leading-6 text-[var(--color-text-2)]">
+                    {filteredWarnings.map((warning, idx) => (
+                      <li key={idx}>{warning.message}</li>
+                    ))}
+                  </ul>
+                )}
+              />
             )}
 
-            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-gray-600">
+            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-[var(--color-text-2)]">
               <span>
                 {t('opsAnalysisSidebar.totalObjects')} {precheckData?.counts.total || 0}
               </span>
@@ -434,7 +429,7 @@ const OpsAnalysisImportModal: React.FC<OpsAnalysisImportModalProps> = ({
                   <span className="text-yellow-600">
                     {t('opsAnalysisSidebar.overwrittenCount')} {submitResult.summary.overwritten}
                   </span>
-                  <span className="text-gray-500">
+                  <span className="text-[var(--color-text-3)]">
                     {t('opsAnalysisSidebar.skippedCount')} {submitResult.summary.skipped}
                   </span>
                   <span className="text-red-600">
