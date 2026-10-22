@@ -221,6 +221,13 @@
       "template": "rate(mysql_com_commit{__$labels__}[__$window__]) + rate(mysql_com_rollback{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:06751ab7",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__} or mysql_slave_seconds_behind_source{__$labels__} or mysql_replica_seconds_behind_source{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:069588ce",
       "object_names": [
         "ElasticSearch"
@@ -655,13 +662,6 @@
         "Switch"
       ],
       "template": "max((device_voltage_volts{__$labels__} != 65535) / 1000) by (instance_id) or max(device_voltage_volts{__$labels__}) by (instance_id)"
-    },
-    {
-      "id": "dashboard:v1:163a708b",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__} or mysql_slave_seconds_behind_source{__$labels__})"
     },
     {
       "id": "dashboard:v1:164ec0ca",
@@ -2106,6 +2106,13 @@
       "template": "sum by (instance_id) (rate(vllm:prompt_tokens_total_counter{__$labels__}[5m])) * 60"
     },
     {
+      "id": "dashboard:v1:47b2b657",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__} or mysql_slave_slave_io_running{__$labels__} or mysql_slave_replica_io_running_int{__$labels__} or mysql_slave_replica_io_running{__$labels__} or mysql_replica_io_running_int{__$labels__} or mysql_slave_io_running_int{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:48694644",
       "object_names": [
         "SGLang"
@@ -3116,13 +3123,6 @@
         "IIS"
       ],
       "template": "win_iis_web_service_Current_Connections{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:6caa89c4",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__} or mysql_slave_replica_io_running_int{__$labels__} or mysql_slave_io_running_int{__$labels__})"
     },
     {
       "id": "dashboard:v1:6cb43331",
@@ -4480,6 +4480,13 @@
         "Etcd"
       ],
       "template": "clamp_min(etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__} / clamp_min(etcd_server_quota_backend_bytes_gauge{__$labels__}, 1) * 100, 0)"
+    },
+    {
+      "id": "dashboard:v1:9fc6c2bf",
+      "object_names": [
+        "Mysql"
+      ],
+      "template": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__} or mysql_slave_slave_sql_running{__$labels__} or mysql_slave_replica_sql_running_int{__$labels__} or mysql_slave_replica_sql_running{__$labels__} or mysql_replica_sql_running_int{__$labels__} or mysql_slave_sql_running_int{__$labels__})"
     },
     {
       "id": "dashboard:v1:9fd59461",
@@ -6511,13 +6518,6 @@
         "Website"
       ],
       "template": "count(http_response_result_type{instance_type='web', collect_type='web', __$labels__}) by (instance_id)"
-    },
-    {
-      "id": "dashboard:v1:ed6af45c",
-      "object_names": [
-        "Mysql"
-      ],
-      "template": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__} or mysql_slave_replica_sql_running_int{__$labels__} or mysql_slave_sql_running_int{__$labels__})"
     },
     {
       "id": "dashboard:v1:ed9e1237",

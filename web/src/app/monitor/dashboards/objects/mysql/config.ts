@@ -568,7 +568,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '复制延迟',
     description: '从库相对主库落后的秒数。',
     unit: 'counts',
-    query: 'max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__} or mysql_slave_seconds_behind_source{__$labels__})',
+    query: 'max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__} or mysql_slave_seconds_behind_source{__$labels__} or mysql_replica_seconds_behind_source{__$labels__})',
     color: '#2f6bff'
   },
   {
@@ -576,7 +576,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '复制 IO 线程状态',
     description: '从库复制 IO 线程状态，通常 1 为运行。',
     unit: 'counts',
-    query: 'max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__} or mysql_slave_replica_io_running_int{__$labels__} or mysql_slave_io_running_int{__$labels__})',
+    query: 'max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__} or mysql_slave_slave_io_running{__$labels__} or mysql_slave_replica_io_running_int{__$labels__} or mysql_slave_replica_io_running{__$labels__} or mysql_replica_io_running_int{__$labels__} or mysql_slave_io_running_int{__$labels__})',
     color: '#27c274'
   },
   {
@@ -584,7 +584,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '复制 SQL 线程状态',
     description: '从库复制 SQL 线程状态，通常 1 为运行。',
     unit: 'counts',
-    query: 'max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__} or mysql_slave_replica_sql_running_int{__$labels__} or mysql_slave_sql_running_int{__$labels__})',
+    query: 'max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__} or mysql_slave_slave_sql_running{__$labels__} or mysql_slave_replica_sql_running_int{__$labels__} or mysql_slave_replica_sql_running{__$labels__} or mysql_replica_sql_running_int{__$labels__} or mysql_slave_sql_running_int{__$labels__})',
     color: '#27c274'
   },
   {

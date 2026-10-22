@@ -15,7 +15,10 @@ export const MYSQL_HEADER_METRICS = [
   'mysql_variables_max_connections',
   'mysql_slave_seconds_behind_master',
   'mysql_slave_io_running',
-  'mysql_slave_sql_running'
+  'mysql_slave_sql_running',
+  'mysql_slave_relay_log_pos',
+  'mysql_slave_relay_log_space',
+  'mysql_replication_source_log_pos'
 ] as const;
 
 export const MYSQL_ROLE_METRICS = [
@@ -32,7 +35,10 @@ export const MYSQL_HEALTH_METRICS = [
   'mysql_variables_max_connections',
   'mysql_queries_rate',
   'mysql_slow_queries_rate',
-  ...MYSQL_ROLE_METRICS
+  ...MYSQL_ROLE_METRICS,
+  'mysql_slave_relay_log_pos',
+  'mysql_slave_relay_log_space',
+  'mysql_replication_source_log_pos'
 ] as const;
 
 export const MYSQL_FOCUS_METRICS = [

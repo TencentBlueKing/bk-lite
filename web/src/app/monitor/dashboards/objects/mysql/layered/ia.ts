@@ -85,10 +85,27 @@ export const waitColumns = (rows: readonly MysqlWaitEventRow[]): WaitColumn[] =>
   return columns;
 };
 
-/** 有行才算采集。空数组是无采，不补占位行。 */
-export const hasStatementCollection = (rows: readonly MysqlStatementRow[]) => rows.length > 0;
+export type MysqlDigestLoad = 'collected' | 'not_collected' | 'query_failed';
 
-export const hasWaitCollection = (rows: readonly MysqlWaitEventRow[]) => rows.length > 0;
+/** 有行才是已采集。查询失败不是未采集，空成功才是未开/无点。 */
+export const readMysqlDigestLoad = (
+  rowsLength: number,
+  series: Array<{ loadState?: string } | undefined>
+): MysqlDigestLoad => {
+  if (rowsLength > 0) return 'collected';
+  if (series.some((item) => item?.loadState === 'error')) return 'query_failed';
+  return 'not_collected';
+};
+
+export const hasStatementCollection = (
+  rows: readonly MysqlStatementRow[],
+  series: Array<{ loadState?: string } | undefined> = []
+) => readMysqlDigestLoad(rows.length, series) !== 'not_collected';
+
+export const hasWaitCollection = (
+  rows: readonly MysqlWaitEventRow[],
+  series: Array<{ loadState?: string } | undefined> = []
+) => readMysqlDigestLoad(rows.length, series) !== 'not_collected';
 
 const DIGEST_ROW_LIMIT = 20;
 
@@ -258,9 +275,7 @@ const waitEventName = (labels: Record<string, string>) => (
 export const digestQueryFailed = (
   rowsLength: number,
   series: Array<{ loadState?: string; viewData?: unknown[] } | undefined>
-) => (
-  rowsLength === 0 && series.some((item) => item?.loadState === 'error')
-);
+) => readMysqlDigestLoad(rowsLength, series) === 'query_failed';
 
 /** 把等待次数与耗时按事件名对齐成表行。相关语句只认同 event_name 下真实的 digest。 */
 export const readMysqlWaitRows = (
@@ -1080,7 +1095,7 @@ const readonlyOn = (metricMap: Record<string, MetricSeries | undefined>) => {
   return (readOnly != null && readOnly > 0) || (superReadOnly != null && superReadOnly > 0);
 };
 
-/** 专业盘实例摘要。Binlog 开关只出小标签；无从库线程时不伪造从库。 */
+/** 专业盘实例摘要。Binlog 开关只出小标签；位点/Relay 也认从库，避免 secondary 被标成主库。 */
 export const readMysqlProHeader = (
   metricMap: Record<string, MetricSeries | undefined>
 ): MysqlProHeader => {
@@ -1090,11 +1105,12 @@ export const readMysqlProHeader = (
   const sql = latestNumber(metricMap.mysql_slave_sql_running);
   const delay = latestNumber(metricMap.mysql_slave_seconds_behind_master);
   const logBin = latestNumber(metricMap.mysql_variables_log_bin);
+  const replica = io != null || sql != null || delay != null || replicaFollowPresent(metricMap);
   const pill: MysqlProHeader['pill'] = gr.length
     ? 'GR'
     : galera.length
       ? 'Galera'
-      : (io != null || sql != null || delay != null)
+      : replica
         ? '从库'
         : '主库';
   const aside: MysqlProHeader['aside'] = pill === '主库'
@@ -1240,7 +1256,6 @@ export interface MysqlReplicationCard {
 
 export interface MysqlReplicationExtras {
   error: MysqlReplicationCard | null;
-  logs: MysqlReplicationCard[];
   downstream: MysqlReplicationCard[];
 }
 
@@ -1276,7 +1291,7 @@ const positiveErrno = (value: number | null) => (
 /**
  * 复制签加深。错误号为 0 或不存在时不占卡。
  * 主库下游有采才出；从库视角不渲染主库下游。
- * 位点当前值不在这里铺文案卡，见 readMysqlReplicationSeries。
+ * 位点走趋势卡，不在这里铺文案。
  */
 export const readMysqlReplicationExtras = (
   metricMap: Record<string, MetricSeries | undefined>
@@ -1311,31 +1326,10 @@ export const readMysqlReplicationExtras = (
     };
   }
 
-  const logs: MysqlReplicationCard[] = [];
-  const relayPos = latestNumber(metricMap.mysql_slave_relay_log_pos);
-  const relaySpace = latestNumber(metricMap.mysql_slave_relay_log_space);
-  if (relayPos != null || relaySpace != null) {
-    const parts = [
-      relayPos != null ? `位置 ${formatPosition(relayPos)}` : '',
-      relaySpace != null ? `空间 ${formatBytes(relaySpace)}` : ''
-    ].filter(Boolean);
-    logs.push({ key: 'relay', label: 'Relay 日志', value: parts.join(' · '), tone: 'muted' });
-  }
-  const sourcePos = latestNumber(metricMap.mysql_replication_source_log_pos);
-  const binlogSize = latestNumber(metricMap.mysql_binary_size_bytes);
-  const binlogFiles = latestNumber(metricMap.mysql_binary_files_count);
-  if (sourcePos != null || binlogSize != null || binlogFiles != null) {
-    const parts = [
-      sourcePos != null ? `位置 ${formatPosition(sourcePos)}` : '',
-      binlogSize != null ? `体积 ${formatBytes(binlogSize)}` : '',
-      binlogFiles != null ? `${formatPosition(binlogFiles)} 个文件` : ''
-    ].filter(Boolean);
-    logs.push({ key: 'binlog', label: 'Binlog', value: parts.join(' · '), tone: 'muted' });
-  }
-
   const replicaView = latestNumber(metricMap.mysql_slave_io_running) != null
     || latestNumber(metricMap.mysql_slave_sql_running) != null
-    || latestNumber(metricMap.mysql_slave_seconds_behind_master) != null;
+    || latestNumber(metricMap.mysql_slave_seconds_behind_master) != null
+    || replicaFollowPresent(metricMap);
   const groupView = collectedNamed(
     metricMap,
     (name) => GROUP_REPLICATION.test(name) || GALERA.test(name)
@@ -1364,7 +1358,7 @@ export const readMysqlReplicationExtras = (
     }
   }
 
-  return { error, logs, downstream };
+  return { error, downstream };
 };
 
 export interface MysqlReplicationSeries {
@@ -1480,7 +1474,7 @@ export const readMysqlReplicationGap = (
 
 /**
  * 复制签角标。有内容或角色/加深指标还在加载时不挂。
- * 真单机挂「不支持」；未采与未齐挂「未采集」；主库无下游不挂角标。
+ * 真单机挂「不支持」；未采（含旧 partial）挂「未采集」；主库无下游不挂角标。
  */
 export const readMysqlReplicationTabBadge = (
   metricMap: Record<string, MetricSeries | undefined>,

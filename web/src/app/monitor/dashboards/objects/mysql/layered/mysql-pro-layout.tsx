@@ -25,9 +25,7 @@ import ReplicationPane from './replication-pane';
 import { StatementPane, WaitPane } from './digest-pane';
 import {
   MYSQL_IA_TABS,
-  digestQueryFailed,
-  hasStatementCollection,
-  hasWaitCollection,
+  readMysqlDigestLoad,
   isMysqlIaTab,
   isSlowQueryAlertText,
   mysqlCollectionConfigPath,
@@ -35,6 +33,7 @@ import {
   readMysqlReplicationTabBadge,
   readMysqlStatementRows,
   readMysqlWaitRows,
+  type MysqlDigestLoad,
   type MysqlIaTab,
   type MysqlStatementRow,
   type MysqlWaitEventRow
@@ -89,10 +88,12 @@ export default function MysqlProLayout({
   const [statements, setStatements] = useState<MysqlStatementRow[]>([]);
   const [waits, setWaits] = useState<MysqlWaitEventRow[]>([]);
   const [digestStatus, setDigestStatus] = useState<'loading' | 'ready'>('loading');
-  const [statementsQueryFailed, setStatementsQueryFailed] = useState(false);
-  const [waitsQueryFailed, setWaitsQueryFailed] = useState(false);
-  const statementsCollected = hasStatementCollection(statements);
-  const waitsCollected = hasWaitCollection(waits);
+  const [statementsLoad, setStatementsLoad] = useState<MysqlDigestLoad>('not_collected');
+  const [waitsLoad, setWaitsLoad] = useState<MysqlDigestLoad>('not_collected');
+  const statementsCollected = statementsLoad === 'collected';
+  const waitsCollected = waitsLoad === 'collected';
+  const statementsQueryFailed = statementsLoad === 'query_failed';
+  const waitsQueryFailed = waitsLoad === 'query_failed';
   const replicationBadge = useMemo(
     () => readMysqlReplicationTabBadge(metricMap, pendingMetricNames, instanceName),
     [instanceName, metricMap, pendingMetricNames]
@@ -247,16 +248,16 @@ export default function MysqlProLayout({
     if (!monitorObjectId || !instanceId || !values.length) {
       setStatements([]);
       setWaits([]);
-      setStatementsQueryFailed(false);
-      setWaitsQueryFailed(false);
+      setStatementsLoad('not_collected');
+      setWaitsLoad('not_collected');
       setDigestStatus('ready');
       return undefined;
     }
     let active = true;
     setStatements([]);
     setWaits([]);
-    setStatementsQueryFailed(false);
-    setWaitsQueryFailed(false);
+    setStatementsLoad('not_collected');
+    setWaitsLoad('not_collected');
     setDigestStatus('loading');
     const context = { monitorObjectId: String(monitorObjectId), instanceId };
     const loadOne = (metric: (typeof MYSQL_DIGEST_METRICS)[number]) => getInstanceQuery(buildSearchParams(
@@ -294,12 +295,12 @@ export default function MysqlProLayout({
       );
       setStatements(statementRows);
       setWaits(waitRows);
-      setStatementsQueryFailed(digestQueryFailed(statementRows.length, [
+      setStatementsLoad(readMysqlDigestLoad(statementRows.length, [
         byName.mysql_statement_time,
         byName.mysql_statement_calls,
         byName.mysql_statement_rows_examined
       ]));
-      setWaitsQueryFailed(digestQueryFailed(waitRows.length, [
+      setWaitsLoad(readMysqlDigestLoad(waitRows.length, [
         byName.mysql_wait_event_count,
         byName.mysql_wait_event_time
       ]));
@@ -357,7 +358,7 @@ export default function MysqlProLayout({
           selectedId={waitId}
           onSelect={setWaitId}
           instanceName={instanceName}
-          statementsCollected={statementsCollected}
+          statementsCollected={statementsLoad !== 'not_collected'}
           onOpenCollection={openCollectionConfig}
         />
       );
@@ -414,7 +415,7 @@ export default function MysqlProLayout({
               || (item.key === 'waits' && !waitsCollected && !waitsQueryFailed)
             );
             const replicationMark = item.key === 'replication' ? replicationBadge : null;
-            const collectedGap = replicationMark === 'partial' || replicationMark === 'not_collected';
+            const collectedGap = replicationMark === 'not_collected' || replicationMark === 'partial';
             const dimmed = statementDimmed || collectedGap;
             const badgeKey = statementDimmed
               ? 'notCollected'
