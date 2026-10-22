@@ -65,6 +65,7 @@ export interface AlertShieldListItem {
         week_month: string[];
     };
     is_active: boolean;
+    runtime_status?: string;
 }
 
 export interface AggregationRule {

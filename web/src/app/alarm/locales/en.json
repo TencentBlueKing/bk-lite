@@ -711,6 +711,18 @@
       "editTitle": "Edit Shielding Strategy",
       "addTitle": "Add Shielding Strategy"
     },
+    "shieldDisplay": {
+      "creator": "Creator",
+      "enableStatus": "Enabled",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "runtimeStatus": "Current result",
+      "runtimeDisabled": "Disabled",
+      "runtimeShielding": "Shielding",
+      "runtimeNotStarted": "Not started",
+      "runtimeExpired": "Expired",
+      "runtimeOutside": "Outside window"
+    },
     "correlationRulesMessage": "Explore the correlation between low-level events and aggregate them into high-level events. Here, you can define aggregation rules from 'Event' to 'Alert' to reduce the amount of information that needs to be processed and improve the information value of individual events.",
     "correlationAlertPlaceholder": "Alert to Incident aggregation rules feature is under development, stay tuned...",
     "alertAssignTableName": "Name",

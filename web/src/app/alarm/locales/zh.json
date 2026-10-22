@@ -711,6 +711,18 @@
       "editTitle": "编辑屏蔽策略",
       "addTitle": "新增屏蔽策略"
     },
+    "shieldDisplay": {
+      "creator": "创建人",
+      "enableStatus": "启用状态",
+      "enabled": "已启用",
+      "disabled": "未启用",
+      "runtimeStatus": "当前结果",
+      "runtimeDisabled": "未启用",
+      "runtimeShielding": "屏蔽中",
+      "runtimeNotStarted": "未开始",
+      "runtimeExpired": "已结束",
+      "runtimeOutside": "时段外"
+    },
     "correlationRulesMessage": "挖掘低层次事件的关联性，从而聚合为高层次事件，在这里您可以定义Event到Alert的聚合规则，以减少需要处理的信息量，提高单个事件的信息价值。",
     "correlationAlertPlaceholder": "Alert 到 Incident 的聚合规则功能开发中，敬请期待...",
     "alertAssignTableName": "名称",
