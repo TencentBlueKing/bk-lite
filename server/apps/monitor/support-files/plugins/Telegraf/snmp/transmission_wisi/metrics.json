@@ -24,7 +24,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='transmission', collect_type='snmp_wisi', __$labels__}",
       "display_name": "Chassis Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -46,7 +46,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='transmission', __$labels__}",
+      "query": "device_fan_speed{instance_type='transmission', collect_type='snmp_wisi', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -68,7 +68,7 @@
     {
       "metric_group": "Temperature",
       "name": "psu_temperature_celsius",
-      "query": "psu_temperature_celsius{instance_type='transmission', __$labels__}",
+      "query": "psu_temperature_celsius{instance_type='transmission', collect_type='snmp_wisi', __$labels__}",
       "display_name": "PSU Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Power",
       "name": "psu_current_amps",
-      "query": "psu_current_amps{instance_type='transmission', __$labels__}",
+      "query": "psu_current_amps{instance_type='transmission', collect_type='snmp_wisi', __$labels__}",
       "display_name": "PSU Current",
       "data_type": "Number",
       "unit": "none",
@@ -112,7 +112,7 @@
     {
       "metric_group": "Power",
       "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='transmission', __$labels__}",
+      "query": "device_voltage_volts{instance_type='transmission', collect_type='snmp_wisi', __$labels__}",
       "display_name": "PSU Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -138,7 +138,7 @@
     {
       "metric_group": "Power",
       "name": "psu_rated_power_watts",
-      "query": "psu_rated_power_watts{instance_type='transmission', __$labels__}",
+      "query": "psu_rated_power_watts{instance_type='transmission', collect_type='snmp_wisi', __$labels__}",
       "display_name": "PSU Rated Power",
       "data_type": "Number",
       "unit": "watts",
@@ -160,7 +160,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_wisi', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -178,7 +178,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_wisi', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -196,7 +196,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_wisi', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

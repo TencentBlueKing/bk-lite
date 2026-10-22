@@ -84,6 +84,7 @@
     "execParamsPlaceholder": "Parameters passed when executing the script, same format as terminal execution, e.g.: ./test.sh xxxx xxx xxx",
     "timeout": "Timeout (seconds)",
     "timeoutHint": "Script execution timeout. Will be automatically terminated when exceeded.",
+    "builtinScriptVarsHint": "Filled in at execution: BK_JOB_USER (operator), BK_JOB_USER_NAME (display name), BK_JOB_ID (job id). Use $NAME in Shell and PowerShell, the bare name in Python, and %NAME% in Batch.",
     "executeNow": "Execute Now",
     "scriptContent": "Script Content",
     "processName": "Process Name",

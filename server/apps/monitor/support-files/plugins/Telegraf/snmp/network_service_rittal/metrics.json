@@ -24,7 +24,7 @@
     {
       "metric_group": "Environment",
       "name": "env_temperature_celsius",
-      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', cmcIIIVarUnit=~\"(?i)degree[[:space:]]*C\", cmcIIIVarName=~\"(?i)temp\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
+      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', collect_type='snmp_rittal', cmcIIIVarUnit=~\"(?i)degree[[:space:]]*C\", cmcIIIVarName=~\"(?i)temp\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
       "display_name": "Environment Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -46,7 +46,7 @@
     {
       "metric_group": "Environment",
       "name": "env_humidity_percent",
-      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', cmcIIIVarUnit=~\"(?i)(^%|[[:space:]]*%[[:space:]]*$|percent)\", cmcIIIVarName=~\"(?i)humid\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
+      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', collect_type='snmp_rittal', cmcIIIVarUnit=~\"(?i)(^%|[[:space:]]*%[[:space:]]*$|percent)\", cmcIIIVarName=~\"(?i)humid\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
       "display_name": "Environment Humidity",
       "data_type": "Number",
       "unit": "percent",
@@ -68,7 +68,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_active_power_watts",
-      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', cmcIIIVarUnit=~\"(?i)^[[:space:]]*W[[:space:]]*$\", cmcIIIVarName=~\"(?i)power\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
+      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', collect_type='snmp_rittal', cmcIIIVarUnit=~\"(?i)^[[:space:]]*W[[:space:]]*$\", cmcIIIVarName=~\"(?i)power\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
       "display_name": "PDU Active Power",
       "data_type": "Number",
       "unit": "watts",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_current_amps",
-      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', cmcIIIVarUnit=~\"(?i)^[[:space:]]*A[[:space:]]*$\", cmcIIIVarName=~\"(?i)(current|amp)\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
+      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', collect_type='snmp_rittal', cmcIIIVarUnit=~\"(?i)^[[:space:]]*A[[:space:]]*$\", cmcIIIVarName=~\"(?i)(current|amp)\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
       "display_name": "PDU Current",
       "data_type": "Number",
       "unit": "none",
@@ -112,7 +112,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_rittal', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -130,7 +130,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_rittal', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -148,7 +148,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_rittal', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

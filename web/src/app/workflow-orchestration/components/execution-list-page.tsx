@@ -82,15 +82,17 @@ function ExecutionArtifactDrawer({
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-start gap-1">
                     <EllipsisWithTooltip text={file.filename} className="min-w-0 flex-1 truncate font-medium text-[var(--color-text-1)]" />
-                    <Button
-                      type="text"
-                      size="small"
-                      className="shrink-0"
-                      aria-label={t('workflowOrchestration.execution.artifactDownload', '下载 {filename}', { filename: file.filename })}
-                      icon={<DownloadOutlined />}
-                      loading={downloadingId === file.id}
-                      onClick={() => onDownload(file)}
-                    />
+                    <WorkflowPermission operation="View" area="executions">
+                      <Button
+                        type="text"
+                        size="small"
+                        className="shrink-0"
+                        aria-label={t('workflowOrchestration.execution.artifactDownload', '下载 {filename}', { filename: file.filename })}
+                        icon={<DownloadOutlined />}
+                        loading={downloadingId === file.id}
+                        onClick={() => onDownload(file)}
+                      />
+                    </WorkflowPermission>
                   </div>
                   <div className="text-xs text-[var(--color-text-3)]">{t('workflowOrchestration.execution.artifactGeneratedAt', '生成时间：{time}', { time: file.created_at ? convertToLocalizedTime(file.created_at) : '--' })}</div>
                   <div className="mt-1 text-xs text-[var(--color-text-3)]">{file.expires_at ? artifactValidityText(file.expires_at, t) : '--'}</div>

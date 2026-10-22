@@ -1,10 +1,18 @@
+import logging
 from datetime import datetime, timezone
 
 import pytest
 
+from apps.core.logger import SafeLogException
 from apps.log.models.policy import Alert, Event, Policy, PolicyOrganization
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.system_mgmt.models.channel import Channel
+
+_RESPONSE_BODY_SENTINEL = "SYNTHETIC_RESPONSE_BODY_SENTINEL\nsecond_line"
+_LIFECYCLE_FAILURE_LOG = (
+    "event=lifecycle_notify_failed policy_id=%s alert_id=%s action=%s "
+    "attempt=%s failed_stage=send error_type=%s"
+)
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
@@ -226,3 +234,85 @@ def test_notify_created_retries_exception_without_leaking_payload(alert_center_c
     assert success is True
     assert send.call_count == 2
     sleep.assert_called_once()
+
+
+def _failure_records(caplog):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "log" and record.msg == _LIFECYCLE_FAILURE_LOG
+    ]
+
+
+def _capture_notify_logs(caplog):
+    caplog.set_level(logging.WARNING, logger="log")
+    caplog.set_level(logging.WARNING, logger="celery")
+
+
+def test_channel_failure_log_omits_response_body(alert_center_channel, mocker, caplog):
+    policy = _make_policy(alert_center_channel)
+    alert, event = _make_alert_event(policy)
+    response = {"result": False, "message": _RESPONSE_BODY_SENTINEL}
+    mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value=response,
+    )
+    _capture_notify_logs(caplog)
+
+    success, result = LogAlertLifecycleNotifier(policy).notify_created(event, max_attempts=1)
+
+    assert success is False
+    assert result == response
+    records = _failure_records(caplog)
+    assert len(records) == 1
+    record = records[0]
+    rendered = record.getMessage()
+    formatted = logging.Formatter().format(record)
+    assert record.levelno == logging.ERROR
+    assert record.exc_info is None
+    assert record.args == (policy.id, alert.id, "created", 1, "channel_result")
+    assert "policy" in rendered
+    assert "alert" in rendered
+    assert "action" in rendered
+    assert "failed_stage" in rendered
+    assert "error_type" in rendered
+    assert "SYNTHETIC_RESPONSE_BODY_SENTINEL" not in rendered
+    assert "SYNTHETIC_RESPONSE_BODY_SENTINEL" not in formatted
+    assert "second_line" not in formatted
+    assert "SYNTHETIC_RESPONSE_BODY_SENTINEL" not in caplog.text
+
+
+def test_exception_retry_logs_one_traceback_on_final_attempt(alert_center_channel, mocker, caplog):
+    policy = _make_policy(alert_center_channel)
+    alert, event = _make_alert_event(policy)
+    error = RuntimeError(_RESPONSE_BODY_SENTINEL)
+    send = mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        side_effect=error,
+    )
+    sleep = mocker.patch("apps.log.services.alert_lifecycle_notify.time.sleep")
+    _capture_notify_logs(caplog)
+
+    success, result = LogAlertLifecycleNotifier(policy).notify_created(event, max_attempts=2)
+
+    assert success is False
+    assert result == {"result": False, "message": _RESPONSE_BODY_SENTINEL}
+    assert send.call_count == 2
+    sleep.assert_called_once()
+    records = _failure_records(caplog)
+    assert len(records) == 2
+    retry, final = records
+    assert retry.levelno == logging.WARNING
+    assert retry.exc_info is None
+    assert retry.args == (policy.id, alert.id, "created", 1, "RuntimeError")
+    assert "Traceback" not in logging.Formatter().format(retry)
+    assert final.levelno == logging.ERROR
+    assert final.args == (policy.id, alert.id, "created", 2, "RuntimeError")
+    assert final.exc_info[0] is SafeLogException
+    assert final.exc_info[1].args == ("RuntimeError",)
+    assert final.exc_info[2] is error.__traceback__
+    formatted_logs = "\n".join(logging.Formatter().format(record) for record in caplog.records)
+    assert formatted_logs.count("Traceback (most recent call last)") == 1
+    assert "SYNTHETIC_RESPONSE_BODY_SENTINEL" not in formatted_logs
+    assert "second_line" not in formatted_logs
+    assert "SYNTHETIC_RESPONSE_BODY_SENTINEL" not in caplog.text

@@ -1,6 +1,6 @@
 'use client';
 import React, { useRef } from 'react';
-import { Button, Descriptions, Tag, Tooltip } from 'antd';
+import { Button, Descriptions, Tabs, Tag, Tooltip } from 'antd';
 import { TableDataItem, Organization } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import informationStyle from './index.module.scss';
@@ -17,15 +17,17 @@ import { formatUserDisplayName } from '@/utils/userDisplay';
 import { getPolicySecondaryContext } from '@/app/monitor/utils/policyDisplayName';
 import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
 import { buildAlertDimensionDisplayItems } from './alertDimensionUtils';
+import { alertConditionTabLabel } from './alertDetailUtils';
 import AlertHandlerActions from './alertHandlerActions';
 import { formatAlertHandlers } from './alertHandlerUtils';
-import type { AlertSnapshotOverlay } from './alertDetailUtils';
+import type { AlertConditionChart, AlertSnapshotOverlay } from './alertDetailUtils';
 
 interface InformationProps extends TableDataItem {
   eventData?: TableDataItem[];
   chartUnit?: string | null;
   chartXAxisDomain?: [number, number] | null;
   chartOverlay?: AlertSnapshotOverlay;
+  conditionCharts?: AlertConditionChart[];
 }
 
 const Information: React.FC<InformationProps> = ({
@@ -37,7 +39,8 @@ const Information: React.FC<InformationProps> = ({
   trapData,
   chartUnit,
   chartXAxisDomain,
-  chartOverlay
+  chartOverlay,
+  conditionCharts = []
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -287,10 +290,12 @@ const Information: React.FC<InformationProps> = ({
             <h3 className="font-[600] text-[16px] mb-[15px]">
               {t('monitor.views.indexView')}
             </h3>
+            {conditionCharts.length ? null : (
             <div className="text-[12px]">{`${
               formData.metric?.display_name
             }（${findUnitNameById(chartUnit || '')}）`}</div>
-            {chartOverlay &&
+            )}
+            {conditionCharts.length ? null : chartOverlay &&
               (chartOverlay.currentValue != null ||
                 chartOverlay.baselineValue != null ||
                 chartOverlay.comparedValue != null) && (
@@ -306,6 +311,36 @@ const Information: React.FC<InformationProps> = ({
                   : ''}
               </div>
             )}
+            {conditionCharts.length ? (
+              <Tabs
+                items={conditionCharts.map((card) => ({
+                  key: card.ref,
+                  label: alertConditionTabLabel(
+                    card.ref,
+                    card.label === card.ref ? '' : card.label
+                  ),
+                  children: (
+                    <div>
+                      <div className="text-[12px]">{`${card.label}（${findUnitNameById(card.unit || '')}）`}</div>
+                      <div className="h-[250px]">
+                        <LineChart
+                          allowSelect={false}
+                          data={card.data}
+                          threshold={card.threshold.map((item) => ({
+                            ...item,
+                            level: item.level === 'gate'
+                              ? t('monitor.events.multiRoleGate')
+                              : item.level,
+                          }))}
+                          unit={card.unit || ''}
+                          metric={formData.metric}
+                        />
+                      </div>
+                    </div>
+                  ),
+                }))}
+              />
+            ) : (
             <div className="h-[250px]">
               <LineChart
                 allowSelect={false}
@@ -327,6 +362,7 @@ const Information: React.FC<InformationProps> = ({
                 }
               />
             </div>
+            )}
           </div>
         )}
       </div>

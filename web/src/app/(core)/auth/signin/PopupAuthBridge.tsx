@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { AUTH_POPUP_SUCCESS_MESSAGE, buildThirdLoginCallbackUrl } from '@/utils/authRedirect';
 import { isScreenModeEnabled, withScreenQuery } from '@/console-layout';
+import { resolvePostLoginHref } from '@/app/ops-analysis/utils/homepageLanding';
 import { saveAuthToken } from '@/utils/crossDomainAuth';
 
 interface PopupAuthBridgeProps {
@@ -22,38 +23,49 @@ interface PopupAuthBridgeProps {
 
 export default function PopupAuthBridge({ callbackUrl, thirdLogin, user }: PopupAuthBridgeProps) {
   useEffect(() => {
-    const targetUrl = withScreenQuery(
-      buildThirdLoginCallbackUrl(callbackUrl, user.token, thirdLogin),
-      isScreenModeEnabled(window.location.search),
-      window.location.origin,
-    );
+    let cancelled = false;
+    void (async () => {
+      const rawTarget = buildThirdLoginCallbackUrl(callbackUrl, user.token, thirdLogin);
+      const landed = await resolvePostLoginHref(rawTarget, user.token, window.location.origin);
+      if (cancelled) {
+        return;
+      }
+      const targetUrl = withScreenQuery(
+        landed,
+        isScreenModeEnabled(window.location.search),
+        window.location.origin,
+      );
 
-    if (user.token) {
-      saveAuthToken({
-        id: user.id,
-        username: user.username || '',
-        token: user.token,
-        locale: user.locale || 'en',
-        timezone: user.timezone || 'Asia/Shanghai',
-        temporary_pwd: user.temporary_pwd || false,
-        enable_otp: user.enable_otp || false,
-        qrcode: user.qrcode || false,
-      });
-    }
+      if (user.token) {
+        saveAuthToken({
+          id: user.id,
+          username: user.username || '',
+          token: user.token,
+          locale: user.locale || 'en',
+          timezone: user.timezone || 'Asia/Shanghai',
+          temporary_pwd: user.temporary_pwd || false,
+          enable_otp: user.enable_otp || false,
+          qrcode: user.qrcode || false,
+        });
+      }
 
-    if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({
-        type: AUTH_POPUP_SUCCESS_MESSAGE,
-        targetUrl,
-      }, window.location.origin);
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          type: AUTH_POPUP_SUCCESS_MESSAGE,
+          targetUrl,
+        }, window.location.origin);
 
-      window.setTimeout(() => {
-        window.close();
-      }, 100);
-      return;
-    }
+        window.setTimeout(() => {
+          window.close();
+        }, 100);
+        return;
+      }
 
-    window.location.href = targetUrl;
+      window.location.href = targetUrl;
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [callbackUrl, thirdLogin, user]);
 
   return (

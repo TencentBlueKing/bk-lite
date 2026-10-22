@@ -1,0 +1,206 @@
+{
+  "object": "MSSQL",
+  "plugin": "MSSQL",
+  "templates": [
+    {
+      "name": "进程 CPU 过高",
+      "alert_name": "MSSQL 实例 ${resource_name} 进程 CPU 过高",
+      "description": "监控 SQL Server 进程 CPU 使用率，持续过高会导致查询变慢并挤占其他负载。需检查高消耗语句、并行度和主机计算资源。",
+      "metric_name": "sqlserver_cpu_sqlserver_process_cpu_avg",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "用户连接数过高",
+      "alert_name": "MSSQL 实例 ${resource_name} 用户连接数过高",
+      "description": "监控当前用户连接数，持续过高可能导致资源争用甚至无法建立新会话。默认阈值为通用起步值，需按实例容量调整，并检查连接池、空闲会话和并发负载。",
+      "metric_name": "sqlserver_user_connections_rate",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 800,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "缓冲池命中率低",
+      "alert_name": "MSSQL 实例 ${resource_name} 缓冲池命中率下降",
+      "description": "监控缓冲池命中率，过低表示大量请求需要物理读，查询会明显变慢。需检查内存容量、热点数据和扫描范围过大的语句。",
+      "metric_name": "sqlserver_buffer_cache_hit_ratio",
+      "algorithm": "min_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 95,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 98,
+          "method": "<="
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "死锁速率过高",
+      "alert_name": "MSSQL 实例 ${resource_name} 死锁增多",
+      "description": "监控死锁发生速率，持续出现会导致事务回滚和业务重试增加。需检查事务访问顺序、隔离级别和索引设计。",
+      "metric_name": "sqlserver_deadlocks_rate",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0.5,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 0.1,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.05,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "卷剩余空间不足",
+      "alert_name": "MSSQL 实例 ${resource_name} 卷剩余空间不足",
+      "description": "监控存储卷可用空间，空间不足会导致数据库无法写入、备份失败或实例异常。默认阈值为通用起步值，需按磁盘容量调整，并及时清理或扩容。",
+      "metric_name": "sqlserver_volume_space_available_space_bytes",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5368709120,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 10737418240,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 21474836480,
+          "method": "<="
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "阻塞进程过多",
+      "alert_name": "MSSQL 实例 ${resource_name} 阻塞进程过多",
+      "description": "监控当前被阻塞的进程数，持续阻塞会拖慢业务请求并放大锁等待。需定位阻塞会话、长事务和锁竞争。",
+      "metric_name": "sqlserver_processes_blocked",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "页寿命过短",
+      "alert_name": "MSSQL 实例 ${resource_name} 页寿命过短",
+      "description": "监控数据页在缓冲池中的停留时间，过短通常表示内存压力，随后会增加物理读。需检查内存配置、缓冲池命中率和大扫描查询。",
+      "metric_name": "sqlserver_page_life_expectancy",
+      "algorithm": "min_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 300,
+          "method": "<="
+        },
+        {
+          "level": "error",
+          "value": 600,
+          "method": "<="
+        },
+        {
+          "level": "warning",
+          "value": 900,
+          "method": "<="
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "数据库读延迟过高",
+      "alert_name": "MSSQL 实例 ${resource_name} 数据库读延迟过高",
+      "description": "监控数据库文件读取延迟，持续过高会拉长查询响应时间。需检查存储性能、磁盘队列和物理读压力。",
+      "metric_name": "sqlserver_database_io_read_latency_ms",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 200,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

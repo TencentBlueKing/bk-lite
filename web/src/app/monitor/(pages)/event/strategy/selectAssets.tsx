@@ -6,6 +6,7 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useEffect,
 } from 'react';
 import { Button, Input, Tabs, Tree } from 'antd';
 import OperateModal from '@/components/operate-drawer';
@@ -37,6 +38,7 @@ import {
 } from '@/app/monitor/(pages)/view/viewColumnPreference';
 import { buildInstanceViewColumns } from '@/app/monitor/(pages)/view/instanceViewColumns';
 import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
+import { fillInstanceListDisplayMetrics } from '@/app/monitor/utils/fillListDisplayMetrics';
 
 /** 已选资产展示名回填：单次批量查询上限（与后端 _MAX_INSTANCE_ID_IN 对齐量级）。 */
 const HYDRATE_LABEL_BATCH_SIZE = 100;
@@ -84,7 +86,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
   ({ onSuccess, monitorObject, objects }, ref) => {
     const { t } = useTranslation();
     const { getInstanceList, getMonitorMetrics } = useMonitorApi();
-    const { getViewColumnPreference } = useViewApi();
+    const { getViewColumnPreference, getInstanceDisplayMetrics } = useViewApi();
     const { convertToLocalizedTime } = useLocalizedTime();
     const { getEnumValueUnit } = useUnitTransform();
     const { groupTree } = useUserInfoContext();
@@ -122,8 +124,16 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
     >({});
     const paginationRef = useRef(pagination);
     const searchTextRef = useRef(searchText);
+    const fillAbortRef = useRef<AbortController | null>(null);
+    const fetchGenerationRef = useRef(0);
     paginationRef.current = pagination;
     searchTextRef.current = searchText;
+
+    useEffect(() => {
+      return () => {
+        fillAbortRef.current?.abort();
+      };
+    }, []);
 
     const objectItem = useMemo(
       () =>
@@ -265,15 +275,22 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
       pageSize = paginationRef.current.pageSize,
       name = searchTextRef.current
     ) => {
+      fillAbortRef.current?.abort();
+      const fillAbort = new AbortController();
+      fillAbortRef.current = fillAbort;
+      const generation = ++fetchGenerationRef.current;
       try {
         setTableLoading(true);
         const data = await getInstanceList(monitorObject as React.Key, {
           page,
           page_size: pageSize,
           name: name || '',
-          add_metrics: true,
+          add_metrics: false,
         });
         const results = data?.results || [];
+        if (generation !== fetchGenerationRef.current) {
+          return;
+        }
         setTableData(results);
         mergeSelectedLabels(results);
         setPagination((prev) => ({
@@ -282,8 +299,28 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
           pageSize,
           total: data?.count || 0,
         }));
-      } finally {
         setTableLoading(false);
+        const filled = await fillInstanceListDisplayMetrics({
+          rows: results,
+          signal: fillAbort.signal,
+          isCurrent: () => generation === fetchGenerationRef.current,
+          fetchBatch: async (instanceIds, signal) => {
+            const payload = await getInstanceDisplayMetrics(
+              monitorObject as React.Key,
+              { instance_ids: instanceIds },
+              { signal }
+            );
+            return payload?.results || [];
+          },
+        });
+        if (generation === fetchGenerationRef.current && !fillAbort.signal.aborted) {
+          setTableData(filled);
+          mergeSelectedLabels(filled);
+        }
+      } finally {
+        if (generation === fetchGenerationRef.current) {
+          setTableLoading(false);
+        }
       }
     };
 

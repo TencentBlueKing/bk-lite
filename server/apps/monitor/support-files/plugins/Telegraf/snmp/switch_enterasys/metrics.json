@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "max(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(device_cpu_usage{instance_type='switch', collect_type='snmp_enterasys', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -34,7 +34,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_enterasys', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -52,7 +52,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_enterasys', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -75,7 +75,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_used{instance_type='switch', collect_type='snmp_enterasys', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used RAM of the Enterasys switch in bytes, computed at collection time as etsysResourceStorageSize minus etsysResourceStorageAvailable (KB x1024) over RAM-type rows of etsysResourceStorageTable, summed across modules."
@@ -88,7 +88,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_free{instance_type='switch', collect_type='snmp_enterasys', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Available RAM of the Enterasys switch in bytes, from etsysResourceStorageAvailable (1.3.6.1.4.1.5624.1.2.49.1.3.1.1.5, KB x1024) over RAM-type rows, summed across modules."
@@ -101,7 +101,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "max(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(device_memory_usage{instance_type='switch', collect_type='snmp_enterasys', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
       "description": "RAM utilization of the Enterasys switch, computed at collection time as (size - available) / size * 100 for each RAM-type row of etsysResourceStorageTable; the highest module value is shown."
@@ -109,7 +109,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_enterasys', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -1,0 +1,75 @@
+{
+  "name": "@bk-lite/isoflow",
+  "version": "1.1.1-patch-6",
+  "private": true,
+  "description": "Vendored Isoflow React component for BK-Lite architecture diagrams. Source: x-isoflow-react-19@1.1.1 (gitHead 0dd5948c) with the 1.1.1-patch-6 behavior deltas.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/markmanx/isoflow.git"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/Isoflow.d.ts",
+  "scripts": {
+    "build": "webpack --config ./webpack/prod.config.js && tsc --declaration --emitDeclarationOnly && tsc-alias"
+  },
+  "devDependencies": {
+    "@isoflow/isopacks": "^0.0.10",
+    "@types/chroma-js": "^2.4.0",
+    "@types/dom-to-image": "^2.6.5",
+    "@types/file-saver": "^2.0.5",
+    "@types/jest": "^27.5.2",
+    "@types/pathfinding": "^0.0.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/uuid": "^9.0.2",
+    "@types/webpack-env": "^1.18.0",
+    "css-loader": "^6.8.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "style-loader": "^3.3.3",
+    "ts-loader": "^9.4.2",
+    "tsc-alias": "^1.8.7",
+    "tsconfig-paths-webpack-plugin": "^4.1.0",
+    "typescript": "^5.1.6",
+    "webpack": "^5.76.2",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.10.6",
+    "@emotion/styled": "^11.10.6",
+    "@mui/icons-material": "^7.2.0",
+    "@mui/material": "^7.2.0",
+    "auto-bind": "^5.0.1",
+    "chroma-js": "^2.4.2",
+    "dom-to-image": "^2.6.0",
+    "file-saver": "^2.0.5",
+    "gsap": "^3.11.4",
+    "immer": "^10.0.2",
+    "mui-color-input": "^7.0.0",
+    "paper": "^0.12.17",
+    "pathfinding": "^0.4.18",
+    "quill": "^2.0.3",
+    "react-hook-form": "^7.60.0",
+    "react-router-dom": "^7.6.3",
+    "uuid": "11.1.0",
+    "zod": "4.0.3",
+    "zustand": "^4.3.3"
+  },
+  "peerDependencies": {
+    "react": ">=17",
+    "react-dom": ">=17"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

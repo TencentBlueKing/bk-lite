@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Button, Cascader, Input, Select, Tooltip } from 'antd';
-import { CloseOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Cascader, Input, Select } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
   FilterItem,
@@ -19,12 +19,24 @@ import {
 } from '@/app/monitor/utils/metricDimensions';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
+  alignFollowerGroupBy,
+  groupByAfterSelectingMetric,
+  ConditionSource,
   createMetricRow,
+  DEFAULT_MULTI_LEVEL_THRESHOLD,
   MetricExpressionMode,
+  shouldShowConditionSourceSwitch,
   shouldShowFormulaEditor,
+  switchConditionSource,
   VARIABLE_SEQUENCE
 } from './formulaExpressionUtils';
-import { buildMetricSelectOption } from './strategyDetailUtils';
+import MetricConditionCard from './metricConditionCard';
+import MetricOperandRow from './metricOperandRow';
+import {
+  buildMetricSelectOption,
+  PER_SERIES_ALGORITHMS,
+  resolveEffectiveCalculationUnit
+} from './strategyDetailUtils';
 
 interface MetricExpressionEditorProps {
   id?: string;
@@ -40,8 +52,10 @@ interface MetricExpressionEditorProps {
   groupByOptions: string[];
   groupMethods: ListItem[];
   conditionMethods: ListItem[];
+  algorithmOptions?: ListItem[];
   metricsLoading: boolean;
   onRowsChange: (rows: MetricExpressionRow[]) => void;
+  onSourceChange?: (source: ConditionSource) => void;
   onResultNameChange: (value: string) => void;
   onExpressionChange: (value: string) => void;
   onResultUnitChange: (value: string) => void;
@@ -61,14 +75,21 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   groupByOptions,
   groupMethods,
   conditionMethods,
+  algorithmOptions = [],
   metricsLoading,
   onRowsChange,
+  onSourceChange,
   onResultNameChange,
   onExpressionChange,
   onResultUnitChange
 }) => {
   const { t } = useTranslation();
   const showFormula = shouldShowFormulaEditor(mode);
+  const showMulti = mode === 'multi';
+  const showSourceSwitch = shouldShowConditionSourceSwitch(
+    showMulti ? 'multi' : 'single'
+  );
+  const conditionSource: ConditionSource = showFormula ? 'formula' : 'metric';
 
   const metricByName = useMemo(() => {
     const map = new Map<string, MetricItem>();
@@ -92,12 +113,43 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
     [originMetricData, unitList]
   );
 
+  const mergeRow = (
+    row: MetricExpressionRow,
+    patch: Partial<MetricExpressionRow>
+  ): MetricExpressionRow => {
+    const next = { ...row, ...patch };
+    if (next.source === 'formula' && patch.groupBy && !patch.operands) {
+      const allowed = patch.groupBy;
+      next.operands = (next.operands || []).map((operand, index) => {
+        if (index === 0) {
+          return { ...operand, groupBy: allowed };
+        }
+        const kept = (operand.groupBy || []).filter((item) => allowed.includes(item));
+        return { ...operand, groupBy: kept.length ? kept : allowed };
+      });
+    }
+    return next;
+  };
+
   const updateRow = (rowIndex: number, patch: Partial<MetricExpressionRow>) => {
+    if ((showMulti || showFormula) && rowIndex === 0 && patch.groupBy) {
+      const aligned = alignFollowerGroupBy(rows, patch.groupBy);
+      onRowsChange(
+        aligned.map((row, index) =>
+          index === rowIndex ? mergeRow(row, patch) : row
+        )
+      );
+      return;
+    }
     onRowsChange(
       rows.map((row, index) =>
-        index === rowIndex ? { ...row, ...patch } : row
+        index === rowIndex ? mergeRow(row, patch) : row
       )
     );
+  };
+
+  const replaceRow = (rowIndex: number, next: MetricExpressionRow) => {
+    onRowsChange(rows.map((row, index) => (index === rowIndex ? next : row)));
   };
 
   const updateCondition = (
@@ -145,14 +197,90 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   const handleMetricChange = (rowIndex: number, metricName?: string) => {
     const target = metricName ? metricByName.get(metricName) : undefined;
     const labels = getMetricDimensionNames(target?.dimensions);
-    const nextGroupBy = target
+    const availableGroupBy = target
       ? sanitizeGroupBy([...groupByOptions, ...labels])
       : groupByOptions;
+    const anchorGroupBy = rows[0]?.groupBy || [];
+    const nextGroupBy = groupByAfterSelectingMetric(
+      availableGroupBy,
+      anchorGroupBy,
+      rowIndex > 0 && (showMulti || showFormula)
+    );
+    const metricUnit =
+      resolveEffectiveCalculationUnit({
+        isFormulaMode: false,
+        unit: target?.unit,
+        unitList
+      }) || '';
     updateRow(rowIndex, {
       metricName,
+      metricLabel: target?.display_name || target?.name || metricName,
       metricId: target?.id || null,
       filters: [],
-      groupBy: nextGroupBy
+      groupBy: nextGroupBy,
+      ...(showMulti
+        ? {
+          metricUnit,
+          calculationUnit: metricUnit,
+          thresholdUnit: metricUnit
+        }
+        : {})
+    });
+  };
+
+  const handleOperandMetricChange = (
+    rowIndex: number,
+    operandIndex: number,
+    metricName?: string
+  ) => {
+    const target = metricName ? metricByName.get(metricName) : undefined;
+    const row = rows[rowIndex];
+    const operands = (row.operands || []).map((operand, index) =>
+      index === operandIndex
+        ? {
+          ...operand,
+          metricName,
+          metricLabel: target?.display_name || target?.name || metricName,
+          metricId: target?.id || null,
+          filters: []
+        }
+        : operand
+    );
+    updateRow(rowIndex, { operands });
+  };
+
+  const updateOperand = (
+    rowIndex: number,
+    operandIndex: number,
+    patch: Partial<MetricExpressionRow>
+  ) => {
+    const row = rows[rowIndex];
+    updateRow(rowIndex, {
+      operands: (row.operands || []).map((operand, index) =>
+        index === operandIndex ? { ...operand, ...patch } : operand
+      )
+    });
+  };
+
+  const addOperand = (rowIndex: number) => {
+    const row = rows[rowIndex];
+    const operands = row.operands || [];
+    updateRow(rowIndex, {
+      operands: [
+        ...operands,
+        createMetricRow(operands.length, {
+          ref: `${row.ref}${operands.length + 1}`,
+          groupAlgorithm: 'sum',
+          groupBy: operands[0]?.groupBy?.length ? operands[0].groupBy : row.groupBy
+        })
+      ]
+    });
+  };
+
+  const removeOperand = (rowIndex: number, operandIndex: number) => {
+    const row = rows[rowIndex];
+    updateRow(rowIndex, {
+      operands: (row.operands || []).filter((_, index) => index !== operandIndex)
     });
   };
 
@@ -164,7 +292,20 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
       ...rows,
       createMetricRow(0, {
         ref: nextRef,
-        groupBy: groupByOptions.length ? groupByOptions : ['instance_id']
+        groupBy: rows[0]?.groupBy?.length
+          ? rows[0].groupBy
+          : groupByOptions.length
+            ? groupByOptions
+            : ['instance_id'],
+        ...(showMulti
+          ? {
+            role: 'level' as const,
+            algorithm: 'avg_over_time',
+            threshold: DEFAULT_MULTI_LEVEL_THRESHOLD.map((item) => ({
+              ...item
+            }))
+          }
+          : {})
       })
     ]);
   };
@@ -184,9 +325,210 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   };
 
   const groupMethodOptions = groupMethods.map((item) => ({
-    label: `${item.label.toString().toLowerCase()} by`,
-    value: item.value
+    label: `${String(item.label ?? '').toLowerCase()} by`,
+    value: String(item.value ?? '')
   }));
+  const conditionMethodOptions = conditionMethods.map((item) => ({
+    label: String(item.name || ''),
+    value: String(item.id ?? '')
+  }));
+  const labelOptionsFor = (row: MetricExpressionRow) =>
+    (labelsByRef[row.ref] || []).map((item) => ({ label: item, value: item }));
+  const dimensionOptionsFor = (row: MetricExpressionRow, rowIndex: number) => {
+    if (rowIndex > 0 && (showMulti || showFormula)) {
+      return (rows[0]?.groupBy || []).map((item) => ({
+        label: item,
+        value: item
+      }));
+    }
+    return getRowGroupByOptions(row);
+  };
+
+  const operandDimensionOptions = (
+    row: MetricExpressionRow,
+    rowIndex: number,
+    operand: MetricExpressionRow,
+    operandIndex: number
+  ) => {
+    if (operandIndex > 0) {
+      return (row.operands?.[0]?.groupBy || row.groupBy || []).map((item) => ({
+        label: item,
+        value: item
+      }));
+    }
+    return dimensionOptionsFor(operand, rowIndex);
+  };
+
+  const updateOperandGroupBy = (
+    rowIndex: number,
+    operandIndex: number,
+    groupBy: string[]
+  ) => {
+    const row = rows[rowIndex];
+    const operands = row.operands || [];
+    const nextGroupBy = sanitizeGroupBy(groupBy);
+    if (operandIndex === 0) {
+      const nextOperands = operands.map((operand, index) => {
+        if (index === 0) {
+          return { ...operand, groupBy: nextGroupBy };
+        }
+        const kept = (operand.groupBy || []).filter((item) => nextGroupBy.includes(item));
+        return { ...operand, groupBy: kept.length ? kept : nextGroupBy };
+      });
+      updateRow(rowIndex, { groupBy: nextGroupBy, operands: nextOperands });
+      return;
+    }
+    const allowed = operands[0]?.groupBy || row.groupBy;
+    const kept = nextGroupBy.filter((item) => allowed.includes(item));
+    updateRow(rowIndex, {
+      operands: operands.map((operand, index) =>
+        index === operandIndex ? { ...operand, groupBy: kept } : operand
+      )
+    });
+  };
+
+  const renderOperand = (
+    row: MetricExpressionRow,
+    rowIndex: number,
+    options: { showDimension: boolean; nested?: boolean; canDelete: boolean }
+  ) => (
+    <MetricOperandRow
+      row={row}
+      metricOptions={metricOptions}
+      metricsLoading={metricsLoading}
+      groupMethodOptions={groupMethodOptions}
+      conditionMethodOptions={conditionMethodOptions}
+      labelOptions={labelOptionsFor(row)}
+      showDimension={options.showDimension}
+      dimensionOptions={dimensionOptionsFor(row, rowIndex)}
+      canDelete={options.canDelete}
+      nested={options.nested}
+      onMetricChange={(value) => handleMetricChange(rowIndex, value)}
+      onGroupAlgorithmChange={(value) =>
+        updateRow(rowIndex, { groupAlgorithm: value })
+      }
+      onGroupByChange={(value) => updateRow(rowIndex, { groupBy: value })}
+      onFilterChange={(filterIndex, patch) =>
+        updateCondition(rowIndex, filterIndex, patch)
+      }
+      onFilterRemove={(filterIndex) => removeCondition(rowIndex, filterIndex)}
+      onFilterAdd={() => addCondition(rowIndex)}
+      onRemove={() => removeMetricRow(rowIndex)}
+    />
+  );
+
+  const renderMultiFields = (row: MetricExpressionRow, rowIndex: number) => (
+    <div
+      className={
+        row.source === 'formula'
+          ? 'ml-12 grid grid-cols-[132px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2'
+          : 'ml-10 grid grid-cols-[132px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2'
+      }
+    >
+      <Select
+        className="w-full"
+        value={row.role || 'level'}
+        options={[
+          {
+            label: translateWithFallback('monitor.events.multiRoleLevel', '常规'),
+            value: 'level'
+          },
+          {
+            label: translateWithFallback('monitor.events.multiRoleGate', '前置条件'),
+            value: 'gate'
+          }
+        ]}
+        onChange={(value) =>
+          updateRow(rowIndex, {
+            role: value,
+            threshold:
+              value === 'gate'
+                ? [{ method: '>', value: null }]
+                : row.threshold?.some((item) => item.level)
+                  ? row.threshold
+                  : DEFAULT_MULTI_LEVEL_THRESHOLD.map((item) => ({ ...item }))
+          })
+        }
+      />
+      <Select
+        className="w-full"
+        value={row.algorithm || 'avg_over_time'}
+        options={(row.source === 'formula'
+          ? algorithmOptions.filter(
+            (item) => !PER_SERIES_ALGORITHMS.includes(String(item.value ?? ''))
+          )
+          : algorithmOptions
+        ).map((item) => ({
+          label: String(item.label ?? ''),
+          value: String(item.value ?? '')
+        }))}
+        onChange={(value) => updateRow(rowIndex, { algorithm: String(value) })}
+      />
+      <Cascader
+        className="w-full"
+        showSearch
+        allowClear={false}
+        value={
+          row.thresholdUnit
+            ? findCascaderPath(groupedUnitOptions, row.thresholdUnit)
+            : []
+        }
+        options={groupedUnitOptions}
+        placeholder={translateWithFallback('monitor.events.formulaResultUnit', '单位')}
+        onChange={(path) => {
+          const unit = String(path[path.length - 1] || '');
+          updateRow(rowIndex, {
+            calculationUnit: unit,
+            thresholdUnit: unit
+          });
+        }}
+      />
+    </div>
+  );
+
+  const formulaResultRow = (
+    <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)_96px] items-center gap-2">
+      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]">
+        fx
+      </span>
+      <Input
+        className="min-w-0"
+        value={resultName}
+        placeholder={t('monitor.integrations.formulaResultNamePlaceholder')}
+        onChange={(event) => onResultNameChange(event.target.value)}
+      />
+      <span className="text-center text-[var(--color-text-3)]">=</span>
+      <Input
+        className="min-w-0"
+        value={expression}
+        placeholder="a / b * 100"
+        onChange={(event) => onExpressionChange(event.target.value)}
+      />
+      <Cascader
+        className="w-full"
+        showSearch
+        allowClear={false}
+        value={resultUnit ? findCascaderPath(groupedUnitOptions, resultUnit) : []}
+        aria-label={translateWithFallback(
+          'monitor.events.formulaResultUnit',
+          '结果单位'
+        )}
+        placeholder={translateWithFallback(
+          'monitor.events.formulaResultUnit',
+          '结果单位'
+        )}
+        options={groupedUnitOptions}
+        onChange={(path) => {
+          const next = (path as (string | number)[]).at(-1);
+          if (typeof next === 'string') {
+            onResultUnitChange(next);
+          }
+        }}
+      />
+    </div>
+  );
+
+  const primaryRow = rows[0];
 
   return (
     <div
@@ -203,209 +545,186 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
           </span>
         )}
       </div>
-      <div className="flex flex-col gap-3">
-        {rows.map((row, rowIndex) => (
-          <div
-            key={row.ref}
-            className="mx-3 mt-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3"
+      <div className="flex flex-col gap-3 pb-3">
+        {showFormula && primaryRow ? (
+          <MetricConditionCard
+            showSourceSwitch={showSourceSwitch}
+            source={conditionSource}
+            onSourceChange={onSourceChange}
           >
-            <div className="flex flex-col gap-2">
-              <div className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-sm font-semibold text-[var(--color-primary)]">
-                  {row.ref}
-                </span>
-                <Select
-                  allowClear
-                  className="min-w-0"
-                  showSearch
-                  value={row.metricName}
-                  loading={metricsLoading}
-                  placeholder={t('monitor.metric')}
-                  options={metricOptions}
-                  filterOption={(input, option) =>
-                    (option?.label || '')
-                      .toString()
-                      .toLowerCase()
-                      .includes(input.toLowerCase())
-                  }
-                  onChange={(value) => handleMetricChange(rowIndex, value)}
-                />
-                {rows.length > 1 ? (
-                  <Tooltip title={t('common.delete')}>
-                    <Button
-                      aria-label={t('common.delete')}
-                      className="h-8 w-8"
-                      icon={<CloseOutlined />}
-                      onClick={() => removeMetricRow(rowIndex)}
-                    />
-                  </Tooltip>
-                ) : (
-                  <span className="h-8 w-8" />
-                )}
+            {rows.map((row, rowIndex) => (
+              <div key={row.ref}>
+                {renderOperand(row, rowIndex, {
+                  showDimension: true,
+                  nested: true,
+                  canDelete: rows.length > 1
+                })}
               </div>
-              <div className="ml-10 grid grid-cols-[132px_minmax(0,1fr)] items-center gap-2">
-                <Select
-                  className="w-full"
-                  value={row.groupAlgorithm || 'avg'}
-                  placeholder={t('monitor.events.groupAggregationMethod')}
-                  options={groupMethodOptions}
-                  onChange={(value) =>
-                    updateRow(rowIndex, { groupAlgorithm: value })
-                  }
-                />
-                <Select
-                  allowClear
-                  className="min-w-0"
-                  maxTagCount="responsive"
-                  mode="multiple"
-                  showSearch
-                  value={row.groupBy}
-                  placeholder={t('monitor.events.groupDimension')}
-                  options={getRowGroupByOptions(row)}
-                  onChange={(value) =>
-                    updateRow(rowIndex, { groupBy: sanitizeGroupBy(value) })
-                  }
-                />
-              </div>
-            </div>
-            <div className="ml-10 mt-2 flex flex-col gap-2">
-              {row.filters.map((filter, filterIndex) => (
-                <div
-                  className="flex flex-col gap-2"
-                  key={`${row.ref}-${filterIndex}`}
-                >
-                  <div className="grid grid-cols-[82px_minmax(0,1fr)_2rem] items-center gap-2">
-                    {filterIndex > 0 ? (
-                      <Select
-                        className="w-[82px] shrink-0"
-                        value={filter.logic || 'and'}
-                        options={[
-                          { label: 'AND', value: 'and' },
-                          { label: 'OR', value: 'or' }
-                        ]}
-                        onChange={(value) =>
-                          updateCondition(rowIndex, filterIndex, {
-                            logic: value
+            ))}
+            <Button
+              className="w-fit"
+              icon={<PlusOutlined />}
+              onClick={addMetricRow}
+              type="dashed"
+            >
+              {translateWithFallback('monitor.events.addMetric', '添加指标')}
+            </Button>
+            {formulaResultRow}
+          </MetricConditionCard>
+        ) : null}
+        {showMulti
+          ? rows.map((row, rowIndex) => (
+              <MetricConditionCard
+                key={row.ref}
+                showSourceSwitch={showSourceSwitch}
+                source={row.source === 'formula' ? 'formula' : 'metric'}
+                onSourceChange={(source) =>
+                  replaceRow(rowIndex, switchConditionSource(row, source))
+                }
+                note={
+                  rowIndex === 0
+                    ? translateWithFallback(
+                      'monitor.events.multiAlignHint',
+                      '其余条件按第一条的实例对齐'
+                    )
+                    : undefined
+                }
+              >
+                {row.source === 'formula' ? (
+                  <>
+                    {(row.operands || []).map((operand, operandIndex) => (
+                      <MetricOperandRow
+                        key={operand.ref}
+                        row={operand}
+                        metricOptions={metricOptions}
+                        metricsLoading={metricsLoading}
+                        groupMethodOptions={groupMethodOptions}
+                        conditionMethodOptions={conditionMethodOptions}
+                        labelOptions={(labelsByRef[operand.ref] || []).map((item) => ({
+                          label: item,
+                          value: item
+                        }))}
+                        showDimension
+                        dimensionOptions={operandDimensionOptions(
+                          row,
+                          rowIndex,
+                          operand,
+                          operandIndex
+                        )}
+                        canDelete={(row.operands || []).length > 2}
+                        nested
+                        onMetricChange={(value) =>
+                          handleOperandMetricChange(rowIndex, operandIndex, value)
+                        }
+                        onGroupAlgorithmChange={(value) =>
+                          updateOperand(rowIndex, operandIndex, { groupAlgorithm: value })
+                        }
+                        onGroupByChange={(value) =>
+                          updateOperandGroupBy(rowIndex, operandIndex, value)
+                        }
+                        onFilterChange={(filterIndex, patch) => {
+                          const filters = operand.filters.map((filter, index) =>
+                            index === filterIndex ? { ...filter, ...patch } : filter
+                          );
+                          updateOperand(rowIndex, operandIndex, { filters });
+                        }}
+                        onFilterRemove={(filterIndex) =>
+                          updateOperand(rowIndex, operandIndex, {
+                            filters: operand.filters.filter((_, index) => index !== filterIndex)
                           })
                         }
+                        onFilterAdd={() =>
+                          updateOperand(rowIndex, operandIndex, {
+                            filters: [
+                              ...operand.filters,
+                              {
+                                logic: operand.filters.length ? 'and' : undefined,
+                                name: null,
+                                method: null,
+                                value: ''
+                              }
+                            ]
+                          })
+                        }
+                        onRemove={() => removeOperand(rowIndex, operandIndex)}
                       />
-                    ) : (
-                      <span className="w-[82px] shrink-0 text-xs text-[var(--color-text-3)]">
-                        {t('monitor.events.conditionDimension')}
+                    ))}
+                    <Button
+                      className="w-fit"
+                      icon={<PlusOutlined />}
+                      onClick={() => addOperand(rowIndex)}
+                      type="dashed"
+                    >
+                      {translateWithFallback('monitor.events.addMetric', '添加指标')}
+                    </Button>
+                    <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)] items-center gap-2">
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]">
+                        fx
                       </span>
-                    )}
-                    <Select
-                      className="min-w-0"
-                      showSearch
-                      value={filter.name}
-                      placeholder={t('monitor.label')}
-                      options={(labelsByRef[row.ref] || []).map((item) => ({
-                        label: item,
-                        value: item
-                      }))}
-                      onChange={(value) =>
-                        updateCondition(rowIndex, filterIndex, { name: value })
-                      }
-                    />
-                    <Tooltip title={t('common.delete')}>
-                      <Button
-                        aria-label={t('common.delete')}
-                        className="h-8 w-8"
-                        icon={<CloseOutlined />}
-                        onClick={() => removeCondition(rowIndex, filterIndex)}
+                      <Input
+                        className="min-w-0"
+                        value={row.resultName || ''}
+                        placeholder={t('monitor.integrations.formulaResultNamePlaceholder')}
+                        onChange={(event) =>
+                          updateRow(rowIndex, { resultName: event.target.value })
+                        }
                       />
-                    </Tooltip>
-                  </div>
-                  <div className="ml-[90px] grid grid-cols-[104px_minmax(0,1fr)] items-center gap-2">
-                    <Select
-                      className="w-full"
-                      value={filter.method}
-                      placeholder={t('monitor.term')}
-                      options={conditionMethods.map((item) => ({
-                        label: item.name,
-                        value: item.id
-                      }))}
-                      onChange={(value) =>
-                        updateCondition(rowIndex, filterIndex, {
-                          method: value
-                        })
-                      }
-                    />
-                    <Input
-                      className="min-w-0"
-                      value={filter.value}
-                      placeholder={t('monitor.value')}
-                      onChange={(event) =>
-                        updateCondition(rowIndex, filterIndex, {
-                          value: event.target.value
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-              <Button
-                className="w-fit"
-                icon={<PlusOutlined />}
-                onClick={() => addCondition(rowIndex)}
-              >
-                {t('monitor.addCondition')}
-              </Button>
-            </div>
-          </div>
-        ))}
-        <Button
-          className={showFormula ? 'mx-3 w-fit' : 'mx-3 mb-3 w-fit'}
-          icon={<PlusOutlined />}
-          onClick={addMetricRow}
-          type="dashed"
-        >
-          {translateWithFallback('monitor.events.addMetric', '添加指标')}
-        </Button>
-        {showFormula && (
-          <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)_96px] items-center gap-2 border-t border-[var(--color-border-2)] bg-[rgba(255,255,255,0.68)] px-3 py-3">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]">
-              fx
+                      <span className="text-center text-[var(--color-text-3)]">=</span>
+                      <Input
+                        className="min-w-0"
+                        value={row.expression || ''}
+                        placeholder="a1 / a2 * 100"
+                        onChange={(event) =>
+                          updateRow(rowIndex, { expression: event.target.value })
+                        }
+                      />
+                    </div>
+                  </>
+                ) : (
+                  renderOperand(row, rowIndex, {
+                    showDimension: true,
+                    canDelete: rows.length > 2
+                  })
+                )}
+                {renderMultiFields(row, rowIndex)}
+              </MetricConditionCard>
+          ))
+          : null}
+        {!showFormula && !showMulti && primaryRow ? (
+          <MetricConditionCard
+            showSourceSwitch={showSourceSwitch}
+            source={conditionSource}
+            onSourceChange={onSourceChange}
+          >
+            {renderOperand(primaryRow, 0, {
+              showDimension: true,
+              canDelete: false
+            })}
+          </MetricConditionCard>
+        ) : null}
+        {showMulti ? (
+          <Button
+            className="mx-3 w-fit"
+            disabled={rows.length >= 5}
+            icon={<PlusOutlined />}
+            onClick={addMetricRow}
+            type="dashed"
+          >
+            {translateWithFallback('monitor.events.multiAddCondition', '添加条件')}
+          </Button>
+        ) : null}
+        {showMulti ? (
+          <div className="mx-3 flex items-center gap-2">
+            <span className="shrink-0 text-[var(--color-text-2)]">
+              {t('monitor.events.multiDisplayMetricName')}
             </span>
             <Input
-              className="min-w-0"
               value={resultName}
-              placeholder={t('monitor.integrations.formulaResultNamePlaceholder')}
+              placeholder={t('monitor.events.multiDisplayMetricNamePlaceholder')}
               onChange={(event) => onResultNameChange(event.target.value)}
             />
-            <span className="text-center text-[var(--color-text-3)]">=</span>
-            <Input
-              className="min-w-0"
-              value={expression}
-              placeholder="a / b * 100"
-              onChange={(event) => onExpressionChange(event.target.value)}
-            />
-            <Cascader
-              className="w-full"
-              showSearch
-              allowClear={false}
-              value={
-                resultUnit ? findCascaderPath(groupedUnitOptions, resultUnit) : []
-              }
-              aria-label={translateWithFallback(
-                'monitor.events.formulaResultUnit',
-                '结果单位'
-              )}
-              placeholder={translateWithFallback(
-                'monitor.events.formulaResultUnit',
-                '结果单位'
-              )}
-              options={groupedUnitOptions}
-              onChange={(path) => {
-                // Cascader 清空时 path 是 [],直接忽略,避免把字符串 "undefined" 写入 state
-                const next = (path as (string | number)[]).at(-1);
-                if (typeof next === 'string') {
-                  onResultUnitChange(next);
-                }
-              }}
-            />
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

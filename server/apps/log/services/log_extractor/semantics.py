@@ -359,6 +359,8 @@ def _condition_matches(event: dict[str, Any], condition: dict[str, Any]) -> bool
         else:
             outcome = actual.endswith(item["value"])
         outcomes.append(outcome)
+    if not outcomes:
+        return True
     return all(outcomes) if condition["mode"] == "AND" else any(outcomes)
 
 
@@ -372,7 +374,9 @@ def _expand_replacement(value: str, match: re.Match[str]) -> str:
             continue
         reference = re.match(r"\$\{([^}]+)\}", value[index:]) if value[index] == "$" else None
         if reference:
-            result += match.group(reference.group(1)) or ""
+            token = reference.group(1)
+            group: str | int = int(token) if token.isascii() and token.isdigit() else token
+            result += match.group(group) or ""
             index += len(reference.group(0))
             continue
         result += value[index]

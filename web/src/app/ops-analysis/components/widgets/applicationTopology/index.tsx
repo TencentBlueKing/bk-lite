@@ -103,9 +103,9 @@ const ApplicationTopology = ({
         nodes={nodes}
         links={payload.links || []}
         usesScreenTheme={usesScreenTheme}
+        chartThemeMode={chartThemeMode}
         shareMode={Boolean(shareMode)}
         config={config}
-        screenRenderContext={screenRenderContext}
         screenScaleX={screenRenderContext?.scaleX}
         screenScaleY={screenRenderContext?.scaleY}
         onRefresh={() => void load()}

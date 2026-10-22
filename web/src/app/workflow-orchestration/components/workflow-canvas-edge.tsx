@@ -6,6 +6,7 @@ import { theme } from 'antd';
 import { useState } from 'react';
 
 import { useTranslation } from '@/utils/i18n';
+import { WorkflowPermission } from './workflow-permission';
 
 interface WorkflowEdgeData extends Record<string, unknown> {
   readOnly?: boolean;
@@ -36,7 +37,7 @@ export function WorkflowCanvasEdge({ id, sourceX, sourceY, targetX, targetY, sou
       }}
     />
     {selected && !data?.readOnly ? <EdgeLabelRenderer>
-      <button
+      <WorkflowPermission operation="Edit"><button
         type="button"
         aria-label={t('workflowOrchestration.editor.deleteEdge', '删除连线')}
         className="nodrag nopan grid h-7 w-7 place-items-center rounded border border-[var(--color-border-2)] bg-[var(--color-bg)] shadow-[0_1px_3px_-1px_var(--color-border-3)]"
@@ -57,7 +58,7 @@ export function WorkflowCanvasEdge({ id, sourceX, sourceY, targetX, targetY, sou
         }}
       >
         <DeleteOutlined style={{ color: deleteHovered ? token.colorError : token.colorText }} />
-      </button>
+      </button></WorkflowPermission>
     </EdgeLabelRenderer> : null}
   </g>;
 }

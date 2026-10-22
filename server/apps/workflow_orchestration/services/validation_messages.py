@@ -272,6 +272,8 @@ _STATIC_CODES = {
     "team 必须是单一组织 ID": "team_id_invalid",
     "人工处理项只能由执行引擎产生": "interaction_create_unsupported",
     "同一组织下已存在同名流程": "workflow_name_conflict",
+    "请选择组织": "team_required",
+    "已发布流程不可修改组织": "published_team_locked",
     "触发器不存在或不属于调用方组织": "trigger_caller_forbidden",
     "缺少流程实例操作权限": "execution_permission_required",
     "编排服务暂不可用": "orchestration_unavailable",

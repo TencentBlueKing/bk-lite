@@ -7,6 +7,7 @@ import { useChannelApi } from '@/app/system-manager/api/channel';
 import { useUserApi } from '@/app/system-manager/api/user';
 import LoginSettings from '@/app/system-manager/components/security/authSettings';
 import { useTranslation } from '@/utils/i18n';
+import { invalidateGmTransportCache } from '@/utils/gmTransport';
 
 type InitialPasswordMode = 'fixed' | 'random' | 'none';
 
@@ -19,6 +20,9 @@ const SecuritySettingsPage: React.FC = () => {
   const [pendingOtpRecommendedApps, setPendingOtpRecommendedApps] = useState<string[]>([]);
   const [otpUsers, setOtpUsers] = useState<Array<{ value: string; label: string }>>([]);
   const [pendingOtpEnabled, setPendingOtpEnabled] = useState(false);
+  const [gmTransportEnabled, setGmTransportEnabled] = useState(false);
+  const [pendingGmTransportEnabled, setPendingGmTransportEnabled] = useState(false);
+  const [gmTransportDegraded, setGmTransportDegraded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [loginExpiredTime, setLoginExpiredTime] = useState<string>('24');
@@ -56,6 +60,7 @@ const SecuritySettingsPage: React.FC = () => {
   const { getUserIdAll } = useUserApi();
   useEffect(() => {
     fetchSystemSettings();
+    fetchGmTransportStatus();
     fetchEmailChannels();
     getUserIdAll().then((res: unknown) => {
       const users = Array.isArray(res) ? res : [];
@@ -75,6 +80,17 @@ const SecuritySettingsPage: React.FC = () => {
       console.error('Failed to fetch email channels:', error);
       setEmailChannels([]);
       setEmailChannelsError(true);
+    }
+  };
+
+  const fetchGmTransportStatus = async () => {
+    try {
+      const response = await fetch('/api/proxy/core/api/gm_transport_public/');
+      const payload = await response.json();
+      setGmTransportDegraded(payload?.data?.degraded === '1');
+    } catch (error) {
+      console.error('Failed to fetch GM transport status:', error);
+      setGmTransportDegraded(false);
     }
   };
 
@@ -100,6 +116,9 @@ const SecuritySettingsPage: React.FC = () => {
       setPendingOtpRecommendedApps(apps);
       setOtpEnabled(otpValue);
       setPendingOtpEnabled(otpValue);
+      const gmValue = settings.enable_gm_transport === '1';
+      setGmTransportEnabled(gmValue);
+      setPendingGmTransportEnabled(gmValue);
       const expiredTime = settings.login_expired_time || '24';
       setLoginExpiredTime(expiredTime);
       setPendingLoginExpiredTime(expiredTime);
@@ -158,6 +177,10 @@ const SecuritySettingsPage: React.FC = () => {
 
   const handleOtpChange = (checked: boolean) => {
     setPendingOtpEnabled(checked);
+  };
+
+  const handleGmTransportChange = (checked: boolean) => {
+    setPendingGmTransportEnabled(checked);
   };
 
   const handleLoginExpiredTimeChange = (value: string) => {
@@ -246,12 +269,16 @@ const SecuritySettingsPage: React.FC = () => {
         pwdSetExpiryReminderDays: pendingReminderDays,
         otpWhitelist: pendingOtpWhitelist,
         otpRecommendedApps: pendingOtpRecommendedApps.length ? pendingOtpRecommendedApps.join(',') : undefined,
+        enableGmTransport: pendingGmTransportEnabled ? '1' : '0',
         userCreateInitialPasswordMode: pendingInitialPasswordMode,
         userCreateInitialPassword: initialPassword || undefined,
         userCreateInitialPasswordEmailChannelId:
           pendingInitialPasswordMode !== 'none' ? pendingInitialPasswordEmailChannelId : undefined,
       });
       setOtpEnabled(pendingOtpEnabled);
+      setGmTransportEnabled(pendingGmTransportEnabled);
+      invalidateGmTransportCache();
+      await fetchGmTransportStatus();
       setOtpWhitelist(pendingOtpWhitelist);
       setOtpRecommendedApps(pendingOtpRecommendedApps);
       setLoginExpiredTime(pendingLoginExpiredTime);
@@ -272,6 +299,7 @@ const SecuritySettingsPage: React.FC = () => {
     } catch (error) {
       console.error('Failed to update settings:', error);
       setPendingOtpEnabled(otpEnabled);
+      setPendingGmTransportEnabled(gmTransportEnabled);
       setPendingLoginExpiredTime(loginExpiredTime);
       setPendingPasswordExpiration(passwordExpiration);
       setPendingPasswordComplexity(passwordComplexity);
@@ -295,6 +323,9 @@ const SecuritySettingsPage: React.FC = () => {
   return (
     <LoginSettings
       otpEnabled={pendingOtpEnabled}
+      gmTransportEnabled={pendingGmTransportEnabled}
+      gmTransportDegraded={gmTransportDegraded}
+      onGmTransportChange={handleGmTransportChange}
       otpWhitelist={pendingOtpWhitelist}
       otpRecommendedApps={pendingOtpRecommendedApps}
       otpUsers={otpUsers}

@@ -13,7 +13,7 @@ export interface ApplicationClientData extends ClientData {
   tagList: string[];
 }
 
-export function applicationListSearchText(item: { display_name?: string; name?: string }): string {
+export function applicationListSearchText(item: ApplicationClientData): string {
   return [item.display_name, item.name].filter(Boolean).join(' ');
 }
 
@@ -28,7 +28,7 @@ export function useApplicationPage() {
   const [currentItem, setCurrentItem] = useState<ApplicationClientData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const dataList = useMemo(
+  const dataList = useMemo<ApplicationClientData[]>(
     () => clientData
       .filter((client) => client.name !== 'ops-console')
       .map((item) => ({

@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(snmp_device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='router', collect_type='snmp_ge_mds', __$labels__}) by (instance_id)",
       "display_name": "System Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Temperature",
       "name": "mpr_heatsink1_temperature_celsius",
-      "query": "max(snmp_mpr_heatsink1_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpr_heatsink1_temperature_celsius{instance_type='router', collect_type='snmp_ge_mds', __$labels__}) by (instance_id)",
       "display_name": "MPR Heatsink 1 Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Temperature",
       "name": "mpr_heatsink2_temperature_celsius",
-      "query": "max(snmp_mpr_heatsink2_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpr_heatsink2_temperature_celsius{instance_type='router', collect_type='snmp_ge_mds', __$labels__}) by (instance_id)",
       "display_name": "MPR Heatsink 2 Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "max(snmp_device_voltage_volts{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_voltage_volts{instance_type='router', collect_type='snmp_ge_mds', __$labels__}) by (instance_id)",
       "display_name": "Power Supply Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "mpr_psu1_voltage_volts",
-      "query": "max(snmp_mpr_psu1_voltage_volts{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpr_psu1_voltage_volts{instance_type='router', collect_type='snmp_ge_mds', __$labels__}) by (instance_id)",
       "display_name": "MPR PSU 1 Output Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "mpr_psu2_voltage_volts",
-      "query": "max(snmp_mpr_psu2_voltage_volts{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_mpr_psu2_voltage_volts{instance_type='router', collect_type='snmp_ge_mds', __$labels__}) by (instance_id)",
       "display_name": "MPR PSU 2 Output Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -100,7 +100,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_ge_mds', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

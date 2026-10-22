@@ -42,8 +42,10 @@ import {
   buildAlertDetailMetricQuery,
   buildAlertSnapshotChartModel,
   decorateAlertSnapshotChartData,
+  listAlertSnapshotSeriesRefs,
   resolveAlertDetailChartUnit,
   resolveAlertDetailMetric,
+  type AlertConditionChart,
   type AlertSnapshotOverlay
 } from './alertDetailUtils';
 import { buildAlertDetailPageContext } from './alertDetail.context';
@@ -72,6 +74,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     >(null);
     const [chartUnit, setChartUnit] = useState<string>('');
     const [chartOverlay, setChartOverlay] = useState<AlertSnapshotOverlay>();
+    const [conditionCharts, setConditionCharts] = useState<AlertConditionChart[]>([]);
     const [trapData, setTrapData] = useState<TableDataItem>({});
     const [activeTab, setActiveTab] = useState<string>('information');
     const [loading, setLoading] = useState<boolean>(false);
@@ -106,6 +109,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         setEventData([]);
         setTrapData({});
         setChartData([]);
+        setConditionCharts([]);
         setChartXAxisDomain(null);
         setChartUnit('');
         getMetrics(form);
@@ -157,6 +161,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         });
         const snapshots = responseData?.snapshots || [];
         const isNoDataAlert = form.alert_type === 'no_data';
+        const seriesRefs = listAlertSnapshotSeriesRefs(snapshots);
         const snapshotChart = buildAlertSnapshotChartModel(
           snapshots,
           isNoDataAlert ? { alertType: 'no_data' } : undefined
@@ -179,6 +184,40 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           [{ values: snapshotChart.dataValues, metric: form.metric }],
           config
         );
+        if (seriesRefs.length) {
+          const queries = (form.policy?.query_condition?.queries || []) as Array<{
+            ref?: string;
+            metric_name?: string;
+            role?: string;
+            calculation_unit?: string;
+            threshold_unit?: string;
+            threshold?: Array<{ level?: string; method?: string; value?: number | null }>;
+          }>;
+          setConditionCharts(
+            seriesRefs.map((ref) => {
+              const query = queries.find((item) => item.ref === ref);
+              const model = buildAlertSnapshotChartModel(snapshots, { seriesRef: ref });
+              const gate = query?.role === 'gate';
+              return {
+                ref,
+                label: query?.metric_name || ref,
+                unit: query?.calculation_unit || query?.threshold_unit || '',
+                threshold: (query?.threshold || []).map((item) => ({
+                  level: item.level || (gate ? 'gate' : ''),
+                  method: item.method || '>',
+                  value: item.value ?? null,
+                })),
+                data: renderChart(
+                  [{ values: model.dataValues, metric: form.metric }],
+                  config
+                ),
+                overlay: model.overlay,
+              };
+            })
+          );
+        } else {
+          setConditionCharts([]);
+        }
         if (isNoDataAlert) {
           setChartData(
             decorateAlertSnapshotChartData(
@@ -323,6 +362,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setGroupVisible(false);
       setActiveTab('information');
       setChartData([]);
+      setConditionCharts([]);
       setChartXAxisDomain(null);
       setChartUnit('');
       setChartOverlay(undefined);
@@ -502,6 +542,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                       chartXAxisDomain={chartXAxisDomain}
                       chartUnit={chartUnit}
                       chartOverlay={chartOverlay}
+                      conditionCharts={conditionCharts}
                     />
                   </Spin>
                 ) : (

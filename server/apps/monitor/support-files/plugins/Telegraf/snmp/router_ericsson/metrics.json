@@ -25,7 +25,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -38,7 +38,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -51,7 +51,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "device_memory_used{instance_type='router', __$labels__}",
+      "query": "device_memory_used{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -69,7 +69,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='router', __$labels__}",
+      "query": "device_memory_free{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='router', __$labels__}",
+      "query": "device_memory_total{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='router', __$labels__}",
+      "query": "device_memory_usage{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -141,7 +141,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='router', __$labels__}",
+      "query": "device_fan_state{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}",
       "display_name": "Fan State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -159,7 +159,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='router', __$labels__}",
+      "query": "device_fan_speed{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -177,7 +177,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='router', __$labels__}",
+      "query": "device_psu_state{instance_type='router', collect_type='snmp_ericsson_router', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",

@@ -7,11 +7,12 @@ import { StrictMode } from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WorkflowListPage } from '../components/workflow-list-page';
-import { createDefaultWorkflowName, createDuplicateWorkflowName } from '../lib/workflow-draft';
+import { createDefaultWorkflowName } from '../lib/workflow-draft';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
+  patch: vi.fn(),
   del: vi.fn(),
   push: vi.fn(),
 }));
@@ -22,13 +23,44 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/utils/request', () => ({
-  default: () => ({ get: mocks.get, post: mocks.post, del: mocks.del }),
+  default: () => ({ get: mocks.get, post: mocks.post, patch: mocks.patch, del: mocks.del }),
+}));
+
+vi.mock('@/context/userInfo', () => ({
+  useUserInfoContext: () => ({
+    selectedGroup: { id: '7', name: '当前组织' },
+    flatGroups: [{ id: '7', name: '当前组织' }],
+    groupTree: [],
+  }),
+}));
+
+vi.mock('@/components/group-tree-select', () => ({
+  default: ({
+    id,
+    value,
+    onChange,
+    disabled,
+  }: {
+    id?: string;
+    value?: number[];
+    onChange?: (value: number[]) => void;
+    disabled?: boolean;
+  }) => (
+    <input
+      id={id}
+      aria-label="组织"
+      disabled={disabled}
+      value={Array.isArray(value) ? value.join(',') : ''}
+      onChange={(event) => onChange?.(event.target.value.split(',').filter(Boolean).map(Number))}
+    />
+  ),
 }));
 
 const workflow = {
   id: 1,
   name: '这是一个用于验证单行省略效果的超长流程名称',
   description: '这是一段超过普通表格单元格展示宽度的流程说明',
+  team: [7],
   status: 'PUBLISHED',
   current_version: 3,
   enabled: true,
@@ -59,7 +91,6 @@ describe('流程列表', () => {
   it('按本地时间生成毫秒精度的默认流程名', () => {
     const now = new Date(2026, 8, 9, 10, 19, 10, 372);
     expect(createDefaultWorkflowName(now)).toBe('流程20260909101910372');
-    expect(createDuplicateWorkflowName('Linux 主机巡检（Excel）', now)).toBe('Linux 主机巡检（Excel）20260909101910372');
   });
 
   beforeAll(() => {
@@ -79,18 +110,21 @@ describe('流程列表', () => {
   beforeEach(() => {
     mocks.get.mockReset();
     mocks.post.mockReset();
+    mocks.patch.mockReset();
     mocks.del.mockReset();
     mocks.push.mockReset();
     mocks.get.mockResolvedValue({ count: 1, items: [workflow] });
   });
 
-  it('只保留顶部名称搜索，表头承载状态和触发器筛选', async () => {
+  it('只保留顶部名称搜索，表头承载状态筛选并展示描述和组织', async () => {
     const { container } = renderPage();
 
     const name = await screen.findByText(workflow.name);
     expect(name.className).toContain('whitespace-nowrap');
-    expect(screen.queryByRole('columnheader', { name: '说明' })).toBeNull();
-    expect(screen.queryByText(workflow.description)).toBeNull();
+    expect(screen.getByRole('columnheader', { name: '描述' })).not.toBeNull();
+    expect(screen.getByText(workflow.description).className).toContain('whitespace-nowrap');
+    expect(screen.getByRole('columnheader', { name: '组织' })).not.toBeNull();
+    expect(screen.getByText('当前组织')).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: /^发布状态/ })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: /^启用状态/ })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '版本' })).not.toBeNull();
@@ -107,7 +141,7 @@ describe('流程列表', () => {
     expect(screen.getByRole('columnheader', { name: /^发布状态/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: /^启用状态/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: /^是否内置/ })).toBeNull();
-    expect(screen.getByRole('columnheader', { name: /^触发器/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /^触发器/ })).toBeNull();
     expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('is_builtin=false'), expect.anything());
   });
 
@@ -128,7 +162,7 @@ describe('流程列表', () => {
     const menu = document.querySelector('.ant-dropdown-menu');
     expect(menu).not.toBeNull();
     if (!menu) return;
-    expect(within(menu as HTMLElement).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['执行记录', '复制', '删除']);
+    expect(within(menu as HTMLElement).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['执行记录', '复制', '基本信息', '删除']);
     expect(within(menu as HTMLElement).queryByText('运行')).toBeNull();
     expect(menu.querySelector('.anticon')).toBeNull();
   });
@@ -205,6 +239,8 @@ describe('流程列表', () => {
     expect(screen.queryByRole('button', { name: '运行' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: /^启用状态/ })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: /^发布状态/ })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: '描述' })).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '组织' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /查看/ }));
     expect(mocks.push).toHaveBeenCalledWith('/workflow-orchestration/market/1?mode=view');
@@ -213,10 +249,15 @@ describe('流程列表', () => {
     expect(screen.getByRole('columnheader', { name: '模版名称' })).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '流程名称' })).toBeNull();
     expect(await screen.findByText('复制后出现在「流程」里，状态是纯草稿，不会发布，也不会改动这条内置流程。')).not.toBeNull();
+    expect((screen.getByLabelText('流程名称') as HTMLInputElement).value).toMatch(/^流程\d{17}$/);
     fireEvent.change(screen.getByLabelText('流程名称'), { target: { value: copied.name } });
     fireEvent.click(screen.getByRole('button', { name: '确认复制' }));
 
-    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/workflow_orchestration/api/workflows/1/duplicate/', { name: copied.name }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/workflow_orchestration/api/workflows/1/duplicate/', {
+      name: copied.name,
+      description: builtin.description,
+      team: [7],
+    }));
     expect(await screen.findByText('已复制为新的纯草稿')).not.toBeNull();
     expect(screen.queryByText(copied.name)).toBeNull();
   });
@@ -300,17 +341,29 @@ describe('流程列表', () => {
     await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(1));
   });
 
-  it('新建流程不弹窗也不请求创建接口，直接携带默认名称进入空白画布', async () => {
+  it('新建流程先填写组织、名称和描述，确认后留在列表', async () => {
     renderPage();
     await screen.findByText(workflow.name);
 
     fireEvent.click(screen.getByRole('button', { name: /新建/ }));
-
-    expect(screen.queryByRole('dialog', { name: '新建流程' })).toBeNull();
+    const dialog = (await screen.findByText('新建流程')).closest('.ant-modal') as HTMLElement;
+    expect((within(dialog).getByLabelText('组织') as HTMLInputElement).value).toBe('7');
+    expect((within(dialog).getByLabelText('流程名称') as HTMLInputElement).value).toMatch(/^流程\d{17}$/);
     expect(mocks.post).not.toHaveBeenCalled();
-    const target = mocks.push.mock.calls[0]?.[0] as string;
-    expect(target).toMatch(/^\/workflow-orchestration\/workflows\/new\?mode=edit&name=/);
-    expect(decodeURIComponent(target.split('name=')[1])).toMatch(/^流程\d{17}$/);
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    fireEvent.change(within(dialog).getByLabelText('流程名称'), { target: { value: '新流程' } });
+    fireEvent.change(within(dialog).getByLabelText('描述'), { target: { value: '一份说明' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /确\s*定|OK/ }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/workflow_orchestration/api/workflows/', {
+      name: '新流程',
+      description: '一份说明',
+      team: [7],
+      starter: 'blank',
+    }));
+    expect(await screen.findByText('已创建为纯草稿')).not.toBeNull();
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
   it('复制流程先填写名称，只有确认后才请求复制接口', async () => {
@@ -324,7 +377,7 @@ describe('流程列表', () => {
     fireEvent.click(copyLabel.closest('[role="menuitem"]')!);
 
     const nameInput = await screen.findByLabelText('流程名称');
-    expect((nameInput as HTMLInputElement).value).toMatch(new RegExp(`^${workflow.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\d{17}$`));
+    expect((nameInput as HTMLInputElement).value).toMatch(/^流程\d{17}$/);
     const duplicateModal = nameInput.closest('.ant-modal-content');
     expect((duplicateModal?.querySelector('.ant-modal-footer') as HTMLElement | null)?.style.marginTop).toBe('20px');
     expect(mocks.post).not.toHaveBeenCalled();
@@ -332,8 +385,31 @@ describe('流程列表', () => {
     fireEvent.change(nameInput, { target: { value: copied.name } });
     fireEvent.click(screen.getByRole('button', { name: '确认复制' }));
 
-    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/workflow_orchestration/api/workflows/1/duplicate/', { name: copied.name }));
-    expect(await screen.findByText('自定义副本')).not.toBeNull();
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/workflow_orchestration/api/workflows/1/duplicate/', {
+      name: copied.name,
+      description: workflow.description,
+      team: [7],
+    }));
+    expect(await screen.findByText('已复制为新的纯草稿')).not.toBeNull();
+  });
+
+  it('已发布流程的基本信息可以改名称和描述，组织保持锁定', async () => {
+    mocks.patch.mockResolvedValue({ ...workflow, name: '改名后的流程' });
+    renderPage();
+    await screen.findByText(workflow.name);
+
+    fireEvent.click(screen.getByRole('button', { name: `更多操作：${workflow.name}` }));
+    fireEvent.click((await screen.findByText('基本信息')).closest('[role="menuitem"]')!);
+
+    const dialog = (await screen.findByText('编辑流程')).closest('.ant-modal') as HTMLElement;
+    expect((within(dialog).getByLabelText('组织') as HTMLInputElement).disabled).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText('流程名称'), { target: { value: '改名后的流程' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /确\s*定|OK/ }));
+
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/workflow_orchestration/api/workflows/1/', {
+      name: '改名后的流程',
+      description: workflow.description,
+    }));
   });
 
   it('连续搜索时不逐字请求、取消旧请求并忽略晚到响应', async () => {

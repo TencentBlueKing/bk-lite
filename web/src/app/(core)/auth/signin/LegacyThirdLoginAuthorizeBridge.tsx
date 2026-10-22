@@ -7,6 +7,7 @@ import { requestLegacyThirdLoginAuthorize } from '@/utils/legacyThirdLogin';
 import { useTranslation } from '@/utils/i18n';
 import { PORTAL_HOME_PATH } from '@/utils/route';
 import { isScreenModeEnabled, withScreenQuery } from '@/console-layout';
+import { resolvePostLoginHref } from '@/app/ops-analysis/utils/homepageLanding';
 import SigninPageFrame from './login-auth/SigninPageFrame';
 
 interface LegacyThirdLoginAuthorizeBridgeProps {
@@ -49,8 +50,9 @@ export default function LegacyThirdLoginAuthorizeBridge({
       if (cancelled) {
         return;
       }
+      const landed = await resolvePostLoginHref(url, token, window.location.origin);
       const nextUrl = withScreenQuery(
-        url,
+        landed,
         isScreenModeEnabled(window.location.search),
         window.location.origin,
       );

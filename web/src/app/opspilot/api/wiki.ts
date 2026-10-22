@@ -307,11 +307,11 @@ export const useWikiApi = () => {
   const executeKnowledgeBaseMarkdown = (
     id: number,
     file: File,
-    token: string,
+    options: WikiMarkdownImportPreflightOptions = {},
   ): Promise<WikiMarkdownImportExecuteResult> => {
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("token", token);
+    fd.append("options", JSON.stringify(options));
     return post(`${BASE}/knowledge_base/${id}/import_markdown_execute/`, fd, {
       headers: { "Content-Type": "multipart/form-data" },
     });

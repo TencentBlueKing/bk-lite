@@ -132,7 +132,7 @@ def test_shared_device_metrics_match_cisco_group_and_unit(metrics, cisco_metrics
 @pytest.mark.unit
 def test_cpu_query_matches_top_level_snmp_scalar(metrics, toml_text):
     metric = {m["name"]: m for m in metrics["metrics"]}["device_cpu_usage"]
-    assert metric["query"] == "snmp_device_cpu_usage{instance_type='switch', __$labels__}"
+    assert metric["query"] == f"snmp_device_cpu_usage{{instance_type='switch', collect_type='{COLLECT_TYPE}', __$labels__}}"
     assert metric["dimensions"] == []
     _, config = render_snmp_config(toml_text, EXTREME_DIR)
     fields = {field["name"]: field for field in config["inputs"]["snmp"][0]["field"]}

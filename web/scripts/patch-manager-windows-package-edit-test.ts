@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 
-import { getWindowsPackageUploadState } from '../src/app/patch-manager/components/windows-package-upload-state';
+import {
+  getWindowsPackageUploadState,
+  windowsPackageReplacementSelected,
+} from '../src/app/patch-manager/components/windows-package-upload-state';
 import type { Patch } from '../src/app/patch-manager/types';
 
 const basePatch: Patch = {
@@ -53,5 +56,10 @@ assert.equal(processing.showRemoveIcon, false);
 const wsus = getWindowsPackageUploadState({ ...basePatch, sources: [8], source_type: 'wsus' });
 assert.equal(wsus.visible, false);
 assert.deepEqual(wsus.fileList, []);
+
+assert.equal(windowsPackageReplacementSelected(undefined), false);
+assert.equal(windowsPackageReplacementSelected(failed.fileList), false);
+assert.equal(windowsPackageReplacementSelected([]), false);
+assert.equal(windowsPackageReplacementSelected([{ originFileObj: { name: 'kb.msu' } }]), true);
 
 console.log('Windows 手工补丁编辑文件状态约束通过');

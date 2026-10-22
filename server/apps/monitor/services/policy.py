@@ -18,6 +18,7 @@ from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENTER_ONLY, AlertLifecycleNotifier
 from apps.monitor.services.policy_bulk import normalize_default_calculation_unit, normalize_stored_metric_unit, normalize_template_algorithms
+from apps.monitor.tasks.utils.policy_multi import query_metric_items
 
 ARCHIVE_FORMAT = "bk-lite-monitor-policy-templates"
 ARCHIVE_SCHEMA_VERSION = 1
@@ -76,26 +77,86 @@ class PolicyService:
         return object_name, plugin_name
 
     @staticmethod
+    def _template_metric_name(raw_template):
+        metric_name = str(raw_template.get("metric_name") or "").strip()
+        if metric_name:
+            return metric_name
+        query = raw_template.get("query_condition") or {}
+        if isinstance(query, dict) and query.get("type") != "formula":
+            return str(query.get("metric_name") or "").strip()
+        return ""
+
+    @staticmethod
+    def _unique_plugin_metric_objects(lookups):
+        """(plugin_name, metric_name) → 对象名；仅当该插件下该指标只属于一个监控对象。"""
+        if not lookups:
+            return {}
+        plugin_names = {plugin_name for plugin_name, _metric_name in lookups}
+        metric_names = {metric_name for _plugin_name, metric_name in lookups}
+        grouped = {}
+        rows = Metric.objects.filter(
+            monitor_plugin__name__in=plugin_names,
+            name__in=metric_names,
+        ).values_list("monitor_plugin__name", "name", "monitor_object__name")
+        for plugin_name, metric_name, object_name in rows:
+            key = (plugin_name, metric_name)
+            if key not in lookups:
+                continue
+            object_name = str(object_name or "").strip()
+            if not object_name:
+                continue
+            grouped.setdefault(key, set()).add(object_name)
+        return {key: next(iter(names)) for key, names in grouped.items() if len(names) == 1}
+
+    @staticmethod
+    def _effective_builtin_object_name(raw_template, root_object_name, plugin_name, unique_metric_objects):
+        declared = str(raw_template.get("object") or "").strip()
+        if declared:
+            return declared
+        metric_name = PolicyService._template_metric_name(raw_template)
+        if metric_name:
+            unique_object = unique_metric_objects.get((plugin_name, metric_name), "")
+            if unique_object:
+                return unique_object
+        return root_object_name
+
+    @staticmethod
     def _normalize_builtin_documents(documents):
-        normalized = []
+        prepared = []
         seen_pairs = set()
-        seen_keys = set()
+        metric_lookups = set()
         for data in documents:
-            object_name, plugin_name = PolicyService._extract_builtin_pair(data)
-            pair = (object_name, plugin_name)
+            root_object_name, plugin_name = PolicyService._extract_builtin_pair(data)
+            pair = (root_object_name, plugin_name)
             if pair in seen_pairs:
-                raise BaseAppException(f"内置策略模板重复定义: {object_name}/{plugin_name}")
+                raise BaseAppException(f"内置策略模板重复定义: {root_object_name}/{plugin_name}")
             seen_pairs.add(pair)
             templates = data.get("templates")
             if not isinstance(templates, list):
-                raise BaseAppException(f"{object_name}/{plugin_name} 的 templates 必须是列表")
-            pair_keys = set()
+                raise BaseAppException(f"{root_object_name}/{plugin_name} 的 templates 必须是列表")
+            document_templates = []
             for raw_template in templates:
                 if not isinstance(raw_template, dict):
-                    raise BaseAppException(f"{object_name}/{plugin_name} 包含非法模板")
+                    raise BaseAppException(f"{root_object_name}/{plugin_name} 包含非法模板")
                 name = str(raw_template.get("name") or raw_template.get("alert_name") or raw_template.get("metric_name") or "").strip()
                 if not name:
-                    raise BaseAppException(f"{object_name}/{plugin_name} 的模板缺少 name")
+                    raise BaseAppException(f"{root_object_name}/{plugin_name} 的模板缺少 name")
+                declared_object = str(raw_template.get("object") or "").strip()
+                metric_name = PolicyService._template_metric_name(raw_template)
+                if not declared_object and metric_name:
+                    metric_lookups.add((plugin_name, metric_name))
+                document_templates.append((raw_template, name))
+            prepared.append((root_object_name, plugin_name, document_templates))
+
+        unique_metric_objects = PolicyService._unique_plugin_metric_objects(metric_lookups)
+        normalized = []
+        seen_keys = set()
+        for root_object_name, plugin_name, document_templates in prepared:
+            pair_keys = set()
+            for raw_template, name in document_templates:
+                object_name = PolicyService._effective_builtin_object_name(
+                    raw_template, root_object_name, plugin_name, unique_metric_objects
+                )
                 key = PolicyService.build_builtin_key(object_name, plugin_name, raw_template)
                 if key in pair_keys or key in seen_keys:
                     raise BaseAppException(f"内置策略模板 key 重复: {key}")
@@ -230,19 +291,20 @@ class PolicyService:
 
     @staticmethod
     def import_monitor_policy(data):
-        """兼容单文件调用；仅对账该对象和插件下的内置模板。"""
+        """兼容单文件调用；对账该插件在根对象及各模板有效对象下的内置模板。"""
         normalized = PolicyService._normalize_builtin_documents([data])
-        object_name = data["object"]
-        plugin_name = data["plugin"]
-        monitor_object = MonitorObject.objects.get(name=object_name)
+        root_object_name, plugin_name = PolicyService._extract_builtin_pair(data)
+        object_names = {item["object_name"] for item in normalized}
+        object_names.add(root_object_name)
+        objects = {name: MonitorObject.objects.get(name=name) for name in object_names}
         plugin = MonitorPlugin.objects.get(name=plugin_name)
         expected_keys = {item["key"] for item in normalized}
         with transaction.atomic():
             for item in normalized:
-                PolicyService._upsert_builtin_template(item, monitor_object, plugin)
+                PolicyService._upsert_builtin_template(item, objects[item["object_name"]], plugin)
             PolicyTemplate.objects.filter(
                 template_type=PolicyTemplate.TYPE_BUILTIN,
-                monitor_object=monitor_object,
+                monitor_object__in=list(objects.values()),
                 plugin=plugin,
             ).exclude(key__in=expected_keys).delete()
 
@@ -288,6 +350,8 @@ class PolicyService:
         query = config.get("query_condition") or {}
         if not isinstance(query, dict):
             query = {}
+        if query.get("type") == "multi":
+            return str(query.get("result_name") or "").strip()
         if query.get("type") == "formula":
             expression = PolicyService._resolve_formula_expression_with_metrics(query)
             result_name = str(query.get("result_name") or "").strip()
@@ -369,11 +433,8 @@ class PolicyService:
     @staticmethod
     def _portable_query_condition(query_condition):
         query = copy.deepcopy(query_condition or {})
-        metric_ids = []
-        if query.get("type") == "formula":
-            metric_ids = [item.get("metric_id") for item in query.get("queries") or []]
-        elif query.get("metric_id"):
-            metric_ids = [query.get("metric_id")]
+        carriers = query_metric_items(query)
+        metric_ids = [item.get("metric_id") for item in carriers if item.get("metric_id")]
         metrics = {item.id: item for item in Metric.objects.select_related("monitor_plugin").filter(id__in=metric_ids)}
         if len(metrics) != len(set(metric_ids)):
             raise BaseAppException("模板引用的指标不存在")
@@ -386,11 +447,8 @@ class PolicyService:
                 if metric.monitor_plugin:
                     item["metric_plugin"] = metric.monitor_plugin.name
 
-        if query.get("type") == "formula":
-            for item in query.get("queries") or []:
-                replace(item)
-        else:
-            replace(query)
+        for item in carriers:
+            replace(item)
         return query
 
     @staticmethod
@@ -427,13 +485,9 @@ class PolicyService:
         if not isinstance(query, dict) or plugin is None:
             return
         plugin_name = plugin.name
-        if query.get("type") == "formula":
-            for item in query.get("queries") or []:
-                if isinstance(item, dict) and item.get("metric_name") and not item.get("metric_plugin"):
-                    item["metric_plugin"] = plugin_name
-            return
-        if query.get("metric_name") and not query.get("metric_plugin"):
-            query["metric_plugin"] = plugin_name
+        for item in query_metric_items(query):
+            if item.get("metric_name") and not item.get("metric_plugin"):
+                item["metric_plugin"] = plugin_name
 
     @staticmethod
     def _runtime_query_condition(query_condition, monitor_object, plugin=None):
@@ -454,11 +508,8 @@ class PolicyService:
             )
             item["metric_id"] = metric.id
 
-        if query.get("type") == "formula":
-            for item in query.get("queries") or []:
-                replace(item)
-        else:
-            replace(query)
+        for item in query_metric_items(query):
+            replace(item)
         return query
 
     @staticmethod

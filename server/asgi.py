@@ -49,7 +49,7 @@ if _db_engine == "dameng":
     asgiref_sync.sync_to_async = _patched_sync_to_async
     _asgi_logger.info("[DAMENG_ASGI] sync_to_async patched with thread_sensitive=False")
 
-from django.core.asgi import get_asgi_application  # noqa: E402
+from apps.core.asgi import get_asgi_application  # noqa: E402
 
 from apps.core.utils.loader import preload_language_cache  # noqa: E402
 

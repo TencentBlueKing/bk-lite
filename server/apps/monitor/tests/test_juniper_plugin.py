@@ -22,6 +22,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import same_metric_field
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -155,7 +156,7 @@ def test_fan_psu_enum_unit_byte_identical_to_cisco(metrics, cisco_metrics):
 def test_cpu_usage_raw_single_series(metrics):
     cpu = {m["name"]: m for m in metrics["metrics"]}["device_cpu_usage"]
     assert cpu["unit"] == "percent"
-    assert cpu["query"] == "device_cpu_usage{instance_type='switch', __$labels__}"
+    assert cpu["query"] == f"device_cpu_usage{{instance_type='switch', collect_type='{COLLECT_TYPE}', __$labels__}}"
 
 
 @pytest.mark.unit
@@ -163,7 +164,7 @@ def test_memory_usage_raw_single_series(metrics):
     by_name = {m["name"]: m for m in metrics["metrics"]}
     usage = by_name["device_memory_usage"]
     assert usage["unit"] == "percent"
-    assert usage["query"] == "device_memory_usage{instance_type='switch', __$labels__}"
+    assert usage["query"] == f"device_memory_usage{{instance_type='switch', collect_type='{COLLECT_TYPE}', __$labels__}}"
     # byte-pool decomposition is not modeled for Juniper
     for raw in ("device_memory_used", "device_memory_total", "device_memory_free"):
         assert raw not in by_name, f"{raw} should not exist in a raw-usage model"
@@ -220,9 +221,7 @@ def test_interface_hc_metrics_present_and_match_cisco(metrics, cisco_metrics):
     for name in INTERFACE_METRICS:
         assert name in ext, f"{name} must be declared (toml collects it)"
         for field in ("metric_group", "unit", "query", "dimensions"):
-            assert ext[name][field] == cis[name][field], f"{name}.{field} drift vs Cisco"
-
-
+            assert same_metric_field(field, ext[name][field], cis[name][field]), f"{name}.{field} drift vs Cisco"
 @pytest.mark.unit
 def test_toml_collects_ifhc_counters(toml_text):
     assert "ifHCInOctets" in toml_text and "ifHCOutOctets" in toml_text

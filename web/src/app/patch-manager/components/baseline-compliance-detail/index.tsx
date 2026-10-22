@@ -338,7 +338,7 @@ export default function BaselineComplianceDetail({
     {
       title: t('patchManager.baseline.complianceDetail.assessmentStatus'),
       dataIndex: 'status',
-      width: 150,
+      width: 120,
       render: (status: BaselineComplianceResultStatus) => (
         <><ResultTag status={status} /></>
       ),
@@ -362,18 +362,13 @@ export default function BaselineComplianceDetail({
     },
   ];
 
+  const [assessmentStatusColumn, evidenceColumn, reasonColumn, assessedAtColumn] = commonColumns;
   const hostColumns: ColumnsType<ComplianceDetailRow> = [
     {
       title: t('patchManager.baseline.complianceDetail.patch'),
       dataIndex: 'identifier',
-      width: 125,
+      width: 108,
       fixed: 'left',
-    },
-    {
-      title: t('patchManager.baseline.description'),
-      dataIndex: 'title',
-      width: 210,
-      ellipsis: true,
     },
     {
       title: t('patchManager.severity'),
@@ -382,12 +377,21 @@ export default function BaselineComplianceDetail({
       render: (severity: BaselineComplianceHostDetail['severity']) => <><SeverityTag severity={severity} /></>,
     },
     {
+      title: t('patchManager.baseline.description'),
+      dataIndex: 'title',
+      width: 210,
+      ellipsis: true,
+    },
+    assessmentStatusColumn,
+    evidenceColumn,
+    reasonColumn,
+    {
       title: t('patchManager.baseline.complianceDetail.requirement'),
       dataIndex: 'condition',
       width: 210,
       ellipsis: true,
     },
-    ...commonColumns,
+    assessedAtColumn,
   ];
 
   const patchColumns: ColumnsType<ComplianceDetailRow> = [
@@ -655,7 +659,7 @@ export default function BaselineComplianceDetail({
                     selectedRowKeys: selectedDetailKeys,
                     onChange: setSelectedDetailKeys,
                   }}
-                  scroll={{ x: perspective === 'host' ? 1330 : 965, y: 'calc(100vh - 430px)' }}
+                  scroll={{ x: perspective === 'host' ? 1278 : 935, y: 'calc(100vh - 430px)' }}
                   pagination={false}
                   locale={{ emptyText: <CompactEmptyState description={t('patchManager.baseline.complianceDetail.noDetails')} /> }}
                 />

@@ -27,7 +27,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -40,7 +40,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "query": "device_cpu_usage{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -63,7 +63,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "max(snmp_device_memory_total{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_total{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total memory of the Forcepoint NGFW in bytes (fwMemBytesTotal)."
@@ -76,7 +76,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "max(snmp_device_memory_used{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_used{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used memory of the Forcepoint NGFW in bytes (fwMemBytesUsed)."
@@ -89,7 +89,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "max(snmp_device_memory_used{instance_type='firewall', __$labels__}) by (instance_id) / max(snmp_device_memory_total{instance_type='firewall', __$labels__}) by (instance_id) * 100",
+      "query": "max(snmp_device_memory_used{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}) by (instance_id) / max(snmp_device_memory_total{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}) by (instance_id) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Forcepoint NGFW, derived as used/total."
@@ -97,7 +97,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_active_sessions",
-      "query": "snmp_firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_active_sessions{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}",
       "display_name": "Active Sessions",
       "data_type": "Number",
       "unit": "short",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='firewall', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -132,7 +132,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='firewall', __$labels__}",
+      "query": "device_psu_state{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -154,7 +154,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='firewall', __$labels__}",
+      "query": "device_fan_state{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -176,7 +176,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_rpm",
-      "query": "device_fan_rpm{instance_type='firewall', __$labels__}",
+      "query": "device_fan_rpm{instance_type='firewall', collect_type='snmp_forcepoint', __$labels__}",
       "display_name": "Fan RPM",
       "data_type": "Number",
       "unit": "rpm",

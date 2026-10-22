@@ -39,7 +39,6 @@ import {
 } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import {
   isScreenChartThemeMode,
-  resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import {
   applyNetworkStatusTopologyLayoutPatch,
@@ -73,6 +72,7 @@ import {
   STATUS_TOPOLOGY_NODE_SHAPE,
   STATUS_TOPOLOGY_PALETTE_DARK,
   STATUS_TOPOLOGY_PALETTE_LIGHT,
+  STATUS_TOPOLOGY_PALETTE_SYSTEM,
   STATUS_TOPOLOGY_VISUAL,
 } from './statusTopologyGraph';
 import type { StatusTopologyPositionedLink } from './statusTopologyGraph';
@@ -804,9 +804,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const topologyPalette = (() => {
     if (config?.chartThemeMode === 'screen-dark') return STATUS_TOPOLOGY_PALETTE_DARK;
     if (config?.chartThemeMode === 'screen-light') return STATUS_TOPOLOGY_PALETTE_LIGHT;
-    return resolveOpsChartThemeName() === 'dark'
-      ? STATUS_TOPOLOGY_PALETTE_DARK
-      : STATUS_TOPOLOGY_PALETTE_LIGHT;
+    return STATUS_TOPOLOGY_PALETTE_SYSTEM;
   })();
 
   const canvasLinks = useMemo(
@@ -1472,10 +1470,10 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
               right: 14,
               bottom: 14,
               position: 'absolute',
-              border: '1px solid #dbe8f6',
+              border: '1px solid var(--color-border-1)',
               borderRadius: 6,
-              background: 'rgba(255,255,255,0.88)',
-              boxShadow: '0 8px 18px rgba(42, 72, 116, 0.08)',
+              background: 'var(--color-bg-1)',
+              boxShadow: '0 8px 18px color-mix(in srgb, var(--color-text-1) 10%, transparent)',
             },
           }}
           onBlankClick={() => {

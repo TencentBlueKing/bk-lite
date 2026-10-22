@@ -21,6 +21,14 @@ from apps.monitor.tasks.utils.policy_methods import (
     period_to_seconds,
     resolve_result_unit,
 )
+from apps.monitor.tasks.utils.policy_multi import (
+    condition_metric_items,
+    condition_policy_like,
+    formula_query_condition,
+    is_formula_condition,
+    is_multi_query,
+    multi_queries,
+)
 from apps.monitor.utils.dimension import parse_instance_id, ScopedInstanceMatcher
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.unit_converter import UnitConverter
@@ -59,6 +67,7 @@ class MetricQueryService:
         self.instance_id_keys = None
         self.metric = None
         self.compiled_formula = None
+        self._multi_metrics = None
         self._scoped_instance_matcher = ScopedInstanceMatcher(
             getattr(getattr(self.policy, "monitor_object", None), "instance_id_keys", None)
             or [],
@@ -95,6 +104,10 @@ class MetricQueryService:
 
         if query_type == "formula":
             self._ensure_formula_compiled()
+            return
+
+        if query_type == "multi":
+            self._load_multi_metrics()
             return
 
         # Metric类型: 从metric配置中获取instance_id_keys
@@ -153,7 +166,7 @@ class MetricQueryService:
 
     def _scope_instance_id_keys(self):
         """范围下推使用的对象身份键；无法可靠映射到 label 时返回空列表。"""
-        if self.policy.query_condition.get("type") not in ("metric", "formula"):
+        if self.policy.query_condition.get("type") not in ("metric", "formula", "multi"):
             return []
         if getattr(self.policy, "collect_type", "") == "trap":
             return []
@@ -234,7 +247,13 @@ class MetricQueryService:
         return merged
 
     def _run_scoped_range(
-        self, build_query, period, points=1, instance_ids=None, end_timestamp=None
+        self,
+        build_query,
+        period,
+        points=1,
+        instance_ids=None,
+        end_timestamp=None,
+        format_base=None,
     ):
         """按实例范围分批执行 query_range 并合并结果。
 
@@ -251,9 +270,10 @@ class MetricQueryService:
         step = self.format_period(period, points)
 
         batches = self._scope_batches(instance_ids)
+        format_base = format_base or self.format_pmq
         payloads = []
         for base_filters in batches:
-            query = build_query(self.format_pmq(base_filters), step)
+            query = build_query(format_base(base_filters), step)
             payload = VictoriaMetricsAPI().query_range(
                 query, start_timestamp, end_timestamp, step
             )
@@ -272,10 +292,39 @@ class MetricQueryService:
 
     def query_comparison_metrics(self, period, points=1):
         """带 algorithm / compare_mode 变换的比较查询。"""
+        if self.is_multi():
+            raise BaseAppException("多指标条件需要按条件分别查询")
         return self._run_scoped_range(self._build_policy_query, period, points)
+
+    def query_multi_comparison_metrics(self, period, points=1, instance_ids=None, end_timestamp=None):
+        """每个条件各执行一次比较查询，按 ref 收集。"""
+        self._ensure_multi_metrics()
+        results = {}
+        for condition in self.multi_conditions():
+            results[condition.get("ref")] = self._query_condition_range(
+                condition,
+                compile_policy_query,
+                period,
+                points,
+                instance_ids=instance_ids,
+                end_timestamp=end_timestamp,
+            )
+        return results
+
+    def query_multi_window_metrics(self, period, instance_ids=None, end_timestamp=None):
+        """快照窗口：每个条件一条与比较查询同形的查询。"""
+        if instance_ids is not None and not instance_ids:
+            return {condition.get("ref"): {"data": {"result": []}} for condition in self.multi_conditions()}
+        return self.query_multi_comparison_metrics(
+            period, 1, instance_ids=instance_ids, end_timestamp=end_timestamp
+        )
 
     def query_existence_metrics(self, period, points=1):
         """不带比较基准的存在性查询，供无数据检测/恢复与基线同步。"""
+        if self.is_multi():
+            self._ensure_multi_metrics()
+            anchor = self.multi_conditions()[0]
+            return self._query_condition_range(anchor, compile_existence_query, period, points)
 
         def build_query(base_query, step):
             return compile_existence_query(
@@ -523,9 +572,182 @@ class MetricQueryService:
             self.instance_id_keys = list(self.compiled_formula.group_by)
         return self.compiled_formula
 
+    def is_multi(self) -> bool:
+        return is_multi_query(getattr(self.policy, "query_condition", None) or {})
+
+    def multi_conditions(self) -> list[dict]:
+        return multi_queries(getattr(self.policy, "query_condition", None) or {})
+
+    def _ensure_multi_metrics(self):
+        if self._multi_metrics is None:
+            self._load_multi_metrics()
+        return self._multi_metrics
+
+    def _load_multi_metrics(self):
+        conditions = self.multi_conditions()
+        metric_ids = []
+        for condition in conditions:
+            metric_ids.extend(item.get("metric_id") for item in condition_metric_items(condition))
+        metrics = {item.id: item for item in Metric.objects.filter(id__in=metric_ids)}
+        missing = [metric_id for metric_id in metric_ids if metric_id not in metrics]
+        if missing:
+            raise BaseAppException(f"metric does not exist [{missing[0]}]")
+        self._multi_metrics = metrics
+        anchor = conditions[0] if conditions else {}
+        if is_formula_condition(anchor):
+            operands = condition_metric_items(anchor)
+            first_id = operands[0].get("metric_id") if operands else None
+            self.metric = metrics.get(first_id)
+        else:
+            self.metric = metrics.get(anchor.get("metric_id"))
+        self.instance_id_keys = list(anchor.get("group_by") or [])
+        return metrics
+
+    def _query_condition_range(
+        self,
+        condition,
+        compile_fn,
+        period,
+        points=1,
+        instance_ids=None,
+        end_timestamp=None,
+    ):
+        metrics = self._ensure_multi_metrics()
+        metric = None
+        if not is_formula_condition(condition):
+            metric = metrics.get(condition.get("metric_id"))
+            if metric is None:
+                raise BaseAppException(f"metric does not exist [{condition.get('metric_id')}]")
+        policy_like = condition_policy_like(self.policy, condition)
+        group_by = ",".join(condition.get("group_by") or [])
+
+        def format_base(base_filters, metric=metric, condition=condition):
+            if is_formula_condition(condition):
+                operands = condition_metric_items(condition)
+                compiled = build_formula_query(
+                    formula_query_condition(condition),
+                    base_filters_by_ref={
+                        item.get("ref"): base_filters or []
+                        for item in operands
+                        if item.get("ref")
+                    },
+                )
+                return compiled.query
+            return compile_filter_to_query(
+                metric.query or "",
+                condition.get("filter") or [],
+                base_filters=base_filters or None,
+            )
+
+        def build_query(base_query, step, policy_like=policy_like, group_by=group_by):
+            return compile_fn(policy_like, base_query, step, group_by)
+
+        return self._run_scoped_range(
+            build_query,
+            period,
+            points,
+            instance_ids=instance_ids,
+            end_timestamp=end_timestamp,
+            format_base=format_base,
+        )
+
+    def convert_condition_values(self, vm_data, condition):
+        """按该条件自己的单位换算序列副本，不改策略配置。"""
+        policy_like = condition_policy_like(self.policy, condition)
+        result_unit = resolve_result_unit(policy_like)
+        metric_unit = condition.get("metric_unit") or ""
+        calculation_unit = condition.get("calculation_unit") or ""
+        if (
+            not result_unit.conversion_enabled
+            or not metric_unit
+            or not calculation_unit
+            or metric_unit == calculation_unit
+        ):
+            return vm_data
+        if not UnitConverter.is_convertible(metric_unit, calculation_unit):
+            raise BaseAppException(
+                f"策略 {getattr(self.policy, 'id', '')}: 条件 {condition.get('ref')} "
+                f"单位 '{metric_unit}' 不能转换为 '{calculation_unit}'"
+            )
+        converted_data = copy.deepcopy(vm_data)
+        for result in converted_data.get("data", {}).get("result", []):
+            if "values" not in result:
+                continue
+            values = [_parse_finite_float(item[1]) for item in result["values"]]
+            if any(value is None for value in values):
+                continue
+            converted_values = UnitConverter.convert_values(values, metric_unit, calculation_unit)
+            for index, (timestamp, _) in enumerate(result["values"]):
+                result["values"][index] = [timestamp, str(converted_values[index])]
+        return converted_data
+
+    def convert_condition_thresholds(self, condition):
+        """按该条件自己的阈值单位换算副本，不改写 queries[]。"""
+        converted = copy.deepcopy(condition.get("threshold") or [])
+        if not converted:
+            return converted
+        policy_like = condition_policy_like(self.policy, condition)
+        result_unit = resolve_result_unit(policy_like)
+        if not result_unit.conversion_enabled:
+            return converted
+        source_unit = condition.get("threshold_unit") or result_unit.unit or ""
+        target_unit = result_unit.unit or condition.get("calculation_unit") or ""
+        if not source_unit or not target_unit or source_unit == target_unit:
+            return converted
+        if not UnitConverter.is_convertible(source_unit, target_unit):
+            raise BaseAppException(
+                f"策略 {getattr(self.policy, 'id', '')}: 条件 {condition.get('ref')} "
+                f"阈值单位 '{source_unit}' 不能转换为 '{target_unit}'"
+            )
+        values = [float(item["value"]) for item in converted]
+        converted_values = UnitConverter.convert_values(values, source_unit, target_unit)
+        for item, value in zip(converted, converted_values):
+            item["value"] = value
+        return converted
+
+    def condition_with_converted_thresholds(self, condition):
+        copied = dict(condition)
+        copied["threshold"] = self.convert_condition_thresholds(condition)
+        return copied
+
+    def condition_result_unit(self, condition) -> str:
+        result_unit = resolve_result_unit(condition_policy_like(self.policy, condition))
+        return result_unit.unit or condition.get("calculation_unit") or condition.get("metric_unit") or ""
+
+    def condition_display_unit(self, condition) -> str:
+        unit = self.condition_result_unit(condition)
+        return UnitConverter.get_display_unit(unit) if unit else ""
+
+    def condition_enum_map(self, condition) -> dict:
+        if is_formula_condition(condition):
+            return {}
+        metric = (self._multi_metrics or {}).get(condition.get("metric_id"))
+        if metric is None or getattr(metric, "data_type", "") != "Enum":
+            return {}
+        try:
+            enum_list = json.loads(metric.unit)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        return {item["id"]: item["name"] for item in enum_list if isinstance(item, dict) and "id" in item and "name" in item}
+
+    def condition_metric_name(self, condition) -> str:
+        if is_formula_condition(condition):
+            name = str(condition.get("metric_name") or "").strip()
+            return name or str(condition.get("ref") or "")
+        metric = (self._multi_metrics or {}).get(condition.get("metric_id"))
+        if metric is None:
+            return str(condition.get("ref") or "")
+        return metric.display_name or metric.name or str(condition.get("ref") or "")
+
     def get_result_group_by(self) -> list:
-        if self.policy.query_condition.get("type") == "formula":
+        query = self.policy.query_condition or {}
+        if query.get("type") == "formula":
             return list(self._ensure_formula_compiled().group_by)
+        if query.get("type") == "multi":
+            conditions = self.multi_conditions()
+            if not conditions:
+                return []
+            return list(conditions[0].get("group_by") or [])
         return self.policy.group_by or []
 
     def get_monitor_instance_id_key(self) -> str:

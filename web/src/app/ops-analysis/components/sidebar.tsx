@@ -68,6 +68,13 @@ import {
   BranchesOutlined,
 } from '@ant-design/icons';
 import { resolveSidebarTreeSelection } from '@/app/ops-analysis/utils/sidebarSelection';
+import { useHomepageApi } from '@/app/ops-analysis/api/homepage';
+import { useEffectiveHomepage } from '@/app/ops-analysis/context/effectiveHomepage';
+import {
+  homepageDirectoryActionKeys,
+  type HomepageDirectoryActionKey,
+  type HomepagePreferenceState,
+} from '@/app/ops-analysis/utils/homepageDirectoryActions';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
   ({ onSelect, onDataUpdate }, ref) => {
@@ -93,6 +100,23 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
     const { getDirectoryTree, createItem, updateItem, deleteItem, copyItem } =
       useDirectoryApi();
+    const { getState: getHomepageState, applyPersonal, applyGlobal } = useHomepageApi();
+    const { refresh: refreshEffectiveHomepage } = useEffectiveHomepage();
+    const [homepageState, setHomepageState] = useState<HomepagePreferenceState | null>(null);
+
+    useEffect(() => {
+      let cancelled = false;
+      void getHomepageState()
+        .then((next) => {
+          if (!cancelled) {
+            setHomepageState(next);
+          }
+        })
+        .catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    }, [getHomepageState, selectedGroup?.id]);
     const [currentDir, setCurrentDir] = useState<DirItem | null>(null);
     const [exportModalVisible, setExportModalVisible] = useState(false);
     const [exportItem, setExportItem] = useState<DirItem | null>(null);
@@ -429,6 +453,61 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       );
     };
 
+    const applyHomepageAction = async (item: DirItem, key: HomepageDirectoryActionKey) => {
+      const dashboardId = Number(item.data_id);
+      try {
+        if (key === 'setPersonal') {
+          setHomepageState(await applyPersonal({ action: 'set', dashboard_id: dashboardId }));
+          message.success(t('opsHomepage.setPersonalSuccess'));
+          await refreshEffectiveHomepage();
+          return;
+        }
+        if (key === 'clearPersonal') {
+          setHomepageState(await applyPersonal({ action: 'clear' }));
+          message.success(t('opsHomepage.clearPersonalSuccess'));
+          await refreshEffectiveHomepage();
+          return;
+        }
+        if (key === 'setGlobal') {
+          setHomepageState(await applyGlobal({ action: 'set', dashboard_id: dashboardId }));
+          message.success(t('opsHomepage.setGlobalSuccess'));
+          await refreshEffectiveHomepage();
+          return;
+        }
+        setHomepageState(await applyGlobal({ action: 'restore' }));
+        message.success(t('opsHomepage.restoreGlobalSuccess'));
+        await refreshEffectiveHomepage();
+      } catch {
+        // 请求层已经提示失败，设置首页后不跳转。
+      }
+    };
+
+    const withHomepageActions = (
+      item: DirItem,
+      items: MoreActionsDropdownItem[],
+    ): MoreActionsDropdownItem[] => {
+      const keys = homepageDirectoryActionKeys(item, homepageState);
+      if (!keys.length) {
+        return items;
+      }
+      const labels: Record<HomepageDirectoryActionKey, string> = {
+        setPersonal: t('opsHomepage.setPersonal'),
+        clearPersonal: t('opsHomepage.clearPersonal'),
+        setGlobal: t('opsHomepage.setGlobal'),
+        restoreGlobal: t('opsHomepage.restoreGlobal'),
+      };
+      return [
+        ...items,
+        ...keys.map((key) => ({
+          key: `homepage-${key}`,
+          label: labels[key],
+          onClick: () => {
+            void applyHomepageAction(item, key);
+          },
+        })),
+      ];
+    };
+
     const menuItemsFor = (
       item: DirItem,
       parentId: string | null = null,
@@ -458,7 +537,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       // 内置目录：有编辑权即可改所属组织；内置画布可复制为用户副本，内容仍只读。
       if (isBuiltIn) {
         if (isCatalogue) {
-          return [
+          return withHomepageActions(item, [
             {
               key: 'edit',
               label: t('common.edit'),
@@ -474,13 +553,13 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 );
               },
             },
-          ];
+          ]);
         }
-        return [
+        return withHomepageActions(item, [
           ...(shouldShowCanvasCopyAction(item) ? canvasResourceActions() : []),
           { key: 'edit', label: t('common.edit'), disabled: true },
           { key: 'delete', label: t('common.delete'), disabled: true },
-        ];
+        ]);
       }
 
       const items: MoreActionsDropdownItem[] = [];
@@ -562,7 +641,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       if (shouldShowCanvasCopyAction(item)) {
         items.push(...canvasResourceActions());
       }
-      return items;
+      return withHomepageActions(item, items);
     };
 
     const buildTreeData = (
@@ -584,7 +663,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 text={item.name || '--'}
               />
               {isBuiltinDirectory(item) && (
-                <span className="ml-1 text-[10px] text-gray-400">({t('common.builtIn')})</span>
+                <span className="ml-1 text-[10px] text-[var(--color-text-4)]">({t('common.builtIn')})</span>
               )}
             </span>
             <MoreActionsDropdown
@@ -850,18 +929,18 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                           form.validateFields(['canvasType']).catch(() => undefined);
                           setNewItemType(canvasType);
                         }}
-                        className={`group relative flex min-h-[104px] w-full cursor-pointer overflow-hidden rounded-md border px-3 py-3 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                        className={`group relative flex min-h-[104px] w-full cursor-pointer overflow-hidden rounded-md border px-3 py-3 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 ${
                           selected
-                            ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-white shadow-[0_2px_8px_rgba(37,99,235,0.08)]'
-                            : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-slate-50 hover:shadow-[0_2px_6px_rgba(15,23,42,0.05)]'
+                            ? 'border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--color-bg))] shadow-[0_2px_8px_color-mix(in_srgb,var(--color-primary)_12%,transparent)]'
+                            : 'border-[var(--color-border-1)] bg-[var(--color-bg)] hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-1)]'
                         }`}
                       >
                         <span
                           aria-hidden="true"
                           className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full text-[10px] transition-all ${
                             selected
-                              ? 'scale-100 bg-blue-600 text-white opacity-100 shadow-sm'
-                              : 'scale-90 bg-gray-100 text-transparent opacity-0'
+                              ? 'scale-100 bg-[var(--color-primary)] text-white opacity-100 shadow-sm'
+                              : 'scale-90 bg-[var(--color-fill-2)] text-transparent opacity-0'
                           }`}
                         >
                           <CheckOutlined />
@@ -871,15 +950,15 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                             <span
                               className={`flex h-8 w-8 flex-none items-center justify-center rounded-md border transition-colors ${
                                 selected
-                                  ? 'border-blue-100 bg-white shadow-sm'
-                                  : 'border-gray-100 bg-gray-50 group-hover:border-blue-100 group-hover:bg-white'
+                                  ? 'border-[color-mix(in_srgb,var(--color-primary)_24%,var(--color-border-1))] bg-[var(--color-bg)] shadow-sm'
+                                  : 'border-[var(--color-border-1)] bg-[var(--color-fill-1)] group-hover:border-[color-mix(in_srgb,var(--color-primary)_24%,var(--color-border-1))] group-hover:bg-[var(--color-bg)]'
                               }`}
                             >
                               {renderCanvasTypeIcon(canvasType)}
                             </span>
                             <span
                               className={`block text-sm font-semibold ${
-                                selected ? 'text-blue-700' : 'text-gray-900'
+                                selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-1)]'
                               }`}
                             >
                               {t(meta.nameKey)}
@@ -887,7 +966,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                           </span>
                           <span
                             className={`mt-2 block text-xs leading-5 ${
-                              selected ? 'text-slate-600' : 'text-gray-500'
+                              selected ? 'text-[var(--color-text-2)]' : 'text-[var(--color-text-3)]'
                             }`}
                           >
                             {t(meta.descriptionKey)}

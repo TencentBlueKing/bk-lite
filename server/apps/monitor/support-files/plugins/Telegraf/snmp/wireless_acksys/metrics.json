@@ -24,7 +24,7 @@
     {
       "metric_group": "Memory",
       "name": "heap_free_bytes",
-      "query": "sum(heap_free_bytes{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "sum(heap_free_bytes{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id)",
       "display_name": "Heap Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Memory",
       "name": "heap_total_bytes",
-      "query": "sum(heap_total_bytes{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "sum(heap_total_bytes{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id)",
       "display_name": "Heap Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -50,7 +50,7 @@
     {
       "metric_group": "Memory",
       "name": "heap_low_water_bytes",
-      "query": "min(heap_low_water_bytes{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "min(heap_low_water_bytes{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id)",
       "display_name": "Heap Low Water",
       "data_type": "Number",
       "unit": "bytes",
@@ -63,7 +63,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "(sum(heap_total_bytes{instance_type='wireless', __$labels__}) by (instance_id) - sum(heap_free_bytes{instance_type='wireless', __$labels__}) by (instance_id)) / sum(heap_total_bytes{instance_type='wireless', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(heap_total_bytes{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id) - sum(heap_free_bytes{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id)) / sum(heap_total_bytes{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id) * 100",
       "display_name": "Heap Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max((device_temperature_celsius{instance_type='wireless', __$labels__} > -274000) / 1000) by (instance_id)",
+      "query": "max((device_temperature_celsius{instance_type='wireless', collect_type='snmp_acksys', __$labels__} > -274000) / 1000) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -89,7 +89,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "max(device_psu_state{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(device_psu_state{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id)",
       "display_name": "Power Line 1 State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -102,7 +102,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state_backup",
-      "query": "max(device_psu_state_backup{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(device_psu_state_backup{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id)",
       "display_name": "Power Line 2 State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -115,7 +115,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_client_count",
-      "query": "sum(wireless_client_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "sum(wireless_client_count{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id)",
       "display_name": "Associated Client Count",
       "data_type": "Number",
       "unit": "short",
@@ -128,7 +128,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_signal_strength",
-      "query": "avg(wireless_signal_strength{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(wireless_signal_strength{instance_type='wireless', collect_type='snmp_acksys', __$labels__}) by (instance_id)",
       "display_name": "Bridge RSSI",
       "data_type": "Number",
       "unit": "none",
@@ -141,7 +141,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_acksys', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -159,7 +159,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_acksys', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -177,7 +177,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_acksys', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

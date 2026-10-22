@@ -16,6 +16,7 @@ import {
   markdownImportFilePattern,
   unwrapMarkdownImportExecuteResult,
   type MarkdownImportGovernanceErrorView,
+  type OkfImportAcceptance,
 } from "@/app/opspilot/utils/wikiMarkdownImport";
 
 interface WikiMarkdownImportModalProps {
@@ -25,6 +26,10 @@ interface WikiMarkdownImportModalProps {
   onCompleted: (
     result: WikiMarkdownImportExecuteResult,
   ) => void | Promise<void>;
+  onImportHoldChange?: (
+    holding: boolean,
+    acceptance?: OkfImportAcceptance,
+  ) => void;
 }
 
 const WikiMarkdownImportModal = ({
@@ -32,10 +37,10 @@ const WikiMarkdownImportModal = ({
   open,
   onCancel,
   onCompleted,
+  onImportHoldChange,
 }: WikiMarkdownImportModalProps) => {
   const { t } = useTranslation();
   const {
-    preflightKnowledgeBaseMarkdown,
     executeKnowledgeBaseMarkdown,
   } = useWikiApi();
   const archivePattern = markdownImportFilePattern();
@@ -117,21 +122,30 @@ const WikiMarkdownImportModal = ({
     if (!selectedFile) return;
     setExecuting(true);
     setImportError(null);
+    onImportHoldChange?.(true);
     try {
-      const preflight = await preflightKnowledgeBaseMarkdown(kbId, selectedFile, {
-        import_format: "okf",
-        create_directories_from_folders: initialCreateDirectoriesFromFolders(),
-      });
       const result = unwrapMarkdownImportExecuteResult(
-        await executeKnowledgeBaseMarkdown(kbId, selectedFile, preflight.token),
+        await executeKnowledgeBaseMarkdown(kbId, selectedFile, {
+          import_format: "okf",
+          create_directories_from_folders: initialCreateDirectoriesFromFolders(),
+        }),
       );
       if (isBackgroundMarkdownImport(result)) {
         message.info(t("wiki.markdownImportRunning"));
+        onImportHoldChange?.(true, {
+          buildRecordId:
+            typeof result.build_record_id === "number"
+              ? result.build_record_id
+              : undefined,
+          status: result.status,
+        });
         onCancel();
         return;
       }
       await finishImport(result);
+      onImportHoldChange?.(false);
     } catch (error) {
+      onImportHoldChange?.(false);
       showRequestError(error, "wiki.markdownImportExecuteFailed");
     } finally {
       setExecuting(false);

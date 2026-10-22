@@ -18,12 +18,14 @@ interface VariablesTableProps {
   onVariableSelect?: (variable: string) => void;
   displayFields?: ObjectItem['display_fields'];
   groupBy?: string[];
+  conditionRefs?: string[];
 }
 
 const VariablesTable: React.FC<VariablesTableProps> = ({
   onVariableSelect,
   displayFields,
-  groupBy
+  groupBy,
+  conditionRefs
 }) => {
   const { t } = useTranslation();
 
@@ -109,6 +111,26 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         )
       });
     }
+    for (const ref of conditionRefs || []) {
+      const valueKey = `${ref}_value`;
+      const nameKey = `${ref}_metric_name`;
+      if (!seen.has(valueKey)) {
+        seen.add(valueKey);
+        extra.push({
+          key: valueKey,
+          variable: `\${${valueKey}}`,
+          description: t('monitor.events.variableConditionValue', undefined, { ref })
+        });
+      }
+      if (!seen.has(nameKey)) {
+        seen.add(nameKey);
+        extra.push({
+          key: nameKey,
+          variable: `\${${nameKey}}`,
+          description: t('monitor.events.variableConditionMetricName', undefined, { ref })
+        });
+      }
+    }
     for (const item of buildMetricDimensionVariables(groupBy)) {
       if (seen.has(item.key)) continue;
       seen.add(item.key);
@@ -123,7 +145,7 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
       });
     }
     return [...builtin, ...extra];
-  }, [displayFields, groupBy, t]);
+  }, [conditionRefs, displayFields, groupBy, t]);
 
   const variableColumns: ColumnsType<VariableItem> = [
     {

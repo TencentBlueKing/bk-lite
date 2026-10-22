@@ -19,6 +19,7 @@ import Notifications from '@/components/notifications';
 import Icon from '@/components/icon';
 import AppTopNav from './appTopNav';
 import { resolveAppDisplayName } from '@/utils/appDisplayName';
+import HomepageBrandLink from '@/app/ops-analysis/components/homepageBrandLink';
 
 const TOUR_VIEWED_KEY_PREFIX = 'tour_viewed';
 
@@ -211,8 +212,10 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
           }
           style={showAppTopNav ? { width: APP_TOP_SIDE_RAIL_WIDTH_PX } : undefined}
         >
-          <img src={logoUrl} className="block h-10 w-auto object-contain" alt="logo" />
-          <div className="font-medium">{portalName}</div>
+          <HomepageBrandLink>
+            <img src={logoUrl} className="block h-10 w-auto object-contain" alt="logo" />
+            <div className="truncate font-medium">{portalName}</div>
+          </HomepageBrandLink>
           {showAppSwitcher && (
             <Popover content={renderContent} title={t('common.appList')} trigger="hover">
               <div className={`flex cursor-pointer items-center justify-center rounded-[10px] px-3 py-2 ${styles.nav}`}>

@@ -172,7 +172,11 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
         />
       )}
       {componentName ? null : (
-        <InteractionTitleIcon config={valueConfig} floating />
+        <InteractionTitleIcon
+          config={valueConfig}
+          floating
+          color={chartTheme.panelTitleColor}
+        />
       )}
       {componentName && (
         <div
@@ -190,7 +194,6 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
               >
                 {componentName}
               </div>
-              <InteractionTitleIcon config={valueConfig} />
             </div>
             {showCsvHover && (
               <WidgetCsvHoverButton
@@ -202,6 +205,10 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
                 }}
               />
             )}
+            <InteractionTitleIcon
+              config={valueConfig}
+              color={chartTheme.panelTitleColor}
+            />
           </div>
           {normalizedDescription && (
             <div
@@ -229,7 +236,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
         {shouldShowLoading ? (
           <div className="h-full flex flex-col items-center justify-center">
             <Spin size="small" />
-            <div className="text-xs text-gray-500 mt-2">
+            <div className="mt-2 text-xs text-[var(--color-text-3)]">
               {t('common.loading')}
             </div>
           </div>
@@ -264,7 +271,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
                   {...widgetProps}
                   fallback={
                     <div className="h-full flex flex-col items-center justify-center">
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-[var(--color-text-3)]">
                         Unknown chart type: {chartType}
                       </div>
                     </div>

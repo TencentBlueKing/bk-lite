@@ -3,12 +3,35 @@
   height: 100%;
   min-height: 280px;
   overflow: hidden;
-  border: 1px solid #e5eef8;
+  border: 1px solid var(--color-border-1);
   border-radius: 8px;
   background:
-    radial-gradient(circle at 18% 14%, rgba(225, 241, 255, 0.34), transparent 30%),
-    radial-gradient(circle at 78% 20%, rgba(232, 250, 246, 0.26), transparent 28%),
-    linear-gradient(180deg, #fcfeff 0%, #f9fcff 100%);
+    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--color-primary) 14%, transparent), transparent 30%),
+    radial-gradient(circle at 78% 20%, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 28%),
+    var(--color-bg-1);
+
+  // XFlow Minimap 内层仍是插件默认浅色底和浅色投影，外层 style 盖不住。
+  :global(.x6-widget-minimap) {
+    background-color: var(--color-bg-1) !important;
+
+    :global(.x6-graph) {
+      background: var(--color-bg-1) !important;
+      box-shadow: 0 0 0 1px var(--color-border-1) !important;
+    }
+
+    :global(.x6-graph-svg) {
+      background: var(--color-bg-1) !important;
+    }
+  }
+
+  :global(.x6-widget-minimap-viewport) {
+    border-color: var(--color-primary) !important;
+  }
+
+  :global(.x6-widget-minimap-viewport-zoom) {
+    background-color: var(--color-bg-1) !important;
+    border-color: var(--color-primary) !important;
+  }
 }
 
 .screenCanvas {
@@ -25,10 +48,10 @@
   z-index: 4;
   max-width: 48%;
   padding: 5px 8px;
-  border: 1px solid #ffe6b3;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 42%, var(--color-border-1));
   border-radius: 6px;
-  background: rgba(255, 251, 230, 0.92);
-  color: #ad6800;
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--color-bg-1));
+  color: var(--color-warning);
   font-size: 12px;
   line-height: 18px;
 }
@@ -41,7 +64,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.66);
+  background: color-mix(in srgb, var(--color-bg-1) 72%, transparent);
 }
 
 .screenCanvas .state,
@@ -59,7 +82,7 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  color: var(--screen-table-muted, rgba(224, 251, 255, 0.72));
+  color: var(--screen-table-muted, var(--color-text-2));
 }
 
 .pendingIcon {
@@ -69,20 +92,20 @@
   border: 1px solid var(--screen-widget-border, rgba(103, 232, 249, 0.34));
   border-radius: 18px;
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--screen-table-spin-color, #22d3ee) 24%, transparent), transparent),
-    var(--screen-table-control-bg, rgba(2, 8, 20, 0.5));
+    linear-gradient(135deg, color-mix(in srgb, var(--screen-table-spin-color, var(--color-primary)) 24%, transparent), transparent),
+    var(--screen-table-control-bg, var(--color-fill-2));
   box-shadow: var(--screen-widget-shadow, 0 0 28px rgba(34, 211, 238, 0.18));
 }
 
 .pendingTitle {
-  color: var(--screen-widget-title-color, #eafbff);
+  color: var(--screen-widget-title-color, var(--color-text-1));
   font-size: 18px;
   font-weight: 700;
 }
 
 .pendingDesc {
   margin-top: 8px;
-  color: var(--screen-table-muted, rgba(186, 230, 253, 0.7));
+  color: var(--screen-table-muted, var(--color-text-3));
   font-size: 13px;
   line-height: 20px;
 }
@@ -101,11 +124,11 @@
 .popover {
   min-width: 16em;
   padding: 0.8em 0.9em;
-  border: 1px solid rgba(213, 226, 242, 0.96);
+  border: 1px solid var(--color-border-1);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 16px 34px rgba(39, 67, 104, 0.16);
-  color: #253244;
+  background: var(--color-bg-1);
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--color-text-1) 14%, transparent);
+  color: var(--color-text-1);
   font-size: 1em;
   line-height: 1.45;
   backdrop-filter: blur(8px);
@@ -132,35 +155,35 @@
   gap: 0.45em;
   align-items: center;
   margin-top: 0.35em;
-  color: #607086;
+  color: var(--color-text-3);
   font-size: 1em;
 }
 
 .popSectionTitle {
   margin-top: 0.5em;
   margin-bottom: 0.15em;
-  color: #8797aa;
+  color: var(--color-text-4);
   font-size: 0.9em;
   font-weight: 600;
 }
 
 .noAlertText {
-  color: #94a3b8;
+  color: var(--color-text-4);
 }
 
 .alertCount {
-  color: #dc2626;
+  color: var(--color-fail);
 }
 
 .portCount {
   flex: none;
-  color: #607086;
+  color: var(--color-text-3);
   font-size: 0.9em;
   font-weight: 500;
 }
 
 .portPair {
-  color: #253244;
+  color: var(--color-text-1);
   font-weight: 600;
 }
 
@@ -168,35 +191,35 @@
   flex: none;
   padding: 0.15em 0.5em;
   border-radius: 999px;
-  background: #ecfdf5;
-  color: #047857;
+  background: color-mix(in srgb, var(--color-success) 16%, var(--color-bg-1));
+  color: var(--color-success);
   font-size: 0.78em;
   font-weight: 600;
 }
 
 .warning {
-  background: #fffbeb;
-  color: #b45309;
+  background: color-mix(in srgb, var(--color-warning) 16%, var(--color-bg-1));
+  color: var(--color-warning);
 }
 
 .error,
 .critical {
-  background: #fef2f2;
-  color: #dc2626;
+  background: color-mix(in srgb, var(--color-fail) 16%, var(--color-bg-1));
+  color: var(--color-fail);
 }
 
 .unknown {
-  background: #f3f4f6;
-  color: #9aa4b2;
+  background: var(--color-fill-2);
+  color: var(--color-text-3);
 }
 
 .contextMenu {
   overflow: hidden;
   padding: 5px;
-  border: 1px solid rgba(211, 225, 242, 0.98);
+  border: 1px solid var(--color-border-1);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 16px 36px rgba(24, 48, 82, 0.18);
+  background: var(--color-bg-1);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--color-text-1) 16%, transparent);
 }
 
 .contextMenuItem {
@@ -207,24 +230,24 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #253244;
+  color: var(--color-text-1);
   font-size: 12px;
   line-height: 30px;
   text-align: left;
   cursor: pointer;
 
   &:hover {
-    background: #eef6ff;
-    color: #0068d9;
+    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg-1));
+    color: var(--color-primary);
   }
 }
 
 .disabledMenuItem {
-  color: #a8b4c3;
+  color: var(--color-text-4);
   cursor: not-allowed;
 
   &:hover {
     background: transparent;
-    color: #a8b4c3;
+    color: var(--color-text-4);
   }
 }

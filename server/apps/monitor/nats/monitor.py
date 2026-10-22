@@ -1184,7 +1184,7 @@ def _query_trend_series(
 def summarize_metric_trend(query_data: dict, *args, **kwargs):
     """用完整历史计算趋势汇总。instance_ids 为空时覆盖该对象下全部已授权实例。
 
-    只返回预测跨度内会到达阈值的序列，不返回原始点。
+    每条序列返回当前值、斜率和到达阈值的天数，不返回原始点。
     """
     query_data = _normalize_monitor_query_data(query_data or {})
     monitor_obj_id = query_data.get("monitor_obj_id")

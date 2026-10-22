@@ -27,7 +27,7 @@
       ],
       "name": "device_cpu_usage",
       "display_name": "CPU Utilization",
-      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='switch', collect_type='snmp_gcom', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
       "description": "CPU utilization of the GCOM Ethernet switch, computed as 100 minus cpuIdle when cpuIdle is in 0-100. Sustained high CPU usage can indicate control-plane overload."
@@ -40,7 +40,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "Memory Utilization",
-      "query": "max(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='switch', collect_type='snmp_gcom', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilization of the GCOM Ethernet switch, computed as (memorySize - memoryIdle) / memorySize x 100 when size is positive and idle is in range."
@@ -53,7 +53,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "Memory Total",
-      "query": "max(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_total{instance_type='switch', collect_type='snmp_gcom', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total memory of the GCOM Ethernet switch in bytes (gbnPlatformOAMSystem memorySize)."
@@ -66,7 +66,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "Memory Free",
-      "query": "max(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_free{instance_type='switch', collect_type='snmp_gcom', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free memory of the GCOM Ethernet switch in bytes (gbnPlatformOAMSystem memoryIdle)."
@@ -79,7 +79,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "Memory Used",
-      "query": "max(snmp_device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_used{instance_type='switch', collect_type='snmp_gcom', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used memory of the GCOM Ethernet switch in bytes, derived as memorySize minus memoryIdle."
@@ -87,7 +87,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_gcom', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -105,7 +105,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_gcom', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_gcom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

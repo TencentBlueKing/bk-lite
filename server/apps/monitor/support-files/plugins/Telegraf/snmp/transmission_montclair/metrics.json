@@ -29,7 +29,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "Temperature",
-      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', collect_type='snmp_montclair', __$labels__}) by (instance_id)",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Chassis internal temperature of the Montclair EDFA in degrees Celsius (deviceInternalTemperatute). Readings outside -40..125 C and sentinel values are dropped."
@@ -42,7 +42,7 @@
       ],
       "name": "radiator_temperature_celsius",
       "display_name": "Radiator Temperature",
-      "query": "max(snmp_radiator_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_radiator_temperature_celsius{instance_type='transmission', collect_type='snmp_montclair', __$labels__}) by (instance_id)",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Amplifier radiator temperature of the Montclair EDFA in degrees Celsius (amplifierRadiatorTemperature). Readings outside -40..125 C and sentinel values are dropped."
@@ -55,7 +55,7 @@
       ],
       "name": "prepump_temperature_celsius",
       "display_name": "Pre-pump Temperature",
-      "query": "max(snmp_prepump_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_prepump_temperature_celsius{instance_type='transmission', collect_type='snmp_montclair', __$labels__}) by (instance_id)",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Amplifier pre-pump temperature of the Montclair EDFA in degrees Celsius. The raw amplifierPrePumpTemperature value is divided by 10 in the collector and rounded to 0.1 C. Readings outside -40..125 C are dropped."
@@ -63,7 +63,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='transmission', __$labels__}",
+      "query": "device_psu_state{instance_type='transmission', collect_type='snmp_montclair', __$labels__}",
       "display_name": "PSU Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -86,7 +86,7 @@
       ],
       "name": "device_fan_state",
       "display_name": "Fan Status",
-      "query": "max(snmp_device_fan_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_fan_state{instance_type='transmission', collect_type='snmp_montclair', __$labels__}) by (instance_id)",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Fan state of the Montclair EDFA (deviceFanStatus), normalized to 1=normal (7) and 2=abnormal (warning 5 or critical 3). unknown(1) is dropped and not stored."
@@ -94,7 +94,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='transmission', __$labels__}",
+      "query": "device_fan_speed{instance_type='transmission', collect_type='snmp_montclair', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -117,7 +117,7 @@
       ],
       "name": "amplifier_input_power_dbm",
       "display_name": "Amplifier Input Power",
-      "query": "max(snmp_amplifier_input_power_dbm{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_amplifier_input_power_dbm{instance_type='transmission', collect_type='snmp_montclair', __$labels__}) by (instance_id)",
       "unit": "dBm",
       "data_type": "Number",
       "description": "Amplifier input optical power of the Montclair EDFA in dBm. The raw amplifierInputPower value is divided by 10 in the collector. Values below -60 dBm or above +40 dBm are dropped."
@@ -130,7 +130,7 @@
       ],
       "name": "amplifier_output_power_dbm",
       "display_name": "Amplifier Output Power",
-      "query": "max(snmp_amplifier_output_power_dbm{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_amplifier_output_power_dbm{instance_type='transmission', collect_type='snmp_montclair', __$labels__}) by (instance_id)",
       "unit": "dBm",
       "data_type": "Number",
       "description": "Amplifier output optical power of the Montclair EDFA in dBm. The raw amplifierOutputPower value is divided by 10 in the collector. Values below -60 dBm or above +40 dBm are dropped."
@@ -138,7 +138,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', collect_type='snmp_montclair', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -156,7 +156,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', collect_type='snmp_montclair', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -174,7 +174,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_montclair', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

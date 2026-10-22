@@ -22,6 +22,7 @@ export default function MarketWorkflowViewPage() {
       initialName={searchParams.get('name') || ''}
       mode="view"
       listHref="/workflow-orchestration/market"
+      permissionArea="market"
     />
   );
 }

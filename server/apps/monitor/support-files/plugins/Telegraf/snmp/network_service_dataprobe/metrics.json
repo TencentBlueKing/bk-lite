@@ -23,7 +23,7 @@
     {
       "metric_group": "Power",
       "name": "snmp_pdu_line1_voltage_volts",
-      "query": "max(snmp_pdu_line1_voltage_volts{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_pdu_line1_voltage_volts{instance_type='network_service', collect_type='snmp_dataprobe', __$labels__}) by (instance_id)",
       "display_name": "Line Cord 1 Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Power",
       "name": "snmp_pdu_line1_current_amps",
-      "query": "max(snmp_pdu_line1_current_amps{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_pdu_line1_current_amps{instance_type='network_service', collect_type='snmp_dataprobe', __$labels__}) by (instance_id)",
       "display_name": "Line Cord 1 Current",
       "data_type": "Number",
       "unit": "none",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Power",
       "name": "snmp_pdu_line2_voltage_volts",
-      "query": "max(snmp_pdu_line2_voltage_volts{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_pdu_line2_voltage_volts{instance_type='network_service', collect_type='snmp_dataprobe', __$labels__}) by (instance_id)",
       "display_name": "Line Cord 2 Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Power",
       "name": "snmp_pdu_line2_current_amps",
-      "query": "max(snmp_pdu_line2_current_amps{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_pdu_line2_current_amps{instance_type='network_service', collect_type='snmp_dataprobe', __$labels__}) by (instance_id)",
       "display_name": "Line Cord 2 Current",
       "data_type": "Number",
       "unit": "none",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Environment",
       "name": "snmp_env_temperature_celsius",
-      "query": "max(snmp_env_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_env_temperature_celsius{instance_type='network_service', collect_type='snmp_dataprobe', __$labels__}) by (instance_id)",
       "display_name": "Environment Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Environment",
       "name": "snmp_env_temperature_2_celsius",
-      "query": "max(snmp_env_temperature_2_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_env_temperature_2_celsius{instance_type='network_service', collect_type='snmp_dataprobe', __$labels__}) by (instance_id)",
       "display_name": "Environment Temperature 2",
       "data_type": "Number",
       "unit": "celsius",
@@ -101,7 +101,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_dataprobe', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -119,7 +119,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_dataprobe', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -137,7 +137,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_dataprobe', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

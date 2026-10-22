@@ -1,0 +1,7 @@
+.shell:global(.ant-drawer) {
+  :global(.ant-drawer-header),
+  :global(.ant-drawer-content),
+  :global(.ant-drawer-footer) {
+    background: var(--ops-topology-drawer-surface, var(--color-modal-header-color)) !important;
+  }
+}
