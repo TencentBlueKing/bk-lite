@@ -2,9 +2,16 @@
 
 import React, { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
-import { GrayTabEmptyState, KpiTileRow, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
-import { CardAlertDot, cardAlertClass } from '../../host/layered/card-alert';
-import hostStyles from '../../host/layered/layered.module.scss';
+import {
+  CardAlertDot,
+  GrayTabEmptyState,
+  KpiTileRow,
+  ProSection,
+  ThinTimeSeries,
+  cardAlertClass,
+  proChromeClass,
+  type KpiTileModel
+} from '../../host/layered/pro-chrome';
 import { HOST_SERIES_COLOR, HOST_THRESHOLD_COLOR } from '../../host/config';
 import {
   MYSQL_REPLICATION_EXTRA_METRICS,
@@ -134,23 +141,23 @@ function StatusKpiRow({ items }: { items: StatusTile[] }) {
       className={pro.kpiFit}
       style={{ ['--kpi-cols' as string]: String(Math.max(items.length, 1)) }}
     >
-      <div className={hostStyles.kpiGrid}>
+      <div className={proChromeClass.kpiGrid}>
         {items.map((item) => (
           <div
             key={item.key}
-            className={`${hostStyles.kpiCard} ${cardAlertClass(item.alertLevel)}`}
+            className={`${proChromeClass.kpiCard} ${cardAlertClass(item.alertLevel)}`}
             data-kpi={item.key}
           >
-            <CardAlertDot level={item.alertLevel} valueColor={item.tone} />
-            <div className={hostStyles.kpiLabel}>{item.label}</div>
-            <div className={item.subtitle ? hostStyles.kpiValueRow : undefined}>
-              <div className={hostStyles.kpiValue} style={item.tone ? { color: item.tone } : undefined}>
+            <CardAlertDot level={item.alertLevel} />
+            <div className={proChromeClass.kpiLabel}>{item.label}</div>
+            <div className={item.subtitle ? proChromeClass.kpiValueRow : undefined}>
+              <div className={proChromeClass.kpiValue} style={item.tone ? { color: item.tone } : undefined}>
                 {item.dot ? (
                   <span className={pro.threadDot} aria-hidden="true">●</span>
                 ) : null}
                 {item.value}
               </div>
-              {item.subtitle ? <div className={hostStyles.kpiAside}>{item.subtitle}</div> : null}
+              {item.subtitle ? <div className={proChromeClass.kpiAside}>{item.subtitle}</div> : null}
             </div>
           </div>
         ))}
@@ -187,10 +194,12 @@ function ReplicationBlock({
   children: React.ReactNode;
 }) {
   return (
-    <div className={spaced ? `${pro.replBlock} ${pro.replBreak}` : pro.replBlock}>
-      <ProSectionTitle>{title}</ProSectionTitle>
+    <ProSection
+      title={title}
+      className={spaced ? `${pro.replBlock} ${pro.replBreak}` : pro.replBlock}
+    >
       {children}
-    </div>
+    </ProSection>
   );
 }
 

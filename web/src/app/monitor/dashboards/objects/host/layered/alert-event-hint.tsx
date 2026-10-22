@@ -54,12 +54,22 @@ function HintBody({ lines }: { lines: readonly ScopeHintLine[] }) {
 /** 标题旁的信息图标。悬停出浅底短说明；点击不冒泡，避免抢走告警卡开抽屉。 */
 export function ProInfoHint({
   lines,
+  text,
   kind
 }: {
-  lines: readonly ScopeHintLine[];
-  kind: 'alert' | 'events';
+  lines?: readonly ScopeHintLine[];
+  /** 单句说明。排查路径等没有 lead/body 时走这里。 */
+  text?: string;
+  kind: string;
 }) {
-  const label = hintText(lines);
+  const label = text ?? (lines ? hintText(lines) : '');
+  const title = text ? (
+    <div className="max-w-[360px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-3)]">
+      {text}
+    </div>
+  ) : (
+    <HintBody lines={lines ?? []} />
+  );
   return (
     <span
       className="inline-flex shrink-0 items-center leading-none"
@@ -68,7 +78,7 @@ export function ProInfoHint({
       onMouseDown={stopHintClick}
       onPointerDown={stopHintClick}
     >
-      <Tooltip classNames={{ root: 'lightMetricTooltip' }} title={<HintBody lines={lines} />}>
+      <Tooltip classNames={{ root: 'lightMetricTooltip' }} title={title}>
         <InfoCircleOutlined
           className="cursor-help text-[13px] leading-none text-[var(--color-text-4)] hover:text-[var(--color-primary)]"
           aria-label={label}
@@ -78,14 +88,11 @@ export function ProInfoHint({
   );
 }
 
-/** 事件栏标题。文案与图标都在共用壳里，主机和 MySQL 只传入标题。 */
+/** 事件栏标题。说明走 hint 槽，不再把手拼图标塞进标题文案。 */
 export function ProEventsSectionTitle({ title }: { title: React.ReactNode }) {
   return (
-    <ProSectionTitle>
-      <span className="inline-flex min-w-0 items-center gap-1.5">
-        <span>{title}</span>
-        <ProInfoHint kind="events" lines={EVENT_RAIL_HINT_LINES} />
-      </span>
+    <ProSectionTitle hint={<ProInfoHint kind="events" lines={EVENT_RAIL_HINT_LINES} />}>
+      {title}
     </ProSectionTitle>
   );
 }

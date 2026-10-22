@@ -3,7 +3,7 @@
 import React from 'react';
 import { Tooltip } from 'antd';
 import { alertKpiHintLines, ProInfoHint } from './alert-event-hint';
-import { CardAlertDot, cardAlertClass } from './card-alert';
+import { CardAlertDot, cardAlertClass, type CardAlertFold } from './card-alert';
 import type { TabAlertLevel } from './tab-level';
 import ProDashLoading from './pro-dash-loading';
 import styles from './layered.module.scss';
@@ -22,6 +22,8 @@ export interface KpiCardModel {
   expanded?: boolean;
   /** 本卡达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
+  /** 默认实心折角。与折角同色、需要描边时才传 outline。 */
+  fold?: CardAlertFold;
 }
 
 const KpiLabel = ({ item }: { item: KpiCardModel }) => {
@@ -91,7 +93,7 @@ export function KpiStrip({
         const className = `${styles.kpiCard} ${cardAlertClass(item.alertLevel)}`;
         const body = (
           <>
-            <CardAlertDot level={item.alertLevel} valueColor={item.tone} />
+            <CardAlertDot level={item.alertLevel} fold={item.fold} />
             <ValueCardBody item={item} />
           </>
         );

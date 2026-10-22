@@ -10,7 +10,7 @@ import type { MetricUnit } from '../../../shared/types';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
-import { CardAlertDot, cardAlertClass } from './card-alert';
+import { CardAlertDot, cardAlertClass, type CardAlertFold } from './card-alert';
 import ThinTimeSeries from './thin-time-series';
 import type { HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
@@ -385,6 +385,7 @@ export default function SystemPane({
     phase: MetricBlockPhase;
     valueColor?: string;
     alertLevel?: HostSurfaceAlerts['system']['cpu'];
+    fold?: CardAlertFold;
   }> = [
     {
       key: 'cpu',
@@ -413,7 +414,8 @@ export default function SystemPane({
       value: formatPlain(load1Now),
       unit: '',
       valueColor: LOAD1_SERIES_COLOR,
-      alertLevel: alerts.load
+      alertLevel: alerts.load,
+      fold: alerts.load === 'warn' ? 'outline' as const : undefined
     }] : []),
     {
       key: 'uptime',
@@ -564,7 +566,7 @@ export default function SystemPane({
       <div className={styles.instantKpiRow}>
         {instantCards.map((card) => (
           <section key={card.key} className={`${classic.panel} ${styles.instantKpi} ${cardAlertClass(card.alertLevel)}`}>
-            <CardAlertDot level={card.alertLevel} valueColor={card.valueColor} />
+            <CardAlertDot level={card.alertLevel} fold={card.fold} />
             <div className={styles.instantKpiLabel}>{card.label}</div>
             {card.phase === 'loading' ? (
               <ProDashLoading size="small" layout="inline" />

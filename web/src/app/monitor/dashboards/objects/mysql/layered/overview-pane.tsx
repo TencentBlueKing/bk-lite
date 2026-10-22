@@ -1,10 +1,17 @@
 'use client';
 
 import React, { useCallback, useMemo } from 'react';
-import { QuestionCircleOutlined } from '@ant-design/icons';
-import { Tooltip } from 'antd';
-import { ProEventsSectionTitle } from '../../host/layered/alert-event-hint';
-import { KpiTileRow, ProDashLoading, ProSectionTitle, ThinTimeSeries, type KpiTileModel } from '../../host/layered/pro-chrome';
+import {
+  EVENT_RAIL_HINT_LINES,
+  KpiTileRow,
+  ProDashLoading,
+  ProFocusCard,
+  ProInfoHint,
+  ProSection,
+  ThinTimeSeries,
+  proChromeClass,
+  type KpiTileModel
+} from '../../host/layered/pro-chrome';
 import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
 import { primaryChartSeries } from '../../host/layered/readings';
@@ -13,8 +20,6 @@ import { describeFocusAxis, seriesSampleValues } from '../../host/layered/focus-
 import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
-import classic from '../../host/index.module.scss';
-import host from '../../host/layered/layered.module.scss';
 import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
@@ -169,51 +174,39 @@ export default function OverviewPane({
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
   const focusPath = text('focusPath');
-  const focusTitle = (
-    <ProSectionTitle>
-      <span className="inline-flex min-w-0 items-center gap-1">
-        <span>{text('focus')}</span>
-        <Tooltip title={focusPath} styles={{ body: { maxWidth: 360 } }}>
-          <QuestionCircleOutlined
-            className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
-            aria-label={focusPath}
-          />
-        </Tooltip>
-      </span>
-    </ProSectionTitle>
-  );
 
   return (
     <>
-      <ProSectionTitle>{text('healthOverview')}</ProSectionTitle>
-      {healthLoading ? (
-        <KpiTileRow loading items={MYSQL_LOADING_KPIS} />
-      ) : (
-        <KpiTileRow items={cards} />
-      )}
+      <ProSection title={text('healthOverview')}>
+        {healthLoading ? (
+          <KpiTileRow loading items={MYSQL_LOADING_KPIS} />
+        ) : (
+          <KpiTileRow items={cards} />
+        )}
+      </ProSection>
 
-      <ProEventsSectionTitle title={text('events')} />
-      <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
+      <ProSection
+        title={text('events')}
+        hint={<ProInfoHint kind="events" lines={EVENT_RAIL_HINT_LINES} />}
+      >
+        <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
+      </ProSection>
 
-      {focusLoading ? (
-        <>
-          {focusTitle}
-          <div className={host.shortcutGrid}>
+      <ProSection title={text('focus')} hint={<ProInfoHint kind="focus" text={focusPath} />}>
+        {focusLoading ? (
+          <div className={proChromeClass.shortcutGrid}>
             {focusLoadingTitles.map((titleKey) => (
-              <div key={titleKey} className={`${classic.panel} ${host.shortcutCard}`}>
-                <div className={host.shortcutCopy}>
+              <ProFocusCard key={titleKey}>
+                <div className={proChromeClass.shortcutCopy}>
                   <FocusShortcutTitle label={text(titleKey)} unit="" />
                   <ProDashLoading size="small" />
                 </div>
-                <div className={host.focusChart} />
-              </div>
+                <div className={proChromeClass.focusChart} />
+              </ProFocusCard>
             ))}
           </div>
-        </>
-      ) : (
-        <>
-          {focusTitle}
-          <div className={host.shortcutGrid}>
+        ) : (
+          <div className={proChromeClass.shortcutGrid}>
             {focus.map((card) => {
               const sparks = card.spark ? SPARK_METRIC[card.spark] : [];
               const plotted = mergeChartSeries(sparks.flatMap((spark) => {
@@ -228,20 +221,20 @@ export default function OverviewPane({
                 ).unitLabel
                 : '';
               return (
-                <div key={card.key} className={`${classic.panel} ${host.shortcutCard}`}>
-                  <div className={host.shortcutCopy}>
+                <ProFocusCard key={card.key}>
+                  <div className={proChromeClass.shortcutCopy}>
                     <FocusShortcutTitle label={card.label} unit={axisUnit} />
-                    <div className={host.shortcutValue} style={card.tone ? { color: card.tone } : undefined}>
+                    <div className={proChromeClass.shortcutValue} style={card.tone ? { color: card.tone } : undefined}>
                       {card.value}
                     </div>
                     {card.delta ? (
-                      <div className={host.shortcutSub} style={card.deltaTone ? { color: card.deltaTone } : undefined}>
+                      <div className={proChromeClass.shortcutSub} style={card.deltaTone ? { color: card.deltaTone } : undefined}>
                         {card.delta}
                       </div>
                     ) : card.subtitle ? (
-                      <div className={host.shortcutSub}>{card.subtitle}</div>
+                      <div className={proChromeClass.shortcutSub}>{card.subtitle}</div>
                     ) : null}
-                    <button type="button" className={host.jumpBtn} onClick={() => onOpenFocus(card)}>
+                    <button type="button" className={proChromeClass.jumpBtn} onClick={() => onOpenFocus(card)}>
                       {card.hint}
                     </button>
                   </div>
@@ -249,21 +242,21 @@ export default function OverviewPane({
                     <ThinTimeSeries
                       bare
                       numericAxis
-                      className={host.focusChart}
+                      className={proChromeClass.focusChart}
                       title=""
                       unit={sparks[0]?.unit}
                       data={plotted}
                       legends={sparks.map((spark) => ({ label: text(spark.label), color: spark.color }))}
                     />
                   ) : (
-                    <div className={host.focusChart} />
+                    <div className={proChromeClass.focusChart} />
                   )}
-                </div>
+                </ProFocusCard>
               );
             })}
           </div>
-        </>
-      )}
+        )}
+      </ProSection>
     </>
   );
 }

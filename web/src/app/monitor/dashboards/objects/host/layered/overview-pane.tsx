@@ -16,9 +16,15 @@ import { formatDuration, type MetricSeries } from '../../common/simple-dashboard
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
 import { metricBlockPhase } from './performance-scope';
 import ProDashLoading from './pro-dash-loading';
-import { KpiStrip, type KpiCardModel } from './signal-bar';
-import { ProEventsSectionTitle } from './alert-event-hint';
-import { ProSectionTitle } from './section-title';
+import {
+  EVENT_RAIL_HINT_LINES,
+  KpiStrip,
+  ProFocusCard,
+  ProInfoHint,
+  ProSection,
+  proChromeClass,
+  type KpiCardModel
+} from './pro-chrome';
 import ThinTimeSeries from './thin-time-series';
 import FocusShortcutTitle from './focus-shortcut-title';
 import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from './focus-axis';
@@ -33,7 +39,6 @@ import {
   primaryChartSeries,
   resolveMemoryUsage
 } from './readings';
-import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 interface OverviewPaneProps {
@@ -202,7 +207,8 @@ export default function OverviewPane({
         label: hostCategoryText(t, 'loadOneMinute'),
         value: formatPlain(load),
         tone: LOAD1_SERIES_COLOR,
-        alertLevel: alerts.load
+        alertLevel: alerts.load,
+        fold: alerts.load === 'warn' ? 'outline' : undefined
       });
     }
     items.push({
@@ -305,120 +311,126 @@ export default function OverviewPane({
 
   return (
     <>
-      <ProSectionTitle>健康概览</ProSectionTitle>
-      <KpiStrip items={cards} loading={loading} />
-      <ProEventsSectionTitle title={hostCategoryText(t, 'events')} />
-      <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
+      <ProSection title="健康概览">
+        <KpiStrip items={cards} loading={loading} />
+      </ProSection>
+      <ProSection
+        title={hostCategoryText(t, 'events')}
+        hint={<ProInfoHint kind="events" lines={EVENT_RAIL_HINT_LINES} />}
+      >
+        <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
+      </ProSection>
 
-      <ProSectionTitle>重点关注</ProSectionTitle>
-      <div className={styles.shortcutGrid}>
-        <div key="disk" className={`${classic.panel} ${styles.shortcutCard}`}>
-          <div className={styles.shortcutCopy}>
+      <ProSection title="重点关注">
+      <div className={proChromeClass.shortcutGrid}>
+        <ProFocusCard key="disk">
+          <div className={proChromeClass.shortcutCopy}>
             <FocusShortcutTitle
               label={hostCategoryText(t, 'busiestMount')}
               unit={diskFocus?.unitLabel}
             />
             {worst ? (
               <>
-                <div className={styles.shortcutMain}>{mountName || '—'}</div>
-                <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.diskUsed }}>
+                <div className={proChromeClass.shortcutMain}>{mountName || '—'}</div>
+                <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.diskUsed }}>
                   {diskFocus ? formatFocusHeadline(diskFocus, diskCurrent) : '--'}
                 </div>
-                <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
+                <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('disk', worst.key)}>
                   查看磁盘
                 </button>
               </>
             ) : diskLoading ? (
               <ProDashLoading size="small" />
             ) : (
-              <div className={styles.shortcutSub}>暂无挂载数据</div>
+              <div className={proChromeClass.shortcutSub}>暂无挂载数据</div>
             )}
           </div>
           {worst ? (
             <ThinTimeSeries
               bare
               numericAxis
-              className={styles.focusChart}
+              className={proChromeClass.focusChart}
               title=""
               unit="percent"
               data={diskTrend}
               legends={[{ label: '使用率', color: HOST_SERIES_COLOR.diskUsed }]}
             />
           ) : null}
-        </div>
-        <div key="net" className={`${classic.panel} ${styles.shortcutCard}`}>
-          <div className={styles.shortcutCopy}>
+        </ProFocusCard>
+        <ProFocusCard key="net">
+          <div className={proChromeClass.shortcutCopy}>
             <FocusShortcutTitle
               label={hostCategoryText(t, 'busiestNic')}
               unit={nicFocus?.unitLabel}
             />
             {busiest ? (
               <>
-                <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
-                <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.netIn }}>
+                <div className={proChromeClass.shortcutMain}>{busiest.labels.interface || '—'}</div>
+                <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.netIn }}>
                   {nicFocus ? formatFocusHeadline(nicFocus, nicThroughput) : '--'}
                 </div>
-                <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
+                <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('net', busiest.key)}>
                   查看网络
                 </button>
               </>
             ) : netLoading ? (
               <ProDashLoading size="small" />
             ) : (
-              <div className={styles.shortcutSub}>暂无网卡数据</div>
+              <div className={proChromeClass.shortcutSub}>暂无网卡数据</div>
             )}
           </div>
           {busiest ? (
             <ThinTimeSeries
               bare
               numericAxis
-              className={styles.focusChart}
+              className={proChromeClass.focusChart}
               title=""
               unit="byteps"
               data={nicTrend}
               legends={[{ label: '吞吐', color: HOST_SERIES_COLOR.netIn }]}
             />
           ) : null}
-        </div>
+        </ProFocusCard>
         {processReady ? (
-          <div key="process" className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutCopy}>
+          <ProFocusCard key="process">
+            <div className={proChromeClass.shortcutCopy}>
               <FocusShortcutTitle
                 label="CPU 占用最高"
                 unit={processFocus?.unitLabel}
               />
               {topProcess ? (
                 <>
-                  <div className={styles.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
-                  <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
+                  <div className={proChromeClass.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
+                  <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
                     {processFocus ? formatFocusHeadline(processFocus, readingOfRow(topProcess, 'process_cpu_usage')) : '--'}
                   </div>
-                  <button type="button" className={styles.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
+                  <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
                     查看进程
                   </button>
                 </>
               ) : processLoading ? (
                 <ProDashLoading size="small" />
               ) : (
-                <div className={styles.shortcutSub}>暂无进程数据</div>
+                <div className={proChromeClass.shortcutSub}>暂无进程数据</div>
               )}
             </div>
             {topProcess ? (
               <ThinTimeSeries
                 bare
                 numericAxis
-                className={styles.focusChart}
+                className={proChromeClass.focusChart}
                 title=""
                 unit="percent"
                 data={processTrend}
                 legends={[{ label: 'CPU', color: HOST_SERIES_COLOR.cpu }]}
               />
             ) : null}
-          </div>
+          </ProFocusCard>
         ) : null}
       </div>
+      </ProSection>
 
-      <ProSectionTitle>{hostCategoryText(t, 'viewTrend')}</ProSectionTitle>
+      <ProSection title={hostCategoryText(t, 'viewTrend')}>
       <div className={styles.chartGrid4}>
         <ThinTimeSeries
           title={hostCategoryText(t, 'cpuUtilization')}
@@ -455,6 +467,7 @@ export default function OverviewPane({
           ]}
         />
       </div>
+      </ProSection>
     </>
   );
 }

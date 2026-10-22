@@ -7,7 +7,7 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import type { EntityTableRow } from '../../host/entity-series';
 import LayeredEntityTable, { type LayeredColumn } from '../../host/layered/entity-table';
 import TableCsvExportButton from '../../host/layered/table-csv-export';
-import { GrayTabEmptyState, ProDashLoading, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { GrayTabEmptyState, ProDashLoading, ProSection, ThinTimeSeries, proChromeClass } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
 import { HOST_SERIES_COLOR } from '../../host/config';
 import {
@@ -258,7 +258,7 @@ function TabFill({
 }) {
   if (loading) {
     return (
-      <div className={`${host.kpiCard} ${host.kpiCardLoading}`} data-digest-state="loading">
+      <div className={`${proChromeClass.kpiCard} ${proChromeClass.kpiCardLoading}`} data-digest-state="loading">
         <ProDashLoading />
       </div>
     );
@@ -369,7 +369,7 @@ export function StatementPane({
     : mysqlCategoryText(t, 'insufficientData');
   return (
     <div className={pro.chartStack}>
-      <ProSectionTitle>{mysqlCategoryText(t, 'trend')}</ProSectionTitle>
+      <ProSection title={mysqlCategoryText(t, 'trend')}>
       <MountTrend
         title={selected?.sql || mysqlCategoryText(t, 'statementTrend')}
         unit={rows.some((row) => row.totalTimeMs != null) ? 'ms' : 'counts'}
@@ -380,11 +380,12 @@ export function StatementPane({
         emptyText={trendEmpty}
       />
       {primaryWait ? (
-        <div className={host.shortcutSub}>
+        <div className={proChromeClass.shortcutSub}>
           {mysqlCategoryText(t, 'primaryWait', { name: primaryWait })}
         </div>
       ) : null}
-      <ProSectionTitle>{mysqlCategoryText(t, 'statementList')}</ProSectionTitle>
+      </ProSection>
+      <ProSection title={mysqlCategoryText(t, 'statementList')}>
       <LayeredEntityTable
         rows={entities}
         columns={columns}
@@ -414,6 +415,7 @@ export function StatementPane({
           </div>
         )}
       />
+      </ProSection>
     </div>
   );
 }
@@ -508,7 +510,7 @@ export function WaitPane({
     : mysqlCategoryText(t, 'selectToFollow');
   return (
     <div className={pro.chartStack}>
-      <ProSectionTitle>{mysqlCategoryText(t, 'trend')}</ProSectionTitle>
+      <ProSection title={mysqlCategoryText(t, 'trend')}>
       <MountTrend
         title={selected?.name || ''}
         unit="ms"
@@ -518,7 +520,8 @@ export function WaitPane({
         loading={loading && !hasRows}
         emptyText={waitTrendEmpty}
       />
-      <ProSectionTitle>{mysqlCategoryText(t, 'waitList')}</ProSectionTitle>
+      </ProSection>
+      <ProSection title={mysqlCategoryText(t, 'waitList')}>
       <LayeredEntityTable
         rows={waitTableRows}
         columns={waitTableColumns}
@@ -550,7 +553,8 @@ export function WaitPane({
           </div>
         )}
       />
-      <ProSectionTitle>{mysqlCategoryText(t, 'relatedStatements')}</ProSectionTitle>
+      </ProSection>
+      <ProSection title={mysqlCategoryText(t, 'relatedStatements')}>
       <LayeredEntityTable
         rows={relatedTableRows}
         columns={relatedTableColumns}
@@ -571,6 +575,7 @@ export function WaitPane({
           />
         )}
       />
+      </ProSection>
     </div>
   );
 }

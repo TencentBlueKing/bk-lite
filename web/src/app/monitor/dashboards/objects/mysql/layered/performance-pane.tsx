@@ -6,7 +6,7 @@ import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries, mergeChartSeriesAligned } from '../../../shared/utils/chart-data';
 import type { MetricSeries } from '../types';
 import { formatMetricValue } from '../../../shared/utils/format';
-import { GrayTabEmptyState, ProSectionTitle, ThinTimeSeries } from '../../host/layered/pro-chrome';
+import { GrayTabEmptyState, ProSection, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../../host/config';
 import { latestChartNumber, latestNumber, numericValue, primaryChartSeries } from '../../host/layered/readings';
 import { innodbHasLoad } from './ia';
@@ -356,15 +356,13 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   const mergedScanLockCount = [showScan, showLocks, showRowLockTime].filter(Boolean).length;
   const scanLockCount = 3 + (showLogWaits ? 1 : 0);
   const cardClass = (wide: boolean) => (wide ? `min-w-0 ${pro.perfWide}` : 'min-w-0');
-  const sectionStack = 'flex min-w-0 flex-col gap-3';
   const writeInnodbPair = showWrites && showInnodb;
   const bufferCount = [showBuffer, showDirty, showDirtyPages, showDataFsyncs].filter(Boolean).length;
 
   return (
     <>
       {connectionRowCount > 0 || showThreadsCreated ? (
-        <div className={sectionStack}>
-          <ProSectionTitle>{mysqlCategoryText(t, 'connectionsAndThroughput')}</ProSectionTitle>
+        <ProSection title={mysqlCategoryText(t, 'connectionsAndThroughput')}>
           {connectionRowCount > 0 ? (
           <div
             className={connectionRowClass}
@@ -456,11 +454,10 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             </div>
           ) : null}
-        </div>
+        </ProSection>
       ) : null}
       {showTps || showInnodbRows ? (
-        <div className={sectionStack}>
-          <ProSectionTitle>{showTps ? mysqlCategoryText(t, 'tpsChart') : mysqlCategoryText(t, 'innodbRows')}</ProSectionTitle>
+        <ProSection title={showTps ? mysqlCategoryText(t, 'tpsChart') : mysqlCategoryText(t, 'innodbRows')}>
           <div className={`${pro.perfGrid} ${pro.perfFill}`}>
             {showTps ? (
               <div id="mysql-perf-tps" className={cardClass(!showInnodbRows)}>
@@ -500,7 +497,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
           </div>
-        </div>
+        </ProSection>
       ) : null}
       {showWrites || showInnodb ? (
         <div
@@ -508,8 +505,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
           data-perf-pair={writeInnodbPair ? 'side' : 'single'}
         >
           {showWrites ? (
-            <div className={pro.pairCol}>
-              <ProSectionTitle>{mysqlCategoryText(t, 'writesAndStatements')}</ProSectionTitle>
+            <ProSection className={pro.pairCol} title={mysqlCategoryText(t, 'writesAndStatements')}>
               <ThinTimeSeries
                 className={writeInnodbPair ? pro.pairFill : undefined}
                 title={mysqlCategoryText(t, 'writeStatements')}
@@ -523,18 +519,16 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                   { label: 'DELETE', color: HOST_PALETTE.rose, reading: rateReading(metricMap.mysql_com_delete_rate) }
                 ]}
               />
-            </div>
+            </ProSection>
           ) : null}
           {showInnodb ? (
-            <div id="mysql-perf-innodb" className={pro.pairCol}>
-              <ProSectionTitle>{mysqlCategoryText(t, 'innodb')}</ProSectionTitle>
+            <ProSection id="mysql-perf-innodb" className={pro.pairCol} title={mysqlCategoryText(t, 'innodb')}>
               {innodbCard}
-            </div>
+            </ProSection>
           ) : null}
         </div>
       ) : null}
-      <div className={sectionStack}>
-        <ProSectionTitle>{mysqlCategoryText(t, 'bufferPool')}</ProSectionTitle>
+      <ProSection title={mysqlCategoryText(t, 'bufferPool')}>
         <div className={`${pro.perfGrid} ${pro.perfFill}`} data-perf-count={bufferCount}>
           <div id="mysql-perf-buffer" className={cardClass(bufferCount === 1)}>
             <ThinTimeSeries
@@ -599,10 +593,9 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
             </div>
           ) : null}
         </div>
-      </div>
+      </ProSection>
       {abortedConnects.length > 0 || abortedClients.length > 0 ? (
-        <div id="mysql-perf-quality" className={sectionStack}>
-          <ProSectionTitle>{mysqlCategoryText(t, 'connectionQuality')}</ProSectionTitle>
+        <ProSection id="mysql-perf-quality" title={mysqlCategoryText(t, 'connectionQuality')}>
           <div className={`${pro.perfGrid} ${pro.perfFill}`} data-perf-section="quality">
             {abortedConnects.length > 0 ? (
               <div className={cardClass(abortedClients.length === 0)}>
@@ -629,10 +622,9 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               </div>
             ) : null}
           </div>
-        </div>
+        </ProSection>
       ) : null}
-      <div id="mysql-perf-scan-lock" className={sectionStack}>
-          <ProSectionTitle>{mysqlCategoryText(t, 'scanAndLock')}</ProSectionTitle>
+      <ProSection id="mysql-perf-scan-lock" title={mysqlCategoryText(t, 'scanAndLock')}>
           <div className={`${pro.perfGrid} ${pro.perfFill}`} data-perf-section="scan-lock" data-perf-count={scanLockCount}>
             <div id="mysql-perf-lock-wait" className="min-w-0">
               <ThinTimeSeries
@@ -771,7 +763,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
               ) : null}
             </div>
           ) : null}
-        </div>
+      </ProSection>
     </>
   );
 }
