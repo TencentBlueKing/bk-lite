@@ -878,12 +878,6 @@ export const buildFormulaQueryCondition = ({
 
 const MULTI_MIN_CONDITIONS = 2;
 const MULTI_MAX_CONDITIONS = 5;
-const MULTI_LEVEL_WEIGHT: Record<string, number> = {
-  info: 1,
-  warning: 2,
-  error: 3,
-  critical: 4
-};
 const MULTI_MIRROR_FIELDS = [
   'algorithm',
   'group_algorithm',
@@ -906,6 +900,104 @@ const MULTI_MIRROR_FIELDS = [
 
 const finiteThresholdValue = (value: number | null | undefined) =>
   typeof value === 'number' && Number.isFinite(value);
+
+const MULTI_LEVEL_ORDER = ['critical', 'error', 'warning'] as const;
+
+const multiLevelName = (level: string): string => {
+  if (level === 'critical') return '严重';
+  if (level === 'error') return '错误';
+  if (level === 'warning') return '警告';
+  return level;
+};
+
+const isLevelCondition = (row: MetricExpressionRow): boolean =>
+  (row.role || 'level') === 'level';
+
+export const multiLevelRows = (rows: MetricExpressionRow[]): string[] => {
+  const present = new Set<string>();
+  rows.forEach((row) => {
+    if (!isLevelCondition(row)) {
+      return;
+    }
+    (row.threshold || []).forEach((item) => {
+      if (item.level) {
+        present.add(item.level);
+      }
+    });
+  });
+  const canonical = new Set<string>(MULTI_LEVEL_ORDER);
+  const ordered = MULTI_LEVEL_ORDER.filter((level) => present.has(level));
+  const extra = [...present].filter((level) => !canonical.has(level));
+  return [...ordered, ...extra];
+};
+
+export const setMultiLevelCell = (
+  rows: MetricExpressionRow[],
+  ref: string,
+  level: string,
+  patch: { method?: string; value?: number | null }
+): MetricExpressionRow[] =>
+  rows.map((row) => {
+    if (row.ref !== ref || !isLevelCondition(row)) {
+      return row;
+    }
+    const threshold = [...(row.threshold || [])];
+    const index = threshold.findIndex((item) => item.level === level);
+    if (index < 0) {
+      threshold.push({
+        level,
+        method: patch.method ?? '>',
+        value: patch.value ?? null
+      });
+      return { ...row, threshold };
+    }
+    const current = threshold[index];
+    threshold[index] = {
+      ...current,
+      ...(patch.method !== undefined ? { method: patch.method } : {}),
+      ...(patch.value !== undefined ? { value: patch.value } : {})
+    };
+    return { ...row, threshold };
+  });
+
+export const addMultiLevel = (rows: MetricExpressionRow[]): MetricExpressionRow[] => {
+  const present = new Set(multiLevelRows(rows));
+  const next = MULTI_LEVEL_ORDER.find((level) => !present.has(level));
+  if (!next) {
+    return [...rows];
+  }
+  return rows.map((row) => {
+    if (!isLevelCondition(row)) {
+      return row;
+    }
+    const threshold = row.threshold || [];
+    if (threshold.some((item) => item.level === next)) {
+      return row;
+    }
+    return {
+      ...row,
+      threshold: [...threshold, { level: next, method: '>', value: null }]
+    };
+  });
+};
+
+export const removeMultiLevel = (
+  rows: MetricExpressionRow[],
+  level: string
+): MetricExpressionRow[] =>
+  rows.map((row) => {
+    if (!isLevelCondition(row)) {
+      return row;
+    }
+    const threshold = row.threshold || [];
+    if (!threshold.some((item) => item.level === level)) {
+      return row;
+    }
+    return {
+      ...row,
+      threshold: threshold.filter((item) => item.level !== level)
+    };
+  });
 
 const validateFormulaConditionRow = (row: MetricExpressionRow): string[] => {
   const errors: string[] = [];
@@ -1014,18 +1106,12 @@ export const validateMultiConditionRows = ({
       const filled = (row.threshold || []).filter((item) =>
         finiteThresholdValue(item.value)
       );
-      if (!filled.length) {
-        errors.push(`条件 ${row.ref} 至少需要一条阈值`);
-      }
       const levels = filled.map((item) => item.level).filter(Boolean);
       if (filled.some((item) => !item.level) || levels.length !== filled.length) {
         errors.push(`条件 ${row.ref} 的阈值必须带级别`);
       }
       if (new Set(levels).size !== levels.length) {
         errors.push(`条件 ${row.ref} 的级别不能重复`);
-      }
-      if (filled.some((item) => !item.method)) {
-        errors.push(`条件 ${row.ref} 的阈值不完整`);
       }
     }
     if (row !== rows[0]) {
@@ -1034,6 +1120,24 @@ export const validateMultiConditionRows = ({
         errors.push(`条件 ${row.ref} 包含锚点外额外维度：${extra.join(', ')}`);
       }
     }
+  });
+  const levelConditions = rows.filter((row) => isLevelCondition(row));
+  const levelsPresent = multiLevelRows(rows);
+  if (levelConditions.length && !levelsPresent.length) {
+    errors.push('多指标条件至少需要一个级别');
+  }
+  levelsPresent.forEach((level) => {
+    levelConditions.forEach((row) => {
+      const complete = (row.threshold || []).some(
+        (item) =>
+          item.level === level &&
+          finiteThresholdValue(item.value) &&
+          Boolean(item.method)
+      );
+      if (!complete) {
+        errors.push(`${multiLevelName(level)}级别里条件 ${row.ref} 的阈值不完整`);
+      }
+    });
   });
   return errors;
 };
@@ -1117,65 +1221,77 @@ export const omitMultiMirrorFields = <T extends Record<string, unknown>>(params:
   return next;
 };
 
-const lowestLevelThreshold = (thresholds: MultiThresholdField[] = []) =>
-  [...thresholds]
-    .filter((item) => finiteThresholdValue(item.value))
-    .sort(
-      (left, right) =>
-        (MULTI_LEVEL_WEIGHT[left.level || ''] || 99) -
-      (MULTI_LEVEL_WEIGHT[right.level || ''] || 99)
-    )[0];
+const conditionDisplayName = (
+  row: MetricExpressionRow,
+  unnamedResult: string
+): string => {
+  const operandName =
+    row.operands?.find((operand) => operand.metricLabel || operand.metricName)
+      ?.metricLabel ||
+    row.operands?.find((operand) => operand.metricName)?.metricName;
+  if (row.source === 'formula') {
+    return row.resultName || operandName || unnamedResult;
+  }
+  return row.metricLabel || row.metricName || row.ref;
+};
+
+const thresholdClause = (
+  row: MetricExpressionRow,
+  threshold: { method?: string; value?: number | null } | undefined,
+  unsetThreshold: string
+): string => {
+  const name = conditionDisplayName(row, '');
+  const unit = row.thresholdUnit || '';
+  if (!threshold || !finiteThresholdValue(threshold.value) || !threshold.method) {
+    return `${name} ${unsetThreshold}`.trim();
+  }
+  return `${name} ${threshold.method} ${threshold.value ?? ''}${unit}`.trim();
+};
 
 export const buildMultiConditionSentence = (
   rows: MetricExpressionRow[],
   labels?: {
-    when?: string;
     and?: string;
-    triggerSuffix?: string;
-    levelFrom?: (level: string) => string;
     levelNames?: Record<string, string>;
+    gate?: string;
     unsetThreshold?: string;
     unnamedResult?: string;
   }
 ): string => {
-  const when = labels?.when || '当';
   const joiner = labels?.and || '且';
-  const suffix = labels?.triggerSuffix || '时触发；级别取各条件命中级别的最低者';
   const levelNames = labels?.levelNames || {
     info: '信息',
     warning: '警告',
     error: '错误',
     critical: '严重'
   };
-  const levelFrom =
-    labels?.levelFrom ||
-    ((level: string) => `${levelNames[level] || level}起`);
+  const gateLabel = labels?.gate || '前置条件';
   const unsetThreshold = labels?.unsetThreshold || '未设阈值';
   const unnamedResult = labels?.unnamedResult || '未命名结果';
-  const parts = rows.map((row) => {
-    const operandName =
-      row.operands?.find((operand) => operand.metricLabel || operand.metricName)
-        ?.metricLabel ||
-      row.operands?.find((operand) => operand.metricName)?.metricName;
-    const name = row.source === 'formula'
-      ? row.resultName || operandName || unnamedResult
-      : row.metricLabel || row.metricName || row.ref;
-    const unit = row.thresholdUnit || '';
-    if ((row.role || 'level') === 'gate') {
-      const threshold = row.threshold?.[0];
-      if (!finiteThresholdValue(threshold?.value)) {
-        return `${name} ${unsetThreshold}`;
-      }
-      return `${name} ${threshold?.method || ''} ${threshold?.value ?? ''}${unit}`.trim();
-    }
-    const threshold = lowestLevelThreshold(row.threshold);
-    if (!threshold) {
-      return `${name} ${unsetThreshold}`;
-    }
-    const levelText = threshold.level ? `（${levelFrom(threshold.level)}）` : '';
-    return `${name} ${threshold.method || ''} ${threshold.value ?? ''}${unit}${levelText}`.trim();
-  });
-  return `${when} ${parts.join(`${joiner} `)} ${suffix}`;
+  const namedRows = rows.map((row) => (
+    row.source === 'formula' && !row.resultName
+      ? { ...row, resultName: conditionDisplayName(row, unnamedResult) }
+      : row
+  ));
+  const levelConditions = namedRows.filter(isLevelCondition);
+  const gateConditions = namedRows.filter((row) => row.role === 'gate');
+  const levels = multiLevelRows(namedRows);
+  const levelParts = levels.length
+    ? levels.map((level) => {
+      const cells = levelConditions.map((row) =>
+        thresholdClause(
+          row,
+          (row.threshold || []).find((item) => item.level === level),
+          unsetThreshold
+        )
+      );
+      return `${levelNames[level] || level}：${cells.join(` ${joiner} `)}`;
+    })
+    : levelConditions.map((row) => thresholdClause(row, undefined, unsetThreshold));
+  const gateParts = gateConditions.map((row) =>
+    `${gateLabel}：${thresholdClause(row, row.threshold?.[0], unsetThreshold)}`
+  );
+  return [...levelParts, ...gateParts].join('；');
 };
 
 export const buildMetricExpressionQueryCondition = ({

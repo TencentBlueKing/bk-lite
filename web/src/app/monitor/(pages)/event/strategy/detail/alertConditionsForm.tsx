@@ -40,6 +40,7 @@ import {
   timeleftRequiresLowSideThresholds
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
+import MultiThresholdGrid from './multiThresholdGrid';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
   buildMultiConditionSentence,
@@ -49,6 +50,7 @@ import {
 import AlertDurationFields, {
   STRATEGY_CONDITION_LABEL_CLASS,
   STRATEGY_CONDITION_LABEL_WIDTH,
+  STRATEGY_HINT_TEXT_CLASS,
   strategyConditionLabelWithTip
 } from './alertDurationFields';
 
@@ -189,7 +191,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     unitList
   });
 
-  // 三个级别都展示，但只校验填了数值的行。空行忽略，至少一行即可提交。
+  // 多条件按级别行校验。单条件只校验已填数值的行，至少一行。
   const validateThreshold = async () => {
     if (metricExpressionMode === 'multi') {
       const errors = validateMultiConditionRows({
@@ -197,7 +199,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         rows: metricRows
       }).filter(
         (message) =>
-          message.includes('阈值') || message.includes('常规条件')
+          message.includes('阈值') ||
+          message.includes('常规条件') ||
+          message.includes('级别')
       );
       if (errors.length) {
         return Promise.reject(new Error(errors[0]));
@@ -646,7 +650,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                         }}
                       />
                       {spanIssue ? (
-                          <div className="mt-1 text-xs text-[var(--color-text-3)]">
+                          <div className={`mt-1 ${STRATEGY_HINT_TEXT_CLASS}`}>
                             {spanIssue}
                           </div>
                       ) : null}
@@ -763,98 +767,11 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 rules={[{ validator: validateThreshold }]}
               >
                 {metricExpressionMode === 'multi' ? (
-                  <div className="flex flex-col gap-3">
-                    <div className="text-sm text-[var(--color-text-2)]">
-                      {t('monitor.events.multiCombinatorAll')}
-                    </div>
-                    {metricRows.map((row, rowIndex) => (
-                      <div key={row.ref} className="flex flex-col gap-2">
-                        <span className="text-sm text-[var(--color-text-1)]">
-                          {row.ref} {row.metricLabel || row.metricName || ''}
-                          {row.role === 'gate' ? ` · ${t('monitor.events.multiRoleGate')}` : ''}
-                        </span>
-                        {row.role === 'gate' ? (
-                          <div className="flex gap-2">
-                            <Select
-                              className="w-[120px]"
-                              value={row.threshold?.[0]?.method || '>'}
-                              options={COMPARISON_METHOD.map((item) => ({
-                                label: item.label,
-                                value: item.value
-                              }))}
-                              onChange={(method) =>
-                                onMetricRowsChange?.(
-                                  metricRows.map((item, index) =>
-                                    index === rowIndex
-                                      ? {
-                                        ...item,
-                                        threshold: [{
-                                          method,
-                                          value: item.threshold?.[0]?.value ?? null
-                                        }]
-                                      }
-                                      : item
-                                  )
-                                )
-                              }
-                            />
-                            <InputNumber
-                              className="w-[160px]"
-                              addonAfter={
-                                resolveMetricDisplayUnit(row.thresholdUnit, unitList) ||
-                                undefined
-                              }
-                              value={row.threshold?.[0]?.value ?? null}
-                              onChange={(value) =>
-                                onMetricRowsChange?.(
-                                  metricRows.map((item, index) =>
-                                    index === rowIndex
-                                      ? {
-                                        ...item,
-                                        threshold: [{
-                                          method: item.threshold?.[0]?.method || '>',
-                                          value: typeof value === 'number' ? value : null
-                                        }]
-                                      }
-                                      : item
-                                  )
-                                )
-                              }
-                            />
-                          </div>
-                        ) : (
-                          <ThresholdList
-                            data={(row.threshold || []).filter(
-                              (item): item is ThresholdField => Boolean(item.level)
-                            )}
-                            onChange={(next) =>
-                              onMetricRowsChange?.(
-                                metricRows.map((item, index) =>
-                                  index === rowIndex ? { ...item, threshold: next } : item
-                                )
-                              )
-                            }
-                            thresholdUnit={row.thresholdUnit || null}
-                            onThresholdUnitChange={(unit) =>
-                              onMetricRowsChange?.(
-                                metricRows.map((item, index) =>
-                                  index === rowIndex
-                                    ? { ...item, thresholdUnit: unit, calculationUnit: unit }
-                                    : item
-                                )
-                              )
-                            }
-                            unitOptions={filteredUnitOptions}
-                            showUnitSelector={false}
-                            unitAddonLabel={
-                              resolveMetricDisplayUnit(row.thresholdUnit, unitList) ||
-                              ''
-                            }
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <MultiThresholdGrid
+                    rows={metricRows}
+                    unitList={unitList}
+                    onChange={(next) => onMetricRowsChange?.(next)}
+                  />
                 ) : (
                 <ThresholdList
                   data={threshold}
@@ -873,7 +790,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 )}
               </Form.Item>
               <p
-                className="mb-4 text-[13px] leading-[22px] text-[var(--color-text-3)]"
+                className={`mb-4 ${STRATEGY_HINT_TEXT_CLASS}`}
                 style={{ marginLeft: STRATEGY_CONDITION_LABEL_WIDTH }}
               >
                 {metricExpressionMode === 'multi'
@@ -890,6 +807,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                         error: t('monitor.events.error'),
                         critical: t('monitor.events.critical')
                       },
+                      gate: t('monitor.events.multiRoleGate'),
                       unsetThreshold: t('monitor.events.multiThresholdUnset'),
                       unnamedResult: t('monitor.events.multiResultUnnamed')
                     }

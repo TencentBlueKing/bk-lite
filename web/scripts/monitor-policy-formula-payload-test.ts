@@ -9,8 +9,13 @@ import {
   assignMetricRowRefs,
   buildMetricExpressionPreviewPayload,
   buildMetricExpressionQueryCondition,
+  addMultiLevel,
   buildMultiConditionSentence,
   buildMultiQueryCondition,
+  multiLevelRows,
+  removeMultiLevel,
+  setMultiLevelCell,
+  validateMultiConditionRows,
   conditionLayersFromQueryType,
   createMetricRow,
   derivedQueryType,
@@ -848,7 +853,7 @@ assert.equal(
 
 assert.equal(
   buildMultiConditionSentence(multiRows),
-  '当 cpu_usage > 80%（警告起）且 mem_used > 85%（警告起）且 系统运行时长 > 600s 时触发；级别取各条件命中级别的最低者'
+  '严重：cpu_usage > 90% 且 mem_used > 95%；警告：cpu_usage > 80% 且 mem_used > 85%；前置条件：系统运行时长 > 600s'
 );
 
 assert.throws(
@@ -993,7 +998,7 @@ assert.equal(
     { ...nativeRow, threshold: [{ level: 'warning', method: '>', value: null }] },
     { ...createMetricRow(1), role: 'gate', threshold: [{ method: '>', value: null }] }
   ]),
-  '当 cpu_usage 未设阈值且 b 未设阈值 时触发；级别取各条件命中级别的最低者'
+  '警告：cpu_usage 未设阈值；前置条件：b 未设阈值'
 );
 assert.match(
   buildMultiConditionSentence([
@@ -1005,7 +1010,7 @@ assert.match(
       operands: [{ ...nativeRow, ref: 'a1', metricLabel: 'CPU使用率' }]
     }
   ]),
-  /^当 CPU使用率 未设阈值/
+  /^CPU使用率 未设阈值/
 );
 assert.match(
   buildMultiConditionSentence([
@@ -1017,7 +1022,7 @@ assert.match(
       operands: [createMetricRow(0, { ref: 'a1' })]
     }
   ]),
-  /^当 未命名结果 未设阈值/
+  /^未命名结果 未设阈值/
 );
 const keptOperands = rowsAfterEnteringMulti(
   [
@@ -1055,7 +1060,9 @@ for (const key of [
   'conditionCountMultiHint',
   'conditionSourceMetric',
   'conditionSourceFormula',
-  'multiAlignHint'
+  'multiAlignHint',
+  'multiAddLevel',
+  'multiRemoveLevel'
 ]) {
   assert.equal(typeof zhEvents[key], 'string', key);
   assert.equal(typeof enEvents[key], 'string', key);
@@ -1067,6 +1074,10 @@ assert.equal(zhEvents.conditionCountMulti, '多条件');
 assert.equal(zhEvents.conditionSourceMetric, '原生指标');
 assert.equal(zhEvents.conditionSourceFormula, '计算指标');
 assert.equal(zhEvents.multiAlignHint, '其余条件按第一条的实例对齐');
+assert.equal(zhEvents.multiAddLevel, '添加级别');
+assert.equal(enEvents.multiAddLevel, 'Add level');
+assert.equal(zhEvents.multiRemoveLevel, '删除级别');
+assert.equal(enEvents.multiRemoveLevel, 'Remove level');
 assert.equal(zhEvents.multiAlignHint.includes('锚点'), false);
 assert.equal(multiPayload.queries[0].source, undefined);
 
@@ -1175,7 +1186,11 @@ const secondFormula = switchConditionSource(
     role: 'level',
     calculationUnit: 'percent',
     thresholdUnit: 'percent',
-    threshold: [{ level: 'warning', method: '>', value: 4 }]
+    threshold: [
+      { level: 'critical', method: '>', value: 12 },
+      { level: 'error', method: '>', value: 8 },
+      { level: 'warning', method: '>', value: 4 }
+    ]
   }),
   'formula'
 );
@@ -1204,5 +1219,181 @@ assert.deepEqual(
   groupByAfterSelectingMetric(['instance_id', 'cpu'], ['instance_id'], false),
   ['instance_id', 'cpu']
 );
+
+const levelGridA = createMetricRow(0, {
+  metricId: 1,
+  metricName: 'cpu_usage',
+  algorithm: 'avg_over_time',
+  role: 'level',
+  threshold: [
+    { level: 'warning', method: '>', value: 3 },
+    { level: 'critical', method: '>', value: 20 }
+  ]
+});
+const levelGridB = createMetricRow(1, {
+  metricId: 2,
+  metricName: 'mem_used',
+  algorithm: 'avg_over_time',
+  role: 'level',
+  threshold: [{ level: 'error', method: '<', value: 12 }]
+});
+const levelGridGate = createMetricRow(2, {
+  metricId: 3,
+  metricName: 'request_total',
+  algorithm: 'avg_over_time',
+  role: 'gate',
+  threshold: [{ method: '>', value: 100 }]
+});
+assert.deepEqual(
+  multiLevelRows([levelGridA, levelGridB, levelGridGate]),
+  ['critical', 'error', 'warning']
+);
+assert.deepEqual(
+  multiLevelRows([
+    levelGridA,
+    createMetricRow(1, {
+      role: 'gate',
+      threshold: [{ level: 'error', method: '>', value: 1 }]
+    })
+  ]),
+  ['critical', 'warning']
+);
+
+const levelGridBefore = structuredClone(levelGridA);
+const patchedLevelCell = setMultiLevelCell(
+  [levelGridA, levelGridB, levelGridGate],
+  'a',
+  'warning',
+  { value: 9 }
+);
+assert.equal(patchedLevelCell[0].threshold?.find((item) => item.level === 'warning')?.value, 9);
+assert.equal(patchedLevelCell[0].threshold?.find((item) => item.level === 'warning')?.method, '>');
+assert.equal(patchedLevelCell[0].threshold?.find((item) => item.level === 'critical')?.value, 20);
+assert.equal(patchedLevelCell[1], levelGridB);
+assert.equal(patchedLevelCell[2], levelGridGate);
+assert.deepEqual(levelGridA, levelGridBefore);
+const createdLevelCell = setMultiLevelCell([levelGridB], 'b', 'critical', { method: '>=' });
+assert.deepEqual(
+  createdLevelCell[0].threshold?.find((item) => item.level === 'critical'),
+  { level: 'critical', method: '>=', value: null }
+);
+assert.equal(createdLevelCell[0].threshold?.find((item) => item.level === 'error')?.value, 12);
+assert.equal(levelGridB.threshold?.length, 1);
+
+const addedLevel = addMultiLevel([levelGridB, levelGridGate]);
+assert.deepEqual(
+  addedLevel[0].threshold?.map((item) => item.level),
+  ['error', 'critical']
+);
+assert.equal(addedLevel[0].threshold?.[1].method, '>');
+assert.equal(addedLevel[0].threshold?.[1].value, null);
+assert.equal(addedLevel[1], levelGridGate);
+assert.deepEqual(levelGridGate.threshold, [{ method: '>', value: 100 }]);
+const fullLevels = createMetricRow(0, {
+  role: 'level',
+  threshold: [
+    { level: 'critical', method: '>', value: 1 },
+    { level: 'error', method: '>', value: 2 },
+    { level: 'warning', method: '>', value: 3 }
+  ]
+});
+const fullLevelInput = [fullLevels, levelGridGate];
+const addedWhenFull = addMultiLevel(fullLevelInput);
+assert.notEqual(addedWhenFull, fullLevelInput);
+assert.equal(addedWhenFull[0], fullLevels);
+assert.equal(addedWhenFull[0].threshold?.length, 3);
+assert.equal(addedWhenFull[1], levelGridGate);
+
+const removedLevel = removeMultiLevel([levelGridA, levelGridB, levelGridGate], 'warning');
+assert.deepEqual(
+  removedLevel[0].threshold?.map((item) => item.level),
+  ['critical']
+);
+assert.equal(removedLevel[1], levelGridB);
+assert.equal(removedLevel[2], levelGridGate);
+assert.equal(levelGridA.threshold?.some((item) => item.level === 'warning'), true);
+
+const missingErrorLevel = validateMultiConditionRows({
+  resultName: '双条件',
+  rows: [
+    createMetricRow(0, {
+      metricId: 1,
+      algorithm: 'avg_over_time',
+      role: 'level',
+      threshold: [
+        { level: 'error', method: '>', value: 10 },
+        { level: 'warning', method: '>', value: 1 }
+      ]
+    }),
+    createMetricRow(1, {
+      metricId: 2,
+      algorithm: 'avg_over_time',
+      role: 'level',
+      threshold: [{ level: 'warning', method: '>', value: 2 }]
+    })
+  ]
+});
+assertValidationIncludes(missingErrorLevel, '错误级别里条件 b 的阈值不完整');
+assert.equal(missingErrorLevel.includes('条件 b 至少需要一条阈值'), false);
+
+const noLevelRows = validateMultiConditionRows({
+  resultName: '双条件',
+  rows: [
+    createMetricRow(0, {
+      metricId: 1,
+      algorithm: 'avg_over_time',
+      role: 'level',
+      threshold: []
+    }),
+    createMetricRow(1, {
+      metricId: 2,
+      algorithm: 'avg_over_time',
+      role: 'level',
+      threshold: []
+    })
+  ]
+});
+assertValidationIncludes(noLevelRows, '多指标条件至少需要一个级别');
+
+const duplicateLevel = validateMultiConditionRows({
+  resultName: '双条件',
+  rows: [
+    createMetricRow(0, {
+      metricId: 1,
+      algorithm: 'avg_over_time',
+      role: 'level',
+      threshold: [
+        { level: 'warning', method: '>', value: 1 },
+        { level: 'warning', method: '>', value: 2 }
+      ]
+    }),
+    createMetricRow(1, {
+      metricId: 2,
+      algorithm: 'avg_over_time',
+      role: 'level',
+      threshold: [{ level: 'warning', method: '>', value: 3 }]
+    })
+  ]
+});
+assertValidationIncludes(duplicateLevel, '条件 a 的级别不能重复');
+
+const incompleteGate = validateMultiConditionRows({
+  resultName: '双条件',
+  rows: [
+    createMetricRow(0, {
+      metricId: 1,
+      algorithm: 'avg_over_time',
+      role: 'level',
+      threshold: [{ level: 'warning', method: '>', value: 1 }]
+    }),
+    createMetricRow(1, {
+      metricId: 2,
+      algorithm: 'avg_over_time',
+      role: 'gate',
+      threshold: [{ method: '>', value: null }]
+    })
+  ]
+});
+assertValidationIncludes(incompleteGate, '前置条件 b 的阈值不完整');
 
 console.log('monitor-policy-formula-payload-test passed');

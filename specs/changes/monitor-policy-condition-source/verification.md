@@ -91,7 +91,7 @@ pnpm type-check
 
 ## 切片 4 多条件卡内阈值
 
-未开始。规格把 D8 标成可裁剪，且要求先出 Storybook。本轮停在切片 3。
+当时未开始。2026-10-21 方案改成按级别分行，验证记在文末「阈值按级别分行」。
 
 ## 判断
 
@@ -238,3 +238,50 @@ pnpm type-check
 - 策略 176：条件 b 从「CPU单核使用率」换成「CPU使用率」再换回来，维度标签仍只有 `instance_id`，没有 `cpu`，也没有「锚点外额外维度」。
 
 这两条不再挡发布。目录加载重置和开发态提示停留时间仍按上面的记录，不单独挡发布。
+
+## 阈值按级别分行（2026-10-21）
+
+多条件第三步「告警阈值」改成一张卡：一行一个级别，行内按全部常规条件填比较符和阈值，整行添加或删除。前置条件在分隔线下单独一段。单条件仍是原来的 ThresholdList。保存载荷、复述句、后端没有改。比较符外层包了 `w-[88px]`，因为表单里的 Select 会被拉成 100% 宽，数字框会被挤没。
+
+### 命令
+
+`cd web && pnpm test:monitor-policy-formula-payload`
+
+```
+[WARN] Unsupported engine: wanted: {"node":"24.x"} (current: {"node":"v22.16.0","pnpm":"11.20.0"})
+$ pnpm exec tsx scripts/monitor-policy-formula-payload-test.ts
+monitor-policy-formula-payload-test passed
+```
+
+通过。退出码 0。
+
+`cd web && pnpm exec eslint` 覆盖 `formulaExpressionUtils.ts`、`multiThresholdGrid.tsx`、`alertConditionsForm.tsx`、`policy-group/page.tsx`、`multi-threshold-grid.stories.tsx`、`.storybook/preview.tsx`。无输出，退出码 0。通过。载荷脚本在 eslint ignore 里，没有纳入这次检查。
+
+`cd web && pnpm type-check`
+
+```
+[WARN] Unsupported engine: wanted: {"node":"24.x"} (current: {"node":"v22.16.0","pnpm":"11.20.0"})
+$ pnpm prepare-enterprise && next typegen && node scripts/sync-next-build-types.mjs && tsc -p tsconfig.build.json --noEmit
+[WARN] Unsupported engine: wanted: {"node":"24.x"} (current: {"node":"v22.16.0","pnpm":"11.20.0"})
+$ node scripts/prepare-enterprise.mjs
+  ✓ ai-pilots: 21 file(s) (unchanged)
+  📄 Dashboard metadata: src/app/monitor/dashboards/objects/(enterprise)-metadata.ts
+  📄 Dashboard loaders: src/app/monitor/dashboards/objects/(enterprise)-loaders.ts
+ℹ️ No web/enterprise link found, skipping enterprise preparation.
+Generating route types...
+✓ Types generated successfully
+```
+
+通过。退出码 0。Node 22 相对 engines 24 只有警告。`next typegen` 会改 `web/next-env.d.ts`，已把该文件恢复成检查前的既有脏内容。
+
+没有跑 Storybook dev。
+
+### 浏览器
+
+`http://localhost:3000`，已登录。没有点保存或确认，没有打开策略 id=1。
+
+- id=176（两条原生）：图例「a CPU等待IO占比 · b CPU单核使用率」。三行严重 / 错误 / 警告，每行 a、b 两格，比较符 `>`，数值 20/120、12/110、3/50，单位 %。圆点是红、橙、黄，没有左侧通高色条。列宽不够时 b 折到下一行。把警告行的 a 从 3 改成 9 后，复述句变成「CPU等待IO占比 > 9%（警告起）且 CPU单核使用率 > 50%（警告起）」，b 和其他格子不变。刷新后删掉错误行，只剩严重 20/120 和警告 3/50，复述句仍是警告起。再点「添加级别」，错误行插回严重和警告之间，a、b 都是空值，警告的 3 和 50 还在。没有保存。
+- id=177（两条计算指标）：图例「a 使用率比 · b 等待比」。数值 130/40、110/20、90/4。复述句是「使用率比 > 90%（警告起）且 等待比 > 4%（警告起）」。
+- id=178（a 计算 + b 前置条件）：级别行只有 a，130 / 110 / 90。分隔线下是「前置条件」，b 为 `> 120` %。复述句含「CPU使用率 > 120」。没有左侧色条。
+- id=174（单条件原生）、id=175（单条件计算）：仍是 ThresholdList，有单位选择、「当结果是」和左侧色条。174 的数值是 80 / 60 / 30，175 是 110 / 100 / 90。没有多条件表格。
+- 策略组 `?objId=25`：打开「Host默认告警」的规则，共 23 条，三页的 `query_type` 都是 `metric`。未找到多条件规则，未验证改阈值弹窗。没有点修改，没有点确认。

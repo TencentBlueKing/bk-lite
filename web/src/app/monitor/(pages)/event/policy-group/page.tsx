@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
+import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
@@ -23,6 +23,8 @@ import { resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/
 import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import assetStyle from '../strategy/index.module.scss';
 import ThresholdList, { ThresholdItem } from '../strategy/detail/thresholdList';
+import MultiThresholdGrid from '../strategy/detail/multiThresholdGrid';
+import { MetricExpressionRow } from '../strategy/detail/metricExpressionTypes';
 import SelectCard from '../strategy/detail/selectCard';
 import { seedNoticeUsersFromHandlers, shouldRequireNoticeUsers } from '../strategy/detail/strategyDetailUtils';
 import { buildPolicyGroupNoticePayload, policyGroupListBadges } from './policyGroupNotice';
@@ -115,6 +117,50 @@ const CHANNEL_ICON: Record<string, string> = {
 const NAME_COLUMN_WIDTH = 162;
 const COMPACT_COLUMN_WIDTH = 120;
 const ACTION_COLUMN_WIDTH = 260;
+
+type ConditionThresholdDraft = Array<{
+  level?: string;
+  method?: string;
+  value?: number | null;
+}>;
+
+const rowsFromConditionDraft = (
+  draft: Record<string, ConditionThresholdDraft>
+): MetricExpressionRow[] =>
+  Object.entries(draft).map(([ref, thresholds]) => {
+    const gate = thresholds.length <= 1 && !thresholds[0]?.level;
+    return {
+      ref,
+      metricId: null,
+      filters: [],
+      groupAlgorithm: 'avg',
+      groupBy: [],
+      role: gate ? 'gate' : 'level',
+      threshold: thresholds.map((item) => ({
+        ...(item.level ? { level: item.level } : {}),
+        method: item.method || '>',
+        value: item.value ?? null,
+      })),
+    };
+  });
+
+const conditionDraftFromRows = (
+  rows: MetricExpressionRow[]
+): Record<string, ConditionThresholdDraft> =>
+  Object.fromEntries(
+    rows.map((row) => [
+      row.ref,
+      (row.threshold || []).map((item) =>
+        row.role === 'gate'
+          ? { method: item.method, value: item.value }
+          : {
+            ...(item.level ? { level: item.level } : {}),
+            method: item.method,
+            value: item.value,
+          }
+      ),
+    ])
+  );
 
 const CHANNEL_TYPE_KEY: Record<string, string> = {
   email: 'monitor.events.channelTypeEmail',
@@ -966,61 +1012,11 @@ const PolicyGroupPage: React.FC = () => {
         {rule ? (
           <>
             {rule.query_type === 'multi' ? (
-              <div className="flex flex-col gap-3">
-                {Object.entries(conditionDraft).map(([ref, rows]) => {
-                  const gate = rows.length <= 1 && !rows[0]?.level;
-                  return (
-                    <div key={ref}>
-                      <div className="mb-1">
-                        {ref}
-                        {gate ? ' · 前置条件' : ''}
-                      </div>
-                      {gate ? (
-                        <div className="flex gap-2">
-                          <Select
-                            className="w-[120px]"
-                            value={rows[0]?.method || '>'}
-                            options={['>', '<', '=', '!=', '>=', '<='].map((method) => ({
-                              label: method,
-                              value: method,
-                            }))}
-                            onChange={(method) =>
-                              setConditionDraft((current) => ({
-                                ...current,
-                                [ref]: [{ method, value: rows[0]?.value ?? null }],
-                              }))
-                            }
-                          />
-                          <InputNumber
-                            className="w-[160px]"
-                            value={rows[0]?.value ?? null}
-                            onChange={(value) =>
-                              setConditionDraft((current) => ({
-                                ...current,
-                                [ref]: [{
-                                  method: rows[0]?.method || '>',
-                                  value: typeof value === 'number' ? value : null,
-                                }],
-                              }))
-                            }
-                          />
-                        </div>
-                      ) : (
-                        <ThresholdList
-                          data={rows as ThresholdItem[]}
-                          onChange={(next) =>
-                            setConditionDraft((current) => ({ ...current, [ref]: next }))
-                          }
-                          thresholdUnit={null}
-                          onThresholdUnitChange={() => undefined}
-                          showUnitSelector={false}
-                          allowStructureEdit
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              <MultiThresholdGrid
+                rows={rowsFromConditionDraft(conditionDraft)}
+                unitList={[]}
+                onChange={(next) => setConditionDraft(conditionDraftFromRows(next))}
+              />
             ) : (
             <div className="mb-3">
               <div className="mb-1">阈值</div>
