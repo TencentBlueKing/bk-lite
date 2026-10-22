@@ -17,8 +17,8 @@
     gather_table_schema = false
     gather_table_io_waits = {{ gather_table_io_waits | default(false, true) | lower }}
     gather_table_lock_waits = {{ gather_table_lock_waits | default(false, true) | lower }}
-    # 内置语句查询会丢掉 SCHEMA_NAME 为空的摘要；DIGEST 为 NULL 时 Scan 失败，整批语句点都不发。
-    # 开关打开时改由文末 inputs.sql 写入同一 measurement，这里固定关闭，避免和那条查询双写。
+    # 内置 digest 查询在 3309 上匹配 0 行：SCHEMA_NAME 为 NULL 时 NOT IN 为 unknown，
+    # 有 schema 的摘要又常超默认 86400 秒。开关打开时改由文末 inputs.sql 落点，这里固定关闭，避免双写。
     gather_perf_events_statements = false
     gather_event_waits = {{ gather_event_waits | default(false, true) | lower }}
 
@@ -234,7 +234,8 @@
 
 {% set _statements_on = (gather_perf_events_statements | default(false, true) | lower) %}
 {% if _statements_on == 'true' or _statements_on == '1' %}
-# 语句摘要：绕过 inputs.mysql 的 digest 查询。字段名、measurement、标签与专业盘一致。
+# 语句摘要旁路。NULL schema 用 IS NULL 保留；时间窗 604800 秒（7 天），宽于插件默认 86400 秒。
+# DIGEST 仍用 IFNULL，避免空摘要把整批 Scan 打断。字段名、measurement、标签与专业盘一致。
 [[inputs.sql]]
     driver = "mysql"
     dsn = "{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"
@@ -284,6 +285,8 @@
                 CAST(SUM_SORT_ROWS AS DOUBLE) AS events_statements_sort_rows_total,
                 CAST(SUM_NO_INDEX_USED AS DOUBLE) AS events_statements_no_index_used_total
             FROM performance_schema.events_statements_summary_by_digest
+            WHERE (SCHEMA_NAME IS NULL OR SCHEMA_NAME NOT IN ('mysql', 'performance_schema', 'information_schema'))
+              AND (LAST_SEEN IS NULL OR LAST_SEEN > DATE_SUB(NOW(), INTERVAL 604800 SECOND))
             ORDER BY SUM_TIMER_WAIT DESC
             LIMIT 250
         """

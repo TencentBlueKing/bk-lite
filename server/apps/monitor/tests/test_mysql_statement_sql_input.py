@@ -1,7 +1,7 @@
 """MySQL 语句摘要改由 inputs.sql 落点。
 
-inputs.mysql 的 digest 查询会丢掉 SCHEMA_NAME 为空的行，DIGEST 为 NULL 时 Scan
-失败导致整批语句指标都不发出。等待事件不走这条查询，所以仍有点。
+inputs.mysql 的 digest 查询对 SCHEMA_NAME 为空的行是 unknown，整行被丢掉；
+默认 86400 秒窗口又会漏掉约一天前仍在摘要表里的业务库语句。等待事件不走这条查询。
 """
 from pathlib import Path
 
@@ -51,8 +51,12 @@ def test_statements_switch_renders_sql_input_with_dashboard_names():
     assert query["measurement"] == "mysql_perf_schema"
     assert query["tag_columns_include"] == ["schema", "digest", "digest_text"]
     assert "events_statements_seconds_total" in query["field_columns_float"]
+    assert "IFNULL(SCHEMA_NAME, 'NONE')" in query["query"]
     assert "IFNULL(DIGEST, 'none')" in query["query"]
-    assert "SCHEMA_NAME NOT IN" not in query["query"]
+    assert "SCHEMA_NAME IS NULL" in query["query"]
+    assert "WHERE SCHEMA_NAME NOT IN" not in query["query"]
+    assert "INTERVAL 604800 SECOND" in query["query"]
+    assert "INTERVAL 86400" not in query["query"]
     assert "events_statements_summary_by_digest" in query["query"]
     assert 'namepass = ["mysql"]' in rendered
     assert "slave_replica_io_running_int" in rendered
