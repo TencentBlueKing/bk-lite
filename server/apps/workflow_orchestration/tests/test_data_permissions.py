@@ -16,6 +16,7 @@ def scoped_user(db):
             "workflow-View",
             "workflow-Edit",
             "workflow-Execute",
+            "workflow_execution-View",
         }
     }
     return user

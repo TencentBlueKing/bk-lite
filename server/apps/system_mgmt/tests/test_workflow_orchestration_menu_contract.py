@@ -17,22 +17,34 @@ def test_workflow_orchestration_is_standalone_app_with_execution_permission():
         "tag.automation",
         "tag.approval",
     ]
-    workflow_menu = payload["menus"][0]["children"][0]
-    assert workflow_menu == {
-        "id": "workflow",
-        "name": "Workflow",
-        "operation": ["View", "Add", "Edit", "Execute", "Publish", "Approve", "Manage", "Delete"],
-    }
+    menus = {group["name"]: group["children"] for group in payload["menus"]}
+    assert menus["Home"] == [{"id": "workflow_home", "name": "Home", "operation": ["View"]}]
+    assert menus["Workflow"] == [
+        {
+            "id": "workflow",
+            "name": "Workflow",
+            "operation": ["View", "Add", "Edit", "Execute", "Publish", "Manage", "Delete"],
+        },
+        {"id": "workflow_market", "name": "Template", "operation": ["View", "Add"]},
+    ]
+    assert menus["Execution"] == [
+        {"id": "workflow_execution", "name": "Execution", "operation": ["View", "Execute", "Approve"]},
+    ]
     normal_role = next(role for role in payload["roles"] if role["name"] == "normal")
     assert normal_role["menus"] == [
+        "workflow_home-View",
         "workflow-View",
         "workflow-Add",
         "workflow-Edit",
         "workflow-Execute",
         "workflow-Publish",
-        "workflow-Approve",
         "workflow-Manage",
         "workflow-Delete",
+        "workflow_market-View",
+        "workflow_market-Add",
+        "workflow_execution-View",
+        "workflow_execution-Execute",
+        "workflow_execution-Approve",
     ]
 
 

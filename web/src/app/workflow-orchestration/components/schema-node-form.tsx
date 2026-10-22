@@ -192,13 +192,15 @@ function LiteralField({
                 onChange={(event) => update(index, { name: event.target.value })}
               />
               {disabled ? null : (
-                <Button
-                  type="text"
-                  danger
-                  aria-label={t('workflowOrchestration.editor.deleteQuery', '删除查询 {number}', { number: index + 1 })}
-                  icon={<DeleteOutlined />}
-                  onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}
-                />
+                <WorkflowPermission operation="Edit">
+                  <Button
+                    type="text"
+                    danger
+                    aria-label={t('workflowOrchestration.editor.deleteQuery', '删除查询 {number}', { number: index + 1 })}
+                    icon={<DeleteOutlined />}
+                    onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}
+                  />
+                </WorkflowPermission>
               )}
             </div>
             <CodeEditor
@@ -217,14 +219,16 @@ function LiteralField({
           </div>
         ))}
         {disabled ? null : (
-          <Button
-            type="dashed"
-            icon={<PlusOutlined />}
-            disabled={rows.length >= 20}
-            onClick={() => onChange([...rows, { name: '', sql: '' }])}
-          >
-            {t('workflowOrchestration.editor.addQuery', '添加查询')}
-          </Button>
+          <WorkflowPermission operation="Edit" className="block">
+            <Button
+              type="dashed"
+              icon={<PlusOutlined />}
+              disabled={rows.length >= 20}
+              onClick={() => onChange([...rows, { name: '', sql: '' }])}
+            >
+              {t('workflowOrchestration.editor.addQuery', '添加查询')}
+            </Button>
+          </WorkflowPermission>
         )}
       </div>
     );

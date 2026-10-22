@@ -208,9 +208,14 @@ export function AtomConfigTemplateActions({
       open={nameOpen}
       destroyOnHidden
       confirmLoading={saving}
-      okText={editing ? t('common.confirm', '确定') : t('common.save', '保存')}
-      cancelText={t('common.cancel', '取消')}
-      onOk={() => void submitName()}
+      footer={(
+        <div className="flex justify-end gap-2">
+          <Button onClick={() => { setNameOpen(false); setEditing(undefined); nameForm.resetFields(); }}>{t('common.cancel', '取消')}</Button>
+          <WorkflowPermission operation="Edit">
+            <Button type="primary" loading={saving} onClick={() => void submitName()}>{editing ? t('common.confirm', '确定') : t('common.save', '保存')}</Button>
+          </WorkflowPermission>
+        </div>
+      )}
       onCancel={() => { setNameOpen(false); setEditing(undefined); nameForm.resetFields(); }}
     >
       <Form form={nameForm} layout="vertical" className="pt-3">

@@ -68,6 +68,7 @@ function TestFileUpload({ workflowId, fieldKey, schema, value, disabled, onChang
   const maxSizeMiB = options?.maxSizeMiB || 5;
 
   return <div className="space-y-3 rounded-lg border border-[var(--color-border-1)] p-4">
+    <WorkflowPermission operation="Execute">
     <Upload
       accept={formats.map((item) => `.${item}`).join(',')}
       disabled={disabled || uploading}
@@ -96,6 +97,7 @@ function TestFileUpload({ workflowId, fieldKey, schema, value, disabled, onChang
         {current.name ? t('workflowOrchestration.launch.replaceTemplate', '更换模板') : t('workflowOrchestration.launch.chooseTemplate', '选择 Word / Excel 模板')}
       </Button>
     </Upload>
+    </WorkflowPermission>
     {current.name ? <div className="text-xs text-[var(--color-text-3)]">{current.name} · {Math.ceil(Number(current.size || 0) / 1024)} KiB</div> : null}
     <FileSampleLinks schema={schema} />
     <div className="text-xs leading-5 text-[var(--color-text-3)]">
@@ -180,7 +182,7 @@ export function WorkflowTriggerRuntimeForm({ workflowId, schema, value, disabled
       open={Boolean(targetDialogField)}
       destroyOnHidden
       zIndex={WORKFLOW_NESTED_SELECTOR_Z_INDEX}
-      footer={<div className="flex justify-end gap-2"><Button onClick={() => setTargetDialogField(undefined)}>{t('common.cancel', '取消')}</Button><Button type="primary" disabled={!targetDialogField || targetDraft.length < targetDialogField.min_count || targetDraft.length > targetDialogField.max_count || targetDraftBlocked} onClick={confirmTargetDialog}>{t('workflowOrchestration.launch.confirmSelection', '确认选择')}</Button></div>}
+      footer={<div className="flex justify-end gap-2"><Button onClick={() => setTargetDialogField(undefined)}>{t('common.cancel', '取消')}</Button><WorkflowPermission operation="Execute"><Button type="primary" disabled={!targetDialogField || targetDraft.length < targetDialogField.min_count || targetDraft.length > targetDialogField.max_count || targetDraftBlocked} onClick={confirmTargetDialog}>{t('workflowOrchestration.launch.confirmSelection', '确认选择')}</Button></WorkflowPermission></div>}
       styles={{ body: { maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', paddingBlock: 24 }, footer: { marginTop: 8 } }}
       onCancel={() => setTargetDialogField(undefined)}
     >
