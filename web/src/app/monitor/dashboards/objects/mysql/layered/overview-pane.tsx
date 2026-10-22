@@ -23,9 +23,11 @@ import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
+  mysqlHealthKpiJump,
   readMysqlRoleBlock,
   type MysqlFocusCard,
   type MysqlFocusSpark,
+  type MysqlIaTab,
   type MysqlOverviewReadings
 } from './ia';
 import { mysqlCategoryText, type MysqlCategoryCopyKey } from './mysql-copy';
@@ -50,7 +52,7 @@ interface OverviewPaneProps {
   onOpenAlerts: () => void;
   onFocusAlert: (alertId: string) => void;
   onOpenFocus: (card: MysqlFocusCard) => void;
-  onOpenReplication: () => void;
+  onOpenHealthKpi: (tab: MysqlIaTab, anchor: string) => void;
 }
 
 const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'replication', 'uptime', 'alerts'].map((key) => ({
@@ -130,7 +132,7 @@ export default function OverviewPane({
   onOpenAlerts,
   onFocusAlert,
   onOpenFocus,
-  onOpenReplication
+  onOpenHealthKpi
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
   const text = useCallback((key: MysqlCategoryCopyKey, values?: Record<string, string | number>) => (
@@ -148,7 +150,10 @@ export default function OverviewPane({
       alertLevel: card.alertLevel,
       onActivate: card.key === 'alerts'
         ? onOpenAlerts
-        : (card.key === 'replication' && card.clickable ? onOpenReplication : undefined),
+        : (() => {
+          const jump = mysqlHealthKpiJump(card.key);
+          return jump ? () => onOpenHealthKpi(jump.tab, jump.anchor) : undefined;
+        })(),
       expanded: card.key === 'alerts' ? alertsOpen : undefined
     }))
   ), [
@@ -156,7 +161,7 @@ export default function OverviewPane({
     instanceName,
     metricMap,
     onOpenAlerts,
-    onOpenReplication,
+    onOpenHealthKpi,
     readings,
     slowAlertActive,
     text

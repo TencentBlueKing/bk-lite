@@ -187,14 +187,17 @@ const extraItems = (cards: MysqlReplicationCard[]): KpiTileModel[] => (
 function ReplicationBlock({
   title,
   spaced = false,
+  id,
   children
 }: {
   title: string;
   spaced?: boolean;
+  id?: string;
   children: React.ReactNode;
 }) {
   return (
     <ProSection
+      id={id}
       title={title}
       className={spaced ? `${pro.replBlock} ${pro.replBreak}` : pro.replBlock}
     >
@@ -380,7 +383,7 @@ export default function ReplicationPane({
         </ReplicationBlock>
       ) : null}
       {showTrends ? (
-        <ReplicationBlock title={text('trend')} spaced={showStatus || showDownstream}>
+        <ReplicationBlock id="mysql-repl-trend" title={text('trend')} spaced={showStatus || showDownstream}>
           <div className={pro.perfGrid} data-replication-trends={slots.join(',')}>
             {slots.map((slot) => {
               const spec = TREND_SPEC[slot];

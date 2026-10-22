@@ -380,6 +380,17 @@ const KPI_ORDER: MysqlKpiCard['key'][] = [
   'alerts'
 ];
 
+/** 健康概览左四卡的跳转。运行时长与告警不在这里。 */
+export const mysqlHealthKpiJump = (
+  key: MysqlKpiCard['key']
+): { tab: MysqlIaTab; anchor: string } | null => {
+  if (key === 'connections') return { tab: 'performance', anchor: 'connections' };
+  if (key === 'qps') return { tab: 'performance', anchor: 'throughput' };
+  if (key === 'slow') return { tab: 'performance', anchor: 'quality' };
+  if (key === 'replication') return { tab: 'replication', anchor: 'mysql-repl-trend' };
+  return null;
+};
+
 /** 与主机运行时间同一套：1d 12h / 12h 30m。 */
 const formatUptime = (seconds: number) => {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0s';

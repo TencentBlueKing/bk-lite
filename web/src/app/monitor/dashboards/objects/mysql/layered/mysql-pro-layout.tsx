@@ -136,10 +136,13 @@ export default function MysqlProLayout({
     router.replace(`?${params.toString()}`, { scroll: false });
     if (anchor) {
       window.requestAnimationFrame(() => {
-        const named = document.getElementById(`mysql-perf-${anchor}`);
+        const named = document.getElementById(`mysql-perf-${anchor}`)
+          || document.getElementById(anchor);
         const fallback = anchor === 'throughput'
           ? document.getElementById('mysql-perf-connections')
-          : null;
+          : anchor === 'mysql-repl-trend'
+            ? document.querySelector('[data-replication-state="ready"]')
+            : null;
         (named || fallback)?.scrollIntoView({ block: 'start' });
       });
     }
@@ -398,7 +401,7 @@ export default function MysqlProLayout({
           }
           selectTab(card.tab, card.anchor);
         }}
-        onOpenReplication={() => selectTab('replication')}
+        onOpenHealthKpi={(next, anchor) => selectTab(next, anchor)}
       />
     );
   };
