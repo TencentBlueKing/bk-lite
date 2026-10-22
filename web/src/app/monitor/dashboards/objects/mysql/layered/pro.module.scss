@@ -230,41 +230,49 @@
 
 .diagLabel {
   margin-right: 6px;
-  color: var(--color-text-4);
+  color: var(--color-text-3);
   font-size: 12px;
   font-weight: 400;
-  line-height: 20px;
+  line-height: 24px;
   cursor: default;
   user-select: none;
 }
 
 .diagStep {
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--color-text-3);
-  font: inherit;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  box-sizing: border-box;
+  height: 24px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid #e8e8e8;
+  border-radius: 999px;
+  background: #f5f5f5;
+  color: #262626;
+  font-family: inherit;
   font-size: 12px;
   font-weight: 400;
-  line-height: 20px;
+  line-height: 22px;
   cursor: pointer;
 }
 
 .diagStep:hover,
 .diagStep:focus-visible,
 .diagStep:active {
-  background: transparent;
-  color: var(--color-primary);
-  font-weight: 500;
+  border-color: #91caff;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-weight: 600;
   outline: none;
 }
 
 .diagArrow {
-  margin: 0 2px;
-  color: var(--color-text-4);
+  flex: none;
+  margin: 0 4px;
+  color: #bfbfbf;
   font-size: 11px;
-  line-height: 20px;
+  line-height: 24px;
 }
 
 @media (max-width: 1100px) {

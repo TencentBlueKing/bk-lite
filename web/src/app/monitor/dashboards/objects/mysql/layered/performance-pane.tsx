@@ -20,6 +20,48 @@ interface PerformancePaneProps {
 
 const seriesOf = (metric: MetricSeries | undefined) => primaryChartSeries(metric?.viewData);
 
+/** 数字 0 与数字字符串 "0" 都是采点。只有 null、空串和非有限值才算没有这个点。 */
+const finiteChartValue = (point: ChartData | undefined): number | null => {
+  if (!point) return null;
+  const numeric = numericValue(point);
+  if (numeric != null) return numeric;
+  let bestIndex = Number.POSITIVE_INFINITY;
+  let best: number | null = null;
+  Object.entries(point).forEach(([key, raw]) => {
+    if (!/^value\d+$/.test(key) || typeof raw !== 'string' || !raw.trim()) return;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return;
+    const index = Number(key.slice(5));
+    if (index < bestIndex) {
+      bestIndex = index;
+      best = parsed;
+    }
+  });
+  return best;
+};
+
+const latestFiniteSample = (metric: MetricSeries | undefined): number | null => {
+  if (!metric?.viewData?.length || metric.loadState === 'error') return null;
+  for (let index = metric.viewData.length - 1; index >= 0; index -= 1) {
+    const value = finiteChartValue(metric.viewData[index]);
+    if (value != null) return value;
+  }
+  return null;
+};
+
+/** 全 0、单点 0 都留下。不要求至少两个点。 */
+const chartPoints = (metric: MetricSeries | undefined): ChartData[] => {
+  if (!metric?.viewData?.length || metric.loadState === 'error') return [];
+  const result: ChartData[] = [];
+  metric.viewData.forEach((point) => {
+    const time = Number(point.time);
+    const value = finiteChartValue(point);
+    if (!Number.isFinite(time) || value == null) return;
+    result.push({ time, value1: value });
+  });
+  return result;
+};
+
 const sumSeries = (parts: ChartData[][]): ChartData[] => {
   const buckets = new Map<number, number>();
   parts.forEach((points) => {
@@ -36,8 +78,11 @@ const sumSeries = (parts: ChartData[][]): ChartData[] => {
 };
 
 const rateReading = (metric: MetricSeries | undefined) => {
-  const value = latestNumber(metric);
-  if (value == null) return undefined;
+  const value = latestFiniteSample(metric);
+  if (value == null) {
+    if (metric?.loadState === 'success' || metric?.loadState === 'error') return '--';
+    return undefined;
+  }
   const formatted = formatMetricValue(value, 'cps');
   return `${formatted.value}${formatted.unit || ''}`;
 };
@@ -94,9 +139,9 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
   ]);
 
   const tpsParts = useMemo(() => ({
-    commit: seriesOf(metricMap.mysql_com_commit_rate),
-    rollback: seriesOf(metricMap.mysql_com_rollback_rate),
-    total: seriesOf(metricMap.mysql_tps_rate)
+    commit: chartPoints(metricMap.mysql_com_commit_rate),
+    rollback: chartPoints(metricMap.mysql_com_rollback_rate),
+    total: chartPoints(metricMap.mysql_tps_rate)
   }), [
     metricMap.mysql_com_commit_rate?.viewData,
     metricMap.mysql_com_rollback_rate?.viewData,
@@ -112,7 +157,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
     { key: 'tps', label: mysqlCategoryText(t, 'tps'), data: tpsTotal }
   ]), [metricMap.mysql_queries_rate?.viewData, t, tpsTotal]);
 
-  const tpsMix = useMemo(() => mergeChartSeries([
+  const tpsMix = useMemo(() => mergeChartSeriesAligned([
     { key: 'commit', label: mysqlCategoryText(t, 'commit'), data: tpsParts.commit },
     { key: 'rollback', label: mysqlCategoryText(t, 'rollback'), data: tpsParts.rollback }
   ]), [t, tpsParts.commit, tpsParts.rollback]);
@@ -386,6 +431,7 @@ export default function PerformancePane({ metricMap, pendingMetricNames }: Perfo
                   unit="cps"
                   data={tpsMix.length ? tpsMix : mergeChartSeries([{ key: 'tps', label: mysqlCategoryText(t, 'tps'), data: tpsTotal }])}
                   emptyText={empty}
+                  keepLegend
                   legends={tpsMix.length ? [
                     { label: mysqlCategoryText(t, 'commit'), color: HOST_SERIES_COLOR.memAvailable, reading: rateReading(metricMap.mysql_com_commit_rate) },
                     { label: mysqlCategoryText(t, 'rollback'), color: HOST_PALETTE.rose, reading: rateReading(metricMap.mysql_com_rollback_rate) }
