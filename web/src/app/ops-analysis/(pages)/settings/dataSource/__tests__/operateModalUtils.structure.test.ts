@@ -8,11 +8,16 @@ import {
   SOURCE_TYPE_PROMETHEUS,
   SOURCE_TYPE_REST_API,
   TABLE_CHART_TYPE,
+  TABULAR_CHART_TYPES,
   buildHydratedDatasourceFormState,
   canSaveExcelWithoutNewFile,
   getDatasourceSourceFlags,
   getPreviewFieldNames,
+  normalizeTabularChartTypes,
 } from '../operateModalUtils';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import { resolveDatasourceChartTypes } from '@/app/ops-analysis/components/widgetConfig/utils/tableSettingsBehavior';
+import { getChartTypeList } from '@/app/ops-analysis/constants/common';
 
 describe('getDatasourceSourceFlags', () => {
   it('marks nats as neither transform nor shared connection', () => {
@@ -151,7 +156,7 @@ describe('buildHydratedDatasourceFormState', () => {
     assert.ok(state.params.length > 0);
   });
 
-  it('restores excel imported preview and forces table chart type', () => {
+  it('restores excel imported preview and falls back from unsupported chart types to table', () => {
     const state = buildHydratedDatasourceFormState(
       {
         id: 4,
@@ -170,7 +175,7 @@ describe('buildHydratedDatasourceFormState', () => {
           imported_fields: [{ key: 'a', title: 'A', value_type: 'number' }],
         },
         params: [],
-        chart_type: ['line'],
+        chart_type: ['topologyMap'],
         namespaces: [],
         field_schema: [{ key: 'a', title: 'A', value_type: 'number' }],
       },
@@ -179,6 +184,43 @@ describe('buildHydratedDatasourceFormState', () => {
     assert.deepEqual(state.formValues.chart_type, [TABLE_CHART_TYPE]);
     assert.equal(state.excelPreview?.count, 1);
     assert.equal(state.schemaFields[0]?.id, 'schema-1');
+  });
+});
+
+describe('tabular datasource chart selection', () => {
+  for (const sourceType of [SOURCE_TYPE_REST_API, SOURCE_TYPE_MYSQL, SOURCE_TYPE_POSTGRESQL, SOURCE_TYPE_EXCEL]) {
+    it(`preserves record-based chart selections through save and edit for ${sourceType}`, () => {
+      for (const selected of [...TABULAR_CHART_TYPES.map((type) => [type]), [...TABULAR_CHART_TYPES]]) {
+        const savedChartTypes = normalizeTabularChartTypes(selected);
+        assert.deepEqual(savedChartTypes, selected);
+        const state = buildHydratedDatasourceFormState({
+          source_type: sourceType,
+          chart_type: savedChartTypes,
+        } as DatasourceItem);
+        assert.deepEqual(state.formValues.chart_type, selected);
+        for (const surface of ['dashboard', 'screen'] as const) {
+          const available = resolveDatasourceChartTypes({
+            chartTypes: savedChartTypes,
+            chartTypeDefinitions: getChartTypeList(),
+            surface,
+          });
+          assert.deepEqual(available.map((item) => item.value), selected);
+        }
+        const reportTypes = resolveDatasourceChartTypes({
+          chartTypes: savedChartTypes,
+          chartTypeDefinitions: getChartTypeList(),
+          surface: 'report',
+        });
+        assert.deepEqual(reportTypes.map((item) => item.value), selected.filter((type) => ['table', 'eventTable'].includes(type)));
+      }
+    });
+  }
+
+  it('keeps the table default and excludes unsupported visualizations', () => {
+    assert.deepEqual(normalizeTabularChartTypes(), ['table']);
+    assert.deepEqual(normalizeTabularChartTypes([]), ['table']);
+    assert.deepEqual(normalizeTabularChartTypes(['topologyMap', 'room3D']), ['table']);
+    assert.deepEqual(normalizeTabularChartTypes(['topologyMap', 'cardList']), ['cardList']);
   });
 });
 

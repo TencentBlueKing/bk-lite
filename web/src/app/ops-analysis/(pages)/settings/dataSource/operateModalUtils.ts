@@ -93,6 +93,30 @@ export function createPrometheusDefaultParams(
   ];
 }
 export const TABLE_CHART_TYPE = "table";
+// 消费记录数组；折线/柱状沿用 name/value 或 name/count，其余按各自字段配置展示。
+export const TABULAR_CHART_TYPES = [
+  "line",
+  "bar",
+  "pie",
+  "single",
+  "multiValue",
+  "gauge",
+  TABLE_CHART_TYPE,
+  "eventTable",
+  "eventTimeline",
+  "topN",
+  "radar",
+  "cardList",
+  "nodeGraph",
+];
+
+export function normalizeTabularChartTypes(chartTypes?: string[]): string[] {
+  const supported = (chartTypes || []).filter((type) =>
+    TABULAR_CHART_TYPES.includes(type),
+  );
+  return supported.length ? supported : [TABLE_CHART_TYPE];
+}
+
 export const PASSWORD_PLACEHOLDER = "******";
 
 export const DEFAULT_TRANSFORM_SCRIPT = `def transform(rows, params):
@@ -902,7 +926,7 @@ export function buildHydratedDatasourceFormState(
           ? row.chart_type?.length
             ? row.chart_type
             : [...PROMETHEUS_DEFAULT_CHART_TYPES]
-          : [TABLE_CHART_TYPE],
+          : normalizeTabularChartTypes(row.chart_type),
     connection_config: {
       ...prometheusConnectionConfig,
       headersText: formatJsonText(connectionConfig.headers),
