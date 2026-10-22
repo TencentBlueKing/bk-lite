@@ -359,6 +359,8 @@ def _condition_matches(event: dict[str, Any], condition: dict[str, Any]) -> bool
         else:
             outcome = actual.endswith(item["value"])
         outcomes.append(outcome)
+    if not outcomes:
+        return True
     return all(outcomes) if condition["mode"] == "AND" else any(outcomes)
 
 

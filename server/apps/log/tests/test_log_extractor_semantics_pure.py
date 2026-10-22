@@ -321,3 +321,61 @@ def test_copy_preview_reads_restored_filebeat_metadata_path():
 
     assert [item.status for item in result.results] == ["success"]
     assert result.event["beat_name"] == "filebeat"
+
+
+@pytest.mark.unit
+def test_empty_or_condition_runs_like_empty_and_and_compiler_true():
+    base = {
+        "extractor_type": "copy",
+        "source_field": "message",
+        "config": {},
+        "delete_source": False,
+    }
+    empty_or = normalize_rule(
+        {
+            **base,
+            "target_field": "copied.or",
+            "condition": {"mode": "OR", "conditions": []},
+        }
+    )
+    empty_and = normalize_rule(
+        {
+            **base,
+            "target_field": "copied.and",
+            "condition": {"mode": "AND", "conditions": []},
+        }
+    )
+    matching_or = normalize_rule(
+        {
+            **base,
+            "target_field": "copied.match",
+            "condition": {
+                "mode": "OR",
+                "conditions": [
+                    {"field": "message", "op": "==", "value": "other"},
+                    {"field": "message", "op": "==", "value": "hello"},
+                ],
+            },
+        }
+    )
+    missing_or = normalize_rule(
+        {
+            **base,
+            "target_field": "copied.miss",
+            "condition": {
+                "mode": "OR",
+                "conditions": [
+                    {"field": "message", "op": "==", "value": "other"},
+                    {"field": "level", "op": "==", "value": "debug"},
+                ],
+            },
+        }
+    )
+
+    result = execute_rules({"message": "hello"}, [empty_or, empty_and, matching_or, missing_or])
+
+    assert [item.status for item in result.results] == ["success", "success", "success", "not_matched"]
+    assert result.event["copied"]["or"] == "hello"
+    assert result.event["copied"]["and"] == "hello"
+    assert result.event["copied"]["match"] == "hello"
+    assert "miss" not in result.event["copied"]
