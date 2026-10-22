@@ -32,6 +32,7 @@ Card List 不是第二张表，也不是自由卡片构建器。它不理解告�
 - 字段读取复用现有路径取值；配置面复用数据源 `field_schema` 下拉，对标 TopN 的具名字段选择，不复用表格列编辑器。
 - MVP 不新增字段探测或 sample-data inference。字段选择器只列出当前 `field_schema` 中的 key；schema 为空或不包含目标字段时，不提供对应选项，也不能从预览样本补字段。已持久化的字段名运行时仍按路径取值，缺失则走 Displayable scalar / Primary 规则。
 - Prometheus / Excel 等数据源的默认 chartType 列表不因本次需求改写。只有实际返回记录列表的 DataSource 才应声明 `cardList`。
+- REST API、MySQL、PostgreSQL、Excel 的数据源表单开放包含 `cardList` 的记录型组件选择（完整范围见 `../ops-analysis-data-connection-transform/spec.md` §1），默认仍为 `table`；保存与回填保留所选类型。存量数据源不自动追加 `cardList`，Prometheus 的类型范围保持不变。
 
 ### Config contract
 
