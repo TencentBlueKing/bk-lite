@@ -4,6 +4,7 @@ import React from 'react';
 import { Radio } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ConditionSource } from './formulaExpressionUtils';
+import { STRATEGY_HINT_TEXT_CLASS } from './alertDurationFields';
 
 interface MetricConditionCardProps {
   showSourceSwitch?: boolean;
@@ -44,7 +45,7 @@ const MetricConditionCard: React.FC<MetricConditionCardProps> = ({
         />
       ) : null}
       {note ? (
-        <p className="mb-2 text-xs text-[var(--color-text-3)]">{note}</p>
+        <p className={`mb-2 ${STRATEGY_HINT_TEXT_CLASS}`}>{note}</p>
       ) : null}
       <div className="flex flex-col gap-3">{children}</div>
     </div>

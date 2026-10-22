@@ -22,6 +22,7 @@ import {
   useGroupMethodList
 } from '@/app/monitor/hooks/event';
 import { COMPARISON_METHOD, SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
+import { STRATEGY_HINT_TEXT_CLASS } from './alertDurationFields';
 import { useConditionList } from '@/app/monitor/hooks';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { debounce } from 'lodash';
@@ -267,7 +268,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                     }
                   ]}
                 />
-                <p className="mb-0 mt-1 text-xs text-[var(--color-text-3)]">
+                <p className={`mb-0 mt-1 ${STRATEGY_HINT_TEXT_CLASS}`}>
                   {t(
                     metricExpressionMode === 'multi'
                       ? 'monitor.events.conditionCountMultiHint'
@@ -350,7 +351,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
             }
           />
         </Form.Item>
-        <div className="text-[var(--color-text-3)] mt-[10px]">
+        <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
           {t('monitor.events.convergenceCycleTip')}
         </div>
       </Form.Item>
@@ -469,7 +470,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   ))}
                 </Select>
               </Form.Item>
-              <div className="text-[var(--color-text-3)] mt-[10px]">
+              <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
                 {t('monitor.events.convergenceMethodTip')}
               </div>
             </Form.Item>

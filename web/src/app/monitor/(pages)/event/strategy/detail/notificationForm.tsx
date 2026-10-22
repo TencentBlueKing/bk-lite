@@ -13,7 +13,10 @@ import {
   seedNoticeUsersFromHandlers,
   shouldRequireNoticeUsers
 } from './strategyDetailUtils';
-import { STRATEGY_CONDITION_LABEL_CLASS } from './alertDurationFields';
+import {
+  STRATEGY_CONDITION_LABEL_CLASS,
+  STRATEGY_HINT_TEXT_CLASS
+} from './alertDurationFields';
 
 const { Option } = Select;
 
@@ -149,7 +152,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
         <Form.Item name="notice" noStyle>
           <Switch />
         </Form.Item>
-        <div className="text-[var(--color-text-3)] mt-[10px]">
+        <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
           {t('monitor.events.notificationDesc')}
         </div>
       </Form.Item>
