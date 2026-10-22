@@ -141,7 +141,128 @@ def test_second_log_search_is_denied_after_success():
     )()
     denied = repeated_or_search_denial(request)
     assert denied is not None
-    assert "不要换关键字" in denied.content
+    assert "空结果" in denied.content
+    assert "不是参数错误" in denied.content
+
+
+def test_non_empty_success_can_query_again_with_different_args():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"instance_ids": ["1_10.10.60.12"]}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": {"series": [{"instance_id": "1_10.10.60.11"}]}}',
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+
+def test_empty_result_blocks_any_tool_retry():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"instance_ids": ["1_10.10.60.12"]}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": {"series": [], "count": 0}}',
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
+                ),
+            ],
+        },
+    )()
+    denied = repeated_or_search_denial(request)
+    assert denied is not None
+    assert "空结果" in denied.content
+    assert "不是参数错误" in denied.content
+
+
+def test_metric_catalog_keyword_miss_allows_a_different_keyword():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_list_object_metrics", "args": {"keyword": "memory"}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": [], "message": "无名称/展示名包含「内存」的指标。"}',
+                    tool_call_id="call-1",
+                    name="monitor_list_object_metrics",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+
+def test_parameter_error_can_retry_any_tool():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_summarize_metric_trend", "args": {"metric": "disk_used_percent"}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": false, "error": "monitor_obj_id is required"}',
+                    tool_call_id="call-1",
+                    name="monitor_summarize_metric_trend",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+
+def test_unreachable_service_blocks_retry_for_any_tool():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {
+                "id": "call-2",
+                "name": "log_search_raw",
+                "args": {"start": "2026-10-21T15:03:18+08:00", "end": "2026-10-21T15:13:18+08:00"},
+            },
+            "messages": [
+                ToolMessage(
+                    content=(
+                        '{"success": false, "error": "HTTPConnectionPool(host=\'127.0.0.1\', port=9428): '
+                        'Max retries exceeded. WinError 10061 由于目标计算机积极拒绝，无法连接。"}'
+                    ),
+                    tool_call_id="call-1",
+                    name="log_search_raw",
+                ),
+            ],
+        },
+    )()
+    denied = repeated_or_search_denial(request)
+    assert denied is not None
+    assert "服务不可达" in denied.content
+
+
+def test_connection_refused_inside_successful_logs_is_not_a_service_failure():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "log_search_structured", "args": {"keyword": "timeout"}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": [{"message": "upstream connection refused"}]}',
+                    tool_call_id="call-1",
+                    name="log_search_structured",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
 
 
 def test_terminal_hint_stops_another_call_even_when_args_change():

@@ -499,6 +499,20 @@ def test_planned_execution_limit_middleware_messages_and_continue():
     assert LIMIT_MARKER_MODEL_CALLS not in scrub_limit_markers_from_summary(model_msg)
     assert "暂时停止" not in scrub_limit_markers_from_summary(model_msg)
 
+    from apps.opspilot.metis.llm.middleware.planned_execution_limits import scrub_exhausted_limit_claims
+
+    history = (
+        "趋势已汇总。\n" "步骤「预测」已达模型调用次数上限，是否继续执行？\n\n" "已有结论：22 台主机命中数为 0。\n" "1. 继续\n" "2. 结束本步骤\n" "唯一路径是按 instance_id 再拉时序，但本会话工具调用次数已达上限，这一步未能执行。"
+    )
+    scrubbed = scrub_exhausted_limit_claims(history)
+    assert "已达上限" not in scrubbed
+    assert "次数用尽" not in scrubbed
+    assert "是否继续执行" not in scrubbed
+    assert "1. 继续" not in scrubbed
+    assert "22 台主机命中数为 0" in scrubbed
+    assert "按 instance_id 再拉时序" in scrubbed
+    assert "这一步未能执行" not in scrubbed
+
     accumulator = TokenUsageAccumulator()
     accumulator.total_tokens = 100
     middleware = PlannedExecutionLimitMiddleware(
@@ -907,7 +921,8 @@ async def test_planner_catalog_prepends_monitor_capability_hint():
     assert "禁止根据名称形态" in prompt
     assert "K8s Pod" in prompt
     assert "list_object_metrics 与 query_metric_data 必须同一步" in prompt
-    assert "cpu.util" in prompt
+    assert "不要改成类别词" in prompt
+    assert "目录里没有的指标名" in prompt
     assert "空矩阵" in prompt
     assert "禁止用实例名" in prompt or "禁止用 name" in prompt
     assert "也可传入" not in prompt

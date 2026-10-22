@@ -1,19 +1,23 @@
+import re
 from typing import Any, Dict, List, Optional
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, resolve_metric_window, wrap_error, wrap_success
+from apps.opspilot.metis.llm.tools.search_terms import user_message_from_config
 
 _METRIC_SUMMARY_KEYS = ("name", "display_name", "unit", "data_type", "metric_group")
+_METRIC_NAME_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
 _UNKNOWN_METRIC_HINT = (
     "metric 必须来自 monitor_list_object_metrics 返回的 name。"
-    "禁止猜测 cpu.util、system.cpu.util、cpu_usage 等通用名。"
-    "用户问 CPU/内存/磁盘时，先 list_object_metrics(keyword=用户词) 筛选 name/display_name 含该词的指标，再用这些 name 查时序。"
-    "列表非空时不要 request_user_choice 让用户手填指标名。"
+    "禁止使用目录里没有的指标名。"
+    "先 list_object_metrics，keyword 用用户原文里的指标名或指标说法，筛选 name/display_name。"
+    "用户原文已经写出指标名时，keyword 用该指标名，不要改成类别词。"
+    "不要 request_user_choice 让用户手填指标名；只命中一个就直接查，没命中或命中多个再让用户选。"
 )
 _EMPTY_SERIES_HINT = (
-    "本次查询成功但无时序点（空矩阵/seriesMatched=0）是有效结论，不是工具失败。" "禁止改 instance_ids、IP、dimensions、start/end、step 或 metric 重试，不要换 ID 碰运气。" "直接告知用户当前窗口没有该指标数据。"
+    "本次查询成功但无时序点（空矩阵/seriesMatched=0）是有效结论，不是参数错误。" "空值表示当前窗口没有数据，禁止写成参数无效，禁止让用户检查时间范围、step、instance_ids、dimensions。" "禁止改这些参数重试。直接告知用户当前窗口没有该指标数据。"
 )
 
 
@@ -81,22 +85,81 @@ def _filter_metrics_by_keyword(items: list, keyword: Optional[str]) -> list:
     return [item for item in items if _metric_matches_keyword(item, needle)]
 
 
-def _metric_query_hint(items: list, keyword: Optional[str]) -> str:
+def _metrics_named_in_text(items: list, text: str) -> list:
+    """用户原文里与目录 name 完全相同的标识符优先，不看模型另传的类别词。"""
+    tokens = {token.lower() for token in _METRIC_NAME_TOKEN.findall(str(text or ""))}
+    if not tokens:
+        return []
+    matched = []
+    seen = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        key = name.lower()
+        if not name or key not in tokens or key in seen:
+            continue
+        seen.add(key)
+        matched.append(item)
+    return matched
+
+
+def _metric_choice_label(item: Dict[str, Any]) -> str:
+    name = str(item.get("name") or "").strip()
+    display = str(item.get("display_name") or "").strip()
+    if display and display != name:
+        return f"{display} ({name})"
+    return name
+
+
+def _metric_choice_options(items: list) -> list:
+    options = []
+    seen = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        options.append(_metric_choice_label(item))
+    return options
+
+
+def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[list] = None) -> str:
     needle = str(keyword or "").strip()
     names = [str(item.get("name") or "") for item in items if item.get("name")]
-    if needle and not names:
-        return f"无名称/展示名包含「{needle}」的指标。禁止猜测 cpu.util 等通用名。" "可去掉 keyword 再列一次，或换用户原词；不要 request_user_choice 让用户手填指标名。"
-    shown = "、".join(names[:8])
-    extra = f"等共 {len(names)} 个" if len(names) > 8 else ""
-    keyword_line = f"已按「{needle}」筛选。" if needle else "用户问 CPU/内存/磁盘时必须传 keyword 筛选。"
-    return (
-        f"{keyword_line}后续 monitor_query_metric_data 的 metric 必须用本列表 name"
-        f"（{shown}{extra}），禁止猜测 cpu.util/system.cpu.util。"
-        "列表非空时直接查这些 name，不要 request_user_choice 让用户手填。"
+    if not needle:
+        return "必须传 keyword：用户原文里的指标名，或用户用来指这个指标的说法。禁止使用目录里没有的指标名。"
+    if not names:
+        if not catalog:
+            return f"无名称/展示名包含「{needle}」的指标，该对象也没有指标定义。不要换 keyword 再试。"
+        return (
+            f"无名称/展示名包含「{needle}」的指标。不要换 keyword 再调用本工具，也不要逐个试指标。"
+            "立刻 request_user_choice（question_type=single_select），options 原样使用本结果 choices。"
+            "用户选定后，monitor_query_metric_data 的 metric 用括号里的 name。禁止使用目录里没有的指标名。"
+        )
+    if len(names) == 1:
+        return f"只命中 {names[0]}。直接用这个 name 查时序，不要 request_user_choice，也不要再列指标。禁止使用目录里没有的指标名。"
+    if len(names) > 1:
+        return (
+            f"已按「{needle}」命中 {len(_metric_choice_options(items))} 个指标。不要逐个查询，也不要再换 keyword。"
+            "立刻 request_user_choice（question_type=single_select），options 原样使用本结果 choices。"
+            "用户选定后只用对应 name 查一次时序。禁止使用目录里没有的指标名。"
+        )
+    return "必须传 keyword：用户原文里的指标名，或用户用来指这个指标的说法。禁止使用目录里没有的指标名。"
+
+
+@tool(
+    description=(
+        "列出该对象指标定义。keyword 用用户原文里的指标名或指标说法，筛选 name/display_name。"
+        "用户原文已经写出指标名时传该指标名，不要改成类别词。"
+        "只命中一个 name 时直接用它查时序。"
+        "没命中或命中多个时，不要换 keyword 再试，也不要逐个查；"
+        "调用 request_user_choice，options 用返回的 choices，让用户选指标。"
+        "禁止使用目录里没有的指标名。"
     )
-
-
-@tool(description=("列出该对象指标定义。用户问 CPU/内存/磁盘或其它指标时必须传 keyword 筛选 name/display_name。" "metric 只能用返回的 name，禁止猜测 cpu.util 等通用名。与查时序同一步。"))
+)
 def monitor_list_object_metrics(
     monitor_obj_id: str,
     keyword: Optional[str] = None,
@@ -112,11 +175,19 @@ def monitor_list_object_metrics(
     if not result.get("success"):
         return result
     summarized = _summarize_monitor_metrics(result.get("data"))
-    filtered = _filter_metrics_by_keyword(summarized, keyword)
+    named = _metrics_named_in_text(summarized, user_message_from_config(config))
+    filtered = named or _filter_metrics_by_keyword(summarized, keyword)
     payload = wrap_success(filtered)
-    payload["_next_step_hint"] = _metric_query_hint(filtered, keyword)
-    if str(keyword or "").strip() and summarized and not filtered:
-        payload["message"] = f"无名称/展示名包含「{str(keyword).strip()}」的指标。"
+    needle = str(keyword or "").strip()
+    ask_user = bool(needle or named) and (not filtered or len(_metric_choice_options(filtered)) > 1)
+    if ask_user:
+        payload["choices"] = _metric_choice_options(summarized if not filtered else filtered)
+    hint_keyword = keyword
+    if not needle and named:
+        hint_keyword = " ".join(str(item.get("name") or "") for item in named)
+    payload["_next_step_hint"] = _metric_query_hint(filtered, hint_keyword, summarized)
+    if needle and summarized and not filtered:
+        payload["message"] = f"无名称/展示名包含「{needle}」的指标。请让用户从 choices 里选择，不要换 keyword 再搜。"
     return payload
 
 
@@ -151,12 +222,14 @@ def monitor_list_instance_metrics(
 
 @tool(
     description=(
-        "查询指标时序（任意已纳管指标，含 CPU/内存/磁盘/业务等）。"
-        "metric 必须来自本步 monitor_list_object_metrics 返回的 name，禁止猜测 cpu.util。"
+        "查询该对象已纳管的任意指标时序。"
+        "metric 必须来自本步 monitor_list_object_metrics 返回的 name，禁止使用目录里没有的指标名。"
         "必填 monitor_obj_id、metric；instance_ids 只能原样复制 monitor_list_object_instances 返回记录的 instance_id 字段。"
         "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数，列表里没有的值不要编造。"
         "可省略 start/end（默认近1小时）。禁止建议 top/htop/SSH。"
-        "同一实例同一指标只查一次；空矩阵/无时序是有效结论，禁止改 instance_ids、IP、dimensions、时间窗或 metric 重试。"
+        "同一实例同一指标只查一次。空矩阵、无时序、空值是查询成功但没有数据，不是参数错误；"
+        "禁止把空值写成参数无效，禁止让用户检查时间范围、step、instance_ids、dimensions，也禁止因此重试。"
+        "只有缺参或类型不对才是参数错误。有数值就按数值回答。"
     )
 )
 def monitor_query_metric_data(
