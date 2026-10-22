@@ -164,6 +164,7 @@ error:
   alert_copy_partial_accepted: The alert center accepted only some event copies.
   notification_delivery_failed: Notification channel delivery failed.
   alert_copy_rejected: The alert center did not accept the event copy.
+  vault_secret_key_not_configured: SECRET_KEY is not configured; cannot encrypt or decrypt the vault
 success:
   menu_group_disabled: Menu group disabled
   batch_create: Batch creation successful
@@ -208,7 +209,7 @@ app_name:
   patch: Patch Management
   apm: APM
   playground: Playground
-  workflow-orchestration: Workflow Orchestration
+  workflow-orchestration: Workflow
 app:
   ops-analysis: Integrate operation and maintenance data, analyze potential risks
     and optimization space from multiple dimensions through dashboards and canvases,

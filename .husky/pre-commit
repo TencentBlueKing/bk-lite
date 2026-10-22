@@ -38,7 +38,7 @@ fi
 WEB_FILES=$(echo "$CHANGED_FILES" | grep "^web/" | grep -E '\.(js|jsx|ts|tsx)$' || true)
 if [ -n "$WEB_FILES" ]; then
     echo "Checking web project..."
-    WEB_LINT_FILES=$(echo "$WEB_FILES" | sed 's|^web/||' | grep -v '^scripts/' || true)
+    WEB_LINT_FILES=$(echo "$WEB_FILES" | sed 's|^web/||' | grep -v '^scripts/' | grep -v '^packages/isoflow/' || true)
     cd web || exit 1
     if [ -n "$WEB_LINT_FILES" ]; then
         echo "$WEB_LINT_FILES" | xargs pnpm eslint || exit 1

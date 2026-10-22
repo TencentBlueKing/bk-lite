@@ -105,7 +105,6 @@ const ApplicationTopology = ({
         usesScreenTheme={usesScreenTheme}
         shareMode={Boolean(shareMode)}
         config={config}
-        screenRenderContext={screenRenderContext}
         screenScaleX={screenRenderContext?.scaleX}
         screenScaleY={screenRenderContext?.scaleY}
         onRefresh={() => void load()}

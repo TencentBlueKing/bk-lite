@@ -183,7 +183,7 @@ function HttpRequestFields({ schema, value, references, readOnly, onChange }: Pi
     </Form.Item>
     {schema?.properties?.query ? <OpsPilotKeyValueRows label={t('workflowOrchestration.editor.requestParameters', '请求参数')} value={value.query} references={references} disabled={readOnly} onChange={(next) => setField('query', next)} /> : null}
     {schema?.properties?.headers ? <OpsPilotKeyValueRows label={t('workflowOrchestration.editor.requestHeaders', '请求头')} value={value.headers} references={references} disabled={readOnly} onChange={(next) => setField('headers', next)} /> : null}
-    {schema?.properties?.body ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.requestBody', '请求体')}><SchemaNodeField schema={{ ...field(schema, 'body'), type: 'object', 'x-widget': 'json', 'x-rows': 6, jsonEditorAllowed: true }} value={value.body} references={references} onChange={(next) => setField('body', next)} /></Form.Item> : null}
+    {schema?.properties?.body ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.requestBody', '请求体')}><SchemaNodeField schema={{ ...field(schema, 'body'), type: 'object', 'x-widget': 'json', 'x-rows': 6, jsonEditorAllowed: true }} value={value.body} references={references} disabled={readOnly} onChange={(next) => setField('body', next)} /></Form.Item> : null}
     {schema?.properties?.timeout ? (
       <Form.Item className="mb-0" label={t('workflowOrchestration.editor.timeoutSeconds', '超时设置（秒）')}>
         <ReferenceDropGuard>
@@ -372,13 +372,14 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
           schema={{ ...recipientSchema, 'x-binding': 'literal-only' }}
           value={displayedRecipients}
           references={references}
+          disabled={readOnly}
           onChange={(next) => setField('recipients', storedRecipientsFromDisplay(normalizeRecipientIds(next, recipientItems), normalizedRecipients, actorRecipientId))}
         />
       </Form.Item>
     ) : null}
     {notificationType === 'EMAIL' && schema?.properties?.title ? (
       <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationTitle', '通知标题')} required>
-        <SchemaNodeField schema={{ ...field(schema, 'title'), 'x-text-surface': 'coerce' }} value={value.title} references={references} onChange={(next) => setField('title', next)} />
+        <SchemaNodeField schema={{ ...field(schema, 'title'), 'x-text-surface': 'coerce' }} value={value.title} references={references} disabled={readOnly} onChange={(next) => setField('title', next)} />
       </Form.Item>
     ) : null}
     {notificationType === 'EMAIL' && schema?.properties?.report_artifact ? (
@@ -392,13 +393,14 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
           value={value.report_artifact}
           references={references}
           referenceOnly
+          disabled={readOnly}
           onChange={(next) => setField('report_artifact', next)}
         />
       </Form.Item>
     ) : null}
     {schema?.properties?.body ? (
       <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationContent', '通知内容')} required={schema.required?.includes('body')}>
-        <SchemaNodeField schema={{ ...field(schema, 'body'), 'x-widget': 'textarea', 'x-rows': 6, 'x-text-surface': 'coerce' }} value={value.body} references={references} onChange={(next) => setField('body', next)} />
+        <SchemaNodeField schema={{ ...field(schema, 'body'), 'x-widget': 'textarea', 'x-rows': 6, 'x-text-surface': 'coerce' }} value={value.body} references={references} disabled={readOnly} onChange={(next) => setField('body', next)} />
       </Form.Item>
     ) : null}
   </>;
@@ -409,6 +411,7 @@ function RuntimeFields({
   schema,
   value,
   references,
+  disabled = false,
   onChange,
   surface = 'string-only',
   surfaceByKey,
@@ -417,6 +420,7 @@ function RuntimeFields({
   schema?: JsonSchema;
   value: Record<string, unknown>;
   references: DataReferenceOption[];
+  disabled?: boolean;
   onChange: (value: Record<string, unknown>) => void;
   surface?: 'coerce' | 'string-only';
   surfaceByKey?: Record<string, 'coerce' | 'string-only'>;
@@ -434,6 +438,7 @@ function RuntimeFields({
             schema={{ ...item, 'x-text-surface': surfaceByKey?.[key] || surface }}
             value={value[key]}
             references={references}
+            disabled={disabled}
             onChange={(next) => onChange({ ...value, [key]: next })}
           />
         </Form.Item>;
@@ -543,7 +548,7 @@ export function OpsPilotAtomForm({ atomKey, schema, value, references, workflowI
     <Form.Item className="mb-0" label={label} required={schema?.required?.includes(key)}>
       <ResourceSelect schema={field(schema, key)} value={value[key]} placeholder={placeholder} disabled={readOnly} onChange={onSelect || ((next) => setField(key, next))} />
     </Form.Item>
-    {createLabel && createHref ? <Button className="absolute right-0 top-0 h-auto px-0 text-xs" type="link" size="small" icon={<PlusOutlined />} href={createHref} target="_blank">{createLabel}</Button> : null}
+    {!readOnly && createLabel && createHref ? <Button className="absolute right-0 top-0 h-auto px-0 text-xs" type="link" size="small" icon={<PlusOutlined />} href={createHref} target="_blank">{createLabel}</Button> : null}
   </div>;
 
   return <Form className="flex flex-col gap-5" layout="vertical">
@@ -551,21 +556,21 @@ export function OpsPilotAtomForm({ atomKey, schema, value, references, workflowI
     {atomKey === 'bklite_agent' ? <>
       {resourceField('agent_id', t('workflowOrchestration.editor.selectAgent', '选择智能体'), t('workflowOrchestration.editor.pleaseSelectAgent', '请选择智能体'), t('workflowOrchestration.editor.addAgent', '新增智能体'), '/opspilot/skill')}
       <Form.Item className="mb-0" label={field(schema, 'prompt').title || t('workflowOrchestration.editor.prompt', 'Prompt')} tooltip={t('workflowOrchestration.editor.promptAppendTooltip', '这段提示词会附加到本次输入之前。')}>
-        <SchemaNodeField schema={{ ...field(schema, 'prompt'), 'x-text-surface': 'string-only' }} value={value.prompt} references={references} onChange={(next) => setField('prompt', next)} />
+        <SchemaNodeField schema={{ ...field(schema, 'prompt'), 'x-text-surface': 'string-only' }} value={value.prompt} references={references} disabled={readOnly} onChange={(next) => setField('prompt', next)} />
       </Form.Item>
       <ReferenceDropGuard>
         <KnowledgeUpload workflowId={workflowId} value={value.knowledge_files} disabled={readOnly} onChange={(next) => setField('knowledge_files', next)} />
       </ReferenceDropGuard>
-      <RuntimeFields keys={['message', 'memory_context']} schema={schema} value={value} references={references} onChange={onChange} surface="string-only" />
+      <RuntimeFields keys={['message', 'memory_context']} schema={schema} value={value} references={references} disabled={readOnly} onChange={onChange} surface="string-only" />
     </> : null}
 
     {atomKey === 'bklite_intent_classification' ? <>
       {resourceField('model_id', t('workflowOrchestration.editor.llmModel', 'LLM 模型'), t('workflowOrchestration.editor.pleaseSelectLlmModel', '请选择 LLM 模型'))}
       <Form.Item className="mb-0" label={field(schema, 'classification_rules').title || t('workflowOrchestration.editor.classificationRules', '分类规则')} tooltip={t('workflowOrchestration.editor.classificationRulesTooltip', '补充分类判断原则；留空时由模型根据意图描述判断。')}>
-        <SchemaNodeField schema={{ ...field(schema, 'classification_rules'), 'x-text-surface': 'string-only' }} value={value.classification_rules} references={references} onChange={(next) => setField('classification_rules', next)} />
+        <SchemaNodeField schema={{ ...field(schema, 'classification_rules'), 'x-text-surface': 'string-only' }} value={value.classification_rules} references={references} disabled={readOnly} onChange={(next) => setField('classification_rules', next)} />
       </Form.Item>
       <IntentList value={value.intents} disabled={readOnly} onChange={(next) => setField('intents', next)} />
-      <RuntimeFields keys={['text']} schema={schema} value={value} references={references} onChange={onChange} surface="string-only" />
+      <RuntimeFields keys={['text']} schema={schema} value={value} references={references} disabled={readOnly} onChange={onChange} surface="string-only" />
     </> : null}
 
     {atomKey === 'bklite_memory_read' ? <>
@@ -588,7 +593,7 @@ export function OpsPilotAtomForm({ atomKey, schema, value, references, workflowI
           </Form.Item>
         ),
       }]} />
-      <RuntimeFields keys={['query']} schema={schema} value={value} references={references} onChange={onChange} surface="string-only" />
+      <RuntimeFields keys={['query']} schema={schema} value={value} references={references} disabled={readOnly} onChange={onChange} surface="string-only" />
     </> : null}
 
     {atomKey === 'bklite_memory_write' ? <>
@@ -616,6 +621,7 @@ export function OpsPilotAtomForm({ atomKey, schema, value, references, workflowI
         schema={schema}
         value={value}
         references={references}
+        disabled={readOnly}
         onChange={onChange}
         surfaceByKey={{ content: 'string-only', title: 'coerce' }}
       />

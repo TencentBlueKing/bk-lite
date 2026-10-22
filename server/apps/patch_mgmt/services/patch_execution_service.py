@@ -39,9 +39,28 @@ from apps.patch_mgmt.constants import (
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, HostBaselineBinding, HostComplianceSnapshot, Patch, PatchTarget
 from apps.patch_mgmt.services.assess_parsers import assess_requirements, linux_assessment_host_error, linux_requirement_specs
 from apps.patch_mgmt.services.compliance_evaluator import evaluate_linux_applicability
+from apps.patch_mgmt.services.disk_budget import (
+    apt_simulation_is_empty,
+    cab_expansion_limit_bytes,
+    linux_cache_path,
+    linux_disk_probe_command,
+    linux_disk_shortfall,
+    manual_install_requirement_bytes,
+    manual_stage_requirement_bytes,
+    parse_apt_download_bytes,
+    parse_apt_installed_bytes,
+    parse_install_sizes,
+    parse_linux_disk_probe,
+    parse_windows_free_bytes,
+    windows_disk_reserve_bytes,
+    windows_disk_shortfall,
+    windows_free_space_command,
+)
 from apps.patch_mgmt.services.linux_platform import linux_host_facts_command, parse_linux_host_facts, validate_linux_host_facts
 from apps.patch_mgmt.services.target_execution_route import TargetTransport, resolve_target_execution_route
 from apps.patch_mgmt.services.target_node_context import is_container_target
+from apps.patch_mgmt.services.windows_dotnet import parse_windows_dotnet_release, windows_dotnet_decision, windows_dotnet_release_command
+from apps.patch_mgmt.services.windows_package_identity import WindowsPackageIdentityError, inspect_windows_update_package, package_sha256
 from apps.patch_mgmt.utils.i18n import patch_message
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
@@ -52,9 +71,6 @@ WINDOWS_PATCH_STAGE_DIR = "C:/Windows/Temp/bk-lite-patches"
 ANSIBLE_TASK_POLL_INTERVAL_SECONDS = 1
 ANSIBLE_TASK_QUERY_TIMEOUT_SECONDS = 30
 ANSIBLE_ADHOC_MAX_TIMEOUT_SECONDS = 3600
-WINDOWS_MSI_CONTAINER_MIN_EXPANSION_LIMIT_BYTES = 16 * 1024 * 1024
-WINDOWS_MSI_CONTAINER_MAX_EXPANSION_LIMIT_BYTES = 1024 * 1024 * 1024
-WINDOWS_MSI_CONTAINER_MAX_EXPANSION_RATIO = 8
 # Linux 常见的单参数上限为 128 KiB；保留一半余量给执行器和系统环境差异。
 LINUX_ASSESS_COMMAND_MAX_BYTES = 64 * 1024
 DRY_RUN_TIMEOUT_SECONDS = 30
@@ -443,14 +459,7 @@ def _manual_windows_install_command(detail, staged_path: str) -> str:
     job_id = uuid.uuid4().hex[:12]
     extract_dir = f"C:\\Windows\\Temp\\manual_patch_{job_id}_cab"
     if detail.package_extension == ".cab":
-        package_size = max(int(detail.package_size or 0), 1)
-        expansion_limit = min(
-            max(
-                package_size * WINDOWS_MSI_CONTAINER_MAX_EXPANSION_RATIO,
-                WINDOWS_MSI_CONTAINER_MIN_EXPANSION_LIMIT_BYTES,
-            ),
-            WINDOWS_MSI_CONTAINER_MAX_EXPANSION_LIMIT_BYTES,
-        )
+        expansion_limit = cab_expansion_limit_bytes(detail.package_size)
         dism_arguments = f'/Online /Add-Package /PackagePath:"{staged_path}" /Quiet /NoRestart'.replace("'", "''")
         # 部分微软更新（如 KB5001716）的 CAB 仅是单个 MSI 的传输容器，
         # 不是 DISM servicing package。只允许单 MSI 容器走 msiexec，
@@ -476,6 +485,7 @@ def _manual_windows_install_command(detail, staged_path: str) -> str:
         arguments = f'"{staged_path}" /quiet /norestart'.replace("'", "''")
         launch_installer = f"$proc=Start-Process -FilePath 'wusa.exe' -ArgumentList '{arguments}' -Wait -PassThru;"
         cleanup_extract_dir = ""
+    install_disk_bytes = manual_install_requirement_bytes([(detail.package_size, detail.package_extension)])
     script_path = f"C:\\Windows\\Temp\\manual_patch_{job_id}.ps1"
     result_path = f"C:\\Windows\\Temp\\manual_patch_{job_id}.txt"
     task_name = f"Manual_Patch_{job_id}"
@@ -485,6 +495,10 @@ def _manual_windows_install_command(detail, staged_path: str) -> str:
         "try{"
         f"$actual=(Get-FileHash -Algorithm SHA256 -Path $path).Hash.ToLower();"
         f"if($actual -ne '{expected_sha256}'){{throw 'SHA256 mismatch'}};"
+        "$osDisk=Get-CimInstance Win32_OperatingSystem;"
+        "$freeDisk=Get-CimInstance Win32_LogicalDisk -Filter (\"DeviceID='{0}'\" -f $osDisk.SystemDrive);"
+        f"if(-not $freeDisk -or [int64]$freeDisk.FreeSpace -lt {install_disk_bytes})"
+        f"{{throw ('disk_insufficient free={{0}} required={install_disk_bytes}' -f $freeDisk.FreeSpace)}};"
         f"{launch_installer}"
         "$code=$proc.ExitCode;"
         "$pending=(Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending') -or "
@@ -575,10 +589,24 @@ def _install_commands(
             "if($matched){[void]$c.Add($u)}"
             "}"
             "if($c.Count -gt 0){"
+            "$need=0L;"
+            "foreach($u in $c){"
+            "$one=[int64]$u.MaxDownloadSize;"
+            "$hint=[int64]$u.RecommendedHardDiskSpace * 1MB;"
+            "if($hint -gt $one){$one=$hint};"
+            "$need+=$one"
+            "};"
+            f"$need+={windows_disk_reserve_bytes()};"
+            "$osDisk=Get-CimInstance Win32_OperatingSystem;"
+            "$freeDisk=Get-CimInstance Win32_LogicalDisk -Filter (\"DeviceID='{0}'\" -f $osDisk.SystemDrive);"
+            "if(-not $freeDisk -or [int64]$freeDisk.FreeSpace -lt $need){"
+            "\"InstallError=disk_insufficient free=$($freeDisk.FreeSpace) required=$need\" | Out-File -FilePath '__RP__' -Encoding utf8 -Force"
+            "}else{"
             "$d=$s.CreateUpdateDownloader();$d.Updates=$c;$d.Download();"
             "$i=$s.CreateUpdateInstaller();$i.Updates=$c;"
             "$res=$i.Install();"
             "\"InstallResult={0} RebootRequired={1}\" -f $res.ResultCode,$res.RebootRequired | Out-File -FilePath '__RP__' -Encoding utf8 -Force"
+            "}"
             "}else{"
             "\"No matching updates found\" | Out-File -FilePath '__RP__' -Encoding utf8 -Force"
             "}"
@@ -642,6 +670,9 @@ def _windows_assess_command() -> str:
         '$caption=([string]$os.Caption).Replace("|"," ");'
         '$arch=([string]$env:PROCESSOR_ARCHITECTURE).Replace("|"," ");'
         '"BKPATCH_HOST|WINDOWS|{0}|{1}|{2}|{3}" -f $caption,$os.Version,$os.BuildNumber,$arch;'
+        "$rel=(Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full' "
+        "-Name Release -ErrorAction SilentlyContinue).Release;"
+        "if($null -eq $rel){'BKPATCH_DOTNET|'}else{'BKPATCH_DOTNET|{0}' -f [int64]$rel};"
         "$s=New-Object -ComObject Microsoft.Update.Session;"
         "$sr=$s.CreateUpdateSearcher();"
         '$r=$sr.Search("IsInstalled=0");'
@@ -1811,6 +1842,282 @@ def _execute_reboot(target: PatchTarget, host: GovernanceTaskHost, execution_id:
         )
 
 
+def _manual_package_specs(patches: list[Patch]) -> list[tuple[int, str]]:
+    specs = []
+    for patch in patches:
+        try:
+            detail = patch.windows_detail
+        except Exception:  # noqa: BLE001
+            continue
+        if getattr(detail, "package_file", None):
+            specs.append((int(detail.package_size or 0), detail.package_extension or ""))
+    return specs
+
+
+def _stored_package_bytes(detail) -> bytes:
+    from apps.patch_mgmt.config import PATCH_MGMT_MAX_PACKAGE_SIZE_MB
+
+    limit = PATCH_MGMT_MAX_PACKAGE_SIZE_MB * 1024 * 1024
+    handle = detail.package_file.open("rb")
+    try:
+        payload = handle.read(limit + 1)
+    finally:
+        handle.close()
+    if len(payload) > limit:
+        raise WindowsPackageIdentityError(
+            "package_too_large",
+            "The patch package cannot exceed {limit} MB",
+            limit=PATCH_MGMT_MAX_PACKAGE_SIZE_MB,
+        )
+    return payload
+
+
+def _windows_manual_identity_reason(patches: list[Patch]) -> str:
+    """安装前重读手工包。签名或 KB 对不上时返回原因，调用方不得下发文件。"""
+    for patch in patches:
+        try:
+            detail = patch.windows_detail
+        except Exception:  # noqa: BLE001
+            continue
+        if not getattr(detail, "package_file", None):
+            continue
+        try:
+            payload = _stored_package_bytes(detail)
+            if package_sha256(payload) != (detail.package_sha256 or "").lower():
+                changed = patch_message(
+                    None,
+                    "error.package_content_changed",
+                    "The patch package content does not match the uploaded file",
+                )
+                return f"{patch.title}: {changed}"
+            inspect_windows_update_package(
+                payload,
+                expected_kb=detail.kb_number,
+                file_name=detail.package_original_name,
+                declared_dotnet_version=detail.package_dotnet_version,
+            )
+        except WindowsPackageIdentityError as exc:
+            reason = patch_message(None, f"error.{exc.code}", exc.default, **exc.params)
+            return f"{patch.title}: {reason}"
+        except Exception:  # noqa: BLE001
+            unreadable = patch_message(None, "error.package_unreadable", "The patch package could not be read")
+            return f"{patch.title}: {unreadable}"
+    return ""
+
+
+def _windows_manual_dotnet_reason(
+    target: PatchTarget,
+    patches: list[Patch],
+    *,
+    timeout: int,
+    execution_id: str,
+) -> str:
+    marked = []
+    for patch in patches:
+        try:
+            detail = patch.windows_detail
+        except Exception:  # noqa: BLE001
+            continue
+        if getattr(detail, "package_file", None) and detail.package_dotnet_version:
+            marked.append((patch, detail))
+    if not marked:
+        return ""
+    command = windows_dotnet_release_command()
+    try:
+        result = _execute_command(target, command, timeout=min(timeout, 120), execution_id=execution_id)
+    except Exception:  # noqa: BLE001
+        result = None
+    release = parse_windows_dotnet_release((result or {}).get("stdout") or "") if result and _is_success(result) else None
+    for patch, detail in marked:
+        status, reason = windows_dotnet_decision(detail.package_dotnet_version, release, detail.kb_number)
+        if status:
+            return f"{patch.title}: {reason}"
+    return ""
+
+
+def _fail_install_preflight(host: GovernanceTaskHost, reason: str, error_code: str) -> None:
+    _record_host_result(
+        host,
+        stage="failed",
+        stage_color="error",
+        reason=reason[:1024],
+        failed_stage="install_preflight",
+        error_code=error_code,
+        can_retry=True,
+    )
+
+
+def _read_windows_free_bytes(target: PatchTarget, *, timeout: int, execution_id: str) -> int | None:
+    command = windows_free_space_command()
+    try:
+        result = _execute_command(
+            target,
+            command,
+            timeout=min(timeout, 120),
+            execution_id=execution_id,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if not _is_success(result):
+        return None
+    return parse_windows_free_bytes(result.get("stdout") or "")
+
+
+def _cleanup_staged_windows_packages(
+    target: PatchTarget,
+    paths: list[str],
+    *,
+    timeout: int,
+    execution_id: str,
+) -> None:
+    if not paths:
+        return
+    quoted = ",".join("'" + path.replace("'", "''") + "'" for path in paths)
+    command = f"Remove-Item -LiteralPath @({quoted}) -Force -ErrorAction SilentlyContinue"
+    try:
+        _execute_command(target, command, timeout=min(timeout, 120), execution_id=execution_id)
+    except Exception:  # noqa: BLE001
+        logger.warning("安装前磁盘检查未通过后清理暂存补丁失败 target=%s count=%s", target.id, len(paths))
+
+
+def _linux_install_package_names(patches: list[Patch]) -> list[str]:
+    pkg_names: list[str] = []
+    for patch in patches:
+        try:
+            names = patch.linux_detail.package_names()
+        except Exception:  # noqa: BLE001
+            names = []
+        for name in names:
+            if _PKG_NAME_RE.match(name) and name not in pkg_names:
+                pkg_names.append(name)
+    return pkg_names
+
+
+def _command_text(result: dict[str, Any]) -> str:
+    return "\n".join(str(result.get(key) or "") for key in ("stdout", "stderr"))
+
+
+def _run_disk_command(target: PatchTarget, command: str, *, timeout: int, execution_id: str) -> dict[str, Any] | None:
+    try:
+        return _execute_command(target, command, timeout=timeout, execution_id=execution_id)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _apt_install_sizes(
+    target: PatchTarget,
+    pkg_names: list[str],
+    *,
+    timeout: int,
+    execution_id: str,
+) -> tuple[int, int] | None:
+    dry_command = _dry_run_command("apt", pkg_names)
+    if not dry_command:
+        return None
+    dry_result = _run_disk_command(
+        target,
+        dry_command,
+        timeout=min(timeout, DRY_RUN_TIMEOUT_SECONDS),
+        execution_id=execution_id,
+    )
+    if dry_result is None:
+        return None
+    dry_text = _command_text(dry_result)
+    if apt_simulation_is_empty(dry_text):
+        return 0, 0
+    quoted = " ".join(shlex.quote(name) for name in pkg_names)
+    uri_result = _run_disk_command(
+        target,
+        f"LC_ALL=C apt-get --print-uris -qq install -- {quoted}",
+        timeout=min(timeout, DRY_RUN_TIMEOUT_SECONDS),
+        execution_id=execution_id,
+    )
+    cache_result = _run_disk_command(
+        target,
+        f"LC_ALL=C apt-cache show -- {quoted}",
+        timeout=min(timeout, DRY_RUN_TIMEOUT_SECONDS),
+        execution_id=execution_id,
+    )
+    if uri_result is None or cache_result is None:
+        return None
+    download = parse_apt_download_bytes(_command_text(uri_result))
+    growth = parse_apt_installed_bytes(_command_text(cache_result))
+    if download is None or growth is None:
+        return None
+    return download, growth
+
+
+def _rpm_install_sizes(
+    target: PatchTarget,
+    package_manager: str,
+    pkg_names: list[str],
+    *,
+    timeout: int,
+    execution_id: str,
+) -> tuple[int, int] | None:
+    dry_command = _dry_run_command(package_manager, pkg_names)
+    if not dry_command:
+        return None
+    dry_result = _run_disk_command(
+        target,
+        dry_command,
+        timeout=min(timeout, DRY_RUN_TIMEOUT_SECONDS),
+        execution_id=execution_id,
+    )
+    if dry_result is None:
+        return None
+    text = _command_text(dry_result)
+    if re.search(r"nothing to do", text, re.IGNORECASE):
+        return 0, 0
+    return parse_install_sizes(text)
+
+
+def _linux_install_disk_reason(
+    target: PatchTarget,
+    package_manager: str,
+    pkg_names: list[str],
+    *,
+    timeout: int,
+    execution_id: str,
+) -> tuple[str, str]:
+    if package_manager == "apt":
+        sizes = _apt_install_sizes(target, pkg_names, timeout=timeout, execution_id=execution_id)
+    else:
+        sizes = _rpm_install_sizes(
+            target,
+            package_manager,
+            pkg_names,
+            timeout=timeout,
+            execution_id=execution_id,
+        )
+    if sizes is None:
+        return (
+            "disk_probe_failed",
+            patch_message(
+                None,
+                "error.disk_linux_undetermined",
+                "Unable to determine the disk space required before installation",
+            ),
+        )
+    probe_command = linux_disk_probe_command(linux_cache_path(package_manager))
+    probe_result = _run_disk_command(
+        target,
+        probe_command,
+        timeout=min(timeout, 120),
+        execution_id=execution_id,
+    )
+    if probe_result is None or not _is_success(probe_result):
+        return (
+            "disk_probe_failed",
+            patch_message(None, "error.disk_linux_unreadable", "Unable to read the target disk free space"),
+        )
+    return linux_disk_shortfall(
+        parse_linux_disk_probe(probe_result.get("stdout") or ""),
+        sizes[0],
+        sizes[1],
+    )
+
+
 def _execute_install(  # noqa: C901
     target: PatchTarget,
     host: GovernanceTaskHost,
@@ -1898,10 +2205,46 @@ def _execute_install(  # noqa: C901
             )
             return
         linux_manager = linux_facts.package_manager
+        pkg_names = _linux_install_package_names(patches)
+        if pkg_names:
+            disk_code, disk_reason = _linux_install_disk_reason(
+                target,
+                linux_manager,
+                pkg_names,
+                timeout=timeout,
+                execution_id=execution_id,
+            )
+            if disk_reason:
+                _fail_install_preflight(host, disk_reason, disk_code)
+                return
 
     manual_paths: dict[int, str] = {}
     staging_errors: list[str] = []
     if target.os_type == OSType.WINDOWS:
+        identity_reason = _windows_manual_identity_reason(patches)
+        if identity_reason:
+            _fail_install_preflight(host, identity_reason, "windows_package_invalid")
+            return
+        dotnet_reason = _windows_manual_dotnet_reason(
+            target,
+            patches,
+            timeout=timeout,
+            execution_id=execution_id,
+        )
+        if dotnet_reason:
+            _fail_install_preflight(host, dotnet_reason, "dotnet_not_applicable")
+            return
+        manual_specs = _manual_package_specs(patches)
+        if manual_specs:
+            free_bytes = _read_windows_free_bytes(target, timeout=timeout, execution_id=execution_id)
+            disk_code, disk_reason = windows_disk_shortfall(
+                free_bytes,
+                manual_stage_requirement_bytes(manual_specs),
+                action="stage",
+            )
+            if disk_reason:
+                _fail_install_preflight(host, disk_reason, disk_code)
+                return
         for patch in patches:
             try:
                 detail = patch.windows_detail
@@ -1921,6 +2264,27 @@ def _execute_install(  # noqa: C901
                     f"分发手工补丁 {patch.title}",
                     {"error": str(exc), "exit_code": None},
                 )
+        staged_specs = [
+            (int(patch.windows_detail.package_size or 0), patch.windows_detail.package_extension or "")
+            for patch in patches
+            if patch.id in manual_paths
+        ]
+        if staged_specs:
+            free_bytes = _read_windows_free_bytes(target, timeout=timeout, execution_id=execution_id)
+            disk_code, disk_reason = windows_disk_shortfall(
+                free_bytes,
+                manual_install_requirement_bytes(staged_specs),
+                action="install",
+            )
+            if disk_reason:
+                _cleanup_staged_windows_packages(
+                    target,
+                    list(manual_paths.values()),
+                    timeout=timeout,
+                    execution_id=execution_id,
+                )
+                _fail_install_preflight(host, disk_reason, disk_code)
+                return
     commands = _install_commands(
         patches,
         target.os_type,
@@ -1986,13 +2350,15 @@ def _execute_install(  # noqa: C901
         if execution_failed or failed_results or not windows_results:
             reasons = [item[1] for item in failed_results] or overall_reasons
             reason = "; ".join(reasons)[:1024] or "Windows 补丁安装失败"
+            disk_failure = bool(failed_results) and all("disk_insufficient" in item[1] for item in failed_results)
             _record_host_result(
                 host,
                 stage="failed",
                 stage_color="error",
                 exit_code=last_result.get("exit_code") if isinstance(last_result, dict) else None,
                 reason=reason,
-                failed_stage="install",
+                failed_stage="install_preflight" if disk_failure else "install",
+                error_code="disk_insufficient" if disk_failure else "",
                 can_retry="未找到匹配的更新" not in reason,
             )
             return

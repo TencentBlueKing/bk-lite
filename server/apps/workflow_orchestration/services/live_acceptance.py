@@ -21,6 +21,7 @@ from apps.workflow_orchestration.services.conductor import ConductorClient, Cond
 from apps.workflow_orchestration.services.definitions import prepare_definition_for_publish
 from apps.workflow_orchestration.services.demo_templates import seed_builtin_health_template_snapshot
 from apps.workflow_orchestration.services.executions import apply_remote_execution
+from apps.workflow_orchestration.services.health_summary_sql import health_transform_input
 from apps.workflow_orchestration.services.runtime import start_execution
 
 LIVE_PREFIX = "[LIVE]"
@@ -178,7 +179,7 @@ def _base_metadata(title: str) -> dict[str, Any]:
 
 
 def _sample_job_envelope() -> dict[str, Any]:
-    """显式文档验收数据：字段形状对齐内置健康报告模板（含 data.host）。"""
+    """显式文档验收数据：字段形状对齐内置健康报告模板（含 result.host）。"""
     collected_at = timezone.now().isoformat()
     metric = {
         "category": "计算",
@@ -196,7 +197,7 @@ def _sample_job_envelope() -> dict[str, Any]:
         "display_name": "CPU 使用率",
     }
     return {
-        "results": [
+        "data": [
             {
                 "target": {
                     "id": "manual:1",
@@ -210,7 +211,7 @@ def _sample_job_envelope() -> dict[str, Any]:
                 "exit_code": 0,
                 "stdout": "",
                 "stderr": "",
-                "data": {
+                "result": {
                     "collected_at": collected_at,
                     "conclusion": "健康",
                     "host": {
@@ -299,23 +300,33 @@ def run_document_render_scenario(
             "outputParameters": {},
             "tasks": [
                 {
+                    "name": "bklite_data_transform",
+                    "taskReferenceName": "summarize",
+                    "type": "SIMPLE",
+                    "inputParameters": health_transform_input("${workflow.input.data}"),
+                },
+                {
                     "name": "bklite_document_render",
                     "taskReferenceName": "report",
                     "type": "SIMPLE",
                     "inputParameters": {
-                        "data": "${workflow.input.data}",
+                        "data": "${summarize.output}",
                         "template_snapshot": snapshot,
                         "execution_id": "${workflow.input.execution_id}",
                         "team": "${workflow.input.team}",
                     },
-                }
+                },
             ],
             "restartable": True,
             "workflowStatusListenerEnabled": False,
         }
         metadata = _base_metadata(title)
-        metadata["edges"] = [{"id": "trigger-report", "source": "trigger_form", "target": "report"}]
-        metadata["positions"]["report"] = {"x": 280, "y": 200}
+        metadata["edges"] = [
+            {"id": "trigger-summarize", "source": "trigger_form", "target": "summarize"},
+            {"id": "summarize-report", "source": "summarize", "target": "report"},
+        ]
+        metadata["positions"]["summarize"] = {"x": 280, "y": 200}
+        metadata["positions"]["report"] = {"x": 520, "y": 200}
         metadata["node_titles"]["report"] = title
         client.register_task_definitions(TASK_DEFINITIONS)
         workflow = _register_live_workflow(
@@ -805,11 +816,17 @@ def run_health_job_chain_scenario(
                     },
                 },
                 {
+                    "name": "bklite_data_transform",
+                    "taskReferenceName": "summarize",
+                    "type": "SIMPLE",
+                    "inputParameters": health_transform_input("${scan.output}"),
+                },
+                {
                     "name": "bklite_document_render",
                     "taskReferenceName": "report",
                     "type": "SIMPLE",
                     "inputParameters": {
-                        "data": "${scan.output}",
+                        "data": "${summarize.output}",
                         "template_snapshot": snapshot,
                         "execution_id": "${workflow.input.execution_id}",
                         "team": "${workflow.input.team}",
@@ -822,9 +839,10 @@ def run_health_job_chain_scenario(
         metadata = _base_metadata(title)
         metadata["edges"] = [
             {"id": "trigger-scan", "source": "trigger_form", "target": "scan"},
-            {"id": "scan-report", "source": "scan", "target": "report"},
+            {"id": "scan-summarize", "source": "scan", "target": "summarize"},
+            {"id": "summarize-report", "source": "summarize", "target": "report"},
         ]
-        metadata["positions"].update({"scan": {"x": 240, "y": 200}, "report": {"x": 460, "y": 200}})
+        metadata["positions"].update({"scan": {"x": 240, "y": 200}, "summarize": {"x": 460, "y": 200}, "report": {"x": 680, "y": 200}})
         client.register_task_definitions(TASK_DEFINITIONS)
         workflow = _register_live_workflow(
             team_id=team_id,
@@ -951,12 +969,17 @@ def run_mixed_host_health_chain_scenario(
                     },
                 },
                 {
+                    "name": "bklite_data_transform",
+                    "taskReferenceName": "summarize",
+                    "type": "SIMPLE",
+                    "inputParameters": health_transform_input({"windows": "${scan_win.output}", "linux": "${scan_linux.output}"}),
+                },
+                {
                     "name": "bklite_document_render",
                     "taskReferenceName": "report",
                     "type": "SIMPLE",
                     "inputParameters": {
-                        "data": "${scan_win.output}",
-                        "additional_data": "${scan_linux.output}",
+                        "data": "${summarize.output}",
                         "template_snapshot": snapshot,
                         "execution_id": "${workflow.input.execution_id}",
                         "team": "${workflow.input.team}",
@@ -986,15 +1009,17 @@ def run_mixed_host_health_chain_scenario(
         metadata["edges"] = [
             {"id": "trigger-scan_win", "source": "trigger_form", "target": "scan_win"},
             {"id": "scan_win-scan_linux", "source": "scan_win", "target": "scan_linux"},
-            {"id": "scan_linux-report", "source": "scan_linux", "target": "report"},
+            {"id": "scan_linux-summarize", "source": "scan_linux", "target": "summarize"},
+            {"id": "summarize-report", "source": "summarize", "target": "report"},
             {"id": "report-notify", "source": "report", "target": "notify"},
         ]
         metadata["positions"].update(
             {
                 "scan_win": {"x": 240, "y": 160},
                 "scan_linux": {"x": 460, "y": 160},
-                "report": {"x": 680, "y": 160},
-                "notify": {"x": 900, "y": 160},
+                "summarize": {"x": 680, "y": 160},
+                "report": {"x": 900, "y": 160},
+                "notify": {"x": 1120, "y": 160},
             }
         )
         client.register_task_definitions(TASK_DEFINITIONS)

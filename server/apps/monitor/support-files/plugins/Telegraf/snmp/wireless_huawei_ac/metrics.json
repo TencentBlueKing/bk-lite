@@ -28,7 +28,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -41,7 +41,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='wireless', __$labels__}",
+      "query": "device_cpu_usage{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -59,7 +59,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='wireless', __$labels__}",
+      "query": "device_memory_usage{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -77,7 +77,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='wireless', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -95,7 +95,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_power_used",
-      "query": "device_power_used{instance_type='wireless', __$labels__} >= 0",
+      "query": "device_power_used{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} >= 0",
       "display_name": "Chassis Used Power",
       "data_type": "Number",
       "unit": "watts",
@@ -108,7 +108,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_power_total",
-      "query": "device_power_total{instance_type='wireless', __$labels__} >= 0",
+      "query": "device_power_total{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} >= 0",
       "display_name": "Chassis Total Power",
       "data_type": "Number",
       "unit": "watts",
@@ -121,7 +121,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='wireless', __$labels__}",
+      "query": "device_fan_state{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Fan State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -143,7 +143,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed_pct",
-      "query": "device_fan_speed_pct{instance_type='wireless', __$labels__} >= 0",
+      "query": "device_fan_speed_pct{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} >= 0",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "percent",
@@ -165,7 +165,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "optical_temp_c",
-      "query": "optical_temp_c{instance_type='wireless', __$labels__} != 2147483647",
+      "query": "optical_temp_c{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 2147483647",
       "display_name": "Optical Module Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -183,7 +183,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "optical_voltage_mV",
-      "query": "(optical_voltage_mV{instance_type='wireless', __$labels__} != 2147483647) / 1000",
+      "query": "(optical_voltage_mV{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 2147483647) / 1000",
       "display_name": "Optical Module Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -201,7 +201,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "optical_bias_uA",
-      "query": "optical_bias_uA{instance_type='wireless', __$labels__} != 2147483647",
+      "query": "optical_bias_uA{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 2147483647",
       "display_name": "Optical Module Bias",
       "data_type": "Number",
       "unit": "counts",
@@ -219,7 +219,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "optical_rx_dbm",
-      "query": "(optical_rx_dbm{instance_type='wireless', __$labels__} != 2147483647) / 100",
+      "query": "(optical_rx_dbm{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 2147483647) / 100",
       "display_name": "Optical RX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -237,7 +237,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "optical_tx_dbm",
-      "query": "(optical_tx_dbm{instance_type='wireless', __$labels__} != 2147483647) / 100",
+      "query": "(optical_tx_dbm{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 2147483647) / 100",
       "display_name": "Optical TX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -255,7 +255,7 @@
     {
       "metric_group": "Status",
       "name": "interface_ifOperStatus",
-      "query": "interface_ifOperStatus{instance_type='wireless', __$labels__}",
+      "query": "interface_ifOperStatus{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Interface Oper Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
@@ -277,7 +277,7 @@
     {
       "metric_group": "Bandwidth",
       "name": "interface_ifHighSpeed",
-      "query": "interface_ifHighSpeed{instance_type='wireless', __$labels__}",
+      "query": "interface_ifHighSpeed{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Interface High Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -299,7 +299,7 @@
     {
       "metric_group": "Packet Error",
       "name": "interface_ifInErrors",
-      "query": "rate(interface_ifInErrors{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifInErrors{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}[5m])",
       "display_name": "Incoming Errors Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -321,7 +321,7 @@
     {
       "metric_group": "Packet Error",
       "name": "interface_ifOutErrors",
-      "query": "rate(interface_ifOutErrors{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifOutErrors{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}[5m])",
       "display_name": "Outgoing Errors Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -343,7 +343,7 @@
     {
       "metric_group": "Packet Loss",
       "name": "interface_ifInDiscards",
-      "query": "rate(interface_ifInDiscards{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifInDiscards{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}[5m])",
       "display_name": "Incoming Discards Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -365,7 +365,7 @@
     {
       "metric_group": "Packet Loss",
       "name": "interface_ifOutDiscards",
-      "query": "rate(interface_ifOutDiscards{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifOutDiscards{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}[5m])",
       "display_name": "Outgoing Discards Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -387,7 +387,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -409,7 +409,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -431,7 +431,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -444,7 +444,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -457,7 +457,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_cur_joint_ap_num",
-      "query": "wlan_cur_joint_ap_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_cur_joint_ap_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Joined AP Count",
       "data_type": "Number",
       "unit": "counts",
@@ -470,7 +470,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_count",
-      "query": "wlan_ap_count{instance_type='wireless', __$labels__}",
+      "query": "wlan_ap_count{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "AP Count",
       "data_type": "Number",
       "unit": "counts",
@@ -483,7 +483,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_service_normal_ap_count",
-      "query": "wlan_service_normal_ap_count{instance_type='wireless', __$labels__}",
+      "query": "wlan_service_normal_ap_count{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Normal AP Count",
       "data_type": "Number",
       "unit": "counts",
@@ -496,7 +496,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_normal_ratio",
-      "query": "wlan_ap_normal_ratio{instance_type='wireless', __$labels__}",
+      "query": "wlan_ap_normal_ratio{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "AP Normal Ratio",
       "data_type": "Number",
       "unit": "percent",
@@ -509,7 +509,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_access_max_ap_number",
-      "query": "wlan_access_max_ap_number{instance_type='wireless', __$labels__}",
+      "query": "wlan_access_max_ap_number{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Max AP License",
       "data_type": "Number",
       "unit": "counts",
@@ -522,7 +522,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_cur_assoc_sta_num",
-      "query": "wlan_cur_assoc_sta_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_cur_assoc_sta_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Associated STA Count",
       "data_type": "Number",
       "unit": "counts",
@@ -535,7 +535,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_cur_auth_success_sta_num",
-      "query": "wlan_cur_auth_success_sta_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_cur_auth_success_sta_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Auth-Success STA Count",
       "data_type": "Number",
       "unit": "counts",
@@ -548,7 +548,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_sta_cur_num",
-      "query": "wlan_sta_cur_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_sta_cur_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Current STA Count",
       "data_type": "Number",
       "unit": "counts",
@@ -561,7 +561,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_cur_assoc_2g_sta_num",
-      "query": "wlan_cur_assoc_2g_sta_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_cur_assoc_2g_sta_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Associated 2.4G STA Count",
       "data_type": "Number",
       "unit": "counts",
@@ -574,7 +574,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_cur_assoc_5g_sta_num",
-      "query": "wlan_cur_assoc_5g_sta_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_cur_assoc_5g_sta_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Associated 5G STA Count",
       "data_type": "Number",
       "unit": "counts",
@@ -587,7 +587,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_cur_assoc_6g_sta_num",
-      "query": "wlan_cur_assoc_6g_sta_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_cur_assoc_6g_sta_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Associated 6G STA Count",
       "data_type": "Number",
       "unit": "counts",
@@ -600,7 +600,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_access_max_sta_number",
-      "query": "wlan_access_max_sta_number{instance_type='wireless', __$labels__}",
+      "query": "wlan_access_max_sta_number{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Max STA License",
       "data_type": "Number",
       "unit": "counts",
@@ -613,7 +613,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_global_up_speed",
-      "query": "wlan_global_up_speed{instance_type='wireless', __$labels__}",
+      "query": "wlan_global_up_speed{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Global Uplink Speed",
       "data_type": "Number",
       "unit": "kbitps",
@@ -626,7 +626,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_global_down_speed",
-      "query": "wlan_global_down_speed{instance_type='wireless', __$labels__}",
+      "query": "wlan_global_down_speed{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Global Downlink Speed",
       "data_type": "Number",
       "unit": "kbitps",
@@ -639,7 +639,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_vap_cur_num",
-      "query": "wlan_vap_cur_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_vap_cur_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Current VAP Count",
       "data_type": "Number",
       "unit": "counts",
@@ -652,7 +652,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_vap_max_num",
-      "query": "wlan_vap_max_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_vap_max_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Max VAP Count",
       "data_type": "Number",
       "unit": "counts",
@@ -665,7 +665,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_run_state",
-      "query": "wlan_ap_run_state{instance_type='wireless', __$labels__}",
+      "query": "wlan_ap_run_state{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "AP Run State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"idle\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"autofind\",\"id\":2,\"color\":\"#1677ff\"},{\"name\":\"typeNotMatch\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"fault\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"config\",\"id\":5,\"color\":\"#faad14\"},{\"name\":\"configFailed\",\"id\":6,\"color\":\"#ff4d4f\"},{\"name\":\"download\",\"id\":7,\"color\":\"#1677ff\"},{\"name\":\"normal\",\"id\":8,\"color\":\"#1ac44a\"},{\"name\":\"committing\",\"id\":9,\"color\":\"#faad14\"},{\"name\":\"commitFailed\",\"id\":10,\"color\":\"#ff4d4f\"},{\"name\":\"standby\",\"id\":11,\"color\":\"#1677ff\"},{\"name\":\"verMismatch\",\"id\":12,\"color\":\"#faad14\"},{\"name\":\"nameConflicted\",\"id\":13,\"color\":\"#faad14\"},{\"name\":\"invalid\",\"id\":14,\"color\":\"#d9d9d9\"},{\"name\":\"countryCodeMismatch\",\"id\":15,\"color\":\"#faad14\"}]",
@@ -683,7 +683,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_cpu_usage",
-      "query": "wlan_ap_cpu_usage{instance_type='wireless', __$labels__}",
+      "query": "wlan_ap_cpu_usage{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "AP CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -701,7 +701,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_mem_usage",
-      "query": "wlan_ap_mem_usage{instance_type='wireless', __$labels__}",
+      "query": "wlan_ap_mem_usage{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "AP Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -719,7 +719,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_temperature",
-      "query": "wlan_ap_temperature{instance_type='wireless', __$labels__}",
+      "query": "wlan_ap_temperature{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "AP Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -737,7 +737,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_environment_temperature",
-      "query": "wlan_ap_environment_temperature{instance_type='wireless', __$labels__} != 255",
+      "query": "wlan_ap_environment_temperature{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 255",
       "display_name": "AP Environment Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -755,7 +755,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_cpu_temperature",
-      "query": "wlan_ap_cpu_temperature{instance_type='wireless', __$labels__} != 255",
+      "query": "wlan_ap_cpu_temperature{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 255",
       "display_name": "AP CPU Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -773,7 +773,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_np_temperature",
-      "query": "wlan_ap_np_temperature{instance_type='wireless', __$labels__} != 255",
+      "query": "wlan_ap_np_temperature{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 255",
       "display_name": "AP NP Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -791,7 +791,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_ap_online_user_num",
-      "query": "wlan_ap_online_user_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_ap_online_user_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "AP Online User Count",
       "data_type": "Number",
       "unit": "counts",
@@ -809,7 +809,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_run_state",
-      "query": "wlan_radio_run_state{instance_type='wireless', __$labels__}",
+      "query": "wlan_radio_run_state{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Radio Run State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"invalid\",\"id\":255,\"color\":\"#d9d9d9\"}]",
@@ -827,7 +827,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_channel",
-      "query": "wlan_radio_channel{instance_type='wireless', __$labels__}",
+      "query": "wlan_radio_channel{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Radio Channel",
       "data_type": "Number",
       "unit": "counts",
@@ -845,7 +845,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_noise",
-      "query": "wlan_radio_noise{instance_type='wireless', __$labels__}",
+      "query": "wlan_radio_noise{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Radio Noise",
       "data_type": "Number",
       "unit": "counts",
@@ -863,7 +863,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_util",
-      "query": "wlan_radio_util{instance_type='wireless', __$labels__}",
+      "query": "wlan_radio_util{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Radio Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -881,7 +881,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_free",
-      "query": "wlan_radio_free{instance_type='wireless', __$labels__}",
+      "query": "wlan_radio_free{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Radio Free Airtime",
       "data_type": "Number",
       "unit": "percent",
@@ -899,7 +899,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_interference",
-      "query": "wlan_radio_interference{instance_type='wireless', __$labels__}",
+      "query": "wlan_radio_interference{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Radio Channel Interference",
       "data_type": "Number",
       "unit": "percent",
@@ -917,7 +917,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_per",
-      "query": "wlan_radio_per{instance_type='wireless', __$labels__} != 255",
+      "query": "wlan_radio_per{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 255",
       "display_name": "Radio Packet Error Rate",
       "data_type": "Number",
       "unit": "percent",
@@ -935,7 +935,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_tx_ratio",
-      "query": "wlan_radio_tx_ratio{instance_type='wireless', __$labels__} != 255",
+      "query": "wlan_radio_tx_ratio{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 255",
       "display_name": "Radio Tx Ratio",
       "data_type": "Number",
       "unit": "percent",
@@ -953,7 +953,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_rx_ratio",
-      "query": "wlan_radio_rx_ratio{instance_type='wireless', __$labels__} != 255",
+      "query": "wlan_radio_rx_ratio{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__} != 255",
       "display_name": "Radio Rx Ratio",
       "data_type": "Number",
       "unit": "percent",
@@ -971,7 +971,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_sta_num",
-      "query": "wlan_radio_sta_num{instance_type='wireless', __$labels__}",
+      "query": "wlan_radio_sta_num{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Radio STA Count",
       "data_type": "Number",
       "unit": "counts",
@@ -989,7 +989,7 @@
     {
       "metric_group": "Wireless",
       "name": "wlan_radio_sta_max",
-      "query": "wlan_radio_sta_max{instance_type='wireless', __$labels__}",
+      "query": "wlan_radio_sta_max{instance_type='wireless', collect_type='snmp_huawei_ac', __$labels__}",
       "display_name": "Radio Max STA Count",
       "data_type": "Number",
       "unit": "counts",

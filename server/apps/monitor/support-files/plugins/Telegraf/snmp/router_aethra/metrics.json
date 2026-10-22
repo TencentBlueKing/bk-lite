@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='router', collect_type='snmp_aethra', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -34,7 +34,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', collect_type='snmp_aethra', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -52,7 +52,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', collect_type='snmp_aethra', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -75,7 +75,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 1024",
+      "query": "sum(device_memory_total{instance_type='router', collect_type='snmp_aethra', __$labels__}) by (instance_id) * 1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total main memory of the Aethra router in bytes (enterprise 7745). The raw OID is reported in kBytes and is scaled by 1024 to bytes."
@@ -88,7 +88,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id) * 1024",
+      "query": "sum(device_memory_free{instance_type='router', collect_type='snmp_aethra', __$labels__}) by (instance_id) * 1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free main memory of the Aethra router in bytes (enterprise 7745). The raw OID is reported in kBytes and is scaled by 1024 to bytes."
@@ -101,7 +101,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(device_memory_total{instance_type='router', collect_type='snmp_aethra', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='router', collect_type='snmp_aethra', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='router', collect_type='snmp_aethra', __$labels__}) by (instance_id) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Aethra router, derived as (total-free)/total (enterprise 7745)."
@@ -109,7 +109,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_aethra', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

@@ -542,7 +542,7 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
             </div>
           </div>
         ) : (
-          <div className={styles.emptyState}>{t('subscription.addConditionHint')}</div>
+          <div className={styles.emptyState}>{t('subscription.emptyConditionHint')}</div>
         )}
       </div>
     );

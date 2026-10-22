@@ -172,7 +172,11 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
         />
       )}
       {componentName ? null : (
-        <InteractionTitleIcon config={valueConfig} floating />
+        <InteractionTitleIcon
+          config={valueConfig}
+          floating
+          color={chartTheme.panelTitleColor}
+        />
       )}
       {componentName && (
         <div
@@ -190,7 +194,6 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
               >
                 {componentName}
               </div>
-              <InteractionTitleIcon config={valueConfig} />
             </div>
             {showCsvHover && (
               <WidgetCsvHoverButton
@@ -202,6 +205,10 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
                 }}
               />
             )}
+            <InteractionTitleIcon
+              config={valueConfig}
+              color={chartTheme.panelTitleColor}
+            />
           </div>
           {normalizedDescription && (
             <div

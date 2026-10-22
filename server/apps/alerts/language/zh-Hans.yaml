@@ -107,6 +107,8 @@ catalog:
   alert_level: "告警级别"
   alert_level_id: "原始级别 ID"
   alert_level_color: "告警级别颜色"
+  alert_wecom_color: "企微级别颜色"
+  alert_feishu_color: "飞书级别颜色"
   alert_id: "告警 ID"
   alert_created_at: "告警时间"
   alert_resource_name: "资源名称"

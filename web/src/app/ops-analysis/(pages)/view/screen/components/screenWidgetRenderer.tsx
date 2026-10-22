@@ -11,6 +11,7 @@ import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasR
 import { buildScreenWidgetConfig } from '../utils/widgetConfig';
 import ScreenWidgetFrame from './screenWidgetFrame';
 import { WidgetViewportProvider } from '@/app/ops-analysis/components/widget-viewport';
+import { InteractionMenuScaleProvider } from '@/app/ops-analysis/context/interactionMenuScale';
 
 interface ScreenWidgetRendererProps {
   item: ScreenWidgetItem;
@@ -85,35 +86,37 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
   const dataSource = dataSourceResolver(widgetConfig.dataSource);
 
   return (
-    <WidgetViewportProvider scale={fitScale}>
-      <ScreenWidgetFrame
-        item={item}
-        selected={selected}
-        editMode={editMode}
-        screenDensity={screenDensity}
-        screenUiScale={screenUiScale}
-      >
-        <WidgetWrapper
-          dashboardId={screenId}
-          widgetId={item.id}
-          surface="screen"
-          chartType={item.chartType}
-          config={widgetConfig}
-          dataSource={dataSource}
-          screenRenderContext={screenRenderContext}
-          filterSearchVersion={filterSearchVersion}
-          namespaceSearchVersion={namespaceSearchVersion}
-          reloadVersion={`screen:${refreshVersion}`}
-          refreshCause={refreshCause}
-          unifiedFilterValues={unifiedFilterValues}
-          filterDefinitions={filterDefinitions}
-          builtinNamespaceId={builtinNamespaceId}
-          onRenderStatus={onRenderStatus}
-          layoutEditable={layoutEditable}
-          onTopologyLayoutChange={onTopologyLayoutChange}
-        />
-      </ScreenWidgetFrame>
-    </WidgetViewportProvider>
+    <InteractionMenuScaleProvider context={screenRenderContext}>
+      <WidgetViewportProvider scale={fitScale}>
+        <ScreenWidgetFrame
+          item={item}
+          selected={selected}
+          editMode={editMode}
+          screenDensity={screenDensity}
+          screenUiScale={screenUiScale}
+        >
+          <WidgetWrapper
+            dashboardId={screenId}
+            widgetId={item.id}
+            surface="screen"
+            chartType={item.chartType}
+            config={widgetConfig}
+            dataSource={dataSource}
+            screenRenderContext={screenRenderContext}
+            filterSearchVersion={filterSearchVersion}
+            namespaceSearchVersion={namespaceSearchVersion}
+            reloadVersion={`screen:${refreshVersion}`}
+            refreshCause={refreshCause}
+            unifiedFilterValues={unifiedFilterValues}
+            filterDefinitions={filterDefinitions}
+            builtinNamespaceId={builtinNamespaceId}
+            onRenderStatus={onRenderStatus}
+            layoutEditable={layoutEditable}
+            onTopologyLayoutChange={onTopologyLayoutChange}
+          />
+        </ScreenWidgetFrame>
+      </WidgetViewportProvider>
+    </InteractionMenuScaleProvider>
   );
 };
 

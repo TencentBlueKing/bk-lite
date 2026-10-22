@@ -153,6 +153,7 @@ export function WorkflowTemplateTextField({
   };
 
   const allowDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (disabled) return;
     const { types, expression } = resolveExpression(event);
     if (!types.includes(WORKFLOW_REFERENCE_MIME)) return;
     event.preventDefault();
@@ -166,6 +167,7 @@ export function WorkflowTemplateTextField({
   };
 
   const acceptDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (disabled) return;
     const { expression } = resolveExpression(event);
     setDragState(null);
     if (!expression) return;

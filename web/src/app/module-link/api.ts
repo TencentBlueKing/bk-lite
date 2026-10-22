@@ -10,6 +10,30 @@ export interface CmdbMonitorTaskItem {
   ip: string;
   status: string;
   monitor_id: string;
+  message?: string;
+}
+
+export interface MonitorCmdbTaskItem {
+  id: string;
+  monitor_id: string;
+  model_id: string;
+  object_name: string;
+  inst_name: string;
+  ip: string;
+  status: string;
+  cmdb_id: string;
+  message?: string;
+}
+
+export interface MonitorCmdbTask {
+  id: string;
+  status: string;
+  operator?: string;
+  object_name?: string;
+  summary?: Record<string, number>;
+  retain_until?: string | null;
+  created_at?: string | null;
+  items?: MonitorCmdbTaskItem[];
 }
 
 export interface CmdbMonitorTaskDraft {
@@ -69,11 +93,58 @@ export const useModuleLinkApi = () => {
     [get],
   );
 
+  const createMonitorCmdbTask = useCallback(
+    (monitorIds: string[], objectName: string) =>
+      post(
+        '/module_link/api/monitor_cmdb_tasks/',
+        {
+          monitor_ids: monitorIds,
+          object_name: objectName,
+        },
+        { suppressErrorNotification: true },
+      ),
+    [post],
+  );
+
+  const getMonitorCmdbTask = useCallback(
+    (taskId: string) =>
+      get(`/module_link/api/monitor_cmdb_tasks/${taskId}/`, {
+        suppressErrorNotification: true,
+      }),
+    [get],
+  );
+
+  const cancelMonitorCmdbTask = useCallback(
+    (taskId: string) =>
+      post(
+        `/module_link/api/monitor_cmdb_tasks/${taskId}/cancel/`,
+        {},
+        { suppressErrorNotification: true },
+      ),
+    [post],
+  );
+
+  const createMissingCmdbItems = useCallback(
+    (taskId: string, itemIds: string[]) =>
+      post(
+        `/module_link/api/monitor_cmdb_tasks/${taskId}/create_missing/`,
+        {
+          item_ids: itemIds,
+        },
+        { suppressErrorNotification: true },
+      ),
+    [post],
+  );
+
   return {
     createCmdbMonitorTask,
     getCmdbMonitorTask,
     cancelCmdbMonitorTask,
     assignCmdbMonitorObject,
     getAccessDraft,
+    createMonitorCmdbTask,
+    getMonitorCmdbTask,
+    cancelMonitorCmdbTask,
+    createMissingCmdbItems,
   };
 };

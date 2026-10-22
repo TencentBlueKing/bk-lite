@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { buildWorkflowFlow, implicitCanvasEdges } from '../lib/canvas-dsl';
 import {
   coerceResolvedValueForSchema,
   buildDataReferenceOptions,
@@ -38,6 +39,76 @@ describe('节点数据选择器', () => {
     expect(options.map((option) => option.value)).toContain('${workflow.input.threshold}');
     expect(options.map((option) => option.value)).toContain('${before.output.count}');
     expect(options.map((option) => option.value)).not.toContain('${after.output.count}');
+  });
+
+  it('右上角添加后自动画出的触发器连线对下游输入可见', () => {
+    const definition: ConductorDefinition = {
+      name: 'auto-edge', version: 1, schemaVersion: 2,
+      tasks: [{ name: 'source', taskReferenceName: 'job_execute', type: 'SIMPLE', inputParameters: {} }],
+    };
+    const workflowSchema: JsonSchema = { type: 'object', properties: { triggered_at: { type: 'string', title: '触发时间' } } };
+    const metadata = {
+      trigger_nodes: [{
+        id: 'trigger_schedule',
+        name: '定时触发器',
+        trigger_type: 'SCHEDULE' as const,
+        input_schema: workflowSchema,
+        config: {},
+      }],
+      edges: [] as [],
+    };
+    const stored = implicitCanvasEdges(definition, metadata);
+    const edges = buildWorkflowFlow(definition, { ...metadata, edges: stored }).edges;
+
+    const values = buildDataReferenceOptions(definition, 'job_execute', atoms, workflowSchema, undefined, edges).map((option) => option.value);
+
+    expect(edges.map((edge) => [edge.source, edge.target])).toEqual([['trigger_schedule', 'job_execute']]);
+    expect(values).toContain('${workflow.input.triggered_at}');
+    expect(values).toContain('${system.execution_id}');
+  });
+
+  it('画布上走不回触发器时只保留运行信息和已连接的上游输出', () => {
+    const definition: ConductorDefinition = {
+      name: 'unwired-trigger', version: 1, schemaVersion: 2,
+      tasks: [
+        { name: 'source', taskReferenceName: 'job_execute', type: 'SIMPLE', inputParameters: {} },
+        { name: 'source', taskReferenceName: 'island', type: 'SIMPLE', inputParameters: {} },
+        { name: 'target', taskReferenceName: 'document_render', type: 'SIMPLE', inputParameters: {} },
+      ],
+    };
+    const workflowSchema: JsonSchema = { type: 'object', properties: { triggered_at: { type: 'string', title: '触发时间' } } };
+    const edges = [
+      { source: 'trigger_schedule', target: 'job_execute' },
+      { source: 'island', target: 'document_render' },
+    ];
+
+    const values = buildDataReferenceOptions(definition, 'document_render', atoms, workflowSchema, undefined, edges).map((option) => option.value);
+
+    expect(values).not.toContain('${workflow.input.triggered_at}');
+    expect(values).not.toContain('${job_execute.output}');
+    expect(values).toContain('${island.output}');
+    expect(values).toContain('${system.execution_id}');
+  });
+
+  it('沿连线走回触发器后可以看到入口字段', () => {
+    const definition: ConductorDefinition = {
+      name: 'wired-trigger', version: 1, schemaVersion: 2,
+      tasks: [
+        { name: 'source', taskReferenceName: 'job_execute', type: 'SIMPLE', inputParameters: {} },
+        { name: 'target', taskReferenceName: 'document_render', type: 'SIMPLE', inputParameters: {} },
+      ],
+    };
+    const workflowSchema: JsonSchema = { type: 'object', properties: { triggered_at: { type: 'string', title: '触发时间' } } };
+    const edges = [
+      { source: 'trigger_schedule', target: 'job_execute' },
+      { source: 'job_execute', target: 'document_render' },
+    ];
+
+    const values = buildDataReferenceOptions(definition, 'document_render', atoms, workflowSchema, undefined, edges).map((option) => option.value);
+
+    expect(values).toContain('${workflow.input.triggered_at}');
+    expect(values).toContain('${job_execute.output}');
+    expect(values).toContain('${system.execution_id}');
   });
 
   it('画布模式按连线而不是任务数组顺序确定上游数据', () => {

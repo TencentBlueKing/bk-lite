@@ -2,12 +2,13 @@
 # @File: network.py
 # @Time: 2025/11/12 14:00
 # @Author: windyzhao
+import json
 from collections import defaultdict
 
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_plugin.topology import build_pipeline_aggregate, parse_aggregate_result
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
-from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS, NETWORK_TOPOLOGY_FACTS
+from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS, NETWORK_SN_METRICS, NETWORK_TOPOLOGY_FACTS
 from apps.cmdb.collection.interface_nic_link import (
     _ENSURE_FAILED_STAGE,
     _ENSURE_FAILED_TEMPLATE,
@@ -35,6 +36,13 @@ _NUMERIC_ENTERPRISE_ROOT = "1.3.6.1.4.1"
 _MIN_PREFIX_ARCS = 7
 
 
+class _OmitField:
+    """采集映射返回此值时，本次不写该字段。"""
+
+
+OMIT_FIELD = _OmitField()
+
+
 class CollectNetworkMetrics(CollectBase):
     ROOT = "root"  # 根oid
     KEY = "key"  # oid
@@ -58,6 +66,10 @@ class CollectNetworkMetrics(CollectBase):
         self.interfaces_data = {}
         self.interface_index_map = {}
         self.interface_name_map = defaultdict(dict)
+        self.sn_rows = {}
+        self.unresolved_by_soid = {}
+        self.unresolved_ips = set()
+        self.unresolved_groups = []
 
     def set_metrics(self):
         if self.is_topo:
@@ -106,8 +118,8 @@ class CollectNetworkMetrics(CollectBase):
         return oid.count(".") + 1
 
     @classmethod
-    def resolve_oid_mapping(cls, sysobjectid, oid_map=None):
-        """精确命中优先；否则按 OID 弧数取最长前缀（最短 7 弧）。"""
+    def lookup_library_mapping(cls, sysobjectid, oid_map=None):
+        """精确命中优先；否则按 OID 弧数取最长前缀（最短 7 弧）。未命中返回 None。"""
         if oid_map is None:
             oid_map = cls.get_oid_map()
         oid = cls.normalize_sysobjectid(sysobjectid)
@@ -124,9 +136,38 @@ class CollectNetworkMetrics(CollectBase):
                 continue
             best_row = row
             best_arcs = arcs
-        if best_row is not None:
-            return best_row
-        return cls.get_default_oid_map(oid)
+        return best_row
+
+    @classmethod
+    def resolve_oid_mapping(cls, sysobjectid, oid_map=None):
+        """库命中返回该行；未命中返回合成默认映射，形状与历史兜底一致。"""
+        hit = cls.lookup_library_mapping(sysobjectid, oid_map)
+        if hit is not None:
+            return hit
+        return cls.get_default_oid_map(cls.normalize_sysobjectid(sysobjectid))
+
+    def get_device_sn(self, data, *args, **kwargs):
+        """sn_collected=true 时写入实体序列号表；否则本次不带该字段。"""
+        del args, kwargs
+        if str(data.get("sn_collected") or "").strip().lower() != "true":
+            return OMIT_FIELD
+        host = data.get("instance_id") or data.get("host") or ""
+        rows = getattr(self, "sn_rows", {}).get(host, [])
+        return json.dumps(rows, ensure_ascii=False)
+
+    def _append_sn_row(self, data):
+        host = data.get("host") or data.get("instance_id") or ""
+        oid = str(data.get("oid") or "").strip()
+        serial = str(data.get("serial") or "").strip()
+        if not host or not oid or not serial:
+            return
+        row = {"oid": oid, "serial": serial, "entity": str(data.get("entity") or "").strip()}
+        bucket = self.sn_rows.setdefault(host, [])
+        for existing in bucket:
+            if existing.get("oid") == oid:
+                existing.update(row)
+                return
+        bucket.append(row)
 
     @staticmethod
     def set_inst_name(*args, **kwargs):
@@ -181,9 +222,15 @@ class CollectNetworkMetrics(CollectBase):
             metric_name = index_data["metric"]["__name__"]
             if "sysobjectid" in index_data["metric"]:
                 oid = self.normalize_sysobjectid(index_data["metric"]["sysobjectid"])
-                oid_data = self.resolve_oid_mapping(oid, self.oid_map)
-                if oid_data.get("brand") == "未知":
-                    logger.info("==OID does not exist, use default mapping OID={}==".format(oid))
+                library = self.lookup_library_mapping(oid, self.oid_map)
+                if library is None:
+                    oid_data = self.get_default_oid_map(oid)
+                    index_data["metric"]["_unresolved"] = True
+                    logger.info("==OID does not exist, hold unresolved OID={}==".format(oid))
+                else:
+                    oid_data = library
+                    if oid_data.get("brand") == "未知":
+                        logger.info("==OID does not exist, use default mapping OID={}==".format(oid))
                 index_data["metric"].update(oid_data)
 
             value = index_data["value"]
@@ -210,7 +257,68 @@ class CollectNetworkMetrics(CollectBase):
             if "sysobjectid" in index_dict:
                 self.instance_id_map[index_dict["instance_id"]] = index_dict
 
+            if metric_name in NETWORK_SN_METRICS:
+                self._append_sn_row(index_dict)
+                continue
+
             self.collection_metrics_dict[metric_name].append(index_dict)
+
+    def _parent_is_unresolved(self, index_data):
+        parent = self.instance_id_map.get(index_data.get("instance_id")) or {}
+        return bool(parent.get("_unresolved"))
+
+    def _ensure_unresolved_device(self, source):
+        if not hasattr(self, "unresolved_by_soid"):
+            self.unresolved_by_soid = {}
+        if not hasattr(self, "unresolved_ips"):
+            self.unresolved_ips = set()
+        soid = self.normalize_sysobjectid(source.get("sysobjectid") or source.get("oid"))
+        ip_addr = str(source.get("ip_addr") or source.get("host") or source.get("instance_id") or "")
+        if not soid or not ip_addr:
+            return None
+        self.unresolved_ips.add(ip_addr)
+        devices = self.unresolved_by_soid.setdefault(soid, {})
+        return devices.setdefault(
+            ip_addr,
+            {
+                "ip_addr": ip_addr,
+                "port": str(source.get("port") or ""),
+                "sys_desc": source.get("sysdescr") or "",
+                "interfaces": [],
+            },
+        )
+
+    def _hold_unresolved_device(self, index_data):
+        device = self._ensure_unresolved_device(index_data)
+        if device is None:
+            return
+        if index_data.get("port"):
+            device["port"] = str(index_data.get("port"))
+        if index_data.get("sysdescr"):
+            device["sys_desc"] = index_data.get("sysdescr")
+
+    def _hold_unresolved_interface(self, index_data):
+        parent = self.instance_id_map.get(index_data.get("instance_id")) or {}
+        device = self._ensure_unresolved_device(parent)
+        if device is None:
+            return
+        device["interfaces"].append(
+            {
+                "name": self.interface_name(index_data),
+                "description": self.interface_description(index_data),
+                "mac": index_data.get("mac_address") or "",
+                "status": self.set_interface_status(index_data.get("oper_status")),
+            }
+        )
+
+    def _materialize_unresolved_groups(self):
+        grouped = getattr(self, "unresolved_by_soid", None) or {}
+        self.unresolved_groups = [{"soid": soid, "devices": list(devices.values())} for soid, devices in grouped.items()]
+        return self.unresolved_groups
+
+    def _endpoint_is_unresolved(self, inst_name):
+        ip_addr = str(inst_name or "").split("-", 1)[0]
+        return bool(ip_addr) and ip_addr in (getattr(self, "unresolved_ips", None) or set())
 
     def format_metrics(self):
         """格式化数据"""
@@ -222,6 +330,12 @@ class CollectNetworkMetrics(CollectBase):
                     logger.info(
                         "This data is discarded because no feature library can be found for the OID. instance_id={}".format(index_data["instance_id"])
                     )
+                    continue
+                if index_data.get("_unresolved") or self._parent_is_unresolved(index_data):
+                    if "sysobjectid" in index_data:
+                        self._hold_unresolved_device(index_data)
+                    else:
+                        self._hold_unresolved_interface(index_data)
                     continue
                 if "sysobjectid" in index_data:
                     model_id = index_data["device_type"]
@@ -235,7 +349,10 @@ class CollectNetworkMetrics(CollectBase):
                     if isinstance(key_or_func, tuple):
                         data[field] = key_or_func[0](index_data[key_or_func[1]])
                     elif callable(key_or_func):
-                        data[field] = key_or_func(index_data)
+                        value = key_or_func(index_data)
+                        if value is OMIT_FIELD:
+                            continue
+                        data[field] = value
                     else:
                         data[field] = index_data.get(key_or_func, "")
 
@@ -244,6 +361,7 @@ class CollectNetworkMetrics(CollectBase):
                     self.interfaces_data[data["inst_name"]] = data
                     self.index_interface_lookup(index_data, data)
 
+        self._materialize_unresolved_groups()
         if self.is_topo:
             relationships = self.collect_topology_relationships(topology_facts, topo_data)
             self._topology_relationships = relationships
@@ -285,6 +403,9 @@ class CollectNetworkMetrics(CollectBase):
             if source_inst_name == target_inst_name:
                 dropped.append(self.slim_topology_link(link, reason="self_loop"))
                 continue
+            if self._endpoint_is_unresolved(source_inst_name) or self._endpoint_is_unresolved(target_inst_name):
+                dropped.append(self.slim_topology_link(link, reason="unresolved_soid"))
+                continue
             relation = {
                 "source_inst_name": source_inst_name,
                 "target_inst_name": target_inst_name,
@@ -306,6 +427,8 @@ class CollectNetworkMetrics(CollectBase):
                     type(exc).__name__,
                 )
         for relation in nic_relationships:
+            if self._endpoint_is_unresolved(relation.get("source_inst_name")) or self._endpoint_is_unresolved(relation.get("target_inst_name")):
+                continue
             self.append_unique_relationship(relationships, seen, relation)
         dropped.extend(nic_dropped)
 

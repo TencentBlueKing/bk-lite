@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "title": "转换结果",
+  "description": "以输入 JSON 为底，按查询的结果名覆盖字段。",
+  "additionalProperties": true
+}

@@ -23,7 +23,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "system_state",
-      "query": "max(snmp_system_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_system_state{instance_type='network_service', collect_type='snmp_netsure', __$labels__}) by (instance_id)",
       "display_name": "Power System Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Power",
       "name": "system_voltage_volts",
-      "query": "max(snmp_system_voltage_volts{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_system_voltage_volts{instance_type='network_service', collect_type='snmp_netsure', __$labels__}) by (instance_id)",
       "display_name": "System Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Power",
       "name": "system_current_amps",
-      "query": "max(snmp_system_current_amps{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_system_current_amps{instance_type='network_service', collect_type='snmp_netsure', __$labels__}) by (instance_id)",
       "display_name": "System Current (A)",
       "data_type": "Number",
       "unit": "none",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Power",
       "name": "battery_voltage_volts",
-      "query": "max(snmp_battery_voltage_volts{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_battery_voltage_volts{instance_type='network_service', collect_type='snmp_netsure', __$labels__}) by (instance_id)",
       "display_name": "Battery Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Power",
       "name": "battery_capacity_percent",
-      "query": "max(snmp_battery_capacity_percent{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_battery_capacity_percent{instance_type='network_service', collect_type='snmp_netsure', __$labels__}) by (instance_id)",
       "display_name": "Battery Capacity",
       "data_type": "Number",
       "unit": "percent",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Temperature",
       "name": "env_temperature_celsius",
-      "query": "env_temperature_celsius{instance_type='network_service', __$labels__}",
+      "query": "env_temperature_celsius{instance_type='network_service', collect_type='snmp_netsure', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -106,7 +106,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_netsure', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -124,7 +124,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_netsure', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -142,7 +142,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_netsure', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

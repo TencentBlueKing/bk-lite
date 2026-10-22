@@ -27,7 +27,7 @@
       ],
       "name": "device_cpu_usage",
       "display_name": "CPU 使用率",
-      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='switch', collect_type='snmp_moxa', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
       "description": "CPU load of the Moxa EDS industrial switch over the past 5 seconds in percent (MOXA-EDS408A-MIB cpuLoading5s scalar)."
@@ -40,7 +40,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "max(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='switch', collect_type='snmp_moxa', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilization of the Moxa EDS industrial switch in percent (MOXA-EDS408A-MIB memoryUsage scalar)."
@@ -48,7 +48,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_moxa', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_moxa', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -89,7 +89,7 @@
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(device_psu_state{instance_type='switch', collect_type='snmp_moxa', __$labels__}) by (instance_id)",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "State of power input 1 of the Moxa EDS industrial switch (MOXA-EDS408A-MIB power1InputStatus), normalised to 1=present / 2=not present."
@@ -97,7 +97,7 @@
     {
       "metric_group": "Power",
       "name": "device_psu_state_backup",
-      "query": "device_psu_state_backup{instance_type='switch', __$labels__}",
+      "query": "device_psu_state_backup{instance_type='switch', collect_type='snmp_moxa', __$labels__}",
       "display_name": "PSU Backup State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_moxa', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

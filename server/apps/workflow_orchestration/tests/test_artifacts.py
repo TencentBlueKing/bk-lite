@@ -77,10 +77,10 @@ def _template(fmt):
     if fmt == "docx":
         document = Document()
         table = document.add_table(rows=6, cols=2)
-        table.cell(0, 0).text = "{%tr for r in results %}"
+        table.cell(0, 0).text = "{%tr for r in data %}"
         table.cell(1, 0).text = "{{ r.target.name }}"
         table.cell(1, 1).text = "{{ r.target.ip }}"
-        table.cell(2, 0).text = "{%tr for m in r.data.metrics %}"
+        table.cell(2, 0).text = "{%tr for m in r.result.metrics %}"
         table.cell(3, 0).text = "{{ m.metric_name }}"
         table.cell(3, 1).text = "{{ m.value }}"
         table.cell(4, 0).text = "{%tr endfor %}"
@@ -90,9 +90,9 @@ def _template(fmt):
         workbook = Workbook()
         sheet = workbook.active
         for row in (
-            ["{% for r in results %}"],
+            ["{% for r in data %}"],
             ["{{ r.target.name }}", "{{ r.target.ip }}"],
-            ["{% for m in r.data.metrics %}"],
+            ["{% for m in r.result.metrics %}"],
             ["{{ m.metric_name }}", "{{ m.value }}"],
             ["{% endfor %}"],
             ["{% endfor %}"],
@@ -229,7 +229,7 @@ def test_report_atom_persists_downloadable_office_artifact(fmt):
 
 
 @pytest.mark.django_db
-def test_report_atom_merges_additional_job_envelope_for_multi_host_report():
+def test_report_atom_keeps_the_summary_it_is_given():
     workflow = Workflow.objects.create(name="inspection-merge", team=[7], definition={})
     execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
     store = MemoryStore()
@@ -238,11 +238,11 @@ def test_report_atom_merges_additional_job_envelope_for_multi_host_report():
     store.objects[template_key] = template
 
     primary = {
-        "results": [
+        "data": [
             {
                 "target": {"name": "win", "ip": "10.10.90.120", "operating_system": "windows"},
                 "status": "SUCCESS",
-                "data": {
+                "result": {
                     "conclusion": "健康",
                     "metrics": [{"metric_name": "cpu", "value": 1}],
                     "critical": [],
@@ -255,11 +255,11 @@ def test_report_atom_merges_additional_job_envelope_for_multi_host_report():
         "job_task_ids": [101],
     }
     additional = {
-        "results": [
+        "data": [
             {
                 "target": {"name": "linux", "ip": "192.168.64.5", "operating_system": "linux"},
                 "status": "SUCCESS",
-                "data": {
+                "result": {
                     "conclusion": "健康",
                     "metrics": [{"metric_name": "mem", "value": 2}],
                     "critical": [],
@@ -283,8 +283,11 @@ def test_report_atom_merges_additional_job_envelope_for_multi_host_report():
                 "size": len(template),
                 "filename_prefix": "inspection",
             },
-            "data": primary,
-            "additional_data": additional,
+            "data": {
+                "data": primary["data"] + additional["data"],
+                "summary": {"total": 2, "succeeded": 2, "failed": 0},
+                "job_task_ids": [101, 102],
+            },
         },
         store=store,
     )

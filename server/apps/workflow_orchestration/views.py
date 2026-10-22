@@ -36,6 +36,7 @@ from apps.workflow_orchestration.models import (
 )
 from apps.workflow_orchestration.permissions import filter_workflow_queryset
 from apps.workflow_orchestration.serializers import (
+    TEAM_REQUIRED_MESSAGE,
     WORKFLOW_NAME_CONFLICT_MESSAGE,
     AtomConfigTemplateSerializer,
     AtomDefinitionSerializer,
@@ -53,6 +54,7 @@ from apps.workflow_orchestration.serializers import (
     WorkflowSerializer,
     WorkflowTriggerSerializer,
     WorkflowVersionSerializer,
+    normalize_team_ids,
 )
 from apps.workflow_orchestration.services.agent_knowledge_inputs import store_uploaded_agent_knowledge
 from apps.workflow_orchestration.services.atom_registry import available_atom_catalog, ensure_platform_atom, task_definition_from_catalog_item
@@ -266,6 +268,16 @@ class WorkflowViewSet(AuthViewSet):
     ORGANIZATION_FIELD = "team"
     pagination_class = WorkflowPageNumberPagination
 
+    def _sorted_team(self, team) -> list[int]:
+        return sorted({int(item) for item in team or [] if isinstance(item, int) and not isinstance(item, bool)})
+
+    def _team_ids_from_payload(self, request, raw):
+        team_ids = normalize_team_ids(raw)
+        if team_ids is None:
+            return None, Response({"detail": render_known_message(request, TEAM_REQUIRED_MESSAGE)}, status=status.HTTP_400_BAD_REQUEST)
+        self._validate_org_field_permission(request, team_ids)
+        return team_ids, None
+
     def _scoped_queryset(self, request, *, require_operate=False):
         team = self._validate_current_team_permission(request)
         return filter_workflow_queryset(request, self.get_queryset(), team, require_operate=require_operate)
@@ -344,19 +356,25 @@ class WorkflowViewSet(AuthViewSet):
 
     @HasPermission("workflow-Add", app_name=APP_NAME)
     def create(self, request, *args, **kwargs):
-        team = self._validate_current_team_permission(request)
+        current_team = self._validate_current_team_permission(request)
         payload = request.data.copy()
+        if "team" in payload:
+            team_ids, error = self._team_ids_from_payload(request, payload.get("team"))
+            if error is not None:
+                return error
+        else:
+            team_ids = [current_team]
         starter = payload.pop("starter", "health_inspection")
         if not payload.get("definition"):
             payload["definition"] = build_blank_definition() if starter == "blank" else build_health_inspection_definition()
         if not payload.get("canvas_metadata"):
             payload["canvas_metadata"] = build_blank_canvas_metadata() if starter == "blank" else build_health_inspection_canvas_metadata()
-        serializer = self.get_serializer(data=payload)
+        serializer = self.get_serializer(data=payload, context={**self.get_serializer_context(), "team": team_ids})
         serializer.is_valid(raise_exception=True)
         username, domain = _identity(request)
         try:
             workflow = serializer.save(
-                team=[team],
+                team=team_ids,
                 created_by=username,
                 updated_by=username,
                 domain=domain,
@@ -391,16 +409,35 @@ class WorkflowViewSet(AuthViewSet):
                         status=status.HTTP_409_CONFLICT,
                     )
                 payload = {key: value for key, value in request.data.items() if key != "draft_revision"}
-                serializer = self.get_serializer(workflow, data=payload, partial=True)
+                team_ids = None
+                if "team" in payload:
+                    team_ids, error = self._team_ids_from_payload(request, payload.get("team"))
+                    if error is not None:
+                        return error
+                    if workflow.current_version and team_ids != self._sorted_team(workflow.team):
+                        return Response(
+                            {"detail": render_known_message(request, "已发布流程不可修改组织"), "code": "PUBLISHED_TEAM_LOCKED"},
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                serializer = self.get_serializer(
+                    workflow,
+                    data=payload,
+                    partial=True,
+                    context={**self.get_serializer_context(), "team": team_ids if team_ids is not None else workflow.team},
+                )
                 serializer.is_valid(raise_exception=True)
                 username, domain = _identity(request)
-                serializer.save(
-                    updated_by=username,
-                    updated_by_domain=domain,
-                    draft_revision=workflow.draft_revision + 1,
-                    draft_base_version=workflow.draft_base_version or workflow.current_version,
-                    has_draft=True,
-                )
+                save_kwargs = {
+                    "updated_by": username,
+                    "updated_by_domain": domain,
+                    "draft_revision": workflow.draft_revision + 1,
+                    "draft_base_version": workflow.draft_base_version or workflow.current_version,
+                }
+                if any(key in payload for key in ("definition", "canvas_metadata")):
+                    save_kwargs["has_draft"] = True
+                if team_ids is not None:
+                    save_kwargs["team"] = team_ids
+                serializer.save(**save_kwargs)
         except IntegrityError as error:
             if _is_workflow_name_conflict(error):
                 return _workflow_name_conflict_response()
@@ -492,17 +529,27 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Add", app_name=APP_NAME)
     def duplicate(self, request, pk=None):
         source = self._scoped_object(request)
+        if "team" in request.data:
+            team_ids, error = self._team_ids_from_payload(request, request.data.get("team"))
+            if error is not None:
+                return error
+        else:
+            team_ids = self._sorted_team(source.team) or source.team
+        payload = {"name": request.data.get("name", f"{source.name[:116]}（副本）")}
+        if "description" in request.data:
+            payload["description"] = request.data.get("description")
         request_serializer = WorkflowDuplicateRequestSerializer(
-            data={"name": request.data.get("name", f"{source.name[:116]}（副本）")},
-            context={"team": source.team},
+            data=payload,
+            context={"team": team_ids, "request": request},
         )
         request_serializer.is_valid(raise_exception=True)
         username, domain = _identity(request)
+        description = request_serializer.validated_data.get("description", source.description)
         try:
             copied = Workflow.objects.create(
                 name=request_serializer.validated_data["name"],
-                description=source.description,
-                team=source.team,
+                description=description,
+                team=team_ids,
                 definition=copy.deepcopy(source.definition),
                 canvas_metadata=copy.deepcopy(source.canvas_metadata),
                 is_builtin=False,

@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_netonix', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -40,7 +40,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "query": "device_fan_speed{instance_type='switch', collect_type='snmp_netonix', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -58,7 +58,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='switch', __$labels__}",
+      "query": "device_voltage_volts{instance_type='switch', collect_type='snmp_netonix', __$labels__}",
       "display_name": "Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_power_used",
-      "query": "max(snmp_device_power_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_power_used{instance_type='switch', collect_type='snmp_netonix', __$labels__}) by (instance_id)",
       "display_name": "Power Consumption",
       "data_type": "Number",
       "unit": "watts",
@@ -89,7 +89,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_input_current_amps",
-      "query": "max(snmp_device_input_current_amps{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_input_current_amps{instance_type='switch', collect_type='snmp_netonix', __$labels__}) by (instance_id)",
       "display_name": "DC/DC Input Current",
       "data_type": "Number",
       "unit": "none",
@@ -102,7 +102,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_dcdc_efficiency",
-      "query": "max(snmp_device_dcdc_efficiency{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_dcdc_efficiency{instance_type='switch', collect_type='snmp_netonix', __$labels__}) by (instance_id)",
       "display_name": "DC/DC Efficiency",
       "data_type": "Number",
       "unit": "percent",
@@ -115,7 +115,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', collect_type='snmp_netonix', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -133,7 +133,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', collect_type='snmp_netonix', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -151,7 +151,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_netonix', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

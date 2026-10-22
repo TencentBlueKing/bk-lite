@@ -271,6 +271,7 @@ export interface Patch {
     file_size: number;
     sha256: string;
     extension: '.msu' | '.cab';
+    dotnet_version?: string;
   } | null;
 }
 

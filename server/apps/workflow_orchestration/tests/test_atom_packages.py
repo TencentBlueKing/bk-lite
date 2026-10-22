@@ -84,6 +84,7 @@ def test_platform_executable_atoms_share_the_standard_package_contract():
         "bklite_memory_write",
         "bklite_notification",
         "bklite_job_execute",
+        "bklite_data_transform",
         "bklite_document_render",
         "bklite_http_request",
     }

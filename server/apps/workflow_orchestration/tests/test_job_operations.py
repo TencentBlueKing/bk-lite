@@ -75,7 +75,7 @@ def test_job_output_uses_unified_envelope_and_optional_json_marker():
                         "target_key": "n1",
                         "status": "success",
                         "exit_code": 0,
-                        "stdout": 'log\nBK_LITE_RESULT={"cpu":{"usage_percent":42}}',
+                        "stdout": 'log\nlast_result={"ignored":true}\nresult={"cpu":{"usage_percent":42}}',
                     }
                 ]
             }
@@ -85,9 +85,9 @@ def test_job_output_uses_unified_envelope_and_optional_json_marker():
     output = execute_custom_script(_inputs(_target("n1")), executor=runner)
 
     assert output["summary"] == {"total": 1, "succeeded": 1, "failed": 0}
-    assert output["results"][0]["status"] == "SUCCESS"
-    assert output["results"][0]["data"] == {"cpu": {"usage_percent": 42}}
-    assert output["results"][0]["error"] is None
+    assert output["data"][0]["status"] == "SUCCESS"
+    assert output["data"][0]["result"] == {"cpu": {"usage_percent": 42}}
+    assert output["data"][0]["error"] is None
 
 
 def test_job_output_extracts_json_marker_from_ansible_wrapped_stdout():
@@ -95,7 +95,7 @@ def test_job_output_extracts_json_marker_from_ansible_wrapped_stdout():
         [
             '{"changed": true, "path": "C:\\\\Temp\\\\inspection.ps1"}',
             (
-                '{"changed": true, "stdout": "BK_LITE_RESULT={\\"metric_count\\":1,'
+                '{"changed": true, "stdout": "result={\\"metric_count\\":1,'
                 '\\"metrics\\":[{\\"category\\":\\"CPU\\",\\"value\\":12.5}]}\\r\\n", "rc": 0}'
             ),
             '{"changed": true}',
@@ -119,7 +119,7 @@ def test_job_output_extracts_json_marker_from_ansible_wrapped_stdout():
     output = execute_custom_script(_inputs(_target("n1")), executor=runner)
 
     assert output["summary"] == {"total": 1, "succeeded": 1, "failed": 0}
-    assert output["results"][0]["data"] == {
+    assert output["data"][0]["result"] == {
         "metric_count": 1,
         "metrics": [{"category": "CPU", "value": 12.5}],
     }
@@ -128,7 +128,7 @@ def test_job_output_extracts_json_marker_from_ansible_wrapped_stdout():
 def test_parse_optional_data_only_reads_bounded_stdout_prefix():
     from apps.workflow_orchestration.services.job_operations import MAX_CAPTURED_OUTPUT, _parse_optional_data
 
-    marker = 'BK_LITE_RESULT={"ok":true}'
+    marker = 'result={"ok":true}'
     # Marker sits beyond the capture window so unbounded parsing would find it.
     stdout = ("x" * (MAX_CAPTURED_OUTPUT + 1)) + "\n" + marker
 
@@ -139,12 +139,11 @@ def test_parse_optional_data_only_reads_bounded_stdout_prefix():
 def test_parse_optional_data_completes_json_past_capture_window_when_marker_is_in_prefix():
     from apps.workflow_orchestration.services.job_operations import MAX_CAPTURED_OUTPUT, _parse_optional_data
 
-    # 标记落在窗口内，但 JSON 本体很长并越过窗口（Win Ansible 包装 stdout 常见）。
+    # 行首标记落在窗口内，但 JSON 本体很长并越过窗口。
     big = {"host": {"hostname": "win-1"}, "metrics": [{"name": f"m{i}", "value": i} for i in range(800)]}
     payload = json.dumps(big, ensure_ascii=False, separators=(",", ":"))
-    prefix = 'prefix {"changed": true, "stdout": "BK_LITE_RESULT='
-    stdout = prefix + payload + '"}\n'
-    assert stdout.find("BK_LITE_RESULT=") < MAX_CAPTURED_OUTPUT
+    stdout = "noise\nresult=" + payload + "\n"
+    assert stdout.find("\nresult=") < MAX_CAPTURED_OUTPUT
     assert len(stdout) > MAX_CAPTURED_OUTPUT
     assert _parse_optional_data(stdout) == big
 
@@ -153,16 +152,16 @@ def test_parse_optional_data_unwraps_escaped_marker_inside_ansible_json_string()
     from apps.workflow_orchestration.services.job_operations import MAX_CAPTURED_OUTPUT, _parse_optional_data
 
     big = {"host": {"hostname": "WIN-1"}, "metrics": [{"name": f"m{i}", "value": i} for i in range(500)], "conclusion": "健康"}
-    inner = "BK_LITE_RESULT=" + json.dumps(big, ensure_ascii=False, separators=(",", ":"))
+    inner = "result=" + json.dumps(big, ensure_ascii=False, separators=(",", ":"))
     wrapped = json.dumps({"changed": True, "stdout": inner, "rc": 0}, ensure_ascii=False)
     stdout = '{"changed": true, "path": "C:\\\\Temp\\\\a.ps1"}\n\n' + wrapped + '\n\n{"changed": true}\n'
-    assert "BK_LITE_RESULT=" in stdout[:MAX_CAPTURED_OUTPUT]
+    assert "result=" in stdout[:MAX_CAPTURED_OUTPUT]
     assert len(stdout) > MAX_CAPTURED_OUTPUT
     assert _parse_optional_data(stdout) == big
 
 
 def test_invalid_result_marker_fails_the_node():
-    runner = FakeExecutor([{"execution_results": [{"target_key": "n1", "status": "success", "exit_code": 0, "stdout": "BK_LITE_RESULT={bad"}]}])
+    runner = FakeExecutor([{"execution_results": [{"target_key": "n1", "status": "success", "exit_code": 0, "stdout": "result={bad"}]}])
 
     with pytest.raises(ValueError, match="有效 JSON"):
         execute_custom_script(_inputs(_target("n1")), executor=runner)
@@ -174,8 +173,8 @@ def test_script_failures_stay_in_results_and_do_not_stop_the_report():
     output = execute_custom_script(_inputs(_target("n1")), executor=runner)
 
     assert output["summary"] == {"total": 1, "succeeded": 0, "failed": 1}
-    assert output["results"][0]["status"] == "FAILED"
-    assert output["results"][0]["error"] == "boom"
+    assert output["data"][0]["status"] == "FAILED"
+    assert output["data"][0]["error"] == "boom"
 
 
 def test_targets_are_grouped_by_source_for_one_script_type():
@@ -233,7 +232,7 @@ def test_mixed_os_targets_are_submitted_like_job_platform_without_prefilter():
     assert runner.submissions[0]["script_type"] == "powershell"
     assert [node["source_id"] for node in runner.submissions[0]["nodes"]] == ["win-1", "linux-1"]
     assert output["summary"] == {"total": 2, "succeeded": 1, "failed": 1}
-    by_ip_os = {(item["target"]["operating_system"], item["status"]): item for item in output["results"]}
+    by_ip_os = {(item["target"]["operating_system"], item["status"]): item for item in output["data"]}
     assert by_ip_os[("windows", "SUCCESS")]["exit_code"] == 0
     assert by_ip_os[("linux", "FAILED")]["error"] == "win_shell incompatible"
 

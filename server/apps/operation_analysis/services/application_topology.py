@@ -4,6 +4,7 @@ from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_MAX_NODES
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.logger import safe_exception_info
 from apps.operation_analysis.common.get_nats_source_data import build_nats_user_info
+from apps.operation_analysis.services.monitor_batches import chunks as _chunks
 from apps.operation_analysis.services.user_messages import oa_message
 from apps.rpc.cmdb import CMDB
 from apps.rpc.monitor import Monitor
@@ -218,8 +219,3 @@ def _coerce_alert_count(count: Any) -> int | None:
     if value < 0:
         return None
     return value
-
-
-def _chunks(items: list, size: int):
-    for index in range(0, len(items), size):
-        yield items[index : index + size]

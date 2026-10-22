@@ -23,7 +23,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='wireless', collect_type='snmp_aruba_instant', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -36,7 +36,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='wireless', __$labels__}",
+      "query": "device_cpu_usage{instance_type='wireless', collect_type='snmp_aruba_instant', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -58,7 +58,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='wireless', __$labels__}",
+      "query": "device_memory_total{instance_type='wireless', collect_type='snmp_aruba_instant', __$labels__}",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -80,7 +80,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='wireless', __$labels__}",
+      "query": "device_memory_free{instance_type='wireless', collect_type='snmp_aruba_instant', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -102,7 +102,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='wireless', __$labels__}",
+      "query": "device_memory_usage{instance_type='wireless', collect_type='snmp_aruba_instant', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -124,7 +124,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_ap_state",
-      "query": "wireless_ap_state{instance_type='wireless', __$labels__}",
+      "query": "wireless_ap_state{instance_type='wireless', collect_type='snmp_aruba_instant', __$labels__}",
       "display_name": "AP Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",

@@ -20,7 +20,7 @@ vi.mock('@/utils/i18n', () => ({
         'alarms.alert': '告警',
         'alarms.incident': '事故',
         'alarms.reassign': '转派',
-        'alarms.closeReasonLabel': '关闭原因（选填）',
+        'alarms.closeReasonLabel': '关闭原因',
         'alarms.closeReasonPlaceholder': '请输入关闭原因',
         'common.confirm': '确认',
         'common.cancel': '取消',
@@ -80,7 +80,7 @@ beforeAll(() => {
 const openCloseDialog = async () => {
   render(<AlarmAction rowData={[processingAlert]} onAction={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: '关闭' }));
-  await screen.findByText('关闭原因（选填）');
+  await screen.findByText('关闭原因');
   return screen.getByPlaceholderText('请输入关闭原因');
 };
 

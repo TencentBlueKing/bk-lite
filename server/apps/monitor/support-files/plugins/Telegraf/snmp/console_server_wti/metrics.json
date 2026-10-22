@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='console_server', __$labels__}) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='console_server', collect_type='snmp_wti', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "max(device_psu_state{instance_type='console_server', __$labels__}) by (instance_id)",
+      "query": "max(device_psu_state{instance_type='console_server', collect_type='snmp_wti', __$labels__}) by (instance_id)",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='console_server', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='console_server', collect_type='snmp_wti', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='console_server', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='console_server', collect_type='snmp_wti', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -84,7 +84,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='console_server', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='console_server', collect_type='snmp_wti', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -97,7 +97,7 @@
     {
       "metric_group": "Power",
       "name": "wti_input_power_1_state",
-      "query": "wti_input_power_1_state{instance_type='console_server', __$labels__}",
+      "query": "wti_input_power_1_state{instance_type='console_server', collect_type='snmp_wti', __$labels__}",
       "display_name": "WTI Input Power 1 State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Power",
       "name": "wti_input_power_2_state",
-      "query": "wti_input_power_2_state{instance_type='console_server', __$labels__}",
+      "query": "wti_input_power_2_state{instance_type='console_server', collect_type='snmp_wti', __$labels__}",
       "display_name": "WTI Input Power 2 State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Power",
       "name": "wti_input_power_3_state",
-      "query": "wti_input_power_3_state{instance_type='console_server', __$labels__}",
+      "query": "wti_input_power_3_state{instance_type='console_server', collect_type='snmp_wti', __$labels__}",
       "display_name": "WTI Input Power 3 State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -136,7 +136,7 @@
     {
       "metric_group": "Power",
       "name": "wti_input_power_4_state",
-      "query": "wti_input_power_4_state{instance_type='console_server', __$labels__}",
+      "query": "wti_input_power_4_state{instance_type='console_server', collect_type='snmp_wti', __$labels__}",
       "display_name": "WTI Input Power 4 State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -149,7 +149,7 @@
     {
       "metric_group": "Power",
       "name": "wti_branch_current_amps",
-      "query": "wti_branch_current_amps{instance_type='console_server', __$labels__}",
+      "query": "wti_branch_current_amps{instance_type='console_server', collect_type='snmp_wti', __$labels__}",
       "display_name": "Branch Current (A)",
       "data_type": "Number",
       "unit": "none",
@@ -175,7 +175,7 @@
     {
       "metric_group": "Power",
       "name": "wti_branch_voltage_volts",
-      "query": "wti_branch_voltage_volts{instance_type='console_server', __$labels__}",
+      "query": "wti_branch_voltage_volts{instance_type='console_server', collect_type='snmp_wti', __$labels__}",
       "display_name": "Branch Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -201,7 +201,7 @@
     {
       "metric_group": "Power",
       "name": "wti_branch_power_watts",
-      "query": "wti_branch_power_watts{instance_type='console_server', __$labels__}",
+      "query": "wti_branch_power_watts{instance_type='console_server', collect_type='snmp_wti', __$labels__}",
       "display_name": "Branch Power",
       "data_type": "Number",
       "unit": "watts",

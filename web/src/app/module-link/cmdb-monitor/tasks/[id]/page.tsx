@@ -77,6 +77,7 @@ const CmdbMonitorTaskPage = () => {
       { title: t('ModuleLink.model'), dataIndex: 'model_id', width: 140 },
       { title: t('ModuleLink.ip'), dataIndex: 'ip', width: 140 },
       { title: t('ModuleLink.monitorId'), dataIndex: 'monitor_id', ellipsis: true },
+      { title: t('ModuleLink.rowMessage'), dataIndex: 'message', ellipsis: true },
     ],
     [t],
   );

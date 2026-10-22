@@ -44,6 +44,7 @@ import {
   resolveMonitorLinkMessage,
 } from '@/app/cmdb/utils/systemLinkage';
 import MonitorBindModal from './MonitorBindModal';
+import InstUuidCopy from '../../instUuidCopy';
 import { HandledRequestError } from '@/utils/request';
 
 const InfoList: React.FC<AssetDataFieldProps> = ({
@@ -689,6 +690,15 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           )}
         </div>
       )}
+      {instUuid ? (
+        <InstUuidCopy
+          value={instUuid}
+          showLabel
+          wrap
+          className="font-mono text-xs leading-4"
+          rowClassName="mb-3"
+        />
+      ) : null}
       {displayGroups && displayGroups.length > 0 && (
         <Collapse
           bordered={false}

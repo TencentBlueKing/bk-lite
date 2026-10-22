@@ -84,6 +84,7 @@ export interface WorkflowRecord {
   id: number;
   name: string;
   description: string;
+  team?: number[];
   status: WorkflowStatus;
   current_version: number;
   enabled: boolean;
@@ -130,7 +131,7 @@ export interface WorkflowTargetField {
   max_count: number;
 }
 
-export type FormFieldWidget = 'input' | 'textarea' | 'code' | 'number' | 'switch' | 'select' | 'radio' | 'multiselect' | 'tags' | 'key-value' | 'json' | 'target-selector' | 'file-upload' | 'agent-knowledge-upload';
+export type FormFieldWidget = 'input' | 'textarea' | 'code' | 'number' | 'switch' | 'select' | 'radio' | 'multiselect' | 'tags' | 'key-value' | 'json' | 'query-list' | 'target-selector' | 'file-upload' | 'agent-knowledge-upload';
 
 export interface TargetFieldBinding {
   mode: 'runtime';
@@ -317,6 +318,8 @@ export interface DownloadableArtifact {
   format: 'docx' | 'xlsx';
   filename: string;
   size: number;
+  created_at: string;
+  expires_at: string;
   download_url: string;
 }
 

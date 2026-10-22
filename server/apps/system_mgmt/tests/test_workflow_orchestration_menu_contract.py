@@ -8,7 +8,7 @@ def test_workflow_orchestration_is_standalone_app_with_execution_permission():
     payload = json.loads(Path("support-files/system_mgmt/menus/workflow-orchestration.json").read_text(encoding="utf-8"))
 
     assert payload["client_id"] == "workflow-orchestration"
-    assert payload["name"] == "Workflow Orchestration"
+    assert payload["name"] == "Workflow"
     assert payload["url"] == "/workflow-orchestration"
     assert payload["description"] == "app.workflow-orchestration"
     assert payload["tags"] == [
@@ -43,6 +43,6 @@ def test_workflow_orchestration_system_mgmt_language_covers_get_client_detail():
     zh = LanguageLoader(app="system_mgmt", default_lang="zh-Hans")
     en = LanguageLoader(app="system_mgmt", default_lang="en")
     assert zh.get("app_name.workflow-orchestration") == "编排中心"
-    assert en.get("app_name.workflow-orchestration") == "Workflow Orchestration"
+    assert en.get("app_name.workflow-orchestration") == "Workflow"
     assert zh.get("app.workflow-orchestration")
     assert en.get("app.workflow-orchestration")

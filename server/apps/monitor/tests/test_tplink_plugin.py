@@ -20,6 +20,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import same_metric_field
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -150,14 +151,14 @@ def test_shared_device_metrics_match_cisco_group_and_unit(metrics, cisco_metrics
 def test_cpu_query_byte_identical_to_cisco(metrics, cisco_metrics):
     ext = {m["name"]: m for m in metrics["metrics"]}["device_cpu_usage"]
     cis = {m["name"]: m for m in cisco_metrics["metrics"]}["device_cpu_usage"]
-    assert ext["query"] == cis["query"]
+    assert same_metric_field("query", ext["query"], cis["query"])
 
 
 @pytest.mark.unit
 def test_memory_is_direct_percent_raw_series(metrics):
     usage = {m["name"]: m for m in metrics["metrics"]}["device_memory_usage"]
     assert usage["unit"] == "percent"
-    assert usage["query"] == "device_memory_usage{instance_type='switch', __$labels__}"
+    assert usage["query"] == f"device_memory_usage{{instance_type='switch', collect_type='{COLLECT_TYPE}', __$labels__}}"
 
 
 @pytest.mark.unit
@@ -167,9 +168,7 @@ def test_interface_hc_metrics_present_and_match_cisco(metrics, cisco_metrics):
     for name in INTERFACE_METRICS:
         assert name in ext, f"{name} must be declared"
         for field in ("metric_group", "unit", "query", "dimensions"):
-            assert ext[name][field] == cis[name][field], f"{name}.{field} drift vs Cisco"
-
-
+            assert same_metric_field(field, ext[name][field], cis[name][field]), f"{name}.{field} drift vs Cisco"
 @pytest.mark.unit
 def test_toml_collects_ifhc_counters(toml_text):
     assert "ifHCInOctets" in toml_text and "ifHCOutOctets" in toml_text

@@ -76,6 +76,24 @@ const useViewApi = () => {
     [post]
   );
 
+  const getInstanceDisplayMetrics = useCallback(
+    async (
+      objectId: React.Key,
+      data: { instance_ids: string[]; unassigned?: boolean },
+      config?: AxiosRequestConfig
+    ) => {
+      return await post(
+        `/monitor/api/monitor_instance/${String(objectId)}/display_metrics/`,
+        data,
+        {
+          ...METRIC_QUERY_REQUEST_CONFIG,
+          ...config,
+        }
+      );
+    },
+    [post]
+  );
+
   const getInstanceQueryParams = useCallback(
     async (
       name: string,
@@ -133,6 +151,7 @@ const useViewApi = () => {
     getInstanceInstantQuery,
     queryFlowConversations,
     getInstanceSearch,
+    getInstanceDisplayMetrics,
     getInstanceQueryParams,
     getMetricsInstanceQuery,
     getViewColumnPreference,

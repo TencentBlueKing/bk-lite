@@ -26,7 +26,11 @@ pytestmark = pytest.mark.django_db
 
 class TestSubscriptionDeliveryModel:
     def _create_rule(self):
-        return SubscriptionRule.objects.create(name="delivery-rule", organization=1, model_id="host",)
+        return SubscriptionRule.objects.create(
+            name="delivery-rule",
+            organization=1,
+            model_id="host",
+        )
 
     def _create_delivery(self, rule, **overrides):
         values = {
@@ -93,7 +97,9 @@ class TestFormatHelpers:
     pytestmark = pytest.mark.unit
 
     def test_触发类型展示_已知与未知(self):
-        assert SubscriptionTaskService._get_trigger_type_display(TriggerType.ATTRIBUTE_CHANGE.value) == "属性变化"
+        assert SubscriptionTaskService._get_trigger_type_display(TriggerType.ATTRIBUTE_CHANGE.value) == "修改"
+        assert SubscriptionTaskService._get_trigger_type_display(TriggerType.INSTANCE_ADDED.value) == "新增"
+        assert SubscriptionTaskService._get_trigger_type_display(TriggerType.INSTANCE_DELETED.value) == "删除"
         assert SubscriptionTaskService._get_trigger_type_display("xx") == "xx"
 
     def test_时间格式化_iso与非法原样(self):
@@ -102,10 +108,16 @@ class TestFormatHelpers:
         assert SubscriptionTaskService._format_triggered_at("bad") == "bad"
 
     def test_change_summary_新增删除前缀(self):
-        added = make_event(trigger_type=TriggerType.INSTANCE_ADDED.value)
-        deleted = make_event(trigger_type=TriggerType.INSTANCE_DELETED.value)
+        added = make_event(trigger_type=TriggerType.INSTANCE_ADDED.value, change_summary="")
+        deleted = make_event(trigger_type=TriggerType.INSTANCE_DELETED.value, change_summary="")
         assert SubscriptionTaskService._format_change_summary(added) == "+ 主机A"
         assert SubscriptionTaskService._format_change_summary(deleted) == "- 主机A"
+
+    def test_change_summary_新增删除带上监听字段(self):
+        added = make_event(trigger_type=TriggerType.INSTANCE_ADDED.value, change_summary="cpu: 4")
+        deleted = make_event(trigger_type=TriggerType.INSTANCE_DELETED.value, change_summary="cpu: 2")
+        assert SubscriptionTaskService._format_change_summary(added) == "+ 主机A（cpu: 4）"
+        assert SubscriptionTaskService._format_change_summary(deleted) == "- 主机A（cpu: 2）"
 
     def test_change_summary_普通原样(self):
         e = make_event(change_summary="cpu: 2 -> 4")
@@ -127,7 +139,7 @@ class TestBuildTitle:
 
     def test_单实例_普通类型含实例名(self):
         title = SubscriptionTaskService._build_title("主机", [make_event()], TriggerType.ATTRIBUTE_CHANGE.value)
-        assert title == "主机 主机A 属性变化"
+        assert title == "主机 主机A 修改"
 
     def test_单实例_新增不含实例名(self):
         e = make_event(trigger_type=TriggerType.INSTANCE_ADDED.value)
@@ -137,7 +149,7 @@ class TestBuildTitle:
     def test_多实例_用计数与复数后缀(self):
         events = [make_event(inst_id=i) for i in range(3)]
         title = SubscriptionTaskService._build_title("主机", events, TriggerType.ATTRIBUTE_CHANGE.value)
-        assert title == "主机 3 个实例属性变化"
+        assert title == "主机 3 个实例修改"
 
     def test_未知触发类型_默认后缀(self):
         title = SubscriptionTaskService._build_title("主机", [make_event()], "unknown")
@@ -230,7 +242,9 @@ class TestRelationChangeSummary:
     def test_有新增删除_替换为名称(self, mocker):
         summary = "关联模型[host]变化, 新增关联: [1], 删除关联: [2]"
         mocker.patch.object(
-            SubscriptionTaskService, "_get_instance_name_map", return_value={1: "主机1", 2: "主机2"},
+            SubscriptionTaskService,
+            "_get_instance_name_map",
+            return_value={1: "主机1", 2: "主机2"},
         )
         out = SubscriptionTaskService._format_relation_change_summary(summary)
         assert "新增关联: [主机1]" in out
@@ -253,14 +267,22 @@ class TestGetInstanceNameMap:
     def test_正常构建_id到名称(self, mocker):
         mocker.patch(
             "apps.cmdb.services.subscription_task.InstanceManage.instance_list",
-            return_value=([{"_id": 1, "inst_name": "主机1"}, {"_id": 2, "inst_name": "主机2"}, {"inst_name": "无id"},], 3,),  # 无 _id 跳过
+            return_value=(
+                [
+                    {"_id": 1, "inst_name": "主机1"},
+                    {"_id": 2, "inst_name": "主机2"},
+                    {"inst_name": "无id"},
+                ],
+                3,
+            ),  # 无 _id 跳过
         )
         out = SubscriptionTaskService._get_instance_name_map("host", [1, 2])
         assert out == {1: "主机1", 2: "主机2"}
 
     def test_查询异常返回空(self, mocker):
         mocker.patch(
-            "apps.cmdb.services.subscription_task.InstanceManage.instance_list", side_effect=RuntimeError("db down"),
+            "apps.cmdb.services.subscription_task.InstanceManage.instance_list",
+            side_effect=RuntimeError("db down"),
         )
         assert SubscriptionTaskService._get_instance_name_map("host", [1]) == {}
 
@@ -323,7 +345,12 @@ class TestCheckRules:
 
     def test_有事件_按渠道持久化后只派发delivery_id(self, mocker):
         rule = SubscriptionRule.objects.create(
-            name="r1", organization=1, model_id="host", is_enabled=True, recipients={"users": ["alice"]}, channel_ids=[10, 20],
+            name="r1",
+            organization=1,
+            model_id="host",
+            is_enabled=True,
+            recipients={"users": ["alice"]},
+            channel_ids=[10, 20],
         )
         trigger_service = mocker.patch("apps.cmdb.services.subscription_task.SubscriptionTriggerService")
         trigger_service.return_value.process.return_value = [make_event(rule_id=rule.id)]
@@ -342,7 +369,12 @@ class TestCheckRules:
 
     def test_相同事件重复检查不新增delivery(self, mocker):
         rule = SubscriptionRule.objects.create(
-            name="r_dedupe", organization=1, model_id="host", is_enabled=True, recipients={"users": ["alice"]}, channel_ids=[10],
+            name="r_dedupe",
+            organization=1,
+            model_id="host",
+            is_enabled=True,
+            recipients={"users": ["alice"]},
+            channel_ids=[10],
         )
         trigger_service = mocker.patch("apps.cmdb.services.subscription_task.SubscriptionTriggerService")
         trigger_service.return_value.process.return_value = [make_event(rule_id=rule.id)]
@@ -354,7 +386,13 @@ class TestCheckRules:
         assert SubscriptionDelivery.objects.count() == 1
 
     def test_delivery写入失败时规则快照回滚(self, mocker):
-        rule = SubscriptionRule.objects.create(name="r_rollback", organization=1, model_id="host", is_enabled=True, channel_ids=[10],)
+        rule = SubscriptionRule.objects.create(
+            name="r_rollback",
+            organization=1,
+            model_id="host",
+            is_enabled=True,
+            channel_ids=[10],
+        )
         trigger_service = mocker.patch("apps.cmdb.services.subscription_task.SubscriptionTriggerService")
 
         def update_snapshot_then_return_event():
@@ -363,7 +401,9 @@ class TestCheckRules:
 
         trigger_service.return_value.process.side_effect = update_snapshot_then_return_event
         mocker.patch.object(
-            SubscriptionTaskService, "_persist_event_groups", side_effect=RuntimeError("db write failed"),
+            SubscriptionTaskService,
+            "_persist_event_groups",
+            side_effect=RuntimeError("db write failed"),
         )
 
         SubscriptionTaskService.check_rules()
@@ -373,13 +413,22 @@ class TestCheckRules:
         assert SubscriptionDelivery.objects.count() == 0
 
     def test_broker失败后下次检查重新派发已有delivery(self, mocker):
-        rule = SubscriptionRule.objects.create(name="r_broker_retry", organization=1, model_id="host", is_enabled=True, channel_ids=[10],)
+        rule = SubscriptionRule.objects.create(
+            name="r_broker_retry",
+            organization=1,
+            model_id="host",
+            is_enabled=True,
+            channel_ids=[10],
+        )
         trigger_service = mocker.patch("apps.cmdb.services.subscription_task.SubscriptionTriggerService")
         trigger_service.return_value.process.side_effect = [
             [make_event(rule_id=rule.id)],
             [],
         ]
-        send_task = mocker.patch("apps.core.celery.app.send_task", side_effect=[RuntimeError("broker down"), None],)
+        send_task = mocker.patch(
+            "apps.core.celery.app.send_task",
+            side_effect=[RuntimeError("broker down"), None],
+        )
 
         SubscriptionTaskService.check_rules()
         delivery = SubscriptionDelivery.objects.get()
@@ -412,7 +461,11 @@ class TestCheckRules:
 class TestSendNotifications:
     def _create_delivery(self, attempt_count=0):
         rule = SubscriptionRule.objects.create(
-            name=f"send-rule-{attempt_count}", organization=1, model_id="host", recipients={"users": ["alice"]}, channel_ids=[10],
+            name=f"send-rule-{attempt_count}",
+            organization=1,
+            model_id="host",
+            recipients={"users": ["alice"]},
+            channel_ids=[10],
         )
         return SubscriptionDelivery.objects.create(
             dedupe_key=str(attempt_count).zfill(64),
@@ -494,7 +547,8 @@ class TestSendNotifications:
         delivery = self._create_delivery(attempt_count=1)
         stale_at = timezone.now() - timedelta(minutes=16)
         SubscriptionDelivery.objects.filter(id=delivery.id).update(
-            status=SubscriptionDeliveryStatus.SENDING, updated_at=stale_at,
+            status=SubscriptionDeliveryStatus.SENDING,
+            updated_at=stale_at,
         )
         client = mocker.patch("apps.cmdb.services.subscription_task.SystemMgmt").return_value
         client.send_msg_with_channel.return_value = {"result": True}
@@ -508,15 +562,18 @@ class TestSendNotifications:
 
     def test_旧worker完成不能提交新租约代次(self, mocker):
         delivery = self._create_delivery()
-        client = mocker.patch("apps.cmdb.services.subscription_task.SystemMgmt").return_value
+        mocker.patch("apps.cmdb.services.subscription_task.SystemMgmt")
 
         def simulate_new_lease(*args):
             SubscriptionDelivery.objects.filter(id=delivery.id).update(
-                status=SubscriptionDeliveryStatus.SENDING, attempt_count=2,
+                status=SubscriptionDeliveryStatus.SENDING,
+                attempt_count=2,
             )
 
         mocker.patch.object(
-            SubscriptionTaskService, "_send_delivery", side_effect=simulate_new_lease,
+            SubscriptionTaskService,
+            "_send_delivery",
+            side_effect=simulate_new_lease,
         )
 
         SubscriptionTaskService.send_notifications(delivery_ids=[delivery.id])

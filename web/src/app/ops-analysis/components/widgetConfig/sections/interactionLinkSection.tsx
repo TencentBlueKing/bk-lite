@@ -135,14 +135,14 @@ const InteractionLinkSection: React.FC<InteractionLinkSectionProps> = ({
     <div>
       <div>{t('dashboard.interactionNoneTip', '无：不设置跳转')}</div>
       {besideText ? (
-        <div>{t('dashboard.interactionTextTitleTip', '标题链接：文本后显示图标')}</div>
+        <div>{t('dashboard.interactionTextTitleTip', '标题链接：文本行最右侧显示 > 图标')}</div>
       ) : capability.data ? (
         <>
-          <div>{t('dashboard.interactionLinkTypeTitleTip', '标题链接：标题旁显示图标')}</div>
+          <div>{t('dashboard.interactionLinkTypeTitleTip', '标题链接：标题行最右侧显示 > 图标')}</div>
           <div>{t('dashboard.interactionLinkTypeDataTip', '数据链接：点击数据点、柱、扇区或数字打开')}</div>
         </>
       ) : (
-        <div>{t('dashboard.interactionTitleOnlyTip', '该组件仅支持标题链接，点击标题旁图标打开')}</div>
+        <div>{t('dashboard.interactionTitleOnlyTip', '该组件仅支持标题链接，点击标题行最右侧 > 打开')}</div>
       )}
     </div>
   );

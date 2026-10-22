@@ -220,15 +220,10 @@ def _operation_base_content(channel_type: str) -> tuple[str, str]:
   <p style="margin-top:16px;"><strong>请进入告警中心认领并处理该告警。</strong></p>
 </div>""",
         )
-    if channel_type in {
-        ChannelChoices.ENTERPRISE_WECHAT_BOT,
-        ChannelChoices.DINGTALK_BOT,
-        ChannelChoices.FEISHU_BOT,
-    }:
-        channel_subject = subject if channel_type != ChannelChoices.ENTERPRISE_WECHAT_BOT else ""
+    if channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
         return (
-            channel_subject,
-            """### {{ notification.scene_name }}｜待认领｜{{ alert.level }}
+            "",
+            """### {{ notification.scene_name }}｜待认领｜<font color="{{ alert.wecom_color }}">{{ alert.level }}</font>
 
 **{{ alert.title }}**
 
@@ -256,6 +251,41 @@ def _operation_base_content(channel_type: str) -> tuple[str, str]:
 
 **请进入告警中心认领并处理该告警。**""",
         )
+    if channel_type in {ChannelChoices.DINGTALK_BOT, ChannelChoices.FEISHU_BOT}:
+        body = """### {{ notification.scene_name }}｜待认领｜{{ alert.level }}
+
+**{{ alert.title }}**
+
+> {{ notification.action_summary }}
+
+#### 操作信息
+
+- **操作类型：** {{ notification.scene_name }}
+- **操作人：** {{ notification.actor_name }}
+- **当前处理人：** {{ notification.receiver_names }}
+- **操作时间：** {{ notification.action_time }}
+- **当前状态：** 待响应
+
+#### 告警信息
+
+- **告警资源：** {{ alert.resource_name }}（{{ alert.resource_type }}）
+- **监控来源：** {{ alert.source_name }} / {{ alert.item }}
+- **发生时间：** {{ alert.created_at }}
+
+**告警内容**
+
+> {{ alert.content }}
+
+告警 ID：{{ alert.alert_id }}
+
+**请进入告警中心认领并处理该告警。**"""
+        if channel_type == ChannelChoices.FEISHU_BOT:
+            body = body.replace(
+                "｜{{ alert.level }}",
+                "｜<font color='{{ alert.feishu_color }}'>{{ alert.level }}</font>",
+                1,
+            )
+        return subject, body
     prefix = "[WeOps 告警操作通知]" if channel_type == ChannelChoices.NATS else "[告警操作通知]"
     return (
         "",

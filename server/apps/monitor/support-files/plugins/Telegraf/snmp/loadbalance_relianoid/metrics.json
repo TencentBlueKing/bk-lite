@@ -22,7 +22,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='loadbalance', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_cpu_usage",
-      "query": "max(snmp_device_cpu_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_total",
-      "query": "max(snmp_device_memory_total{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_total{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}) by (instance_id)",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_free",
-      "query": "max(snmp_device_memory_free{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_free{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}) by (instance_id)",
       "display_name": "Free Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_used",
-      "query": "max(snmp_device_memory_used{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_used{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}) by (instance_id)",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_usage",
-      "query": "max(snmp_device_memory_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -100,7 +100,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_load1",
-      "query": "max(snmp_device_load1{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_load1{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}) by (instance_id)",
       "display_name": "Load Average (1m)",
       "data_type": "Number",
       "unit": "none",
@@ -113,7 +113,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_load5",
-      "query": "max(snmp_device_load5{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_load5{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}) by (instance_id)",
       "display_name": "Load Average (5m)",
       "data_type": "Number",
       "unit": "none",
@@ -126,7 +126,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_load15",
-      "query": "max(snmp_device_load15{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_load15{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}) by (instance_id)",
       "display_name": "Load Average (15m)",
       "data_type": "Number",
       "unit": "none",
@@ -139,7 +139,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='loadbalance', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -157,7 +157,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='loadbalance', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='loadbalance', collect_type='snmp_relianoid', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",

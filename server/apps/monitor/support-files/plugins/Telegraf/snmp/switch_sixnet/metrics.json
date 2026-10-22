@@ -23,7 +23,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu1_status",
-      "query": "max(psu1_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(psu1_status{instance_type='switch', collect_type='snmp_sixnet', __$labels__}) by (instance_id)",
       "display_name": "PSU1 Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "psu2_status",
-      "query": "max(psu2_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(psu2_status{instance_type='switch', collect_type='snmp_sixnet', __$labels__}) by (instance_id)",
       "display_name": "PSU2 Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "ok_relay_status",
-      "query": "max(ok_relay_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(ok_relay_status{instance_type='switch', collect_type='snmp_sixnet', __$labels__}) by (instance_id)",
       "display_name": "OK Relay Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"off\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"on\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"unknown\",\"id\":2,\"color\":\"#8c8c8c\"}]",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_sixnet', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

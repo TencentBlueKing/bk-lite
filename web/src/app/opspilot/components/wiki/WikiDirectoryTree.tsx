@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Button, Input, Popconfirm, Tree } from "antd";
+import { Button, Input, Popconfirm, Progress, Tree } from "antd";
 import type { DataNode as TreeDataNode } from "antd/lib/tree";
 import { DeleteOutlined } from "@ant-design/icons";
 import { useTranslation } from "@/utils/i18n";
@@ -48,6 +48,8 @@ interface WikiDirectoryTreeProps {
   canMutate?: boolean;
   onDeletePage?: (pageId: number) => void;
   onDeleteDirectory?: (directoryId: number) => void;
+  importProgress?: number | null;
+  importProgressLabel?: string | null;
 }
 
 const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
@@ -64,6 +66,8 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
   canMutate = false,
   onDeletePage,
   onDeleteDirectory,
+  importProgress = null,
+  importProgressLabel = null,
 }) => {
   const { t } = useTranslation();
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
@@ -320,6 +324,20 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
         />
       </div>
       <div className="border-t border-[var(--color-border)] px-3 py-2 text-[11px] text-[var(--color-text-3)]">
+        {importProgress != null && (
+          <div className="mb-2">
+            <div className="mb-1 text-[var(--color-text-2)]">
+              {importProgressLabel
+                || t("wiki.okfImportProgress", undefined, { progress: importProgress })}
+            </div>
+            <Progress
+              percent={importProgress}
+              size="small"
+              status="active"
+              showInfo={false}
+            />
+          </div>
+        )}
         {t("wiki.directoryPageCount", undefined, { count: pages.length })}
       </div>
     </aside>

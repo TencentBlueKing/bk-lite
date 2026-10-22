@@ -84,6 +84,7 @@ def test_demo_command_rebuilds_seven_workflows_and_visible_scenarios(api_client,
         if task["type"] == "SIMPLE"
     }
     assert atom_keys == {
+        "bklite_data_transform",
         "bklite_document_render",
         "bklite_http_request",
         "bklite_job_execute",
@@ -91,24 +92,25 @@ def test_demo_command_rebuilds_seven_workflows_and_visible_scenarios(api_client,
     }
     assert [task["name"] for task in health_word.definition["tasks"]] == [
         "bklite_job_execute",
+        "bklite_data_transform",
         "bklite_document_render",
         "bklite_notification",
     ]
     assert health_word.definition["tasks"][0]["inputParameters"]["script_type"] == "powershell"
     assert health_excel.definition["tasks"][0]["inputParameters"]["script_type"] == "shell"
-    assert health_word.definition["tasks"][1]["inputParameters"]["template_snapshot"]["format"] == "docx"
-    assert health_excel.definition["tasks"][1]["inputParameters"]["template_snapshot"]["format"] == "xlsx"
+    assert health_word.definition["tasks"][2]["inputParameters"]["template_snapshot"]["format"] == "docx"
+    assert health_excel.definition["tasks"][2]["inputParameters"]["template_snapshot"]["format"] == "xlsx"
     word_targets = health_word.canvas_metadata["trigger_nodes"][0]["input_schema"]["properties"]["targets"]
     excel_targets = health_excel.canvas_metadata["trigger_nodes"][0]["input_schema"]["properties"]["targets"]
     assert word_targets["x-target-binding"]["allowedOperatingSystems"] == ["windows"]
     assert excel_targets["x-target-binding"]["allowedOperatingSystems"] == ["linux"]
     health_execution = WorkflowExecution.objects.get(trigger_id="health-word-success")
-    assert health_execution.output["job"]["results"][0]["target"]["ip"] == "10.10.90.120"
-    health_data = health_execution.output["job"]["results"][0]["data"]
+    assert health_execution.output["job"]["data"][0]["target"]["ip"] == "10.10.90.120"
+    health_data = health_execution.output["job"]["data"][0]["result"]
     assert {metric["category"] for metric in health_data["metrics"]} >= {"计算", "内存", "磁盘", "网络", "系统健康"}
     assert health_data["host"]["hostname"] == "win-demo-01"
     linux_execution = WorkflowExecution.objects.get(trigger_id="health-excel-success")
-    assert linux_execution.output["job"]["results"][0]["target"]["operating_system"] == "linux"
+    assert linux_execution.output["job"]["data"][0]["target"]["operating_system"] == "linux"
     assert all(
         {
             "object_type",

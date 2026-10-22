@@ -257,14 +257,14 @@ def _health_job_output(*, collected_at: str, warning: bool, operating_system: st
             "operating_system": "linux",
         }
     return {
-        "results": [
+        "data": [
             {
                 "target": target,
                 "status": "SUCCESS",
                 "exit_code": 0,
-                "stdout": "BK_LITE_RESULT={...}",
+                "stdout": "result={...}",
                 "stderr": "",
-                "data": {
+                "result": {
                     "collected_at": collected_at,
                     "host": host,
                     "metrics": metrics,
@@ -533,7 +533,7 @@ class Command(BaseCommand):
                     target_snapshot = {
                         "fields": {
                             "targets": {
-                                "items": [output["job"]["results"][0]["target"]],
+                                "items": [output["job"]["data"][0]["target"]],
                                 "count": 1,
                                 "offline_count": 0,
                             }

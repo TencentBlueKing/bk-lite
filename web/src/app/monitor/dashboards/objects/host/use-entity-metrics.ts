@@ -47,6 +47,12 @@ export function useHostEntityMetrics(options: {
   const idKey = JSON.stringify(idValues);
   const timeKey = JSON.stringify(timeValues);
   const queryKey = queries.map((item) => item.key).join(',');
+  const identity = `${String(instanceId)}|${idKey}`;
+  const [seenIdentity, setSeenIdentity] = useState(identity);
+  if (identity !== seenIdentity) {
+    setSeenIdentity(identity);
+    setState(EMPTY);
+  }
 
   useEffect(() => {
     if (!idValues.length || !monitorObjectId || !instanceId) {

@@ -160,6 +160,7 @@ error:
   alert_copy_partial_accepted: 告警中心仅接受了部分事件副本。
   notification_delivery_failed: 通知渠道投递失败。
   alert_copy_rejected: 告警中心未接受事件副本。
+  vault_secret_key_not_configured: SECRET_KEY 未配置,无法加解密 vault
 success:
   menu_group_disabled: 菜单组已禁用
   batch_create: 批量创建成功

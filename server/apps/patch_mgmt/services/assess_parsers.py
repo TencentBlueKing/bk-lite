@@ -30,6 +30,7 @@ from apps.patch_mgmt.services.compliance_evaluator import (
     evaluate_requirements,
 )
 from apps.patch_mgmt.services.linux_platform import package_manager_family, parse_linux_host_facts, validate_linux_host_facts
+from apps.patch_mgmt.services.windows_dotnet import parse_windows_dotnet_release
 from apps.patch_mgmt.utils.i18n import patch_message
 
 # WUA MsrcSeverity -> PatchSeverity 映射
@@ -481,7 +482,8 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
         installed_kbs = parse_windows_hotfixes(stdout)
 
     missing_kbs = set(wua_results.keys())
-    windows_host = WindowsHostFacts()
+    dotnet_release = parse_windows_dotnet_release(stdout)
+    windows_host = WindowsHostFacts(dotnet_release=dotnet_release)
     for raw_line in stdout.splitlines():
         if not raw_line.startswith("BKPATCH_HOST|WINDOWS|"):
             continue
@@ -493,6 +495,7 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
                 version=version.strip(),
                 build_number=build_number.strip(),
                 architecture=architecture.strip(),
+                dotnet_release=dotnet_release,
             )
         break
     requirements = list(requirements)
@@ -504,12 +507,14 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
             products = tuple(getattr(detail, "product_list", ()) or ())
             architectures = tuple(getattr(detail, "architectures", ()) or ())
             configuration_error = "" if kb_number else "missing KB number"
+            package_dotnet_version = getattr(detail, "package_dotnet_version", "") or ""
         except Exception:  # noqa: BLE001
             logger.warning("要求 %s 缺少 Windows 补丁详情，无法评估", req.id)
             kb_number = ""
             products = ()
             architectures = ()
             configuration_error = "missing windows_detail"
+            package_dotnet_version = ""
         specs.append(
             RequirementSpec(
                 req.id,
@@ -519,6 +524,7 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
                 products=products,
                 architectures=architectures,
                 configuration_error=configuration_error,
+                package_dotnet_version=package_dotnet_version,
             )
         )
 

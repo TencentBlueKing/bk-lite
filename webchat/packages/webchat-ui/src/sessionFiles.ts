@@ -6,6 +6,8 @@ export type SessionAttachmentFile = {
   filename: string;
   fileUrl: string;
   ext: string;
+  createdAt?: number;
+  source?: string;
 };
 
 const hasUnsafeCharacters = (url: string) => Array.from(url).some((character) => {
@@ -97,8 +99,25 @@ type ContentChunkLike = {
 
 type MessageLike = {
   id?: string;
+  sender?: string;
+  timestamp?: number;
+  content?: string | Array<{ text?: string; message?: string } | string>;
   metadata?: { contentChunks?: ContentChunkLike[] } | null;
 };
+
+function messageText(message: MessageLike): string {
+  const content = message.content;
+  if (typeof content === 'string') {
+    return content.trim();
+  }
+  if (!Array.isArray(content)) {
+    return '';
+  }
+  return content
+    .map((part) => (typeof part === 'string' ? part : part.text || part.message || ''))
+    .join(' ')
+    .trim();
+}
 
 function parseAttachmentResult(result: string): { filename?: string; file_url?: string } | null {
   try {
@@ -137,7 +156,14 @@ export function attachmentDownloadsFromToolCalls(toolCalls: Array<{ id?: string;
 export function collectSessionAttachmentFiles(messages: MessageLike[]): SessionAttachmentFile[] {
   const seen = new Set<string>();
   const files: SessionAttachmentFile[] = [];
+  let source = '';
   for (const message of messages) {
+    if (message.sender === 'user') {
+      const text = messageText(message);
+      if (text) {
+        source = text;
+      }
+    }
     const chunks = message.metadata?.contentChunks;
     if (!Array.isArray(chunks)) {
       continue;
@@ -162,6 +188,8 @@ export function collectSessionAttachmentFiles(messages: MessageLike[]): SessionA
           filename,
           fileUrl,
           ext: fileExtension(filename),
+          createdAt: typeof message.timestamp === 'number' ? message.timestamp : undefined,
+          source: source || undefined,
         });
       }
     }

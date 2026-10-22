@@ -53,7 +53,7 @@ def test_health_starter_is_native_conductor_definition():
     assert "apiVersion" not in definition
     assert "spec" not in definition
     assert definition["schemaVersion"] == 2
-    assert [task["type"] for task in definition["tasks"]] == ["SIMPLE", "SIMPLE", "SIMPLE"]
+    assert [task["type"] for task in definition["tasks"]] == ["SIMPLE", "SIMPLE", "SIMPLE", "SIMPLE"]
     assert definition["tasks"][-1]["name"] == "bklite_notification"
 
 
@@ -63,7 +63,8 @@ def test_health_starter_ends_at_report_without_form_return():
     assert metadata["return_nodes"] == []
     assert metadata["edges"] == [
         {"id": "trigger-scan", "source": "trigger_form", "target": "scan"},
-        {"id": "scan-report", "source": "scan", "target": "report"},
+        {"id": "scan-summarize", "source": "scan", "target": "summarize"},
+        {"id": "summarize-report", "source": "summarize", "target": "report"},
         {"id": "report-notify", "source": "report", "target": "notify"},
     ]
     fields = metadata["trigger_nodes"][0]["input_schema"]["properties"]
@@ -152,11 +153,16 @@ def test_health_starter_is_composed_from_configurable_general_atoms():
     assert "failure_policy" not in scan["inputParameters"]
     assert "variant" not in scan["inputParameters"]
 
-    report = tasks[1]
+    summarize = tasks[1]
+    assert summarize["name"] == "bklite_data_transform"
+    assert summarize["inputParameters"]["data"] == "${scan.output}"
+    assert {item["name"] for item in summarize["inputParameters"]["queries"]} == {"summary", "metric_summary", "data"}
+
+    report = tasks[2]
     assert report["name"] == "bklite_document_render"
     assert "template" not in report["inputParameters"]
-    assert report["inputParameters"]["data"] == "${scan.output}"
-    notify = tasks[2]
+    assert report["inputParameters"]["data"] == "${summarize.output}"
+    notify = tasks[3]
     assert notify["name"] == "bklite_notification"
     assert notify["inputParameters"]["report_artifact"] == "${report.output.artifact}"
     assert notify["inputParameters"]["recipients"] == ["${workflow.input.__system.actor_name}"]

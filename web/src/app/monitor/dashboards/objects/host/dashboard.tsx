@@ -10,6 +10,7 @@ import { HOST_CATEGORY_TAB_METRIC_NAMES } from './layered/performance-scope';
 import type { HostCategoryTab } from './layered/tab-level';
 import {
   HOST_DISK_ENTITY_QUERIES,
+  HOST_GPU_ENTITY_QUERIES,
   HOST_NET_ENTITY_QUERIES,
   HOST_PROCESS_ENTITY_QUERIES
 } from './queries';
@@ -60,6 +61,7 @@ export default function HostDashboardPage() {
   const categoryDisk = entityOnCategory && (categoryTab === 'overview' || categoryTab === 'disk');
   const categoryNet = entityOnCategory && (categoryTab === 'overview' || categoryTab === 'net');
   const categoryProcess = entityOnCategory && processReady && (categoryTab === 'overview' || categoryTab === 'process');
+  const categorySystem = entityOnCategory && categoryTab === 'system';
   const entityArgs = {
     idValues,
     instanceIdKeys,
@@ -83,6 +85,11 @@ export default function HostDashboardPage() {
     ...entityArgs,
     enabled: categoryProcess,
     queries: processReady ? HOST_PROCESS_ENTITY_QUERIES : []
+  });
+  const gpuState = useHostEntityMetrics({
+    ...entityArgs,
+    enabled: categorySystem,
+    queries: HOST_GPU_ENTITY_QUERIES
   });
   useEffect(() => {
     let active = true;
@@ -117,6 +124,7 @@ export default function HostDashboardPage() {
     netState,
     processReady,
     processState,
+    gpuState,
     layout,
     onLayoutChange,
     categoryTab,

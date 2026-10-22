@@ -6,7 +6,7 @@ from uuid import UUID
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.cmdb.constants.subscription import INSTANCE_QUERY_PAGE_SIZE, FilterType, TriggerType
+from apps.cmdb.constants.subscription import INSTANCE_LIFECYCLE_TRIGGER_TYPES, INSTANCE_QUERY_PAGE_SIZE, FilterType, TriggerType
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.subscription_rule import SubscriptionRule
 from apps.cmdb.services.instance import InstanceManage
@@ -77,7 +77,7 @@ class SubscriptionTriggerService:
     - 维护规则的快照数据和检查时间
 
     检测机制：
-    - 属性变化：基于 ChangeRecord 增量窗口检测，对比 last_check_time 到 checkpoint 的变更
+    - 实例生命周期：新增、修改、删除分别对应创建、修改、删除记录；修改再按监听字段过滤
     - 关联变化：对比快照中的关联实例列表，检测新增/删除/属性变化
     - 临近到期：基于配置的时间字段和提前天数，使用去重键避免重复通知
 
@@ -149,6 +149,8 @@ class SubscriptionTriggerService:
         instances = self._get_current_instances()
         logger.info(f"[Subscription] 当前实例集加载完成 rule_id={self.rule.id}, instances_count={len(instances)}")
         if not instances:
+            if INSTANCE_LIFECYCLE_TRIGGER_TYPES.intersection(self.rule.trigger_types or []):
+                self.events.extend(self._check_attribute_change([], checkpoint))
             self._update_snapshot(
                 {
                     "instances": [],
@@ -160,7 +162,7 @@ class SubscriptionTriggerService:
                 checkpoint,
             )
             logger.info(f"[Subscription] 当前实例为空，已更新快照 rule_id={self.rule.id}")
-            return []
+            return self.events
 
         instance_ids = [int(i.get("_id")) for i in instances if i.get("_id") is not None]
         relation_maps_by_model: dict[str, dict[int, list[int]]] = {}
@@ -182,7 +184,7 @@ class SubscriptionTriggerService:
             relation_failed_instance_ids_by_model,
         )
 
-        if TriggerType.ATTRIBUTE_CHANGE.value in self.rule.trigger_types:
+        if INSTANCE_LIFECYCLE_TRIGGER_TYPES.intersection(self.rule.trigger_types or []):
             self.events.extend(self._check_attribute_change(instances, checkpoint))
         if TriggerType.RELATION_CHANGE.value in self.rule.trigger_types:
             self.events.extend(
@@ -210,7 +212,15 @@ class SubscriptionTriggerService:
 
         while True:
             if self.rule.filter_type == FilterType.CONDITION.value:
-                query_list = self.rule.instance_filter.get("query_list", [])
+                query_list = list(self.rule.instance_filter.get("query_list") or [])
+                if not query_list:
+                    query_list = [
+                        {
+                            "field": "organization",
+                            "type": "list[]",
+                            "value": [int(self.rule.organization)],
+                        }
+                    ]
             else:
                 instance_uuids = self.rule.instance_filter.get("instance_uuids") or []
                 instance_ids = self.rule.instance_filter.get("instance_ids") or []
@@ -394,55 +404,6 @@ class SubscriptionTriggerService:
             "relations_by_uuid": snapshot_relations_by_uuid,
         }
 
-    def _current_instance_tokens(self, instances: list[dict[str, Any]]) -> tuple[set[str], dict[str, int]]:
-        tokens: set[str] = set()
-        id_by_token: dict[str, int] = {}
-        for inst in instances:
-            graph_id = _optional_int(inst.get("_id"))
-            inst_uuid = _optional_uuid(inst.get("inst_uuid"))
-            token = inst_uuid or (f"id:{graph_id}" if graph_id is not None else None)
-            if not token:
-                continue
-            tokens.add(token)
-            if graph_id is not None:
-                id_by_token[token] = graph_id
-        return tokens, id_by_token
-
-    def _snapshot_instance_tokens(
-        self,
-        snapshot: dict[str, Any] | None,
-        uuid_by_id: dict[int, str],
-    ) -> tuple[set[str], dict[str, int]]:
-        snapshot = snapshot or {}
-        tokens: set[str] = set()
-        id_by_token: dict[str, int] = {}
-        uuids = snapshot.get("instance_uuids") or []
-        digits = snapshot.get("instances") or []
-        if uuids:
-            paired: dict[str, int] = {}
-            if len(uuids) == len(digits):
-                for digit, uuid_value in zip(digits, uuids):
-                    uid = _optional_uuid(uuid_value)
-                    gid = _optional_int(digit)
-                    if uid and gid is not None:
-                        paired[uid] = gid
-            for uuid_value in uuids:
-                uid = _optional_uuid(uuid_value)
-                if not uid:
-                    continue
-                tokens.add(uid)
-                if uid in paired:
-                    id_by_token[uid] = paired[uid]
-            return tokens, id_by_token
-        for digit in digits:
-            gid = _optional_int(digit)
-            if gid is None:
-                continue
-            token = uuid_by_id.get(gid) or f"id:{gid}"
-            tokens.add(token)
-            id_by_token[token] = gid
-        return tokens, id_by_token
-
     def _merge_attribute_summary(
         self,
         merged_event_map: dict[int, dict[str, Any]],
@@ -469,6 +430,7 @@ class SubscriptionTriggerService:
         inst_name: str,
         summary_part: str,
         now_str: str,
+        trigger_type: str = TriggerType.ATTRIBUTE_CHANGE.value,
     ) -> None:
         events.append(
             TriggerEvent(
@@ -476,13 +438,26 @@ class SubscriptionTriggerService:
                 rule_name=self.rule.name,
                 model_id=self.rule.model_id,
                 model_name=self.model_name,
-                trigger_type=TriggerType.ATTRIBUTE_CHANGE.value,
+                trigger_type=trigger_type,
                 inst_id=inst_id,
                 inst_name=inst_name,
                 change_summary=summary_part,
                 triggered_at=now_str,
             )
         )
+
+    @staticmethod
+    def _watched_field_summary(data: dict | None, watch_fields: set[str]) -> str:
+        source = data or {}
+        parts = []
+        for field in sorted(watch_fields):
+            if field not in source:
+                continue
+            field_value = source.get(field)
+            if field_value is None or field_value == "":
+                continue
+            parts.append(f"{field}: {truncate_value(field_value)}")
+        return "; ".join(parts)
 
     @staticmethod
     def _resolve_attribute_inst_name(
@@ -639,59 +614,24 @@ class SubscriptionTriggerService:
             )
         return related_inst_name_map
 
-    def _emit_filter_membership_changes(
-        self,
-        *,
-        events: list[TriggerEvent],
-        merged_event_map: dict[int, dict[str, Any]],
-        instance_map: dict[int, dict[str, Any]],
-        previous_tokens: set[str],
-        previous_id_by_token: dict[str, int],
-        current_tokens: set[str],
-        current_id_by_token: dict[str, int],
-        merge_mode: str,
-        now_str: str,
-    ) -> None:
-        """过滤条件模式下，对比实例集合增减并补齐进入/离开范围类触发。"""
-        added_tokens = sorted(current_tokens - previous_tokens)
-        removed_tokens = sorted(previous_tokens - current_tokens)
-
-        for token in added_tokens:
-            inst_id = current_id_by_token.get(token)
-            if inst_id is None:
-                continue
-            summary = "实例进入订阅范围（可能为新建或属性变化命中过滤条件）"
-            inst_name = self._resolve_attribute_inst_name(instance_map, inst_id)
-            if merge_mode == "single":
-                self._merge_attribute_summary(merged_event_map, inst_id, inst_name, summary)
-            else:
-                self._emit_attribute_event(events, inst_id, inst_name, summary, now_str)
-
-        for token in removed_tokens:
-            inst_id = previous_id_by_token.get(token)
-            if inst_id is None and token.startswith("id:"):
-                inst_id = _optional_int(token[3:])
-            if inst_id is None:
-                continue
-            summary = "实例离开订阅范围（可能为删除或属性变化不再命中过滤条件）"
-            inst_name = self._resolve_attribute_inst_name(instance_map, inst_id)
-            if merge_mode == "single":
-                self._merge_attribute_summary(merged_event_map, inst_id, inst_name, summary)
-            else:
-                self._emit_attribute_event(events, inst_id, inst_name, summary, now_str)
-
-        if added_tokens or removed_tokens:
-            logger.info(
-                "[Subscription] 过滤条件实例集合变化检测完成 " f"rule_id={self.rule.id}, added_count={len(added_tokens)}, " f"removed_count={len(removed_tokens)}"
-            )
-
     def _check_attribute_change(self, instances: list[dict[str, Any]], checkpoint: datetime) -> list[TriggerEvent]:
-        # 属性变化通过 ChangeRecord 增量窗口比对，避免全量字段对比开销。
+        """按创建、修改、删除记录区分实例生命周期。"""
         events: list[TriggerEvent] = []
-        config = self.rule.trigger_config.get("attribute_change", {})
-        watch_fields = set(config.get("fields", []))
+        selected = INSTANCE_LIFECYCLE_TRIGGER_TYPES.intersection(self.rule.trigger_types or [])
+        if not selected:
+            return events
+
+        config = self.rule.trigger_config.get("attribute_change", {}) or {}
+        watch_fields = set(config.get("fields", []) or [])
         merge_mode = self.attribute_merge_mode
-        if not watch_fields:
+        record_types: list[str] = []
+        if TriggerType.INSTANCE_ADDED.value in selected:
+            record_types.append(CREATE_INST)
+        if TriggerType.ATTRIBUTE_CHANGE.value in selected and watch_fields:
+            record_types.append(UPDATE_INST)
+        if TriggerType.INSTANCE_DELETED.value in selected:
+            record_types.append(DELETE_INST)
+        if not record_types:
             logger.info(f"[Subscription] 未配置属性监听字段，跳过 rule_id={self.rule.id}")
             return events
 
@@ -703,41 +643,19 @@ class SubscriptionTriggerService:
             if graph_id is not None and inst_uuid:
                 uuid_by_id[graph_id] = inst_uuid
         snapshot = self.rule.snapshot_data or {}
-        previous_tokens, previous_id_by_token = self._snapshot_instance_tokens(snapshot, uuid_by_id)
-        current_tokens, current_id_by_token = self._current_instance_tokens(instances)
         previous_instance_ids = {gid for gid in (_optional_int(inst_id) for inst_id in snapshot.get("instances") or []) if gid is not None}
+        previous_uuids = {uid for uid in (_optional_uuid(value) for value in snapshot.get("instance_uuids") or []) if uid}
         candidate_instance_ids = sorted(set(instance_map.keys()) | previous_instance_ids)
-        candidate_uuids = []
-        for value in snapshot.get("instance_uuids") or []:
-            uid = _optional_uuid(value)
-            if uid:
-                candidate_uuids.append(uid)
+        candidate_uuids = list(previous_uuids)
         candidate_uuids.extend(uuid_by_id.values())
-        now_str = timezone.now().isoformat()
-
-        merged_event_map: dict[int, dict[str, Any]] = {}
-
-        # 过滤条件模式下，显式对比实例集合增减，补齐新增/删除类触发。
-        if self.rule.filter_type == FilterType.CONDITION.value:
-            self._emit_filter_membership_changes(
-                events=events,
-                merged_event_map=merged_event_map,
-                instance_map=instance_map,
-                previous_tokens=previous_tokens,
-                previous_id_by_token=previous_id_by_token,
-                current_tokens=current_tokens,
-                current_id_by_token=current_id_by_token,
-                merge_mode=merge_mode,
-                now_str=now_str,
-            )
-
         if not candidate_instance_ids and not candidate_uuids:
             return events
 
+        now_str = timezone.now().isoformat()
         last_check = self.rule.last_check_time or self.rule.created_at
         query = ChangeRecord.objects.filter(
             model_id=self.rule.model_id,
-            type__in=[UPDATE_INST, CREATE_INST, DELETE_INST],
+            type__in=record_types,
             created_at__gt=last_check,
             created_at__lte=checkpoint,
         )
@@ -761,41 +679,59 @@ class SubscriptionTriggerService:
             f"checkpoint={checkpoint.isoformat()}"
         )
 
+        merged_event_map: dict[int, dict[str, Any]] = {}
         for record in records:
+            inst_id = _optional_int(record.inst_id)
+            if inst_id is None:
+                continue
             before_data = record.before_data or {}
             after_data = record.after_data or {}
-            changed_fields = self._get_changed_fields(before_data, after_data)
-            matched = sorted(list(changed_fields & watch_fields))
-            if not matched:
-                continue
-            inst_name = self._resolve_attribute_inst_name(instance_map, record.inst_id, before_data, after_data)
-            change_details = []
-            for field in matched:
-                old_val = truncate_value(before_data.get(field))
-                new_val = truncate_value(after_data.get(field))
-                change_details.append(f"{field}: {old_val} → {new_val}")
-            if not change_details:
-                continue
+            record_uuid = _optional_uuid(getattr(record, "inst_uuid", None))
+            in_current = inst_id in instance_map
+            in_previous = inst_id in previous_instance_ids or bool(record_uuid and record_uuid in previous_uuids)
+            inst_name = self._resolve_attribute_inst_name(instance_map, inst_id, before_data, after_data)
 
-            field_change_summary = "字段变化: " + "; ".join(change_details)
-            if merge_mode == "single":
-                self._merge_attribute_summary(merged_event_map, record.inst_id, inst_name, field_change_summary)
-            else:
+            if record.type == CREATE_INST:
+                if not in_current:
+                    continue
                 self._emit_attribute_event(
                     events,
-                    record.inst_id,
+                    inst_id,
                     inst_name,
-                    field_change_summary,
+                    self._watched_field_summary(after_data, watch_fields),
                     now_str,
+                    TriggerType.INSTANCE_ADDED.value,
                 )
+                continue
+
+            if record.type == DELETE_INST:
+                if not in_previous:
+                    continue
+                self._emit_attribute_event(
+                    events,
+                    inst_id,
+                    inst_name,
+                    self._watched_field_summary(before_data, watch_fields),
+                    now_str,
+                    TriggerType.INSTANCE_DELETED.value,
+                )
+                continue
+
+            if record.type != UPDATE_INST or (not in_current and not in_previous):
+                continue
+            changed_fields = self._get_changed_fields(before_data, after_data)
+            matched = sorted(changed_fields & watch_fields)
+            if not matched:
+                continue
+            change_details = [f"{field}: {truncate_value(before_data.get(field))} → {truncate_value(after_data.get(field))}" for field in matched]
+            field_change_summary = "字段变化: " + "; ".join(change_details)
+            if merge_mode == "single":
+                self._merge_attribute_summary(merged_event_map, inst_id, inst_name, field_change_summary)
+            else:
+                self._emit_attribute_event(events, inst_id, inst_name, field_change_summary, now_str)
 
         if merge_mode == "single":
             for inst_id, merged in merged_event_map.items():
-                parts = merged.get("parts", [])
-                change_summary = " | ".join(parts)
-                if "实例进入订阅范围" in change_summary and "字段变化:" in change_summary:
-                    change_summary = "创建并修改: " + change_summary
-
                 events.append(
                     TriggerEvent(
                         rule_id=self.rule.id,
@@ -805,7 +741,7 @@ class SubscriptionTriggerService:
                         trigger_type=TriggerType.ATTRIBUTE_CHANGE.value,
                         inst_id=inst_id,
                         inst_name=merged.get("inst_name", str(inst_id)),
-                        change_summary=change_summary,
+                        change_summary=" | ".join(merged.get("parts", [])),
                         triggered_at=now_str,
                     )
                 )

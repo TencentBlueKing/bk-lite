@@ -52,7 +52,7 @@ app_name:
   patch: Patch Management
   apm: APM
   playground: Playground
-  workflow-orchestration: Workflow Orchestration
+  workflow-orchestration: Workflow
 
 # App descriptions (for built-in apps)
 app:

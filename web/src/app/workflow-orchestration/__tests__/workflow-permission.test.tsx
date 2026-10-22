@@ -18,6 +18,15 @@ describe('WorkflowPermission', () => {
     captures.props.length = 0;
   });
 
+  it('maps market operations to the workflow market permission path', () => {
+    render(<WorkflowPermission operation="Add" area="market">Copy</WorkflowPermission>);
+
+    expect(captures.props.at(-1)).toMatchObject({
+      requiredPermissions: ['Add'],
+      permissionPath: '/workflow-orchestration/market',
+    });
+  });
+
   it('maps workflow operations to the selected menu permission path', () => {
     render(<WorkflowPermission operation="Publish" area="executions">Publish</WorkflowPermission>);
 

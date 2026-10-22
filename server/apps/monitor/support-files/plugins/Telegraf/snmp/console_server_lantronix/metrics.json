@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='console_server', __$labels__}) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "max(device_psu_state{instance_type='console_server', __$labels__}) by (instance_id)",
+      "query": "max(device_psu_state{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}) by (instance_id)",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='console_server', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='console_server', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -84,7 +84,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='console_server', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -97,7 +97,7 @@
     {
       "metric_group": "Power",
       "name": "psu_a_status",
-      "query": "psu_a_status{instance_type='console_server', __$labels__}",
+      "query": "psu_a_status{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}",
       "display_name": "Power Supply A Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Power",
       "name": "psu_b_status",
-      "query": "psu_b_status{instance_type='console_server', __$labels__}",
+      "query": "psu_b_status{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}",
       "display_name": "Power Supply B Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Sessions",
       "name": "active_sessions",
-      "query": "active_sessions{instance_type='console_server', __$labels__}",
+      "query": "active_sessions{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}",
       "display_name": "Active Sessions",
       "data_type": "Number",
       "unit": "short",
@@ -136,7 +136,7 @@
     {
       "metric_group": "Temperature",
       "name": "lantronix_port_temperature_celsius",
-      "query": "lantronix_port_temperature_celsius{instance_type='console_server', __$labels__}",
+      "query": "lantronix_port_temperature_celsius{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}",
       "display_name": "Port Sensor Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -154,7 +154,7 @@
     {
       "metric_group": "Humidity",
       "name": "lantronix_port_humidity_percent",
-      "query": "lantronix_port_humidity_percent{instance_type='console_server', __$labels__}",
+      "query": "lantronix_port_humidity_percent{instance_type='console_server', collect_type='snmp_lantronix', __$labels__}",
       "display_name": "Port Sensor Humidity",
       "data_type": "Number",
       "unit": "percent",

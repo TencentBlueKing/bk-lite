@@ -6,7 +6,9 @@ import pytest
 from docx import Document
 from openpyxl import load_workbook
 
+from apps.workflow_orchestration.services.data_transform import run_data_transform
 from apps.workflow_orchestration.services.demo_templates import BUILTIN_TEMPLATE_DIR
+from apps.workflow_orchestration.services.health_summary_sql import health_summary_queries
 from apps.workflow_orchestration.services.reports import parse_report_template, render_report
 
 TEMPLATE_DIR = BUILTIN_TEMPLATE_DIR
@@ -59,7 +61,7 @@ def _host_result(
             "operating_system": operating_system,
         },
         "status": "SUCCESS",
-        "data": {
+        "result": {
             "collected_at": collected_at,
             "conclusion": conclusion,
             "host": {
@@ -87,7 +89,7 @@ def _host_result(
 
 HEALTH_REPORT_DATA = {
     "summary": {"total": 1, "succeeded": 1, "failed": 0},
-    "results": [
+    "data": [
         _host_result(
             name="job-web3",
             ip="10.10.90.120",
@@ -133,7 +135,7 @@ HEALTH_REPORT_DATA = {
 
 MULTI_HOST_REPORT_DATA = {
     "summary": {"total": 2, "succeeded": 2, "failed": 0},
-    "results": [
+    "data": [
         _host_result(
             name="job-web3",
             ip="10.10.90.120",
@@ -192,12 +194,12 @@ def test_builtin_health_report_template_matches_job_output_contract_and_renders_
     content = template_path.read_bytes()
 
     parsed = parse_report_template(content, fmt)
-    rendered = render_report(content, fmt, HEALTH_REPORT_DATA)
+    rendered = render_report(content, fmt, run_data_transform(HEALTH_REPORT_DATA, health_summary_queries(), 30))
 
-    assert "results" in parsed.loops
-    assert "results.data.metrics" in parsed.loops
-    assert "results.data.critical" in parsed.loops
-    assert "results.data.warning" in parsed.loops
+    assert "data" in parsed.loops
+    assert "data.result.metrics" in parsed.loops
+    assert "data.result.critical" in parsed.loops
+    assert "data.result.warning" in parsed.loops
     assert "metric_summary" in parsed.loops
     assert "summary.total" in parsed.placeholders
     assert "summary.critical_hosts" in parsed.placeholders
@@ -236,27 +238,28 @@ def test_builtin_health_report_template_matches_job_output_contract_and_renders_
 
 @pytest.mark.parametrize("fmt", ["docx", "xlsx"])
 def test_builtin_health_report_renders_failed_host_with_null_data(fmt):
-    from apps.workflow_orchestration.atom_packages.bklite_document_render.runtime.handler import _merge_report_data
-
     template_path = TEMPLATE_DIR / f"health-inspection-example.{fmt}"
     content = template_path.read_bytes()
-    payload = _merge_report_data(
+    payload = run_data_transform(
         {
             "summary": {"total": 1, "succeeded": 0, "failed": 1},
-            "results": [
+            "data": [
                 {
                     "target": {"name": "job-web3", "ip": "10.10.90.120", "operating_system": "windows"},
                     "status": "FAILED",
-                    "data": None,
+                    "result": None,
                     "error": "command timed out",
                 }
             ],
         },
-        None,
+        health_summary_queries(),
+        30,
     )
     rendered = render_report(content, fmt, payload)
     text = _rendered_text(fmt, rendered)
-    assert payload["summary"] == {"total": 1, "succeeded": 0, "failed": 1}
+    assert payload["summary"]["total"] == 1
+    assert payload["summary"]["succeeded"] == 0
+    assert payload["summary"]["failed"] == 1
     assert "10.10.90.120" in text
     assert "未采集" in text
     assert "command timed out" not in text
@@ -268,7 +271,7 @@ def test_builtin_health_report_template_renders_multi_host_multi_os(fmt):
     template_path = TEMPLATE_DIR / f"health-inspection-example.{fmt}"
     content = template_path.read_bytes()
 
-    rendered = render_report(content, fmt, MULTI_HOST_REPORT_DATA)
+    rendered = render_report(content, fmt, run_data_transform(MULTI_HOST_REPORT_DATA, health_summary_queries(), 30))
     text = _rendered_text(fmt, rendered)
 
     assert "10.10.90.120" in text

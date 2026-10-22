@@ -10,7 +10,7 @@ Status: implemented
 
 先做 **CMDB → 监控的单向同步任务**。勾选资产后生成任务：先按现有身份规则自动关联；再把「CMDB 有、监控没有」的对象按监控插件分组，生成接入草稿，跳到监控接入页预填身份，由人补凭据和采集项后批量接入。任务不在 CMDB 侧发明 Telegraf 配置，不无凭据暗建监控实例。
 
-反向（监控 → CMDB）逻辑对称，本变更只记录交互，不作为本期实现：先自动关联，再让人决定要不要把监控侧事实同步进 CMDB（新建缺失 CI，或覆盖已关联但字段不一致的台账）。
+反向（监控 → CMDB）不在本变更实现。第一期反向（关联 + 确认新建，不覆盖字段）见 `specs/changes/monitor-cmdb-link-task/spec.md`。
 
 ## User Stories
 
@@ -25,9 +25,9 @@ Status: implemented
 
 ## Implementation Decisions
 
-- 任务页、任务/草稿表、编排与回收独立成胶水模块 `module_link`，不进 CMDB 核心也不进监控核心；不是新的可售卖应用，不出现在顶栏应用列表。
-- 对端模块当前用户识别不到许可（`clientData` 无 `monitor` / 无 `cmdb`）时，同步入口不出现；加载中也不闪一下。服务端始终装入胶水模块，不按对端是否安装动态挂载。
-- 本期只实现 CMDB → 监控。监控 → CMDB 用同一任务壳，第二段改成「建 CI / 覆盖字段」而不是接入草稿。
+- 任务页、任务/草稿表、编排与回收独立成胶水模块 `module_link`，不进 CMDB 核心也不进监控核心；不是新的可售卖应用，不出现在顶栏应用列表。每一行带 `message` 给任务页「原因」列：业务异常原文上屏，其它失败只用稳定短句，不把 payload / 凭据写到页面。
+- 对端模块当前用户识别不到许可（`clientData` 无 `monitor` / 无 `cmdb`）时，同步入口不出现；加载中也不闪一下。服务端始终装入胶水模块，不按对端是否安装动态挂载。企业版许可闸默认把 `/api/v1/module_link/` 当成独立 SKU；OSS 将其豁免，并要求 cmdb 与 monitor 同时授权后才放行胶水接口。
+- 本期只实现 CMDB → 监控。反向第一期另开 `monitor-cmdb-link-task`：同一胶水壳，第二段是确认新建 CI，不做字段覆盖。
 - 任务分两段，中间等人：① 自动关联（已有 ID → 类型身份，无凭据、不新建）；② 待接入草稿（按 Host / Switch / Mysql 等监控对象分组）。
 - 全选可以跨模型勾，草稿必须一组一个插件；异构对象不能进同一张接入表。
 - 「去配置」先落到该监控对象的模板列表（复用接入页插件卡片，含内置和 DIY），人选模板后再带草稿 ID 进接入页。不默认同名内置插件。预填名称、IP、云区域、组织、`cmdb_id`。凭据、节点、间隔、采集项由人按所选模板补。提交走监控现有批量接入。
@@ -48,7 +48,7 @@ Prior art：`test_monitor_link_batch.py`、`test_monitor_link_bind.py`、`test_p
 
 ## Out of Scope
 
-- 本期实现监控 → CMDB 任务（规格保留交互，实现后置）。
+- 监控 → CMDB 任务（另开 `specs/changes/monitor-cmdb-link-task/`）。
 - 无凭据暗建监控实例或策略。
 - 在 CMDB 生成 Telegraf / 插件配置并直推。
 - 把监控插件凭据写入 CMDB 采集任务。
@@ -60,3 +60,4 @@ Prior art：`test_monitor_link_batch.py`、`test_monitor_link_bind.py`、`test_p
 - 叠在 `cmdb-monitor-manual-bind-batch-sync` 之上，不取代自动认领。
 - 交互稿：`docs/design/product-decisions/cmdb-monitor-link-task.html`。
 - 产品记忆：`docs/design/product-decisions/cmdb-monitor-link-task.md`。
+- 反向第一期：`specs/changes/monitor-cmdb-link-task/spec.md`。
