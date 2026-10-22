@@ -48,6 +48,7 @@ interface OverviewPaneProps {
   onOpenFocus: (card: MysqlFocusCard) => void;
   onOpenReplication: () => void;
   onOpenSlow: () => void;
+  onOpenCollection: () => void;
   onOpenLoad: () => void;
   onOpenStatements: () => void;
   onOpenWaits: () => void;
@@ -134,6 +135,7 @@ export default function OverviewPane({
   onOpenFocus,
   onOpenReplication,
   onOpenSlow,
+  onOpenCollection,
   onOpenLoad,
   onOpenStatements,
   onOpenWaits
@@ -157,7 +159,7 @@ export default function OverviewPane({
       onActivate: card.key === 'alerts'
         ? onOpenAlerts
         : card.key === 'slow'
-          ? onOpenSlow
+          ? (card.slowTarget === 'collection' ? onOpenCollection : onOpenSlow)
           : (card.key === 'replication' && card.clickable ? onOpenReplication : undefined),
       expanded: card.key === 'alerts' ? alertsOpen : undefined,
       extra: card.actionLabel ? (
@@ -169,6 +171,7 @@ export default function OverviewPane({
     instanceName,
     metricMap,
     onOpenAlerts,
+    onOpenCollection,
     onOpenReplication,
     onOpenSlow,
     readings,
@@ -190,14 +193,17 @@ export default function OverviewPane({
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
   const diagPath = (
-    <div className={pro.diagPath} data-diag-path="p1">
+    <div className={pro.diagPath} data-diag-path="f1">
       <span className={pro.diagLabel}>{text('diagPath')}</span>
-      <button type="button" className={pro.diagChip} onClick={onOpenLoad}>{text('diagLoad')}</button>
+      <button type="button" className={pro.diagStep} onClick={onOpenLoad}>{text('diagLoad')}</button>
       <span className={pro.diagArrow} aria-hidden="true">→</span>
-      <button type="button" className={pro.diagChip} onClick={onOpenStatements}>{text('diagTopSql')}</button>
+      <button type="button" className={pro.diagStep} onClick={onOpenStatements}>{text('diagTopSql')}</button>
       <span className={pro.diagArrow} aria-hidden="true">→</span>
-      <button type="button" className={pro.diagChip} onClick={onOpenWaits}>{text('diagWaits')}</button>
+      <button type="button" className={pro.diagStep} onClick={onOpenWaits}>{text('diagWaits')}</button>
     </div>
+  );
+  const focusTitle = (
+    <ProSectionTitle extra={diagPath}>{text('focus')}</ProSectionTitle>
   );
 
   return (
@@ -214,7 +220,7 @@ export default function OverviewPane({
 
       {focusLoading ? (
         <>
-          <ProSectionTitle>{text('focus')}</ProSectionTitle>
+          {focusTitle}
           <div className={host.shortcutGrid}>
             {focusLoadingTitles.map((titleKey) => (
               <div key={titleKey} className={`${classic.panel} ${host.shortcutCard}`}>
@@ -226,11 +232,10 @@ export default function OverviewPane({
               </div>
             ))}
           </div>
-          {diagPath}
         </>
       ) : (
         <>
-          <ProSectionTitle>{text('focus')}</ProSectionTitle>
+          {focusTitle}
           <div className={host.shortcutGrid}>
             {focus.map((card) => {
               const sparks = card.spark ? SPARK_METRIC[card.spark] : [];
@@ -280,7 +285,6 @@ export default function OverviewPane({
               );
             })}
           </div>
-          {diagPath}
         </>
       )}
     </>

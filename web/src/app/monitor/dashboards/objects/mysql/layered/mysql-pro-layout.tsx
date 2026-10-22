@@ -147,11 +147,14 @@ export default function MysqlProLayout({
   };
 
   const openCollectionConfig = () => {
-    router.push(mysqlCollectionConfigPath(
-      typeof monitorObjectId === 'string' || typeof monitorObjectId === 'number'
-        ? monitorObjectId
-        : null
-    ));
+    const objectId = typeof monitorObjectId === 'string' || typeof monitorObjectId === 'number'
+      ? monitorObjectId
+      : null;
+    router.push(mysqlCollectionConfigPath({
+      monitorObjectId: objectId,
+      instanceId,
+      instanceName
+    }));
   };
 
   useEffect(() => {
@@ -363,7 +366,7 @@ export default function MysqlProLayout({
           setAlertRefreshKey((key) => key + 1);
         }}
         onOpenFocus={(card) => {
-          if (card.key === 'slow' || card.tab === 'statements') {
+          if (card.tab === 'statements') {
             openStatements();
             return;
           }
@@ -371,6 +374,7 @@ export default function MysqlProLayout({
         }}
         onOpenReplication={() => selectTab('replication')}
         onOpenSlow={openStatements}
+        onOpenCollection={openCollectionConfig}
         onOpenLoad={() => selectTab('performance', 'throughput')}
         onOpenStatements={openStatements}
         onOpenWaits={() => selectTab('waits')}
@@ -399,7 +403,7 @@ export default function MysqlProLayout({
             const badgeKey = statementDimmed
               ? 'notCollected'
               : replicationMark === 'unconfigured'
-                ? 'notConfigured'
+                ? 'replicationUnsupported'
                 : collectedGap
                   ? 'notCollected'
                   : null;

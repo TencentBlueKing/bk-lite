@@ -330,6 +330,8 @@ export interface MysqlKpiCard {
   clickable?: boolean;
   /** 值下的文字链。慢查询随语句采集切换，不另做按钮。 */
   actionLabel?: string;
+  /** 慢查询点击落点。未采进当前实例采集配置，已采进语句页。 */
+  slowTarget?: 'statements' | 'collection';
 }
 
 const formatCount = (value: number) => {
@@ -583,7 +585,8 @@ export const buildMysqlOverviewKpis = (
     subtitle: statementsMissing ? text('statementsNotCollectedShort') : undefined,
     tone: slowAlertActive ? HOST_THRESHOLD_COLOR.warn : undefined,
     clickable: true,
-    actionLabel: statementsMissing ? text('enableStatementCollection') : text('viewStatements')
+    actionLabel: statementsMissing ? text('enableStatementCollection') : text('viewStatements'),
+    slowTarget: statementsMissing ? 'collection' : 'statements'
   });
 
   const replication = buildMysqlReplicationKpi(metricMap, text, context.instanceName || '');
@@ -810,17 +813,9 @@ export const buildMysqlFocusCards = (
         spark: 'tmpDisk'
       }),
     fourth
-  ].map((card) => {
-    const withGap = card.value === EMPTY_VALUE ? { ...card, subtitle: text('notCollected') } : card;
-    if (withGap.key !== 'slow') return withGap;
-    const missing = withGap.value === EMPTY_VALUE;
-    return {
-      ...withGap,
-      tab: 'statements' as const,
-      anchor: undefined,
-      hint: missing ? text('enableStatementCollection') : text('viewStatements')
-    };
-  });
+  ].map((card) => (
+    card.value === EMPTY_VALUE ? { ...card, subtitle: text('notCollected') } : card
+  ));
 };
 
 export interface MysqlHostCandidate {
@@ -1192,6 +1187,7 @@ export const MYSQL_PERF_AUX_METRICS = [
   'mysql_innodb_deadlocks_rate',
   'mysql_buffer_pool_dirty_ratio',
   'mysql_max_used_connections',
+  'mysql_threads_running',
   'mysql_threads_created_rate',
   'mysql_com_commit_rate',
   'mysql_com_rollback_rate',
@@ -1461,7 +1457,7 @@ export const readMysqlReplicationGap = (
 
 /**
  * 复制签角标。有内容或角色/加深指标还在加载时不挂。
- * 未配置挂「未配置」；未采与未齐挂「未采集」；主库无下游不挂角标。
+ * 真单机挂「不支持」；未采与未齐挂「未采集」；主库无下游不挂角标。
  */
 export const readMysqlReplicationTabBadge = (
   metricMap: Record<string, MetricSeries | undefined>,
@@ -1475,11 +1471,37 @@ export const readMysqlReplicationTabBadge = (
   return readMysqlReplicationGap(metricMap, instanceName);
 };
 
-/** 实例采集配置页。没有插件参数时只带到该对象的接入资产，文案里点名开关。 */
-export const mysqlCollectionConfigPath = (monitorObjectId?: string | number | null) => {
-  const id = monitorObjectId == null ? '' : String(monitorObjectId).trim();
-  if (/^\d+$/.test(id)) return `/monitor/integration/asset?objId=${encodeURIComponent(id)}`;
-  return '/monitor/integration/asset';
+export interface MysqlCollectionConfigTarget {
+  monitorObjectId?: string | number | null;
+  instanceId?: string | null;
+  instanceName?: string | null;
+}
+
+const collectionParam = (value: unknown) => {
+  const text = value == null ? '' : String(value).trim();
+  if (!text || text === '--') return '';
+  return text;
+};
+
+/**
+ * 当前实例的采集配置。
+ * `/monitor/integration/asset?objId={monitorObjectId}&instance_id={instanceId}&instance_name={instanceName}`
+ * 资产页读到 instance_id 后打开该实例的采集配置，而不是停在对象实例列表。
+ */
+export const mysqlCollectionConfigPath = (
+  target?: string | number | MysqlCollectionConfigTarget | null
+) => {
+  const objectId = collectionParam(
+    typeof target === 'object' && target ? target.monitorObjectId : target
+  );
+  const instanceId = typeof target === 'object' && target ? collectionParam(target.instanceId) : '';
+  const instanceName = typeof target === 'object' && target ? collectionParam(target.instanceName) : '';
+  const params = new URLSearchParams();
+  if (/^\d+$/.test(objectId)) params.set('objId', objectId);
+  if (instanceId) params.set('instance_id', instanceId);
+  if (instanceName) params.set('instance_name', instanceName);
+  const query = params.toString();
+  return query ? `/monitor/integration/asset?${query}` : '/monitor/integration/asset';
 };
 
 export const waitStatementIds = (event: MysqlWaitEventRow) => {

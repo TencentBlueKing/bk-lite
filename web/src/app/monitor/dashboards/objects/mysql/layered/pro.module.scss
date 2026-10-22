@@ -222,43 +222,49 @@
 
 .diagPath {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .diagLabel {
-  margin-right: 2px;
-  color: var(--color-text-3);
-  font-size: 11px;
-  line-height: 24px;
+  margin-right: 6px;
+  color: var(--color-text-4);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  cursor: default;
+  user-select: none;
 }
 
-.diagChip {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-text-1) 4%, var(--color-bg));
-  color: var(--color-text-1);
+.diagStep {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text-3);
+  font: inherit;
   font-size: 12px;
-  font-weight: 500;
-  line-height: 24px;
+  font-weight: 400;
+  line-height: 20px;
   cursor: pointer;
 }
 
-.diagChip:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
-  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg));
+.diagStep:hover,
+.diagStep:focus-visible,
+.diagStep:active {
+  background: transparent;
   color: var(--color-primary);
+  font-weight: 500;
+  outline: none;
 }
 
 .diagArrow {
+  margin: 0 2px;
   color: var(--color-text-4);
   font-size: 11px;
-  line-height: 24px;
+  line-height: 20px;
 }
 
 @media (max-width: 1100px) {

@@ -378,6 +378,12 @@ button.kpiCard {
   min-width: 0;
 }
 
+.sectionExtra {
+  flex: none;
+  min-width: 0;
+  margin-left: auto;
+}
+
 /* 磁盘子切换。挂载通栏绘图区 160（140–180）；设备三卡绘图区 124（110–140）。 */
 .diskSubBar {
   display: flex;

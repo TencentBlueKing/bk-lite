@@ -165,6 +165,7 @@ const MYSQL_PRO_CHART_METRICS = [
 ] as const;
 const MYSQL_CATEGORY_METRIC_NAMES = [...new Set([
   ...MYSQL_HEALTH_METRICS,
+  'mysql_threads_running',
   ...MYSQL_HEADER_METRICS,
   ...MYSQL_FOCUS_METRICS,
   ...MYSQL_ROLE_METRICS,
