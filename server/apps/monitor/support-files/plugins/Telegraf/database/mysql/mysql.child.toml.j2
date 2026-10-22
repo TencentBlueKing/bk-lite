@@ -108,9 +108,20 @@
       "super_read_only",
       "log_bin",
       "log_slave_updates",
+      # SHOW SLAVE STATUS（MySQL 5.7 / MariaDB）
       "slave_seconds_behind_master",
       "slave_slave_io_running",
+      "slave_slave_io_running_int",
       "slave_slave_sql_running",
+      "slave_slave_sql_running_int",
+      # SHOW REPLICA STATUS（MySQL 8+）：telegraf metric_version=2 落名为
+      # slave_<lowercase(column)>，与旧 slave_seconds_behind_master /
+      # slave_slave_io_running 对不上，不列入会被 fieldinclude 滤掉。
+      "slave_seconds_behind_source",
+      "slave_replica_io_running",
+      "slave_replica_io_running_int",
+      "slave_replica_sql_running",
+      "slave_replica_sql_running_int",
       "slave_relay_log_pos",
       "slave_relay_log_space",
       "slave_read_master_log_pos",
@@ -173,3 +184,48 @@
         instance_type = "{{ instance_type }}"
         collect_type = "database"
         config_type = "mysql"
+
+# SHOW SLAVE/REPLICA STATUS 的 IO/SQL 线程是 Yes/No 字符串；
+# VictoriaMetrics 只收数值。采集侧转成 _int，避免依赖 ingest 侧 enum。
+[[processors.enum]]
+    namepass = ["mysql"]
+    [processors.enum.tagpass]
+        instance_id = ["{{ instance_id }}"]
+
+    [[processors.enum.mapping]]
+        field = "slave_slave_io_running"
+        dest = "slave_slave_io_running_int"
+        default = 0
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Connecting = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_slave_sql_running"
+        dest = "slave_slave_sql_running_int"
+        default = 0
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_replica_io_running"
+        dest = "slave_replica_io_running_int"
+        default = 0
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Connecting = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_replica_sql_running"
+        dest = "slave_replica_sql_running_int"
+        default = 0
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Preparing = 0

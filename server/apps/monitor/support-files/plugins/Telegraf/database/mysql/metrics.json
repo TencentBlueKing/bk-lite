@@ -265,7 +265,7 @@
       "unit": "counts",
       "dimensions": [],
       "description": "Seconds the replica is behind its source, used to assess replication lag",
-      "query": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__})"
+      "query": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__} or mysql_slave_seconds_behind_source{__$labels__} or mysql_replica_seconds_behind_source{__$labels__})"
     },
     {
       "metric_group": "Replication",
@@ -275,8 +275,8 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Replication IO thread status exported from SHOW SLAVE STATUS",
-      "query": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__})"
+      "description": "Replication IO thread status from SHOW SLAVE STATUS or SHOW REPLICA STATUS",
+      "query": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__} or mysql_slave_slave_io_running{__$labels__} or mysql_slave_replica_io_running_int{__$labels__} or mysql_slave_replica_io_running{__$labels__} or mysql_replica_io_running_int{__$labels__} or mysql_slave_io_running_int{__$labels__})"
     },
     {
       "metric_group": "Replication",
@@ -286,8 +286,8 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Replication SQL thread status exported from SHOW SLAVE STATUS",
-      "query": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__})"
+      "description": "Replication SQL thread status from SHOW SLAVE STATUS or SHOW REPLICA STATUS",
+      "query": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__} or mysql_slave_slave_sql_running{__$labels__} or mysql_slave_replica_sql_running_int{__$labels__} or mysql_slave_replica_sql_running{__$labels__} or mysql_replica_sql_running_int{__$labels__} or mysql_slave_sql_running_int{__$labels__})"
     },
     {
       "metric_group": "Replication",
