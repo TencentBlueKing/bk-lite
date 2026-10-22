@@ -328,10 +328,6 @@ export interface MysqlKpiCard {
   tone?: string;
   alertLevel?: TabAlertLevel;
   clickable?: boolean;
-  /** 值下的文字链。慢查询随语句采集切换，不另做按钮。 */
-  actionLabel?: string;
-  /** 慢查询点击落点。未采进当前实例采集配置，已采进语句页。 */
-  slowTarget?: 'statements' | 'collection';
 }
 
 const formatCount = (value: number) => {
@@ -537,8 +533,6 @@ export const isSlowQueryAlertText = (content: string, policyName = '') => (
  * 缺采只空主值，避免加载后整卡消失、和主机六卡错位。
  */
 export interface MysqlOverviewContext {
-  statementsReady?: boolean;
-  statementsCollected?: boolean;
   instanceName?: string;
 }
 
@@ -577,16 +571,11 @@ export const buildMysqlOverviewKpis = (
   });
 
   const slow = finite(readings.slowPerSecond);
-  const statementsMissing = context.statementsReady === true && context.statementsCollected !== true;
   cards.push({
     key: 'slow',
     label: text('kpiSlow'),
     value: slow == null ? EMPTY_VALUE : text('slowPerSecond', { value: formatRate(slow) }),
-    subtitle: statementsMissing ? text('statementsNotCollectedShort') : undefined,
-    tone: slowAlertActive ? HOST_THRESHOLD_COLOR.warn : undefined,
-    clickable: true,
-    actionLabel: statementsMissing ? text('enableStatementCollection') : text('viewStatements'),
-    slowTarget: statementsMissing ? 'collection' : 'statements'
+    tone: slowAlertActive ? HOST_THRESHOLD_COLOR.warn : undefined
   });
 
   const replication = buildMysqlReplicationKpi(metricMap, text, context.instanceName || '');

@@ -41,14 +41,10 @@ interface OverviewPaneProps {
   eventsLoading: boolean;
   slowAlertActive: boolean;
   instanceName: string;
-  statementsReady: boolean;
-  statementsCollected: boolean;
   onOpenAlerts: () => void;
   onFocusAlert: (alertId: string) => void;
   onOpenFocus: (card: MysqlFocusCard) => void;
   onOpenReplication: () => void;
-  onOpenSlow: () => void;
-  onOpenCollection: () => void;
   onOpenLoad: () => void;
   onOpenStatements: () => void;
   onOpenWaits: () => void;
@@ -128,14 +124,10 @@ export default function OverviewPane({
   eventsLoading,
   slowAlertActive,
   instanceName,
-  statementsReady,
-  statementsCollected,
   onOpenAlerts,
   onFocusAlert,
   onOpenFocus,
   onOpenReplication,
-  onOpenSlow,
-  onOpenCollection,
   onOpenLoad,
   onOpenStatements,
   onOpenWaits
@@ -146,8 +138,6 @@ export default function OverviewPane({
   ), [t]);
   const cards = useMemo<KpiTileModel[]>(() => (
     buildMysqlOverviewKpis(readings, metricMap, text, slowAlertActive, {
-      statementsReady,
-      statementsCollected,
       instanceName
     }).map((card) => ({
       key: card.key,
@@ -158,26 +148,17 @@ export default function OverviewPane({
       alertLevel: card.alertLevel,
       onActivate: card.key === 'alerts'
         ? onOpenAlerts
-        : card.key === 'slow'
-          ? (card.slowTarget === 'collection' ? onOpenCollection : onOpenSlow)
-          : (card.key === 'replication' && card.clickable ? onOpenReplication : undefined),
-      expanded: card.key === 'alerts' ? alertsOpen : undefined,
-      extra: card.actionLabel ? (
-        <span className={pro.kpiLink} data-kpi-cta={card.key}>{card.actionLabel}</span>
-      ) : undefined
+        : (card.key === 'replication' && card.clickable ? onOpenReplication : undefined),
+      expanded: card.key === 'alerts' ? alertsOpen : undefined
     }))
   ), [
     alertsOpen,
     instanceName,
     metricMap,
     onOpenAlerts,
-    onOpenCollection,
     onOpenReplication,
-    onOpenSlow,
     readings,
     slowAlertActive,
-    statementsCollected,
-    statementsReady,
     text
   ]);
   const focus = useMemo(

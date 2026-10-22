@@ -353,8 +353,6 @@ export default function MysqlProLayout({
         eventsLoading={eventsPhase === 'loading'}
         slowAlertActive={slowAlertActive}
         instanceName={instanceName}
-        statementsReady={!digestLoading}
-        statementsCollected={statementsCollected}
         onOpenAlerts={() => {
           setFocusAlertId('');
           setAlertDrawerOpen(true);
@@ -373,8 +371,6 @@ export default function MysqlProLayout({
           selectTab(card.tab, card.anchor);
         }}
         onOpenReplication={() => selectTab('replication')}
-        onOpenSlow={openStatements}
-        onOpenCollection={openCollectionConfig}
         onOpenLoad={() => selectTab('performance', 'throughput')}
         onOpenStatements={openStatements}
         onOpenWaits={() => selectTab('waits')}
