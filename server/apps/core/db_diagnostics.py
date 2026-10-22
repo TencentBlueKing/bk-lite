@@ -48,7 +48,8 @@ def diagnostic_guard(func):
 class ConnectionObservation:
     def __init__(self, connection):
         self.wrapper = weakref.ref(connection)
-        self.driver_id = id(connection.connection)
+        # psycopg/psycopg2 均支持弱引用；不能用可被复用的 id() 代表驱动身份。
+        self.driver = weakref.ref(connection.connection)
         self.connection_id = uuid.uuid4().hex
         self.owner_thread = threading.get_ident()
         self.alias = safe_log_value(connection.alias, max_length=64)
@@ -66,7 +67,7 @@ class ConnectionObservation:
         atomic, errors, autocommit = wrapper.in_atomic_block, wrapper.errors_occurred, wrapper.autocommit
         if driver is None:
             return "closed", atomic, errors, autocommit
-        if id(driver) != self.driver_id:
+        if driver is not self.driver():
             return "replaced_unknown", atomic, errors, autocommit
         return "closed" if driver.closed else "open", atomic, errors, autocommit
 

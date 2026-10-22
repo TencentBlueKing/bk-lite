@@ -318,6 +318,12 @@ def test_diagnostic_failure_does_not_fail_orm_or_expose_exception(application, m
     assert sentinel not in "\n".join(logging.Formatter().format(record) for record in caplog.records)
 
 
+class FakeDriver:
+    def __init__(self, pid=321):
+        self.info = SimpleNamespace(backend_pid=pid)
+        self.closed = False
+
+
 class FakeWrapper:
     vendor = "postgresql"
     alias = "default"
@@ -327,7 +333,7 @@ class FakeWrapper:
     autocommit = True
 
     def __init__(self):
-        self.connection = SimpleNamespace(info=SimpleNamespace(backend_pid=321), closed=False)
+        self.connection = FakeDriver()
 
 
 def test_observations_are_bounded_and_do_not_keep_wrapper_alive(caplog):
@@ -356,9 +362,26 @@ def test_reconnected_wrapper_is_not_misreported_as_old_connection_open():
     wrapper = FakeWrapper()
     observation = ConnectionObservation(wrapper)
     old_driver = wrapper.connection
-    wrapper.connection = SimpleNamespace(info=SimpleNamespace(backend_pid=322), closed=False)
+    wrapper.connection = FakeDriver(322)
     assert observation.snapshot()[0] == "replaced_unknown"
     assert not old_driver.closed
+
+
+def test_reused_driver_address_does_not_attribute_new_connection_to_old_pg_pid(monkeypatch):
+    from apps.core import db_diagnostics
+
+    # 地址复用已独立实测；这里固定分配器结果，避免回归测试依赖 CPython 分配时机。
+    monkeypatch.setattr(db_diagnostics, "id", lambda value: 123, raising=False)
+    wrapper = FakeWrapper()
+    old_driver = weakref.ref(wrapper.connection)
+    observation = db_diagnostics.ConnectionObservation(wrapper)
+    wrapper.connection = None
+    gc.collect()
+    assert old_driver() is None, "观测不得保活底层驱动"
+    wrapper.connection = FakeDriver(322)
+    assert observation.pg_pid == 321
+    assert observation.snapshot()[0] == "replaced_unknown"
+    assert not wrapper.connection.closed
 
 
 def test_cleanup_snapshot_survives_wrapper_collection(caplog):
