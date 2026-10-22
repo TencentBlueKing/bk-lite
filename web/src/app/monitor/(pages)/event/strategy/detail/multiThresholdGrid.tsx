@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, InputNumber, Select, Tooltip } from 'antd';
+import { Button, InputNumber, Select } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { LEVEL_MAP } from '@/app/monitor/constants';
@@ -43,12 +43,19 @@ const conditionName = (row: MetricExpressionRow): string => {
   return row.metricLabel || row.metricName || row.ref;
 };
 
-const legendLabel = (row: MetricExpressionRow): string => {
+const ConditionHeading: React.FC<{ row: MetricExpressionRow }> = ({ row }) => {
   const name = conditionName(row);
-  if (!name || name === row.ref) {
-    return row.ref;
-  }
-  return `${row.ref} ${name}`;
+  const showName = Boolean(name) && name !== row.ref;
+  return (
+    <div className="flex min-w-0 items-center gap-1.5" title={showName ? name : row.ref}>
+      <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] px-1 font-mono text-xs font-semibold text-[var(--color-primary)]">
+        {row.ref}
+      </span>
+      {showName ? (
+        <span className="truncate text-xs text-[var(--color-text-2)]">{name}</span>
+      ) : null}
+    </div>
+  );
 };
 
 const MultiThresholdGrid: React.FC<MultiThresholdGridProps> = ({
@@ -64,6 +71,10 @@ const MultiThresholdGrid: React.FC<MultiThresholdGridProps> = ({
     levelConditions.length > 0 &&
     CANONICAL_LEVELS.some((level) => !levels.includes(level));
 
+  const columnStyle = {
+    gridTemplateColumns: `72px repeat(${Math.max(levelConditions.length, 1)}, minmax(200px, 1fr)) 32px`
+  };
+
   const thresholdCell = (
     row: MetricExpressionRow,
     field: { method?: string; value?: number | null } | undefined,
@@ -72,61 +83,60 @@ const MultiThresholdGrid: React.FC<MultiThresholdGridProps> = ({
   ) => {
     const unit = resolveMetricDisplayUnit(row.thresholdUnit, unitList);
     return (
-      <div className="flex min-w-[220px] items-center gap-2">
-        <Tooltip title={conditionName(row) || row.ref}>
-          <span className="shrink-0 text-[var(--color-text-2)]">{row.ref}</span>
-        </Tooltip>
-        <div className="w-[88px] shrink-0">
-          <Select
-            className="w-[88px]"
-            value={field?.method || undefined}
-            placeholder={t('monitor.events.method')}
-            options={COMPARISON_OPTIONS}
-            onChange={onMethod}
-          />
-        </div>
-        <div className="w-[112px] shrink-0">
-          <InputNumber
-            className="w-full"
-            addonAfter={unit || undefined}
-            value={field?.value ?? null}
-            placeholder={getThresholdValuePlaceholder(row.thresholdUnit)}
-            onChange={(next) => onValue(typeof next === 'number' ? next : null)}
-          />
-        </div>
+      <div className="grid grid-cols-[72px_minmax(0,1fr)_2rem] items-center gap-1.5">
+        <Select
+          style={{ width: 72 }}
+          value={field?.method || undefined}
+          placeholder={t('monitor.events.method')}
+          options={COMPARISON_OPTIONS}
+          onChange={onMethod}
+        />
+        <InputNumber
+          className="w-full"
+          controls={false}
+          value={field?.value ?? null}
+          placeholder={getThresholdValuePlaceholder(row.thresholdUnit)}
+          onChange={(next) => onValue(typeof next === 'number' ? next : null)}
+        />
+        <span
+          className="truncate text-xs text-[var(--color-text-3)]"
+          title={unit || undefined}
+        >
+          {unit}
+        </span>
       </div>
     );
   };
 
   return (
-    <div className="w-full rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-4 shadow-md">
+    <div className="w-full overflow-x-auto rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-4 shadow-md">
       {levelConditions.length > 0 ? (
-        <div className={`mb-3 pl-[84px] ${STRATEGY_HINT_TEXT_CLASS}`}>
-          {levelConditions.map(legendLabel).join(' · ')}
+        <div className="grid items-center gap-x-3 pb-2" style={columnStyle}>
+          <span />
+          {levelConditions.map((row) => (
+            <ConditionHeading key={row.ref} row={row} />
+          ))}
+          <span />
         </div>
       ) : null}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col">
         {levels.map((level) => (
           <div
             key={level}
-            className="flex flex-wrap items-center gap-x-3 gap-y-2"
+            className="grid items-center gap-x-3 border-t border-[var(--color-border-1)] py-2"
+            style={columnStyle}
           >
-            <span className="inline-flex w-[72px] shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
+            <span className="inline-flex items-center gap-2 text-sm text-[var(--color-text-1)]">
               <span
                 className="inline-block h-2 w-2 shrink-0 rounded-full"
                 style={{ backgroundColor: String(LEVEL_MAP[level] || 'var(--color-text-3)') }}
               />
               {t(`monitor.events.${level}`)}
             </span>
-            {levelConditions.map((row, index) => {
+            {levelConditions.map((row) => {
               const field = (row.threshold || []).find((item) => item.level === level);
               return (
-                <div key={row.ref} className="contents">
-                  {index > 0 ? (
-                    <span className="shrink-0 text-sm text-[var(--color-text-3)]">
-                      {t('common.and')}
-                    </span>
-                  ) : null}
+                <div key={row.ref}>
                   {thresholdCell(
                     row,
                     field,
@@ -137,9 +147,9 @@ const MultiThresholdGrid: React.FC<MultiThresholdGridProps> = ({
               );
             })}
             <Button
-              type="link"
+              type="text"
               size="small"
-              className="ml-auto shrink-0 px-0"
+              className="px-0 text-[var(--color-text-3)]"
               aria-label={t('monitor.events.multiRemoveLevel')}
               icon={<MinusCircleOutlined />}
               onClick={() => onChange(removeMultiLevel(rows, level))}
@@ -147,7 +157,7 @@ const MultiThresholdGrid: React.FC<MultiThresholdGridProps> = ({
           </div>
         ))}
         {canAdd ? (
-          <div>
+          <div className="pt-1">
             <Button
               type="link"
               size="small"
@@ -162,17 +172,17 @@ const MultiThresholdGrid: React.FC<MultiThresholdGridProps> = ({
       </div>
       {gateConditions.length > 0 ? (
         <div className="mt-3 border-t border-[var(--color-border-2)] pt-3">
-          <div className="mb-2 text-sm text-[var(--color-text-1)]">
+          <div className={`mb-2 ${STRATEGY_HINT_TEXT_CLASS}`}>
             {t('monitor.events.multiRoleGate')}
           </div>
           <div className="flex flex-col gap-2">
             {gateConditions.map((row) => (
-              <div
-                key={row.ref}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2"
-              >
-                <span className="w-[72px] shrink-0" />
-                {thresholdCell(
+              <div key={row.ref} className="flex items-center gap-3">
+                <div className="w-[140px] shrink-0">
+                  <ConditionHeading row={row} />
+                </div>
+                <div className="w-[240px] shrink-0">
+                  {thresholdCell(
                   row,
                   row.threshold?.[0],
                   (method) =>
@@ -204,6 +214,7 @@ const MultiThresholdGrid: React.FC<MultiThresholdGridProps> = ({
                       )
                     )
                 )}
+                </div>
               </div>
             ))}
           </div>
