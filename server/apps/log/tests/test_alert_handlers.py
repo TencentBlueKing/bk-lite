@@ -7,9 +7,12 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.cmdb.models.change_record import ChangeRecord  # noqa: F401  INSTALL_APPS 需含 cmdb（module_link 路由）
 from apps.log.models.policy import Alert, Event, Policy, PolicyOrganization
 from apps.log.serializers.policy import PolicySerializer
 from apps.log.views.policy import AlertViewSet
+from apps.monitor.models import MonitorInstance  # noqa: F401  INSTALL_APPS 需含 monitor（module_link 路由）
+from apps.node_mgmt.models import Node  # noqa: F401  INSTALL_APPS 需含 node_mgmt（monitor 启动）
 from apps.system_mgmt.models import Channel, Group, User
 
 pytestmark = pytest.mark.django_db
@@ -835,3 +838,52 @@ def test_reassign_sends_notice_to_new_handlers(
     assert receivers == [str(first.id), str(second.id)]
     assert str(actor.id) not in receivers
     assert "policy-notice-user" not in receivers
+
+
+def test_numeric_username_does_not_impersonate_handler_id():
+    from apps.log.services.alert_handlers import (
+        AlertHandlerConflict,
+        _actor_in_handlers,
+        ensure_manual_close_allowed,
+        filter_my_handler_alerts,
+        handler_match_values,
+        reassign_alert,
+    )
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    owner = _org_user(username="owner-numeric-id")
+    handler_id = owner.id
+    impostor = _org_user(username=str(handler_id))
+    legacy = _org_user(username="alice")
+    assert impostor.id != handler_id
+    assert impostor.username == str(handler_id)
+
+    policy = _policy()
+    alert = _new_alert(policy, "numeric-username-collision", handlers=[handler_id])
+    legacy_alert = _new_alert(policy, "legacy-username-handler", handlers=["alice"])
+
+    assert str(handler_id) not in {str(value) for value in handler_match_values(impostor)}
+    assert _actor_in_handlers([handler_id], impostor) is False
+    assert _actor_in_handlers([str(handler_id)], impostor) is False
+    with pytest.raises(AlertHandlerConflict):
+        reassign_alert(alert, handlers=[legacy.id], actor=impostor)
+    with pytest.raises(AlertHandlerConflict):
+        ensure_manual_close_allowed(alert.handlers, impostor)
+
+    alert.refresh_from_db()
+    assert alert.handlers == [handler_id]
+    assert alert.status == "new"
+    assert Event.objects.filter(alert=alert, action=Event.Action.REASSIGNED).count() == 0
+
+    assert _actor_in_handlers([handler_id], owner) is True
+    assert _actor_in_handlers([str(handler_id)], owner) is True
+    ensure_manual_close_allowed(alert.handlers, owner)
+    assert _actor_in_handlers(["alice"], legacy) is True
+    ensure_manual_close_allowed(legacy_alert.handlers, legacy)
+
+    impostor_ids = set(filter_my_handler_alerts(Alert.objects.all(), impostor).values_list("id", flat=True))
+    owner_ids = set(filter_my_handler_alerts(Alert.objects.all(), owner).values_list("id", flat=True))
+    legacy_ids = set(filter_my_handler_alerts(Alert.objects.all(), legacy).values_list("id", flat=True))
+    assert alert.id not in impostor_ids
+    assert alert.id in owner_ids
+    assert legacy_alert.id in legacy_ids
