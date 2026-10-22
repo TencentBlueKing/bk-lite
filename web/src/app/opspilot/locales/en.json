@@ -318,6 +318,7 @@
     "importOkf": "Import OKF",
     "okfImportProgress": "Importing {progress}%",
     "okfImportEnriching": "Enriching search",
+    "okfImportFailed": "The OKF import did not finish. Check the build record and try again.",
     "exportOkf": "Export OKF",
     "reindexKnowledgeBase": "Reindex",
     "reindexKnowledgeBaseTip": "Rebuild page and chunk indexes for all active pages in this knowledge base, with a build record for diagnostics.",

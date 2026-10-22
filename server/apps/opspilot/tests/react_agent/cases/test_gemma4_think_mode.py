@@ -134,8 +134,8 @@ class TestGemmaOpenAIClientThinkMode:
         assert "chat_template_kwargs" not in (mock_llm.extra_body or {})
 
     @patch("apps.opspilot.metis.llm.common.llm_client_factory.OpenAI")
-    def test_wiki_suppress_flag_disables_thinking_for_unknown_model(self, mock_openai_cls):
-        """Wiki 资料构建对未识别模型也要显式关闭思考。"""
+    def test_wiki_suppress_flag_leaves_unknown_model_extra_body_empty(self, mock_openai_cls):
+        """未识别模型即使 suppress_default_thinking 也不写思考字段。"""
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -152,9 +152,36 @@ class TestGemmaOpenAIClientThinkMode:
         LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hi")])
 
         call_kwargs = mock_client.chat.completions.create.call_args[1]
-        assert call_kwargs["extra_body"]["enable_thinking"] is False
-        assert call_kwargs["extra_body"]["chat_template_kwargs"] == {"enable_thinking": False}
-        assert call_kwargs["extra_body"]["thinking"] == {"type": "disabled"}
+        extra_body = call_kwargs.get("extra_body") or {}
+        assert extra_body == {}
+        assert "enable_thinking" not in extra_body
+        assert "thinking" not in extra_body
+        assert "chat_template_kwargs" not in extra_body
+
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.OpenAI")
+    def test_gpt4_suppress_does_not_inject_thinking_fields(self, mock_openai_cls):
+        """官方 OpenAI 模型在 suppress 下 extra_body 保持为空。"""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_cls.return_value = mock_client
+
+        request = BasicLLMRequest(
+            model="gpt-4",
+            openai_api_key="sk-test",
+            openai_api_base="https://api.openai.com/v1",
+            extra_config={"show_think": False, "suppress_default_thinking": True},
+        )
+        LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hi")])
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        extra_body = call_kwargs.get("extra_body") or {}
+        assert extra_body == {}
+        assert "enable_thinking" not in extra_body
+        assert "thinking" not in extra_body
+        assert "chat_template_kwargs" not in extra_body
 
     @patch("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI")
     def test_qwen_model_dual_writes_enable_thinking_and_chat_template_kwargs(self, mock_cls):
@@ -272,6 +299,30 @@ class TestQwenThinkModeDualWrite:
             openai_api_key="sk-test",
             openai_api_base="http://localhost:8000/v1",
             extra_config={"show_think": False, "suppress_default_thinking": True},
+        )
+        LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hi")])
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert call_kwargs["extra_body"] == {
+            "enable_thinking": False,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.OpenAI")
+    def test_qwen_suppress_overrides_show_think(self, mock_openai_cls):
+        """已知默认开思考的厂商族在 suppress 下仍写关闭字段。"""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_cls.return_value = mock_client
+
+        request = BasicLLMRequest(
+            model="qwen3-235b-a22b",
+            openai_api_key="sk-test",
+            openai_api_base="http://localhost:8000/v1",
+            extra_config={"show_think": True, "suppress_default_thinking": True},
         )
         LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hi")])
 
