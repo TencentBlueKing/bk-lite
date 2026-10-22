@@ -13,7 +13,7 @@ import {
   Tooltip,
 } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
-import { ConfigGroupTitle } from '@/app/ops-analysis/components/widgetConfig/configTitles';
+import { ConfigSectionTitle } from '@/app/ops-analysis/components/widgetConfig/configTitles';
 import { RefreshFieldsButton } from '@/app/ops-analysis/components/widgetConfig/sections/chartRoleLabel';
 import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
@@ -191,7 +191,7 @@ export const SingleValueSettingsSection: React.FC<
         </div>
       ) : null}
 
-      <ConfigGroupTitle
+      <ConfigSectionTitle
         actions={(
           <RefreshFieldsButton
             label={t('dashboard.refreshFields')}
@@ -202,7 +202,7 @@ export const SingleValueSettingsSection: React.FC<
         )}
       >
         {t('dashboard.dataFields')}
-      </ConfigGroupTitle>
+      </ConfigSectionTitle>
 
       <Form.Item
         label={
@@ -269,111 +269,125 @@ export const SingleValueSettingsSection: React.FC<
           </Form.Item>
         ) : null}
 
-      <Form.Item
-        label={
-          <span>
-            {t('dashboard.compareLabel')}
-            <Tooltip title={t('dashboard.comparePreviousPeriodTip')}>
-              <QuestionCircleOutlined className="ml-1 cursor-help text-[var(--color-text-3)]" />
-            </Tooltip>
-          </span>
-        }
-        name="compare"
-        valuePropName="checked"
-      >
-        <CompareSwitch
-          readonly={readonly}
-          compareAvailable={compareAvailable}
-          unavailableTip={t('dashboard.compareUnavailableTip')}
-        />
-      </Form.Item>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-4 [&_.ant-form-item]:!mb-0">
+        <Form.Item
+          className="min-w-0"
+          label={
+            <span>
+              {t('dashboard.compareLabel')}
+              <Tooltip title={t('dashboard.comparePreviousPeriodTip')}>
+                <QuestionCircleOutlined className="ml-1 cursor-help text-[var(--color-text-3)]" />
+              </Tooltip>
+            </span>
+          }
+          name="compare"
+          valuePropName="checked"
+        >
+          <CompareSwitch
+            readonly={readonly}
+            compareAvailable={compareAvailable}
+            unavailableTip={t('dashboard.compareUnavailableTip')}
+          />
+        </Form.Item>
 
-      <Form.Item
-        noStyle
-        shouldUpdate={(prev, current) => prev.compare !== current.compare}
-      >
-        {({ getFieldValue }) => getFieldValue('compare') ? (
-          <Form.Item
-            label={t('dashboard.compareMode')}
-            name="compareMode"
-            initialValue="percent"
-          >
-            <Select
-              disabled={readonly}
-              className="w-[200px]"
-              options={[
-                { value: 'percent', label: t('dashboard.compareModePercent') },
-                { value: 'value', label: t('dashboard.compareModeValue') },
-              ]}
-            />
-          </Form.Item>
-        ) : null}
-      </Form.Item>
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, current) => prev.compare !== current.compare}
+        >
+          {({ getFieldValue }) =>
+            getFieldValue('compare') ? (
+              <Form.Item
+                className="min-w-0"
+                label={t('dashboard.compareMode')}
+                name="compareMode"
+                initialValue="percent"
+              >
+                <Select
+                  disabled={readonly}
+                  className="w-full"
+                  options={[
+                    { value: 'percent', label: t('dashboard.compareModePercent') },
+                    { value: 'value', label: t('dashboard.compareModeValue') },
+                  ]}
+                />
+              </Form.Item>
+            ) : (
+              <div aria-hidden className="col-span-1" />
+            )
+          }
+        </Form.Item>
 
-      <Form.Item label={t('topology.nodeConfig.unit')} name="unitId">
-        <Select
-          allowClear
-          placeholder={t('common.selectMsg')}
-          disabled={readonly}
-          className="w-[200px]"
-          options={[
-            { value: '', label: t('topology.nodeConfig.customSuffix') },
-            ...getUnitCategories(t).map((cat) => ({
-              label: cat.label,
-              options: cat.units.map((u) => ({ value: u.id, label: u.label })),
-            })),
-          ]}
-        />
-      </Form.Item>
+        <Form.Item
+          className="min-w-0"
+          label={t('topology.nodeConfig.conversionFactor')}
+          name="conversionFactor"
+        >
+          <InputNumber
+            min={0}
+            max={100000}
+            step={0.01}
+            placeholder={t('common.inputMsg')}
+            disabled={readonly}
+            className="w-full"
+          />
+        </Form.Item>
 
-      {/* unitId 为空（自定义/未设）时回退到自由文本后缀，兼容旧配置 */}
-      <Form.Item
-        noStyle
-        shouldUpdate={(prev, cur) => prev.unitId !== cur.unitId}
-      >
-        {({ getFieldValue }) =>
-          !getFieldValue('unitId') ? (
-            <Form.Item
-              label={t('topology.nodeConfig.customSuffix')}
-              name="unit"
-            >
-              <Input
-                placeholder={t('common.inputMsg')}
-                disabled={readonly}
-                className="w-[200px]"
-              />
-            </Form.Item>
-          ) : null
-        }
-      </Form.Item>
+        <Form.Item
+          className="min-w-0"
+          label={t('topology.nodeConfig.decimalPlaces')}
+          name="decimalPlaces"
+        >
+          <InputNumber
+            min={0}
+            max={10}
+            step={1}
+            placeholder={t('common.inputMsg')}
+            disabled={readonly}
+            className="w-full"
+          />
+        </Form.Item>
 
-      <Form.Item
-        label={t('topology.nodeConfig.conversionFactor')}
-        name="conversionFactor"
-      >
-        <InputNumber
-          min={0}
-          max={100000}
-          step={0.01}
-          placeholder={t('common.inputMsg')}
-          disabled={readonly}
-          className="w-[120px]"
-        />
-      </Form.Item>
+        <Form.Item
+          className="min-w-0"
+          label={t('topology.nodeConfig.unit')}
+          name="unitId"
+        >
+          <Select
+            allowClear
+            placeholder={t('common.selectMsg')}
+            disabled={readonly}
+            className="w-full"
+            options={[
+              { value: '', label: t('topology.nodeConfig.customSuffix') },
+              ...getUnitCategories(t).map((cat) => ({
+                label: cat.label,
+                options: cat.units.map((u) => ({ value: u.id, label: u.label })),
+              })),
+            ]}
+          />
+        </Form.Item>
 
-      <Form.Item
-        label={t('topology.nodeConfig.decimalPlaces')}
-        name="decimalPlaces"
-      >
-        <InputNumber
-          min={0}
-          max={10}
-          step={1}
-          placeholder={t('common.inputMsg')}
-          disabled={readonly}
-          className="w-[120px]"
-        />
-      </Form.Item>
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, current) => prev.unitId !== current.unitId}
+        >
+          {({ getFieldValue }) =>
+            !getFieldValue('unitId') ? (
+              <Form.Item
+                className="min-w-0"
+                label={t('topology.nodeConfig.customSuffix')}
+                name="unit"
+              >
+                <Input
+                  placeholder={t('common.inputMsg')}
+                  disabled={readonly}
+                  className="w-full"
+                />
+              </Form.Item>
+            ) : null
+          }
+        </Form.Item>
+      </div>
 
       <ThresholdColorConfigSection
         t={t}

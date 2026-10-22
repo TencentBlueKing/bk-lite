@@ -1,7 +1,13 @@
 import type { FilterItem } from '@/app/cmdb/store';
 
 export type FilterType = 'condition' | 'instances';
-export type TriggerType = 'attribute_change' | 'relation_change' | 'expiration' | 'config_file';
+export type TriggerType =
+  | 'instance_added'
+  | 'attribute_change'
+  | 'instance_deleted'
+  | 'relation_change'
+  | 'expiration'
+  | 'config_file';
 
 export interface ConditionFilter {
   query_list: FilterItem[];

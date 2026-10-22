@@ -17,11 +17,12 @@ interface Props {
   open: boolean;
   value: string[];
   maxCount?: number;
+  allowedOperatingSystems?: Array<'linux' | 'windows'>;
   onCancel: () => void;
   onConfirm: (value: string[], records: NodeTarget[]) => void;
 }
 
-export function JobTargetSelectionDialog({ open, value, maxCount = 100, onCancel, onConfirm }: Props) {
+export function JobTargetSelectionDialog({ open, value, maxCount = 100, allowedOperatingSystems, onCancel, onConfirm }: Props) {
   const { t } = useTranslation();
   const [opened, setOpened] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -40,10 +41,10 @@ export function JobTargetSelectionDialog({ open, value, maxCount = 100, onCancel
     required: true,
     binding_mode: 'runtime',
     allowed_sources: [...JOB_TARGET_SOURCES],
-    allowed_operating_systems: ['linux', 'windows'],
+    allowed_operating_systems: allowedOperatingSystems?.length ? [...allowedOperatingSystems] : ['linux', 'windows'],
     min_count: 1,
     max_count: maxCount,
-  }), [maxCount, t]);
+  }), [allowedOperatingSystems, maxCount, t]);
   const selectedRecords = selectedKeys.map((key) => recordCache[key]).filter(Boolean);
   const confirmDisabled = blocked || selectedKeys.length < field.min_count || selectedKeys.length > field.max_count;
 

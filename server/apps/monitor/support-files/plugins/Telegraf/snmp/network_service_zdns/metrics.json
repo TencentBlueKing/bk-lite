@@ -24,7 +24,7 @@
     {
       "metric_group": "NetworkService",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='network_service', collect_type='snmp_zdns', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -37,7 +37,7 @@
     {
       "metric_group": "NetworkService",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "avg(device_memory_usage{instance_type='network_service', collect_type='snmp_zdns', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -50,7 +50,7 @@
     {
       "metric_group": "NetworkService",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='network_service', collect_type='snmp_zdns', __$labels__}) by (instance_id)",
       "display_name": "CPU Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -63,7 +63,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_dns_service_state",
-      "query": "max(network_service_dns_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_dns_service_state{instance_type='network_service', collect_type='snmp_zdns', __$labels__}) by (instance_id)",
       "display_name": "DNS Service Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -76,7 +76,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_dhcp_service_state",
-      "query": "max(network_service_dhcp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_dhcp_service_state{instance_type='network_service', collect_type='snmp_zdns', __$labels__}) by (instance_id)",
       "display_name": "DHCP Service Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -89,7 +89,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_ntp_service_state",
-      "query": "max(network_service_ntp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_ntp_service_state{instance_type='network_service', collect_type='snmp_zdns', __$labels__}) by (instance_id)",
       "display_name": "NTP Service Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -102,7 +102,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_zwp_service_state",
-      "query": "max(network_service_zwp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_zwp_service_state{instance_type='network_service', collect_type='snmp_zdns', __$labels__}) by (instance_id)",
       "display_name": "ZWP Service Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -115,7 +115,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_tftp_service_state",
-      "query": "max(network_service_tftp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(network_service_tftp_service_state{instance_type='network_service', collect_type='snmp_zdns', __$labels__}) by (instance_id)",
       "display_name": "TFTP Service Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -128,7 +128,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_virtual_server_state",
-      "query": "network_service_virtual_server_state{instance_type='network_service', __$labels__}",
+      "query": "network_service_virtual_server_state{instance_type='network_service', collect_type='snmp_zdns', __$labels__}",
       "display_name": "Virtual Server Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -146,7 +146,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_node_state",
-      "query": "network_service_node_state{instance_type='network_service', __$labels__}",
+      "query": "network_service_node_state{instance_type='network_service', collect_type='snmp_zdns', __$labels__}",
       "display_name": "Node Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -164,7 +164,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_pool_state",
-      "query": "network_service_pool_state{instance_type='network_service', __$labels__}",
+      "query": "network_service_pool_state{instance_type='network_service', collect_type='snmp_zdns', __$labels__}",
       "display_name": "Pool Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -182,7 +182,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_pool_member_state",
-      "query": "network_service_pool_member_state{instance_type='network_service', __$labels__}",
+      "query": "network_service_pool_member_state{instance_type='network_service', collect_type='snmp_zdns', __$labels__}",
       "display_name": "Pool Member Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -208,7 +208,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_zdns', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -226,7 +226,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_zdns', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -244,7 +244,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_zdns', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

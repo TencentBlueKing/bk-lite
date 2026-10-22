@@ -6,7 +6,7 @@ from apps.core.logger import celery_logger as logger
 from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
-from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData
+from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData, MonitorInstance
 from apps.monitor.services.alert_access import snapshot_policy_organization_ids
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.utils.dimension import format_dimension_str
@@ -120,6 +120,9 @@ class EventAlertManager:
         # 建告警 → 建事件 → 写原始数据 → 升级既有告警 全部包进一个事务，避免中途失败留下
         # 「有告警无事件」的半截数据；通知改到事务提交后（on_commit）发出，保证通知永不早于事件落库。
         with transaction.atomic():
+            # 扫描开始时的 instances_map 可能已经过期。插入前按 id 顺序锁住本批要新建告警的实例并重读，
+            # 删除事务已提交的实例不再落活动告警；空 ID 和不在快照里的事件保持原样。这里不做指标查询。
+            new_alert_events = self._drop_new_events_for_deleted_instances(new_alert_events)
             if new_alert_events:
                 representative_events_by_key = {}
                 for event in new_alert_events:
@@ -171,6 +174,44 @@ class EventAlertManager:
             self._schedule_notifications(new_alerts, upgraded_alerts)
 
         return event_objs, new_alerts
+
+    def _drop_new_events_for_deleted_instances(self, new_alert_events):
+        """去掉快照中已不存在的实例，避免删除提交后仍插入 status=new。
+
+        只影响本批新告警事件。缺失实例不记成创建失败，其余事件照常落库。
+        """
+        if not new_alert_events or not self.instances_map:
+            return new_alert_events
+
+        candidate_ids = set()
+        for event in new_alert_events:
+            instance_id = event.get("monitor_instance_id") or ""
+            if instance_id and instance_id in self.instances_map:
+                candidate_ids.add(instance_id)
+        if not candidate_ids:
+            return new_alert_events
+
+        ordered_ids = sorted(candidate_ids)
+        existing_ids = set(
+            MonitorInstance.objects.select_for_update()
+            .filter(id__in=ordered_ids)
+            .order_by("id")
+            .values_list("id", flat=True)
+        )
+        missing_ids = candidate_ids - existing_ids
+        if not missing_ids:
+            return new_alert_events
+
+        logger.info(
+            "Skip new alerts for instances deleted before persist: policy=%s instance_ids=%s",
+            self.policy.id,
+            sorted(missing_ids),
+        )
+        return [
+            event
+            for event in new_alert_events
+            if (event.get("monitor_instance_id") or "") not in missing_ids
+        ]
 
     def _schedule_notifications(self, new_alerts, upgraded_alerts):
         """把告警通知推迟到当前事务提交后发出，保证通知永不早于告警/事件落库。

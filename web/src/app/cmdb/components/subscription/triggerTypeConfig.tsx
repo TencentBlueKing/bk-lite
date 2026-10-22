@@ -5,6 +5,7 @@ import type {
   TriggerConfig,
   TriggerType,
 } from '@/app/cmdb/types/subscription';
+import { isInstanceLifecycleTrigger } from '@/app/cmdb/utils/subscriptionLifecycle';
 
 interface TriggerTypeConfigProps {
   value: TriggerType[];
@@ -17,7 +18,7 @@ interface TriggerTypeConfigProps {
   errors?: Record<string, string>;
 }
 
-const TYPES: TriggerType[] = ['attribute_change', 'relation_change', 'expiration', 'config_file'];
+const TYPES: TriggerType[] = ['instance_added', 'attribute_change', 'instance_deleted', 'relation_change', 'expiration', 'config_file'];
 const ATTRIBUTE_CHANGE_EXCLUDED_FIELD_IDS = new Set([
   'inst_name',
   'organization',
@@ -123,14 +124,18 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
   }, [triggerConfig.relation_change]);
 
   const titleMap = {
+    instance_added: t('subscription.triggerTypeInstanceAdded'),
     attribute_change: t('subscription.triggerTypeAttributeChange'),
+    instance_deleted: t('subscription.triggerTypeInstanceDeleted'),
     relation_change: t('subscription.triggerTypeRelationChange'),
     expiration: t('subscription.triggerTypeExpiration'),
     config_file: t('subscription.triggerTypeConfigFile'),
   } as const;
 
   const descMap = {
+    instance_added: t('subscription.instanceAddedDesc'),
     attribute_change: t('subscription.attributeChangeDesc'),
+    instance_deleted: t('subscription.instanceDeletedDesc'),
     relation_change: t('subscription.relationChangeDesc'),
     expiration: t('subscription.expirationDesc'),
     config_file: t('subscription.configFileDesc'),
@@ -141,7 +146,7 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
     const nextTypes = checked ? value.filter((v) => v !== type) : [...value, type];
     const nextConfig: TriggerConfig = { ...triggerConfig };
     if (!checked) {
-      if (type === 'attribute_change' && !nextConfig.attribute_change) {
+      if (isInstanceLifecycleTrigger(type) && !nextConfig.attribute_change) {
         nextConfig.attribute_change = { fields: attributeChangeDefaultFields };
       }
       if (type === 'relation_change' && !nextConfig.relation_change) {
@@ -162,7 +167,11 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
   };
 
   const renderConfigContent = (type: TriggerType) => {
-    if (!value.includes(type)) return null;
+    if (type === 'attribute_change') {
+      if (!value.some(isInstanceLifecycleTrigger)) return null;
+    } else if (!value.includes(type)) {
+      return null;
+    }
 
     if (type === 'attribute_change') {
       const hasError = !!errors['attribute_change.fields'];
@@ -420,7 +429,17 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
         })}
       </div>
 
-      {value.map((type) => {
+      {value.some(isInstanceLifecycleTrigger) && (
+        <div className="rounded-md bg-[var(--color-fill-1)] p-3">
+          <div className="mb-3 text-[13px] font-medium text-[var(--color-text-1)]">
+            {t('subscription.lifecycleConfig')}
+          </div>
+          {renderConfigContent('attribute_change')}
+          <div className="text-xs leading-5 text-[var(--color-text-3)]">{t('subscription.lifecycleFieldHint')}</div>
+        </div>
+      )}
+
+      {value.filter((type) => !isInstanceLifecycleTrigger(type)).map((type) => {
         const content = renderConfigContent(type);
         if (!content) {
           return null;

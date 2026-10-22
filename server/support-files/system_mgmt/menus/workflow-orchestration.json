@@ -1,6 +1,6 @@
 {
   "client_id": "workflow-orchestration",
-  "name": "Workflow Orchestration",
+  "name": "Workflow",
   "url": "/workflow-orchestration",
   "icon": "liuchengguanli1",
   "tags": [
@@ -12,7 +12,17 @@
   "description": "app.workflow-orchestration",
   "menus": [
     {
-      "name": "Workflow Orchestration",
+      "name": "Home",
+      "children": [
+        {
+          "id": "workflow_home",
+          "name": "Home",
+          "operation": ["View"]
+        }
+      ]
+    },
+    {
+      "name": "Workflow",
       "children": [
         {
           "id": "workflow",
@@ -23,10 +33,24 @@
             "Edit",
             "Execute",
             "Publish",
-            "Approve",
             "Manage",
             "Delete"
           ]
+        },
+        {
+          "id": "workflow_market",
+          "name": "Template",
+          "operation": ["View", "Add"]
+        }
+      ]
+    },
+    {
+      "name": "Execution",
+      "children": [
+        {
+          "id": "workflow_execution",
+          "name": "Execution",
+          "operation": ["View", "Execute", "Approve"]
         }
       ]
     }
@@ -41,14 +65,19 @@
       "name": "normal",
       "role_name": "workflow_orchestration_normal",
       "menus": [
+        "workflow_home-View",
         "workflow-View",
         "workflow-Add",
         "workflow-Edit",
         "workflow-Execute",
         "workflow-Publish",
-        "workflow-Approve",
         "workflow-Manage",
-        "workflow-Delete"
+        "workflow-Delete",
+        "workflow_market-View",
+        "workflow_market-Add",
+        "workflow_execution-View",
+        "workflow_execution-Execute",
+        "workflow_execution-Approve"
       ]
     }
   ]

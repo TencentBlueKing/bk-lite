@@ -3,12 +3,15 @@
 对照 specs/capabilities/legacy-prd-cmdb-资产.md：订阅规则按筛选类型/触发类型/接收对象/渠道做参数校验。
 """
 
+import importlib
 from types import SimpleNamespace
 
 import pytest
 from rest_framework import serializers
 
 from apps.cmdb.serializers.subscription import SubscriptionRuleSerializer
+
+expand_trigger_types = importlib.import_module("apps.cmdb.migrations.0060_subscription_attribute_lifecycle").expand_trigger_types
 
 
 def _ser(initial_data=None, instance=None):
@@ -45,10 +48,10 @@ def test_validate_instance_filter_condition_ok():
     assert ser.validate_instance_filter(value) == value
 
 
-def test_validate_instance_filter_condition_empty():
+def test_validate_instance_filter_condition_empty_means_all():
     ser = _ser(initial_data={"filter_type": "condition"})
-    with pytest.raises(serializers.ValidationError):
-        ser.validate_instance_filter({"query_list": []})
+    assert ser.validate_instance_filter({"query_list": []}) == {"query_list": []}
+    assert ser.validate_instance_filter({}) == {"query_list": []}
 
 
 def test_validate_instance_filter_condition_too_many():
@@ -95,6 +98,7 @@ def test_validate_instance_filter_unknown_filter_type():
 
 def test_validate_trigger_types_ok():
     assert _ser().validate_trigger_types(["attribute_change"]) == ["attribute_change"]
+    assert _ser().validate_trigger_types(["instance_added", "instance_deleted"]) == ["instance_added", "instance_deleted"]
 
 
 def test_validate_trigger_types_empty():
@@ -122,6 +126,12 @@ def test_validate_trigger_config_attribute_change_missing_fields():
     ser = _ser(initial_data={"trigger_types": ["attribute_change"]})
     with pytest.raises(serializers.ValidationError):
         ser.validate_trigger_config({"attribute_change": {"fields": []}})
+
+
+def test_validate_trigger_config_added_also_needs_fields():
+    ser = _ser(initial_data={"trigger_types": ["instance_added"]})
+    with pytest.raises(serializers.ValidationError):
+        ser.validate_trigger_config({})
 
 
 def test_validate_trigger_config_expiration_ok():
@@ -215,6 +225,20 @@ def test_validate_channel_ids_non_int():
 # --------------------------------------------------------------------------
 # get_can_manage
 # --------------------------------------------------------------------------
+
+
+def test_expand_trigger_types_keeps_legacy_attribute_change_as_all_lifecycle():
+    expanded = expand_trigger_types(["attribute_change", "expiration"])
+    assert expanded == ["attribute_change", "expiration", "instance_added", "instance_deleted"]
+
+
+def test_expand_trigger_types_leaves_explicit_update_only_when_siblings_present():
+    types = ["attribute_change", "instance_added", "instance_deleted"]
+    assert expand_trigger_types(types) == types
+
+
+def test_expand_trigger_types_ignores_rules_without_attribute_change():
+    assert expand_trigger_types(["expiration"]) == ["expiration"]
 
 
 def test_get_can_manage_no_request():

@@ -197,6 +197,8 @@
     },
     "integration": {
       "connect": "接入",
+      "searchCategory": "搜索分类",
+      "searchCollectType": "搜索采集类型",
       "sampleRate": "采样率",
       "processDes": "process指标集提供进程统计信息。每个进程提供一个文档。",
       "ruleCategories": "预设规则",

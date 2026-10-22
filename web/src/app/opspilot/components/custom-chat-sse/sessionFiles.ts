@@ -2,10 +2,18 @@ import type { CustomChatMessage, ReportFileDownload } from '@/app/opspilot/types
 
 import { isRenderableReportDownload } from './downloadUrl';
 
-export function collectSessionFiles(messages: CustomChatMessage[]): ReportFileDownload[] {
+export type SessionFileItem = ReportFileDownload & {
+  source?: string;
+};
+
+export function collectSessionFiles(messages: CustomChatMessage[]): SessionFileItem[] {
   const seen = new Set<string>();
-  const files: ReportFileDownload[] = [];
+  const files: SessionFileItem[] = [];
+  let source = '';
   for (const message of messages) {
+    if (message.role === 'user' && message.content.trim()) {
+      source = message.content.trim();
+    }
     for (const download of message.reportFileDownloads || []) {
       if (!isRenderableReportDownload(download)) {
         continue;
@@ -15,7 +23,7 @@ export function collectSessionFiles(messages: CustomChatMessage[]): ReportFileDo
         continue;
       }
       seen.add(key);
-      files.push(download);
+      files.push({ ...download, source: source || undefined });
     }
   }
   return files;

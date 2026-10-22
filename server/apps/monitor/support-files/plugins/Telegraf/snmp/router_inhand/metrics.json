@@ -24,7 +24,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_modem_temperature_celsius",
-      "query": "max(snmp_device_modem_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_modem_temperature_celsius{instance_type='router', collect_type='snmp_inhand_router', __$labels__}) by (instance_id)",
       "display_name": "Modem Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_modem_state",
-      "query": "max(snmp_device_modem_state{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_modem_state{instance_type='router', collect_type='snmp_inhand_router', __$labels__}) by (instance_id)",
       "display_name": "Modem Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -50,7 +50,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_cellular_connected",
-      "query": "max(snmp_device_cellular_connected{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cellular_connected{instance_type='router', collect_type='snmp_inhand_router', __$labels__}) by (instance_id)",
       "display_name": "Cellular Connection",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -63,7 +63,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_cellular_signal_level",
-      "query": "max(snmp_device_cellular_signal_level{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cellular_signal_level{instance_type='router', collect_type='snmp_inhand_router', __$labels__}) by (instance_id)",
       "display_name": "Cellular Signal Level",
       "data_type": "Number",
       "unit": "none",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', collect_type='snmp_inhand_router', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -94,7 +94,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', collect_type='snmp_inhand_router', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -112,7 +112,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_inhand_router', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

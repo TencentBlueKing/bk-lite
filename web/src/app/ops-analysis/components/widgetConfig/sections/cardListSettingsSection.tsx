@@ -20,7 +20,7 @@ import {
   resolveCardListPreviewSlots,
   type CardListFormState,
 } from '../utils/cardListSettingsModel';
-import { ConfigGroupTitle } from '../configTitles';
+import { ConfigSectionTitle } from '../configTitles';
 import { ChartRoleLabel, RefreshFieldsButton } from './chartRoleLabel';
 
 interface CardListSettingsSectionProps {
@@ -417,7 +417,7 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
       <Form.Item name={['cardList', 'badgeStyle']} noStyle>
         <StoredAccentStyle />
       </Form.Item>
-      <ConfigGroupTitle
+      <ConfigSectionTitle
         actions={(
           <RefreshFieldsButton
             label={t('dashboard.refreshFields')}
@@ -427,7 +427,7 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
         )}
       >
         {t('dashboard.dataFields')}
-      </ConfigGroupTitle>
+      </ConfigSectionTitle>
 
       <div className="mb-5 border-l border-(--color-border-2) pl-3">
       <CardListPreview
@@ -612,9 +612,9 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
       </div>
       </div>
 
-      <ConfigGroupTitle>
+      <ConfigSectionTitle>
         {t('dashboard.cardListLayout')}
-      </ConfigGroupTitle>
+      </ConfigSectionTitle>
       <Form.Item name={['cardList', 'layout']} className="mb-0">
         <LayoutPicker
           listLabel={t('dashboard.cardListLayoutList')}

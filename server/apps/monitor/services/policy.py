@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorObject, MonitorPlugin, MonitorPolicy, PolicyTemplate
 from apps.monitor.models.monitor_metrics import Metric
@@ -77,26 +77,86 @@ class PolicyService:
         return object_name, plugin_name
 
     @staticmethod
+    def _template_metric_name(raw_template):
+        metric_name = str(raw_template.get("metric_name") or "").strip()
+        if metric_name:
+            return metric_name
+        query = raw_template.get("query_condition") or {}
+        if isinstance(query, dict) and query.get("type") != "formula":
+            return str(query.get("metric_name") or "").strip()
+        return ""
+
+    @staticmethod
+    def _unique_plugin_metric_objects(lookups):
+        """(plugin_name, metric_name) → 对象名；仅当该插件下该指标只属于一个监控对象。"""
+        if not lookups:
+            return {}
+        plugin_names = {plugin_name for plugin_name, _metric_name in lookups}
+        metric_names = {metric_name for _plugin_name, metric_name in lookups}
+        grouped = {}
+        rows = Metric.objects.filter(
+            monitor_plugin__name__in=plugin_names,
+            name__in=metric_names,
+        ).values_list("monitor_plugin__name", "name", "monitor_object__name")
+        for plugin_name, metric_name, object_name in rows:
+            key = (plugin_name, metric_name)
+            if key not in lookups:
+                continue
+            object_name = str(object_name or "").strip()
+            if not object_name:
+                continue
+            grouped.setdefault(key, set()).add(object_name)
+        return {key: next(iter(names)) for key, names in grouped.items() if len(names) == 1}
+
+    @staticmethod
+    def _effective_builtin_object_name(raw_template, root_object_name, plugin_name, unique_metric_objects):
+        declared = str(raw_template.get("object") or "").strip()
+        if declared:
+            return declared
+        metric_name = PolicyService._template_metric_name(raw_template)
+        if metric_name:
+            unique_object = unique_metric_objects.get((plugin_name, metric_name), "")
+            if unique_object:
+                return unique_object
+        return root_object_name
+
+    @staticmethod
     def _normalize_builtin_documents(documents):
-        normalized = []
+        prepared = []
         seen_pairs = set()
-        seen_keys = set()
+        metric_lookups = set()
         for data in documents:
-            object_name, plugin_name = PolicyService._extract_builtin_pair(data)
-            pair = (object_name, plugin_name)
+            root_object_name, plugin_name = PolicyService._extract_builtin_pair(data)
+            pair = (root_object_name, plugin_name)
             if pair in seen_pairs:
-                raise BaseAppException(f"内置策略模板重复定义: {object_name}/{plugin_name}")
+                raise BaseAppException(f"内置策略模板重复定义: {root_object_name}/{plugin_name}")
             seen_pairs.add(pair)
             templates = data.get("templates")
             if not isinstance(templates, list):
-                raise BaseAppException(f"{object_name}/{plugin_name} 的 templates 必须是列表")
-            pair_keys = set()
+                raise BaseAppException(f"{root_object_name}/{plugin_name} 的 templates 必须是列表")
+            document_templates = []
             for raw_template in templates:
                 if not isinstance(raw_template, dict):
-                    raise BaseAppException(f"{object_name}/{plugin_name} 包含非法模板")
+                    raise BaseAppException(f"{root_object_name}/{plugin_name} 包含非法模板")
                 name = str(raw_template.get("name") or raw_template.get("alert_name") or raw_template.get("metric_name") or "").strip()
                 if not name:
-                    raise BaseAppException(f"{object_name}/{plugin_name} 的模板缺少 name")
+                    raise BaseAppException(f"{root_object_name}/{plugin_name} 的模板缺少 name")
+                declared_object = str(raw_template.get("object") or "").strip()
+                metric_name = PolicyService._template_metric_name(raw_template)
+                if not declared_object and metric_name:
+                    metric_lookups.add((plugin_name, metric_name))
+                document_templates.append((raw_template, name))
+            prepared.append((root_object_name, plugin_name, document_templates))
+
+        unique_metric_objects = PolicyService._unique_plugin_metric_objects(metric_lookups)
+        normalized = []
+        seen_keys = set()
+        for root_object_name, plugin_name, document_templates in prepared:
+            pair_keys = set()
+            for raw_template, name in document_templates:
+                object_name = PolicyService._effective_builtin_object_name(
+                    raw_template, root_object_name, plugin_name, unique_metric_objects
+                )
                 key = PolicyService.build_builtin_key(object_name, plugin_name, raw_template)
                 if key in pair_keys or key in seen_keys:
                     raise BaseAppException(f"内置策略模板 key 重复: {key}")
@@ -231,19 +291,20 @@ class PolicyService:
 
     @staticmethod
     def import_monitor_policy(data):
-        """兼容单文件调用；仅对账该对象和插件下的内置模板。"""
+        """兼容单文件调用；对账该插件在根对象及各模板有效对象下的内置模板。"""
         normalized = PolicyService._normalize_builtin_documents([data])
-        object_name = data["object"]
-        plugin_name = data["plugin"]
-        monitor_object = MonitorObject.objects.get(name=object_name)
+        root_object_name, plugin_name = PolicyService._extract_builtin_pair(data)
+        object_names = {item["object_name"] for item in normalized}
+        object_names.add(root_object_name)
+        objects = {name: MonitorObject.objects.get(name=name) for name in object_names}
         plugin = MonitorPlugin.objects.get(name=plugin_name)
         expected_keys = {item["key"] for item in normalized}
         with transaction.atomic():
             for item in normalized:
-                PolicyService._upsert_builtin_template(item, monitor_object, plugin)
+                PolicyService._upsert_builtin_template(item, objects[item["object_name"]], plugin)
             PolicyTemplate.objects.filter(
                 template_type=PolicyTemplate.TYPE_BUILTIN,
-                monitor_object=monitor_object,
+                monitor_object__in=list(objects.values()),
                 plugin=plugin,
             ).exclude(key__in=expected_keys).delete()
 
@@ -751,8 +812,26 @@ class PolicyService:
         )
 
     @staticmethod
+    def _ensure_issued_threshold(threshold):
+        """复用策略保存的阈值规则。非法配置在模板或已下发策略写库前拒绝，并返回 400。"""
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+
+        from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+
+        try:
+            MonitorPolicySerializer().validate_threshold(threshold)
+        except DRFValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, (list, tuple)):
+                message = "; ".join(str(item) for item in detail)
+            else:
+                message = str(detail)
+            raise ValidationAppException(message) from exc
+
+    @staticmethod
     def sync_issued_policies_from_template(template, user):
         recipe = PolicyService.recipe_fields_from_template(template)
+        PolicyService._ensure_issued_threshold(recipe.get("threshold") or [])
         operator = getattr(user, "username", "") or "system"
         updated_count = 0
         last_id = 0
@@ -820,13 +899,16 @@ class PolicyService:
             raise BaseAppException("内置模版不可编辑")
         if template.organization != organization:
             raise BaseAppException("无权限访问指定模板")
-        template.name = name
-        template.description = description or ""
-        template.config = PolicyService.portable_config(
+        portable = PolicyService.portable_config(
             config,
             monitor_object=template.monitor_object,
             plugin=template.plugin,
         )
+        stored_threshold = portable["threshold"] if "threshold" in portable else []
+        PolicyService._ensure_issued_threshold(stored_threshold)
+        template.name = name
+        template.description = description or ""
+        template.config = portable
         template.updated_by = user.username
         template.updated_by_domain = getattr(user, "domain", "domain.com")
         with transaction.atomic():

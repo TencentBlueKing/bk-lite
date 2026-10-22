@@ -210,7 +210,6 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
                 <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
                   {title}
                 </h4>
-                <InteractionTitleIcon config={item.valueConfig} />
               </div>
               {item.description?.trim() && (
                 <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
@@ -239,6 +238,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
                 />
               </div>
             )}
+            <InteractionTitleIcon config={item.valueConfig} />
           </div>
           <div
             className="widget-body flex-1 h-full min-h-0"

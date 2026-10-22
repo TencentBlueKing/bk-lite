@@ -175,6 +175,9 @@ const computePositions = async (
   }
 
   if (mode === 'hierarchical') {
+    if (!merged.nodes.has(centerId)) {
+      return layoutComponents(merged);
+    }
     const hopMap = computeHops(merged, centerId);
     const byHop = new Map<number, string[]>();
     ids.forEach((id) => {
@@ -200,6 +203,45 @@ const computePositions = async (
     const angle = (index / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2;
     pos.set(id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
   });
+  return pos;
+};
+
+// 闭集没有单一中心：每个连通块单独成列，互不连通的设备不会叠在同一列。
+const layoutComponents = (merged: MergedGraph): PosMap => {
+  const adj = new Map<string, Set<string>>();
+  merged.nodes.forEach((_, id) => adj.set(id, new Set()));
+  merged.links.forEach((link) => {
+    if (!adj.has(link.source_device)) adj.set(link.source_device, new Set());
+    if (!adj.has(link.target_device)) adj.set(link.target_device, new Set());
+    adj.get(link.source_device)!.add(link.target_device);
+    adj.get(link.target_device)!.add(link.source_device);
+  });
+  const unseen = new Set(merged.nodes.keys());
+  const pos: PosMap = new Map();
+  let column = 0;
+  while (unseen.size) {
+    const start = unseen.values().next().value as string;
+    const members: string[] = [];
+    const queue = [start];
+    unseen.delete(start);
+    while (queue.length) {
+      const current = queue.shift() as string;
+      members.push(current);
+      (adj.get(current) || new Set()).forEach((next) => {
+        if (!unseen.has(next)) return;
+        unseen.delete(next);
+        queue.push(next);
+      });
+    }
+    const count = members.length;
+    members.forEach((id, index) => {
+      pos.set(id, {
+        x: column * HIER_COL_GAP,
+        y: (index - (count - 1) / 2) * HIER_ROW_GAP,
+      });
+    });
+    column += 1;
+  }
   return pos;
 };
 
@@ -335,11 +377,22 @@ export interface NetworkTopoFocusPayload {
   instName?: string;
 }
 
+export interface NetworkTopoClosedSetDevice {
+  modelId: string;
+  instUuid: string;
+  instName?: string;
+}
+
 interface NetworkTopoProps {
   modelId: string;
   instUuid: string;
   /** Hub flex layout: fill parent instead of viewport calc. Default false keeps detail page height. */
   fillContainer?: boolean;
+  /**
+   * Views hub with 2+ devices: draw only these devices and the interface
+   * links between them. Detail page and a single hub selection omit this.
+   */
+  closedSetDevices?: NetworkTopoClosedSetDevice[];
   /** When provided (hub), enable 「设为当前」 via dblclick / context menu. */
   onRequestFocus?: (payload: NetworkTopoFocusPayload) => void;
   /** When provided (hub), enable 「查看详情」 via context menu. */
@@ -353,6 +406,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
   modelId,
   instUuid,
   fillContainer = false,
+  closedSetDevices,
   onRequestFocus,
   onViewDetail,
   centerHop: centerHopProp,
@@ -361,14 +415,23 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
   const { t } = useTranslation();
   const {
     getNetworkTopo,
+    getNetworkTopoAmong,
     createInstanceAssociation,
     deleteInstanceAssociation,
   } = useInstanceApi();
+  const closedSetKey = (closedSetDevices ?? []).map((item) => item.instUuid).join(',');
+  const isClosedSet = (closedSetDevices?.length ?? 0) > 1;
+  const closedSetDevicesRef = useRef(closedSetDevices);
+  closedSetDevicesRef.current = closedSetDevices;
+  const getNetworkTopoAmongRef = useRef(getNetworkTopoAmong);
+  getNetworkTopoAmongRef.current = getNetworkTopoAmong;
+  const layoutModeRef = useRef<LayoutMode>('hierarchical');
   const { getModelAssociations } = useModelApi();
   const { modelList } = useRelationships();
   const [loading, setLoading] = useState<boolean>(false);
   const [centerId, setCenterId] = useState<string>('');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('hierarchical');
+  layoutModeRef.current = layoutMode;
   const [internalCenterHop, setInternalCenterHop] = useState<NetworkTopoHop>(
     NETWORK_TOPO_DEFAULT_CENTER_HOP
   );
@@ -487,7 +550,42 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
   }, [instUuid, isHopControlled]);
 
   useEffect(() => {
-    if (!modelId || !instUuid) return;
+    if (!isClosedSet) return;
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const uuids = (closedSetDevicesRef.current ?? []).map((item) => item.instUuid);
+        const data: NetworkTopoData = await getNetworkTopoAmongRef.current(uuids);
+        if (cancelled || !mountedRef.current) return;
+        mergedRef.current = { nodes: new Map(), links: new Map() };
+        expandedRef.current = new Set();
+        posRef.current = new Map();
+        floatingRef.current = new Map();
+        mergeData(data);
+        setCenterId('');
+        await rebuild('', layoutModeRef.current);
+        if (data?.truncated) {
+          message.warning(t('Model.networkTopoNodeLimit'));
+        }
+      } catch (error) {
+        if (!cancelled && mountedRef.current) {
+          const text = error instanceof Error ? error.message : '';
+          message.error(text || t('common.operationFailed'));
+        }
+      } finally {
+        if (!cancelled && mountedRef.current) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+     
+  }, [isClosedSet, closedSetKey]);
+
+  useEffect(() => {
+    if (isClosedSet || !modelId || !instUuid) return;
     let cancelled = false;
     const load = async () => {
       setLoading(true);
@@ -499,13 +597,14 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
         );
         if (cancelled) return;
         // 接口异常或空响应可能没有 center，按空拓扑处理，避免崩溃
-        if (!data?.center?.id) return;
+        const center = data?.center;
+        if (!center?.id) return;
         mergedRef.current = { nodes: new Map(), links: new Map() };
         expandedRef.current = new Set();
         posRef.current = new Map();
         mergeData(data);
-        setCenterId(data.center.id);
-        await rebuild(data.center.id, layoutMode);
+        setCenterId(center.id);
+        await rebuild(center.id, layoutMode);
         if (data.truncated) {
           message.warning(t('Model.networkTopoNodeLimit'));
         }
@@ -520,7 +619,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
       cancelled = true;
     };
      
-  }, [modelId, instUuid, centerHop]);
+  }, [isClosedSet, modelId, instUuid, centerHop]);
 
   // 右键：从该设备再向外展开 1 / 2 / 3 跳并合并进当前图
   const handleExpand = useCallback(
@@ -787,7 +886,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
     if (target) handleExpand(target, depth);
   };
 
-  const showToolbarHopControl = !isHopControlled;
+  const showToolbarHopControl = !isHopControlled && !isClosedSet;
 
   return (
     <div className={fillContainer ? 'h-full min-h-0' : undefined}>
@@ -935,24 +1034,28 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
           >
             {menu.kind === 'node' ? (
               <>
-                <div
-                  className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
-                  onClick={() => handleContextExpand(1)}
-                >
-                  {t('Model.networkTopoExpandOne')}
-                </div>
-                <div
-                  className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
-                  onClick={() => handleContextExpand(2)}
-                >
-                  {t('Model.networkTopoExpandTwo')}
-                </div>
-                <div
-                  className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
-                  onClick={() => handleContextExpand(3)}
-                >
-                  {t('Model.networkTopoExpandThree')}
-                </div>
+                {!isClosedSet && (
+                  <>
+                    <div
+                      className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                      onClick={() => handleContextExpand(1)}
+                    >
+                      {t('Model.networkTopoExpandOne')}
+                    </div>
+                    <div
+                      className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                      onClick={() => handleContextExpand(2)}
+                    >
+                      {t('Model.networkTopoExpandTwo')}
+                    </div>
+                    <div
+                      className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                      onClick={() => handleContextExpand(3)}
+                    >
+                      {t('Model.networkTopoExpandThree')}
+                    </div>
+                  </>
+                )}
                 {editing && (
                   <div
                     className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"

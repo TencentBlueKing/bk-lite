@@ -78,6 +78,7 @@ class AlertDetector:
             "display_unit": self.metric_query_service.get_display_unit(),
             "enum_value_map": self.metric_query_service.get_enum_value_map(),
             "resource_context_resolver": self._build_metric_resource_context,
+            **self._content_unit_context(),
         }
 
         thresholds = self.metric_query_service.convert_thresholds(
@@ -158,6 +159,37 @@ class AlertDetector:
             info_events = self._filter_events_by_scope(info_events)
             hold_events = self._filter_events_by_scope(hold_events)
         return alert_events, info_events, hold_events
+
+    def _content_unit_context(self) -> dict:
+        """告警文案用的源单位：扫描已换算则 content 不再二次自适应。"""
+        get_calc = getattr(self.metric_query_service, "get_effective_calculation_unit", None)
+        if callable(get_calc):
+            source_unit = get_calc() or ""
+        else:
+            source_unit = (
+                getattr(self.policy, "calculation_unit", None)
+                or getattr(self.policy, "metric_unit", None)
+                or ""
+            )
+        overlay_source_unit = (
+            getattr(self.policy, "calculation_unit", None)
+            or getattr(self.policy, "metric_unit", None)
+            or ""
+        )
+        is_converted = getattr(self.metric_query_service, "is_metric_unit_converted", None)
+        if callable(is_converted):
+            scan_unit_converted = bool(is_converted())
+        else:
+            metric_unit = getattr(self.policy, "metric_unit", None) or ""
+            calculation_unit = getattr(self.policy, "calculation_unit", None) or ""
+            scan_unit_converted = bool(
+                metric_unit and calculation_unit and metric_unit != calculation_unit
+            )
+        return {
+            "source_unit": source_unit,
+            "overlay_source_unit": overlay_source_unit,
+            "scan_unit_converted": scan_unit_converted,
+        }
 
     def _converted_recovery_threshold(self):
         recovery = getattr(self.policy, "recovery_threshold", None) or {}

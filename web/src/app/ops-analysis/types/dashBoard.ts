@@ -213,7 +213,7 @@ export interface DashboardActionConfig {
   params?: DashboardActionParamMapping[];
 }
 
-/** 组件只保留一条交互链接：标题旁图标，或点击数据。 */
+/** 组件只保留一条交互链接：标题行最右侧 >，或点击数据。 */
 export type WidgetInteractionKind = 'title' | 'data';
 
 export type WidgetInteractionOpenMode = 'sameTab' | 'newTab';

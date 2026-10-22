@@ -64,7 +64,7 @@ SNMP 凭据按版本区分，请先确定 `version` 再填写对应字段。
 - 正常执行 `batch_init` 或 `python manage.py init_oid` 会幂等同步内置目录：每次启动都会把 `built_in=True` 重置为目录值，新增缺失项、原地纠正内置项、保留未变化项和目录外遗留项。重复同步不会删除后重建记录。
 - 同一 OID 的 POST 会被 API 拒绝。用户覆盖只能 UPDATE 已有行并设 `built_in=False`；这类记录始终优先，同步报告为“用户覆盖”且不会改写。
 - `--force` 仅为兼容旧自动化保留，仍执行安全的全量比较，不会删除或重建内置记录。
-- 未知 SOID 会保留原始 OID，品牌和型号标记为 `未知`，设备类型按 `switch` 兼容处理。
+- 未命中特征库的 SOID 不入库。原始 OID、IP、端口、系统描述和接口留在任务结果的未识别列表里，等用户确认设备类型、品牌和型号后，再写入特征库和对应模型。
 
 #### 发布、验证与回滚
 1. 发布前在待升级版本和数据库副本上执行 `python manage.py init_oid --dry-run`，重点复核设备类型变化、用户覆盖和目录外遗留。
@@ -79,7 +79,7 @@ SNMP 凭据按版本区分，请先确定 `version` 再填写对应字段。
 | :--- | :--- |
 | inst_name | 实例展示名（形如 `{ip}-设备类型`） |
 | ip_addr | 设备管理 IP |
-| soid | sysObjectID（SNMP 标准设备对象标识），用于在 OID 库中匹配设备型号、品牌和类型；未知 SOID 会保留原始 OID，品牌和型号标记为 `未知`，设备类型按 `switch` 兼容处理 |
+| soid | sysObjectID（SNMP 标准设备对象标识），用于在 OID 库中匹配设备型号、品牌和类型；未命中特征库时不入库，留在任务结果里确认后再写入特征库和对应模型 |
 | port | SNMP 端口 |
 | sysdescr | 设备系统描述（sysDescr） |
 | sysname | 设备系统名称（sysName） |
@@ -87,6 +87,7 @@ SNMP 凭据按版本区分，请先确定 `version` 再填写对应字段。
 | syscontact | 联系人信息（sysContact） |
 | model | 设备型号（来自 OID 库匹配） |
 | brand | 设备品牌 |
+| sn | 实体序列号表。列：`oid`（完整 OID，行标识）、`serial`（序列号）、`entity`（实体，机箱为 `chassis / 描述`）。只保留 `entPhysicalSerialNum` 非空的行。本次 ENTITY-MIB walk 失败时不覆盖已有表 |
 
 **接口（interface，network 的关联子项）**
 

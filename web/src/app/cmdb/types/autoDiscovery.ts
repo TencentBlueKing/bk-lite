@@ -238,6 +238,22 @@ export interface TaskDetailData {
   delete: TaskData;
   relation: TaskData;
   raw_data?: TaskData;
+  unresolved?: {
+    data: Array<{
+      soid: string;
+      devices?: Array<{
+        ip_addr: string;
+        port?: string;
+        sys_desc?: string;
+        interfaces?: Array<{ name: string; description?: string; mac?: string; status?: string }>;
+      }>;
+      mapped?: boolean;
+      device_type?: string;
+      brand?: string;
+      model?: string;
+    }>;
+    count: number;
+  };
   topology?: TopologySummaryData;
 }
 

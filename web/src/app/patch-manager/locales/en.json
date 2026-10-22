@@ -439,7 +439,8 @@
       "descriptionPlaceholder": "Enter a patch description",
       "severityRequired": "Select a severity",
       "select": "Select",
-      "versionPlaceholder": "e.g. Windows Server 2019",
+      "versionPlaceholder": "Select a Windows Server version",
+      "versionRequired": "Select an applicable version",
       "distroRequired": "Enter a distribution",
       "distroPlaceholder": "e.g. Rocky 8",
       "minimumVersion": "Minimum Version",
@@ -455,7 +456,7 @@
       "editPatch": "Edit Patch",
       "saved": "Saved",
       "packageNotReplaceable": "The patch package is ready or processing and cannot be replaced",
-      "packageRetryHelp": "The previous upload failed. Remove the old file and select a new MSU or CAB file.",
+      "packageRetryHelp": "The previous upload failed. Select a new MSU or CAB file.",
       "packageReuploadRequired": "Upload the MSU or CAB patch file again",
       "selectFile": "Select File"
     },

@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_load",
-      "query": "snmp_device_cpu_load{instance_type='switch', __$labels__} / 100",
+      "query": "snmp_device_cpu_load{instance_type='switch', collect_type='snmp_westermo', __$labels__} / 100",
       "display_name": "CPU Load Average 1m",
       "data_type": "Number",
       "unit": "none",
@@ -34,7 +34,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_load5",
-      "query": "snmp_device_cpu_load5{instance_type='switch', __$labels__} / 100",
+      "query": "snmp_device_cpu_load5{instance_type='switch', collect_type='snmp_westermo', __$labels__} / 100",
       "display_name": "CPU Load Average 5m",
       "data_type": "Number",
       "unit": "none",
@@ -47,7 +47,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_load15",
-      "query": "snmp_device_cpu_load15{instance_type='switch', __$labels__} / 100",
+      "query": "snmp_device_cpu_load15{instance_type='switch', collect_type='snmp_westermo', __$labels__} / 100",
       "display_name": "CPU Load Average 15m",
       "data_type": "Number",
       "unit": "none",
@@ -65,7 +65,7 @@
       ],
       "name": "device_memory_available",
       "display_name": "内存可用",
-      "query": "snmp_device_memory_available{instance_type='switch', __$labels__} * 1024",
+      "query": "snmp_device_memory_available{instance_type='switch', collect_type='snmp_westermo', __$labels__} * 1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Available memory of the Westermo WeOS switch in bytes (WESTERMO-WEOS-MIB memoryAvail at 1.3.6.1.4.1.16177.2.1.5.3.1.0, reported in KB and converted ×1024). WeOS does not expose used or total memory scalars; used/free/usage are not fabricated."
@@ -73,7 +73,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_westermo', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

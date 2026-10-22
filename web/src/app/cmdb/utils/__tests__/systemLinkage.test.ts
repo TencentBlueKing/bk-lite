@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { HandledRequestError } from '@/utils/request';
 import {
   canSyncMonitor,
+  canOpenMonitorLink,
+  canOpenCmdbLink,
+  builtinCmdbModelId,
+  isPlatformTreeModel,
   showNodeId,
   resolveMonitorLinkMessage,
   resolveBatchPushSummaryLevel,
@@ -42,6 +46,11 @@ describe('systemLinkage', () => {
       EXTERNAL_ID_COLUMN_KEY,
     ]);
     expect(resolveListDisplayFieldKeys([], attrs)).toEqual([]);
+    expect(resolveListDisplayFieldKeys(undefined, attrs)).not.toContain('inst_uuid');
+    expect(resolveListDisplayFieldKeys(['inst_name', 'inst_uuid'], attrs)).toEqual([
+      'inst_name',
+      'inst_uuid',
+    ]);
   });
 
   it('builds host external ids as node then monitor', () => {
@@ -68,6 +77,39 @@ describe('systemLinkage', () => {
     expect(canSyncMonitor('docker')).toBe(true);
     expect(canSyncMonitor('k8s_cluster')).toBe(false);
     expect(canSyncMonitor('biz')).toBe(false);
+  });
+
+  it('treats k8s cloud and vcenter as platform trees', () => {
+    expect(isPlatformTreeModel('k8s_cluster')).toBe(true);
+    expect(isPlatformTreeModel('k8s_pod')).toBe(true);
+    expect(isPlatformTreeModel('vmware_vc')).toBe(true);
+    expect(isPlatformTreeModel('aliyun_ecs')).toBe(true);
+    expect(isPlatformTreeModel('host')).toBe(false);
+    expect(isPlatformTreeModel('weblogic')).toBe(false);
+    expect(isPlatformTreeModel('biz')).toBe(false);
+  });
+
+  it('hides the monitor-link entry until cmdb and monitor are both licensed', () => {
+    expect(canOpenMonitorLink(undefined, false, 'host')).toBe(false);
+    expect(canOpenMonitorLink([], false, 'host')).toBe(false);
+    expect(canOpenMonitorLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, true, 'host')).toBe(false);
+    expect(canOpenMonitorLink([{ name: 'cmdb' } as never], false, 'host')).toBe(false);
+    expect(canOpenMonitorLink([{ name: 'monitor' } as never], false, 'host')).toBe(false);
+    expect(canOpenMonitorLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'k8s_cluster')).toBe(false);
+    expect(canOpenMonitorLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'host')).toBe(true);
+    expect(canOpenMonitorLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'weblogic')).toBe(true);
+  });
+
+  it('hides the cmdb-link entry unless both apps are licensed and the object is mapped', () => {
+    expect(builtinCmdbModelId('Host')).toBe('host');
+    expect(builtinCmdbModelId('Weblogic')).toBeNull();
+    expect(canOpenCmdbLink(undefined, false, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([], false, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, true, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'cmdb' } as never], false, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'monitor' } as never], false, 'Host')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'Weblogic')).toBe(false);
+    expect(canOpenCmdbLink([{ name: 'cmdb' }, { name: 'monitor' }] as never, false, 'Host')).toBe(true);
   });
 
   it('treats empty client list as monitor sold', () => {

@@ -34,6 +34,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import same_metric_field
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -219,9 +220,7 @@ def test_interface_hc_metrics_match_cisco(metrics, cisco_metrics):
     for name in INTERFACE_METRICS:
         assert name in zte, f"{name} must be declared"
         for field in ("metric_group", "unit", "query", "dimensions"):
-            assert zte[name][field] == cis[name][field], f"{name}.{field} drift vs Cisco"
-
-
+            assert same_metric_field(field, zte[name][field], cis[name][field]), f"{name}.{field} drift vs Cisco"
 @pytest.mark.unit
 def test_toml_collects_ifhc_counters(toml_text):
     assert "ifHCInOctets" in toml_text and "ifHCOutOctets" in toml_text

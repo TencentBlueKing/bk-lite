@@ -153,6 +153,18 @@ class MonitorObjectService:
             logger.exception("回填监控实例展示指标失败，列表将保留基础事实")
 
     @staticmethod
+    def fill_display_metrics_for_instance_ids(monitor_object_id, instance_ids):
+        """只回填展示指标，不走列表身份/状态/排序主路径。"""
+        if not instance_ids:
+            return []
+        obj_metric_map = MonitorObject.objects.filter(id=monitor_object_id).values(*MonitorObjConstants.OBJ_KEYS).first()
+        if not obj_metric_map:
+            raise BaseAppException("Monitor object does not exist")
+        result = [{"instance_id": instance_id} for instance_id in instance_ids]
+        MonitorObjectService._safe_fill_display_metrics(monitor_object_id, obj_metric_map, result)
+        return result
+
+    @staticmethod
     def _filter_visible_organizations(queryset, visible_organization_ids):
         if visible_organization_ids is None:
             return queryset

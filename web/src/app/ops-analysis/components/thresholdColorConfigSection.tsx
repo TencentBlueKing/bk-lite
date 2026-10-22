@@ -40,7 +40,7 @@ export const ThresholdColorConfigSection: React.FC<
       label={label ?? t('topology.nodeConfig.thresholdColors')}
       extra={extra}
     >
-      <div className="rounded-xl bg-(--color-fill-1)/30 p-3">
+      <div className="rounded-xl bg-(--color-fill-2) p-3">
         {thresholdColors.map((threshold, index) => {
           const isBaseThreshold = index === thresholdColors.length - 1;
           return (

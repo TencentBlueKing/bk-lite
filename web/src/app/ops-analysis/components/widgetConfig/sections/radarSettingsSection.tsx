@@ -2,7 +2,7 @@ import React from 'react';
 import { Button, Form, Input, InputNumber } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
-import { ConfigGroupTitle } from '../configTitles';
+import { ConfigSectionTitle } from '../configTitles';
 
 interface RadarSettingsSectionProps {
   t: (key: string, defaultMessage?: string) => string;
@@ -54,7 +54,7 @@ export const RadarSettingsSection: React.FC<RadarSettingsSectionProps> = ({
         </Form.Item>
       </div>
 
-      <ConfigGroupTitle>{t('dashboard.radarIndicators')}</ConfigGroupTitle>
+      <ConfigSectionTitle>{t('dashboard.radarIndicators')}</ConfigSectionTitle>
       <Form.List name={['radar', 'indicators']}>
         {(fields, { add, remove }) => (
           <div className="flex flex-col gap-2">

@@ -26,7 +26,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -39,7 +39,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "device_cpu_usage{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -57,7 +57,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='router', __$labels__}",
+      "query": "device_memory_usage{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -93,7 +93,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='router', __$labels__} / 1000",
+      "query": "device_voltage_volts{instance_type='router', collect_type='snmp_huawei_atn', __$labels__} / 1000",
       "display_name": "Input Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -111,7 +111,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='router', __$labels__}",
+      "query": "device_fan_state{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -129,7 +129,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_rx_power",
-      "query": "10 * log10(device_optical_rx_power{instance_type='router', __$labels__} / 1000) and (device_optical_rx_power{instance_type='router', __$labels__} > 0)",
+      "query": "10 * log10(device_optical_rx_power{instance_type='router', collect_type='snmp_huawei_atn', __$labels__} / 1000) and (device_optical_rx_power{instance_type='router', collect_type='snmp_huawei_atn', __$labels__} > 0)",
       "display_name": "SFP RX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -147,7 +147,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_tx_power",
-      "query": "10 * log10(device_optical_tx_power{instance_type='router', __$labels__} / 1000) and (device_optical_tx_power{instance_type='router', __$labels__} > 0)",
+      "query": "10 * log10(device_optical_tx_power{instance_type='router', collect_type='snmp_huawei_atn', __$labels__} / 1000) and (device_optical_tx_power{instance_type='router', collect_type='snmp_huawei_atn', __$labels__} > 0)",
       "display_name": "SFP TX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -165,7 +165,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_dev_duty",
-      "query": "device_cpu_dev_duty{instance_type='router', __$labels__}",
+      "query": "device_cpu_dev_duty{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Device CPU Duty",
       "data_type": "Number",
       "unit": "percent",
@@ -183,7 +183,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_dev_avg_duty_1min",
-      "query": "device_cpu_dev_avg_duty_1min{instance_type='router', __$labels__}",
+      "query": "device_cpu_dev_avg_duty_1min{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Device CPU Duty (1 min)",
       "data_type": "Number",
       "unit": "percent",
@@ -201,7 +201,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_dev_avg_duty_5min",
-      "query": "device_cpu_dev_avg_duty_5min{instance_type='router', __$labels__}",
+      "query": "device_cpu_dev_avg_duty_5min{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Device CPU Duty (5 min)",
       "data_type": "Number",
       "unit": "percent",
@@ -219,7 +219,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_dev_size",
-      "query": "device_memory_dev_size{instance_type='router', __$labels__}",
+      "query": "device_memory_dev_size{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Device Memory Size",
       "data_type": "Number",
       "unit": "bytes",
@@ -237,7 +237,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_dev_free",
-      "query": "device_memory_dev_free{instance_type='router', __$labels__}",
+      "query": "device_memory_dev_free{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Device Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -255,7 +255,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='router', __$labels__}",
+      "query": "device_psu_state{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"supply\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"notSupply\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"sleep\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"未知\",\"id\":4,\"color\":\"#8c8c8c\"}]",
@@ -273,7 +273,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_present",
-      "query": "device_psu_present{instance_type='router', __$labels__}",
+      "query": "device_psu_present{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Power Supply Present",
       "data_type": "Enum",
       "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
@@ -291,7 +291,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='router', __$labels__}",
+      "query": "device_fan_speed{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -309,7 +309,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_present",
-      "query": "device_fan_present{instance_type='router', __$labels__}",
+      "query": "device_fan_present{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Fan Present",
       "data_type": "Enum",
       "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
@@ -327,7 +327,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_entity_board_power",
-      "query": "device_entity_board_power{instance_type='router', __$labels__}",
+      "query": "device_entity_board_power{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Board Power",
       "data_type": "Number",
       "unit": "watts",
@@ -345,7 +345,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_power_used",
-      "query": "device_power_used{instance_type='router', __$labels__}",
+      "query": "device_power_used{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Chassis Used Power",
       "data_type": "Number",
       "unit": "watts",
@@ -358,7 +358,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_power_total",
-      "query": "device_power_total{instance_type='router', __$labels__}",
+      "query": "device_power_total{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Chassis Total Power",
       "data_type": "Number",
       "unit": "watts",
@@ -371,7 +371,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_entity_oper_status",
-      "query": "device_entity_oper_status{instance_type='router', __$labels__}",
+      "query": "device_entity_oper_status{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Entity Oper Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"notSupported\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"disabled\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"enabled\",\"id\":3,\"color\":\"#1ac44a\"},{\"name\":\"offline\",\"id\":4,\"color\":\"#faad14\"}]",
@@ -389,7 +389,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_entity_standby_status",
-      "query": "device_entity_standby_status{instance_type='router', __$labels__}",
+      "query": "device_entity_standby_status{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Entity Standby Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"notSupported\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"hotStandby\",\"id\":2,\"color\":\"#1677ff\"},{\"name\":\"coldStandby\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"providingService\",\"id\":4,\"color\":\"#1ac44a\"}]",
@@ -407,7 +407,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_temperature",
-      "query": "device_optical_temperature{instance_type='router', __$labels__}",
+      "query": "device_optical_temperature{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Optical Module Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -425,7 +425,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_bias",
-      "query": "device_optical_bias{instance_type='router', __$labels__}",
+      "query": "device_optical_bias{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Optical Module Bias",
       "data_type": "Number",
       "unit": "counts",
@@ -443,7 +443,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_voltage",
-      "query": "device_optical_voltage{instance_type='router', __$labels__} / 1000",
+      "query": "device_optical_voltage{instance_type='router', collect_type='snmp_huawei_atn', __$labels__} / 1000",
       "display_name": "Optical Module Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -461,7 +461,7 @@
     {
       "metric_group": "Status",
       "name": "interface_ifAdminStatus",
-      "query": "interface_ifAdminStatus{instance_type='router', __$labels__}",
+      "query": "interface_ifAdminStatus{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Interface Admin Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
@@ -479,7 +479,7 @@
     {
       "metric_group": "Status",
       "name": "interface_ifOperStatus",
-      "query": "interface_ifOperStatus{instance_type='router', __$labels__}",
+      "query": "interface_ifOperStatus{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Interface Oper Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
@@ -497,7 +497,7 @@
     {
       "metric_group": "Bandwidth",
       "name": "interface_ifSpeed",
-      "query": "interface_ifSpeed{instance_type='router', __$labels__}",
+      "query": "interface_ifSpeed{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Interface Bandwidth",
       "data_type": "Number",
       "unit": "bitps",
@@ -515,7 +515,7 @@
     {
       "metric_group": "Bandwidth",
       "name": "interface_ifHighSpeed",
-      "query": "interface_ifHighSpeed{instance_type='router', __$labels__}",
+      "query": "interface_ifHighSpeed{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}",
       "display_name": "Interface High Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -533,7 +533,7 @@
     {
       "metric_group": "Packet Error",
       "name": "interface_ifInErrors",
-      "query": "rate(interface_ifInErrors{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifInErrors{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Incoming Errors Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -551,7 +551,7 @@
     {
       "metric_group": "Packet Error",
       "name": "interface_ifOutErrors",
-      "query": "rate(interface_ifOutErrors{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifOutErrors{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Outgoing Errors Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -569,7 +569,7 @@
     {
       "metric_group": "Packet Loss",
       "name": "interface_ifInDiscards",
-      "query": "rate(interface_ifInDiscards{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifInDiscards{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Incoming Discards Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -587,7 +587,7 @@
     {
       "metric_group": "Packet Loss",
       "name": "interface_ifOutDiscards",
-      "query": "rate(interface_ifOutDiscards{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifOutDiscards{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Outgoing Discards Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -605,7 +605,7 @@
     {
       "metric_group": "Packet",
       "name": "interface_ifInUcastPkts",
-      "query": "rate(interface_ifInUcastPkts{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifInUcastPkts{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Incoming Unicast Packets Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -623,7 +623,7 @@
     {
       "metric_group": "Packet",
       "name": "interface_ifOutUcastPkts",
-      "query": "rate(interface_ifOutUcastPkts{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifOutUcastPkts{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Outgoing Unicast Packets Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -641,7 +641,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifInOctets",
-      "query": "rate(interface_ifInOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifInOctets{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -659,7 +659,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifOutOctets",
-      "query": "rate(interface_ifOutOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifOutOctets{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -677,7 +677,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -695,7 +695,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -713,7 +713,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -726,7 +726,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='router', collect_type='snmp_huawei_atn', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",

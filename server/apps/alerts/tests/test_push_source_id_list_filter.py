@@ -91,6 +91,16 @@ def test_event_list_filters_push_source_id_in():
     assert list(qs) == [hit]
 
 
+def test_event_list_filters_status():
+    source = AlertSource.objects.create(name="src", source_id="src-status", source_type="restful", secret="test")
+    shielded = make_event("shielded", "prod", source=source)
+    received = make_event("received", "prod", source=source)
+    Event.objects.filter(pk=shielded.pk).update(status="shield")
+
+    assert list(EventModelFilter({"status": "shield"}, queryset=Event.objects.all()).qs) == [shielded]
+    assert list(EventModelFilter({"status": "received"}, queryset=Event.objects.all()).qs) == [received]
+
+
 def test_event_list_exact_push_source_id_unaffected():
     source = AlertSource.objects.create(name="src", source_id="src-1", source_type="restful", secret="test")
     hit = make_event("hit", "prod", source=source)

@@ -24,7 +24,13 @@ from apps.alerts.notification_templates.events import (
     inspect_event_usage,
 )
 from apps.alerts.notification_templates.operation import ensure_alert_operation_template, is_managed_nats_channel
-from apps.alerts.notification_templates.renderer import TemplateValidationError, normalize_level_color, render_source
+from apps.alerts.notification_templates.renderer import (
+    TemplateValidationError,
+    feishu_level_color,
+    normalize_level_color,
+    render_source,
+    wecom_level_color,
+)
 from apps.alerts.notification_templates.timefmt import format_template_datetime, resolve_display_timezone
 from apps.alerts.serializers.notification_template import NotificationTemplateSerializer
 from apps.alerts.utils.i18n import alerts_message, serializer_message
@@ -115,6 +121,8 @@ def _preview_context(sample):
         alert["level_color"] = normalize_level_color(alert.get("level_color"))
     else:
         alert["level_color"] = _preview_level_color(alert.get("level_id"))
+    alert["wecom_color"] = wecom_level_color(alert.get("level_id"))
+    alert["feishu_color"] = feishu_level_color(alert.get("level_id"))
     return {
         "alert": alert,
         "labels": {"env": "prod", **(sample.get("labels") if isinstance(sample.get("labels"), dict) else {})},
@@ -412,6 +420,8 @@ class NotificationTemplateViewSet(ModelViewSet):
                     {"path": "alert.level", "label": alerts_message(request, "catalog.alert_level")},
                     {"path": "alert.level_id", "label": alerts_message(request, "catalog.alert_level_id")},
                     {"path": "alert.level_color", "label": alerts_message(request, "catalog.alert_level_color")},
+                    {"path": "alert.wecom_color", "label": alerts_message(request, "catalog.alert_wecom_color")},
+                    {"path": "alert.feishu_color", "label": alerts_message(request, "catalog.alert_feishu_color")},
                     {"path": "alert.alert_id", "label": alerts_message(request, "catalog.alert_id")},
                     {"path": "alert.created_at", "label": alerts_message(request, "catalog.alert_created_at")},
                     {"path": "alert.resource_name", "label": alerts_message(request, "catalog.alert_resource_name")},

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Form, Select } from 'antd';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
-import { ConfigGroupTitle } from '../configTitles';
+import { ConfigSectionTitle } from '../configTitles';
 import { ChartRoleLabel, RefreshFieldsButton } from './chartRoleLabel';
 
 interface TopNSettingsSectionProps {
@@ -40,7 +40,7 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
         </div>
       ) : null}
 
-      <ConfigGroupTitle
+      <ConfigSectionTitle
         actions={(
           <RefreshFieldsButton
             label={t('dashboard.refreshFields')}
@@ -51,7 +51,7 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
         )}
       >
         {t('dashboard.dataFields')}
-      </ConfigGroupTitle>
+      </ConfigSectionTitle>
 
       <div>
         <Form.Item

@@ -897,6 +897,7 @@ async def test_planner_catalog_prepends_monitor_capability_hint():
     assert "禁止返回空 steps" in prompt
     assert "monitor_list_objects→monitor_list_object_instances" in prompt
     assert "必须规划对应 monitor_* 步骤" in prompt
+    assert "禁止因已有页面快照返回空 steps" in prompt
     assert "禁止猜测或递增数字" in prompt
     assert "禁止截断后按台循环" in prompt
     assert "request_user_choice" in prompt

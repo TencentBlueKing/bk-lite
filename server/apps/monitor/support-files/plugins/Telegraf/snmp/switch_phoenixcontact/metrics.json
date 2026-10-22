@@ -24,7 +24,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "power_status",
-      "query": "max(power_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(power_status{instance_type='switch', collect_type='snmp_phoenixcontact', __$labels__}) by (instance_id)",
       "display_name": "Power Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"unknown\",\"id\":1,\"color\":\"#8c8c8c\"},{\"name\":\"supply1_ok\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"supply2_ok\",\"id\":4,\"color\":\"#faad14\"},{\"name\":\"both_ok\",\"id\":5,\"color\":\"#1ac44a\"}]",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='switch', collect_type='snmp_phoenixcontact', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -50,7 +50,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "firmware_oper_status",
-      "query": "max(firmware_oper_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(firmware_oper_status{instance_type='switch', collect_type='snmp_phoenixcontact', __$labels__}) by (instance_id)",
       "display_name": "Firmware Operational Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"other\",\"id\":1,\"color\":\"#8c8c8c\"},{\"name\":\"ok\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"notOk\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -63,7 +63,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "alarm_contact_status",
-      "query": "min(alarm_contact_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "min(alarm_contact_status{instance_type='switch', collect_type='snmp_phoenixcontact', __$labels__}) by (instance_id)",
       "display_name": "Alarm Contact Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"open\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"closed\",\"id\":2,\"color\":\"#1ac44a\"}]",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_phoenixcontact', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

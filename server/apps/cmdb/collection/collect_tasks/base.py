@@ -129,8 +129,16 @@ class BaseCollect(object):
         )
         result = metrics_cannula.collect_controller()
         format_data = self.format_collect_data(result)
+        self.attach_unresolved_groups(format_data, metrics_cannula.collect_plugin_instance)
         self.merge_task_format_data(format_data, metrics_cannula.collect_data)
         return metrics_cannula.collect_data, format_data
+
+    @staticmethod
+    def attach_unresolved_groups(format_data, plugin):
+        groups = getattr(plugin, "unresolved_groups", None) or []
+        if groups:
+            format_data["unresolved"] = groups
+        return format_data
 
     def format_collect_data(self, result):
         # 强加了一个原始数据，如果原始数据存在则删除，保留原有逻辑

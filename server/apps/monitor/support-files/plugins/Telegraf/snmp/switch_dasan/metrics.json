@@ -24,7 +24,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='switch', collect_type='snmp_dasan', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -37,7 +37,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage_5s",
-      "query": "snmp_device_cpu_usage_5s{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage_5s{instance_type='switch', collect_type='snmp_dasan', __$labels__}",
       "display_name": "CPU Utilization (5s)",
       "data_type": "Number",
       "unit": "percent",
@@ -50,7 +50,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage_10m",
-      "query": "snmp_device_cpu_usage_10m{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage_10m{instance_type='switch', collect_type='snmp_dasan', __$labels__}",
       "display_name": "CPU Utilization (10m)",
       "data_type": "Number",
       "unit": "percent",
@@ -63,7 +63,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='switch', collect_type='snmp_dasan', __$labels__}",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "snmp_device_memory_used{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_used{instance_type='switch', collect_type='snmp_dasan', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -89,7 +89,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "snmp_device_memory_free{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_free{instance_type='switch', collect_type='snmp_dasan', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -102,7 +102,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "100 * snmp_device_memory_used{instance_type='switch', __$labels__} / snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "query": "100 * snmp_device_memory_used{instance_type='switch', collect_type='snmp_dasan', __$labels__} / snmp_device_memory_total{instance_type='switch', collect_type='snmp_dasan', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -115,7 +115,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_state{instance_type='switch', collect_type='snmp_dasan', __$labels__}",
       "display_name": "Fan State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -133,7 +133,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "device_psu_state{instance_type='switch', collect_type='snmp_dasan', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -151,7 +151,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='switch', collect_type='snmp_dasan', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

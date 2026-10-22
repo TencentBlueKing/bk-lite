@@ -87,7 +87,8 @@ export const resolveIntegrationEntryContext = (
 
 export const buildIntegrationConfigureUrl = (
   context: IntegrationEntryContext,
-  defaultIcon: string
+  defaultIcon: string,
+  extraParams?: Record<string, string | null | undefined>
 ): string => {
   const params = new URLSearchParams({
     id: context.objectId,
@@ -99,6 +100,10 @@ export const buildIntegrationConfigureUrl = (
     plugin_display_name: context.pluginDisplayName,
     plugin_description: context.pluginDescription || '--',
     pack_version: context.packVersion
+  });
+  Object.entries(extraParams || {}).forEach(([key, value]) => {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (text) params.set(key, text);
   });
   return `/monitor/integration/list/detail/configure?${params.toString()}`;
 };

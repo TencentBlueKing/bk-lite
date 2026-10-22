@@ -1,13 +1,12 @@
-"""SystemAPIToken 管理 API：发放 / 列表 / PATCH 元数据 / 吊销 / 独立权限位。
+"""SystemAPIToken 管理 API：发放 / 列表 / PATCH 元数据 / 吊销。
 
-对照 specs/changes/openapi-system-token：系统令牌走系统管理 CRUD，权限位独立于
-个人 api_secret_key，明文仅创建响应返回一次，发放与吊销写操作日志且不含令牌值。
+系统令牌与个人令牌共用 api_secret_key。查看认 View，新建和修改认 Add，吊销认 Delete。
+明文仅创建响应返回一次，发放与吊销写操作日志且不含令牌值。
 """
 
 import json
 import types
 from datetime import timedelta
-from pathlib import Path
 
 import pytest
 from django.utils import timezone
@@ -60,17 +59,6 @@ def _store(**kwargs):
     return token, secret
 
 
-def test_system_manager_setting_includes_independent_system_api_secret_bits():
-    payload = json.loads(Path("support-files/system_mgmt/menus/system-manager.json").read_text(encoding="utf-8"))
-    setting = next(menu for menu in payload["menus"] if menu["name"] == "Setting")
-    child = next(item for item in setting["children"] if item["id"] == "system_api_secret")
-    assert child["operation"] == ["View", "Add", "Edit", "Delete"]
-    for role in payload["roles"]:
-        if role["name"] == "admin":
-            continue
-        assert not any(name.startswith("system_api_secret-") for name in role["menus"])
-
-
 @pytest.mark.django_db
 def test_list_denied_without_view_permission():
     response = _call("get", "list", _user(set()))
@@ -78,14 +66,14 @@ def test_list_denied_without_view_permission():
 
 
 @pytest.mark.django_db
-def test_list_denied_with_only_personal_api_secret_permission():
+def test_list_allowed_with_personal_api_secret_view():
     response = _call("get", "list", _user({"api_secret_key-View"}))
-    assert response.status_code == 403
+    assert response.status_code == 200
 
 
 @pytest.mark.django_db
 def test_create_denied_without_add_permission():
-    response = _call("post", "create", _user({"system_api_secret-View"}), data={"system_id": "itsm"})
+    response = _call("post", "create", _user({"api_secret_key-View"}), data={"system_id": "itsm"})
     assert response.status_code == 403
 
 
@@ -94,7 +82,7 @@ def test_create_issues_plaintext_once_and_stores_hash():
     response = _call(
         "post",
         "create",
-        _user({"system_api_secret-Add"}),
+        _user({"api_secret_key-Add"}),
         data={
             "system_id": "itsm",
             "name": "ITSM 异步节点",
@@ -118,7 +106,7 @@ def test_create_issues_plaintext_once_and_stores_hash():
 
 @pytest.mark.django_db
 def test_create_allows_multiple_tokens_for_same_system_id():
-    user = _user({"system_api_secret-Add"})
+    user = _user({"api_secret_key-Add"})
     first = _call("post", "create", user, data={"system_id": "itsm", "name": "current", "scope": {"mode": "all"}})
     second = _call("post", "create", user, data={"system_id": "itsm", "name": "next", "scope": {"mode": "all"}})
     assert first.status_code == 201
@@ -132,7 +120,7 @@ def test_create_requires_name():
     response = _call(
         "post",
         "create",
-        _user({"system_api_secret-Add"}),
+        _user({"api_secret_key-Add"}),
         data={"system_id": "itsm"},
     )
     assert response.status_code == 400
@@ -144,7 +132,7 @@ def test_create_requires_scope():
     response = _call(
         "post",
         "create",
-        _user({"system_api_secret-Add"}),
+        _user({"api_secret_key-Add"}),
         data={"system_id": "itsm", "name": "ITSM"},
     )
     assert response.status_code == 400
@@ -153,7 +141,7 @@ def test_create_requires_scope():
 
 @pytest.mark.django_db
 def test_create_rejects_duplicate_name_for_same_system_id():
-    user = _user({"system_api_secret-Add"})
+    user = _user({"api_secret_key-Add"})
     first = _call("post", "create", user, data={"system_id": "itsm", "name": "current", "scope": {"mode": "all"}})
     second = _call("post", "create", user, data={"system_id": "itsm", "name": "current", "scope": {"mode": "all"}})
     assert first.status_code == 201
@@ -166,7 +154,7 @@ def test_create_ignores_client_supplied_secret_hash():
     response = _call(
         "post",
         "create",
-        _user({"system_api_secret-Add"}),
+        _user({"api_secret_key-Add"}),
         data={"system_id": "itsm", "name": "ITSM", "secret_hash": "sha256$forged", "scope": {"mode": "all"}},
     )
     assert response.status_code == 201, response.data
@@ -181,7 +169,7 @@ def test_create_rejects_invalid_system_id(system_id):
     response = _call(
         "post",
         "create",
-        _user({"system_api_secret-Add"}),
+        _user({"api_secret_key-Add"}),
         data={"system_id": system_id, "name": "bad"},
     )
     assert response.status_code == 400
@@ -202,7 +190,7 @@ def test_create_rejects_invalid_scope(scope):
     response = _call(
         "post",
         "create",
-        _user({"system_api_secret-Add"}),
+        _user({"api_secret_key-Add"}),
         data={"system_id": "itsm", "name": "ITSM", "scope": scope},
     )
     assert response.status_code == 400
@@ -211,7 +199,7 @@ def test_create_rejects_invalid_scope(scope):
 @pytest.mark.django_db
 def test_list_returns_preview_without_secret():
     token, secret = _store()
-    response = _call("get", "list", _user({"system_api_secret-View"}))
+    response = _call("get", "list", _user({"api_secret_key-View"}))
     assert response.status_code == 200
     rows = response.data["items"] if isinstance(response.data, dict) else response.data
     assert len(rows) == 1
@@ -233,7 +221,7 @@ def test_put_rejected():
     response = _call(
         "put",
         "update",
-        _user({"system_api_secret-Edit"}),
+        _user({"api_secret_key-Add"}),
         pk=token.pk,
         data={"name": "replaced", "system_id": "itsm"},
     )
@@ -251,7 +239,7 @@ def test_patch_updates_metadata_without_rotating_secret():
     response = _call(
         "patch",
         "partial_update",
-        _user({"system_api_secret-Edit"}),
+        _user({"api_secret_key-Add"}),
         pk=token.pk,
         data={
             "name": "轮转中",
@@ -275,7 +263,7 @@ def test_patch_does_not_change_system_id():
     response = _call(
         "patch",
         "partial_update",
-        _user({"system_api_secret-Edit"}),
+        _user({"api_secret_key-Add"}),
         pk=token.pk,
         data={"system_id": "other"},
     )
@@ -290,7 +278,7 @@ def test_patch_disable_revokes_immediately():
     response = _call(
         "patch",
         "partial_update",
-        _user({"system_api_secret-Edit"}),
+        _user({"api_secret_key-Add"}),
         pk=token.pk,
         data={"enabled": False},
     )
@@ -303,7 +291,7 @@ def test_patch_disable_revokes_immediately():
 @pytest.mark.django_db
 def test_delete_revokes_immediately():
     token, secret = _store()
-    response = _call("delete", "destroy", _user({"system_api_secret-Delete"}), pk=token.pk)
+    response = _call("delete", "destroy", _user({"api_secret_key-Delete"}), pk=token.pk)
     assert response.status_code in (200, 204)
     assert not SystemAPIToken.objects.filter(pk=token.pk).exists()
     assert SystemAPIToken.find_live_by_secret(secret) is None
@@ -322,7 +310,7 @@ def test_create_writes_issue_operation_log_without_secret():
     response = _call(
         "post",
         "create",
-        _user({"system_api_secret-Add"}),
+        _user({"api_secret_key-Add"}),
         data={"system_id": "itsm", "name": "ITSM", "scope": {"mode": "all"}},
     )
     assert response.status_code == 201, response.data
@@ -338,7 +326,7 @@ def test_create_writes_issue_operation_log_without_secret():
 @pytest.mark.django_db
 def test_delete_writes_revoke_operation_log_without_secret():
     token, secret = _store()
-    response = _call("delete", "destroy", _user({"system_api_secret-Delete"}), pk=token.pk)
+    response = _call("delete", "destroy", _user({"api_secret_key-Delete"}), pk=token.pk)
     assert response.status_code in (200, 204)
     log = OperationLog.objects.get(target_type="system_api_token", action_type="delete")
     assert log.username == "sys-token-admin"
@@ -354,7 +342,7 @@ def test_patch_writes_update_operation_log():
     response = _call(
         "patch",
         "partial_update",
-        _user({"system_api_secret-Edit"}),
+        _user({"api_secret_key-Add"}),
         pk=token.pk,
         data={"enabled": False},
     )

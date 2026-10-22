@@ -29,6 +29,10 @@ describe('通知模板组默认内容', () => {
     }
     expect(DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.filter((item) => item.subject_template).map((item) => item.channel_type))
       .toEqual(['email', 'dingtalk_bot', 'feishu_bot']);
+    expect(DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.find((item) => item.channel_type === 'feishu_bot')?.body_template)
+      .toContain("<font color='{{ alert.feishu_color }}'>{{ alert.level }}</font>");
+    expect(DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.find((item) => item.channel_type === 'dingtalk_bot')?.body_template)
+      .toContain('｜{{ alert.level }}');
   });
 
   it('内置模板示例用前缀加上告警 ID，已有链接时不重复插入', () => {
@@ -99,7 +103,7 @@ describe('通知模板组默认内容', () => {
       {
         channel_type: 'enterprise_wechat_bot',
         subject_template: '',
-        body_template: `### {{ notification.scene_name }}｜{{ alert.level }}
+        body_template: `### {{ notification.scene_name }}｜<font color="{{ alert.wecom_color }}">{{ alert.level }}</font>
 
 **{{ alert.title }}**
 
@@ -156,7 +160,7 @@ describe('通知模板组默认内容', () => {
         subject_template: '【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}',
         body_template: `**{{ notification.scene_name }}｜{{ alert.title }}**
 
-**告警级别：** {{ alert.level }}
+**告警级别：** <font color='{{ alert.feishu_color }}'>{{ alert.level }}</font>
 **告警资源：** {{ alert.resource_name }}（{{ alert.resource_type }}）
 **监控来源：** {{ alert.source_name }}
 **监控指标：** {{ alert.item }}

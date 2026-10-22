@@ -23,7 +23,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='network_service', __$labels__} / 256",
+      "query": "device_temperature_celsius{instance_type='network_service', collect_type='snmp_deva', __$labels__} / 256",
       "display_name": "Chassis Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_rpm",
-      "query": "device_fan_rpm{instance_type='network_service', __$labels__}",
+      "query": "device_fan_rpm{instance_type='network_service', collect_type='snmp_deva', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -49,7 +49,7 @@
     {
       "metric_group": "NetworkService",
       "name": "deva_rf_level",
-      "query": "deva_rf_level{instance_type='network_service', __$labels__} / 256",
+      "query": "deva_rf_level{instance_type='network_service', collect_type='snmp_deva', __$labels__} / 256",
       "display_name": "RF Level",
       "data_type": "Number",
       "unit": "none",
@@ -62,7 +62,7 @@
     {
       "metric_group": "NetworkService",
       "name": "deva_pilot_level",
-      "query": "deva_pilot_level{instance_type='network_service', __$labels__} / 256",
+      "query": "deva_pilot_level{instance_type='network_service', collect_type='snmp_deva', __$labels__} / 256",
       "display_name": "Pilot Level",
       "data_type": "Number",
       "unit": "none",
@@ -75,7 +75,7 @@
     {
       "metric_group": "NetworkService",
       "name": "deva_mpx_level",
-      "query": "deva_mpx_level{instance_type='network_service', __$labels__} / 256",
+      "query": "deva_mpx_level{instance_type='network_service', collect_type='snmp_deva', __$labels__} / 256",
       "display_name": "MPX Level",
       "data_type": "Number",
       "unit": "none",
@@ -88,7 +88,7 @@
     {
       "metric_group": "NetworkService",
       "name": "deva_left_audio_level",
-      "query": "deva_left_audio_level{instance_type='network_service', __$labels__} / 256",
+      "query": "deva_left_audio_level{instance_type='network_service', collect_type='snmp_deva', __$labels__} / 256",
       "display_name": "Left Audio Level",
       "data_type": "Number",
       "unit": "none",
@@ -101,7 +101,7 @@
     {
       "metric_group": "NetworkService",
       "name": "deva_right_audio_level",
-      "query": "deva_right_audio_level{instance_type='network_service', __$labels__} / 256",
+      "query": "deva_right_audio_level{instance_type='network_service', collect_type='snmp_deva', __$labels__} / 256",
       "display_name": "Right Audio Level",
       "data_type": "Number",
       "unit": "none",
@@ -114,7 +114,7 @@
     {
       "metric_group": "NetworkService",
       "name": "deva_rds_ber",
-      "query": "deva_rds_ber{instance_type='network_service', __$labels__} / 32768",
+      "query": "deva_rds_ber{instance_type='network_service', collect_type='snmp_deva', __$labels__} / 32768",
       "display_name": "RDS BER",
       "data_type": "Number",
       "unit": "none",
@@ -127,7 +127,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_deva', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -145,7 +145,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_deva', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -163,7 +163,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_deva', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

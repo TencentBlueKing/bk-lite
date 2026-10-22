@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='access', __$labels__} / 1000",
+      "query": "device_temperature_celsius{instance_type='access', collect_type='snmp_nateks', __$labels__} / 1000",
       "display_name": "Board Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -40,7 +40,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='access', __$labels__}",
+      "query": "device_psu_state{instance_type='access', collect_type='snmp_nateks', __$labels__}",
       "display_name": "Power Supply State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -58,7 +58,7 @@
     {
       "metric_group": "Temperature",
       "name": "transceiver_temperature_celsius",
-      "query": "transceiver_temperature_celsius{instance_type='access', __$labels__}",
+      "query": "transceiver_temperature_celsius{instance_type='access', collect_type='snmp_nateks', __$labels__}",
       "display_name": "Transceiver Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -80,7 +80,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "transceiver_voltage_volts",
-      "query": "transceiver_voltage_volts{instance_type='access', __$labels__}",
+      "query": "transceiver_voltage_volts{instance_type='access', collect_type='snmp_nateks', __$labels__}",
       "display_name": "Transceiver Supply Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -102,7 +102,7 @@
     {
       "metric_group": "Access",
       "name": "transceiver_tx_bias_ma",
-      "query": "transceiver_tx_bias_ma{instance_type='access', __$labels__}",
+      "query": "transceiver_tx_bias_ma{instance_type='access', collect_type='snmp_nateks', __$labels__}",
       "display_name": "Transceiver Tx Bias (mA)",
       "data_type": "Number",
       "unit": "none",
@@ -124,7 +124,7 @@
     {
       "metric_group": "Access",
       "name": "transceiver_tx_power_dbm",
-      "query": "transceiver_tx_power_dbm{instance_type='access', __$labels__}",
+      "query": "transceiver_tx_power_dbm{instance_type='access', collect_type='snmp_nateks', __$labels__}",
       "display_name": "Transceiver Tx Power (dBm)",
       "data_type": "Number",
       "unit": "none",
@@ -146,7 +146,7 @@
     {
       "metric_group": "Access",
       "name": "transceiver_rx_power_dbm",
-      "query": "transceiver_rx_power_dbm{instance_type='access', __$labels__}",
+      "query": "transceiver_rx_power_dbm{instance_type='access', collect_type='snmp_nateks', __$labels__}",
       "display_name": "Transceiver Rx Power (dBm)",
       "data_type": "Number",
       "unit": "none",
@@ -168,7 +168,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', collect_type='snmp_nateks', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -186,7 +186,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', collect_type='snmp_nateks', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -204,7 +204,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='access', collect_type='snmp_nateks', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

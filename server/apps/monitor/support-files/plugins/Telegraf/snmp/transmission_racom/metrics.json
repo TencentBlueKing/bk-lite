@@ -23,7 +23,7 @@
     {
       "metric_group": "CPU",
       "name": "cpu_usage_percent",
-      "query": "avg(cpu_usage_percent{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "avg(cpu_usage_percent{instance_type='transmission', collect_type='snmp_racom', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Memory",
       "name": "memory_usage_percent",
-      "query": "avg(memory_usage_percent{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "avg(memory_usage_percent{instance_type='transmission', collect_type='snmp_racom', __$labels__}) by (instance_id)",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Temperature",
       "name": "modem_temperature_celsius",
-      "query": "max(modem_temperature_celsius{instance_type='transmission', __$labels__} / 100) by (instance_id)",
+      "query": "max(modem_temperature_celsius{instance_type='transmission', collect_type='snmp_racom', __$labels__} / 100) by (instance_id)",
       "display_name": "Modem Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Temperature",
       "name": "radio_temperature_celsius",
-      "query": "max(radio_temperature_celsius{instance_type='transmission', __$labels__} / 100) by (instance_id)",
+      "query": "max(radio_temperature_celsius{instance_type='transmission', collect_type='snmp_racom', __$labels__} / 100) by (instance_id)",
       "display_name": "Radio Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -75,7 +75,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "avg(device_voltage_volts{instance_type='transmission', __$labels__} / 10) by (instance_id)",
+      "query": "avg(device_voltage_volts{instance_type='transmission', collect_type='snmp_racom', __$labels__} / 10) by (instance_id)",
       "display_name": "Supply Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -88,7 +88,7 @@
     {
       "metric_group": "Radio",
       "name": "rss_dbm",
-      "query": "avg(rss_dbm{instance_type='transmission', __$labels__} / 10) by (instance_id)",
+      "query": "avg(rss_dbm{instance_type='transmission', collect_type='snmp_racom', __$labels__} / 10) by (instance_id)",
       "display_name": "Received Signal Strength",
       "data_type": "Number",
       "unit": "none",
@@ -101,7 +101,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='transmission', collect_type='snmp_racom', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

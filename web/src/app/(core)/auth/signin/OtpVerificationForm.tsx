@@ -2,6 +2,7 @@
 import {useState} from "react";
 import {Button, Input} from "antd";
 import {useTranslation} from "@/utils/i18n";
+import { gmFetch } from "@/utils/gmTransport";
 
 interface LoginResponse {
   temporary_pwd?: boolean;
@@ -59,7 +60,7 @@ export default function OtpVerificationForm({
     
     try {
       // Two-phase authentication: verify OTP with challenge_id to get token
-      const response = await fetch('/api/proxy/core/api/verify_otp_login/', {
+      const response = await gmFetch('/api/proxy/core/api/verify_otp_login/', {
         method: "POST",
         headers: { 
           "Content-Type": "application/json" 

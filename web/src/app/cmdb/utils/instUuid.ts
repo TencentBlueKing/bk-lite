@@ -1,3 +1,6 @@
+/** 资产列表可选列。不是模型属性，默认列配置不包含它。 */
+export const INST_UUID_COLUMN_KEY = 'inst_uuid';
+
 /** 与后端 normalize_inst_uuid 对齐：仅接受小写带连字符的 UUIDv4。 */
 const INST_UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

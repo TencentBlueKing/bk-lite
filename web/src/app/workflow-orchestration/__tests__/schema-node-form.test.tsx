@@ -20,9 +20,9 @@ beforeAll(() => {
   });
 });
 
-function Harness({ schema, initial, uiSchema, fieldActions }: { schema: JsonSchema; initial: Record<string, unknown>; uiSchema?: Record<string, unknown>; fieldActions?: Record<string, ReactNode> }) {
+function Harness({ schema, initial, uiSchema, fieldActions, readOnly = false }: { schema: JsonSchema; initial: Record<string, unknown>; uiSchema?: Record<string, unknown>; fieldActions?: Record<string, ReactNode>; readOnly?: boolean }) {
   const [value, setValue] = useState(initial);
-  return <App><SchemaNodeForm schema={schema} uiSchema={uiSchema} value={value} references={[{ label: '触发输入 · owner', value: '${workflow.input.owner}', source: '触发输入', type: 'string' }]} onChange={setValue} fieldActions={fieldActions} /></App>;
+  return <App><SchemaNodeForm schema={schema} uiSchema={uiSchema} value={value} references={[{ label: '触发输入 · owner', value: '${workflow.input.owner}', source: '触发输入', type: 'string' }]} readOnly={readOnly} onChange={setValue} fieldActions={fieldActions} /></App>;
 }
 
 describe('原子 Schema 参数表单', () => {
@@ -191,5 +191,132 @@ describe('原子 Schema 参数表单', () => {
     fireEvent.mouseDown(screen.getByRole('combobox'));
     expect(screen.getAllByText('失败并终止').length).toBeGreaterThan(0);
     expect(screen.getByText('记录失败并继续')).not.toBeNull();
+  });
+
+  it('查询列表可以追加一条 SELECT', async () => {
+    const user = userEvent.setup();
+    render(<Harness
+      schema={{
+        type: 'object',
+        properties: {
+          queries: {
+            type: 'array',
+            title: '查询',
+            'x-widget': 'query-list',
+            'x-binding': 'literal-only',
+            items: { type: 'object', properties: { name: { type: 'string' }, sql: { type: 'string' } } },
+          },
+        },
+      }}
+      initial={{ queries: [] }}
+    />);
+
+    await user.click(screen.getByRole('button', { name: /添加查询/ }));
+    const editor = screen.getByRole('textbox', { name: 'code-editor-sql' });
+    expect(screen.getByPlaceholderText('结果名')).not.toBeNull();
+    expect(editor).not.toBeNull();
+    expect(editor.getAttribute('data-height')).toBe('160px');
+    await user.type(editor, 'SELECT 1');
+    expect((editor as HTMLTextAreaElement).value).toBe('SELECT 1');
+  });
+
+  it('只读时文本、数字、下拉和 JSON 都不能改，拖入引用也不会写入', () => {
+    render(<Harness
+      readOnly
+      schema={{
+        type: 'object',
+        properties: {
+          owner: { type: 'string', title: '负责人' },
+          count: { type: 'integer', title: '次数' },
+          level: { type: 'string', title: '级别', enum: ['low', 'high'], 'x-binding': 'literal-only' },
+          payload: { type: 'object', title: '数据', 'x-widget': 'json', jsonEditorAllowed: true, 'x-binding': 'literal-only' },
+        },
+      }}
+      initial={{ owner: 'keep', count: 3, level: 'low', payload: { ok: true } }}
+    />);
+
+    expect(screen.getByDisplayValue('keep').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('spinbutton').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('combobox').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByDisplayValue(/"ok": true/).hasAttribute('disabled')).toBe(true);
+
+    const dataTransfer = {
+      dropEffect: 'none',
+      types: [WORKFLOW_REFERENCE_MIME],
+      getData: vi.fn().mockImplementation((format: string) => format === WORKFLOW_REFERENCE_MIME ? '${workflow.input.owner}' : ''),
+    };
+    fireEvent.drop(screen.getByTestId('workflow-reference-dropzone'), { dataTransfer });
+    expect(screen.getByDisplayValue('keep')).not.toBeNull();
+    expect(screen.queryByDisplayValue(/workflow\.input\.owner/)).toBeNull();
+  });
+
+  it('只读时带图标的引用输入框也使用禁用样式', () => {
+    render(<Harness
+      readOnly
+      schema={{ type: 'object', properties: { artifact: { type: 'object', title: '附件' } } }}
+      initial={{ artifact: '${workflow.input.owner}' }}
+    />);
+
+    const input = screen.getByDisplayValue('${workflow.input.owner}');
+    expect(input.hasAttribute('disabled')).toBe(true);
+    expect(input.closest('.ant-input-affix-wrapper')?.className).toContain('ant-input-affix-wrapper-disabled');
+  });
+
+  it('只读时查询 SQL 仍可查看但不能改', () => {
+    render(<Harness
+      readOnly
+      schema={{
+        type: 'object',
+        properties: {
+          queries: {
+            type: 'array',
+            title: '查询',
+            'x-widget': 'query-list',
+            'x-binding': 'literal-only',
+            items: { type: 'object', properties: { name: { type: 'string' }, sql: { type: 'string' } } },
+          },
+        },
+      }}
+      initial={{ queries: [{ name: 'summary', sql: 'SELECT 1' }] }}
+    />);
+
+    const editor = screen.getByRole('textbox', { name: 'code-editor-sql' });
+    expect(editor).toHaveProperty('readOnly', true);
+    expect((editor as HTMLTextAreaElement).value).toBe('SELECT 1');
+    expect(screen.queryByRole('button', { name: /添加查询/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /删除查询/ })).toBeNull();
+  });
+
+  it('超时清空后保持空白，不回填默认值', async () => {
+    const user = userEvent.setup();
+    let latest = { timeout_seconds: 30 as number | undefined };
+    function Probe() {
+      const [value, setValue] = useState(latest);
+      return <App><SchemaNodeForm
+        schema={{
+          type: 'object',
+          properties: {
+            timeout_seconds: {
+              type: 'integer',
+              title: '超时（秒）',
+              minimum: 1,
+              maximum: 120,
+              default: 30,
+              'x-binding': 'literal-only',
+            },
+          },
+        }}
+        value={value}
+        onChange={(next) => {
+          latest = next as typeof latest;
+          setValue(next);
+        }}
+      /></App>;
+    }
+    render(<Probe />);
+    const input = screen.getByRole('spinbutton');
+    await user.clear(input);
+    expect(latest).toEqual({});
+    expect((input as HTMLInputElement).value).toBe('');
   });
 });

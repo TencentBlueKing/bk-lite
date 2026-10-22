@@ -107,6 +107,8 @@ catalog:
   alert_level: "Alert level"
   alert_level_id: "Raw level ID"
   alert_level_color: "Alert level color"
+  alert_wecom_color: "WeCom level color"
+  alert_feishu_color: "Feishu level color"
   alert_id: "Alert ID"
   alert_created_at: "Alert time"
   alert_resource_name: "Resource name"

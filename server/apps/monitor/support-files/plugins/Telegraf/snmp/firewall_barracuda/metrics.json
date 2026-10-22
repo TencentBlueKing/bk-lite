@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(snmp_device_temperature_celsius{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_disk_usage",
-      "query": "max(snmp_device_disk_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_disk_usage{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}) by (instance_id)",
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='firewall', __$labels__}",
+      "query": "device_fan_speed{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "rpm",
@@ -66,7 +66,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='firewall', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -84,7 +84,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='firewall', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -102,7 +102,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",
@@ -115,7 +115,7 @@
     {
       "metric_group": "Temperature",
       "name": "barracuda_cpu_temperature_celsius",
-      "query": "snmp_barracuda_cpu_temperature_celsius{instance_type='firewall', __$labels__}",
+      "query": "snmp_barracuda_cpu_temperature_celsius{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}",
       "display_name": "Barracuda CPU Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -128,7 +128,7 @@
     {
       "metric_group": "Temperature",
       "name": "barracuda_system_temperature_celsius",
-      "query": "snmp_barracuda_system_temperature_celsius{instance_type='firewall', __$labels__}",
+      "query": "snmp_barracuda_system_temperature_celsius{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}",
       "display_name": "Barracuda System Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -141,7 +141,7 @@
     {
       "metric_group": "Storage",
       "name": "barracuda_firmware_storage_usage",
-      "query": "snmp_barracuda_firmware_storage_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_barracuda_firmware_storage_usage{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}",
       "display_name": "Firmware Storage Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -154,7 +154,7 @@
     {
       "metric_group": "Storage",
       "name": "barracuda_log_storage_usage",
-      "query": "snmp_barracuda_log_storage_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_barracuda_log_storage_usage{instance_type='firewall', collect_type='snmp_barracuda', __$labels__}",
       "display_name": "Log Storage Usage",
       "data_type": "Number",
       "unit": "percent",

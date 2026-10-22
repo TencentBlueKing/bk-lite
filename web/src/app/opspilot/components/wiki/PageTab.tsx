@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Space, Spin, message } from "antd";
 import {
   FileZipOutlined,
@@ -17,6 +17,11 @@ import {
   parseExportBlobError,
   parseJsonErrorBlob,
 } from "@/app/opspilot/utils/wikiExportBlobError";
+import {
+  okfImportHoldTimedOut,
+  resolveOkfImportProgress,
+  type OkfImportAcceptance,
+} from "@/app/opspilot/utils/wikiMarkdownImport";
 import WikiDirectoryTree, {
   findFirstWikiTreePageId,
   toWikiTreePages,
@@ -50,6 +55,7 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     fetchPages,
     fetchMaterials,
     fetchDirectoryTree,
+    fetchBuildRecords,
     deleteNestedDirectory,
     movePagesToDirectory,
     exportKnowledgeBaseOkf,
@@ -69,6 +75,13 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
   >("loading");
   const [exportingOkf, setExportingOkf] = useState(false);
   const [okfImportOpen, setOkfImportOpen] = useState(false);
+  const [okfImportProgress, setOkfImportProgress] = useState<number | null>(null);
+  const [okfImportEnriching, setOkfImportEnriching] = useState(false);
+  const okfImportHoldRef = useRef(false);
+  const okfImportSeenRef = useRef(false);
+  const okfImportTrackedIdRef = useRef<number | null>(null);
+  const okfImportAcceptedStatusRef = useRef<string | null>(null);
+  const okfImportHoldStartedAtRef = useRef<number | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<KnowledgePage | null>(null);
   const [movePageIds, setMovePageIds] = useState<number[]>([]);
@@ -361,6 +374,120 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     }
   };
 
+  useEffect(() => {
+    okfImportHoldRef.current = false;
+    okfImportSeenRef.current = false;
+    okfImportTrackedIdRef.current = null;
+    okfImportAcceptedStatusRef.current = null;
+    okfImportHoldStartedAtRef.current = null;
+    setOkfImportProgress(null);
+    setOkfImportEnriching(false);
+    let stopped = false;
+    let timer = 0;
+    const reloadVisiblePages = async () => {
+      const [treeResult, pagesResult, materialsResult] = await Promise.allSettled([
+        fetchDirectoryTree(kbId),
+        fetchPages(kbId, { page: 1, page_size: 500, status: "active" }),
+        fetchMaterials(kbId, { page: 1, page_size: 500 }),
+      ]);
+      if (stopped) return;
+      if (treeResult.status === "fulfilled") {
+        setDirectoryTreeState({ kbId, value: treeResult.value });
+        setDirectoryTreeLoadState("ready");
+      }
+      if (pagesResult.status === "fulfilled") {
+        setTreePages(pagesResult.value.items || []);
+      }
+      if (materialsResult.status === "fulfilled") {
+        setTreeMaterials(
+          (materialsResult.value.items || []).map((material) => ({
+            id: material.id,
+            name: material.name,
+          })),
+        );
+      }
+    };
+    const tick = async () => {
+      try {
+        const page = await fetchBuildRecords(kbId, {
+          trigger: "markdown_import",
+          page_size: 5,
+        });
+        if (stopped) return;
+        const items = page.items || [];
+        const decision = resolveOkfImportProgress({
+          items,
+          trackedBuildRecordId: okfImportTrackedIdRef.current,
+          acceptedStatus: okfImportAcceptedStatusRef.current,
+          holding: okfImportHoldRef.current,
+          holdStartedAt: okfImportHoldStartedAtRef.current,
+          seenActive: okfImportSeenRef.current,
+          now: Date.now(),
+        });
+        if (decision.phase === "writing" || decision.phase === "enriching") {
+          okfImportSeenRef.current = true;
+          okfImportHoldRef.current = false;
+          okfImportAcceptedStatusRef.current = null;
+          setOkfImportEnriching(decision.phase === "enriching");
+          setOkfImportProgress(
+            decision.phase === "writing" ? decision.progress : 99,
+          );
+          await reloadVisiblePages();
+        } else if (decision.phase === "holding") {
+          setOkfImportEnriching(false);
+          setOkfImportProgress((current) => current ?? 0);
+        } else if (decision.phase === "completed") {
+          const failed = decision.outcome === "failed";
+          okfImportHoldRef.current = false;
+          okfImportSeenRef.current = false;
+          okfImportTrackedIdRef.current = null;
+          okfImportAcceptedStatusRef.current = null;
+          okfImportHoldStartedAtRef.current = null;
+          setOkfImportEnriching(false);
+          setOkfImportProgress(null);
+          if (failed) {
+            message.error(t("wiki.okfImportFailed"));
+          }
+          await reloadVisiblePages();
+        } else {
+          setOkfImportEnriching(false);
+          setOkfImportProgress(null);
+        }
+      } catch {
+        if (
+          okfImportHoldTimedOut(
+            okfImportHoldStartedAtRef.current,
+            Date.now(),
+            okfImportHoldRef.current,
+          )
+        ) {
+          okfImportHoldRef.current = false;
+          okfImportSeenRef.current = false;
+          okfImportTrackedIdRef.current = null;
+          okfImportAcceptedStatusRef.current = null;
+          okfImportHoldStartedAtRef.current = null;
+          setOkfImportEnriching(false);
+          setOkfImportProgress(null);
+          message.error(t("wiki.okfImportFailed"));
+        }
+      } finally {
+        if (!stopped) {
+          const delay =
+            okfImportHoldRef.current || okfImportSeenRef.current ? 5000 : 10000;
+          timer = window.setTimeout(() => {
+            void tick();
+          }, delay);
+        }
+      }
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+    // 只随知识库切换重绑；刷新函数随本次渲染闭包即可
+  }, [kbId]);
+
   const handleOkfImportCompleted = async () => {
     setOkfImportOpen(false);
     await Promise.allSettled([
@@ -397,13 +524,21 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
           <Space size={8} wrap>
             <Button
               icon={<ImportOutlined />}
+              disabled={okfImportProgress != null}
               onClick={() => setOkfImportOpen(true)}
             >
-              {t("wiki.importOkf")}
+              {okfImportProgress != null
+                ? okfImportEnriching
+                  ? t("wiki.okfImportEnriching")
+                  : t("wiki.okfImportProgress", undefined, {
+                    progress: okfImportProgress,
+                  })
+                : t("wiki.importOkf")}
             </Button>
             <Button
               icon={<FileZipOutlined />}
               loading={exportingOkf}
+              disabled={okfImportProgress != null}
               onClick={handleExportOkf}
             >
               {t("wiki.exportOkf")}
@@ -437,6 +572,10 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
               onDeletePage={(pageId) => void handleDeletePage(pageId)}
               onDeleteDirectory={(directoryId) =>
                 void handleDeleteDirectory(directoryId)
+              }
+              importProgress={okfImportProgress}
+              importProgressLabel={
+                okfImportEnriching ? t("wiki.okfImportEnriching") : null
               }
             />
           ) : (
@@ -482,6 +621,29 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
         open={okfImportOpen}
         onCancel={() => setOkfImportOpen(false)}
         onCompleted={handleOkfImportCompleted}
+        onImportHoldChange={(holding, acceptance?: OkfImportAcceptance) => {
+          okfImportHoldRef.current = holding;
+          if (holding) {
+            if (okfImportHoldStartedAtRef.current == null) {
+              okfImportHoldStartedAtRef.current = Date.now();
+            }
+            if (typeof acceptance?.buildRecordId === "number") {
+              okfImportTrackedIdRef.current = acceptance.buildRecordId;
+            }
+            if (acceptance?.status) {
+              okfImportAcceptedStatusRef.current = acceptance.status;
+            }
+            setOkfImportProgress((current) => current ?? 0);
+            return;
+          }
+          okfImportHoldStartedAtRef.current = null;
+          okfImportTrackedIdRef.current = null;
+          okfImportAcceptedStatusRef.current = null;
+          if (!okfImportSeenRef.current) {
+            setOkfImportEnriching(false);
+            setOkfImportProgress(null);
+          }
+        }}
       />
 
       <WikiPageEditorDrawer

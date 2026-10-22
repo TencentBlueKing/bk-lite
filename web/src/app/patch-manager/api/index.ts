@@ -86,6 +86,9 @@ const usePatchManagerApi = () => {
 
   // ── 补丁库 ──────────────────────────────────────────────────────────────────
 
+  const getWindowsServerVersions = async (): Promise<Array<{ label: string; build: string }>> =>
+    get(`${BASE}/patch/windows_versions/`);
+
   const getPatchList = async (
     params: PatchParams = {},
     config?: AxiosRequestConfig
@@ -383,6 +386,7 @@ const usePatchManagerApi = () => {
     syncPatchSource,
     previewSyncPatchSource,
     ingestPatchSource,
+    getWindowsServerVersions,
     getPatchList,
     getPatchDetail,
     createPatch,

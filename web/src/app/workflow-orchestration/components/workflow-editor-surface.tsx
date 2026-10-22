@@ -22,7 +22,7 @@ import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import type { JsonSchema } from '../lib/types';
 import { WORKFLOW_REFERENCE_MIME } from './schema-node-form';
-import { WorkflowPermission } from './workflow-permission';
+import { WorkflowPermission, type WorkflowPermissionArea } from './workflow-permission';
 export interface WorkflowPickerItem {
   key: string;
   title: string;
@@ -93,7 +93,7 @@ function TidyCanvasIcon() {
   </svg>;
 }
 
-export function WorkflowCanvasControls({ onTidy }: { onTidy: () => void | Promise<void> }) {
+export function WorkflowCanvasControls({ onTidy, viewArea = 'workflows' }: { onTidy: () => void | Promise<void>; viewArea?: WorkflowPermissionArea }) {
   const { t } = useTranslation();
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const buttonClassName = 'h-9! w-9! min-w-9! rounded-md! border-0! bg-[var(--color-bg)]! p-0! text-[var(--color-text-1)]! shadow-[inset_0_0_0_1px_var(--color-border-1),0_1px_3px_-1px_var(--color-border-3)] hover:bg-[var(--color-bg-hover)]!';
@@ -103,9 +103,9 @@ export function WorkflowCanvasControls({ onTidy }: { onTidy: () => void | Promis
   };
 
   return <div className="absolute bottom-4 left-4 z-20 flex gap-3" aria-label={t('workflowOrchestration.editor.canvasControls', '画布视图控制')}>
-    <WorkflowPermission operation="View"><Tooltip title={t('workflowOrchestration.editor.fitCanvas', '适应画布')}><Button aria-label={t('workflowOrchestration.editor.fitCanvas', '适应画布')} className={buttonClassName} icon={<FitCanvasIcon />} onClick={() => void fitView({ maxZoom: 1, duration: 200 })} /></Tooltip></WorkflowPermission>
-    <WorkflowPermission operation="View"><Tooltip title={t('workflowOrchestration.editor.zoomIn', '放大')}><Button aria-label={t('workflowOrchestration.editor.zoomIn', '放大')} className={buttonClassName} icon={<ZoomInOutlined />} onClick={() => void zoomIn({ duration: 120 })} /></Tooltip></WorkflowPermission>
-    <WorkflowPermission operation="View"><Tooltip title={t('workflowOrchestration.editor.zoomOut', '缩小')}><Button aria-label={t('workflowOrchestration.editor.zoomOut', '缩小')} className={buttonClassName} icon={<ZoomOutOutlined />} onClick={() => void zoomOut({ duration: 120 })} /></Tooltip></WorkflowPermission>
+    <WorkflowPermission operation="View" area={viewArea}><Tooltip title={t('workflowOrchestration.editor.fitCanvas', '适应画布')}><Button aria-label={t('workflowOrchestration.editor.fitCanvas', '适应画布')} className={buttonClassName} icon={<FitCanvasIcon />} onClick={() => void fitView({ maxZoom: 1, duration: 200 })} /></Tooltip></WorkflowPermission>
+    <WorkflowPermission operation="View" area={viewArea}><Tooltip title={t('workflowOrchestration.editor.zoomIn', '放大')}><Button aria-label={t('workflowOrchestration.editor.zoomIn', '放大')} className={buttonClassName} icon={<ZoomInOutlined />} onClick={() => void zoomIn({ duration: 120 })} /></Tooltip></WorkflowPermission>
+    <WorkflowPermission operation="View" area={viewArea}><Tooltip title={t('workflowOrchestration.editor.zoomOut', '缩小')}><Button aria-label={t('workflowOrchestration.editor.zoomOut', '缩小')} className={buttonClassName} icon={<ZoomOutOutlined />} onClick={() => void zoomOut({ duration: 120 })} /></Tooltip></WorkflowPermission>
     <WorkflowPermission operation="Edit"><Tooltip title={t('workflowOrchestration.editor.tidyCanvas', '整理画布')}><Button aria-label={t('workflowOrchestration.editor.tidyCanvas', '整理画布')} className={buttonClassName} icon={<TidyCanvasIcon />} onClick={() => void tidy()} /></Tooltip></WorkflowPermission>
   </div>;
 }
@@ -381,8 +381,12 @@ export function WorkflowNodeInspector({
                     type="button"
                     draggable={!readOnly}
                     aria-label={t('workflowOrchestration.editor.dragField', '拖拽字段 {field}', { field: item.displayName || item.label })}
-                    className="group w-full cursor-grab rounded-md bg-[var(--color-bg)] px-3 py-2 text-left outline-none transition hover:ring-1 hover:ring-[var(--color-primary)] focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] active:cursor-grabbing"
+                    className={`group w-full rounded-md bg-[var(--color-bg)] px-3 py-2 text-left outline-none transition hover:ring-1 hover:ring-[var(--color-primary)] focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] ${readOnly ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
                     onDragStart={(event) => {
+                      if (readOnly) {
+                        event.preventDefault();
+                        return;
+                      }
                       event.dataTransfer.effectAllowed = 'copy';
                       event.dataTransfer.setData(WORKFLOW_REFERENCE_MIME, item.value);
                       event.dataTransfer.setData('text/plain', item.value);

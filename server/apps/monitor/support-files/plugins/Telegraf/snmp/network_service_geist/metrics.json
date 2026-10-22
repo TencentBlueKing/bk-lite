@@ -23,7 +23,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_active_power_watts",
-      "query": "pdu_active_power_watts{instance_type='network_service', __$labels__}",
+      "query": "pdu_active_power_watts{instance_type='network_service', collect_type='snmp_geist', __$labels__}",
       "display_name": "PDU Active Power",
       "data_type": "Number",
       "unit": "watts",
@@ -45,7 +45,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_phase_current_amps",
-      "query": "pdu_phase_current_amps{instance_type='network_service', __$labels__} / 100",
+      "query": "pdu_phase_current_amps{instance_type='network_service', collect_type='snmp_geist', __$labels__} / 100",
       "display_name": "PDU Phase Current",
       "data_type": "Number",
       "unit": "none",
@@ -67,7 +67,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_line_current_amps",
-      "query": "pdu_line_current_amps{instance_type='network_service', __$labels__} / 100",
+      "query": "pdu_line_current_amps{instance_type='network_service', collect_type='snmp_geist', __$labels__} / 100",
       "display_name": "PDU Line Current",
       "data_type": "Number",
       "unit": "none",
@@ -89,7 +89,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_outlet_current_amps",
-      "query": "pdu_outlet_current_amps{instance_type='network_service', __$labels__} / 100",
+      "query": "pdu_outlet_current_amps{instance_type='network_service', collect_type='snmp_geist', __$labels__} / 100",
       "display_name": "PDU Outlet Current",
       "data_type": "Number",
       "unit": "none",
@@ -111,7 +111,7 @@
     {
       "metric_group": "Environment",
       "name": "env_temperature_celsius",
-      "query": "((env_temperature_celsius{instance_type='network_service', __$labels__} / 10) and on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service'} == 1)) or (((env_temperature_celsius{instance_type='network_service', __$labels__} / 10 - 32) * 5 / 9) and on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service'} == 0)) or (env_temperature_celsius{instance_type='network_service', __$labels__} / 10)",
+      "query": "((env_temperature_celsius{instance_type='network_service', collect_type='snmp_geist', __$labels__} / 10) and on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service', collect_type='snmp_geist'} == 1)) or (((env_temperature_celsius{instance_type='network_service', collect_type='snmp_geist', __$labels__} / 10 - 32) * 5 / 9) and on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service', collect_type='snmp_geist'} == 0)) or (env_temperature_celsius{instance_type='network_service', collect_type='snmp_geist', __$labels__} / 10)",
       "display_name": "Environment Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -133,7 +133,7 @@
     {
       "metric_group": "Environment",
       "name": "env_humidity_percent",
-      "query": "env_humidity_percent{instance_type='network_service', __$labels__}",
+      "query": "env_humidity_percent{instance_type='network_service', collect_type='snmp_geist', __$labels__}",
       "display_name": "Environment Humidity",
       "data_type": "Number",
       "unit": "percent",
@@ -155,7 +155,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_geist', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -173,7 +173,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_geist', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -191,7 +191,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_geist', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

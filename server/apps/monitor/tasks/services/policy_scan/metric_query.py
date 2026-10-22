@@ -456,6 +456,10 @@ class MetricQueryService:
         unit = self.get_effective_calculation_unit()
         return UnitConverter.get_display_unit(unit) if unit else ""
 
+    def is_metric_unit_converted(self) -> bool:
+        """扫描侧是否已把采集值换算到 calculation_unit。"""
+        return self._unit_conversion_enabled
+
     def get_source_display_unit(self):
         unit = self.policy.calculation_unit or self.policy.metric_unit or ""
         return UnitConverter.get_display_unit(unit) if unit else ""

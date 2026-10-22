@@ -4,7 +4,7 @@ import React from 'react';
 import { Button, Popover } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { operatorTranslation, ruleFields, type RuleScope } from '@/app/alarm/utils/multivalueRules';
+import { operatorTranslation, ruleFieldLabel, ruleFields, type RuleScope } from '@/app/alarm/utils/multivalueRules';
 
 const FIELD_GROUPS = [
   ['title', 'description', 'content'],
@@ -39,8 +39,8 @@ const MatchRuleHelp = ({ scope }: MatchRuleHelpProps) => {
           const group = fields.filter(field => keys.includes(field.key));
           if (!group.length) return null;
           return <tr key={keys[0]} className="border-b border-[var(--color-border-1)]">
-            <th scope="row" className="px-3 py-2 align-top font-normal">
-              {group.map(field => t(`alarmCommon.ruleFields.${field.key}`)).join(' / ')}
+            <th scope="row" className="w-[42%] px-3 py-2 align-top font-normal">
+              {group.map(field => ruleFieldLabel(field.key, t)).join(' / ')}
             </th>
             <td className="px-3 py-2 align-top">
               <div>{group[0].operators.map(operator => t(operatorTranslation(group[0].key, operator))).join(' / ')}</div>

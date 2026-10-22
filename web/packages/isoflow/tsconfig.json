@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "baseUrl": "./src",
+    "paths": {
+      "src/*": ["./*"]
+    },
+    "outDir": "./dist",
+    "noImplicitAny": true,
+    "target": "es6",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "allowSyntheticDefaultImports": true,
+    "declaration": true,
+    "strict": true,
+    "module": "es6",
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "useUnknownInCatchVariables": false
+  },
+  "exclude": ["node_modules", "./dist", "./docs"],
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "src/global.d.ts"
+  ],
+}

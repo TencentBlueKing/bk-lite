@@ -17,8 +17,8 @@ vi.mock('@/components/permission', () => ({
 }));
 
 vi.mock('@/components/code-editor', () => ({
-  default: ({ value, mode, theme, height, onChange }: { value?: string; mode?: string; theme?: string; height?: string; onChange?: (value: string) => void }) => (
-    <textarea aria-label={`code-editor-${mode || 'text'}`} data-height={height} data-theme={theme} value={value || ''} onChange={(event) => onChange?.(event.target.value)} />
+  default: ({ value, mode, theme, height, readOnly, onChange }: { value?: string; mode?: string; theme?: string; height?: string; readOnly?: boolean; onChange?: (value: string) => void }) => (
+    <textarea aria-label={`code-editor-${mode || 'text'}`} data-height={height} data-theme={theme} readOnly={readOnly} value={value || ''} onChange={(event) => onChange?.(event.target.value)} />
   ),
 }));
 

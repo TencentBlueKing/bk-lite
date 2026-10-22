@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { ShareModeProvider } from '@/app/ops-analysis/context/shareMode';
 import ReportWidgetCard from '@/app/ops-analysis/components/reportWidgetCard';
 import { WidgetCsvExportRegistryProvider } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
 
@@ -292,7 +293,12 @@ describe('ReportWidgetCard csv export', () => {
   it('runs the registered exporter for the section', () => {
     const run = vi.fn().mockResolvedValue(true);
     render(
-      <WidgetCsvExportRegistryProvider registry={{ register: () => () => undefined, run }}>
+      <WidgetCsvExportRegistryProvider registry={{
+        register: () => () => undefined,
+        run,
+        publishWidgetRawData: () => undefined,
+        readWidgetRawData: () => undefined,
+      }}>
         <ReportWidgetCard
           section={section as never}
           index={0}
@@ -307,5 +313,76 @@ describe('ReportWidgetCard csv export', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'dashboard.exportCsv' }));
     expect(run).toHaveBeenCalledWith('section-1', { title: 'CMDB 模型实例明细' });
+  });
+});
+
+const linkedSection = {
+  ...section,
+  valueConfig: {
+    ...section.valueConfig,
+    interaction: {
+      kind: 'title' as const,
+      name: '查看详情',
+      url: '/ops',
+      openMode: 'sameTab' as const,
+    },
+  },
+};
+
+const isLastIn = (node: HTMLElement, root: HTMLElement) => {
+  const last = root.lastElementChild;
+  return last === node || Boolean(last?.contains(node));
+};
+
+describe('Report title link', () => {
+  it('places the chevron after retry and the csv download', async () => {
+    failWidgetRender = true;
+    renderCard({ section: linkedSection as never });
+    const link = await screen.findByRole('button', { name: '查看详情' });
+    const retry = await screen.findByRole('button', { name: 'common.retry' });
+    const csv = screen.getByRole('button', { name: 'dashboard.exportCsv' });
+    const title = screen.getByRole('heading', { name: 'CMDB 模型实例明细' });
+    const header = title.closest('.mb-2') as HTMLElement;
+
+    expect(link.querySelector('.anticon-right')).toBeTruthy();
+    expect(link.querySelector('.anticon-link')).toBeNull();
+    expect(link.getAttribute('data-export-hidden')).toBe('true');
+    expect(link.className).toContain('no-drag');
+    expect(title.className).toContain('truncate');
+    expect(title.closest('button')).toBeNull();
+    expect(retry.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(csv.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(isLastIn(link, header)).toBe(true);
+  });
+
+  it('places the chevron after the edit menu', () => {
+    renderCard({ section: linkedSection as never, editing: true });
+    const link = screen.getByRole('button', { name: '查看详情' });
+    const more = screen.getByRole('button', { name: 'common.more' });
+
+    const header = screen.getByRole('heading', { name: 'CMDB 模型实例明细' }).closest('.mb-2') as HTMLElement;
+    expect(more.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(isLastIn(link, header)).toBe(true);
+  });
+
+  it('hides the chevron on the share surface', () => {
+    render(
+      <ShareModeProvider value>
+        <ReportWidgetCard
+          section={linkedSection as never}
+          index={0}
+          unifiedFilterValues={{}}
+          filterDefinitions={[]}
+          filterSearchVersion={0}
+          editing={false}
+          shareMode
+          onEdit={vi.fn()}
+          onDelete={vi.fn()}
+          onCopy={vi.fn()}
+        />
+      </ShareModeProvider>,
+    );
+    expect(screen.getByText('CMDB 模型实例明细')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '查看详情' })).toBeNull();
   });
 });

@@ -24,7 +24,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_active_power_watts",
-      "query": "(pdu_active_power_watts{instance_type='network_service', __$labels__} >= 0)",
+      "query": "(pdu_active_power_watts{instance_type='network_service', collect_type='snmp_servertech', __$labels__} >= 0)",
       "display_name": "PDU Active Power",
       "data_type": "Number",
       "unit": "watts",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_infeed_current_amps",
-      "query": "(pdu_infeed_current_amps{instance_type='network_service', __$labels__} >= 0) / 100",
+      "query": "(pdu_infeed_current_amps{instance_type='network_service', collect_type='snmp_servertech', __$labels__} >= 0) / 100",
       "display_name": "PDU Infeed Current",
       "data_type": "Number",
       "unit": "none",
@@ -59,7 +59,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_infeed_voltage_volts",
-      "query": "(pdu_infeed_voltage_volts{instance_type='network_service', __$labels__} >= 0) / 10",
+      "query": "(pdu_infeed_voltage_volts{instance_type='network_service', collect_type='snmp_servertech', __$labels__} >= 0) / 10",
       "display_name": "PDU Infeed Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -81,7 +81,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_infeed_power_watts",
-      "query": "(pdu_infeed_power_watts{instance_type='network_service', __$labels__} >= 0)",
+      "query": "(pdu_infeed_power_watts{instance_type='network_service', collect_type='snmp_servertech', __$labels__} >= 0)",
       "display_name": "PDU Infeed Power",
       "data_type": "Number",
       "unit": "watts",
@@ -103,7 +103,7 @@
     {
       "metric_group": "Power",
       "name": "pdu_outlet_current_amps",
-      "query": "(pdu_outlet_current_amps{instance_type='network_service', __$labels__} >= 0) / 100",
+      "query": "(pdu_outlet_current_amps{instance_type='network_service', collect_type='snmp_servertech', __$labels__} >= 0) / 100",
       "display_name": "PDU Outlet Current",
       "data_type": "Number",
       "unit": "none",
@@ -125,7 +125,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "pdu_tower_state",
-      "query": "pdu_tower_state{instance_type='network_service', __$labels__}",
+      "query": "pdu_tower_state{instance_type='network_service', collect_type='snmp_servertech', __$labels__}",
       "display_name": "PDU Tower Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -147,7 +147,7 @@
     {
       "metric_group": "Environment",
       "name": "env_temperature_celsius",
-      "query": "((env_temperature_celsius{instance_type='network_service', temp_scale=\"0\", __$labels__} >= 0) / 10) or ((((env_temperature_celsius{instance_type='network_service', temp_scale=\"1\", __$labels__} >= 0) / 10) - 32) * 5 / 9) or ((env_temperature_celsius{instance_type='network_service', __$labels__} >= 0) / 10)",
+      "query": "((env_temperature_celsius{instance_type='network_service', collect_type='snmp_servertech', temp_scale=\"0\", __$labels__} >= 0) / 10) or ((((env_temperature_celsius{instance_type='network_service', collect_type='snmp_servertech', temp_scale=\"1\", __$labels__} >= 0) / 10) - 32) * 5 / 9) or ((env_temperature_celsius{instance_type='network_service', collect_type='snmp_servertech', __$labels__} >= 0) / 10)",
       "display_name": "Environment Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -169,7 +169,7 @@
     {
       "metric_group": "Environment",
       "name": "env_humidity_percent",
-      "query": "(env_humidity_percent{instance_type='network_service', __$labels__} >= 0)",
+      "query": "(env_humidity_percent{instance_type='network_service', collect_type='snmp_servertech', __$labels__} >= 0)",
       "display_name": "Environment Humidity",
       "data_type": "Number",
       "unit": "percent",
@@ -191,7 +191,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', collect_type='snmp_servertech', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -209,7 +209,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', collect_type='snmp_servertech', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
@@ -227,7 +227,7 @@
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "query": "sum(snmp_uptime{instance_type='network_service', collect_type='snmp_servertech', __$labels__}/100) by (instance_id)",
       "display_name": "System Uptime",
       "data_type": "Number",
       "unit": "s",

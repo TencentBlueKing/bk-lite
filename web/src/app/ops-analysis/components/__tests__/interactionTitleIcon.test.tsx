@@ -65,17 +65,42 @@ const renderWithIntl = (node: React.ReactNode) => render(
 );
 
 describe('InteractionTitleIcon', () => {
-  it('keeps the dashboard icon as a plain link glyph', () => {
+  it('renders a right chevron and keeps the floating placement', () => {
     renderWithIntl(
       <InteractionTitleIcon config={{ interaction: titleLink }} floating />,
     );
 
     const button = screen.getByRole('button', { name: '查看详情' });
-    expect(button.className).toContain('text-(--color-text-2)');
+    expect(button.querySelector('.anticon-right')).toBeTruthy();
+    expect(button.querySelector('.anticon-link')).toBeNull();
+    expect(button.className).toContain('text-(--color-text-3)');
+    expect(button.className).toContain('absolute');
+    expect(button.className).toContain('right-2');
+    expect(button.className).toContain('top-2');
     expect(button.className).toContain('rounded-full');
     expect(button.className).toContain('h-6');
+    expect(button.className).toContain('no-drag');
     expect(button.className).not.toContain('screen-widget-frame__title-link');
     expect(button.getAttribute('aria-label')).toBe('查看详情');
+    expect(button.getAttribute('data-export-hidden')).toBe('true');
+  });
+
+  it('悬停显示链接名称，名称为空时回落到打开链接', async () => {
+    const { rerender } = renderWithIntl(
+      <InteractionTitleIcon config={{ interaction: titleLink }} />,
+    );
+
+    fireEvent.mouseEnter(screen.getByRole('button', { name: '查看详情' }));
+    expect(await screen.findByRole('tooltip')).toHaveProperty('textContent', '查看详情');
+
+    rerender(
+      <IntlProvider locale="zh" messages={{}}>
+        <InteractionTitleIcon config={{ interaction: { ...titleLink, name: '  ' } }} />
+      </IntlProvider>,
+    );
+    const fallback = screen.getByRole('button', { name: '打开链接' });
+    fireEvent.mouseEnter(fallback);
+    expect((await screen.findAllByRole('tooltip')).some((node) => node.textContent === '打开链接')).toBe(true);
   });
 
   it('编辑态悬停提示查看模式下可跳转', async () => {
@@ -114,7 +139,7 @@ describe('InteractionTitleIcon', () => {
 });
 
 describe('screen title link', () => {
-  it('places a scaled link glyph after the framed title and leaves an unlinked title unchanged', () => {
+  it('places a scaled chevron at the far right of the framed title and leaves an unlinked title unchanged', () => {
     const { rerender } = renderWithIntl(
       <ScreenWidgetFrame item={widget(titleLink)}>
         <div>chart</div>
@@ -122,12 +147,18 @@ describe('screen title link', () => {
     );
 
     const button = screen.getByRole('button', { name: '查看详情' });
+    const title = screen.getByText('CPU 使用率');
     expect(button.className).toContain('screen-widget-frame__title-link');
     expect(button.className).not.toContain('text-(--color-text-2)');
-    expect(button.querySelector('.anticon-link')).toBeTruthy();
+    expect(button.querySelector('.anticon-right')).toBeTruthy();
+    expect(button.querySelector('.anticon-link')).toBeNull();
+    expect(button.getAttribute('data-export-hidden')).toBe('true');
     expect(button.parentElement?.className).toContain('screen-widget-frame__title-row');
+    expect(button.parentElement?.lastElementChild).toBe(button);
+    expect(title.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(title.closest('button')).toBeNull();
     expect(button.parentElement?.parentElement?.className).toContain('screen-widget-frame__header');
-    expect(screen.getByText('CPU 使用率').className).toBe('screen-widget-frame__title');
+    expect(title.className).toBe('screen-widget-frame__title');
 
     rerender(
       <IntlProvider locale="zh" messages={{}}>
@@ -177,7 +208,15 @@ describe('screen title link styles', () => {
           align-items: center;
           gap: calc(6px * var(--screen-widget-ui-scale));`);
     expect(source).toContain(`width: auto;
-          flex: 0 1 auto;`);
+          flex: 1 1 auto;`);
+    expect(source).toContain(`.screen-widget-frame__title-link {
+          display: inline-flex;
+          flex-shrink: 0;
+          align-items: center;
+          justify-content: center;
+          margin-left: auto;`);
+    expect(source).toContain(`.screen-widget-frame--editable .screen-widget-frame__header:has(.screen-widget-frame__title-link) {
+          padding-right: calc((var(--screen-widget-title-padding, 10px) + 8px) * var(--screen-widget-ui-scale));`);
     expect(source).toContain('font-size: calc(14px * var(--screen-widget-ui-scale));');
     expect(source).toContain(
       'color-mix(in srgb, var(--screen-chrome-accent) 68%, var(--screen-widget-title-color))',

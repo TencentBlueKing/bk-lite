@@ -22,6 +22,8 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import { HandledRequestError } from '@/utils/request';
 import { channelOptionValue } from '@/app/alarm/utils/channelIdentity';
+import { colorizeFeishuMarkdownPreview, FEISHU_MARKDOWN_PREVIEW_STYLE } from '@/app/alarm/utils/colorizeFeishuMarkdownPreview';
+import { colorizeWecomMarkdownPreview, WECOM_MARKDOWN_PREVIEW_STYLE } from '@/app/alarm/utils/colorizeWecomMarkdownPreview';
 import {
   getNotificationTemplateChannel,
   NOTIFICATION_TEMPLATE_CHANNELS,
@@ -33,6 +35,7 @@ import {
   formatLegacyAlertOperationContent,
 } from '@/app/alarm/utils/defaultNotificationTemplateContents';
 import { buildAlarmDetailTemplateHint } from '@/app/alarm/(pages)/alarms/alarmDetailLink';
+import ChannelColorTip from './channelColorTip';
 import EventBlockInsert, { EventBlockCatalog } from './eventBlockInsert';
 
 const AceEditor = dynamic(
@@ -400,12 +403,22 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
     }
   };
 
-  const previewHtml = activeChannelConfig.previewMode === 'html'
+  const renderedPreview = activeChannelConfig.previewMode === 'html'
     ? DOMPurify.sanitize(preview.body)
     : activeChannelConfig.previewMode === 'markdown'
       ? DOMPurify.sanitize(markdown.render(preview.body))
       : `<pre>${markdown.utils.escapeHtml(preview.body)}</pre>`;
-  const previewDocument = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"></head><body>${previewHtml}</body></html>`;
+  const previewHtml = activeChannel === 'enterprise_wechat_bot'
+    ? colorizeWecomMarkdownPreview(renderedPreview)
+    : activeChannel === 'feishu_bot'
+      ? colorizeFeishuMarkdownPreview(renderedPreview)
+      : renderedPreview;
+  const previewStyle = activeChannel === 'enterprise_wechat_bot'
+    ? `<style>${WECOM_MARKDOWN_PREVIEW_STYLE}</style>`
+    : activeChannel === 'feishu_bot'
+      ? `<style>${FEISHU_MARKDOWN_PREVIEW_STYLE}</style>`
+      : '';
+  const previewDocument = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">${previewStyle}</head><body>${previewHtml}</body></html>`;
 
   const openTestModal = async () => {
     const activeChannelItem = channels.find((channel) => channel.channel_type === activeChannel);
@@ -676,6 +689,7 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
               )}
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Typography.Text type="secondary">{t('settings.notificationTemplate.variables')}：</Typography.Text>
+                <ChannelColorTip channelType={activeChannel} onInsert={insertVariable} />
                 {visibleVariables.map((variable) => {
                   const used = usedVariablePaths.has(variable.path);
                   return (

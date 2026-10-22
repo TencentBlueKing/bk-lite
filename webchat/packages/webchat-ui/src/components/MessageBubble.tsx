@@ -40,16 +40,41 @@ function StoredAttachmentCards({
   loadAttachment?: (id: number) => Promise<Blob>;
 }) {
   const [urls, setUrls] = React.useState<Record<number, string>>({});
-  const started = React.useRef(new Set<number>());
+  const previews = React.useRef(new Map<number, { url?: string }>());
   React.useEffect(() => {
+    const owned = previews.current;
+    return () => {
+      owned.forEach(({ url }) => {
+        if (url) URL.revokeObjectURL(url);
+      });
+      owned.clear();
+    };
+  }, []);
+  React.useEffect(() => {
+    const owned = previews.current;
+    const visibleIds = new Set(attachments.filter((item) => String(item.mime || '').startsWith('image/')).map((item) => Number(item.id)));
+    owned.forEach(({ url }, id) => {
+      if (!visibleIds.has(id)) {
+        if (url) URL.revokeObjectURL(url);
+        owned.delete(id);
+        setUrls((current) => {
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
+      }
+    });
     attachments.forEach((item) => {
       const id = Number(item.id);
       const mime = String(item.mime || '');
-      if (!mime.startsWith('image/') || !loadAttachment || !id || started.current.has(id)) return;
-      started.current.add(id);
+      if (!mime.startsWith('image/') || !loadAttachment || !id || owned.has(id)) return;
+      const preview: { url?: string } = {};
+      owned.set(id, preview);
       loadAttachment(id)
         .then((blob) => {
+          if (owned.get(id) !== preview) return;
           const url = URL.createObjectURL(blob);
+          preview.url = url;
           setUrls((current) => ({ ...current, [id]: url }));
         })
         .catch(() => undefined);

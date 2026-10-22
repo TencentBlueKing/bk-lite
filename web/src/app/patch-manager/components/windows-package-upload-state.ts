@@ -31,3 +31,12 @@ export function getWindowsPackageUploadState(patch: Patch | null): WindowsPackag
     fileList,
   };
 }
+
+/** 编辑时是否已经选了尚未保存的新补丁文件。 */
+export function windowsPackageReplacementSelected(files: unknown): boolean {
+  if (!Array.isArray(files)) return false;
+  return files.some((file) => {
+    if (!file || typeof file !== 'object') return false;
+    return Boolean((file as { originFileObj?: unknown }).originFileObj);
+  });
+}

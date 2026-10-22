@@ -17,6 +17,7 @@ import {
   networkModelIdsFromInterfaceAssociations,
 } from '../networkModelDiscovery';
 import {
+  alignViewFocusModels,
   buildBaseInfoPath,
   buildViewsPathPreserving,
   parseViewsSearch,
@@ -117,21 +118,23 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
 
   const focusesFromParsed = useCallback(
     (parsed: ReturnType<typeof parseViewsSearch>): ViewFocus[] => {
-      if (!parsed.model_id || !parsed.inst_uuids.length) return [];
       const parsedMode =
         viewType === 'rack-room'
-          ? resolveRackRoomMode(parsed.model_id, parsed.mode) ?? parsed.mode ?? 'room'
+          ? resolveRackRoomMode(parsed.model_id || '', parsed.mode) ?? parsed.mode ?? 'room'
           : parsed.mode;
-      const uuids = viewAllowsMultiSelect(viewType, parsedMode)
-        ? parsed.inst_uuids
-        : parsed.inst_uuids.slice(0, 1);
-      return uuids.map((uuid, index) => {
+      const aligned = alignViewFocusModels(parsed.model_ids, parsed.inst_uuids);
+      const limited = viewAllowsMultiSelect(viewType, parsedMode)
+        ? aligned
+        : aligned.slice(0, 1);
+      const sharedModel = limited.length > 0
+        && limited.every((item) => item.model_id === limited[0].model_id);
+      return limited.map((item, index) => {
         const next = enrichFocus({
-          model_id: parsed.model_id!,
-          inst_uuid: uuid,
+          model_id: item.model_id,
+          inst_uuid: item.inst_uuid,
           inst_name: index === 0 ? parsed.inst_name : undefined,
-          model_name: parsed.model_name,
-          icn: parsed.icn,
+          model_name: sharedModel || index === 0 ? parsed.model_name : undefined,
+          icn: sharedModel || index === 0 ? parsed.icn : undefined,
           mode: parsedMode,
         });
         return viewType === 'rack-room' && parsedMode
@@ -142,7 +145,8 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
     [enrichFocus, viewType]
   );
 
-  // Hydrate focus from URL, then localStorage memory. Never auto-pick first instance.
+  // Honor an old link that still lists instances; otherwise restore localStorage.
+  // The selection is not written back onto the URL.
   // Parent remounts this shell with key={viewType} so view switches start clean.
   useEffect(() => {
     if (hydratedRef.current) return;
@@ -270,6 +274,10 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
         setMode(parsed.mode);
       }
     }
+
+    // Instance lists are not in the URL. A query change without inst_uuid
+    // (for example a K8S sub-view) must not clear the cached selection.
+    if (!parsed.inst_uuids.length) return;
 
     // External URL navigation abandons an in-memory room→rack drill stack.
     setRoomReturn(null);
@@ -510,7 +518,7 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
         {networkDiscovering && viewType === 'network' && (
           <Spin size="small" />
         )}
-        {viewType === 'network' && focus && (
+        {viewType === 'network' && focuses.length === 1 && (
           <HopDepthControl value={networkHop} onChange={setNetworkHop} />
         )}
         <div className="ml-auto shrink-0">
