@@ -418,8 +418,15 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   );
 
   const renderMultiFields = (row: MetricExpressionRow, rowIndex: number) => (
-    <div className="ml-10 grid grid-cols-3 gap-2">
+    <div
+      className={
+        row.source === 'formula'
+          ? 'ml-12 grid grid-cols-[132px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2'
+          : 'ml-10 grid grid-cols-[132px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2'
+      }
+    >
       <Select
+        className="w-full"
         value={row.role || 'level'}
         options={[
           {
@@ -444,6 +451,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
         }
       />
       <Select
+        className="w-full"
         value={row.algorithm || 'avg_over_time'}
         options={(row.source === 'formula'
           ? algorithmOptions.filter(
@@ -457,6 +465,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
         onChange={(value) => updateRow(rowIndex, { algorithm: String(value) })}
       />
       <Cascader
+        className="w-full"
         showSearch
         allowClear={false}
         value={
@@ -581,9 +590,6 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
                     : undefined
                 }
               >
-                <span className="text-xs text-[var(--color-text-3)]">
-                  {translateWithFallback('monitor.events.multiRole', '角色')}
-                </span>
                 {row.source === 'formula' ? (
                   <>
                     {(row.operands || []).map((operand, operandIndex) => (
