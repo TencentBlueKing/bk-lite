@@ -60,12 +60,15 @@ def _build_openai_thinking_extra_body(model: str, show_think: bool) -> dict:
     ``thinking.type``，DashScope 等兼容网关用 ``enable_thinking``；两边都写，
     避免 ``show_think=false`` 时仍默认思考并把旁白打进正文。
 
+    未识别的模型不写这些字段，避免官方 OpenAI 因未知参数返回 400。
+    Wiki 资料构建会另外带上 ``suppress_default_thinking``，强制关闭思考。
+
     Qwen3 同类：DashScope 认顶层 ``enable_thinking``，vLLM / 本地 OpenAI 兼容
     服务只认 ``chat_template_kwargs.enable_thinking``。只写顶层字段会被静默忽略，
-    思考占满 ``max_tokens`` 后 ``content`` 为空。
+    思考占满 ``max_tokens`` 后 ``content`` 为空。网关模型 ID ``auto`` 按 Qwen 处理。
     """
     model_lower = (model or "").lower()
-    if "qwen" in model_lower:
+    if model_lower == "auto" or "qwen" in model_lower:
         return {
             "enable_thinking": show_think,
             "chat_template_kwargs": {"enable_thinking": show_think},
@@ -78,6 +81,20 @@ def _build_openai_thinking_extra_body(model: str, show_think: bool) -> dict:
     if "gemma" in model_lower:
         return {"chat_template_kwargs": {"enable_thinking": show_think}}
     return {}
+
+
+def _isolated_thinking_extra_body(request) -> dict:
+    """Thinking flags for an isolated call. Default off; Wiki can force a disable payload."""
+    extra = request.extra_config or {}
+    show_think = bool(extra.get("show_think", False))
+    body = _build_openai_thinking_extra_body(request.model, show_think)
+    if body or show_think or not extra.get("suppress_default_thinking"):
+        return body
+    return {
+        "enable_thinking": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "thinking": {"type": "disabled"},
+    }
 
 
 def _coerce_optional_int(value):
@@ -525,8 +542,8 @@ class LLMClientFactory:
         if response_format:
             call_kwargs["response_format"] = response_format
 
-        # 隔离调用一律关闭 thinking，避免规划/结构化输出被 reasoning 污染
-        thinking_body = _build_openai_thinking_extra_body(request.model, show_think=False)
+        # 隔离调用默认关闭 thinking，避免规划/结构化输出被 reasoning 占满输出额度
+        thinking_body = _isolated_thinking_extra_body(request)
         if thinking_body:
             call_kwargs["extra_body"] = thinking_body
 
@@ -657,7 +674,7 @@ class LLMClientFactory:
         if response_format:
             call_kwargs["response_format"] = response_format
 
-        thinking_body = _build_openai_thinking_extra_body(request.model, show_think=False)
+        thinking_body = _isolated_thinking_extra_body(request)
         if thinking_body:
             call_kwargs["extra_body"] = thinking_body
 

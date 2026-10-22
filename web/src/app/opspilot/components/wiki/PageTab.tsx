@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Space, Spin, message } from "antd";
 import {
   FileZipOutlined,
@@ -50,6 +50,7 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     fetchPages,
     fetchMaterials,
     fetchDirectoryTree,
+    fetchBuildRecords,
     deleteNestedDirectory,
     movePagesToDirectory,
     exportKnowledgeBaseOkf,
@@ -69,6 +70,10 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
   >("loading");
   const [exportingOkf, setExportingOkf] = useState(false);
   const [okfImportOpen, setOkfImportOpen] = useState(false);
+  const [okfImportProgress, setOkfImportProgress] = useState<number | null>(null);
+  const [okfImportEnriching, setOkfImportEnriching] = useState(false);
+  const okfImportHoldRef = useRef(false);
+  const okfImportSeenRef = useRef(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<KnowledgePage | null>(null);
   const [movePageIds, setMovePageIds] = useState<number[]>([]);
@@ -361,6 +366,93 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     }
   };
 
+  useEffect(() => {
+    okfImportHoldRef.current = false;
+    okfImportSeenRef.current = false;
+    setOkfImportProgress(null);
+    setOkfImportEnriching(false);
+    let stopped = false;
+    let timer = 0;
+    const reloadVisiblePages = async () => {
+      const [treeResult, pagesResult, materialsResult] = await Promise.allSettled([
+        fetchDirectoryTree(kbId),
+        fetchPages(kbId, { page: 1, page_size: 500, status: "active" }),
+        fetchMaterials(kbId, { page: 1, page_size: 500 }),
+      ]);
+      if (stopped) return;
+      if (treeResult.status === "fulfilled") {
+        setDirectoryTreeState({ kbId, value: treeResult.value });
+        setDirectoryTreeLoadState("ready");
+      }
+      if (pagesResult.status === "fulfilled") {
+        setTreePages(pagesResult.value.items || []);
+      }
+      if (materialsResult.status === "fulfilled") {
+        setTreeMaterials(
+          (materialsResult.value.items || []).map((material) => ({
+            id: material.id,
+            name: material.name,
+          })),
+        );
+      }
+    };
+    const tick = async () => {
+      try {
+        const page = await fetchBuildRecords(kbId, {
+          trigger: "markdown_import",
+          page_size: 5,
+        });
+        if (stopped) return;
+        const items = page.items || [];
+        const writing = items.find((item) => item.status === "running");
+        const enriching = items.find((item) => {
+          if (item.maintenance?.search_enrichment !== "running") return false;
+          const updated = Date.parse(item.updated_at || "");
+          return !Number.isFinite(updated) || Date.now() - updated < 2 * 60 * 60 * 1000;
+        });
+        const record = writing || enriching;
+        if (record) {
+          okfImportSeenRef.current = true;
+          okfImportHoldRef.current = false;
+          setOkfImportEnriching(!writing && Boolean(enriching));
+          setOkfImportProgress(
+            writing
+              ? Math.min(99, Math.max(0, Number(record.progress) || 0))
+              : 99,
+          );
+          await reloadVisiblePages();
+        } else if (okfImportHoldRef.current) {
+          setOkfImportEnriching(false);
+          setOkfImportProgress((current) => current ?? 0);
+        } else if (okfImportSeenRef.current) {
+          okfImportSeenRef.current = false;
+          setOkfImportEnriching(false);
+          setOkfImportProgress(null);
+          await reloadVisiblePages();
+        } else {
+          setOkfImportEnriching(false);
+          setOkfImportProgress(null);
+        }
+      } catch {
+        // 轮询失败时保留当前进度，下一拍再试
+      } finally {
+        if (!stopped) {
+          const delay =
+            okfImportHoldRef.current || okfImportSeenRef.current ? 5000 : 10000;
+          timer = window.setTimeout(() => {
+            void tick();
+          }, delay);
+        }
+      }
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+    // 只随知识库切换重绑；刷新函数随本次渲染闭包即可
+  }, [kbId]);
+
   const handleOkfImportCompleted = async () => {
     setOkfImportOpen(false);
     await Promise.allSettled([
@@ -397,13 +489,21 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
           <Space size={8} wrap>
             <Button
               icon={<ImportOutlined />}
+              disabled={okfImportProgress != null}
               onClick={() => setOkfImportOpen(true)}
             >
-              {t("wiki.importOkf")}
+              {okfImportProgress != null
+                ? okfImportEnriching
+                  ? t("wiki.okfImportEnriching")
+                  : t("wiki.okfImportProgress", undefined, {
+                    progress: okfImportProgress,
+                  })
+                : t("wiki.importOkf")}
             </Button>
             <Button
               icon={<FileZipOutlined />}
               loading={exportingOkf}
+              disabled={okfImportProgress != null}
               onClick={handleExportOkf}
             >
               {t("wiki.exportOkf")}
@@ -437,6 +537,10 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
               onDeletePage={(pageId) => void handleDeletePage(pageId)}
               onDeleteDirectory={(directoryId) =>
                 void handleDeleteDirectory(directoryId)
+              }
+              importProgress={okfImportProgress}
+              importProgressLabel={
+                okfImportEnriching ? t("wiki.okfImportEnriching") : null
               }
             />
           ) : (
@@ -482,6 +586,17 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
         open={okfImportOpen}
         onCancel={() => setOkfImportOpen(false)}
         onCompleted={handleOkfImportCompleted}
+        onImportHoldChange={(holding) => {
+          okfImportHoldRef.current = holding;
+          if (holding) {
+            setOkfImportProgress((current) => current ?? 0);
+            return;
+          }
+          if (!okfImportSeenRef.current) {
+            setOkfImportEnriching(false);
+            setOkfImportProgress(null);
+          }
+        }}
       />
 
       <WikiPageEditorDrawer
