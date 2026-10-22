@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Input } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import type { EntityTableRow } from '../../host/entity-series';
@@ -220,6 +219,8 @@ const waitTableColumnsOf = (
   csvValue: (entity: EntityTableRow) => entity.labels[key] || '--'
 }));
 
+const { Search } = Input;
+
 function TableSearch({
   value,
   onChange,
@@ -230,14 +231,15 @@ function TableSearch({
   placeholder: string;
 }) {
   return (
-    <Input
+    <Search
       allowClear
       size="small"
+      enterButton
       value={value}
       placeholder={placeholder}
       aria-label={placeholder}
-      prefix={<SearchOutlined className="text-[var(--color-text-4)]" />}
       onChange={(event) => onChange(event.target.value)}
+      onSearch={onChange}
       className="w-60 max-w-full"
     />
   );
