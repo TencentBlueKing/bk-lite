@@ -33,6 +33,7 @@ import { requestLegacyThirdLoginAuthorize } from "@/utils/legacyThirdLogin";
 import type { LoginAuthLoginResult } from "./login-auth/types";
 import { PORTAL_HOME_PATH } from "@/utils/route";
 import { isScreenModeEnabled, withScreenQuery } from "@/console-layout";
+import { resolvePostLoginHref } from "@/app/ops-analysis/utils/homepageLanding";
 
 interface SigninClientProps {
   searchParams?: {
@@ -119,31 +120,36 @@ export default function SigninClient({
     return () => window.removeEventListener('message', handleReturnToSigninTab);
   }, [mode]);
 
-  const finishAuthentication = (targetUrl: string) => {
-    const nextUrl = withScreenQuery(
-      targetUrl,
-      isScreenModeEnabled(window.location.search),
-      window.location.origin,
-    );
+  const finishAuthentication = (targetUrl: string, token?: string) => {
+    void (async () => {
+      const landed = onAuthenticated
+        ? targetUrl
+        : await resolvePostLoginHref(targetUrl, token, window.location.origin);
+      const nextUrl = withScreenQuery(
+        landed,
+        isScreenModeEnabled(window.location.search),
+        window.location.origin,
+      );
 
-    if (onAuthenticated) {
-      onAuthenticated();
-      return;
-    }
+      if (onAuthenticated) {
+        onAuthenticated();
+        return;
+      }
 
-    if (isPopupWindowMode && window.opener && !window.opener.closed) {
-      window.opener.postMessage({
-        type: AUTH_POPUP_SUCCESS_MESSAGE,
-        targetUrl: nextUrl,
-      }, window.location.origin);
+      if (isPopupWindowMode && window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          type: AUTH_POPUP_SUCCESS_MESSAGE,
+          targetUrl: nextUrl,
+        }, window.location.origin);
 
-      window.setTimeout(() => {
-        window.close();
-      }, 100);
-      return;
-    }
+        window.setTimeout(() => {
+          window.close();
+        }, 100);
+        return;
+      }
 
-    window.location.href = nextUrl;
+      window.location.href = nextUrl;
+    })();
   };
 
   const applyOtpLoginResult = (otpLoginResult: LoginAuthLoginResult) => {
@@ -363,7 +369,7 @@ export default function SigninClient({
           });
         }
 
-        finishAuthentication(targetUrl);
+        finishAuthentication(targetUrl, userData.token);
         return true;
       } else {
         console.error('SignIn failed with unknown error');

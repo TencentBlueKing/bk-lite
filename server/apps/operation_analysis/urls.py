@@ -9,6 +9,7 @@ from apps.operation_analysis.views.canvas_draft_view import CanvasDraftViewSet
 from apps.operation_analysis.views.data_connection_view import DataConnectionViewSet
 from apps.operation_analysis.views.datasource_view import DataSourceAPIModelViewSet, DataSourceTagModelViewSet, NameSpaceModelViewSet
 from apps.operation_analysis.views.execution_view import DashboardReportExecutionViewSet
+from apps.operation_analysis.views.homepage_view import HomepageViewSet
 from apps.operation_analysis.views.import_export_view import ImportExportViewSet
 from apps.operation_analysis.views.network_topology_view import NetworkTopologyViewSet
 from apps.operation_analysis.views.openapi_import_export_view import OpenImportExportViewSet
@@ -54,6 +55,7 @@ router.register(
 )
 router.register(r"api/scene_widgets", SceneWidgetViewSet, basename="scene_widgets")
 router.register(r"api/network_topology", NetworkTopologyViewSet, basename="network_topology")
+router.register(r"api/homepage", HomepageViewSet, basename="ops_homepage")
 
 router_open_api = routers.DefaultRouter(trailing_slash=False)
 router_open_api.register(r"open_api/import_export", OpenImportExportViewSet, basename="open_import_export")
