@@ -10,6 +10,7 @@ import { useLocale } from '@/context/locale';
 import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 import { saveAuthToken } from '@/utils/crossDomainAuth';
+import { gmFetch } from '@/utils/gmTransport';
 import SigninClient from '@/app/(core)/auth/signin/SigninClient';
 import { AUTH_POPUP_SUCCESS_MESSAGE } from '@/utils/authRedirect';
 import {
@@ -213,7 +214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsCheckingExistingAuth(true);
 
-      const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
+      const response = await gmFetch('/api/proxy/core/api/get_bk_settings/', {
         method: "GET",
         headers: {
           "Content-Type": "application/json",

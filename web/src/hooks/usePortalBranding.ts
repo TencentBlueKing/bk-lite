@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { gmFetch } from '@/utils/gmTransport';
 import {
   PORTAL_BRANDING_CACHE_KEY,
   readJsonCache,
@@ -88,7 +89,7 @@ export const usePortalBranding = () => {
 
     const fetchBranding = async () => {
       try {
-        const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
+        const response = await gmFetch('/api/proxy/core/api/get_bk_settings/', {
           cache: 'no-store',
         });
 

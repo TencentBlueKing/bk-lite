@@ -20,6 +20,7 @@ import {
 } from "./login-auth/orderedBindingState";
 import {useTranslation} from "@/utils/i18n";
 import {saveAuthToken} from "@/utils/crossDomainAuth";
+import { gmFetch } from "@/utils/gmTransport";
 import {
   AUTH_POPUP_SUCCESS_MESSAGE,
   LOGIN_AUTH_RESULT_RETURN_MESSAGE,
@@ -224,7 +225,7 @@ export default function SigninClient({
     const requestPassword = selectedBindingCredentials.password;
 
     try {
-      const response = await fetch('/api/proxy/core/api/login/', {
+      const response = await gmFetch('/api/proxy/core/api/login/', {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -303,7 +304,7 @@ export default function SigninClient({
     await completeAuthentication(loginData);
   };
 
-  const syncAuthenticatedSession = async (userData: LoginResponse, nextPassword?: string) => {
+  const syncAuthenticatedSession = async (userData: LoginResponse) => {
     try {
       const userDataForAuth = {
         id: userData.id || userData.username || 'unknown',
@@ -332,7 +333,7 @@ export default function SigninClient({
       const result = await signIn("credentials", {
         redirect: false,
         username: userDataForAuth.username,
-        password: nextPassword ?? password,
+        password: '',
         skipValidation: 'true',
         userData: JSON.stringify(userDataForAuth),
         callbackUrl: callbackUrl || PORTAL_HOME_PATH,
