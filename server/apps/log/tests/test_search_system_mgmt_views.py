@@ -10,18 +10,25 @@ import pydantic.root_model  # noqa
 import json
 
 import pytest
+from django.urls import include, path
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
 from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.core.exceptions.base_app_exception import ValidationAppException
+from apps.log import urls as log_urls
 from apps.log.models.log_group import SearchCondition
 from apps.log.services.access_scope import LogAccessScope
 from apps.log.utils import system_mgmt as log_system_mgmt
 from apps.log.views.search import LogSearchViewSet, SearchConditionViewSet
 from apps.log.views.system_mgmt import SystemMgmtView
 
-pytestmark = pytest.mark.django_db
+# 全站 urls 会装入 always-on 的 module_link，并连带导入未列入本文件 INSTALL_APPS 的 cmdb/monitor。
+# 这两条 APIClient 用例只需要日志自己的路由。
+urlpatterns = [path("api/v1/log/", include(log_urls.urlpatterns))]
+
+pytestmark = [pytest.mark.django_db, pytest.mark.urls(__name__)]
 
 factory = APIRequestFactory()
 
@@ -423,25 +430,90 @@ def test_destroy_deletes_instance(mocker):
 # --------------------------------------------------------------------------- #
 def test_get_user_all_passes_team_and_include_children(mocker):
     rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
-    rpc.return_value.get_group_users.return_value = {"data": [{"id": 1}]}
+    users = [{"id": 1, "user_id": "u-1", "username": "alice", "display_name": "Alice"}]
+    rpc.return_value.get_group_users_scoped.return_value = {"result": True, "data": users}
 
-    request = get_req(cookies={"current_team": "12", "include_children": "1"})
+    request = get_req(
+        cookies={"current_team": "12", "include_children": "1"},
+        user=_ActorUser(),
+    )
     response = SystemMgmtView().get_user_all(request)
 
     assert response.status_code == 200
-    assert _json(response)["data"] == [{"id": 1}]
-    rpc.return_value.get_group_users.assert_called_once_with(group="12", include_children=True)
+    assert _json(response)["data"] == users
+    rpc.return_value.get_group_users_scoped.assert_called_once_with(
+        {
+            "username": "u",
+            "domain": "domain.com",
+            "current_team": 12,
+            "include_children": True,
+            "is_superuser": False,
+            "group_list": [7, 8],
+        },
+        group=12,
+        include_children=True,
+    )
+    rpc.return_value.get_group_users.assert_not_called()
 
 
 def test_get_user_all_defaults_include_children_false(mocker):
     rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
-    rpc.return_value.get_group_users.return_value = {"data": []}
+    rpc.return_value.get_group_users_scoped.return_value = {"result": True, "data": []}
 
-    # 无 include_children cookie -> 默认 "0" -> False
-    response = SystemMgmtView().get_user_all(get_req())
+    # 无 include_children cookie -> 默认 "0" -> False；当前组织仍走 scoped
+    response = SystemMgmtView().get_user_all(get_req(cookies={"current_team": "12"}, user=_ActorUser()))
 
     assert response.status_code == 200
-    assert rpc.return_value.get_group_users.call_args.kwargs["include_children"] is False
+    assert _json(response)["data"] == []
+    rpc.return_value.get_group_users_scoped.assert_called_once_with(
+        {
+            "username": "u",
+            "domain": "domain.com",
+            "current_team": 12,
+            "include_children": False,
+            "is_superuser": False,
+            "group_list": [7, 8],
+        },
+        group=12,
+        include_children=False,
+    )
+    rpc.return_value.get_group_users.assert_not_called()
+
+
+def test_get_user_all_missing_team_returns_empty_without_unscoped_lookup(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+
+    response = SystemMgmtView().get_user_all(get_req(user=_ActorUser()))
+
+    assert response.status_code == 200
+    assert _json(response)["data"] == []
+    rpc.return_value.get_group_users.assert_not_called()
+    rpc.return_value.get_group_users_scoped.assert_not_called()
+
+
+def test_get_user_all_invalid_team_returns_empty_without_unscoped_lookup(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+
+    response = SystemMgmtView().get_user_all(get_req(cookies={"current_team": "not-a-team"}, user=_ActorUser()))
+
+    assert response.status_code == 200
+    assert _json(response)["data"] == []
+    rpc.return_value.get_group_users.assert_not_called()
+    rpc.return_value.get_group_users_scoped.assert_not_called()
+
+
+def test_get_user_all_scoped_failure_rejects_without_unscoped_fallback(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+    rpc.return_value.get_group_users_scoped.return_value = {
+        "result": False,
+        "message": "current_team 对应组织已归档或不存在",
+    }
+
+    with pytest.raises(PermissionDenied) as exc:
+        SystemMgmtView().get_user_all(get_req(cookies={"current_team": "12"}, user=_ActorUser()))
+
+    assert str(exc.value.detail) == "current_team 对应组织已归档或不存在"
+    rpc.return_value.get_group_users.assert_not_called()
 
 
 class _ActorUser:
