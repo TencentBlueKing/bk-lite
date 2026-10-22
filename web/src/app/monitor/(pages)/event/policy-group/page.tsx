@@ -153,6 +153,7 @@ const CHANNEL_ICON: Record<string, string> = {
 const NAME_COLUMN_WIDTH = 162;
 const COMPACT_COLUMN_WIDTH = 120;
 const ACTION_COLUMN_WIDTH = 260;
+const CONFIG_HINT_CLASS = 'text-xs leading-5 text-[var(--color-text-3)]';
 
 const noticeSnapshot = (
   enabled: boolean,
@@ -1396,12 +1397,12 @@ const PolicyGroupPage: React.FC = () => {
           const noDataNote = notes.find((note) => note.includes('无数据'));
           return (
             <>
-        <div className="mb-3 text-[var(--color-text-3)]">
-          无数据告警按插件写到一条承载规则上，一台成员停止上报每个插件只产生一条告警。
+        <div className={`mb-3 ${CONFIG_HINT_CLASS}`}>
+          一台成员停止上报时，每个插件只产生一条告警。
         </div>
         <div className="mb-3">
           <div className="mb-1">检测频率</div>
-          {scheduleNote ? <div className="mb-1 text-[var(--color-text-3)]">{scheduleNote}</div> : null}
+          {scheduleNote ? <div className={`mb-1 ${CONFIG_HINT_CLASS}`}>{scheduleNote}</div> : null}
           <div className="flex items-center gap-2">
             <InputNumber
               className="w-[160px]"
@@ -1425,10 +1426,11 @@ const PolicyGroupPage: React.FC = () => {
               }}
             />
           </div>
+          <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>多久查一次。汇聚周期仍按各规则的模板。</div>
         </div>
         <div className="mb-3">
           <div className="mb-1">无数据告警</div>
-          {noDataNote ? <div className="mb-1 text-[var(--color-text-3)]">{noDataNote}</div> : null}
+          {noDataNote ? <div className={`mb-1 ${CONFIG_HINT_CLASS}`}>{noDataNote}</div> : null}
           {detectionDraft.noDataEnabled == null ? (
             <Select
               className="w-[160px]"
@@ -1445,6 +1447,7 @@ const PolicyGroupPage: React.FC = () => {
               onChange={(checked) => patchDetection({ noDataEnabled: checked })}
             />
           )}
+          <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>查不到数据时告警。</div>
         </div>
         {detectionDraft.noDataEnabled ? (
           <>
@@ -1454,6 +1457,7 @@ const PolicyGroupPage: React.FC = () => {
                 value={detectionDraft.noDataAlertName}
                 onChange={(event) => patchDetection({ noDataAlertName: event.target.value })}
               />
+              <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>例如：主机无数据</div>
             </div>
             <div className="mb-3">
               <div className="mb-1">检测窗</div>
@@ -1482,6 +1486,7 @@ const PolicyGroupPage: React.FC = () => {
                   }}
                 />
               </div>
+              <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>连续查不到这么久才告警。</div>
             </div>
             <div className="mb-3">
               <div className="mb-1">级别</div>
@@ -1519,6 +1524,7 @@ const PolicyGroupPage: React.FC = () => {
                   }}
                 />
               </div>
+              <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>数据回来并持续这么久才恢复，不能长于检测窗。</div>
             </div>
           </>
         ) : null}
@@ -1530,10 +1536,10 @@ const PolicyGroupPage: React.FC = () => {
         })() : (
         <Spin spinning={noticeLoading}>
           {configGroup?.notice_uniform === false ? (
-            <div className="mb-3 text-[var(--color-text-3)]">组内规则的通知不一致，保存后会写成同一套。</div>
+            <div className={`mb-3 ${CONFIG_HINT_CLASS}`}>组内规则的通知不一致，保存后会写成同一套。</div>
           ) : null}
           {configGroup?.handlers_uniform === false ? (
-            <div className="mb-3 text-[var(--color-text-3)]">组内规则的处理人不一致，保存后会写成同一套。</div>
+            <div className={`mb-3 ${CONFIG_HINT_CLASS}`}>组内规则的处理人不一致，保存后会写成同一套。</div>
           ) : null}
           <div className="mb-3">
             <div className="mb-1">处理人</div>
@@ -1550,14 +1556,14 @@ const PolicyGroupPage: React.FC = () => {
               }))}
               onChange={setHandlerIds}
             />
-            <div className="mt-2 text-[var(--color-text-3)]">
-              之后新产生的告警会带上这些处理人。已经在响的告警不变。
+            <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>
+              新告警带上这些处理人，正在响的告警不变。
             </div>
           </div>
           <div className="mb-3">
             <div className="mb-1">通知</div>
             <Switch checked={noticeEnabled} onChange={setNoticeEnabled} />
-            <div className="mt-2 text-[var(--color-text-3)]">保存后写入这一组的全部规则，不结束正在告警的事件。</div>
+            <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>写入本组全部规则，不结束正在告警的事件。</div>
           </div>
           {noticeEnabled ? (
             <>
