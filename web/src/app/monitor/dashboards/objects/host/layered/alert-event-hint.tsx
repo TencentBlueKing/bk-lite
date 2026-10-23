@@ -86,7 +86,7 @@ export function ProInfoHint({
     >
       <Tooltip
         classNames={{ root: 'lightMetricTooltip' }}
-        styles={content ? { root: { maxWidth: 480 } } : undefined}
+        styles={content ? { root: { maxWidth: 520 } } : undefined}
         title={title}
       >
         <InfoCircleOutlined

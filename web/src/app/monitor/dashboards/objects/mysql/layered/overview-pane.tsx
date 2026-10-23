@@ -54,27 +54,37 @@ interface OverviewPaneProps {
   onOpenHealthKpi: (tab: MysqlIaTab, anchor: string) => void;
 }
 
-const FOCUS_STEPS: MysqlCategoryCopyKey[] = [
-  'focusStepCards',
-  'focusStepPerf',
-  'focusStepTopSql',
-  'focusStepWaits'
+const FOCUS_STEPS: Array<{ title: MysqlCategoryCopyKey; detail: MysqlCategoryCopyKey }> = [
+  { title: 'focusStepCards', detail: 'focusStepCardsHint' },
+  { title: 'focusStepPerf', detail: 'focusStepPerfHint' },
+  { title: 'focusStepTopSql', detail: 'focusStepTopSqlHint' },
+  { title: 'focusStepWaits', detail: 'focusStepWaitsHint' }
 ];
 
 /** 气泡内四步。浅底 Tooltip 固定白底，胶囊用 SPEC 的浅灰，不跟页面暗色 token 反色。 */
-function FocusStepFlow({ steps }: { steps: readonly string[] }) {
+function FocusStepFlow({ steps }: { steps: readonly { title: string; detail: string }[] }) {
   return (
-    <div className="flex max-w-[460px] flex-wrap items-center">
-      {steps.map((step, index) => (
-        <React.Fragment key={step}>
-          {index > 0 ? (
-            <span aria-hidden className="mx-1 text-[12px] leading-none text-[#d9d9d9]">→</span>
-          ) : null}
-          <span className="inline-flex h-6 items-center rounded-[4px] border border-[#f0f0f0] bg-[#f5f5f5] px-2 text-[12px] leading-none text-[#595959]">
-            {step}
-          </span>
-        </React.Fragment>
-      ))}
+    <div className="flex max-w-[500px] flex-col gap-2">
+      <div className="flex flex-wrap items-center">
+        {steps.map((step, index) => (
+          <React.Fragment key={step.title}>
+            {index > 0 ? (
+              <span aria-hidden className="mx-1 text-[12px] leading-none text-[#d9d9d9]">→</span>
+            ) : null}
+            <span className="inline-flex h-6 items-center rounded-[4px] border border-[#f0f0f0] bg-[#f5f5f5] px-2 text-[12px] leading-none text-[#595959]">
+              {step.title}
+            </span>
+          </React.Fragment>
+        ))}
+      </div>
+      <div className="flex flex-col gap-1">
+        {steps.map((step) => (
+          <p key={step.title} className="m-0 text-[12px] leading-[18px]">
+            <span className="font-semibold text-[#595959]">{step.title}</span>
+            <span className="text-[#8c8c8c]"> {step.detail}</span>
+          </p>
+        ))}
+      </div>
     </div>
   );
 }
@@ -182,7 +192,10 @@ export default function OverviewPane({
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
-  const focusSteps = FOCUS_STEPS.map((key) => text(key));
+  const focusSteps = FOCUS_STEPS.map((step) => ({
+    title: text(step.title),
+    detail: text(step.detail)
+  }));
 
   return (
     <>
@@ -206,7 +219,7 @@ export default function OverviewPane({
         hint={(
           <ProInfoHint
             kind="focus"
-            label={focusSteps.join(' → ')}
+            label={focusSteps.map((step) => `${step.title} ${step.detail}`).join(' → ')}
             content={<FocusStepFlow steps={focusSteps} />}
           />
         )}
