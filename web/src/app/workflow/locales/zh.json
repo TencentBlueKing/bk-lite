@@ -613,8 +613,6 @@
       "publishedUnaffected": "发布版本不受草稿修改影响",
       "validate": "校验",
       "saveDraft": "保存草稿",
-      "publishConfirm": "发布为新的不可变版本？",
-      "publishHint": "未保存的当前画布也会一并发布，但不会自动启用流程。",
       "publish": "发布",
       "pathExists": "这条路径已经存在",
       "unsupportedConnection": "MVP 仅支持连接触发器、顶层节点和响应节点；嵌套路径由控制节点配置",

@@ -1249,7 +1249,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         key: atom.key,
         title: atom.name,
         description: atom.description,
-        icon: <AtomIcon nodeType="ACTION" category={atom.category} className="text-2xl" />,
+        icon: <AtomIcon nodeType="ACTION" category={atom.category} atomKey={atom.key} className="text-2xl" />,
         onClick: () => addAtom(atom),
       })),
     },
@@ -1288,7 +1288,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       {!readOnly && <>
         {showValidateButton ? <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button onClick={() => void validate()}>{t('workflowOrchestration.editor.validate', '校验')}</Button></WorkflowPermission> : null}
         <WorkflowPermission operation="Edit" instancePermissions={workflow.permission}><Button icon={<SaveOutlined />} loading={pendingAction === 'save'} disabled={pendingAction === 'publish'} onClick={() => void save()}>{t('workflowOrchestration.editor.saveDraft', '保存草稿')}</Button></WorkflowPermission>
-        <WorkflowPermission operation="Publish" instancePermissions={workflow.permission}><Popconfirm title={t('workflowOrchestration.editor.publishConfirm', '发布为新的不可变版本？')} description={t('workflowOrchestration.editor.publishHint', '未保存的当前画布也会一并发布，但不会自动启用流程。')} onConfirm={() => void publish()}><Button type="primary" icon={<SendOutlined />} loading={pendingAction === 'publish'} disabled={pendingAction === 'save'}>{t('workflowOrchestration.editor.publish', '发布')}</Button></Popconfirm></WorkflowPermission>
+        <WorkflowPermission operation="Publish" instancePermissions={workflow.permission}><Button type="primary" icon={<SendOutlined />} loading={pendingAction === 'publish'} disabled={pendingAction === 'save'} onClick={() => void publish()}>{t('workflowOrchestration.editor.publish', '发布')}</Button></WorkflowPermission>
       </>}
     </header>
     <div className="flex min-h-0 flex-1">

@@ -613,8 +613,6 @@
       "publishedUnaffected": "The published version is unaffected by draft changes",
       "validate": "Validate",
       "saveDraft": "Save Draft",
-      "publishConfirm": "Publish a new immutable version?",
-      "publishHint": "The current unsaved canvas is included, but the workflow is not enabled automatically.",
       "publish": "Publish",
       "pathExists": "This path already exists",
       "unsupportedConnection": "The MVP supports connections between triggers, top-level nodes, and response nodes. Configure nested paths in control nodes.",

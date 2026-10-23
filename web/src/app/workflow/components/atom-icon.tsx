@@ -14,6 +14,10 @@ const NODE_TYPE_ICON: Record<WorkflowNodeType, string> = {
   RETURN: 'huifu',
 };
 
+const ACTION_ATOM_ICON: Record<string, string> = {
+  bklite_data_transform: 'mti-qiehuan1',
+};
+
 const ACTION_CATEGORY_ICON: Record<string, string> = {
   '数据处理': 'shujucaiji',
   '调试': 'gongju',
@@ -30,7 +34,8 @@ const ACTION_CATEGORY_ICON: Record<string, string> = {
   Memory: 'opspilot',
 };
 
-export function workflowNodeIconName(nodeType: WorkflowNodeType, category?: string) {
+export function workflowNodeIconName(nodeType: WorkflowNodeType, category?: string, atomKey?: string) {
+  if (nodeType === 'ACTION' && atomKey && ACTION_ATOM_ICON[atomKey]) return ACTION_ATOM_ICON[atomKey];
   if (nodeType !== 'ACTION') return NODE_TYPE_ICON[nodeType];
   return ACTION_CATEGORY_ICON[category || ''] || NODE_TYPE_ICON.ACTION;
 }
@@ -38,11 +43,13 @@ export function workflowNodeIconName(nodeType: WorkflowNodeType, category?: stri
 export function AtomIcon({
   nodeType,
   category,
+  atomKey,
   controlKind,
   className = 'text-4xl',
 }: {
   nodeType: WorkflowNodeType;
   category?: string;
+  atomKey?: string;
   controlKind?: WorkflowControlKind;
   className?: string;
 }) {
@@ -52,7 +59,7 @@ export function AtomIcon({
   if (nodeType === 'CONTROL' && controlKind === 'approval') {
     return <ControlNodeIcon kind="approval" className={className} />;
   }
-  const icon = workflowNodeIconName(nodeType, category);
+  const icon = workflowNodeIconName(nodeType, category, atomKey);
   return <AtomIconName icon={icon} className={className} />;
 }
 
