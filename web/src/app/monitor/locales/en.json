@@ -4231,7 +4231,7 @@
         "mysqlCategoryBinlogCollectionOff": "Binary log collection is off",
         "mysqlCategoryRecentWindowEmpty": "No points in this window",
         "mysqlCategoryReplicationUnsupported": "Unsupported",
-        "mysqlCategoryFocusPath": "Check the load hotspot on Performance first, then open Statements to review unusual SQL, and finally open Waits for locks and waiting sessions.",
+        "mysqlCategoryFocusPath": "Troubleshooting: check the four cards in this section first, then Performance for trends, then Top SQL for unusual statements, and finally Waits for locks and waiting sessions.",
         "mysqlCategoryReplicationError": "Replication error",
         "mysqlCategoryReplicaErrorValue": "Error {errno} · {reason}",
         "mysqlCategoryReplicaErrorStopped": "{thread} stopped",
