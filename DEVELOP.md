@@ -67,7 +67,7 @@ uv run pytest -m "not slow"
 
 ```bash
 cd server
-scripts/test_workflow_orchestration.sh
+scripts/test_workflow.sh
 ```
 
 该命令覆盖编排中心的 TDD 与 BDD 测试，并强制生产代码行覆盖率不低于 80%。
@@ -76,7 +76,7 @@ scripts/test_workflow_orchestration.sh
 
 ```bash
 cd server
-uv run python manage.py seed_workflow_orchestration_demo \
+uv run python manage.py seed_workflow_demo \
   --team-id 1 --username admin --domain domain.com --confirm
 ```
 
@@ -89,7 +89,7 @@ CONDUCTOR_BASE_URL=http://127.0.0.1:8091/api \
 uv run python manage.py run_workflow_worker
 
 CONDUCTOR_BASE_URL=http://127.0.0.1:8091/api \
-uv run python manage.py run_workflow_orchestration_live_acceptance \
+uv run python manage.py run_workflow_live_acceptance \
   --team-id 1 --username admin --domain domain.com \
   --report-path ../outputs/workflow-live-acceptance.json
 ```

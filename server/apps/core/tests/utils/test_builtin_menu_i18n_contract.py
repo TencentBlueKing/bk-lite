@@ -5,19 +5,19 @@ from pathlib import Path
 
 from apps.core.utils.loader import LanguageLoader, clear_language_cache
 
-MENU_PATH = Path("support-files/system_mgmt/menus/workflow-orchestration.json")
+MENU_PATH = Path("support-files/system_mgmt/menus/workflow.json")
 
 
-def test_workflow_orchestration_menu_i18n_keys_resolve_in_core_language():
+def test_workflow_menu_i18n_keys_resolve_in_core_language():
     payload = json.loads(MENU_PATH.read_text(encoding="utf-8"))
     clear_language_cache(app="core", lang="zh-Hans")
     clear_language_cache(app="core", lang="en")
     zh = LanguageLoader(app="core", default_lang="zh-Hans")
     en = LanguageLoader(app="core", default_lang="en")
 
-    assert payload["client_id"] == "workflow-orchestration"
-    assert zh.get("app_name.workflow-orchestration") == "编排中心"
-    assert en.get("app_name.workflow-orchestration") == "Workflow"
+    assert payload["client_id"] == "workflow"
+    assert zh.get("app_name.workflow") == "编排中心"
+    assert en.get("app_name.workflow") == "Workflow"
     assert zh.get(payload["description"])
     assert en.get(payload["description"])
     for tag in payload["tags"]:

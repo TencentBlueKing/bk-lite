@@ -49,7 +49,7 @@ class Command(BaseCommand):
                     },
                 )
                 print(f"create {app_obj['client_id']} success")
-                grant_snapshot = snapshot_workflow_menu_grants() if app_obj["client_id"] == "workflow-orchestration" else None
+                grant_snapshot = snapshot_workflow_menu_grants() if app_obj["client_id"] == "workflow" else None
                 create_resource(app_inst, app_obj["menus"])
                 if grant_snapshot is not None:
                     apply_workflow_menu_permission_split(grant_snapshot)
