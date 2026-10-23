@@ -1395,6 +1395,13 @@ const PolicyGroupPage: React.FC = () => {
           });
           const scheduleNote = notes.find((note) => note.includes('检测频率'));
           const noDataNote = notes.find((note) => note.includes('无数据'));
+          const detectionBlocker = detectionSaveBlocker(detectionDraft, detectionScope);
+          const alertNameError = detectionBlocker === '请填写无数据告警名称'
+            ? t('common.required')
+            : detectionBlocker === '无数据告警名称过长'
+              ? detectionBlocker
+              : null;
+          const detectionHint = alertNameError ? null : detectionBlocker;
           return (
             <>
         <div className={`mb-3 ${CONFIG_HINT_CLASS}`}>
@@ -1452,11 +1459,19 @@ const PolicyGroupPage: React.FC = () => {
         {detectionDraft.noDataEnabled ? (
           <>
             <div className="mb-3">
-              <div className="mb-1">告警名称</div>
+              <div className="mb-1">
+                <span className="mr-1 text-[var(--color-error)]" aria-hidden="true">*</span>
+                告警名称
+              </div>
               <Input
+                className="w-[360px]"
+                status={alertNameError ? 'error' : undefined}
                 value={detectionDraft.noDataAlertName}
                 onChange={(event) => patchDetection({ noDataAlertName: event.target.value })}
               />
+              {alertNameError ? (
+                <div className="mt-1 text-[var(--color-error)]">{alertNameError}</div>
+              ) : null}
               <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>例如：主机无数据</div>
             </div>
             <div className="mb-3">
@@ -1528,8 +1543,8 @@ const PolicyGroupPage: React.FC = () => {
             </div>
           </>
         ) : null}
-        {detectionSaveBlocker(detectionDraft, detectionScope) ? (
-          <div className="text-[var(--color-text-3)]">{detectionSaveBlocker(detectionDraft, detectionScope)}</div>
+        {detectionHint ? (
+          <div className="text-[var(--color-text-3)]">{detectionHint}</div>
         ) : null}
             </>
           );
@@ -1545,7 +1560,7 @@ const PolicyGroupPage: React.FC = () => {
             <div className="mb-1">处理人</div>
             <Select
               mode="multiple"
-              className="w-full"
+              className="w-[360px]"
               showSearch
               allowClear
               optionFilterProp="label"
@@ -1590,7 +1605,7 @@ const PolicyGroupPage: React.FC = () => {
                   <div className="mb-1">通知人</div>
                   <Select
                     mode="multiple"
-                    className="w-full"
+                    className="w-[360px]"
                     showSearch
                     optionFilterProp="label"
                     value={noticeUserIds}

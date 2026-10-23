@@ -8,6 +8,7 @@ import { fetchAllMonitorMetrics } from '@/app/monitor/api/fetchMetricCatalogPage
 import useEventApi from '@/app/monitor/api/event';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import Permission from '@/components/permission';
+import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
 import { useTranslation } from '@/utils/i18n';
 import { ColumnItem, Pagination, TableDataItem } from '@/app/monitor/types';
 import { ViewModalProps } from '@/app/monitor/types/view';
@@ -87,14 +88,18 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
       title: t('monitor.events.enableStatus'),
       dataIndex: 'enable',
       key: 'enable',
-      width: 110,
+      width: 120,
       ellipsis: true,
-      render: (_, { enable }) =>
-        enable ? (
+      render: (_, { enable }) => {
+        if (enable && membership?.state === 'member') {
+          return <StatusToneBadge tone="warning" label="仍会告警" />;
+        }
+        return enable ? (
           <Tag color="success">{t('monitor.events.turnedOn')}</Tag>
         ) : (
           <Tag>{t('monitor.events.inactive')}</Tag>
-        )
+        );
+      }
     },
     {
       title: t('monitor.events.policyMetric'),
@@ -217,16 +222,35 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
     }
   };
 
-  const stateLabel =
-    membership?.state === 'member'
-      ? membership.group_name || '在组'
-      : membership?.state === 'declined'
-        ? '不自动入组'
-        : membership?.state === 'skipped'
-          ? '未入组'
-          : membership?.state === 'failed'
-            ? '加入失败，采集已完成，可在此重新加入'
-            : '无记录';
+  const membershipState = membership?.state;
+  const isMember = membershipState === 'member';
+  const membershipBadge = isMember
+    ? '在组'
+    : membershipState === 'declined'
+      ? '不自动入组'
+      : membershipState === 'skipped'
+        ? '未入组'
+        : membershipState === 'failed'
+          ? '加入失败'
+          : '无记录';
+  const membershipTone = isMember
+    ? 'success'
+    : membershipState === 'declined'
+      ? 'warning'
+      : membershipState === 'failed'
+        ? 'fail'
+        : 'neutral';
+  const membershipHint = isMember
+    ? ''
+    : membershipState === 'failed'
+      ? '采集已完成，可以在这里重新加入。'
+      : membershipState === 'declined'
+        ? '这台实例不会自动加入策略组。'
+        : '还没有加入策略组。';
+  const legacyPolicies = membership?.legacy_policies || [];
+  const legacyHint = isMember
+    ? '未停用的会和策略组一起告警。要停用，去单策略列表改是否生效。'
+    : '这些策略直接覆盖这台实例，不经过策略组。';
 
   const refreshMembership = () => {
     const instanceId = String(form.instance_id || '').trim();
@@ -240,50 +264,63 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
   return (
     <div className={fillContainer ? 'flex h-full min-h-0 w-full flex-col' : 'w-full'}>
       {!readOnly && membership ? (
-        <div className="mb-3 rounded border border-[var(--color-border-2)] p-3">
-          <div className="mb-2">所属策略组：{stateLabel}</div>
-          {(membership.legacy_policies || []).map((item) => (
-            <div key={item.id} className="mb-1 text-[12px]">
-              {item.name}
-              {item.enable ? ' 仍会和策略组一起告警' : ' 已停用'}
+        <div className="mb-3 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35 px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-[13px] font-semibold text-[var(--color-text-1)]">策略组</span>
+              <StatusToneBadge tone={membershipTone} label={membershipBadge} />
+              {isMember ? (
+                <span className="min-w-0 truncate text-sm text-[var(--color-text-1)]">{membership.group_name || '--'}</span>
+              ) : (
+                <span className="text-xs leading-5 text-[var(--color-text-3)]">{membershipHint}</span>
+              )}
             </div>
-          ))}
-          <Permission requiredPermissions={['Edit']} permissionPath="/monitor/event/strategy">
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Select
-                className="min-w-[220px]"
-                value={nextGroupId}
-                options={(membership.groups || []).map((item) => ({
-                  value: item.id,
-                  label: item.is_default ? `${item.name}（默认）` : item.name
-                }))}
-                onChange={setNextGroupId}
-              />
-              <Button
-                type="primary"
-                disabled={!nextGroupId}
-                onClick={async () => {
-                  if (!nextGroupId) return;
-                  await joinPolicyGroup(nextGroupId, [String(form.instance_id)]);
-                  message.success(membership.state === 'member' ? '已更换策略组，原规则未恢复告警会结束' : '已加入策略组');
-                  refreshMembership();
-                }}
-              >
-                {membership.state === 'member' ? '更换' : '加入'}
-              </Button>
-              {membership.state === 'member' ? (
+            <Permission requiredPermissions={['Edit']} permissionPath="/monitor/event/strategy">
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  className="w-[220px]"
+                  value={nextGroupId}
+                  options={(membership.groups || []).map((item) => ({
+                    value: item.id,
+                    label: item.is_default ? `${item.name}（默认）` : item.name
+                  }))}
+                  onChange={setNextGroupId}
+                />
                 <Button
+                  type="primary"
+                  disabled={!nextGroupId}
                   onClick={async () => {
-                    await leavePolicyGroup([String(form.instance_id)]);
-                    message.success('已退出，未恢复告警会结束');
+                    if (!nextGroupId) return;
+                    await joinPolicyGroup(nextGroupId, [String(form.instance_id)]);
+                    message.success(isMember ? '已更换策略组，原规则未恢复告警会结束' : '已加入策略组');
                     refreshMembership();
                   }}
                 >
-                  退出
+                  {isMember ? '更换' : '加入'}
                 </Button>
-              ) : null}
-            </div>
-          </Permission>
+                {isMember ? (
+                  <Button
+                    onClick={async () => {
+                      await leavePolicyGroup([String(form.instance_id)]);
+                      message.success('已退出，未恢复告警会结束');
+                      refreshMembership();
+                    }}
+                  >
+                    退出
+                  </Button>
+                ) : null}
+              </div>
+            </Permission>
+          </div>
+        </div>
+      ) : null}
+      {!readOnly && legacyPolicies.length ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="text-[13px] font-semibold text-[var(--color-text-1)]">单策略</span>
+          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-1.5 text-xs font-semibold tabular-nums text-[var(--color-primary)]">
+            {legacyPolicies.length}
+          </span>
+          <span className="text-xs leading-5 text-[var(--color-text-3)]">{legacyHint}</span>
         </div>
       ) : null}
       <CustomTable
