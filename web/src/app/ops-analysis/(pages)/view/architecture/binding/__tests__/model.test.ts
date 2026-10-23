@@ -108,6 +108,7 @@ describe('architecture binding model', () => {
     expect(bindingPageFromTotal(listed.hits, 1, 30, listed.total)).toEqual({
       hits: listed.hits,
       hasMore: true,
+      total: 120,
     });
     expect(bindingPageFromTotal(listed.hits, 4, 30, listed.total).hasMore).toBe(false);
     expect(bindingPageFromTotal([], 1, 30, 120).hasMore).toBe(false);
@@ -127,8 +128,8 @@ describe('architecture binding model', () => {
       ip_addr: '',
       model_id: 'host',
     }));
-    expect(sliceBindingPage(all, 1, 2)).toEqual({ hits: all.slice(0, 2), hasMore: true });
-    expect(sliceBindingPage(all, 3, 2)).toEqual({ hits: all.slice(4), hasMore: false });
+    expect(sliceBindingPage(all, 1, 2)).toEqual({ hits: all.slice(0, 2), hasMore: true, total: 5 });
+    expect(sliceBindingPage(all, 3, 2)).toEqual({ hits: all.slice(4), hasMore: false, total: 5 });
     expect(appendBindingHits(all.slice(0, 2), all.slice(1, 3)).map((hit) => hit.inst_uuid))
       .toEqual(['u0', 'u1', 'u2']);
   });
@@ -150,6 +151,16 @@ describe('architecture binding model', () => {
     ])).toEqual([
       { model_id: 'host', model_name: '主机' },
       { model_id: 'switch', model_name: '交换机' },
+    ]);
+  });
+
+  it('keeps a configured model icon so inserted nodes can match the palette', () => {
+    expect(flattenModelOptions([
+      { model_id: 'mysql', model_name: 'MySQL', icn: ' cc-mysql_数据库 ' },
+      { model_id: 'host', model_name: '主机', icn: '   ' },
+    ])).toEqual([
+      { model_id: 'mysql', model_name: 'MySQL', icn: 'cc-mysql_数据库' },
+      { model_id: 'host', model_name: '主机' },
     ]);
   });
 });

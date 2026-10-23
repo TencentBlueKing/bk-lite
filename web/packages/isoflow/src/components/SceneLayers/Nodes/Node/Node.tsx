@@ -22,6 +22,8 @@ import { LabelConnector } from 'src/components/Label/Label';
 import { MarkdownEditor } from 'src/components/MarkdownEditor/MarkdownEditor';
 import { NodeStatusMark } from './NodeStatusMark';
 
+// Decorative air between the saved label height and the icon. Not stored.
+const LABEL_ICON_GAP = 12;
 const PLATE_DETAIL_MIN_ZOOM = 0.7;
 
 const PLATE_LABEL_TONE: Partial<
@@ -107,7 +109,8 @@ export const Node = ({ node, order }: Props) => {
   const subtitle = status?.plateSubtitle?.trim() || '';
   const showSubtitle = Boolean(subtitle) && zoom >= PLATE_DETAIL_MIN_ZOOM;
   const hoveredIconId = useContext(HoveredIconContext);
-  const revealed = viewing && (hovering || hoveredIconId === node.id);
+  const labelRaised = hovering || hoveredIconId === node.id;
+  const revealed = viewing && labelRaised;
   const resourceName = status?.hoverName?.trim() || '';
   const modelName = status?.hoverModel?.trim() || '';
   const modelLabel = status?.hoverModelLabel?.trim() || '';
@@ -131,7 +134,7 @@ export const Node = ({ node, order }: Props) => {
   const alertLine = revealed ? status?.hoverAlert?.trim() || '' : '';
   const statusLine = alertLine || (revealed && status?.level === 'normal' ? status?.hint?.trim() || '' : '');
   const displayTitle = showFullName ? resourceName : title;
-  const labelHeight = node.labelHeight ?? DEFAULT_LABEL_HEIGHT;
+  const labelHeight = (node.labelHeight ?? DEFAULT_LABEL_HEIGHT) + LABEL_ICON_GAP;
   // View mode: the card and its corner badge open the icon on click.
   // order is -(x + y). Negating it keeps the front plate above the icon and any plate behind it.
   const plateHit = viewing
@@ -150,13 +153,13 @@ export const Node = ({ node, order }: Props) => {
   }, [modelItem.description]);
 
   const plate =
-    title || description || showSubtitle ? (
+    title || description || showSubtitle || inlineMark || healthyDot || cornerMark ? (
       <Box
         data-plate-subtitle={showSubtitle ? subtitle : ''}
         data-plate-expanded={showFullName || quietLines.length > 0 || Boolean(modelDetail) || Boolean(statusLine) ? 'true' : 'false'}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        sx={{ position: 'absolute', pointerEvents: 'auto', zIndex: revealed ? 2 : 0 }}
+        sx={{ position: 'absolute', pointerEvents: 'auto', zIndex: labelRaised ? 3 : 0 }}
         style={{ left: position.x, top: position.y }}
       >
         <Box
@@ -164,7 +167,7 @@ export const Node = ({ node, order }: Props) => {
           style={{ bottom: PROJECTED_TILE_SIZE.height / 2 }}
         >
           <ExpandableLabel
-            maxWidth={showFullName ? 280 : 250}
+            maxWidth={480}
             expandDirection="BOTTOM"
             labelHeight={labelHeight}
             hideConnector={Boolean(labelLayer)}
@@ -196,25 +199,31 @@ export const Node = ({ node, order }: Props) => {
                 >
                   {displayTitle ? (
                     <Typography
-                      fontWeight={600}
                       sx={
                         showFullName
                           ? {
                               minWidth: 0,
-                              maxWidth: 240,
+                              maxWidth: 440,
                               overflow: 'hidden',
                               display: '-webkit-box',
                               WebkitLineClamp: 2,
                               WebkitBoxOrient: 'vertical',
                               whiteSpace: 'normal',
                               overflowWrap: 'anywhere',
-                              lineHeight: 1.35
+                              lineHeight: 1.35,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: 'var(--color-text-1)'
                             }
                           : {
                               minWidth: 0,
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
+                              whiteSpace: 'nowrap',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              lineHeight: 1.4,
+                              color: 'var(--color-text-1)'
                             }
                       }
                     >
@@ -303,18 +312,17 @@ export const Node = ({ node, order }: Props) => {
                   ) : null}
                 </>
               ) : showSubtitle ? (
-                <Typography sx={{ color: '#6b7280', fontSize: 11, lineHeight: 1.3 }}>
+                <Typography sx={{ color: 'var(--color-text-3)', fontSize: 11, lineHeight: 1.3 }}>
                   {subtitle}
                 </Typography>
               ) : null}
-              {modelItem.description &&
-                modelItem.description !== MARKDOWN_EMPTY_VALUE && (
-                  <MarkdownEditor
-                    value={modelItem.description || ''}
-                    onChange={() => {}}
-                    readOnly
-                  />
-                )}
+              {description ? (
+                <MarkdownEditor
+                  value={description}
+                  onChange={() => {}}
+                  readOnly
+                />
+              ) : null}
             </Stack>
           </ExpandableLabel>
         </Box>

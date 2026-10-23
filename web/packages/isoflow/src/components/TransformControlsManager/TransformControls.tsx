@@ -15,11 +15,18 @@ interface Props {
   from: Coords;
   to: Coords;
   onAnchorMouseDown?: (anchorPosition: AnchorPosition) => void;
+  // Extra pixels outside the tile, so a node frame sits around the icon.
+  framePad?: number;
 }
 
-const strokeWidth = 2;
+const strokeWidth = 2.5;
 
-export const TransformControls = ({ from, to, onAnchorMouseDown }: Props) => {
+export const TransformControls = ({
+  from,
+  to,
+  onAnchorMouseDown,
+  framePad = 0
+}: Props) => {
   const { css, pxSize } = useIsoProjection({
     from,
     to
@@ -54,18 +61,18 @@ export const TransformControls = ({ from, to, onAnchorMouseDown }: Props) => {
       <Svg
         style={{
           ...css,
+          overflow: 'visible',
           pointerEvents: 'none'
         }}
       >
-        <g transform={`translate(${strokeWidth}, ${strokeWidth})`}>
+        <g transform={`translate(${strokeWidth - framePad}, ${strokeWidth - framePad})`}>
           <rect
-            width={pxSize.width - strokeWidth * 2}
-            height={pxSize.height - strokeWidth * 2}
+            width={pxSize.width - strokeWidth * 2 + framePad * 2}
+            height={pxSize.height - strokeWidth * 2 + framePad * 2}
             fill="none"
             stroke={TRANSFORM_CONTROLS_COLOR}
-            strokeDasharray={`${strokeWidth * 2} ${strokeWidth * 2}`}
             strokeWidth={strokeWidth}
-            strokeLinecap="round"
+            strokeLinejoin="round"
           />
         </g>
       </Svg>

@@ -5,7 +5,10 @@ import { Popover } from 'antd';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
+import { alertEventInsideWindow } from '../../../shared/utils/pro-chart-window';
 import { hostCategoryText } from './category-copy';
+import { useProTimeWindow } from './pro-time-window';
+import ProDashLoading from './pro-dash-loading';
 import styles from './layered.module.scss';
 
 export type HostAlertRailAction = 'triggered' | 'recovered' | 'closed';
@@ -143,11 +146,19 @@ const EventBody = ({
 
 export default function EventsRail({
   events,
-  onFocusAlert
+  onFocusAlert,
+  loading = false
 }: {
   events: HostAlertRailEvent[];
   onFocusAlert?: (alertId: string) => void;
+  loading?: boolean;
 }) {
+  const proTime = useProTimeWindow();
+  const chartWindow = proTime?.window ?? null;
+  const shownEvents = useMemo(
+    () => events.filter((event) => alertEventInsideWindow(event.at, chartWindow)),
+    [chartWindow, events]
+  );
   const { convertToLocalizedTime } = useLocalizedTime();
   const { t } = useDashboardText();
   const rowRef = useRef<HTMLDivElement>(null);
@@ -186,9 +197,19 @@ export default function EventsRail({
     const observer = new ResizeObserver(update);
     observer.observe(row);
     return () => observer.disconnect();
-  }, [events]);
+  }, [proTime?.suspend, shownEvents]);
 
-  if (!events.length) {
+  if (loading || proTime?.suspend) {
+    return (
+      <div className={styles.eventsRail} data-events-rail="" data-events-empty="" aria-busy="true">
+        <div className={`${styles.eventsRow} w-full justify-center`}>
+          <ProDashLoading layout="inline" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!shownEvents.length) {
     return (
       <div className={styles.eventsRail} data-events-rail="" data-events-empty="">
         <div className={styles.eventsRow}>
@@ -198,8 +219,8 @@ export default function EventsRail({
     );
   }
 
-  const visible = events.slice(0, visibleCount);
-  const hidden = events.slice(visibleCount);
+  const visible = shownEvents.slice(0, visibleCount);
+  const hidden = shownEvents.slice(visibleCount);
   const focusable = (event: HostAlertRailEvent) => event.status === 'new' && Boolean(onFocusAlert);
 
   const detail = (event: HostAlertRailEvent) => (
@@ -216,12 +237,12 @@ export default function EventsRail({
   return (
     <div className={styles.eventsRail} data-events-rail="">
       <div ref={measureRef} className={styles.eventsMeasure} aria-hidden="true">
-        {events.map((event) => (
+        {shownEvents.map((event) => (
           <span key={event.id} data-event-chip="" className={styles.eventsChip}>
             <EventBody event={event} time={clock.short(event.at)} />
           </span>
         ))}
-        <span data-event-more="" className={styles.eventsMore}>{`+${events.length}`}</span>
+        <span data-event-more="" className={styles.eventsMore}>{`+${shownEvents.length}`}</span>
       </div>
       <div ref={rowRef} className={styles.eventsRow}>
         {visible.map((event) => {

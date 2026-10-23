@@ -49,6 +49,17 @@
     },
     {
       "metric_group": "ConnStatus",
+      "name": "mysql_threads_created_rate",
+      "display_name": "Threads Created Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rate of newly created connection threads. A rise usually means connections are not being reused.",
+      "query": "rate(mysql_threads_created{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "ConnStatus",
       "name": "mysql_threads_cached",
       "display_name": "Cached Threads",
       "instance_id_keys": ["instance_id"],
@@ -254,7 +265,7 @@
       "unit": "counts",
       "dimensions": [],
       "description": "Seconds the replica is behind its source, used to assess replication lag",
-      "query": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__})"
+      "query": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__} or mysql_slave_seconds_behind_source{__$labels__} or mysql_replica_seconds_behind_source{__$labels__})"
     },
     {
       "metric_group": "Replication",
@@ -264,8 +275,8 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Replication IO thread status exported from SHOW SLAVE STATUS",
-      "query": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__})"
+      "description": "Replication IO thread status from SHOW SLAVE STATUS or SHOW REPLICA STATUS",
+      "query": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__} or mysql_slave_slave_io_running{__$labels__} or mysql_slave_replica_io_running_int{__$labels__} or mysql_slave_replica_io_running{__$labels__} or mysql_replica_io_running_int{__$labels__} or mysql_slave_io_running_int{__$labels__})"
     },
     {
       "metric_group": "Replication",
@@ -275,8 +286,8 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "description": "Replication SQL thread status exported from SHOW SLAVE STATUS",
-      "query": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__})"
+      "description": "Replication SQL thread status from SHOW SLAVE STATUS or SHOW REPLICA STATUS",
+      "query": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__} or mysql_slave_slave_sql_running{__$labels__} or mysql_slave_replica_sql_running_int{__$labels__} or mysql_slave_replica_sql_running{__$labels__} or mysql_replica_sql_running_int{__$labels__} or mysql_slave_sql_running_int{__$labels__})"
     },
     {
       "metric_group": "Replication",
@@ -400,6 +411,39 @@
       "query": "rate(mysql_com_delete{__$labels__}[5m])"
     },
     {
+      "metric_group": "QueryPerf",
+      "name": "mysql_com_commit_rate",
+      "display_name": "Transaction Commit Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Committed transactions per second",
+      "query": "rate(mysql_com_commit{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "QueryPerf",
+      "name": "mysql_com_rollback_rate",
+      "display_name": "Transaction Rollback Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rolled-back transactions per second",
+      "query": "rate(mysql_com_rollback{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "QueryPerf",
+      "name": "mysql_tps_rate",
+      "display_name": "TPS",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Committed plus rolled-back transactions per second",
+      "query": "rate(mysql_com_commit{__$labels__}[5m]) + rate(mysql_com_rollback{__$labels__}[5m])"
+    },
+    {
       "metric_group": "InnoDBPerf",
       "name": "mysql_innodb_row_lock_time_avg",
       "display_name": "Avg Row Lock Wait Time",
@@ -420,6 +464,72 @@
       "dimensions": [],
       "description": "Number of InnoDB row lock waits",
       "query": "rate(mysql_innodb_row_lock_waits{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_rows_read_rate",
+      "display_name": "InnoDB Rows Read Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rows read by the InnoDB engine per second",
+      "query": "rate(mysql_innodb_rows_read{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_rows_inserted_rate",
+      "display_name": "InnoDB Rows Inserted Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rows inserted by the InnoDB engine per second",
+      "query": "rate(mysql_innodb_rows_inserted{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_rows_updated_rate",
+      "display_name": "InnoDB Rows Updated Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rows updated by the InnoDB engine per second",
+      "query": "rate(mysql_innodb_rows_updated{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_rows_deleted_rate",
+      "display_name": "InnoDB Rows Deleted Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rows deleted by the InnoDB engine per second",
+      "query": "rate(mysql_innodb_rows_deleted{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_deadlocks_rate",
+      "display_name": "InnoDB Deadlocks Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "InnoDB deadlocks per second",
+      "query": "rate(mysql_innodb_deadlocks{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_log_waits_rate",
+      "display_name": "InnoDB Log Waits Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Waits caused by insufficient InnoDB redo log buffer",
+      "query": "rate(mysql_innodb_log_waits{__$labels__}[5m])"
     },
     {
       "metric_group": "InnoDBPerf",
@@ -933,6 +1043,433 @@
       "dimensions": [],
       "description": "Instance-wide rate of SQL table lock wait time for read and write classes; requires gather_table_lock_waits",
       "query": "sum by (instance_id) (rate(mysql_perf_schema_read_normal{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_read_with_shared_locks{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_read_high_priority{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_read_no_insert{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_write_normal{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_write_allow_write{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_write_concurrent_insert{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]) + rate(mysql_perf_schema_write_low_priority{perf_query=\"sql_lock_waits_seconds_total\",__$labels__}[5m]))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_time",
+      "display_name": "Statement Time",
+      "metric_zh_name": "语句耗时",
+      "metric_en_name": "Statement Time",
+      "metric_zh_desc": "单条语句的累计耗时，单位秒。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative time for one statement, in seconds. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative time for one statement, in seconds. Enable Statement Collection under advanced collection",
+      "query": "topk(20, max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_calls",
+      "display_name": "Statement Executions",
+      "metric_zh_name": "语句执行次数",
+      "metric_en_name": "Statement Executions",
+      "metric_zh_desc": "单条语句的累计执行次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative executions for one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative executions for one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_rows_examined",
+      "display_name": "Statement Rows Examined",
+      "metric_zh_name": "语句扫描行数",
+      "metric_en_name": "Statement Rows Examined",
+      "metric_zh_desc": "单条语句累计扫描的行数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative rows examined by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows examined by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_examined_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_rows_affected",
+      "display_name": "Statement Rows Affected",
+      "metric_zh_name": "语句影响行数",
+      "metric_en_name": "Statement Rows Affected",
+      "metric_zh_desc": "单条语句累计影响的行数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative rows affected by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows affected by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_affected_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_rows_sent",
+      "display_name": "Statement Rows Sent",
+      "metric_zh_name": "语句返回行数",
+      "metric_en_name": "Statement Rows Sent",
+      "metric_zh_desc": "单条语句累计返回的行数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative rows sent by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows sent by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_rows_sent_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_errors",
+      "display_name": "Statement Errors",
+      "metric_zh_name": "语句错误次数",
+      "metric_en_name": "Statement Errors",
+      "metric_zh_desc": "单条语句累计错误次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative errors for one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative errors for one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_errors_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_warnings",
+      "display_name": "Statement Warnings",
+      "metric_zh_name": "语句警告次数",
+      "metric_en_name": "Statement Warnings",
+      "metric_zh_desc": "单条语句累计警告次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative warnings for one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative warnings for one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_warnings_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_tmp_tables",
+      "display_name": "Statement Temporary Tables",
+      "metric_zh_name": "语句临时表次数",
+      "metric_en_name": "Statement Temporary Tables",
+      "metric_zh_desc": "单条语句累计创建的临时表次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative temporary tables created by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative temporary tables created by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_tmp_tables_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_tmp_disk_tables",
+      "display_name": "Statement Disk Temporary Tables",
+      "metric_zh_name": "语句磁盘临时表次数",
+      "metric_en_name": "Statement Disk Temporary Tables",
+      "metric_zh_desc": "单条语句累计创建的磁盘临时表次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative on-disk temporary tables created by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative on-disk temporary tables created by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_tmp_disk_tables_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_sort_merge_passes",
+      "display_name": "Statement Sort Merge Passes",
+      "metric_zh_name": "语句排序合并次数",
+      "metric_en_name": "Statement Sort Merge Passes",
+      "metric_zh_desc": "单条语句累计排序合并次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative sort merge passes for one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative sort merge passes for one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_sort_merge_passes_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_sort_rows",
+      "display_name": "Statement Sorted Rows",
+      "metric_zh_name": "语句排序行数",
+      "metric_en_name": "Statement Sorted Rows",
+      "metric_zh_desc": "单条语句累计排序的行数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative rows sorted by one statement. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative rows sorted by one statement. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_sort_rows_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "Statement",
+      "name": "mysql_statement_no_index_used",
+      "display_name": "Statement No Index Used",
+      "metric_zh_name": "语句未走索引次数",
+      "metric_en_name": "Statement No Index Used",
+      "metric_zh_desc": "单条语句累计未使用索引的次数。需在高级采集中开启「语句采集」",
+      "metric_en_desc": "Cumulative executions of one statement that did not use an index. Enable Statement Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "schema", "description": "库名"},
+        {"name": "digest", "description": "语句摘要"},
+        {"name": "digest_text", "description": "语句文本"}
+      ],
+      "description": "Cumulative executions of one statement that did not use an index. Enable Statement Collection under advanced collection",
+      "query": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_no_index_used_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "WaitEvent",
+      "name": "mysql_wait_event_time",
+      "display_name": "Wait Event Time",
+      "metric_zh_name": "等待事件耗时",
+      "metric_en_name": "Wait Event Time",
+      "metric_zh_desc": "单个等待事件的累计耗时，单位秒。需在高级采集中开启「等待/会话采集」",
+      "metric_en_desc": "Cumulative time for one wait event, in seconds. Enable Wait and Session Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {"name": "event_name", "description": "等待事件"}
+      ],
+      "description": "Cumulative time for one wait event, in seconds. Enable Wait and Session Collection under advanced collection",
+      "query": "topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "WaitEvent",
+      "name": "mysql_wait_event_count",
+      "display_name": "Wait Event Count",
+      "metric_zh_name": "等待事件次数",
+      "metric_en_name": "Wait Event Count",
+      "metric_zh_desc": "单个等待事件的累计次数。需在高级采集中开启「等待/会话采集」",
+      "metric_en_desc": "Cumulative count for one wait event. Enable Wait and Session Collection under advanced collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "event_name", "description": "等待事件"}
+      ],
+      "description": "Cumulative count for one wait event. Enable Wait and Session Collection under advanced collection",
+      "query": "max by (instance_id, event_name) (mysql_perf_schema_events_waits_total{__$labels__}) and on (instance_id, event_name) topk(20, max by (instance_id, event_name) (mysql_perf_schema_events_waits_seconds_total{__$labels__}))"
+    },
+    {
+      "metric_group": "QueryPerf",
+      "name": "mysql_select_scan_rate",
+      "display_name": "Full Table Scan Rate",
+      "metric_zh_name": "全表扫描速率",
+      "metric_en_name": "Full Table Scan Rate",
+      "metric_zh_desc": "没有走索引、扫整张表的查询速率",
+      "metric_en_desc": "Rate of queries that scan a whole table without using an index",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rate of queries that scan a whole table without using an index",
+      "query": "rate(mysql_select_scan{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "QueryPerf",
+      "name": "mysql_table_locks_waited_rate",
+      "display_name": "Table Lock Wait Rate",
+      "metric_zh_name": "表锁等待速率",
+      "metric_en_name": "Table Lock Wait Rate",
+      "metric_zh_desc": "语句等到表锁才继续执行的次数速率",
+      "metric_en_desc": "Rate of statements that waited for a table lock",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rate of statements that waited for a table lock",
+      "query": "rate(mysql_table_locks_waited{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_slave_relay_log_pos",
+      "display_name": "Relay Log Position",
+      "metric_zh_name": "Relay 日志位置",
+      "metric_en_name": "Relay Log Position",
+      "metric_zh_desc": "从库中继日志当前位置；需开启复制状态采集",
+      "metric_en_desc": "Current relay log position; enable replica status collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Current relay log position from replica status",
+      "query": "max by (instance_id) (mysql_slave_relay_log_pos{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_slave_relay_log_space",
+      "display_name": "Relay Log Space",
+      "metric_zh_name": "Relay 日志空间",
+      "metric_en_name": "Relay Log Space",
+      "metric_zh_desc": "从库中继日志占用空间；需开启复制状态采集",
+      "metric_en_desc": "Relay log space in bytes; enable replica status collection",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "description": "Relay log space in bytes from replica status",
+      "query": "max by (instance_id) (mysql_slave_relay_log_space{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_replication_source_log_pos",
+      "display_name": "Source Binlog Position",
+      "metric_zh_name": "Binlog 位点",
+      "metric_en_name": "Source Binlog Position",
+      "metric_zh_desc": "从库已执行或已读取的主库二进制日志位置；需开启复制状态采集",
+      "metric_en_desc": "Source binary log position applied or read by the replica",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Source binary log position applied or read by the replica",
+      "query": "max by (instance_id) (mysql_slave_exec_master_log_pos{__$labels__} or mysql_slave_exec_source_log_pos{__$labels__} or mysql_slave_read_master_log_pos{__$labels__} or mysql_slave_read_source_log_pos{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_slave_last_errno",
+      "display_name": "Replication Error Number",
+      "metric_zh_name": "复制错误号",
+      "metric_en_name": "Replication Error Number",
+      "metric_zh_desc": "复制状态行上的错误号；0 表示当前没有复制错误",
+      "metric_en_desc": "Replication error number from replica status; 0 means no current error",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Replication error number from replica status; 0 means no current error",
+      "query": "max by (instance_id) (mysql_slave_last_errno{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_slave_last_io_errno",
+      "display_name": "Replication IO Error Number",
+      "metric_zh_name": "复制 IO 错误号",
+      "metric_en_name": "Replication IO Error Number",
+      "metric_zh_desc": "复制 IO 线程错误号；0 表示当前没有 IO 错误",
+      "metric_en_desc": "Replication IO thread error number; 0 means no current IO error",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Replication IO thread error number; 0 means no current IO error",
+      "query": "max by (instance_id) (mysql_slave_last_io_errno{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_slave_last_sql_errno",
+      "display_name": "Replication SQL Error Number",
+      "metric_zh_name": "复制 SQL 错误号",
+      "metric_en_name": "Replication SQL Error Number",
+      "metric_zh_desc": "复制 SQL 线程错误号；0 表示当前没有 SQL 错误",
+      "metric_en_desc": "Replication SQL thread error number; 0 means no current SQL error",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Replication SQL thread error number; 0 means no current SQL error",
+      "query": "max by (instance_id) (mysql_slave_last_sql_errno{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_slaves_connected",
+      "display_name": "Connected Replicas",
+      "metric_zh_name": "已连从库数",
+      "metric_en_name": "Connected Replicas",
+      "metric_zh_desc": "当前连到这台主库的从库数量；实例没有该状态时不采集",
+      "metric_en_desc": "Number of replicas connected to this source; absent when the server does not expose it",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of replicas connected to this source",
+      "query": "max by (instance_id) (mysql_slaves_connected{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_rpl_semi_sync_master_clients",
+      "display_name": "Semi-sync Replica Clients",
+      "metric_zh_name": "半同步从库数",
+      "metric_en_name": "Semi-sync Replica Clients",
+      "metric_zh_desc": "半同步下连着的从库数量；未启用半同步时不采集",
+      "metric_en_desc": "Connected semi-sync replica clients; absent when semi-sync is not enabled",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Connected semi-sync replica clients",
+      "query": "max by (instance_id) (mysql_rpl_semi_sync_master_clients{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_rpl_semi_sync_master_status",
+      "display_name": "Semi-sync Status",
+      "metric_zh_name": "半同步状态",
+      "metric_en_name": "Semi-sync Status",
+      "metric_zh_desc": "主库半同步是否开启；未启用半同步时不采集",
+      "metric_en_desc": "Whether source semi-sync is on; absent when semi-sync is not enabled",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Whether source semi-sync is on",
+      "query": "max by (instance_id) (mysql_rpl_semi_sync_master_status{__$labels__})"
     }
   ]
 }

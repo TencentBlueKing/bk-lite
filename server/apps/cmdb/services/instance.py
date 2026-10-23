@@ -1177,6 +1177,7 @@ class InstanceManage(object):
             for_update=False,
         )
         prepared = []
+        subnet_batch_state = {} if model_id == "subnet" else None
         for index, item in enumerate(instances):
             try:
                 instance_info = prepare_new_instance_identity({**item, "model_id": model_id})
@@ -1190,7 +1191,7 @@ class InstanceManage(object):
                 if model_id == "subnet":
                     from apps.cmdb.services.ipam_subnet import validate_subnet_no_overlap
 
-                    validate_subnet_no_overlap(instance_info)
+                    validate_subnet_no_overlap(instance_info, batch_state=subnet_batch_state)
                 instance_info = get_instance_enterprise_extension().normalize_file_fields(
                     model_id,
                     instance_info,

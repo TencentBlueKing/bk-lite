@@ -45,7 +45,7 @@ describe('resolveAppDisplayName', () => {
     expect(resolveAppDisplayName({ name: 'rum', display_name: 'RUM', is_build_in: true }, tZh)).toBe('RUM');
     expect(
       resolveAppDisplayName(
-        { name: 'workflow-orchestration', display_name: 'Workflow', is_build_in: true },
+        { name: 'workflow', display_name: 'Workflow', is_build_in: true },
         tZh,
       ),
     ).toBe('编排中心');

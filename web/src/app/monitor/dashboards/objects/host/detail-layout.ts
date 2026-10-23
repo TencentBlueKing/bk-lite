@@ -1,4 +1,5 @@
 import { setDashboardDisplayModeInParams } from '../../shared/utils/display-mode-route';
+import { hasProDashboard, resolveObjectDashboardMode } from '../../shared/utils/pro-dashboard';
 import type { DashboardStyles } from '../common/dashboard-components';
 import type { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import type { EntityLoadState } from './use-entity-metrics';
@@ -24,16 +25,15 @@ export const isHostDetailLayout = (value: string): value is HostDetailLayout => 
   value === 'dashboard' || value === 'metrics' || value === 'category'
 );
 
-/** 未指定布局时默认专业仪表盘。显式 classic 才回经典。没有专业能力时由调用方改走经典。 */
+/** 未指定布局时按能力表默认专业。显式 host_layout=dashboard 才回传统。 */
 export const readHostDetailLayout = (
   params: URLSearchParams,
-  professionalCapable = true
+  professionalCapable = hasProDashboard('host')
 ): HostDetailLayout => {
-  if (params.get('view') === 'metrics') return 'metrics';
+  const mode = resolveObjectDashboardMode('host', params, HOST_DETAIL_LAYOUT_PARAM);
+  if (mode === 'metrics') return 'metrics';
   if (!professionalCapable) return 'dashboard';
-  const layout = params.get(HOST_DETAIL_LAYOUT_PARAM);
-  if (layout === 'dashboard') return 'dashboard';
-  return 'category';
+  return mode;
 };
 
 export const writeHostDetailLayout = (

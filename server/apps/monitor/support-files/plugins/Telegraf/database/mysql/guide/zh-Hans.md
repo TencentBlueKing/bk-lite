@@ -1,14 +1,30 @@
 # MySQL 监控接入指南
 
-本能力通过 Telegraf `inputs.mysql` 直连一个 MySQL 主机和端口，并按当前模板采集连接、查询、InnoDB、复制和缓存等统计。
+本能力直连 MySQL，采集连接、查询、InnoDB、复制等统计。
 
 ## 前置要求
 
 - 采集节点能够访问目标 MySQL 主机和实际端口。
-- 准备可登录实例并读取全局状态、全局变量及模板所需统计的专用监控账号。
-- 进程列表统计通常需要 `PROCESS`；复制统计通常需要 `REPLICATION CLIENT`。按实际启用的数据遵循最小权限原则。
-- 当前模板固定 `tls=false`，页面没有 TLS、数据库名或自定义连接参数字段。
-- 模板会采集进程列表、InnoDB、旧版复制状态、二进制日志、全局变量及表等待统计；不会采集用户统计或新版 replica 状态查询。
+- 当前接入不启用 TLS，页面没有 TLS、数据库名或自定义连接参数字段。
+
+### 基础监控权限
+
+基础监控即可跑健康概览和性能常规图（连接、查询、InnoDB、复制等）。
+
+- 专用监控账号可登录实例，主机限制为采集节点来源。
+- 查看进程（`PROCESS`）：进程列表与部分实例状态。
+- 查看复制（`REPLICATION CLIENT`）：复制状态与 Binary Log。
+- 建议同时授予 `SELECT ON performance_schema.*`：Performance Schema 相关统计（含表等待；也是语句/等待进阶的前提）。
+- 不要授予业务库 `SELECT`。若个别 InnoDB 指标因 `information_schema` 被拒，仅对该表补 `SELECT`。
+
+### Top SQL 与等待（进阶）
+
+在基础监控权限已满足的前提下，Top SQL 页和等待页还需要：
+
+- 实例已启用 Performance Schema。未启用则语句和等待采不到。
+- 监控账号已有 `SELECT ON performance_schema.*`，与基础监控建议的同一授权即可。
+- 在采集配置中打开对应开关，这两项默认关闭：「Top SQL 采集」对应 Top SQL 页；「等待/会话采集」对应等待页。
+- 与「表 IO Wait」「表锁 Wait」相互独立。打开表等待不会自动出现语句或等待数据，反过来也一样。
 
 ## 接入步骤
 
@@ -20,7 +36,10 @@ GRANT PROCESS, REPLICATION CLIENT ON *.* TO '<monitor_user>'@'<collector_host>';
 GRANT SELECT ON performance_schema.* TO '<monitor_user>'@'<collector_host>';
 ```
 
-`PROCESS` 用于进程列表和 InnoDB 状态；`REPLICATION CLIENT` 用于复制状态和二进制日志；`performance_schema` 的 `SELECT` 用于表等待统计。不要授予业务库 `SELECT`。若 InnoDB 指标因 `information_schema.innodb_metrics` 被拒绝，只对该表补 `SELECT`。
+- `PROCESS`：进程列表与部分实例状态。
+- `REPLICATION CLIENT`：复制状态与 Binary Log。
+- `SELECT ON performance_schema.*`：Performance Schema 相关统计（含表等待；也是语句/等待进阶的前提）。
+- 不要授予业务库 `SELECT`。若个别 InnoDB 指标因 `information_schema` 被拒，仅对该表补 `SELECT`。
 
 2. 从实际采集节点验证目标地址、账号和基本状态查询权限。
 3. 填写用户名、密码、主机、实际端口和采集间隔（默认 `60` 秒）。
@@ -52,12 +71,7 @@ mysql --host db.example.com --port 3306 --user monitor --password --execute "SHO
 
 ## 接入后验证
 
-保存并等待一个采集周期后，在平台确认以下指标可查询：
-
-- `mysql_uptime`
-- `mysql_threads_connected`
-- `mysql_queries_rate`
-- `mysql_innodb_buffer_pool_pages_total`
+保存并等待一个采集周期后，在平台确认可以查到运行时长、当前连接数、查询速率和 InnoDB 缓冲池等基础指标。
 
 ## 常见问题
 
@@ -68,10 +82,13 @@ mysql --host db.example.com --port 3306 --user monitor --password --execute "SHO
 
 ### 只有部分数据
 
-- 结合 Telegraf 日志确认是 `PROCESS`、复制还是 `performance_schema` 相关权限不足。
-- 非复制实例没有复制状态数据属于正常情况。
-- 当前模板使用旧版复制状态采集开关，不会自动切换到新版 replica 状态查询。
+- 缺 `PROCESS`：进程列表和部分实例状态没有数据。
+- 缺 `REPLICATION CLIENT`：复制状态和 Binary Log 没有数据。
+- 缺 `SELECT ON performance_schema.*`：Performance Schema 相关统计没有数据，表等待以及语句、等待进阶也会空。
+- 未打开「Top SQL 采集」或「等待/会话采集」：对应页没有数据。这两项默认关闭，且需要实例已启用 Performance Schema。
+- 非复制实例没有复制数据，属于正常情况。
+- 仍对不上时，查看采集任务失败原因或采集日志。
 
 ### 目标强制 TLS
 
-- 当前模板固定禁用 TLS，页面没有证书或 TLS 模式字段；强制 TLS 的目标不能用此配置直接接入。
+- 当前接入不启用 TLS，页面没有证书或 TLS 模式字段；强制 TLS 的目标不能用此配置直接接入。

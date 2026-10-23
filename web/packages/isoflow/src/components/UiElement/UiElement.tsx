@@ -11,9 +11,11 @@ export const UiElement = ({ children, sx, style }: Props) => {
   return (
     <Card
       sx={{
-        borderRadius: 2,
-        boxShadow: 1,
-        borderColor: 'grey.400',
+        borderRadius: '8px',
+        boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
+        border: '1px solid var(--color-border-1)',
+        bgcolor: 'var(--color-bg)',
+        color: 'var(--color-text-1)',
         ...sx
       }}
       style={style}

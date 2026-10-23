@@ -2,12 +2,13 @@
 
 import React from 'react';
 import { Table } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { ColumnsType, TableProps } from 'antd/es/table';
 import { formatMetricValue } from '../../../shared/utils/format';
 import { hostThresholdColor } from '../config';
 import type { MetricUnit } from '../../../shared/types';
 import type { EntityTableRow } from '../entity-series';
 import { CardAlertDot, cardAlertClass } from './card-alert';
+import ProDashLoading from './pro-dash-loading';
 import type { TabAlertLevel } from './tab-level';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -26,6 +27,11 @@ export interface LayeredColumn {
   align?: 'left' | 'right' | 'center';
   fixed?: 'left' | 'right';
   render?: (row: EntityTableRow, index: number) => React.ReactNode;
+  /** 自定义排序。有 render 且无 unit 时默认不排序，数值列要显式传入。 */
+  sorter?: (left: EntityTableRow, right: EntityTableRow) => number;
+  defaultSortOrder?: 'ascend' | 'descend';
+  /** 传入后该列受控。主机表不传，仍走 Ant 自己的表头状态。 */
+  sortOrder?: 'ascend' | 'descend' | null;
   /** 导出用的可读文本。缺省时跟 label / 单位格式化，不含色点和迷你条。 */
   csvValue?: (row: EntityTableRow) => string;
 }
@@ -68,14 +74,19 @@ export default function LayeredEntityTable({
   expandedRowRender,
   rowExpandable,
   toolbar,
-  alertLevel
+  title,
+  alertLevel,
+  scrollY = 280,
+  onChange
 }: {
   rows: EntityTableRow[];
   columns: LayeredColumn[];
   loading: boolean;
   selectedKey: string;
   onSelect: (key: string) => void;
-  emptyText?: string;
+  emptyText?: React.ReactNode;
+  /** 框内顶栏左侧标题。与 toolbar 同一行，不浮到表框外。 */
+  title?: React.ReactNode;
   /** 选中行下方的附加行。未提供时表格不出现展开列。 */
   expandedRowRender?: (row: EntityTableRow) => React.ReactNode;
   rowExpandable?: (row: EntityTableRow) => boolean;
@@ -83,6 +94,12 @@ export default function LayeredEntityTable({
   toolbar?: React.ReactNode;
   /** 本表达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
+  /**
+   * 表体纵向滚动上限。false 时表体跟行数走，不预留空高，避免外层再滚过假空白。
+   * 主机盘默认仍是 280。
+   */
+  scrollY?: number | false;
+  onChange?: TableProps<EntityTableRow>['onChange'];
 }) {
   const tableColumns: ColumnsType<EntityTableRow> = columns.map((column) => ({
     title: column.title,
@@ -91,11 +108,15 @@ export default function LayeredEntityTable({
     align: column.align,
     fixed: column.fixed,
     ellipsis: column.ellipsis !== false,
-    sorter: column.labelKey
-      ? (left, right) => (left.labels[column.labelKey!] || '').localeCompare(right.labels[column.labelKey!] || '')
-      : column.render && !column.unit
-        ? undefined
-        : (left, right) => (left.values[column.key] ?? Number.NEGATIVE_INFINITY) - (right.values[column.key] ?? Number.NEGATIVE_INFINITY),
+    defaultSortOrder: column.defaultSortOrder,
+    ...(column.sortOrder !== undefined ? { sortOrder: column.sortOrder } : {}),
+    sorter: column.sorter
+      ? column.sorter
+      : column.labelKey
+        ? (left, right) => (left.labels[column.labelKey!] || '').localeCompare(right.labels[column.labelKey!] || '')
+        : column.render && !column.unit
+          ? undefined
+          : (left, right) => (left.values[column.key] ?? Number.NEGATIVE_INFINITY) - (right.values[column.key] ?? Number.NEGATIVE_INFINITY),
     render: (_, row, index) => {
       if (column.render) return column.render(row, index);
       if (column.labelKey) return row.labels[column.labelKey] || (column.emptyDash ? '—' : '--');
@@ -131,9 +152,17 @@ export default function LayeredEntityTable({
     : undefined;
 
   return (
-    <div className={`${classic.panel} ${styles.tableWrap} ${cardAlertClass(alertLevel)}`}>
+    <div
+      className={`${classic.panel} ${styles.tableWrap} ${cardAlertClass(alertLevel)}`}
+      aria-busy={loading && rows.length === 0 ? true : undefined}
+    >
       <CardAlertDot level={alertLevel} />
-      {toolbar ? (
+      {title ? (
+        <div className={`${styles.tableFrameHead}${alertLevel && alertLevel !== 'none' ? ` ${styles.cardAlertPad}` : ''}`}>
+          <div className={styles.tableFrameTitle}>{title}</div>
+          {toolbar ? <div className={styles.tableFrameTools}>{toolbar}</div> : null}
+        </div>
+      ) : toolbar ? (
         <div className={`mb-1 flex justify-end ${alertLevel && alertLevel !== 'none' ? styles.cardAlertPad : ''}`}>
           {toolbar}
         </div>
@@ -141,14 +170,21 @@ export default function LayeredEntityTable({
       <Table<EntityTableRow>
         size="small"
         rowKey="key"
-        loading={loading && rows.length === 0}
+        loading={false}
         pagination={false}
         columns={tableColumns}
         dataSource={rows}
-        scroll={{ x: 'max-content', y: 280 }}
-        locale={{ emptyText: loading ? '加载中' : emptyText }}
+        scroll={scrollY === false ? { x: 'max-content' } : { x: 'max-content', y: scrollY }}
+        locale={{
+          emptyText: loading ? (
+            <div className="flex min-h-[240px] items-center justify-center">
+              <ProDashLoading />
+            </div>
+          ) : emptyText
+        }}
         rowClassName={(row) => (row.key === selectedKey ? styles.rowActive : styles.rowIdle)}
         onRow={(row) => ({ onClick: () => onSelect(row.key) })}
+        onChange={onChange}
         expandable={expandable}
       />
     </div>

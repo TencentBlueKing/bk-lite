@@ -23,9 +23,7 @@ class StrictBooleanField(serializers.BooleanField):
 
 class DirectoryPageSerializer(OpenAPIRequestSerializer):
     page = serializers.IntegerField(required=False, default=1, min_value=1)
-    page_size = serializers.IntegerField(
-        required=False, default=_DIRECTORY_PAGE_SIZE_DEFAULT, min_value=1
-    )
+    page_size = serializers.IntegerField(required=False, default=_DIRECTORY_PAGE_SIZE_DEFAULT, min_value=1)
     group_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     include_children = StrictBooleanField(required=False, default=False)
 
@@ -35,6 +33,66 @@ class DirectoryPageSerializer(OpenAPIRequestSerializer):
 
 class SystemMgmtGroupsQuerySerializer(DirectoryPageSerializer):
     """组织目录查询。组织身份只允许由网关注入。"""
+
+
+class SystemMgmtNotificationChannelQuerySerializer(DirectoryPageSerializer):
+    """当前组织可外部投递的通知渠道。组织身份只允许由网关注入。"""
+
+
+class SystemMgmtNotificationSendSerializer(OpenAPIRequestSerializer):
+    """向目录中的渠道投递一条消息。不接受附件，不暴露渠道配置。"""
+
+    channel_id = serializers.IntegerField(min_value=1)
+    title = serializers.CharField(required=False, allow_blank=True, default="", max_length=512)
+    content = serializers.CharField(max_length=20000)
+    receivers = serializers.ListField(
+        child=serializers.CharField(allow_blank=False, max_length=150),
+        min_length=1,
+        max_length=100,
+    )
+    group_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    include_children = StrictBooleanField(required=False, default=False)
+
+    def validate_content(self, value):
+        if not str(value).strip():
+            raise serializers.ValidationError("content must not be blank")
+        return value
+
+    def validate_receivers(self, value):
+        if len(set(value)) != len(value):
+            raise serializers.ValidationError("receivers must be unique")
+        return value
+
+
+class NotificationSendParameterSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=32)
+    type = serializers.CharField(max_length=16)
+    required = serializers.BooleanField()
+    description = serializers.CharField()
+
+
+class NotificationChannelItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField(min_value=1)
+    name = serializers.CharField(max_length=100)
+    channel_type = serializers.CharField(max_length=30)
+    description = serializers.CharField(allow_blank=True)
+    delivery_mode = serializers.CharField(max_length=32)
+    recipient_mode = serializers.CharField(max_length=32)
+    availability = serializers.CharField(max_length=32)
+    send_parameters = NotificationSendParameterSerializer(many=True)
+
+
+class NotificationChannelPageResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField(min_value=0)
+    page = serializers.IntegerField(min_value=1)
+    page_size = serializers.IntegerField(min_value=1)
+    results = NotificationChannelItemSerializer(many=True)
+
+
+class NotificationSendResponseSerializer(serializers.Serializer):
+    channel_id = serializers.IntegerField(min_value=1)
+    channel_type = serializers.CharField(max_length=30)
+    delivery_code = serializers.CharField(max_length=64)
 
 
 class SystemMgmtUsersQuerySerializer(DirectoryPageSerializer):

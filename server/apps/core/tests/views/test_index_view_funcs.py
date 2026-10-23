@@ -565,7 +565,7 @@ class TestGetClientView:
         data = _json(resp)
         assert data["data"]["display_name"] == "监控中心"
 
-    def test_get_client_translates_workflow_orchestration_like_job(self):
+    def test_get_client_translates_workflow_like_job(self):
         req = _post({}, user=MagicMock(username="alice", domain="domain.com", locale="zh-Hans"))
         return_data = {
             "result": True,
@@ -578,10 +578,10 @@ class TestGetClientView:
                     "tags": ["tag.job_execution"],
                 },
                 {
-                    "name": "workflow-orchestration",
+                    "name": "workflow",
                     "display_name": "Workflow",
                     "is_build_in": True,
-                    "description": "app.workflow-orchestration",
+                    "description": "app.workflow",
                     "tags": ["tag.workflow_design", "tag.approval"],
                 },
             ],

@@ -32,9 +32,9 @@ export const ConnectorLabel = ({ connector }: Props) => {
         maxWidth={150}
         labelHeight={0}
         sx={{
-          py: 0.75,
-          px: 1,
-          borderRadius: 2
+          py: '5px',
+          px: '8px',
+          borderRadius: '6px'
         }}
       >
         <Typography color="text.secondary" variant="body2">

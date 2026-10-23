@@ -67,6 +67,10 @@ import { cloneDeep } from 'lodash';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { buildAssetViewUrl } from './viewRoute';
+import {
+  instanceConfigSearchKeyword,
+  sameMonitorInstance
+} from './instanceConfigLink';
 import PluginTooltipContent, { PluginTooltipTrigger } from './pluginTooltip';
 import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 
@@ -103,6 +107,8 @@ const Asset = () => {
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
   const searchparams = useSearchParams();
+  const deepInstanceId = (searchparams.get('instance_id') || '').trim();
+  const deepInstanceName = (searchparams.get('instance_name') || '').trim();
   const router = useRouter();
   const pathname = usePathname();
   const { syncObjectId } = useMonitorObjectQuery();
@@ -118,6 +124,7 @@ const Asset = () => {
   const assetRequestIdRef = useRef<number>(0);
   const instanceRef = useRef<ModalRef>(null);
   const templateDrawerRef = useRef<TemplateDrawerRef>(null);
+  const openedInstanceConfigRef = useRef('');
   const assetMenuItems = useAssetMenuItems();
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
@@ -131,7 +138,9 @@ const Asset = () => {
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
-  const [searchText, setSearchText] = useState<string>('');
+  const [searchText, setSearchText] = useState<string>(() => (
+    deepInstanceId ? instanceConfigSearchKeyword(deepInstanceId, deepInstanceName) : ''
+  ));
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [unassignedCount, setUnassignedCount] = useState<number | undefined>(undefined);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
@@ -227,6 +236,32 @@ const Asset = () => {
       showTemplateList: options?.showTemplateList ?? true
     });
   };
+
+  useEffect(() => {
+    if (!deepInstanceId || !objectId || !objects.length) return undefined;
+    const stamp = `${String(objectId)}|${deepInstanceId}`;
+    if (openedInstanceConfigRef.current === stamp) return undefined;
+    let cancelled = false;
+    const keyword = instanceConfigSearchKeyword(deepInstanceId, deepInstanceName);
+    getInstanceListByPrimaryObject({
+      id: String(objectId),
+      page: 1,
+      page_size: 50,
+      name: keyword
+    }).then((data) => {
+      if (cancelled || openedInstanceConfigRef.current === stamp) return;
+      const rows = Array.isArray(data?.results) ? data.results : [];
+      const row = rows.find((item: { instance_id?: unknown }) => (
+        sameMonitorInstance(item.instance_id, deepInstanceId)
+      )) || (rows.length === 1 ? rows[0] : null);
+      if (!row) return;
+      openedInstanceConfigRef.current = stamp;
+      openTemplateDrawer(row);
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [deepInstanceId, deepInstanceName, getInstanceListByPrimaryObject, objectId, objects]);
 
   const getPluginLatestVersion = (plugin?: {
     pack_version?: string;

@@ -56,8 +56,9 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
         // 开启弹窗的交互
         setVisible(true);
         setTitle(title);
-        setActiveIcon(getSelectedModelIconValue(defaultIcon));
-        setSelectedIcon(defaultIcon);
+        // 未指定图标时不要落到默认图选中态，避免「没选却亮着主机/默认」
+        setActiveIcon(defaultIcon ? getSelectedModelIconValue(defaultIcon) : '');
+        setSelectedIcon(defaultIcon || '');
         setSearchText('');
         setKeyword('');
       },

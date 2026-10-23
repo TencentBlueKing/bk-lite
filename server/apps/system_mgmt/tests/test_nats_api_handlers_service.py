@@ -68,10 +68,10 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "sync_opspilot_nats_channels",
         "delete_opspilot_nats_channels",
         "search_opspilot_nats_channels",
-        "_list_workflow_orchestration_nats_channels",
-        "sync_workflow_orchestration_nats_channels",
-        "delete_workflow_orchestration_nats_channels",
-        "search_workflow_orchestration_nats_channels",
+        "_list_workflow_nats_channels",
+        "sync_workflow_nats_channels",
+        "delete_workflow_nats_channels",
+        "search_workflow_nats_channels",
         "send_email_to_receiver",
         "get_user_rules",
         "get_user_rules_by_module",
@@ -95,7 +95,7 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
     }
     local_only_entrypoints = {
         "_list_opspilot_nats_channels",
-        "_list_workflow_orchestration_nats_channels",
+        "_list_workflow_nats_channels",
         "create_default_rule",
         "bk_lite_user_login",
         "wechat_user_register",
@@ -1027,7 +1027,7 @@ def test_public_notification_dispatch_email_appends_clickable_report_link(monkey
     )
     send = Mock(return_value={"result": True})
     monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", send)
-    report_link = "https://portal.example/workflow_orchestration/api/artifacts/shared/?token=abc_def"
+    report_link = "https://portal.example/workflow/api/artifacts/shared/?token=abc_def"
 
     result = nats_api.dispatch_notification(
         delivery_key="workflow:email:report",
@@ -1386,9 +1386,7 @@ def test_dispatch_notification_post_send_failures_use_default_locale_messages(mo
     assert delivery_failed["retryable"] is True
     assert delivery_failed["message"] == system_mgmt_message(None, "error.notification_delivery_failed") == "通知渠道投递失败。"
 
-    provider_message = dispatch_webhook(
-        {"result": False, "code": "rejected", "message": "provider said no", "retryable": False}
-    )
+    provider_message = dispatch_webhook({"result": False, "code": "rejected", "message": "provider said no", "retryable": False})
     assert provider_message["code"] == "rejected"
     assert provider_message["retryable"] is False
     assert provider_message["message"] == "provider said no"

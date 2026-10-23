@@ -12,10 +12,12 @@ import {
 import styles from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { iconList } from '@/app/cmdb/utils/common';
+import { getModelIconUrl } from '@/app/cmdb/utils/modelIcon';
 import { message, Spin } from 'antd';
 import type {
   DiagramItemHit,
   IsoflowLabels,
+  IconPickerRequest,
   IsoflowSceneApi,
   ItemControlsExtraTarget,
 } from '@bk-lite/isoflow';
@@ -30,6 +32,8 @@ import {
 import dynamic from 'next/dynamic';
 import isoflowIsopack from '@isoflow/isopacks/dist/isoflow';
 import ArchitectureToolbar from './components/toolbar';
+import IconPickerModal from './components/iconPickerModal';
+import ViewWorkspace from '../components/viewWorkspace';
 import { DEFAULT_COLORS } from '@/app/ops-analysis/constants/common';
 import { svgToBase64 } from '@/app/ops-analysis/utils/common';
 import {
@@ -47,6 +51,7 @@ import {
 } from '@/app/ops-analysis/api/canvasDraft';
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 import ResourceBindingDrawer from './components/resourceBindingDrawer';
+import ResourceInsertDrawer from './components/resourceInsertDrawer';
 import { NodeBindingStrip, RegionAlertSettings } from './components/itemControlsExtra';
 import ResourceDetailDrawer, {
   type ArchitectureDetailState,
@@ -86,6 +91,12 @@ import {
   type OverlayLabel,
 } from './binding/status';
 import { useArchitectureNodeStatus } from './binding/useNodeStatus';
+import {
+  architectureIconIdForModel,
+  assetInsertLabel,
+  insertSelection,
+  planInsertTiles,
+} from './binding/insertPlan';
 
 const Isoflow = dynamic(
   () => import('@bk-lite/isoflow').then((mod) => ({ default: mod.Isoflow })),
@@ -134,6 +145,9 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const [uniqueIcons, setUniqueIcons] = useState<any[]>([]);
     const [isEditMode, setIsEditMode] = useState(false);
     const [selection, setSelection] = useState<DiagramItemHit | null>(null);
+    const [insertOpen, setInsertOpen] = useState(false);
+    const [iconPicker, setIconPicker] = useState<IconPickerRequest | null>(null);
+    const [insertRegionId, setInsertRegionId] = useState<string | null>(null);
     const [bindingNodeId, setBindingNodeId] = useState<string | null>(null);
     const [detail, setDetail] = useState<ArchitectureDetailState | null>(null);
     const [highlightId, setHighlightId] = useState<string | undefined>(undefined);
@@ -158,10 +172,12 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const officialSnapshotRef = useRef('');
     const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const lastModelUpdateRef = useRef<string>('');
+    const pendingModelSnapshotRef = useRef<string | null>(null);
     const isUpdatingRef = useRef<boolean>(false);
     const modelWriteEpochRef = useRef(0);
     const invalidatePendingModelWrite = useCallback(() => {
       modelWriteEpochRef.current += 1;
+      pendingModelSnapshotRef.current = null;
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
         debounceTimeoutRef.current = null;
@@ -203,6 +219,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           try {
             setLoading(true);
             isUpdatingRef.current = true;
+            invalidatePendingModelWrite();
 
             setCurrentModel(null);
             setDiagramData({
@@ -252,6 +269,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           }
         })();
       } else if (!currentArchitectureId && loadedArchitectureId) {
+        invalidatePendingModelWrite();
         setCurrentModel(null);
         setDiagramData({
           title: 'Untitled Diagram',
@@ -278,13 +296,19 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       selectedArchitecture?.data_id,
     );
     const getArchitectureDraftPayload = useCallback(
-      (): CanvasDraftPayload => ({
-        name: diagramName,
-        view_sets: {
-          items: currentModel?.items || [],
-          views: currentModel?.views || [],
-        },
-      }),
+      (): CanvasDraftPayload => {
+        const pending = pendingModelSnapshotRef.current;
+        const parsed = pending
+          ? JSON.parse(pending) as { items?: DiagramData['items']; views?: DiagramData['views'] }
+          : null;
+        return {
+          name: diagramName,
+          view_sets: {
+            items: parsed?.items || currentModel?.items || [],
+            views: parsed?.views || currentModel?.views || [],
+          },
+        };
+      },
       [currentModel?.items, currentModel?.views, diagramName],
     );
     const applyArchitectureDraftPayload = useCallback(
@@ -399,28 +423,39 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       if (!selectedArchitecture?.data_id || !currentModel) {
         return;
       }
+      const pending = pendingModelSnapshotRef.current;
+      const persisted = pending
+        ? JSON.parse(pending) as { items?: DiagramData['items']; views?: DiagramData['views'] }
+        : { items: currentModel.items, views: currentModel.views };
+      const items = persisted.items || [];
+      const views = persisted.views || [];
+      if (pending) {
+        invalidatePendingModelWrite();
+        setCurrentModel((prev) => (prev ? { ...prev, items, views } : prev));
+      }
       try {
         setLoading(true);
 
         const saveData = {
           name: diagramName,
           view_sets: {
-            views: currentModel.views || [],
-            items: currentModel.items || [],
+            views,
+            items,
           },
         };
 
         await saveArchitecture(selectedArchitecture.data_id, saveData);
 
         lastModelUpdateRef.current = JSON.stringify({
-          items: currentModel.items || [],
-          views: currentModel.views || [],
+          items,
+          views,
         });
 
         setHasUnsaved(false);
         setIsEditMode(false);
         message.success(t('topology.architecture.diagramSaved'));
       } catch {
+        if (pending) setHasUnsaved(true);
         message.error(t('topology.architecture.saveFailed'));
       } finally {
         setLoading(false);
@@ -447,6 +482,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             return;
           }
 
+          pendingModelSnapshotRef.current = modelSnapshot;
           if (debounceTimeoutRef.current) {
             clearTimeout(debounceTimeoutRef.current);
           }
@@ -473,6 +509,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
                 setHasUnsaved(true);
               }
               lastModelUpdateRef.current = modelSnapshot;
+              pendingModelSnapshotRef.current = null;
             } catch (error) {
               console.error('Error updating model state:', error);
             }
@@ -523,6 +560,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
 
     const diagramViews = currentModel?.views ?? diagramData.views;
     const boundUuids = useMemo(() => collectBoundUuids(diagramViews), [diagramViews]);
+    const placedUuids = useMemo(() => new Set(boundUuids), [boundUuids]);
     const requestMode = architectureStatusRequestMode({
       shareMode,
       editMode: isEditMode,
@@ -565,11 +603,15 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     }, [loadedArchitectureId, isEditMode, shareMode]);
 
     const searchResources = useCallback(
-      async (keyword: string, modelId: string, page: number): Promise<BindingSearchPage> => {
+      async (
+        keyword: string,
+        modelId: string,
+        page: number,
+        pageSize = BINDING_SEARCH_PAGE_SIZE,
+      ): Promise<BindingSearchPage> => {
         const mode = bindingSearchMode(keyword, modelId);
-        const pageSize = BINDING_SEARCH_PAGE_SIZE;
         if (mode === 'idle') {
-          return { hits: [], hasMore: false };
+          return { hits: [], hasMore: false, total: 0 };
         }
         if (mode === 'by-type') {
           const raw = await searchInstancesRef.current({
@@ -606,6 +648,71 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       },
       [],
     );
+
+    const openInsert = useCallback(() => {
+      setInsertRegionId(selection?.type === 'RECTANGLE' ? selection.id : null);
+      setInsertOpen(true);
+    }, [selection]);
+
+    const confirmInsert = useCallback((hits: BindingSearchHit[]) => {
+      const api = sceneApiRef.current;
+      const ready = insertSelection(hits, placedUuids);
+      if (!api) {
+        message.error(t('opsAnalysis.architecture.insertFailed'));
+        return;
+      }
+      if (ready.length === 0) {
+        setInsertOpen(false);
+        return;
+      }
+      const placement = api.readPlacement();
+      const region = insertRegionId
+        ? placement.rectangles.find((item) => item.id === insertRegionId)
+        : null;
+      if (insertRegionId && !region) {
+        message.error(t('opsAnalysis.architecture.insertFailed'));
+        return;
+      }
+      const tiles = planInsertTiles({
+        count: ready.length,
+        occupied: placement.occupied,
+        region: region ?? null,
+        origin: placement.viewportCenter,
+      });
+      if (tiles.length !== ready.length) {
+        message.error(t('opsAnalysis.architecture.insertFailed'));
+        return;
+      }
+      try {
+        const nodes = ready.map((hit, index) => {
+          const model = modelOptions.find((item) => item.model_id === hit.model_id);
+          return {
+            id: crypto.randomUUID(),
+            name: assetInsertLabel(hit, t('opsAnalysis.architecture.unnamedIcon')),
+            icon: architectureIconIdForModel(
+              model?.icn,
+              getModelIconUrl({
+                icn: model?.icn || '',
+                model_id: hit.model_id,
+              }),
+              placement.iconIds,
+            ),
+            tile: tiles[index],
+            bkBinding: { inst_uuid: hit.inst_uuid, model_id: hit.model_id },
+          };
+        });
+        if (nodes.some((node) => !placement.iconIds.includes(node.icon))) {
+          message.error(t('opsAnalysis.architecture.insertFailed'));
+          return;
+        }
+        api.createBoundNodes(nodes);
+        api.revealTiles(tiles);
+        setInsertOpen(false);
+        message.success(t('opsAnalysis.architecture.insertDone'));
+      } catch {
+        message.error(t('opsAnalysis.architecture.insertFailed'));
+      }
+    }, [insertRegionId, modelOptions, placedUuids, t]);
 
     const updateNodeBinding = useCallback(
       (id: string, bkBinding: ArchitectureBinding | undefined) => {
@@ -734,10 +841,6 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             level: alertLevelLabel(overlay.badgeLevel || overlay.level),
           });
           entry.hoverStatusLabel = t('opsAnalysis.architecture.alertLabel');
-        } else if (overlay.level === 'unmonitored') {
-          entry.plateMark = t('opsAnalysis.architecture.statusUnmonitored');
-        } else if (overlay.level === 'unknown') {
-          entry.plateMark = t('opsAnalysis.architecture.statusUnknown');
         } else if (overlay.level === 'forbidden') {
           entry.plateMark = t('opsAnalysis.architecture.bindingForbidden');
         } else if (overlay.level === 'invalid') {
@@ -781,7 +884,6 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       });
       const next: Record<string, {
         label?: string;
-        borderLevel?: 'warning' | 'critical' | 'unknown';
         badgeLevel?: 'critical' | 'warning';
         badgeCount?: number;
         badgeHint?: string;
@@ -790,13 +892,11 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         const label = overlayText(overlay.label);
         const entry: {
           label?: string;
-          borderLevel?: 'warning' | 'critical' | 'unknown';
           badgeLevel?: 'critical' | 'warning';
           badgeCount?: number;
           badgeHint?: string;
         } = {};
         if (label) entry.label = label;
-        if (overlay.borderLevel) entry.borderLevel = overlay.borderLevel;
         const parts = regionAlertBadgeParts(overlay, {
           critical: t('opsAnalysis.architecture.levelCritical'),
           warning: t('opsAnalysis.architecture.levelWarning'),
@@ -814,7 +914,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             }),
           ].join('\n');
         }
-        if (entry.label || entry.borderLevel || entry.badgeLevel) next[id] = entry;
+        if (entry.label || entry.badgeLevel) next[id] = entry;
       }
       return Object.keys(next).length ? next : undefined;
     }, [
@@ -863,11 +963,14 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           model={display.blocked ? '' : display.typeName}
           dotColor={STATUS_DOT_COLOR[status?.status ?? 'unknown']}
           onOpen={() => setBindingNodeId(item.id)}
+          onUnbind={() => updateNodeBinding(item.id, undefined)}
         />
       );
-    }, [diagramViews, editStatus.byUuid, editStatus.phase, modelOptions, t]);
+    }, [diagramViews, editStatus.byUuid, editStatus.phase, modelOptions, t, updateNodeBinding]);
 
     const editorLabels = useMemo<IsoflowLabels>(() => ({
+      icon: t('opsAnalysis.architecture.editor.icon'),
+      replaceIcon: t('opsAnalysis.architecture.editor.replaceIcon'),
       updateIcon: t('opsAnalysis.architecture.editor.updateIcon'),
       settings: t('opsAnalysis.architecture.editor.settings'),
       name: t('opsAnalysis.architecture.editor.name'),
@@ -892,6 +995,8 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       toolRectangle: t('opsAnalysis.architecture.editor.toolRectangle'),
       toolConnector: t('opsAnalysis.architecture.editor.toolConnector'),
       toolText: t('opsAnalysis.architecture.editor.toolText'),
+      toolCollapse: t('opsAnalysis.architecture.editor.toolCollapse'),
+      toolExpand: t('opsAnalysis.architecture.editor.toolExpand'),
       zoomIn: t('opsAnalysis.architecture.editor.zoomIn'),
       zoomOut: t('opsAnalysis.architecture.editor.zoomOut'),
       fitToScreen: t('opsAnalysis.architecture.editor.fitToScreen'),
@@ -1005,12 +1110,43 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       };
     }, []);
 
+    const architectureToolbar = (
+      <ArchitectureToolbar
+        selectedArchitecture={selectedArchitecture}
+        isEditMode={isEditMode}
+        isFullscreen={isFullscreen}
+        shareMode={shareMode}
+        shareLoading={shareLoading}
+        onOpenShare={
+          !shareMode && selectedArchitecture?.data_id
+            ? () => {
+              void openShare(selectedArchitecture.data_id);
+            }
+            : undefined
+        }
+        loading={loading}
+        onEdit={toggleEditMode}
+        onCancel={handleCancelEdit}
+        onSave={saveDiagram}
+        editExtra={bindCanvasDraftControls(architectureDraft)}
+        onFullscreenToggle={handleFullscreenToggle}
+        onAddResources={bindingEditable ? openInsert : undefined}
+        bindingMeter={isEditMode ? {
+          bound: bindingStats.bound,
+          total: bindingStats.total,
+          unbound: bindingStats.unboundIds.length,
+          highlightUnbound,
+          onToggleHighlight: () => setHighlightUnbound((current) => !current),
+        } : undefined}
+      />
+    );
+
     return (
       <div
         className={`flex flex-col ${
           isFullscreen
-            ? 'fixed inset-0 h-screen w-screen overflow-hidden p-4'
-            : 'h-full flex-1 overflow-auto p-4 pb-0'
+            ? 'fixed inset-0 h-screen w-screen overflow-hidden'
+            : 'h-full min-h-0 flex-1 overflow-hidden'
         }`}
         style={{
           backgroundColor: 'var(--color-fill-1)',
@@ -1018,39 +1154,18 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         }}
       >
         <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
-        {!isFullscreen && (
-          <ArchitectureToolbar
-            selectedArchitecture={selectedArchitecture}
-            isEditMode={isEditMode}
-            isFullscreen={isFullscreen}
-            shareMode={shareMode}
-            shareLoading={shareLoading}
-            onOpenShare={
-              !shareMode && selectedArchitecture?.data_id
-                ? () => {
-                  void openShare(selectedArchitecture.data_id);
-                }
-                : undefined
-            }
-            loading={loading}
-            onEdit={toggleEditMode}
-            onCancel={handleCancelEdit}
-            onSave={saveDiagram}
-            editExtra={bindCanvasDraftControls(architectureDraft)}
-            onFullscreenToggle={handleFullscreenToggle}
-            bindingMeter={isEditMode ? {
-              bound: bindingStats.bound,
-              total: bindingStats.total,
-              unbound: bindingStats.unboundIds.length,
-              highlightUnbound,
-              onToggleHighlight: () => setHighlightUnbound((current) => !current),
-            } : undefined}
-          />
-        )}
-
+        <ViewWorkspace
+          selectedItem={selectedArchitecture}
+          loading={loading}
+          titleFallback={t('opsAnalysis.architecture.canvasTitle')}
+          emptyDescription={t('opsAnalysis.architecture.emptySelect')}
+          headerVisible={!isFullscreen}
+          flushContent
+          contentClassName="bg-[var(--color-fill-1)]"
+          toolbar={isFullscreen ? undefined : architectureToolbar}
+        >
         <div
-          className={`flex-1 relative architecture-canvas ${styles.architectureCanvas}`}
-          style={{ minHeight: '500px' }}
+          className={`relative h-full min-h-0 architecture-canvas ${styles.architectureCanvas}`}
           onContextMenu={(e) => {
             if (!isEditMode) {
               e.preventDefault();
@@ -1058,11 +1173,6 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             }
           }}
         >
-          {loading && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-[color-mix(in_srgb,var(--color-bg-1)_80%,transparent)]">
-              <Spin size="large" />
-            </div>
-          )}
           <Isoflow
             key={`${fossflowKey}-edit`}
             initialData={diagramData}
@@ -1077,7 +1187,9 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             rectangleStatus={rectangleStatus}
             renderItemControlsExtra={bindingEditable ? renderItemControlsExtra : undefined}
             labels={editorLabels}
+            onOpenIconPicker={setIconPicker}
           />
+          <IconPickerModal request={iconPicker} onClose={() => setIconPicker(null)} />
           {shareMode ? (
             <div
               data-testid="architecture-share-hint"
@@ -1085,6 +1197,16 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             >
               {t('opsAnalysis.architecture.shareStatusHint')}
             </div>
+          ) : null}
+          {bindingEditable ? (
+            <ResourceInsertDrawer
+              open={insertOpen}
+              models={modelOptions}
+              placedUuids={placedUuids}
+              onSearch={searchResources}
+              onConfirm={confirmInsert}
+              onClose={() => setInsertOpen(false)}
+            />
           ) : null}
           {bindingEditable ? (
             <ResourceBindingDrawer
@@ -1123,6 +1245,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             />
           ) : null}
         </div>
+        </ViewWorkspace>
       </div>
     );
   }
