@@ -830,6 +830,29 @@ class CollectModelSerializer(AuthSerializer):
         attrs["instances"] = self._normalize_instance_identity_contract(instances, "host", host_discovery=True)
         attrs["ip_range"] = ""
 
+    def _align_dispatched_ip_subnet_uuids(self, attrs, model_id):
+        """下发先合并 instances，再用 params 覆盖。最终子网必须通过同一套授权，并写成同一份列表。"""
+        if model_id != "ip":
+            return
+        effective_params = self._get_effective_params(attrs)
+        if "subnet_uuids" not in effective_params:
+            return
+
+        raw_instances = attrs.get("instances")
+        if raw_instances is None and self.instance is not None:
+            raw_instances = getattr(self.instance, "instances", None)
+        normalized = self._normalize_instance_identity_contract(
+            {"subnet_uuids": effective_params.get("subnet_uuids")},
+            "ip",
+        )
+        authorized = list(normalized["subnet_uuids"])
+        aligned_instances = copy.deepcopy(raw_instances) if isinstance(raw_instances, dict) else {}
+        aligned_instances["subnet_uuids"] = list(authorized)
+        attrs["instances"] = aligned_instances
+        aligned_params = dict(effective_params)
+        aligned_params["subnet_uuids"] = list(authorized)
+        attrs["params"] = aligned_params
+
     def validate(self, attrs):  # noqa: C901
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
         if self.instance is not None and getattr(self.instance, "task_type", None) == CollectPluginTypes.CUSTOM_SCRIPT:
@@ -951,6 +974,7 @@ class CollectModelSerializer(AuthSerializer):
                         validate_network_collection_assets(attrs.get("instances"))
                     except ValueError as err:
                         raise serializers.ValidationError({"instances": str(err)}) from err
+            self._align_dispatched_ip_subnet_uuids(attrs, model_id)
             return attrs
 
         if not self._get_attr_or_instance_value(attrs, "is_interval"):
