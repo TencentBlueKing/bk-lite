@@ -54,6 +54,31 @@ interface OverviewPaneProps {
   onOpenHealthKpi: (tab: MysqlIaTab, anchor: string) => void;
 }
 
+const FOCUS_STEPS: MysqlCategoryCopyKey[] = [
+  'focusStepCards',
+  'focusStepPerf',
+  'focusStepTopSql',
+  'focusStepWaits'
+];
+
+/** 气泡内四步。浅底 Tooltip 固定白底，胶囊用 SPEC 的浅灰，不跟页面暗色 token 反色。 */
+function FocusStepFlow({ steps }: { steps: readonly string[] }) {
+  return (
+    <div className="flex max-w-[460px] flex-wrap items-center">
+      {steps.map((step, index) => (
+        <React.Fragment key={step}>
+          {index > 0 ? (
+            <span aria-hidden className="mx-1 text-[12px] leading-none text-[#d9d9d9]">→</span>
+          ) : null}
+          <span className="inline-flex h-6 items-center rounded-[4px] border border-[#f0f0f0] bg-[#f5f5f5] px-2 text-[12px] leading-none text-[#595959]">
+            {step}
+          </span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
 const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'replication', 'uptime', 'alerts'].map((key) => ({
   key,
   label: key,
@@ -157,7 +182,7 @@ export default function OverviewPane({
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
-  const focusPath = text('focusPath');
+  const focusSteps = FOCUS_STEPS.map((key) => text(key));
 
   return (
     <>
@@ -176,7 +201,16 @@ export default function OverviewPane({
         <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
       </ProSection>
 
-      <ProSection title={text('focus')} hint={<ProInfoHint kind="focus" text={focusPath} />}>
+      <ProSection
+        title={text('focus')}
+        hint={(
+          <ProInfoHint
+            kind="focus"
+            label={focusSteps.join(' → ')}
+            content={<FocusStepFlow steps={focusSteps} />}
+          />
+        )}
+      >
         {focusLoading ? (
           <div className={proChromeClass.shortcutGrid}>
             {FOCUS_LOADING.map((item) => (

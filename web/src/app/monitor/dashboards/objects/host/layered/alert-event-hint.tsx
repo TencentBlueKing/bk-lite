@@ -55,21 +55,27 @@ function HintBody({ lines }: { lines: readonly ScopeHintLine[] }) {
 export function ProInfoHint({
   lines,
   text,
+  content,
+  label: labelText,
   kind
 }: {
   lines?: readonly ScopeHintLine[];
   /** 单句说明。排查路径等没有 lead/body 时走这里。 */
   text?: string;
+  /** 气泡里的自定义内容。重点关注步骤流走这里，不再塞长句。 */
+  content?: React.ReactNode;
+  /** 图标的可读名称。content 没有纯文本时用它。 */
+  label?: string;
   kind: string;
 }) {
-  const label = text ?? (lines ? hintText(lines) : '');
-  const title = text ? (
+  const label = labelText ?? text ?? (lines ? hintText(lines) : '');
+  const title = content ?? (text ? (
     <div className="max-w-[360px] text-[13px] font-normal leading-[1.55] text-[var(--color-text-3)]">
       {text}
     </div>
   ) : (
     <HintBody lines={lines ?? []} />
-  );
+  ));
   return (
     <span
       className="inline-flex shrink-0 items-center leading-none"
@@ -78,7 +84,11 @@ export function ProInfoHint({
       onMouseDown={stopHintClick}
       onPointerDown={stopHintClick}
     >
-      <Tooltip classNames={{ root: 'lightMetricTooltip' }} title={title}>
+      <Tooltip
+        classNames={{ root: 'lightMetricTooltip' }}
+        styles={content ? { root: { maxWidth: 480 } } : undefined}
+        title={title}
+      >
         <InfoCircleOutlined
           className="cursor-help text-[13px] leading-none text-[var(--color-text-4)] hover:text-[var(--color-primary)]"
           aria-label={label}
