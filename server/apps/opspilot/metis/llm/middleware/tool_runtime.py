@@ -92,14 +92,41 @@ _SERVICE_UNREACHABLE_RE = re.compile(
     r"目标计算机积极拒绝|由于目标计算机积极拒绝",
     re.I,
 )
-_EMPTY_LIST_KEYS = ("items", "results", "rows", "series", "list", "logs", "alerts", "instances")
-# 指标目录按 keyword 筛空不是「没有数据」。换 keyword 可以，由工具要求用户选择，而不是逐个试。
-_EMPTY_RETRY_WITH_DIFFERENT_ARGS = frozenset({"monitor_list_object_metrics"})
+_EMPTY_LIST_KEYS = ("items", "results", "rows", "series", "list", "logs", "alerts", "instances", "result")
 _EMPTY_COUNT_KEYS = ("count", "total", "hits", "total_count", "hit_count")
 
 
+def _series_matched_is_zero(value: dict) -> bool:
+    """Prometheus stats.seriesMatched 为 0。布尔值不算计数。"""
+    stats = value.get("stats")
+    if not isinstance(stats, dict) or "seriesMatched" not in stats:
+        return False
+    matched = stats["seriesMatched"]
+    if isinstance(matched, bool):
+        return False
+    if matched == 0 or matched == "0":
+        return True
+    return isinstance(matched, str) and matched.isdigit() and int(matched) == 0
+
+
+def _has_nonempty_tracked_list(value: Any) -> bool:
+    """本层或嵌套 data 里，空列表键对应的列表是否有元素。"""
+    if isinstance(value, list):
+        return bool(value)
+    if not isinstance(value, dict):
+        return False
+    for key in _EMPTY_LIST_KEYS:
+        item = value.get(key)
+        if isinstance(item, list) and item:
+            return True
+    nested = value.get("data")
+    if nested is not value:
+        return _has_nonempty_tracked_list(nested)
+    return False
+
+
 def _explicit_empty(value: Any) -> bool:
-    """只认明确的空列表或 0 计数。没有这些字段不算空结果。"""
+    """只认明确的空列表、0 计数，或 stats.seriesMatched=0。有 result 键但列表非空不算空。"""
     if isinstance(value, list):
         return len(value) == 0
     if not isinstance(value, dict):
@@ -121,6 +148,8 @@ def _explicit_empty(value: Any) -> bool:
         saw = True
         if raw > 0:
             return False
+    if _series_matched_is_zero(value) and not _has_nonempty_tracked_list(value):
+        return True
     return saw
 
 
@@ -175,8 +204,6 @@ def repeated_or_search_denial(request: Any) -> ToolMessage | None:
             )
         if _is_empty_success(content):
             saw_empty = True
-    if saw_empty and name in _EMPTY_RETRY_WITH_DIFFERENT_ARGS:
-        return None
     if saw_empty:
         return _retry_denial(
             name,

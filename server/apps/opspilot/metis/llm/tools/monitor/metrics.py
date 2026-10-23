@@ -4,11 +4,13 @@ from typing import Any, Dict, List, Optional
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from apps.core.utils.time_util import format_rfc3339_utc
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, resolve_metric_window, wrap_error, wrap_success
 from apps.opspilot.metis.llm.tools.search_terms import user_message_from_config
-from apps.opspilot.metis.llm.tools.user_clock import timezone_name_from_config
+from apps.opspilot.metis.llm.tools.user_clock import parse_user_wall_time, timezone_name_from_config
 
 _METRIC_SUMMARY_KEYS = ("name", "display_name", "unit", "data_type", "metric_group")
+_METRIC_CHOICE_LIMIT = 30
 _METRIC_NAME_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
 _UNKNOWN_METRIC_HINT = (
     "metric 必须来自 monitor_list_object_metrics 返回的 name。"
@@ -127,7 +129,7 @@ def _metric_choice_options(items: list) -> list:
     return options
 
 
-def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[list] = None) -> str:
+def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[list] = None, choice_total: int = 0) -> str:
     needle = str(keyword or "").strip()
     names = [str(item.get("name") or "") for item in items if item.get("name")]
     if not needle:
@@ -135,11 +137,14 @@ def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[li
     if not names:
         if not catalog:
             return f"无名称/展示名包含「{needle}」的指标，该对象也没有指标定义。不要换 keyword 再试。"
-        return (
+        hint = (
             f"无名称/展示名包含「{needle}」的指标。不要换 keyword 再调用本工具，也不要逐个试指标。"
             "立刻 request_user_choice（question_type=single_select），options 原样使用本结果 choices。"
             "用户选定后，monitor_query_metric_data 的 metric 用括号里的 name。禁止使用目录里没有的指标名。"
         )
+        if choice_total > _METRIC_CHOICE_LIMIT:
+            hint += f" 目录共 {choice_total} 个，choices 只列出前 {_METRIC_CHOICE_LIMIT} 个。"
+        return hint
     if len(names) == 1:
         return f"只命中 {names[0]}。直接用这个 name 查时序，不要 request_user_choice，也不要再列指标。禁止使用目录里没有的指标名。"
     if len(names) > 1:
@@ -181,14 +186,22 @@ def monitor_list_object_metrics(
     payload = wrap_success(filtered)
     needle = str(keyword or "").strip()
     ask_user = bool(needle or named) and (not filtered or len(_metric_choice_options(filtered)) > 1)
+    choice_total = 0
     if ask_user:
-        payload["choices"] = _metric_choice_options(summarized if not filtered else filtered)
+        options = _metric_choice_options(summarized if not filtered else filtered)
+        if needle and summarized and not filtered:
+            choice_total = len(options)
+            if choice_total > _METRIC_CHOICE_LIMIT:
+                options = options[:_METRIC_CHOICE_LIMIT]
+        payload["choices"] = options
     hint_keyword = keyword
     if not needle and named:
         hint_keyword = " ".join(str(item.get("name") or "") for item in named)
-    payload["_next_step_hint"] = _metric_query_hint(filtered, hint_keyword, summarized)
+    payload["_next_step_hint"] = _metric_query_hint(filtered, hint_keyword, summarized, choice_total)
     if needle and summarized and not filtered:
         payload["message"] = f"无名称/展示名包含「{needle}」的指标。请让用户从 choices 里选择，不要换 keyword 再搜。"
+        if choice_total > _METRIC_CHOICE_LIMIT:
+            payload["message"] += f" 目录共 {choice_total} 个，choices 只列出前 {_METRIC_CHOICE_LIMIT} 个。"
     return payload
 
 
@@ -336,7 +349,8 @@ def monitor_get_host_resource_snapshot(
         "不要用 monitor_get_host_resource_snapshot（它只出全局聚合快照值、不排名、不接受时间窗），"
         "也不要逐台传 instance_ids 调 query_metric_data 再手工排序。"
         "metric_type 取 cpu/memory/disk；窗口用 lookback_minutes（如「最近5分钟」传 5），"
-        "或 time 传 RFC3339 区间；limit 默认 10。"
+        "或 time 传起止时间。没写时区的时间按当前用户时区理解，不要当成 UTC；写了 Z 或 ±HH:MM 则按该偏移。"
+        "limit 默认 10。"
         "aggregation=max 看窗口内峰值（默认，瞬时打满），avg 看持续偏高；返回行同时含 peak_percent 与 avg_percent。"
     )
 )
@@ -352,12 +366,21 @@ def monitor_get_host_resource_top_by_time(
         return wrap_error("metric_type is required")
     if lookback_minutes in (None, "") and not time:
         return wrap_error("lookback_minutes 或 time is required")
+    resolved_time = time
+    if time:
+        if not isinstance(time, (list, tuple)):
+            return wrap_error("time 必须是起止两个时间")
+        try:
+            tz_name = timezone_name_from_config(config)
+            resolved_time = [format_rfc3339_utc(parse_user_wall_time(item, tz_name)) for item in time]
+        except ValueError as exc:
+            return wrap_error(str(exc))
     return call_monitor_rpc(
         "get_host_resource_top_by_time",
         config,
         metric_type=metric_type,
         lookback_minutes=lookback_minutes,
-        time=time,
+        time=resolved_time,
         aggregation=aggregation,
         limit=limit,
     )

@@ -1,5 +1,7 @@
 """问句词表：原词加固定同义词，不把两个概念粘成一个短语。"""
 
+import json
+
 from langchain_core.messages import ToolMessage
 
 from apps.opspilot.metis.llm.middleware.tool_runtime import repeated_or_search_denial, terminal_success_denial
@@ -184,7 +186,8 @@ def test_empty_result_blocks_any_tool_retry():
     assert "不是参数错误" in denied.content
 
 
-def test_metric_catalog_keyword_miss_allows_a_different_keyword():
+def test_metric_catalog_keyword_miss_blocks_a_different_keyword():
+    """没命中只许 request_user_choice，不许换 keyword 再调本工具。"""
     request = type(
         "Req",
         (),
@@ -195,6 +198,135 @@ def test_metric_catalog_keyword_miss_allows_a_different_keyword():
                     content='{"success": true, "data": [], "message": "无名称/展示名包含「内存」的指标。"}',
                     tool_call_id="call-1",
                     name="monitor_list_object_metrics",
+                ),
+            ],
+        },
+    )()
+    denied = repeated_or_search_denial(request)
+    assert denied is not None
+    assert "空结果" in denied.content
+    assert "不是参数错误" in denied.content
+
+
+def test_monitor_query_metric_data_empty_matrix_blocks_retry_with_different_args():
+    """Prometheus 空矩阵经 wrap_success 后，改 instance_ids / 时间窗仍要拦住。"""
+    payload = {
+        "success": True,
+        "data": {
+            "status": "success",
+            "data": {"resultType": "matrix", "result": []},
+            "stats": {"seriesMatched": "0"},
+        },
+    }
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {
+                "id": "call-2",
+                "name": "monitor_query_metric_data",
+                "args": {"instance_ids": ["other-host"], "start": "2026-10-22 10:00:00", "end": "2026-10-22 11:00:00"},
+            },
+            "messages": [
+                ToolMessage(
+                    content=json.dumps(payload, ensure_ascii=False),
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
+                ),
+            ],
+        },
+    )()
+    denied = repeated_or_search_denial(request)
+    assert denied is not None
+    assert "空结果" in denied.content
+    assert "不是参数错误" in denied.content
+
+    result_only = {
+        "success": True,
+        "data": {"status": "success", "data": {"resultType": "matrix", "result": []}},
+    }
+    series_only = {
+        "success": True,
+        "data": {"status": "success", "stats": {"seriesMatched": "0"}},
+    }
+    for body in (result_only, series_only):
+        again = type(
+            "Req",
+            (),
+            {
+                "tool_call": {
+                    "id": "call-2",
+                    "name": "monitor_query_metric_data",
+                    "args": {"dimensions": {"mount": "/"}},
+                },
+                "messages": [
+                    ToolMessage(content=json.dumps(body), tool_call_id="call-1", name="monitor_query_metric_data"),
+                ],
+            },
+        )()
+        denied_again = repeated_or_search_denial(again)
+        assert denied_again is not None
+        assert "空结果" in denied_again.content
+        assert "不是参数错误" in denied_again.content
+
+
+def test_non_empty_matrix_result_does_not_block_another_query():
+    payload = {
+        "success": True,
+        "data": {
+            "status": "success",
+            "data": {"resultType": "matrix", "result": [{"metric": {"instance": "web-1"}, "values": [[1, "1"]]}]},
+            "stats": {"seriesMatched": "1"},
+        },
+    }
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"instance_ids": ["web-2"]}},
+            "messages": [
+                ToolMessage(
+                    content=json.dumps(payload),
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
+                ),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(request) is None
+
+    contradictory = {
+        "success": True,
+        "data": {
+            "status": "success",
+            "data": {"resultType": "matrix", "result": [{"metric": {"instance": "web-1"}, "values": [[1, "1"]]}]},
+            "stats": {"seriesMatched": "0"},
+        },
+    }
+    kept = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"instance_ids": ["web-2"]}},
+            "messages": [
+                ToolMessage(content=json.dumps(contradictory), tool_call_id="call-1", name="monitor_query_metric_data"),
+            ],
+        },
+    )()
+    assert repeated_or_search_denial(kept) is None
+
+
+def test_result_object_without_empty_list_is_not_an_empty_success():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "monitor_query_metric_data", "args": {"metric": "cpu"}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "data": {"result": {"status": "ok"}}}',
+                    tool_call_id="call-1",
+                    name="monitor_query_metric_data",
                 ),
             ],
         },
