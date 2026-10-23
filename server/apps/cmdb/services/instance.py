@@ -98,6 +98,17 @@ class InstanceBatchError(BaseAppException):
         super().__init__(message, data=data)
 
 
+class StaleMonitorBinding(Exception):
+    """锁内读到的 monitor_id 已不是解绑开始时的值，拒绝清空。"""
+
+
+def _normalized_monitor_id(value) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _normalize_batch_instance_ids(inst_ids: list) -> list[int]:
     normalized_ids = []
     seen_ids = set()
@@ -1345,6 +1356,7 @@ class InstanceManage(object):
         record_change: bool = True,
         operation_id: str | None = None,
         schedule_post_actions: bool = True,
+        expected_monitor_id: str | None = None,
     ):
         """修改实例属性"""
         from apps.cmdb.services.module_ingest import strip_system_link_fields
@@ -1406,6 +1418,13 @@ class InstanceManage(object):
         check_attr_map["validation_items"] = [validation_item]
         unique_lock_keys = UniqueWriteLockService.build_lock_keys(inst_info["model_id"], validation_item, check_attr_map)
         with UniqueWriteLockService.hold(unique_lock_keys):
+            if expected_monitor_id is not None:
+                current_entity = InstanceManage.query_entity_by_id(inst_id)
+                current_monitor_id = _normalized_monitor_id(
+                    current_entity.get("monitor_id") if isinstance(current_entity, dict) else None
+                )
+                if current_monitor_id != expected_monitor_id:
+                    raise StaleMonitorBinding()
             with GraphClient() as ag:
                 exist_items = InstanceManage._query_unique_rule_candidates(ag, inst_info["model_id"], validation_item, check_attr_map)
                 exist_items = [i for i in exist_items if i["_id"] != inst_id]
