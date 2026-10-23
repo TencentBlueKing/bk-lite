@@ -165,6 +165,84 @@ def test_publish_accepts_matching_existing_formal_object(fake_storage):
     assert fake_storage.saved_keys == []
 
 
+@pytest.mark.django_db(transaction=True)
+def test_publish_removes_unreferenced_formal_object_when_delete_lands_before_save(fake_storage):
+    formal_key = "host/inst-1/formal.txt"
+    fake_storage.objects["tmp/config-file/staged.txt"] = b"v1"
+    version_obj = _create_version()
+    state = {"deleted_before_write": False}
+
+    def save(key, content):
+        if key == formal_key and not state["deleted_before_write"]:
+            state["deleted_before_write"] = True
+            assert ConfigFileContentLifecycle.request_delete(version_obj.id) is True
+            assert not ConfigFileVersion.objects.filter(id=version_obj.id).exists()
+            assert formal_key not in fake_storage.objects
+        return FakeStorage.save(fake_storage, key, content)
+
+    fake_storage.save = save
+
+    assert ConfigFileContentLifecycle.publish_version(version_obj.id) is False
+    assert state["deleted_before_write"] is True
+    assert fake_storage.saved_keys == [formal_key]
+    assert not ConfigFileVersion.objects.filter(id=version_obj.id).exists()
+    assert formal_key not in fake_storage.objects
+
+
+@pytest.mark.django_db(transaction=True)
+def test_publish_keeps_formal_object_referenced_by_another_version(fake_storage):
+    formal_key = "host/inst-1/formal.txt"
+    fake_storage.objects["tmp/config-file/staged.txt"] = b"v1"
+    version_obj = _create_version()
+    referenced = _create_version(
+        version="1700000000001",
+        temp_content_key="tmp/config-file/other.txt",
+        content_status=ConfigFileContentStatus.READY,
+    )
+    state = {"deleted_before_write": False}
+
+    def save(key, content):
+        if key == formal_key and not state["deleted_before_write"]:
+            state["deleted_before_write"] = True
+            assert ConfigFileContentLifecycle.request_delete(version_obj.id) is True
+            assert not ConfigFileVersion.objects.filter(id=version_obj.id).exists()
+        return FakeStorage.save(fake_storage, key, content)
+
+    fake_storage.save = save
+
+    assert ConfigFileContentLifecycle.publish_version(version_obj.id) is False
+    assert state["deleted_before_write"] is True
+    assert not ConfigFileVersion.objects.filter(id=version_obj.id).exists()
+    referenced.refresh_from_db()
+    assert referenced.content.name == formal_key
+    assert fake_storage.objects[formal_key] == b"v1"
+
+
+@pytest.mark.django_db
+def test_publish_keeps_preexisting_formal_object_when_update_misses(fake_storage):
+    formal_key = "host/inst-1/formal.txt"
+    fake_storage.objects["tmp/config-file/staged.txt"] = b"v1"
+    fake_storage.objects[formal_key] = b"v1"
+    version_obj = _create_version()
+
+    def open(key, _mode="rb"):
+        payload = fake_storage.objects[key]
+        if key == formal_key:
+            ConfigFileVersion.objects.filter(id=version_obj.id).update(
+                content="",
+                content_status=ConfigFileContentStatus.DELETE_PENDING,
+            )
+        return io.BytesIO(payload)
+
+    fake_storage.open = open
+
+    assert ConfigFileContentLifecycle.publish_version(version_obj.id) is False
+    version_obj.refresh_from_db()
+    assert version_obj.content_status == ConfigFileContentStatus.DELETE_PENDING
+    assert fake_storage.saved_keys == []
+    assert fake_storage.objects[formal_key] == b"v1"
+
+
 @pytest.mark.django_db
 def test_publish_rejects_conflicting_existing_formal_object(fake_storage):
     fake_storage.objects["tmp/config-file/staged.txt"] = b"v1"
