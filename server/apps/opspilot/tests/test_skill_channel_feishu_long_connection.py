@@ -13,6 +13,7 @@ from apps.opspilot.services.skill_channel_feishu_long_connection import (
     FILE_FAILED_TEXT,
     LEADER_LOCK_KEY,
     PROCESSING_TEXT,
+    REPLY_FAILED_LOG_TEMPLATE,
     STREAM_DEADLINE_SECONDS,
     STREAM_FINISH_LEAD_SECONDS,
     TIMEOUT_TEXT,
@@ -307,6 +308,111 @@ def test_duplicate_message_does_not_start_another_turn():
     session.handle(event)
     assert len(agent.requests) == 1
     assert len(gateway.replies) == 1
+
+
+def test_persist_user_failure_does_not_swallow_the_message(monkeypatch, caplog):
+    agent = RecordingAgent()
+    channel = _channel()
+    session, gateway, _clock = _session(channel, agent)
+    event = _text()
+    attempts = {"count": 0}
+
+    def flaky(_self, _turn):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError(SECRET_SENTINEL)
+
+    monkeypatch.setattr(FeishuConnection, "_persist_user", flaky)
+    caplog.set_level(logging.DEBUG, logger="opspilot")
+    session.handle(event)
+
+    assert session._turns == {}
+    assert agent.requests == []
+    assert gateway.updates == [("om_1", FAILURE_TEXT)]
+    assert PROCESSING_TEXT not in [text for _message_id, text in gateway.updates]
+    records = [record for record in caplog.records if record.msg == REPLY_FAILED_LOG_TEMPLATE]
+    assert len(records) == 1
+    assert records[0].levelno == logging.WARNING
+    assert records[0].args == (channel.id, "begin", "RuntimeError")
+    assert records[0].exc_info is None
+    rendered = records[0].getMessage()
+    formatted = logging.Formatter().format(records[0])
+    assert SECRET_SENTINEL not in rendered
+    assert SECRET_SENTINEL not in formatted
+    assert SECRET_SENTINEL not in caplog.text
+    assert [record for record in caplog.records if record.exc_info] == []
+
+    session.handle(event)
+    session.handle(event)
+    assert attempts["count"] == 2
+    assert len(agent.requests) == 1
+    assert agent.requests[0].user_message == "你好"
+    assert [item[1] for item in gateway.replies] == [PROCESSING_TEXT, PROCESSING_TEXT]
+
+
+def test_seen_ids_drop_expired_and_oldest_finished_messages(monkeypatch):
+    ttl_seconds = 30
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_feishu_long_connection.SEEN_LIMIT",
+        2,
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_feishu_long_connection.SEEN_TTL_SECONDS",
+        ttl_seconds,
+    )
+    agent = RecordingAgent()
+    clock = ManualClock()
+    session, _gateway, clock = _session(_channel(), agent, clock=clock)
+
+    def finish(message_id, chat_id):
+        session.handle(_text(message_id=message_id, chat_id=chat_id, text=message_id))
+        agent.requests[-1].finish()
+
+    finish("om_a", "oc_a")
+    finish("om_b", "oc_b")
+    session.handle(_text(message_id="om_a", chat_id="oc_a", text="again"))
+    assert [request.user_message for request in agent.requests] == ["om_a", "om_b"]
+
+    finish("om_c", "oc_c")
+    session.handle(_text(message_id="om_a", chat_id="oc_a", text="revived"))
+    assert agent.requests[-1].user_message == "revived"
+
+    clock.advance(ttl_seconds - 1)
+    before = len(agent.requests)
+    session.handle(_text(message_id="om_c", chat_id="oc_c", text="still-fresh"))
+    assert len(agent.requests) == before
+    clock.advance(1)
+    session.handle(_text(message_id="om_c", chat_id="oc_c", text="after-ttl"))
+    assert agent.requests[-1].user_message == "after-ttl"
+
+
+def test_finished_workers_are_removed():
+    session, _gateway, _clock = _session(_channel(), RecordingAgent(), sync_agents=False)
+    session.handle(_text())
+    session.wait()
+    assert session._workers == []
+
+
+def test_pump_stops_when_the_lock_is_lost():
+    redis = FakeRedis()
+    opened = []
+
+    def opener(app_id, secret):
+        gateway = FakeGateway()
+        opened.append(gateway)
+        return gateway
+
+    agent = RecordingAgent()
+    leader = _leader(redis, opener, agent)
+    leader.reconcile([_channel()])
+    opened[0].events.append(_text())
+    redis.values.clear()
+    leader.pump()
+
+    assert opened[0].closed is True
+    assert leader._live == {}
+    assert agent.requests == []
+    assert opened[0].events
 
 
 def test_timeout_replaces_the_bubble_without_a_file():

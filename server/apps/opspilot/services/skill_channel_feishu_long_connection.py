@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -25,6 +26,8 @@ FILE_FAILED_TEXT = "文件发送失败，请稍后重试"
 STREAM_REFRESH_SECONDS = 2
 STREAM_DEADLINE_SECONDS = 10 * 60
 STREAM_FINISH_LEAD_SECONDS = 30
+SEEN_LIMIT = 2048
+SEEN_TTL_SECONDS = float(STREAM_DEADLINE_SECONDS)
 
 CONNECT_FAILED_LOG_TEMPLATE = "event=feishu_long_connection_connect_failed channel_id=%s failed_stage=connect error_type=%s"
 REPLY_FAILED_LOG_TEMPLATE = "event=feishu_long_connection_reply_failed channel_id=%s failed_stage=%s error_type=%s"
@@ -139,14 +142,14 @@ class FeishuConnection:
         self.sync_agents = sync_agents
         self._lock = threading.Lock()
         self._turns: dict[str, Turn] = {}
-        self._seen: set[str] = set()
+        self._seen = _SeenIds(self.clock)
         self._workers: list[threading.Thread] = []
 
     def handle(self, event: FeishuInbound) -> None:
-        if event.sender_type == "app" or not event.message_id or event.message_id in self._seen:
+        if event.sender_type == "app" or not event.message_id or self._seen.contains(event.message_id, self._open_message_ids()):
             return
         if event.message_type != "text":
-            self._seen.add(event.message_id)
+            self._remember(event.message_id)
             self._reply_unsupported(event.message_id)
             return
         text = event.text or ""
@@ -158,7 +161,7 @@ class FeishuConnection:
                 return
             visible = group_text_for_bot(text, event.mentions, bot_open_id)
             if visible is None:
-                self._seen.add(event.message_id)
+                self._remember(event.message_id)
                 return
             text = visible
         try:
@@ -166,14 +169,21 @@ class FeishuConnection:
         except Exception as exc:
             logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "reply", type(exc).__name__)
             return
-        self._seen.add(event.message_id)
-        self._begin_turn(event, text, bubble_id)
+        try:
+            self._begin_turn(event, text, bubble_id)
+        except Exception as exc:
+            logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "begin", type(exc).__name__)
+            self._abort_begin(event, bubble_id)
+            return
+        self._remember(event.message_id)
 
     def wait(self, timeout: float = 5) -> None:
         for worker in list(self._workers):
             worker.join(timeout)
+        self._reap_workers()
 
     def tick(self) -> None:
+        self._reap_workers()
         now = self.clock.now()
         with self._lock:
             for turn in list(self._turns.values()):
@@ -256,9 +266,44 @@ class FeishuConnection:
         if self.sync_agents:
             self._run_agent(request)
             return
+        self._start_worker(request)
+
+    def _start_worker(self, request: AnswerRequest) -> None:
+        self._reap_workers()
         worker = threading.Thread(target=self._run_agent, args=(request,), daemon=True)
         worker.start()
         self._workers.append(worker)
+
+    def _abort_begin(self, event: FeishuInbound, bubble_id: str) -> None:
+        self._discard_turn(event.chat_id, event.message_id)
+        try:
+            self.gateway.update_text(bubble_id, FAILURE_TEXT)
+        except Exception as exc:
+            logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "update", type(exc).__name__)
+            try:
+                self.gateway.reply_text(event.message_id, FAILURE_TEXT)
+            except Exception as reply_exc:
+                logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "fallback", type(reply_exc).__name__)
+
+    def _discard_turn(self, chat_id: str, message_id: str) -> None:
+        with self._lock:
+            turn = self._turns.get(chat_id)
+            if turn is None or turn.user_message_id != message_id:
+                return
+            if turn.request is not None:
+                turn.request.cancelled = True
+            turn.closed = True
+            self._turns.pop(chat_id, None)
+
+    def _remember(self, message_id: str) -> None:
+        self._seen.add(message_id, self._open_message_ids())
+
+    def _open_message_ids(self) -> set[str]:
+        with self._lock:
+            return {turn.user_message_id for turn in self._turns.values() if turn.user_message_id}
+
+    def _reap_workers(self) -> None:
+        self._workers = [worker for worker in self._workers if worker.is_alive()]
 
     def _run_agent(self, request: AnswerRequest) -> None:
         try:
@@ -415,6 +460,9 @@ class FeishuLongConnectionLeader:
                 self._connect(channel, app_id, secret)
 
     def pump(self) -> None:
+        if not self.lock.held():
+            self.stop_all()
+            return
         for live in list(self._live.values()):
             self._drain(live)
             live.session.tick()
@@ -476,6 +524,35 @@ def load_long_connection_channels():
         .order_by("id")
     )
     return [channel for channel in channels if feishu_long_connection_credentials(channel.channel_config)]
+
+
+class _SeenIds:
+    """有界的已处理 message_id。进行中的一轮不会被淘汰，避免同一条消息重开。"""
+
+    def __init__(self, clock):
+        self._clock = clock
+        self._items: OrderedDict[str, float] = OrderedDict()
+
+    def contains(self, message_id: str, protected: set[str]) -> bool:
+        self._evict(protected)
+        return message_id in self._items
+
+    def add(self, message_id: str, protected: set[str]) -> None:
+        self._items[message_id] = self._clock.now()
+        self._items.move_to_end(message_id)
+        self._evict(protected | {message_id})
+
+    def _evict(self, protected: set[str]) -> None:
+        cutoff = self._clock.now() - SEEN_TTL_SECONDS
+        for message_id, seen_at in list(self._items.items()):
+            if message_id in protected or seen_at > cutoff:
+                continue
+            self._items.pop(message_id, None)
+        while len(self._items) > SEEN_LIMIT:
+            oldest = next((message_id for message_id in self._items if message_id not in protected), None)
+            if oldest is None:
+                return
+            self._items.pop(oldest, None)
 
 
 class _MonotonicClock:
