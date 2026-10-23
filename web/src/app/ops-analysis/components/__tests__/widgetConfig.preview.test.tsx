@@ -75,10 +75,22 @@ vi.mock('@/app/ops-analysis/hooks/useSingleValueConfig', () => ({
   useSingleValueConfig: () => ({
     thresholdColors: [],
     setThresholdColors: vi.fn(),
-    selectedFields: [],
+    selectedFields: ['value'],
     setSelectedFields: vi.fn(),
     resetSingleValueConfig: vi.fn(),
+    singleValueTreeData: [],
+    loadingSingleValueData: false,
+    compareAvailable: false,
+    handleSingleValueFieldChange: vi.fn(),
+    handleThresholdChange: vi.fn(),
+    handleThresholdBlur: vi.fn(),
+    addThreshold: vi.fn(),
+    removeThreshold: vi.fn(),
   }),
+}));
+
+vi.mock('@/app/cmdb/(pages)/assetManage/management/list/selectIcon', () => ({
+  default: () => null,
 }));
 
 vi.mock('@/app/ops-analysis/components/widgetConfig/hooks/useTableConfig', () => ({
@@ -130,6 +142,22 @@ const lineItem = (): LayoutItem => ({
     dataSource: 7,
     chartType: 'line',
     dataSourceParams: [],
+  },
+});
+
+const singleItem = (): LayoutItem => ({
+  i: 'single-1',
+  x: 0,
+  y: 0,
+  w: 4,
+  h: 3,
+  name: '在线数',
+  description: '',
+  valueConfig: {
+    dataSource: 7,
+    chartType: 'single',
+    dataSourceParams: [],
+    selectedFields: ['value'],
   },
 });
 
@@ -350,6 +378,71 @@ describe('ViewConfig screen panel', () => {
       expect(ensureDataSource).toHaveBeenCalledTimes(2);
     });
   });
+
+  it('does not reload the data form when only single-value style changes', async () => {
+    const ensureDataSource = vi.fn(async () => lineDataSource);
+    const manager = {
+      ...buildManager(lineDataSource),
+      ensureDataSource,
+    };
+    const item = singleItem();
+    const view = render(
+      <ViewConfig
+        open
+        variant="panel"
+        item={item}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(1);
+    });
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={{
+          ...item,
+          valueConfig: {
+            ...item.valueConfig,
+            singleStyle: { showIcon: true, align: 'center' },
+          },
+        }}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(1);
+    });
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={{
+          ...item,
+          valueConfig: {
+            ...item.valueConfig,
+            descriptionField: 'note',
+          },
+        }}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(2);
+    });
+  });
 });
 
 const waitForOpenedWidget = async () => {
@@ -425,5 +518,91 @@ describe('ViewConfig interaction validation', () => {
     });
     expect(errorSpy.mock.calls.map((call) => call[0])).not.toContain('common.saveFailed');
     errorSpy.mockRestore();
+  });
+});
+
+describe('ViewConfig single style tab', () => {
+  it('places style between data and interaction only for single widgets', async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <ViewConfig
+        open
+        item={singleItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+
+    const styleTab = await screen.findByRole('tab', { name: 'dashboard.singleStyleTab' });
+    const dataTab = screen.getByRole('tab', { name: 'dashboard.interactionDataTab' });
+    const interactionTab = screen.getByRole('tab', { name: 'dashboard.interactionTab' });
+    expect(dataTab.compareDocumentPosition(styleTab)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(styleTab.compareDocumentPosition(interactionTab)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    await user.click(styleTab);
+    expect(styleTab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText('dashboard.singleStyleIcon')).toBeTruthy();
+    expect(screen.getByText('dashboard.singleStyleAlign')).toBeTruthy();
+    expect(screen.queryByText('dashboard.singleStylePreviewHint')).toBeNull();
+    expect(screen.queryByText('dashboard.singleStyleIconSource')).toBeNull();
+    expect(screen.getByText('topology.nodeConfig.valueMappings')).toBeTruthy();
+
+    await user.click(screen.getByRole('switch', { name: 'dashboard.singleStyleIcon' }));
+    expect(await screen.findByText('dashboard.singleStyleIconSource')).toBeTruthy();
+    expect(
+      screen.getByRole('radio', { name: 'dashboard.singleStyleIconBuiltin' }).closest('label')?.className,
+    ).toContain('ant-radio-button-wrapper-checked');
+    expect(screen.queryByTestId('single-style-file-input')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'dashboard.singleStyleAlignRight' }));
+    expect(screen.getByRole('button', { name: 'dashboard.singleStyleAlignRight' }).getAttribute('aria-pressed')).toBe('true');
+
+    view.rerender(
+      <ViewConfig
+        open
+        item={lineItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole('tab', { name: 'dashboard.singleStyleTab' })).toBeNull();
+    });
+  });
+
+  it('hides the style tab when topology turns single value style off', async () => {
+    render(
+      <ViewConfig
+        open
+        showSingleValueStyle={false}
+        item={singleItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+
+    expect(await screen.findByRole('tab', { name: 'dashboard.interactionDataTab' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'dashboard.interactionTab' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'dashboard.singleStyleTab' })).toBeNull();
+    expect(screen.queryByText('dashboard.singleStyleIcon')).toBeNull();
+  });
+
+  it('keeps style controls out of the screen data panel', async () => {
+    render(
+      <ViewConfig
+        open
+        variant="panel"
+        configSection="data"
+        surface="screen"
+        showSingleValueStyle={false}
+        item={singleItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+      />,
+    );
+
+    expect(await screen.findByText('topology.nodeConfig.valueMappings')).toBeTruthy();
+    expect(screen.queryByText('dashboard.singleStyleIcon')).toBeNull();
+    expect(screen.queryByText('dashboard.singleStylePreviewHint')).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'dashboard.singleStyleTab' })).toBeNull();
   });
 });
