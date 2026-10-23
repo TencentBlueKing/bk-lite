@@ -55,7 +55,7 @@ export const MYSQL_CATEGORY_COPY = {
   focusReplLag: [textId('mysqlCategoryFocusReplLag'), '复制延迟'],
   focusTableLock: [textId('mysqlCategoryFocusTableLock'), '表锁等待'],
   focusRowLock: [textId('mysqlCategoryFocusRowLock'), '行锁等待'],
-  focusPath: [textId('mysqlCategoryFocusPath'), '排查建议：先看本区四卡，再到「性能」看趋势，再到「Top SQL」核异常 SQL，最后到「等待」看锁与等待会话。'],
+  focusPath: [textId('mysqlCategoryFocusPath'), '排查建议：先看本区四卡，再到「性能」看趋势，再到「Top SQL」核异常语句，最后到「等待」看锁与等待会话。'],
   rowLockAvg: [textId('mysqlCategoryRowLockAvg'), '平均 {value} ms'],
   viewStatements: [textId('mysqlCategoryViewStatements'), '查看 Top SQL'],
   enableStatementCollection: [textId('mysqlCategoryEnableStatementCollection'), '去开启语句采集'],
