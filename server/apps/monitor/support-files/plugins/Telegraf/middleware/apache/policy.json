@@ -43,31 +43,6 @@
       "group_algorithm": "max"
     },
     {
-      "name": "响应时间延迟",
-      "alert_name": "Apache实例 ${resource_name} 处理延迟",
-      "description": "监控平均请求耗时，延迟过高会导致用户体验下降。需优化后端应用或静态资源。",
-      "metric_name": "apache_duration_per_req",
-      "algorithm": "max_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 0.5,
-          "method": ">="
-        },
-        {
-          "level": "error",
-          "value": 0.3,
-          "method": ">="
-        },
-        {
-          "level": "warning",
-          "value": 0.1,
-          "method": ">="
-        }
-      ],
-      "group_algorithm": "max"
-    },
-    {
       "name": "CPU负载过高",
       "alert_name": "Apache实例 ${resource_name} CPU过载",
       "description": "监控工作进程CPU使用率，持续高负载会导致性能下降。需优化代码或扩容。",
