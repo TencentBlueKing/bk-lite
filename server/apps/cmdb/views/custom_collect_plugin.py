@@ -1,11 +1,12 @@
 # -- coding: utf-8 --
 from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
 from apps.cmdb.constants.constants import OPERATOR_COLLECT_TASK
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, CREATE_INST, DELETE_INST, UPDATE_INST
 from apps.cmdb.models.custom_collect_plugin import CustomCollectPlugin
 from apps.cmdb.serializers.custom_collect_plugin import CustomCollectPluginListSerializer, CustomCollectPluginSerializer
-from apps.cmdb.services.custom_collect_plugin import ensure_deletable
+from apps.cmdb.services.custom_collect_plugin import attach_list_reference_counts, ensure_deletable
 from apps.cmdb.utils.change_record import create_change_record
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -36,7 +37,15 @@ class CustomCollectPluginViewSet(AuthViewSet):
 
     @HasPermission("auto_collection-View")
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        queryset = self.get_queryset_by_permission(request, queryset).order_by(self.ORDERING_FIELD)
+        page = self.paginate_queryset(queryset)
+        batch = page if page is not None else list(queryset)
+        attach_list_reference_counts(batch)
+        serializer = self.get_serializer(batch, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     @HasPermission("auto_collection-View")
     def retrieve(self, request, *args, **kwargs):

@@ -32,7 +32,7 @@ export const customVars: CustomThemeVars = {
     height: 40
   },
   customPalette: {
-    diagramBg: '#F7FAFE',
+    diagramBg: '#FFFFFF',
     defaultColor: '#a5b8f3'
   }
 };

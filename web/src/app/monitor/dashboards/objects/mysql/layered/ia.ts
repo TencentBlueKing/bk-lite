@@ -26,8 +26,8 @@ export type MysqlIaTab = (typeof MYSQL_IA_TABS)[number]['key'];
 /** 专业盘实例载荷没有采集开关，空态合并「未开」与「已开仍空」。 */
 export const MYSQL_EMPTY_COPY = {
   statements: {
-    title: '暂无语句数据',
-    hint: '请在采集配置中开启「语句采集」，并确认实例已启用 Performance Schema，监控账号有 Performance Schema 的查询权限。若已开启，保存配置后等待至少一个采集周期。'
+    title: '暂无 Top SQL 数据',
+    hint: '请在采集配置中开启「Top SQL 采集」，并确认实例已启用 Performance Schema，监控账号有 Performance Schema 的查询权限。若已开启，保存配置后等待至少一个采集周期。'
   },
   waits: {
     title: '暂无等待数据',
