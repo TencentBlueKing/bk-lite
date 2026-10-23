@@ -359,10 +359,17 @@ button.kpiCard {
   text-overflow: ellipsis;
 }
 
+/* 主机和 MySQL 重点关注共用这一张壳：宽屏固定两列，窄屏一列。 */
 .shortcutGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .shortcutGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .sectionHead {

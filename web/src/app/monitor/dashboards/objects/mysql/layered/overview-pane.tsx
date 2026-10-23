@@ -24,7 +24,6 @@ import {
   buildMysqlFocusCards,
   buildMysqlOverviewKpis,
   mysqlHealthKpiJump,
-  readMysqlRoleBlock,
   type MysqlFocusCard,
   type MysqlFocusSpark,
   type MysqlIaTab,
@@ -61,49 +60,33 @@ const MYSQL_LOADING_KPIS: KpiTileModel[] = ['connections', 'qps', 'slow', 'repli
   value: ''
 }));
 
-const FOCUS_LOADING_LEAD: MysqlCategoryCopyKey[] = [
-  'focusLockWait',
-  'focusAborted',
-  'focusTmpDisk'
+const FOCUS_LOADING: Array<{
+  title: MysqlCategoryCopyKey;
+  unit: 'counts' | 'percent' | 'cps';
+}> = [
+  { title: 'focusActive', unit: 'counts' },
+  { title: 'focusBuffer', unit: 'percent' },
+  { title: 'focusRowLock', unit: 'cps' },
+  { title: 'focusTmpDisk', unit: 'percent' }
 ];
 
 const SPARK_METRIC: Record<MysqlFocusSpark, Array<{
   name: string;
-  unit: 'counts' | 'cps' | 'percent' | 's';
+  unit: 'counts' | 'cps' | 'percent';
   color: string;
   label: MysqlCategoryCopyKey;
 }>> = {
-  lockWait: [{
-    name: 'mysql_process_list_threads_waiting_for_lock',
+  active: [{
+    name: 'mysql_threads_running',
     unit: 'counts',
     color: HOST_SERIES_COLOR.load1,
-    label: 'focusLockWait'
+    label: 'focusActive'
   }],
-  aborted: [
-    {
-      name: 'mysql_aborted_connects_rate',
-      unit: 'cps',
-      color: HOST_PALETTE.rose,
-      label: 'abortedConnects'
-    },
-    {
-      name: 'mysql_aborted_clients_rate',
-      unit: 'cps',
-      color: HOST_PALETTE.orange,
-      label: 'abortedClients'
-    }
-  ],
-  tmpDisk: [{
-    name: 'mysql_tmp_disk_table_ratio',
+  bufferHit: [{
+    name: 'mysql_buffer_pool_hit_ratio',
     unit: 'percent',
-    color: HOST_PALETTE.rose,
-    label: 'focusTmpDisk'
-  }],
-  slow: [{
-    name: 'mysql_slow_queries_rate',
-    unit: 'cps',
-    color: HOST_SERIES_COLOR.load1,
-    label: 'focusSlow'
+    color: HOST_SERIES_COLOR.cpu,
+    label: 'focusBuffer'
   }],
   rowLock: [{
     name: 'mysql_innodb_row_lock_waits_rate',
@@ -111,11 +94,11 @@ const SPARK_METRIC: Record<MysqlFocusSpark, Array<{
     color: HOST_PALETTE.orange,
     label: 'focusRowLock'
   }],
-  tableLock: [{
-    name: 'mysql_table_locks_waited_rate',
-    unit: 'cps',
-    color: HOST_PALETTE.orange,
-    label: 'focusTableLock'
+  tmpDisk: [{
+    name: 'mysql_tmp_disk_table_ratio',
+    unit: 'percent',
+    color: HOST_SERIES_COLOR.load5,
+    label: 'focusTmpDisk'
   }]
 };
 
@@ -172,10 +155,6 @@ export default function OverviewPane({
   );
   const healthLoading = blocksUntilReady(MYSQL_HEALTH_METRICS, pendingMetricNames);
   const focusLoading = blocksUntilReady(MYSQL_FOCUS_METRICS, pendingMetricNames);
-  const focusLoadingTitles: MysqlCategoryCopyKey[] = [
-    ...FOCUS_LOADING_LEAD,
-    readMysqlRoleBlock(metricMap)?.kind === 'replica' ? 'focusRowLock' : 'focusTableLock'
-  ];
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
   const focusPath = text('focusPath');
@@ -200,10 +179,13 @@ export default function OverviewPane({
       <ProSection title={text('focus')} hint={<ProInfoHint kind="focus" text={focusPath} />}>
         {focusLoading ? (
           <div className={proChromeClass.shortcutGrid}>
-            {focusLoadingTitles.map((titleKey) => (
-              <ProFocusCard key={titleKey}>
+            {FOCUS_LOADING.map((item) => (
+              <ProFocusCard key={item.title}>
                 <div className={proChromeClass.shortcutCopy}>
-                  <FocusShortcutTitle label={text(titleKey)} unit="" />
+                  <FocusShortcutTitle
+                    label={text(item.title)}
+                    unit={describeFocusAxis(item.unit, []).unitLabel}
+                  />
                   <ProDashLoading size="small" />
                 </div>
                 <div className={proChromeClass.focusChart} />
@@ -219,12 +201,10 @@ export default function OverviewPane({
                 const points = series?.loadState === 'success' ? primaryChartSeries(series.viewData) : [];
                 return points.length ? [{ key: spark.name, label: text(spark.label), data: points }] : [];
               }));
-              const axisUnit = sparks[0]
-                ? describeFocusAxis(
-                  sparks[0].unit,
-                  seriesSampleValues(clipChartDataToWindow(plotted, chartWindow))
-                ).unitLabel
-                : '';
+              const axisUnit = describeFocusAxis(
+                SPARK_METRIC[card.key][0].unit,
+                seriesSampleValues(clipChartDataToWindow(plotted, chartWindow))
+              ).unitLabel;
               return (
                 <ProFocusCard key={card.key}>
                   <div className={proChromeClass.shortcutCopy}>

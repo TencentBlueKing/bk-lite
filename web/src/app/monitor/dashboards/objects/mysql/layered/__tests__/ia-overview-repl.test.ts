@@ -68,12 +68,10 @@ describe('mysql overview replication KPI', () => {
     expect(MYSQL_HEALTH_METRICS).not.toContain('mysql_buffer_pool_hit_ratio');
     expect(MYSQL_HEALTH_METRICS).toEqual(expect.arrayContaining([...MYSQL_ROLE_METRICS]));
     expect(MYSQL_FOCUS_METRICS).toEqual([
-      'mysql_process_list_threads_waiting_for_lock',
-      'mysql_aborted_connects_rate',
-      'mysql_aborted_clients_rate',
-      'mysql_tmp_disk_table_ratio',
+      'mysql_threads_running',
+      'mysql_buffer_pool_hit_ratio',
       'mysql_innodb_row_lock_waits_rate',
-      'mysql_table_locks_waited_rate'
+      'mysql_tmp_disk_table_ratio'
     ]);
     expect(REPL_LAG_WARN_S).toBe(30);
     expect(REPL_LAG_CRIT_S).toBe(300);
@@ -125,62 +123,95 @@ describe('mysql overview replication KPI', () => {
 });
 
 describe('mysql overview focus cards', () => {
-  it('always returns four exception cards and switches the fourth by role', () => {
-    const replica = buildMysqlFocusCards(replicaMap(12, 1, 1, {
-      mysql_innodb_row_lock_waits_rate: gauge('mysql_innodb_row_lock_waits_rate', 0.5),
-      mysql_innodb_row_lock_time_avg: gauge('mysql_innodb_row_lock_time_avg', 12)
-    }), {}, text);
-    expect(replica).toHaveLength(4);
-    expect(replica.map((card) => card.key)).toEqual(['lockWait', 'aborted', 'tmpDisk', 'rowLock']);
-    expect(replica[0].value).toBe('—');
-    expect(replica[0].subtitle).toBe('未采集');
-    expect(replica[3].label).toBe('行锁等待');
-    expect(replica[3].tab).toBe('performance');
-    expect(replica[3].anchor).toBe('scan-lock');
-    expect(replica[3].hint).toBe('查看锁');
-    expect(replica[3].value).toBe('0.50');
-    expect(replica[3].subtitle).toBe('平均 12 ms');
-    expect(replica[3].tone).toBeUndefined();
+  const four = {
+    mysql_threads_running: gauge('mysql_threads_running', 4),
+    mysql_buffer_pool_hit_ratio: gauge('mysql_buffer_pool_hit_ratio', 96),
+    mysql_innodb_row_lock_waits_rate: gauge('mysql_innodb_row_lock_waits_rate', 0.5),
+    mysql_innodb_row_lock_time_avg: gauge('mysql_innodb_row_lock_time_avg', 12),
+    mysql_tmp_disk_table_ratio: gauge('mysql_tmp_disk_table_ratio', 12)
+  };
+
+  it('keeps the same four cards for replica and primary', () => {
+    const replica = buildMysqlFocusCards(replicaMap(12, 1, 1, four), {}, text);
+    expect(replica.map((card) => card.key)).toEqual(['active', 'bufferHit', 'rowLock', 'tmpDisk']);
+    expect(replica.map((card) => card.label)).toEqual(['活跃会话', '缓冲池命中', '行锁等待', '临时表落盘']);
+    expect(replica.map((card) => card.hint)).toEqual(['查看连接', '查看缓冲池', '查看锁', '查看锁']);
+    expect(replica.map((card) => card.anchor)).toEqual(['connections', 'buffer', 'scan-lock', 'scan-lock']);
+    expect(replica.map((card) => card.tab)).toEqual(['performance', 'performance', 'performance', 'performance']);
+    expect(replica[0].value).toBe('4');
+    expect(replica[0].tone).toBeUndefined();
+    expect(replica[1].value).toBe('96.0');
+    expect(replica[1].tone).toBeUndefined();
+    expect(replica[2].value).toBe('0.50');
+    expect(replica[2].subtitle).toBe('平均 12 ms');
+    expect(replica[2].tone).toBe(HOST_THRESHOLD_COLOR.warn);
+    expect(replica[3].value).toBe('12.0');
+    expect(replica[3].tone).toBe(HOST_THRESHOLD_COLOR.warn);
+    expect(replica.every((card) => !card.value.endsWith('%') && !card.value.includes('次/秒'))).toBe(true);
 
     const primary = buildMysqlFocusCards({
       mysql_slaves_connected: gauge('mysql_slaves_connected', 2),
-      mysql_table_locks_waited_rate: gauge('mysql_table_locks_waited_rate', 0.4)
+      ...four
     }, {}, text);
-    expect(primary).toHaveLength(4);
-    expect(primary[3].key).toBe('tableLock');
-    expect(primary[3].tab).toBe('performance');
-    expect(primary[3].anchor).toBe('scan-lock');
-    expect(primary[3].tone).toBe(HOST_THRESHOLD_COLOR.warn);
+    expect(primary.map((card) => card.key)).toEqual(replica.map((card) => card.key));
+    expect(primary.map((card) => card.anchor)).toEqual(replica.map((card) => card.anchor));
   });
 
-  it('applies lock-wait and replica-lag threshold boundaries', () => {
-    const lockNone = buildMysqlFocusCards({
-      mysql_process_list_threads_waiting_for_lock: gauge('mysql_process_list_threads_waiting_for_lock', 0)
-    }, {}, text)[0];
-    expect(lockNone.tone).toBeUndefined();
+  it('holds a placeholder when a focus metric is missing', () => {
+    const cards = buildMysqlFocusCards({}, {}, text);
+    expect(cards).toHaveLength(4);
+    expect(cards.map((card) => card.key)).toEqual(['active', 'bufferHit', 'rowLock', 'tmpDisk']);
+    cards.forEach((card) => {
+      expect(card.value).toBe('—');
+      expect(card.subtitle).toBe('未采集');
+      expect(card.spark).toBeUndefined();
+      expect(card.tone).toBeUndefined();
+    });
+  });
 
-    const lockWarn = buildMysqlFocusCards({
-      mysql_process_list_threads_waiting_for_lock: gauge('mysql_process_list_threads_waiting_for_lock', 1)
-    }, {}, text)[0];
-    expect(lockWarn.tone).toBe(HOST_THRESHOLD_COLOR.warn);
+  it('colors buffer hit, row-lock rate, and temp-table disk ratio on the existing bands', () => {
+    const toneOf = (key: string, extra: Record<string, ReturnType<typeof gauge>>) => (
+      buildMysqlFocusCards(extra, {}, text).find((card) => card.key === key)!
+    );
 
-    const lockCrit = buildMysqlFocusCards({
-      mysql_process_list_threads_waiting_for_lock: gauge('mysql_process_list_threads_waiting_for_lock', 5)
-    }, {}, text)[0];
-    expect(lockCrit.tone).toBe(HOST_THRESHOLD_COLOR.crit);
+    expect(toneOf('active', {
+      mysql_threads_running: gauge('mysql_threads_running', 80)
+    }).tone).toBeUndefined();
 
-    const rowQuiet = buildMysqlFocusCards(replicaMap(0, 1, 1, {
+    expect(toneOf('bufferHit', {
+      mysql_buffer_pool_hit_ratio: gauge('mysql_buffer_pool_hit_ratio', 95)
+    }).tone).toBeUndefined();
+    expect(toneOf('bufferHit', {
+      mysql_buffer_pool_hit_ratio: gauge('mysql_buffer_pool_hit_ratio', 94.9)
+    }).tone).toBe(HOST_THRESHOLD_COLOR.warn);
+    expect(toneOf('bufferHit', {
+      mysql_buffer_pool_hit_ratio: gauge('mysql_buffer_pool_hit_ratio', 89.9)
+    }).tone).toBe(HOST_THRESHOLD_COLOR.crit);
+
+    const rowQuiet = toneOf('rowLock', {
       mysql_innodb_row_lock_waits_rate: gauge('mysql_innodb_row_lock_waits_rate', 0)
-    }), {}, text)[3];
-    expect(rowQuiet.key).toBe('rowLock');
+    });
+    expect(rowQuiet.value).toBe('0.00');
     expect(rowQuiet.tone).toBeUndefined();
+    expect(rowQuiet.subtitle).toBeUndefined();
 
-    const rowActive = buildMysqlFocusCards(replicaMap(0, 1, 1, {
-      mysql_innodb_row_lock_waits_rate: gauge('mysql_innodb_row_lock_waits_rate', 1.2)
-    }), {}, text)[3];
-    expect(rowActive.key).toBe('rowLock');
+    const rowActive = toneOf('rowLock', {
+      mysql_innodb_row_lock_waits_rate: gauge('mysql_innodb_row_lock_waits_rate', 1.2),
+      mysql_innodb_row_lock_time_avg: gauge('mysql_innodb_row_lock_time_avg', 12)
+    });
     expect(rowActive.value).toBe('1.20');
-    expect(rowActive.tone).toBeUndefined();
+    expect(rowActive.tone).toBe(HOST_THRESHOLD_COLOR.warn);
+    expect(rowActive.subtitle).toBe('平均 12 ms');
+
+    expect(toneOf('tmpDisk', {
+      mysql_tmp_disk_table_ratio: gauge('mysql_tmp_disk_table_ratio', 9.9)
+    }).tone).toBeUndefined();
+    expect(toneOf('tmpDisk', {
+      mysql_tmp_disk_table_ratio: gauge('mysql_tmp_disk_table_ratio', 10)
+    }).tone).toBe(HOST_THRESHOLD_COLOR.warn);
+    expect(toneOf('tmpDisk', {
+      mysql_tmp_disk_table_ratio: gauge('mysql_tmp_disk_table_ratio', 25)
+    }).tone).toBe(HOST_THRESHOLD_COLOR.crit);
   });
 });
 

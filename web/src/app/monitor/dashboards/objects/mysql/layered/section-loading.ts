@@ -41,11 +41,10 @@ export const MYSQL_HEALTH_METRICS = [
   'mysql_replication_source_log_pos'
 ] as const;
 
+/** 重点关注四卡。主从同一套；缺采也占位，不按角色换卡。 */
 export const MYSQL_FOCUS_METRICS = [
-  'mysql_process_list_threads_waiting_for_lock',
-  'mysql_aborted_connects_rate',
-  'mysql_aborted_clients_rate',
-  'mysql_tmp_disk_table_ratio',
+  'mysql_threads_running',
+  'mysql_buffer_pool_hit_ratio',
   'mysql_innodb_row_lock_waits_rate',
-  'mysql_table_locks_waited_rate'
+  'mysql_tmp_disk_table_ratio'
 ] as const;

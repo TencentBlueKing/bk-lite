@@ -369,8 +369,6 @@ const formatRate = (value: number) => {
   return formatted.unit === '/s' ? formatted.value : `${formatted.value}${formatted.unit}`;
 };
 
-const formatPercent = (value: number) => `${Math.min(100, Math.max(0, value)).toFixed(1)}%`;
-
 const KPI_ORDER: MysqlKpiCard['key'][] = [
   'connections',
   'qps',
@@ -692,13 +690,15 @@ export const buildMysqlOverviewKpis = (
   return KPI_ORDER.flatMap((key) => cards.filter((card) => card.key === key));
 };
 
-export type MysqlFocusSpark = 'lockWait' | 'aborted' | 'tmpDisk' | 'slow' | 'tableLock' | 'rowLock';
-export type MysqlFocusAnchor = 'scan-lock' | 'quality';
+export type MysqlFocusSpark = 'active' | 'bufferHit' | 'rowLock' | 'tmpDisk';
+export type MysqlFocusAnchor = 'connections' | 'buffer' | 'scan-lock';
 
 export interface MysqlFocusCard {
-  key: 'lockWait' | 'aborted' | 'tmpDisk' | 'slow' | 'tableLock' | 'rowLock';
+  key: MysqlFocusSpark;
   label: string;
   value: string;
+  /** 已采集的原始值。缺采没有，主值保持「—」。 */
+  valueNumber?: number;
   subtitle?: string;
   tone?: string;
   delta?: string;
@@ -740,16 +740,28 @@ const uncollectedFocus = (
 });
 
 const collectedFocus = (
-  card: Omit<MysqlFocusCard, 'subtitle'> & { valueNumber: number; previousNumber: number | null }
+  card: Omit<MysqlFocusCard, 'subtitle' | 'valueNumber'> & {
+    valueNumber: number;
+    previousNumber: number | null;
+    /** 升高或降低算变差时，才把涨跌幅涂红。不传则不涂。 */
+    deltaToneWhen?: 'up' | 'down';
+  }
 ): MysqlFocusCard => {
   const delta = card.previousNumber == null ? null : rateDelta(card.valueNumber, card.previousNumber);
+  const previous = card.previousNumber || 0;
+  const worse = card.deltaToneWhen === 'up'
+    ? card.valueNumber > previous
+    : card.deltaToneWhen === 'down'
+      ? card.valueNumber < previous
+      : false;
   return {
     key: card.key,
     label: card.label,
     value: card.value,
+    valueNumber: card.valueNumber,
     tone: card.tone,
     delta: delta || undefined,
-    deltaTone: delta && card.valueNumber > (card.previousNumber || 0) ? 'var(--color-fail)' : undefined,
+    deltaTone: delta && worse ? 'var(--color-fail)' : undefined,
     hint: card.hint,
     tab: card.tab,
     anchor: card.anchor,
@@ -757,17 +769,16 @@ const collectedFocus = (
   };
 };
 
-const lockWaitLevel = (value: number): TabAlertLevel => {
-  if (value >= 5) return 'critical';
-  if (value >= 1) return 'warn';
+/** 偏低告警。查询已是 0–100 的百分数，没有另套产品阈值时用这档。 */
+const bufferHitLevel = (value: number): TabAlertLevel => {
+  if (value < 90) return 'critical';
+  if (value < 95) return 'warn';
   return 'none';
 };
 
-const abortedLevel = (value: number): TabAlertLevel => {
-  if (value >= 1) return 'critical';
-  if (value > 0) return 'warn';
-  return 'none';
-};
+const rowLockRateLevel = (value: number): TabAlertLevel => (
+  value > 0 ? 'warn' : 'none'
+);
 
 const tmpDiskLevel = (value: number): TabAlertLevel => {
   if (value >= 25) return 'critical';
@@ -775,116 +786,111 @@ const tmpDiskLevel = (value: number): TabAlertLevel => {
   return 'none';
 };
 
-const tableLockLevel = (value: number): TabAlertLevel => (
-  value > 0 ? 'warn' : 'none'
-);
+/** 与重点关注 Y 轴同一套纯数字，单位只留在标题括号。 */
+const formatFocusCount = (value: number) => {
+  const abs = Math.abs(value);
+  if (abs >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return value.toFixed(abs >= 100 ? 0 : 1).replace(/\.0$/, '');
+};
 
-/** 重点关注恒为 4 张异常信号卡。缺采占位，不让卡数跳动。 */
+const formatFocusPercent = (value: number) => formatMetricValue(value, 'percent').value;
+
+const focusSlot = (spec: {
+  key: MysqlFocusSpark;
+  label: string;
+  hint: string;
+  anchor: MysqlFocusAnchor;
+  value: number | null;
+  previous: number | null;
+  format: (value: number) => string;
+  tone?: string;
+  subtitle?: string;
+  deltaToneWhen?: 'up' | 'down';
+}): MysqlFocusCard => {
+  if (spec.value == null) {
+    return uncollectedFocus(spec.key, spec.label, spec.hint, 'performance', spec.anchor);
+  }
+  return {
+    ...collectedFocus({
+      key: spec.key,
+      label: spec.label,
+      value: spec.format(spec.value),
+      valueNumber: spec.value,
+      previousNumber: spec.previous,
+      tone: spec.tone,
+      hint: spec.hint,
+      tab: 'performance',
+      anchor: spec.anchor,
+      spark: spec.key,
+      deltaToneWhen: spec.deltaToneWhen
+    }),
+    subtitle: spec.subtitle
+  };
+};
+
+/** 重点关注恒为 4 张。主从同一套，缺采占位，不让卡数跳动。 */
 export const buildMysqlFocusCards = (
   metricMap: Record<string, MetricSeries | undefined>,
   previousMetricMap: Record<string, MetricSeries | undefined>,
   text: MysqlText
 ): MysqlFocusCard[] => {
-  const lockWait = finite(latestNumber(metricMap.mysql_process_list_threads_waiting_for_lock));
-  const abortedConnects = finite(latestNumber(metricMap.mysql_aborted_connects_rate));
-  const abortedClients = finite(latestNumber(metricMap.mysql_aborted_clients_rate));
-  const aborted = abortedConnects == null && abortedClients == null
-    ? null
-    : (abortedConnects || 0) + (abortedClients || 0);
-  const tmpDisk = finite(latestNumber(metricMap.mysql_tmp_disk_table_ratio));
-  const replica = readMysqlRoleBlock(metricMap)?.kind === 'replica';
+  const active = finite(latestNumber(metricMap.mysql_threads_running));
+  const bufferHit = finite(latestNumber(metricMap.mysql_buffer_pool_hit_ratio));
   const rowLock = finite(latestNumber(metricMap.mysql_innodb_row_lock_waits_rate));
   const rowLockTime = finite(latestNumber(metricMap.mysql_innodb_row_lock_time_avg));
-  const tableLock = finite(latestNumber(metricMap.mysql_table_locks_waited_rate));
-  const previousLockWait = finite(latestNumber(previousMetricMap.mysql_process_list_threads_waiting_for_lock));
-  const previousAbortedConnects = finite(latestNumber(previousMetricMap.mysql_aborted_connects_rate));
-  const previousAbortedClients = finite(latestNumber(previousMetricMap.mysql_aborted_clients_rate));
-  const previousAborted = previousAbortedConnects == null && previousAbortedClients == null
-    ? null
-    : (previousAbortedConnects || 0) + (previousAbortedClients || 0);
-  const previousTmpDisk = finite(latestNumber(previousMetricMap.mysql_tmp_disk_table_ratio));
+  const tmpDisk = finite(latestNumber(metricMap.mysql_tmp_disk_table_ratio));
+  const previousActive = finite(latestNumber(previousMetricMap.mysql_threads_running));
+  const previousBufferHit = finite(latestNumber(previousMetricMap.mysql_buffer_pool_hit_ratio));
   const previousRowLock = finite(latestNumber(previousMetricMap.mysql_innodb_row_lock_waits_rate));
-  const previousTableLock = finite(latestNumber(previousMetricMap.mysql_table_locks_waited_rate));
+  const previousTmpDisk = finite(latestNumber(previousMetricMap.mysql_tmp_disk_table_ratio));
   const rowLockTimeText = rowLockTime == null
     ? undefined
     : text('rowLockAvg', { value: formatMetricValue(rowLockTime, 'ms').value });
 
-  const fourth: MysqlFocusCard = replica
-    ? (rowLock == null
-      ? uncollectedFocus('rowLock', text('focusRowLock'), text('viewScanLock'), 'performance', 'scan-lock')
-      : {
-        ...collectedFocus({
-          key: 'rowLock',
-          label: text('focusRowLock'),
-          value: formatRate(rowLock),
-          valueNumber: rowLock,
-          previousNumber: previousRowLock,
-          hint: text('viewScanLock'),
-          tab: 'performance',
-          anchor: 'scan-lock',
-          spark: 'rowLock'
-        }),
-        subtitle: rowLockTimeText
-      })
-    : (tableLock == null
-      ? uncollectedFocus('tableLock', text('focusTableLock'), text('viewScanLock'), 'performance', 'scan-lock')
-      : collectedFocus({
-        key: 'tableLock',
-        label: text('focusTableLock'),
-        value: formatRate(tableLock),
-        valueNumber: tableLock,
-        previousNumber: previousTableLock,
-        tone: focusTone(tableLockLevel(tableLock)),
-        hint: text('viewScanLock'),
-        tab: 'performance',
-        anchor: 'scan-lock',
-        spark: 'tableLock'
-      }));
-
   return [
-    lockWait == null
-      ? uncollectedFocus('lockWait', text('focusLockWait'), text('viewScanLock'), 'performance', 'scan-lock')
-      : collectedFocus({
-        key: 'lockWait',
-        label: text('focusLockWait'),
-        value: formatCount(lockWait),
-        valueNumber: lockWait,
-        previousNumber: previousLockWait,
-        tone: focusTone(lockWaitLevel(lockWait)),
-        hint: text('viewScanLock'),
-        tab: 'performance',
-        anchor: 'scan-lock',
-        spark: 'lockWait'
-      }),
-    aborted == null
-      ? uncollectedFocus('aborted', text('focusAborted'), text('viewQuality'), 'performance', 'quality')
-      : collectedFocus({
-        key: 'aborted',
-        label: text('focusAborted'),
-        value: formatRate(aborted),
-        valueNumber: aborted,
-        previousNumber: previousAborted,
-        tone: focusTone(abortedLevel(aborted)),
-        hint: text('viewQuality'),
-        tab: 'performance',
-        anchor: 'quality',
-        spark: 'aborted'
-      }),
-    tmpDisk == null
-      ? uncollectedFocus('tmpDisk', text('focusTmpDisk'), text('viewScanLock'), 'performance', 'scan-lock')
-      : collectedFocus({
-        key: 'tmpDisk',
-        label: text('focusTmpDisk'),
-        value: formatPercent(tmpDisk),
-        valueNumber: tmpDisk,
-        previousNumber: previousTmpDisk,
-        tone: focusTone(tmpDiskLevel(tmpDisk)),
-        hint: text('viewScanLock'),
-        tab: 'performance',
-        anchor: 'scan-lock',
-        spark: 'tmpDisk'
-      }),
-    fourth
+    focusSlot({
+      key: 'active',
+      label: text('focusActive'),
+      hint: text('viewConnections'),
+      anchor: 'connections',
+      value: active,
+      previous: previousActive,
+      format: formatFocusCount
+    }),
+    focusSlot({
+      key: 'bufferHit',
+      label: text('focusBuffer'),
+      hint: text('viewBuffer'),
+      anchor: 'buffer',
+      value: bufferHit,
+      previous: previousBufferHit,
+      format: formatFocusPercent,
+      tone: bufferHit == null ? undefined : focusTone(bufferHitLevel(bufferHit)),
+      deltaToneWhen: 'down'
+    }),
+    focusSlot({
+      key: 'rowLock',
+      label: text('focusRowLock'),
+      hint: text('viewScanLock'),
+      anchor: 'scan-lock',
+      value: rowLock,
+      previous: previousRowLock,
+      format: formatRate,
+      tone: rowLock == null ? undefined : focusTone(rowLockRateLevel(rowLock)),
+      subtitle: rowLockTimeText,
+      deltaToneWhen: 'up'
+    }),
+    focusSlot({
+      key: 'tmpDisk',
+      label: text('focusTmpDisk'),
+      hint: text('viewScanLock'),
+      anchor: 'scan-lock',
+      value: tmpDisk,
+      previous: previousTmpDisk,
+      format: formatFocusPercent,
+      tone: tmpDisk == null ? undefined : focusTone(tmpDiskLevel(tmpDisk)),
+      deltaToneWhen: 'up'
+    })
   ].map((card) => (
     card.value === EMPTY_VALUE ? { ...card, subtitle: text('notCollected') } : card
   ));
@@ -1292,7 +1298,10 @@ export const MYSQL_PERF_AUX_METRICS = [
   'mysql_innodb_rows_updated_rate',
   'mysql_innodb_rows_deleted_rate',
   'mysql_aborted_connects_rate',
-  'mysql_aborted_clients_rate'
+  'mysql_aborted_clients_rate',
+  // 扫描与锁区仍画这两条。重点关注不再引用。
+  'mysql_process_list_threads_waiting_for_lock',
+  'mysql_table_locks_waited_rate'
 ] as const;
 
 export const replicationExtrasPending = (
