@@ -29,7 +29,7 @@ import ThinTimeSeries from './thin-time-series';
 import FocusShortcutTitle from './focus-shortcut-title';
 import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from './focus-axis';
 import { useProTimeWindow } from './pro-time-window';
-import type { HostSurfaceAlerts } from './tab-level';
+import { loadPerCore, type HostSurfaceAlerts } from './tab-level';
 import {
   formatPercent,
   formatPlain,
@@ -144,7 +144,6 @@ export default function OverviewPane({
   netRows,
   netLoading = false,
   processRows,
-  processReady,
   processLoading = false,
   alertCount,
   alertEvents = [],
@@ -178,6 +177,8 @@ export default function OverviewPane({
   );
   const mem = memoryUsage.usedNow;
   const load = latestNumber(metrics.system_load1);
+  const cpuCores = latestNumber(metrics.cpu_n);
+  const loadEachCore = loadPerCore(load, cpuCores);
   const uptime = latestNumber(metrics.system_uptime);
   const showLoad = metricHasPoints(metrics.system_load1);
   const diskUsagePoints = useMemo(() => hostDiskUsagePoints(diskRows), [diskRows]);
@@ -208,7 +209,13 @@ export default function OverviewPane({
         value: formatPlain(load),
         tone: LOAD1_SERIES_COLOR,
         alertLevel: alerts.load,
-        fold: alerts.load === 'warn' ? 'outline' : undefined
+        fold: alerts.load === 'warn' ? 'outline' : undefined,
+        subtitle: cpuCores != null && cpuCores > 0 && loadEachCore != null
+          ? hostCategoryText(t, 'loadCoresAside', {
+            cores: formatPlain(cpuCores, 0),
+            perCore: formatPlain(loadEachCore)
+          })
+          : undefined
       });
     }
     items.push({
@@ -244,9 +251,11 @@ export default function OverviewPane({
     alertCount,
     alertsOpen,
     cpu,
+    cpuCores,
     diskCurrent,
     mountName,
     load,
+    loadEachCore,
     mem,
     alerts,
     onOpenAlerts,
@@ -323,7 +332,7 @@ export default function OverviewPane({
       </ProSection>
 
       <ProSection title="重点关注">
-      <div className={proChromeClass.shortcutGrid}>
+      <div className={`${proChromeClass.shortcutGrid} ${styles.shortcutGrid3}`}>
         <ProFocusCard key="disk">
           <div className={proChromeClass.shortcutCopy}>
             <FocusShortcutTitle
@@ -392,42 +401,40 @@ export default function OverviewPane({
             />
           ) : null}
         </ProFocusCard>
-        {processReady ? (
-          <ProFocusCard key="process">
-            <div className={proChromeClass.shortcutCopy}>
-              <FocusShortcutTitle
-                label="CPU 占用最高"
-                unit={processFocus?.unitLabel}
-              />
-              {topProcess ? (
-                <>
-                  <div className={proChromeClass.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
-                  <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
-                    {processFocus ? formatFocusHeadline(processFocus, readingOfRow(topProcess, 'process_cpu_usage')) : '--'}
-                  </div>
-                  <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
-                    查看进程
-                  </button>
-                </>
-              ) : processLoading ? (
-                <ProDashLoading size="small" />
-              ) : (
-                <div className={proChromeClass.shortcutSub}>暂无进程数据</div>
-              )}
-            </div>
+        <ProFocusCard key="process">
+          <div className={proChromeClass.shortcutCopy}>
+            <FocusShortcutTitle
+              label="CPU 占用最高"
+              unit={processFocus?.unitLabel}
+            />
             {topProcess ? (
-              <ThinTimeSeries
-                bare
-                numericAxis
-                className={proChromeClass.focusChart}
-                title=""
-                unit="percent"
-                data={processTrend}
-                legends={[{ label: 'CPU', color: HOST_SERIES_COLOR.cpu }]}
-              />
-            ) : null}
-          </ProFocusCard>
-        ) : null}
+              <>
+                <div className={proChromeClass.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
+                <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
+                  {processFocus ? formatFocusHeadline(processFocus, readingOfRow(topProcess, 'process_cpu_usage')) : '--'}
+                </div>
+                <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
+                  查看进程
+                </button>
+              </>
+            ) : processLoading ? (
+              <ProDashLoading size="small" />
+            ) : (
+              <div className={proChromeClass.shortcutSub}>暂无进程数据</div>
+            )}
+          </div>
+          {topProcess ? (
+            <ThinTimeSeries
+              bare
+              numericAxis
+              className={proChromeClass.focusChart}
+              title=""
+              unit="percent"
+              data={processTrend}
+              legends={[{ label: 'CPU', color: HOST_SERIES_COLOR.cpu }]}
+            />
+          ) : null}
+        </ProFocusCard>
       </div>
       </ProSection>
 

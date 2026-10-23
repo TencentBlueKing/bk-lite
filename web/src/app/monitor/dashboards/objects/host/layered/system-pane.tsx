@@ -30,12 +30,14 @@ import styles from './layered.module.scss';
 /** system / steal 没有对应的序列 token，色值跟构成表。 */
 const CPU_SYSTEM_COLOR = '#86909C';
 const CPU_STEAL_COLOR = '#F5319D';
+const CPU_SOFTIRQ_COLOR = HOST_PALETTE.cyan;
 
 const CPU_BREAKDOWN = [
   { key: 'cpu_usage_user_total', label: 'user', color: HOST_SERIES_COLOR.cpu },
   { key: 'cpu_usage_system_total', label: 'system', color: CPU_SYSTEM_COLOR },
   { key: 'cpu_usage_iowait_total', label: 'iowait', color: HOST_SERIES_COLOR.load1 },
   { key: 'cpu_usage_irq_total', label: 'irq', color: HOST_SERIES_COLOR.diskUsed },
+  { key: 'cpu_usage_softirq_total', label: 'softirq', color: CPU_SOFTIRQ_COLOR },
   { key: 'cpu_usage_steal_total', label: 'steal', color: CPU_STEAL_COLOR }
 ];
 
@@ -314,6 +316,8 @@ export default function SystemPane({
     metrics.cpu_usage_iowait_total?.loadState,
     metrics.cpu_usage_irq_total?.viewData,
     metrics.cpu_usage_irq_total?.loadState,
+    metrics.cpu_usage_softirq_total?.viewData,
+    metrics.cpu_usage_softirq_total?.loadState,
     metrics.cpu_usage_steal_total?.viewData,
     metrics.cpu_usage_steal_total?.loadState
   ]);
@@ -548,6 +552,7 @@ export default function SystemPane({
     metrics.cpu_usage_system_total?.viewData,
     metrics.cpu_usage_iowait_total?.viewData,
     metrics.cpu_usage_irq_total?.viewData,
+    metrics.cpu_usage_softirq_total?.viewData,
     metrics.cpu_usage_steal_total?.viewData
   ]);
   const gpuMemReadingOf = (row: EntityTableRow) => {
@@ -695,7 +700,7 @@ export default function SystemPane({
           {gpuRows.map((row) => {
             const bandTitle = gpuRows.length > 1 ? gpuCardTitle(row, 'GPU') : 'GPU';
             return (
-              <div key={row.key}>
+              <div key={row.key} className={styles.gpuBand}>
                 <div className={styles.gpuBandTitle}>{bandTitle}</div>
                 <div className={styles.gpuRow}>
                   {GPU_CHARTS.map((item) => {
@@ -728,12 +733,14 @@ export default function SystemPane({
         </div>
       ) : gpuLoading ? (
         <div className={styles.detailFull} data-surface="gpu">
-          <div className={styles.gpuBandTitle}>GPU</div>
-          <span
-            className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
-            aria-busy="true"
-            aria-label="加载中"
-          />
+          <div className={styles.gpuBand}>
+            <div className={styles.gpuBandTitle}>GPU</div>
+            <span
+              className="block h-4 w-16 rounded bg-[var(--color-fill-2)]"
+              aria-busy="true"
+              aria-label="加载中"
+            />
+          </div>
         </div>
       ) : null}
     </>

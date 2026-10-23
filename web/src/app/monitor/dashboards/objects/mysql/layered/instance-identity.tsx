@@ -7,11 +7,12 @@ import { mysqlCategoryText } from './mysql-copy';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import pro from './pro.module.scss';
 
-const ROLE_COPY: Record<MysqlProHeader['pill'], 'rolePrimary' | 'roleReplica' | 'roleGr' | 'roleGalera'> = {
+const ROLE_COPY: Record<MysqlProHeader['pill'], 'rolePrimary' | 'roleReplica' | 'roleGr' | 'roleGalera' | 'roleUnknown'> = {
   主库: 'rolePrimary',
   从库: 'roleReplica',
   GR: 'roleGr',
-  Galera: 'roleGalera'
+  Galera: 'roleGalera',
+  角色未知: 'roleUnknown'
 };
 
 /** 从库可写才把读写改成警示字色，仍是灰字链里的一段，不是胶囊。 */
@@ -61,16 +62,19 @@ export function MysqlInstanceBadges({
         {mysqlCategoryText(t, ROLE_COPY[header.pill])}
       </span>
     );
-    parts.push(
-      <span
-        key="access"
-        data-mysql-identity-slot="access"
-        className={writableReplica(header) ? pro.metaWarn : undefined}
-        data-warning={writableReplica(header) ? '' : undefined}
-      >
-        {mysqlCategoryText(t, accessKey)}
-      </span>
-    );
+    const showAccess = header.pill !== '角色未知' || header.aside === '只读';
+    if (showAccess) {
+      parts.push(
+        <span
+          key="access"
+          data-mysql-identity-slot="access"
+          className={writableReplica(header) ? pro.metaWarn : undefined}
+          data-warning={writableReplica(header) ? '' : undefined}
+        >
+          {mysqlCategoryText(t, accessKey)}
+        </span>
+      );
+    }
     parts.push(
       <span key="version" data-mysql-identity-slot="version">
         {versionText}
