@@ -15,7 +15,7 @@ const NODE_TYPE_ICON: Record<WorkflowNodeType, string> = {
 };
 
 const ACTION_ATOM_ICON: Record<string, string> = {
-  bklite_data_transform: 'mti-qiehuan1',
+  bklite_data_transform: 'monitor',
 };
 
 const ACTION_CATEGORY_ICON: Record<string, string> = {

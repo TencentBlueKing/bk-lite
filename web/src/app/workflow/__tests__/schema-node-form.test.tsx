@@ -218,6 +218,12 @@ describe('原子 Schema 参数表单', () => {
     expect(editor.getAttribute('data-height')).toBe('160px');
     await user.type(editor, 'SELECT 1');
     expect((editor as HTMLTextAreaElement).value).toBe('SELECT 1');
+    fireEvent.click(screen.getByRole('button', { name: 'SQL 写法说明' }));
+    expect(screen.getByRole('dialog', { name: 'SQL 写法说明' }).className).toContain('customDrawer');
+    expect(screen.getByText('输入位置')).not.toBeNull();
+    expect(screen.getAllByText(/input\.payload/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/json_each 将数组拆成多行/)).not.toBeNull();
+    expect(screen.getByText('写入限制')).not.toBeNull();
   });
 
   it('只读时文本、数字、下拉和 JSON 都不能改，拖入引用也不会写入', () => {
@@ -285,6 +291,7 @@ describe('原子 Schema 参数表单', () => {
     expect((editor as HTMLTextAreaElement).value).toBe('SELECT 1');
     expect(screen.queryByRole('button', { name: /添加查询/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /删除查询/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'SQL 写法说明' })).not.toBeNull();
   });
 
   it('超时清空后保持空白，不回填默认值', async () => {
