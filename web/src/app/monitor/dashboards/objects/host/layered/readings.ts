@@ -186,66 +186,6 @@ export const deriveMemoryUsageShares = (
   return { used, available: availableShare };
 };
 
-export interface MemoryComposeParts {
-  used: ChartData[];
-  available: ChartData[];
-  usedNow: number | null;
-  availableNow: number | null;
-  totalNow: number | null;
-  ready: boolean;
-}
-
-/**
- * 内存构成：已用 = total − available，可用 = available。
- * 只保留对齐采样点，并钳到 [0, total]，两扇区之和等于物理内存。
- * 缺任一侧不造假扇区。不用采集 mem_used / cached / buffered / shared。
- */
-export const deriveMemoryComposeParts = (
-  total: ChartData[] | undefined,
-  available: ChartData[] | undefined
-): MemoryComposeParts => {
-  const totalSeries = primaryChartSeries(total);
-  const availableRaw = primaryChartSeries(available);
-  if (!totalSeries.length || !availableRaw.length) {
-    return {
-      used: [],
-      available: [],
-      usedNow: null,
-      availableNow: null,
-      totalNow: null,
-      ready: false
-    };
-  }
-  const totals = new Map<number, number>();
-  totalSeries.forEach((point) => {
-    const time = Number(point.time);
-    const value = numericValue(point);
-    if (Number.isFinite(time) && value != null && value > 0) totals.set(time, value);
-  });
-  const used: ChartData[] = [];
-  const avail: ChartData[] = [];
-  availableRaw.forEach((point) => {
-    const time = Number(point.time);
-    const totalBytes = totals.get(time);
-    const availableBytes = numericValue(point);
-    if (!Number.isFinite(time) || totalBytes == null || availableBytes == null) return;
-    const clampedAvail = Math.min(totalBytes, Math.max(0, availableBytes));
-    used.push({ time, value1: Math.max(0, totalBytes - clampedAvail) });
-    avail.push({ time, value1: clampedAvail });
-  });
-  const usedNow = latestChartNumber(used);
-  const availableNow = latestChartNumber(avail);
-  const totalNow = latestChartNumber(totalSeries);
-  return {
-    used,
-    available: avail,
-    usedNow,
-    availableNow,
-    totalNow,
-    ready: usedNow != null && availableNow != null && totalNow != null && totalNow > 0
-  };
-};
-
 /**
  * 概览、性能和页签色点共用的内存读数。
  * 有 available/total 时已用 = 100 − 可用占比，可用是同一对比值；

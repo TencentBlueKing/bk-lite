@@ -16,7 +16,6 @@ import ThinTimeSeries from './thin-time-series';
 import type { HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
-  deriveMemoryComposeParts,
   formatPlain,
   formatSharedBytePair,
   latestNumber,
@@ -53,6 +52,13 @@ const LOAD_SERIES = [
 const CPU_SERIES_COLOR = HOST_SERIES_COLOR.cpu;
 const MEM_USED_COLOR = HOST_SERIES_COLOR.memUsed;
 const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
+
+const MEM_COMPOSITION = [
+  { key: 'mem_used', label: 'used', color: HOST_SERIES_COLOR.memUsed },
+  { key: 'mem_cached', label: 'cached', color: HOST_SERIES_COLOR.memAvailable },
+  { key: 'mem_buffered', label: 'buffered', color: HOST_SERIES_COLOR.load5 },
+  { key: 'mem_shared', label: 'shared', color: HOST_SERIES_COLOR.diskUsed }
+] as const;
 
 const GPU_CHARTS = [
   { key: 'nvidia_smi_utilization_gpu', titleKey: 'gpuUtilization' as const, unit: 'percent' as const },
@@ -489,28 +495,29 @@ export default function SystemPane({
   const swapHasSeries = swapUsedSeries.length > 0;
   const swapReading = swapUsedNow == null ? '--' : formatSharedBytePair(swapUsedNow, swapTotalNow);
   const memoryCompose = useMemo(() => {
-    const parts = deriveMemoryComposeParts(
-      metrics.mem_total?.viewData,
-      metrics.mem_available?.viewData
-    );
-    const series = [
-      ...(parts.used.length
-        ? [{ key: 'used', label: '已用', color: HOST_SERIES_COLOR.memUsed, data: parts.used }]
-        : []),
-      ...(parts.available.length
-        ? [{ key: 'available', label: '可用', color: HOST_SERIES_COLOR.memAvailable, data: parts.available }]
-        : [])
-    ];
-    const slices = parts.ready && parts.usedNow != null && parts.availableNow != null
-      ? [
-        { key: 'used', label: '已用', color: HOST_SERIES_COLOR.memUsed, bytes: parts.usedNow },
-        { key: 'available', label: '可用', color: HOST_SERIES_COLOR.memAvailable, bytes: parts.availableNow }
-      ]
-      : [];
+    const total = metrics.mem_total?.viewData;
+    const usedBytes = metricHasPoints(metrics.mem_used)
+      ? primaryChartSeries(metrics.mem_used?.viewData)
+      : subtractAligned(total, metrics.mem_available?.viewData);
+    const raw: Record<string, ChartData[]> = {
+      mem_used: usedBytes,
+      mem_cached: primaryChartSeries(metrics.mem_cached?.viewData),
+      mem_buffered: primaryChartSeries(metrics.mem_buffered?.viewData),
+      mem_shared: primaryChartSeries(metrics.mem_shared?.viewData)
+    };
+    const series = MEM_COMPOSITION.flatMap((item) => {
+      const data = raw[item.key] || [];
+      if (!data.length) return [];
+      return [{ ...item, data }];
+    });
+    const parts = series.flatMap((item) => {
+      const bytes = latestSeriesValue(item.data);
+      if (bytes == null || bytes <= 0) return [];
+      return [{ ...item, bytes }];
+    });
     return {
-      ...parts,
+      parts,
       series,
-      slices,
       trend: series.length
         ? mergeChartSeries(series.map((item) => ({ key: item.key, label: item.label, data: item.data })))
         : []
@@ -518,11 +525,20 @@ export default function SystemPane({
   }, [
     metrics.mem_available?.viewData,
     metrics.mem_available?.loadState,
+    metrics.mem_buffered?.viewData,
+    metrics.mem_buffered?.loadState,
+    metrics.mem_cached?.viewData,
+    metrics.mem_cached?.loadState,
+    metrics.mem_shared?.viewData,
+    metrics.mem_shared?.loadState,
     metrics.mem_total?.viewData,
-    metrics.mem_total?.loadState
+    metrics.mem_total?.loadState,
+    metrics.mem_used?.viewData,
+    metrics.mem_used?.loadState
   ]);
-  const composeNames = ['mem_total', 'mem_available'] as const;
-  const composeLoading = phaseFor(composeNames, memoryCompose.ready) === 'loading';
+  const memoryBytes = memoryCompose.parts.reduce((sum, item) => sum + item.bytes, 0);
+  const composeNames = ['mem_used', 'mem_cached', 'mem_buffered', 'mem_shared', 'mem_total', 'mem_available'] as const;
+  const composeLoading = phaseFor(composeNames, memoryCompose.series.length > 0) === 'loading';
   const cpuCompose = useMemo(() => {
     const series = CPU_BREAKDOWN.flatMap((item) => {
       const data = primaryChartSeries(metrics[item.key]?.viewData);
@@ -617,14 +633,14 @@ export default function SystemPane({
                 <ProDashLoading />
               </div>
             </div>
-          ) : memoryCompose.ready && memoryCompose.totalNow != null && memoryCompose.totalNow > 0 ? (
+          ) : memoryBytes > 0 ? (
             <CompositionDonut
-              slices={memoryCompose.slices.map((item) => ({
+              slices={memoryCompose.parts.map((item) => ({
                 key: item.key,
                 label: item.label,
                 color: item.color,
                 amount: item.bytes,
-                reading: `${formatBytes(item.bytes)} ${((100 * item.bytes) / memoryCompose.totalNow!).toFixed(1)}%`
+                reading: `${formatBytes(item.bytes)} ${((item.bytes / memoryBytes) * 100).toFixed(1)}%`
               }))}
             />
           ) : (
