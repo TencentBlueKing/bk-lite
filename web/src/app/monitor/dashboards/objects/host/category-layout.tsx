@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import {
-  buildCpuCoreLoad,
   buildDiskDeviceRows,
   buildLabelRows,
   buildMountDiskRows,
@@ -178,7 +177,6 @@ export default function HostCategoryLayout({
   netState,
   processReady,
   processState = EMPTY_ENTITY,
-  coreState = EMPTY_ENTITY,
   gpuState = EMPTY_ENTITY,
   categoryTab = 'overview',
   onCategoryTabChange
@@ -259,7 +257,6 @@ export default function HostCategoryLayout({
     if (byName.length) return byName;
     return buildLabelRows(gpuState.byMetric, 'uuid', 'nvidia_smi_utilization_gpu', ['name', 'index']);
   }, [gpuState.byMetric]);
-  const coreLoad = useMemo(() => buildCpuCoreLoad(coreState.byMetric), [coreState.byMetric]);
   const diskSelection = useDiskDualSelection(diskRows, diskDeviceRows, instanceKey);
   const netSelection = usePinnedRow(netRows, instanceKey);
   const processSelection = usePinnedRow(processRows, instanceKey);
@@ -369,7 +366,6 @@ export default function HostCategoryLayout({
           pendingMetricNames={dashboard.pendingMetricNames}
           onRetryMetrics={dashboard.refetchMetricNames}
           alerts={surfaceAlerts.system}
-          coreLoad={coreLoad}
           gpuRows={gpuRows}
           gpuLoading={gpuState.status === 'idle' || gpuState.status === 'loading'}
         />

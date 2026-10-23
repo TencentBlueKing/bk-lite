@@ -9,7 +9,6 @@ import { HOST_DASHBOARD_CONFIG } from './config';
 import { HOST_CATEGORY_TAB_METRIC_NAMES } from './layered/performance-scope';
 import type { HostCategoryTab } from './layered/tab-level';
 import {
-  HOST_CPU_CORE_ENTITY_QUERIES,
   HOST_DISK_ENTITY_QUERIES,
   HOST_DISK_OVERVIEW_ENTITY_QUERIES,
   HOST_GPU_ENTITY_QUERIES,
@@ -96,11 +95,6 @@ export default function HostDashboardPage() {
     enabled: categoryProcess,
     queries: processReady ? processQueries : []
   });
-  const coreState = useHostEntityMetrics({
-    ...entityArgs,
-    enabled: categorySystem && dashboard.operatingSystem !== 'windows',
-    queries: HOST_CPU_CORE_ENTITY_QUERIES
-  });
   const gpuState = useHostEntityMetrics({
     ...entityArgs,
     enabled: categorySystem,
@@ -139,7 +133,6 @@ export default function HostDashboardPage() {
     netState,
     processReady,
     processState,
-    coreState,
     gpuState,
     layout,
     onLayoutChange,

@@ -9,9 +9,8 @@ import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
-import { pointsToChartData, type CpuCoreLoad, type EntityTableRow } from '../entity-series';
+import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import { CardAlertDot, cardAlertClass, type CardAlertFold } from './card-alert';
-import CoreLoadCard from './core-load-card';
 import ThinTimeSeries from './thin-time-series';
 import type { HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
@@ -107,7 +106,6 @@ const splitMetric = (value: number | null, unit: MetricUnit) => {
 };
 
 const EMPTY_PENDING: ReadonlySet<string> = new Set();
-const EMPTY_CORE: CpuCoreLoad = { rows: [], spread: null };
 
 const loadStateOf = (
   metrics: Record<string, MetricSeries | undefined>,
@@ -271,7 +269,6 @@ export default function SystemPane({
   pendingMetricNames = EMPTY_PENDING,
   onRetryMetrics,
   alerts,
-  coreLoad = EMPTY_CORE,
   gpuRows = [],
   gpuLoading = false
 }: {
@@ -279,7 +276,6 @@ export default function SystemPane({
   pendingMetricNames?: ReadonlySet<string>;
   onRetryMetrics?: (names: string[]) => void;
   alerts: HostSurfaceAlerts['system'];
-  coreLoad?: CpuCoreLoad;
   gpuRows?: EntityTableRow[];
   gpuLoading?: boolean;
 }) {
@@ -699,11 +695,6 @@ export default function SystemPane({
           legends={[{ label: '已用', color: SWAP_SERIES_COLOR }]}
         />
       </div>
-      {coreLoad.rows.length ? (
-        <div className={styles.detailFull} data-surface="core-load">
-          <CoreLoadCard rows={coreLoad.rows} spread={coreLoad.spread} />
-        </div>
-      ) : null}
       {gpuRows.length ? (
         <div className={styles.detailFull} data-surface="gpu">
           {gpuRows.map((row) => {
