@@ -93,6 +93,8 @@ _SERVICE_UNREACHABLE_RE = re.compile(
     re.I,
 )
 _EMPTY_LIST_KEYS = ("items", "results", "rows", "series", "list", "logs", "alerts", "instances", "result")
+# 指标目录按 keyword 筛空不是「没有数据」。可以换 keyword，由工具让用户选，而不是逐个试。
+_EMPTY_RETRY_WITH_DIFFERENT_ARGS = frozenset({"monitor_list_object_metrics"})
 _EMPTY_COUNT_KEYS = ("count", "total", "hits", "total_count", "hit_count")
 
 
@@ -204,6 +206,8 @@ def repeated_or_search_denial(request: Any) -> ToolMessage | None:
             )
         if _is_empty_success(content):
             saw_empty = True
+    if saw_empty and name in _EMPTY_RETRY_WITH_DIFFERENT_ARGS:
+        return None
     if saw_empty:
         return _retry_denial(
             name,

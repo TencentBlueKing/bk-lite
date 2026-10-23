@@ -960,30 +960,9 @@ def test_monitor_list_object_metrics_keyword_miss_asks_user_instead_of_retrying(
     assert result["choices"] == ["Memory Usage (mem_used_percent)", "CPU Usage (cpu_usage_total)"]
     hint = result["_next_step_hint"]
     assert "request_user_choice" in hint
-    assert "不要换 keyword" in hint
+    assert "可以换 keyword" in hint
+    assert "不要逐个试" in hint
     assert "再列一次" not in hint
-
-
-def test_monitor_list_object_metrics_keyword_miss_caps_choices(mocker):
-    from apps.opspilot.metis.llm.tools.monitor import utils
-    from apps.opspilot.metis.llm.tools.monitor.metrics import _METRIC_CHOICE_LIMIT, monitor_list_object_metrics
-
-    catalog = [{"name": f"metric_{index}", "display_name": f"指标{index}", "unit": "percent"} for index in range(35)]
-    rpc = mocker.Mock()
-    rpc.monitor_metrics.return_value = {"result": True, "data": catalog}
-    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
-
-    result = monitor_list_object_metrics.invoke(
-        {"monitor_obj_id": "12", "keyword": "不存在的词"},
-        config=_runtime_config(),
-    )
-
-    assert result["data"] == []
-    assert len(result["choices"]) == _METRIC_CHOICE_LIMIT
-    assert result["choices"][0] == "指标0 (metric_0)"
-    assert "metric_30" not in " ".join(result["choices"])
-    assert f"只列出前 {_METRIC_CHOICE_LIMIT} 个" in result["_next_step_hint"]
-    assert "不要换 keyword" in result["_next_step_hint"]
 
 
 def test_monitor_list_object_metrics_uses_metric_name_from_user_text(mocker):

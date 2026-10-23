@@ -186,8 +186,8 @@ def test_empty_result_blocks_any_tool_retry():
     assert "不是参数错误" in denied.content
 
 
-def test_metric_catalog_keyword_miss_blocks_a_different_keyword():
-    """没命中只许 request_user_choice，不许换 keyword 再调本工具。"""
+def test_metric_catalog_keyword_miss_allows_a_different_keyword():
+    """目录没命中可以换 keyword。不要逐个试指标，由工具让用户选。"""
     request = type(
         "Req",
         (),
@@ -202,10 +202,7 @@ def test_metric_catalog_keyword_miss_blocks_a_different_keyword():
             ],
         },
     )()
-    denied = repeated_or_search_denial(request)
-    assert denied is not None
-    assert "空结果" in denied.content
-    assert "不是参数错误" in denied.content
+    assert repeated_or_search_denial(request) is None
 
 
 def test_monitor_query_metric_data_empty_matrix_blocks_retry_with_different_args():

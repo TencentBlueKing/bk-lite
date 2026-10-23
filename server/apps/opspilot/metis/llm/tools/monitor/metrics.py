@@ -10,7 +10,6 @@ from apps.opspilot.metis.llm.tools.search_terms import user_message_from_config
 from apps.opspilot.metis.llm.tools.user_clock import parse_user_wall_time, timezone_name_from_config
 
 _METRIC_SUMMARY_KEYS = ("name", "display_name", "unit", "data_type", "metric_group")
-_METRIC_CHOICE_LIMIT = 30
 _METRIC_NAME_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
 _UNKNOWN_METRIC_HINT = (
     "metric 必须来自 monitor_list_object_metrics 返回的 name。"
@@ -129,7 +128,7 @@ def _metric_choice_options(items: list) -> list:
     return options
 
 
-def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[list] = None, choice_total: int = 0) -> str:
+def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[list] = None) -> str:
     needle = str(keyword or "").strip()
     names = [str(item.get("name") or "") for item in items if item.get("name")]
     if not needle:
@@ -137,19 +136,16 @@ def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[li
     if not names:
         if not catalog:
             return f"无名称/展示名包含「{needle}」的指标，该对象也没有指标定义。不要换 keyword 再试。"
-        hint = (
-            f"无名称/展示名包含「{needle}」的指标。不要换 keyword 再调用本工具，也不要逐个试指标。"
-            "立刻 request_user_choice（question_type=single_select），options 原样使用本结果 choices。"
+        return (
+            f"无名称/展示名包含「{needle}」的指标。立刻 request_user_choice（question_type=single_select），options 原样使用本结果 choices。"
+            "不要逐个试指标。可以换 keyword 再查。"
             "用户选定后，monitor_query_metric_data 的 metric 用括号里的 name。禁止使用目录里没有的指标名。"
         )
-        if choice_total > _METRIC_CHOICE_LIMIT:
-            hint += f" 目录共 {choice_total} 个，choices 只列出前 {_METRIC_CHOICE_LIMIT} 个。"
-        return hint
     if len(names) == 1:
         return f"只命中 {names[0]}。直接用这个 name 查时序，不要 request_user_choice，也不要再列指标。禁止使用目录里没有的指标名。"
     if len(names) > 1:
         return (
-            f"已按「{needle}」命中 {len(_metric_choice_options(items))} 个指标。不要逐个查询，也不要再换 keyword。"
+            f"已按「{needle}」命中 {len(_metric_choice_options(items))} 个指标。不要逐个查询。"
             "立刻 request_user_choice（question_type=single_select），options 原样使用本结果 choices。"
             "用户选定后只用对应 name 查一次时序。禁止使用目录里没有的指标名。"
         )
@@ -161,8 +157,8 @@ def _metric_query_hint(items: list, keyword: Optional[str], catalog: Optional[li
         "列出该对象指标定义。keyword 用用户原文里的指标名或指标说法，筛选 name/display_name。"
         "用户原文已经写出指标名时传该指标名，不要改成类别词。"
         "只命中一个 name 时直接用它查时序。"
-        "没命中或命中多个时，不要换 keyword 再试，也不要逐个查；"
-        "调用 request_user_choice，options 用返回的 choices，让用户选指标。"
+        "没命中或命中多个时调用 request_user_choice，options 用返回的 choices，让用户选指标。"
+        "可以换 keyword 再查，但不要逐个试指标。"
         "禁止使用目录里没有的指标名。"
     )
 )
@@ -186,22 +182,14 @@ def monitor_list_object_metrics(
     payload = wrap_success(filtered)
     needle = str(keyword or "").strip()
     ask_user = bool(needle or named) and (not filtered or len(_metric_choice_options(filtered)) > 1)
-    choice_total = 0
     if ask_user:
-        options = _metric_choice_options(summarized if not filtered else filtered)
-        if needle and summarized and not filtered:
-            choice_total = len(options)
-            if choice_total > _METRIC_CHOICE_LIMIT:
-                options = options[:_METRIC_CHOICE_LIMIT]
-        payload["choices"] = options
+        payload["choices"] = _metric_choice_options(summarized if not filtered else filtered)
     hint_keyword = keyword
     if not needle and named:
         hint_keyword = " ".join(str(item.get("name") or "") for item in named)
-    payload["_next_step_hint"] = _metric_query_hint(filtered, hint_keyword, summarized, choice_total)
+    payload["_next_step_hint"] = _metric_query_hint(filtered, hint_keyword, summarized)
     if needle and summarized and not filtered:
-        payload["message"] = f"无名称/展示名包含「{needle}」的指标。请让用户从 choices 里选择，不要换 keyword 再搜。"
-        if choice_total > _METRIC_CHOICE_LIMIT:
-            payload["message"] += f" 目录共 {choice_total} 个，choices 只列出前 {_METRIC_CHOICE_LIMIT} 个。"
+        payload["message"] = f"无名称/展示名包含「{needle}」的指标。请让用户从 choices 里选择。可以换 keyword，不要逐个试指标。"
     return payload
 
 

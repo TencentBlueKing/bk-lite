@@ -649,7 +649,7 @@ class DeepAgentAssemblyMixin:
             "monitor_query_metric_data 的 metric 必须来自本步 monitor_list_object_metrics 返回的 name；"
             "先 list_object_metrics，keyword 用用户原文里的指标名或指标说法，用户已写出指标名时不要改成类别词。"
             "禁止使用目录里没有的指标名。"
-            "只命中一个 name 时直接查；没命中或命中多个时 request_user_choice 让用户选，不要换 keyword 或逐个查。"
+            "只命中一个 name 时直接查；没命中或命中多个时 request_user_choice 让用户选，不要逐个查。没命中可以换 keyword。"
             "monitor_query_metric_data 的 instance_ids 必须原样复制 list_object_instances 返回记录的 instance_id 字段，"
             "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数。"
             "问全部实例的趋势、未来一段时间会不会超阈值时，用 monitor_summarize_metric_trend，"
