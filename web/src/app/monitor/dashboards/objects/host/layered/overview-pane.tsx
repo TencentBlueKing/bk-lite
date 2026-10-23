@@ -144,7 +144,6 @@ export default function OverviewPane({
   netRows,
   netLoading = false,
   processRows,
-  processReady,
   processLoading = false,
   alertCount,
   alertEvents = [],
@@ -333,7 +332,7 @@ export default function OverviewPane({
       </ProSection>
 
       <ProSection title="重点关注">
-      <div className={proChromeClass.shortcutGrid}>
+      <div className={`${proChromeClass.shortcutGrid} ${styles.shortcutGrid3}`}>
         <ProFocusCard key="disk">
           <div className={proChromeClass.shortcutCopy}>
             <FocusShortcutTitle
@@ -402,42 +401,40 @@ export default function OverviewPane({
             />
           ) : null}
         </ProFocusCard>
-        {processReady ? (
-          <ProFocusCard key="process">
-            <div className={proChromeClass.shortcutCopy}>
-              <FocusShortcutTitle
-                label="CPU 占用最高"
-                unit={processFocus?.unitLabel}
-              />
-              {topProcess ? (
-                <>
-                  <div className={proChromeClass.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
-                  <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
-                    {processFocus ? formatFocusHeadline(processFocus, readingOfRow(topProcess, 'process_cpu_usage')) : '--'}
-                  </div>
-                  <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
-                    查看进程
-                  </button>
-                </>
-              ) : processLoading ? (
-                <ProDashLoading size="small" />
-              ) : (
-                <div className={proChromeClass.shortcutSub}>暂无进程数据</div>
-              )}
-            </div>
+        <ProFocusCard key="process">
+          <div className={proChromeClass.shortcutCopy}>
+            <FocusShortcutTitle
+              label="CPU 占用最高"
+              unit={processFocus?.unitLabel}
+            />
             {topProcess ? (
-              <ThinTimeSeries
-                bare
-                numericAxis
-                className={proChromeClass.focusChart}
-                title=""
-                unit="percent"
-                data={processTrend}
-                legends={[{ label: 'CPU', color: HOST_SERIES_COLOR.cpu }]}
-              />
-            ) : null}
-          </ProFocusCard>
-        ) : null}
+              <>
+                <div className={proChromeClass.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
+                <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
+                  {processFocus ? formatFocusHeadline(processFocus, readingOfRow(topProcess, 'process_cpu_usage')) : '--'}
+                </div>
+                <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
+                  查看进程
+                </button>
+              </>
+            ) : processLoading ? (
+              <ProDashLoading size="small" />
+            ) : (
+              <div className={proChromeClass.shortcutSub}>暂无进程数据</div>
+            )}
+          </div>
+          {topProcess ? (
+            <ThinTimeSeries
+              bare
+              numericAxis
+              className={proChromeClass.focusChart}
+              title=""
+              unit="percent"
+              data={processTrend}
+              legends={[{ label: 'CPU', color: HOST_SERIES_COLOR.cpu }]}
+            />
+          ) : null}
+        </ProFocusCard>
       </div>
       </ProSection>
 

@@ -359,7 +359,7 @@ button.kpiCard {
   text-overflow: ellipsis;
 }
 
-/* 主机和 MySQL 重点关注共用这一张壳：宽屏固定两列，窄屏一列。 */
+/* MySQL 重点关注 2×2：宽屏固定两列，窄屏一列。主机三卡另加 .shortcutGrid3，勿改本壳列数。 */
 .shortcutGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -368,6 +368,18 @@ button.kpiCard {
 
 @media (max-width: 480px) {
   .shortcutGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 主机重点关注：一行三等宽同高。禁 2+1、跨列、补第 4 卡。窄屏叠成一列，不走两列。 */
+.shortcutGrid3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+@media (max-width: 480px) {
+  .shortcutGrid3 {
     grid-template-columns: minmax(0, 1fr);
   }
 }
