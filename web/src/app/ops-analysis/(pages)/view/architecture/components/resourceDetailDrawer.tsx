@@ -122,7 +122,7 @@ const ResourceDetailDrawer = ({
   return (
     <OperateDrawer
       open
-      width={detail.kind === 'resource' ? 800 : 400}
+      width={detail.kind === 'resource' ? 800 : 520}
       destroyOnHidden
       title={headingTag ? (
         <span className="inline-flex items-center gap-2">

@@ -1,6 +1,6 @@
 import React from 'react';
+import { Box } from '@mui/material';
 import { Icon as IconI } from 'src/types';
-import { Grid } from '@mui/material';
 import { Icon } from './Icon';
 
 interface Props {
@@ -11,22 +11,21 @@ interface Props {
 
 export const IconGrid = ({ icons, onMouseDown, onClick }: Props) => {
   return (
-    <Grid container>
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignContent: 'flex-start' }}>
       {icons.map((icon) => {
         return (
-          <Grid size={3} key={icon.id}>
-            <Icon
-              icon={icon}
-              onClick={() => {
-                onClick?.(icon);
-              }}
-              onMouseDown={() => {
-                onMouseDown?.(icon);
-              }}
-            />
-          </Grid>
+          <Icon
+            key={icon.id}
+            icon={icon}
+            onClick={() => {
+              onClick?.(icon);
+            }}
+            onMouseDown={() => {
+              onMouseDown?.(icon);
+            }}
+          />
         );
       })}
-    </Grid>
+    </Box>
   );
 };

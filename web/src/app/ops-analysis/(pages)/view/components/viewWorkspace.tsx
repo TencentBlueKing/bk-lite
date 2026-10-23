@@ -47,7 +47,7 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg-2)]">
       <div
-        className={`mb-2 w-full shrink-0 items-center justify-between border-b border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-4 py-2 ${headerVisible ? 'flex' : 'hidden'}`}
+        className={`w-full shrink-0 items-center justify-between border-b border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-4 py-2 ${headerVisible ? 'flex' : 'hidden'}`}
       >
         <div className="mr-6 min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">

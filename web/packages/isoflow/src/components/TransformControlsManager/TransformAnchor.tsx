@@ -10,7 +10,7 @@ interface Props {
   onMouseDown: () => void;
 }
 
-const strokeWidth = 2;
+const strokeWidth = 2.5;
 
 export const TransformAnchor = ({ position, onMouseDown }: Props) => {
   const [isHovered, setIsHovered] = useState(false);

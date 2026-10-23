@@ -124,8 +124,10 @@ export const MainMenu = () => {
           uiStateActions.setIsMainMenuOpen(false);
         }}
         elevation={0}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
         sx={{
-          mt: 2
+          mt: 1
         }}
         MenuListProps={{
           sx: {

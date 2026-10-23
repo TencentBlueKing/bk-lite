@@ -13,6 +13,7 @@ import { useUiStateStore } from 'src/stores/uiStateStore';
 import { getIsoProjectionCss } from 'src/utils';
 import { useScene } from 'src/hooks/useScene';
 import { useLabels } from 'src/hooks/useLabels';
+import { TEXTBOX_DEFAULTS, UNPROJECTED_TILE_SIZE } from 'src/config';
 import { ControlsContainer } from '../components/ControlsContainer';
 import { Section } from '../components/Section';
 import { DeleteButton } from '../components/DeleteButton';
@@ -41,13 +42,16 @@ export const TextBoxControls = ({ id }: Props) => {
       </Section>
       <Section title={labels.textSize}>
         <Slider
-          marks
-          step={0.3}
-          min={0.3}
-          max={0.9}
-          value={textBox.fontSize}
+          step={5}
+          min={30}
+          max={90}
+          value={Math.round(
+            (textBox.fontSize ?? TEXTBOX_DEFAULTS.fontSize) * UNPROJECTED_TILE_SIZE
+          )}
           onChange={(e, newSize) => {
-            updateTextBox(textBox.id, { fontSize: newSize as number });
+            updateTextBox(textBox.id, {
+              fontSize: (newSize as number) / UNPROJECTED_TILE_SIZE
+            });
           }}
         />
       </Section>
