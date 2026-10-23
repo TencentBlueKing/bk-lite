@@ -322,7 +322,7 @@ describe('流程列表', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '运行' }));
 
-    expect(await screen.findByText('运行流程 · 这是一个用于验证单行省略效果的超长流程名称')).not.toBeNull();
+    expect(await screen.findByText((_, element) => element?.classList.contains('ant-modal-title') === true && element.textContent === '运行流程 - 这是一个用于验证单行省略效果的超长流程名称')).not.toBeNull();
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
       '/workflow/api/workflows/1/launch-plan/',
       expect.anything(),

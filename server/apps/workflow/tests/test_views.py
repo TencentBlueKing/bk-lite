@@ -576,6 +576,16 @@ def test_dashboard_returns_only_current_team_actionable_mvp_summary(superuser):
         current_version=1,
     )
     Workflow.objects.create(name="草稿", team=[7], definition={})
+    Workflow.objects.create(
+        name="Linux 主机巡检（Excel）",
+        team=[7],
+        definition={},
+        status=Workflow.Status.PUBLISHED,
+        current_version=2,
+        enabled=True,
+        is_builtin=True,
+        has_draft=False,
+    )
 
     statuses = [
         WorkflowExecution.Status.SUCCEEDED,
@@ -650,9 +660,9 @@ def test_dashboard_returns_only_current_team_actionable_mvp_summary(superuser):
 
     assert response.status_code == 200
     assert response.data["kpis"] == {
-        "workflow_total": 2,
+        "workflow_total": 3,
         "published_workflows": 1,
-        "enabled_workflows": 0,
+        "enabled_workflows": 1,
         "draft_workflows": 2,
         "today_executions": 5,
         "success_rate": 50.0,

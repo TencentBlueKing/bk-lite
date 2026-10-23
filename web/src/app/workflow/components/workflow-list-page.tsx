@@ -381,6 +381,6 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
       onCancel={() => setProfile(null)}
       onSubmit={(value) => void submitProfile(value)}
     />
-    {runWorkflow && <WorkflowLaunchDialog open title={t('workflowOrchestration.workflow.runTitle', '运行流程 · {name}', { name: runWorkflow.name })} planUrl={`${API}/workflows/${runWorkflow.id}/launch-plan/`} submitUrl={`${API}/workflows/${runWorkflow.id}/run/`} instancePermissions={runWorkflow.permission} onClose={() => setRunWorkflow(undefined)} onSubmittingChange={() => undefined} onStarted={(execution: ExecutionRecord) => { setRunWorkflow(undefined); router.push(`/workflow/executions/${execution.id}`); }} />}
+    {runWorkflow && <WorkflowLaunchDialog open title={t('workflowOrchestration.workflow.runTitle', '运行流程')} subTitle={runWorkflow.name} planUrl={`${API}/workflows/${runWorkflow.id}/launch-plan/`} submitUrl={`${API}/workflows/${runWorkflow.id}/run/`} instancePermissions={runWorkflow.permission} onClose={() => setRunWorkflow(undefined)} onSubmittingChange={() => undefined} onStarted={(execution: ExecutionRecord) => { setRunWorkflow(undefined); router.push(`/workflow/executions/${execution.id}`); }} />}
   </main>;
 }

@@ -50,7 +50,8 @@ export function JobTargetSelectionDialog({ open, value, maxCount = 100, allowedO
 
   return <OperateModal
     width={1040}
-    title={t('workflowOrchestration.launch.selectTargetTitle', '选择主机 · {name}', { name: field.name })}
+    title={t('workflowOrchestration.launch.selectTarget', '选择主机')}
+    subTitle={field.name}
     open={open}
     destroyOnHidden
     zIndex={WORKFLOW_NESTED_SELECTOR_Z_INDEX}
