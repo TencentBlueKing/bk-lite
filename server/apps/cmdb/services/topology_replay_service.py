@@ -125,6 +125,19 @@ def _mark_topology_synced(task: CollectModels, round_ts: int) -> None:
     CollectModels._default_manager.filter(id=task.id).update(collect_digest=digest)
 
 
+def _topology_edge_failures(cannula) -> int:
+    """没有写边结果时按 0 处理，假采集器仍走原来的成功路径。"""
+    plugin = getattr(cannula, "collect_plugin_instance", None)
+    result = getattr(plugin, "_topology_edge_apply_result", None)
+    if not isinstance(result, dict):
+        return 0
+    try:
+        failed = int(result.get("failed") or 0)
+    except (TypeError, ValueError):
+        return 0
+    return failed if failed > 0 else 0
+
+
 class TopologyReplayCollector(CollectNetworkMetrics):
     """强制拓扑重放插件：只消费拓扑证据，connect 写到已入库接口上。"""
 
@@ -138,7 +151,7 @@ class TopologyReplayCollector(CollectNetworkMetrics):
 
     def format_metrics(self):
         super().format_metrics()
-        apply_topology_relationships_safe(
+        self._topology_edge_apply_result = apply_topology_relationships_safe(
             getattr(self, "_topology_relationships", None) or [],
             task_id=self.task_id,
         )
@@ -237,6 +250,16 @@ def replay_topology_for_task(
             },
         )
         cannula.collect_controller()
+        failed_edges = _topology_edge_failures(cannula)
+        if failed_edges > 0:
+            logger.warning(
+                "[TopoReplay] 写边失败，保留上一轮关系 task_id=%s round_ts=%s failed=%s",
+                task_id,
+                round_ts,
+                failed_edges,
+            )
+            _set_pending(task, marker)
+            return "error"
         _clear_pending(task)
         if round_ts is not None:
             # 重新读 digest，避免覆盖设备对账刚写入的字段
