@@ -83,6 +83,20 @@ export type ItemControlsExtraTarget = {
   id: string;
 };
 
+/** Icon the host draws inside its own picker dialog. */
+export interface IconPickerIcon {
+  id: string;
+  name: string;
+  url: string;
+}
+
+/** Edit mode. The host opens its dialog; selecting an icon updates the node. */
+export interface IconPickerRequest {
+  title: string;
+  icons: IconPickerIcon[];
+  onSelect: (iconId: string) => void;
+}
+
 export type DiagramItemHit = {
   type: 'ITEM' | 'RECTANGLE' | 'CONNECTOR';
   id: string;
@@ -147,11 +161,42 @@ export interface IsoflowProps {
    * original height; for an area, content at the top of the panel.
    */
   renderItemControlsExtra?: (item: ItemControlsExtraTarget) => ReactNode;
+  /**
+   * Edit mode. Opens the host's icon picker instead of a scene dialog.
+   * The host owns the modal chrome and calls `onSelect` when an icon is chosen.
+   */
+  onOpenIconPicker?: (request: IconPickerRequest) => void;
   /** Localized editor text. Missing keys fall back to English. */
   labels?: Partial<IsoflowLabels>;
+}
+
+export interface ArchitectureTile {
+  x: number;
+  y: number;
+}
+
+export interface ArchitecturePlacement {
+  occupied: ArchitectureTile[];
+  rectangles: { id: string; from: ArchitectureTile; to: ArchitectureTile }[];
+  viewportCenter: ArchitectureTile;
+  iconIds: string[];
+}
+
+export interface ArchitectureBoundNode {
+  id: string;
+  name: string;
+  icon: string;
+  tile: ArchitectureTile;
+  bkBinding: { inst_uuid: string; model_id: string };
 }
 
 export interface IsoflowSceneApi {
   updateViewItem: (id: string, updates: Partial<ViewItem>) => void;
   updateRectangle: (id: string, updates: Partial<Rectangle>) => void;
+  /** Current view tiles, areas, viewport center, and icon ids. */
+  readPlacement: () => ArchitecturePlacement;
+  /** Adds bound icons on the current view. Does not draw connectors or areas. */
+  createBoundNodes: (nodes: ArchitectureBoundNode[]) => void;
+  /** Pans so the tiles are in view when any of them is outside the canvas. */
+  revealTiles: (tiles: ArchitectureTile[]) => void;
 }

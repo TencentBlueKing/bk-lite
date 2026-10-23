@@ -25,12 +25,6 @@ export const ALERT_BADGE_TONE: Partial<Record<NodeStatusLevel, { bg: string; fg:
   critical: { bg: CRITICAL_RED, fg: '#fff' }
 };
 
-/** Floor wash under bound icons in view mode. Only alerting levels get one. */
-export const NODE_TILE_FLOOR_COLOR: Partial<Record<NodeStatusLevel, string>> = {
-  warning: WARNING_AMBER,
-  critical: CRITICAL_RED
-};
-
 export const RECTANGLE_BORDER_COLOR: Record<RectangleBorderLevel, string> = {
   warning: WARNING_AMBER,
   critical: CRITICAL_RED,

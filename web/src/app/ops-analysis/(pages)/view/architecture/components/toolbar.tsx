@@ -1,12 +1,12 @@
 import React from 'react';
-import { Button, Dropdown, Tooltip, Tag } from 'antd';
+import { Button, Dropdown, Tooltip } from 'antd';
 import {
-  SaveOutlined,
   EditOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
   ShareAltOutlined,
   DownOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import { ArchitectureProps } from '@/app/ops-analysis/types/architecture';
 import PermissionWrapper from '@/components/permission';
@@ -24,6 +24,7 @@ interface ArchitectureToolbarProps {
   onCancel?: () => void;
   onSave: () => void;
   onFullscreenToggle: () => void;
+  onAddResources?: () => void;
   editExtra?: React.ReactNode;
   bindingMeter?: {
     bound: number;
@@ -46,120 +47,119 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
   onCancel,
   onSave,
   onFullscreenToggle,
+  onAddResources,
   editExtra,
   bindingMeter,
 }) => {
   const { t } = useTranslation();
-  return (
-    <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm p-3 border border-(--color-border-2) bg-(--color-bg-1)">
-      {/* 左侧：架构图信息 */}
-      <div className="flex-1 mr-8">
-        {selectedArchitecture && (
-          <div className="p-1 pt-0">
-            <h2 className="text-lg font-semibold mb-1">
-              {selectedArchitecture.name}
-              {selectedArchitecture.is_build_in && (
-                <Tag color="blue" className="ml-2 text-xs align-middle">
-                  {t('common.builtIn')}
-                </Tag>
-              )}
-            </h2>
-            <p className="text-sm text-[var(--color-text-3)]">
-              {selectedArchitecture.desc || '--'}
-            </p>
-          </div>
-        )}
-      </div>
+  const iconButtonClassName =
+    'h-8 w-8 min-w-8 px-0! flex items-center justify-center rounded-full!';
+  const bindingMeterTrigger = bindingMeter ? (
+    <Dropdown
+      trigger={['click']}
+      menu={{
+        items: [{
+          key: 'highlight',
+          label: t('opsAnalysis.architecture.highlightUnbound', undefined, {
+            count: bindingMeter.unbound,
+          }),
+        }],
+        selectedKeys: bindingMeter.highlightUnbound ? ['highlight'] : [],
+        onClick: () => bindingMeter.onToggleHighlight(),
+      }}
+    >
+      <button
+        type="button"
+        data-testid="architecture-binding-meter"
+        className="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent px-1 text-sm text-[var(--color-text-2)]"
+      >
+        {t('opsAnalysis.architecture.bindingCount', undefined, {
+          bound: bindingMeter.bound,
+          total: bindingMeter.total,
+        })}
+        <DownOutlined className="text-[10px]" />
+      </button>
+    </Dropdown>
+  ) : null;
 
-      {/* 右侧：工具栏 */}
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-0.5">
-          <Tooltip
-            title={
-              isFullscreen ? t('common.exitFullscreen') : t('common.fullscreen')
+  return (
+    <div className="flex items-center gap-2">
+      {isEditMode ? bindingMeterTrigger : null}
+      <div className="flex items-center gap-0.5">
+        <Tooltip
+          title={
+            isFullscreen ? t('common.exitFullscreen') : t('common.fullscreen')
+          }
+        >
+          <Button
+            type="text"
+            className={iconButtonClassName}
+            icon={
+              isFullscreen ? (
+                <FullscreenExitOutlined style={{ fontSize: 16 }} />
+              ) : (
+                <FullscreenOutlined style={{ fontSize: 16 }} />
+              )
             }
-          >
+            onClick={onFullscreenToggle}
+          />
+        </Tooltip>
+        {!shareMode && !isEditMode && onOpenShare && (
+          <Tooltip title={t('dashboard.share')}>
             <Button
               type="text"
-              icon={
-                isFullscreen ? (
-                  <FullscreenExitOutlined style={{ fontSize: 16 }} />
-                ) : (
-                  <FullscreenOutlined style={{ fontSize: 16 }} />
-                )
-              }
-              onClick={onFullscreenToggle}
+              className={iconButtonClassName}
+              icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
+              loading={shareLoading}
+              disabled={shareLoading}
+              aria-label={t('dashboard.share')}
+              onClick={onOpenShare}
             />
           </Tooltip>
-          {!shareMode && !isEditMode && onOpenShare && (
-            <Tooltip title={t('dashboard.share')}>
+        )}
+        {!shareMode && !isEditMode && (
+          <PermissionWrapper requiredPermissions={['EditChart']}>
+            <Tooltip title={t('common.edit')}>
               <Button
                 type="text"
-                icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
-                loading={shareLoading}
-                disabled={shareLoading}
-                aria-label={t('dashboard.share')}
-                onClick={onOpenShare}
+                className={iconButtonClassName}
+                icon={<EditOutlined style={{ fontSize: 16 }} />}
+                onClick={onEdit}
+                disabled={selectedArchitecture?.is_build_in}
               />
             </Tooltip>
-          )}
-          {!shareMode && !isEditMode && (
-            <PermissionWrapper requiredPermissions={['EditChart']}>
-              <Tooltip title={t('common.edit')}>
-                <Button
-                  type="text"
-                  icon={<EditOutlined style={{ fontSize: 16 }} />}
-                  onClick={onEdit}
-                  disabled={selectedArchitecture?.is_build_in}
-                />
-              </Tooltip>
-            </PermissionWrapper>
-          )}
-        </div>
-        {!shareMode && isEditMode && (
-          <PermissionWrapper requiredPermissions={['EditChart']}>
-            <div className="flex items-center gap-2">
-              {bindingMeter ? (
-                <Dropdown
-                  trigger={['click']}
-                  menu={{
-                    items: [{
-                      key: 'highlight',
-                      label: t('opsAnalysis.architecture.highlightUnbound', undefined, {
-                        count: bindingMeter.unbound,
-                      }),
-                    }],
-                    selectedKeys: bindingMeter.highlightUnbound ? ['highlight'] : [],
-                    onClick: () => bindingMeter.onToggleHighlight(),
-                  }}
-                >
-                  <Button data-testid="architecture-binding-meter">
-                    {t('opsAnalysis.architecture.bindingCount', undefined, {
-                      bound: bindingMeter.bound,
-                      total: bindingMeter.total,
-                    })}
-                    <DownOutlined />
-                  </Button>
-                </Dropdown>
-              ) : null}
-              {editExtra}
-              {onCancel && (
-                <Button type="default" onClick={onCancel}>
-                  {t('common.cancel')}
-                </Button>
-              )}
-              <Button
-                icon={<SaveOutlined />}
-                loading={loading}
-                onClick={onSave}
-                type="primary"
-              >
-                {t('common.save')}
-              </Button>
-            </div>
           </PermissionWrapper>
         )}
       </div>
+      {!shareMode && isEditMode && (
+        <PermissionWrapper requiredPermissions={['EditChart']}>
+          <div className="flex items-center gap-2">
+            {editExtra}
+            {onAddResources ? (
+              <Button
+                type="default"
+                icon={<PlusOutlined />}
+                onClick={onAddResources}
+                data-testid="architecture-add-resources"
+              >
+                {t('opsAnalysis.architecture.addResources')}
+              </Button>
+            ) : null}
+            {onCancel && (
+              <Button type="default" onClick={onCancel}>
+                {t('common.cancel')}
+              </Button>
+            )}
+            <Button
+              loading={loading}
+              onClick={onSave}
+              type="primary"
+            >
+              {t('common.save')}
+            </Button>
+          </div>
+        </PermissionWrapper>
+      )}
     </div>
   );
 };

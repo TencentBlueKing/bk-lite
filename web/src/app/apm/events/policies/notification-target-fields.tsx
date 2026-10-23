@@ -219,13 +219,13 @@ export default function NotificationTargetFields({
               })}
             </Form.Item>
             {fields.map((field) => {
-                const target = targets[field.name];
-                const channel = target ? channelById.get(target.channel_id) : undefined;
-                const recipientMode = channel?.recipient_mode;
-                if (recipientMode === 'none') {
-                  return <Form.Item key={field.key} name={[field.name, 'channel_id']} hidden><InputNumber /></Form.Item>;
-                }
-                return (
+              const target = targets[field.name];
+              const channel = target ? channelById.get(target.channel_id) : undefined;
+              const recipientMode = channel?.recipient_mode;
+              if (recipientMode === 'none') {
+                return <Form.Item key={field.key} name={[field.name, 'channel_id']} hidden><InputNumber /></Form.Item>;
+              }
+              return (
                   <div key={field.key}>
                     <Form.Item name={[field.name, 'channel_id']} hidden><InputNumber /></Form.Item>
                     <Form.Item
@@ -254,7 +254,7 @@ export default function NotificationTargetFields({
                         />
                       </Form.Item>
                   </div>
-                );
+              );
             })}
           </>
         )}

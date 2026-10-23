@@ -35,6 +35,8 @@ export interface BindingSearchHit {
 export interface ModelOption {
   model_id: string;
   model_name: string;
+  /** CMDB model icon reference, when the model list includes one. */
+  icn?: string;
 }
 
 /** Page size for the binding search list. CMDB fulltext_search_by_model accepts at most 100. */
@@ -43,6 +45,7 @@ export const BINDING_SEARCH_PAGE_SIZE = 30;
 export interface BindingSearchPage {
   hits: BindingSearchHit[];
   hasMore: boolean;
+  total: number;
 }
 
 export type BindingSearchMode = 'idle' | 'by-type' | 'by-model-text' | 'fulltext';
@@ -119,7 +122,7 @@ export function bindingPageFromTotal(
   pageSize: number,
   total: number,
 ): BindingSearchPage {
-  return { hits, hasMore: hits.length > 0 && page * pageSize < total };
+  return { hits, hasMore: hits.length > 0 && page * pageSize < total, total };
 }
 
 /** One page of a result that the server returns in full (keyword search across all models). */
@@ -132,6 +135,7 @@ export function sliceBindingPage(
   return {
     hits: all.slice(start, start + pageSize),
     hasMore: start + pageSize < all.length,
+    total: all.length,
   };
 }
 
@@ -179,12 +183,16 @@ export function flattenModelOptions(raw: unknown): ModelOption[] {
   const visit = (entry: unknown) => {
     if (!isRecord(entry)) return;
     if (typeof entry.model_id === 'string' && entry.model_id) {
-      options.push({
+      const option: ModelOption = {
         model_id: entry.model_id,
         model_name: typeof entry.model_name === 'string' && entry.model_name
           ? entry.model_name
           : entry.model_id,
-      });
+      };
+      if (typeof entry.icn === 'string' && entry.icn.trim()) {
+        option.icn = entry.icn.trim();
+      }
+      options.push(option);
     }
     if (Array.isArray(entry.list)) entry.list.forEach(visit);
     if (Array.isArray(entry.models)) entry.models.forEach(visit);

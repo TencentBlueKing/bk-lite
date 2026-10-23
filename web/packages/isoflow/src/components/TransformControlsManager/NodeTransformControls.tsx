@@ -9,5 +9,5 @@ interface Props {
 export const NodeTransformControls = ({ id }: Props) => {
   const node = useViewItem(id);
 
-  return <TransformControls from={node.tile} to={node.tile} />;
+  return <TransformControls from={node.tile} to={node.tile} framePad={10} />;
 };
