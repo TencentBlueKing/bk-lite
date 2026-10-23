@@ -4,6 +4,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, to_monitor_epoch_ms, wrap_error
+from apps.opspilot.metis.llm.tools.user_clock import timezone_name_from_config
 
 
 @tool(
@@ -45,7 +46,7 @@ def monitor_list_active_alerts(
     )
 
 
-@tool(description=("【监控策略告警历史】按时间窗查询监控扫描告警片段。" "必填 monitor_obj_id、start、end；可筛实例/状态/级别。"))
+@tool(description=("【监控策略告警历史】按时间窗查询监控扫描告警片段。" "必填 monitor_obj_id、start、end；可筛实例/状态/级别。" "没写时区的时间按当前用户时区理解，不要当成 UTC；写了 Z 或 ±HH:MM 则按该偏移。"))
 def monitor_query_alert_segments(
     monitor_obj_id: Optional[str] = None,
     start: Optional[Any] = None,
@@ -65,8 +66,9 @@ def monitor_query_alert_segments(
     if end in (None, ""):
         return wrap_error("end is required")
     try:
-        start_ms = to_monitor_epoch_ms(start)
-        end_ms = to_monitor_epoch_ms(end)
+        tz_name = timezone_name_from_config(config)
+        start_ms = to_monitor_epoch_ms(start, tz_name)
+        end_ms = to_monitor_epoch_ms(end, tz_name)
     except ValueError as exc:
         return wrap_error(str(exc))
     query_data = {

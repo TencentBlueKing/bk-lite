@@ -336,6 +336,36 @@ def test_history_node_keeps_bot_replies_from_skill_channel():
     assert state["messages"][3].content == "磁盘使用率约 80.9%"
 
 
+def test_limit_continue_history_does_not_keep_exhausted_count_as_a_stop_condition():
+    request = SimpleNamespace(
+        chat_history=[
+            SimpleNamespace(event="user", message="预测未来7天磁盘", image_data=[]),
+            SimpleNamespace(
+                event="bot",
+                message=("趋势已汇总。\n" "步骤「预测」已达模型调用次数上限，是否继续执行？\n\n" "已有结论：22 台主机命中数为 0。\n" "1. 继续\n" "2. 结束本步骤"),
+                image_data=[],
+            ),
+        ],
+        extra_config={
+            "pending_question": {
+                "kind": "limit_continue",
+                "question_text": "步骤「预测」已达模型调用次数上限，是否继续执行？",
+                "evidence_messages": [],
+            }
+        },
+    )
+    state = {"messages": []}
+    node.BasicNode().add_chat_history_node(state, graph_config(request))
+    assistant = state["messages"][1].content
+    assert "已达上限" not in assistant
+    assert "是否继续执行" not in assistant
+    assert "22 台主机命中数为 0" in assistant
+    note = state["messages"][-1]
+    assert note.additional_kwargs.get("opspilot_planned_execution") is True
+    assert "次数已重置" in note.content
+    assert "不得作为本轮停止条件" in note.content
+
+
 def test_history_image_without_text_does_not_inject_weather_prompt():
     request = SimpleNamespace(
         chat_history=[

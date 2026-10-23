@@ -316,6 +316,60 @@ describe('SkillChannelPage', () => {
     });
   });
 
+  it('blocks an empty feishu long connection until app id and secret are filled', async () => {
+    mockCreateSkillChannel.mockResolvedValue({
+      id: 11,
+      channel_type: 'feishu',
+      enabled: true,
+      name: 'feishu',
+    });
+    render(<SkillChannelPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('IT运维助手')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /添加渠道/ })[0]);
+    await waitFor(() => {
+      expect(screen.getByLabelText('渠道类型')).toBeTruthy();
+    });
+
+    fireEvent.mouseDown(screen.getByLabelText('渠道类型'));
+    fireEvent.click(await screen.findByText('feishu'));
+    fireEvent.click(screen.getByText('使用长连接'));
+
+    const appId = screen.getByLabelText('app_id');
+    const appSecret = screen.getByLabelText('app_secret');
+    expect(appId.closest('.ant-form-item')?.querySelector('label')?.className).toContain('ant-form-item-required');
+    expect(appSecret.closest('.ant-form-item')?.querySelector('label')?.className).toContain('ant-form-item-required');
+
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
+    await waitFor(() => {
+      expect(screen.getAllByText('此项必填').length).toBeGreaterThanOrEqual(2);
+    });
+    expect(mockCreateSkillChannel).not.toHaveBeenCalled();
+
+    fireEvent.change(appId, { target: { value: '   ' } });
+    fireEvent.change(appSecret, { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
+    await waitFor(() => {
+      expect(screen.getAllByText('此项必填').length).toBeGreaterThanOrEqual(2);
+    });
+    expect(mockCreateSkillChannel).not.toHaveBeenCalled();
+
+    fireEvent.change(appId, { target: { value: 'cli_test' } });
+    fireEvent.change(appSecret, { target: { value: 'secret_test' } });
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
+    await waitFor(() => {
+      expect(mockCreateSkillChannel).toHaveBeenCalledTimes(1);
+    });
+    expect(mockCreateSkillChannel.mock.calls[0][0].channel_config).toMatchObject({
+      connectionMode: 'websocket',
+      app_id: 'cli_test',
+      app_secret: 'secret_test',
+    });
+  });
+
   it('opens edit modal with existing values', async () => {
     render(<SkillChannelPage />);
 

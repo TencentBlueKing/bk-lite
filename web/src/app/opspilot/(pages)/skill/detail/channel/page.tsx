@@ -224,8 +224,9 @@ const SkillChannelPage: React.FC = () => {
   const watchedType = Form.useWatch('channel_type', form);
   const watchedConnectionMode = Form.useWatch('connectionMode', form);
   const activeType = editing?.channel_type || watchedType;
-  const aibotConnectionMode = watchedConnectionMode === 'websocket' ? 'websocket' : 'webhook';
-  const aibotLongConnection = activeType === 'enterprise_wechat_aibot' && aibotConnectionMode === 'websocket';
+  const selectedConnectionMode = watchedConnectionMode === 'websocket' ? 'websocket' : 'webhook';
+  const aibotLongConnection = activeType === 'enterprise_wechat_aibot' && selectedConnectionMode === 'websocket';
+  const feishuLongConnection = activeType === 'feishu' && selectedConnectionMode === 'websocket';
   const publicRef = (editing?.public_id || draftPublicId || '').toString();
   const callbackUrl =
     activeType && IM_CALLBACK_TYPES.has(activeType) && (editing || publicRef)
@@ -282,7 +283,13 @@ const SkillChannelPage: React.FC = () => {
     void load(true);
   }, [load]);
 
-  const configFields = useMemo(() => CONFIG_FIELDS[activeType] || [], [activeType]);
+  const configFields = useMemo(() => {
+    const fields = CONFIG_FIELDS[activeType] || [];
+    if (activeType === 'feishu' && watchedConnectionMode === 'websocket') {
+      return fields.filter((key) => key !== 'verification_token' && key !== 'encrypt_key');
+    }
+    return fields;
+  }, [activeType, watchedConnectionMode]);
 
   const enabledCount = useMemo(() => channels.filter((c) => c.enabled).length, [channels]);
   const disabledCount = useMemo(() => channels.length - enabledCount, [channels.length, enabledCount]);
@@ -336,13 +343,16 @@ const SkillChannelPage: React.FC = () => {
       return;
     }
     setDraftPublicId(needsPublicLink(value) ? generatePublicId() : '');
+    if (value === 'feishu' || value === 'enterprise_wechat_aibot') {
+      form.setFieldsValue({ connectionMode: 'webhook' });
+    }
   };
 
   const onSave = async () => {
     if (!skillId) return;
-    const values = await form.validateFields();
-    setSaving(true);
     try {
+      const values = await form.validateFields();
+      setSaving(true);
       const fields = CONFIG_FIELDS[values.channel_type] || [];
       let channel_config: Record<string, any> = {};
       for (const key of fields) {
@@ -363,6 +373,18 @@ const SkillChannelPage: React.FC = () => {
             secret: (values.secret || '').trim(),
           },
         };
+      }
+      if (values.channel_type === 'feishu') {
+        const connectionMode = values.connectionMode === 'websocket' ? 'websocket' : 'webhook';
+        channel_config = {
+          connectionMode,
+          app_id: (values.app_id || '').trim(),
+          app_secret: (values.app_secret || '').trim(),
+        };
+        if (connectionMode !== 'websocket') {
+          channel_config.verification_token = (values.verification_token || '').trim();
+          channel_config.encrypt_key = (values.encrypt_key || '').trim();
+        }
       }
       if (editing) {
         await updateSkillChannel(editing.id, {
@@ -789,7 +811,7 @@ const SkillChannelPage: React.FC = () => {
           >
             <Switch />
           </Form.Item>
-          {activeType === 'enterprise_wechat_aibot' ? (
+          {activeType === 'enterprise_wechat_aibot' || activeType === 'feishu' ? (
             <Form.Item
               name="connectionMode"
               label={t('skill.channel.aibotLongConnection', '连接方式')}
@@ -801,7 +823,7 @@ const SkillChannelPage: React.FC = () => {
               </Radio.Group>
             </Form.Item>
           ) : null}
-          {activeType && IM_CALLBACK_TYPES.has(activeType) && !aibotLongConnection ? (
+          {activeType && IM_CALLBACK_TYPES.has(activeType) && !aibotLongConnection && !feishuLongConnection ? (
             <Form.Item
               label={t('skill.channel.callbackUrl', '回调地址')}
               extra={t(
@@ -895,6 +917,11 @@ const SkillChannelPage: React.FC = () => {
               <Form.Item
                 name={field}
                 label={channelFieldLabel(t, field)}
+                rules={
+                  feishuLongConnection && (field === 'app_id' || field === 'app_secret')
+                    ? [{ required: true, message: t('common.required', '此项必填'), whitespace: true }]
+                    : undefined
+                }
               >
                 {isSecretConfigField(field) ? (
                   <Input.Password visibilityToggle />
