@@ -348,6 +348,61 @@ def test_batch_create_rejects_in_batch_subnet_overlap_before_graph_write():
     mock_graph.return_value.__enter__.return_value.batch_create_entity.assert_not_called()
 
 
+def test_batch_create_reads_existing_subnets_once_per_request():
+    """同一批只查一次已有子网，且每个已有网段只解析一次；下一轮请求仍要再查一次。"""
+    existing = [
+        {
+            "_id": index + 1,
+            "inst_name": f"net-{index}",
+            "subnet_address": f"10.0.{index}.0",
+            "subnet_mask": "24",
+        }
+        for index in range(100)
+    ]
+    existing_addresses = {row["subnet_address"] for row in existing}
+    new_items = [{"subnet_address": f"10.1.{index}.0", "subnet_mask": "24"} for index in range(100)]
+    follow_up_items = [{"subnet_address": f"10.2.{index}.0", "subnet_mask": "24"} for index in range(10)]
+    context = SimpleNamespace(unique_rules=[], attrs_by_id={})
+    existing_parse_count = {"n": 0}
+    from apps.cmdb.services.ipam_subnet import parse_subnet as real_parse_subnet
+
+    def counting_parse(address, mask):
+        if str(address) in existing_addresses:
+            existing_parse_count["n"] += 1
+        return real_parse_subnet(address, mask)
+
+    def batch_create(_label, prepared, *_args, **_kwargs):
+        return [
+            {"success": True, "data": {"_id": index, "model_id": "subnet"}}
+            for index, _item in enumerate(prepared, start=1)
+        ]
+
+    with (
+        patch("apps.cmdb.services.instance.ModelManage.search_model_attr", return_value=[]),
+        patch("apps.cmdb.services.instance.build_unique_rule_context", return_value=context),
+        patch("apps.cmdb.services.instance.get_instance_enterprise_extension", return_value=_NoopExtension()),
+        patch("apps.cmdb.services.instance.batch_create_change_record"),
+        patch("apps.cmdb.services.instance.schedule_instance_auto_relation_reconcile"),
+        patch("apps.cmdb.services.instance.GraphClient") as mock_graph,
+        patch("apps.cmdb.services.ipam_subnet._query_subnet_instances", return_value=existing) as query_mock,
+        patch("apps.cmdb.services.ipam_subnet.parse_subnet", side_effect=counting_parse),
+    ):
+        graph = mock_graph.return_value.__enter__.return_value
+        graph.query_entity.return_value = ([], 0)
+        graph.batch_create_entity.side_effect = batch_create
+
+        created = InstanceManage.instance_batch_create("subnet", new_items, "api-user", [7])
+        assert len(created) == 100
+        assert query_mock.call_count == 1
+        assert existing_parse_count["n"] == 100
+
+        query_mock.reset_mock()
+        follow_up = InstanceManage.instance_batch_create("subnet", follow_up_items, "api-user", [7])
+
+    assert len(follow_up) == 10
+    assert query_mock.call_count == 1
+
+
 @pytest.mark.parametrize(
     ("attrs", "unique_rules", "instances", "update_data", "expected_field"),
     [

@@ -15,8 +15,8 @@
       "required": true,
       "editable": false,
       "description": "用于连接 MySQL 数据库的用户名",
-      "guide_short": "基础监控需要：专用监控账号可登录实例；查看进程（PROCESS）；查看复制（REPLICATION CLIENT，开启复制或 Binary Log 时）；建议同时授予 Performance Schema 的 SELECT。\n语句/等待进阶：实例须已启用 Performance Schema，并打开「语句采集」或「等待/会话采集」；仍使用同一 SELECT ON performance_schema.*。详见接入指南。",
-      "guide_short_en": "Basic monitoring needs: a dedicated account that can log in; PROCESS to view processes; REPLICATION CLIENT to view replication (when replication or Binary Log is on); also grant SELECT on Performance Schema.\nStatements and waits (advanced): Performance Schema must be enabled, and turn on \"Statement Collection\" or \"Wait and Session Collection\"; the same SELECT ON performance_schema.* applies. See the integration guide.",
+      "guide_short": "基础监控需要：专用监控账号可登录实例；查看进程（PROCESS）；查看复制（REPLICATION CLIENT，开启复制或 Binary Log 时）；建议同时授予 Performance Schema 的 SELECT。\n语句/等待进阶：实例须已启用 Performance Schema，并打开「Top SQL 采集」或「等待/会话采集」；仍使用同一 SELECT ON performance_schema.*。详见接入指南。",
+      "guide_short_en": "Basic monitoring needs: a dedicated account that can log in; PROCESS to view processes; REPLICATION CLIENT to view replication (when replication or Binary Log is on); also grant SELECT on Performance Schema.\nStatements and waits (advanced): Performance Schema must be enabled, and turn on \"Top SQL Collection\" or \"Wait and Session Collection\"; the same SELECT ON performance_schema.* applies. See the integration guide.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -259,19 +259,19 @@
     {
       "name": "gather_perf_events_statements",
       "advanced": true,
-      "label": "语句采集",
+      "label": "Top SQL 采集",
       "type": "switch",
       "required": false,
       "default_value": false,
-      "description": "供「语句」页查看。未开启「语句采集」则该页无数据；开启后若未启用 Performance Schema 或监控账号没有查询权限，采集会失败或持续为空。",
-      "guide_short": "默认关闭。请打开「语句采集」后，实例详情「语句」才有语句耗时、执行次数和扫描行。未开开关时该页无数据；开了但实例未启用 Performance Schema，或监控账号没有 Performance Schema 的查询权限时，采集会失败或持续为空。连接、QPS 等常规指标不受影响。",
-      "guide_short_en": "Off by default. Turn on Statement Collection for the Statements tab to show statement time, execution count, and rows examined. With the switch off, that tab has no data. If it is on but Performance Schema is disabled, or the monitoring account lacks SELECT on Performance Schema, collection fails or stays empty. Connections, QPS, and other routine metrics are unaffected.",
+      "description": "供「Top SQL」页查看。未开启「Top SQL 采集」则该页无数据；开启后若未启用 Performance Schema 或监控账号没有查询权限，采集会失败或持续为空。",
+      "guide_short": "默认关闭。请打开「Top SQL 采集」后，实例详情「Top SQL」才有语句耗时、执行次数和扫描行。未开开关时该页无数据；开了但实例未启用 Performance Schema，或监控账号没有 Performance Schema 的查询权限时，采集会失败或持续为空。连接、QPS 等常规指标不受影响。",
+      "guide_short_en": "Off by default. Turn on Top SQL Collection for the Top SQL tab to show statement time, execution count, and rows examined. With the switch off, that tab has no data. If it is on but Performance Schema is disabled, or the monitoring account lacks SELECT on Performance Schema, collection fails or stays empty. Connections, QPS, and other routine metrics are unaffected.",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.gather_perf_events_statements"
       },
-      "label_en": "Statement Collection",
-      "description_en": "For the Statements tab. With Statement Collection off, that tab has no data. If it is on but Performance Schema is disabled or the account lacks query permission, collection fails or stays empty."
+      "label_en": "Top SQL Collection",
+      "description_en": "For the Top SQL tab. With Top SQL Collection off, that tab has no data. If it is on but Performance Schema is disabled or the account lacks query permission, collection fails or stays empty."
     },
     {
       "name": "gather_event_waits",
@@ -293,8 +293,8 @@
   ],
   "advanced_panel": {
     "title": "高级采集选项",
-    "hint": "默认项覆盖基础监控；语句/等待为进阶，需 Performance Schema 与对应开关。展开后按需开关；详细说明见各开关旁「？」指引。",
-    "hint_en": "Defaults cover basic monitoring. Statements and waits are advanced and need Performance Schema plus the matching switch. Expand to toggle options; see the ? beside each switch."
+    "hint": "默认项覆盖基础监控；Top SQL/等待为进阶，需 Performance Schema 与对应开关。展开后按需开关；详细说明见各开关旁「？」指引。",
+    "hint_en": "Defaults cover basic monitoring. Top SQL and waits are advanced and need Performance Schema plus the matching switch. Expand to toggle options; see the ? beside each switch."
   },
   "table_columns": [
     {

@@ -59,6 +59,35 @@ type SelectWithRefreshProps = React.ComponentProps<typeof Select> & {
   regionLoading?: boolean;
 };
 
+// 更新配置弹窗 zIndex=2000。两种挂载都写 2100：在弹窗内容根里只参与弹层堆叠，
+// 落到 body 时高于遮罩，避免被盖住。
+const CLOUD_REGION_SELECT_POPUP_Z_INDEX = 2100;
+
+// 只给云地域 SelectWithRefresh 用。挂到弹窗内容根，避免窄 inline-flex 把浮层撑出窗外；
+// 不在弹窗内（接入页）时落到 body。
+function cloudRegionSelectPopupContainer(triggerNode?: HTMLElement | null): HTMLElement {
+  const modalContent = triggerNode?.closest?.('.ant-modal-content');
+  if (modalContent instanceof HTMLElement) {
+    return modalContent;
+  }
+  return document.body;
+}
+
+function withCloudRegionPopupZIndex(
+  styles: SelectWithRefreshProps['styles']
+): SelectWithRefreshProps['styles'] {
+  return {
+    ...styles,
+    popup: {
+      ...styles?.popup,
+      root: {
+        ...styles?.popup?.root,
+        zIndex: CLOUD_REGION_SELECT_POPUP_Z_INDEX,
+      },
+    },
+  };
+}
+
 // Form.Item 只把 value/onChange 注入直接子节点。刷新按钮必须放在转发包装里，
 // 否则选中地域只改 Select 内部展示，表单仍为空，必填校验会误报。
 const SelectWithRefresh = React.forwardRef<any, SelectWithRefreshProps>(
@@ -66,21 +95,17 @@ const SelectWithRefresh = React.forwardRef<any, SelectWithRefreshProps>(
     { onRefresh, refreshLabel, refreshTip, regionLoading, ...selectProps },
     ref
   ) {
-    const popupWrapRef = React.useRef<HTMLDivElement>(null);
     return (
       <div
-        ref={popupWrapRef}
-        className="relative z-[20] mr-[10px] inline-flex items-center gap-1"
+        className="mr-[10px] inline-flex items-center gap-1"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <Select
           ref={ref}
           {...selectProps}
           virtual={selectProps.virtual ?? false}
-          getPopupContainer={
-            selectProps.getPopupContainer ||
-            (() => popupWrapRef.current || document.body)
-          }
+          getPopupContainer={cloudRegionSelectPopupContainer}
+          styles={withCloudRegionPopupZIndex(selectProps.styles)}
         />
         <Tooltip title={refreshTip}>
           <Button
