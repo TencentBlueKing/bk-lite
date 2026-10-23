@@ -142,6 +142,7 @@ import {
   type CanvasDraftPayload,
 } from "@/app/ops-analysis/api/canvasDraft";
 import { bindCanvasDraftControls } from "@/app/ops-analysis/components/canvasDraftControls";
+import { screenWidgetDataKey } from "./utils/screenWidgetDataKey";
 import { isSameScreenDataTarget } from "./utils/screenSelection";
 import { isSceneWidgetType } from "@/app/ops-analysis/types/sceneWidgetCapability";
 
@@ -156,16 +157,6 @@ interface ScreenQuerySnapshot {
   namespaceDraftId?: number;
   appliedNamespaceId?: number;
 }
-
-const screenWidgetDataKey = (item: ScreenWidgetItem) => {
-  const { appearance: _appearance, ...dataConfig } = item.valueConfig ?? {};
-  return JSON.stringify({
-    id: item.id,
-    title: item.title,
-    chartType: item.chartType,
-    dataConfig,
-  });
-};
 
 const ScreenDataConfig = memo(
   function ScreenDataConfig({
@@ -204,6 +195,7 @@ const ScreenDataConfig = memo(
         dataSourceManager={dataSourceManager}
         showChartThemeMode={false}
         surface="screen"
+        showSingleValueStyle={false}
         builtinNamespaceId={builtinNamespaceId}
         filterDefinitions={filterDefinitions}
         unifiedFilterValues={unifiedFilterValues}
@@ -1374,6 +1366,22 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     />
   ) : null;
   const dataConfigItem = pendingViewConfigItem || currentViewConfigItem;
+  const inspectorTabKeys: Array<"style" | "data" | "interaction"> = pendingConfigItem
+    ? ["data", "interaction"]
+    : ["style", "data", "interaction"];
+  const inspectorTabItems = inspectorTabKeys.map((key) => ({
+    key,
+    label: t(
+      key === "style"
+        ? "opsAnalysis.screen.styleTab"
+        : key === "data"
+          ? "opsAnalysis.screen.dataTab"
+          : "opsAnalysis.screen.interactionTab",
+    ),
+  }));
+  const activeInspectorTab = inspectorTabKeys.includes(inspectorTab)
+    ? inspectorTab
+    : (inspectorTabKeys[0] ?? "data");
   const interactionScreenFrame = pendingConfigItem
     ? getDefaultScreenWidgetAppearance(pendingConfigItem.chartType).frame
     : currentConfigItem
@@ -1390,7 +1398,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       builtinNamespaceId={queryState.namespaceDraftId}
       filterDefinitions={queryState.definitions}
       unifiedFilterValues={queryState.filterValues}
-      configSection={inspectorTab === "interaction" ? "interaction" : "data"}
+      configSection={activeInspectorTab === "interaction" ? "interaction" : "data"}
       onConfigSectionChange={setInspectorTab}
       screenFrame={interactionScreenFrame}
       onDirtyChange={setDataFormDirty}
@@ -1539,12 +1547,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                   <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     <Tabs
                       className="shrink-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-nav-wrap]:px-3"
-                      activeKey={inspectorTab === "interaction" ? "interaction" : "data"}
-                      onChange={(key) => setInspectorTab(key as "data" | "interaction")}
-                      items={[
-                        { key: "data", label: t("opsAnalysis.screen.dataTab") },
-                        { key: "interaction", label: t("opsAnalysis.screen.interactionTab") },
-                      ]}
+                      activeKey={activeInspectorTab}
+                      onChange={(key) => setInspectorTab(key as "style" | "data" | "interaction")}
+                      items={inspectorTabItems}
                     />
                     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                       {dataConfigPanel}
@@ -1554,15 +1559,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                   <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     <Tabs
                       className="shrink-0 [&_.ant-tabs-content-holder]:hidden [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-nav-wrap]:px-3"
-                      activeKey={inspectorTab}
+                      activeKey={activeInspectorTab}
                       onChange={(key) => setInspectorTab(key as "style" | "data" | "interaction")}
-                      items={[
-                        { key: "style", label: t("opsAnalysis.screen.styleTab") },
-                        { key: "data", label: t("opsAnalysis.screen.dataTab") },
-                        { key: "interaction", label: t("opsAnalysis.screen.interactionTab") },
-                      ]}
+                      items={inspectorTabItems}
                     />
-                    <div className={inspectorTab === "style" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+                    <div className={activeInspectorTab === "style" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
                       {selectedItem ? (
                         <ScreenStyleInspector
                           item={selectedItem}
@@ -1572,7 +1573,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                         />
                       ) : null}
                     </div>
-                    <div className={inspectorTab === "style" ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-hidden"}>
+                    <div className={activeInspectorTab === "style" ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-hidden"}>
                       {dataConfigPanel}
                     </div>
                   </div>

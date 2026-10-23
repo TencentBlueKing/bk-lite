@@ -12,7 +12,7 @@ import {
 
 const DEFAULT_MIN_VISIBLE_FONT_SIZE = 18;
 const DEFAULT_MAX_VISIBLE_FONT_SIZE = 104;
-const DEFAULT_HEIGHT_FILL_RATIO = 0.5;
+export const OPS_METRIC_DEFAULT_HEIGHT_FILL_RATIO = 0.5;
 
 export interface ResolveMetricFontSizeInput extends AutoFitMetricValueSize {
   scale: number;
@@ -53,7 +53,7 @@ const OpsAnalysisMetricValue: React.FC<OpsAnalysisMetricValueProps> = ({
   className = '',
   minVisibleFontSize = DEFAULT_MIN_VISIBLE_FONT_SIZE,
   maxVisibleFontSize = DEFAULT_MAX_VISIBLE_FONT_SIZE,
-  heightFillRatio = DEFAULT_HEIGHT_FILL_RATIO,
+  heightFillRatio = OPS_METRIC_DEFAULT_HEIGHT_FILL_RATIO,
   minVisibleGap = 4,
   maxVisibleGap = 16,
   gapRatio = 0.14,

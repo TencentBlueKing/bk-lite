@@ -39,6 +39,10 @@ import {
   resolveApplication3DWallConfig,
   type Application3DWallConfig,
 } from '@/app/ops-analysis/utils/application3DWallConfig';
+import {
+  persistSingleValueStyle,
+  type SingleValueStyleConfig,
+} from '@/app/ops-analysis/utils/singleValueStyle';
 
 export interface WidgetConfigFormValues {
   name: string;
@@ -95,6 +99,7 @@ export interface WidgetConfigFormValues {
     layout?: 'list' | 'grid';
   };
   actions?: DashboardActionConfig[];
+  singleStyle?: SingleValueStyleConfig;
   interaction?: {
     kind: 'none' | 'title' | 'data';
     name: string;
@@ -145,6 +150,11 @@ export interface BuildWidgetSubmitConfigInput {
   actions?: DashboardActionConfig[];
   /** 预览组装：映射与提交相同，但不因未填必填项拦截。 */
   forPreview?: boolean;
+  /**
+   * 大屏样式在检查器里直接改画布，数据表单提交不能带上 singleStyle，
+   * 否则会把已保存的样式覆盖或清掉。
+   */
+  includeSingleStyle?: boolean;
 }
 
 export interface BuildWidgetSubmitConfigResult {
@@ -364,6 +374,7 @@ const applySingleValueConfig = (
   values: WidgetConfigFormValues,
   selectedFields: string[],
   thresholdColors: ThresholdColorConfig[],
+  includeSingleStyle: boolean,
 ) => {
   result.selectedFields = selectedFields;
   result.thresholdColors = thresholdColors;
@@ -375,6 +386,9 @@ const applySingleValueConfig = (
   }
   applyValueFormatFields(result, values);
   result.valueMappings = values.valueMappings || undefined;
+  if (!includeSingleStyle) return;
+  // 显式写入，包含 undefined，仪表盘合并时才能清掉已关闭的样式。
+  result.singleStyle = persistSingleValueStyle(values.singleStyle);
 };
 
 const trimOptionalField = (value?: string) => {
@@ -463,6 +477,16 @@ export const omitForeignChartTypeFields = <T extends object>(
     delete next.cardList;
   }
   delete next.actions;
+  if (chartType !== 'single') {
+    delete next.singleStyle;
+  } else if (
+    !next.singleStyle
+    || typeof next.singleStyle !== 'object'
+    || Array.isArray(next.singleStyle)
+    || Object.keys(next.singleStyle).length === 0
+  ) {
+    delete next.singleStyle;
+  }
   if (chartType === 'multiValue') {
     if (!Array.isArray(next.thresholdColors) || next.thresholdColors.length === 0) {
       delete next.thresholdColors;
@@ -632,6 +656,7 @@ export const buildWidgetSubmitConfig = ({
   displayColumns,
   filterFields,
   forPreview = false,
+  includeSingleStyle = true,
 }: BuildWidgetSubmitConfigInput): BuildWidgetSubmitConfigResult => {
   if (values.sceneWidgetType) {
     if (values.sceneWidgetType === 'relatedTopology' && !forPreview) {
@@ -679,7 +704,13 @@ export const buildWidgetSubmitConfig = ({
   applyInteractionLink(result, values, chartType);
 
   if (chartType === 'single') {
-    applySingleValueConfig(result, values, selectedFields, thresholdColors);
+    applySingleValueConfig(
+      result,
+      values,
+      selectedFields,
+      thresholdColors,
+      includeSingleStyle,
+    );
   }
 
   if (chartType === 'gauge') {

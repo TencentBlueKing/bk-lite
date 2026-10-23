@@ -25,6 +25,7 @@ import {
   getFilterDefinitionId,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { readWidgetInteraction } from '@/app/ops-analysis/utils/interactionLink';
+import { readSingleValueStyle } from '@/app/ops-analysis/utils/singleValueStyle';
 import type { WidgetConfigFormValues } from './submitConfig';
 
 export const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
@@ -421,6 +422,16 @@ export function applyOpenedValueConfigToFormValues(
     });
   }
   formValues.compareMode = valueConfig?.compareMode || 'percent';
+  const singleStyle = readSingleValueStyle(valueConfig?.singleStyle);
+  formValues.singleStyle = {
+    showIcon: singleStyle.showIcon,
+    iconSource: singleStyle.iconSource,
+    iconKey: singleStyle.iconKey || undefined,
+    iconImage: singleStyle.iconImage || undefined,
+    iconPosition: singleStyle.iconPosition,
+    iconSize: singleStyle.iconSize,
+    align: singleStyle.align,
+  };
   return formValues;
 }
 

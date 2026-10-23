@@ -718,6 +718,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           unifiedFilterValues={filterValues}
           showChartThemeMode={true}
           filterTemplateTokens={false}
+          showSingleValueStyle={false}
         />
 
         <UnifiedFilterConfigModal
