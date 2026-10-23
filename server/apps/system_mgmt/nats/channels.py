@@ -576,9 +576,7 @@ def dispatch_notification(
                     "result": False,
                     "code": str(response.get("code") or "alert_copy_partial"),
                     "retryable": any(bool(item.get("retryable", True)) for item in event_results if isinstance(item, dict)),
-                    "message": str(
-                        response.get("message") or system_mgmt_message(None, "error.alert_copy_partial_accepted")
-                    )[:512],
+                    "message": str(response.get("message") or system_mgmt_message(None, "error.alert_copy_partial_accepted"))[:512],
                     "data": {"event_results": event_results},
                 }
         return _notification_failure(
@@ -701,10 +699,10 @@ OPSPILOT_NATS_NAMESPACE = os.getenv("NATS_NAMESPACE", "bklite")
 OPSPILOT_NATS_METHOD = "trigger_workflow_by_nats"
 
 
-WORKFLOW_ORCHESTRATION_CHANNEL_SOURCE = "workflow_orchestration"
+WORKFLOW_CHANNEL_SOURCE = "workflow"
 
 
-WORKFLOW_ORCHESTRATION_NATS_METHOD = "trigger_orchestration_workflow_by_nats"
+WORKFLOW_NATS_METHOD = "trigger_orchestration_workflow_by_nats"
 
 
 def _list_opspilot_nats_channels(bot_id):
@@ -800,18 +798,18 @@ def delete_opspilot_nats_channels(bot_id):
     return {"result": True, "data": {"deleted": deleted}}
 
 
-def _list_workflow_orchestration_nats_channels(workflow_id):
+def _list_workflow_nats_channels(workflow_id):
     """返回单个编排流程名下的托管 NATS 通道。"""
     result = []
     for channel in Channel.objects.filter(channel_type=ChannelChoices.NATS):
         config = channel.config or {}
-        if config.get("source") == WORKFLOW_ORCHESTRATION_CHANNEL_SOURCE and str(config.get("workflow_id")) == str(workflow_id):
+        if config.get("source") == WORKFLOW_CHANNEL_SOURCE and str(config.get("workflow_id")) == str(workflow_id):
             result.append(channel)
     return result
 
 
 @nats_client.register
-def sync_workflow_orchestration_nats_channels(workflow_id, workflow_name, team, nodes, active, timeout=60):
+def sync_workflow_nats_channels(workflow_id, workflow_name, team, nodes, active, timeout=60):
     """对账编排中心某个流程的 NATS 触发通道（增、改、删）。"""
     try:
         workflow_id = int(workflow_id)
@@ -822,7 +820,7 @@ def sync_workflow_orchestration_nats_channels(workflow_id, workflow_name, team, 
 
     team = team or []
     nodes = nodes or []
-    existing_by_node = {(channel.config or {}).get("node_key"): channel for channel in _list_workflow_orchestration_nats_channels(workflow_id)}
+    existing_by_node = {(channel.config or {}).get("node_key"): channel for channel in _list_workflow_nats_channels(workflow_id)}
     incoming_node_keys = set()
     created = updated = 0
     for node in nodes:
@@ -835,13 +833,13 @@ def sync_workflow_orchestration_nats_channels(workflow_id, workflow_name, team, 
         label = str((node or {}).get("name") or node_key).strip()
         config = {
             "namespace": OPSPILOT_NATS_NAMESPACE,
-            "method_name": WORKFLOW_ORCHESTRATION_NATS_METHOD,
+            "method_name": WORKFLOW_NATS_METHOD,
             "workflow_id": workflow_id,
             "trigger_id": trigger_id,
             "node_key": node_key,
             "subject": subject,
             "timeout": timeout,
-            "source": WORKFLOW_ORCHESTRATION_CHANNEL_SOURCE,
+            "source": WORKFLOW_CHANNEL_SOURCE,
             "active": active,
         }
         values = {
@@ -869,21 +867,21 @@ def sync_workflow_orchestration_nats_channels(workflow_id, workflow_name, team, 
 
 
 @nats_client.register
-def delete_workflow_orchestration_nats_channels(workflow_id):
+def delete_workflow_nats_channels(workflow_id):
     """删除单个编排流程的全部托管 NATS 通道。"""
     try:
         workflow_id = int(workflow_id)
     except (TypeError, ValueError):
         return {"result": False, "message": "workflow_id must be an integer"}
     deleted = 0
-    for channel in _list_workflow_orchestration_nats_channels(workflow_id):
+    for channel in _list_workflow_nats_channels(workflow_id):
         channel.delete()
         deleted += 1
     return {"result": True, "data": {"deleted": deleted}}
 
 
 @nats_client.register
-def search_workflow_orchestration_nats_channels(teams=None, workflow_id=None, include_children=False, active_only=True):
+def search_workflow_nats_channels(teams=None, workflow_id=None, include_children=False, active_only=True):
     """查询编排中心托管的 NATS 触发通道。"""
     normalized_team_ids = None
     if teams:
@@ -902,7 +900,7 @@ def search_workflow_orchestration_nats_channels(teams=None, workflow_id=None, in
     data = []
     for channel in Channel.objects.filter(channel_type=ChannelChoices.NATS):
         config = channel.config or {}
-        if config.get("source") != WORKFLOW_ORCHESTRATION_CHANNEL_SOURCE:
+        if config.get("source") != WORKFLOW_CHANNEL_SOURCE:
             continue
         if workflow_id is not None and str(config.get("workflow_id")) != str(workflow_id):
             continue

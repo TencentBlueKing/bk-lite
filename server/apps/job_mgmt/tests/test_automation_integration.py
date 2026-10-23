@@ -66,7 +66,7 @@ def test_automation_script_validates_target_scope_and_records_actor(mocker):
         "script_content": "echo ok",
         "team": [7],
         "callback_type": "nats",
-        "callback_subject": "bklite.workflow_orchestration.job_result",
+        "callback_subject": "bklite.workflow.job_result",
     }
 
     accepted = nats_api.execute_automation_script_local(payload, ACTOR)

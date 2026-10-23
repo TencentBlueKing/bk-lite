@@ -3,7 +3,7 @@ import pytest
 from apps.system_mgmt.models import CustomMenuGroup, Menu, Role
 from apps.system_mgmt.services.workflow_menu_migration import apply_workflow_menu_permission_split, snapshot_workflow_menu_grants
 
-APP = "workflow-orchestration"
+APP = "workflow"
 
 
 def _menu(name):
@@ -31,25 +31,25 @@ def test_custom_role_grants_and_custom_menus_split_without_touching_builtin_role
         menus=[
             {
                 "title": "流程",
-                "url": "/workflow-orchestration/workflows",
+                "url": "/workflow/workflows",
                 "name": "workflow",
                 "children": [
                     {
                         "title": "流程",
-                        "url": "/workflow-orchestration/workflows/",
+                        "url": "/workflow/workflows/",
                         "name": "workflow",
                         "withParentPermission": True,
                     },
                     {
                         "title": "模版",
-                        "url": "/workflow-orchestration/market",
+                        "url": "/workflow/market",
                         "name": "workflow",
                         "withParentPermission": True,
                     },
                 ],
             },
-            {"title": "首页", "url": "/workflow-orchestration/home", "name": "workflow"},
-            {"title": "入口", "url": "/workflow-orchestration", "name": "workflow"},
+            {"title": "首页", "url": "/workflow/home", "name": "workflow"},
+            {"title": "入口", "url": "/workflow", "name": "workflow"},
         ],
     )
 

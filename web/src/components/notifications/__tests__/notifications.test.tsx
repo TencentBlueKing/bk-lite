@@ -16,7 +16,7 @@ vi.mock('@/utils/request', () => ({
   default: () => ({ get: mocks.get, post: mocks.post, del: mocks.del }),
   isSilentRequestError: () => false,
 }));
-vi.mock('@/context/client', () => ({ useClientData: () => ({ clientData: [{ name: 'workflow-orchestration', display_name: '编排中心', icon: 'workflow-icon', is_build_in: true }] }) }));
+vi.mock('@/context/client', () => ({ useClientData: () => ({ clientData: [{ name: 'workflow', display_name: '编排中心', icon: 'workflow-icon', is_build_in: true }] }) }));
 vi.mock('@/hooks/useLocalizedTime', () => ({ useLocalizedTime: () => ({ convertToLocalizedTime: (value: string) => value }) }));
 vi.mock('@/utils/sessionExpiry', () => ({ isSessionExpiredState: () => false }));
 vi.mock('@/components/icon', () => ({ default: () => <span data-testid="notification-icon" /> }));
@@ -42,10 +42,10 @@ describe('顶部通知', () => {
         items: [{
           id: 1,
           notification_time: '2026-09-15T01:00:00Z',
-          app_module: 'workflow-orchestration',
+          app_module: 'workflow',
           content: '待审批：发布确认',
           is_read: false,
-          target_url: '/workflow-orchestration/executions?scope=mine',
+          target_url: '/workflow/executions?scope=mine',
         }],
       });
     });
@@ -65,7 +65,7 @@ describe('顶部通知', () => {
     expect(screen.getByRole('tab', { name: '所有通知' })).not.toBeNull();
     expect(screen.queryByRole('tab', { name: /待办/ })).toBeNull();
     expect(screen.getByText('编排中心')).not.toBeNull();
-    expect(screen.queryByText('workflow-orchestration')).toBeNull();
+    expect(screen.queryByText('workflow')).toBeNull();
     const notificationContent = await screen.findByText('待审批：发布确认');
     const notificationCard = notificationContent.closest('.group');
     expect(notificationCard?.className).toContain('border-[var(--color-border)]');
@@ -74,6 +74,6 @@ describe('顶部通知', () => {
     fireEvent.click(notificationContent);
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/console_mgmt/notifications/1/mark_as_read/'));
-    expect(mocks.push).toHaveBeenCalledWith('/workflow-orchestration/executions?scope=mine');
+    expect(mocks.push).toHaveBeenCalledWith('/workflow/executions?scope=mine');
   });
 });
