@@ -53,6 +53,7 @@ export function useHostEntityMetrics(options: {
     setSeenIdentity(identity);
     setState(EMPTY);
   }
+  const previousTimeKeyRef = useRef(timeKey);
 
   useEffect(() => {
     if (!idValues.length || !monitorObjectId || !instanceId) {
@@ -66,7 +67,12 @@ export function useHostEntityMetrics(options: {
       return;
     }
     let active = true;
-    setState((prev) => ({ ...prev, status: 'loading' }));
+    const timeChanged = previousTimeKeyRef.current !== timeKey;
+    previousTimeKeyRef.current = timeKey;
+    setState((prev) => ({
+      status: 'loading',
+      byMetric: timeChanged ? {} : prev.byMetric
+    }));
     runWithConcurrency(queries, 4, async (query) => {
       try {
         const raw = await queryRef.current(
@@ -103,7 +109,7 @@ export function useHostEntityMetrics(options: {
       active = false;
     };
     // idValues 由 idKey 锁定；query 引用用 ref，避免 hook 返回新函数导致重复请求。
-    // 不跟 loadTick：核心盘刷新不再连带重打维度表。
+    // reloadKey 只由专业盘刷新传入，按当前顶栏窗口重拉磁盘、网卡和进程。
   }, [enabled, isDashboardMode, idKey, timeKey, queryKey, monitorObjectId, instanceId, minStepSeconds, reloadKey]);
 
   return state;

@@ -2,8 +2,10 @@
 
 import React from 'react';
 import { Tooltip } from 'antd';
-import { CardAlertDot, cardAlertClass } from './card-alert';
+import { alertKpiHintLines, ProInfoHint } from './alert-event-hint';
+import { CardAlertDot, cardAlertClass, type CardAlertFold } from './card-alert';
 import type { TabAlertLevel } from './tab-level';
+import ProDashLoading from './pro-dash-loading';
 import styles from './layered.module.scss';
 
 export interface KpiCardModel {
@@ -20,17 +22,30 @@ export interface KpiCardModel {
   expanded?: boolean;
   /** 本卡达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
+  /** 默认实心折角。与折角同色、需要描边时才传 outline。 */
+  fold?: CardAlertFold;
 }
 
-const KpiLabel = ({ item }: { item: KpiCardModel }) => (
-  <div className={styles.kpiLabel}>
-    {item.hint ? (
-      <Tooltip title={item.hint}>
-        <span>{item.label}</span>
-      </Tooltip>
-    ) : item.label}
-  </div>
-);
+const KpiLabel = ({ item }: { item: KpiCardModel }) => {
+  const scopeHint = alertKpiHintLines(item.key);
+  if (!scopeHint) {
+    return (
+      <div className={styles.kpiLabel}>
+        {item.hint ? (
+          <Tooltip title={item.hint}>
+            <span>{item.label}</span>
+          </Tooltip>
+        ) : item.label}
+      </div>
+    );
+  }
+  return (
+    <div className={`${styles.kpiLabel} inline-flex max-w-full items-center gap-1 !overflow-visible`}>
+      <span className="min-w-0 truncate">{item.label}</span>
+      <ProInfoHint kind="alert" lines={scopeHint} />
+    </div>
+  );
+};
 
 const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
   <>
@@ -47,14 +62,38 @@ const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
 );
 
 /** 概览 KPI：六张数字卡，标题贴顶、主值紧跟。不含环图、饼图或 sparkline。 */
-export function KpiStrip({ items }: { items: KpiCardModel[] }) {
+export function KpiStrip({
+  items,
+  loading = false,
+  columns
+}: {
+  items: KpiCardModel[];
+  loading?: boolean;
+  /** 可选列数。不传时保持主机六卡栅格，默认关闭任何额外占位。 */
+  columns?: number;
+}) {
   return (
-    <div className={styles.kpiGrid}>
+    <div
+      className={styles.kpiGrid}
+      style={columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}
+      aria-busy={loading || undefined}
+    >
       {items.map((item) => {
+        if (loading) {
+          return (
+            <div
+              key={item.key}
+              className={`${styles.kpiCard} ${styles.kpiCardLoading}`}
+              data-kpi={item.key}
+            >
+              <ProDashLoading />
+            </div>
+          );
+        }
         const className = `${styles.kpiCard} ${cardAlertClass(item.alertLevel)}`;
         const body = (
           <>
-            <CardAlertDot level={item.alertLevel} valueColor={item.tone} />
+            <CardAlertDot level={item.alertLevel} fold={item.fold} />
             <ValueCardBody item={item} />
           </>
         );
