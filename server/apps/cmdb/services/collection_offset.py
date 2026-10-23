@@ -92,7 +92,11 @@ def _circular_midpoints(positions: set[int], modulus: int) -> set[int]:
 
 
 def _overlap_offsets(previous: int, new_tail: int, old_tail: int, common: int) -> set[int]:
-    """重叠窗口内的整数分钟，以及精确碰撞点。窗口宽度由忙时尾数决定。"""
+    """重叠窗口内的整数分钟、刚离开重叠的外缘，以及精确碰撞点。
+
+    窗口宽度由忙时尾数决定。多个公约数叠在一起时，最低重叠会落在外缘，
+    而不是落在另一个圆周的弧中点上。
+    """
     if common <= 0:
         return set()
     base = previous % common
@@ -104,30 +108,43 @@ def _overlap_offsets(previous: int, new_tail: int, old_tail: int, common: int) -
     while shift < forward_limit:
         positions.add((base - shift) % common)
         shift += 1
+    if new_tail < common:
+        positions.add((base - new_tail) % common)
     back = 1
     backward_limit = old_tail if old_tail < common else common
     while back < backward_limit:
         positions.add((base - (common - back)) % common)
         back += 1
+    if old_tail < common:
+        positions.add((base - (common - old_tail)) % common)
     return positions
 
 
 def _large_phase_residues(pairs, phase_period: int, preferred: int | None) -> list[int]:
-    """超长相位的候选：各公约数圆周上的弧中点、重叠窗口和首选偏移。
+    """超长相位的候选：重叠窗口及其外缘、各公约数弧中点、叠合空弧中点和首选偏移。
 
-    弧中点和重叠窗口按该公约数平移到整个 phase_period。公约数 1 的间距是常数，不展开。
+    各公约数上的点按该公约数平移到整个 phase_period。公约数 1 的间距是常数，不展开。
+    不同公约数的占位还要在相位圆周上取相邻空弧的中点；只取各自圆周的中点会漏掉
+    夹在两条公约数之间的最大空隙。
     平移结果是评分循环的 residue，不是最终分钟偏移。评分循环再换回
     offset = (seed + (residue - seed) % phase_period) % cycle；
-    phase_period 等于周期时 residue 就是 offset。
+    phase_period 等于周期时 residue 就是 offset。小于周期时同样先取 residue。
     """
     residues = set()
     occupied: dict[int, set[int]] = {}
     local_points: dict[int, set[int]] = {}
+    replicas: set[int] = set()
     for (common, _repeats, previous, new_tail, old_tail, _constant), _count in pairs.items():
         occupied.setdefault(common, set()).add(previous % common)
         local_points.setdefault(common, set()).update(
             _overlap_offsets(previous, new_tail, old_tail, common)
         )
+        if common <= 1:
+            continue
+        position = previous % common
+        while position < phase_period:
+            replicas.add(position)
+            position += common
     for common, positions in occupied.items():
         local_points.setdefault(common, set()).update(_circular_midpoints(positions, common))
     for common, points in local_points.items():
@@ -139,6 +156,7 @@ def _large_phase_residues(pairs, phase_period: int, preferred: int | None) -> li
             while position < phase_period:
                 residues.add(position)
                 position += common
+    residues.update(_circular_midpoints(replicas, phase_period))
     if preferred is not None:
         residues.add(preferred % phase_period)
     if not residues:
@@ -175,8 +193,8 @@ def assign_offset(
         # 同周期/相位/忙时的通道合并计数；大量存量 offset=0 时避免重复评分。
         pairs = Counter(pairs)
         # 评分只依赖 offset % gcd。相位不超过 4096 时逐分钟枚举，保持原结果。
-        # 更长相位只评各公约数平移到整个相位后的弧中点、重叠窗口和首选偏移。
-        # 公约数 1 不展开。评分次数不随分钟数增长，比较顺序不变。
+        # 更长相位评重叠窗口及其外缘、各公约数弧中点，以及不同公约数叠合后的空弧中点。
+        # 公约数 1 不展开。相同超长周期的评分次数不随分钟数增长，比较顺序不变。
         phase_period = math.lcm(*(pair[0] for pair in pairs))
         seed = int.from_bytes(hashlib.sha256(f"{task_id}:{channel}".encode()).digest()[:8], "big") % cycle
         best = None

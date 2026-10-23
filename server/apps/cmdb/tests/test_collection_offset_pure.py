@@ -183,10 +183,12 @@ def test_distinct_long_divisors_match_exhaustive_without_full_phase_scan(monkeyp
         CollectionSchedule(3, 12000, 20, 50, 5),
     ]
     seen = _track_phase_ranges(monkeypatch)
+    expected = {20000: 18050, 40000: 38050}
     for period in (20000, 40000):
         seen.clear()
         chosen = assign_offset(task_id=2, cycle_minutes=period, target_count=20, existing=existing)
         assert all(stop <= 4096 for stop in seen), seen
+        assert chosen.offset_minutes == expected[period]
         assert chosen.offset_minutes == _exhaustive_best_offset(2, period, existing)
 
 
@@ -202,3 +204,38 @@ def test_phase_period_up_to_4096_keeps_full_enumeration(monkeypatch):
     chosen = assign_offset(task_id=2, cycle_minutes=4097, target_count=20, existing=odd_existing)
     assert all(stop <= 4096 for stop in seen), seen
     assert chosen.offset_minutes == _exhaustive_best_offset(2, 4097, odd_existing)
+
+
+def test_stacked_divisors_match_exhaustive_when_phase_exceeds_scan_limit(monkeypatch):
+    """多个公约数叠成超过 4096 的相位时，结果仍等于逐相位评分。
+
+    相位小于周期时，residue 还要按 seed 换回 offset。调用方不得把上亿分钟交给穷举。
+    """
+    seen = _track_phase_ranges(monkeypatch)
+    overlap_existing = [
+        CollectionSchedule(1, 4, 20, 0, 5),
+        CollectionSchedule(2, 12, 20, 6, 5),
+        CollectionSchedule(3, 4200, 20, 0, 5),
+    ]
+    overlap_expected = {4200: 2099, 8400: 6299}
+    for period in (4200, 8400):
+        seen.clear()
+        chosen = assign_offset(task_id=2, cycle_minutes=period, target_count=20, existing=overlap_existing)
+        assert all(stop <= 4096 for stop in seen), seen
+        assert chosen.offset_minutes == overlap_expected[period]
+        assert chosen.offset_minutes == _exhaustive_best_offset(2, period, overlap_existing)
+
+    midpoint_existing = [
+        CollectionSchedule(1, 420, 20, 200, 5),
+        CollectionSchedule(2, 420, 20, 80, 5),
+        CollectionSchedule(3, 700, 20, 40, 5),
+        CollectionSchedule(4, 700, 20, 520, 5),
+        CollectionSchedule(5, 280, 20, 260, 5),
+    ]
+    midpoint_expected = {4200: 3740, 8400: 7940}
+    for period in (4200, 8400):
+        seen.clear()
+        chosen = assign_offset(task_id=2, cycle_minutes=period, target_count=20, existing=midpoint_existing)
+        assert all(stop <= 4096 for stop in seen), seen
+        assert chosen.offset_minutes == midpoint_expected[period]
+        assert chosen.offset_minutes == _exhaustive_best_offset(2, period, midpoint_existing)
