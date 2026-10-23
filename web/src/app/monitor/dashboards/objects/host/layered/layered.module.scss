@@ -93,7 +93,15 @@
 }
 
 .detailFull {
-  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* 父 .main gap 12 已作用到 fragment 子项；再加 4 使 trio 底 → 首个 GPU 标题为 16，勿叠成 24。 */
+  margin-top: 4px;
+}
+
+.gpuBand {
+  min-width: 0;
 }
 
 .detailTrio .detailCard,
@@ -166,7 +174,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
+  margin: 0 0 12px;
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;

@@ -700,7 +700,7 @@ export default function SystemPane({
           {gpuRows.map((row) => {
             const bandTitle = gpuRows.length > 1 ? gpuCardTitle(row, 'GPU') : 'GPU';
             return (
-              <div key={row.key}>
+              <div key={row.key} className={styles.gpuBand}>
                 <div className={styles.gpuBandTitle}>{bandTitle}</div>
                 <div className={styles.gpuRow}>
                   {GPU_CHARTS.map((item) => {
@@ -733,12 +733,14 @@ export default function SystemPane({
         </div>
       ) : gpuLoading ? (
         <div className={styles.detailFull} data-surface="gpu">
-          <div className={styles.gpuBandTitle}>GPU</div>
-          <span
-            className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
-            aria-busy="true"
-            aria-label="加载中"
-          />
+          <div className={styles.gpuBand}>
+            <div className={styles.gpuBandTitle}>GPU</div>
+            <span
+              className="block h-4 w-16 rounded bg-[var(--color-fill-2)]"
+              aria-busy="true"
+              aria-label="加载中"
+            />
+          </div>
         </div>
       ) : null}
     </>
