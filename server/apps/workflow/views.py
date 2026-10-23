@@ -1756,7 +1756,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
             {
                 "kpis": {
                     "workflow_total": workflow_queryset.count(),
-                    "published_workflows": workflow_queryset.filter(current_version__gt=0).count(),
+                    "published_workflows": workflow_queryset.filter(current_version__gt=0, is_builtin=False).count(),
                     "enabled_workflows": workflow_queryset.filter(current_version__gt=0, enabled=True).count(),
                     "draft_workflows": workflow_queryset.filter(Q(current_version=0) | Q(has_draft=True)).count(),
                     "today_executions": today_queryset.count(),

@@ -427,7 +427,7 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
           </div>
         ) : <Empty description={t('workflowOrchestration.execution.notFound', '执行记录不存在')} />}
       </OperateDrawer>
-      {execution && rerunOpen ? <WorkflowLaunchDialog open title={t('workflowOrchestration.execution.rerunTitle', '重新执行 · {name}', { name: execution.workflow_name })} planUrl={`${API}/executions/${execution.id}/launch-plan/`} submitUrl={`${API}/executions/${execution.id}/rerun/`} instancePermissions={execution.permission} onClose={() => setRerunOpen(false)} onStarted={(record) => { setRerunOpen(false); onRerunStarted?.(record.id); }} /> : null}
+      {execution && rerunOpen ? <WorkflowLaunchDialog open title={t('workflowOrchestration.execution.rerunTitle', '重新执行')} subTitle={execution.workflow_name} planUrl={`${API}/executions/${execution.id}/launch-plan/`} submitUrl={`${API}/executions/${execution.id}/rerun/`} instancePermissions={execution.permission} onClose={() => setRerunOpen(false)} onStarted={(record) => { setRerunOpen(false); onRerunStarted?.(record.id); }} /> : null}
     </>
   );
 }
