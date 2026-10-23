@@ -7,6 +7,10 @@ export function formatWorkflowNameTimestamp(now = new Date()): string {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${pad(now.getMilliseconds(), 3)}`;
 }
 
+export function formatWorkflowNameDate(now = new Date()): string {
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+}
+
 const WORKFLOW_NAME_MAX_LENGTH = 120;
 
 export function createDefaultWorkflowName(now = new Date(), prefix = '流程'): string {
@@ -14,10 +18,10 @@ export function createDefaultWorkflowName(now = new Date(), prefix = '流程'): 
 }
 
 export function createCopiedWorkflowName(sourceName: string, now = new Date()): string {
-  const timestamp = formatWorkflowNameTimestamp(now);
+  const date = formatWorkflowNameDate(now);
   const trimmed = sourceName.trim();
-  const room = Math.max(WORKFLOW_NAME_MAX_LENGTH - timestamp.length, 0);
-  return `${trimmed.slice(0, room)}${timestamp}`;
+  const room = Math.max(WORKFLOW_NAME_MAX_LENGTH - date.length, 0);
+  return `${trimmed.slice(0, room)}${date}`;
 }
 
 export function createUnsavedWorkflowDraft(name: string, labels: { riskSummary: string } = {

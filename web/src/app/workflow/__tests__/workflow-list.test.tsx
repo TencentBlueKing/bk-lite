@@ -88,10 +88,10 @@ function renderPage() {
 }
 
 describe('流程列表', () => {
-  it('按本地时间生成毫秒精度的默认流程名', () => {
+  it('新建默认名带到毫秒，复制默认名只带到日期', () => {
     const now = new Date(2026, 8, 9, 10, 19, 10, 372);
     expect(createDefaultWorkflowName(now)).toBe('流程20260909101910372');
-    expect(createCopiedWorkflowName('主机巡检', now)).toBe('主机巡检20260909101910372');
+    expect(createCopiedWorkflowName('主机巡检', now)).toBe('主机巡检20260909');
   });
 
   beforeAll(() => {
@@ -250,7 +250,7 @@ describe('流程列表', () => {
     expect(screen.getByRole('columnheader', { name: '模版名称' })).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '流程名称' })).toBeNull();
     expect(await screen.findByText('复制后出现在「流程」里，状态是纯草稿，不会发布，也不会改动这条内置流程。')).not.toBeNull();
-    expect((screen.getByLabelText('流程名称') as HTMLInputElement).value).toMatch(/^Linux 主机巡检（Excel）\d{17}$/);
+    expect((screen.getByLabelText('流程名称') as HTMLInputElement).value).toMatch(/^Linux 主机巡检（Excel）\d{8}$/);
     fireEvent.change(screen.getByLabelText('流程名称'), { target: { value: copied.name } });
     fireEvent.click(screen.getByRole('button', { name: '确认复制' }));
 
@@ -378,7 +378,7 @@ describe('流程列表', () => {
     fireEvent.click(copyLabel.closest('[role="menuitem"]')!);
 
     const nameInput = await screen.findByLabelText('流程名称');
-    expect((nameInput as HTMLInputElement).value).toMatch(/^这是一个用于验证单行省略效果的超长流程名称\d{17}$/);
+    expect((nameInput as HTMLInputElement).value).toMatch(/^这是一个用于验证单行省略效果的超长流程名称\d{8}$/);
     const duplicateModal = nameInput.closest('.ant-modal-content');
     expect((duplicateModal?.querySelector('.ant-modal-footer') as HTMLElement | null)?.style.marginTop).toBe('20px');
     expect(mocks.post).not.toHaveBeenCalled();
