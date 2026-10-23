@@ -4065,6 +4065,7 @@
         "mysqlCategoryRoleReplica": "从库",
         "mysqlCategoryRoleGr": "GR",
         "mysqlCategoryRoleGalera": "Galera",
+        "mysqlCategoryRoleUnknown": "角色未知",
         "mysqlCategoryWritable": "写入源",
         "mysqlCategoryReadOnly": "只读",
         "mysqlCategoryHost": "所属主机",

@@ -4065,6 +4065,7 @@
         "mysqlCategoryRoleReplica": "Replica",
         "mysqlCategoryRoleGr": "GR",
         "mysqlCategoryRoleGalera": "Galera",
+        "mysqlCategoryRoleUnknown": "Unknown role",
         "mysqlCategoryWritable": "Writable",
         "mysqlCategoryReadOnly": "Read-only",
         "mysqlCategoryHost": "Host",

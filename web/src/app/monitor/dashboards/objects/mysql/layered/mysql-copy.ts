@@ -25,6 +25,7 @@ export const MYSQL_CATEGORY_COPY = {
   roleReplica: [textId('mysqlCategoryRoleReplica'), '从库'],
   roleGr: [textId('mysqlCategoryRoleGr'), 'GR'],
   roleGalera: [textId('mysqlCategoryRoleGalera'), 'Galera'],
+  roleUnknown: [textId('mysqlCategoryRoleUnknown'), '角色未知'],
   writable: [textId('mysqlCategoryWritable'), '写入源'],
   readOnly: [textId('mysqlCategoryReadOnly'), '只读'],
   host: [textId('mysqlCategoryHost'), '所属主机'],
