@@ -15,6 +15,8 @@ const DEFAULT_OTP_RECOMMENDED_APPS = [
 
 interface LoginSettingsProps {
   otpEnabled: boolean;
+  gmTransportEnabled: boolean;
+  gmTransportDegraded: boolean;
   otpWhitelist: string[];
   otpRecommendedApps: string[];
   otpUsers: Array<{ value: string; label: string }>;
@@ -38,6 +40,7 @@ interface LoginSettingsProps {
   loading: boolean;
   disabled?: boolean;
   onOtpChange: (checked: boolean) => void;
+  onGmTransportChange: (checked: boolean) => void;
   onOtpWhitelistChange: (value: string[]) => void;
   onOtpRecommendedAppsChange: (value: string[]) => void;
   onLoginExpiredTimeChange: (value: string) => void;
@@ -59,6 +62,8 @@ interface LoginSettingsProps {
 
 const LoginSettings: React.FC<LoginSettingsProps> = ({
   otpEnabled,
+  gmTransportEnabled,
+  gmTransportDegraded,
   otpWhitelist,
   otpRecommendedApps,
   otpUsers,
@@ -82,6 +87,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   loading,
   disabled = false,
   onOtpChange,
+  onGmTransportChange,
   onOtpWhitelistChange,
   onOtpRecommendedAppsChange,
   onLoginExpiredTimeChange,
@@ -239,6 +245,37 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
             </div>
           </div>
         )}
+      </section>
+      <section className="mb-6 space-y-4" aria-labelledby="gm-transport-settings-heading">
+        <h4 id="gm-transport-settings-heading" className="text-sm font-semibold text-[var(--color-text-1)]">
+          {t('system.security.gmTransportSectionTitle')}
+        </h4>
+        <div className="flex items-start">
+          <label htmlFor="gm-transport-enabled" className="text-xs mr-4 w-40 shrink-0 pt-0.5 leading-5">
+            {t('system.security.gmTransportSetting')}
+          </label>
+          <div className="min-w-0 max-w-xl flex-1 space-y-2">
+            <Switch
+              id="gm-transport-enabled"
+              size="small"
+              checked={gmTransportEnabled}
+              onChange={onGmTransportChange}
+              loading={loading}
+              disabled={disabled}
+            />
+            <p className="text-xs leading-5 text-[var(--color-text-2)]">
+              {t('system.security.gmTransportEnableHint')}
+            </p>
+            {gmTransportDegraded && (
+              <Alert
+                type="warning"
+                showIcon
+                message={t('system.security.gmTransportDegraded')}
+                description={t('system.security.gmTransportDegradedHint')}
+              />
+            )}
+          </div>
+        </div>
       </section>
       <div className="flex items-center mb-4">
         <span className="text-xs mr-4">{t('system.security.loginExpiredTime')}</span>

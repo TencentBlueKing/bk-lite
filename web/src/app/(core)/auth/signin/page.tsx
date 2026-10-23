@@ -9,8 +9,10 @@ import {
   resolveThirdLoginFlag,
 } from "@/utils/authRedirect";
 import { isScreenModeEnabled, withScreenQuery } from "@/console-layout/screenMode";
+import { isBarePortalHomeTarget } from "@/app/ops-analysis/utils/homepageLanding";
 import PopupAuthBridge from "./PopupAuthBridge";
 import LegacyThirdLoginAuthorizeBridge from "./LegacyThirdLoginAuthorizeBridge";
+import PostLoginHomepageRedirect from "./PostLoginHomepageRedirect";
 
 const signinErrors: Record<string | "default", string> = {
   default: "signin.errors.default",
@@ -84,22 +86,29 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
       );
     }
 
-    redirect(
-      withScreenQuery(
-        buildThirdLoginCallbackUrl(
-          resolvedSearchParams.callbackUrl,
-          session.user.token,
-          thirdLoginFlag,
-          requestOrigin,
-        ),
-        isScreenModeEnabled(
-          resolvedSearchParams.screen
-            ? new URLSearchParams({ screen: resolvedSearchParams.screen })
-            : '',
-        ),
+    const authenticatedTarget = withScreenQuery(
+      buildThirdLoginCallbackUrl(
+        resolvedSearchParams.callbackUrl,
+        session.user.token,
+        thirdLoginFlag,
         requestOrigin,
       ),
+      isScreenModeEnabled(
+        resolvedSearchParams.screen
+          ? new URLSearchParams({ screen: resolvedSearchParams.screen })
+          : '',
+      ),
+      requestOrigin,
     );
+    if (isBarePortalHomeTarget(authenticatedTarget, requestOrigin)) {
+      return (
+        <PostLoginHomepageRedirect
+          targetUrl={authenticatedTarget}
+          token={session.user.token}
+        />
+      );
+    }
+    redirect(authenticatedTarget);
   }
   return <SigninClient searchParams={resolvedSearchParams} signinErrors={signinErrors} />;
 }

@@ -26,6 +26,15 @@ error:
   invalid_current_team: Invalid current_team cookie
   no_permission_access_team: No permission to access this team
   code_empty: code is required
+  gm_transport_rejected: The request could not be decrypted
+  gm_transport_expired: The request has expired. Correct the clock and try again
+  gm_transport_replay: The request is no longer valid
+  gm_transport_unavailable: GM transport is temporarily unavailable
+  gm_transport_too_large: The request is too large
+  gm_transport_private_key_missing: The GM private key is not configured
+  gm_transport_private_key_invalid: The GM private key is invalid
+  gm_transport_cache_unavailable: GM transport requires a working Redis cache
+  gm_transport_self_check_failed: The GM algorithm self-check failed
 
 # Built-in application display names
 app_name:
@@ -43,7 +52,7 @@ app_name:
   patch: Patch Management
   apm: APM
   playground: Playground
-  workflow-orchestration: Workflow
+  workflow: Workflow
 
 # App descriptions (for built-in apps)
 app:
@@ -60,7 +69,7 @@ app:
   ops-console: Unified operations console for managing and monitoring all operational activities
   job: Quickly create and execute jobs, unified management of script execution, file distribution and scheduled tasks
   patch: Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks.
-  workflow-orchestration: Design visual workflows, automate execution, manage human approvals, and track cross-system operations in one place.
+  workflow: Design visual workflows, automate execution, manage human approvals, and track cross-system operations in one place.
 
 # Tag translations (for built-in app tags)
 tag:
@@ -116,7 +125,7 @@ tag:
   patch_scan: Patch Scanning
   patch_install: Patch Installation
   patch_library: Patch Library
-  # workflow-orchestration
+  # workflow
   workflow_design: Workflow Design
   workflow_execution: Workflow Execution
   automation: Automation

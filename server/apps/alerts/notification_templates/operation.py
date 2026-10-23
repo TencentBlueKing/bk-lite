@@ -19,7 +19,7 @@ SUPPORTED_CHANNEL_TYPES = {
     ChannelChoices.CUSTOM_WEBHOOK,
     ChannelChoices.NATS,
 }
-MANAGED_NATS_SOURCES = {"opspilot", "workflow_orchestration"}
+MANAGED_NATS_SOURCES = {"opspilot", "workflow"}
 ALERT_DETAIL_PATH = "/alarm/alarms?alert_id="
 ALERT_DETAIL_GUIDE = "该链接由站点前缀加上告警 ID 拼接而成，主要变量是 {{ alert.alert_id }}。访问地址变化时只修改前缀。"
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"}

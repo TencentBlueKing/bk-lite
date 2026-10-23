@@ -1,4 +1,5 @@
 import { PORTAL_HOME_PATH } from '@/utils/route';
+import { gmFetch } from '@/utils/gmTransport';
 
 interface AuthorizeLegacyThirdLoginOptions {
   callbackUrl: string;
@@ -16,7 +17,7 @@ export async function requestLegacyThirdLoginAuthorize({
   }
 
   try {
-    const response = await fetch('/api/proxy/core/api/legacy_third_login/authorize/', {
+    const response = await gmFetch('/api/proxy/core/api/legacy_third_login/authorize/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

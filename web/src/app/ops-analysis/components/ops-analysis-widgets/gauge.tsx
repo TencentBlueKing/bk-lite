@@ -13,6 +13,10 @@ import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-wid
 import { useGaugeResponsiveLayout } from '@/app/ops-analysis/components/widgets/shared/useGaugeResponsiveLayout';
 import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import { buildGaugeAxisLineColor } from '@/app/ops-analysis/utils/thresholdUtils';
+import {
+  getOpsChartTheme,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
 import ChartSurface from '@/components/chart-surface';
 
 export interface OpsAnalysisGaugeProps {
@@ -34,6 +38,7 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
   config,
   onReady,
 }) => {
+  const chartTheme = getOpsChartTheme(resolveOpsChartThemeName());
   const selectedField = config?.selectedFields?.[0];
   const numericValue = toComparableNumber(extractComparableValue(rawData, selectedField));
   const min = Number(config?.gaugeMin ?? 0);
@@ -114,7 +119,7 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
           },
           axisLabel: {
             distance: layout.axisLabelDistance,
-            color: '#7A869A',
+            color: chartTheme.axisLabelColor,
             fontSize: 11,
           },
           pointer: {
@@ -142,6 +147,7 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
       ],
     };
   }, [
+    chartTheme.axisLabelColor,
     color,
     config?.gaugeShape,
     displayValue,

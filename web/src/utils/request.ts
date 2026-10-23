@@ -26,6 +26,7 @@ import {
   PROXY_TIMEOUT_HEADER,
 } from '@/utils/proxyTimeout';
 import { resolveAuthToken } from '@/utils/authRecovery';
+import { discardGmAxiosKey, openGmAxiosResponse, prepareGmAxiosRequest, retryGmAxiosRequest } from '@/utils/gmTransport';
 import {
   acquireMetricRequestSlot,
   shouldLimitMonitorQueryUrl,
@@ -135,7 +136,7 @@ apiClient.interceptors.request.use(
       const release = await acquireMetricRequestSlot({ signal: config.signal });
       metricSlotReleases.set(config, release);
     }
-    return config;
+    return prepareGmAxiosRequest(config);
   },
   (error) => {
     return Promise.reject(error);
@@ -143,14 +144,27 @@ apiClient.interceptors.request.use(
 );
 
 apiClient.interceptors.response.use(
-  (response: AxiosResponse) => {
+  async (response: AxiosResponse) => {
     releaseMetricSlot(response.config);
-    return response;
+    return openGmAxiosResponse(response);
   },
   async (error) => {
     releaseMetricSlot(error?.config);
+    if (error.response) {
+      try {
+        error.response = await openGmAxiosResponse(error.response);
+      } catch (decryptError) {
+        return Promise.reject(decryptError);
+      }
+    } else {
+      discardGmAxiosKey(error?.config);
+    }
     if (isSessionExpiredState()) {
       return Promise.reject(error);
+    }
+
+    if (error.response && await retryGmAxiosRequest(error)) {
+      return apiClient.request(error.config);
     }
 
     if (error.response) {

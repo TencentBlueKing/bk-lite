@@ -35,6 +35,17 @@ export const InteractionSectionTabIcon: React.FC = () => (
   <LinkOutlined className="text-base" />
 );
 
+export const StyleSectionTabIcon: React.FC = () => (
+  <svg viewBox="0 0 16 16" className={tabIconClass} fill="none" focusable="false">
+    <path d="M2.75 4.25h10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M2.75 8h10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M2.75 11.75h10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="6" cy="4.25" r="1.35" fill="var(--color-bg)" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="10.25" cy="8" r="1.35" fill="var(--color-bg)" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="7.25" cy="11.75" r="1.35" fill="var(--color-bg)" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
 export const ConfigSectionTitle: React.FC<{
   children: React.ReactNode;
   extra?: React.ReactNode;

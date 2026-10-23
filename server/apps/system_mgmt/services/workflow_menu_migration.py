@@ -3,7 +3,7 @@ from copy import deepcopy
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import CustomMenuGroup, Menu, Role
 
-WORKFLOW_APP = "workflow-orchestration"
+WORKFLOW_APP = "workflow"
 BUILTIN_ROLES = {"admin", "normal", "manager"}
 GRANT_COPIES = {
     "workflow-View": ("workflow_home-View", "workflow_market-View", "workflow_execution-View"),
@@ -12,11 +12,11 @@ GRANT_COPIES = {
     "workflow-Approve": ("workflow_execution-Approve",),
 }
 MENU_NAME_BY_URL = {
-    "/workflow-orchestration/home": "workflow_home",
-    "/workflow-orchestration/workflows": "workflow",
-    "/workflow-orchestration/market": "workflow_market",
-    "/workflow-orchestration/executions": "workflow_execution",
-    "/workflow-orchestration": "workflow_entry",
+    "/workflow/home": "workflow_home",
+    "/workflow/workflows": "workflow",
+    "/workflow/market": "workflow_market",
+    "/workflow/executions": "workflow_execution",
+    "/workflow": "workflow_entry",
 }
 
 

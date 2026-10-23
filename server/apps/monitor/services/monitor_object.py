@@ -47,6 +47,7 @@ class MonitorObjectService:
             "fallback_sampling_rate",
             "node_id",
             "cmdb_id",
+            "created_at",
         )
 
     @staticmethod
@@ -294,8 +295,10 @@ class MonitorObjectService:
             status_raw = vm_params.get("status")
         qs = InstanceSearch.apply_status_filter_to_qs(qs, instance_map, status_raw)
 
-        # 去除重复
-        qs = qs.distinct()
+        # 去除重复，并按创建时间倒序。用户指定列排序时，内存排序会覆盖这一默认序。
+        from apps.monitor.services.monitor_instance import order_monitor_instances
+
+        qs = order_monitor_instances(qs.distinct())
 
         count = qs.count()
         projected_qs = MonitorObjectService._project_instance_identity(qs)

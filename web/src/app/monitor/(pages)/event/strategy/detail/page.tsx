@@ -105,12 +105,19 @@ import {
 } from './templateSaveIssues';
 import {
   buildMetricExpressionQueryCondition,
+  ConditionCount,
+  ConditionSource,
   createMetricRow,
   DEFAULT_FORMULA_EXPRESSION,
   DEFAULT_FORMULA_RESULT_NAME,
   findCatalogMetric,
   getMetricExpressionModeForRows,
   MetricExpressionMode,
+  omitMultiMirrorFields,
+  rowsAfterEnteringFormula,
+  rowsAfterEnteringMulti,
+  rowsAfterLeavingMulti,
+  shouldWarnQueryTypeChange,
   resolveHydratedMetricFields,
   resolveMetricExpressionUnits,
   toMetricExpressionStateFromQueryCondition,
@@ -214,6 +221,7 @@ const StrategyOperation = () => {
   ]);
   const [metricExpressionMode, setMetricExpressionMode] =
     useState<MetricExpressionMode>('metric');
+  const savedQueryTypeRef = useRef<string | null>(null);
   const [formulaResultName, setFormulaResultName] = useState<string>(
     () =>
       translateWithFallback(
@@ -687,12 +695,15 @@ const StrategyOperation = () => {
   useEffect(() => {
     const nextLabelsByRef: Record<string, string[]> = {};
     metricRows.forEach((row) => {
-      const target = metrics.find(
-        (item) =>
-          (row.metricId != null && String(item.id) === String(row.metricId)) ||
-          (!!row.metricName && item.name === row.metricName)
-      );
-      nextLabelsByRef[row.ref] = getMetricDimensionNames(target?.dimensions);
+      const carriers = row.source === 'formula' ? row.operands || [] : [row];
+      carriers.forEach((carrier) => {
+        const target = metrics.find(
+          (item) =>
+            (carrier.metricId != null && String(item.id) === String(carrier.metricId)) ||
+            (!!carrier.metricName && item.name === carrier.metricName)
+        );
+        nextLabelsByRef[carrier.ref] = getMetricDimensionNames(target?.dimensions);
+      });
     });
     setLabelsByRef(nextLabelsByRef);
 
@@ -975,9 +986,18 @@ const StrategyOperation = () => {
               name
             );
             if (matched) {
-              return { ...row, metricId: matched.id, metricName: matched.name };
+              return {
+                ...row,
+                metricId: matched.id,
+                metricName: matched.name,
+                metricLabel: matched.display_name || matched.name
+              };
             }
-            return { ...row, metricName: name };
+            return {
+              ...row,
+              metricName: name,
+              metricLabel: String(stored?.display_name || name)
+            };
           })
         );
       })
@@ -992,6 +1012,7 @@ const StrategyOperation = () => {
       rawQuery as Parameters<typeof resolveQueryConditionMetricIds>[0],
       initMetricData
     ) || rawQuery;
+    savedQueryTypeRef.current = query_condition?.type || null;
     if (query_condition?.type === 'metric') {
       const rememberedName =
         query_condition?.metric_id != null
@@ -1096,6 +1117,42 @@ const StrategyOperation = () => {
       );
       setFormulaResultName(restoredState.resultName);
       setFormulaExpression(restoredState.expression);
+      setMetric(rows[0]?.metricName || null);
+      setConditions(rows[0]?.filters || []);
+      setGroupBy(sanitizeGroupBy(rows[0]?.groupBy || []));
+      setGroupAlgorithm(rows[0]?.groupAlgorithm || 'avg');
+    } else if (query_condition?.type === 'multi') {
+      const restoredState = toMetricExpressionStateFromQueryCondition(
+        query_condition
+      );
+      const rows = restoredState.rows.map((row) => {
+        const rememberedName =
+          row.metricId != null
+            ? storedMetricNameByIdRef.current.get(String(row.metricId))
+            : undefined;
+        const hydrated = resolveHydratedMetricFields(
+          initMetricData,
+          row.metricId,
+          row.metricName || rememberedName
+        );
+        const catalog = findCatalogMetric(
+          initMetricData,
+          hydrated.metricId,
+          hydrated.metricName
+        );
+        return {
+          ...row,
+          metricId: hydrated.metricId,
+          metricName: hydrated.metricName,
+          metricLabel: catalog?.display_name || hydrated.metricName
+        };
+      });
+      lookupStoredMetrics(
+        rows.filter((row) => !row.metricName).map((row) => row.metricId)
+      );
+      setMetricRows(rows);
+      setMetricExpressionMode('multi');
+      setFormulaResultName(restoredState.resultName);
       setMetric(rows[0]?.metricName || null);
       setConditions(rows[0]?.filters || []);
       setGroupBy(sanitizeGroupBy(rows[0]?.groupBy || []));
@@ -1244,12 +1301,66 @@ const StrategyOperation = () => {
     });
   };
 
+  const handleExpressionModeChange = (next: MetricExpressionMode) => {
+    if (next === 'auto') {
+      return;
+    }
+    if (
+      shouldWarnQueryTypeChange({
+        isPersisted: Boolean(detailId),
+        savedType: savedQueryTypeRef.current,
+        nextType: next
+      })
+    ) {
+      message.warning(
+        translateWithFallback(
+          'monitor.events.modeSwitchClosesAlerts',
+          '保存后该策略下未恢复的告警会结束'
+        )
+      );
+    }
+    const previous = metricExpressionMode;
+    setMetricExpressionMode(next);
+    if (next === 'multi') {
+      setMetricRows((current) =>
+        rowsAfterEnteringMulti(current, {
+          algorithm: algorithm || 'avg_over_time',
+          groupBy
+        })
+      );
+      return;
+    }
+    if (next === 'formula' && previous !== 'formula') {
+      setMetricRows((current) => rowsAfterEnteringFormula(current));
+      setFormulaExpression(DEFAULT_FORMULA_EXPRESSION);
+      return;
+    }
+    if (previous === 'multi' || (previous === 'formula' && next === 'metric')) {
+      setMetricRows((current) => rowsAfterLeavingMulti(current));
+      setMetric(metricRows[0]?.metricName || null);
+    }
+  };
+
+  const handleConditionCountChange = (count: ConditionCount) => {
+    const current = metricExpressionMode === 'multi' ? 'multi' : 'single';
+    if (count === current) {
+      return;
+    }
+    handleExpressionModeChange(count === 'multi' ? 'multi' : 'metric');
+  };
+
+  const handleConditionSourceChange = (source: ConditionSource) => {
+    if (metricExpressionMode === 'multi') {
+      return;
+    }
+    handleExpressionModeChange(source);
+  };
+
   const handleMetricRowsChange = (rows: MetricExpressionRow[]) => {
     const previousPrimaryMetricName = metricRows[0]?.metricName;
     const nextPrimaryMetricName = rows[0]?.metricName;
     const previousMode = metricExpressionMode;
-    const nextMode = getMetricExpressionModeForRows(rows);
-    setMetricExpressionMode(nextMode);
+    const nextMode = getMetricExpressionModeForRows(rows, metricExpressionMode);
     setMetricRows(rows);
 
     if (nextMode === 'formula') {
@@ -1536,9 +1647,11 @@ const StrategyOperation = () => {
         ? { metricUnit: '', calculationUnit: '', thresholdUnit: '' }
         : resolveMetricExpressionUnits({
           queryType:
-            metricExpressionMode === 'formula' || metricRows.length > 1
+            metricExpressionMode === 'formula'
               ? 'formula'
-              : 'metric',
+              : metricExpressionMode === 'multi'
+                ? 'multi'
+                : 'metric',
           metricUnit: selectedMetricSourceUnit,
           calculationUnit: effectiveCalculationUnit,
           thresholdUnit: effectiveThresholdUnit
@@ -1632,6 +1745,9 @@ const StrategyOperation = () => {
       params.recovery_condition = params.recovery_condition || 0;
       params.group_by = sanitizeGroupBy(metricRows[0]?.groupBy || groupBy);
       params.enable = true;
+      if (metricExpressionMode === 'multi') {
+        return omitMultiMirrorFields(params);
+      }
       return params;
   };
 
@@ -1946,6 +2062,8 @@ const StrategyOperation = () => {
                           unitList={unitList}
                           onCollectTypeChange={changeCollectType}
                           onMetricRowsChange={handleMetricRowsChange}
+                          onConditionCountChange={handleConditionCountChange}
+                          onSourceChange={handleConditionSourceChange}
                           onResultNameChange={setFormulaResultName}
                           onExpressionChange={setFormulaExpression}
                           onResultUnitChange={handleFormulaResultUnitChange}
@@ -1987,6 +2105,9 @@ const StrategyOperation = () => {
                               ?.unit || null
                           }
                           isFormulaMode={metricExpressionMode === 'formula'}
+                          metricExpressionMode={metricExpressionMode}
+                          metricRows={metricRows}
+                          onMetricRowsChange={handleMetricRowsChange}
                           period={period}
                           periodUnit={periodUnit}
                           compareMode={compareMode}
@@ -1997,10 +2118,12 @@ const StrategyOperation = () => {
                           forecastTargetUnit={forecastTargetUnit}
                           forecastLookback={forecastLookback}
                           metricLabel={
-                            metrics.find((item) => item.name === metric)
-                              ?.display_name ||
-                            metric ||
-                            null
+                            metricExpressionMode === 'formula'
+                              ? formulaResultName || null
+                              : metrics.find((item) => item.name === metric)
+                                ?.display_name ||
+                                metric ||
+                                null
                           }
                           monitorName={monitorName || undefined}
                           countPredicate={countPredicate}
@@ -2050,6 +2173,11 @@ const StrategyOperation = () => {
               <VariablesTable
                 displayFields={currentMonitorObject?.display_fields}
                 groupBy={sanitizeGroupBy(metricRows[0]?.groupBy || groupBy)}
+                conditionRefs={
+                  metricExpressionMode === 'multi'
+                    ? metricRows.map((row) => row.ref)
+                    : []
+                }
                 onVariableSelect={(variable: string) => {
                   basicInfoFormRef.current?.insertVariable(variable);
                 }}

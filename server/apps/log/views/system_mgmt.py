@@ -48,10 +48,25 @@ class SystemMgmtView(ViewSet):
             )
             return WebUtils.response_success(data)
 
-        current_team = get_current_team(request)
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        result = SystemMgmt().get_group_users(group=current_team, include_children=include_children)
-        return WebUtils.response_success(result["data"])
+        try:
+            actor_context = _build_actor_context(request, require_current_team=True)
+        except ValidationAppException:
+            return WebUtils.response_success([])
+        if actor_context is None:
+            return WebUtils.response_success([])
+
+        # current_team 已写入 actor。再传 group 会按成员名单重滤，
+        # 超管选中自己不属于的当前组织时目录会被清空。
+        result = SystemMgmt().get_group_users_scoped(
+            actor_context,
+            include_children=actor_context["include_children"],
+        )
+        failure = "通知人查询失败"
+        if not isinstance(result, dict):
+            raise BaseAppException(failure)
+        if result.get("result") is False:
+            raise PermissionDenied(result.get("message") or failure)
+        return WebUtils.response_success(result.get("data") or [])
 
     @action(methods=["get"], detail=False, url_path="search_channel_list")
     def search_channel_list(self, request):

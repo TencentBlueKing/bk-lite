@@ -28,6 +28,14 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     color: '#ff8a1f'
   },
   {
+    name: 'mysql_threads_created_rate',
+    display_name: '线程创建速率',
+    description: '新建连接线程的速率。升高通常表示连接复用不足。',
+    unit: 'cps',
+    query: 'rate(mysql_threads_created{__$labels__}[__$window__])',
+    color: '#8a5cff'
+  },
+  {
     name: 'mysql_variables_max_connections',
     display_name: '最大连接配置值',
     description: 'max_connections 配置值，用作真实连接容量基线。',
@@ -149,6 +157,30 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     color: '#ff7875'
   },
   {
+    name: 'mysql_com_commit_rate',
+    display_name: '事务提交速率',
+    description: '每秒提交的事务数。',
+    unit: 'cps',
+    query: 'rate(mysql_com_commit{__$labels__}[__$window__])',
+    color: '#52c41a'
+  },
+  {
+    name: 'mysql_com_rollback_rate',
+    display_name: '事务回滚速率',
+    description: '每秒回滚的事务数。',
+    unit: 'cps',
+    query: 'rate(mysql_com_rollback{__$labels__}[__$window__])',
+    color: '#ff7875'
+  },
+  {
+    name: 'mysql_tps_rate',
+    display_name: 'TPS',
+    description: '每秒提交与回滚的事务数之和。',
+    unit: 'cps',
+    query: 'rate(mysql_com_commit{__$labels__}[__$window__]) + rate(mysql_com_rollback{__$labels__}[__$window__])',
+    color: '#ff9f43'
+  },
+  {
     name: 'mysql_innodb_row_lock_time_avg',
     display_name: '平均行锁等待时间',
     description: '行锁等待平均耗时，过高通常意味着锁争用。',
@@ -163,6 +195,54 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     unit: 'cps',
     query: 'rate(mysql_innodb_row_lock_waits{__$labels__}[__$window__])',
     color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_innodb_rows_read_rate',
+    display_name: 'InnoDB 行读取速率',
+    description: '引擎每秒读取的行数。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_rows_read{__$labels__}[__$window__])',
+    color: '#2f6bff'
+  },
+  {
+    name: 'mysql_innodb_rows_inserted_rate',
+    display_name: 'InnoDB 行插入速率',
+    description: '引擎每秒插入的行数。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_rows_inserted{__$labels__}[__$window__])',
+    color: '#ff9f43'
+  },
+  {
+    name: 'mysql_innodb_rows_updated_rate',
+    display_name: 'InnoDB 行更新速率',
+    description: '引擎每秒更新的行数。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_rows_updated{__$labels__}[__$window__])',
+    color: '#faad14'
+  },
+  {
+    name: 'mysql_innodb_rows_deleted_rate',
+    display_name: 'InnoDB 行删除速率',
+    description: '引擎每秒删除的行数。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_rows_deleted{__$labels__}[__$window__])',
+    color: '#ff7875'
+  },
+  {
+    name: 'mysql_innodb_deadlocks_rate',
+    display_name: 'InnoDB 死锁速率',
+    description: 'InnoDB 发生死锁的速率。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_deadlocks{__$labels__}[__$window__])',
+    color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_innodb_log_waits_rate',
+    display_name: 'InnoDB 日志等待速率',
+    description: '因 Redo 日志缓冲不足而等待的速率。',
+    unit: 'cps',
+    query: 'rate(mysql_innodb_log_waits{__$labels__}[__$window__])',
+    color: '#fa8c16'
   },
   {
     name: 'mysql_innodb_data_reads_rate',
@@ -488,7 +568,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '复制延迟',
     description: '从库相对主库落后的秒数。',
     unit: 'counts',
-    query: 'max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__})',
+    query: 'max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__} or mysql_slave_seconds_behind_source{__$labels__} or mysql_replica_seconds_behind_source{__$labels__})',
     color: '#2f6bff'
   },
   {
@@ -496,7 +576,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '复制 IO 线程状态',
     description: '从库复制 IO 线程状态，通常 1 为运行。',
     unit: 'counts',
-    query: 'max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__})',
+    query: 'max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__} or mysql_slave_slave_io_running{__$labels__} or mysql_slave_replica_io_running_int{__$labels__} or mysql_slave_replica_io_running{__$labels__} or mysql_replica_io_running_int{__$labels__} or mysql_slave_io_running_int{__$labels__})',
     color: '#27c274'
   },
   {
@@ -504,7 +584,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '复制 SQL 线程状态',
     description: '从库复制 SQL 线程状态，通常 1 为运行。',
     unit: 'counts',
-    query: 'max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__})',
+    query: 'max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__} or mysql_slave_slave_sql_running{__$labels__} or mysql_slave_replica_sql_running_int{__$labels__} or mysql_slave_replica_sql_running{__$labels__} or mysql_replica_sql_running_int{__$labels__} or mysql_slave_sql_running_int{__$labels__})',
     color: '#27c274'
   },
   {
@@ -572,6 +652,110 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     query:
       'clamp_max(100 * max by (instance_id) (mysql_open_tables{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_table_open_cache{__$labels__}), 1), 100)',
     color: '#2f6bff'
+  },
+  {
+    name: 'mysql_select_scan_rate',
+    display_name: '全表扫描速率',
+    description: '没有走索引、扫整张表的查询速率。',
+    unit: 'cps',
+    query: 'rate(mysql_select_scan{__$labels__}[__$window__])',
+    color: '#2f6bff'
+  },
+  {
+    name: 'mysql_table_locks_waited_rate',
+    display_name: '表锁等待速率',
+    description: '语句等到表锁才继续执行的次数速率。',
+    unit: 'cps',
+    query: 'rate(mysql_table_locks_waited{__$labels__}[__$window__])',
+    color: '#ff8a1f'
+  },
+  {
+    name: 'mysql_slave_relay_log_pos',
+    display_name: 'Relay 日志位置',
+    description: '从库中继日志当前位置。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_relay_log_pos{__$labels__})',
+    color: '#597ef7'
+  },
+  {
+    name: 'mysql_slave_relay_log_space',
+    display_name: 'Relay 日志空间',
+    description: '从库中继日志占用空间。',
+    unit: 'bytes',
+    query: 'max by (instance_id) (mysql_slave_relay_log_space{__$labels__})',
+    color: '#597ef7'
+  },
+  {
+    name: 'mysql_replication_source_log_pos',
+    display_name: 'Binlog 位点',
+    description: '从库已执行或已读取的主库二进制日志位置。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_exec_master_log_pos{__$labels__} or mysql_slave_exec_source_log_pos{__$labels__} or mysql_slave_read_master_log_pos{__$labels__} or mysql_slave_read_source_log_pos{__$labels__})',
+    color: '#2f6bff'
+  },
+  {
+    name: 'mysql_binary_files_count',
+    display_name: '二进制日志文件数',
+    description: '二进制日志文件数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_binary_files_count{__$labels__})',
+    color: '#597ef7'
+  },
+  {
+    name: 'mysql_binary_size_bytes',
+    display_name: '二进制日志总大小',
+    description: '全部二进制日志文件大小之和。',
+    unit: 'bytes',
+    query: 'max by (instance_id) (mysql_binary_size_bytes{__$labels__})',
+    color: '#2f6bff'
+  },
+  {
+    name: 'mysql_slave_last_errno',
+    display_name: '复制错误号',
+    description: '复制状态行上的错误号。0 表示当前没有复制错误。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_last_errno{__$labels__})',
+    color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_slave_last_io_errno',
+    display_name: '复制 IO 错误号',
+    description: '复制 IO 线程错误号。0 表示当前没有 IO 错误。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_last_io_errno{__$labels__})',
+    color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_slave_last_sql_errno',
+    display_name: '复制 SQL 错误号',
+    description: '复制 SQL 线程错误号。0 表示当前没有 SQL 错误。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slave_last_sql_errno{__$labels__})',
+    color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_slaves_connected',
+    display_name: '已连从库数',
+    description: '当前连到这台主库的从库数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_slaves_connected{__$labels__})',
+    color: '#27c274'
+  },
+  {
+    name: 'mysql_rpl_semi_sync_master_clients',
+    display_name: '半同步从库数',
+    description: '半同步下连着的从库数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_rpl_semi_sync_master_clients{__$labels__})',
+    color: '#27c274'
+  },
+  {
+    name: 'mysql_rpl_semi_sync_master_status',
+    display_name: '半同步状态',
+    description: '主库半同步是否开启。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_rpl_semi_sync_master_status{__$labels__})',
+    color: '#27c274'
   }
 ];
 
@@ -583,6 +767,7 @@ export const DASHBOARD_FALLBACK_GROUPS: Record<string, string> = {
   mysql_uptime: 'Base',
   mysql_threads_connected: 'ConnStatus',
   mysql_threads_running: 'ConnStatus',
+  mysql_threads_created_rate: 'ConnStatus',
   mysql_threads_cached: 'ConnStatus',
   mysql_process_list_threads_idle: 'ConnStatus',
   mysql_process_list_threads_executing: 'ConnStatus',
@@ -611,8 +796,17 @@ export const DASHBOARD_FALLBACK_GROUPS: Record<string, string> = {
   mysql_com_insert_rate: 'QueryPerf',
   mysql_com_update_rate: 'QueryPerf',
   mysql_com_delete_rate: 'QueryPerf',
+  mysql_com_commit_rate: 'QueryPerf',
+  mysql_com_rollback_rate: 'QueryPerf',
+  mysql_tps_rate: 'QueryPerf',
   mysql_innodb_row_lock_time_avg: 'InnoDBPerf',
   mysql_innodb_row_lock_waits_rate: 'InnoDBPerf',
+  mysql_innodb_rows_read_rate: 'InnoDBPerf',
+  mysql_innodb_rows_inserted_rate: 'InnoDBPerf',
+  mysql_innodb_rows_updated_rate: 'InnoDBPerf',
+  mysql_innodb_rows_deleted_rate: 'InnoDBPerf',
+  mysql_innodb_deadlocks_rate: 'InnoDBPerf',
+  mysql_innodb_log_waits_rate: 'InnoDBPerf',
   mysql_innodb_data_reads_rate: 'InnoDBPerf',
   mysql_innodb_data_writes_rate: 'InnoDBPerf',
   mysql_innodb_data_fsyncs_rate: 'InnoDBPerf',
@@ -634,6 +828,19 @@ export const DASHBOARD_FALLBACK_GROUPS: Record<string, string> = {
   mysql_open_files: 'TableCache',
   mysql_open_files_utilization: 'TableCache',
   mysql_table_open_cache_utilization: 'TableCache',
+  mysql_select_scan_rate: 'QueryPerf',
+  mysql_table_locks_waited_rate: 'QueryPerf',
+  mysql_slave_relay_log_pos: 'Replication',
+  mysql_slave_relay_log_space: 'Replication',
+  mysql_replication_source_log_pos: 'Replication',
+  mysql_binary_files_count: 'Replication',
+  mysql_binary_size_bytes: 'Replication',
+  mysql_slave_last_errno: 'Replication',
+  mysql_slave_last_io_errno: 'Replication',
+  mysql_slave_last_sql_errno: 'Replication',
+  mysql_slaves_connected: 'Replication',
+  mysql_rpl_semi_sync_master_clients: 'Replication',
+  mysql_rpl_semi_sync_master_status: 'Replication',
   mysql_table_open_cache_hits_rate: 'TableCache',
   mysql_table_open_cache_misses_rate: 'TableCache',
   mysql_key_reads_rate: 'KeyCache',

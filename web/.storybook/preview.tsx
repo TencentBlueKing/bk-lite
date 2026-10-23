@@ -8,6 +8,7 @@ import { SessionProvider } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
 import zhCommon from '@/locales/zh.json';
 import zhOpspilot from '@/app/opspilot/locales/zh.json';
+import zhMonitor from '@/app/monitor/locales/zh.json';
 import { ThemeBootstrap, ThemeProvider } from '@/theme';
 import { PermissionsProvider } from '@/context/permissions';
 // 相对路径引入 mock；webpack 同时把 `@/context/auth` 等换成同一批文件，避免真登录壳 / 双 Context。
@@ -40,7 +41,11 @@ const flatten = (obj: LocaleJson, prefix = '', out: Record<string, string> = {})
   });
   return out;
 };
-const sbMessages = { ...flatten(zhCommon as LocaleJson), ...flatten(zhOpspilot as LocaleJson) };
+const sbMessages = {
+  ...flatten(zhCommon as LocaleJson),
+  ...flatten(zhOpspilot as LocaleJson),
+  ...flatten(zhMonitor as LocaleJson),
+};
 
 const preview: Preview = {
   decorators: [

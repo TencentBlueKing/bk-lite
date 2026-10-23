@@ -1,8 +1,10 @@
+from datetime import timedelta
+
 import pytest
+from django.utils import timezone
 
 from apps.rum.constants import DEFAULT_BUDGETS
-
-pytestmark = pytest.mark.django_db
+from apps.rum.models import RumApplication
 from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
@@ -10,6 +12,8 @@ from apps.rum.services.settings import RumRuntimeSettings
 from apps.rum.services.snippets import build_snippet
 from apps.rum.services.status import build_status
 from apps.rum.services.validation import ValidationError, canonical_origins, valid_application
+
+pytestmark = pytest.mark.django_db
 
 
 def _settings() -> RumRuntimeSettings:
@@ -26,6 +30,18 @@ def _settings() -> RumRuntimeSettings:
         victoria_project_id=0,
         victoria_timeout_seconds=15,
     )
+
+
+def test_list_applications_orders_by_created_at_desc():
+    control = MemoryControl()
+    service = ApplicationsService(control, _settings())
+    service.create_application("tester", {"application": "alpha", "origins": ["https://alpha.example.test"]})
+    service.create_application("tester", {"application": "zeta", "origins": ["https://zeta.example.test"]})
+    RumApplication.objects.filter(name="alpha").update(created_at=timezone.now() - timedelta(days=1))
+
+    listed = service.list_applications("tester")
+
+    assert [item["application"] for item in listed] == ["zeta", "alpha"]
 
 
 def test_valid_application_and_origins():

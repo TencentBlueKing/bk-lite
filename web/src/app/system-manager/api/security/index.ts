@@ -20,6 +20,7 @@ export const useSecurityApi = () => {
    */
   async function updateOtpSettings({
     enableOtp,
+    enableGmTransport,
     loginExpiredTime,
     pwdSetValidityPeriod,
     pwdSetRequiredCharTypes,
@@ -35,6 +36,7 @@ export const useSecurityApi = () => {
     userCreateInitialPasswordEmailChannelId,
   }: {
     enableOtp: string;
+    enableGmTransport?: string;
     loginExpiredTime: string;
     pwdSetValidityPeriod?: string;
     pwdSetRequiredCharTypes?: string;
@@ -60,6 +62,9 @@ export const useSecurityApi = () => {
       pwd_set_lock_duration: pwdSetLockDuration,
       pwd_set_expiry_reminder_days: pwdSetExpiryReminderDays,
     };
+    if (enableGmTransport !== undefined) {
+      payload.enable_gm_transport = enableGmTransport;
+    }
     if (otpWhitelist !== undefined) {
       payload.otp_whitelist = otpWhitelist;
     }

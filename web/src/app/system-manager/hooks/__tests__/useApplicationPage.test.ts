@@ -80,7 +80,16 @@ describe('应用列表跟随上下文数据和当前语言', () => {
   });
 
   it('搜索同时匹配当前展示名和应用 id', () => {
-    const text = applicationListSearchText({ display_name: '监控中心', name: 'monitor' }).toLowerCase();
+    const text = applicationListSearchText({
+      id: '1',
+      name: 'monitor',
+      display_name: '监控中心',
+      description: '',
+      url: '',
+      source_display_name: 'Monitor',
+      source_description: '',
+      tagList: [],
+    }).toLowerCase();
 
     expect(text.includes('监控中心')).toBe(true);
     expect(text.includes('monitor')).toBe(true);

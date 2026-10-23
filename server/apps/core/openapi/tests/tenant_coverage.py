@@ -10,11 +10,11 @@ team_free 端点登记其「响应不含组织字段」断言测试。
 """
 
 TENANT_ISOLATION_COVERAGE = {
-    "workflow-orchestration/trigger": [
-        "apps.workflow_orchestration.tests.test_trigger_entrypoints::test_openapi_trigger_uses_trusted_team_and_rejects_other_tenant",
+    "workflow/trigger": [
+        "apps.workflow.tests.test_trigger_entrypoints::test_openapi_trigger_uses_trusted_team_and_rejects_other_tenant",
     ],
-    "workflow-orchestration/webhook-test": [
-        "apps.workflow_orchestration.tests.test_trigger_entrypoints::test_webhook_test_session_captures_body_only_for_its_tenant",
+    "workflow/webhook-test": [
+        "apps.workflow.tests.test_trigger_entrypoints::test_webhook_test_session_captures_body_only_for_its_tenant",
     ],
     "patch-mgmt/module-data": [
         "apps.core.openapi.tests.test_gateway::test_tenant_can_read_own_org",
@@ -368,5 +368,19 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.system_mgmt.tests.test_openapi_directory::test_include_children_does_not_expand_unauthorized_child",
         "apps.system_mgmt.tests.test_openapi_directory::test_superuser_reads_all_active_groups",
         "apps.system_mgmt.tests.test_openapi_directory::test_app_admin_cannot_read_other_org_groups",
+    ],
+    "system-mgmt/notification-channels": [
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_system_tenant_lists_own_external_channels_only",
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_other_org_channels_are_not_listed",
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_forged_acting_team_is_rejected",
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_list_without_channel_permission_is_denied",
+    ],
+    "system-mgmt/notification-channels/send": [
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_system_tenant_sends_through_own_channel",
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_send_other_org_channel_is_forbidden",
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_send_internal_nats_channel_is_rejected",
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_send_recipient_outside_org_is_rejected",
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_send_without_edit_permission_is_denied",
+        "apps.system_mgmt.tests.test_openapi_notification_channels::test_send_outside_token_scope_is_denied",
     ],
 }

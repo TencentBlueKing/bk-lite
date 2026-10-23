@@ -31,6 +31,7 @@ export interface AuthSourceTypeConfig {
 
 export interface SystemSettings {
   enable_otp: string;
+  enable_gm_transport?: string;
   login_expired_time: string;
   portal_name?: string;
   portal_logo_url?: string;

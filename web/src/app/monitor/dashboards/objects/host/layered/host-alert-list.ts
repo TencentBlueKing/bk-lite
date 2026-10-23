@@ -1,6 +1,9 @@
 /** 概览告警抽屉与 KPI 计数共用的活跃告警查询。只查当前实例，不放宽到全租户。 */
 export const HOST_ALERT_PAGE_SIZE = 50;
 
+/** 概览事件轨原来的条数。计数与事件同一次请求，不再另打 page_size=1。 */
+export const HOST_OVERVIEW_ALERT_PAGE_SIZE = 20;
+
 export const activeHostAlertParams = (
   instanceId: string,
   page: number,
@@ -11,6 +14,15 @@ export const activeHostAlertParams = (
   page,
   page_size: pageSize
 });
+
+/**
+ * 概览只打这一次：KPI 用 count，事件轨用 results。
+ * status_in 与抽屉活跃口径一致，计数不会混入已恢复/关闭。
+ * 因此轨上只会出现仍为 new 的告警。
+ */
+export const overviewHostAlertParams = (instanceId: string) => (
+  activeHostAlertParams(instanceId, 1, HOST_OVERVIEW_ALERT_PAGE_SIZE)
+);
 
 export interface HostAlertRecord {
   id: string | number;

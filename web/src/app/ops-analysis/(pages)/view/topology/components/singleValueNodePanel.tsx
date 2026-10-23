@@ -158,7 +158,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
       selectedFields: [],
       name: '',
       nameFontSize: 12,
-      nameColor: '#666666',
+      nameColor: 'var(--color-text-3)',
       unit: '',
       conversionFactor: 1,
       decimalPlaces: 2,

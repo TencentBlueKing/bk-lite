@@ -14,7 +14,9 @@ from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
 from apps.monitor.tasks.services.policy_scan.metric_query import MetricQueryService
 from apps.monitor.tasks.services.policy_scan.scanner import MonitorPolicyScan
 from apps.monitor.tasks.utils.policy_calculate import _parse_finite_float
+from apps.monitor.tasks.utils.policy_calculate_multi import summarize_multi_rows
 from apps.monitor.tasks.utils.policy_methods import COMPARE_MODE_ABSOLUTE
+from apps.monitor.tasks.utils.policy_multi import is_multi_query
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.unit_converter import UnitConverter
 
@@ -26,6 +28,8 @@ HIT_COUNT_REASON = "本轮命中 {hit}/{total}，现网不会建告警"
 MISSING_BASELINE_REASON = "对照缺失或留存不足"
 NO_DATA_REASON = "无数据"
 INSUFFICIENT_SAMPLES_REASON = "样本不足"
+LEVELS_DIFFER_REASON = "各条件级别不同，取最低"
+LEVELS_AGREE_REASON = "各条件级别一致"
 TRUNCATED_WARNING = f"实例超过 {DRY_RUN_INSTANCE_LIMIT}，已截断"
 
 _SKIP_POLICY_FIELDS = frozenset({"id", "last_run_time"})
@@ -54,29 +58,40 @@ class PolicyDryRunService:
             metric_query.set_monitor_obj_instance_key()
             existence_data = metric_query.query_existence_metrics(policy.period)
             _raise_for_vm_error(existence_data)
-            failed_stage = "query_comparison"
             trigger_count = max(1, int(getattr(policy, "trigger_count", 1) or 1))
-            comparison_data = metric_query.query_comparison_metrics(
-                policy.period, trigger_count
-            )
-            _raise_for_vm_error(comparison_data)
-            comparison_data = metric_query.convert_metric_values(comparison_data)
-            failed_stage = "query_overlay"
-            current_map, baseline_map = self._overlay_value_maps(
-                policy, metric_query
-            )
-            failed_stage = "classify"
-            items = self._classify(
-                policy,
-                policy_id,
-                instances_map,
-                metric_query,
-                existence_data,
-                comparison_data,
-                current_map,
-                baseline_map,
-                trigger_count,
-            )
+            if is_multi_query(getattr(policy, "query_condition", None)):
+                failed_stage = "query_comparison"
+                items = self._classify_multi(
+                    policy,
+                    policy_id,
+                    instances_map,
+                    metric_query,
+                    existence_data,
+                    trigger_count,
+                )
+            else:
+                failed_stage = "query_comparison"
+                comparison_data = metric_query.query_comparison_metrics(
+                    policy.period, trigger_count
+                )
+                _raise_for_vm_error(comparison_data)
+                comparison_data = metric_query.convert_metric_values(comparison_data)
+                failed_stage = "query_overlay"
+                current_map, baseline_map = self._overlay_value_maps(
+                    policy, metric_query
+                )
+                failed_stage = "classify"
+                items = self._classify(
+                    policy,
+                    policy_id,
+                    instances_map,
+                    metric_query,
+                    existence_data,
+                    comparison_data,
+                    current_map,
+                    baseline_map,
+                    trigger_count,
+                )
             warnings = [TRUNCATED_WARNING] if truncated else []
             return {
                 "items": items,
@@ -365,6 +380,168 @@ class PolicyDryRunService:
             )
 
         return self._sort_items(items, list(instances_map.keys()))
+
+    def _classify_multi(
+        self,
+        policy,
+        policy_id,
+        instances_map,
+        metric_query,
+        existence_data,
+        trigger_count,
+    ):
+        payloads = metric_query.query_multi_comparison_metrics(policy.period, trigger_count)
+        series_by_ref = {}
+        judged_conditions = []
+        for condition in metric_query.multi_conditions():
+            ref = condition.get("ref")
+            payload = payloads.get(ref) or {}
+            _raise_for_vm_error(payload)
+            converted = metric_query.convert_condition_values(payload, condition)
+            series_by_ref[ref] = (converted.get("data") or {}).get("result") or []
+            judged_conditions.append(metric_query.condition_with_converted_thresholds(condition))
+        summaries = {
+            row["metric_instance_id"]: row
+            for row in summarize_multi_rows(series_by_ref, judged_conditions, trigger_count)
+        }
+        existence_series = self._series_map(existence_data, metric_query, instances_map)
+        active_by_instance = {}
+        if policy_id:
+            for alert in MonitorAlert.objects.filter(
+                policy_id=policy_id, status="new", alert_type="alert"
+            ):
+                active_by_instance.setdefault(alert.monitor_instance_id, alert)
+        primary = next(
+            (item for item in judged_conditions if item.get("role") == "level"),
+            judged_conditions[0] if judged_conditions else {},
+        )
+        result_unit = metric_query.condition_result_unit(primary) if primary else ""
+        items = []
+        covered_instances = set()
+        for metric_instance_id, series in existence_series.items():
+            monitor_instance_id = series["monitor_instance_id"]
+            covered_instances.add(monitor_instance_id)
+            summary = summaries.get(metric_instance_id)
+            conditions = self._decorate_multi_conditions(
+                metric_query,
+                (summary or {}).get("conditions") or [],
+            )
+            if not conditions:
+                conditions = self._empty_multi_conditions(metric_query)
+            primary_value = None if summary is None else summary.get("primary_value")
+            row = {
+                "instance_id": monitor_instance_id,
+                "instance_name": instances_map.get(monitor_instance_id, monitor_instance_id),
+                "metric_instance_id": metric_instance_id,
+                "current_value": primary_value,
+                "baseline_value": None,
+                "compared_value": primary_value,
+                "result_unit": result_unit,
+                "result_unit_display": (
+                    UnitConverter.get_display_unit(result_unit) if result_unit else ""
+                ),
+                "matched_threshold": None if summary is None else summary.get("row_matched_threshold"),
+                "hit_count": 0 if summary is None else summary.get("hit_count") or 0,
+                "trigger_count": trigger_count,
+                "conditions": conditions,
+            }
+            if summary is None:
+                row.update(verdict="missing_baseline", reason=MISSING_BASELINE_REASON)
+            elif summary.get("reason_kind") == "missing":
+                row.update(
+                    verdict="missing_condition_data",
+                    reason=f"条件 {summary.get('reason_ref')} 无数据",
+                )
+            elif summary.get("reason_kind") == "short":
+                row.update(
+                    verdict="insufficient_samples",
+                    reason=self._hit_reason(
+                        row["hit_count"], trigger_count, INSUFFICIENT_SAMPLES_REASON
+                    ),
+                )
+            elif summary.get("reason_kind") == "trigger":
+                reason = LEVELS_DIFFER_REASON if summary.get("levels_differ") else LEVELS_AGREE_REASON
+                row.update(
+                    verdict="would_trigger",
+                    reason=self._hit_reason(row["hit_count"], trigger_count, reason),
+                )
+            else:
+                if summary.get("reason_kind") == "gate":
+                    prefix = f"前置条件 {summary.get('reason_ref')} 未通过"
+                else:
+                    prefix = f"条件 {summary.get('reason_ref')} 未命中任何级别"
+                reason = self._hit_reason(row["hit_count"], trigger_count, prefix)
+                recover_alert = active_by_instance.get(monitor_instance_id)
+                if recover_alert and self._would_recover(policy, recover_alert):
+                    row.update(verdict="would_recover", reason=reason)
+                else:
+                    row.update(verdict="ok", reason=reason)
+            items.append(row)
+
+        for instance_id, instance_name in instances_map.items():
+            if instance_id in covered_instances:
+                continue
+            items.append(
+                {
+                    "instance_id": instance_id,
+                    "instance_name": instance_name,
+                    "metric_instance_id": instance_id,
+                    "verdict": "no_data",
+                    "current_value": None,
+                    "baseline_value": None,
+                    "compared_value": None,
+                    "result_unit": result_unit,
+                    "result_unit_display": (
+                        UnitConverter.get_display_unit(result_unit) if result_unit else ""
+                    ),
+                    "matched_threshold": None,
+                    "reason": NO_DATA_REASON,
+                    "hit_count": 0,
+                    "trigger_count": trigger_count,
+                    "conditions": self._empty_multi_conditions(metric_query),
+                }
+            )
+        return self._sort_items(items, list(instances_map.keys()))
+
+    def _decorate_multi_conditions(self, metric_query, views):
+        by_ref = {item.get("ref"): item for item in metric_query.multi_conditions()}
+        decorated = []
+        for view in views:
+            condition = by_ref.get(view.get("ref")) or {}
+            row = {
+                "ref": view.get("ref"),
+                "metric_name": metric_query.condition_metric_name(condition),
+                "value": view.get("value"),
+                "result_unit": metric_query.condition_result_unit(condition),
+                "matched_threshold": view.get("matched_threshold"),
+            }
+            if condition.get("source") == "formula":
+                row["expression"] = condition.get("expression") or ""
+            if "gate_passed" in view:
+                row["gate_passed"] = view.get("gate_passed")
+            else:
+                row["hit_level"] = view.get("hit_level")
+            decorated.append(row)
+        return decorated
+
+    def _empty_multi_conditions(self, metric_query):
+        rows = []
+        for condition in metric_query.multi_conditions():
+            row = {
+                "ref": condition.get("ref"),
+                "metric_name": metric_query.condition_metric_name(condition),
+                "value": None,
+                "result_unit": metric_query.condition_result_unit(condition),
+                "matched_threshold": None,
+            }
+            if condition.get("source") == "formula":
+                row["expression"] = condition.get("expression") or ""
+            if condition.get("role") == "gate":
+                row["gate_passed"] = False
+            else:
+                row["hit_level"] = None
+            rows.append(row)
+        return rows
 
     @staticmethod
     def _would_recover(policy, alert):

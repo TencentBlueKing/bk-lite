@@ -30,7 +30,7 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
   toolbar,
   filterBar,
   contentRef,
-  contentClassName = 'bg-[#f7f8fa]',
+  contentClassName = 'bg-[var(--color-bg-2)]',
   headerVisible = true,
   filterBarVisible = true,
   flushContent = false,

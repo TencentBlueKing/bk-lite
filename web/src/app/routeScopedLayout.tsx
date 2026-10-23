@@ -11,6 +11,7 @@ import { ClientProvider } from '@/context/client';
 import { MenusProvider } from '@/context/menus';
 import { PermissionsProvider } from '@/context/permissions';
 import { isDashboardExecutionRenderRoute } from '@/app/routeScope';
+import { EffectiveHomepageProvider } from '@/app/ops-analysis/context/effectiveHomepage';
 
 const Loader = () => <Spin fullscreen />;
 
@@ -56,13 +57,15 @@ export const RouteScopedLayout = ({
 
   return (
     <UserInfoProvider>
-      <ClientProvider>
-        <MenusProvider>
-          <PermissionsProvider>
-            <StandardLayout>{children}</StandardLayout>
-          </PermissionsProvider>
-        </MenusProvider>
-      </ClientProvider>
+      <EffectiveHomepageProvider>
+        <ClientProvider>
+          <MenusProvider>
+            <PermissionsProvider>
+              <StandardLayout>{children}</StandardLayout>
+            </PermissionsProvider>
+          </MenusProvider>
+        </ClientProvider>
+      </EffectiveHomepageProvider>
     </UserInfoProvider>
   );
 };

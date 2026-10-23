@@ -1,0 +1,267 @@
+.tabGhost {
+  color: var(--color-text-4);
+}
+
+:global(.ant-tabs-tab-active) .tabGhost {
+  color: inherit;
+}
+
+.tabBadge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+:global(.ant-tabs-tab-active) .tabBadge {
+  border-color: var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-3);
+}
+
+.sqlCell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.chartStack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: none;
+  height: auto;
+  min-height: 0;
+}
+
+/* 盖过主机 .root 的 min-height:100%。短 Tab 只跟内容高，不把外层撑出一屏空白再滚。 */
+.fitContent.fitContent {
+  flex: none;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* 性能/复制内容区不再吃满页高。末卡之下只留 .main 自己的 16px。 */
+.stackMain {
+  flex: none;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* 写入 | InnoDB 并排只在这一行里拉齐，不把分区根拉成页高。 */
+.pairRow,
+.pairRowSide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  flex: none;
+  height: auto;
+  min-height: 0;
+}
+
+.pairRowSide {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pairCol {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+}
+
+.pairFill {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+/* 写入语句有图时，空态卡吃满同行剩余高度，文案在标题下的内容区里垂直居中。 */
+.innodbEmpty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.innodbEmpty > section {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  justify-content: center;
+}
+
+.innodbEmpty > section > div {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+/* 复制签一块：标题到卡片 12px，对齐概览/性能 .main gap。区段距仍由 replBreak 承担。 */
+.replBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.replBreak {
+  margin-top: 20px;
+}
+
+.replBlock > .perfGrid,
+.replBlock > .kpiFit,
+.replBlock .perfGrid section {
+  margin-top: 0;
+}
+
+@media (max-width: 720px) {
+  .pairRowSide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .innodbEmpty,
+  .innodbEmpty > section {
+    flex: none;
+    height: auto;
+  }
+}
+
+.perfGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+/* 仅「连接与吞吐」三卡同行。其它性能分区继续用两列 perfGrid。 */
+.perfGrid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+@media (max-width: 720px) {
+  .perfGrid3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.perfWide {
+  grid-column: 1 / -1;
+}
+
+/* 两列里的最后一张落单卡通栏。两张均分，不留永久半行空白。 */
+.perfFill > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+/* 复制签 1–5 项铺满，不改主机六卡栅格。 */
+.kpiFit > * {
+  grid-template-columns: repeat(var(--kpi-cols, 6), minmax(0, 1fr));
+}
+
+/* 标题下灰字链。高度锁死，异步到位只换字，不把顶栏撑高。 */
+.identityLine {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  min-height: 22px;
+  max-height: 22px;
+  overflow: hidden;
+  color: var(--color-text-3, #8c8c8c);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.metaSep {
+  flex: none;
+  margin: 0 6px;
+  color: var(--color-text-4, #bfbfbf);
+}
+
+.metaWarn {
+  color: var(--color-warning, #faad14);
+}
+
+.hostSegment {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.hostLabel {
+  flex: none;
+  margin-right: 4px;
+}
+
+.hostLink {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-primary, #1677ff);
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+.hostUnlinked {
+  flex: none;
+  color: var(--color-text-3, #8c8c8c);
+}
+
+.identitySkeleton {
+  display: inline-block;
+  flex: none;
+  width: 240px;
+  height: 12px;
+  border-radius: 4px;
+  background: var(--color-fill-2);
+}
+
+.identitySkeletonHost {
+  width: 88px;
+}
+
+/* 线程圆点跟主值同色：运行中成功绿，停止告警红。 */
+.threadDot {
+  display: inline-block;
+  margin-right: 6px;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1;
+  vertical-align: 2px;
+}
+
+@media (max-width: 1100px) {
+  .perfGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .perfWide {
+    grid-column: auto;
+  }
+}

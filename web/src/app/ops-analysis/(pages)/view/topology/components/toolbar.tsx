@@ -135,8 +135,8 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
               onClick={onSelectMode}
               className={iconButtonClassName}
               style={{
-                backgroundColor: isSelectMode ? '#1677ff15' : 'transparent',
-                color: isSelectMode ? '#1677ff' : undefined,
+                backgroundColor: isSelectMode ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)' : 'transparent',
+                color: isSelectMode ? 'var(--color-primary)' : undefined,
               }}
             />
           </Tooltip>
