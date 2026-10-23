@@ -13,6 +13,7 @@ import { executionStatusPresentation, formatDuration, formatStartedBy, formatTri
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
 import type { ExecutionArtifactRecord, ExecutionNodeDetail, ExecutionNodeSummary, ExecutionNodesResponse, ExecutionRecord } from '../lib/types';
 import { ExecutionLifecycleActions } from './execution-lifecycle-actions';
+import { JsonCodeView } from './json-code-view';
 import { WorkflowLaunchDialog } from './workflow-launch-dialog';
 import { WorkflowPermission } from './workflow-permission';
 
@@ -87,7 +88,7 @@ function JsonEvidence({ title, value }: { title: string; value: Record<string, u
       {expanded ? (
         <div id={contentId} className="w-full min-w-0 max-w-full">
           {hasValue ? (
-            <pre className="m-0 box-border block w-full max-w-full overflow-x-auto rounded-md bg-[var(--color-fill-1)] p-3 text-xs leading-5 text-[var(--color-text-2)]">{formatJson(value)}</pre>
+            <JsonCodeView height="240px" label={title} value={value} />
           ) : (
             <div className="flex min-h-32 items-center justify-center py-4">
               <Empty className="my-0" image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('workflowOrchestration.node.noSectionData', '暂无{title}', { title })} />

@@ -21,6 +21,7 @@ import OperateDrawer from '@/components/operate-drawer';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import type { JsonSchema } from '../lib/types';
+import { JsonCodeView } from './json-code-view';
 import { WORKFLOW_REFERENCE_MIME } from './schema-node-form';
 import { WorkflowPermission, type WorkflowPermissionArea } from './workflow-permission';
 export interface WorkflowPickerItem {
@@ -221,6 +222,63 @@ function schemaFields(schema?: JsonSchema, prefix = ''): Array<{ path: string; t
   });
 }
 
+function matchesFieldQuery(field: { path: string; type: string }, query: string) {
+  const needle = query.trim().toLowerCase();
+  return !needle || `${field.path} ${field.type}`.toLowerCase().includes(needle);
+}
+
+function filterSchemaByQuery(schema: JsonSchema | undefined, query: string): JsonSchema | undefined {
+  const needle = query.trim().toLowerCase();
+  if (!schema || !needle || !schema.properties) return schema;
+  const properties: NonNullable<JsonSchema['properties']> = {};
+  Object.entries(schema.properties).forEach(([key, field]) => {
+    const type = Array.isArray(field.type) ? field.type.join(' | ') : String(field.type || 'unknown');
+    const self = `${key} ${type}`.toLowerCase().includes(needle);
+    if (field.type === 'object') {
+      const nested = filterSchemaByQuery(field, needle);
+      if (self) properties[key] = field;
+      else if (nested?.properties && Object.keys(nested.properties).length) properties[key] = nested;
+      return;
+    }
+    if (self) properties[key] = field;
+  });
+  return { ...schema, properties };
+}
+
+function pruneOutputValue(value: unknown, needle: string, prefix = ''): { kept: boolean; value: unknown } {
+  const matches = (text: string) => text.toLowerCase().includes(needle);
+  if (Array.isArray(value)) {
+    if (prefix && matches(`${prefix} array`)) return { kept: true, value };
+    if (!value.length) return { kept: false, value };
+    const child = pruneOutputValue(value[0], needle, `${prefix}[]`);
+    return child.kept ? { kept: true, value: [child.value] } : { kept: false, value };
+  }
+  if (value !== null && typeof value === 'object') {
+    if (prefix && matches(`${prefix} object`)) return { kept: true, value };
+    const next: Record<string, unknown> = {};
+    let kept = false;
+    Object.entries(value).forEach(([key, item]) => {
+      const path = prefix ? `${prefix}.${key}` : key;
+      const type = item === null ? 'null' : Array.isArray(item) ? 'array' : typeof item;
+      if (matches(`${path} ${type}`)) {
+        next[key] = item;
+        kept = true;
+        return;
+      }
+      if (item !== null && typeof item === 'object') {
+        const child = pruneOutputValue(item, needle, path);
+        if (child.kept) {
+          next[key] = child.value;
+          kept = true;
+        }
+      }
+    });
+    return { kept, value: next };
+  }
+  const type = value === null ? 'null' : typeof value;
+  return { kept: Boolean(prefix) && matches(`${prefix} ${type}`), value };
+}
+
 function valueFields(value: unknown, prefix = ''): Array<{ path: string; type: string; value: unknown }> {
   if (value === null || typeof value !== 'object') return prefix ? [{ path: prefix, type: value === null ? 'null' : typeof value, value }] : [];
   if (Array.isArray(value)) {
@@ -290,6 +348,7 @@ export function WorkflowNodeInspector({
 }) {
   const { t } = useTranslation();
   const [inputQuery, setInputQuery] = useState('');
+  const [outputQuery, setOutputQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
   const [inputView, setInputView] = useState<DataViewMode>('schema');
   const [outputView, setOutputView] = useState<DataViewMode>('schema');
@@ -312,6 +371,14 @@ export function WorkflowNodeInspector({
   })), [groupedReferences]);
   const outputFields = useMemo(() => outputData === undefined ? [] : valueFields(outputData), [outputData]);
   const declaredOutputFields = useMemo(() => schemaFields(outputSchema), [outputSchema]);
+  const visibleDeclaredOutputFields = useMemo(() => declaredOutputFields.filter((field) => matchesFieldQuery(field, outputQuery)), [declaredOutputFields, outputQuery]);
+  const visibleOutputFields = useMemo(() => outputFields.filter((field) => matchesFieldQuery(field, outputQuery)), [outputFields, outputQuery]);
+  const filteredOutputSchema = useMemo(() => filterSchemaByQuery(outputSchema, outputQuery), [outputQuery, outputSchema]);
+  const filteredOutputData = useMemo(() => {
+    if (outputData === undefined || !outputQuery.trim()) return outputData;
+    const pruned = pruneOutputValue(outputData, outputQuery.trim().toLowerCase());
+    return pruned.kept ? pruned.value : undefined;
+  }, [outputData, outputQuery]);
   const testedOutputFields = useMemo(() => {
     if (outputData === undefined) return [];
     const actual = valueFields(outputData);
@@ -324,6 +391,9 @@ export function WorkflowNodeInspector({
     const samples = actual.filter((item) => !declared.has(item.path)).map((item) => ({ ...item, sample: true }));
     return [...contractFields, ...samples];
   }, [declaredOutputFields, outputData]);
+  const visibleTestedOutputFields = useMemo(() => testedOutputFields.filter((field) => matchesFieldQuery(field, outputQuery)), [outputQuery, testedOutputFields]);
+  const visibleRuntimeOutputFields = outputSchema ? visibleTestedOutputFields : visibleOutputFields.map((field) => ({ ...field, sample: false }));
+  const outputQueryActive = Boolean(outputQuery.trim());
   const segmentedOptions = [
     { label: 'Schema', value: 'schema' },
     { label: 'JSON', value: 'json' },
@@ -358,12 +428,12 @@ export function WorkflowNodeInspector({
         {hideUpstreamInput ? null : <section aria-label={t('workflowOrchestration.editor.nodeInput', '节点输入')} className="flex min-h-0 flex-col bg-[var(--color-fill-1)]">
           <div className="border-b border-[var(--color-border-1)] p-4">
             <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-3)]">{t('workflowOrchestration.editor.inputData', '输入')}</div>
-            <Input.Search allowClear size="small" placeholder={t('workflowOrchestration.editor.searchPreviousFields', '搜索上游字段')} value={inputQuery} onChange={(event) => setInputQuery(event.target.value)} />
-            <Segmented block size="small" className="mt-3" options={segmentedOptions} value={inputView} onChange={(value) => setInputView(value as DataViewMode)} />
+            <Input.Search allowClear placeholder={t('workflowOrchestration.editor.searchPreviousFields', '搜索上游字段')} value={inputQuery} onChange={(event) => setInputQuery(event.target.value)} />
+            <Segmented block className="mt-3" options={segmentedOptions} value={inputView} onChange={(value) => setInputView(value as DataViewMode)} />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className={`min-h-0 flex-1 p-4 ${inputView === 'json' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
             {filteredReferences.length ? inputView === 'json'
-              ? <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-[var(--color-bg)] p-3 font-mono text-[11px] text-[var(--color-text-2)]">{JSON.stringify(inputPreview, null, 2)}</pre>
+              ? <div className="relative h-full min-h-[240px]"><div className="absolute inset-0"><JsonCodeView label={t('workflowOrchestration.editor.inputData', '输入')} value={inputPreview} /></div></div>
               : <div className="space-y-4">{groupedReferences.map(({ source, sourceKey, items }) => {
                 const expanded = Boolean(inputQuery.trim()) || !collapsedGroups.includes(sourceKey);
                 return <section key={sourceKey}>
@@ -407,14 +477,25 @@ export function WorkflowNodeInspector({
         </section>
 
         <section aria-label={t('workflowOrchestration.editor.nodeOutput', '节点输出')} className="flex min-h-0 flex-col bg-[var(--color-fill-1)]">
-          <div className="border-b border-[var(--color-border-1)] p-4"><div className="mb-3 flex items-center justify-between gap-3"><span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-3)]">{t('workflowOrchestration.editor.outputData', '输出')}</span>{outputData !== undefined ? <Tag color="success">{t('workflowOrchestration.editor.lastTestOutput', '上次测试')}</Tag> : null}</div><Segmented block size="small" options={segmentedOptions} value={outputView} onChange={(value) => setOutputView(value as DataViewMode)} /></div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <Spin spinning={outputBusy}>
+          <div className="border-b border-[var(--color-border-1)] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3"><span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-3)]">{t('workflowOrchestration.editor.outputData', '输出')}</span>{outputData !== undefined ? <Tag color="success">{t('workflowOrchestration.editor.lastTestOutput', '上次测试')}</Tag> : null}</div>
+            <Input.Search allowClear placeholder={t('workflowOrchestration.editor.searchOutputFields', '搜索输出字段')} value={outputQuery} onChange={(event) => setOutputQuery(event.target.value)} />
+            <Segmented block className="mt-3" options={segmentedOptions} value={outputView} onChange={(value) => setOutputView(value as DataViewMode)} />
+          </div>
+          <div className={`min-h-0 flex-1 p-4 ${outputView === 'json' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+            <Spin spinning={outputBusy} wrapperClassName="h-full [&_.ant-spin-container]:h-full">
               {outputError ? <Alert type="error" showIcon message={t('workflowOrchestration.editor.nodeTestFailed', '节点测试失败')} description={outputError} /> : outputData !== undefined ? outputView === 'json'
-                ? <pre className="m-0 overflow-auto rounded-md bg-[var(--color-bg)] p-3 font-mono text-xs text-[var(--color-text-2)]">{JSON.stringify(outputData, null, 2)}</pre>
-                : <div className="divide-y divide-[var(--color-border-1)] rounded-md bg-[var(--color-bg)] px-3">{(outputSchema ? testedOutputFields : outputFields.map((field) => ({ ...field, sample: false }))).map((field) => <div key={`${field.path}:${field.sample ? 'sample' : 'contract'}`} className="grid grid-cols-[minmax(0,1fr)_72px] gap-3 py-2 text-xs"><div className="min-w-0"><div className="break-all font-medium text-[var(--color-text-1)]">{field.path}</div>{outputView === 'table' && 'value' in field ? <div className="mt-0.5 break-all text-[var(--color-text-3)]">{compactValue(field.value)}</div> : null}</div><span className="text-right text-[var(--color-text-4)]">{field.type}</span></div>)}</div>
-              : outputView === 'json' && outputSchema ? <pre className="m-0 overflow-auto rounded-md bg-[var(--color-bg)] p-3 font-mono text-xs text-[var(--color-text-2)]">{JSON.stringify(outputSchema, null, 2)}</pre>
-              : outputView === 'schema' && declaredOutputFields.length ? <div className="divide-y divide-[var(--color-border-1)] rounded-md bg-[var(--color-bg)] px-3">{declaredOutputFields.map((field) => <div key={field.path} className="grid grid-cols-[minmax(0,1fr)_72px] gap-3 py-2 text-xs"><span className="break-all font-medium text-[var(--color-text-1)]">{field.path}</span><span className="text-right text-[var(--color-text-4)]">{field.type}</span></div>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={onExecute ? t('workflowOrchestration.editor.executeToSeeOutput', '执行当前节点后查看真实输出') : t('workflowOrchestration.editor.noOutputSchema', '该节点未声明输出结构')} />}
+                ? filteredOutputData === undefined
+                  ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('workflowOrchestration.editor.noMatchingOutputFields', '没有匹配的输出字段')} />
+                  : <div className="relative h-full min-h-[240px]"><div className="absolute inset-0"><JsonCodeView label={t('workflowOrchestration.editor.outputData', '输出')} value={filteredOutputData} /></div></div>
+                : visibleRuntimeOutputFields.length
+                  ? <div className="divide-y divide-[var(--color-border-1)] rounded-md bg-[var(--color-bg)] px-3">{visibleRuntimeOutputFields.map((field) => <div key={`${field.path}:${field.sample ? 'sample' : 'contract'}`} className="grid grid-cols-[minmax(0,1fr)_72px] gap-3 py-2 text-xs"><div className="min-w-0"><div className="break-all font-medium text-[var(--color-text-1)]">{field.path}</div>{outputView === 'table' && 'value' in field ? <div className="mt-0.5 break-all text-[var(--color-text-3)]">{compactValue(field.value)}</div> : null}</div><span className="text-right text-[var(--color-text-4)]">{field.type}</span></div>)}</div>
+                  : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={outputQueryActive ? t('workflowOrchestration.editor.noMatchingOutputFields', '没有匹配的输出字段') : t('workflowOrchestration.editor.noOutputSchema', '该节点未声明输出结构')} />
+              : outputView === 'json' && outputSchema ? (outputQueryActive && !Object.keys(filteredOutputSchema?.properties || {}).length
+                ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('workflowOrchestration.editor.noMatchingOutputFields', '没有匹配的输出字段')} />
+                : <div className="relative h-full min-h-[240px]"><div className="absolute inset-0"><JsonCodeView label={t('workflowOrchestration.editor.outputData', '输出')} value={filteredOutputSchema} /></div></div>)
+              : outputView === 'schema' && visibleDeclaredOutputFields.length ? <div className="divide-y divide-[var(--color-border-1)] rounded-md bg-[var(--color-bg)] px-3">{visibleDeclaredOutputFields.map((field) => <div key={field.path} className="grid grid-cols-[minmax(0,1fr)_72px] gap-3 py-2 text-xs"><span className="break-all font-medium text-[var(--color-text-1)]">{field.path}</span><span className="text-right text-[var(--color-text-4)]">{field.type}</span></div>)}</div>
+              : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={outputQueryActive && declaredOutputFields.length ? t('workflowOrchestration.editor.noMatchingOutputFields', '没有匹配的输出字段') : onExecute ? t('workflowOrchestration.editor.executeToSeeOutput', '执行当前节点后查看真实输出') : t('workflowOrchestration.editor.noOutputSchema', '该节点未声明输出结构')} />}
             </Spin>
           </div>
         </section>

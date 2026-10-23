@@ -65,7 +65,7 @@ def _build_builtin_items(*, team_id: int, channel_id: int | None, username: str)
         username=username,
         fmt="xlsx",
         template_snapshot=xlsx_snapshot,
-        script_type="shell",
+        script_type="python",
         script_content=LINUX_HEALTH_SCRIPT,
         operating_system="linux",
         recipients=recipients,

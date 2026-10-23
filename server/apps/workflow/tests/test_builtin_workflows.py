@@ -127,6 +127,9 @@ def test_ensure_builtin_publishes_next_version_when_template_snapshot_changes(bu
     assert [item.current_version for item in second] == [2, 2]
     linux = next(item for item in second if item.engine_name == builtin_engine_name(1, BUILTIN_LINUX_KEY))
     script = linux.definition["tasks"][0]["inputParameters"]["script_content"]
+    assert linux.definition["tasks"][0]["inputParameters"]["script_type"] == "python"
+    assert script.startswith("#!/usr/bin/env python3\n")
+    assert "#!/bin/bash" not in script
     assert 'print("result="' in script
     assert "BK_LITE_RESULT=" not in script
     assert linux.versions.filter(version=1).exists()

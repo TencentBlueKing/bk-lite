@@ -316,10 +316,12 @@ describe('执行记录统一详情入口', () => {
     renderPage('execution-1');
 
     expect(await screen.findByText('流程节点')).not.toBeNull();
-    const firstOutput = await screen.findByText(/first_result/);
-    expect(firstOutput.closest('pre')?.className).not.toContain('max-h-64');
-    expect(firstOutput.closest('pre')?.className).toContain('w-full');
-    expect(firstOutput.closest('pre')?.className).toContain('max-w-full');
+    const firstOutput = (await within(screen.getByRole('region', { name: '输出详情' })).findByRole('textbox', { name: 'code-editor-json' })) as HTMLTextAreaElement;
+    expect(firstOutput.value).toContain('first_result');
+    expect(firstOutput.dataset.theme).toBe('textmate');
+    expect(firstOutput.dataset.copy).toBe('true');
+    expect(firstOutput.dataset.fullscreen).toBe('true');
+    expect(firstOutput.className).not.toContain('max-h-64');
     expect(screen.getByTestId('execution-detail-content').className).toContain('min-w-0');
     expect(screen.getByTestId('execution-detail-content').className).toContain('overflow-hidden');
     expect(screen.getByRole('region', { name: '节点详情' }).className).toContain('overflow-x-hidden');
@@ -333,8 +335,11 @@ describe('执行记录统一详情入口', () => {
     const finishNodeButton = screen.getByRole('button', { name: '查看节点 结束发布' });
     fireEvent.click(finishNodeButton);
 
-    expect(await screen.findByText(/second_result/)).not.toBeNull();
-    await waitFor(() => expect(screen.queryByText(/first_result/)).toBeNull());
+    await waitFor(() => {
+      const switchedOutput = within(screen.getByRole('region', { name: '输出详情' })).getByRole('textbox', { name: 'code-editor-json' }) as HTMLTextAreaElement;
+      expect(switchedOutput.value).toContain('second_result');
+      expect(switchedOutput.value).not.toContain('first_result');
+    });
     expect(finishNodeButton.getAttribute('aria-current')).toBe('step');
     expect(screen.queryByText(/internal-execution-id/)).toBeNull();
     expect(screen.queryByText('finish_release')).toBeNull();
@@ -435,15 +440,22 @@ describe('执行记录统一详情入口', () => {
     expect(detailRegion.getAttribute('aria-busy')).toBe('true');
 
     await act(async () => { finishRequest.resolve(detail(finishNode, { second_result: '流程已结束' })); });
-    expect(await within(detailRegion).findByText(/second_result/)).not.toBeNull();
-    expect(detailRegion.getAttribute('aria-busy')).toBe('false');
+    await waitFor(() => {
+      const region = screen.getByRole('region', { name: '节点详情' });
+      const switchedOutput = within(region).getByRole('textbox', { name: 'code-editor-json' }) as HTMLTextAreaElement;
+      expect(switchedOutput.value).toContain('second_result');
+      expect(region.getAttribute('aria-busy')).toBe('false');
+    });
 
     await act(async () => { firstRequest.resolve(detail(firstNode, { stale_result: '过期响应' })); });
-    expect(within(detailRegion).queryByText(/stale_result/)).toBeNull();
+    expect((within(screen.getByRole('region', { name: '输出详情' })).getByRole('textbox', { name: 'code-editor-json' }) as HTMLTextAreaElement).value).not.toContain('stale_result');
 
     fireEvent.click(screen.getByRole('button', { name: '查看节点 确认生产目标范围' }));
     await waitFor(() => expect(firstRequestCount).toBe(2));
-    expect(await within(detailRegion).findByText(/first_result/)).not.toBeNull();
+    await waitFor(() => {
+      const reloadedOutput = within(screen.getByRole('region', { name: '输出详情' })).getByRole('textbox', { name: 'code-editor-json' }) as HTMLTextAreaElement;
+      expect(reloadedOutput.value).toContain('first_result');
+    });
   });
 
   it('关闭抽屉时取消未完成的节点详情请求', async () => {
@@ -516,10 +528,11 @@ describe('执行记录统一详情入口', () => {
     expect(outputToggle.getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(outputToggle);
     expect(within(nodeDetail).getByRole('button', { name: '展开输出' }).getAttribute('aria-expanded')).toBe('false');
-    expect(within(nodeDetail).queryByText(/warning_count/)).toBeNull();
+    expect(within(nodeDetail).queryByRole('textbox', { name: 'code-editor-json' })).toBeNull();
     fireEvent.click(within(nodeDetail).getByRole('button', { name: '展开输出' }));
     expect(within(nodeDetail).getByRole('button', { name: '折叠输出' }).getAttribute('aria-expanded')).toBe('true');
-    expect(await within(nodeDetail).findByText(/warning_count/)).not.toBeNull();
+    const warningOutput = (await within(nodeDetail).findByRole('textbox', { name: 'code-editor-json' })) as HTMLTextAreaElement;
+    expect(warningOutput.value).toContain('warning_count');
     expect(screen.getAllByText('成功')).not.toHaveLength(0);
     expect(screen.queryByText('成功（有告警）')).toBeNull();
   });
