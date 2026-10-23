@@ -66,7 +66,8 @@ import {
   dashboardMetricScopeKey,
   metricNamesFromScopeKey,
   metricNamesNeedingFetch,
-  resolveLiveAbortController
+  resolveLiveAbortController,
+  shouldSkipEmptyScopeSilentRefresh
 } from './metric-series-reuse';
 
 export type SimpleMetricUnit = MetricUnit;
@@ -687,6 +688,10 @@ export function useSimpleDashboardData(
     const sameDataset = seriesDatasetKeyRef.current === datasetKey;
     const scopeChanged = lastScopeKeyRef.current !== metricScopeKey;
     lastScopeKeyRef.current = metricScopeKey;
+    const wantedCount = scoped ? metricNamesFromScopeKey(metricScopeKey).length : null;
+    if (shouldSkipEmptyScopeSilentRefresh(reuseLoadedSeries, sameDataset, silent, wantedCount)) {
+      return;
+    }
     // 只在切作用域时复用已有序列。手动刷新 / 静默刷新仍重拉当前可见集。
     const incremental = reuseLoadedSeries && scoped && sameDataset && !silent && scopeChanged;
     let loadSeq = currentLoadSeqRef.current;

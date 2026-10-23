@@ -280,6 +280,7 @@ export default function OverviewPane({
       const inbound = readingOfRow(busiest, 'net_bytes_recv_rate');
       const outbound = readingOfRow(busiest, 'net_bytes_sent_rate');
       if (inbound == null && outbound == null) return null;
+      if (netLoading && (inbound == null || outbound == null)) return null;
       return (inbound ?? 0) + (outbound ?? 0);
     })();
   const nicTrend = useMemo(
