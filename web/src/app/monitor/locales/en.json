@@ -3968,6 +3968,7 @@
         "hostCategorySwapUsedHint": "Swap used: current used swap relative to total. The main value shows used/total (GiB); the line is the used-capacity trend. A rise usually means physical memory is tight.",
         "hostCategorySwapAbsentHint": "Swap used: this host has no swap configured, or nothing has been collected. The card stays; once data arrives it shows used/total and the capacity trend.",
         "hostCategoryLoadOneMinute": "1-minute load",
+        "hostCategoryLoadCoresAside": "{cores} cores · {perCore} per core",
         "hostCategoryUtilization": "Utilization",
         "hostCategoryCpuUtilization": "CPU utilization",
         "hostCategoryMemoryUtilization": "Memory utilization",

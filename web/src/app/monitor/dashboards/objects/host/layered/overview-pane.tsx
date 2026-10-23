@@ -29,7 +29,7 @@ import ThinTimeSeries from './thin-time-series';
 import FocusShortcutTitle from './focus-shortcut-title';
 import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from './focus-axis';
 import { useProTimeWindow } from './pro-time-window';
-import type { HostSurfaceAlerts } from './tab-level';
+import { loadPerCore, type HostSurfaceAlerts } from './tab-level';
 import {
   formatPercent,
   formatPlain,
@@ -178,6 +178,8 @@ export default function OverviewPane({
   );
   const mem = memoryUsage.usedNow;
   const load = latestNumber(metrics.system_load1);
+  const cpuCores = latestNumber(metrics.cpu_n);
+  const loadEachCore = loadPerCore(load, cpuCores);
   const uptime = latestNumber(metrics.system_uptime);
   const showLoad = metricHasPoints(metrics.system_load1);
   const diskUsagePoints = useMemo(() => hostDiskUsagePoints(diskRows), [diskRows]);
@@ -208,7 +210,13 @@ export default function OverviewPane({
         value: formatPlain(load),
         tone: LOAD1_SERIES_COLOR,
         alertLevel: alerts.load,
-        fold: alerts.load === 'warn' ? 'outline' : undefined
+        fold: alerts.load === 'warn' ? 'outline' : undefined,
+        subtitle: cpuCores != null && cpuCores > 0 && loadEachCore != null
+          ? hostCategoryText(t, 'loadCoresAside', {
+            cores: formatPlain(cpuCores, 0),
+            perCore: formatPlain(loadEachCore)
+          })
+          : undefined
       });
     }
     items.push({
@@ -244,9 +252,11 @@ export default function OverviewPane({
     alertCount,
     alertsOpen,
     cpu,
+    cpuCores,
     diskCurrent,
     mountName,
     load,
+    loadEachCore,
     mem,
     alerts,
     onOpenAlerts,

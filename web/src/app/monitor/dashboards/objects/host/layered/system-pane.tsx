@@ -9,12 +9,14 @@ import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
-import { pointsToChartData, type EntityTableRow } from '../entity-series';
+import { pointsToChartData, type CpuCoreLoad, type EntityTableRow } from '../entity-series';
 import { CardAlertDot, cardAlertClass, type CardAlertFold } from './card-alert';
+import CoreLoadCard from './core-load-card';
 import ThinTimeSeries from './thin-time-series';
 import type { HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
+  deriveMemoryComposeParts,
   formatPlain,
   formatSharedBytePair,
   latestNumber,
@@ -30,12 +32,14 @@ import styles from './layered.module.scss';
 /** system / steal 没有对应的序列 token，色值跟构成表。 */
 const CPU_SYSTEM_COLOR = '#86909C';
 const CPU_STEAL_COLOR = '#F5319D';
+const CPU_SOFTIRQ_COLOR = HOST_PALETTE.cyan;
 
 const CPU_BREAKDOWN = [
   { key: 'cpu_usage_user_total', label: 'user', color: HOST_SERIES_COLOR.cpu },
   { key: 'cpu_usage_system_total', label: 'system', color: CPU_SYSTEM_COLOR },
   { key: 'cpu_usage_iowait_total', label: 'iowait', color: HOST_SERIES_COLOR.load1 },
   { key: 'cpu_usage_irq_total', label: 'irq', color: HOST_SERIES_COLOR.diskUsed },
+  { key: 'cpu_usage_softirq_total', label: 'softirq', color: CPU_SOFTIRQ_COLOR },
   { key: 'cpu_usage_steal_total', label: 'steal', color: CPU_STEAL_COLOR }
 ];
 
@@ -49,13 +53,6 @@ const LOAD_SERIES = [
 const CPU_SERIES_COLOR = HOST_SERIES_COLOR.cpu;
 const MEM_USED_COLOR = HOST_SERIES_COLOR.memUsed;
 const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
-
-const MEM_COMPOSITION = [
-  { key: 'mem_used', label: 'used', color: HOST_SERIES_COLOR.memUsed },
-  { key: 'mem_cached', label: 'cached', color: HOST_SERIES_COLOR.memAvailable },
-  { key: 'mem_buffered', label: 'buffered', color: HOST_SERIES_COLOR.load5 },
-  { key: 'mem_shared', label: 'shared', color: HOST_SERIES_COLOR.diskUsed }
-] as const;
 
 const GPU_CHARTS = [
   { key: 'nvidia_smi_utilization_gpu', titleKey: 'gpuUtilization' as const, unit: 'percent' as const },
@@ -104,6 +101,7 @@ const splitMetric = (value: number | null, unit: MetricUnit) => {
 };
 
 const EMPTY_PENDING: ReadonlySet<string> = new Set();
+const EMPTY_CORE: CpuCoreLoad = { rows: [], spread: null };
 
 const loadStateOf = (
   metrics: Record<string, MetricSeries | undefined>,
@@ -267,6 +265,7 @@ export default function SystemPane({
   pendingMetricNames = EMPTY_PENDING,
   onRetryMetrics,
   alerts,
+  coreLoad = EMPTY_CORE,
   gpuRows = [],
   gpuLoading = false
 }: {
@@ -274,6 +273,7 @@ export default function SystemPane({
   pendingMetricNames?: ReadonlySet<string>;
   onRetryMetrics?: (names: string[]) => void;
   alerts: HostSurfaceAlerts['system'];
+  coreLoad?: CpuCoreLoad;
   gpuRows?: EntityTableRow[];
   gpuLoading?: boolean;
 }) {
@@ -314,6 +314,8 @@ export default function SystemPane({
     metrics.cpu_usage_iowait_total?.loadState,
     metrics.cpu_usage_irq_total?.viewData,
     metrics.cpu_usage_irq_total?.loadState,
+    metrics.cpu_usage_softirq_total?.viewData,
+    metrics.cpu_usage_softirq_total?.loadState,
     metrics.cpu_usage_steal_total?.viewData,
     metrics.cpu_usage_steal_total?.loadState
   ]);
@@ -487,29 +489,28 @@ export default function SystemPane({
   const swapHasSeries = swapUsedSeries.length > 0;
   const swapReading = swapUsedNow == null ? '--' : formatSharedBytePair(swapUsedNow, swapTotalNow);
   const memoryCompose = useMemo(() => {
-    const total = metrics.mem_total?.viewData;
-    const usedBytes = metricHasPoints(metrics.mem_used)
-      ? primaryChartSeries(metrics.mem_used?.viewData)
-      : subtractAligned(total, metrics.mem_available?.viewData);
-    const raw: Record<string, ChartData[]> = {
-      mem_used: usedBytes,
-      mem_cached: primaryChartSeries(metrics.mem_cached?.viewData),
-      mem_buffered: primaryChartSeries(metrics.mem_buffered?.viewData),
-      mem_shared: primaryChartSeries(metrics.mem_shared?.viewData)
-    };
-    const series = MEM_COMPOSITION.flatMap((item) => {
-      const data = raw[item.key] || [];
-      if (!data.length) return [];
-      return [{ ...item, data }];
-    });
-    const parts = series.flatMap((item) => {
-      const bytes = latestSeriesValue(item.data);
-      if (bytes == null || bytes <= 0) return [];
-      return [{ ...item, bytes }];
-    });
+    const parts = deriveMemoryComposeParts(
+      metrics.mem_total?.viewData,
+      metrics.mem_available?.viewData
+    );
+    const series = [
+      ...(parts.used.length
+        ? [{ key: 'used', label: '已用', color: HOST_SERIES_COLOR.memUsed, data: parts.used }]
+        : []),
+      ...(parts.available.length
+        ? [{ key: 'available', label: '可用', color: HOST_SERIES_COLOR.memAvailable, data: parts.available }]
+        : [])
+    ];
+    const slices = parts.ready && parts.usedNow != null && parts.availableNow != null
+      ? [
+        { key: 'used', label: '已用', color: HOST_SERIES_COLOR.memUsed, bytes: parts.usedNow },
+        { key: 'available', label: '可用', color: HOST_SERIES_COLOR.memAvailable, bytes: parts.availableNow }
+      ]
+      : [];
     return {
-      parts,
+      ...parts,
       series,
+      slices,
       trend: series.length
         ? mergeChartSeries(series.map((item) => ({ key: item.key, label: item.label, data: item.data })))
         : []
@@ -517,20 +518,11 @@ export default function SystemPane({
   }, [
     metrics.mem_available?.viewData,
     metrics.mem_available?.loadState,
-    metrics.mem_buffered?.viewData,
-    metrics.mem_buffered?.loadState,
-    metrics.mem_cached?.viewData,
-    metrics.mem_cached?.loadState,
-    metrics.mem_shared?.viewData,
-    metrics.mem_shared?.loadState,
     metrics.mem_total?.viewData,
-    metrics.mem_total?.loadState,
-    metrics.mem_used?.viewData,
-    metrics.mem_used?.loadState
+    metrics.mem_total?.loadState
   ]);
-  const memoryBytes = memoryCompose.parts.reduce((sum, item) => sum + item.bytes, 0);
-  const composeNames = ['mem_used', 'mem_cached', 'mem_buffered', 'mem_shared', 'mem_total', 'mem_available'] as const;
-  const composeLoading = phaseFor(composeNames, memoryCompose.series.length > 0) === 'loading';
+  const composeNames = ['mem_total', 'mem_available'] as const;
+  const composeLoading = phaseFor(composeNames, memoryCompose.ready) === 'loading';
   const cpuCompose = useMemo(() => {
     const series = CPU_BREAKDOWN.flatMap((item) => {
       const data = primaryChartSeries(metrics[item.key]?.viewData);
@@ -548,6 +540,7 @@ export default function SystemPane({
     metrics.cpu_usage_system_total?.viewData,
     metrics.cpu_usage_iowait_total?.viewData,
     metrics.cpu_usage_irq_total?.viewData,
+    metrics.cpu_usage_softirq_total?.viewData,
     metrics.cpu_usage_steal_total?.viewData
   ]);
   const gpuMemReadingOf = (row: EntityTableRow) => {
@@ -624,14 +617,14 @@ export default function SystemPane({
                 <ProDashLoading />
               </div>
             </div>
-          ) : memoryBytes > 0 ? (
+          ) : memoryCompose.ready && memoryCompose.totalNow != null && memoryCompose.totalNow > 0 ? (
             <CompositionDonut
-              slices={memoryCompose.parts.map((item) => ({
+              slices={memoryCompose.slices.map((item) => ({
                 key: item.key,
                 label: item.label,
                 color: item.color,
                 amount: item.bytes,
-                reading: `${formatBytes(item.bytes)} ${((item.bytes / memoryBytes) * 100).toFixed(1)}%`
+                reading: `${formatBytes(item.bytes)} ${((100 * item.bytes) / memoryCompose.totalNow!).toFixed(1)}%`
               }))}
             />
           ) : (
@@ -690,6 +683,11 @@ export default function SystemPane({
           legends={[{ label: '已用', color: SWAP_SERIES_COLOR }]}
         />
       </div>
+      {coreLoad.rows.length ? (
+        <div className={styles.detailFull} data-surface="core-load">
+          <CoreLoadCard rows={coreLoad.rows} spread={coreLoad.spread} />
+        </div>
+      ) : null}
       {gpuRows.length ? (
         <div className={styles.detailFull} data-surface="gpu">
           {gpuRows.map((row) => {
