@@ -17,13 +17,13 @@
 - 建议同时授予 `SELECT ON performance_schema.*`：Performance Schema 相关统计（含表等待；也是语句/等待进阶的前提）。
 - 不要授予业务库 `SELECT`。若个别 InnoDB 指标因 `information_schema` 被拒，仅对该表补 `SELECT`。
 
-### 语句与等待（进阶）
+### Top SQL 与等待（进阶）
 
-在基础监控权限已满足的前提下，语句页和等待页还需要：
+在基础监控权限已满足的前提下，Top SQL 页和等待页还需要：
 
 - 实例已启用 Performance Schema。未启用则语句和等待采不到。
 - 监控账号已有 `SELECT ON performance_schema.*`，与基础监控建议的同一授权即可。
-- 在采集配置中打开对应开关，这两项默认关闭：「语句采集」对应语句页；「等待/会话采集」对应等待页。
+- 在采集配置中打开对应开关，这两项默认关闭：「Top SQL 采集」对应 Top SQL 页；「等待/会话采集」对应等待页。
 - 与「表 IO Wait」「表锁 Wait」相互独立。打开表等待不会自动出现语句或等待数据，反过来也一样。
 
 ## 接入步骤
@@ -85,7 +85,7 @@ mysql --host db.example.com --port 3306 --user monitor --password --execute "SHO
 - 缺 `PROCESS`：进程列表和部分实例状态没有数据。
 - 缺 `REPLICATION CLIENT`：复制状态和 Binary Log 没有数据。
 - 缺 `SELECT ON performance_schema.*`：Performance Schema 相关统计没有数据，表等待以及语句、等待进阶也会空。
-- 未打开「语句采集」或「等待/会话采集」：对应页没有数据。这两项默认关闭，且需要实例已启用 Performance Schema。
+- 未打开「Top SQL 采集」或「等待/会话采集」：对应页没有数据。这两项默认关闭，且需要实例已启用 Performance Schema。
 - 非复制实例没有复制数据，属于正常情况。
 - 仍对不上时，查看采集任务失败原因或采集日志。
 

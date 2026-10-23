@@ -17,13 +17,13 @@ Basic monitoring is enough for the health overview and the routine performance c
 - Also grant `SELECT ON performance_schema.*`: Performance Schema statistics, including table waits. This is also the prerequisite for advanced statement and wait collection.
 - Do not grant `SELECT` on business schemas. If an individual InnoDB metric is denied because of `information_schema`, grant `SELECT` on that table only.
 
-### Statements and waits (advanced)
+### Top SQL and waits (advanced)
 
-After the basic permissions are in place, the Statements and Waits pages also need:
+After the basic permissions are in place, the Top SQL and Waits pages also need:
 
 - Performance Schema enabled on the instance. Without it, statements and waits cannot be collected.
 - `SELECT ON performance_schema.*` on the monitoring account. The same grant recommended for basic monitoring is enough.
-- The matching switch turned on in the collection settings. Both are off by default: Statement Collection feeds the Statements page; Wait and Session Collection feeds the Waits page.
+- The matching switch turned on in the collection settings. Both are off by default: Top SQL Collection feeds the Top SQL page; Wait and Session Collection feeds the Waits page.
 - These are separate from Table IO Waits and Table Lock Waits. Turning on table waits does not produce statement or wait data, and the reverse is also true.
 
 ## Setup Steps
@@ -85,7 +85,7 @@ After saving and waiting for one interval, confirm that the platform can show ba
 - Missing `PROCESS`: the process list and some instance status have no data.
 - Missing `REPLICATION CLIENT`: replication status and Binary Log have no data.
 - Missing `SELECT ON performance_schema.*`: Performance Schema statistics have no data, including table waits and advanced statement or wait data.
-- Statement Collection or Wait and Session Collection is off: the matching page has no data. Both switches are off by default and need Performance Schema enabled on the instance.
+- Top SQL Collection or Wait and Session Collection is off: the matching page has no data. Both switches are off by default and need Performance Schema enabled on the instance.
 - A non-replication instance has no replication data. That is expected.
 - If the data still does not match, check the collection task failure reason or the collection logs.
 
