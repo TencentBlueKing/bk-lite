@@ -70,10 +70,10 @@ class TestListAndFilter:
     def test_定向通知仅候选用户可见且返回跳转目标(self, make_client):
         NotificationFactory(content="全员通知")
         NotificationFactory(
-            app_module="workflow-orchestration",
+            app_module="workflow",
             content="待审批：发布确认",
             recipient_usernames=["alice"],
-            target_url="/workflow-orchestration/executions?scope=mine",
+            target_url="/workflow/executions?scope=mine",
         )
         NotificationFactory(content="其他人的审批", recipient_usernames=["bob"])
         _, alice_client = make_client("alice")
@@ -83,7 +83,7 @@ class TestListAndFilter:
         carol_items = _list(carol_client.get(BASE))
 
         assert [item["content"] for item in alice_items] == ["待审批：发布确认", "全员通知"]
-        assert alice_items[0]["target_url"] == "/workflow-orchestration/executions?scope=mine"
+        assert alice_items[0]["target_url"] == "/workflow/executions?scope=mine"
         assert [item["content"] for item in carol_items] == ["全员通知"]
         assert alice_client.get(f"{BASE}unread_count/").json()["data"]["count"] == 2
         assert carol_client.get(f"{BASE}unread_count/").json()["data"]["count"] == 1

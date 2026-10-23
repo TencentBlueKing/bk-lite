@@ -13,7 +13,7 @@ vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string) => {
-      if (key === 'apps.workflow-orchestration') {
+      if (key === 'apps.workflow') {
         return '编排中心';
       }
       return fallback || key;
@@ -106,19 +106,19 @@ describe('AppTopNav overflow arrows', () => {
 });
 
 describe('AppTopNav builtin app labels', () => {
-  it('localizes workflow-orchestration even when display_name is English', () => {
+  it('localizes workflow even when display_name is English', () => {
     render(
       <AppTopNav
         apps={[
           {
-            name: 'workflow-orchestration',
+            name: 'workflow',
             display_name: 'Workflow',
-            url: '/workflow-orchestration',
+            url: '/workflow',
             icon: 'liuchengguanli1',
             is_build_in: true,
           },
         ] as ClientData[]}
-        pathname="/workflow-orchestration"
+        pathname="/workflow"
       />,
     );
 
