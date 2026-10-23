@@ -350,9 +350,9 @@ const SkillChannelPage: React.FC = () => {
 
   const onSave = async () => {
     if (!skillId) return;
-    const values = await form.validateFields();
-    setSaving(true);
     try {
+      const values = await form.validateFields();
+      setSaving(true);
       const fields = CONFIG_FIELDS[values.channel_type] || [];
       let channel_config: Record<string, any> = {};
       for (const key of fields) {
@@ -917,6 +917,11 @@ const SkillChannelPage: React.FC = () => {
               <Form.Item
                 name={field}
                 label={channelFieldLabel(t, field)}
+                rules={
+                  feishuLongConnection && (field === 'app_id' || field === 'app_secret')
+                    ? [{ required: true, message: t('common.required', '此项必填'), whitespace: true }]
+                    : undefined
+                }
               >
                 {isSecretConfigField(field) ? (
                   <Input.Password visibilityToggle />
