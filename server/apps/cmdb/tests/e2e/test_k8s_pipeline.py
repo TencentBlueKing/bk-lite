@@ -12,10 +12,89 @@ K8s 与其他大类的本质差异：
   - 关联关系：每个 namespace 应挂到 cluster
   - Task 2.2 新增 4 分组（namespace/workload/pod/node）真实化覆盖
 """
+import copy
+from collections import Counter
+
 import jsonschema
 import pytest
 
 from apps.cmdb.collection.collect_plugin.k8s import CollectK8sMetrics
+from apps.cmdb.collection.constants import REPLICAS_METRICS
+
+SNAPSHOT_TIMESTAMP = "prometheus_cmdb_k8s_snapshot_timestamp"
+SNAPSHOT_COUNT = "prometheus_cmdb_k8s_snapshot_count"
+CLUSTER_NAME = "k8s-cluster-prod"
+ROUND_TS = 1700000000
+MARKER_TS = 1700000100
+
+
+def _snapshot_count_rows(resource_rows):
+    """计数行覆盖 get_metrics 与副本指标，条数与同批资源行一致。"""
+    names = set(CollectK8sMetrics.get_metrics()) | set(REPLICAS_METRICS)
+    actual = Counter(row["metric"]["__name__"] for row in resource_rows)
+    return [
+        {
+            "metric": {
+                "__name__": SNAPSHOT_COUNT,
+                "resource_metric": name.removeprefix("prometheus_"),
+            },
+            "value": [MARKER_TS, str(actual[name])],
+        }
+        for name in sorted(names)
+    ]
+
+
+def _patch_vm_query(monkeypatch, vm_resp, marker_timestamp=None):
+    """标记查询返回空结果或一条标记；其余查询返回 k8s/03 资源样本。"""
+    query_calls = []
+    resource_rows = copy.deepcopy(vm_resp["data"]["result"])
+
+    def query_metrics(self, sql, timeout=60, min_timestamp=None, max_timestamp=None):
+        query_calls.append((sql, min_timestamp, max_timestamp))
+        if SNAPSHOT_TIMESTAMP in sql:
+            if marker_timestamp is None:
+                return {"status": "success", "data": {"resultType": "vector", "result": []}}
+            return {
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {
+                            "metric": {
+                                "__name__": SNAPSHOT_TIMESTAMP,
+                                "instance_id": CLUSTER_NAME,
+                                "snapshot_contract_version": "1",
+                            },
+                            "value": [marker_timestamp, str(marker_timestamp)],
+                        }
+                    ],
+                },
+            }
+        rows = copy.deepcopy(resource_rows)
+        if marker_timestamp is not None and SNAPSHOT_COUNT in sql:
+            rows.extend(_snapshot_count_rows(resource_rows))
+        return {"status": "success", "data": {"resultType": "vector", "result": rows}}
+
+    monkeypatch.setattr("apps.cmdb.collection.query_vm.Collection.query", query_metrics)
+    return query_calls
+
+
+def _skip_non_namespace_formatters(monkeypatch):
+    monkeypatch.setattr(CollectK8sMetrics, "search_replicas", lambda self: None)
+    monkeypatch.setattr(CollectK8sMetrics, "format_pod_metrics", lambda self: None)
+    monkeypatch.setattr(CollectK8sMetrics, "format_node_metrics", lambda self: None)
+    monkeypatch.setattr(CollectK8sMetrics, "format_workload_metrics", lambda self: None)
+
+
+def _assert_namespace_expectations(runner, expected):
+    namespaces = runner.result["k8s_namespace"]
+    actual_names = sorted(ns["name"] for ns in namespaces)
+    assert actual_names == sorted(expected["expected_namespace_names"])
+    first = next(ns for ns in namespaces if ns["name"] == "default")
+    assert first["inst_name"] == expected["expected_inst_name_pattern"]
+    assert first["assos"][0]["model_id"] == "k8s_cluster"
+    assert first["assos"][0]["inst_name"] == CLUSTER_NAME
+    assert all(row["metric"]["__name__"] not in {SNAPSHOT_TIMESTAMP, SNAPSHOT_COUNT} for row in runner.raw_data)
 
 
 def test_vm_response_matches_schema(load_fixture, load_schema):
@@ -30,38 +109,21 @@ def test_k8s_namespace_pipeline(load_fixture, monkeypatch):
     vm_resp = load_fixture("k8s/03_vm_metrics_response.json")
     expected = load_fixture("k8s/04_expected_cmdb_result.json")
 
-    # 拦掉 VM HTTP
-    query_calls = []
-
-    def query_metrics(self, sql, timeout=60, min_timestamp=None):
-        query_calls.append((sql, min_timestamp))
-        return vm_resp
-
-    monkeypatch.setattr("apps.cmdb.collection.query_vm.Collection.query", query_metrics)
+    query_calls = _patch_vm_query(monkeypatch, vm_resp)
     # 跳过 search_replicas / format_workload_metrics / format_node_metrics / format_pod_metrics
     # 内部的真实数据库查询；只跑 namespace 部分
-    monkeypatch.setattr(CollectK8sMetrics, "search_replicas", lambda self: None)
-    monkeypatch.setattr(CollectK8sMetrics, "format_pod_metrics", lambda self: None)
-    monkeypatch.setattr(CollectK8sMetrics, "format_node_metrics", lambda self: None)
-    monkeypatch.setattr(CollectK8sMetrics, "format_workload_metrics", lambda self: None)
+    _skip_non_namespace_formatters(monkeypatch)
 
-    runner = CollectK8sMetrics(cluster_name="k8s-cluster-prod", round_ts=1700000000)
+    runner = CollectK8sMetrics(cluster_name=CLUSTER_NAME, round_ts=ROUND_TS)
     runner.run()
-    assert len(query_calls) == 1
-    assert query_calls[0][1] == 1700000000
-    assert 'instance_id="k8s-cluster-prod"' in query_calls[0][0]
-
-    namespaces = runner.result["k8s_namespace"]
-    actual_names = sorted([ns["name"] for ns in namespaces])
-    assert actual_names == sorted(expected["expected_namespace_names"])
-
-    # inst_name 格式 {namespace}({cluster_name})
-    first = next(ns for ns in namespaces if ns["name"] == "default")
-    assert first["inst_name"] == expected["expected_inst_name_pattern"]
-
-    # 关联：挂到 cluster
-    assert first["assos"][0]["model_id"] == "k8s_cluster"
-    assert first["assos"][0]["inst_name"] == "k8s-cluster-prod"
+    assert len(query_calls) == 2
+    assert SNAPSHOT_TIMESTAMP in query_calls[0][0]
+    assert query_calls[0][1] != ROUND_TS
+    assert 'instance_id="k8s-cluster-prod"' in query_calls[1][0]
+    assert query_calls[1][1] == ROUND_TS
+    assert query_calls[1][2] is None
+    assert runner.snapshot_complete is False
+    _assert_namespace_expectations(runner, expected)
 
 
 def test_drift_detection(load_schema):
@@ -95,23 +157,18 @@ def test_k8s_4_group_coverage(load_fixture, monkeypatch):
     vm_resp = load_fixture("k8s/03_vm_metrics_response.json")
     expected = load_fixture("k8s/04_expected_cmdb_result.json")
 
-    query_calls = []
+    query_calls = _patch_vm_query(monkeypatch, vm_resp)
+    _skip_non_namespace_formatters(monkeypatch)
 
-    def query_metrics(self, sql, timeout=60, min_timestamp=None):
-        query_calls.append((sql, min_timestamp))
-        return vm_resp
-
-    monkeypatch.setattr("apps.cmdb.collection.query_vm.Collection.query", query_metrics)
-    monkeypatch.setattr(CollectK8sMetrics, "search_replicas", lambda self: None)
-    monkeypatch.setattr(CollectK8sMetrics, "format_pod_metrics", lambda self: None)
-    monkeypatch.setattr(CollectK8sMetrics, "format_node_metrics", lambda self: None)
-    monkeypatch.setattr(CollectK8sMetrics, "format_workload_metrics", lambda self: None)
-
-    runner = CollectK8sMetrics(cluster_name="k8s-cluster-prod", round_ts=1700000000)
+    runner = CollectK8sMetrics(cluster_name=CLUSTER_NAME, round_ts=ROUND_TS)
     runner.run()
-    assert len(query_calls) == 1
-    assert query_calls[0][1] == 1700000000
-    assert 'instance_id="k8s-cluster-prod"' in query_calls[0][0]
+    assert len(query_calls) == 2
+    assert SNAPSHOT_TIMESTAMP in query_calls[0][0]
+    assert query_calls[0][1] != ROUND_TS
+    assert 'instance_id="k8s-cluster-prod"' in query_calls[1][0]
+    assert query_calls[1][1] == ROUND_TS
+    assert query_calls[1][2] is None
+    assert runner.snapshot_complete is False
 
     # namespace 全部采集
     namespaces = runner.result["k8s_namespace"]
@@ -129,6 +186,26 @@ def test_k8s_4_group_coverage(load_fixture, monkeypatch):
     assert any(m.startswith("prometheus_kube_cronjob_info") for m in raw_metrics)
     assert any(m.startswith("prometheus_kube_pod_info") for m in raw_metrics)
     assert any(m.startswith("prometheus_kube_node_info") for m in raw_metrics)
+
+
+@pytest.mark.django_db
+def test_k8s_marked_snapshot_uses_resource_rows(load_fixture, monkeypatch):
+    """有快照标记时，上下界都用标记时间，namespace 仍来自资源行。"""
+    vm_resp = load_fixture("k8s/03_vm_metrics_response.json")
+    expected = load_fixture("k8s/04_expected_cmdb_result.json")
+
+    query_calls = _patch_vm_query(monkeypatch, vm_resp, marker_timestamp=MARKER_TS)
+    _skip_non_namespace_formatters(monkeypatch)
+
+    runner = CollectK8sMetrics(cluster_name=CLUSTER_NAME, round_ts=ROUND_TS)
+    runner.run()
+    assert len(query_calls) == 2
+    assert SNAPSHOT_TIMESTAMP in query_calls[0][0]
+    assert query_calls[1][1] == MARKER_TS
+    assert query_calls[1][2] == MARKER_TS
+    assert SNAPSHOT_COUNT in query_calls[1][0]
+    assert runner.snapshot_complete is True
+    _assert_namespace_expectations(runner, expected)
 
 
 def test_k8s_a_b_alignment(load_fixture, load_schema):
