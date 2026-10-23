@@ -10,6 +10,7 @@ import {
   getDashboardReturnNavigation
 } from '../utils/return-navigation';
 import { localizeDashboardReturnLabel, tDashboardText, useDashboardText } from '../utils/content-i18n';
+import { dashboardModeOptions } from '../utils/pro-dashboard';
 
 export interface DashboardPageHeaderStyles {
   readonly [key: string]: string | undefined;
@@ -50,11 +51,8 @@ const MODE_CATALOG = [
   { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
 ] as const;
 
-const DISPLAY_MODE_OPTIONS: readonly DashboardModeOption[] = [
-  { labelKey: 'dashboardMode', fallback: '传统仪表盘', value: 'dashboard' },
-  { labelKey: 'categoryTabMode', fallback: '专业仪表盘', value: 'category', disabled: true },
-  { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
-];
+/** 未声明对象能力时按「无专业盘」：专业项置灰。 */
+const DISPLAY_MODE_OPTIONS: readonly DashboardModeOption[] = dashboardModeOptions('');
 
 export const resolveDashboardModeMenu = (
   provided: readonly DashboardModeOption[] | undefined,

@@ -54,6 +54,7 @@ import {
 } from './simple-dashboard-core';
 import { ChartData } from '@/app/monitor/types';
 import { useDashboardText } from '../../shared/utils/content-i18n';
+import { hasProDashboard } from '../../shared/utils/pro-dashboard';
 
 // ─── Icon helper ─────────────────────────────────────────────────────────────
 
@@ -746,7 +747,7 @@ export const DashboardShell = ({
 }: DashboardShellProps) => {
   const { dt } = useDashboardText();
   const showProtocolBar = FLOW_VIEW_SWITCH_ROUTE_KEYS.has(dashboard.routeKey);
-  const professionalCapable = Boolean(categoryContent);
+  const professionalCapable = hasProDashboard(dashboard.routeKey) && Boolean(categoryContent);
   const requestedMode = viewSwitcher?.mode ?? dashboard.displayMode;
   const activeMode = !professionalCapable && requestedMode === 'category' ? 'dashboard' : requestedMode;
   const showsDashboardChrome = viewSwitcher ? activeMode !== 'metrics' : dashboard.isDashboardMode;
