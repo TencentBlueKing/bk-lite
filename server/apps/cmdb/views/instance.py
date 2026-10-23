@@ -503,6 +503,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 error_message="监控实例已被其他配置项占用",
                 status_code=status.HTTP_409_CONFLICT,
             )
+        if status_name == "stale":
+            return WebUtils.response_error(
+                result,
+                error_message="绑定已变化，未解除当前关联",
+                status_code=status.HTTP_409_CONFLICT,
+            )
         if status_name == "skipped_model":
             return WebUtils.response_error("该模型不支持关联监控", status_code=status.HTTP_400_BAD_REQUEST)
         if status_name in ("not_found", "type_mismatch"):

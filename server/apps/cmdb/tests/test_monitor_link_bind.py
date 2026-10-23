@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 
 import pytest
 from rest_framework import status
@@ -213,6 +214,142 @@ def test_unbind_monitor_exception_does_not_clear_cmdb(mocker, caplog):
     assert secret not in formatted
     assert secret not in record.getMessage()
     assert boom.args == (secret,)
+
+
+def test_late_unbind_does_not_clear_rebound_monitor(mocker, monkeypatch):
+    """后到的解绑读到旧 monitor_id 后，不能盖掉期间完成的新绑定。"""
+    entity = _entity(INST_UUID, monitor_id="m-old", node_id="node-keep")
+    store = {"entity": entity}
+    monitors = {
+        "m-old": {"cmdb_id": INST_UUID},
+        "m-new": {"cmdb_id": None},
+    }
+    store_lock = threading.Lock()
+    entered = threading.Event()
+    release = threading.Event()
+    pause_first_ingest = {"pending": True}
+    seen_monitor_ids = []
+    monitor_writes = []
+
+    def _snapshot():
+        with store_lock:
+            return dict(store["entity"])
+
+    def _apply(update_attr):
+        with store_lock:
+            row = store["entity"]
+            for key, value in dict(update_attr).items():
+                if key == "_cmdb_operation_id":
+                    continue
+                row[key] = value
+            monitor_writes.append(row.get("monitor_id"))
+            return dict(row)
+
+    class _StoreGraph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def query_entity_by_inst_uuid(self, inst_uuid):
+            row = _snapshot()
+            if row.get("inst_uuid") != inst_uuid:
+                return {}
+            return row
+
+        def query_entity_by_id(self, inst_id):
+            row = _snapshot()
+            if row.get("_id") != inst_id:
+                return {}
+            return row
+
+        def query_entity(self, *args, **kwargs):
+            return ([], 0)
+
+        def set_entity_properties(self, *args, **kwargs):
+            update_attr = args[2] if len(args) > 2 else kwargs["update_attr"]
+            return [_apply(update_attr)]
+
+    monkeypatch.setattr("apps.cmdb.services.instance.GraphClient", lambda *a, **k: _StoreGraph())
+    monkeypatch.setattr("apps.cmdb.services.instance.create_change_record", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile",
+        lambda ids: None,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.instance.InstanceManage._build_unique_rule_check_attr_map",
+        lambda model_id, attrs, for_update=False: {
+            "is_only": {},
+            "is_required": {},
+            "unique_rules": [],
+            "attrs_by_id": {},
+            "editable": {},
+        },
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.model.ModelManage.search_model_info",
+        lambda model_id: {"model_id": model_id, "model_name": "主机", "attrs": "[]", "_id": 1},
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.module_ingest.ensure_model_monitor_id_attr",
+        lambda *a, **k: None,
+    )
+
+    def ingest_from_source(**kwargs):
+        monitor_id = kwargs["link_ids"]["monitor_id"]
+        seen_monitor_ids.append(monitor_id)
+        if pause_first_ingest["pending"]:
+            pause_first_ingest["pending"] = False
+            entered.set()
+            assert release.wait(timeout=5)
+        record = monitors.get(monitor_id)
+        if record is not None and record.get("cmdb_id") == kwargs["link_ids"].get("cmdb_id"):
+            record["cmdb_id"] = None
+        return {"id": monitor_id, "updated": True}
+
+    def bind_cmdb_id(**kwargs):
+        monitors[kwargs["monitor_id"]]["cmdb_id"] = kwargs["cmdb_id"]
+        return {"status": "ok", "monitor_id": kwargs["monitor_id"], "cmdb_id": kwargs["cmdb_id"]}
+
+    monitor = mocker.Mock()
+    monitor.ingest_from_source.side_effect = ingest_from_source
+    monitor.bind_cmdb_id.side_effect = bind_cmdb_id
+    mocker.patch(MONITOR_PATH, return_value=monitor)
+
+    box = {}
+
+    def _late_unbind():
+        try:
+            box["result"] = MonitorLinkService.unbind(INST_UUID, ACTOR_SCOPE)
+        except Exception as exc:
+            box["error"] = exc
+
+    late = threading.Thread(target=_late_unbind)
+    late.start()
+    assert entered.wait(timeout=5)
+
+    early = MonitorLinkService.unbind(INST_UUID, ACTOR_SCOPE)
+    assert early == {"status": "ok", "failed_side": None}
+    assert _snapshot()["monitor_id"] == ""
+    assert _snapshot()["node_id"] == "node-keep"
+
+    bound = MonitorLinkService.bind(INST_UUID, "m-new", ACTOR_SCOPE)
+    assert bound["status"] == "ok"
+    assert bound["monitor_id"] == "m-new"
+    assert _snapshot()["monitor_id"] == "m-new"
+    assert monitors["m-new"]["cmdb_id"] == INST_UUID
+
+    release.set()
+    late.join(timeout=5)
+    assert not late.is_alive()
+    assert "error" not in box
+    assert seen_monitor_ids == ["m-old", "m-old"]
+    assert box["result"]["status"] == "stale"
+    assert _snapshot()["monitor_id"] == "m-new"
+    assert _snapshot()["node_id"] == "node-keep"
+    assert monitors["m-new"]["cmdb_id"] == INST_UUID
+    assert monitor_writes == ["", "m-new"]
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +575,21 @@ def test_unbind_cmdb_clear_failure_exposes_failed_side(superuser, monkeypatch):
     data = _body(response)["data"]
     assert data["status"] == "failed"
     assert data["failed_side"] == "cmdb"
+
+
+@pytest.mark.django_db
+def test_unbind_stale_is_409(superuser, monkeypatch):
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: _entity(pk, monitor_id="m-1"))
+    monkeypatch.setattr(
+        f"{VIEWS}.MonitorLinkService.unbind",
+        lambda inst_uuid, actor_scope: {"status": "stale", "failed_side": None},
+    )
+    response = _call({"post": "unbind_monitor"}, _req("post", superuser, data={}), pk=INST_UUID)
+    assert response.status_code == status.HTTP_409_CONFLICT
+    body = _body(response)
+    assert body["result"] is False
+    assert body["message"] == "绑定已变化，未解除当前关联"
+    assert body["data"]["status"] == "stale"
 
 
 @pytest.mark.django_db

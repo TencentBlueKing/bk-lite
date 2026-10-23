@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from apps.cmdb.constants.monitor_link import CMDB_MODEL_TO_MONITOR_OBJECT, CMDB_MONITOR_SYNC_MODEL_IDS
-from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.instance import InstanceManage, StaleMonitorBinding
 from apps.cmdb.services.instance_identity import cmdb_link_identity
 from apps.cmdb.services.module_push import EVENT_LIFECYCLE, MODULE_NAME, TARGET_MONITOR, CmdbToMonitorPushService, causation_id_for
 from apps.core.logger import cmdb_logger as logger
@@ -350,7 +350,11 @@ class MonitorLinkService:
                 operator=operator,
                 allowed_org_ids=allowed_org_ids,
                 skip_permission_check=True,
+                expected_monitor_id=monitor_id,
             )
+        except StaleMonitorBinding:
+            logger.info(_UNBIND_DONE_TEMPLATE, inst_uuid, "stale")
+            return {"status": "stale", "failed_side": None}
         except Exception as exc:
             cls._log_op_failed(
                 _UNBIND_FAILED_TEMPLATE,
