@@ -267,7 +267,7 @@ tools:
       monitor_get_host_resource_snapshot:
         description: 查询主机 CPU/内存/磁盘均值与最高值快照。
       monitor_get_host_resource_top_by_time:
-        description: 按时间窗查询全量主机 CPU/内存/磁盘使用率排行（Top N）。
+        description: 按时间窗查询全量主机 CPU/内存/磁盘使用率排行（Top N）。没写时区的时间按当前用户时区理解。
   cmdb:
     name: CMDB
     description: |
