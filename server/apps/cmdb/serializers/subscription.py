@@ -155,6 +155,24 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("config_file 配置格式不合法")
         return normalized_value
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        initial_data = self.initial_data if isinstance(self.initial_data, dict) else {}
+        submitted_trigger_types = "trigger_types" in initial_data
+        submitted_trigger_config = "trigger_config" in initial_data
+        if not submitted_trigger_types or submitted_trigger_config or self.instance is None:
+            return attrs
+
+        stored_config = getattr(self.instance, "trigger_config", {})
+        config_to_check = dict(stored_config) if isinstance(stored_config, dict) else stored_config
+        try:
+            self.validate_trigger_config(config_to_check)
+        except serializers.ValidationError as exc:
+            if isinstance(exc.detail, dict):
+                raise
+            raise serializers.ValidationError({"trigger_config": exc.detail}) from exc
+        return attrs
+
     @staticmethod
     def _normalize_relation_change_item(item: dict) -> dict:
         if not isinstance(item, dict):
