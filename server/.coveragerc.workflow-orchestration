@@ -1,4 +1,0 @@
-[run]
-omit =
-    apps/workflow_orchestration/migrations/*
-    apps/workflow_orchestration/tests/*

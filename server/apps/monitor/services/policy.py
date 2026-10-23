@@ -18,6 +18,7 @@ from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENTER_ONLY, AlertLifecycleNotifier
 from apps.monitor.services.policy_bulk import normalize_default_calculation_unit, normalize_stored_metric_unit, normalize_template_algorithms
+from apps.monitor.tasks.utils.policy_multi import query_metric_items
 
 ARCHIVE_FORMAT = "bk-lite-monitor-policy-templates"
 ARCHIVE_SCHEMA_VERSION = 1
@@ -349,6 +350,8 @@ class PolicyService:
         query = config.get("query_condition") or {}
         if not isinstance(query, dict):
             query = {}
+        if query.get("type") == "multi":
+            return str(query.get("result_name") or "").strip()
         if query.get("type") == "formula":
             expression = PolicyService._resolve_formula_expression_with_metrics(query)
             result_name = str(query.get("result_name") or "").strip()
@@ -430,11 +433,8 @@ class PolicyService:
     @staticmethod
     def _portable_query_condition(query_condition):
         query = copy.deepcopy(query_condition or {})
-        metric_ids = []
-        if query.get("type") == "formula":
-            metric_ids = [item.get("metric_id") for item in query.get("queries") or []]
-        elif query.get("metric_id"):
-            metric_ids = [query.get("metric_id")]
+        carriers = query_metric_items(query)
+        metric_ids = [item.get("metric_id") for item in carriers if item.get("metric_id")]
         metrics = {item.id: item for item in Metric.objects.select_related("monitor_plugin").filter(id__in=metric_ids)}
         if len(metrics) != len(set(metric_ids)):
             raise BaseAppException("模板引用的指标不存在")
@@ -447,11 +447,8 @@ class PolicyService:
                 if metric.monitor_plugin:
                     item["metric_plugin"] = metric.monitor_plugin.name
 
-        if query.get("type") == "formula":
-            for item in query.get("queries") or []:
-                replace(item)
-        else:
-            replace(query)
+        for item in carriers:
+            replace(item)
         return query
 
     @staticmethod
@@ -488,13 +485,9 @@ class PolicyService:
         if not isinstance(query, dict) or plugin is None:
             return
         plugin_name = plugin.name
-        if query.get("type") == "formula":
-            for item in query.get("queries") or []:
-                if isinstance(item, dict) and item.get("metric_name") and not item.get("metric_plugin"):
-                    item["metric_plugin"] = plugin_name
-            return
-        if query.get("metric_name") and not query.get("metric_plugin"):
-            query["metric_plugin"] = plugin_name
+        for item in query_metric_items(query):
+            if item.get("metric_name") and not item.get("metric_plugin"):
+                item["metric_plugin"] = plugin_name
 
     @staticmethod
     def _runtime_query_condition(query_condition, monitor_object, plugin=None):
@@ -515,11 +508,8 @@ class PolicyService:
             )
             item["metric_id"] = metric.id
 
-        if query.get("type") == "formula":
-            for item in query.get("queries") or []:
-                replace(item)
-        else:
-            replace(query)
+        for item in query_metric_items(query):
+            replace(item)
         return query
 
     @staticmethod

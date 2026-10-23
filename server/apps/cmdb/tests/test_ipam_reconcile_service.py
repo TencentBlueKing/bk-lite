@@ -410,3 +410,101 @@ class TestEnsureAssociations:
         conn = [d for d in captured if d["asst_id"] == "connect"][0]
         assert conn["src_model_id"] == "ip" and conn["dst_model_id"] == "host"
         assert conn["model_asst_id"] == "ip_connect_host"
+
+
+def _bind_reconcile_io(monkeypatch, subnets, cis, created):
+    from apps.cmdb.services import ipam_reconcile
+
+    monkeypatch.setattr(ipam_reconcile, "_load_sources", lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
+    monkeypatch.setattr(ipam_reconcile, "_load_subnets", lambda: subnets["rows"])
+    monkeypatch.setattr(ipam_reconcile, "_load_existing_ips", lambda: [])
+    monkeypatch.setattr(ipam_reconcile, "_load_ci_with_ip", lambda *args: list(cis["rows"]))
+    monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance", lambda **kw: created.append(kw) or {"_id": 1})
+    monkeypatch.setattr(ipam_reconcile, "_mark_offline", lambda ip_id: None)
+    monkeypatch.setattr(ipam_reconcile, "_writeback_subnet_utilization", lambda subnet_ids: None)
+    return ipam_reconcile
+
+
+class TestReconciliationParsesEachSubnetOnce:
+    """同一轮对账每个子网只解析一次；重叠时仍返回原列表里的第一个命中。"""
+
+    def test_parse_count_follows_subnet_count_and_overlap_keeps_first_dict(self, monkeypatch):
+        from apps.cmdb.utils.ipam_cidr import parse_subnet as real_parse_subnet
+
+        subnets = {"rows": []}
+        cis = {"rows": []}
+        created = []
+        ipam_reconcile = _bind_reconcile_io(monkeypatch, subnets, cis, created)
+        calls = {"n": 0}
+
+        def counting_parse(address, mask):
+            calls["n"] += 1
+            return real_parse_subnet(address, mask)
+
+        monkeypatch.setattr(ipam_reconcile, "parse_subnet", counting_parse)
+
+        # 100 个 CI 都落在最后一个 /24，旧实现会对每个 CI 扫完全部子网，解析 10000 次。
+        subnets["rows"] = [
+            {"_id": i + 1, "subnet_address": f"10.0.{i}.0", "subnet_mask": "24", "organization": [i + 1]}
+            for i in range(100)
+        ]
+        cis["rows"] = [
+            {"_id": i, "model_id": "host", "ip_addr": f"10.0.99.{i}", "inst_name": f"h{i}"}
+            for i in range(1, 101)
+        ]
+        result = ipam_reconcile.run_reconciliation()
+        assert calls["n"] == 100
+        assert result["created"] == 100
+        assert {row["subnet_id"] for row in created} == {100}
+
+        # 换 50 个新子网再跑一轮。100 个 CI 仍只落在最后一个新网段，解析次数必须是 50。
+        calls["n"] = 0
+        created.clear()
+        subnets["rows"] = [
+            {"_id": i + 1, "subnet_address": f"11.0.{i}.0", "subnet_mask": "24", "organization": [1000 + i]}
+            for i in range(50)
+        ]
+        cis["rows"] = [
+            {"_id": i, "model_id": "host", "ip_addr": f"11.0.49.{i}", "inst_name": f"n{i}"}
+            for i in range(1, 101)
+        ]
+        result = ipam_reconcile.run_reconciliation()
+        assert calls["n"] == 50
+        assert result["created"] == 100
+        assert {row["subnet_id"] for row in created} == {50}
+
+        broad = {"_id": 8, "subnet_address": "10.0.0.0", "subnet_mask": "8", "organization": ["org-broad"]}
+        narrow = {"_id": 24, "subnet_address": "10.0.1.0", "subnet_mask": "24", "organization": ["org-narrow"]}
+        cis["rows"] = [{"_id": 5, "model_id": "host", "ip_addr": "10.0.1.5", "inst_name": "overlap"}]
+
+        created.clear()
+        subnets["rows"] = [broad, narrow]
+        ipam_reconcile.run_reconciliation()
+        assert created[0]["subnet_id"] == broad["_id"]
+        assert created[0]["organization"] is broad["organization"]
+
+        created.clear()
+        subnets["rows"] = [narrow, broad]
+        ipam_reconcile.run_reconciliation()
+        assert created[0]["subnet_id"] == narrow["_id"]
+        assert created[0]["organization"] is narrow["organization"]
+
+        created.clear()
+        cis["rows"] = [{"_id": 6, "model_id": "host", "ip_addr": "192.168.0.9", "inst_name": "miss"}]
+        result = ipam_reconcile.run_reconciliation()
+        assert created == []
+        assert result["created"] == 0
+
+        good = {"_id": 6, "subnet_address": "10.1.2.0", "subnet_mask": "24", "organization": ["org-good"]}
+        created.clear()
+        subnets["rows"] = [
+            {"_id": 3, "subnet_address": "not-an-ip", "subnet_mask": "24"},
+            {"_id": 4, "subnet_address": "", "subnet_mask": "24"},
+            {"_id": 5, "subnet_address": "10.9.0.0", "subnet_mask": ""},
+            good,
+        ]
+        cis["rows"] = [{"_id": 7, "model_id": "host", "ip_addr": "10.1.2.8", "inst_name": "valid"}]
+        ipam_reconcile.run_reconciliation()
+        assert len(created) == 1
+        assert created[0]["subnet_id"] == good["_id"]
+        assert created[0]["organization"] is good["organization"]

@@ -19,7 +19,10 @@ import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import FilterToolbar from '@/components/filter-toolbar';
-import { getWindowsPackageUploadState } from '@/app/patch-manager/components/windows-package-upload-state';
+import {
+  getWindowsPackageUploadState,
+  windowsPackageReplacementSelected,
+} from '@/app/patch-manager/components/windows-package-upload-state';
 import {
   LINUX_SOURCE_TYPE_FILTER_VALUES,
   PACKAGE_STATUS_FILTER_VALUES,
@@ -106,6 +109,7 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const [windowsVersions, setWindowsVersions] = useState<Array<{ label: string; build: string }>>([]);
   const [data, setData] = useState<Patch[]>([]);
   const [loading, setLoading] = useState(false);
   const listRequestCoordinatorRef = useRef(createListRequestCoordinator(setLoading));
@@ -121,6 +125,7 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
   const [selectedPatchIds, setSelectedPatchIds] = useState<number[]>([]);
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
+  const editPackageFileList = Form.useWatch('package_file', editForm);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
 
   // 同步入库抽屉
@@ -217,6 +222,21 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
     return () => window.clearInterval(timer);
   }, [hasProcessingPackage, activeTab, pagination.current, pagination.pageSize, filters]);
 
+  const apiRef = useRef(api);
+  apiRef.current = api;
+  useEffect(() => {
+    if (isLoading) return undefined;
+    let cancelled = false;
+    apiRef.current.getWindowsServerVersions()
+      .then((items) => {
+        if (!cancelled) setWindowsVersions(Array.isArray(items) ? items : []);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoading]);
+
   useEffect(() => () => {
     listRequestCoordinatorRef.current.invalidate();
     sourceRequestCoordinatorRef.current.invalidate();
@@ -235,7 +255,7 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
       return {
         ...base,
         name: editingPatch.windows_detail?.kb_number || '',
-        version: (editingPatch.windows_detail?.product_list || []).join('、') || '',
+        version: editingPatch.windows_detail?.product_list?.[0] || '',
         arch: normalizeArchitecture((editingPatch.windows_detail?.architectures || [])[0]),
         package_file: getWindowsPackageUploadState(editingPatch).fileList,
       };
@@ -252,7 +272,7 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
   const winFieldConfigs: FieldConfig[] = [
     { name: 'name', label: t('patchManager.kbNumber'), lookup_expr: 'icontains' },
     { name: 'title', label: t('patchManager.libraryPage.description'), lookup_expr: 'icontains' },
-    { name: 'version', label: t('patchManager.libraryPage.applicableVersion'), lookup_expr: 'icontains', options: [{ id: '2019', name: '2019' }, { id: '2022', name: '2022' }, { id: '2008', name: '2008' }] },
+    { name: 'version', label: t('patchManager.libraryPage.applicableVersion'), lookup_expr: 'icontains', options: windowsVersions.map((item) => ({ id: item.label, name: item.label })) },
     { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: WINDOWS_ARCHITECTURE_FILTER_OPTIONS },
     { name: 'severity', label: t('patchManager.severity'), lookup_expr: 'in', options: severityFilterOptions },
     { name: 'ready', label: t('patchManager.libraryPage.readyStatus'), lookup_expr: 'in', options: readyFilterOptions },
@@ -730,8 +750,16 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
           )}
           {activeTab === 'win' ? (
             <>
-              <Form.Item label={t('patchManager.libraryPage.applicableVersion')} name="version">
-                <Input placeholder={t('patchManager.libraryPage.versionPlaceholder')} />
+              <Form.Item
+                label={t('patchManager.libraryPage.applicableVersion')}
+                name="version"
+                rules={[{ required: true, message: t('patchManager.libraryPage.versionRequired') }]}
+              >
+                <Select
+                  allowClear
+                  placeholder={t('patchManager.libraryPage.versionPlaceholder')}
+                  options={windowsVersions.map((item) => ({ label: item.label, value: item.label }))}
+                />
               </Form.Item>
               <Form.Item label={t('patchManager.arch')} name="arch" rules={[{ required: true, message: t('patchManager.libraryPage.archRequired') }]}>
                 <Select placeholder={t('patchManager.libraryPage.select')} options={WINDOWS_ARCHITECTURE_OPTIONS} />
@@ -928,7 +956,7 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
               payload.windows_detail = {
                 kb_number: values.name,
                 ms_bulletin: editingPatch.windows_detail?.ms_bulletin || '',
-                product_list: values.version ? values.version.split('、').map((s: string) => s.trim()) : [],
+                product_list: values.version ? [values.version] : [],
                 architectures: values.arch ? [values.arch] : [],
               };
             } else {
@@ -976,12 +1004,14 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
                   getValueFromEvent={(event) => Array.isArray(event) ? event : event?.fileList}
                   extra={editPackageUploadState.disabled
                     ? t('patchManager.libraryPage.packageNotReplaceable')
-                    : t('patchManager.libraryPage.packageRetryHelp')}
+                    : windowsPackageReplacementSelected(editPackageFileList)
+                      ? undefined
+                      : t('patchManager.libraryPage.packageRetryHelp')}
+                  required={editingPatch?.pkg_status === 'download_failed'}
                   rules={editingPatch?.pkg_status === 'download_failed' ? [
-                    { required: true, message: t('patchManager.libraryPage.packageReuploadRequired') },
                     {
                       validator: async (_rule, files) => {
-                        if (files?.some((file: any) => file.originFileObj)) return;
+                        if (windowsPackageReplacementSelected(files)) return;
                         throw new Error(t('patchManager.libraryPage.packageReuploadRequired'));
                       },
                     },
@@ -1010,8 +1040,25 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
               <Form.Item label={t('patchManager.severity')} name="severity" rules={[{ required: true, message: t('patchManager.libraryPage.severityRequired') }]}>
                 <Select options={severityFilterOptions.map(({ id, name }) => ({ label: name, value: id }))} />
               </Form.Item>
-              <Form.Item label={t('patchManager.libraryPage.applicableVersion')} name="version">
-                <Input />
+              <Form.Item
+                label={t('patchManager.libraryPage.applicableVersion')}
+                name="version"
+                rules={editingPatch && editingPatch.sources.length === 0 ? [
+                  { required: true, message: t('patchManager.libraryPage.versionRequired') },
+                ] : undefined}
+              >
+                <Select
+                  allowClear
+                  placeholder={t('patchManager.libraryPage.versionPlaceholder')}
+                  options={(() => {
+                    const options = windowsVersions.map((item) => ({ label: item.label, value: item.label }));
+                    const current = editingPatch?.windows_detail?.product_list?.[0];
+                    if (current && !options.some((item) => item.value === current)) {
+                      options.unshift({ label: current, value: current });
+                    }
+                    return options;
+                  })()}
+                />
               </Form.Item>
               <Form.Item label={t('patchManager.arch')} name="arch" rules={[{ required: true, message: t('patchManager.libraryPage.archRequired') }]}>
                 <Select options={WINDOWS_ARCHITECTURE_OPTIONS} />

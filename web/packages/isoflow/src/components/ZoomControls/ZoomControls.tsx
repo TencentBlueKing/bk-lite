@@ -24,46 +24,61 @@ export const ZoomControls = () => {
   const labels = useLabels();
 
   return (
-    <Box sx={{ position: 'relative' }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-        <UiElement>
-        <Stack direction="row">
-          <IconButton
-            name={labels.zoomOut}
-            Icon={<ZoomOutIcon />}
-            onClick={uiStateStoreActions.decrementZoom}
-            disabled={zoom >= MAX_ZOOM}
-          />
-          <Divider orientation="vertical" flexItem />
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              minWidth: toPx(60)
-            }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              {Math.ceil(zoom * 100)}%
-            </Typography>
-          </Box>
-          <Divider orientation="vertical" flexItem />
-          <IconButton
-            name={labels.zoomIn}
-            Icon={<ZoomInIcon />}
-            onClick={uiStateStoreActions.incrementZoom}
-            disabled={zoom <= MIN_ZOOM}
-          />
-        </Stack>
-        </UiElement>
-        <UiElement>
+    <UiElement sx={{ borderRadius: '8px' }}>
+      <Stack
+        direction="row"
+        sx={{
+          height: 32,
+          alignItems: 'center',
+          '& .MuiButton-root': {
+            width: 32,
+            height: 32,
+            minWidth: 32,
+            borderRadius: 0
+          },
+          '& .MuiSvgIcon-root': {
+            width: 16,
+            height: 16
+          }
+        }}
+      >
+        <IconButton
+          name={labels.zoomOut}
+          Icon={<ZoomOutIcon />}
+          onClick={uiStateStoreActions.decrementZoom}
+          disabled={zoom >= MAX_ZOOM}
+          size={32}
+        />
+        <Divider orientation="vertical" flexItem />
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minWidth: toPx(44),
+            px: 0.5
+          }}
+        >
+          <Typography sx={{ fontSize: 12, lineHeight: 1, color: 'var(--color-text-2)' }}>
+            {Math.ceil(zoom * 100)}%
+          </Typography>
+        </Box>
+        <Divider orientation="vertical" flexItem />
+        <IconButton
+          name={labels.zoomIn}
+          Icon={<ZoomInIcon />}
+          onClick={uiStateStoreActions.incrementZoom}
+          disabled={zoom <= MIN_ZOOM}
+          size={32}
+        />
+        <Divider orientation="vertical" flexItem />
         <IconButton
           name={labels.fitToScreen}
           Icon={<FitToScreenIcon />}
           onClick={fitToView}
+          size={32}
         />
-        </UiElement>
       </Stack>
-    </Box>
+    </UiElement>
   );
 };

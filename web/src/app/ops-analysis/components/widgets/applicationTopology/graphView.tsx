@@ -18,6 +18,7 @@ import { getIconUrl } from '@/app/cmdb/utils/modelIcon';
 import InteractionDataMenu from '@/app/ops-analysis/components/interactionDataMenu';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import {
   applicationTopologyLinkPoint,
   type ChartLinkPoint,
@@ -79,9 +80,75 @@ const EDGE_CORNER_RADIUS = 10;
  * 大屏把 --color-text-3 / --color-border-3 重写成半透明色。
  * 沿用 CMDB 的 color-mix 会在深色底上发虚，这里用实色。
  */
-const SCREEN_EDGE_STROKE = '#A9C3D6';
 /** 悬停时未点亮的节点、线和关系文字只略微退后，仍能辨认。 */
 const HOVER_MUTE_OPACITY = 0.55;
+
+interface ApplicationTopologyNodePalette {
+  background: string;
+  border: string;
+  title: string;
+  meta: string;
+  selected: string;
+  unknownBorder: string;
+  bandBackground: string;
+  bandBorder: string;
+  edgeStroke: string;
+  edgeOpacity: number;
+  alert: Record<'warning' | 'error' | 'critical', { borderColor: string; background: string }>;
+}
+
+/** 大屏暗色 token 偏透，节点用实色，避免亮字落在发虚的底上。 */
+const SCREEN_DARK_NODE_PALETTE: ApplicationTopologyNodePalette = {
+  background: '#18344E',
+  border: '#45617E',
+  title: '#E8F0F7',
+  meta: '#91A6B9',
+  selected: '#38BDF8',
+  unknownBorder: '#485A6C',
+  bandBackground: 'rgba(16, 40, 62, 0.62)',
+  bandBorder: '1px solid rgba(90, 124, 156, 0.24)',
+  edgeStroke: '#A9C3D6',
+  edgeOpacity: 1,
+  alert: {
+    warning: { borderColor: '#A66A2E', background: '#302B29' },
+    error: { borderColor: '#A56A32', background: '#32281F' },
+    critical: { borderColor: '#B84B57', background: '#33252F' },
+  },
+};
+
+/** 仪表盘跟随系统语义色；大屏亮色由 ScreenWidgetThemeProvider 改写同一套变量。 */
+const ADAPTIVE_NODE_PALETTE: ApplicationTopologyNodePalette = {
+  background: 'var(--color-bg-1)',
+  border: 'var(--color-border-2)',
+  title: 'var(--color-text-1)',
+  meta: 'var(--color-text-3)',
+  selected: 'var(--color-primary)',
+  unknownBorder: 'var(--color-border-3)',
+  bandBackground: 'color-mix(in srgb, var(--color-fill-2) 72%, transparent)',
+  bandBorder: '1px solid var(--color-border-1)',
+  edgeStroke: 'color-mix(in srgb, var(--color-text-3) 65%, var(--color-border-3))',
+  edgeOpacity: 0.78,
+  alert: {
+    warning: {
+      borderColor: 'var(--color-warning)',
+      background: 'color-mix(in srgb, var(--color-warning) 18%, var(--color-bg-1))',
+    },
+    error: {
+      borderColor: 'var(--color-warning)',
+      background: 'color-mix(in srgb, var(--color-warning) 24%, var(--color-bg-1))',
+    },
+    critical: {
+      borderColor: 'var(--color-fail)',
+      background: 'color-mix(in srgb, var(--color-fail) 18%, var(--color-bg-1))',
+    },
+  },
+};
+
+const resolveApplicationTopologyNodePalette = (
+  mode?: OpsChartThemeMode,
+): ApplicationTopologyNodePalette => (
+  mode === 'screen-dark' ? SCREEN_DARK_NODE_PALETTE : ADAPTIVE_NODE_PALETTE
+);
 
 const CATEGORY_LABEL_KEY: Record<string, string> = {
   application: 'dashboard.applicationTopologyGroupApplication',
@@ -95,15 +162,6 @@ const CATEGORY_LABEL_KEY: Record<string, string> = {
   other: 'dashboard.applicationTopologyGroupOther',
 };
 
-/** 未告警节点保持这套深色；告警才换边框和底色。 */
-const NODE_PALETTE = {
-  background: '#18344E',
-  border: '#45617E',
-  title: '#E8F0F7',
-  meta: '#91A6B9',
-  selected: '#38BDF8',
-} as const;
-
 /** 图例和节点角标。正常、告警、未接入都用实心圆，不用整块染色。 */
 const STATUS_MARK: Record<ApplicationTopologyTone, string> = {
   normal: '#22C55E',
@@ -113,27 +171,23 @@ const STATUS_MARK: Record<ApplicationTopologyTone, string> = {
   unknown: '#94A3B8',
 };
 
-const ALERT_SURFACE: Record<'warning' | 'error' | 'critical', { borderColor: string; background: string }> = {
-  warning: { borderColor: '#A66A2E', background: '#302B29' },
-  // 图里没有错误档，沿用同一套暗底加色边，角标仍用监控的错误色。
-  error: { borderColor: '#A56A32', background: '#32281F' },
-  critical: { borderColor: '#B84B57', background: '#33252F' },
-};
-
-const toneSurfaceStyle = (tone: ApplicationTopologyTone) => {
+const toneSurfaceStyle = (
+  tone: ApplicationTopologyTone,
+  palette: ApplicationTopologyNodePalette,
+) => {
   if (tone === 'normal') {
     return {
-      borderColor: NODE_PALETTE.border,
-      background: NODE_PALETTE.background,
+      borderColor: palette.border,
+      background: palette.background,
     };
   }
   if (tone === 'unknown') {
     return {
-      borderColor: '#485A6C',
-      background: NODE_PALETTE.background,
+      borderColor: palette.unknownBorder,
+      background: palette.background,
     };
   }
-  return ALERT_SURFACE[tone];
+  return palette.alert[tone];
 };
 
 export const applicationTopologySurfaceStyle = (usesScreenTheme: boolean) =>
@@ -146,6 +200,7 @@ interface ApplicationTopologyGraphViewProps {
   nodes: ApplicationTopologySourceNode[];
   links: ApplicationTopologySourceLink[];
   usesScreenTheme: boolean;
+  chartThemeMode?: OpsChartThemeMode;
   shareMode: boolean;
   config?: ValueConfig;
   screenScaleX?: number;
@@ -158,6 +213,7 @@ const ApplicationTopologyGraphView = ({
   nodes,
   links,
   usesScreenTheme,
+  chartThemeMode,
   shareMode,
   config,
   screenScaleX,
@@ -165,6 +221,7 @@ const ApplicationTopologyGraphView = ({
   onRefresh,
 }: ApplicationTopologyGraphViewProps) => {
   const { t } = useTranslation();
+  const nodePalette = resolveApplicationTopologyNodePalette(chartThemeMode);
   const markerId = useId().replace(/:/g, '');
   const viewportRef = useRef<HTMLDivElement>(null);
   const userAdjustedRef = useRef(false);
@@ -525,8 +582,8 @@ const ApplicationTopologyGraphView = ({
                 width: layout.width,
                 top: band.top,
                 height: band.height,
-                background: 'rgba(16, 40, 62, 0.62)',
-                border: '1px solid rgba(90, 124, 156, 0.24)',
+                background: nodePalette.bandBackground,
+                border: nodePalette.bandBorder,
               }}
             />
           ))}
@@ -537,7 +594,7 @@ const ApplicationTopologyGraphView = ({
           >
             <EdgeMarkers
               markerId={markerId}
-              color={usesScreenTheme ? SCREEN_EDGE_STROKE : 'var(--color-text-3)'}
+              color={nodePalette.edgeStroke}
             />
             <LineGapMask markerId={markerId} edges={layout.edges} width={layout.width} height={layout.height} />
             {layout.edges.map((edge) => {
@@ -562,13 +619,11 @@ const ApplicationTopologyGraphView = ({
                   <path
                     d={path}
                     fill="none"
-                    stroke={usesScreenTheme
-                      ? SCREEN_EDGE_STROKE
-                      : 'color-mix(in srgb, var(--color-text-3) 65%, var(--color-border-3))'}
+                    stroke={nodePalette.edgeStroke}
                     strokeWidth={1.35}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeOpacity={active ? 0.2 : (usesScreenTheme ? 1 : 0.78)}
+                    strokeOpacity={active ? 0.2 : nodePalette.edgeOpacity}
                     opacity={muteRest && !active ? HOVER_MUTE_OPACITY : 1}
                     mask={`url(#${markerId}-line-gap)`}
                     markerEnd={edge.markerEnd ? `url(#${markerId}-end)` : undefined}
@@ -636,13 +691,13 @@ const ApplicationTopologyGraphView = ({
                   opacity: muted ? HOVER_MUTE_OPACITY : 1,
                   outlineWidth: highlighted ? 2 : undefined,
                   outlineStyle: highlighted ? 'solid' : undefined,
-                  outlineColor: highlighted ? HOVER_COLOR : NODE_PALETTE.selected,
+                  outlineColor: highlighted ? HOVER_COLOR : nodePalette.selected,
                   outlineOffset: highlighted ? 2 : undefined,
                   boxShadow: [
-                    pressed ? `0 0 0 2px ${NODE_PALETTE.selected}` : '',
+                    pressed ? `0 0 0 2px ${nodePalette.selected}` : '',
                     highlighted ? '0 4px 8px var(--color-portal-card-shadow)' : '',
                   ].filter(Boolean).join(', ') || undefined,
-                  ...toneSurfaceStyle(node.tone),
+                  ...toneSurfaceStyle(node.tone, nodePalette),
                 }}
                 onMouseEnter={() => {
                   setHover({ kind: 'node', id: node.id });
@@ -682,13 +737,13 @@ const ApplicationTopologyGraphView = ({
                 <span className="flex min-w-0 flex-1 flex-col justify-center pr-3 pl-1">
                   <span
                     className="block truncate text-base font-semibold"
-                    style={{ color: NODE_PALETTE.title }}
+                    style={{ color: nodePalette.title }}
                   >
                     {node.name}
                   </span>
                   <span
                     className="block truncate text-sm"
-                    style={{ color: NODE_PALETTE.meta }}
+                    style={{ color: nodePalette.meta }}
                   >
                     {node.modelId} · {t(CATEGORY_LABEL_KEY[node.category] || CATEGORY_LABEL_KEY.other)}
                   </span>
@@ -716,6 +771,7 @@ const ApplicationTopologyGraphView = ({
           node={selected}
           statusLabel={statusLabel(selected)}
           shareMode={shareMode}
+          chartThemeMode={chartThemeMode}
           onClose={() => setSelectedId(null)}
         />
       ) : null}

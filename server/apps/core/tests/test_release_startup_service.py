@@ -44,8 +44,8 @@ def _supervisor_conf_dir(tmp_path):
         encoding="utf-8",
     )
     (supervisor_conf_dir / "celery.conf").write_text("[program:celery]\n", encoding="utf-8")
-    (supervisor_conf_dir / "workflow_orchestration_worker.conf").write_text(
-        "[program:workflow_orchestration_worker]\n",
+    (supervisor_conf_dir / "workflow_worker.conf").write_text(
+        "[program:workflow_worker]\n",
         encoding="utf-8",
     )
     return supervisor_conf_dir
@@ -209,30 +209,30 @@ def test_release_startup_removes_opspilot_celery_conf_when_opspilot_not_installe
     assert (conf_dir / "celery.conf").exists()
 
 
-def test_workflow_orchestration_runtime_is_packaged_and_removed_when_app_is_not_installed(tmp_path):
+def test_workflow_runtime_is_packaged_and_removed_when_app_is_not_installed(tmp_path):
     dockerfile = (RELEASE_DIR / "Dockerfile").read_text(encoding="utf-8")
     startup = STARTUP_SCRIPT.read_text(encoding="utf-8")
 
-    assert "workflow_orchestration_worker.conf" in dockerfile
-    assert 'rm -f "$SUPERVISOR_CONF_DIR/workflow_orchestration_worker.conf"' in startup
+    assert "workflow_worker.conf" in dockerfile
+    assert 'rm -f "$SUPERVISOR_CONF_DIR/workflow_worker.conf"' in startup
 
     result, commands = _run_startup(tmp_path, migrate_returncode=0, install_apps="system_mgmt,console_mgmt")
 
     assert result.returncode == 0
     assert commands[-1] == "supervisord:-n"
-    assert not (tmp_path / "supervisor/workflow_orchestration_worker.conf").exists()
+    assert not (tmp_path / "supervisor/workflow_worker.conf").exists()
 
 
-def test_release_startup_keeps_workflow_orchestration_runtime_when_app_is_installed(tmp_path):
+def test_release_startup_keeps_workflow_runtime_when_app_is_installed(tmp_path):
     result, commands = _run_startup(
         tmp_path,
         migrate_returncode=0,
-        install_apps="system_mgmt,workflow_orchestration",
+        install_apps="system_mgmt,workflow",
     )
 
     assert result.returncode == 0
     assert commands[-1] == "supervisord:-n"
-    assert (tmp_path / "supervisor/workflow_orchestration_worker.conf").exists()
+    assert (tmp_path / "supervisor/workflow_worker.conf").exists()
 
 
 def test_release_startup_keeps_opspilot_celery_conf_when_opspilot_installed(tmp_path):

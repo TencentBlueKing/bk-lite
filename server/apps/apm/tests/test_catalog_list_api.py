@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.apm.models import ApmService
+from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.services import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery
 from apps.apm.tests.helpers import create_application
@@ -53,11 +53,15 @@ def test_instance_list_keeps_legacy_array_but_supports_bounded_pagination(apm_ap
     assert isinstance(legacy.data, list)
     assert paged.data["count"] == 4
     assert len(paged.data["items"]) == 2
-    assert [item["last_seen_at"] for item in paged.data["items"]] == sorted(
-        (item["last_seen_at"] for item in paged.data["items"]),
-        reverse=True,
-    )
-    assert all(item["application_id"] != "hidden" for item in paged.data["items"])
+    created_order = [
+        str(instance_id)
+        for instance_id in ApmServiceInstance.objects.filter(id__in=[item["id"] for item in legacy.data])
+        .order_by("-created_at", "id")
+        .values_list("id", flat=True)
+    ]
+    assert [item["id"] for item in legacy.data] == created_order
+    assert [item["id"] for item in paged.data["items"]] == created_order[:2]
+    assert all(item["application_id"] != "hidden" for item in legacy.data)
 
 
 def test_instance_list_filters_application_environment_status_time_and_keyword_on_server(apm_api_client, catalog_rows):

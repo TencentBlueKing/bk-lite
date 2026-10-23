@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Input, Button } from "antd";
 import { useTranslation } from "@/utils/i18n";
+import { gmFetch } from "@/utils/gmTransport";
 
 interface LoginResponse {
   temporary_pwd?: boolean;
@@ -49,7 +50,7 @@ export default function PasswordResetForm({
     onError("");
     
     try {
-      const response = await fetch('/api/proxy/core/api/reset_pwd/', {
+      const response = await gmFetch('/api/proxy/core/api/reset_pwd/', {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",

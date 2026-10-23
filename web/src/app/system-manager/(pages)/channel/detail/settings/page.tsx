@@ -31,9 +31,9 @@ interface ChannelRow {
 }
 
 // 平台流程自动托管的 NATS 通道：生命周期由来源流程管理，这里只读展示。
-const managedSource = (record: ChannelRow): 'opspilot' | 'workflow_orchestration' | undefined => {
+const managedSource = (record: ChannelRow): 'opspilot' | 'workflow' | undefined => {
   const source = record.config?.source;
-  return source === 'opspilot' || source === 'workflow_orchestration' ? source : undefined;
+  return source === 'opspilot' || source === 'workflow' ? source : undefined;
 };
 
 const ChannelSettingsPage: React.FC = () => {
@@ -83,7 +83,7 @@ const ChannelSettingsPage: React.FC = () => {
       render: (key: string, record: ChannelRow) => {
         const source = managedSource(record);
         if (source) {
-          const workflowManaged = source === 'workflow_orchestration';
+          const workflowManaged = source === 'workflow';
           return (
             <Tooltip title={t(workflowManaged
               ? "system.channel.settings.workflowManagedTip"

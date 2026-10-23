@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import {
@@ -17,8 +17,10 @@ import DiskPane from './layered/disk-pane';
 import FlatProcessSplit from './layered/flat-process-split';
 import NetworkPane from './layered/network-pane';
 import { hostAlertRailEvents, type HostAlertRailEvent } from './layered/events-rail';
+import { ProTimeWindowProvider } from './layered/pro-time-window';
+import { selectProChartWindow } from '../../shared/utils/pro-chart-window';
 import HostAlertDrawer from './layered/host-alert-drawer';
-import { activeHostAlertParams } from './layered/host-alert-list';
+import { overviewHostAlertParams } from './layered/host-alert-list';
 import OverviewPane from './layered/overview-pane';
 import SystemPane from './layered/system-pane';
 import { latestNumber, latestPreferCount, resolveMemoryUsage } from './layered/readings';
@@ -44,6 +46,16 @@ const TabLevelMark = ({ level }: { level: TabAlertLevel }) => {
 };
 
 const EMPTY_ENTITY: EntityLoadState = { status: 'idle', byMetric: {} };
+
+/** 健康概览主值。这些序列或磁盘维度还在飞时，整行显示「加载中」，不用 `--` 占位。 */
+const HOST_OVERVIEW_KPI_METRICS = [
+  'cpu_usage_total',
+  'mem_used_percent',
+  'mem_available',
+  'mem_total',
+  'system_uptime',
+  'system_load1'
+] as const;
 
 const maxRowValue = (rows: EntityTableRow[], key: string) => {
   let best: number | null = null;
@@ -173,7 +185,11 @@ export default function HostCategoryLayout({
   const [uncontrolledTab, setUncontrolledTab] = useState('overview');
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
+  const [eventsPhase, setEventsPhase] = useState<'loading' | 'ready'>('loading');
+  const eventsScopeRef = useRef<string | null>(null);
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
+  const alertDrawerOpenRef = useRef(false);
+  alertDrawerOpenRef.current = alertDrawerOpen;
   const [alertRefreshKey, setAlertRefreshKey] = useState(0);
   const [focusAlertId, setFocusAlertId] = useState('');
   const instanceKey = String(dashboard.instanceId || '');
@@ -217,6 +233,11 @@ export default function HostCategoryLayout({
     return () => cancelAnimationFrame(frame);
   }, [activeTab]);
   const metrics = dashboard.metricSeries;
+  const chartWindow = useMemo(
+    () => selectProChartWindow(dashboard.timeValues, dashboard.queryTimeRange),
+    [dashboard.queryTimeRange, dashboard.timeValues]
+  );
+  const chartWindowKey = chartWindow ? `${chartWindow.startSec}|${chartWindow.endSec}` : '';
 
   const diskRows = useMemo(() => buildMountDiskRows(diskState.byMetric), [diskState.byMetric]);
   const diskDeviceRows = useMemo(() => buildDiskDeviceRows(diskState.byMetric), [diskState.byMetric]);
@@ -271,52 +292,47 @@ export default function HostCategoryLayout({
     if (activeTab === 'process' && !processReady) setActiveTab('overview');
   }, [activeTab, processReady, setActiveTab]);
 
+  const eventsScope = `${String(dashboard.instanceId || '')}|${
+    chartWindow ? Math.round(chartWindow.endSec - chartWindow.startSec) : ''
+  }`;
   useEffect(() => {
-    if (activeTab !== 'overview' || alertDrawerOpen) return undefined;
-    const instanceId = String(dashboard.instanceId || '');
-    if (!instanceId) {
-      setAlertCount(null);
-      setAlertEvents([]);
-      return undefined;
-    }
-    let active = true;
-    getMonitorAlert(activeHostAlertParams(instanceId, 1, 1))
-      .then((data) => {
-        if (active) setAlertCount(typeof data?.count === 'number' ? data.count : 0);
-      })
-      .catch(() => {
-        if (active) setAlertCount(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [activeTab, alertDrawerOpen, dashboard.instanceId, getMonitorAlert]);
+    if (eventsScopeRef.current === eventsScope) return;
+    const first = eventsScopeRef.current == null;
+    eventsScopeRef.current = eventsScope;
+    if (first) return;
+    setAlertEvents([]);
+    setEventsPhase('loading');
+  }, [eventsScope]);
 
   useEffect(() => {
     if (activeTab !== 'overview') return undefined;
     const instanceId = String(dashboard.instanceId || '');
     if (!instanceId) {
+      setAlertCount(null);
       setAlertEvents([]);
+      setEventsPhase('ready');
       return undefined;
     }
     let active = true;
-    getMonitorAlert({
-      monitor_instance_id: instanceId,
-      page: 1,
-      page_size: 20
-    })
+    getMonitorAlert(overviewHostAlertParams(instanceId))
       .then((data) => {
         if (!active) return;
         setAlertEvents(hostAlertRailEvents(data?.results));
+        setEventsPhase('ready');
+        if (!alertDrawerOpenRef.current) {
+          setAlertCount(typeof data?.count === 'number' ? data.count : 0);
+        }
       })
       .catch(() => {
         if (!active) return;
         setAlertEvents([]);
+        setEventsPhase('ready');
+        if (!alertDrawerOpenRef.current) setAlertCount(null);
       });
     return () => {
       active = false;
     };
-  }, [activeTab, dashboard.instanceId, getMonitorAlert]);
+  }, [activeTab, chartWindowKey, dashboard.instanceId, dashboard.loadTick, getMonitorAlert]);
 
   const jump = (tab: 'disk' | 'net' | 'process', key: string) => {
     if (tab === 'disk') diskSelection.setPendingMountKey(key);
@@ -400,7 +416,12 @@ export default function HostCategoryLayout({
     return (
       <OverviewPane
         metrics={metrics}
-        loading={dashboard.loading}
+        loading={
+          (dashboard.loading && dashboard.pendingMetricNames.size === 0)
+          || diskLoading
+          || HOST_OVERVIEW_KPI_METRICS.some((name) => dashboard.pendingMetricNames.has(name))
+        }
+        pendingMetricNames={dashboard.pendingMetricNames}
         diskRows={diskRows}
         diskLoading={diskLoading}
         netRows={netRows}
@@ -410,6 +431,7 @@ export default function HostCategoryLayout({
         processLoading={processLoading}
         alertCount={alertCount}
         alertEvents={alertEvents}
+        eventsLoading={eventsPhase === 'loading'}
         alertsOpen={alertDrawerOpen}
         onOpenAlerts={openHostAlerts}
         onFocusAlert={focusHostAlert}
@@ -420,6 +442,11 @@ export default function HostCategoryLayout({
   };
 
   return (
+    <ProTimeWindowProvider
+      timeValues={dashboard.timeValues}
+      queryTimeRange={dashboard.queryTimeRange}
+      suspend={dashboard.loading && dashboard.pendingMetricNames.size === 0}
+    >
     <div className={styles.root}>
       <div className={styles.tabBand}>
         <Tabs
@@ -448,5 +475,6 @@ export default function HostCategoryLayout({
         onCount={applyAlertCount}
       />
     </div>
+    </ProTimeWindowProvider>
   );
 }

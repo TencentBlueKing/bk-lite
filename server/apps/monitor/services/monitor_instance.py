@@ -41,6 +41,24 @@ PROBE_OBJECT_NAMES = {"Website", "Ping", "TCPPort"}
 PROBE_SEARCH_FACTS = frozenset({"collector.nodes", "probe.target"})
 
 
+def order_monitor_instances(qs):
+    """实例列表默认按创建时间倒序；同一时刻用主键保证顺序稳定。"""
+    return qs.order_by("-created_at", "id")
+
+
+def sort_instance_rows_by_created_at(items, created_at_by_id):
+    """就地按创建时间倒序排列已经组装好的实例行。"""
+
+    def sort_key(item):
+        created = created_at_by_id.get(item.get("instance_id"))
+        instance_id = str(item.get("instance_id") or "")
+        if created is None:
+            return (1, 0.0, instance_id)
+        return (0, -created.timestamp(), instance_id)
+
+    items.sort(key=sort_key)
+
+
 class InstanceSearch:
     def __init__(self, monitor_obj, query_data, qs=None, locale=None, visible_organization_ids=None):
         self.monitor_obj = monitor_obj
@@ -292,6 +310,7 @@ class InstanceSearch:
             "fallback_sampling_rate",
             "node_id",
             "cmdb_id",
+            "created_at",
         )
 
     def search(self):
@@ -334,6 +353,11 @@ class InstanceSearch:
             self.query_data.get("order", "asc"),
         )
         skip_out_keys = None
+        if not ordering_key:
+            sort_instance_rows_by_created_at(
+                items,
+                {instance_id: obj.created_at for instance_id, obj in objs_map.items()},
+            )
         if ordering_key:
             filled_out_key = apply_ordering_to_instances(
                 self.monitor_obj.id,
@@ -1038,8 +1062,8 @@ class InstanceSearch:
         qs = InstanceSearch.apply_keyword_search(qs, self.monitor_obj, self.query_data.get("name"))
         qs = self._apply_process_filters(qs)
 
-        # 去除重复
-        qs = qs.distinct()
+        # 去除重复，并按创建时间倒序，避免无 ORDER BY 时分页顺序漂移。
+        qs = order_monitor_instances(qs.distinct())
 
         objs_map = {i.id: i for i in self._project_instance_identity(qs)}
         return objs_map
@@ -1056,8 +1080,8 @@ class InstanceSearch:
 
         qs = CollectConfigUpdateService.filter_instance_qs(qs, self.query_data)
 
-        # 去除重复
-        qs = qs.distinct()
+        # 去除重复，并按创建时间倒序，避免无 ORDER BY 时分页顺序漂移。
+        qs = order_monitor_instances(qs.distinct())
 
         count = qs.count()
         if count == 0:

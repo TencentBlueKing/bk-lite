@@ -185,7 +185,7 @@ class AlertSerializer(serializers.ModelSerializer):
     class Meta:
         model = Alert
         fields = "__all__"
-        read_only_fields = ("created_at", "updated_at", "notice")
+        read_only_fields = ("created_at", "updated_at", "notice", "handlers")
 
 
 class EventSerializer(serializers.ModelSerializer):

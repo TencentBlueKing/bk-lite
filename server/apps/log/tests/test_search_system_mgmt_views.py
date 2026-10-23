@@ -10,18 +10,25 @@ import pydantic.root_model  # noqa
 import json
 
 import pytest
+from django.urls import include, path
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
 from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.core.exceptions.base_app_exception import ValidationAppException
+from apps.log import urls as log_urls
 from apps.log.models.log_group import SearchCondition
 from apps.log.services.access_scope import LogAccessScope
 from apps.log.utils import system_mgmt as log_system_mgmt
 from apps.log.views.search import LogSearchViewSet, SearchConditionViewSet
 from apps.log.views.system_mgmt import SystemMgmtView
 
-pytestmark = pytest.mark.django_db
+# 全站 urls 会装入 always-on 的 module_link，并连带导入未列入本文件 INSTALL_APPS 的 cmdb/monitor。
+# 这两条 APIClient 用例只需要日志自己的路由。
+urlpatterns = [path("api/v1/log/", include(log_urls.urlpatterns))]
+
+pytestmark = [pytest.mark.django_db, pytest.mark.urls(__name__)]
 
 factory = APIRequestFactory()
 
@@ -423,25 +430,243 @@ def test_destroy_deletes_instance(mocker):
 # --------------------------------------------------------------------------- #
 def test_get_user_all_passes_team_and_include_children(mocker):
     rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
-    rpc.return_value.get_group_users.return_value = {"data": [{"id": 1}]}
+    users = [{"id": 1, "user_id": "u-1", "username": "alice", "display_name": "Alice"}]
+    rpc.return_value.get_group_users_scoped.return_value = {"result": True, "data": users}
 
-    request = get_req(cookies={"current_team": "12", "include_children": "1"})
+    request = get_req(
+        cookies={"current_team": "12", "include_children": "1"},
+        user=_ActorUser(),
+    )
     response = SystemMgmtView().get_user_all(request)
 
     assert response.status_code == 200
-    assert _json(response)["data"] == [{"id": 1}]
-    rpc.return_value.get_group_users.assert_called_once_with(group="12", include_children=True)
+    assert _json(response)["data"] == users
+    rpc.return_value.get_group_users_scoped.assert_called_once_with(
+        {
+            "username": "u",
+            "domain": "domain.com",
+            "current_team": 12,
+            "include_children": True,
+            "is_superuser": False,
+            "group_list": [7, 8],
+        },
+        include_children=True,
+    )
+    rpc.return_value.get_group_users.assert_not_called()
 
 
 def test_get_user_all_defaults_include_children_false(mocker):
     rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
-    rpc.return_value.get_group_users.return_value = {"data": []}
+    rpc.return_value.get_group_users_scoped.return_value = {"result": True, "data": []}
 
-    # 无 include_children cookie -> 默认 "0" -> False
-    response = SystemMgmtView().get_user_all(get_req())
+    # 无 include_children cookie -> 默认 "0" -> False；当前组织仍走 scoped
+    response = SystemMgmtView().get_user_all(get_req(cookies={"current_team": "12"}, user=_ActorUser()))
 
     assert response.status_code == 200
-    assert rpc.return_value.get_group_users.call_args.kwargs["include_children"] is False
+    assert _json(response)["data"] == []
+    rpc.return_value.get_group_users_scoped.assert_called_once_with(
+        {
+            "username": "u",
+            "domain": "domain.com",
+            "current_team": 12,
+            "include_children": False,
+            "is_superuser": False,
+            "group_list": [7, 8],
+        },
+        include_children=False,
+    )
+    rpc.return_value.get_group_users.assert_not_called()
+
+
+def test_get_user_all_missing_team_returns_empty_without_unscoped_lookup(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+
+    response = SystemMgmtView().get_user_all(get_req(user=_ActorUser()))
+
+    assert response.status_code == 200
+    assert _json(response)["data"] == []
+    rpc.return_value.get_group_users.assert_not_called()
+    rpc.return_value.get_group_users_scoped.assert_not_called()
+
+
+def test_get_user_all_invalid_team_returns_empty_without_unscoped_lookup(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+
+    response = SystemMgmtView().get_user_all(get_req(cookies={"current_team": "not-a-team"}, user=_ActorUser()))
+
+    assert response.status_code == 200
+    assert _json(response)["data"] == []
+    rpc.return_value.get_group_users.assert_not_called()
+    rpc.return_value.get_group_users_scoped.assert_not_called()
+
+
+def test_get_user_all_scoped_failure_rejects_without_unscoped_fallback(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+    rpc.return_value.get_group_users_scoped.return_value = {
+        "result": False,
+        "message": "current_team 对应组织已归档或不存在",
+    }
+
+    with pytest.raises(PermissionDenied) as exc:
+        SystemMgmtView().get_user_all(get_req(cookies={"current_team": "12"}, user=_ActorUser()))
+
+    assert str(exc.value.detail) == "current_team 对应组织已归档或不存在"
+    rpc.return_value.get_group_users.assert_not_called()
+
+
+def _bind_real_group_users_scoped(mocker):
+    """视图只应转发 actor；范围收口由真实 get_group_users_scoped 完成。"""
+    from apps.system_mgmt.nats import users as nats_users
+
+    class _Client:
+        def get_group_users(self, *args, **kwargs):
+            raise AssertionError("unscoped lookup")
+
+        def get_group_users_scoped(self, actor_context, group=None, include_children=False, search=""):
+            return nats_users.get_group_users_scoped(
+                actor_context,
+                group=group,
+                include_children=include_children,
+                search=search,
+            )
+
+    mocker.patch("apps.log.views.system_mgmt.SystemMgmt", _Client)
+    return nats_users
+
+
+def _directory_usernames(response):
+    assert response.status_code == 200
+    data = _json(response)["data"]
+    for row in data:
+        assert set(row) <= {"id", "user_id", "username", "display_name"}
+    return {row["username"] for row in data}
+
+
+def test_get_user_all_member_current_team_excludes_other_org(mocker):
+    from apps.system_mgmt.models import Group, User
+
+    _bind_real_group_users_scoped(mocker)
+    home = Group.objects.create(name="pr6592-member-home", parent_id=0)
+    other = Group.objects.create(name="pr6592-member-other", parent_id=0)
+    User.objects.create(
+        username="pr6592-member-actor",
+        display_name="Member Actor",
+        email="pr6592-member-actor@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="pr6592-member-insider",
+        display_name="Insider",
+        email="pr6592-member-insider@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="pr6592-member-outsider",
+        display_name="Outsider",
+        email="pr6592-member-outsider@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[other.id],
+    )
+
+    class _Member:
+        username = "pr6592-member-actor"
+        domain = "domain.com"
+        is_superuser = False
+        group_list = [home.id]
+        is_authenticated = True
+
+    usernames = _directory_usernames(
+        SystemMgmtView().get_user_all(get_req(cookies={"current_team": str(home.id)}, user=_Member()))
+    )
+    assert "pr6592-member-insider" in usernames
+    assert "pr6592-member-outsider" not in usernames
+
+
+def test_get_user_all_forged_team_returns_empty_from_scoped_directory(mocker):
+    from apps.system_mgmt.models import Group, User
+
+    _bind_real_group_users_scoped(mocker)
+    home = Group.objects.create(name="pr6592-forged-home", parent_id=0)
+    other = Group.objects.create(name="pr6592-forged-other", parent_id=0)
+    User.objects.create(
+        username="pr6592-forged-actor",
+        display_name="Forged Actor",
+        email="pr6592-forged-actor@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="pr6592-forged-outsider",
+        display_name="Forged Outsider",
+        email="pr6592-forged-outsider@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[other.id],
+    )
+
+    class _Member:
+        username = "pr6592-forged-actor"
+        domain = "domain.com"
+        is_superuser = False
+        group_list = [other.id]
+        is_authenticated = True
+
+    usernames = _directory_usernames(
+        SystemMgmtView().get_user_all(get_req(cookies={"current_team": str(other.id)}, user=_Member()))
+    )
+    assert usernames == set()
+
+
+def test_get_user_all_superuser_outside_membership_returns_current_team_users(mocker, monkeypatch):
+    from apps.system_mgmt.models import Group, User
+
+    nats_users = _bind_real_group_users_scoped(mocker)
+    monkeypatch.setattr(nats_users, "_is_persisted_superuser", lambda user: getattr(user, "username", None) == "pr6592-super-actor")
+    home = Group.objects.create(name="pr6592-super-home", parent_id=0)
+    selected = Group.objects.create(name="pr6592-super-selected", parent_id=0)
+    User.objects.create(
+        username="pr6592-super-actor",
+        display_name="Super Actor",
+        email="pr6592-super-actor@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="pr6592-super-member",
+        display_name="Selected Member",
+        email="pr6592-super-member@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[selected.id],
+    )
+    User.objects.create(
+        username="pr6592-super-home-user",
+        display_name="Home User",
+        email="pr6592-super-home-user@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+
+    class _Super:
+        username = "pr6592-super-actor"
+        domain = "domain.com"
+        is_superuser = True
+        group_list = [home.id]
+        is_authenticated = True
+
+    usernames = _directory_usernames(
+        SystemMgmtView().get_user_all(get_req(cookies={"current_team": str(selected.id)}, user=_Super()))
+    )
+    assert "pr6592-super-member" in usernames
+    assert "pr6592-super-home-user" not in usernames
 
 
 class _ActorUser:

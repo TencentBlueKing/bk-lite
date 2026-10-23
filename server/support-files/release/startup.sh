@@ -24,17 +24,17 @@ fi
 
 # 检查是否包含 opspilot 模块
 opspilot_installed=false
-workflow_orchestration_installed=false
+workflow_installed=false
 if [ -z "$INSTALL_APPS" ]; then
     # 空表示安装所有模块
     opspilot_installed=true
-    workflow_orchestration_installed=true
+    workflow_installed=true
 else
     case ",$INSTALL_APPS," in
         *,opspilot,*) opspilot_installed=true ;;
     esac
     case ",$INSTALL_APPS," in
-        *,workflow_orchestration,*) workflow_orchestration_installed=true ;;
+        *,workflow,*) workflow_installed=true ;;
     esac
 fi
 
@@ -49,9 +49,9 @@ if [ "$opspilot_installed" = false ]; then
 fi
 
 # 编排 Worker、触发调度和产物清理由同一配置管理，只在安装编排中心时运行。
-if [ "$workflow_orchestration_installed" = false ]; then
-    echo "未安装 workflow_orchestration 模块，删除编排中心 supervisor 配置..."
-    rm -f "$SUPERVISOR_CONF_DIR/workflow_orchestration_worker.conf"
+if [ "$workflow_installed" = false ]; then
+    echo "未安装 workflow 模块，删除编排中心 supervisor 配置..."
+    rm -f "$SUPERVISOR_CONF_DIR/workflow_worker.conf"
 fi
 
 

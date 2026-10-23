@@ -1,7 +1,7 @@
 'use client';
 
-import { Spin, Switch } from 'antd';
-import { LinkOutlined, RightOutlined } from '@ant-design/icons';
+import { Button, Popconfirm, Spin, Switch } from 'antd';
+import { LinkOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 
 interface NodeBindingStripProps {
@@ -13,55 +13,92 @@ interface NodeBindingStripProps {
   model: string;
   dotColor: string;
   onOpen: () => void;
+  onUnbind: () => void;
 }
 
-/**
- * Edit mode. One line at the bottom of the icon settings header (Isoflow fixes
- * its height): long text is cut with an ellipsis and never wraps.
- */
-export const NodeBindingStrip = ({ bound, loading, name, model, dotColor, onOpen }: NodeBindingStripProps) => {
+/** Edit mode. Opens the existing resource binding drawer from the node settings panel. */
+const stripButtonStyle = {
+  boxSizing: 'border-box' as const,
+  height: 24,
+  paddingInline: 8,
+  borderRadius: 6,
+  fontSize: 12,
+  flexShrink: 0,
+};
+
+export const NodeBindingStrip = ({ bound, loading, name, model, dotColor, onOpen, onUnbind }: NodeBindingStripProps) => {
   const { t } = useTranslation();
   const full = [name, model].filter(Boolean).join(' · ');
+  const showName = bound && (loading || Boolean(name));
 
   return (
-    <button
-      type="button"
-      className="flex h-full w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left text-xs [font-family:inherit]"
-      onClick={onOpen}
-      data-testid="architecture-binding-strip"
-    >
-      <span className="shrink-0 text-[var(--color-text-3)]">
-        {t('opsAnalysis.architecture.bindingStripLabel')}
-      </span>
-      <span className="flex min-w-0 flex-1 items-center" title={bound && !loading ? full : undefined}>
-        {!bound ? (
-          <span className="text-[var(--color-text-4)]">{t('opsAnalysis.architecture.bindingStripUnbound')}</span>
-        ) : loading ? (
-          <Spin size="small" />
+    <div className="box-border flex w-full min-w-0 max-w-full items-center gap-2">
+      {showName ? (
+        loading ? (
+          <div className="flex min-w-0 flex-1 items-center">
+            <Spin size="small" />
+          </div>
         ) : (
-          <>
-            <span className="mr-1.5 inline-block h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: dotColor }} />
-            <span className="min-w-0 truncate">
-              <span className="font-medium text-[var(--color-text-1)]">{name}</span>
-              {model ? <span className="text-[var(--color-text-3)]">{` · ${model}`}</span> : null}
-            </span>
-          </>
-        )}
-      </span>
-      <span className="flex shrink-0 items-center gap-1 font-medium text-[var(--color-primary)]">
-        {bound ? (
-          <>
-            {t('opsAnalysis.architecture.bindingStripEdit')}
-            <RightOutlined className="text-[10px]" />
-          </>
-        ) : (
-          <>
-            <LinkOutlined />
-            {t('opsAnalysis.architecture.bindingStripBind')}
-          </>
-        )}
-      </span>
-    </button>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5" title={full}>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: dotColor }} />
+              <span className="min-w-0 truncate text-xs font-medium text-[var(--color-text-1)]">{name}</span>
+            </div>
+            {model ? (
+              <span className="min-w-0 truncate pl-3 text-xs text-[var(--color-text-3)]">{model}</span>
+            ) : null}
+          </div>
+        )
+      ) : null}
+      {bound ? (
+        <>
+          <Popconfirm
+            title={t('opsAnalysis.architecture.bindingUnbindConfirm')}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
+            onConfirm={onUnbind}
+          >
+            <Button
+              size="small"
+              danger
+              data-testid="architecture-binding-unbind"
+              style={stripButtonStyle}
+            >
+              {t('opsAnalysis.architecture.bindingStripUnbind')}
+            </Button>
+          </Popconfirm>
+          <Button
+            size="small"
+            onClick={onOpen}
+            data-testid="architecture-binding-rebind"
+            style={{
+              ...stripButtonStyle,
+              color: 'var(--color-primary)',
+              borderColor: 'var(--color-primary)',
+            }}
+          >
+            {t('opsAnalysis.architecture.bindingStripRebind')}
+          </Button>
+        </>
+      ) : (
+        <Button
+          size="small"
+          block
+          icon={<LinkOutlined />}
+          onClick={onOpen}
+          data-testid="architecture-binding-strip"
+          style={{
+            ...stripButtonStyle,
+            width: '100%',
+            color: 'var(--color-primary)',
+            borderColor: 'var(--color-primary)',
+            background: 'var(--color-bg)',
+          }}
+        >
+          {t('opsAnalysis.architecture.bindingDrawerTitle')}
+        </Button>
+      )}
+    </div>
   );
 };
 
@@ -85,7 +122,12 @@ export const RegionAlertSettings = ({
     <section className="flex flex-col gap-2" data-testid="architecture-region-settings">
       <label className="flex items-center justify-between gap-3 text-sm text-[var(--color-text-1)]">
         <span>{t('opsAnalysis.architecture.followAlertSwitch')}</span>
-        <Switch size="small" checked={followAlert} onChange={onFollowAlert} />
+        <Switch
+          size="small"
+          checked={followAlert}
+          onChange={onFollowAlert}
+          style={{ width: 44, minWidth: 44 }}
+        />
       </label>
       <p className="m-0 text-xs text-[var(--color-text-3)]">
         {t('opsAnalysis.architecture.followAlertHint')}

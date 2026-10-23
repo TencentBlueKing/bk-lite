@@ -1,9 +1,17 @@
+import math
 import re
 from dataclasses import dataclass
 
+from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.expression.ast import BinaryOpNode, ExpressionNode, VariableNode
-from apps.monitor.expression.errors import FormulaValidationError
+from apps.monitor.expression.errors import FormulaError, FormulaValidationError, MultiValidationError
 from apps.monitor.expression.parser import parse_expression
+from apps.monitor.tasks.utils.policy_methods import (
+    COUNT_IF_ALGORITHM,
+    PER_SERIES_ALGORITHMS,
+    POLICY_ALGORITHMS,
+    PREDICATE_TO_PROMQL,
+)
 
 
 _VALID_GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min", "count"}
@@ -149,3 +157,191 @@ def validate_formula_condition(query_condition: dict) -> FormulaValidationResult
             )
 
     return FormulaValidationResult(ast=ast, anchor_ref=anchor_ref, warnings=warnings)
+
+
+_MULTI_MIN_CONDITIONS = 2
+_MULTI_MAX_CONDITIONS = 5
+_MULTI_ROLES = {"level", "gate"}
+_VALID_THRESHOLD_LEVELS = {"info", "warning", "error", "critical"}
+
+
+@dataclass(frozen=True)
+class MultiValidationResult:
+    anchor_ref: str
+    warnings: list[dict]
+
+
+def _finite_number(raw_value):
+    if isinstance(raw_value, bool):
+        return None
+    try:
+        number = float(raw_value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def _validate_count_predicate(ref: str, predicate: object) -> None:
+    if not isinstance(predicate, dict) or "method" not in predicate or "value" not in predicate:
+        raise MultiValidationError(f"条件 {ref} 的条件计数必须填写内阈运算符与值")
+    if predicate.get("method") not in PREDICATE_TO_PROMQL:
+        raise MultiValidationError(f"条件 {ref} 的条件计数内阈运算符非法")
+    if _finite_number(predicate.get("value")) is None:
+        raise MultiValidationError(f"条件 {ref} 的条件计数内阈必须是有限数值")
+
+
+def _validate_level_threshold(ref: str, threshold: object) -> None:
+    if not isinstance(threshold, list) or not threshold:
+        raise MultiValidationError(f"条件 {ref} 至少需要一条阈值")
+    valid_methods = set(AlertConstants.THRESHOLD_METHODS)
+    seen_levels = set()
+    for index, item in enumerate(threshold):
+        if not isinstance(item, dict):
+            raise MultiValidationError(f"条件 {ref} threshold[{index}] 必须是对象")
+        if item.get("method") not in valid_methods:
+            raise MultiValidationError(f"条件 {ref} threshold[{index}].method 非法")
+        if _finite_number(item.get("value")) is None:
+            raise MultiValidationError(f"条件 {ref} threshold[{index}].value 必须是有限数值")
+        level = item.get("level")
+        if level not in _VALID_THRESHOLD_LEVELS:
+            raise MultiValidationError(f"条件 {ref} threshold[{index}].level 非法")
+        if level in seen_levels:
+            raise MultiValidationError(f"条件 {ref} 的级别 {level} 重复")
+        seen_levels.add(level)
+
+
+def _validate_gate_threshold(ref: str, threshold: object) -> None:
+    if not isinstance(threshold, list) or len(threshold) != 1:
+        raise MultiValidationError(f"条件 {ref} 的前置条件只能有一条阈值")
+    item = threshold[0]
+    if not isinstance(item, dict):
+        raise MultiValidationError(f"条件 {ref} 的前置条件阈值必须是对象")
+    if "level" in item:
+        raise MultiValidationError(f"条件 {ref} 的前置条件阈值不能带级别")
+    if item.get("method") not in set(AlertConstants.THRESHOLD_METHODS):
+        raise MultiValidationError(f"条件 {ref} 的前置条件阈值运算符非法")
+    if _finite_number(item.get("value")) is None:
+        raise MultiValidationError(f"条件 {ref} 的前置条件阈值必须是有限数值")
+
+
+def _validate_formula_multi_item(item: dict) -> None:
+    ref = str(item.get("ref") or "")
+    if not str(item.get("metric_name") or "").strip():
+        raise MultiValidationError(f"条件 {ref} 必须填写结果名称")
+    algorithm = item.get("algorithm")
+    if algorithm not in POLICY_ALGORITHMS:
+        raise MultiValidationError(f"条件 {ref} algorithm 非法")
+    if algorithm in PER_SERIES_ALGORITHMS:
+        raise MultiValidationError(f"条件 {ref} 不能使用逐序列算法")
+    if algorithm == COUNT_IF_ALGORITHM:
+        _validate_count_predicate(ref, item.get("count_predicate") or {})
+    role = item.get("role")
+    if role not in _MULTI_ROLES:
+        raise MultiValidationError(f"条件 {ref} 的角色非法")
+    if role == "level":
+        _validate_level_threshold(ref, item.get("threshold"))
+    else:
+        _validate_gate_threshold(ref, item.get("threshold"))
+    operands = item.get("operands")
+    if not isinstance(operands, list) or len(operands) < 2:
+        raise MultiValidationError(f"条件 {ref} 至少需要两个操作数")
+    try:
+        _validate_group_by(ref, item.get("group_by"))
+    except FormulaValidationError as exc:
+        raise MultiValidationError(str(exc)) from exc
+    first = operands[0] if isinstance(operands[0], dict) else {}
+    if list(item.get("group_by") or []) != list(first.get("group_by") or []):
+        raise MultiValidationError(f"条件 {ref} 的 group_by 必须与第一个操作数一致")
+    try:
+        validate_formula_condition(
+            {
+                "type": "formula",
+                "result_name": str(item.get("metric_name")).strip(),
+                "expression": item.get("expression") or "",
+                "queries": operands,
+            }
+        )
+    except FormulaError as exc:
+        raise MultiValidationError(str(exc)) from exc
+
+
+def validate_multi_condition(query_condition: dict) -> MultiValidationResult:
+    if not isinstance(query_condition, dict) or query_condition.get("type") != "multi":
+        raise MultiValidationError("query_condition.type 必须为 multi")
+    if not str(query_condition.get("result_name") or "").strip():
+        raise MultiValidationError("多指标条件必须填写结果名称")
+    if query_condition.get("combinator") != "all":
+        raise MultiValidationError("多指标条件的组合方式只接受全部满足")
+
+    queries = query_condition.get("queries")
+    if not isinstance(queries, list) or not (_MULTI_MIN_CONDITIONS <= len(queries) <= _MULTI_MAX_CONDITIONS):
+        raise MultiValidationError("多指标条件需要 2 到 5 个条件")
+
+    by_ref: dict[str, dict] = {}
+    for index, item in enumerate(queries):
+        if not isinstance(item, dict):
+            raise MultiValidationError(f"queries[{index}] 必须是对象")
+        ref = str(item.get("ref") or "")
+        if not ref:
+            raise MultiValidationError(f"queries[{index}].ref 不能为空")
+        if not _LABEL_NAME_RE.match(ref):
+            raise MultiValidationError(f"条件变量 {ref} 包含非法字符")
+        if ref in by_ref:
+            raise MultiValidationError(f"条件变量 {ref} 重复")
+        source = item.get("source") or "metric"
+        if source not in {"metric", "formula"}:
+            raise MultiValidationError(f"条件 {ref} 的来源非法")
+        if source == "formula":
+            _validate_formula_multi_item(item)
+            by_ref[ref] = item
+            continue
+        item["metric_id"] = _normalize_metric_id(ref, item.get("metric_id"))
+        group_algorithm = item.get("group_algorithm")
+        if not group_algorithm:
+            raise MultiValidationError(f"条件 {ref} 缺少 group_algorithm")
+        if group_algorithm not in _VALID_GROUP_AGGREGATION_ALGORITHMS:
+            raise MultiValidationError(
+                f"条件 {ref} group_algorithm 非法，须为 {sorted(_VALID_GROUP_AGGREGATION_ALGORITHMS)} 之一"
+            )
+        _validate_group_by(ref, item.get("group_by"))
+        _validate_filter(ref, item.get("filter", []))
+        algorithm = item.get("algorithm")
+        if algorithm not in POLICY_ALGORITHMS:
+            raise MultiValidationError(f"条件 {ref} algorithm 非法")
+        if algorithm == COUNT_IF_ALGORITHM:
+            _validate_count_predicate(ref, item.get("count_predicate") or {})
+        role = item.get("role")
+        if role not in _MULTI_ROLES:
+            raise MultiValidationError(f"条件 {ref} 的角色非法")
+        if role == "level":
+            _validate_level_threshold(ref, item.get("threshold"))
+        else:
+            _validate_gate_threshold(ref, item.get("threshold"))
+        by_ref[ref] = item
+
+    if not any(item.get("role") == "level" for item in queries):
+        raise MultiValidationError("多指标条件至少需要一个参与级别的条件")
+
+    anchor_ref = str(queries[0].get("ref") or "")
+    anchor_group_by = list(by_ref[anchor_ref].get("group_by") or [])
+    if "instance_id" not in anchor_group_by:
+        raise MultiValidationError("多指标条件锚点 group_by 必须包含 instance_id")
+    anchor_set = set(anchor_group_by)
+    warnings: list[dict] = []
+    for item in queries[1:]:
+        ref = str(item.get("ref") or "")
+        group_by = list(item.get("group_by") or [])
+        extra = sorted(set(group_by) - anchor_set)
+        if extra:
+            raise MultiValidationError(f"条件 {ref} 包含锚点外额外维度：{', '.join(extra)}")
+        if set(group_by) != anchor_set:
+            warnings.append(
+                {
+                    "code": "MULTI_DIMENSION_REUSE",
+                    "message": f"指标 {ref} 将按 {', '.join(sorted(group_by))} 对齐，并跨缺失维度复用数据",
+                }
+            )
+
+    return MultiValidationResult(anchor_ref=anchor_ref, warnings=warnings)

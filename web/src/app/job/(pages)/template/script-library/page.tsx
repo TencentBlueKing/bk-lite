@@ -766,7 +766,7 @@ const ScriptLibraryPage = () => {
             <Input placeholder={t('job.scriptNamePlaceholder')} />
           </Form.Item>
 
-          <Form.Item label={t('job.scriptContent')}>
+          <Form.Item label={t('job.scriptContent')} tooltip={t('job.builtinScriptVarsHint')}>
             <ScriptEditor
               value={scriptContent}
               onChange={isViewMode ? undefined : setScriptContent}

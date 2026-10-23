@@ -20,6 +20,7 @@ import {
 } from "./login-auth/orderedBindingState";
 import {useTranslation} from "@/utils/i18n";
 import {saveAuthToken} from "@/utils/crossDomainAuth";
+import { gmFetch } from "@/utils/gmTransport";
 import {
   AUTH_POPUP_SUCCESS_MESSAGE,
   LOGIN_AUTH_RESULT_RETURN_MESSAGE,
@@ -32,6 +33,7 @@ import { requestLegacyThirdLoginAuthorize } from "@/utils/legacyThirdLogin";
 import type { LoginAuthLoginResult } from "./login-auth/types";
 import { PORTAL_HOME_PATH } from "@/utils/route";
 import { isScreenModeEnabled, withScreenQuery } from "@/console-layout";
+import { resolvePostLoginHref } from "@/app/ops-analysis/utils/homepageLanding";
 
 interface SigninClientProps {
   searchParams?: {
@@ -118,31 +120,36 @@ export default function SigninClient({
     return () => window.removeEventListener('message', handleReturnToSigninTab);
   }, [mode]);
 
-  const finishAuthentication = (targetUrl: string) => {
-    const nextUrl = withScreenQuery(
-      targetUrl,
-      isScreenModeEnabled(window.location.search),
-      window.location.origin,
-    );
+  const finishAuthentication = (targetUrl: string, token?: string) => {
+    void (async () => {
+      const landed = onAuthenticated
+        ? targetUrl
+        : await resolvePostLoginHref(targetUrl, token, window.location.origin);
+      const nextUrl = withScreenQuery(
+        landed,
+        isScreenModeEnabled(window.location.search),
+        window.location.origin,
+      );
 
-    if (onAuthenticated) {
-      onAuthenticated();
-      return;
-    }
+      if (onAuthenticated) {
+        onAuthenticated();
+        return;
+      }
 
-    if (isPopupWindowMode && window.opener && !window.opener.closed) {
-      window.opener.postMessage({
-        type: AUTH_POPUP_SUCCESS_MESSAGE,
-        targetUrl: nextUrl,
-      }, window.location.origin);
+      if (isPopupWindowMode && window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          type: AUTH_POPUP_SUCCESS_MESSAGE,
+          targetUrl: nextUrl,
+        }, window.location.origin);
 
-      window.setTimeout(() => {
-        window.close();
-      }, 100);
-      return;
-    }
+        window.setTimeout(() => {
+          window.close();
+        }, 100);
+        return;
+      }
 
-    window.location.href = nextUrl;
+      window.location.href = nextUrl;
+    })();
   };
 
   const applyOtpLoginResult = (otpLoginResult: LoginAuthLoginResult) => {
@@ -224,7 +231,7 @@ export default function SigninClient({
     const requestPassword = selectedBindingCredentials.password;
 
     try {
-      const response = await fetch('/api/proxy/core/api/login/', {
+      const response = await gmFetch('/api/proxy/core/api/login/', {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -303,7 +310,7 @@ export default function SigninClient({
     await completeAuthentication(loginData);
   };
 
-  const syncAuthenticatedSession = async (userData: LoginResponse, nextPassword?: string) => {
+  const syncAuthenticatedSession = async (userData: LoginResponse) => {
     try {
       const userDataForAuth = {
         id: userData.id || userData.username || 'unknown',
@@ -332,7 +339,7 @@ export default function SigninClient({
       const result = await signIn("credentials", {
         redirect: false,
         username: userDataForAuth.username,
-        password: nextPassword ?? password,
+        password: '',
         skipValidation: 'true',
         userData: JSON.stringify(userDataForAuth),
         callbackUrl: callbackUrl || PORTAL_HOME_PATH,
@@ -362,7 +369,7 @@ export default function SigninClient({
           });
         }
 
-        finishAuthentication(targetUrl);
+        finishAuthentication(targetUrl, userData.token);
         return true;
       } else {
         console.error('SignIn failed with unknown error');

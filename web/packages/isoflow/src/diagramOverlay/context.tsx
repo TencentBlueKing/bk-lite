@@ -11,6 +11,7 @@ import React, {
 import type {
   EditorModeEnum,
   ItemControls,
+  IconPickerRequest,
   ItemControlsExtraTarget,
   NodeBindingMark,
   NodeStatus,
@@ -176,6 +177,15 @@ export const useDiagramCallbacksRef = () => {
 };
 
 type RenderItemControlsExtra = (item: ItemControlsExtraTarget) => React.ReactNode;
+
+/** Host-owned icon picker. The scene asks it to open; it does not draw a dialog. */
+export const IconPickerContext = createContext<
+  ((request: IconPickerRequest) => void) | undefined
+>(undefined);
+
+export const useIconPicker = () => {
+  return useContext(IconPickerContext);
+};
 
 /** Host content for the item settings panels. Kept apart from the visual context so a new render function does not repaint the scene. */
 export const ItemControlsExtraContext = createContext<RenderItemControlsExtra | undefined>(undefined);

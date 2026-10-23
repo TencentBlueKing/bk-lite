@@ -9,7 +9,7 @@ from django.conf import settings
 
 AUTH_VERSION = "hmac-sha256-v1"
 DEFAULT_MAX_AGE_SECONDS = 300
-TRUSTED_INTERNAL_EVENT_CALLERS = frozenset({"lite-monitor", "lite-log", "lite-apm", "lite-rum", "lite-patch", "workflow-orchestration"})
+TRUSTED_INTERNAL_EVENT_CALLERS = frozenset({"lite-monitor", "lite-log", "lite-apm", "lite-rum", "lite-patch", "workflow"})
 AUTH_PAYLOAD_FIELDS = {
     "system_mgmt.dispatch_notification": (
         "delivery_key",

@@ -8,6 +8,8 @@ from typing import Iterable, Mapping
 
 from apps.patch_mgmt.constants import OSType, RequirementAssessmentStatus
 from apps.patch_mgmt.services.linux_platform import LinuxHostFacts, package_manager_family, validate_linux_host_facts
+from apps.patch_mgmt.services.windows_dotnet import windows_dotnet_decision
+from apps.patch_mgmt.services.windows_versions import catalog_build_for_product, normalize_windows_build
 from apps.patch_mgmt.utils.i18n import patch_message
 
 
@@ -30,6 +32,7 @@ class RequirementSpec:
     package_manager: str = ""
     products: tuple[str, ...] = ()
     configuration_error: str = ""
+    package_dotnet_version: str = ""
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,7 @@ class WindowsHostFacts:
     version: str = ""
     build_number: str = ""
     architecture: str = ""
+    dotnet_release: int | None = None
 
 
 @dataclass(frozen=True)
@@ -242,27 +246,68 @@ def evaluate_linux_applicability(
     return RequirementAssessmentStatus.SATISFIED, _pm("assessment.applicable_to_host", "Patch applies to this host")
 
 
-def _windows_not_applicable_reason(requirement: RequirementSpec, host: WindowsHostFacts) -> str:
+def _windows_scope_decision(requirement: RequirementSpec, host: WindowsHostFacts) -> tuple[str, str]:
+    """返回 (状态, 原因)。状态为空表示架构和版本都没有否决这条要求。"""
     expected_arches = {_normalized_architecture(value) for value in requirement.architectures if str(value or "").strip()}
     host_arch = _normalized_architecture(host.architecture)
     if expected_arches and host_arch and host_arch not in expected_arches:
-        return _pm(
-            "assessment.arch_not_applicable",
-            "Patch architecture is not applicable to this host (required {expected}, host {actual})",
-            expected=", ".join(sorted(expected_arches)),
-            actual=host_arch,
+        return (
+            RequirementAssessmentStatus.NOT_APPLICABLE,
+            _pm(
+                "assessment.arch_not_applicable",
+                "Patch architecture is not applicable to this host (required {expected}, host {actual})",
+                expected=", ".join(sorted(expected_arches)),
+                actual=host_arch,
+            ),
         )
 
-    product_name = re.sub(r"\s+", " ", str(host.product_name or "").strip().lower())
-    products = [re.sub(r"\s+", " ", str(value or "").strip().lower()) for value in requirement.products]
+    products = [re.sub(r"\s+", " ", str(value or "").strip()) for value in requirement.products]
     products = [value for value in products if value]
-    if products and product_name and not any(value in product_name for value in products):
-        return _pm(
-            "assessment.product_not_applicable",
-            "Patch product scope is not applicable to host {product}",
-            product=host.product_name,
+    catalog = [(value, catalog_build_for_product(value)) for value in products]
+    catalog = [(value, build) for value, build in catalog if build]
+    others = [value for value in products if not catalog_build_for_product(value)]
+    product_name = re.sub(r"\s+", " ", str(host.product_name or "").strip().lower())
+    catalog_match = False
+    if catalog:
+        host_build = normalize_windows_build(host.build_number)
+        if not host_build:
+            catalog_match = False
+            build_unknown = True
+        else:
+            build_unknown = False
+            catalog_match = any(host_build == build for _, build in catalog)
+        if not catalog_match and not build_unknown:
+            others_match = bool(product_name) and any(value.lower() in product_name for value in others)
+            if not others_match:
+                return (
+                    RequirementAssessmentStatus.NOT_APPLICABLE,
+                    _pm(
+                        "assessment.build_not_applicable",
+                        "Patch Windows build {expected} is not applicable to host build {actual}",
+                        expected=", ".join(build for _, build in catalog),
+                        actual=host_build,
+                    ),
+                )
+        if not catalog_match and build_unknown:
+            others_match = bool(product_name) and any(value.lower() in product_name for value in others)
+            if not others_match:
+                return (
+                    RequirementAssessmentStatus.UNKNOWN,
+                    _pm(
+                        "assessment.build_unknown",
+                        "Windows build was not collected, so version applicability cannot be decided",
+                    ),
+                )
+    elif others and product_name and not any(value.lower() in product_name for value in others):
+        return (
+            RequirementAssessmentStatus.NOT_APPLICABLE,
+            _pm(
+                "assessment.product_not_applicable",
+                "Patch product scope is not applicable to host {product}",
+                product=host.product_name,
+            ),
         )
-    return ""
+    return "", ""
 
 
 def _evaluate_linux(
@@ -402,6 +447,20 @@ def _evaluate_windows(
             windows.error,
             **evidence,
         )
+    dotnet_status, dotnet_reason = windows_dotnet_decision(
+        requirement.package_dotnet_version,
+        facts.windows_host.dotnet_release,
+        required_kb,
+    )
+    if dotnet_status:
+        return _result(
+            requirement.requirement_id,
+            dotnet_status,
+            dotnet_reason,
+            package_dotnet_version=requirement.package_dotnet_version,
+            host_dotnet_release=facts.windows_host.dotnet_release,
+            **evidence,
+        )
     # WUA 可能同时返回同一 KB 的已安装旧修订和待安装新修订
     # （例如 Defender 平台更新）。只要当前仍明确提供目标 KB，就不能
     # 因为历史修订已安装而判为合规。
@@ -421,12 +480,12 @@ def _evaluate_windows(
             satisfied_by=installed_matches[0],
             **evidence,
         )
-    not_applicable_reason = _windows_not_applicable_reason(requirement, facts.windows_host)
-    if not_applicable_reason:
+    scope_status, scope_reason = _windows_scope_decision(requirement, facts.windows_host)
+    if scope_status:
         return _result(
             requirement.requirement_id,
-            RequirementAssessmentStatus.NOT_APPLICABLE,
-            not_applicable_reason,
+            scope_status,
+            scope_reason,
             host_product=facts.windows_host.product_name,
             host_version=facts.windows_host.version,
             host_build=facts.windows_host.build_number,

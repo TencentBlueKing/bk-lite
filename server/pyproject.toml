@@ -65,6 +65,7 @@ dependencies = [
     "qrcode==8.2",
     "pillow==11.3.0",
     "cryptography==45.0.0",
+    "gmssl==3.2.2",
     "django-yaml-field==0.1.0",
     "pyjwt==2.10.1",
     "pywinrm==0.5.0",
@@ -79,6 +80,7 @@ dependencies = [
     "docxtpl==0.20.1",
     "xlsxjinja==1.1.1",
     "python-docx==1.2.0",
+    "signify==0.9.3",
 ]
 
 [project.optional-dependencies]

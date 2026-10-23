@@ -82,7 +82,7 @@ class ApplicationsService:
         unavailable = not self.control.available()
         return [
             strip_browser_keys(self._view(app.name, include_keys=False, control_down=unavailable))
-            for app in RumApplication.objects.all().order_by("name")
+            for app in RumApplication.objects.all().order_by("-created_at", "name")
         ]
 
     def get_application(self, actor: str, name: str) -> dict:

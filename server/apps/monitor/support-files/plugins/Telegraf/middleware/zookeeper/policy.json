@@ -3,20 +3,6 @@
   "plugin": "Zookeeper",
   "templates": [
     {
-      "name": "实例存活状态",
-      "alert_name": "ZooKeeper节点 ${resource_name} 服务宕机",
-      "description": "监测ZooKeeper服务存活时间，实例重启会导致临时节点丢失。需立即检查zkServer.sh status和日志。",
-      "metric_name": "zookeeper_uptime",
-      "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 60
-        }
-      ],
-      "group_algorithm": "avg"
-    },
-    {
       "name": "请求延迟过高",
       "alert_name": "ZooKeeper节点 ${resource_name} 响应延迟",
       "description": "监控平均请求处理延迟，高延迟会影响依赖ZK的协调服务。需检查网络和磁盘IO性能。",
@@ -36,31 +22,6 @@
         {
           "level": "warning",
           "value": 100,
-          "method": ">="
-        }
-      ],
-      "group_algorithm": "max"
-    },
-    {
-      "name": "连接异常断开",
-      "alert_name": "ZooKeeper集群 ${resource_name} 连接丢失",
-      "description": "检测客户端连接异常断开次数，突增可能表明网络问题或客户端超时。",
-      "metric_name": "zookeeper_connection_drop_count",
-      "algorithm": "max_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 10,
-          "method": ">="
-        },
-        {
-          "level": "error",
-          "value": 5,
-          "method": ">="
-        },
-        {
-          "level": "warning",
-          "value": 3,
           "method": ">="
         }
       ],
@@ -90,56 +51,6 @@
         }
       ],
       "group_algorithm": "max"
-    },
-    {
-      "name": "读写比例失衡",
-      "alert_name": "ZooKeeper集群 ${resource_name} 写入压力",
-      "description": "检测读写请求比例，写比例过高会影响集群吞吐量。需优化客户端使用模式。",
-      "metric_name": "zookeeper_read_write_ratio",
-      "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 20,
-          "method": "<="
-        },
-        {
-          "level": "error",
-          "value": 50,
-          "method": "<="
-        },
-        {
-          "level": "warning",
-          "value": 80,
-          "method": "<="
-        }
-      ],
-      "group_algorithm": "avg"
-    },
-    {
-      "name": "快照积压告警",
-      "alert_name": "ZooKeeper集群 ${resource_name} 快照延迟",
-      "description": "监控未提交日志与快照的比例，过高会导致恢复时间延长。需检查磁盘性能。",
-      "metric_name": "zookeeper_snapshot_to_commit_ratio",
-      "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 300,
-          "method": ">="
-        },
-        {
-          "level": "error",
-          "value": 200,
-          "method": ">="
-        },
-        {
-          "level": "warning",
-          "value": 150,
-          "method": ">="
-        }
-      ],
-      "group_algorithm": "avg"
     },
     {
       "name": "网络包异常",

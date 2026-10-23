@@ -9,6 +9,7 @@ from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.permission_cache import clear_all_permission_cache
 from apps.system_mgmt.management.commands._install_apps import get_install_apps
 from apps.system_mgmt.models import App, Group, Menu, Role
+from apps.system_mgmt.services.workflow_menu_migration import apply_workflow_menu_permission_split, snapshot_workflow_menu_grants
 
 
 class Command(BaseCommand):
@@ -48,7 +49,10 @@ class Command(BaseCommand):
                     },
                 )
                 print(f"create {app_obj['client_id']} success")
+                grant_snapshot = snapshot_workflow_menu_grants() if app_obj["client_id"] == "workflow" else None
                 create_resource(app_inst, app_obj["menus"])
+                if grant_snapshot is not None:
+                    apply_workflow_menu_permission_split(grant_snapshot)
                 print(f"create {app_obj['client_id']} resource success")
                 create_default_roles(app_inst, app_obj["roles"])
                 print(f"create {app_obj['client_id']} roles success")

@@ -117,13 +117,13 @@ const clampDetailPopoverTop = (y: number) => {
 const detailPopoverClassName =
   'fixed flex w-[420px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-lg border bg-[var(--color-bg-1,#fff)]';
 const detailPopoverFrameStyle = {
-  borderColor: '#d8e3ef',
-  boxShadow: '0 8px 24px rgba(37, 64, 96, 0.10), 0 0 0 1px rgba(238, 244, 251, 0.9)',
+  borderColor: 'var(--color-border-1)',
+  boxShadow: '0 8px 24px color-mix(in srgb, var(--color-text-1) 12%, transparent)',
 };
 const detailPopoverHeaderClassName =
   'flex items-start justify-between gap-3 border-b px-3 py-2.5';
 const detailPopoverHeaderStyle = {
-  borderBottomColor: '#edf3f9',
+  borderBottomColor: 'var(--color-border-1)',
 };
 const detailPopoverBodyClassName =
   'min-h-0 space-y-2 overflow-y-auto px-3 py-2.5 text-[12px]';

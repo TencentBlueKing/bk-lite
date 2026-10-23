@@ -1,0 +1,501 @@
+choice:
+  execution_status:
+    QUEUED: "Queued"
+    RUNNING: "Running"
+    WAITING_APPROVAL: "Waiting for Approval"
+    TERMINATING: "Terminating"
+    SUCCEEDED: "Succeeded"
+    FAILED: "Failed"
+    TIMED_OUT: "Timed Out"
+    TERMINATED: "Terminated"
+message:
+  invalid_current_team: "Missing or invalid current_team"
+  waiting_items: "and {count} more"
+  report_link_invalid: "Invalid report download link"
+  report_expired: "Report has expired"
+  report_unavailable: "Report file is temporarily unavailable"
+  report_too_large: "Report file exceeds the download size limit"
+error:
+  workflow_deleted: "Workflow has been deleted and cannot start new executions"
+  workflow_publish_required: "Only published workflows can be executed"
+  workflow_disabled: "Workflow is disabled"
+  publish_required: "Publish the workflow first"
+  node_missing_required_input: "\"{node}\" is missing required fields: {fields}"
+  node_input_invalid: "\"{node}\" has an invalid value for \"{field}\""
+  node_literal_invalid: "\"{node}\" has a value that does not match the expected format"
+  node_detail: "\"{node}\" {detail}"
+  workflow_input_schema_mismatch: "Workflow input \"{location}\" is invalid"
+  definition_not_object: "Conductor DSL must be a JSON object"
+  canvas_not_object: "canvas_metadata must be a JSON object"
+  disabled_nodes_not_array: "disabled_nodes must be an array of node references"
+  disabled_nodes_limit: "A workflow can disable at most 100 nodes"
+  disabled_nodes_blank: "disabled_nodes can only contain non-empty node references"
+  disabled_nodes_duplicate: "disabled_nodes cannot contain duplicate node references"
+  inputs_not_object: "inputs must be a JSON object"
+  inputs_too_large: "Workflow inputs exceed the 1 MiB limit"
+  input_schema_invalid: "Workflow input schema is invalid"
+  definition_not_json: "Conductor DSL must be serializable as JSON"
+  definition_too_large: "Conductor DSL exceeds the 256 KiB limit"
+  definition_tasks_required: "Conductor DSL requires at least one task"
+  node_limit: "A workflow supports at most 100 nodes"
+  nesting_limit: "Control structures can nest at most 5 levels"
+  task_not_object: "Each task must be an object"
+  task_identity_required: "Each node must include name and taskReferenceName"
+  condition_expression_invalid: "The condition expression is invalid"
+  parameter_contract_not_object: "The workflow parameter contract must be a JSON object"
+  parameter_contract_version: "Unsupported workflow parameter contract version"
+  legacy_contract_removed: "Workflow constants and outputs have been removed. Use Set Data and the matching Return node"
+  trigger_count: "A workflow must contain 1 to 10 trigger nodes"
+  trigger_id_invalid: "A trigger node id is missing, duplicated, or invalid"
+  return_id_invalid: "A Return node id is missing, duplicated, or invalid"
+  edge_invalid: "A canvas edge references a missing node or forms a self-loop"
+  trigger_incoming_edge: "Trigger nodes cannot have incoming edges"
+  return_outgoing_edge: "Return nodes cannot have outgoing edges"
+  graph_cycle: "The workflow canvas cannot contain a cycle"
+  webhook_wait_return: "A waiting Webhook trigger path must reach exactly one Webhook response node"
+  graph_payload_not_object: "The workflow definition and canvas metadata must be JSON objects"
+  manual_fork_forbidden: "Edge mode does not allow manual FORK_JOIN/JOIN tasks"
+  graph_tasks_not_flat: "Edge mode requires every business node at the canvas root with a unique reference"
+  triggers_not_same_entry: "Edge mode requires every trigger to enter the same first node"
+  trigger_config_not_object: "Trigger config must be a JSON object"
+  webhook_response_mode_invalid: "Webhook response mode is invalid"
+  trigger_config_forbidden: "This trigger type does not use config"
+  nats_trigger_config_forbidden: "NATS triggers do not use config"
+  trigger_type_invalid: "Trigger type is invalid"
+  trigger_nodes_not_array: "trigger_nodes must be an array"
+  idempotency_key_required: "This trigger requires an idempotency key"
+  idempotency_key_too_long: "Idempotency key must be at most 128 characters"
+  schedule_time_count: "time must contain 1 to 10 execution times"
+  schedule_time_format: "time must use 24-hour HH:MM format"
+  schedule_config_not_object: "Schedule trigger config must be a JSON object"
+  schedule_frequency_invalid: "frequency must be daily, weekly, monthly, or crontab"
+  cron_field_count: "Cron expression is invalid and must contain 5 fields"
+  cron_timezone_invalid: "Cron timezone is invalid"
+  nats_envelope_not_object: "NATS event envelope must be a JSON object"
+  nats_envelope_fields: "NATS event must include event_id, occurred_at, producer, and payload"
+  nats_occurred_at_invalid: "NATS occurred_at must be a non-empty timestamp"
+  nats_event_id_invalid: "NATS event_id must be a non-empty string"
+  nats_producer_invalid: "NATS producer must be a non-empty string"
+  nats_payload_not_object: "NATS payload must be a JSON object"
+  nats_inputs_not_json: "NATS inputs are not valid JSON"
+  nats_inputs_too_large: "NATS inputs exceed the 1 MiB limit"
+  nats_request_invalid: "NATS trigger request is invalid"
+  nats_arguments_invalid: "NATS trigger arguments are invalid"
+  active_version_changed: The active workflow version changed. Reopen the execution window
+  active_version_missing: The active version does not exist
+  actor_snapshot_missing: The atom is missing an actor snapshot
+  agent_execution_failed: 'Agent execution failed: {detail}'
+  agent_result_invalid: The agent returned an invalid result
+  agent_unavailable: The selected agent is not available in this team
+  approval_already_decided: This approval has already been handled
+  approval_candidates: '"{node}" must have 1 to 20 distinct candidate approvers'
+  approval_decision_required: '"{node}" must be followed by a decision branch that includes true/false'
+  approval_timeout_branch_required: '"{node}" must connect a timeout branch when timeout is enabled'
+  approval_title_required: '"{node}" requires a title'
+  node_title_required: '"{node}" requires a node name'
+  atom_catalog_limit: This team already has more than 100 available atoms
+  atom_context_missing: The atom is missing a trusted execution context
+  atom_create_unsupported: MVP atoms are synced from registered packages and cannot be created in the page
+  atom_key_required: atom_key is required
+  atom_version_changed: An atom used by this workflow changed. Refresh and try again
+  builtin_delete_readonly: Built-in workflows cannot be deleted. Disable or copy one to customize
+  builtin_draft_readonly: Built-in workflows cannot be saved as drafts. Copy one before editing
+  builtin_publish_readonly: Built-in workflows cannot be published. Copy one before editing and publishing
+  builtin_restore_readonly: Built-in workflows cannot restore a draft
+  condition_affix_type: '"{node}" starts-with and ends-with operations only support strings'
+  condition_branch_count: '"{node}" must contain 1 to 10 branches'
+  condition_contains_type: '"{node}" contains operations only support strings or arrays'
+  condition_free_expression: '"{node}" must use a structured condition. Free expressions are not supported'
+  condition_left_reference: '"{node}" left value must be a data reference'
+  condition_mixed_rules: '"{node}" cannot mix ALL and ANY rules'
+  condition_numeric_only: '"{node}" comparisons only support numeric values'
+  condition_params_invalid: '"{node}" has invalid structured parameters'
+  condition_rule_index_invalid: '"{node}" has an invalid structured rule index'
+  condition_structured_required: '"{node}" must use a structured condition'
+  conductor_id_missing: The execution is missing a Conductor workflow ID
+  conductor_unavailable: Conductor is unavailable or rejected the request
+  config_template_atom_forbidden: The atom does not exist or this team cannot use it
+  config_template_atom_immutable: The atom of a configuration template cannot be changed
+  config_template_name_exists: A configuration template with this name already exists for the atom
+  config_template_name_required: Template name is required
+  config_template_params_limit: Configuration template parameters cannot exceed 64 KiB
+  config_template_params_object: Configuration template parameters must be an object
+  debug_breakpoint_unsupported: Breakpoint debugging is not supported in the MVP
+  debug_trigger_missing: Debug trigger not found
+  debug_workflow_deleted: The workflow has been deleted and cannot start a new debug execution
+  decision_invalid: decision must be APPROVED or REJECTED
+  disabled_node_output_referenced: Output of disabled node {node_reference} is still referenced. Update the downstream configuration first
+  disabled_nodes_missing: 'Disabled node not found: {names}'
+  disabled_nodes_not_simple: 'Only SIMPLE atom nodes can be disabled: {names}'
+  document_data_object: Document data must be a JSON object
+  document_extra_object: Extra document data must be a JSON object
+  document_format_invalid: The document format must be docx or xlsx
+  document_team_mismatch: The execution team does not match the document team
+  document_template_required: Upload a Word or Excel template before publishing the document node
+  draft_revision_changed: The draft revision changed. This publish was cancelled
+  draft_revision_conflict_publish: The draft was updated elsewhere. Reload it before publishing
+  draft_revision_conflict_restore: The draft was updated elsewhere. Reload it before restoring
+  draft_revision_conflict_save: The draft was updated elsewhere. Reload it before saving
+  duplicate_reference: 'Duplicate node reference: {node_reference}'
+  email_recipients_required: Email notification requires recipients
+  enabled_boolean: enabled must be a boolean
+  enabled_invalid: enabled is invalid
+  excel_render_empty: The Excel template rendered an empty document
+  excel_render_failed: 'Excel template rendering failed: {detail}'
+  execution_actor_invalid: The workflow execution identity is invalid
+  execution_already_terminal: The execution is already in a terminal state
+  execution_context_missing: A trusted workflow execution context is missing
+  execution_create_unsupported: Executions can only be created by a workflow or a trigger
+  execution_node_missing: Execution node not found
+  execution_params_invalid: The execution parameters are invalid
+  execution_params_limit: The execution parameters exceed the length limit
+  execution_status_unsupported: This action is not available for the current execution status
+  execution_team_invalid: The workflow execution team is invalid
+  file_config_missing: File field {field_key} is missing upload configuration
+  file_limit_invalid: File field {field_key} has an invalid upload limit
+  file_limit_mismatch: File field {field_key} schema does not match the upload limit
+  file_source_invalid: File field {field_key} has an invalid source
+  file_source_mismatch: File field {field_key} schema does not match the file source
+  file_type_invalid: File field {field_key} has an invalid file type
+  file_type_mismatch: File field {field_key} schema does not match the file type
+  format_invalid: The format is invalid
+  graph_empty_branch: '"{node}" has an empty branch'
+  graph_mixed_successors: Only a condition branch on "{node}" can connect both a response node and a following task
+  graph_reentry: The canvas is not a structured DAG. "{node}" is entered by more than one path
+  graph_uncompiled: 'The canvas has nodes that cannot be compiled: {names}'
+  http_body_limit: The HTTP body exceeds the 256 KiB limit
+  http_header_value: HTTP headers must be bounded string keys and values
+  http_headers_object: headers must be an object with at most 20 items
+  http_host_forbidden: The HTTP request cannot override Host
+  http_method_unsupported: Unsupported HTTP method
+  http_query_object: query must be an object with at most 50 items
+  http_response_format: The HTTP response format is invalid
+  http_response_json: The HTTP response is declared as JSON but the content is invalid
+  http_response_limit: The HTTP response exceeds the 1 MiB limit
+  http_status_array: Extra success status codes must be an array of at most 20 items
+  http_status_range: Success status codes must be between 100 and 599
+  http_status_rejected: HTTP status {status_code} is outside the success range
+  http_timeout_range: HTTP timeout must be between 1 and 60 seconds
+  http_url_absolute: HTTP URL must be an absolute http(s) address
+  http_url_required: HTTP URL is required and must be at most 2000 characters
+  http_url_userinfo: HTTP URL must not contain user info
+  idempotency_in_progress: The same idempotency key is already being processed
+  idempotency_window_range: The value must be between 60 and 86400 seconds
+  input_default_invalid: Workflow input {field_key} has a default that does not match the schema
+  input_group_invalid: Workflow input {field_key} has an invalid group
+  intent_execution_failed: 'Intent classification failed: {detail}'
+  intent_undeclared: Intent classification returned an undeclared intent
+  intents_count: intents must contain 1 to 20 intents
+  intents_duplicate: intents cannot contain duplicates
+  interaction_already_decided: This manual task has already been handled
+  interaction_not_approval: This manual task is not an approval
+  interaction_submitting: This manual task is being submitted. Refresh shortly
+  interaction_token_invalid: The manual task delivery token is no longer valid
+  invalid_current_team: Missing or invalid current_team
+  is_builtin_invalid: is_builtin is invalid
+  job_actor_missing: Job execution is missing a trusted actor context
+  job_context_missing: Job execution is missing a trusted workflow context
+  job_result_depth: result= is nested more than 10 levels
+  job_result_json: result= must be followed by valid JSON
+  job_result_object: result= must be a JSON object
+  job_target_count: Job execution must select 1 to 100 target hosts
+  job_target_id_invalid: The job platform target ID is invalid
+  job_target_source_missing: The job target is missing a controlled source
+  job_targets_invalid: The job execution targets are invalid
+  job_targets_unavailable: Job platform targets are temporarily unavailable
+  job_team_missing: Job execution is missing a trusted team context
+  join_on_required: '"{node}" must configure joinOn'
+  json_object_required: The value must be a JSON object
+  knowledge_checksum_failed: Knowledge file checksum failed
+  knowledge_empty: The knowledge file cannot be empty
+  knowledge_file_limit: The file exceeds the 10 MiB limit
+  knowledge_markdown_only: Unsupported file type. Upload a .md file
+  knowledge_not_utf8: The knowledge file content is not UTF-8 text
+  knowledge_payload_invalid: The knowledge file reference content is invalid
+  knowledge_reference_count: Knowledge files must be 1 to {count} controlled upload references
+  knowledge_reference_invalid: The knowledge file reference is invalid
+  knowledge_reference_rejected: The knowledge file reference is not valid
+  knowledge_store_unavailable: Knowledge file storage is unavailable
+  knowledge_token_missing: The knowledge file reference is missing a token
+  knowledge_total_limit: Knowledge files exceed the 20 MiB total limit
+  knowledge_utf8: Knowledge files must use UTF-8
+  launch_target_array: Target field {field_key} must be an array of strings
+  launch_target_count_invalid: Target field {field_key} has an invalid count constraint
+  launch_target_os_invalid: Target field {field_key} has an invalid operating-system constraint
+  launch_target_os_unsupported: Target field {field_key} includes an unsupported operating system
+  launch_target_schema_mismatch: Target field {field_key} schema does not match the selector count constraint
+  launch_target_sensitive: Target field {field_key} cannot be marked sensitive
+  launch_target_source_missing: Target field {field_key} is missing an allowed source
+  launch_target_source_unsupported: Target field {field_key} includes an unsupported source
+  launch_token_execution_mismatch: The launch token does not match the original execution
+  launch_token_expired: The launch token expired. Reopen the execution window
+  launch_token_invalid: The launch token is invalid. Reopen the execution window
+  launch_token_missing: The launch token is missing. Reopen the execution window
+  launch_token_version_mismatch: The launch token does not match the original execution version
+  launch_version_missing: The workflow version for this launch token does not exist
+  memory_unavailable: The selected memory space is not available in this team
+  memory_write_failed: Writing memory failed
+  mode_invalid: mode is invalid
+  model_unavailable: The selected model is not available in this team
+  nats_actor_invalid: The NATS caller identity is invalid
+  nats_node_config_forbidden: '"{node}" does not take configuration'
+  nats_subject_mismatch: The NATS subject does not match the trigger
+  nats_team_forbidden: The NATS trigger is outside the authorized team
+  nats_test_expired: The NATS test session expired. Listen again
+  nats_test_invalid: The NATS test session is invalid
+  nats_test_not_json: A NATS test event must be valid JSON
+  nats_test_session_team: The NATS test session does not belong to the current team
+  nats_test_too_large: A NATS test event can be at most 1 MiB
+  nats_trigger_node_missing: NATS trigger node not found
+  nats_trigger_unavailable: The NATS trigger does not exist or is unavailable
+  node_inputs_object: node_inputs must be a JSON object
+  node_targets_unavailable: Node management targets are temporarily unavailable
+  node_test_confirmation_required: This atom can cause real side effects. Confirm the single-node test again
+  node_test_simple_only: Single-node test only supports a registered SIMPLE atom
+  node_type_invalid: node_type is invalid
+  notification_delivery_failed: Notification delivery failed
+  notification_text_limit: The notification title or body exceeds the limit
+  object_array_required: '{field_key} must be an array of objects'
+  object_property_required: '"{node}" is missing required property "{field}"'
+  offline_confirmation_required: '{count} hosts are currently offline and need another confirmation'
+  opspilot_disabled: The OpsPilot app is not enabled
+  orphan_nodes: 'Nodes are not connected to any trigger: {names}'
+  output_not_reachable: '"{node}" references output "{source}" that is not guaranteed on this path'
+  page_invalid: The paging parameters are invalid
+  page_size_invalid: page or page_size is invalid
+  page_size_range: page or page_size is out of range
+  parallel_branch_count: '"{node}" must contain 2 to 10 non-empty branches'
+  parameter_collection_array: Workflow parameter contract {collection} must be an array
+  parameter_id_invalid: '{collection}[{index}] parameterId is missing or duplicated'
+  parameter_item_key_invalid: '{collection}[{index}] has an invalid key'
+  parameter_item_object: '{collection}[{index}] must be an object'
+  parameter_key_duplicate: 'Duplicate parameter key: {name}'
+  parameter_key_reserved: 'Parameter key cannot use the reserved prefix: {name}'
+  parameter_schema_invalid: Parameter {field_key} has an invalid schema
+  parameter_schema_missing: Parameter {field_key} is missing a schema
+  publish_version_conflict: The workflow version was taken by another publish. Refresh and try again
+  published_version_missing: The published version does not exist
+  recipient_invalid: The notification recipient is invalid
+  recipient_missing: The notification recipient does not exist or is no longer valid
+  recipients_limit: recipients supports at most 100 people
+  reference_missing: 'Data reference not found: {expression}'
+  reference_type_mismatch: '"{node}" cannot bind a {source_type} reference to {target_type}'
+  rejection_comment_required: A rejection requires a comment
+  report_checksum_failed: Report template checksum failed
+  report_execution_mismatch: The report template reference does not match the current execution
+  report_payload_invalid: The report template reference content is invalid
+  report_reference_execution: The report file does not belong to the current execution
+  report_reference_forbidden: The report file does not exist or is not accessible
+  report_reference_invalid: The report file reference is invalid
+  report_reference_rejected: The report template reference is not valid
+  report_store_unavailable: Report template storage is unavailable
+  report_token_invalid: The report template reference is invalid
+  report_token_missing: The report template reference is missing a token
+  report_upload_expired: The uploaded report template expired. Upload it again
+  report_upload_expired_publish: The uploaded report template expired. Upload it again before publishing
+  rerun_terminal_required: Only a finished released version can be rerun
+  rerun_token_not_for_list: A rerun token cannot be used from the workflow list
+  rerun_version_missing: The workflow version for the original execution does not exist
+  resource_config_missing: Resource field {field_key} is missing runtime target configuration
+  resource_count_invalid: Resource field {field_key} has an invalid count constraint
+  resource_os_invalid: Resource field {field_key} has an invalid operating-system constraint
+  resource_schema_mismatch: Resource field {field_key} schema does not match the count constraint
+  resource_source_invalid: Resource field {field_key} has an invalid target source
+  return_node_config_object: '"{node}" config must be an object'
+  return_node_type_invalid: '"{node}" has an invalid type'
+  runtime_template_publish_required: Only an enabled published workflow can upload a runtime template
+  sample_template_missing: Sample template not found
+  schedule_integer_range: '{field_key} must be an integer from {minimum} to {maximum}'
+  schedule_selection_limit: '{field_key} has too many selected items'
+  schedule_selection_required: Select at least one {field_key}
+  script_content_required: The job script cannot be empty
+  script_type_invalid: The script type is invalid
+  sensitive_control_flow: 'A sensitive value cannot be used by control-flow, approval, or wait node: {node}'
+  sensitive_input_default: Sensitive workflow input {field_key} cannot have a default
+  sensitive_input_runtime_string: Sensitive workflow input {field_key} must be a string
+  sensitive_input_string: Sensitive workflow input {field_key} must use the string type
+  sensitive_target_forbidden: '"{node}" cannot receive a sensitive value in the target field'
+  status_invalid: status is invalid
+  target_field_array: Target field {field_key} must be an array
+  target_field_count: Target field {field_key} must select {minimum} to {maximum} hosts
+  target_field_duplicate: Target field {field_key} cannot contain duplicate targets
+  target_field_source_invalid: Target field {field_key} has an invalid allowed source
+  target_identity_conflict: 'Target identity conflict across sources: {left} and {right}'
+  target_not_found: 'Target not found or not accessible: {names}'
+  target_os_unsupported: 'Target field {field_key} includes unsupported operating systems: {names}'
+  target_reference_invalid: 'Invalid target reference: {name}'
+  target_source_forbidden: 'Target source is not allowed: {name}'
+  target_source_invalid: source must be node_mgmt or job_mgmt
+  target_source_unsupported: 'Unsupported target source: {name}'
+  target_total_limit: Unique targets across all fields cannot exceed {count}
+  target_values_limit: values must contain 1 to 100 IP addresses
+  team_id_invalid: team must be a single team id
+  template_external_link_forbidden: The template must not contain external links
+  template_format_unsupported: Only docx or xlsx templates are supported
+  template_jinja_required: Use Jinja {{ field }} / {% for %}. Carbone {d.字段} is not supported
+  template_loop_count: The template has more than 20 loops
+  template_loop_depth: Template loops are nested more than 10 levels
+  template_loop_end_missing: 'Template loop is missing its end marker: {name}'
+  template_loop_start_missing: A template loop is missing its start marker
+  template_loop_syntax: 'Template loop syntax error: {raw}'
+  template_loop_variable: 'Template loop variable is invalid: {name}'
+  template_macro_forbidden: The template must not contain macros or external data connections
+  template_null_forbidden: '"{node}" cannot use a nullable value in a text template'
+  template_ooxml_invalid: '{fmt} is not a valid Office Open XML file'
+  template_path_invalid: The template contains an invalid file path
+  template_placeholder_limit: The template has more than 200 placeholders
+  template_sensitive_forbidden: '"{node}" cannot use a sensitive value in a text template'
+  template_sensitive_path: 'The template must not reference sensitive field: {path}'
+  template_snapshot_invalid: The report template snapshot is invalid
+  template_string_only: '"{node}" can use a text template only on a string field'
+  template_too_large: The template exceeds the 5 MiB limit
+  template_unzip_limit: The unpacked template exceeds the safety limit
+  template_upload_required: Upload a Word or Excel report template
+  template_zip_entry_invalid: The template contains an abnormal compressed entry
+  termination_reason_required: A termination reason is required
+  text_field_limit: '{label} exceeds the limit'
+  text_field_string: '{label} must be a string'
+  top_k_range: top_k must be between 1 and 20
+  trigger_create_unsupported: Create triggers on the workflow canvas and publish them with the version
+  trigger_delete_unsupported: Delete triggers on the workflow canvas
+  trigger_disabled: The trigger is disabled
+  trigger_field_key_invalid: '"{node}" has an invalid input key'
+  trigger_field_limit: '"{node}" can define at most 50 input fields'
+  trigger_input_schema_locked: A trigger must use the published workflow input schema
+  trigger_node_config_object: '"{node}" config must be an object'
+  trigger_node_type_invalid: '"{node}" has an invalid type'
+  trigger_required_unknown: '"{node}" required refers to a field that does not exist'
+  trigger_return_dangling: '{trigger_type} trigger path has an end node that is not connected to a Return'
+  trigger_return_forbidden: '{trigger_type} trigger path cannot include a Return'
+  trigger_return_required: '{trigger_type} trigger path must reach its Return'
+  trigger_return_type: '{trigger_type} trigger path can only reach a {return_type} Return'
+  trigger_schema_invalid: '"{node}" input_schema is invalid'
+  trigger_schema_object: '"{node}" input_schema must be an object'
+  trigger_schema_root: '"{node}" input_schema root must be object'
+  trigger_type_query_invalid: trigger_type is invalid
+  trigger_update_unsupported: Edit triggers on the workflow canvas
+  trigger_workflow_unavailable: The workflow is deleted or unpublished and cannot start a new execution
+  trigger_workflow_unpublished: Only a published workflow that has not been deleted can be triggered
+  undeclared_sensitive_field: '"{node}" cannot receive a sensitive value in undeclared field "{field}"'
+  undeclared_sensitive_property: '"{node}" cannot receive a sensitive value in undeclared property "{field}"'
+  unsupported_atom: 'Unsupported atom: {name}'
+  unsupported_task_type: 'Unsupported Conductor node type: {task_type}'
+  upload_field_missing: The upload field does not exist or is not a file field
+  upload_file_required: Choose a file to upload
+  upload_not_allowed: This field does not allow file uploads
+  upload_size_invalid: This field has an invalid file size limit
+  upload_size_limit: The file exceeds the {count} MiB limit
+  upload_type_unsupported: Unsupported file type. Upload {names}
+  upload_types_missing: This field has no allowed file types
+  webhook_node_response_mode: '"{node}" has an invalid response mode'
+  webhook_return_output_required: '"{node}" must select one complete structured output'
+  webhook_test_expired: The Webhook test session expired
+  webhook_test_invalid: The Webhook test session is invalid
+  webhook_test_session_team: The Webhook test session does not belong to the current team
+  webhook_test_team: The Webhook test session does not belong to the caller's team
+  webhook_trigger_node_missing: Webhook trigger node not found
+  word_render_empty: The Word template rendered an empty document
+  word_render_failed: 'Word template rendering failed: {detail}'
+  workflow_already_deleted: The workflow has been deleted
+  workflow_delete_active_execution: The workflow has a running, waiting, or cancelling execution. Stop it or wait for it to finish
+  workflow_id_invalid: The workflow id is invalid
+  workflow_not_found: Workflow not found
+  write_batch_range: write_batch_size must be between 1 and 500
+  interaction_create_unsupported: "Manual tasks can only be created by the execution engine"
+  workflow_name_conflict: "A workflow with this name already exists in the team"
+  team_required: "Select an organization"
+  published_team_locked: "Organization cannot be changed after the workflow is published"
+  trigger_caller_forbidden: "The trigger does not exist or does not belong to the caller's team"
+  execution_permission_required: "Missing permission to operate this execution"
+  orchestration_unavailable: "The orchestration service is temporarily unavailable"
+  atom_execution_context_missing: "The atom is missing a trusted workflow execution context"
+  execution_instance_mismatch: "The node input execution_id does not match the engine execution"
+  approval_candidate_required: "The current user is not a candidate for this approval"
+  launch_token_actor_mismatch: "The launch token does not match the current operator"
+  launch_token_team_mismatch: "The launch token does not match the current team"
+  launch_token_workflow_mismatch: "The launch token does not match the workflow"
+  launch_token_payload_invalid: "The launch token payload is invalid"
+  nats_test_timeout: "Timed out waiting for a NATS test event. Listen again"
+  webhook_test_timeout: "Timed out waiting for a Webhook test request"
+  job_target_check_unavailable: "Job platform target validation is temporarily unavailable"
+  node_target_check_unavailable: "Node management target validation is temporarily unavailable"
+  webhook_response_node_incomplete: "The node referenced by the Webhook response did not succeed"
+  webhook_response_reference_invalid: "The Webhook response reference is invalid"
+  webhook_response_output_required: "The Webhook response node must select one structured node output"
+  webhook_published_trigger_missing: "The published version has no Webhook trigger node"
+  execution_not_submitted: "The execution has not been submitted to the engine"
+  webhook_wait_return_required: "Wait mode must reach exactly one Webhook response node"
+  job_target_source_unsupported: "Unsupported job target source"
+  job_cancel_actor_missing: "Job cancellation is missing a trusted actor snapshot"
+  job_cancel_team_missing: "Job cancellation is missing a team boundary"
+  job_cancel_response_invalid: "The job platform cancellation response is invalid"
+  job_wait_timeout: "Timed out waiting for the job platform task"
+  job_actor_snapshot_missing: "Job execution is missing a trusted actor snapshot"
+  job_target_reference_missing: "The job target is missing a controlled reference ID"
+atom_name:
+  bklite_notification: "Notification"
+  bklite_job_execute: "Job Execution"
+  bklite_document_render: "Document"
+  bklite_http_request: "HTTP Request"
+  bklite_agent: "Agent"
+  bklite_intent_classification: "Intent Classification"
+  bklite_memory_read: "Memory Read"
+  bklite_memory_write: "Memory Write"
+node_name:
+  condition: "Condition Branch"
+  manual_approval: "Human Approval"
+  FORM: "Form Trigger"
+  SCHEDULE: "Schedule Trigger"
+  WEBHOOK: "Webhook Trigger"
+  NATS: "Event Trigger (NATS)"
+  WEBHOOK_RETURN: "Webhook Response"
+field_label:
+  bklite_notification:
+    notification_type: "Notification Category"
+    channel_id: "Notification Method"
+    recipients: "Recipients"
+    title: "Notification Title"
+    body: "Notification Content"
+    artifacts: "Office Attachments"
+    report_artifact: "Attachment"
+  bklite_job_execute:
+    targets: "Target Hosts"
+    script_type: "Script Type"
+    script_content: "Script Content"
+    execution_params: "Execution Parameters"
+    timeout_seconds: "Timeout (seconds)"
+  bklite_document_render:
+    template: "Report Template"
+    template_snapshot: "Published Template Snapshot"
+    data: "Document Data"
+    extra: "Additional Document Data"
+  bklite_http_request:
+    method: "API"
+    url: "API"
+    query: "Query Parameters"
+    headers: "Headers"
+    body: "Request Body"
+    timeout: "Timeout (seconds)"
+    response_format: "Response Format"
+    success_status_codes: "Extra Success Status Codes"
+  bklite_agent:
+    agent_id: "Agent"
+    message: "Input"
+    prompt: "Additional Prompt"
+    knowledge_files: "Knowledge Files"
+    memory_context: "Memory Context"
+  bklite_intent_classification:
+    model_id: "Classification Model"
+    text: "Content to Classify"
+    intents: "Intent List"
+    classification_rules: "Additional Classification Rules"
+  bklite_memory_read:
+    memory_space_id: "Memory Space"
+    query: "Query"
+    top_k: "Result Count"
+  bklite_memory_write:
+    memory_space_id: "Memory Space"
+    content: "Memory Content"
+    title: "Memory Title"
+    model_id: "Processing Model"
+    write_batch_size: "Batch Size"

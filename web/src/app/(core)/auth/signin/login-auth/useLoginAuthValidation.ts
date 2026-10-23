@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { gmFetch } from "@/utils/gmTransport";
 import { toSafeRelativeCallbackUrl } from "@/utils/authRedirect";
 import { createLoginAuthRequestGuard } from "./loginAuthRequestGuard";
 import {
@@ -104,7 +105,7 @@ export function useLoginAuthValidation({
     setErrorMessage("");
 
     try {
-      const response = await fetch("/api/proxy/core/api/get_login_auth_bindings/", {
+      const response = await gmFetch("/api/proxy/core/api/get_login_auth_bindings/", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -218,7 +219,7 @@ export function useLoginAuthValidation({
 
     pollingInFlightRef.current = true;
     try {
-      const response = await fetch(
+      const response = await gmFetch(
         `/api/proxy/core/api/login_auth_requests/${requestMeta.authRequestId}/status?poll_token=${encodeURIComponent(requestMeta.pollToken)}`,
         {
           method: "GET",
@@ -279,7 +280,7 @@ export function useLoginAuthValidation({
 
     try {
       const safeCallbackUrl = toSafeRelativeCallbackUrl(callbackUrl);
-      const response = await fetch("/api/proxy/core/api/start_login_auth/", {
+      const response = await gmFetch("/api/proxy/core/api/start_login_auth/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

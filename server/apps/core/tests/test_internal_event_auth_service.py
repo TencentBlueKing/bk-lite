@@ -169,11 +169,11 @@ def test_legacy_internal_event_auth_defaults_to_rolling_compatibility(monkeypatc
     assert legacy_internal_event_auth_allowed() is False
 
 
-def test_workflow_orchestration_can_sign_notification_dispatch(monkeypatch):
+def test_workflow_can_sign_notification_dispatch(monkeypatch):
     from apps.core.utils.internal_event_auth import sign_internal_event, verify_internal_event
 
-    caller = "workflow-orchestration"
-    monkeypatch.setenv("ALERTS_INTERNAL_EVENT_AUTH_WORKFLOW_ORCHESTRATION_KEY", "workflow-secret")
+    caller = "workflow"
+    monkeypatch.setenv("ALERTS_INTERNAL_EVENT_AUTH_WORKFLOW_KEY", "workflow-secret")
     payload = {
         "delivery_key": "workflow:execution-1:notify",
         "channel_id": 1,

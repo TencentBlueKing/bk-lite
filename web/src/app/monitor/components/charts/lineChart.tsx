@@ -51,6 +51,8 @@ import {
 // 与 echarts 版折线图共用同一色板，保证两类图表配色一致。
 const DEFAULT_STROKE_WIDTH = 1;
 const DEFAULT_FILL_OPACITY = 0.36;
+/** 没有级别的阈值（前置条件）不用告警红。取色板里的青灰，和严重度色分开。 */
+const UNLEVELED_THRESHOLD_COLOR = CHART_COLORS[6];
 
 interface LineChartProps {
   data: ChartData[];
@@ -354,6 +356,20 @@ const LineChart: React.FC<LineChartProps> = memo(
       );
     }, [levelList]);
 
+    const thresholdLevelName = (level?: string) => {
+      if (!level) {
+        return '';
+      }
+      return levelNameMap[level] || level;
+    };
+
+    const thresholdLevelColor = (level?: string) => {
+      if (!level) {
+        return UNLEVELED_THRESHOLD_COLOR;
+      }
+      return (LEVEL_MAP[level] as string) || '#F43B2C';
+    };
+
     // 格式化数值：固定最大宽度，超出显示省略号
     const formatThresholdValue = useCallback((num: number): string => {
       const MAX_LENGTH = 6; // 数值最大显示长度，超过5位数才显示省略号
@@ -496,14 +512,18 @@ const LineChart: React.FC<LineChartProps> = memo(
     const thresholdLabelInfo = useMemo(() => {
       const validItems = threshold
         .filter((item) => item.value !== null && item.value !== undefined)
-        .map((item) => ({
-          ...item,
-          numValue: item.value as number,
-          formattedValue: formatThresholdValue(item.value as number),
-          labelText: `${levelNameMap[item.level] || item.level} ${formatThresholdValue(item.value as number)}`,
-          // 使用 level + value 作为唯一标识
-          uniqueKey: `${item.level}_${item.value}`
-        }))
+        .map((item) => {
+          const levelName = thresholdLevelName(item.level);
+          const formattedValue = formatThresholdValue(item.value as number);
+          return {
+            ...item,
+            numValue: item.value as number,
+            formattedValue,
+            labelText: levelName ? `${levelName} ${formattedValue}` : formattedValue,
+            // 使用 level + value 作为唯一标识
+            uniqueKey: `${item.level || 'value'}_${item.value}`
+          };
+        })
         .sort((a, b) => b.numValue - a.numValue); // 按值从大到小排序
 
       // 计算 Y 轴像素高度（估算，减去上下边距）
@@ -611,7 +631,7 @@ const LineChart: React.FC<LineChartProps> = memo(
       // 获取最长的级别名称长度
       const maxLevelNameLength = Math.max(
         ...validItems.map(
-          (item) => (levelNameMap[item.level] || item.level).length
+          (item) => thresholdLevelName(item.level).length
         ),
         0
       );
@@ -912,8 +932,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                 })}
                 {/* 为每个阈值级别渲染阴影区域 */}
                 {validThresholds.map((item, index) => {
-                  const levelColor =
-                    (LEVEL_MAP[item.level] as string) || '#F43B2C';
+                  const levelColor = thresholdLevelColor(item.level);
                   // 将颜色转换为 rgba 格式，透明度 0.1
                   const fillColor = levelColor.startsWith('#')
                     ? `rgba(${parseInt(levelColor.slice(1, 3), 16)}, ${parseInt(levelColor.slice(3, 5), 16)}, ${parseInt(levelColor.slice(5, 7), 16)}, 0.1)`
@@ -982,9 +1001,11 @@ const LineChart: React.FC<LineChartProps> = memo(
                 {thresholdLabelInfo.items.map((item) => {
                   const formattedValue = item.formattedValue;
                   const originalValue = String(item.numValue);
-                  const levelColor =
-                    (LEVEL_MAP[item.level] as string) || '#F43B2C';
-                  const fullText = `${levelNameMap[item.level] || item.level} ${originalValue}`;
+                  const levelName = thresholdLevelName(item.level);
+                  const levelColor = thresholdLevelColor(item.level);
+                  const fullText = levelName
+                    ? `${levelName} ${originalValue}`
+                    : originalValue;
                   // 使用 uniqueKey 获取偏移量
                   const dy =
                     thresholdLabelInfo.labelOffsets[item.uniqueKey] || 0;
@@ -1005,8 +1026,6 @@ const LineChart: React.FC<LineChartProps> = memo(
                           width: number;
                           height: number;
                         };
-                        const levelName =
-                          levelNameMap[item.level] || item.level;
                         return (
                           <text
                             x={vb.x + vb.width + 4}
@@ -1017,8 +1036,8 @@ const LineChart: React.FC<LineChartProps> = memo(
                             dominantBaseline="middle"
                           >
                             <title>{fullText}</title>
-                            <tspan>{levelName}</tspan>
-                            <tspan dx={2}>{formattedValue}</tspan>
+                            {levelName ? <tspan>{levelName}</tspan> : null}
+                            <tspan dx={levelName ? 2 : 0}>{formattedValue}</tspan>
                           </text>
                         );
                       }}

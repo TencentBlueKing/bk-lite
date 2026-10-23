@@ -1,0 +1,78 @@
+{
+  "zh": [
+    {
+      "title": "首页",
+      "icon": "home",
+      "url": "/workflow/home",
+      "name": "workflow_home"
+    },
+    {
+      "title": "流程",
+      "icon": "jiqiren2",
+      "url": "/workflow/workflows",
+      "name": "workflow",
+      "children": [
+        {
+          "title": "流程",
+          "url": "/workflow/workflows",
+          "name": "workflow"
+        },
+        {
+          "title": "模版",
+          "url": "/workflow/market",
+          "name": "workflow_market"
+        }
+      ]
+    },
+    {
+      "title": "执行记录",
+      "icon": "renwu",
+      "url": "/workflow/executions",
+      "name": "workflow_execution"
+    },
+    {
+      "title": "编排中心入口",
+      "url": "/workflow",
+      "name": "workflow_entry",
+      "isNotMenuItem": true
+    }
+  ],
+  "en": [
+    {
+      "title": "Home",
+      "icon": "home",
+      "url": "/workflow/home",
+      "name": "workflow_home"
+    },
+    {
+      "title": "Workflows",
+      "icon": "jiqiren2",
+      "url": "/workflow/workflows",
+      "name": "workflow",
+      "children": [
+        {
+          "title": "Workflows",
+          "url": "/workflow/workflows",
+          "name": "workflow"
+        },
+        {
+          "title": "Templates",
+          "url": "/workflow/market",
+          "name": "workflow_market"
+        }
+      ]
+    },
+    {
+      "title": "Executions",
+      "icon": "renwu",
+      "url": "/workflow/executions",
+      "name": "workflow_execution"
+    },
+    {
+      "title": "Workflow Entry",
+      "url": "/workflow",
+      "name": "workflow_entry",
+      "isNotMenuItem": true
+    }
+  ]
+}

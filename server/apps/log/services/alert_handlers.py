@@ -54,12 +54,23 @@ def is_my_alert_query(request) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes"}
 
 
+def _non_numeric_username(value) -> str | None:
+    if isinstance(value, str) and value and not _is_int_identifier(value):
+        return value
+    return None
+
+
 def handler_match_values(actor) -> list:
+    """用户 ID 与非数字用户名分开收集。数字用户名不能当成别人的 ID。"""
     values = []
     identifier = current_handler_identifier(actor)
-    if identifier not in (None, ""):
+    if isinstance(identifier, int) and not isinstance(identifier, bool):
         values.append(identifier)
-    username = getattr(actor, "username", None)
+    else:
+        name = _non_numeric_username(identifier)
+        if name is not None:
+            values.append(name)
+    username = _non_numeric_username(getattr(actor, "username", None))
     if username and username not in values:
         values.append(username)
     return values
@@ -133,18 +144,21 @@ def ensure_manual_close_allowed(handlers, actor) -> None:
 
 
 def _actor_in_handlers(handlers, actor) -> bool:
-    allowed = set()
+    actor_ids = set()
+    actor_names = set()
+    for value in handler_match_values(actor):
+        if isinstance(value, int) and not isinstance(value, bool):
+            actor_ids.add(value)
+        elif isinstance(value, str):
+            actor_names.add(value)
     for item in handlers or []:
         if item in (None, ""):
             continue
-        allowed.add(item)
-        allowed.add(str(item))
         if _is_int_identifier(item):
-            allowed.add(int(item))
-    for value in handler_match_values(actor):
-        if value in allowed or str(value) in allowed:
-            return True
-        if _is_int_identifier(value) and int(value) in allowed:
+            if int(item) in actor_ids:
+                return True
+            continue
+        if str(item) in actor_names:
             return True
     return False
 

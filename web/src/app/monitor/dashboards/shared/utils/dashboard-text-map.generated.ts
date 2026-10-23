@@ -1506,6 +1506,7 @@ export const DASHBOARD_TEXT_IDS: Record<string, string> = {
   "折线应稳定在 0；非零点表示需要检查 Broker、网络或磁盘同步。": "theLineShouldStayAt0NonZeroPointsMeanBro",
   "不同步分区": "underReplicatedPartitions3",
   "无线设备监控仪表盘": "wirelessDeviceDashboard",
+  "MySQL 监控仪表盘": "mysqlDashboard",
   "MySQL 监控探针采集状态，用于判断当前实例是否存在有效采集数据。": "mysqlExporterCollectionStatusToTellWheth",
   "慢查询速率": "slowQueryRate",
   "行锁等待速率（次/秒）": "rowLockWaitRateOpsS",

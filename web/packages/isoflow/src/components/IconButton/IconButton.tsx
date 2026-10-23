@@ -9,6 +9,7 @@ interface Props {
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
   tooltipPosition?: TooltipProps['placement'];
   disabled?: boolean;
+  size?: number;
 }
 
 export const IconButton = ({
@@ -17,7 +18,8 @@ export const IconButton = ({
   onClick,
   isActive = false,
   disabled = false,
-  tooltipPosition = 'bottom'
+  tooltipPosition = 'bottom',
+  size
 }: Props) => {
   const theme = useTheme();
   const iconColor = useMemo(() => {
@@ -46,8 +48,8 @@ export const IconButton = ({
         onClick={onClick}
         sx={{
           borderRadius: 0,
-          height: theme.customVars.toolMenu.height,
-          width: theme.customVars.toolMenu.height,
+          height: size ?? theme.customVars.toolMenu.height,
+          width: size ?? theme.customVars.toolMenu.height,
           maxWidth: '100%',
           minWidth: 'auto',
           bgcolor: isActive ? 'primary.light' : undefined,
