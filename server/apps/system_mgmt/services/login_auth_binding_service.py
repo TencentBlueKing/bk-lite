@@ -6,14 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.core.logger import system_mgmt_logger as logger
-from apps.system_mgmt.models import (
-    Group,
-    LoginAuthBinding,
-    LoginAuthBindingPlatformFieldChoices,
-    LoginAuthBindingUnmatchedActionChoices,
-    Role,
-    User,
-)
+from apps.system_mgmt.models import Group, LoginAuthBinding, LoginAuthBindingUnmatchedActionChoices, Role, User
 from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
@@ -22,9 +15,7 @@ from apps.system_mgmt.services.capability_contract_service import get_integratio
 # (server/apps/system_mgmt/nats/wechat.py:16-26) 对齐的默认 role 集合。
 # 缺 normal@ops-console 会让 verify_token 的菜单汇总为空,opsconsole 在
 # get_client 返回中消失,用户看不到入口。
-_DEFAULT_PLATFORM_ROLE_QUERY = Q(
-    name="normal", app__in=["opspilot", "ops-console"]
-) | Q(
+_DEFAULT_PLATFORM_ROLE_QUERY = Q(name="normal", app__in=["opspilot", "ops-console"]) | Q(
     name="guest",
     app__in=[
         "opspilot",
@@ -40,9 +31,18 @@ _DEFAULT_PLATFORM_ROLE_QUERY = Q(
 
 
 def _default_platform_role_ids() -> list:
-    return list(
-        Role.objects.filter(_DEFAULT_PLATFORM_ROLE_QUERY).values_list("id", flat=True)
-    )
+    return list(Role.objects.filter(_DEFAULT_PLATFORM_ROLE_QUERY).values_list("id", flat=True))
+
+
+BLUEKING_PROVIDER_KEY = "blueking"
+_BLUEKING_PROVIDER_LOGGED_CODES = frozenset(
+    {
+        "provider.auth_failed",
+        "provider.invalid_config",
+        "provider.timeout",
+        "provider.request_failed",
+    }
+)
 
 
 def get_active_login_auth_bindings():
@@ -50,10 +50,24 @@ def get_active_login_auth_bindings():
     queryset = LoginAuthBinding.objects.select_related("integration_instance").filter(enabled=True).order_by("order", "id")
     for binding in queryset:
         instance = binding.integration_instance
+        if instance.provider_key == BLUEKING_PROVIDER_KEY:
+            continue
         if not get_integration_capability_availability(instance, "login_auth")["available"]:
             continue
         bindings.append(binding)
     return bindings
+
+
+def get_ready_blueking_login_auth_binding():
+    queryset = (
+        LoginAuthBinding.objects.select_related("integration_instance")
+        .filter(enabled=True, integration_instance__provider_key=BLUEKING_PROVIDER_KEY)
+        .order_by("order", "id")
+    )
+    for binding in queryset:
+        if get_integration_capability_availability(binding.integration_instance, "login_auth")["available"]:
+            return binding
+    return None
 
 
 def build_login_auth_redirect(binding: LoginAuthBinding, redirect_uri: str, state: str = ""):
@@ -76,14 +90,10 @@ def build_login_auth_redirect(binding: LoginAuthBinding, redirect_uri: str, stat
     return result
 
 
-def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = "", password: str = ""):
+def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = "", password: str = "", bk_token: str = ""):
     from apps.system_mgmt.nats.login import get_user_login_token
 
-    binding = (
-        LoginAuthBinding.objects.select_related("integration_instance")
-        .filter(id=binding_id, enabled=True)
-        .first()
-    )
+    binding = LoginAuthBinding.objects.select_related("integration_instance").filter(id=binding_id, enabled=True).first()
     if not binding:
         logger.warning(f"login_with_binding: binding not found, binding_id={binding_id}")
         return {"result": False, "message": "Login auth binding not found"}
@@ -108,24 +118,28 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         auth_code=auth_code,
         username=username,
         password=password,
+        bk_token=bk_token,
     )
     if not result.success:
         # 外部 API 失败（AD/Feishu/WeChat 拒绝或网络错误），记 ERROR 触发运维告警。
         # 含 provider_key + binding_id + error code + summary + 错误列表，便于区分平台 vs 外部。
         error_codes = [e.code for e in (result.errors or [])]
-        logger.error(
-            f"login_with_binding: external authenticate failed, "
-            f"binding_id={binding_id}, provider_key={instance.provider_key}, "
-            f"username={username!r}, summary={result.summary!r}, "
-            f"codes={error_codes}, request_id={result.request_id}"
+        provider_already_logged = (
+            instance.provider_key == BLUEKING_PROVIDER_KEY and bool(error_codes) and set(error_codes).issubset(_BLUEKING_PROVIDER_LOGGED_CODES)
         )
+        if not provider_already_logged:
+            logger.error(
+                f"login_with_binding: external authenticate failed, "
+                f"binding_id={binding_id}, provider_key={instance.provider_key}, "
+                f"username={username!r}, summary={result.summary!r}, "
+                f"codes={error_codes}, request_id={result.request_id}"
+            )
         return {"result": False, "message": result.summary, "data": result.to_dict()}
 
     adapter_login_result = result.payload.get("login_result") or {}
     if adapter_login_result:
         logger.info(
-            f"login_with_binding succeeded via adapter-supplied login_result, "
-            f"binding_id={binding_id}, provider_key={instance.provider_key}"
+            f"login_with_binding succeeded via adapter-supplied login_result, " f"binding_id={binding_id}, provider_key={instance.provider_key}"
         )
         return {"result": True, "data": adapter_login_result}
 
