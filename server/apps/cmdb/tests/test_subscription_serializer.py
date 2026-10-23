@@ -8,7 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
+from apps.cmdb.models.subscription_rule import SubscriptionRule
 from apps.cmdb.serializers.subscription import SubscriptionRuleSerializer
 
 expand_trigger_types = importlib.import_module("apps.cmdb.migrations.0060_subscription_attribute_lifecycle").expand_trigger_types
@@ -156,6 +158,89 @@ def test_validate_trigger_config_relation_change_normalizes():
 def test_validate_trigger_config_bad_type():
     with pytest.raises(serializers.ValidationError):
         _ser().validate_trigger_config("notadict")
+
+
+def _partial_rule(trigger_types, trigger_config, **fields):
+    return SubscriptionRule(
+        name=fields.pop("name", "rule"),
+        organization=fields.pop("organization", 1),
+        model_id=fields.pop("model_id", "host"),
+        trigger_types=trigger_types,
+        trigger_config=trigger_config,
+        **fields,
+    )
+
+
+def _partial_serializer(instance, data):
+    """名称唯一性会查库；本文件只验证触发配置，不把唯一约束卷进这条路径。"""
+    serializer = SubscriptionRuleSerializer(instance=instance, data=data, partial=True)
+    name_field = serializer.fields["name"]
+    name_field.validators = [
+        validator for validator in name_field.validators if not isinstance(validator, UniqueValidator)
+    ]
+    return serializer
+
+
+def test_partial_trigger_types_expiration_requires_stored_time_field():
+    instance = _partial_rule(
+        ["attribute_change"],
+        {"attribute_change": {"fields": ["name"]}},
+    )
+    serializer = _partial_serializer(instance, {"trigger_types": ["expiration"]})
+    assert serializer.is_valid() is False
+    assert "临近到期需配置时间字段" in str(serializer.errors)
+
+
+def test_partial_trigger_types_expiration_rejects_non_positive_days_before():
+    instance = _partial_rule(
+        ["attribute_change"],
+        {"expiration": {"time_field": "expire_at", "days_before": 0}},
+    )
+    serializer = _partial_serializer(instance, {"trigger_types": ["expiration"]})
+    assert serializer.is_valid() is False
+    assert "提前天数必须为正整数" in str(serializer.errors)
+
+
+def test_partial_trigger_types_with_valid_expiration_config_passes():
+    instance = _partial_rule(
+        ["attribute_change"],
+        {"attribute_change": {"fields": ["name"]}},
+    )
+    serializer = _partial_serializer(
+        instance,
+        {
+            "trigger_types": ["expiration"],
+            "trigger_config": {"expiration": {"time_field": "expire_at", "days_before": 7}},
+        },
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["trigger_config"]["expiration"]["time_field"] == "expire_at"
+    assert serializer.validated_data["trigger_config"]["expiration"]["days_before"] == 7
+
+
+def test_partial_trigger_types_keeps_existing_compatible_expiration_config():
+    stored_config = {
+        "attribute_change": {"fields": ["name"]},
+        "expiration": {"time_field": "expire_at", "days_before": 7},
+    }
+    instance = _partial_rule(["attribute_change"], stored_config)
+    serializer = _partial_serializer(instance, {"trigger_types": ["expiration"]})
+    assert serializer.is_valid(), serializer.errors
+    assert "trigger_config" not in serializer.validated_data
+    assert instance.trigger_config == stored_config
+
+
+def test_partial_name_only_keeps_invalid_trigger_config():
+    stored_types = ["expiration"]
+    stored_config = {"expiration": {"time_field": "", "days_before": 0}}
+    instance = _partial_rule(stored_types, stored_config, name="legacy-invalid")
+    serializer = _partial_serializer(instance, {"name": "renamed-rule"})
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["name"] == "renamed-rule"
+    assert "trigger_types" not in serializer.validated_data
+    assert "trigger_config" not in serializer.validated_data
+    assert instance.trigger_types == stored_types
+    assert instance.trigger_config == stored_config
 
 
 # --------------------------------------------------------------------------
