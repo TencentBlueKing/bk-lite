@@ -1464,6 +1464,7 @@ const PolicyGroupPage: React.FC = () => {
                 告警名称
               </div>
               <Input
+                className="w-[360px]"
                 status={alertNameError ? 'error' : undefined}
                 value={detectionDraft.noDataAlertName}
                 onChange={(event) => patchDetection({ noDataAlertName: event.target.value })}
@@ -1559,7 +1560,7 @@ const PolicyGroupPage: React.FC = () => {
             <div className="mb-1">处理人</div>
             <Select
               mode="multiple"
-              className="w-full"
+              className="w-[360px]"
               showSearch
               allowClear
               optionFilterProp="label"
@@ -1604,7 +1605,7 @@ const PolicyGroupPage: React.FC = () => {
                   <div className="mb-1">通知人</div>
                   <Select
                     mode="multiple"
-                    className="w-full"
+                    className="w-[360px]"
                     showSearch
                     optionFilterProp="label"
                     value={noticeUserIds}
