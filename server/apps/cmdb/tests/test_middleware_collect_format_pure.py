@@ -12,6 +12,8 @@ import pydantic.root_model  # noqa: F401  预热
 import pytest
 
 from apps.cmdb.collection.collect_plugin.middleware import MiddlewareCollectMetrics
+from apps.cmdb.collection.plugins.community.db.postgresql import PostgreSQLCollectionPlugin
+from apps.cmdb.collection.plugins.community.middleware.docker import DockerCollectionPlugin
 
 
 @pytest.fixture
@@ -258,3 +260,100 @@ def test_format_metrics_nginx_mapping(runner):
     assert item["conf_path"] == "/etc/nginx/nginx.conf"  # pick_value(conf_path, config_path)
     assert item["version"] == "1.20"
     assert item["inst_name"] == "10.0.0.1-nginx-8080"  # get_inst_name
+
+
+# ---------------------------------------------------------------------------
+# Docker format_metrics：port / networks / mounts 必须走真实插件绑定
+# ---------------------------------------------------------------------------
+
+
+def _docker_plugin():
+    task = type("DockerTask", (), {"model_id": "docker"})()
+    return DockerCollectionPlugin("docker-host", "cmdb_5", 5, collect_inst=task)
+
+
+def _format_docker(row):
+    plugin = _docker_plugin()
+    plugin.collection_metrics_dict["docker_info_gauge"] = [row]
+    plugin.format_metrics()
+    result = plugin.result["docker"]
+    assert len(result) == 1
+    return result[0]
+
+
+def test_docker_format_metrics_keeps_port_networks_and_mounts():
+    item = _format_docker(
+        {
+            "ip_addr": "10.0.0.1",
+            "port": 8080,
+            "networks": "bridge",
+            "mounts": [],
+            "container_id": "abc",
+        }
+    )
+    assert item["port"] == 8080
+    assert item["networks"] == "bridge"
+    assert item["mounts"] == "[]"
+    assert item["container_id"] == "abc"
+
+
+def test_docker_format_metrics_port_falls_back_to_ports():
+    item = _format_docker(
+        {
+            "ip_addr": "10.0.0.2",
+            "ports": [{"host_port": "8081", "container_port": "80"}],
+            "networks": "bridge",
+            "mounts": [],
+        }
+    )
+    assert item["port"] == "8081"
+    assert item["networks"] == "bridge"
+    assert item["mounts"] == "[]"
+
+
+def test_docker_format_metrics_port_falls_back_to_ports_json_string():
+    item = _format_docker(
+        {
+            "ip_addr": "10.0.0.3",
+            "ports": '[{"container_port": "5432"}]',
+            "networks": "host",
+            "mounts": [],
+        }
+    )
+    assert item["port"] == "5432"
+
+
+def test_docker_format_metrics_networks_and_mounts_json_string_and_object():
+    plugin = _docker_plugin()
+    plugin.collection_metrics_dict["docker_info_gauge"] = [
+        {
+            "ip_addr": "10.0.0.4",
+            "port": 2375,
+            "networks": '["bridge","host"]',
+            "mounts": '[{"Source":"/data"}]',
+        },
+        {
+            "ip_addr": "10.0.0.5",
+            "port": 2376,
+            "networks": {"name": "bridge", "ip": "172.17.0.1"},
+            "mounts": {"source": "/var/lib", "destination": "/data"},
+        },
+    ]
+    plugin.format_metrics()
+    string_item, object_item = plugin.result["docker"]
+    assert string_item["networks"] == '["bridge","host"]'
+    assert string_item["mounts"] == '[{"Source":"/data"}]'
+    assert object_item["networks"] == '{"name": "bridge", "ip": "172.17.0.1"}'
+    assert object_item["mounts"] == '{"source": "/var/lib", "destination": "/data"}'
+
+
+def test_postgresql_single_arg_inst_name_lambda_still_formats():
+    task = type("PgTask", (), {"model_id": "postgresql"})()
+    plugin = PostgreSQLCollectionPlugin("pg", "cmdb_5", 5, collect_inst=task)
+    plugin.collection_metrics_dict["postgresql_info_gauge"] = [
+        {"ip_addr": "10.0.0.8", "port": "5432", "version": "14"}
+    ]
+    plugin.format_metrics()
+    item = plugin.result["postgresql"][0]
+    assert item["inst_name"] == "10.0.0.8-pg-5432"
+    assert item["port"] == "5432"
