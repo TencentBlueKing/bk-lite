@@ -508,34 +508,60 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     onConversationCleared?.();
   };
 
-  const hydratedAttachmentIds = useRef(new Set<number>());
+  const attachmentPreviews = useRef(new Map<number, { url?: string }>());
 
   useEffect(() => {
-    if (!token) return undefined;
+    const previews = attachmentPreviews.current;
+    return () => {
+      previews.forEach(({ url }) => {
+        if (url) URL.revokeObjectURL(url);
+      });
+      previews.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const previews = attachmentPreviews.current;
+    const visibleIds = new Set(messages.flatMap((msg) => (
+      (msg.attachments || []).filter((item) => isImageMime(item.mime)).map((item) => item.id)
+    )));
+    previews.forEach(({ url }, id) => {
+      if (!visibleIds.has(id)) {
+        if (url) URL.revokeObjectURL(url);
+        previews.delete(id);
+      }
+    });
+    if (!token) return;
+    const applyPreview = (id: number, previewUrl: string) => {
+      updateMessages((prev) => prev.map((item) => ({
+        ...item,
+        attachments: item.attachments?.map((current) => (
+          current.id === id ? { ...current, previewUrl } : current
+        )),
+      })));
+    };
     messages.forEach((msg) => {
       (msg.attachments || []).forEach((attachment) => {
-        if (!isImageMime(attachment.mime) || attachment.previewUrl || hydratedAttachmentIds.current.has(attachment.id)) {
+        if (!isImageMime(attachment.mime) || attachment.previewUrl) {
           return;
         }
-        hydratedAttachmentIds.current.add(attachment.id);
+        const existing = previews.get(attachment.id);
+        if (existing) {
+          if (existing.url) applyPreview(attachment.id, existing.url);
+          return;
+        }
+        const preview: { url?: string } = {};
+        previews.set(attachment.id, preview);
         downloadChatAttachmentBlob(attachment.id, token)
           .then((blob) => {
+            if (previews.get(attachment.id) !== preview) return;
             const previewUrl = URL.createObjectURL(blob);
-            updateMessages((prev) => prev.map((item) => (
-              item.id === msg.id
-                ? {
-                  ...item,
-                  attachments: item.attachments?.map((current) => (
-                    current.id === attachment.id ? { ...current, previewUrl } : current
-                  )),
-                }
-                : item
-            )));
+            preview.url = previewUrl;
+            applyPreview(attachment.id, previewUrl);
           })
           .catch(() => undefined);
       });
     });
-    return undefined;
   }, [messages, token, updateMessages]);
 
   useEffect(() => {
