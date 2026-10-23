@@ -84,9 +84,43 @@ def match_port_to_inventory_inst_name(port, interfaces) -> str | None:
     return None
 
 
+def _device_bucket_keys(iface: dict) -> set[str]:
+    """设备桶键与 _iface_belongs_to_device 一致。
+
+    inst_name / self_device 只在连字符边界取前缀，避免 10.0.0.1 命中 10.0.0.10。
+    self_device 自身也是键，覆盖没有连字符的精确归属。
+    """
+    keys: set[str] = set()
+    inst_name = str(iface.get("inst_name") or "")
+    self_device = str(iface.get("self_device") or "")
+    for text in (inst_name, self_device):
+        start = 0
+        while True:
+            hyphen = text.find("-", start)
+            if hyphen < 0:
+                break
+            if hyphen > 0:
+                keys.add(text[:hyphen])
+            start = hyphen + 1
+    if self_device:
+        keys.add(self_device)
+    return keys
+
+
+def _interfaces_by_device(interfaces) -> dict[str, list]:
+    buckets: dict[str, list] = {}
+    for item in interfaces or []:
+        if not isinstance(item, dict):
+            continue
+        for device_id in _device_bucket_keys(item):
+            buckets.setdefault(device_id, []).append(item)
+    return buckets
+
+
 def merge_inventory_port_index(index_map, ports, interfaces) -> dict:
     """补全 { (device_id, ifindex): inst_name }，已有本轮映射不覆盖。"""
     target = index_map if index_map is not None else {}
+    buckets = None
     for port in ports or []:
         if not isinstance(port, dict):
             continue
@@ -97,7 +131,9 @@ def merge_inventory_port_index(index_map, ports, interfaces) -> dict:
         key = (device_id, ifindex)
         if target.get(key):
             continue
-        inst_name = match_port_to_inventory_inst_name(port, interfaces)
+        if buckets is None:
+            buckets = _interfaces_by_device(interfaces)
+        inst_name = match_port_to_inventory_inst_name(port, buckets.get(device_id, ()))
         if inst_name:
             target[key] = inst_name
     return target
