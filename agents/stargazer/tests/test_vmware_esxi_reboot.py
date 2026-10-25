@@ -154,14 +154,15 @@ def test_vmware_plugin_registers_esxi_reboot_gauges_and_boot_time_policy():
         assert 'resource_type="vmware_esxi"' in item["query"]
         assert item["query"].startswith(name)
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
-    boot_tmpls = [t for t in policy["templates"] if t.get("metric_name") == "boot_time"]
+    boot_tmpls = [t for t in policy["templates"] if t.get("metric_name") == "boot_time_gauge"]
     assert len(boot_tmpls) == 1
     tmpl = boot_tmpls[0]
+    assert tmpl["metric_name"] == "boot_time_gauge"
     assert tmpl.get("object", policy["object"]) == "ESXI"
     assert tmpl["algorithm"] == "changes"
     assert tmpl["threshold"][0]["method"] == ">="
     assert tmpl["threshold"][0]["value"] == 1
     assert tmpl["threshold"][0]["level"] == "warning"
-    assert not any(t.get("metric_name") == "uptime_seconds" for t in policy["templates"])
-    tools = next(t for t in policy["templates"] if t.get("metric_name") == "tools_status")
+    assert not any(t.get("metric_name") in {"uptime_seconds", "uptime_seconds_gauge"} for t in policy["templates"])
+    tools = next(t for t in policy["templates"] if t.get("metric_name") == "tools_status_gauge")
     assert tools["algorithm"] == "last_over_time"

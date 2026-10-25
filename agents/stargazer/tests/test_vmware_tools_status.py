@@ -85,7 +85,8 @@ def test_vmware_plugin_registers_tools_status_enum_and_policy():
     assert policy["object"] == "VM"
     assert policy["plugin"] == "VMWare"
     tmpl = policy["templates"][0]
-    assert tmpl["metric_name"] == "tools_status"
+    assert tmpl["metric_name"] == "tools_status_gauge"
+    assert tmpl["metric_name"] == item["name"]
     assert tmpl["algorithm"] == "last_over_time"
     assert tmpl["threshold"][0]["method"] == ">="
     assert tmpl["threshold"][0]["value"] == 1

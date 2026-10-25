@@ -171,17 +171,20 @@ def test_plugin_registers_snapshot_gauges_and_gt_policies():
         assert item["query"].startswith(name)
         assert item["dimensions"] == []
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    registered = {m["name"] for obj in metrics["objects"] for m in obj["metrics"]}
+    for tmpl in policy["templates"]:
+        assert tmpl["metric_name"] in registered
     by_metric = {t["metric_name"]: t for t in policy["templates"]}
-    assert by_metric["snapshot_storage_bytes"]["threshold"][0] == {
+    assert by_metric["snapshot_storage_bytes_gauge"]["threshold"][0] == {
         "level": "warning",
         "value": 2147483648,
         "method": ">",
     }
-    assert by_metric["oldest_snapshot_age_seconds"]["threshold"][0] == {
+    assert by_metric["oldest_snapshot_age_seconds_gauge"]["threshold"][0] == {
         "level": "warning",
         "value": 2592000,
         "method": ">",
     }
-    assert by_metric["snapshot_count"]["threshold"][0] == {"level": "warning", "value": 2, "method": ">"}
-    assert by_metric["tools_status"]["algorithm"] == "last_over_time"
-    assert by_metric["boot_time"]["algorithm"] == "changes"
+    assert by_metric["snapshot_count_gauge"]["threshold"][0] == {"level": "warning", "value": 2, "method": ">"}
+    assert by_metric["tools_status_gauge"]["algorithm"] == "last_over_time"
+    assert by_metric["boot_time_gauge"]["algorithm"] == "changes"
