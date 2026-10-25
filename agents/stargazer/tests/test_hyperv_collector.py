@@ -2,7 +2,7 @@
 from pathlib import Path
 
 import pytest
-from core.collection.plugins import _load_monitor_collector
+from core.collection.plugins import _load_monitor_collector, _resolve_monitor_collector
 from tasks.collectors.host_collector import VALID_MODULES
 from tasks.collectors.hyperv_collector import HypervCollector
 from tasks.collectors.hyperv_metrics import (
@@ -129,3 +129,16 @@ def test_cmdb_payload_does_not_copy_latency_fields():
 
 def test_load_monitor_collector_resolves_hyperv():
     assert _load_monitor_collector("hyperv") is HypervCollector
+
+
+def test_community_hyperv_wins_over_enterprise_factory():
+    class EnterpriseHyperv:
+        pass
+
+    assert _resolve_monitor_collector("hyperv", {"hyperv": EnterpriseHyperv}) is HypervCollector
+
+
+def test_hyperv_monitor_plugin_yaml_skips_stargazer_preflight():
+    text = (STARGAZER_ROOT / "plugins/inputs/hyperv/plugin.yml").read_text(encoding="utf-8")
+    assert "default_executor: protocol" in text
+    assert "mode: skip" in text

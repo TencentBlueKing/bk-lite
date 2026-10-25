@@ -192,9 +192,7 @@ class MonitorCollectionPlugin:
         if monitor_type == "host":
             # 到目标 SSH Attempt 由 Responder 负责；此处不伪造 UNKNOWN→采集
             return AccessProbeResult(status=AccessProbeStatus.NOT_SUPPORTED)
-        factory = self._collector_factories.get(monitor_type)
-        if factory is None:
-            factory = _load_monitor_collector(monitor_type)
+        factory = _resolve_monitor_collector(monitor_type, self._collector_factories)
         params = _target_params(target, credential, context)
         try:
             configured_timeout = float(params.get("timeout", timeout_seconds))
@@ -219,9 +217,7 @@ class MonitorCollectionPlugin:
         monitor_type = str(context.params.get("monitor_type") or "")
         if monitor_type == "host":
             return await self._collect_host_remote(target, credential, context)
-        factory = self._collector_factories.get(monitor_type)
-        if factory is None:
-            factory = _load_monitor_collector(monitor_type)
+        factory = _resolve_monitor_collector(monitor_type, self._collector_factories)
         params = _target_params(target, credential, context)
         try:
             metrics = await factory(params).collect()
@@ -428,6 +424,16 @@ def _failure_outcome(error: str, *, value: Any = None) -> CollectOutcome:
         error_code=error_code,
         detail=type(error).__name__ if isinstance(error, Exception) else "",
     )
+
+
+def _resolve_monitor_collector(monitor_type: str, factories: Mapping[str, Callable] | None = None):
+    """Community Hyper-V WinRM collector wins over enterprise ClusterPerf."""
+    if monitor_type == "hyperv":
+        return _load_monitor_collector(monitor_type)
+    factory = (factories or {}).get(monitor_type)
+    if factory is not None:
+        return factory
+    return _load_monitor_collector(monitor_type)
 
 
 def _load_monitor_collector(monitor_type: str):

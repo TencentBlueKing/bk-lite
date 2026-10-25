@@ -62,6 +62,7 @@ class HypervCollector(BaseCollector):
         }
 
     async def collect(self) -> str:
+        logger.info("event=hyperv_collect_start host=%s", self.params.get("host"))
         config = self._resolve_execution_config()
         result = await ansible_adhoc(
             ansible_node_id=config["ansible_node_id"],
