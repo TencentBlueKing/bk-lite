@@ -66,6 +66,10 @@ def test_monitor_latency_metrics_are_milliseconds_without_builtin_alert():
     by_name = {item["name"]: item for obj in metrics["objects"] for item in obj["metrics"]}
     assert by_name["storage_read_latency"]["unit"] == "ms"
     assert by_name["storage_write_latency"]["unit"] == "ms"
+    for item in by_name.values():
+        if item["name"] in {"hyperv_host_count", "hyperv_vm_count"}:
+            continue
+        assert "_gauge{" in item["query"], item["name"]
     assert policy["templates"] == []
 
 

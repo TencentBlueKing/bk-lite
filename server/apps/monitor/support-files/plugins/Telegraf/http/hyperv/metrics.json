@@ -65,7 +65,7 @@
         {
           "metric_group": "CPU",
           "name": "cpu_usage_percent",
-          "query": "cpu_usage_percent{resource_type=\"hyperv_host\", __$labels__}",
+          "query": "cpu_usage_percent_gauge{resource_type=\"hyperv_host\", __$labels__}",
           "display_name": "CPU usage",
           "data_type": "Number",
           "unit": "percent",
@@ -76,7 +76,7 @@
         {
           "metric_group": "Memory",
           "name": "mem_usage_percent",
-          "query": "mem_usage_percent{resource_type=\"hyperv_host\", __$labels__}",
+          "query": "mem_usage_percent_gauge{resource_type=\"hyperv_host\", __$labels__}",
           "display_name": "Memory usage",
           "data_type": "Number",
           "unit": "percent",
@@ -87,7 +87,7 @@
         {
           "metric_group": "Disk",
           "name": "storage_read_latency",
-          "query": "storage_read_latency{resource_type=\"hyperv_host\", __$labels__}",
+          "query": "storage_read_latency_gauge{resource_type=\"hyperv_host\", __$labels__}",
           "display_name": "Read latency",
           "data_type": "Number",
           "unit": "ms",
@@ -98,7 +98,7 @@
         {
           "metric_group": "Disk",
           "name": "storage_write_latency",
-          "query": "storage_write_latency{resource_type=\"hyperv_host\", __$labels__}",
+          "query": "storage_write_latency_gauge{resource_type=\"hyperv_host\", __$labels__}",
           "display_name": "Write latency",
           "data_type": "Number",
           "unit": "ms",
@@ -126,7 +126,7 @@
         {
           "metric_group": "CPU",
           "name": "cpu_usage_percent",
-          "query": "cpu_usage_percent{resource_type=\"hyperv_vm\", __$labels__}",
+          "query": "cpu_usage_percent_gauge{resource_type=\"hyperv_vm\", __$labels__}",
           "display_name": "CPU usage",
           "data_type": "Number",
           "unit": "percent",
@@ -137,7 +137,7 @@
         {
           "metric_group": "Memory",
           "name": "mem_usage_percent",
-          "query": "mem_usage_percent{resource_type=\"hyperv_vm\", __$labels__}",
+          "query": "mem_usage_percent_gauge{resource_type=\"hyperv_vm\", __$labels__}",
           "display_name": "Memory usage",
           "data_type": "Number",
           "unit": "percent",
@@ -148,7 +148,7 @@
         {
           "metric_group": "Power",
           "name": "power_state",
-          "query": "power_state{resource_type=\"hyperv_vm\", __$labels__}",
+          "query": "power_state_gauge{resource_type=\"hyperv_vm\", __$labels__}",
           "display_name": "Power state",
           "data_type": "Enum",
           "unit": "",
@@ -159,7 +159,7 @@
         {
           "metric_group": "Disk",
           "name": "storage_read_latency",
-          "query": "storage_read_latency{resource_type=\"hyperv_vm\", __$labels__}",
+          "query": "storage_read_latency_gauge{resource_type=\"hyperv_vm\", __$labels__}",
           "display_name": "Read latency",
           "data_type": "Number",
           "unit": "ms",
@@ -170,7 +170,7 @@
         {
           "metric_group": "Disk",
           "name": "storage_write_latency",
-          "query": "storage_write_latency{resource_type=\"hyperv_vm\", __$labels__}",
+          "query": "storage_write_latency_gauge{resource_type=\"hyperv_vm\", __$labels__}",
           "display_name": "Write latency",
           "data_type": "Number",
           "unit": "ms",
