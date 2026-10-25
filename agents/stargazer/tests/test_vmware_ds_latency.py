@@ -120,6 +120,28 @@ def test_datastore_latency_not_divided_by_100():
     assert res["datastore-1"]["datastore_io_write_latency"][0][1] == 250.0
 
 
+def test_datastore_batch_forwards_300s_interval():
+    driver = _driver()
+    seen = {}
+
+    def fake_batch(counters, interval=20, **kwargs):
+        seen["interval"] = interval
+        seen["counters"] = counters
+        return {"result": False, "message": "skip"}
+
+    driver.monitor_data_batch = fake_batch
+    driver._fallback_to_individual_requests = lambda *a, **k: False
+    driver._process_batch_monitoring_data(
+        ["datastore.totalReadLatency.average"],
+        [object()],
+        {"interval": 300},
+        ["datastore_io_read_latency"],
+        None,
+        {},
+    )
+    assert seen["interval"] == 300
+
+
 def test_vmware_plugin_registers_datastore_latency_gauges():
     metrics = json.loads(METRICS.read_text(encoding="utf-8"))
     ds = next(obj for obj in metrics["objects"] if obj["name"] == "DataStorage")

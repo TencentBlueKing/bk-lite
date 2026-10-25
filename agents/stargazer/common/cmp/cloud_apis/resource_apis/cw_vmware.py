@@ -686,6 +686,10 @@ class Vmware(PrivateCloudManage):
             # 处理特殊指标
             self._process_special_metrics(special_metrics, obj_type, obj_list, filter_obj_list, data, res)
 
+            # 数据存储性能计数器没有 20s 实时间隔，沿用容量查询的 300s。
+            if obj_type == "datastore":
+                data["interval"] = 300
+
             # 批量处理其他监控数据
             self._process_batch_monitoring_data(batch_counters, filter_obj_list, data, metrics, content, res)
 
@@ -1102,6 +1106,9 @@ class Vmware(PrivateCloudManage):
 
                     no_dims = len(n.value) == 1
                     for value_info in n.value:
+                        if metric in ("datastore_io_read_latency", "datastore_io_write_latency"):
+                            self._add_metric_value(vm_name, metric, value_info, k, timestamp, n, res)
+                            continue
                         dims = None
                         if not no_dims:
                             instance = value_info.id.instance or n.entity.name
