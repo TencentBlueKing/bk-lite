@@ -1,0 +1,58 @@
+Hyper-V:
+  desc: Collect Hyper-V host and virtual machine CPU, memory, power state, and virtual disk read/write latency over WinRM.
+  name: Hyper-V
+monitor_object:
+  Hyper-V: Hyper-V
+  Hyper-V Host: Hyper-V Host
+  Hyper-V VM: Hyper-V VM
+monitor_object_type:
+  HyperV: Hyper-V
+monitor_object_metric_group:
+  Hyper-V:
+    Quantity: Quantity
+  Hyper-V Host:
+    CPU: CPU
+    Memory: Memory
+    Disk: Disk
+  Hyper-V VM:
+    CPU: CPU
+    Memory: Memory
+    Power: Power
+    Disk: Disk
+monitor_object_metric:
+  Hyper-V:
+    hyperv_host_count:
+      name: Number of Hyper-V hosts
+      desc: Number of Hyper-V hosts in this instance.
+    hyperv_vm_count:
+      name: Number of Hyper-V VMs
+      desc: Number of Hyper-V virtual machines in this instance.
+  Hyper-V Host:
+    cpu_usage_percent:
+      name: CPU usage
+      desc: Hyper-V host CPU utilization.
+    mem_usage_percent:
+      name: Memory usage
+      desc: Hyper-V host memory utilization.
+    storage_read_latency:
+      name: Read latency
+      desc: Virtual disk read latency in milliseconds.
+    storage_write_latency:
+      name: Write latency
+      desc: Virtual disk write latency in milliseconds.
+  Hyper-V VM:
+    cpu_usage_percent:
+      name: CPU usage
+      desc: Hyper-V virtual machine CPU utilization.
+    mem_usage_percent:
+      name: Memory usage
+      desc: Hyper-V virtual machine memory utilization.
+    power_state:
+      name: Power state
+      desc: Virtual machine power state, 1=Running 0=Down.
+    storage_read_latency:
+      name: Read latency
+      desc: Virtual disk read latency in milliseconds.
+    storage_write_latency:
+      name: Write latency
+      desc: Virtual disk write latency in milliseconds.

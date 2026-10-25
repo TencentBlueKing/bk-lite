@@ -20,6 +20,9 @@ COLLECT_PLUGIN:
   vmware_vc:
     name: vCenter
     desc: 通过采集vCenter内ESXi与虚拟机清单及其属性信息
+  hyperv_host:
+    name: Hyper-V
+    desc: 通过 WinRM 采集 Hyper-V 宿主机与虚拟机清单及其属性信息
   network:
     name: NetWork
     desc: 通过SNMP协议发现网络设备和网络拓扑及其基本信息

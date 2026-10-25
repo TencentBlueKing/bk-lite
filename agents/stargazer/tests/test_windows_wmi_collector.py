@@ -1,6 +1,6 @@
+import logging
 import sys
 from pathlib import Path
-import logging
 
 import pytest
 
@@ -8,13 +8,14 @@ STARGAZER_ROOT = Path(__file__).resolve().parents[1]
 if str(STARGAZER_ROOT) not in sys.path:
     sys.path.insert(0, str(STARGAZER_ROOT))
 
-from tasks.collectors.host_wmi.errors import WmiError, classify_wmi_error
-from tasks.collectors.host_wmi.client import WmiClient
-from tasks.collectors.host_wmi.metrics import wmi_results_to_prometheus
-from tasks.collectors.host_wmi import modules as wmi_modules
-from tasks.collectors.host_wmi.modules import resolve_modules
-from tasks.collectors.host_wmi_collector import WindowsWmiCollector
-from tasks.utils.nats_helper import convert_prometheus_to_influx
+from tasks.collectors.host_wmi import modules as wmi_modules  # noqa: E402
+from tasks.collectors.host_wmi.client import WmiClient  # noqa: E402
+from tasks.collectors.host_wmi.errors import WmiError, classify_wmi_error  # noqa: E402
+from tasks.collectors.host_wmi.metrics import wmi_results_to_prometheus  # noqa: E402
+from tasks.collectors.host_wmi.modules import DEFAULT_MODULES, VALID_MODULES, resolve_modules  # noqa: E402
+from tasks.collectors.host_wmi_collector import WindowsWmiCollector  # noqa: E402
+from tasks.collectors.windows_service import WINDOWS_SERVICE_QUERY  # noqa: E402
+from tasks.utils.nats_helper import convert_prometheus_to_influx  # noqa: E402
 
 
 def test_resolve_modules_accepts_comma_separated_values():
@@ -387,3 +388,144 @@ def test_wmi_client_normalizes_wmi_property_rows():
     )
 
     assert rows == [{"Name": "CPU0", "LoadPercentage": 12, "Ignored": None}]
+
+
+class RecordingServiceClient:
+    def __init__(self, rows=None):
+        self.queries = []
+        self.rows = rows or [
+            {"Name": "Spooler", "State": "Running"},
+            {"Name": "W32Time", "State": "Stopped"},
+            {"Name": "wuauserv", "State": "Start Pending"},
+            {"Name": "bits", "State": "Paused"},
+        ]
+
+    def query(self, query):
+        self.queries.append(query)
+        return list(self.rows)
+
+    def query_class(self, class_name):
+        raise AssertionError(f"unexpected query_class {class_name}")
+
+
+def test_service_module_is_optional_and_not_default():
+    assert "service" in VALID_MODULES
+    assert "service" not in DEFAULT_MODULES
+    assert "service" not in resolve_modules("")
+    assert "service" not in resolve_modules("cpu,mem,disk")
+    assert resolve_modules("cpu,service") == ["cpu", "service"]
+
+
+def test_service_module_queries_win32_service_not_process():
+    client = RecordingServiceClient()
+    rows = wmi_modules.ServiceModule(service_scope="all").collect(client)
+
+    assert client.queries == [WINDOWS_SERVICE_QUERY]
+    assert all("Win32_Process" not in query for query in client.queries)
+    assert rows == [
+        {"name": "Spooler", "state": 1, "service_scope": "all"},
+        {"name": "W32Time", "state": 0, "service_scope": "all"},
+        {"name": "wuauserv", "state": 0, "service_scope": "all"},
+        {"name": "bits", "state": 0, "service_scope": "all"},
+    ]
+
+
+def test_service_module_skips_query_when_scope_is_none_or_empty_names():
+    for kwargs in (
+        {},
+        {"service_scope": "none"},
+        {"service_scope": ""},
+        {"service_scope": "names", "service_names": ""},
+        {"service_scope": "unknown", "service_names": "Spooler"},
+    ):
+        client = RecordingServiceClient()
+        assert wmi_modules.ServiceModule(**kwargs).collect(client) == []
+        assert client.queries == []
+
+
+def test_service_module_filters_named_services_case_insensitively():
+    client = RecordingServiceClient()
+    rows = wmi_modules.ServiceModule(service_scope="names", service_names="spooler, Missing").collect(client)
+
+    assert client.queries == [WINDOWS_SERVICE_QUERY]
+    assert rows == [
+        {"name": "Spooler", "state": 1, "service_scope": "names"},
+        {"name": "Missing", "state": 0, "service_scope": "names"},
+    ]
+
+
+def test_wmi_results_to_prometheus_emits_service_state_and_keeps_cpu():
+    output = wmi_results_to_prometheus(
+        {
+            "cpu": {"usage_percent": 12.5, "core_count": 4},
+            "service": [
+                {"name": "Spooler", "state": 1, "service_scope": "names"},
+                {"name": "W32Time", "state": 0, "service_scope": "names"},
+            ],
+        },
+        {
+            "instance_id": "region_os_10.0.0.8",
+            "instance_type": "os",
+            "collect_type": "http",
+            "config_type": "windows_wmi",
+        },
+        host="10.0.0.8",
+        timestamp=1700000000000,
+    )
+
+    base = 'instance_id="region_os_10.0.0.8",instance_type="os",collect_type="http",config_type="windows_wmi",host="10.0.0.8"'
+    assert f'windows_service_state_gauge{{{base},service="Spooler",service_scope="names"}} 1 1700000000000' in output
+    assert f'windows_service_state_gauge{{{base},service="W32Time",service_scope="names"}} 0 1700000000000' in output
+    assert f"cpu_usage_total_gauge{{{base}}} 12.5 1700000000000" in output
+
+
+@pytest.mark.asyncio
+async def test_windows_wmi_collector_does_not_collect_service_by_default(monkeypatch):
+    class Client(FakeWmiClient):
+        def query(self, query):
+            if "Win32_Service" in query:
+                raise AssertionError("default collection must not query Win32_Service")
+            return super().query(query)
+
+    monkeypatch.setattr("tasks.collectors.host_wmi_collector.WmiClient", Client)
+    collector = WindowsWmiCollector(
+        {
+            "host": "10.0.0.8",
+            "username": "EXAMPLE\\monitor",
+            "password": "secret",
+            "metrics_modules": "cpu",
+            "tags": {"instance_id": "region_os_10.0.0.8", "instance_type": "os"},
+        }
+    )
+
+    output = await collector.collect()
+    assert "windows_service_state_gauge" not in output
+    assert "host_cpu_core_count_gauge" in output
+
+
+@pytest.mark.asyncio
+async def test_windows_wmi_collector_collects_named_services(monkeypatch):
+    class Client(FakeWmiClient):
+        def query(self, query):
+            if query == WINDOWS_SERVICE_QUERY:
+                return [{"Name": "Spooler", "State": "Running"}]
+            return super().query(query)
+
+    monkeypatch.setattr("tasks.collectors.host_wmi_collector.WmiClient", Client)
+    collector = WindowsWmiCollector(
+        {
+            "host": "10.0.0.8",
+            "username": "EXAMPLE\\monitor",
+            "password": "secret",
+            "metrics_modules": "cpu",
+            "service_scope": "names",
+            "service_names": "Spooler",
+            "tags": {"instance_id": "region_os_10.0.0.8", "instance_type": "os"},
+        }
+    )
+
+    output = await collector.collect()
+    assert 'service="Spooler"' in output
+    assert 'service_scope="names"' in output
+    assert "windows_service_state_gauge" in output
+    assert "host_cpu_core_count_gauge" in output
