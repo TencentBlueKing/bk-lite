@@ -14,6 +14,7 @@ import type {
   IconPickerRequest,
   ItemControlsExtraTarget,
   NodeBindingMark,
+  NodeMetrics,
   NodeStatus,
   RectangleStatus
 } from 'src/types';
@@ -26,6 +27,7 @@ import {
 
 export interface DiagramVisual {
   nodeStatus?: Record<string, NodeStatus>;
+  nodeMetrics?: Record<string, NodeMetrics>;
   nodeBinding?: Record<string, NodeBindingMark>;
   rectangleStatus?: Record<string, RectangleStatus>;
   highlightedItemId?: string;
@@ -54,6 +56,7 @@ interface ProviderProps {
   onItemClick?: DiagramCallbacksRef['current']['onItemClick'];
   onItemSelect?: DiagramCallbacksRef['current']['onItemSelect'];
   nodeStatus?: Record<string, NodeStatus>;
+  nodeMetrics?: Record<string, NodeMetrics>;
   nodeBinding?: Record<string, NodeBindingMark>;
   rectangleStatus?: Record<string, RectangleStatus>;
   highlightedItemId?: string;
@@ -65,6 +68,7 @@ export const DiagramOverlayProvider = ({
   onItemClick,
   onItemSelect,
   nodeStatus,
+  nodeMetrics,
   nodeBinding,
   rectangleStatus,
   highlightedItemId,
@@ -109,6 +113,7 @@ export const DiagramOverlayProvider = ({
   const visual = useMemo<DiagramVisual>(() => {
     return {
       nodeStatus,
+      nodeMetrics,
       nodeBinding,
       rectangleStatus,
       highlightedItemId,
@@ -121,6 +126,7 @@ export const DiagramOverlayProvider = ({
     highlightedItemId,
     hoveredRectangleId,
     nodeBinding,
+    nodeMetrics,
     nodeStatus,
     rectangleStatus,
     setHovered

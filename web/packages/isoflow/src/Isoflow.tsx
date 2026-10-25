@@ -219,6 +219,7 @@ export const Isoflow = (props: IsoflowProps) => {
               onItemClick={props.onItemClick}
               onItemSelect={props.onItemSelect}
               nodeStatus={props.nodeStatus}
+              nodeMetrics={props.nodeMetrics}
               nodeBinding={props.nodeBinding}
               rectangleStatus={props.rectangleStatus}
               highlightedItemId={props.highlightedItemId}

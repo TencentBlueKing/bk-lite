@@ -22,6 +22,13 @@ import type {
   ItemControlsExtraTarget,
 } from '@bk-lite/isoflow';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
+import { useDirectoryApi } from '@/app/ops-analysis/api';
+import useBtnPermissions from '@/hooks/usePermissions';
+import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import {
+  canPersistCanvasRefreshInterval,
+  normalizeCanvasRefreshInterval,
+} from '@/app/ops-analysis/utils/canvasRefreshInterval';
 import { useInstanceApi, useModelApi } from '@/app/cmdb/api';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import { flattenCollections } from '@isoflow/isopacks/dist/utils';
@@ -46,13 +53,14 @@ import {
 } from '@/app/ops-analysis/components/appFullscreen';
 import { useCanvasDraft } from '@/app/ops-analysis/hooks/useCanvasDraft';
 import {
+  restoreDraftRefreshInterval,
   toCanvasDraftResourceId,
   type CanvasDraftPayload,
 } from '@/app/ops-analysis/api/canvasDraft';
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 import ResourceBindingDrawer from './components/resourceBindingDrawer';
 import ResourceInsertDrawer from './components/resourceInsertDrawer';
-import { NodeBindingStrip, RegionAlertSettings } from './components/itemControlsExtra';
+import { DisplayMetricsField, NodeBindingStrip, RegionAlertSettings } from './components/itemControlsExtra';
 import ResourceDetailDrawer, {
   type ArchitectureDetailState,
 } from './components/resourceDetailDrawer';
@@ -74,7 +82,6 @@ import {
   type ModelOption,
 } from './binding/model';
 import {
-  ARCHITECTURE_STATUS_POLL_MS,
   architectureStatusRequestMode,
   bindingStatusLoading,
   blockResourceOpen,
@@ -91,6 +98,13 @@ import {
   type OverlayLabel,
 } from './binding/status';
 import { useArchitectureNodeStatus } from './binding/useNodeStatus';
+import {
+  buildNodeMetricCards,
+  collectMetricUuids,
+  findNodeMetricChoice,
+  type MetricChoice,
+} from './binding/displayMetrics';
+import { useArchitectureDisplayMetrics } from './binding/useDisplayMetrics';
 import {
   architectureIconIdForModel,
   assetInsertLabel,
@@ -134,6 +148,8 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
   ({ selectedArchitecture, shareMode = false }, ref) => {
     const { t } = useTranslation();
     const { getArchitectureDetail, saveArchitecture } = useArchitectureApi();
+    const { updateItem } = useDirectoryApi();
+    const { hasPermission } = useBtnPermissions();
     const { fulltextSearchInstances, fulltextSearchByModel, searchInstances } = useInstanceApi();
     const { getModelList } = useModelApi();
     const { shareLoading, openShare } = useCanvasShareAction('architecture');
@@ -152,6 +168,8 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const [detail, setDetail] = useState<ArchitectureDetailState | null>(null);
     const [highlightId, setHighlightId] = useState<string | undefined>(undefined);
     const [highlightUnbound, setHighlightUnbound] = useState(false);
+    const [showMetrics, setShowMetrics] = useState(true);
+    const [savedRefreshInterval, setSavedRefreshInterval] = useState(0);
     const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
     const sceneApiRef = useRef<IsoflowSceneApi | null>(null);
     const fulltextSearchRef = useRef(fulltextSearchInstances);
@@ -222,6 +240,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             invalidatePendingModelWrite();
 
             setCurrentModel(null);
+            setSavedRefreshInterval(0);
             setDiagramData({
               title: 'Loading...',
               icons: uniqueIcons,
@@ -245,6 +264,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
               };
 
               setDiagramName(data.name || '');
+              setSavedRefreshInterval(normalizeCanvasRefreshInterval(data.refresh_interval));
               setDiagramData({ ...mergedData });
               setCurrentModel({ ...mergedData });
               setFossflowKey((prev) => prev + 1);
@@ -283,6 +303,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         setHasUnsaved(false);
         setIsEditMode(false);
         setLoadedArchitectureId(null);
+        setSavedRefreshInterval(0);
         lastModelUpdateRef.current = '';
       }
     }, [
@@ -307,9 +328,10 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             items: parsed?.items || currentModel?.items || [],
             views: parsed?.views || currentModel?.views || [],
           },
+          refresh_interval: savedRefreshInterval,
         };
       },
-      [currentModel?.items, currentModel?.views, diagramName],
+      [currentModel?.items, currentModel?.views, diagramName, savedRefreshInterval],
     );
     const applyArchitectureDraftPayload = useCallback(
       (payload: CanvasDraftPayload) => {
@@ -319,6 +341,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           views?: DiagramData['views'];
         };
         isUpdatingRef.current = true;
+        restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
         const merged: DiagramData = {
           items: viewSets.items || [],
           views: viewSets.views || [],
@@ -584,13 +607,58 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const viewStatus = useArchitectureNodeStatus({
       enabled: requestMode === 'poll',
       uuids: boundUuids,
-      intervalMs: ARCHITECTURE_STATUS_POLL_MS,
+      intervalMs: 0,
+      refreshOnVisible: false,
     });
     const editStatus = useArchitectureNodeStatus({
       enabled: requestMode === 'once',
       uuids: boundUuids,
       intervalMs: 0,
     });
+    const metricUuids = useMemo(() => collectMetricUuids(diagramViews), [diagramViews]);
+    const selectedBoundUuid = useMemo(() => {
+      if (!isEditMode || shareMode || selection?.type !== 'ITEM') return '';
+      return findSelectionBinding(diagramViews, selection)?.binding?.inst_uuid ?? '';
+    }, [diagramViews, isEditMode, selection, shareMode]);
+    const viewMetrics = useArchitectureDisplayMetrics({
+      enabled: !shareMode && !isEditMode,
+      uuids: metricUuids,
+      intervalMs: 0,
+      refreshOnVisible: false,
+    });
+    const editMetrics = useArchitectureDisplayMetrics({
+      enabled: !shareMode && isEditMode && Boolean(selectedBoundUuid),
+      uuids: selectedBoundUuid ? [selectedBoundUuid] : [],
+      intervalMs: 0,
+    });
+    const refreshArchitectureLive = useCallback(() => {
+      viewStatus.reload();
+      viewMetrics.reload();
+    }, [viewMetrics.reload, viewStatus.reload]);
+    const canPersistRefreshInterval = canPersistCanvasRefreshInterval({
+      shareMode,
+      isBuiltIn: Boolean(selectedArchitecture?.is_build_in),
+      hasEditPermission: hasPermission(['EditChart']),
+    });
+    const { effectiveRefreshInterval, handleFrequencyChange } =
+      useCanvasPeriodicRefresh({
+        canvasId: selectedArchitecture?.data_id,
+        savedInterval: savedRefreshInterval,
+        canPersist: canPersistRefreshInterval,
+        enabled: !shareMode && !isEditMode,
+        patchRefreshInterval: async (interval) => {
+          if (!selectedArchitecture?.data_id) {
+            return;
+          }
+          await updateItem('architecture', selectedArchitecture.data_id, {
+            refresh_interval: interval,
+          });
+        },
+        onPeriodicRefresh: () => {
+          refreshArchitectureLive();
+        },
+        onSavedIntervalChange: setSavedRefreshInterval,
+      });
     const statusByUuid = requestMode === 'poll' ? viewStatus.byUuid : editStatus.byUuid;
     const drawerStatus = drawerBinding?.binding
       ? editStatus.byUuid[drawerBinding.binding.inst_uuid] ?? null
@@ -716,10 +784,17 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
 
     const updateNodeBinding = useCallback(
       (id: string, bkBinding: ArchitectureBinding | undefined) => {
-        sceneApiRef.current?.updateViewItem(id, { bkBinding });
+        sceneApiRef.current?.updateViewItem(id, {
+          bkBinding,
+          bkDisplayMetrics: undefined,
+        });
       },
       [],
     );
+
+    const updateNodeMetrics = useCallback((id: string, bkDisplayMetrics: MetricChoice | undefined) => {
+      sceneApiRef.current?.updateViewItem(id, { bkDisplayMetrics });
+    }, []);
 
     const handleItemSelect = useCallback((item: DiagramItemHit | null) => {
       if (!item || (item.type !== 'ITEM' && item.type !== 'RECTANGLE')) {
@@ -768,6 +843,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           plateTitle?: string;
           plateSubtitle?: string;
           hoverName?: string;
+          hoverNameLabel?: string;
           hoverModel?: string;
         }> = {};
         for (const [id, plate] of Object.entries(plates)) {
@@ -775,13 +851,17 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             plateTitle?: string;
             plateSubtitle?: string;
             hoverName?: string;
+            hoverNameLabel?: string;
             hoverModel?: string;
           } = {};
           if (plate.title) entry.plateTitle = plate.title;
           if (plate.line === 'forbidden') entry.plateSubtitle = t('opsAnalysis.architecture.bindingForbidden');
           else if (plate.line === 'invalid') entry.plateSubtitle = t('opsAnalysis.architecture.plateInvalid');
           else if (plate.subtitle) entry.plateSubtitle = plate.subtitle;
-          if (plate.hoverName) entry.hoverName = plate.hoverName;
+          if (plate.hoverName) {
+            entry.hoverName = plate.hoverName;
+            entry.hoverNameLabel = t('opsAnalysis.architecture.nameLabel');
+          }
           if (plate.hoverModel) entry.hoverModel = plate.hoverModel;
           if (entry.plateTitle || entry.plateSubtitle || entry.hoverName) next[id] = entry;
         }
@@ -801,6 +881,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         plateTitle?: string;
         plateSubtitle?: string;
         hoverName?: string;
+        hoverNameLabel?: string;
         hoverModel?: string;
         hoverModelLabel?: string;
         hoverStatusLabel?: string;
@@ -816,6 +897,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           plateTitle?: string;
           plateSubtitle?: string;
           hoverName?: string;
+          hoverNameLabel?: string;
           hoverModel?: string;
           hoverModelLabel?: string;
           hoverStatusLabel?: string;
@@ -850,7 +932,10 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         if (plate?.title) entry.plateTitle = plate.title;
         if (plate?.subtitle) entry.plateSubtitle = plate.subtitle;
         if (plate) {
-          if (plate.hoverName) entry.hoverName = plate.hoverName;
+          if (plate.hoverName) {
+            entry.hoverName = plate.hoverName;
+            entry.hoverNameLabel = t('opsAnalysis.architecture.nameLabel');
+          }
           if (plate.hoverModel) {
             entry.hoverModel = plate.hoverModel;
             entry.hoverModelLabel = t('opsAnalysis.architecture.modelLabel');
@@ -927,6 +1012,16 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       viewStatus.phase,
     ]);
 
+    const nodeMetrics = useMemo(() => {
+      if (shareMode || isEditMode) return undefined;
+      const cards = buildNodeMetricCards(diagramViews, viewMetrics.byUuid, viewMetrics.objects);
+      const next: Record<string, { lines: { name: string; text: string }[]; pinned: boolean }> = {};
+      for (const [id, card] of Object.entries(cards)) {
+        next[id] = { lines: card.lines, pinned: showMetrics };
+      }
+      return Object.keys(next).length ? next : undefined;
+    }, [diagramViews, isEditMode, shareMode, showMetrics, viewMetrics.byUuid, viewMetrics.objects]);
+
     const bindingStats = useMemo(() => iconBindingStats(diagramViews), [diagramViews]);
 
     const renderItemControlsExtra = useCallback((item: ItemControlsExtraTarget) => {
@@ -955,23 +1050,52 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           : display.blocked
             ? t('opsAnalysis.architecture.bindingUnknown')
             : display.name;
+      const metricItem = binding ? editMetrics.byUuid[binding.inst_uuid] : undefined;
+      const metricColumns = metricItem
+        ? editMetrics.objects[metricItem.monitor_object_id]?.columns ?? []
+        : [];
       return (
-        <NodeBindingStrip
-          bound={Boolean(binding)}
-          loading={bindingStatusLoading(Boolean(binding), status, editStatus.phase)}
-          name={name}
-          model={display.blocked ? '' : display.typeName}
-          dotColor={STATUS_DOT_COLOR[status?.status ?? 'unknown']}
-          onOpen={() => setBindingNodeId(item.id)}
-          onUnbind={() => updateNodeBinding(item.id, undefined)}
-        />
+        <div className="flex w-full min-w-0 flex-col gap-6">
+          <NodeBindingStrip
+            bound={Boolean(binding)}
+            loading={bindingStatusLoading(Boolean(binding), status, editStatus.phase)}
+            name={name}
+            model={display.blocked ? '' : display.typeName}
+            dotColor={STATUS_DOT_COLOR[status?.status ?? 'unknown']}
+            onOpen={() => setBindingNodeId(item.id)}
+            onUnbind={() => updateNodeBinding(item.id, undefined)}
+          />
+          {binding ? (
+            <DisplayMetricsField
+              columns={metricColumns}
+              choice={findNodeMetricChoice(diagramViews, item.id)}
+              loading={editMetrics.phase === 'idle'}
+              failed={editMetrics.phase === 'failed' && !metricItem}
+              onRetry={editMetrics.reload}
+              onChange={(next) => updateNodeMetrics(item.id, next)}
+            />
+          ) : null}
+        </div>
       );
-    }, [diagramViews, editStatus.byUuid, editStatus.phase, modelOptions, t, updateNodeBinding]);
+    }, [
+      diagramViews,
+      editMetrics.byUuid,
+      editMetrics.objects,
+      editMetrics.phase,
+      editMetrics.reload,
+      editStatus.byUuid,
+      editStatus.phase,
+      modelOptions,
+      t,
+      updateNodeBinding,
+      updateNodeMetrics,
+    ]);
 
     const editorLabels = useMemo<IsoflowLabels>(() => ({
       icon: t('opsAnalysis.architecture.editor.icon'),
       replaceIcon: t('opsAnalysis.architecture.editor.replaceIcon'),
       updateIcon: t('opsAnalysis.architecture.editor.updateIcon'),
+      nodeSettings: t('opsAnalysis.architecture.editor.nodeSettings'),
       settings: t('opsAnalysis.architecture.editor.settings'),
       name: t('opsAnalysis.architecture.editor.name'),
       description: t('opsAnalysis.architecture.editor.description'),
@@ -1131,6 +1255,11 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         editExtra={bindCanvasDraftControls(architectureDraft)}
         onFullscreenToggle={handleFullscreenToggle}
         onAddResources={bindingEditable ? openInsert : undefined}
+        showMetrics={showMetrics}
+        onShowMetricsChange={setShowMetrics}
+        onRefresh={shareMode || isEditMode ? undefined : refreshArchitectureLive}
+        onFrequencyChange={shareMode || isEditMode ? undefined : handleFrequencyChange}
+        frequenceValue={effectiveRefreshInterval}
         bindingMeter={isEditMode ? {
           bound: bindingStats.bound,
           total: bindingStats.total,
@@ -1167,10 +1296,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         <div
           className={`relative h-full min-h-0 architecture-canvas ${styles.architectureCanvas}`}
           onContextMenu={(e) => {
-            if (!isEditMode) {
-              e.preventDefault();
-              e.stopPropagation();
-            }
+            if (!isEditMode) e.preventDefault();
           }}
         >
           <Isoflow
@@ -1183,6 +1309,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             onItemClick={requestMode === 'poll' ? handleItemClick : undefined}
             highlightedItemId={requestMode === 'poll' ? highlightId : undefined}
             nodeStatus={nodeStatus}
+            nodeMetrics={nodeMetrics}
             nodeBinding={nodeBinding}
             rectangleStatus={rectangleStatus}
             renderItemControlsExtra={bindingEditable ? renderItemControlsExtra : undefined}

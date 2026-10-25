@@ -30,6 +30,39 @@ assert.deepEqual(parsed.views[0].items[0].bkBinding, {
   inst_uuid: 'uuid-1',
   model_id: 'host'
 });
+
+const withMetrics = produce(modelFixture, (draft) => {
+  draft.views[0].items[0].bkDisplayMetrics = {
+    mode: 'custom',
+    keys: ['os::cpu_usage_total']
+  };
+  const rectangle = draft.views[0].rectangles?.[0] as { bkDisplayMetrics?: unknown } | undefined;
+  if (!rectangle) throw new Error('missing rectangle');
+  rectangle.bkDisplayMetrics = { mode: 'cleared' };
+});
+const parsedMetrics = modelSchema.parse(withMetrics);
+assert.deepEqual(parsedMetrics.views[0].items[0].bkDisplayMetrics, {
+  mode: 'custom',
+  keys: ['os::cpu_usage_total']
+});
+assert.equal(
+  (parsedMetrics.views[0].rectangles?.[0] as { bkDisplayMetrics?: unknown }).bkDisplayMetrics,
+  undefined
+);
+
+const dropped = produce(modelFixture, (draft) => {
+  (draft.views[0].items[0] as { bkDisplayMetrics?: unknown }).bkDisplayMetrics = {
+    mode: 'nope'
+  };
+});
+assert.equal(modelSchema.parse(dropped).views[0].items[0].bkDisplayMetrics, undefined);
+
+const cleared = produce(modelFixture, (draft) => {
+  (draft.views[0].items[0] as { bkDisplayMetrics?: unknown }).bkDisplayMetrics = {
+    mode: 'cleared'
+  };
+});
+assert.equal(modelSchema.parse(cleared).views[0].items[0].bkDisplayMetrics, undefined);
 assert.equal(
   (parsed.views[0].rectangles?.[0] as { bkBinding?: unknown }).bkBinding,
   undefined

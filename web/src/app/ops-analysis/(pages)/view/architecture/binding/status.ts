@@ -3,8 +3,6 @@ import {
   type ArchitectureNodeStatusItem,
 } from './model';
 
-export const ARCHITECTURE_STATUS_POLL_MS = 60_000;
-
 /** Matches ArchitectureNodeStatusService.MAX_INST_UUIDS. One request stays inside that cap. */
 export const ARCHITECTURE_STATUS_BATCH_SIZE = 500;
 

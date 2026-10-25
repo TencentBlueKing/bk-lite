@@ -10,6 +10,7 @@ CANVAS_REFRESH_OBJECT_TYPES = frozenset(
     {
         ObjectType.DASHBOARD,
         ObjectType.TOPOLOGY,
+        ObjectType.ARCHITECTURE,
         ObjectType.SCREEN,
         ObjectType.REPORT,
         ObjectType.NETWORK_TOPOLOGY,

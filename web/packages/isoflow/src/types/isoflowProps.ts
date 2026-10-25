@@ -21,6 +21,21 @@ export const nodeStatusLevels = [
 
 export type NodeStatusLevel = (typeof nodeStatusLevels)[number];
 
+export interface NodeMetricLine {
+  name: string;
+  text: string;
+}
+
+/** View mode. The host already chose the lines and formatted the values. */
+export interface NodeMetrics {
+  lines: NodeMetricLine[];
+  /**
+   * True: the lines stay under the name. False: they appear only while the
+   * name card is hovered, together with the model and alert lines.
+   */
+  pinned?: boolean;
+}
+
 export interface NodeStatus {
   /** Omitted in edit mode, where the plate is a name and not a runtime status. */
   level?: NodeStatusLevel;
@@ -47,6 +62,12 @@ export interface NodeStatus {
    */
   hoverName?: string;
   hoverModel?: string;
+  /**
+   * Caption drawn above the revealed resource name when the plate is expanded,
+   * so the name reads as a field instead of a stray title. Host supplies the
+   * localized word.
+   */
+  hoverNameLabel?: string;
   /** Label drawn before the model name when the plate is expanded. Host supplies the localized word, including its colon. */
   hoverModelLabel?: string;
   /** Label drawn before the status sentence when the plate is expanded. */
@@ -143,6 +164,8 @@ export interface IsoflowProps {
   highlightedItemId?: string;
   /** Keyed by view item id. Icons omitted from the map are drawn unchanged. */
   nodeStatus?: Record<string, NodeStatus>;
+  /** View mode. Keyed by view item id. Drawn under the name in the name card. */
+  nodeMetrics?: Record<string, NodeMetrics>;
   /**
    * Edit mode. Keyed by view item id. An unbound diamond is drawn only for ids
    * present in the map, and only while the host asks for that highlight.

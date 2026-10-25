@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { id, constrainedStrings, coords } from './common';
 import { bkBindingSchema } from './bkBinding';
+import { bkDisplayMetricsSchema } from './bkDisplayMetrics';
 import { rectangleSchema } from './rectangle';
 import { connectorSchema } from './connector';
 import { textBoxSchema } from './textBox';
@@ -9,7 +10,8 @@ export const viewItemSchema = z.object({
   id,
   tile: coords,
   labelHeight: z.number().optional(),
-  bkBinding: bkBindingSchema.optional()
+  bkBinding: bkBindingSchema.optional(),
+  bkDisplayMetrics: bkDisplayMetricsSchema.optional()
 });
 
 export const viewSchema = z.object({

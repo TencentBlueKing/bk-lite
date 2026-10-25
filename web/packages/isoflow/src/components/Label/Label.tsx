@@ -117,7 +117,7 @@ export const Label = ({
                 position: 'absolute',
                 top: 0,
                 right: 0,
-                transform: 'translate(50%, -50%)'
+                transform: 'translate(calc(50% - 1px), calc(-50% + 1px))'
               }}
             >
               {cornerBadge}

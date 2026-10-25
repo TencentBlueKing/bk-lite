@@ -15,21 +15,17 @@ export interface MonitorDetailLinkInput {
   plugins?: Array<{ collect_type?: string; name?: string }>;
 }
 
-export function buildCmdbDetailHref(input: {
-  modelId: string;
-  instUuid: string;
-  instName: string;
-}): string {
-  const params = new URLSearchParams({
-    model_id: input.modelId,
-    inst_uuid: input.instUuid,
-    inst_name: input.instName,
-  });
-  return `/cmdb/assetData/detail/baseInfo?${params.toString()}`;
-}
-
-export function buildAlarmHref(monitorId: string): string {
-  return `/alarm/alarms?${new URLSearchParams({ resource_id: monitorId }).toString()}`;
+/**
+ * Monitor-caliber alert list, the same source as the node badge count.
+ * monitorId is the MonitorInstance id, which MonitorAlert.monitor_instance_id
+ * stores verbatim, so the page's instanceId filter matches exactly. objId is
+ * optional: without it the page falls back to the "all" object node.
+ */
+export function buildAlarmHref(monitorId: string, monitorObjectId?: string): string {
+  const params = new URLSearchParams({ instanceId: monitorId });
+  const objId = monitorObjectId?.trim() || '';
+  if (objId) params.set('objId', objId);
+  return `/monitor/event/alert?${params.toString()}`;
 }
 
 export function buildMonitorDetailHref(input: MonitorDetailLinkInput): string {
@@ -89,13 +85,18 @@ export interface MonitorLinkContext {
   linkPlugins?: Array<{ collect_type?: string; name?: string }>;
 }
 
+/** Monitor object id carried by the resolved context; empty while unresolved or malformed. */
+export function monitorObjectIdFromContext(context: MonitorLinkContext | null): string {
+  const rawObject = context?.monitorObject;
+  return typeof rawObject === 'string' || typeof rawObject === 'number' || typeof rawObject === 'bigint'
+    ? String(rawObject).trim()
+    : '';
+}
+
 /** Empty when the monitor instance was not resolved, so the tab hides the button. */
 export function buildMonitorHrefFromContext(context: MonitorLinkContext | null): string {
   const instanceId = context?.form?.instance_id?.trim() || '';
-  const rawObject = context?.monitorObject;
-  const monitorObjectId = typeof rawObject === 'string' || typeof rawObject === 'number' || typeof rawObject === 'bigint'
-    ? String(rawObject).trim()
-    : '';
+  const monitorObjectId = monitorObjectIdFromContext(context);
   if (!context || !instanceId || !monitorObjectId) return '';
   const object = context.objects?.[0];
   const values = context.form?.instance_id_values?.filter((value) => value.trim()) ?? [];
