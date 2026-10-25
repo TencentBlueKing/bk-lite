@@ -50,6 +50,9 @@ VM_DEFAULT = [
     "tools_status",
     "disk_io_read_latency",
     "disk_io_write_latency",
+    "snapshot_storage_bytes",
+    "oldest_snapshot_age_seconds",
+    "snapshot_count",
 ]
 
 

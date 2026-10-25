@@ -25,6 +25,7 @@ monitor_object_metric_group:
     Disk: 磁盘
     Network: 网络
     Power: 电源
+    Snapshot: 快照
 monitor_object_metric:
   vCenter:
     vmware_esxi_count:
@@ -126,3 +127,12 @@ monitor_object_metric:
     tools_status_gauge:
       name: Tools 状态
       desc: 虚拟机 VMware Tools 状态码。0 正常，1 过时，2 未安装，3 未运行。
+    snapshot_storage_bytes_gauge:
+      name: 快照占用空间
+      desc: 快照增量盘、数据文件和内存文件去重后的字节数。无快照时为 0。
+    oldest_snapshot_age_seconds_gauge:
+      name: 最老快照年龄
+      desc: 现在减去最老快照创建时间的秒数。无有效创建时间时为 0。
+    snapshot_count_gauge:
+      name: 快照数量
+      desc: 虚拟机快照树中的快照张数。无快照时为 0。

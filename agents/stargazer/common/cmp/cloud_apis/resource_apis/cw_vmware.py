@@ -779,6 +779,9 @@ class Vmware(PrivateCloudManage):
                     # 添加新的虚拟机相关指标
                     "disk_io_read_latency",
                     "disk_io_write_latency",
+                    "snapshot_storage_bytes",
+                    "oldest_snapshot_age_seconds",
+                    "snapshot_count",
                 ],
             )
 
@@ -808,6 +811,9 @@ class Vmware(PrivateCloudManage):
             ("vm", "power_state"): True,
             ("vm", "tools_status"): True,
             ("vm", "disk_used_average"): True,
+            ("vm", "snapshot_storage_bytes"): True,
+            ("vm", "oldest_snapshot_age_seconds"): True,
+            ("vm", "snapshot_count"): True,
             ("datastore", "store_accessible"): True,
             ("datastore", "disk_used_average"): True,
             ("datastore", "disk_free_average"): True,
@@ -840,6 +846,10 @@ class Vmware(PrivateCloudManage):
                 self._process_power_state(obj_list, data, res)
             elif metric == "tools_status":
                 self._process_tools_status(obj_list, data, res)
+            elif metric in ("snapshot_storage_bytes", "oldest_snapshot_age_seconds", "snapshot_count") and obj_type == "vm":
+                if not data.get("_vm_snapshots_done"):
+                    self._process_vm_snapshots(obj_list, data, res)
+                    data["_vm_snapshots_done"] = True
             elif metric == "disk_used_average":
                 if obj_type == "vm":
                     self._process_vm_disk_used_average(filter_obj_list, data, res)
@@ -1015,6 +1025,105 @@ class Vmware(PrivateCloudManage):
                 res.setdefault(obj._moId, {}).setdefault("tools_status", []).append([timestamp, code])
             except Exception:
                 logger.exception("process tools_status failed for %s", getattr(obj, "_moId", ""))
+
+    @staticmethod
+    def _snapshot_file_keys(snap_layout):
+        keys = set()
+        for attr in ("dataKey", "memoryKey"):
+            try:
+                key = int(getattr(snap_layout, attr, -1))
+            except Exception:
+                continue
+            if key >= 0:
+                keys.add(key)
+        for disk in getattr(snap_layout, "disk", None) or []:
+            for chain in getattr(disk, "chain", None) or []:
+                for file_key in getattr(chain, "fileKey", None) or []:
+                    try:
+                        key = int(file_key)
+                    except Exception:
+                        continue
+                    if key >= 0:
+                        keys.add(key)
+        return keys
+
+    @classmethod
+    def _walk_snapshot_tree(cls, nodes):
+        for node in nodes or []:
+            yield node
+            yield from cls._walk_snapshot_tree(getattr(node, "childSnapshotList", None))
+
+    @classmethod
+    def _snapshot_count_and_oldest(cls, snapshot_info):
+        if snapshot_info is None:
+            return 0, None
+        roots = getattr(snapshot_info, "rootSnapshotList", None)
+        if not roots:
+            return 0, None
+        count = 0
+        oldest = None
+        for node in cls._walk_snapshot_tree(roots):
+            count += 1
+            create_time = getattr(node, "createTime", None)
+            if not create_time:
+                continue
+            if oldest is None or create_time < oldest:
+                oldest = create_time
+        return count, oldest
+
+    @staticmethod
+    def _snapshot_storage_bytes(layout):
+        if not layout:
+            return 0
+        size_by_key = {}
+        for item in getattr(layout, "file", None) or []:
+            try:
+                size_by_key[int(item.key)] = int(item.size or 0)
+            except Exception:
+                continue
+        keys = set()
+        for snap in getattr(layout, "snapshot", None) or []:
+            keys |= Vmware._snapshot_file_keys(snap)
+        return sum(size_by_key.get(key, 0) for key in keys)
+
+    @staticmethod
+    def _snapshot_age_seconds(now, create_time):
+        if create_time.tzinfo is None and now.tzinfo is not None:
+            create_time = create_time.replace(tzinfo=datetime.timezone.utc)
+        elif create_time.tzinfo is not None and now.tzinfo is None:
+            now = now.replace(tzinfo=datetime.timezone.utc)
+        return max(0, int((now - create_time).total_seconds()))
+
+    @classmethod
+    def _compute_vm_snapshot_metrics(cls, vm, now):
+        try:
+            vm.RefreshStorageInfo()
+        except Exception:
+            logger.exception("RefreshStorageInfo failed for %s", getattr(vm, "_moId", ""))
+        snapshot_info = getattr(vm, "snapshot", None)
+        count, oldest = cls._snapshot_count_and_oldest(snapshot_info)
+        if count == 0:
+            return 0, 0, 0
+        storage = cls._snapshot_storage_bytes(getattr(vm, "layoutEx", None))
+        age = 0 if oldest is None else cls._snapshot_age_seconds(now, oldest)
+        return int(storage), int(age), int(count)
+
+    def _process_vm_snapshots(self, obj_list, data, res, metric=None):
+        """Snapshot size/age/count. No names or createTime in labels. Per-VM errors skip only snapshots."""
+        timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
+        try:
+            now = datetime.datetime.strptime(data["EndTime"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
+        except Exception:
+            now = datetime.datetime.now(datetime.timezone.utc)
+        for obj in obj_list:
+            try:
+                storage, age, count = self._compute_vm_snapshot_metrics(obj, now)
+                bucket = res.setdefault(obj._moId, {})
+                bucket.setdefault("snapshot_storage_bytes", []).append([timestamp, storage])
+                bucket.setdefault("oldest_snapshot_age_seconds", []).append([timestamp, age])
+                bucket.setdefault("snapshot_count", []).append([timestamp, count])
+            except Exception:
+                logger.exception("process vm snapshots failed for %s", getattr(obj, "_moId", ""))
 
     def _process_store_accessible(self, filter_obj_list, data, res, metric=None):
         """处理存储可访问性指标"""

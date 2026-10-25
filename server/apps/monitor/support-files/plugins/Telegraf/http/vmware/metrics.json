@@ -410,6 +410,39 @@
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
           "description": "VMware Tools status from guest.toolsStatus: 0 toolsOk, 1 toolsOld, 2 toolsNotInstalled, 3 toolsNotRunning. Unknown or empty values are not published."
+        },
+        {
+          "metric_group": "Snapshot",
+          "name": "snapshot_storage_bytes_gauge",
+          "query": "snapshot_storage_bytes_gauge{resource_type=\"vmware_vm\", __$labels__}",
+          "display_name": "Snapshot storage",
+          "data_type": "Number",
+          "unit": "bytes",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Sum of unique snapshot delta, data, and memory files. Base disks, config, and swap are excluded. Zero when the VM has no snapshots."
+        },
+        {
+          "metric_group": "Snapshot",
+          "name": "oldest_snapshot_age_seconds_gauge",
+          "query": "oldest_snapshot_age_seconds_gauge{resource_type=\"vmware_vm\", __$labels__}",
+          "display_name": "Oldest snapshot age",
+          "data_type": "Number",
+          "unit": "s",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Seconds since the oldest snapshot createTime. Zero when there is no snapshot or no valid createTime."
+        },
+        {
+          "metric_group": "Snapshot",
+          "name": "snapshot_count_gauge",
+          "query": "snapshot_count_gauge{resource_type=\"vmware_vm\", __$labels__}",
+          "display_name": "Snapshot count",
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Number of snapshots in the VM snapshot tree. Zero when there is no snapshot tree."
         }
       ]
     }

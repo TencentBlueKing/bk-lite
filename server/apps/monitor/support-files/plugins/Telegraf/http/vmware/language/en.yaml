@@ -26,6 +26,7 @@ monitor_object_metric_group:
     Disk: Disk
     Network: Network
     Power: Power
+    Snapshot: Snapshot
 monitor_object_metric:
   vCenter:
     vmware_esxi_count:
@@ -127,3 +128,12 @@ monitor_object_metric:
     tools_status_gauge:
       name: Tools status
       desc: VMware Tools status code. 0 toolsOk, 1 toolsOld, 2 toolsNotInstalled, 3 toolsNotRunning.
+    snapshot_storage_bytes_gauge:
+      name: Snapshot storage
+      desc: Deduplicated bytes of snapshot delta, data, and memory files. Zero when there is no snapshot.
+    oldest_snapshot_age_seconds_gauge:
+      name: Oldest snapshot age
+      desc: Seconds since the oldest snapshot was created. Zero when there is no valid createTime.
+    snapshot_count_gauge:
+      name: Snapshot count
+      desc: Number of snapshots in the VM snapshot tree. Zero when there is no snapshot.

@@ -32,6 +32,51 @@
         }
       ],
       "group_algorithm": "max"
+    },
+    {
+      "name": "虚拟机快照占用过大",
+      "alert_name": "虚拟机${instance_id}快照占用过大",
+      "description": "快照增量盘 + 数据文件 + 内存文件去重后的字节数。默认大于 2GB 告警。",
+      "metric_name": "snapshot_storage_bytes",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2147483648,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "虚拟机快照过旧",
+      "alert_name": "虚拟机${instance_id}快照过旧",
+      "description": "现在减去最老快照 createTime 的秒数。默认大于 30 天告警。",
+      "metric_name": "oldest_snapshot_age_seconds",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2592000,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "虚拟机快照数量过多",
+      "alert_name": "虚拟机${instance_id}快照数量过多",
+      "description": "快照树张数。默认大于 2 张告警。",
+      "metric_name": "snapshot_count",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }
