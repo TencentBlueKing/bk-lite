@@ -346,6 +346,8 @@ async def windows_wmi_metrics(request):
         "disk_exclude_fstypes",
         "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32,cdfs",
     )
+    service_scope = request.headers.get("service_scope", "none")
+    service_names = request.headers.get("service_names", "")
     timeout = _header_timeout(request, 60)
 
     task_params = {
@@ -357,6 +359,8 @@ async def windows_wmi_metrics(request):
         "metrics_modules": metrics_modules,
         "disk_include_fstypes": disk_include_fstypes,
         "disk_exclude_fstypes": disk_exclude_fstypes,
+        "service_scope": service_scope,
+        "service_names": service_names,
         "timeout": timeout,
         "tags": _standard_tags(
             request,
@@ -399,6 +403,8 @@ async def host_metrics(request):
         "disk_exclude_fstypes",
         "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32,cdfs",
     )
+    service_scope = request.headers.get("service_scope", "none")
+    service_names = request.headers.get("service_names", "")
     ansible_node_id = request.headers.get("ansible_node_id", "")
     winrm_scheme = request.headers.get("winrm_scheme", "https")
     winrm_transport = request.headers.get("winrm_transport", "ntlm")
@@ -448,6 +454,8 @@ async def host_metrics(request):
             "metrics_modules": metrics_modules,
             "disk_include_fstypes": disk_include_fstypes,
             "disk_exclude_fstypes": disk_exclude_fstypes,
+            "service_scope": service_scope,
+            "service_names": service_names,
             "ansible_node_id": ansible_node_id,
             "auth_type": auth_type,
             "private_key_content": private_key_content,

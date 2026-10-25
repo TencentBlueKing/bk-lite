@@ -1125,6 +1125,28 @@
           "linux"
         ]
       }
+    },
+    {
+      "metric_group": "Service",
+      "name": "windows_service_state",
+      "query": "windows_service_state_gauge{instance_type=\"os\", __$labels__}",
+      "display_name": "Windows Service State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"停止\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"运行\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [
+        {
+          "name": "service"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Windows service running state from Win32_Service over WinRM. Running is 1; stopped, pending, paused, or missing is 0.",
+      "view_config": {
+        "os": [
+          "windows"
+        ]
+      }
     }
   ]
 }

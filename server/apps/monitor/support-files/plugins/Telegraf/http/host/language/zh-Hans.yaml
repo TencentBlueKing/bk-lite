@@ -88,6 +88,9 @@ monitor_object_metric:
     processes_running:
       name: 运行中进程数
       desc: 表示当前处于运行状态的进程数量，用于反映系统的并发执行情况。
+    windows_service_state:
+      name: Windows服务状态
+      desc: 表示 Windows 服务是否处于运行状态。Running 为运行，停止、启动中、暂停或找不到服务均为停止。仅 Windows 主机有效。
     processes_blocked:
       name: 阻塞进程数
       desc: 表示因 I/O 或资源竞争而处于阻塞状态的进程数量，用于辅助判断系统资源瓶颈。
@@ -180,6 +183,7 @@ monitor_object_metric_group:
     Disk: 磁盘
     Process: 进程
     Processes: 进程
+    Service: 服务
     Memory: 内存
     Net: 网络
     Network: 网络
