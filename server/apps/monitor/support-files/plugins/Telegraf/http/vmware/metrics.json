@@ -377,6 +377,17 @@
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
           "description": "It indicates the current power status of a virtual machine (VM). This metric helps administrators monitor whether a VM is powered on or off.This metric is essential for tracking VM availability, optimizing resource allocation, and automating workflows in VMware environments"
+        },
+        {
+          "metric_group": "Tools",
+          "name": "tools_status_gauge",
+          "query": "tools_status_gauge{resource_type=\"vmware_vm\", __$labels__}",
+          "display_name": "Tools status",
+          "data_type": "Enum",
+          "unit": "[{\"name\":\"toolsOk\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"toolsOld\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"toolsNotInstalled\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"toolsNotRunning\",\"id\":3,\"color\":\"#ff4d4f\"}]",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "VMware Tools status from guest.toolsStatus: 0 toolsOk, 1 toolsOld, 2 toolsNotInstalled, 3 toolsNotRunning. Unknown or empty values are not published."
         }
       ]
     }

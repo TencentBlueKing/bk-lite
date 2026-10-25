@@ -116,3 +116,6 @@ monitor_object_metric:
     power_state_gauge:
       name: 电源状态
       desc: 虚拟机当前的电源状态。
+    tools_status_gauge:
+      name: Tools 状态
+      desc: 虚拟机 VMware Tools 状态码。0 正常，1 过时，2 未安装，3 未运行。

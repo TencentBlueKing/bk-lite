@@ -773,6 +773,7 @@ class Vmware(PrivateCloudManage):
                     "disk_numberWrite_summation",
                     "disk_io_usage",
                     "power_state",
+                    "tools_status",
                     # 添加新的虚拟机相关指标
                     "disk_io_read_latency",
                     "disk_io_write_latency",
@@ -803,6 +804,7 @@ class Vmware(PrivateCloudManage):
 
         special_metric_conditions = {
             ("vm", "power_state"): True,
+            ("vm", "tools_status"): True,
             ("vm", "disk_used_average"): True,
             ("datastore", "store_accessible"): True,
             ("datastore", "disk_used_average"): True,
@@ -832,6 +834,8 @@ class Vmware(PrivateCloudManage):
         for metric in special_metrics:
             if metric == "power_state":
                 self._process_power_state(obj_list, data, res)
+            elif metric == "tools_status":
+                self._process_tools_status(obj_list, data, res)
             elif metric == "disk_used_average":
                 if obj_type == "vm":
                     self._process_vm_disk_used_average(filter_obj_list, data, res)
@@ -974,6 +978,35 @@ class Vmware(PrivateCloudManage):
 
         for obj in obj_list:
             res.setdefault(obj._moId, {}).setdefault("power_state", []).append([timestamp, int(obj.summary.runtime.powerState == "poweredOn")])
+
+    @staticmethod
+    def _tools_status_code(value):
+        if value is None:
+            return None
+        name = getattr(value, "name", None)
+        if not name:
+            text = str(value).strip()
+            name = text.rsplit(".", 1)[-1] if text else ""
+        if not name:
+            return None
+        return {
+            "toolsOk": 0,
+            "toolsOld": 1,
+            "toolsNotInstalled": 2,
+            "toolsNotRunning": 3,
+        }.get(name)
+
+    def _process_tools_status(self, obj_list, data, res, metric=None):
+        """虚拟机 Tools 状态码，读 guest.toolsStatus。未知或空不出序列。"""
+        timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
+        for obj in obj_list:
+            try:
+                code = self._tools_status_code(obj.guest.toolsStatus)
+                if code is None:
+                    continue
+                res.setdefault(obj._moId, {}).setdefault("tools_status", []).append([timestamp, code])
+            except Exception:
+                logger.exception("process tools_status failed for %s", getattr(obj, "_moId", ""))
 
     def _process_store_accessible(self, filter_obj_list, data, res, metric=None):
         """处理存储可访问性指标"""

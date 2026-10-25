@@ -1,0 +1,21 @@
+{
+  "object": "VM",
+  "plugin": "VMWare",
+  "templates": [
+    {
+      "name": "虚拟机 Tools 状态异常",
+      "alert_name": "虚拟机${instance_id} VMware Tools 状态异常",
+      "description": "采集 guest.toolsStatus：0 toolsOk，1 toolsOld，2 toolsNotInstalled，3 toolsNotRunning。默认对 >= 1 告警。只告警过时时把比较符改成等于 1。",
+      "metric_name": "tools_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

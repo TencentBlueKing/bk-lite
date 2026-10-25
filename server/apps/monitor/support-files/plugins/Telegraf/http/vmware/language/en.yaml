@@ -117,3 +117,6 @@ monitor_object_metric:
     power_state_gauge:
       name: Power State
       desc: Current power state of the virtual machine.
+    tools_status_gauge:
+      name: Tools status
+      desc: VMware Tools status code. 0 toolsOk, 1 toolsOld, 2 toolsNotInstalled, 3 toolsNotRunning.

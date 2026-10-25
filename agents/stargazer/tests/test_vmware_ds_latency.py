@@ -45,6 +45,7 @@ VM_DEFAULT = [
     "disk_numberWrite_summation",
     "disk_io_usage",
     "power_state",
+    "tools_status",
     "disk_io_read_latency",
     "disk_io_write_latency",
 ]
