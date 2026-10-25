@@ -1404,6 +1404,7 @@ ATTR:
     vcpus: vCPU数
     memory: 内存容量(MB)
     esxi_version: ESXi版本
+    boot_time: 启动时间
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务

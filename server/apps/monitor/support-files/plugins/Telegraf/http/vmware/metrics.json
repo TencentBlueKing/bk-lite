@@ -164,6 +164,28 @@
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
           "description": "The network transmit rate represents the amount of data sent out per second and is an important criterion for measuring network traffic"
+        },
+        {
+          "metric_group": "System",
+          "name": "boot_time_gauge",
+          "query": "boot_time_gauge{resource_type=\"vmware_esxi\", __$labels__}",
+          "display_name": "Boot time",
+          "data_type": "Number",
+          "unit": "s",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "HostSystem.runtime.bootTime as Unix seconds. The value jumps only after a reboot."
+        },
+        {
+          "metric_group": "System",
+          "name": "uptime_seconds_gauge",
+          "query": "uptime_seconds_gauge{resource_type=\"vmware_esxi\", __$labels__}",
+          "display_name": "Uptime",
+          "data_type": "Number",
+          "unit": "s",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "HostSystem.summary.quickStats.uptime in seconds. Not converted to days. Monitor only; not a CMDB label."
         }
       ]
     },

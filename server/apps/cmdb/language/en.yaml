@@ -1404,6 +1404,7 @@ ATTR:
     vcpus: vCPU
     memory: Memory
     esxi_version: Version
+    boot_time: Boot Time
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task

@@ -16,6 +16,22 @@
         }
       ],
       "group_algorithm": "max"
+    },
+    {
+      "name": "ESXi 宿主机重启",
+      "object": "ESXI",
+      "alert_name": "ESXi宿主机${instance_id}发生重启",
+      "description": "boot_time 为 Unix 秒。值只有重启才跳。changes(...) >= 1 表示比上次采样更新。第一周期没有前值，不会告警。不要对 uptime_seconds 配 changes。",
+      "metric_name": "boot_time",
+      "algorithm": "changes",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

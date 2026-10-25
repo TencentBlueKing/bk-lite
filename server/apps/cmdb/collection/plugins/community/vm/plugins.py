@@ -1,9 +1,7 @@
 from apps.cmdb.collection.collect_plugin.vmware import CollectVmwareMetrics
 from apps.cmdb.collection.constants import VMWARE_CLUSTER
-from apps.cmdb.collection.plugins.base import AutoRegisterCollectionPluginMixin
-from apps.cmdb.collection.plugins.base import bind_collection_mapping
+from apps.cmdb.collection.plugins.base import AutoRegisterCollectionPluginMixin, bind_collection_mapping
 from apps.cmdb.constants.constants import CollectPluginTypes
-
 
 VMWARE_MODEL_FIELD_MAPPING = {
     "vmware_vc": {
@@ -40,6 +38,7 @@ VMWARE_MODEL_FIELD_MAPPING = {
         "vcpus": (int, "vcpus"),
         "memory": (int, "memory"),
         "esxi_version": "esxi_version",
+        "boot_time": "boot_time",
         "assos": CollectVmwareMetrics.get_esxi_asso,
     },
     "vmware_ds": {
@@ -65,7 +64,4 @@ class VmwareVCCollectionPlugin(AutoRegisterCollectionPluginMixin, CollectVmwareM
 
     @property
     def model_field_mapping(self):
-        return {
-            model_id: bind_collection_mapping(self, mapping)
-            for model_id, mapping in VMWARE_MODEL_FIELD_MAPPING.items()
-        }
+        return {model_id: bind_collection_mapping(self, mapping) for model_id, mapping in VMWARE_MODEL_FIELD_MAPPING.items()}

@@ -16,6 +16,7 @@ monitor_object_metric_group:
     Memory: 内存
     Disk: 磁盘
     Network: 网络
+    System: 系统
   DataStorage:
     DataStorage: 数据存储
   VM:
@@ -63,6 +64,12 @@ monitor_object_metric:
     net_bytesTx_average_gauge:
       name: 网络发送吞吐量
       desc: 每秒发送的网络数据量。
+    boot_time_gauge:
+      name: 启动时间
+      desc: ESXi 主机启动时间（Unix 秒）。仅在重启后变化。
+    uptime_seconds_gauge:
+      name: 运行时长
+      desc: ESXi 主机自启动以来的秒数。不换算成天。
   DataStorage:
     disk_used_average_gauge:
       name: 磁盘使用率

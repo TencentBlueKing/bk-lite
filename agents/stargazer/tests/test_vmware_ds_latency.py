@@ -29,6 +29,8 @@ ESXI_DEFAULT = [
     "datastore_throughput_read",
     "datastore_throughput_write",
     "net_usage_average",
+    "boot_time",
+    "uptime_seconds",
 ]
 
 VM_DEFAULT = [

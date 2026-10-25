@@ -17,6 +17,7 @@ monitor_object_metric_group:
     Memory: Memory
     Disk: Disk
     Network: Network
+    System: System
   DataStorage:
     DataStorage: Datastore
   VM:
@@ -64,6 +65,12 @@ monitor_object_metric:
     net_bytesTx_average_gauge:
       name: Network Transmit Throughput
       desc: Amount of network data sent per second.
+    boot_time_gauge:
+      name: Boot time
+      desc: ESXi host boot time as Unix seconds. Changes only after a reboot.
+    uptime_seconds_gauge:
+      name: Uptime
+      desc: Seconds since the ESXi host booted. Not converted to days.
   DataStorage:
     disk_used_average_gauge:
       name: Disk Usage

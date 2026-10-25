@@ -725,6 +725,8 @@ class Vmware(PrivateCloudManage):
                     "datastore_throughput_read",
                     "datastore_throughput_write",
                     "net_usage_average",
+                    "boot_time",
+                    "uptime_seconds",
                 ],
             )
         elif resources[0]["bk_obj_id"] == "vmware_vc":
@@ -810,6 +812,8 @@ class Vmware(PrivateCloudManage):
             ("datastore", "disk_used_average"): True,
             ("datastore", "disk_free_average"): True,
             ("esxi", "cpu_usage_average"): True,
+            ("esxi", "boot_time"): True,
+            ("esxi", "uptime_seconds"): True,
             # 添加 vCenter 特殊指标
             ("vc", "disk_usage_percent"): True,
             ("vc", "disk_free_space"): True,
@@ -847,6 +851,10 @@ class Vmware(PrivateCloudManage):
                 self._process_store_accessible(filter_obj_list, data, res)
             elif metric == "cpu_usage_average" and obj_type == "esxi":
                 self._process_esxi_cpu_usage(data, res)
+            elif metric == "boot_time" and obj_type == "esxi":
+                self._process_esxi_boot_time(obj_list, data, res)
+            elif metric == "uptime_seconds" and obj_type == "esxi":
+                self._process_esxi_uptime(obj_list, data, res)
             elif obj_type == "vc":
                 if metric in ["disk_usage_percent", "disk_free_space"]:
                     self._process_vc_disk_metrics(filter_obj_list, metric, data, res)
@@ -1189,6 +1197,31 @@ class Vmware(PrivateCloudManage):
         for _obj, metric_value in metric_data.items():
             value, timestamp = metric_value
             res.setdefault(_obj, {}).setdefault("cpu_usage_average", []).append([timestamp * 1000, value])
+
+    def _process_esxi_boot_time(self, obj_list, data, res, metric=None):
+        """HostSystem.runtime.bootTime as Unix seconds. Jumps only after reboot."""
+        timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
+        for obj in obj_list:
+            try:
+                boot = obj.runtime.bootTime
+                if not boot:
+                    continue
+                unix_s = self._convert_vmware_datetime_to_timestamp(boot)
+                res.setdefault(obj._moId, {}).setdefault("boot_time", []).append([timestamp, unix_s])
+            except Exception:
+                logger.exception("process boot_time failed for %s", getattr(obj, "_moId", ""))
+
+    def _process_esxi_uptime(self, obj_list, data, res, metric=None):
+        """HostSystem.summary.quickStats.uptime in seconds. Do not convert to days."""
+        timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
+        for obj in obj_list:
+            try:
+                uptime = obj.summary.quickStats.uptime
+                if uptime is None:
+                    continue
+                res.setdefault(obj._moId, {}).setdefault("uptime_seconds", []).append([timestamp, int(uptime)])
+            except Exception:
+                logger.exception("process uptime_seconds failed for %s", getattr(obj, "_moId", ""))
 
     def _process_disk_used_average(self, filter_obj_list, data, res, metric=None):
         """处理磁盘使用率指标 - 保留向后兼容性"""
