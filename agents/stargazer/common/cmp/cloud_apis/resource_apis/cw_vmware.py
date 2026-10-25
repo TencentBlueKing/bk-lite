@@ -686,9 +686,9 @@ class Vmware(PrivateCloudManage):
             # 处理特殊指标
             self._process_special_metrics(special_metrics, obj_type, obj_list, filter_obj_list, data, res)
 
-            # 数据存储性能计数器没有 20s 实时间隔，沿用容量查询的 300s。
+            # 数据存储只有历史性能：300s 间隔，窗口至少覆盖一个 rollup。
             if obj_type == "datastore":
-                data["interval"] = 300
+                self._prepare_datastore_perf_query(data)
 
             # 批量处理其他监控数据
             self._process_batch_monitoring_data(batch_counters, filter_obj_list, data, metrics, content, res)
@@ -1019,6 +1019,14 @@ class Vmware(PrivateCloudManage):
             res.setdefault(vm_name, {}).setdefault(metric, []).append([timestamp * 1000, _value])
         else:
             res.setdefault(vm_name, {}).setdefault(metric, {}).setdefault(dims, []).append([timestamp * 1000, _value])
+
+    def _prepare_datastore_perf_query(self, data):
+        """Datastore 无 realtime，QueryPerf 必须用历史 300s，且窗口覆盖至少一个采样。"""
+        data["interval"] = 300
+        end_dt = datetime.datetime.now()
+        data["EndTime"] = end_dt.strftime("%Y-%m-%d %H:%M:%S")
+        data["StartTime"] = (end_dt - datetime.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        return data
 
     def _process_batch_monitoring_data(self, batch_counters, filter_obj_list, data, metrics, content, res):
         """处理批量监控数据"""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -118,6 +119,19 @@ def test_datastore_latency_not_divided_by_100():
     res = {}
     driver._add_metric_value("datastore-1", "datastore_io_write_latency", value_info, 0, 1_700_000_000, entity, res)
     assert res["datastore-1"]["datastore_io_write_latency"][0][1] == 250.0
+
+
+def test_datastore_perf_query_uses_hour_window():
+    driver = _driver()
+    data = {
+        "StartTime": "2026-10-25 11:55:00",
+        "EndTime": "2026-10-25 12:00:00",
+    }
+    driver._prepare_datastore_perf_query(data)
+    assert data["interval"] == 300
+    start = datetime.datetime.strptime(data["StartTime"], "%Y-%m-%d %H:%M:%S")
+    end = datetime.datetime.strptime(data["EndTime"], "%Y-%m-%d %H:%M:%S")
+    assert (end - start).total_seconds() >= 3600
 
 
 def test_datastore_batch_forwards_300s_interval():
