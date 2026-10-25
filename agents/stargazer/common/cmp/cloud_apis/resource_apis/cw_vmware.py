@@ -5,17 +5,15 @@ import ssl
 import time
 from ssl import SSLEOFError
 
-from pyVim import connect
-from pyVim.connect import SmartConnect
-from pyVmomi import vim
-
 from common.cmp.cloud_apis.base import PrivateCloudManage
 from common.cmp.cloud_apis.cloud_object.base import Region, Zone
 from common.cmp.cloud_apis.constant import CloudType
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.utils import convert_param_to_list
 from core.logger import logger
-
+from pyVim import connect
+from pyVim.connect import SmartConnect
+from pyVmomi import vim
 
 
 class CwVmware(object):
@@ -97,8 +95,6 @@ class Vmware(PrivateCloudManage):
         """
         try:
             import pytz
-            import os
-            from datetime import timezone, timedelta
 
             # 将时间字符串解析为naive datetime对象
             dt = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
@@ -129,22 +125,24 @@ class Vmware(PrivateCloudManage):
         获取服务器时区信息
         :return: 时区对象或时区字符串
         """
-        import pytz
         import os
-        from datetime import timezone, timedelta
+        from datetime import timedelta, timezone
+
+        import pytz
 
         try:
             # 方法1: 从环境变量获取时区
-            tz_env = os.environ.get('TZ')
+            tz_env = os.environ.get("TZ")
             if tz_env:
                 try:
                     return pytz.timezone(tz_env)
-                except:
+                except Exception:
                     pass
 
             # 方法2: 从系统获取时区信息
             try:
                 import time
+
                 # 获取系统时区偏移量（秒）
                 if time.daylight:
                     # 如果有夏令时，使用夏令时偏移
@@ -160,16 +158,16 @@ class Vmware(PrivateCloudManage):
                 # 创建固定偏移的时区对象
                 server_tz = timezone(timedelta(hours=offset_hours, minutes=offset_minutes))
                 return server_tz
-            except:
+            except Exception:
                 pass
 
             # 方法3: 尝试从/etc/timezone读取（Linux系统）
             try:
-                if os.path.exists('/etc/timezone'):
-                    with open('/etc/timezone', 'r') as f:
+                if os.path.exists("/etc/timezone"):
+                    with open("/etc/timezone", "r") as f:
                         tz_name = f.read().strip()
                         return pytz.timezone(tz_name)
-            except:
+            except Exception:
                 pass
 
             # 方法4: 默认使用UTC
@@ -262,19 +260,13 @@ class Vmware(PrivateCloudManage):
             region = kwargs["region"]
             dc_obj = self._get_obj_bymoId(self.content, [vim.Datacenter], region)
             container = self.content.viewManager.CreateContainerView(dc_obj.hostFolder, [vim.ComputeResource], True)
-            data = [
-                self._format_resource_result("zone", {"obj": i, "region_id": region, "region_name": dc_obj.name})
-                for i in container.view
-                if i
-            ]
+            data = [self._format_resource_result("zone", {"obj": i, "region_id": region, "region_name": dc_obj.name}) for i in container.view if i]
         else:
             region_rs = self.list_regions()
             if region_rs["result"]:
                 for cur_region in region_rs["data"]:
                     dc_obj = self._get_obj_bymoId(self.content, [vim.Datacenter], cur_region["resource_id"])
-                    container = self.content.viewManager.CreateContainerView(
-                        dc_obj.hostFolder, [vim.ComputeResource], True
-                    )
+                    container = self.content.viewManager.CreateContainerView(dc_obj.hostFolder, [vim.ComputeResource], True)
                     data.extend(
                         [
                             self._format_resource_result(
@@ -586,7 +578,7 @@ class Vmware(PrivateCloudManage):
 
             # 总 CPU 核心数和每核心 MHz
             num_cores = cpu_info.numCpuCores  # 总核心数
-            cpu_mhz = cpu_info.hz // 10 ** 6
+            cpu_mhz = cpu_info.hz // 10**6
 
             # 总 CPU 频率（以 MHz 为单位）
             total_cpu_mhz = num_cores * cpu_mhz
@@ -754,6 +746,8 @@ class Vmware(PrivateCloudManage):
                     "disk_used_average",
                     "disk_free_average",
                     "store_accessible",
+                    "datastore_io_read_latency",
+                    "datastore_io_write_latency",
                 ],
             )
         else:
@@ -877,9 +871,7 @@ class Vmware(PrivateCloudManage):
         if metric == "disk_usage_percent":
             if total_capacity > 0:
                 usage_percent = (used_space / total_capacity) * 100
-                res.setdefault(filter_obj_list[0], {}).setdefault(metric, []).append(
-                    [timestamp, round(usage_percent, 2)]
-                )
+                res.setdefault(filter_obj_list[0], {}).setdefault(metric, []).append([timestamp, round(usage_percent, 2)])
 
         elif metric == "disk_free_space":
             free_space_gb = free_space / (1024 * 1024 * 1024)
@@ -921,9 +913,7 @@ class Vmware(PrivateCloudManage):
         if metric == "memory_usage_percent":
             if total_memory > 0:
                 usage_percent = (total_used_memory / total_memory) * 100
-                res.setdefault(filter_obj_list[0], {}).setdefault(metric, []).append(
-                    [timestamp, round(usage_percent, 2)]
-                )
+                res.setdefault(filter_obj_list[0], {}).setdefault(metric, []).append([timestamp, round(usage_percent, 2)])
 
         elif metric == "memory_free_amount":
             free_memory_mb = total_free_memory / (1024 * 1024)  # 转换为 MB
@@ -962,9 +952,7 @@ class Vmware(PrivateCloudManage):
         # 计算总的CPU使用率
         if total_cpu_mhz > 0:
             usage_percent = (used_cpu_mhz / total_cpu_mhz) * 100
-            res.setdefault(filter_obj_list[0], {}).setdefault("cpu_usage_percent", []).append(
-                [timestamp, round(usage_percent, 2)]
-            )
+            res.setdefault(filter_obj_list[0], {}).setdefault("cpu_usage_percent", []).append([timestamp, round(usage_percent, 2)])
 
     def _process_vm_disk_used_average(self, filter_obj_list, data, res):
         """处理VM磁盘使用率指标"""
@@ -981,9 +969,7 @@ class Vmware(PrivateCloudManage):
         timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
 
         for obj in obj_list:
-            res.setdefault(obj._moId, {}).setdefault("power_state", []).append(
-                [timestamp, int(obj.summary.runtime.powerState == "poweredOn")]
-            )
+            res.setdefault(obj._moId, {}).setdefault("power_state", []).append([timestamp, int(obj.summary.runtime.powerState == "poweredOn")])
 
     def _process_store_accessible(self, filter_obj_list, data, res, metric=None):
         """处理存储可访问性指标"""
@@ -1005,6 +991,13 @@ class Vmware(PrivateCloudManage):
 
     def _add_metric_value(self, vm_name, metric, value_info, k, timestamp, entity_result, res):
         """添加指标值到结果中"""
+        if metric in ("datastore_io_read_latency", "datastore_io_write_latency"):
+            instance = value_info.id.instance or ""
+            if instance:
+                return
+            rate = value_info.value[k]
+            res.setdefault(vm_name, {}).setdefault(metric, []).append([timestamp * 1000, round(float(rate), 3)])
+            return
         no_dims = len(entity_result.value) == 1
         dims = None
         if not no_dims:
@@ -1127,9 +1120,7 @@ class Vmware(PrivateCloudManage):
                         if not dims:
                             res.setdefault(vm_name, {}).setdefault(metric, []).append([timestamp * 1000, _value])
                         else:
-                            res.setdefault(vm_name, {}).setdefault(metric, {}).setdefault(dims, []).append(
-                                [timestamp * 1000, _value]
-                            )
+                            res.setdefault(vm_name, {}).setdefault(metric, {}).setdefault(dims, []).append([timestamp * 1000, _value])
 
     @classmethod
     def _get_vmware_metrics(cls, content):
@@ -1165,6 +1156,7 @@ class Vmware(PrivateCloudManage):
         if vmware_datetime.tzinfo is not None:
             # 如果datetime对象带有时区信息，先转换为UTC时间戳
             import calendar
+
             utc_timestamp = calendar.timegm(vmware_datetime.utctimetuple())
             return utc_timestamp
         else:

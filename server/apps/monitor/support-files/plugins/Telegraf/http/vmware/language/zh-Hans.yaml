@@ -73,6 +73,12 @@ monitor_object_metric:
     store_accessible_gauge:
       name: 数据存储可访问性
       desc: 数据存储是否可访问。
+    datastore_io_read_latency_gauge:
+      name: 读延迟
+      desc: 数据存储整体读延迟，单位毫秒。
+    datastore_io_write_latency_gauge:
+      name: 写延迟
+      desc: 数据存储整体写延迟，单位毫秒。
   VM:
     cpu_usage_average_gauge:
       name: CPU 使用率

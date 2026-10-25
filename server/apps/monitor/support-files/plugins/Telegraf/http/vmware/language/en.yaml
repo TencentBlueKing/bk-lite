@@ -74,6 +74,12 @@ monitor_object_metric:
     store_accessible_gauge:
       name: Datastore Accessibility
       desc: Whether the datastore is accessible.
+    datastore_io_read_latency_gauge:
+      name: Read latency
+      desc: Aggregate datastore read latency in milliseconds.
+    datastore_io_write_latency_gauge:
+      name: Write latency
+      desc: Aggregate datastore write latency in milliseconds.
   VM:
     cpu_usage_average_gauge:
       name: CPU Usage
