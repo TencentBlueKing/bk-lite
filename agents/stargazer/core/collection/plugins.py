@@ -451,6 +451,10 @@ def _load_monitor_collector(monitor_type: str):
         from tasks.collectors.host_collector import HostCollector
 
         return HostCollector
+    if monitor_type == "hyperv":
+        from tasks.collectors.hyperv_collector import HypervCollector
+
+        return HypervCollector
     if monitor_type == "cisco_meraki":
         from tasks.collectors.cisco_meraki_collector import CiscoMerakiCollector
 

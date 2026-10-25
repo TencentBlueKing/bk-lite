@@ -1,0 +1,58 @@
+Hyper-V:
+  desc: 通过 WinRM 采集 Hyper-V 宿主机与虚拟机的 CPU、内存、电源状态以及虚拟磁盘读写延迟。
+  name: Hyper-V
+monitor_object:
+  Hyper-V: Hyper-V
+  Hyper-V Host: Hyper-V 主机
+  Hyper-V VM: Hyper-V 虚拟机
+monitor_object_type:
+  HyperV: Hyper-V
+monitor_object_metric_group:
+  Hyper-V:
+    Quantity: 数量
+  Hyper-V Host:
+    CPU: CPU
+    Memory: 内存
+    Disk: 磁盘
+  Hyper-V VM:
+    CPU: CPU
+    Memory: 内存
+    Power: 电源
+    Disk: 磁盘
+monitor_object_metric:
+  Hyper-V:
+    hyperv_host_count:
+      name: Hyper-V 主机数量
+      desc: 当前实例中的 Hyper-V 宿主机数量。
+    hyperv_vm_count:
+      name: Hyper-V 虚拟机数量
+      desc: 当前实例中的 Hyper-V 虚拟机数量。
+  Hyper-V Host:
+    cpu_usage_percent:
+      name: CPU 使用率
+      desc: Hyper-V 宿主机 CPU 使用率。
+    mem_usage_percent:
+      name: 内存使用率
+      desc: Hyper-V 宿主机内存使用率。
+    storage_read_latency:
+      name: 读延迟
+      desc: 虚拟磁盘读延迟，单位毫秒。
+    storage_write_latency:
+      name: 写延迟
+      desc: 虚拟磁盘写延迟，单位毫秒。
+  Hyper-V VM:
+    cpu_usage_percent:
+      name: CPU 使用率
+      desc: Hyper-V 虚拟机 CPU 使用率。
+    mem_usage_percent:
+      name: 内存使用率
+      desc: Hyper-V 虚拟机内存使用率。
+    power_state:
+      name: 电源状态
+      desc: 虚拟机电源状态，1 表示运行，0 表示未运行。
+    storage_read_latency:
+      name: 读延迟
+      desc: 虚拟磁盘读延迟，单位毫秒。
+    storage_write_latency:
+      name: 写延迟
+      desc: 虚拟磁盘写延迟，单位毫秒。
