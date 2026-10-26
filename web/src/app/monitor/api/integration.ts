@@ -47,6 +47,11 @@ const useIntegrationApi = () => {
           () => demoPolicyGroups({ ...params, create_default })
         );
       },
+      getPolicyGroupInstanceGroups: async (instanceIds: string[]) => {
+        return await get(`/monitor/api/policy_group/instance_groups/`, {
+          params: { instance_ids: JSON.stringify(instanceIds) },
+        });
+      },
       getPolicyGroupMembers: async (groupId: number | string) => {
         return await withMonitorUiDemoFallback(
           () => get(`/monitor/api/policy_group/members/`, {

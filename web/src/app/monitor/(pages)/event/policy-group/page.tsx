@@ -102,13 +102,6 @@ interface TemplateOption {
   pluginName: string;
 }
 
-const MEMBER_STATE: Record<string, string> = {
-  member: '在组',
-  declined: '不自动入组',
-  skipped: '未入组',
-  failed: '加入失败',
-};
-
 interface InstanceCandidate {
   instance_id?: string;
   instance_name?: string;
@@ -116,6 +109,8 @@ interface InstanceCandidate {
   name?: string;
   ip?: string | null;
   summary_facts?: { 'asset.ip'?: string };
+  policy_group_id?: number | null;
+  policy_group_name?: string;
 }
 
 const logicalInstanceId = (instanceId: string) => {
@@ -222,6 +217,7 @@ const PolicyGroupPage: React.FC = () => {
   const {
     getPolicyGroups,
     getPolicyGroupMembers,
+    getPolicyGroupInstanceGroups,
     joinPolicyGroup,
     leavePolicyGroup,
     updatePolicyGroupRule,
@@ -400,10 +396,26 @@ const PolicyGroupPage: React.FC = () => {
         name: name.trim(),
       });
       const results = (data?.results || []) as InstanceCandidate[];
-      setJoinRows(results);
+      const ids = results.map((item) => String(item.instance_id || item.id || '')).filter(Boolean);
+      const grouped = ids.length ? await getPolicyGroupInstanceGroups(ids) : [];
+      const groupByInstance = new Map(
+        (Array.isArray(grouped) ? grouped : []).map((item: { instance_id?: string; group_id?: number; group_name?: string }) => [
+          String(item.instance_id || ''),
+          item,
+        ])
+      );
+      const rows = results.map((item) => {
+        const hit = groupByInstance.get(String(item.instance_id || item.id || ''));
+        return {
+          ...item,
+          policy_group_id: hit?.group_id ?? null,
+          policy_group_name: hit?.group_name || '',
+        };
+      });
+      setJoinRows(rows);
       setJoinLabels((prev) => {
         const next = { ...prev };
-        results.forEach((item) => {
+        rows.forEach((item) => {
           const id = String(item.instance_id || item.id || '');
           if (id) next[id] = candidateLabel(item);
         });
@@ -943,7 +955,7 @@ const PolicyGroupPage: React.FC = () => {
       <Drawer
         title={joinOpen ? '加入实例' : memberGroup ? `${memberGroup.name} 的实例` : '实例'}
         open={Boolean(memberGroup)}
-        width={760}
+        width={600}
         closable={false}
         onClose={() => {
           setMemberGroup(null);
@@ -1026,12 +1038,23 @@ const PolicyGroupPage: React.FC = () => {
                   title: t('common.name'),
                   dataIndex: 'instance_name',
                   key: 'instance_name',
+                  render: (_, record) => candidateLabel(record),
+                },
+                {
+                  title: '所属策略组',
+                  dataIndex: 'policy_group_name',
+                  key: 'policy_group_name',
+                  width: 180,
                   render: (_, record) => {
-                    const joined = members.some((item) => String(item.instance_id) === String(record.instance_id));
+                    const joinedHere = members.some((item) => String(item.instance_id) === String(record.instance_id));
+                    if (joinedHere) return <Tag>已在组</Tag>;
+                    if (!record.policy_group_name) {
+                      return <span className="text-[var(--color-text-3)]">未加入</span>;
+                    }
+                    const text = `已在 ${record.policy_group_name}`;
                     return (
-                      <span className="inline-flex items-center gap-2">
-                        <span>{candidateLabel(record)}</span>
-                        {joined ? <Tag>已在组</Tag> : null}
+                      <span className="block min-w-0 truncate" title={text}>
+                        {text}
                       </span>
                     );
                   },
@@ -1074,39 +1097,9 @@ const PolicyGroupPage: React.FC = () => {
           columns={[
             { title: t('common.name'), dataIndex: 'name', key: 'name' },
             {
-              title: '状态',
-              dataIndex: 'state',
-              key: 'state',
-              width: 110,
-              render: (_, record) => (
-                <StatusToneBadge
-                  tone={record.state === 'member' ? 'success' : record.state === 'declined' ? 'warning' : 'neutral'}
-                  label={MEMBER_STATE[record.state] || record.state}
-                />
-              ),
-            },
-            {
-              title: '旧策略',
-              dataIndex: 'legacy_policies',
-              key: 'legacy_policies',
-              render: (_, record) =>
-                (record.legacy_policies || []).length ? (
-                  <div className="flex flex-col gap-1">
-                    {(record.legacy_policies || []).map((item: { id: number; name: string; enable: boolean }) => (
-                      <span key={item.id}>
-                        {item.name}
-                        <span className="text-[var(--color-text-3)]">{item.enable ? ' · 仍会告警' : ' · 已停用'}</span>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  '--'
-                ),
-            },
-            {
               title: t('common.action'),
               key: 'action',
-              width: 140,
+              width: 120,
               render: (_, record) => {
                 const otherGroups = switchGroups.filter((item) => item.id !== memberGroup?.id);
                 return (
