@@ -22,7 +22,6 @@ import type {
   ItemControlsExtraTarget,
 } from '@bk-lite/isoflow';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
-import { useInstanceApi, useModelApi } from '@/app/cmdb/api';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import { flattenCollections } from '@isoflow/isopacks/dist/utils';
 import {
@@ -60,14 +59,10 @@ import {
   BINDING_SEARCH_PAGE_SIZE,
   bindingDisplay,
   bindingModelLabel,
-  bindingPageFromTotal,
   bindingSearchMode,
   findSelectionBinding,
+  architectureSearchPage,
   flattenModelOptions,
-  normalizeBindingSearchHits,
-  normalizeFulltextModelPage,
-  normalizeInstanceSearchPage,
-  sliceBindingPage,
   type ArchitectureBinding,
   type BindingSearchHit,
   type BindingSearchPage,
@@ -133,9 +128,12 @@ export interface ArchitectureRef {
 const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
   ({ selectedArchitecture, shareMode = false }, ref) => {
     const { t } = useTranslation();
-    const { getArchitectureDetail, saveArchitecture } = useArchitectureApi();
-    const { fulltextSearchInstances, fulltextSearchByModel, searchInstances } = useInstanceApi();
-    const { getModelList } = useModelApi();
+    const {
+      getArchitectureDetail,
+      saveArchitecture,
+      getArchitectureModels,
+      searchArchitectureResources,
+    } = useArchitectureApi();
     const { shareLoading, openShare } = useCanvasShareAction('architecture');
     const [diagramName, setDiagramName] = useState('');
     const [fossflowKey, setFossflowKey] = useState(0);
@@ -154,14 +152,10 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const [highlightUnbound, setHighlightUnbound] = useState(false);
     const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
     const sceneApiRef = useRef<IsoflowSceneApi | null>(null);
-    const fulltextSearchRef = useRef(fulltextSearchInstances);
-    const fulltextByModelRef = useRef(fulltextSearchByModel);
-    const searchInstancesRef = useRef(searchInstances);
-    fulltextSearchRef.current = fulltextSearchInstances;
-    fulltextByModelRef.current = fulltextSearchByModel;
-    searchInstancesRef.current = searchInstances;
-    /** The keyword search across all models is not paged by CMDB; later pages are sliced from this result. */
-    const fulltextResultRef = useRef<{ keyword: string; hits: BindingSearchHit[] } | null>(null);
+    const searchResourcesRef = useRef(searchArchitectureResources);
+    searchResourcesRef.current = searchArchitectureResources;
+    /** Cross-model keyword search returns every hit; later pages are sliced locally. */
+    const fulltextResultRef = useRef<{ keyword: string; raw: unknown } | null>(null);
     const [loadedArchitectureId, setLoadedArchitectureId] = useState<
       string | null
     >(null);
@@ -546,7 +540,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     useEffect(() => {
       if (shareMode) return undefined;
       let cancelled = false;
-      getModelList()
+      getArchitectureModels()
         .then((data) => {
           if (!cancelled) setModelOptions(flattenModelOptions(data));
         })
@@ -556,7 +550,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       return () => {
         cancelled = true;
       };
-    }, [getModelList, shareMode]);
+    }, [getArchitectureModels, shareMode]);
 
     const diagramViews = currentModel?.views ?? diagramData.views;
     const boundUuids = useMemo(() => collectBoundUuids(diagramViews), [diagramViews]);
@@ -613,38 +607,32 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         if (mode === 'idle') {
           return { hits: [], hasMore: false, total: 0 };
         }
-        if (mode === 'by-type') {
-          const raw = await searchInstancesRef.current({
-            model_id: modelId.trim(),
-            query_list: [],
-            page,
-            page_size: pageSize,
-            case_sensitive: false,
-          });
-          const result = normalizeInstanceSearchPage(raw);
-          return bindingPageFromTotal(result.hits, page, pageSize, result.total);
-        }
-        if (mode === 'by-model-text') {
-          const raw = await fulltextByModelRef.current({
-            search: keyword.trim(),
-            model_id: modelId.trim(),
-            page,
-            page_size: pageSize,
-            case_sensitive: false,
-          });
-          const result = normalizeFulltextModelPage(raw);
-          return bindingPageFromTotal(result.hits, page, pageSize, result.total);
-        }
         const text = keyword.trim();
-        const cached = fulltextResultRef.current;
-        if (page === 1 || !cached || cached.keyword !== text) {
-          const raw = await fulltextSearchRef.current({
-            search: text,
-            case_sensitive: false,
-          });
-          fulltextResultRef.current = { keyword: text, hits: normalizeBindingSearchHits(raw) };
+        const model = modelId.trim();
+        if (mode === 'fulltext') {
+          const cached = fulltextResultRef.current;
+          if (page === 1 || !cached || cached.keyword !== text) {
+            fulltextResultRef.current = {
+              keyword: text,
+              raw: await searchResourcesRef.current({
+                keyword: text,
+                model_id: '',
+                page,
+                page_size: pageSize,
+                case_sensitive: false,
+              }),
+            };
+          }
+          return architectureSearchPage(fulltextResultRef.current?.raw, page, pageSize);
         }
-        return sliceBindingPage(fulltextResultRef.current?.hits ?? [], page, pageSize);
+        const raw = await searchResourcesRef.current({
+          keyword: text,
+          model_id: model,
+          page,
+          page_size: pageSize,
+          case_sensitive: false,
+        });
+        return architectureSearchPage(raw, page, pageSize);
       },
       [],
     );

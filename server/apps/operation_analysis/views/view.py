@@ -28,6 +28,7 @@ from apps.operation_analysis.serializers.directory_serializers import (
     TopologyModelSerializer,
 )
 from apps.operation_analysis.services.architecture_node_status import ArchitectureNodeStatusService
+from apps.operation_analysis.services.architecture_resource_search import ArchitectureResourceSearchService
 from apps.operation_analysis.services.canvas.copy_service import copy_canvas
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from apps.operation_analysis.services.share_service import SharePermissionDenied, create_or_get_share
@@ -534,6 +535,19 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         """查看态批量查询图标和区域绑定资源的运行状态。分享路由不暴露此接口。"""
         payload = request.data if isinstance(request.data, dict) else {}
         return Response(ArchitectureNodeStatusService.query(request, payload.get("inst_uuids")))
+
+    @HasPermission("view-View")
+    @action(detail=False, methods=["get"], url_path="models")
+    def models(self, request, *args, **kwargs):
+        """架构图模型下拉。浏览器不直连 CMDB。分享路由不暴露此接口。"""
+        return Response(ArchitectureResourceSearchService.list_models(request))
+
+    @HasPermission("view-View")
+    @action(detail=False, methods=["post"], url_path="resource_search")
+    def resource_search(self, request, *args, **kwargs):
+        """架构图插入/绑定资源搜索。浏览器不直连 CMDB。分享路由不暴露此接口。"""
+        payload = request.data if isinstance(request.data, dict) else {}
+        return Response(ArchitectureResourceSearchService.search(request, payload))
 
 
 class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):

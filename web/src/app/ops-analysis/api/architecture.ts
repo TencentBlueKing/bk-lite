@@ -1,5 +1,14 @@
+import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
+
+export interface ArchitectureResourceSearchParams {
+  keyword: string;
+  model_id: string;
+  page: number;
+  page_size: number;
+  case_sensitive: boolean;
+}
 
 export const useArchitectureApi = () => {
   const { get, put, post, del } = useApiClient();
@@ -30,11 +39,24 @@ export const useArchitectureApi = () => {
     });
   };
 
+  const getArchitectureModels = useCallback(
+    () => get('/operation_analysis/api/architecture/models/'),
+    [get],
+  );
+
+  const searchArchitectureResources = useCallback(
+    (params: ArchitectureResourceSearchParams) =>
+      post('/operation_analysis/api/architecture/resource_search/', params),
+    [post],
+  );
+
   return {
     getArchitectureDetail,
     saveArchitecture,
     createArchitecture,
     deleteArchitecture,
     queryNodeStatus,
+    getArchitectureModels,
+    searchArchitectureResources,
   };
 };
