@@ -21,6 +21,7 @@ dashboards:
   name: 主机综合监控仪表盘
   desc: 按所选监控主机查看 CPU/内存/磁盘均值与最高值、趋势和 Top10。不含健康/异常主机数。导入后不是内置画布。
   other:
+    gridCols: 24
     timeSelector:
       selectValue: 360
   view_sets:
@@ -30,14 +31,14 @@ dashboards:
     description: 所选主机数与 CPU/内存/磁盘均值、最高值
     x: 0
     y: 0
-    w: 12
+    w: 24
     h: 4
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 3
-        w: 2
+        w: 4
         x: 0
         y: 0
         id: host-kpi-count
@@ -77,8 +78,8 @@ dashboards:
           - color: '#366ce4'
             value: '0'
       - h: 3
-        w: 2
-        x: 2
+        w: 4
+        x: 4
         y: 0
         id: host-kpi-avg-cpu
         name: 平均 CPU
@@ -97,8 +98,8 @@ dashboards:
           - *id001
           thresholdColors: *id002
       - h: 3
-        w: 2
-        x: 4
+        w: 4
+        x: 8
         y: 0
         id: host-kpi-avg-memory
         name: 平均内存
@@ -123,8 +124,8 @@ dashboards:
           - color: '#7c6cf0'
             value: '0'
       - h: 3
-        w: 2
-        x: 6
+        w: 4
+        x: 12
         y: 0
         id: host-kpi-avg-disk
         name: 平均磁盘
@@ -149,8 +150,8 @@ dashboards:
           - color: '#f7b731'
             value: '0'
       - h: 3
-        w: 2
-        x: 8
+        w: 4
+        x: 16
         y: 0
         id: host-kpi-max-cpu
         name: 最高 CPU
@@ -176,8 +177,8 @@ dashboards:
           - color: '#366ce4'
             value: '0'
       - h: 3
-        w: 2
-        x: 10
+        w: 4
+        x: 20
         y: 0
         id: host-kpi-max-memory
         name: 最高内存
@@ -202,14 +203,14 @@ dashboards:
     description: CPU、内存、磁盘使用率趋势，一主机一线
     x: 0
     y: 4
-    w: 12
+    w: 24
     h: 7
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 6
-        w: 4
+        w: 8
         x: 0
         y: 0
         id: host-trend-cpu
@@ -268,8 +269,8 @@ dashboards:
             filterType: filter
           unitId: percent
       - h: 6
-        w: 4
-        x: 4
+        w: 8
+        x: 8
         y: 0
         id: host-trend-memory
         name: 内存使用率趋势
@@ -322,8 +323,8 @@ dashboards:
           - *id004
           unitId: percent
       - h: 6
-        w: 4
-        x: 8
+        w: 8
+        x: 16
         y: 0
         id: host-trend-disk
         name: 磁盘使用率趋势
@@ -381,14 +382,14 @@ dashboards:
     description: 所选主机范围内的 CPU、内存、磁盘使用率排名
     x: 0
     y: 11
-    w: 12
+    w: 24
     h: 7
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 6
-        w: 4
+        w: 8
         x: 0
         y: 0
         id: host-top-cpu
@@ -425,8 +426,8 @@ dashboards:
                 - label: 磁盘使用率
                   value: disk
       - h: 6
-        w: 4
-        x: 4
+        w: 8
+        x: 8
         y: 0
         id: host-top-memory
         name: 内存使用率 Top10
@@ -456,8 +457,8 @@ dashboards:
                 type: static
                 staticItems: *id005
       - h: 6
-        w: 4
-        x: 8
+        w: 8
+        x: 16
         y: 0
         id: host-top-disk
         name: 磁盘使用率 Top10
@@ -492,14 +493,14 @@ dashboards:
     description: 5 分钟负载与网卡入/出流量
     x: 0
     y: 18
-    w: 12
+    w: 24
     h: 7
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 6
-        w: 4
+        w: 8
         x: 0
         y: 0
         id: host-trend-load5
@@ -553,8 +554,8 @@ dashboards:
           - *id004
           unitId: none
       - h: 6
-        w: 4
-        x: 4
+        w: 8
+        x: 8
         y: 0
         id: host-trend-net-in
         name: 入流量趋势
@@ -607,8 +608,8 @@ dashboards:
           - *id004
           unit: B/s
       - h: 6
-        w: 4
-        x: 8
+        w: 8
+        x: 16
         y: 0
         id: host-trend-net-out
         name: 出流量趋势
@@ -666,14 +667,14 @@ dashboards:
     description: 磁盘 IO 使用率、写入延迟与读速率
     x: 0
     y: 25
-    w: 12
+    w: 24
     h: 7
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 6
-        w: 4
+        w: 8
         x: 0
         y: 0
         id: host-trend-disk-io
@@ -727,8 +728,8 @@ dashboards:
           - *id004
           unitId: percent
       - h: 6
-        w: 4
-        x: 4
+        w: 8
+        x: 8
         y: 0
         id: host-trend-disk-write-latency
         name: 磁盘写入延迟
@@ -781,8 +782,8 @@ dashboards:
           - *id004
           unitId: ms
       - h: 6
-        w: 4
-        x: 8
+        w: 8
+        x: 16
         y: 0
         id: host-trend-disk-read-rate
         name: 磁盘读速率
@@ -840,14 +841,14 @@ dashboards:
     description: 磁盘写速率、阻塞进程与僵尸进程
     x: 0
     y: 32
-    w: 12
+    w: 24
     h: 7
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 6
-        w: 4
+        w: 8
         x: 0
         y: 0
         id: host-trend-disk-write-rate
@@ -901,8 +902,8 @@ dashboards:
           - *id004
           unit: B/s
       - h: 6
-        w: 4
-        x: 4
+        w: 8
+        x: 8
         y: 0
         id: host-trend-blocked
         name: 阻塞进程
@@ -954,8 +955,8 @@ dashboards:
                   value: processes_zombies
           - *id004
       - h: 6
-        w: 4
-        x: 8
+        w: 8
+        x: 16
         y: 0
         id: host-trend-zombies
         name: 僵尸进程

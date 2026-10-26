@@ -28,6 +28,7 @@ import type {
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import PermissionWrapper from '@/components/permission';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import { DASHBOARD_GRID_COLS } from '@/app/ops-analysis/utils/dashboardGridColumns';
 import {
   buildDashboardGridStackLayout,
   buildDashboardGridStackStructureKey,
@@ -69,7 +70,6 @@ import {
   syncDashboardEdgeHandleVisibility,
 } from './dashboardEdgeHandles';
 
-const DASHBOARD_GRID_COLS = 12;
 const DASHBOARD_GRID_ROW_HEIGHT = 60;
 const DASHBOARD_GRID_MARGIN: [number, number] = [4, 4];
 const DASHBOARD_GRID_CONTAINER_PADDING: [number, number] = [6, 2];
@@ -1090,7 +1090,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
 
         const subGrid = GridStack.init(
           {
-            column: 'auto',
+            // 手动 init 时若写 auto，GridStack 会删掉该选项并回落默认 12；
+            // 子项 x/w 已按 DASHBOARD_GRID_COLS 存，必须显式对齐，否则分组内错乱。
+            column: DASHBOARD_GRID_COLS,
             cellHeight: DASHBOARD_GRID_ROW_HEIGHT,
             margin: DASHBOARD_GRID_MARGIN[0],
             float: false,

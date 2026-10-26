@@ -10,6 +10,10 @@ import type {
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { isCanvasRefreshIntervalMs } from '@/app/ops-analysis/utils/canvasRefreshInterval';
+import {
+  DASHBOARD_GRID_COLS,
+  DASHBOARD_PROPOSAL_CELL_WIDTH,
+} from '@/app/ops-analysis/utils/dashboardGridColumns';
 import { isDashboardGroupItem, isDashboardWidgetItem } from '@/app/ops-analysis/utils/dashboardGroups';
 import { syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 
@@ -347,8 +351,8 @@ const mergeFilterValues = (
 };
 
 const packProposalWidgets = (widgets: DashboardProposalWidget[]): DashboardProposalWidget[] => {
-  const columns = 12;
-  const cellW = 4;
+  const columns = DASHBOARD_GRID_COLS;
+  const cellW = DASHBOARD_PROPOSAL_CELL_WIDTH;
   const allMissing = widgets.every((item) => readNumber(item.x) == null && readNumber(item.y) == null);
   if (!allMissing) return widgets;
   let x = 0;

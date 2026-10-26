@@ -68,6 +68,12 @@ import 'react-resizable/css/styles.css';
 import { useSession } from 'next-auth/react';
 import { useDashboardLayoutSync } from './hooks/useDashboardLayoutSync';
 import {
+  DASHBOARD_GRID_COLS,
+  migrateDashboardGridColumns,
+  scaleDashboardGridSpan,
+  withCurrentDashboardGridCols,
+} from '@/app/ops-analysis/utils/dashboardGridColumns';
+import {
   deserializeDashboardGridStackLayout,
   serializeDashboardGridStackLayout,
 } from '@/app/ops-analysis/utils/dashboardGridStack';
@@ -332,7 +338,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         desc: selectedDashboard?.desc || '',
         view_sets: serializeDashboardGridStackLayout(layout),
         filters: definitions,
-        other: otherConfig,
+        other: withCurrentDashboardGridCols(otherConfig),
         refresh_interval: savedRefreshInterval,
       }),
       [
@@ -346,7 +352,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
     const applyDashboardDraftPayload = useCallback(
       (payload: CanvasDraftPayload) => {
-        const nextLayout = deserializeDashboardGridStackLayout(payload.view_sets);
+        const migratedDraft = migrateDashboardGridColumns(
+          deserializeDashboardGridStackLayout(payload.view_sets),
+          (payload.other as OtherConfig) || {},
+        );
+        const nextLayout = migratedDraft.layout;
         const loadedDefinitions = labelStoredFilters(Array.isArray(
           payload.filters,
         )
@@ -360,7 +370,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
         restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
         setLayout(nextLayout);
-        setOtherConfig((payload.other as OtherConfig) || {});
+        setOtherConfig(migratedDraft.other);
         setDefinitions(loadedDefinitions);
         setFilterValues(nextValues);
         applyQueryState(loadedDefinitions, nextValues, appliedNamespaceId);
@@ -584,7 +594,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           if (!isCurrentLoad()) {
             return;
           }
-          const nextLayout = deserializeDashboardGridStackLayout(
+          const preparedLayout = deserializeDashboardGridStackLayout(
             dashboardData.view_sets,
           ).map((item) => {
             if (!isDashboardWidgetItem(item) || !item.valueConfig) {
@@ -616,6 +626,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               },
             };
           });
+          const migratedGrid = migrateDashboardGridColumns(
+            preparedLayout,
+            dashboardData.other || {},
+          );
+          const nextLayout = migratedGrid.layout;
           await syncDashboardCanvasResourcesRef.current(nextLayout);
           if (!isCurrentLoad()) {
             return;
@@ -631,7 +646,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
           setCollapsedGroupsLayoutReadyId(dashboard.data_id);
 
-          const savedOtherConfig = dashboardData.other || {};
+          const savedOtherConfig = migratedGrid.other;
           setOtherConfig(savedOtherConfig);
           setOriginalOtherConfig({ ...savedOtherConfig });
           setSavedRefreshInterval(
@@ -1020,7 +1035,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         setLayout(syncedLayout);
         syncFilterStateAfterLayoutChange(mergedFilters, nextValues, nextValues);
         if (applied.otherConfig) {
-          setOtherConfig((current) => ({ ...current, ...applied.otherConfig }));
+          setOtherConfig((current) => withCurrentDashboardGridCols({
+            ...current,
+            ...applied.otherConfig,
+          }));
         }
         if (applied.refreshInterval != null) {
           setSavedRefreshInterval(applied.refreshInterval);
@@ -1253,6 +1271,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             descriptionField: config.descriptionField,
             topNLabelField: config.topNLabelField,
             topNValueField: config.topNValueField,
+            topNScalarFields: config.topNScalarFields,
+            barMode: config.barMode,
+            barMax: config.barMax,
             dimensionField: config.dimensionField,
             valueField: config.valueField,
             multiValueLabelField: config.multiValueLabelField,
@@ -1350,7 +1371,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           name: selectedDashboard.name,
           desc: selectedDashboard.desc || '',
           filters: definitions,
-          other: otherConfig,
+          other: withCurrentDashboardGridCols(otherConfig),
           view_sets: serializeDashboardGridStackLayout(layout),
         };
         await saveDashboard(selectedDashboard.data_id, saveData);
@@ -1372,8 +1393,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           applyQueryState(definitions, nextApplied.values, appliedNamespaceId);
           setFilterSearchVersion((prev) => prev + 1);
         }
+        const savedOtherConfig = saveData.other;
+        setOtherConfig(savedOtherConfig);
         setOriginalLayout([...layout]);
-        setOriginalOtherConfig({ ...otherConfig });
+        setOriginalOtherConfig({ ...savedOtherConfig });
         setOriginalDefinitions([...definitions]);
         setIsEditMode(false);
         setUndoStack([]);
@@ -1595,7 +1618,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           itemType: 'group',
           x: 0,
           y: nextY,
-          w: 12,
+          w: DASHBOARD_GRID_COLS,
           h: 1,
           name: nextName,
         };
@@ -1738,7 +1761,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         i: '',
         x: 0,
         y: 0,
-        w: item.defaultWidth,
+        w: scaleDashboardGridSpan(item.defaultWidth),
         h: item.defaultHeight,
         name: item.name,
         description: item.desc,
@@ -1783,6 +1806,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   descriptionField: values.descriptionField,
                   topNLabelField: values.topNLabelField,
                   topNValueField: values.topNValueField,
+                  topNScalarFields: values.topNScalarFields,
+                  barMode: values.barMode,
+                  barMax: values.barMax,
                   dimensionField: values.dimensionField,
                   valueField: values.valueField,
                   multiValueLabelField: values.multiValueLabelField,

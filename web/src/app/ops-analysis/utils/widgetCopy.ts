@@ -9,6 +9,7 @@ import type { ScreenViewSets } from '@/app/ops-analysis/types/screen';
 import { isScreenWidgetItem } from '@/app/ops-analysis/(pages)/view/screen/utils/screenItems';
 import type { ReportViewSets } from '@/app/ops-analysis/types/report';
 import { isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
+import { DASHBOARD_GRID_COLS } from '@/app/ops-analysis/utils/dashboardGridColumns';
 import {
   insertDashboardWidgetIntoGroup,
   isDashboardGroupItem,
@@ -121,8 +122,6 @@ export const cloneAnalysisWidget = (
     valueConfig,
   };
 };
-
-const DASHBOARD_GRID_COLS = 12;
 
 const boxesOverlap = (
   left: { x: number; y: number; w: number; h: number },
