@@ -725,13 +725,55 @@ class Import:
         result = self.inst_list_save(inst_list)
         return result
 
-    def import_inst_list_support_edit(self, file_stream: bytes, allowed_org_ids: list = None):
+    def _unique_match_key(self, record, unique_fields):
+        """与 batch_save_entity 相同：只取记录里实际出现的唯一字段，按字段顺序组成元组。"""
+        return tuple(record.get(field) for field in unique_fields if field in record)
+
+    def _reject_unauthorized_matched_updates(self, inst_list, asso_key_map, permission_check):
+        """命中旧资产的行必须通过调用方给出的编辑权限检查，否则记为更新失败。
+
+        未传入检查函数时，命中行一律拒绝。未命中的新行保留给原有新建逻辑。
+        """
+        unique_fields = list(self.get_check_attr_map().get(ModelConstraintKey.unique.value, {}).keys())
+        if not unique_fields:
+            return inst_list, []
+
+        exist_by_key = {}
+        for item in self.exist_items or []:
+            exist_by_key[self._unique_match_key(item, unique_fields)] = item
+
+        kept = []
+        denied = []
+        for row in inst_list:
+            matched = exist_by_key.get(self._unique_match_key(row, unique_fields))
+            if matched is None:
+                kept.append(row)
+                continue
+            if permission_check is not None and permission_check(matched):
+                kept.append(row)
+                continue
+
+            inst_name = row.get("inst_name")
+            if inst_name:
+                for names in asso_key_map.values():
+                    if isinstance(names, dict):
+                        names.pop(inst_name, None)
+            denied.append({"success": False, "data": row, "message": "抱歉！您没有此实例的权限"})
+        return kept, denied
+
+    def import_inst_list_support_edit(self, file_stream: bytes, allowed_org_ids: list = None, matched_instance_permission_check=None):
         """将excel主机数据导入"""
         inst_list, asso_key_map = self.format_excel_data(file_stream, allowed_org_ids=allowed_org_ids)
         self.inst_list = inst_list
         self._load_import_exist_items(inst_list)
-        # 执行导入（有错误的已在 format_excel_data 中被过滤）
+        inst_list, denied_updates = self._reject_unauthorized_matched_updates(
+            inst_list,
+            asso_key_map,
+            matched_instance_permission_check,
+        )
+        # 执行导入（有错误的已在 format_excel_data 中被过滤）。剩余行仍走原更新/新建。
         add_results, update_results = self.inst_list_update(inst_list)
+        update_results = denied_updates + list(update_results or [])
 
         # 处理关联数据
         if not self.model_asso_map:
