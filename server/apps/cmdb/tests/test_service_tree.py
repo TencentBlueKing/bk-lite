@@ -1,4 +1,5 @@
 import logging
+from uuid import uuid4
 
 from apps.cmdb.services.application_system import expand_systems_to_host_uuids
 from apps.cmdb.services.service_tree import (
@@ -613,6 +614,95 @@ def test_plan_import_fails_unknown_host_without_creating_that_row():
     assert plan["assign"] == []
     assert len(plan["errors"]) == 1
     assert "主机" in plan["errors"][0]["message"]
+
+
+class _VisitCountingHosts:
+    """每次产出一台主机记一次，用来区分整批建索引和按行重扫。"""
+
+    def __init__(self, hosts):
+        self._hosts = list(hosts)
+        self.visits = 0
+
+    def __iter__(self):
+        for host in self._hosts:
+            self.visits += 1
+            yield host
+
+
+def _uuid4_hosts(size):
+    return [
+        {
+            "inst_uuid": str(uuid4()),
+            "inst_name": f"host-{index}",
+            "ip_addr": f"10.{(index // 65536) % 256}.{(index // 256) % 256}.{index % 256}",
+        }
+        for index in range(size)
+    ]
+
+
+def test_match_host_prefers_uuid_over_name_and_keeps_ambiguous_lists():
+    hosts = [
+        {"inst_uuid": "uuid-1", "inst_name": "same-name", "ip_addr": "10.1.0.1"},
+        {"inst_uuid": "same-name", "inst_name": "other", "ip_addr": "10.1.0.2"},
+        {"inst_uuid": "uuid-3", "inst_name": "solo", "ip_addr": "10.1.0.3"},
+    ]
+    assert match_host("same-name", hosts)["inst_uuid"] == "same-name"
+    assert match_host("solo", hosts)["inst_uuid"] == "uuid-3"
+    assert match_host("10.1.0.3", hosts)["inst_uuid"] == "uuid-3"
+
+    duplicate_names = [
+        {"inst_uuid": "n1", "inst_name": "dup", "ip_addr": "10.2.0.1"},
+        {"inst_uuid": "n2", "inst_name": "dup", "ip_addr": "10.2.0.2"},
+    ]
+    assert match_host("n1", duplicate_names)["inst_uuid"] == "n1"
+    try:
+        match_host("dup", duplicate_names)
+    except ValidationAppException as exc:
+        assert exc.message == "主机标识匹配不唯一"
+    else:
+        raise AssertionError("expected ValidationAppException")
+
+    duplicate_ips = [
+        {"inst_uuid": "i1", "inst_name": "ip-a", "ip_addr": "10.9.0.1"},
+        {"inst_uuid": "i2", "inst_name": "ip-b", "ip_addr": "10.9.0.1"},
+    ]
+    try:
+        match_host("10.9.0.1", duplicate_ips)
+    except ValidationAppException as exc:
+        assert exc.message == "主机标识匹配不唯一"
+    else:
+        raise AssertionError("expected ValidationAppException")
+
+    try:
+        match_host("missing-host", hosts)
+    except ValidationAppException as exc:
+        assert exc.message == "找不到对应的主机"
+    else:
+        raise AssertionError("expected ValidationAppException")
+
+
+def test_plan_import_rows_scans_each_host_once():
+    mismatches = []
+    for size in (1000, 2000):
+        raw_hosts = _uuid4_hosts(size)
+        assert all(len(host["inst_uuid"]) == 36 for host in raw_hosts)
+        counting = _VisitCountingHosts(raw_hosts)
+        rows = [
+            {"system": "门户", "application": "门户前端", "host": host["inst_uuid"]}
+            for host in raw_hosts
+        ]
+        plan = plan_import_rows(
+            system_name="门户",
+            system_uuid="s1",
+            rows=rows,
+            existing_tree={"apps": {}},
+            hosts=counting,
+        )
+        if counting.visits != size:
+            mismatches.append((size, counting.visits))
+        assert plan["errors"] == []
+        assert [item["host_uuid"] for item in plan["assign"]] == [host["inst_uuid"] for host in raw_hosts]
+    assert mismatches == []
 
 
 def test_build_service_tree_shows_contains_application_even_if_asst_id_is_not_seeded_name():
