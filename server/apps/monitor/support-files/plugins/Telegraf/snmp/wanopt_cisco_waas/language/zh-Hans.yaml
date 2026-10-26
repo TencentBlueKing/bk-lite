@@ -1,0 +1,78 @@
+Wanopt Cisco WAAS SNMP:
+  name: Cisco WAAS / WAVE
+  desc: 面向 Cisco WAAS / WAVE 广域网加速设备的 SNMP 监控模板，可采集 TFO 负载、优化与直通连接、对等体、DRE 缓存健康、设备告警、CPU、内存和接口流量。
+monitor_object:
+  Wanopt: WAN 优化
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wanopt:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 Cisco WAAS / WAVE 设备自上次启动以来的运行时间。通过监测运行时间，可以判断设备稳定性并发现意外重启。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 Cisco WAAS / WAVE 设备近五分钟 CPU 使用率，按 0-100 百分比记录。持续偏高可能拖慢加速效果和管理响应。
+    device_cpu_usage_1min:
+      name: CPU 使用率（1 分钟）
+      desc: 该指标表示 Cisco WAAS / WAVE 设备近一分钟 CPU 使用率，按 0-100 百分比记录。需要比五分钟窗口更短的观察时可使用本指标。
+    device_memory_used:
+      name: 内存已用量
+      desc: 该指标表示 Cisco WAAS / WAVE 设备当前已用内存。设备按千字节上报，展示时换算为字节。
+    device_memory_free:
+      name: 内存空闲量
+      desc: 该指标表示 Cisco WAAS / WAVE 设备当前空闲内存。设备按千字节上报，展示时换算为字节。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示 Cisco WAAS / WAVE 设备内存使用率，按已用/(已用+空闲) 计算。持续偏高可能影响加速和缓存处理。
+    tfo_load_ok:
+      name: TFO 负载健康
+      desc: 该指标表示 Cisco WAAS / WAVE 设备 TFO 负载健康。绿色映射为 1（健康）；未知、黄色和红色映射为 2（不健康）。
+    tfo_load_status:
+      name: TFO 负载状态
+      desc: 该指标表示 Cisco WAAS / WAVE 设备的 TFO 负载状态。取值：未知(1)、绿色(2)、黄色(3)、红色(4)。变黄或变红表示加速负载偏高，新连接可能排队或改为直通。
+    tfo_active_opt_conn:
+      name: 活动优化连接数
+      desc: 该指标表示 Cisco WAAS / WAVE 设备当前正在由 TFO 优化的 TCP 连接数。在业务应在加速时降到 0，通常意味着加速已停止。
+    tfo_pending_conn:
+      name: 等待优化连接数
+      desc: 该指标表示 Cisco WAAS / WAVE 设备正在等待 TFO 优化的连接数。持续上升常与 TFO 负载变黄或变红同时出现。
+    tfo_active_pt_conn:
+      name: 活动直通连接数
+      desc: 该指标表示 Cisco WAAS / WAVE 设备当前未经 TFO 优化、直接穿过的连接数。突然升高可能意味着过载、策略旁路或对端异常。
+    active_peers:
+      name: 活动对等体数
+      desc: 该指标表示 Cisco WAAS / WAVE 设备当前活动的广域网加速对等体数量。在本应对端在线时为 0，表示对端加速器掉线或不可达。
+    max_active_peers:
+      name: 对等体上限
+      desc: 该指标表示 Cisco WAAS / WAVE 设备允许的并发活动对等体上限。可与当前活动对等体数对比，判断剩余容量。
+    dre_cache_ok:
+      name: DRE 缓存健康
+      desc: 该指标表示 Cisco WAAS / WAVE 设备 DRE 缓存健康。可用映射为 1（健康）；不可用、初始化、临时失败和失败映射为 2（不健康）。
+    dre_cache_status:
+      name: DRE 缓存状态
+      desc: 该指标表示 Cisco WAAS / WAVE 设备的 DRE 缓存状态。取值：不可用(1)、初始化(2)、可用(3)、临时失败(4)、失败(5)。非可用状态意味着数据缩减能力受损。
+    dre_cache_used_percent:
+      name: DRE 缓存已用比例
+      desc: 该指标表示 Cisco WAAS / WAVE 设备已分配 DRE 缓存的当前占用百分比。缓存健康时占用偏高属正常；缓存不可用且占用卡住时需要排查。
+    dre_cache_total_mb:
+      name: DRE 缓存容量
+      desc: 该指标表示 Cisco WAAS / WAVE 设备已分配的 DRE 缓存总容量，单位为兆字节。
+    alarm_critical:
+      name: 严重告警数
+      desc: 该指标表示 Cisco WAAS / WAVE 设备当前严重告警数量。任何非零值都需要立即处理。
+    alarm_major:
+      name: 主要告警数
+      desc: 该指标表示 Cisco WAAS / WAVE 设备当前主要告警数量。非零时应尽快排查，避免升级为严重告警。
+    alarm_minor:
+      name: 次要告警数
+      desc: 该指标表示 Cisco WAAS / WAVE 设备当前次要告警数量。可与严重、主要告警数一起作为早期预警。
+monitor_object_metric_group:
+  Wanopt:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存
+    TFO: TFO
+    Peers: 对等体
+    DRE: DRE
+    Alarms: 告警

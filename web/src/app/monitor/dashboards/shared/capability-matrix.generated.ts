@@ -2108,6 +2108,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_cisco_waas",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_exinda",
       "capabilities": [
         "uptime",

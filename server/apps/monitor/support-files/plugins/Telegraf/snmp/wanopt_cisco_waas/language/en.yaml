@@ -1,0 +1,116 @@
+Wanopt Cisco WAAS SNMP:
+  name: Cisco WAAS / WAVE
+  desc: "SNMP monitoring template for Cisco WAAS / WAVE WAN optimization appliances. It reports TFO load, optimized and pass-through connections, peers, DRE cache health, appliance alarms, CPU, memory, and interface traffic."
+monitor_object:
+  Wanopt: WAN Optimization
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wanopt:
+    snmp_uptime:
+      name: System Uptime
+      desc: Uptime of the Cisco WAAS / WAVE appliance since the last restart.
+        Watching this value helps operators spot unexpected reboots and judge
+        device stability.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: Five-minute CPU utilization of the Cisco WAAS / WAVE appliance as a
+        0-100 percentage. Sustained high usage can slow optimization and
+        management response.
+    device_cpu_usage_1min:
+      name: CPU Utilization (1 min)
+      desc: One-minute CPU utilization of the Cisco WAAS / WAVE appliance as a
+        0-100 percentage. Use this when a shorter window than the five-minute
+        average is needed.
+    device_memory_used:
+      name: Memory Used
+      desc: Memory currently in use on the Cisco WAAS / WAVE appliance, reported
+        in the Cisco kilobyte convention and shown in bytes.
+    device_memory_free:
+      name: Memory Free
+      desc: Free memory on the Cisco WAAS / WAVE appliance, reported in the
+        Cisco kilobyte convention and shown in bytes.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Memory utilization of the Cisco WAAS / WAVE appliance as used
+        divided by used plus free. Sustained high usage can degrade
+        acceleration and cache handling.
+    tfo_load_ok:
+      name: TFO Load Health
+      desc: Normalized TFO load health of the Cisco WAAS / WAVE appliance.
+        Green maps to 1 (healthy); unknown, yellow, and red map to 2 (not
+        healthy).
+    tfo_load_status:
+      name: TFO Load Status
+      desc: TFO load state of the Cisco WAAS / WAVE appliance. Values are
+        unknown (1), green (2), yellow (3), and red (4). Yellow or red means
+        the optimizer is under pressure and new connections may be delayed or
+        passed through.
+    tfo_active_opt_conn:
+      name: Active Optimized Connections
+      desc: Number of TCP connections currently being optimized by TFO on the
+        Cisco WAAS / WAVE appliance. A drop to zero while traffic is expected
+        usually means acceleration has stopped.
+    tfo_pending_conn:
+      name: Pending Connections
+      desc: Number of connections waiting for TFO optimization on the Cisco
+        WAAS / WAVE appliance. A sustained rise often appears together with
+        yellow or red TFO load.
+    tfo_active_pt_conn:
+      name: Active Pass-through Connections
+      desc: Number of connections currently passing through the Cisco WAAS /
+        WAVE appliance without TFO optimization. A sudden jump can mean
+        overload, policy bypass, or a peer problem.
+    active_peers:
+      name: Active Peers
+      desc: Number of currently active WAN optimization peers on the Cisco
+        WAAS / WAVE appliance. Zero while peers are expected means the far-end
+        accelerator is down or unreachable.
+    max_active_peers:
+      name: Max Active Peers
+      desc: Configured upper limit of concurrent active peers on the Cisco
+        WAAS / WAVE appliance. Compare with the current active peer count to
+        see remaining headroom.
+    dre_cache_ok:
+      name: DRE Cache Health
+      desc: Normalized DRE cache health of the Cisco WAAS / WAVE appliance.
+        Usable maps to 1 (healthy); not usable, initializing, temporarily
+        failed, and failed map to 2 (not healthy).
+    dre_cache_status:
+      name: DRE Cache Status
+      desc: DRE cache state of the Cisco WAAS / WAVE appliance. Values are not
+        usable (1), initializing (2), usable (3), temporarily failed (4), and
+        failed (5). Anything other than usable means data reduction is
+        impaired.
+    dre_cache_used_percent:
+      name: DRE Cache Used
+      desc: Percentage of allocated DRE cache currently in use on the Cisco
+        WAAS / WAVE appliance. High occupancy with a healthy cache is normal;
+        occupancy stuck while the cache is not usable needs investigation.
+    dre_cache_total_mb:
+      name: DRE Cache Capacity
+      desc: Total DRE cache capacity allocated on the Cisco WAAS / WAVE
+        appliance, in megabytes.
+    alarm_critical:
+      name: Critical Alarms
+      desc: Number of critical alarms currently raised on the Cisco WAAS /
+        WAVE appliance. Any non-zero value needs immediate attention.
+    alarm_major:
+      name: Major Alarms
+      desc: Number of major alarms currently raised on the Cisco WAAS / WAVE
+        appliance. A non-zero value should be investigated before it
+        escalates.
+    alarm_minor:
+      name: Minor Alarms
+      desc: Number of minor alarms currently raised on the Cisco WAAS / WAVE
+        appliance. Use this as an early warning alongside critical and major
+        counts.
+monitor_object_metric_group:
+  Wanopt:
+    Base: Base
+    CPU: CPU
+    Memory: Memory
+    TFO: TFO
+    Peers: Peers
+    DRE: DRE
+    Alarms: Alarms
