@@ -1368,7 +1368,11 @@ class ServiceTreeService:
                 if not hosts:
                     return
                 for host_uuid in hosts:
-                    host = host_index.get(host_uuid) or {}
+                    host = host_index.get(host_uuid)
+                    if not host:
+                        continue
+                    if is_visible and not is_visible(host):
+                        continue
                     identifier = str(host.get("inst_name") or host.get("ip_addr") or host_uuid)
                     rows.append(
                         {
