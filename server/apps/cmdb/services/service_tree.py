@@ -20,6 +20,7 @@ from apps.cmdb.services.application_system import (
     query_association_edges,
 )
 from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.core.logger import cmdb_logger as logger, safe_log_value
 
@@ -1438,6 +1439,22 @@ def _require_hosts(host_uuids: list[str]) -> list[dict[str, Any]]:
     return [found[uuid] for uuid in wanted]
 
 
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+
+def _optional_import_host_uuid(identifier: str) -> str | None:
+    text = identifier.strip()
+    lowered = text.lower()
+    if lowered.startswith("urn:uuid:"):
+        text = text[9:]
+    elif lowered.startswith("uuid:"):
+        text = text[5:]
+    compact = text.strip().strip("{}").replace("-", "")
+    if len(compact) != 32 or any(character not in _HEX_DIGITS for character in compact):
+        return None
+    return optional_inst_uuid(identifier)
+
+
 def _lookup_hosts_for_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     identifiers = []
     for row in rows or []:
@@ -1448,9 +1465,14 @@ def _lookup_hosts_for_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         identifiers.append(parsed["host"])
     if not identifiers:
         return []
+    uuid_identifiers = [normalized for identifier in identifiers if (normalized := _optional_import_host_uuid(identifier))]
     by_name = InstanceManage.search_inst_batch(HOST_MODEL, inst_names=identifiers) or {}
-    by_uuid = InstanceManage.search_inst_batch(HOST_MODEL, inst_uuids=identifiers) or {}
-    hosts = list({item["inst_uuid"]: item for item in list(by_name.values()) + list(by_uuid.values()) if item.get("inst_uuid")}.values())
+    by_uuid = InstanceManage.search_inst_batch(HOST_MODEL, inst_uuids=uuid_identifiers) or {}
+    hosts = {
+        item["inst_uuid"]: item
+        for item in list(by_name.values()) + list(by_uuid.values())
+        if item.get("inst_uuid")
+    }
     missing_ips = [value for value in identifiers if value not in by_name and value not in by_uuid]
     if missing_ips:
         with GraphClient() as graph:
@@ -1462,6 +1484,7 @@ def _lookup_hosts_for_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ],
             )
         for item in extra or []:
-            if item.get("inst_uuid"):
-                hosts.append(item)
-    return hosts
+            inst_uuid = item.get("inst_uuid")
+            if inst_uuid:
+                hosts.setdefault(inst_uuid, item)
+    return list(hosts.values())
