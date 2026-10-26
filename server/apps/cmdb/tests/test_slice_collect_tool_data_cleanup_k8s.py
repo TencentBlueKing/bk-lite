@@ -314,6 +314,48 @@ class TestPrefillHelpers:
         assert out["prefill"]["credential"]["community"] == MASKED_PASSWORD
         assert out["prefill"]["port"] == 161
 
+    def test_build_prefill_snmp_list_masks_community(self):
+        inst = _FakeInstance(decrypt_credentials=[{"version": "v2c", "community": "public"}])
+        out = CollectToolService.build_prefill(inst, task_id=7, protocol="snmp")
+        assert out["can_prefill"] is True
+        cred = out["prefill"]["credential"]
+        assert cred["version"] == "v2c"
+        assert cred["community"] == MASKED_PASSWORD
+        assert cred["community"] != "public"
+
+    def test_build_prefill_ipmi_list_masks_password(self):
+        inst = _FakeInstance(decrypt_credentials=[{"username": "root", "password": "plain-secret"}])
+        out = CollectToolService.build_prefill(inst, task_id=8, protocol="ipmi")
+        assert out["can_prefill"] is True
+        cred = out["prefill"]["credential"]
+        assert cred["username"] == "root"
+        assert cred["password"] == MASKED_PASSWORD
+        assert cred["password"] != "plain-secret"
+
+    def test_build_prefill_credential_list_uses_first_item(self):
+        inst = _FakeInstance(
+            decrypt_credentials=[
+                {"version": "v2c", "community": "first-secret"},
+                {"version": "v3", "username": "second-user", "community": "second-secret"},
+            ]
+        )
+        out = CollectToolService.build_prefill(inst, task_id=9, protocol="snmp")
+        assert out["can_prefill"] is True
+        cred = out["prefill"]["credential"]
+        assert cred["version"] == "v2c"
+        assert cred["community"] == MASKED_PASSWORD
+        assert "username" not in cred
+        assert "first-secret" not in str(out)
+        assert "second-secret" not in str(out)
+
+    def test_get_decrypted_credential_non_dict_list_falls_back_to_raw_dict(self):
+        inst = _FakeInstance(decrypt_credentials=["not-a-dict"], credential={"k": "v"})
+        assert CollectToolService._get_decrypted_credential(inst) == {"k": "v"}
+
+    def test_get_decrypted_credential_empty_list_falls_back_to_raw_dict(self):
+        inst = _FakeInstance(decrypt_credentials=[], credential={"k": "v"})
+        assert CollectToolService._get_decrypted_credential(inst) == {"k": "v"}
+
     def test_build_prefill_unknown_protocol_no_credential_but_prefill(self):
         inst = _FakeInstance(access_point=[{"id": 1, "name": "ap"}])
         out = CollectToolService.build_prefill(inst, task_id=1, protocol="ssh")
