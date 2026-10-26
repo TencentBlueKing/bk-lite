@@ -59,7 +59,6 @@ export interface NodeStatus {
   /** Bound resource name is not drawn. Model may appear as a suffix on the title. */
   hoverName?: string;
   hoverModel?: string;
-  hoverNameLabel?: string;
   /** Label drawn before the model name when the plate is expanded. Host supplies the localized word, including its colon. */
   hoverModelLabel?: string;
   /** Label drawn before the status sentence when the plate is expanded. */
