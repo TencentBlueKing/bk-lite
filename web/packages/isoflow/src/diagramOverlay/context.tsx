@@ -11,8 +11,10 @@ import React, {
 import type {
   EditorModeEnum,
   ItemControls,
+  IconPickerRequest,
   ItemControlsExtraTarget,
   NodeBindingMark,
+  NodeMetrics,
   NodeStatus,
   RectangleStatus
 } from 'src/types';
@@ -25,6 +27,7 @@ import {
 
 export interface DiagramVisual {
   nodeStatus?: Record<string, NodeStatus>;
+  nodeMetrics?: Record<string, NodeMetrics>;
   nodeBinding?: Record<string, NodeBindingMark>;
   rectangleStatus?: Record<string, RectangleStatus>;
   highlightedItemId?: string;
@@ -53,6 +56,7 @@ interface ProviderProps {
   onItemClick?: DiagramCallbacksRef['current']['onItemClick'];
   onItemSelect?: DiagramCallbacksRef['current']['onItemSelect'];
   nodeStatus?: Record<string, NodeStatus>;
+  nodeMetrics?: Record<string, NodeMetrics>;
   nodeBinding?: Record<string, NodeBindingMark>;
   rectangleStatus?: Record<string, RectangleStatus>;
   highlightedItemId?: string;
@@ -64,6 +68,7 @@ export const DiagramOverlayProvider = ({
   onItemClick,
   onItemSelect,
   nodeStatus,
+  nodeMetrics,
   nodeBinding,
   rectangleStatus,
   highlightedItemId,
@@ -108,6 +113,7 @@ export const DiagramOverlayProvider = ({
   const visual = useMemo<DiagramVisual>(() => {
     return {
       nodeStatus,
+      nodeMetrics,
       nodeBinding,
       rectangleStatus,
       highlightedItemId,
@@ -120,6 +126,7 @@ export const DiagramOverlayProvider = ({
     highlightedItemId,
     hoveredRectangleId,
     nodeBinding,
+    nodeMetrics,
     nodeStatus,
     rectangleStatus,
     setHovered
@@ -176,6 +183,15 @@ export const useDiagramCallbacksRef = () => {
 };
 
 type RenderItemControlsExtra = (item: ItemControlsExtraTarget) => React.ReactNode;
+
+/** Host-owned icon picker. The scene asks it to open; it does not draw a dialog. */
+export const IconPickerContext = createContext<
+  ((request: IconPickerRequest) => void) | undefined
+>(undefined);
+
+export const useIconPicker = () => {
+  return useContext(IconPickerContext);
+};
 
 /** Host content for the item settings panels. Kept apart from the visual context so a new render function does not repaint the scene. */
 export const ItemControlsExtraContext = createContext<RenderItemControlsExtra | undefined>(undefined);

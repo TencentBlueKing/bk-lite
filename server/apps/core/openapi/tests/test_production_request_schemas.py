@@ -24,7 +24,7 @@ _MODULES = (
     "apps.node_mgmt.openapi_serializers",
     "apps.patch_mgmt.openapi_serializers",
     "apps.system_mgmt.openapi_serializers",
-    "apps.workflow_orchestration.openapi_serializers",
+    "apps.workflow.openapi_serializers",
 )
 
 # match_rules.value 按字段可以是字符串、数字或列表，不能收成 ITSM 接受的单一 type。
@@ -43,12 +43,7 @@ def _serializer_classes():
         module = importlib.import_module(module_name)
         for name in dir(module):
             obj = getattr(module, name)
-            if (
-                isinstance(obj, type)
-                and issubclass(obj, serializers.BaseSerializer)
-                and obj.__module__ == module.__name__
-                and "Response" not in name
-            ):
+            if isinstance(obj, type) and issubclass(obj, serializers.BaseSerializer) and obj.__module__ == module.__name__ and "Response" not in name:
                 found.append(obj)
     return found
 

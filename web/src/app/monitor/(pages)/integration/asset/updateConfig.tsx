@@ -271,9 +271,6 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       title={title}
       visible={modalVisible}
       zIndex={2000}
-      styles={{
-        body: { overflow: 'visible', maxHeight: 'calc(80vh - 108px)' },
-      }}
       onCancel={handleCancel}
       footer={
         <div>

@@ -1,0 +1,82 @@
+{
+  "object": "VM",
+  "plugin": "VMWare",
+  "templates": [
+    {
+      "name": "虚拟机 Tools 状态异常",
+      "alert_name": "虚拟机${instance_id} VMware Tools 状态异常",
+      "description": "采集 guest.toolsStatus：0 toolsOk，1 toolsOld，2 toolsNotInstalled，3 toolsNotRunning。默认对 >= 1 告警。只告警过时时把比较符改成等于 1。",
+      "metric_name": "tools_status_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "ESXi 宿主机重启",
+      "object": "ESXI",
+      "alert_name": "ESXi宿主机${instance_id}发生重启",
+      "description": "boot_time 为 Unix 秒。值只有重启才跳。changes(...) >= 1 表示比上次采样更新。第一周期没有前值，不会告警。不要对 uptime_seconds 配 changes。",
+      "metric_name": "boot_time_gauge",
+      "algorithm": "changes",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "虚拟机快照占用过大",
+      "alert_name": "虚拟机${instance_id}快照占用过大",
+      "description": "快照增量盘 + 数据文件 + 内存文件去重后的字节数。默认大于 2GB 告警。",
+      "metric_name": "snapshot_storage_bytes_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2147483648,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "虚拟机快照过旧",
+      "alert_name": "虚拟机${instance_id}快照过旧",
+      "description": "现在减去最老快照 createTime 的秒数。默认大于 30 天告警。",
+      "metric_name": "oldest_snapshot_age_seconds_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2592000,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "虚拟机快照数量过多",
+      "alert_name": "虚拟机${instance_id}快照数量过多",
+      "description": "快照树张数。默认大于 2 张告警。",
+      "metric_name": "snapshot_count_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

@@ -167,16 +167,55 @@ def test_screen_and_topology_accept_refresh_interval(authenticated_user):
         directory=directory,
         created_by="testuser",
     )
+    architecture = Architecture.objects.create(
+        name="周期架构",
+        groups=[1],
+        directory=directory,
+        created_by="testuser",
+        view_sets={"items": [], "views": []},
+    )
 
     for viewset, instance, path in (
         (view_module.ScreenModelViewSet, screen, f"/screen/{screen.id}/"),
         (view_module.TopologyModelViewSet, topology, f"/topology/{topology.id}/"),
+        (view_module.ArchitectureModelViewSet, architecture, f"/architecture/{architecture.id}/"),
     ):
         request = _request("patch", path, user, data={"refresh_interval": 300000})
         response = viewset.as_view({"patch": "partial_update"})(request, pk=str(instance.id))
         payload = _render(response)
         assert response.status_code == status.HTTP_200_OK
         assert payload["data"]["refresh_interval"] == 300000
+
+
+@pytest.mark.django_db
+def test_architecture_put_layout_keeps_refresh_interval(authenticated_user):
+    user = _superuser(authenticated_user)
+    directory = _directory()
+    architecture = Architecture.objects.create(
+        name="保存覆盖架构",
+        groups=[1],
+        directory=directory,
+        created_by="testuser",
+        refresh_interval=60000,
+        view_sets={"items": [], "views": []},
+    )
+    request = _request(
+        "put",
+        f"/architecture/{architecture.id}/",
+        user,
+        data={
+            "name": architecture.name,
+            "view_sets": {"items": [], "views": []},
+        },
+    )
+    response = view_module.ArchitectureModelViewSet.as_view({"put": "update"})(
+        request,
+        pk=str(architecture.id),
+    )
+    _render(response)
+    assert response.status_code == status.HTTP_200_OK
+    architecture.refresh_from_db()
+    assert architecture.refresh_interval == 60000
 
 
 @pytest.mark.django_db
@@ -263,16 +302,17 @@ def test_export_report_yaml_includes_refresh_interval():
 
 
 @pytest.mark.django_db
-def test_export_architecture_yaml_omits_refresh_interval():
+def test_export_architecture_yaml_includes_refresh_interval():
     directory = _directory()
     architecture = Architecture.objects.create(
-        name="架构无间隔",
+        name="架构有间隔",
         groups=[1],
         directory=directory,
         created_by="testuser",
+        refresh_interval=60000,
     )
     yaml_obj = ExportService.convert_canvas_to_yaml(architecture, ObjectType.ARCHITECTURE, {}, {})
-    assert "refresh_interval" not in yaml_obj
+    assert yaml_obj["refresh_interval"] == 60000
 
 
 @pytest.mark.parametrize("raw, expected", [(None, 0), (60, 0), (1, 0), (300000, 300000)])
@@ -317,6 +357,7 @@ def test_share_payload_includes_refresh_interval_for_runtime_canvases():
         groups=[1],
         directory=directory,
         created_by="testuser",
+        refresh_interval=60000,
     )
     network = NetworkTopology.objects.create(
         name="分享网络拓扑",
@@ -335,5 +376,5 @@ def test_share_payload_includes_refresh_interval_for_runtime_canvases():
 
     assert dashboard_payload["refresh_interval"] == 300000
     assert report_payload["refresh_interval"] == 60000
-    assert "refresh_interval" not in architecture_payload
+    assert architecture_payload["refresh_interval"] == 60000
     assert network_payload["refresh_interval"] == 600000

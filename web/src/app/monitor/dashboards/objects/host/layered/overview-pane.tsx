@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
 import { hostCategoryText } from './category-copy';
 import { HOST_SERIES_COLOR } from '../config';
 import {
@@ -13,9 +14,22 @@ import {
 } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
-import { KpiStrip, type KpiCardModel } from './signal-bar';
+import { metricBlockPhase } from './performance-scope';
+import ProDashLoading from './pro-dash-loading';
+import {
+  EVENT_RAIL_HINT_LINES,
+  KpiStrip,
+  ProFocusCard,
+  ProInfoHint,
+  ProSection,
+  proChromeClass,
+  type KpiCardModel
+} from './pro-chrome';
 import ThinTimeSeries from './thin-time-series';
-import type { HostSurfaceAlerts } from './tab-level';
+import FocusShortcutTitle from './focus-shortcut-title';
+import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from './focus-axis';
+import { useProTimeWindow } from './pro-time-window';
+import { loadPerCore, type HostSurfaceAlerts } from './tab-level';
 import {
   formatPercent,
   formatPlain,
@@ -25,7 +39,6 @@ import {
   primaryChartSeries,
   resolveMemoryUsage
 } from './readings';
-import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 interface OverviewPaneProps {
@@ -40,12 +53,28 @@ interface OverviewPaneProps {
   processLoading?: boolean;
   alertCount: number | null;
   alertEvents?: HostAlertRailEvent[];
+  eventsLoading?: boolean;
   alertsOpen?: boolean;
+  pendingMetricNames?: ReadonlySet<string>;
   onOpenAlerts?: () => void;
   onFocusAlert?: (alertId: string) => void;
   onJump: (tab: 'disk' | 'net' | 'process', key: string) => void;
   alerts: HostSurfaceAlerts['overview'];
 }
+
+const EMPTY_PENDING: ReadonlySet<string> = new Set();
+
+const loadStateOf = (
+  metrics: Record<string, MetricSeries | undefined>,
+  names: readonly string[]
+) => {
+  const states: Record<string, 'success' | 'error' | undefined> = {};
+  names.forEach((name) => {
+    const state = metrics[name]?.loadState;
+    if (state === 'success' || state === 'error') states[name] = state;
+  });
+  return states;
+};
 
 const latestOfRow = (row: EntityTableRow | undefined, key: string) => {
   const value = row?.values[key];
@@ -115,17 +144,20 @@ export default function OverviewPane({
   netRows,
   netLoading = false,
   processRows,
-  processReady,
   processLoading = false,
   alertCount,
   alertEvents = [],
+  eventsLoading = false,
   alertsOpen = false,
+  pendingMetricNames = EMPTY_PENDING,
   onOpenAlerts,
   onFocusAlert,
   onJump,
   alerts
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
+  const proTime = useProTimeWindow();
+  const chartWindow = proTime?.window ?? null;
   const worst = diskRows[0];
   const busiest = netRows[0];
   const topProcess = processRows[0];
@@ -145,6 +177,8 @@ export default function OverviewPane({
   );
   const mem = memoryUsage.usedNow;
   const load = latestNumber(metrics.system_load1);
+  const cpuCores = latestNumber(metrics.cpu_n);
+  const loadEachCore = loadPerCore(load, cpuCores);
   const uptime = latestNumber(metrics.system_uptime);
   const showLoad = metricHasPoints(metrics.system_load1);
   const diskUsagePoints = useMemo(() => hostDiskUsagePoints(diskRows), [diskRows]);
@@ -174,7 +208,14 @@ export default function OverviewPane({
         label: hostCategoryText(t, 'loadOneMinute'),
         value: formatPlain(load),
         tone: LOAD1_SERIES_COLOR,
-        alertLevel: alerts.load
+        alertLevel: alerts.load,
+        fold: alerts.load === 'warn' ? 'outline' : undefined,
+        subtitle: cpuCores != null && cpuCores > 0 && loadEachCore != null
+          ? hostCategoryText(t, 'loadCoresAside', {
+            cores: formatPlain(cpuCores, 0),
+            perCore: formatPlain(loadEachCore)
+          })
+          : undefined
       });
     }
     items.push({
@@ -210,9 +251,11 @@ export default function OverviewPane({
     alertCount,
     alertsOpen,
     cpu,
+    cpuCores,
     diskCurrent,
     mountName,
     load,
+    loadEachCore,
     mem,
     alerts,
     onOpenAlerts,
@@ -246,6 +289,7 @@ export default function OverviewPane({
       const inbound = readingOfRow(busiest, 'net_bytes_recv_rate');
       const outbound = readingOfRow(busiest, 'net_bytes_sent_rate');
       if (inbound == null && outbound == null) return null;
+      if (netLoading && (inbound == null || outbound == null)) return null;
       return (inbound ?? 0) + (outbound ?? 0);
     })();
   const nicTrend = useMemo(
@@ -262,124 +306,150 @@ export default function OverviewPane({
       : []),
     [topProcess]
   );
+  const chartLoading = (names: readonly string[], hasValue: boolean) => (
+    metricBlockPhase(names, pendingMetricNames, loadStateOf(metrics, names), hasValue) === 'loading'
+  );
+  const diskFocus = worst
+    ? describeFocusAxis('percent', seriesSampleValues(clipChartDataToWindow(diskTrend, chartWindow)))
+    : null;
+  const nicFocus = busiest
+    ? describeFocusAxis('byteps', seriesSampleValues(clipChartDataToWindow(nicTrend, chartWindow)))
+    : null;
+  const processFocus = topProcess
+    ? describeFocusAxis('percent', seriesSampleValues(clipChartDataToWindow(processTrend, chartWindow)))
+    : null;
 
   return (
     <>
-      <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>健康概览</div>
-      </div>
-      <KpiStrip items={cards} />
-      <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'events')}</div>
-      </div>
-      <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
+      <ProSection title="健康概览">
+        <KpiStrip items={cards} loading={loading} />
+      </ProSection>
+      <ProSection
+        title={hostCategoryText(t, 'events')}
+        hint={<ProInfoHint kind="events" lines={EVENT_RAIL_HINT_LINES} />}
+      >
+        <EventsRail events={alertEvents} loading={eventsLoading} onFocusAlert={onFocusAlert} />
+      </ProSection>
 
-      <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>重点关注</div>
-      </div>
-      <div className={styles.shortcutGrid}>
-        <div key="disk" className={`${classic.panel} ${styles.shortcutCard}`}>
-          <div className={styles.shortcutCopy}>
-            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestMount')}</div>
+      <ProSection title="重点关注">
+      <div className={`${proChromeClass.shortcutGrid} ${styles.shortcutGrid3}`}>
+        <ProFocusCard key="disk">
+          <div className={proChromeClass.shortcutCopy}>
+            <FocusShortcutTitle
+              label={hostCategoryText(t, 'busiestMount')}
+              unit={diskFocus?.unitLabel}
+            />
             {worst ? (
               <>
-                <div className={styles.shortcutMain}>{mountName || '—'}</div>
-                <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.diskUsed }}>
-                  {formatPercent(diskCurrent)}
+                <div className={proChromeClass.shortcutMain}>{mountName || '—'}</div>
+                <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.diskUsed }}>
+                  {diskFocus ? formatFocusHeadline(diskFocus, diskCurrent) : '--'}
                 </div>
-                <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
+                <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('disk', worst.key)}>
                   查看磁盘
                 </button>
               </>
+            ) : diskLoading ? (
+              <ProDashLoading size="small" />
             ) : (
-              <div className={styles.shortcutSub}>{diskLoading ? '加载中' : '暂无挂载数据'}</div>
+              <div className={proChromeClass.shortcutSub}>暂无挂载数据</div>
             )}
           </div>
           {worst ? (
             <ThinTimeSeries
               bare
-              className={styles.focusChart}
+              numericAxis
+              className={proChromeClass.focusChart}
               title=""
               unit="percent"
               data={diskTrend}
               legends={[{ label: '使用率', color: HOST_SERIES_COLOR.diskUsed }]}
             />
           ) : null}
-        </div>
-        <div key="net" className={`${classic.panel} ${styles.shortcutCard}`}>
-          <div className={styles.shortcutCopy}>
-            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestNic')}</div>
+        </ProFocusCard>
+        <ProFocusCard key="net">
+          <div className={proChromeClass.shortcutCopy}>
+            <FocusShortcutTitle
+              label={hostCategoryText(t, 'busiestNic')}
+              unit={nicFocus?.unitLabel}
+            />
             {busiest ? (
               <>
-                <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
-                <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.netIn }}>
-                  {formatUnit(nicThroughput, 'byteps')}
+                <div className={proChromeClass.shortcutMain}>{busiest.labels.interface || '—'}</div>
+                <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.netIn }}>
+                  {nicFocus ? formatFocusHeadline(nicFocus, nicThroughput) : '--'}
                 </div>
-                <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
+                <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('net', busiest.key)}>
                   查看网络
                 </button>
               </>
+            ) : netLoading ? (
+              <ProDashLoading size="small" />
             ) : (
-              <div className={styles.shortcutSub}>{netLoading ? '加载中' : '暂无网卡数据'}</div>
+              <div className={proChromeClass.shortcutSub}>暂无网卡数据</div>
             )}
           </div>
           {busiest ? (
             <ThinTimeSeries
               bare
-              className={styles.focusChart}
+              numericAxis
+              className={proChromeClass.focusChart}
               title=""
               unit="byteps"
               data={nicTrend}
               legends={[{ label: '吞吐', color: HOST_SERIES_COLOR.netIn }]}
             />
           ) : null}
-        </div>
-        {processReady ? (
-          <div key="process" className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutCopy}>
-              <div className={styles.shortcutLabel}>CPU 占用最高</div>
-              {topProcess ? (
-                <>
-                  <div className={styles.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
-                  <div className={styles.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
-                    {formatPercent(readingOfRow(topProcess, 'process_cpu_usage'))}
-                  </div>
-                  <button type="button" className={styles.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
-                    查看进程
-                  </button>
-                </>
-              ) : (
-                <div className={styles.shortcutSub}>{processLoading ? '加载中' : '暂无进程数据'}</div>
-              )}
-            </div>
+        </ProFocusCard>
+        <ProFocusCard key="process">
+          <div className={proChromeClass.shortcutCopy}>
+            <FocusShortcutTitle
+              label="CPU 占用最高"
+              unit={processFocus?.unitLabel}
+            />
             {topProcess ? (
-              <ThinTimeSeries
-                bare
-                className={styles.focusChart}
-                title=""
-                unit="percent"
-                data={processTrend}
-                legends={[{ label: 'CPU', color: HOST_SERIES_COLOR.cpu }]}
-              />
-            ) : null}
+              <>
+                <div className={proChromeClass.shortcutMain}>{topProcess.labels.process_name || '—'}</div>
+                <div className={proChromeClass.shortcutValue} style={{ color: HOST_SERIES_COLOR.cpu }}>
+                  {processFocus ? formatFocusHeadline(processFocus, readingOfRow(topProcess, 'process_cpu_usage')) : '--'}
+                </div>
+                <button type="button" className={proChromeClass.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
+                  查看进程
+                </button>
+              </>
+            ) : processLoading ? (
+              <ProDashLoading size="small" />
+            ) : (
+              <div className={proChromeClass.shortcutSub}>暂无进程数据</div>
+            )}
           </div>
-        ) : null}
+          {topProcess ? (
+            <ThinTimeSeries
+              bare
+              numericAxis
+              className={proChromeClass.focusChart}
+              title=""
+              unit="percent"
+              data={processTrend}
+              legends={[{ label: 'CPU', color: HOST_SERIES_COLOR.cpu }]}
+            />
+          ) : null}
+        </ProFocusCard>
       </div>
+      </ProSection>
 
-      <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'viewTrend')}</div>
-      </div>
+      <ProSection title={hostCategoryText(t, 'viewTrend')}>
       <div className={styles.chartGrid4}>
         <ThinTimeSeries
           title={hostCategoryText(t, 'cpuUtilization')}
-          loading={loading}
+          loading={chartLoading(['cpu_usage_total'], cpuTrend.length > 0)}
           unit="percent"
           data={cpuTrend}
           legends={[CPU_SERIES]}
         />
         <ThinTimeSeries
           title={hostCategoryText(t, 'memoryUtilization')}
-          loading={loading}
+          loading={chartLoading(['mem_used_percent', 'mem_available', 'mem_total'], memTrend.length > 0)}
           unit="percent"
           data={memTrend}
           legends={[MEM_SERIES]}
@@ -387,7 +457,7 @@ export default function OverviewPane({
         <ThinTimeSeries
           title={hostCategoryText(t, 'diskWeightedUsage')}
           hint="总使用率 = 100% × 各挂载已用之和 / 总量之和。概览 KPI 与告警色点用最满挂载，不是这个合计。"
-          loading={diskLoading}
+          loading={diskLoading && diskUsageTrend.length === 0}
           unit="percent"
           emptyText="暂无挂载数据"
           data={diskUsageTrend}
@@ -396,7 +466,7 @@ export default function OverviewPane({
         <ThinTimeSeries
           title="网卡合计"
           hint="本机全部网卡入站与出站吞吐之和；与「吞吐最高网卡」不同。"
-          loading={loading}
+          loading={chartLoading(['net_bytes_recv_rate', 'net_bytes_sent_rate'], netTrend.length > 0)}
           unit="byteps"
           data={netTrend}
           legends={[
@@ -405,6 +475,7 @@ export default function OverviewPane({
           ]}
         />
       </div>
+      </ProSection>
     </>
   );
 }

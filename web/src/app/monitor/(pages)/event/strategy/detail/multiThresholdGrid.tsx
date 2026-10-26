@@ -183,37 +183,37 @@ const MultiThresholdGrid: React.FC<MultiThresholdGridProps> = ({
                 </div>
                 <div className="w-[240px] shrink-0">
                   {thresholdCell(
-                  row,
-                  row.threshold?.[0],
-                  (method) =>
-                    onChange(
-                      rows.map((item) =>
-                        item.ref === row.ref
-                          ? {
-                            ...item,
-                            threshold: [{
-                              method,
-                              value: item.threshold?.[0]?.value ?? null
-                            }]
-                          }
-                          : item
+                    row,
+                    row.threshold?.[0],
+                    (method) =>
+                      onChange(
+                        rows.map((item) =>
+                          item.ref === row.ref
+                            ? {
+                              ...item,
+                              threshold: [{
+                                method,
+                                value: item.threshold?.[0]?.value ?? null
+                              }]
+                            }
+                            : item
+                        )
+                      ),
+                    (value) =>
+                      onChange(
+                        rows.map((item) =>
+                          item.ref === row.ref
+                            ? {
+                              ...item,
+                              threshold: [{
+                                method: item.threshold?.[0]?.method || '>',
+                                value
+                              }]
+                            }
+                            : item
+                        )
                       )
-                    ),
-                  (value) =>
-                    onChange(
-                      rows.map((item) =>
-                        item.ref === row.ref
-                          ? {
-                            ...item,
-                            threshold: [{
-                              method: item.threshold?.[0]?.method || '>',
-                              value
-                            }]
-                          }
-                          : item
-                      )
-                    )
-                )}
+                  )}
                 </div>
               </div>
             ))}

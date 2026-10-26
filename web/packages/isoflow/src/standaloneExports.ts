@@ -15,6 +15,8 @@ export type {
   RectangleBorderLevel,
   IsoflowSceneApi,
   IsoflowLabels,
-  ItemControlsExtraTarget
+  ItemControlsExtraTarget,
+  IconPickerIcon,
+  IconPickerRequest
 } from 'src/types';
 export type * from 'src/types/model';

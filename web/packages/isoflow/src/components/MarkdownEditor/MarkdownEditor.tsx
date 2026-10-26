@@ -68,19 +68,30 @@ export const MarkdownEditor = ({
   return (
     <Box
       sx={{
+        width: '100%',
+        minWidth: 0,
+        boxSizing: 'border-box',
         '.ql-toolbar.ql-snow': {
           border: 'none',
           pt: 0,
           px: 0,
+          whiteSpace: 'nowrap',
+          '.ql-formats': {
+            marginRight: '8px'
+          },
           ...(readOnly ? { display: 'none' } : {})
         },
         '.ql-toolbar.ql-snow + .ql-container.ql-snow': {
-          border: '1px solid',
-          borderColor: 'grey.300',
-          borderTop: 'auto',
-          borderRadius: 1.5,
+          boxSizing: 'border-box',
+          width: '100%',
+          border: '1px solid #DFE7F0',
+          backgroundColor: '#FFFFFF',
+          borderRadius: '6px',
           height,
-          color: 'text.secondary'
+          color: 'var(--color-text-1)'
+        },
+        '&:focus-within .ql-toolbar.ql-snow + .ql-container.ql-snow': {
+          borderColor: 'var(--color-primary)'
         },
         '.ql-container.ql-snow': {
           ...(readOnly ? { border: 'none' } : {}),

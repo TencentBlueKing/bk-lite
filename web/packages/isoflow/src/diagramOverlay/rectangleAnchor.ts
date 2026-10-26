@@ -7,13 +7,13 @@ export const RECTANGLE_CORNER_RADIUS = 22;
 
 /**
  * Placement of the area alert label in the area's own ground plane (unprojected
- * px, before the iso matrix). The label ends `along` before the sharp right
- * corner, where the rounded corner starts, and sits `inset` inside the
- * lower-right edge so it clears the border stroke.
+ * px, before the iso matrix). `along` is how far the label ends before the
+ * sharp right corner; it sits inside the rounded corner so the badge hugs the
+ * lower-right of the area. `inset` keeps it just clear of the border stroke.
  */
 export const RECTANGLE_EDGE_LABEL_OFFSET = {
-  along: RECTANGLE_CORNER_RADIUS,
-  inset: 11
+  along: 8,
+  inset: 6
 } as const;
 
 /** Label box in the area plane: height, side padding, icon, icon-to-number gap, font. */

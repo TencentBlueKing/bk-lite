@@ -1,0 +1,68 @@
+name: BlueKing
+description: BlueKing integration for login authentication and user synchronization.
+all_departments: All
+
+templates:
+  base_connection:
+    title: Base Connection
+    groups:
+      credentials:
+        title: App credentials
+        fields:
+          bk_url:
+            label: BlueKing URL
+            help_text: BlueKing platform address, including scheme and host.
+          app_id:
+            label: App ID
+          app_token:
+            label: App Token
+            placeholder: Leave blank if unchanged
+  login_auth_form:
+    title: Login authentication
+    groups:
+      mapping:
+        title: Field mapping
+        fields:
+          display_name:
+            label: Display name
+          icon:
+            label: Icon
+          description:
+            label: Description
+          external_field:
+            label: External field
+          platform_field:
+            label: Platform field
+          unmatched_user_action:
+            label: Unmatched user action
+    external_fields:
+      username:
+        label: Username
+  user_sync_form:
+    title: User sync
+    groups:
+      pull:
+        title: Pull settings
+        fields:
+          root_department_id:
+            label: Root department ID
+          include_child_departments:
+            label: Include child departments
+            help_text: By default, sync members of the root department and all child departments. Turn this off to sync only direct members of that department.
+    external_fields:
+      username:
+        label: Username
+      display_name:
+        label: Display name
+      email:
+        label: Email
+      mobile:
+        label: Mobile
+      department_ids:
+        label: Department IDs
+
+capabilities:
+  login_auth:
+    fields: {}
+  user_sync:
+    fields: {}

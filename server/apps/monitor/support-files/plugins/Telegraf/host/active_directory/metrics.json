@@ -398,7 +398,7 @@
     {
       "metric_group": "Probe",
       "name": "ad_ldap_probe_result_code",
-      "query": "net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldap\", __$labels__}",
+      "query": "max(net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldap\", __$labels__}) by (instance_id, endpoint, port)",
       "display_name": "LDAP Probe Result",
       "data_type": "Enum",
       "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"超时\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"连接失败\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"读取失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"返回不匹配\",\"id\":4,\"color\":\"#faad14\"}]",
@@ -420,7 +420,7 @@
     {
       "metric_group": "Probe",
       "name": "ad_ldaps_probe_result_code",
-      "query": "net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldaps\", __$labels__}",
+      "query": "max(net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldaps\", __$labels__}) by (instance_id, endpoint, port)",
       "display_name": "LDAPS Probe Result",
       "data_type": "Enum",
       "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"超时\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"连接失败\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"读取失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"返回不匹配\",\"id\":4,\"color\":\"#faad14\"}]",

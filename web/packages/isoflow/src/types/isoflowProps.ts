@@ -21,6 +21,21 @@ export const nodeStatusLevels = [
 
 export type NodeStatusLevel = (typeof nodeStatusLevels)[number];
 
+export interface NodeMetricLine {
+  name: string;
+  text: string;
+}
+
+/** View mode. The host already chose the lines and formatted the values. */
+export interface NodeMetrics {
+  lines: NodeMetricLine[];
+  /**
+   * True: the lines stay under the name. False: they appear only while the
+   * name card is hovered, together with the model and alert lines.
+   */
+  pinned?: boolean;
+}
+
 export interface NodeStatus {
   /** Omitted in edit mode, where the plate is a name and not a runtime status. */
   level?: NodeStatusLevel;
@@ -41,10 +56,7 @@ export interface NodeStatus {
   plateTitle?: string;
   /** Second line under the icon name. Hidden by the scene when zoom is below 70%. */
   plateSubtitle?: string;
-  /**
-   * Bound resource name and model. View mode expands the name plate in place
-   * while the pointer is on the icon or the plate. Omitted fields are not drawn.
-   */
+  /** Bound resource name is not drawn. Model may appear as a suffix on the title. */
   hoverName?: string;
   hoverModel?: string;
   /** Label drawn before the model name when the plate is expanded. Host supplies the localized word, including its colon. */
@@ -82,6 +94,20 @@ export type ItemControlsExtraTarget = {
   type: 'ITEM' | 'RECTANGLE';
   id: string;
 };
+
+/** Icon the host draws inside its own picker dialog. */
+export interface IconPickerIcon {
+  id: string;
+  name: string;
+  url: string;
+}
+
+/** Edit mode. The host opens its dialog; selecting an icon updates the node. */
+export interface IconPickerRequest {
+  title: string;
+  icons: IconPickerIcon[];
+  onSelect: (iconId: string) => void;
+}
 
 export type DiagramItemHit = {
   type: 'ITEM' | 'RECTANGLE' | 'CONNECTOR';
@@ -129,6 +155,8 @@ export interface IsoflowProps {
   highlightedItemId?: string;
   /** Keyed by view item id. Icons omitted from the map are drawn unchanged. */
   nodeStatus?: Record<string, NodeStatus>;
+  /** View mode. Keyed by view item id. Drawn under the name in the name card. */
+  nodeMetrics?: Record<string, NodeMetrics>;
   /**
    * Edit mode. Keyed by view item id. An unbound diamond is drawn only for ids
    * present in the map, and only while the host asks for that highlight.
@@ -147,11 +175,42 @@ export interface IsoflowProps {
    * original height; for an area, content at the top of the panel.
    */
   renderItemControlsExtra?: (item: ItemControlsExtraTarget) => ReactNode;
+  /**
+   * Edit mode. Opens the host's icon picker instead of a scene dialog.
+   * The host owns the modal chrome and calls `onSelect` when an icon is chosen.
+   */
+  onOpenIconPicker?: (request: IconPickerRequest) => void;
   /** Localized editor text. Missing keys fall back to English. */
   labels?: Partial<IsoflowLabels>;
+}
+
+export interface ArchitectureTile {
+  x: number;
+  y: number;
+}
+
+export interface ArchitecturePlacement {
+  occupied: ArchitectureTile[];
+  rectangles: { id: string; from: ArchitectureTile; to: ArchitectureTile }[];
+  viewportCenter: ArchitectureTile;
+  iconIds: string[];
+}
+
+export interface ArchitectureBoundNode {
+  id: string;
+  name: string;
+  icon: string;
+  tile: ArchitectureTile;
+  bkBinding: { inst_uuid: string; model_id: string };
 }
 
 export interface IsoflowSceneApi {
   updateViewItem: (id: string, updates: Partial<ViewItem>) => void;
   updateRectangle: (id: string, updates: Partial<Rectangle>) => void;
+  /** Current view tiles, areas, viewport center, and icon ids. */
+  readPlacement: () => ArchitecturePlacement;
+  /** Adds bound icons on the current view. Does not draw connectors or areas. */
+  createBoundNodes: (nodes: ArchitectureBoundNode[]) => void;
+  /** Pans so the tiles are in view when any of them is outside the canvas. */
+  revealTiles: (tiles: ArchitectureTile[]) => void;
 }

@@ -23,7 +23,7 @@
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"警告\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"严重\",\"id\":3,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "description": "Core cluster health metric, reflects cluster health via status values: 1=normal (green), 2=replica missing, 3=primary missing (failure); red status impacts data availability",
-      "query": "elasticsearch_cluster_health_status_code{__$labels__}"
+      "query": "max(elasticsearch_cluster_health_status_code{__$labels__}) by (instance_id)"
     },
     {
       "metric_group": "Base",

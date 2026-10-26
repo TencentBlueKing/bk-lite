@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
 import type { ArchitectureNodeStatusItem } from './model';
 import {
@@ -14,14 +14,17 @@ export function useArchitectureNodeStatus(options: {
   enabled: boolean;
   uuids: string[];
   intervalMs: number;
+  refreshOnVisible?: boolean;
 }) {
   const { queryNodeStatus } = useArchitectureApi();
   const queryRef = useRef(queryNodeStatus);
   queryRef.current = queryNodeStatus;
   const [byUuid, setByUuid] = useState<Record<string, ArchitectureNodeStatusItem>>({});
   const [phase, setPhase] = useState<'idle' | 'ready' | 'failed'>('idle');
+  const [reloadKey, setReloadKey] = useState(0);
   const cacheRef = useRef<Record<string, ArchitectureNodeStatusItem>>({});
   const signature = options.uuids.join('\n');
+  const refreshOnVisible = options.refreshOnVisible !== false;
 
   useEffect(() => {
     // Keep the last names while edit mode pauses polling, so cancel does not
@@ -86,13 +89,19 @@ export function useArchitectureNodeStatus(options: {
     const onVisibility = () => {
       if (!document.hidden) run();
     };
-    document.addEventListener('visibilitychange', onVisibility);
+    if (refreshOnVisible) {
+      document.addEventListener('visibilitychange', onVisibility);
+    }
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
+      if (refreshOnVisible) {
+        document.removeEventListener('visibilitychange', onVisibility);
+      }
     };
-  }, [options.enabled, options.intervalMs, signature]);
+  }, [options.enabled, options.intervalMs, refreshOnVisible, reloadKey, signature]);
 
-  return { byUuid, phase };
+  const reload = useCallback(() => setReloadKey((current) => current + 1), []);
+
+  return { byUuid, phase, reload };
 }

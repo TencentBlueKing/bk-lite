@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-VALID_MODULES = ("cpu", "mem", "disk", "diskio", "net", "processes", "system")
+from ..windows_service import WINDOWS_SERVICE_QUERY, select_windows_services, should_collect_windows_service
+
+VALID_MODULES = ("cpu", "mem", "disk", "diskio", "net", "processes", "system", "service")
 DEFAULT_MODULES = ("cpu", "mem", "disk", "diskio", "net", "processes", "system")
 
 
@@ -216,6 +218,20 @@ class EmptyModule(WmiModule):
         return []
 
 
+class ServiceModule(WmiModule):
+    name = "service"
+
+    def __init__(self, service_scope: Any = None, service_names: Any = None):
+        self.service_scope = service_scope
+        self.service_names = service_names
+
+    def collect(self, client):
+        if not should_collect_windows_service(self.service_scope, self.service_names):
+            return []
+        rows = client.query(WINDOWS_SERVICE_QUERY)
+        return select_windows_services(rows, self.service_scope, self.service_names)
+
+
 MODULE_REGISTRY: dict[str, Callable[[], WmiModule]] = {
     "cpu": CpuModule,
     "mem": MemoryModule,
@@ -224,4 +240,5 @@ MODULE_REGISTRY: dict[str, Callable[[], WmiModule]] = {
     "net": NetModule,
     "processes": ProcessesModule,
     "system": SystemModule,
+    "service": ServiceModule,
 }

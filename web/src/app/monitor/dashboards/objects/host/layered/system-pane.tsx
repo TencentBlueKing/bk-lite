@@ -10,7 +10,7 @@ import type { MetricUnit } from '../../../shared/types';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
-import { CardAlertDot, cardAlertClass } from './card-alert';
+import { CardAlertDot, cardAlertClass, type CardAlertFold } from './card-alert';
 import ThinTimeSeries from './thin-time-series';
 import type { HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
@@ -23,18 +23,21 @@ import {
   primaryChartSeries,
   resolveMemoryUsage
 } from './readings';
+import ProDashLoading from './pro-dash-loading';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 /** system / steal 没有对应的序列 token，色值跟构成表。 */
 const CPU_SYSTEM_COLOR = '#86909C';
 const CPU_STEAL_COLOR = '#F5319D';
+const CPU_SOFTIRQ_COLOR = HOST_PALETTE.cyan;
 
 const CPU_BREAKDOWN = [
   { key: 'cpu_usage_user_total', label: 'user', color: HOST_SERIES_COLOR.cpu },
   { key: 'cpu_usage_system_total', label: 'system', color: CPU_SYSTEM_COLOR },
   { key: 'cpu_usage_iowait_total', label: 'iowait', color: HOST_SERIES_COLOR.load1 },
   { key: 'cpu_usage_irq_total', label: 'irq', color: HOST_SERIES_COLOR.diskUsed },
+  { key: 'cpu_usage_softirq_total', label: 'softirq', color: CPU_SOFTIRQ_COLOR },
   { key: 'cpu_usage_steal_total', label: 'steal', color: CPU_STEAL_COLOR }
 ];
 
@@ -313,6 +316,8 @@ export default function SystemPane({
     metrics.cpu_usage_iowait_total?.loadState,
     metrics.cpu_usage_irq_total?.viewData,
     metrics.cpu_usage_irq_total?.loadState,
+    metrics.cpu_usage_softirq_total?.viewData,
+    metrics.cpu_usage_softirq_total?.loadState,
     metrics.cpu_usage_steal_total?.viewData,
     metrics.cpu_usage_steal_total?.loadState
   ]);
@@ -384,6 +389,7 @@ export default function SystemPane({
     phase: MetricBlockPhase;
     valueColor?: string;
     alertLevel?: HostSurfaceAlerts['system']['cpu'];
+    fold?: CardAlertFold;
   }> = [
     {
       key: 'cpu',
@@ -412,7 +418,8 @@ export default function SystemPane({
       value: formatPlain(load1Now),
       unit: '',
       valueColor: LOAD1_SERIES_COLOR,
-      alertLevel: alerts.load
+      alertLevel: alerts.load,
+      fold: alerts.load === 'warn' ? 'outline' as const : undefined
     }] : []),
     {
       key: 'uptime',
@@ -526,6 +533,8 @@ export default function SystemPane({
     metrics.mem_used?.loadState
   ]);
   const memoryBytes = memoryCompose.parts.reduce((sum, item) => sum + item.bytes, 0);
+  const composeNames = ['mem_used', 'mem_cached', 'mem_buffered', 'mem_shared', 'mem_total', 'mem_available'] as const;
+  const composeLoading = phaseFor(composeNames, memoryCompose.series.length > 0) === 'loading';
   const cpuCompose = useMemo(() => {
     const series = CPU_BREAKDOWN.flatMap((item) => {
       const data = primaryChartSeries(metrics[item.key]?.viewData);
@@ -543,6 +552,7 @@ export default function SystemPane({
     metrics.cpu_usage_system_total?.viewData,
     metrics.cpu_usage_iowait_total?.viewData,
     metrics.cpu_usage_irq_total?.viewData,
+    metrics.cpu_usage_softirq_total?.viewData,
     metrics.cpu_usage_steal_total?.viewData
   ]);
   const gpuMemReadingOf = (row: EntityTableRow) => {
@@ -561,14 +571,10 @@ export default function SystemPane({
       <div className={styles.instantKpiRow}>
         {instantCards.map((card) => (
           <section key={card.key} className={`${classic.panel} ${styles.instantKpi} ${cardAlertClass(card.alertLevel)}`}>
-            <CardAlertDot level={card.alertLevel} valueColor={card.valueColor} />
+            <CardAlertDot level={card.alertLevel} fold={card.fold} />
             <div className={styles.instantKpiLabel}>{card.label}</div>
             {card.phase === 'loading' ? (
-              <span
-                className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
-                aria-busy="true"
-                aria-label="加载中"
-              />
+              <ProDashLoading size="small" layout="inline" />
             ) : card.phase === 'error' ? (
               <button
                 type="button"
@@ -612,10 +618,17 @@ export default function SystemPane({
               bare
               title=""
               unit="bytes"
+              loading={composeLoading}
               data={memoryCompose.trend}
               emptyText="暂无数据"
               legends={memoryCompose.series.map((item) => ({ label: item.label, color: item.color }))}
             />
+          ) : composeLoading ? (
+            <div className={styles.chartBody}>
+              <div className={styles.chartEmpty}>
+                <ProDashLoading />
+              </div>
+            </div>
           ) : memoryBytes > 0 ? (
             <CompositionDonut
               slices={memoryCompose.parts.map((item) => ({
@@ -641,11 +654,11 @@ export default function SystemPane({
             />
           </div>
           {breakdownPhase === 'loading' ? (
-            <span
-              className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
-              aria-busy="true"
-              aria-label="加载中"
-            />
+            <div className={styles.chartBody}>
+              <div className={styles.chartEmpty}>
+                <ProDashLoading />
+              </div>
+            </div>
           ) : breakdownPhase === 'error' ? (
             <button
               type="button"
@@ -687,7 +700,7 @@ export default function SystemPane({
           {gpuRows.map((row) => {
             const bandTitle = gpuRows.length > 1 ? gpuCardTitle(row, 'GPU') : 'GPU';
             return (
-              <div key={row.key}>
+              <div key={row.key} className={styles.gpuBand}>
                 <div className={styles.gpuBandTitle}>{bandTitle}</div>
                 <div className={styles.gpuRow}>
                   {GPU_CHARTS.map((item) => {
@@ -720,12 +733,14 @@ export default function SystemPane({
         </div>
       ) : gpuLoading ? (
         <div className={styles.detailFull} data-surface="gpu">
-          <div className={styles.gpuBandTitle}>GPU</div>
-          <span
-            className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
-            aria-busy="true"
-            aria-label="加载中"
-          />
+          <div className={styles.gpuBand}>
+            <div className={styles.gpuBandTitle}>GPU</div>
+            <span
+              className="block h-4 w-16 rounded bg-[var(--color-fill-2)]"
+              aria-busy="true"
+              aria-label="加载中"
+            />
+          </div>
         </div>
       ) : null}
     </>

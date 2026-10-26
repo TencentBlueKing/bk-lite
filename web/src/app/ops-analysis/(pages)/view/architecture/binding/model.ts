@@ -35,6 +35,8 @@ export interface BindingSearchHit {
 export interface ModelOption {
   model_id: string;
   model_name: string;
+  /** CMDB model icon reference, when the model list includes one. */
+  icn?: string;
 }
 
 /** Page size for the binding search list. CMDB fulltext_search_by_model accepts at most 100. */
@@ -43,6 +45,7 @@ export const BINDING_SEARCH_PAGE_SIZE = 30;
 export interface BindingSearchPage {
   hits: BindingSearchHit[];
   hasMore: boolean;
+  total: number;
 }
 
 export type BindingSearchMode = 'idle' | 'by-type' | 'by-model-text' | 'fulltext';
@@ -119,7 +122,7 @@ export function bindingPageFromTotal(
   pageSize: number,
   total: number,
 ): BindingSearchPage {
-  return { hits, hasMore: hits.length > 0 && page * pageSize < total };
+  return { hits, hasMore: hits.length > 0 && page * pageSize < total, total };
 }
 
 /** One page of a result that the server returns in full (keyword search across all models). */
@@ -132,7 +135,29 @@ export function sliceBindingPage(
   return {
     hits: all.slice(start, start + pageSize),
     hasMore: start + pageSize < all.length,
+    total: all.length,
   };
+}
+
+/**
+ * Ops-analysis resource_search page.
+ * by-type and by-model-text are already one server page.
+ * fulltext still arrives as the whole hit list and is sliced here.
+ */
+export function architectureSearchPage(
+  raw: unknown,
+  page: number,
+  pageSize: number,
+): BindingSearchPage {
+  const record = isRecord(raw) ? raw : {};
+  const hits = normalizeBindingSearchHits(record.hits);
+  if (record.mode === 'fulltext') {
+    return sliceBindingPage(hits, page, pageSize);
+  }
+  const total = typeof record.total === 'number' && Number.isFinite(record.total)
+    ? record.total
+    : hits.length;
+  return bindingPageFromTotal(hits, page, pageSize, total);
 }
 
 /** Appends a page, skipping rows already listed (offset paging can shift between requests). */
@@ -150,24 +175,6 @@ export function appendBindingHits(
   return merged;
 }
 
-export function normalizeInstanceSearchPage(raw: unknown): { hits: BindingSearchHit[]; total: number } {
-  const record = isRecord(raw) ? raw : {};
-  const hits = normalizeBindingSearchHits(record.insts);
-  const total = typeof record.count === 'number' && Number.isFinite(record.count)
-    ? record.count
-    : hits.length;
-  return { hits, total };
-}
-
-export function normalizeFulltextModelPage(raw: unknown): { hits: BindingSearchHit[]; total: number } {
-  const record = isRecord(raw) ? raw : {};
-  const hits = normalizeBindingSearchHits(record.data);
-  const total = typeof record.total === 'number' && Number.isFinite(record.total)
-    ? record.total
-    : hits.length;
-  return { hits, total };
-}
-
 export function bindingModelLabel(models: ModelOption[], modelId: string): string {
   const name = models.find((model) => model.model_id === modelId)?.model_name.trim();
   return name || modelId;
@@ -179,12 +186,16 @@ export function flattenModelOptions(raw: unknown): ModelOption[] {
   const visit = (entry: unknown) => {
     if (!isRecord(entry)) return;
     if (typeof entry.model_id === 'string' && entry.model_id) {
-      options.push({
+      const option: ModelOption = {
         model_id: entry.model_id,
         model_name: typeof entry.model_name === 'string' && entry.model_name
           ? entry.model_name
           : entry.model_id,
-      });
+      };
+      if (typeof entry.icn === 'string' && entry.icn.trim()) {
+        option.icn = entry.icn.trim();
+      }
+      options.push(option);
     }
     if (Array.isArray(entry.list)) entry.list.forEach(visit);
     if (Array.isArray(entry.models)) entry.models.forEach(visit);

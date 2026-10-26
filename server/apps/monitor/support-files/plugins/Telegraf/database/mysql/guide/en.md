@@ -1,14 +1,30 @@
 # MySQL Monitoring Guide
 
-This capability uses Telegraf `inputs.mysql` to connect directly to one MySQL host and port and collect connection, query, InnoDB, replication, and cache statistics configured by the current template.
+This capability connects directly to MySQL and collects connection, query, InnoDB, and replication statistics.
 
 ## Prerequisites
 
 - The collector node can reach the target MySQL host and actual port.
-- Prepare a dedicated monitoring account that can log in and read global status, global variables, and the statistics required by the template.
-- Process-list statistics normally require `PROCESS`; replication statistics normally require `REPLICATION CLIENT`. Grant only the permissions required by the data in use.
-- The current template always uses `tls=false`. The page has no TLS, database-name, or custom-connection fields.
-- The template gathers process list, InnoDB, legacy replication status, binary logs, global variables, and table-wait statistics. It does not gather user statistics or the newer replica-status query.
+- This integration does not use TLS. The page has no TLS, database-name, or custom-connection fields.
+
+### Basic monitoring permissions
+
+Basic monitoring is enough for the health overview and the routine performance charts (connections, queries, InnoDB, and replication).
+
+- Use a dedicated monitoring account that can log in. Limit the host to the collector node.
+- View processes (`PROCESS`): process list and some instance status.
+- View replication (`REPLICATION CLIENT`): replication status and Binary Log.
+- Also grant `SELECT ON performance_schema.*`: Performance Schema statistics, including table waits. This is also the prerequisite for advanced statement and wait collection.
+- Do not grant `SELECT` on business schemas. If an individual InnoDB metric is denied because of `information_schema`, grant `SELECT` on that table only.
+
+### Top SQL and waits (advanced)
+
+After the basic permissions are in place, the Top SQL and Waits pages also need:
+
+- Performance Schema enabled on the instance. Without it, statements and waits cannot be collected.
+- `SELECT ON performance_schema.*` on the monitoring account. The same grant recommended for basic monitoring is enough.
+- The matching switch turned on in the collection settings. Both are off by default: Top SQL Collection feeds the Top SQL page; Wait and Session Collection feeds the Waits page.
+- These are separate from Table IO Waits and Table Lock Waits. Turning on table waits does not produce statement or wait data, and the reverse is also true.
 
 ## Setup Steps
 
@@ -20,7 +36,10 @@ GRANT PROCESS, REPLICATION CLIENT ON *.* TO '<monitor_user>'@'<collector_host>';
 GRANT SELECT ON performance_schema.* TO '<monitor_user>'@'<collector_host>';
 ```
 
-`PROCESS` covers the process list and InnoDB status. `REPLICATION CLIENT` covers replication status and binary logs. `SELECT` on `performance_schema` covers table-wait statistics. Do not grant `SELECT` on business schemas. If an InnoDB metric is denied on `information_schema.innodb_metrics`, grant `SELECT` on that table only.
+- `PROCESS`: process list and some instance status.
+- `REPLICATION CLIENT`: replication status and Binary Log.
+- `SELECT ON performance_schema.*`: Performance Schema statistics, including table waits. This is also the prerequisite for advanced statement and wait collection.
+- Do not grant `SELECT` on business schemas. If an individual InnoDB metric is denied because of `information_schema`, grant `SELECT` on that table only.
 
 2. From the actual collector node, validate the target address, account, and basic status-query permission.
 3. Enter the username, password, host, actual port, and interval (default `60` seconds).
@@ -52,12 +71,7 @@ The command must return `Uptime`. If replication data is required, use the same 
 
 ## Post-setup Verification
 
-After saving and waiting for one interval, confirm that these metrics are queryable in the platform:
-
-- `mysql_uptime`
-- `mysql_threads_connected`
-- `mysql_queries_rate`
-- `mysql_innodb_buffer_pool_pages_total`
+After saving and waiting for one interval, confirm that the platform can show basic metrics such as uptime, current connections, query rate, and the InnoDB buffer pool.
 
 ## Troubleshooting
 
@@ -68,10 +82,13 @@ After saving and waiting for one interval, confirm that these metrics are querya
 
 ### Only some data is present
 
-- Use the actual Telegraf log to distinguish missing `PROCESS`, replication, or `performance_schema` access.
-- Missing replication-status data is normal on a non-replica.
-- The current template uses the legacy replication-status gatherer and does not switch automatically to the newer replica-status query.
+- Missing `PROCESS`: the process list and some instance status have no data.
+- Missing `REPLICATION CLIENT`: replication status and Binary Log have no data.
+- Missing `SELECT ON performance_schema.*`: Performance Schema statistics have no data, including table waits and advanced statement or wait data.
+- Top SQL Collection or Wait and Session Collection is off: the matching page has no data. Both switches are off by default and need Performance Schema enabled on the instance.
+- A non-replication instance has no replication data. That is expected.
+- If the data still does not match, check the collection task failure reason or the collection logs.
 
 ### The target enforces TLS
 
-- The current template disables TLS and the page has no certificate or TLS-mode fields. A TLS-only target cannot be integrated directly.
+- This integration does not use TLS, and the page has no certificate or TLS-mode fields. A TLS-only target cannot be integrated directly.

@@ -1,12 +1,14 @@
 import json
-from datetime import datetime
 from typing import Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.core.logger import opspilot_logger as logger
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.tools.user_clock import parse_user_wall_time, timezone_name_from_config
 
 # 安全配置
 DEFAULT_TIMEOUT = 30
@@ -44,25 +46,13 @@ def _validate_github_url(url: str) -> bool:
         raise ValueError(f"URL验证失败: {e}")
 
 
-def _validate_datetime_format(date_str: str) -> bool:
-    """
-    验证日期时间格式是否符合ISO 8601标准
-
-    Args:
-        date_str: 日期时间字符串
-
-    Returns:
-        bool: 格式是否正确
-
-    Raises:
-        ValueError: 格式不正确时抛出异常
-    """
+def _github_time_query(value: str, config: RunnableConfig = None) -> str:
+    """把提交查询时间编成 URL 参数。没写时区时按当前用户时区。"""
     try:
-        # 尝试解析ISO 8601格式
-        datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-        return True
-    except ValueError:
-        raise ValueError("日期格式错误，应为ISO 8601格式，如: 2025-09-08T00:00:00Z")
+        parsed = parse_user_wall_time(value, timezone_name_from_config(config))
+    except ValueError as exc:
+        raise ValueError("日期格式错误，应为 ISO 8601 格式，如: 2025-09-08T00:00:00Z 或 2025-09-08 00:00:00") from exc
+    return quote(parsed.isoformat(), safe="")
 
 
 def _process_commits_data(commits: List[Dict]) -> Dict:
@@ -176,15 +166,15 @@ def _fetch_github_commits(url: str, headers: Dict) -> List[Dict]:
 
 
 @tool()
-def get_github_commits(owner: str, repo: str, since: str, until: str, token: Optional[str] = None) -> str:
+def get_github_commits(owner: str, repo: str, since: str, until: str, token: Optional[str] = None, config: RunnableConfig = None) -> str:
     """
     获取指定GitHub仓库在指定时间范围内的commits记录，并按用户分组处理。请根据用户指定的时间进行查询，不要猜测
 
     Args:
         owner (str): GitHub仓库所有者用户名或组织名
         repo (str): GitHub仓库名称
-        since (str): 开始时间，ISO 8601格式，如: 2025-09-08T00:00:00Z
-        until (str): 结束时间，ISO 8601格式，如: 2025-09-15T00:00:00Z
+        since (str): 开始时间。没写时区时按当前用户时区理解，如 2025-09-08 00:00:00；写了 Z 或 ±HH:MM 则按该偏移
+        until (str): 结束时间，规则与 since 相同
         token (str, optional): GitHub Personal Access Token，用于提高API限制和访问私有仓库
 
     Returns:
@@ -214,15 +204,14 @@ def get_github_commits(owner: str, repo: str, since: str, until: str, token: Opt
     if not until or not isinstance(until, str):
         raise ValueError("until参数不能为空且必须是字符串")
 
-    # 验证日期格式
-    _validate_datetime_format(since)
-    _validate_datetime_format(until)
+    since_q = _github_time_query(since, config)
+    until_q = _github_time_query(until, config)
 
     # 构建API URL
     api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits"
 
     # 构建完整URL
-    full_url = f"{api_url}?since={since}&until={until}&per_page=100"
+    full_url = f"{api_url}?since={since_q}&until={until_q}&per_page=100"
 
     # 验证URL安全性
     _validate_github_url(full_url)
@@ -286,7 +275,15 @@ def get_github_commits(owner: str, repo: str, since: str, until: str, token: Opt
 
 
 @tool()
-def get_github_commits_with_pagination(owner: str, repo: str, since: str, until: str, token: Optional[str] = None, max_pages: int = 10) -> str:
+def get_github_commits_with_pagination(
+    owner: str,
+    repo: str,
+    since: str,
+    until: str,
+    token: Optional[str] = None,
+    max_pages: int = 10,
+    config: RunnableConfig = None,
+) -> str:
     """
     获取指定GitHub仓库在指定时间范围内的commits记录（支持分页），并按用户分组处理。
 
@@ -295,8 +292,8 @@ def get_github_commits_with_pagination(owner: str, repo: str, since: str, until:
     Args:
         owner (str): GitHub仓库所有者用户名或组织名
         repo (str): GitHub仓库名称
-        since (str): 开始时间，ISO 8601格式，如: 2025-09-08T00:00:00Z
-        until (str): 结束时间，ISO 8601格式，如: 2025-09-15T00:00:00Z
+        since (str): 开始时间。没写时区时按当前用户时区理解；写了 Z 或 ±HH:MM 则按该偏移
+        until (str): 结束时间，规则与 since 相同
         token (str, optional): GitHub Personal Access Token，用于提高API限制和访问私有仓库
         max_pages (int): 最大获取页数，默认10页，避免请求过多数据
 
@@ -330,9 +327,8 @@ def get_github_commits_with_pagination(owner: str, repo: str, since: str, until:
     if not isinstance(max_pages, int) or max_pages < 1:
         raise ValueError("max_pages必须是正整数")
 
-    # 验证日期格式
-    _validate_datetime_format(since)
-    _validate_datetime_format(until)
+    since_q = _github_time_query(since, config)
+    until_q = _github_time_query(until, config)
 
     # 构建请求头
     headers = {"Accept": "application/vnd.github.v3+json", "User-Agent": "Metis-GitHub-Tools/1.0"}
@@ -362,7 +358,7 @@ def get_github_commits_with_pagination(owner: str, repo: str, since: str, until:
         while page <= max_pages:
             # 构建API URL
             api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits"
-            full_url = f"{api_url}?since={since}&until={until}&per_page=100&page={page}"
+            full_url = f"{api_url}?since={since_q}&until={until_q}&per_page=100&page={page}"
 
             # 验证URL安全性
             _validate_github_url(full_url)
@@ -429,17 +425,18 @@ def get_github_commits_batch(
     since: str,
     until: str,
     token: Optional[str] = None,
+    config: RunnableConfig = None,
 ) -> str:
     """批量获取多个 GitHub 仓库在指定时间范围内的 commits，单个仓库失败不中断其他查询。
 
     Args:
         repos: 仓库列表，每项为 {"owner": "...", "repo": "..."} 格式
-        since: 开始时间，ISO 8601格式，如: 2025-09-08T00:00:00Z
-        until: 结束时间，ISO 8601格式，如: 2025-09-15T00:00:00Z
+        since: 开始时间。没写时区时按当前用户时区理解；写了 Z 或 ±HH:MM 则按该偏移
+        until: 结束时间，规则与 since 相同
         token: GitHub Personal Access Token（可选）
     """
-    _validate_datetime_format(since)
-    _validate_datetime_format(until)
+    since_q = _github_time_query(since, config)
+    until_q = _github_time_query(until, config)
 
     headers = {
         "Accept": "application/vnd.github.v3+json",
@@ -457,7 +454,7 @@ def get_github_commits_batch(
         repo = repo_item.get("repo", "")
         key = f"{owner}/{repo}"
         try:
-            full_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits?since={since}&until={until}&per_page=100"
+            full_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits?since={since_q}&until={until_q}&per_page=100"
             _validate_github_url(full_url)
             commits_data = _fetch_github_commits(full_url, headers)
             processed = _process_commits_data(commits_data)

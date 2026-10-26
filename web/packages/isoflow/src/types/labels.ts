@@ -1,7 +1,13 @@
 /** User-visible editor text. The host passes localized values; English is the default. */
 export interface IsoflowLabels {
   // Icon settings
+  /** Section title above the icon thumbnail. */
+  icon: string;
+  /** Hover mask on the icon thumbnail. */
+  replaceIcon: string;
   updateIcon: string;
+  /** Title of the node settings panel. */
+  nodeSettings: string;
   settings: string;
   name: string;
   description: string;
@@ -31,6 +37,8 @@ export interface IsoflowLabels {
   toolRectangle: string;
   toolConnector: string;
   toolText: string;
+  toolCollapse: string;
+  toolExpand: string;
   // Zoom
   zoomIn: string;
   zoomOut: string;

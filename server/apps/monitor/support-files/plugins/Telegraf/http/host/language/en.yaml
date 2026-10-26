@@ -48,6 +48,10 @@ monitor_object_metric:
       name: System Uptime
       desc: Represents how long the host has been running since the last boot, in seconds, useful for
         observing stability and detecting unexpected restarts.
+    windows_service_state:
+      name: Windows Service State
+      desc: Windows service running state collected over WinRM. Running is Up; stopped, pending, paused,
+        or missing is Down. Windows hosts only.
     host_cpu_core_count:
       name: CPU Core Count
       desc: Represents the number of logical CPU cores available on the host, used to evaluate compute
@@ -226,6 +230,7 @@ monitor_object_metric_group:
     Disk: Disk
     Process: Process
     Processes: Processes
+    Service: Service
     Memory: Memory
     Net: Net
     Network: Network

@@ -93,7 +93,8 @@ def test_monitor_tool_descriptions_guide_metric_queries():
 
     metrics = tools["monitor_list_object_metrics"].description
     assert "keyword" in metrics
-    assert "猜测" in metrics or "cpu.util" in metrics
+    assert "指标名" in metrics
+    assert "类别词" in metrics
 
 
 def test_monitor_top_by_time_tool_is_registered_and_routes_ranking_queries():
@@ -108,6 +109,7 @@ def test_monitor_top_by_time_tool_is_registered_and_routes_ranking_queries():
     assert "lookback_minutes" in top_by_time
     assert "metric_type" in top_by_time
     assert "max" in top_by_time and "avg" in top_by_time
+    assert "时区" in top_by_time
 
 
 def test_monitor_top_by_time_tool_requires_a_window():
@@ -116,6 +118,59 @@ def test_monitor_top_by_time_tool_requires_a_window():
     missing = monitor_get_host_resource_top_by_time.func(metric_type="disk", config=None)
     assert missing["success"] is False
     assert "lookback_minutes" in missing["error"]
+
+
+def test_monitor_top_by_time_reads_naive_time_in_user_timezone(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_get_host_resource_top_by_time
+
+    rpc = mocker.Mock()
+    rpc.get_host_resource_top_by_time.return_value = {"result": True, "data": []}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    shanghai = _runtime_config(user_timezone="Asia/Shanghai")
+    result = monitor_get_host_resource_top_by_time.invoke(
+        {
+            "metric_type": "disk",
+            "time": ["2026-10-21 14:53:09", "2026-10-21 15:03:09"],
+        },
+        config=shanghai,
+    )
+
+    assert result["success"] is True
+    assert rpc.get_host_resource_top_by_time.call_args.kwargs["time"] == [
+        "2026-10-21T06:53:09.000Z",
+        "2026-10-21T07:03:09.000Z",
+    ]
+
+    rpc.reset_mock()
+    new_york = _runtime_config(user_timezone="America/New_York")
+    result = monitor_get_host_resource_top_by_time.invoke(
+        {
+            "metric_type": "cpu",
+            "time": ["2026-10-21 14:53:09", "2026-10-21 15:03:09"],
+        },
+        config=new_york,
+    )
+    assert result["success"] is True
+    assert rpc.get_host_resource_top_by_time.call_args.kwargs["time"] == [
+        "2026-10-21T18:53:09.000Z",
+        "2026-10-21T19:03:09.000Z",
+    ]
+
+    rpc.reset_mock()
+    explicit = monitor_get_host_resource_top_by_time.invoke(
+        {
+            "metric_type": "memory",
+            "time": ["2026-10-21T14:53:09+08:00", "2026-10-21T15:03:09+08:00"],
+        },
+        config=shanghai,
+    )
+    assert explicit["success"] is True
+    assert rpc.get_host_resource_top_by_time.call_args.kwargs["time"] == [
+        "2026-10-21T06:53:09.000Z",
+        "2026-10-21T07:03:09.000Z",
+    ]
 
 
 def test_monitor_planner_hint_prefers_top_by_time_for_ranking_questions():
@@ -534,7 +589,7 @@ def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
     elif rpc_method == "monitor_metrics":
         assert result["success"] is True
         assert result["data"] == [{"name": "cpu_usage_total", "display_name": "CPU使用率"}]
-        assert "cpu.util" in result["_next_step_hint"]
+        assert "目录里没有的指标名" in result["_next_step_hint"]
     else:
         assert result["success"] is True
         assert result["data"] == {"rpc_method": rpc_method}
@@ -875,11 +930,91 @@ def test_monitor_list_object_metrics_filters_cpu_and_forbids_guessing(mocker):
     names = [item["name"] for item in result["data"]]
     assert names == ["cpu_usage_total", "cpu_usage_iowait_total"]
     assert "query" not in result["data"][0]
+    assert result["choices"] == ["CPU使用率 (cpu_usage_total)", "CPU等待IO占比 (cpu_usage_iowait_total)"]
     hint = result["_next_step_hint"]
-    assert "cpu_usage_total" in hint
-    assert "cpu.util" in hint
-    assert "不要 request_user_choice" in hint
-    assert "手填" in hint or "猜测" in hint
+    assert "request_user_choice" in hint
+    assert "不要逐个" in hint
+    assert "目录里没有的指标名" in hint
+
+
+def test_monitor_list_object_metrics_keyword_miss_asks_user_instead_of_retrying(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_list_object_metrics
+
+    rpc = mocker.Mock()
+    rpc.monitor_metrics.return_value = {
+        "result": True,
+        "data": [
+            {"name": "mem_used_percent", "display_name": "Memory Usage", "unit": "percent"},
+            {"name": "cpu_usage_total", "display_name": "CPU Usage", "unit": "percent"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_metrics.invoke(
+        {"monitor_obj_id": "12", "keyword": "内存"},
+        config=_runtime_config(),
+    )
+
+    assert result["data"] == []
+    assert result["choices"] == ["Memory Usage (mem_used_percent)", "CPU Usage (cpu_usage_total)"]
+    hint = result["_next_step_hint"]
+    assert "request_user_choice" in hint
+    assert "可以换 keyword" in hint
+    assert "不要逐个试" in hint
+    assert "再列一次" not in hint
+
+
+def test_monitor_list_object_metrics_uses_metric_name_from_user_text(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_list_object_metrics
+
+    rpc = mocker.Mock()
+    rpc.monitor_metrics.return_value = {
+        "result": True,
+        "data": [
+            {"name": "disk_used_percent", "display_name": "Disk Usage", "unit": "percent"},
+            {"name": "mem_used_percent", "display_name": "Memory Usage", "unit": "percent"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_metrics.invoke(
+        {"monitor_obj_id": "12", "keyword": "磁盘"},
+        config=_runtime_config(
+            user_message="列出当前所有主机，查每台最近 24 小时的磁盘使用率 disk_used_percent，按主机给出当前值和最高值。",
+        ),
+    )
+
+    assert [item["name"] for item in result["data"]] == ["disk_used_percent"]
+    assert "choices" not in result
+    assert "disk_used_percent" in result["_next_step_hint"]
+    assert "不要 request_user_choice" in result["_next_step_hint"]
+
+
+def test_monitor_list_object_metrics_single_hit_queries_directly(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_list_object_metrics
+
+    rpc = mocker.Mock()
+    rpc.monitor_metrics.return_value = {
+        "result": True,
+        "data": [
+            {"name": "mem_used_percent", "display_name": "Memory Usage", "unit": "percent"},
+            {"name": "cpu_usage_total", "display_name": "CPU Usage", "unit": "percent"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_metrics.invoke(
+        {"monitor_obj_id": "12", "keyword": "memory"},
+        config=_runtime_config(),
+    )
+
+    assert [item["name"] for item in result["data"]] == ["mem_used_percent"]
+    assert "choices" not in result
+    assert "mem_used_percent" in result["_next_step_hint"]
+    assert "不要 request_user_choice" in result["_next_step_hint"]
 
 
 def test_monitor_list_object_metrics_empty_keyword_keeps_catalog_hint(mocker):
@@ -897,7 +1032,7 @@ def test_monitor_list_object_metrics_empty_keyword_keeps_catalog_hint(mocker):
 
     assert [item["name"] for item in result["data"]] == ["mem_used"]
     assert "keyword" in result["_next_step_hint"]
-    assert "cpu.util" in result["_next_step_hint"]
+    assert "目录里没有的指标名" in result["_next_step_hint"]
 
 
 def test_monitor_query_metric_data_empty_matrix_is_terminal(mocker):
@@ -923,6 +1058,7 @@ def test_monitor_query_metric_data_empty_matrix_is_terminal(mocker):
     assert result["success"] is True
     hint = result["_next_step_hint"]
     assert "有效结论" in hint
+    assert "不是参数错误" in hint
     assert "禁止" in hint
     assert "instance_ids" in hint
     assert "dimensions" in hint
@@ -971,7 +1107,7 @@ def test_monitor_query_metric_data_unknown_metric_lists_catalog_not_user(mocker)
     assert result["error"] == "监控对象或指标不存在"
     hint = result["_next_step_hint"]
     assert "monitor_list_object_metrics" in hint
-    assert "cpu.util" in hint
+    assert "目录里没有的指标名" in hint
     assert "不要 request_user_choice" in hint
 
 

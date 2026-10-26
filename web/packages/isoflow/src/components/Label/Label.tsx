@@ -1,7 +1,16 @@
 import React, { useRef } from 'react';
 import { Box, SxProps } from '@mui/material';
 
-const CONNECTOR_DOT_SIZE = 3;
+const CONNECTOR_WIDTH = 8;
+
+const LABEL_CARD_SX = {
+  bgcolor: 'var(--color-bg)',
+  border: '1px solid var(--color-border-1)',
+  borderRadius: '4px',
+  py: '1px',
+  px: '5px',
+  boxShadow: 'none'
+};
 
 export interface Props {
   labelHeight?: number;
@@ -28,24 +37,24 @@ export const LabelConnector = ({ labelHeight }: { labelHeight: number }) => {
   return (
     <Box
       component="svg"
-      viewBox={`0 0 ${CONNECTOR_DOT_SIZE} ${labelHeight}`}
-      width={CONNECTOR_DOT_SIZE}
+      viewBox={`0 0 ${CONNECTOR_WIDTH} ${labelHeight}`}
+      width={CONNECTOR_WIDTH}
+      height={labelHeight}
       sx={{
         position: 'absolute',
         top: -labelHeight,
-        left: -CONNECTOR_DOT_SIZE / 2,
+        left: -CONNECTOR_WIDTH / 2,
         pointerEvents: 'none'
       }}
     >
       <line
-        x1={CONNECTOR_DOT_SIZE / 2}
+        x1={CONNECTOR_WIDTH / 2}
         y1={0}
-        x2={CONNECTOR_DOT_SIZE / 2}
+        x2={CONNECTOR_WIDTH / 2}
         y2={labelHeight}
-        strokeDasharray={`0, ${CONNECTOR_DOT_SIZE * 2}`}
-        stroke="black"
-        strokeWidth={CONNECTOR_DOT_SIZE}
-        strokeLinecap="round"
+        strokeDasharray="3 3"
+        stroke="#7D93AB"
+        strokeWidth={1.25}
       />
     </Box>
   );
@@ -92,13 +101,10 @@ export const Label = ({
             {...cardProps}
             sx={{
               position: 'relative',
-              bgcolor: 'common.white',
-              border: '1px solid',
-              borderColor: 'grey.400',
-              borderRadius: 2,
-              py: 1,
-              px: 1.5,
-              overflow: 'hidden',
+              ...LABEL_CARD_SX,
+              overflow: 'visible',
+              width: 'max-content',
+              maxWidth: 'none',
               ...sx
             }}
             style={{ maxHeight }}
@@ -111,7 +117,7 @@ export const Label = ({
                 position: 'absolute',
                 top: 0,
                 right: 0,
-                transform: 'translate(50%, -50%)'
+                transform: 'translate(calc(50% - 1px), calc(-50% + 1px))'
               }}
             >
               {cornerBadge}
@@ -137,12 +143,7 @@ export const Label = ({
         sx={{
           position: 'absolute',
           display: 'inline-block',
-          bgcolor: 'common.white',
-          border: '1px solid',
-          borderColor: 'grey.400',
-          borderRadius: 2,
-          py: 1,
-          px: 1.5,
+          ...LABEL_CARD_SX,
           transformOrigin: 'bottom center',
           transform: cardTransform,
           overflow: 'hidden',

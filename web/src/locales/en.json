@@ -171,6 +171,15 @@
     "layoutClassicHint": "Switch apps from the grid; the top bar is the current app menu",
     "layoutAppTop": "Apps on top",
     "layoutAppTopHint": "Switch apps from the top bar; the current app menu is on the left",
+    "homepage": "Homepage",
+    "homepageFollowGlobal": "Follow global default",
+    "homepageFollowGlobalHint": "Clear the personal setting and use the homepage bound by an administrator",
+    "homepageFollowGlobalCurrent": " (current: {name})",
+    "homepagePinWorkbench": "Pin to the console",
+    "homepagePinWorkbenchHint": "Always open the app console after sign-in",
+    "homepageDashboardSettings": "Go to dashboard settings",
+    "homepageDashboardSettingsHint": "Choose or change your personal dashboard homepage",
+    "homepagePersonalDashboardFallback": "Personal dashboard homepage is set",
     "notFound": "We can't seem to find the page you're looking for.",
     "backToHome": "Back to Home",
     "noPermission": "You don't have permission to access this page",
@@ -504,7 +513,7 @@
     "apm": "APM",
     "rum": "RUM",
     "playground": "Playground",
-    "workflow-orchestration": "Workflow"
+    "workflow": "Workflow"
   },
   "app": {
     "ops-analysis": "Integrate operation and maintenance data, analyze potential risks and optimization space from multiple dimensions through dashboards and canvases, provide data support for decision-making, and help improve operation and maintenance quality and business continuity",
@@ -522,7 +531,7 @@
     "patch": "Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks.",
     "apm": "Application performance and tracing platform that provides service metrics, trace exploration, and alert policies to help quickly locate latency and errors and keep services stable",
     "rum": "Real-user monitoring for browsers, with sessions, performance, errors, and alerts to locate frontend problems.",
-    "workflow-orchestration": "Design visual workflows, automate execution, manage human approvals, and track cross-system operations in one place."
+    "workflow": "Design visual workflows, automate execution, manage human approvals, and track cross-system operations in one place."
   },
   "tag": {
     "user_management": "User Management",

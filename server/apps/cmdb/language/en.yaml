@@ -7,6 +7,7 @@ CLASSIFICATION:
   device: Device
   k8s: K8S
   vmware: VMware
+  hyperv: Hyper-V
   aliyun: Alibaba Cloud
   qcloud: Tencent Cloud
   hwcloud: Huawei Cloud
@@ -83,6 +84,8 @@ MODEL:
   vmware_vm: VMware VM
   vmware_esxi: ESXi
   vmware_ds: Data Storage
+  hyperv_host: Hyper-V Host
+  hyperv_vm: Hyper-V VM
   aliyun_account: Alibaba Cloud
   aliyun_ecs: Alibabacloud ECS
   qcloud: Tencent Cloud
@@ -1401,6 +1404,7 @@ ATTR:
     vcpus: vCPU
     memory: Memory
     esxi_version: Version
+    boot_time: Boot Time
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
@@ -1417,6 +1421,31 @@ ATTR:
     collect_time: Last Updated Time
     auto_collect: Auto Collect
     self_vc: Self vCenter
+    tag: Tag
+  hyperv_host:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP address
+    resource_id: Resource ID
+    cpu_cores: CPU Cores
+    memory: Memory
+    hyperv_version: Hyper-V Version
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+    tag: Tag
+  hyperv_vm:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP address
+    resource_id: Resource ID
+    power_state: Power State
+    vcpus: vCPU
+    memory: Memory
+    self_host: Host
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
     tag: Tag
   aliyun_account:
     inst_name: Name

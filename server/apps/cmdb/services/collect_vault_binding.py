@@ -28,7 +28,7 @@ COLLECT_VAULT_BINDINGS = {
     "cloud/oauth_client": "azure".split(),
     "host/ipmi": "physcial_server_ipmi".split(),
     "host/redfish": "physcial_server_redfish server_bmc".split(),
-    "host/winrm": "pc ad_exchange".split(),
+    "host/winrm": "pc ad_exchange exchange hyperv_host".split(),
     "middleware/ssh": (
         "nginx minio zookeeper kafka consul etcd rabbitmq tomcat apache activemq iis tuxedo memcached rocketmq openresty "
         "squid haproxy keepalive spark ibmmq tonglinkq tonggtp ihs cics hdfs yarn storm bes apusic inforsuite_as ceph "

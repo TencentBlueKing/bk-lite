@@ -3,8 +3,6 @@ import {
   type ArchitectureNodeStatusItem,
 } from './model';
 
-export const ARCHITECTURE_STATUS_POLL_MS = 60_000;
-
 /** Matches ArchitectureNodeStatusService.MAX_INST_UUIDS. One request stays inside that cap. */
 export const ARCHITECTURE_STATUS_BATCH_SIZE = 500;
 
@@ -15,8 +13,6 @@ export type OverlayLabel =
   | { type: 'unknown' }
   | { type: 'empty' }
   | { type: 'pending' };
-
-export type RectangleBorderLevel = 'warning' | 'critical' | 'unknown';
 
 /** Locale key of each resource status, shared by the binding and detail drawers. */
 export const STATUS_LABEL_KEY: Record<ArchitectureNodeStatusItem['status'], string> = {
@@ -54,7 +50,6 @@ export function bindingStatusLoading(
 
 export interface RectangleOverlay {
   label?: OverlayLabel;
-  borderLevel?: RectangleBorderLevel;
   /** Unique bound resource uuids inside the area. */
   resourceCount?: number;
   /** Severe alerts inside the area, counted once per monitor instance. */
@@ -413,21 +408,6 @@ export function rectangleIconCounts(
   };
 }
 
-const borderContribution = (
-  level: ArchitectureNodeStatusItem['status'] | undefined,
-): RectangleBorderLevel | null => {
-  if (level === 'critical') return 'critical';
-  if (level === 'warning') return 'warning';
-  if (level === 'unknown' || level === 'invalid' || level === 'forbidden') return 'unknown';
-  return null;
-};
-
-const BORDER_RANK: Record<RectangleBorderLevel, number> = {
-  unknown: 1,
-  warning: 2,
-  critical: 3,
-};
-
 export function keptStatusForRequest(
   cached: Record<string, ArchitectureNodeStatusItem>,
   requested: string[],
@@ -480,26 +460,19 @@ export function buildIconPlates(
       }
       const resourceName = status.inst_name.trim();
       if (!resourceName) continue;
+      const iconName = (iconNames[icon.id] ?? '').trim();
       if (options?.nameAndType) {
         delete plate.alertCount;
         delete plate.alertLevel;
-        const iconName = (iconNames[icon.id] ?? '').trim();
-        const shortName = truncateResourceName(resourceName, 12);
-        const resourceLine = modelName ? `${shortName} · ${modelName}` : shortName;
-        if (!blankIconTitle(iconName)) {
-          if (resourceLine !== iconName) plate.subtitle = resourceLine;
-          plates[icon.id] = plate;
-          continue;
+        if (blankIconTitle(iconName)) {
+          const shortName = truncateResourceName(resourceName, 12);
+          plate.title = modelName ? `${shortName} · ${modelName}` : shortName;
         }
-        plate.title = resourceLine;
         plates[icon.id] = plate;
         continue;
       }
-      const iconName = (iconNames[icon.id] ?? '').trim();
       if (blankIconTitle(iconName)) {
         plate.title = truncateResourceName(resourceName);
-      } else if (iconName !== resourceName) {
-        plate.subtitle = truncateResourceName(resourceName);
       }
       plates[icon.id] = plate;
     }
@@ -551,7 +524,6 @@ export function buildRectangleOverlays(
       const overlay: RectangleOverlay = {};
       if (options.followBorders && entry.bkFollowAlert === true && from && to) {
         const inside = icons.filter((icon) => tileInside(icon.tile, from, to));
-        let border: RectangleBorderLevel | null = null;
         const resources = new Map<string, ArchitectureNodeStatusItem>();
         for (const icon of inside) {
           const status = statusByUuid[icon.instUuid];
@@ -563,26 +535,17 @@ export function buildRectangleOverlays(
         let warningCount = 0;
         const seenMonitors = new Set<string>();
         for (const status of resources.values()) {
-          const contribution = borderContribution(status.status);
-          if (contribution && (!border || BORDER_RANK[contribution] > BORDER_RANK[border])) {
-            border = contribution;
-          }
           const counted = countResourceAlerts(status, seenMonitors);
           criticalCount += counted.critical;
           warningCount += counted.warning;
           alertTotal += counted.critical + counted.warning;
         }
-        if (border) overlay.borderLevel = border;
         overlay.resourceCount = resources.size;
         overlay.criticalCount = criticalCount;
         overlay.warningCount = warningCount;
         overlay.alertTotal = alertTotal;
       }
-      if (
-        overlay.label
-        || overlay.borderLevel
-        || overlay.resourceCount !== undefined
-      ) {
+      if (overlay.label || overlay.resourceCount !== undefined) {
         overlays[entry.id] = overlay;
       }
     }

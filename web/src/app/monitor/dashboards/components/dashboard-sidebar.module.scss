@@ -15,17 +15,24 @@
   height: calc(100vh - 88px);
   width: 100%;
   overflow: hidden;
+  container-type: inline-size;
+  container-name: monitor-pro-dash;
+  // 主区保底宽：实例名 + 选择器 + 时间条仍可横排阅读，避免 AI dock 让位后被压到一字宽。
+  --monitor-pro-dash-content-min: 560px;
 }
 
 .sidebar {
   height: 100%;
-  flex-shrink: 0;
+  min-width: 0;
+  // 侧栏可让宽：先吃剩余空间，但不侵占 content 的保底宽。
+  flex: 0 1 auto;
+  max-width: min(480px, max(0px, calc(100% - var(--monitor-pro-dash-content-min))));
 }
 
 .content {
-  flex: 1;
+  flex: 1 1 0%;
   overflow: auto;
-  min-width: 0;
+  min-width: var(--monitor-pro-dash-content-min);
 }
 
 @media (max-width: 768px) {
@@ -37,5 +44,21 @@
 @media (max-width: 480px) {
   .sidebar {
     display: none;
+  }
+
+  .content {
+    min-width: 0;
+  }
+}
+
+// 根壳 pr-[var(--bk-webchat-dock-width)] 让位后，专业盘可用宽常仍 > 视口 480px，
+// 仅靠 viewport media 藏不掉侧栏。按壳宽隐藏，主区吃满剩余宽度。
+@container monitor-pro-dash (max-width: 720px) {
+  .sidebar {
+    display: none;
+  }
+
+  .content {
+    min-width: 0;
   }
 }

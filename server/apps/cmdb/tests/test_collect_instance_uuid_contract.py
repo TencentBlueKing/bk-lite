@@ -8,6 +8,7 @@ from apps.cmdb.serializers.collect_serializer import CollectModelSerializer
 
 HOST_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
 SUBNET_UUID = "73e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+OTHER_SUBNET_UUID = "8fe27a46-1fc0-41df-8db4-8d817e164291"
 
 
 @pytest.fixture(autouse=True)
@@ -47,7 +48,7 @@ def _stub_auth_serializer_dependencies(monkeypatch):
     )
 
 
-def _serializer(*, model_id="host", instances, timeout=60):
+def _serializer(*, model_id="host", instances, timeout=60, params=None):
     request = SimpleNamespace(user=SimpleNamespace(group_list=[]), COOKIES={})
     return CollectModelSerializer(
         data={
@@ -60,10 +61,22 @@ def _serializer(*, model_id="host", instances, timeout=60):
             "access_point": [{"id": 1}],
             "credential": [],
             "timeout": timeout,
-            "params": {},
+            "params": {} if params is None else params,
             "team": [1],
         },
         context={"request": request},
+    )
+
+
+def _authorize_subnets(monkeypatch, *uuids):
+    allowed = set(uuids)
+
+    def _query(requested):
+        return [{"inst_uuid": inst_uuid, "model_id": "subnet", "inst_name": "trusted-subnet"} for inst_uuid in requested if inst_uuid in allowed]
+
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage.query_entity_by_uuids",
+        _query,
     )
 
 
@@ -192,3 +205,91 @@ def test_ip_task_rejects_digit_only_subnet_write():
 
     assert serializer.is_valid() is False
     assert "subnet_uuids" in str(serializer.errors)
+
+
+def test_ip_task_rejects_unauthorized_params_subnet_override():
+    serializer = _serializer(
+        model_id="ip",
+        instances={"subnet_uuids": [SUBNET_UUID], "scan_method": "icmp"},
+        params={"subnet_uuids": [OTHER_SUBNET_UUID]},
+    )
+
+    assert serializer.is_valid() is False
+    assert serializer.errors["instances"] == ["部分子网不存在、无权限或模型不匹配"]
+
+
+def test_ip_task_aligns_authorized_params_subnet_override(monkeypatch):
+    _authorize_subnets(monkeypatch, SUBNET_UUID, OTHER_SUBNET_UUID)
+    serializer = _serializer(
+        model_id="ip",
+        instances={"subnet_uuids": [SUBNET_UUID], "scan_method": "icmp"},
+        params={"subnet_uuids": [OTHER_SUBNET_UUID], "ports": [22]},
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["instances"]["subnet_uuids"] == [OTHER_SUBNET_UUID]
+    assert serializer.validated_data["params"]["subnet_uuids"] == [OTHER_SUBNET_UUID]
+    assert serializer.validated_data["instances"]["scan_method"] == "icmp"
+    assert serializer.validated_data["params"]["ports"] == [22]
+
+
+def test_ip_task_without_params_subnet_uuids_keeps_instance_contract():
+    serializer = _serializer(
+        model_id="ip",
+        instances={"subnet_uuids": [SUBNET_UUID], "scan_method": "icmp"},
+        params={"scan_method": "tcp"},
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["instances"] == {
+        "subnet_uuids": [SUBNET_UUID],
+        "scan_method": "icmp",
+    }
+    assert "subnet_uuids" not in serializer.validated_data["params"]
+
+
+def test_ip_task_update_rejects_persisted_unauthorized_subnet_override():
+    request = SimpleNamespace(user=SimpleNamespace(group_list=[]), COOKIES={})
+    instance = CollectModels(
+        name="stored-ip-task",
+        task_type=CollectPluginTypes.IP,
+        driver_type=CollectDriverTypes.PROTOCOL,
+        model_id="ip",
+        timeout=60,
+        instances={"subnet_uuids": [SUBNET_UUID], "scan_method": "icmp"},
+        params={"subnet_uuids": [OTHER_SUBNET_UUID], "ports": [80]},
+    )
+    serializer = CollectModelSerializer(
+        instance,
+        data={"timeout": 60},
+        partial=True,
+        context={"request": request},
+    )
+
+    assert serializer.is_valid() is False
+    assert serializer.errors["instances"] == ["部分子网不存在、无权限或模型不匹配"]
+
+
+def test_ip_task_update_aligns_persisted_authorized_subnet_override(monkeypatch):
+    _authorize_subnets(monkeypatch, SUBNET_UUID, OTHER_SUBNET_UUID)
+    request = SimpleNamespace(user=SimpleNamespace(group_list=[]), COOKIES={})
+    instance = CollectModels(
+        name="stored-ip-task",
+        task_type=CollectPluginTypes.IP,
+        driver_type=CollectDriverTypes.PROTOCOL,
+        model_id="ip",
+        timeout=30,
+        instances={"subnet_uuids": [SUBNET_UUID], "scan_method": "icmp"},
+        params={"subnet_uuids": [OTHER_SUBNET_UUID], "ports": [80]},
+    )
+    serializer = CollectModelSerializer(
+        instance,
+        data={"name": "stored-ip-task"},
+        partial=True,
+        context={"request": request},
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["instances"]["subnet_uuids"] == [OTHER_SUBNET_UUID]
+    assert serializer.validated_data["params"]["subnet_uuids"] == [OTHER_SUBNET_UUID]
+    assert serializer.validated_data["params"]["ports"] == [80]

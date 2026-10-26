@@ -12,7 +12,11 @@ import { CHART_COLORS } from '@/app/monitor/constants';
 import { CardAlertDot, cardAlertClass } from './card-alert';
 import { seriesMarkerColor } from './readings';
 import type { TabAlertLevel } from './tab-level';
+import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
+import { describeFocusAxis, seriesSampleValues } from './focus-axis';
+import { useProTimeWindow } from './pro-time-window';
 import { useThemeColors } from './theme-color';
+import ProDashLoading from './pro-dash-loading';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -48,12 +52,22 @@ interface ThinTimeSeriesProps {
   className?: string;
   /** 嵌进已有卡片时不再套一层 panel。 */
   bare?: boolean;
+  /**
+   * 重点关注 spark：Y 轴只留数字，单位改到卡片标题右侧。
+   * 实例趋势不要开。
+   */
+  numericAxis?: boolean;
   /** 每条序列一根 Y 轴。进程 CPU 可超过 100%，与内存共轴时会把内存压扁。 */
   independentAxes?: boolean;
   /**
    * 已不再打开图例。可见序列数等于 1 时整段图例不渲染，本开关和 reading 都不能把它打开。
    */
   showSeriesName?: boolean;
+  /**
+   * 双维卡即使只有一条线有采点，也保留全部图例名，并在 tooltip 里补上缺席的维度。
+   * 单维卡不要开，避免主机盘把本该隐藏的图例重新打开。
+   */
+  keepLegend?: boolean;
   /** 本图达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
   onRetry?: () => void;
@@ -91,10 +105,19 @@ export default function ThinTimeSeries({
   titleExtra,
   className,
   bare = false,
+  numericAxis = false,
   independentAxes = false,
+  keepLegend = false,
   alertLevel,
   onRetry
 }: ThinTimeSeriesProps) {
+  const proTime = useProTimeWindow();
+  const chartWindow = proTime?.window ?? null;
+  const suspend = Boolean(proTime?.suspend);
+  const plotted = useMemo(
+    () => clipChartDataToWindow(data, chartWindow),
+    [chartWindow, data]
+  );
   const theme = useThemeColors();
   const axisColor = theme['--color-border'];
   const mutedColor = theme['--color-text-3'];
@@ -136,11 +159,11 @@ export default function ThinTimeSeries({
     return () => observer.disconnect();
   }, [legendCompact, legendKey, legends]);
   const keys = useMemo(() => {
-    const all = areaKeys(data);
+    const all = areaKeys(plotted);
     // 单图例只画一条线。value2 通常是同一指标的 or 回退，叠上去会双计。
     if (legends.length <= 1) return all.slice(0, 1);
     return all;
-  }, [data, legends.length]);
+  }, [legends.length, plotted]);
   const seriesColors = useMemo(
     () => keys.map((_, index) => legends[index]?.color || CHART_COLORS[index % CHART_COLORS.length]),
     // legendKey 锁内容。legends 每次渲染都是新数组，放进依赖会让图在刷新时反复 setOption。
@@ -148,15 +171,17 @@ export default function ThinTimeSeries({
   );
   const splitAxes = independentAxes && keys.length > 1;
   const option = useMemo(() => {
-    if (!data.length || !keys.length) return null;
-    let minTime = Number.POSITIVE_INFINITY;
-    let maxTime = Number.NEGATIVE_INFINITY;
-    data.forEach((point) => {
-      const time = Number(point.time);
-      if (!Number.isFinite(time)) return;
-      if (time < minTime) minTime = time;
-      if (time > maxTime) maxTime = time;
-    });
+    if (suspend || !plotted.length || !keys.length) return null;
+    let minTime = chartWindow?.startSec ?? Number.POSITIVE_INFINITY;
+    let maxTime = chartWindow?.endSec ?? Number.NEGATIVE_INFINITY;
+    if (!chartWindow) {
+      plotted.forEach((point) => {
+        const time = Number(point.time);
+        if (!Number.isFinite(time)) return;
+        if (time < minTime) minTime = time;
+        if (time > maxTime) maxTime = time;
+      });
+    }
     const timeSpan = Number.isFinite(minTime) && Number.isFinite(maxTime) ? maxTime - minTime : 0;
     const formatAxisTime = (value: number) => {
       const stamp = dayjs(value * 1000);
@@ -164,9 +189,14 @@ export default function ThinTimeSeries({
       if (timeSpan <= 36 * 3600) return stamp.format('HH:mm');
       return stamp.format('MM-DD');
     };
+    const focusAxis = numericAxis
+      ? describeFocusAxis(unit, seriesSampleValues(plotted))
+      : null;
     const axisLabel = {
       fontSize: 10,
+      margin: focusAxis?.labelMargin ?? 8,
       formatter: (value: number) => {
+        if (focusAxis) return focusAxis.formatTick(Number(value));
         const formatted = formatMetricValue(value, unit);
         return `${formatted.value}${formatted.unit || ''}`;
       }
@@ -175,11 +205,17 @@ export default function ThinTimeSeries({
       animation: false,
       backgroundColor: 'transparent',
       color: seriesColors,
-      grid: { top: 8, right: splitAxes ? 48 : 10, bottom: 28, left: 44, containLabel: false },
+      grid: {
+        top: 8,
+        right: splitAxes ? 48 : 10,
+        bottom: 28,
+        left: focusAxis ? focusAxis.left : 44,
+        containLabel: false
+      },
       xAxis: {
         type: 'value' as const,
-        min: 'dataMin' as const,
-        max: 'dataMax' as const,
+        min: chartWindow ? chartWindow.startSec : 'dataMin' as const,
+        max: chartWindow ? chartWindow.endSec : 'dataMax' as const,
         splitNumber: 3,
         axisLabel: {
           show: true,
@@ -227,7 +263,20 @@ export default function ThinTimeSeries({
         formatter: (params: any[]) => {
           if (!params.length) return '';
           const time = dayjs(Number(params[0].axisValue) * 1000).format('YYYY-MM-DD HH:mm:ss');
-          const rows = params
+          const items = keepLegend
+            ? keys.map((key, index) => {
+              const name = legends[index]?.title || legends[index]?.label || key;
+              const found = params.find((item) => item.seriesIndex === index)
+                || params.find((item) => item.seriesName === name);
+              return found || {
+                seriesName: name,
+                seriesIndex: index,
+                color: legends[index]?.color,
+                value: null
+              };
+            })
+            : params;
+          const rows = items
             .map((item) => {
               const raw = Array.isArray(item.value) ? item.value[1] : item.value;
               const name = item.seriesName || '';
@@ -249,7 +298,7 @@ export default function ThinTimeSeries({
           smooth: 0.15,
           connectNulls: true,
           itemStyle: { color },
-          data: data.map((point) => {
+          data: plotted.map((point) => {
             const value = point[key];
             return [point.time, typeof value === 'number' ? value : null];
           }),
@@ -261,13 +310,13 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, data, keys, legendKey, mutedColor, panelColor, seriesColors, splitAxes, textColor, unit]);
+  }, [axisColor, chartWindow, keepLegend, keys, legendKey, mutedColor, numericAxis, panelColor, plotted, seriesColors, splitAxes, suspend, textColor, unit]);
   const { containerRef } = useECharts(option);
-  const drawnSeriesCount = keys.filter((key) => data.some((point) => {
+  const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];
     return typeof value === 'number' && Number.isFinite(value);
   })).length;
-  const showLegend = drawnSeriesCount >= 2;
+  const showLegend = keepLegend ? legends.length > 0 : drawnSeriesCount >= 2;
   const chart = (
     <>
       {title || reading || showLegend ? (
@@ -347,9 +396,11 @@ export default function ThinTimeSeries({
         </div>
       ) : null}
       <div className={styles.chartBody}>
-        {!data.length ? (
+        {suspend || !plotted.length ? (
           <div className={styles.chartEmpty}>
-            {loading ? '加载中' : emptyText}
+            {suspend || loading ? <ProDashLoading /> : (
+              <span className="text-[13px] font-semibold text-[var(--color-text-2)]">{emptyText}</span>
+            )}
             {!loading && onRetry ? (
               <button
                 type="button"

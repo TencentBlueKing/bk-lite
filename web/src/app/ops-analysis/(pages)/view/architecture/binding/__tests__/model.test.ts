@@ -9,8 +9,7 @@ import {
   findSelectionBinding,
   flattenModelOptions,
   normalizeBindingSearchHits,
-  normalizeFulltextModelPage,
-  normalizeInstanceSearchPage,
+  architectureSearchPage,
   sliceBindingPage,
 } from '../model';
 
@@ -97,27 +96,43 @@ describe('architecture binding model', () => {
     expect(bindingSearchMode('web', 'host')).toBe('by-model-text');
     expect(bindingSearchMode('web', '')).toBe('fulltext');
 
-    const listed = normalizeInstanceSearchPage({
-      count: 120,
-      insts: [
-        { inst_uuid: 'u1', model_id: 'host', inst_name: 'web-01', ip_addr: '10.0.0.1' },
-        { inst_name: 'skip' },
-      ],
-    });
-    expect(listed.total).toBe(120);
-    expect(bindingPageFromTotal(listed.hits, 1, 30, listed.total)).toEqual({
-      hits: listed.hits,
+    const hits = [
+      { inst_uuid: 'u1', model_id: 'host', inst_name: 'web-01', ip_addr: '10.0.0.1' },
+    ];
+    expect(bindingPageFromTotal(hits, 1, 30, 120)).toEqual({
+      hits,
       hasMore: true,
+      total: 120,
     });
-    expect(bindingPageFromTotal(listed.hits, 4, 30, listed.total).hasMore).toBe(false);
+    expect(bindingPageFromTotal(hits, 4, 30, 120).hasMore).toBe(false);
     expect(bindingPageFromTotal([], 1, 30, 120).hasMore).toBe(false);
+  });
 
-    const page = normalizeFulltextModelPage({
-      total: 1,
-      data: [{ inst_uuid: 'u1', model_id: 'host', inst_name: 'web-01', ip_addr: '10.0.0.1' }],
+  it('pages ops-analysis resource search and slices cross-model hits locally', () => {
+    const listed = architectureSearchPage({
+      mode: 'by-type',
+      hits: [{ inst_uuid: 'u1', model_id: 'host', inst_name: 'web-01', ip_addr: '10.0.0.1', password: 'nope' }],
+      total: 80,
+      page: 1,
+      page_size: 30,
+    }, 1, 30);
+    expect(listed).toEqual({
+      hits: [{ inst_uuid: 'u1', model_id: 'host', inst_name: 'web-01', ip_addr: '10.0.0.1' }],
+      hasMore: true,
+      total: 80,
     });
-    expect(page.total).toBe(1);
-    expect(bindingPageFromTotal(page.hits, 1, 30, page.total).hasMore).toBe(false);
+
+    const all = Array.from({ length: 5 }, (_, index) => ({
+      inst_uuid: `u${index}`,
+      inst_name: `n${index}`,
+      ip_addr: '',
+      model_id: 'host',
+    }));
+    expect(architectureSearchPage({ mode: 'fulltext', hits: all, total: all.length }, 2, 2)).toEqual({
+      hits: all.slice(2, 4),
+      hasMore: true,
+      total: 5,
+    });
   });
 
   it('slices a full keyword result into pages and skips repeated rows', () => {
@@ -127,8 +142,8 @@ describe('architecture binding model', () => {
       ip_addr: '',
       model_id: 'host',
     }));
-    expect(sliceBindingPage(all, 1, 2)).toEqual({ hits: all.slice(0, 2), hasMore: true });
-    expect(sliceBindingPage(all, 3, 2)).toEqual({ hits: all.slice(4), hasMore: false });
+    expect(sliceBindingPage(all, 1, 2)).toEqual({ hits: all.slice(0, 2), hasMore: true, total: 5 });
+    expect(sliceBindingPage(all, 3, 2)).toEqual({ hits: all.slice(4), hasMore: false, total: 5 });
     expect(appendBindingHits(all.slice(0, 2), all.slice(1, 3)).map((hit) => hit.inst_uuid))
       .toEqual(['u0', 'u1', 'u2']);
   });
@@ -150,6 +165,16 @@ describe('architecture binding model', () => {
     ])).toEqual([
       { model_id: 'host', model_name: '主机' },
       { model_id: 'switch', model_name: '交换机' },
+    ]);
+  });
+
+  it('keeps a configured model icon so inserted nodes can match the palette', () => {
+    expect(flattenModelOptions([
+      { model_id: 'mysql', model_name: 'MySQL', icn: ' cc-mysql_数据库 ' },
+      { model_id: 'host', model_name: '主机', icn: '   ' },
+    ])).toEqual([
+      { model_id: 'mysql', model_name: 'MySQL', icn: 'cc-mysql_数据库' },
+      { model_id: 'host', model_name: '主机' },
     ]);
   });
 });

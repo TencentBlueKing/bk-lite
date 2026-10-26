@@ -80,3 +80,95 @@ export const mergeChartSeries = (
 
   return result;
 };
+
+const positiveDeltas = (points: ChartData[]) => {
+  const times = points
+    .map((point) => Number(point.time))
+    .filter((time) => Number.isFinite(time))
+    .sort((left, right) => left - right);
+  const deltas: number[] = [];
+  for (let index = 1; index < times.length; index += 1) {
+    const delta = times[index] - times[index - 1];
+    if (delta > 0) deltas.push(delta);
+  }
+  return deltas;
+};
+
+const median = (values: number[]) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.floor((sorted.length - 1) / 2)];
+};
+
+/** 采集步长：忽略几秒内的抖动，取稳定间隔的中位数。 */
+const seriesStepSeconds = (points: ChartData[]) => {
+  const deltas = positiveDeltas(points);
+  const stable = deltas.filter((delta) => delta >= 5);
+  return median(stable.length ? stable : deltas);
+};
+
+const seriesSamples = (points: ChartData[]) => points.flatMap((point) => {
+  const time = Number(point.time);
+  const value = getChartPointSeriesTotal(point);
+  if (!Number.isFinite(time)) return [];
+  return [{ time, value }];
+}).sort((left, right) => left.time - right.time);
+
+const nearestSampleValue = (
+  samples: Array<{ time: number; value: number }>,
+  time: number,
+  tolerance: number
+) => {
+  if (!samples.length || tolerance <= 0) return null;
+  let low = 0;
+  let high = samples.length - 1;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (samples[mid].time < time) low = mid + 1;
+    else high = mid;
+  }
+  const candidates = [samples[low - 1], samples[low]].filter(
+    (sample): sample is { time: number; value: number } => sample != null
+  );
+  let bestValue: number | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  candidates.forEach((sample) => {
+    const distance = Math.abs(sample.time - time);
+    if (distance <= tolerance && distance < bestDistance) {
+      bestValue = sample.value;
+      bestDistance = distance;
+    }
+  });
+  return bestValue;
+};
+
+/**
+ * 与 mergeChartSeries 相同，但各序列时间戳差在半个采集步长内时互相补值。
+ * 分开查询的指标常差几秒，按精确时间戳合并会把已采到的点写成 null，tooltip 就变成 `--`。
+ * 超过半步的空档仍留空，不把上一拍的数补到这一拍。
+ */
+export const mergeChartSeriesAligned = (
+  seriesList: Array<{ key: string; label: string; displayName?: string; data: ChartData[] }>
+): ChartData[] => {
+  const merged = mergeChartSeries(seriesList);
+  const steps = seriesList
+    .map((series) => seriesStepSeconds(series.data))
+    .filter((step): step is number => step != null && step > 0);
+  const step = steps.length ? Math.min(...steps) : null;
+  const tolerance = step != null ? step / 2 : 30;
+  if (tolerance <= 0) return merged;
+  const samples = seriesList.map((series) => seriesSamples(series.data));
+  merged.forEach((point) => {
+    const time = Number(point.time);
+    if (!Number.isFinite(time)) return;
+    samples.forEach((seriesSamplesAt, index) => {
+      const key = `value${index + 1}`;
+      const current = point[key];
+      if (typeof current === 'number' && Number.isFinite(current)) return;
+      const nearest = nearestSampleValue(seriesSamplesAt, time, tolerance);
+      if (nearest == null) return;
+      point[key] = nearest;
+    });
+  });
+  return merged;
+};

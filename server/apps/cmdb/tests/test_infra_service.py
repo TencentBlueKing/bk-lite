@@ -3,7 +3,8 @@
 规格：
 - generate_install_token：写入缓存且 usage_count=0，返回 uuid token；
 - validate_and_get_token_data：空 token / 无缓存 / 超额 -> BaseAppException；
-  正常使用计数 +1 并返回 remaining_usage；
+  正常扣减后 remaining_usage 按次数减少，且不重写令牌键；
+  usage_count 距上限还剩 1 次时，并发只能成功一次；
 - render_config_from_cloud_region：缺失环境变量 -> 异常；齐全则透传调用 API；
 - render_config_from_api：缺 url / 非 200 / 缺 yaml / Timeout / RequestException
   / json 解析失败 各自映射到 BaseAppException。
@@ -33,6 +34,58 @@ class TestGenerateToken:
         assert value["usage_count"] == 0
         assert value["max_usage"] == InfraConstants.TOKEN_MAX_USAGE
         assert cache_set.call_args.kwargs["timeout"] == InfraConstants.TOKEN_EXPIRE_TIME
+
+
+class _MutexTokenCache:
+    """假缓存：get 返回副本，add 与 incr 在同一把锁里互斥。"""
+
+    def __init__(self, initial, timeouts, rendezvous_keys=()):
+        import copy
+        import threading
+
+        self._copy = copy.deepcopy
+        self.data = copy.deepcopy(initial)
+        self.timeouts = dict(timeouts)
+        self._lock = threading.Lock()
+        self._rendezvous_keys = set(rendezvous_keys)
+        self._barrier = threading.Barrier(2) if rendezvous_keys else None
+        self.token_writes = []
+
+    def get(self, key, default=None):
+        with self._lock:
+            value = self._copy(self.data.get(key, default))
+        if self._barrier is not None and key in self._rendezvous_keys:
+            self._barrier.wait(timeout=5)
+        return value
+
+    def set(self, key, value, timeout=None):
+        stored = self._copy(value)
+        with self._lock:
+            self.data[key] = stored
+            self.timeouts[key] = timeout
+            self.token_writes.append((key, stored, timeout))
+
+    def add(self, key, value, timeout=None):
+        with self._lock:
+            if key in self.data:
+                return False
+            self.data[key] = self._copy(value)
+            self.timeouts[key] = timeout
+            return True
+
+    def incr(self, key, delta=1):
+        with self._lock:
+            if key not in self.data or isinstance(self.data[key], bool):
+                raise ValueError(f"Key '{key}' not found")
+            if not isinstance(self.data[key], int):
+                raise ValueError(f"Key '{key}' is not an integer")
+            self.data[key] += delta
+            return self.data[key]
+
+    def delete(self, key):
+        with self._lock:
+            self.data.pop(key, None)
+            self.timeouts.pop(key, None)
 
 
 class TestValidateToken:
@@ -66,26 +119,78 @@ class TestValidateToken:
             InfraService.validate_and_get_token_data("abcdef1234")
         delete.assert_called_once()
 
-    def test_正常使用_计数加一并返回剩余(self, mocker):
-        mocker.patch(
-            "apps.cmdb.services.infra.cache.get",
-            return_value={
+    def test_最后一次额度不能被两个请求一起用掉(self, mocker):
+        from concurrent.futures import ThreadPoolExecutor
+
+        token = "abcdef1234"
+        token_key = f"{CACHE_KEY_PREFIX}{token}"
+        original_timeout = 100
+        fake = _MutexTokenCache(
+            {
+                token_key: {
+                    "cluster_name": "cluster-x",
+                    "cloud_region_id": "9",
+                    "usage_count": 4,
+                    "max_usage": 5,
+                }
+            },
+            {token_key: original_timeout},
+            rendezvous_keys=(token_key,),
+        )
+        mocker.patch("apps.cmdb.services.infra.cache", fake)
+
+        def consume():
+            try:
+                return ("ok", InfraService.validate_and_get_token_data(token))
+            except BaseAppException as exc:
+                return ("err", str(exc))
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: consume(), range(2)))
+
+        successes = [item for kind, item in results if kind == "ok"]
+        failures = [item for kind, item in results if kind == "err"]
+        assert len(successes) == 1, {"results": results, "token_writes": fake.token_writes}
+        assert successes == [
+            {
                 "cluster_name": "cluster-x",
                 "cloud_region_id": "9",
-                "usage_count": 1,
-                "max_usage": 5,
+                "remaining_usage": 0,
+            }
+        ]
+        assert len(failures) == 1
+        assert "exceeded maximum usage" in failures[0]
+        assert fake.token_writes == []
+        assert fake.timeouts.get(token_key, original_timeout) == original_timeout
+
+    def test_正常使用_计数加一并返回剩余(self, mocker):
+        token = "abcdef1234"
+        token_key = f"{CACHE_KEY_PREFIX}{token}"
+        original_timeout = 100
+        fake = _MutexTokenCache(
+            {
+                token_key: {
+                    "cluster_name": "cluster-x",
+                    "cloud_region_id": "9",
+                    "usage_count": 1,
+                    "max_usage": 5,
+                }
             },
+            {token_key: original_timeout},
         )
-        cache_set = mocker.patch("apps.cmdb.services.infra.cache.set")
-        out = InfraService.validate_and_get_token_data("abcdef1234")
+        mocker.patch("apps.cmdb.services.infra.cache", fake)
+
+        out = InfraService.validate_and_get_token_data(token)
+
         assert out == {
             "cluster_name": "cluster-x",
             "cloud_region_id": "9",
             "remaining_usage": 3,
         }
-        # 计数写回 +1
-        _, value = cache_set.call_args.args
-        assert value["usage_count"] == 2
+        assert fake.data[token_key]["usage_count"] == 1
+        assert fake.timeouts[token_key] == original_timeout
+        assert fake.token_writes == []
+        assert fake.data[f"{token_key}:usage_count"] == 2
 
 
 class TestRenderFromCloudRegion:

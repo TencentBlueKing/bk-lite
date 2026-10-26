@@ -1,6 +1,8 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from django.utils.timezone import now
 
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, CREATE_INST, ChangeRecord
 from apps.cmdb.models.operation import ChangeRecordMirrorOutbox
@@ -58,12 +60,75 @@ def test_batch_change_records_persist_bounded_outbox_without_sync_rpc(mock_dispa
 @pytest.mark.django_db(transaction=True)
 @patch("apps.cmdb.services.change_record_mirror.SystemMgmt")
 def test_outbox_worker_has_fixed_rpc_budget_and_marks_success(mock_sm):
+    mock_sm.return_value.save_operation_log.return_value = {"result": True}
     [outbox] = ChangeRecordMirrorService.enqueue_payloads(_payloads(100))
 
     assert ChangeRecordMirrorService.consume(outbox.event_id, owner_token="worker-1") is True
     outbox.refresh_from_db()
     assert outbox.status == "success"
     assert mock_sm.return_value.save_operation_log.call_count == 100
+
+
+@pytest.mark.django_db(transaction=True)
+@patch("apps.cmdb.services.change_record_mirror.dispatch_change_record_mirror")
+@patch("apps.cmdb.services.change_record_mirror.SystemMgmt")
+def test_negative_ack_stays_retryable_without_downstream_message(mock_sm, mock_dispatch):
+    mock_sm.return_value.save_operation_log.return_value = {"result": False, "message": "unavailable"}
+    payloads = _payloads(1)
+    [outbox] = ChangeRecordMirrorService.enqueue_payloads(payloads)
+
+    assert ChangeRecordMirrorService.consume(outbox.event_id, owner_token="worker-1") is False
+    outbox.refresh_from_db()
+    assert outbox.status == "retry"
+    assert outbox.payloads == payloads
+    assert "unavailable" not in outbox.last_error
+    assert outbox.last_error == "operation_log_rejected"
+    assert outbox.next_attempt_at > now()
+
+    ChangeRecordMirrorOutbox.objects.filter(pk=outbox.pk).update(next_attempt_at=now() - timedelta(seconds=1))
+    assert ChangeRecordMirrorService.recover_ready() == 1
+    mock_dispatch.assert_called_once_with(outbox.event_id)
+
+
+@pytest.mark.django_db(transaction=True)
+@patch("apps.cmdb.services.change_record_mirror.dispatch_change_record_mirror")
+@patch("apps.cmdb.services.change_record_mirror.SystemMgmt")
+def test_negative_ack_stops_after_max_attempts(mock_sm, mock_dispatch):
+    mock_sm.return_value.save_operation_log.return_value = {"result": False, "message": "unavailable"}
+    [outbox] = ChangeRecordMirrorService.enqueue_payloads(_payloads(1))
+    ChangeRecordMirrorOutbox.objects.filter(pk=outbox.pk).update(attempt_count=ChangeRecordMirrorService.MAX_ATTEMPTS - 1)
+
+    assert ChangeRecordMirrorService.consume(outbox.event_id, owner_token="worker-1") is False
+    outbox.refresh_from_db()
+    assert outbox.status == "failed"
+    assert outbox.attempt_count == ChangeRecordMirrorService.MAX_ATTEMPTS
+    assert "unavailable" not in outbox.last_error
+    assert ChangeRecordMirrorService.recover_ready() == 0
+    mock_dispatch.assert_not_called()
+
+
+@pytest.mark.django_db(transaction=True)
+@patch("apps.cmdb.services.change_record_mirror.SystemMgmt")
+def test_partial_ack_replays_only_unacked_payload(mock_sm):
+    payloads = _payloads(2)
+    mock_sm.return_value.save_operation_log.side_effect = [
+        {"result": True},
+        {"result": False, "message": "unavailable"},
+        {"result": True},
+    ]
+    [outbox] = ChangeRecordMirrorService.enqueue_payloads(payloads)
+
+    assert ChangeRecordMirrorService.consume(outbox.event_id, owner_token="worker-1") is False
+    outbox.refresh_from_db()
+    assert outbox.payloads == [payloads[1]]
+    assert "unavailable" not in outbox.last_error
+
+    ChangeRecordMirrorOutbox.objects.filter(pk=outbox.pk).update(next_attempt_at=now() - timedelta(seconds=1))
+    assert ChangeRecordMirrorService.consume(outbox.event_id, owner_token="worker-2") is True
+    sent_ids = [call.kwargs["target_id"] for call in mock_sm.return_value.save_operation_log.call_args_list]
+    assert sent_ids == [payloads[0]["target_id"], payloads[1]["target_id"], payloads[1]["target_id"]]
+    outbox.refresh_from_db()
+    assert outbox.status == "success"
 
 
 @pytest.mark.django_db(transaction=True)

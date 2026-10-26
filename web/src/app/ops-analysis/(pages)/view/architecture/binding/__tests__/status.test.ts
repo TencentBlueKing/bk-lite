@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ARCHITECTURE_STATUS_POLL_MS,
   architectureStatusRequestMode,
   blockResourceOpen,
   buildIconPlates,
@@ -106,7 +105,6 @@ const names = { host: '主机', mysql: '数据库', room: '机房' };
 
 describe('architecture view status', () => {
   it('polls only in view mode and pauses while hidden', () => {
-    expect(ARCHITECTURE_STATUS_POLL_MS).toBe(60_000);
     expect(architectureStatusRequestMode({ shareMode: true, editMode: false })).toBe('off');
     expect(architectureStatusRequestMode({ shareMode: true, editMode: true })).toBe('off');
     expect(architectureStatusRequestMode({ shareMode: false, editMode: true })).toBe('once');
@@ -167,7 +165,6 @@ describe('architecture view status', () => {
     };
     const overlays = buildRectangleOverlays(views, byUuid, { followBorders: true });
     expect(overlays.zone).toEqual({
-      borderLevel: 'critical',
       resourceCount: 3,
       criticalCount: 9,
       warningCount: 2,
@@ -175,7 +172,6 @@ describe('architecture view status', () => {
     });
     expect(overlays.zone?.label).toBeUndefined();
     expect(overlays.overlap).toEqual({
-      borderLevel: 'critical',
       resourceCount: 2,
       criticalCount: 9,
       warningCount: 2,
@@ -231,7 +227,6 @@ describe('architecture view status', () => {
       rectangles: [{ id: 'zone', from: { x: 0, y: 0 }, to: { x: 3, y: 3 }, bkFollowAlert: true }],
     }];
     expect(buildRectangleOverlays(onlyDuplicate, byUuid, { followBorders: true }).zone).toEqual({
-      borderLevel: 'critical',
       resourceCount: 1,
       criticalCount: 4,
       warningCount: 0,
@@ -288,7 +283,6 @@ describe('architecture view status', () => {
       badgeLevel: 'critical',
     });
     expect(buildRectangleOverlays(diagram, byUuid, { followBorders: true }).zone).toMatchObject({
-      borderLevel: 'critical',
       resourceCount: 3,
       criticalCount: 1,
       warningCount: 4,
@@ -343,7 +337,6 @@ describe('architecture view status', () => {
       badgeLevel: 'warning',
     });
     expect(buildRectangleOverlays(diagram, byUuid, { followBorders: true }).zone).toMatchObject({
-      borderLevel: 'critical',
       resourceCount: 3,
       criticalCount: 1,
       warningCount: 4,
@@ -365,7 +358,6 @@ describe('architecture view status', () => {
       'uuid-edge': status('uuid-edge', 'forbidden'),
     };
     expect(buildRectangleOverlays(views, byUuid, { followBorders: true }).zone).toEqual({
-      borderLevel: 'unknown',
       resourceCount: 3,
       criticalCount: 0,
       warningCount: 0,
@@ -373,7 +365,7 @@ describe('architecture view status', () => {
     });
   });
 
-  it('builds a two-line name plate and keeps one line when the names match or the icon is untitled', () => {
+  it('shows the icon name and fills a title only when the icon is untitled', () => {
     const byUuid = {
       'uuid-web': status('uuid-web', 'warning', {
         alert_count: 6,
@@ -391,13 +383,13 @@ describe('architecture view status', () => {
       edge: '边缘',
     });
     expect(plates.web).toMatchObject({
-      subtitle: 'mysql-master-02-…',
       hoverName: 'mysql-master-02-very-long',
       hoverModel: '主机',
       alertCount: 6,
       alertLevel: 'critical',
     });
     expect(plates.web?.title).toBeUndefined();
+    expect(plates.web?.subtitle).toBeUndefined();
     expect(plates.db).toEqual({
       hoverName: '数据库',
       hoverModel: '数据库',
@@ -415,11 +407,11 @@ describe('architecture view status', () => {
       db: 'Untitled',
     }, { nameAndType: true });
     expect(editPlates.web).toMatchObject({
-      subtitle: 'mysql-master… · 主机',
       hoverName: 'mysql-master-02-very-long',
       hoverModel: '主机',
     });
     expect(editPlates.web?.title).toBeUndefined();
+    expect(editPlates.web?.subtitle).toBeUndefined();
     expect(editPlates.web?.alertCount).toBeUndefined();
     expect(editPlates.db).toMatchObject({
       title: '数据库 · 数据库',

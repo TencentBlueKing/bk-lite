@@ -4,6 +4,7 @@ import React from 'react';
 import TimeSelector from '@/components/time-selector';
 import { ListItem, TimeSelectorDefaultValue } from '@/types';
 import { DEFAULT_REFRESH_FREQUENCY_LIST } from '../utils';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useDashboardText } from '../utils/content-i18n';
 import { InstanceSelector } from './instance-selector';
 
@@ -37,6 +38,8 @@ export interface DashboardInstanceCardProps {
   isDashboardMode?: boolean;
   /** 传入时在实例选择器右侧内联渲染时间选择器 + 刷新组（统一布局，单一来源）。 */
   timeSelectorProps?: DashboardInstanceCardTimeSelectorProps;
+  /** 实例名右侧的附加身份区。不传时保持原布局。 */
+  identityExtra?: React.ReactNode;
   styles: DashboardInstanceCardStyles;
 }
 
@@ -56,6 +59,7 @@ export function DashboardInstanceCard({
   onClusterChange,
   isDashboardMode = true,
   timeSelectorProps,
+  identityExtra,
   styles
 }: DashboardInstanceCardProps) {
   const { dt } = useDashboardText();
@@ -68,7 +72,11 @@ export function DashboardInstanceCard({
           {icon}
         </div>
         <div className={styles.instanceInfo}>
-          <div className={styles.instanceName}>{instanceName}</div>
+          <EllipsisWithTooltip
+            className={styles.instanceName}
+            text={instanceName}
+            tooltip={instanceName}
+          />
           {metaItems.length > 0 ? (
             <div className={[styles.meta, styles.instanceMetaLine].filter(Boolean).join(' ')}>
               {metaItems.map((item, index) => (
@@ -82,6 +90,7 @@ export function DashboardInstanceCard({
             </div>
           ) : null}
         </div>
+        {identityExtra}
       </div>
       <div className={styles.instanceActions}>
         {clusterOptions && clusterOptions.length > 0 && onClusterChange ? (

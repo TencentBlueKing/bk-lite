@@ -43,7 +43,7 @@ export const VIEW_DEFAULTS: Required<
 };
 
 export const VIEW_ITEM_DEFAULTS: Required<
-  Omit<ViewItem, 'id' | 'tile' | 'bkBinding'>
+  Omit<ViewItem, 'id' | 'tile' | 'bkBinding' | 'bkDisplayMetrics'>
 > = {
   labelHeight: 80
 };
@@ -103,10 +103,7 @@ export const MAIN_MENU_OPTIONS: MainMenuOptions = [
   'ACTION.OPEN',
   'EXPORT.JSON',
   'EXPORT.PNG',
-  'ACTION.CLEAR_CANVAS',
-  'LINK.DISCORD',
-  'LINK.GITHUB',
-  'VERSION'
+  'ACTION.CLEAR_CANVAS'
 ];
 
 export const DEFAULT_ICON: Icon = {
@@ -120,7 +117,10 @@ export const DEFAULT_ICON: Icon = {
 export const DEFAULT_NODE_NAME = 'Untitled';
 
 export const DEFAULT_LABELS: IsoflowLabels = {
+  icon: 'Icon',
+  replaceIcon: 'Replace',
   updateIcon: 'Update icon',
+  nodeSettings: 'Node settings',
   settings: 'Settings',
   name: 'Name',
   description: 'Description',
@@ -144,6 +144,8 @@ export const DEFAULT_LABELS: IsoflowLabels = {
   toolRectangle: 'Rectangle',
   toolConnector: 'Connector',
   toolText: 'Text',
+  toolCollapse: 'Collapse',
+  toolExpand: 'Expand',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
   fitToScreen: 'Fit to screen',
