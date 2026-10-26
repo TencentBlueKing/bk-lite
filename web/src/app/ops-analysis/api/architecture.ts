@@ -56,6 +56,14 @@ export const useArchitectureApi = () => {
     });
   };
 
+  const getMonitorLink = useCallback(
+    (monitorId: string) =>
+      get('/operation_analysis/api/architecture/monitor_link/', {
+        params: { monitor_id: monitorId },
+      }),
+    [get],
+  );
+
   return {
     getArchitectureDetail,
     saveArchitecture,
@@ -65,5 +73,6 @@ export const useArchitectureApi = () => {
     getArchitectureModels,
     searchArchitectureResources,
     queryDisplayMetrics,
+    getMonitorLink,
   };
 };

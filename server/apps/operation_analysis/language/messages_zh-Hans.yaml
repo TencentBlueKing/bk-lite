@@ -578,3 +578,6 @@ messages:
   architecture_resource_search_required: "请输入关键词或选择模型"
   architecture_resource_search_text: "{field} 必须是字符串"
   architecture_resource_search_case: "case_sensitive 必须是布尔值"
+  architecture_monitor_link_failed: "监控链接解析失败"
+  architecture_monitor_link_required: "请提供 monitor_id"
+  architecture_monitor_link_text: "monitor_id 必须是非空字符串"

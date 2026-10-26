@@ -252,6 +252,105 @@ def _monitor_catalog_queryset(request, permission, scope):
     )
 
 
+def lookup_monitor_instance_payload(raw_instance_id, scope, user):
+    """按 instance_id 定位监控对象。找不到或无权时返回 None，与 lookup HTTP 一致。"""
+    candidate_ids = _candidate_instance_ids(raw_instance_id)
+    if not candidate_ids:
+        return None
+
+    org_matches = list(
+        MonitorInstance.objects.filter(
+            id__in=candidate_ids,
+            is_deleted=False,
+            is_active=True,
+            monitorinstanceorganization__organization__in=list(scope.data_team_ids),
+        )
+        .select_related("monitor_object")
+        .distinct()
+    )
+    by_id = {instance.id: instance for instance in org_matches}
+    instance = next((by_id[key] for key in candidate_ids if key in by_id), None)
+    if instance is None and is_persisted_superuser(user):
+        org_matches = list(
+            MonitorInstance.objects.filter(
+                id__in=candidate_ids,
+                is_deleted=False,
+                is_active=True,
+            )
+            .filter(missing_organization_q(MonitorInstanceOrganization, fk_name="monitor_instance_id"))
+            .select_related("monitor_object")
+        )
+        by_id = {row.id: row for row in org_matches}
+        instance = next((by_id[key] for key in candidate_ids if key in by_id), None)
+    if instance is None:
+        return None
+
+    monitor_object_id = instance.monitor_object_id
+    permission = (
+        {"team": list(scope.data_team_ids), "instance": []}
+        if user.is_superuser
+        else get_permission_rules(
+            user,
+            scope.current_team,
+            "monitor",
+            f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+            include_children=scope.include_children,
+        )
+    )
+    unassigned = is_persisted_superuser(user) and not MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.pk).exists()
+    if not unassigned:
+        qs = scope_permission_queryset(
+            MonitorInstance,
+            permission,
+            scope,
+            team_key="monitorinstanceorganization__organization__in",
+            id_key="id__in",
+        )
+        if not qs.filter(pk=instance.pk).exists():
+            return None
+
+    monitor_object = instance.monitor_object
+    instance_id_keys = list(monitor_object.instance_id_keys) if monitor_object.instance_id_keys else ["instance_id"]
+    operating_system = ""
+    if instance.node_id:
+        from apps.node_mgmt.models import Node
+
+        os_value = Node.objects.filter(id=instance.node_id).values_list("operating_system", flat=True).first()
+        text = str(os_value or "").strip().lower()
+        if text in {"linux", "windows"}:
+            operating_system = text
+    return {
+        "monitor_object": {
+            "id": monitor_object.id,
+            "name": monitor_object.name,
+            "display_name": monitor_object.display_name,
+            "instance_id_keys": instance_id_keys,
+        },
+        "instance": {
+            "instance_id": instance.id,
+            "instance_name": instance.name or instance.id,
+            "instance_id_values": list(parse_instance_id(instance.id)),
+            "instance_id_keys": instance_id_keys,
+            "cmdb_id": instance.cmdb_id or "",
+            "node_id": instance.node_id or "",
+            "operating_system": operating_system,
+        },
+    }
+
+
+def load_authorized_effective_plugins(monitor_object_id, instance_id, actor_context, locale, request=None):
+    """effective_plugins 的权限与派生实例放行。无行实例 allow_missing，无权抛 UnauthorizedException。"""
+    if not instance_id:
+        raise BaseAppException("instance_id is required")
+    instance_id = normalize_instance_identity(instance_id)["storage_instance_key"]
+    _ensure_operate_instances(request, [instance_id], actor_context, allow_missing=True)
+    return MonitorEffectivePluginService.get_effective_plugins(
+        int(monitor_object_id),
+        instance_id,
+        locale,
+    )
+
+
 class MonitorInstanceViewSet(viewsets.ViewSet):
     @action(methods=["get"], detail=False, url_path="query_params_enum/(?P<name>[^/.]+)")
     def get_query_params_enum(self, request, name):
@@ -264,92 +363,8 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         raw_instance_id = (request.GET.get("instance_id") or "").strip()
         if not raw_instance_id:
             raise BaseAppException("instance_id is required")
-
-        candidate_ids = _candidate_instance_ids(raw_instance_id)
-        if not candidate_ids:
-            return WebUtils.response_success(None)
-
         scope = resolve_current_team_data_scope(request)
-        org_matches = list(
-            MonitorInstance.objects.filter(
-                id__in=candidate_ids,
-                is_deleted=False,
-                is_active=True,
-                monitorinstanceorganization__organization__in=list(scope.data_team_ids),
-            )
-            .select_related("monitor_object")
-            .distinct()
-        )
-        by_id = {instance.id: instance for instance in org_matches}
-        instance = next((by_id[key] for key in candidate_ids if key in by_id), None)
-        if instance is None and is_persisted_superuser(request.user):
-            org_matches = list(
-                MonitorInstance.objects.filter(
-                    id__in=candidate_ids,
-                    is_deleted=False,
-                    is_active=True,
-                )
-                .filter(missing_organization_q(MonitorInstanceOrganization, fk_name="monitor_instance_id"))
-                .select_related("monitor_object")
-            )
-            by_id = {row.id: row for row in org_matches}
-            instance = next((by_id[key] for key in candidate_ids if key in by_id), None)
-        if instance is None:
-            return WebUtils.response_success(None)
-
-        monitor_object_id = instance.monitor_object_id
-        permission = (
-            {"team": list(scope.data_team_ids), "instance": []}
-            if request.user.is_superuser
-            else get_permission_rules(
-                request.user,
-                scope.current_team,
-                "monitor",
-                f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
-                include_children=scope.include_children,
-            )
-        )
-        unassigned = is_persisted_superuser(request.user) and not MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.pk).exists()
-        if not unassigned:
-            qs = scope_permission_queryset(
-                MonitorInstance,
-                permission,
-                scope,
-                team_key="monitorinstanceorganization__organization__in",
-                id_key="id__in",
-            )
-            if not qs.filter(pk=instance.pk).exists():
-                return WebUtils.response_success(None)
-
-        monitor_object = instance.monitor_object
-        instance_id_keys = list(monitor_object.instance_id_keys) if monitor_object.instance_id_keys else ["instance_id"]
-        operating_system = ""
-        if instance.node_id:
-            from apps.node_mgmt.models import Node
-
-            os_value = Node.objects.filter(id=instance.node_id).values_list("operating_system", flat=True).first()
-            text = str(os_value or "").strip().lower()
-            if text in {"linux", "windows"}:
-                operating_system = text
-        return WebUtils.response_success(
-            {
-                "monitor_object": {
-                    "id": monitor_object.id,
-                    "name": monitor_object.name,
-                    "display_name": monitor_object.display_name,
-                    "instance_id_keys": instance_id_keys,
-                },
-                "instance": {
-                    "instance_id": instance.id,
-                    "instance_name": instance.name or instance.id,
-                    "instance_id_values": list(parse_instance_id(instance.id)),
-                    "instance_id_keys": instance_id_keys,
-                    "cmdb_id": instance.cmdb_id or "",
-                    "node_id": instance.node_id or "",
-                    "operating_system": operating_system,
-                },
-            }
-        )
+        return WebUtils.response_success(lookup_monitor_instance_payload(raw_instance_id, scope, request.user))
 
     @action(methods=["get"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/list")
     @with_user_query_slot()
@@ -497,26 +512,16 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
     @action(methods=["get"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/effective_plugins")
     @with_user_query_slot()
     def effective_plugins(self, request, monitor_object_id):
-        instance_id = request.GET.get("instance_id")
-        if not instance_id:
-            raise BaseAppException("instance_id is required")
-
         # 前端下传的可能是干净标量(如 "mssql_1433"),也可能是完整 tuple 串
-        # (如 VMware ESXi 的 "('vcenter-a', 'host-3171')")。统一归一为存储键形态：
-        # - 单维实例补齐为 "('mssql_1433',)"
-        # - 多维实例保持完整 tuple
-        # 这样既匹配存在性校验,也保证 get_effective_plugins 内部按存储键比对上报数据,
-        # 避免误报"监控实例不存在"。
-        instance_id = normalize_instance_identity(instance_id)["storage_instance_key"]
-
+        # (如 VMware ESXi 的 "('vcenter-a', 'host-3171')")。load_authorized_effective_plugins
+        # 统一归一为存储键，派生实例（无 MonitorInstance 行）以 allow_missing 放行。
         actor_context = _build_actor_context(request)
-        # Derived instances (K8s Pod/Node) have no MonitorInstance row; tolerate their
-        # absence so the detail view resolves plugins from reported metrics instead of 500-ing.
-        _ensure_operate_instances(request, [instance_id], actor_context, allow_missing=True)
-        data = MonitorEffectivePluginService.get_effective_plugins(
-            int(monitor_object_id),
-            instance_id,
+        data = load_authorized_effective_plugins(
+            monitor_object_id,
+            request.GET.get("instance_id"),
+            actor_context,
             getattr(request.user, "locale", "zh-Hans"),
+            request,
         )
         return WebUtils.response_success(data)
 

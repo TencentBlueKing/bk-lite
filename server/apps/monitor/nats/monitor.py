@@ -3259,3 +3259,101 @@ def monitor_clear_cmdb_id(params):
         expected_cmdb_id=params.get("expected_cmdb_id"),
         allowed_org_ids=params.get("allowed_org_ids"),
     )
+
+
+def _monitor_link_actor(user_info):
+    """把 NATS user_info 收成与 HTTP lookup / effective_plugins 相同的 scope 和用户。"""
+    from apps.core.utils.current_team_scope import CurrentTeamDataScope
+
+    user, current_team, include_children, scope_ids, scope_superuser, error = _get_nats_actor_scope(user_info)
+    if error:
+        return None, None, error
+    domain = getattr(user, "domain", None)
+    if not isinstance(domain, str) or not domain.strip():
+        return None, None, {"result": False, "data": {}, "message": "缺少用户或组织信息"}
+    scope = CurrentTeamDataScope(
+        current_team=int(current_team),
+        data_team_ids=frozenset(int(item) for item in scope_ids),
+        include_children=include_children,
+        username=user.username,
+        domain=domain,
+        is_superuser=scope_superuser,
+    )
+    actor = SimpleNamespace(
+        username=scope.username,
+        domain=scope.domain,
+        is_superuser=scope.is_superuser,
+    )
+    return scope, actor, None
+
+
+def _monitor_link_locale(locale, user_info) -> str:
+    if isinstance(locale, str) and locale.strip():
+        return locale.strip()
+    if isinstance(user_info, dict) and isinstance(user_info.get("locale"), str) and user_info["locale"].strip():
+        return user_info["locale"].strip()
+    return "zh-Hans"
+
+
+@nats_client.register
+def lookup_monitor_instance(instance_id=None, user_info=None, **kwargs):
+    """按 instance_id 定位监控对象。权限与 HTTP lookup 相同；找不到或无权时 data 为 None。"""
+    raw = instance_id if instance_id is not None else kwargs.get("instance_id")
+    text = str(raw or "").strip()
+    if not text:
+        return {"result": False, "data": None, "message": "instance_id is required"}
+    if user_info is None:
+        user_info = kwargs.get("user_info")
+    scope, actor, error = _monitor_link_actor(user_info)
+    if error:
+        return error
+    from apps.monitor.views.monitor_instance import lookup_monitor_instance_payload
+
+    data = lookup_monitor_instance_payload(text, scope, actor)
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def get_monitor_effective_plugins(monitor_object_id=None, instance_id=None, user_info=None, locale=None, **kwargs):
+    """实例生效插件。派生实例允许无行；无权时 data 为 None，不把权限异常回给调用方。"""
+    if monitor_object_id is None:
+        monitor_object_id = kwargs.get("monitor_object_id")
+    if instance_id is None:
+        instance_id = kwargs.get("instance_id")
+    if user_info is None:
+        user_info = kwargs.get("user_info")
+    if locale is None:
+        locale = kwargs.get("locale")
+    text = str(instance_id or "").strip()
+    if not text:
+        return {"result": False, "data": None, "message": "instance_id is required"}
+    try:
+        object_id = int(monitor_object_id)
+    except (TypeError, ValueError):
+        return {"result": False, "data": None, "message": "monitor_object_id is required"}
+    scope, _actor, error = _monitor_link_actor(user_info)
+    if error:
+        return error
+    from apps.core.exceptions.base_app_exception import UnauthorizedException
+    from apps.monitor.views.monitor_instance import load_authorized_effective_plugins
+
+    actor_context = {
+        "username": scope.username,
+        "domain": scope.domain,
+        "current_team": scope.current_team,
+        "include_children": scope.include_children,
+        "is_superuser": scope.is_superuser,
+        "group_list": [],
+        "data_scope": scope,
+    }
+    try:
+        data = load_authorized_effective_plugins(
+            object_id,
+            text,
+            actor_context,
+            _monitor_link_locale(locale, user_info),
+            request=None,
+        )
+    except UnauthorizedException:
+        return {"result": True, "data": None, "message": ""}
+    return {"result": True, "data": data, "message": ""}

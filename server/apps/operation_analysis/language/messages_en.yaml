@@ -578,3 +578,6 @@ messages:
   architecture_resource_search_required: "Enter a keyword or select a model"
   architecture_resource_search_text: "{field} must be a string"
   architecture_resource_search_case: "case_sensitive must be a boolean"
+  architecture_monitor_link_failed: "Failed to resolve the monitor link"
+  architecture_monitor_link_required: "monitor_id is required"
+  architecture_monitor_link_text: "monitor_id must be a non-empty string"
