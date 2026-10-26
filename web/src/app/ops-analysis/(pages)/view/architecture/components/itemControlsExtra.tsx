@@ -1,7 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Spin, Switch } from 'antd';
+import { ConfigProvider, Select, Spin, Switch } from 'antd';
+import {
+  columnOptionValue,
+  visibleColumns,
+  type MetricChoice,
+  type MetricColumn,
+} from '../binding/displayMetrics';
 import { LinkOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import MoreActionsDropdown, { type MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
@@ -83,6 +89,95 @@ export const NodeBindingStrip = ({ bound, loading, name, model, dotColor, onOpen
           <LinkOutlined />
           {t('opsAnalysis.architecture.bindingStripBind')}
         </button>
+      )}
+    </div>
+  );
+};
+
+interface DisplayMetricsFieldProps {
+  columns: MetricColumn[];
+  choice: MetricChoice | undefined;
+  loading: boolean;
+  failed: boolean;
+  onChange: (choice: MetricChoice | undefined) => void;
+  onRetry?: () => void;
+}
+
+const DISPLAY_METRIC_CONTROL_HEIGHT = 28;
+
+/** Edit mode. Sits under the CMDB binding strip. Nothing is shown until the user picks columns. */
+export const DisplayMetricsField = ({
+  columns,
+  choice,
+  loading,
+  failed,
+  onChange,
+  onRetry,
+}: DisplayMetricsFieldProps) => {
+  const { t } = useTranslation();
+  const options = columns
+    .filter((column) => column.keys.some((key) => !key.startsWith('field::')))
+    .map((column) => ({
+      label: column.name || column.keys[0],
+      value: columnOptionValue(column),
+    }));
+  const selected = visibleColumns(columns, choice).map(columnOptionValue);
+
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-1.5" data-testid="architecture-display-metrics">
+      <span className="text-xs font-medium leading-[1.4] text-[var(--color-text-3)]">
+        {t('opsAnalysis.architecture.displayMetrics')}
+      </span>
+      {loading ? (
+        <div className="flex min-h-6 items-center">
+          <Spin size="small" />
+        </div>
+      ) : options.length === 0 ? (
+        failed ? (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 rounded-md bg-[color-mix(in_srgb,var(--color-fail)_10%,var(--color-bg))] px-2 py-1"
+          >
+            <span className="min-w-0 text-xs leading-[18px] text-[var(--color-fail)]">
+              {t('opsAnalysis.architecture.displayMetricsFailed')}
+            </span>
+            {onRetry ? (
+              <button
+                type="button"
+                className="shrink-0 cursor-pointer border-0 bg-transparent p-0 text-xs text-[var(--color-primary)]"
+                onClick={onRetry}
+              >
+                {t('common.retry')}
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <span className="text-xs text-[var(--color-text-3)]">
+            {t('opsAnalysis.architecture.displayMetricsEmpty')}
+          </span>
+        )
+      ) : (
+        <ConfigProvider theme={{ token: { controlHeight: DISPLAY_METRIC_CONTROL_HEIGHT } }}>
+          <Select
+            mode="multiple"
+            className="w-full"
+            allowClear
+            maxTagCount="responsive"
+            value={selected}
+            options={options}
+            placeholder={t('opsAnalysis.architecture.displayMetricsPlaceholder')}
+            onChange={(next: string[]) => {
+              if (!next.length) {
+                onChange(undefined);
+                return;
+              }
+              onChange({
+                mode: 'custom',
+                keys: next.flatMap((value) => value.split('\n')).filter(Boolean),
+              });
+            }}
+          />
+        </ConfigProvider>
       )}
     </div>
   );

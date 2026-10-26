@@ -19,6 +19,7 @@ import {
 } from 'src/utils';
 import { useScene } from 'src/hooks/useScene';
 import { emitItemSelect } from 'src/diagramOverlay/callbacks';
+import { isPrimaryPointerEvent } from 'src/interaction/viewPointer';
 
 const getAnchorOrdering = (
   anchor: ConnectorAnchor,
@@ -78,9 +79,13 @@ const getAnchor = (
 const mousedown: ModeActionsAction = ({
   uiState,
   scene,
-  isRendererInteraction
+  isRendererInteraction,
+  pointer
 }) => {
   if (uiState.mode.type !== 'CURSOR' || !isRendererInteraction) return;
+
+  // Only the primary button arms select/drag.
+  if (!isPrimaryPointerEvent(pointer.event)) return;
 
   const itemAtTile = getItemAtTile({
     tile: uiState.mouse.position.tile,
@@ -140,8 +145,11 @@ export const Cursor: ModeActions = {
     }
   },
   mousedown,
-  mouseup: ({ uiState, isRendererInteraction, callbacksRef }) => {
+  mouseup: ({ uiState, isRendererInteraction, callbacksRef, pointer }) => {
     if (uiState.mode.type !== 'CURSOR' || !isRendererInteraction) return;
+
+    // A non-primary release follows no armed press; leave the selection untouched.
+    if (!isPrimaryPointerEvent(pointer.event)) return;
 
     if (uiState.mode.mousedownItem) {
       const item = uiState.mode.mousedownItem;

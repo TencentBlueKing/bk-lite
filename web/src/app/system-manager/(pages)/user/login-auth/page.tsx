@@ -70,7 +70,6 @@ const LoginAuthPage: React.FC = () => {
   const [availableInstances, setAvailableInstances] = useState<AvailableInstance[]>([]);
   const [availableInstancesLoading, setAvailableInstancesLoading] = useState(false);
   const [providers, setProviders] = useState<ProviderManifest[]>([]);
-  const [unmatchedAction, setUnmatchedAction] = useState<string>('deny');
   const watchedIntegrationInstance = Form.useWatch('integration_instance', form);
   const [pagination, setPagination] = useState({
     current: 1,
@@ -201,7 +200,6 @@ const LoginAuthPage: React.FC = () => {
   const handleAdd = () => {
     setEditingBinding(null);
     setSelectedIcon('');
-    setUnmatchedAction('deny');
     form.resetFields();
     form.setFieldsValue({
       icon: '',
@@ -214,7 +212,6 @@ const LoginAuthPage: React.FC = () => {
   const handleEdit = (record: LoginAuthBinding) => {
     setEditingBinding(record);
     setSelectedIcon(record.icon || '');
-    setUnmatchedAction(record.unmatched_user_action);
     form.setFieldsValue({
       name: record.name,
       integration_instance: record.integration_instance,
@@ -300,12 +297,10 @@ const LoginAuthPage: React.FC = () => {
     const template = resolveLoginAuthTemplate(instanceId, availableInstances, providers);
     const nextIcon = providerKey;
     const nextExternalField = resolveLoginAuthDefaultExternalField(template);
-    // 微信登录认证默认开启"未匹配时创建用户",首次登录创建组织弹窗
-    // (init_user_set) 所需的 OpsPilotGuest 组由后端 fallback 兜底,
-    // 前端不再自动填充,UI 也不展示默认组名输入框。
+    // 微信新建绑定默认创建用户。飞书、企微、蓝鲸默认拒绝。
+    // 这四家都不在表单里填默认组织，空组织由后端进入 OpsPilotGuest。
     const nextUnmatchedAction = providerKey === 'wechat' ? 'create' : 'deny';
     setSelectedIcon(nextIcon);
-    setUnmatchedAction(nextUnmatchedAction);
     // Select onChange 同步写其它 Form 字段会触发 antd「circular references」警告
     queueMicrotask(() => {
       form.setFieldValue('icon', nextIcon);
@@ -318,7 +313,6 @@ const LoginAuthPage: React.FC = () => {
   };
 
   const handleUnmatchedActionChange = (value: string) => {
-    setUnmatchedAction(value);
     if (value !== 'create') {
       form.setFieldValue('default_group_name', '');
     }
@@ -612,15 +606,6 @@ const LoginAuthPage: React.FC = () => {
                       onChange={handleUnmatchedActionChange}
                     />
                   </Form.Item>
-                  {unmatchedAction === 'create' && currentProviderKey !== 'wechat' && (
-                    <Form.Item
-                      name="default_group_name"
-                      label={t('system.user.loginAuthPage.defaultGroupName')}
-                      rules={[{ required: true, whitespace: true }]}
-                    >
-                      <Input placeholder={t('system.user.loginAuthPage.defaultGroupNamePlaceholder')} />
-                    </Form.Item>
-                  )}
                 </>
               ) : null}
             </div>

@@ -5,6 +5,8 @@ import type { DiagramCallbacksRef } from 'src/diagramOverlay/callbacks';
 export interface PanPress {
   x: number;
   y: number;
+  /** MouseEvent.button that started the press. Only a primary-button press may end as a click. */
+  button: number;
 }
 
 export interface State {

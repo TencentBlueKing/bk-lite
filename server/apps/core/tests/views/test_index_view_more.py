@@ -1,9 +1,10 @@
 import pydantic.root_model  # noqa
+
 """apps/core/views/index_view.py 补充覆盖（baseline 未触达的视图/分支）。
 
 聚焦：
 - index：render index.prod.html（真实模板渲染）
-- get_bk_settings：合并门户品牌设置到 verify_bk_token 结果（真实 DB SystemSettings 行）
+- get_bk_settings：未就绪时合并门户品牌设置并返回 bk_login_open=false（真实 DB SystemSettings 行）
 - get_wechat_settings：成功透传
 - _get_loader：使用 request.user.locale 分支
 - login：系统异常 -> system_error（255-265）
@@ -65,13 +66,12 @@ class TestIndexAndBkSettings:
 
         SystemSettings.objects.update_or_create(key="portal_name", defaults={"value": "Brand"})
         req = _post({}, cookies={"bk_token": "tk"})
-        with patch.object(index_view, "SystemMgmt") as MockSM:
-            MockSM.return_value.verify_bk_token.return_value = {"result": True, "data": {"user": "x"}}
-            resp = index_view.get_bk_settings(req)
+        resp = index_view.get_bk_settings(req)
         data = _json(resp)
         assert data["result"] is True
         assert data["data"]["portal_name"] == "Brand"
-        assert data["data"]["user"] == "x"
+        assert data["data"]["bk_login_open"] is False
+
 
 class TestGetWechatSettingsSuccess:
     def test_success_passthrough(self):

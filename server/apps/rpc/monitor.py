@@ -70,6 +70,14 @@ class Monitor(object):
             **kwargs,
         )
 
+    def query_instance_display_metrics(self, instance_ids=None, **kwargs):
+        """按监控实例回填展示指标当前值。处理函数在 nats.monitor。"""
+        return self.ingest_client.run(
+            "query_instance_display_metrics",
+            instance_ids=instance_ids,
+            **kwargs,
+        )
+
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def __init__(self, *args, **kwargs):

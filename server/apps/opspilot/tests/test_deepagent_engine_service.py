@@ -1097,10 +1097,7 @@ class TestBuildDeepagentNodes:
     def test_model_call_limit_asks_to_continue_instead_of_summarizing(self):
         import json
 
-        from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
-            LIMIT_MARKER_MODEL_CALLS,
-            build_limit_exceeded_message,
-        )
+        from apps.opspilot.metis.llm.middleware.planned_execution_limits import LIMIT_MARKER_MODEL_CALLS, build_limit_exceeded_message
         from apps.opspilot.utils.pending_question import consume_pending_question, deserialize_evidence
 
         node = ToolsNodes()
@@ -2568,7 +2565,8 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "Missing parameters" in guidance
     assert "查不到再查" in guidance
     assert "monitor_list_object_metrics" in guidance
-    assert "cpu.util" in guidance
+    assert "不要改成类别词" in guidance
+    assert "目录里没有的指标名" in guidance
     assert "空矩阵" in guidance
     assert "instance_ids" in guidance
     assert "禁止用 name" in guidance or "禁止用实例名" in guidance

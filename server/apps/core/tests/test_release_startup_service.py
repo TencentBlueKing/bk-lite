@@ -39,6 +39,10 @@ def _supervisor_conf_dir(tmp_path):
         "[program:opspilot_wecom_aibot_long_connection]\n",
         encoding="utf-8",
     )
+    (supervisor_conf_dir / "opspilot_feishu_long_connection.conf").write_text(
+        "[program:opspilot_feishu_long_connection]\n",
+        encoding="utf-8",
+    )
     (supervisor_conf_dir / "celery.conf").write_text("[program:celery]\n", encoding="utf-8")
     (supervisor_conf_dir / "workflow_worker.conf").write_text(
         "[program:workflow_worker]\n",
@@ -176,6 +180,7 @@ def test_opspilot_celery_worker_is_packaged_without_default_worker_exclude():
 
     assert "opspilot_celery.conf" in dockerfile
     assert "opspilot_wecom_aibot_long_connection.conf" in dockerfile
+    assert "opspilot_feishu_long_connection.conf" in dockerfile
     assert "-X" not in celery_conf
     assert "opspilot_channel" not in celery_conf
     assert "--pool prefork" in celery_conf
@@ -186,6 +191,7 @@ def test_opspilot_celery_worker_is_packaged_without_default_worker_exclude():
     assert "-Q opspilot_channel,opspilot_wiki,opspilot_maintenance,opspilot_chat_parse" in opspilot_conf
     assert 'rm -f "$SUPERVISOR_CONF_DIR/opspilot_celery.conf"' in startup
     assert 'rm -f "$SUPERVISOR_CONF_DIR/opspilot_wecom_aibot_long_connection.conf"' in startup
+    assert 'rm -f "$SUPERVISOR_CONF_DIR/opspilot_feishu_long_connection.conf"' in startup
     assert "SUPERVISOR_CONF_DIR=${SUPERVISOR_CONF_DIR:-/etc/supervisor/conf.d}" in startup
 
 
@@ -198,6 +204,7 @@ def test_release_startup_removes_opspilot_celery_conf_when_opspilot_not_installe
     assert "删除 opspilot 专用 supervisor 配置" in result.stdout
     assert not (conf_dir / "opspilot_celery.conf").exists()
     assert not (conf_dir / "opspilot_wecom_aibot_long_connection.conf").exists()
+    assert not (conf_dir / "opspilot_feishu_long_connection.conf").exists()
     assert not (conf_dir / "consumer.conf").exists()
     assert (conf_dir / "celery.conf").exists()
 
@@ -235,6 +242,7 @@ def test_release_startup_keeps_opspilot_celery_conf_when_opspilot_installed(tmp_
     assert result.returncode == 0
     assert (conf_dir / "opspilot_celery.conf").exists()
     assert (conf_dir / "opspilot_wecom_aibot_long_connection.conf").exists()
+    assert (conf_dir / "opspilot_feishu_long_connection.conf").exists()
     assert (conf_dir / "consumer.conf").exists()
     assert (conf_dir / "celery.conf").exists()
 
@@ -246,6 +254,7 @@ def test_release_startup_keeps_opspilot_celery_conf_when_install_apps_empty(tmp_
     assert result.returncode == 0
     assert (conf_dir / "opspilot_celery.conf").exists()
     assert (conf_dir / "opspilot_wecom_aibot_long_connection.conf").exists()
+    assert (conf_dir / "opspilot_feishu_long_connection.conf").exists()
 
 
 def test_cmdb_transfer_uses_existing_celery_worker_without_extra_process():

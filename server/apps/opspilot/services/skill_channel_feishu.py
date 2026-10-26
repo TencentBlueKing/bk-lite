@@ -53,7 +53,23 @@ def normalize_feishu_channel_config(config: dict[str, Any] | None) -> dict[str, 
     for key in ("app_id", "app_secret", "verification_token", "encrypt_key"):
         if isinstance(out.get(key), str):
             out[key] = out[key].strip()
+    if out.get("connectionMode") == "websocket":
+        out["connectionMode"] = "websocket"
+    else:
+        out.setdefault("connectionMode", "webhook")
     return out
+
+
+def feishu_long_connection_credentials(config: dict[str, Any] | None) -> tuple[str, str] | None:
+    """已选长连接且 App ID、App Secret 都有值时返回凭据。"""
+    normalized = normalize_feishu_channel_config(config)
+    if normalized.get("connectionMode") != "websocket":
+        return None
+    app_id = normalized.get("app_id") or ""
+    app_secret = normalized.get("app_secret") or ""
+    if not app_id or not app_secret:
+        return None
+    return app_id, app_secret
 
 
 def validate_feishu_channel_config(config: dict[str, Any]) -> list[str]:
@@ -187,6 +203,8 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
             return JsonResponse({"result": False, "message": "渠道不存在或已下线"}, status=403)
 
         config = normalize_feishu_channel_config(channel.channel_config)
+        if config.get("connectionMode") == "websocket":
+            return JsonResponse({})
         missing = validate_feishu_channel_config(config)
         if missing:
             logger.warning(

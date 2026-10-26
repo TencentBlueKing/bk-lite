@@ -113,14 +113,9 @@ export const UiOverlay = () => {
             sx={{
               position: 'absolute',
               width: PANEL_WIDTH,
-              overflowY: 'auto',
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none',
-              '&::-webkit-scrollbar': {
-                display: 'none',
-                width: 0,
-                height: 0
-              }
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
             }}
             style={{
               left: CANVAS_INSET,

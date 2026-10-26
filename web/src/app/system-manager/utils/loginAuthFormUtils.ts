@@ -12,8 +12,10 @@ export function isBuiltinLoginAuthBinding(providerKey?: string | null): boolean 
   return providerKey === 'bk_lite_builtin';
 }
 
+const LOGIN_AUTH_UNMATCHED_ACTION_PROVIDERS = new Set(['wechat', 'feishu', 'wecom', 'blueking']);
+
 export function shouldShowLoginAuthUnmatchedUserAction(providerKey?: string | null): boolean {
-  return providerKey === 'wechat';
+  return LOGIN_AUTH_UNMATCHED_ACTION_PROVIDERS.has(providerKey || '');
 }
 
 export function getLoginAuthInstanceNotFoundContent({
@@ -125,12 +127,14 @@ export function buildLoginAuthBindingPayload(
   }
 
   const unmatchedAction = values.unmatched_user_action || 'deny';
-  // WeChat provider: create 时允许 default_group_name 为空,后端 fallback 到 OpsPilotGuest
-  // 非 WeChat provider: create 时必须有 default_group_name(由 modal 必填校验保证)
+  // 微信可能带上已保存的默认组织。飞书、企微、蓝鲸的表单不收集该字段，提交空值，
+  // 由后端在创建时进入 OpsPilotGuest。
+  const defaultGroupName = providerKey === 'wechat' && unmatchedAction === 'create'
+    ? values.default_group_name?.trim() || ''
+    : '';
   return {
     ...basePayload,
     unmatched_user_action: unmatchedAction,
-    default_group_name:
-      unmatchedAction === 'create' ? values.default_group_name?.trim() || '' : '',
+    default_group_name: defaultGroupName,
   };
 }

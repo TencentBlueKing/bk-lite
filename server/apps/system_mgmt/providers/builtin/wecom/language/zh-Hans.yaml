@@ -41,6 +41,8 @@ templates:
             label: 外部字段
           platform_field:
             label: 平台字段
+          unmatched_user_action:
+            label: 未匹配用户处理方式
   user_sync_form:
     title: 用户同步配置
     groups:

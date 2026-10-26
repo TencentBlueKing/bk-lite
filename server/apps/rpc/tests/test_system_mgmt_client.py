@@ -39,7 +39,28 @@ def test_login_with_binding_转发_auth_code_及可选凭据(client):
     assert client.client.calls[0] == (
         "login_with_binding",
         (),
-        {"binding_id": 8, "auth_code": "", "username": "alice", "password": "secret"},
+        {
+            "binding_id": 8,
+            "auth_code": "",
+            "username": "alice",
+            "password": "secret",
+            "bk_token": "",
+        },
+    )
+
+
+def test_login_with_binding_转发_bk_token(client):
+    client.login_with_binding(8, bk_token="bk-cookie")
+    assert client.client.calls[0] == (
+        "login_with_binding",
+        (),
+        {
+            "binding_id": 8,
+            "auth_code": "",
+            "username": "",
+            "password": "",
+            "bk_token": "bk-cookie",
+        },
     )
 
 

@@ -54,6 +54,13 @@ from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.alert_access import filter_alerts_by_organizations, orphaned_monitor_policy_q
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
+from apps.monitor.services.display_metric_snapshot import (
+    DISPLAY_METRICS_INSTANCE_CAP,
+    display_metric_lookup_keys,
+    localize_metric_column_names,
+    metric_display_columns,
+    metric_value_map,
+)
 from apps.monitor.services.host_dashboard import (
     HOST_OBJECT_NAME,
     HostMetricRangeService,
@@ -92,6 +99,7 @@ from apps.monitor.services.metric_series import (
 )
 from apps.monitor.services.metric_trend_summary import summarize_trend_rows
 from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
+from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.nats_query_contract import build_vm_query_failure_result as _build_vm_query_failure_result
 from apps.monitor.services.nats_query_contract import normalize_bool
 from apps.monitor.services.nats_query_contract import normalize_dimensions as _normalize_dimensions
@@ -1726,6 +1734,161 @@ def query_latest_interface_metrics(instance_ids=None, *args, **kwargs):
         logger.exception("query_latest_interface_metrics failed")
         return {"result": False, "data": {"items": []}, "message": "接口指标查询失败"}
     return {"result": True, "data": {"items": items}, "message": ""}
+
+
+def _authorized_display_metric_instances(user_info: dict, scope_ids, requested_ids: list[str]):
+    """只按实例主键匹配。名称、IP 命中不能拿来填别的节点。"""
+    instance_permissions, cur_team, error = _get_global_monitor_instance_permissions(user_info, scope_ids)
+    if error:
+        return {}, error
+    lookup = {token: display_metric_lookup_keys(token) for token in requested_ids}
+    all_keys = []
+    seen = set()
+    for keys in lookup.values():
+        for key in keys:
+            if key in seen:
+                continue
+            seen.add(key)
+            all_keys.append(key)
+    if not all_keys:
+        return {}, None
+    queryset = (
+        MonitorInstance.objects.filter(
+            is_deleted=False,
+            is_active=True,
+            id__in=all_keys,
+            monitorinstanceorganization__organization__in=list(scope_ids),
+        )
+        .select_related("monitor_object")
+        .prefetch_related("monitorinstanceorganization_set")
+        .distinct()
+    )
+    by_id = {}
+    for instance in queryset:
+        teams = {org.organization for org in instance.monitorinstanceorganization_set.all()}
+        if check_instance_permission(
+            str(instance.monitor_object_id),
+            instance.id,
+            teams,
+            instance_permissions,
+            cur_team,
+        ):
+            by_id[str(instance.id)] = instance
+    matched = {}
+    for token, keys in lookup.items():
+        for key in keys:
+            instance = by_id.get(key)
+            if instance is not None:
+                matched[token] = instance
+                break
+    return matched, None
+
+
+def _localized_display_columns(monitor_object, actor):
+    columns = metric_display_columns(getattr(monitor_object, "display_fields", None))
+    object_name = getattr(monitor_object, "name", "") if monitor_object is not None else ""
+    customized = bool(getattr(monitor_object, "display_fields_customized", False))
+    if customized or not object_name:
+        return columns
+    locale = actor.get("locale") if isinstance(actor, dict) else None
+    translations = {}
+    try:
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=locale)
+        for column in columns:
+            keys = column.get("keys") or []
+            metric = keys[0].rsplit("::", 1)[-1] if keys and isinstance(keys[0], str) else ""
+            if not metric or metric.startswith("field::"):
+                continue
+            key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{object_name}.{metric}.name"
+            translated = lan.get(key)
+            if isinstance(translated, str) and translated.strip():
+                translations[key] = translated
+    except Exception:
+        return columns
+    return localize_metric_column_names(columns, object_name, translations, customized=False)
+
+
+@nats_client.register
+def query_instance_display_metrics(instance_ids=None, user_info=None, **kwargs):
+    """按监控实例回填展示指标当前值。单次最多 50 个实例。"""
+    raw = instance_ids if isinstance(instance_ids, list) else kwargs.get("instance_ids")
+    if not isinstance(raw, list):
+        return {"result": False, "data": {}, "message": "instance_ids 必须是列表"}
+    requested = []
+    seen = set()
+    for item in raw:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        requested.append(text)
+    if len(requested) > DISPLAY_METRICS_INSTANCE_CAP:
+        return {"result": False, "data": {}, "message": "instance_ids 不能超过 50"}
+    if not requested:
+        return {"result": True, "data": {"objects": {}, "items": []}, "message": ""}
+
+    actor = user_info if isinstance(user_info, dict) else {}
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(actor)
+    if scope_error:
+        return scope_error
+    try:
+        matched, error = _authorized_display_metric_instances(actor, scope_ids, requested)
+    except Exception as exc:
+        logger.error(
+            "event=query_instance_display_metrics_failed failed_stage=%s error_type=%s instance_count=%s",
+            "authorize",
+            type(exc).__name__,
+            len(requested),
+            exc_info=safe_exception_info(exc),
+        )
+        return {"result": False, "data": {}, "message": "展示指标查询失败"}
+    if error:
+        return error
+
+    grouped: dict[str, dict] = {}
+    for instance in matched.values():
+        grouped.setdefault(str(instance.monitor_object_id), {})[str(instance.id)] = instance
+
+    objects = {}
+    value_by_instance: dict[str, dict] = {}
+    for object_id, instances in grouped.items():
+        sample = next(iter(instances.values()))
+        monitor_object = getattr(sample, "monitor_object", None)
+        columns = _localized_display_columns(monitor_object, actor)
+        objects[object_id] = {"columns": columns}
+        instance_ids_for_object = list(instances)
+        try:
+            rows = MonitorObjectService.fill_display_metrics_for_instance_ids(int(object_id), instance_ids_for_object)
+            Metrics.convert_instance_list_metrics(int(object_id), rows)
+        except Exception as exc:
+            logger.error(
+                "event=query_instance_display_metrics_failed failed_stage=%s error_type=%s monitor_object_id=%s instance_count=%s",
+                "fill",
+                type(exc).__name__,
+                object_id,
+                len(instance_ids_for_object),
+                exc_info=safe_exception_info(exc),
+            )
+            rows = []
+        filled = {}
+        for row in rows or []:
+            if isinstance(row, dict) and row.get("instance_id") not in (None, ""):
+                filled[str(row.get("instance_id"))] = metric_value_map(row, columns)
+        for instance_id in instance_ids_for_object:
+            value_by_instance[instance_id] = filled.get(instance_id) or metric_value_map({}, columns)
+
+    items = []
+    for token, instance in matched.items():
+        instance_id = str(instance.id)
+        items.append(
+            {
+                "requested_id": token,
+                "instance_id": instance_id,
+                "monitor_object_id": str(instance.monitor_object_id),
+                "values": value_by_instance.get(instance_id) or {},
+            }
+        )
+    return {"result": True, "data": {"objects": objects, "items": items}, "message": ""}
 
 
 @nats_client.register
