@@ -7,7 +7,16 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
 from apps.core.utils.current_team_scope import CurrentTeamDataScope
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObjectOrganizationRule
+from apps.monitor.models import (
+    MonitorInstance,
+    MonitorInstanceOrganization,
+    MonitorObjectOrganizationRule,
+    MonitorPlugin,
+    MonitorPolicy,
+    PolicyGroup,
+    PolicyGroupRule,
+    PolicyOrganization,
+)
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer
 from apps.monitor.views import monitor_object as monitor_object_view
@@ -265,6 +274,65 @@ class TestMonitorObjectList:
         assert rows[monitor_object.name]["instance_count"] == 0
         assert all(call.args[1] != instance.id for call in permission_spy.call_args_list)
 
+    def test_policy_count_excludes_group_rules(self, api_client, mocker):
+        mixed_object = MonitorObject.objects.create(name="OVPolicyCountMixed", level="base")
+        group_only_object = MonitorObject.objects.create(name="OVPolicyCountGroupOnly", level="base")
+
+        def create_policy(monitor_object, name):
+            policy = MonitorPolicy.objects.create(
+                monitor_object=monitor_object,
+                name=name,
+                algorithm="avg",
+            )
+            PolicyOrganization.objects.create(policy=policy, organization=1)
+            return policy
+
+        def attach_group_rule(monitor_object, name):
+            plugin = MonitorPlugin.objects.create(
+                name=f"OVPolicyCountPlugin-{name}",
+                collector="Telegraf",
+                collect_type="host",
+            )
+            plugin.monitor_object.add(monitor_object)
+            group = PolicyGroup.objects.create(
+                organization=1,
+                monitor_object=monitor_object,
+                name=f"{name}组",
+            )
+            policy = create_policy(monitor_object, name)
+            PolicyGroupRule.objects.create(
+                group=group,
+                plugin=plugin,
+                policy=policy,
+                name=name,
+            )
+            return policy
+
+        standalone = create_policy(mixed_object, "单策略")
+        grouped = attach_group_rule(mixed_object, "组内规则")
+        group_only = attach_group_rule(group_only_object, "仅组规则")
+        mocker.patch(
+            "apps.monitor.views.monitor_object.get_permissions_rules",
+            return_value={
+                "data": {
+                    str(mixed_object.id): {"team": [1]},
+                    str(group_only_object.id): {"team": [1]},
+                },
+                "team": [1],
+            },
+        )
+
+        response = api_client.get(f"{BASE}/api/monitor_object/?add_policy_count=true")
+
+        assert response.status_code == 200
+        rows = {row["name"]: row for row in response.json()["data"]}
+        assert MonitorPolicy.objects.filter(monitor_object=mixed_object).count() == 2
+        assert not PolicyGroupRule.objects.filter(policy=standalone).exists()
+        assert PolicyGroupRule.objects.filter(policy=grouped).exists()
+        assert PolicyGroupRule.objects.filter(policy=group_only).exists()
+        assert rows[mixed_object.name]["policy_count"] == 1
+        assert rows[group_only_object.name]["policy_count"] == 0
+
     def test_instance_count_candidates_match_full_scan_reference(self):
         object_team = MonitorObject.objects.create(name="OVDiffObjectTeam", level="base")
         object_fallback = MonitorObject.objects.create(name="OVDiffFallback", level="base")
@@ -331,11 +399,10 @@ class TestMonitorObjectList:
 
 class TestMonitorObjectCreate:
     def test_create_with_children_autofills(self, api_client):
-        mtype = MonitorObjectType.objects.create(id="custom", name="自定义")
+        MonitorObjectType.objects.create(id="custom", name="自定义")
         resp = api_client.post(
             f"{BASE}/api/monitor_object/",
-            {"name": "NewParent", "type": "custom",
-             "children": [{"id": "ChildA", "name": "子A"}]},
+            {"name": "NewParent", "type": "custom", "children": [{"id": "ChildA", "name": "子A"}]},
             format="json",
         )
         assert resp.status_code == 200
@@ -354,8 +421,7 @@ class TestMonitorObjectUpdate:
         parent = MonitorObject.objects.create(name="UpdParent", level="base", instance_id_keys=["instance_id"])
         resp = api_client.put(
             f"{BASE}/api/monitor_object/{parent.id}/",
-            {"name": "UpdParent", "level": "base",
-             "children": [{"id": "UpdChild", "name": "新子"}]},
+            {"name": "UpdParent", "level": "base", "children": [{"id": "UpdChild", "name": "新子"}]},
             format="json",
         )
         assert resp.status_code == 200
@@ -363,12 +429,8 @@ class TestMonitorObjectUpdate:
         assert child.parent_id == parent.id
 
     def test_builtin_object_update_protects_definition_but_allows_cleanup_policy(self, api_client):
-        obj = MonitorObject.objects.create(
-            name="BuiltinCleanup", level="base", is_builtin=True, display_name="内置对象"
-        )
-        instance = MonitorInstance.objects.create(
-            id="builtin-auto", monitor_object=obj, auto=True, missing_duration_seconds=3600
-        )
+        obj = MonitorObject.objects.create(name="BuiltinCleanup", level="base", is_builtin=True, display_name="内置对象")
+        instance = MonitorInstance.objects.create(id="builtin-auto", monitor_object=obj, auto=True, missing_duration_seconds=3600)
 
         resp = api_client.patch(
             f"{BASE}/api/monitor_object/{obj.id}/",
@@ -464,9 +526,7 @@ class TestMonitorObjectUpdate:
 
 class TestMonitorObjectActions:
     def test_order(self, api_client, mocker):
-        spy = mocker.patch(
-            "apps.monitor.views.monitor_object.MonitorObjectService.set_object_order"
-        )
+        spy = mocker.patch("apps.monitor.views.monitor_object.MonitorObjectService.set_object_order")
         resp = api_client.post(
             f"{BASE}/api/monitor_object/order/",
             [{"id": 1, "order": 2}],
@@ -479,25 +539,18 @@ class TestMonitorObjectActions:
         obj = MonitorObject.objects.create(name="VisObj", level="base", is_visible=True)
         resp = api_client.post(
             f"{BASE}/api/monitor_object/{obj.id}/visibility/",
-            {"is_visible": False}, format="json",
+            {"is_visible": False},
+            format="json",
         )
         assert resp.status_code == 200
         obj.refresh_from_db()
         assert obj.is_visible is False
 
     def test_visibility_toggle_cascades_to_child_objects(self, api_client):
-        parent = MonitorObject.objects.create(
-            name="K3SClusterVis", level="base", is_visible=True
-        )
-        child_a = MonitorObject.objects.create(
-            name="K3SPodVis", level="derivative", parent=parent, is_visible=True
-        )
-        child_b = MonitorObject.objects.create(
-            name="K3SNodeVis", level="derivative", parent=parent, is_visible=True
-        )
-        sibling = MonitorObject.objects.create(
-            name="OtherClusterVis", level="base", is_visible=True
-        )
+        parent = MonitorObject.objects.create(name="K3SClusterVis", level="base", is_visible=True)
+        child_a = MonitorObject.objects.create(name="K3SPodVis", level="derivative", parent=parent, is_visible=True)
+        child_b = MonitorObject.objects.create(name="K3SNodeVis", level="derivative", parent=parent, is_visible=True)
+        sibling = MonitorObject.objects.create(name="OtherClusterVis", level="base", is_visible=True)
 
         resp = api_client.post(
             f"{BASE}/api/monitor_object/{parent.id}/visibility/",
@@ -528,12 +581,8 @@ class TestMonitorObjectActions:
         assert child_b.is_visible is True
 
     def test_visibility_toggle_cascades_to_nested_descendants(self, api_client):
-        parent = MonitorObject.objects.create(
-            name="NestedVisParent", level="base", is_visible=True
-        )
-        child = MonitorObject.objects.create(
-            name="NestedVisChild", level="derivative", parent=parent, is_visible=True
-        )
+        parent = MonitorObject.objects.create(name="NestedVisParent", level="base", is_visible=True)
+        child = MonitorObject.objects.create(name="NestedVisChild", level="derivative", parent=parent, is_visible=True)
         grandchild = MonitorObject.objects.create(
             name="NestedVisGrandchild",
             level="derivative",
@@ -553,12 +602,8 @@ class TestMonitorObjectActions:
         assert grandchild.is_visible is False
 
     def test_visibility_toggle_on_child_does_not_hide_parent(self, api_client):
-        parent = MonitorObject.objects.create(
-            name="ChildToggleParent", level="base", is_visible=True
-        )
-        child = MonitorObject.objects.create(
-            name="ChildToggleChild", level="derivative", parent=parent, is_visible=True
-        )
+        parent = MonitorObject.objects.create(name="ChildToggleParent", level="base", is_visible=True)
+        child = MonitorObject.objects.create(name="ChildToggleChild", level="derivative", parent=parent, is_visible=True)
 
         resp = api_client.post(
             f"{BASE}/api/monitor_object/{child.id}/visibility/",
@@ -574,27 +619,26 @@ class TestMonitorObjectActions:
     def test_visibility_requires_field(self, api_client):
         obj = MonitorObject.objects.create(name="VisObj2", level="base")
         resp = api_client.post(
-            f"{BASE}/api/monitor_object/{obj.id}/visibility/", {}, format="json",
+            f"{BASE}/api/monitor_object/{obj.id}/visibility/",
+            {},
+            format="json",
         )
         body = resp.json()
         assert body.get("result") is False or resp.status_code != 200
 
     def test_builtin_visibility_can_be_configured(self, api_client):
-        obj = MonitorObject.objects.create(
-            name="BuiltinVisibility", level="base", is_builtin=True, is_visible=True
-        )
+        obj = MonitorObject.objects.create(name="BuiltinVisibility", level="base", is_builtin=True, is_visible=True)
         resp = api_client.post(
             f"{BASE}/api/monitor_object/{obj.id}/visibility/",
-            {"is_visible": False}, format="json",
+            {"is_visible": False},
+            format="json",
         )
         assert resp.status_code == 200, resp.content
         obj.refresh_from_db()
         assert obj.is_visible is False
 
     def test_builtin_object_cannot_be_deleted(self, api_client):
-        obj = MonitorObject.objects.create(
-            name="BuiltinProtected", level="base", is_builtin=True
-        )
+        obj = MonitorObject.objects.create(name="BuiltinProtected", level="base", is_builtin=True)
 
         resp = api_client.delete(f"{BASE}/api/monitor_object/{obj.id}/")
 
@@ -732,15 +776,16 @@ class TestOrganizationRuleView:
         api_client.cookies["current_team"] = "1"
         obj = MonitorObject.objects.create(name="ORVObj", level="base")
         rule = MonitorObjectOrganizationRule.objects.create(
-            monitor_object=obj, name="r", organizations=[1], rule={},
+            monitor_object=obj,
+            name="r",
+            organizations=[1],
+            rule={},
         )
         mocker.patch(
             "apps.monitor.views.organization_rule._build_actor_context",
             return_value=_superuser_actor_context(),
         )
-        spy = mocker.patch(
-            "apps.monitor.views.organization_rule.OrganizationRule.del_organization_rule"
-        )
+        spy = mocker.patch("apps.monitor.views.organization_rule.OrganizationRule.del_organization_rule")
         resp = api_client.delete(f"{BASE}/api/organization_rule/{rule.id}/?del_instance_org=true")
         assert resp.status_code == 200
         spy.assert_called_once()
@@ -773,6 +818,7 @@ class TestOrganizationRuleView:
         from apps.core.exceptions.base_app_exception import BaseAppException
         from apps.monitor.models import MonitorInstance
         from apps.monitor.views.organization_rule import _validate_rule_binding
+
         obj = MonitorObject.objects.create(name="VRBObj", level="base")
         other = MonitorObject.objects.create(name="VRBOther", level="base")
         MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj)
@@ -782,6 +828,7 @@ class TestOrganizationRuleView:
     def test_validate_rule_binding_ok(self):
         from apps.monitor.models import MonitorInstance
         from apps.monitor.views.organization_rule import _validate_rule_binding
+
         obj = MonitorObject.objects.create(name="VRBObj2", level="base")
         MonitorInstance.objects.create(id="('h2',)", name="h2", monitor_object=obj)
         # 匹配 → 不抛错
@@ -791,6 +838,7 @@ class TestOrganizationRuleView:
         """子对象(derivative)规则引用父实例应视为合法:对应 create_default_rule 自动建规则的设计"""
         from apps.monitor.models import MonitorInstance
         from apps.monitor.views.organization_rule import _validate_rule_binding
+
         parent = MonitorObject.objects.create(name="VRBParent", level="base")
         child = MonitorObject.objects.create(name="VRBChild", level="derivative", parent=parent)
         MonitorInstance.objects.create(id="('p1',)", name="p1", monitor_object=parent)
@@ -802,6 +850,7 @@ class TestOrganizationRuleView:
         from apps.core.exceptions.base_app_exception import BaseAppException
         from apps.monitor.models import MonitorInstance
         from apps.monitor.views.organization_rule import _validate_rule_binding
+
         parent = MonitorObject.objects.create(name="VRBParentU", level="base")
         child = MonitorObject.objects.create(name="VRBChildU", level="derivative", parent=parent)
         unrelated = MonitorObject.objects.create(name="VRBUnrelated", level="base")
@@ -812,6 +861,7 @@ class TestOrganizationRuleView:
     def test_update_derivative_rule_with_parent_instance_succeeds(self, api_client):
         """回归: vmware 父实例自动建的子规则,编辑保存时不再被 500/校验拦截"""
         from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObjectOrganizationRule
+
         parent = MonitorObject.objects.create(name="UpdDeriveParent", level="base")
         child = MonitorObject.objects.create(name="UpdDeriveChild", level="derivative", parent=parent)
         instance = MonitorInstance.objects.create(id="('vp1',)", name="vp1", monitor_object=parent)
@@ -827,10 +877,11 @@ class TestOrganizationRuleView:
             },
             monitor_instance_id="('vp1',)",
         )
-        mocker_module = pytest.importorskip("pytest_mock")
+        pytest.importorskip("pytest_mock")
         from unittest.mock import patch
 
         import pytest_mock  # noqa: F401
+
         with patch(
             "apps.monitor.views.organization_rule._build_actor_context",
             return_value=_superuser_actor_context(),
@@ -854,6 +905,7 @@ class TestOrganizationRuleView:
         from types import SimpleNamespace
 
         from apps.monitor.views.organization_rule import _rule_is_authorized
+
         rule = SimpleNamespace(organizations=[1], monitor_instance_id="", monitor_object_id=1)
         assert _rule_is_authorized(rule, _superuser_actor_context()) is True
 
