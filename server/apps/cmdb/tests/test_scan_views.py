@@ -474,3 +474,71 @@ def test_create_still_requires_database_credentials(superuser, monkeypatch):
     request = _req("post", superuser, data=_payload(families=["database"], credentials={"database": []}), current_team="1")
     response = ScanTaskViewSet.as_view({"post": "create"})(request)
     assert response.status_code == 400
+
+
+def _org_user(user):
+    user.is_superuser = False
+    user.group_list = [{"id": 1, "name": "Org A"}]
+    user.permission = {
+        "cmdb": {
+            "auto_collection-View",
+            "auto_collection-Delete",
+            "auto_collection-Execute",
+        }
+    }
+    user.save(update_fields=["is_superuser", "group_list"])
+    return user
+
+
+def _task_rules(*_args, **_kwargs):
+    return {"team": [1], "instance": []}
+
+
+def _patch_task_rules(monkeypatch, rules):
+    monkeypatch.setattr("apps.core.utils.viewset_utils.get_permission_rules", rules)
+    monkeypatch.setattr("apps.core.utils.serializers.get_permission_rules", rules)
+
+
+def test_other_org_scan_detail_delete_and_exec_stay_hidden(authenticated_user, monkeypatch):
+    user = _org_user(authenticated_user)
+    _patch_task_rules(monkeypatch, _task_rules)
+    triggered = []
+    monkeypatch.setattr("django.db.transaction.on_commit", lambda fn: fn())
+    monkeypatch.setattr(
+        "apps.cmdb.tasks.celery_tasks.trigger_scan_execution.delay",
+        lambda execution_id: triggered.append(execution_id),
+    )
+    foreign = ScanTask.objects.create(name="org-b-scan", team=[2], families=["mysql"])
+    own = ScanTask.objects.create(name="org-a-scan", team=[1], families=["mysql"])
+
+    detail = ScanTaskViewSet.as_view({"get": "retrieve"})(_req("get", user, current_team="1"), pk=foreign.id)
+    detail_body = json.dumps(_body(detail))
+    assert detail.status_code == 404
+    assert "org-b-scan" not in detail_body
+
+    exec_response = ScanTaskViewSet.as_view({"post": "exec_scan"})(
+        _req("post", user, data={}, current_team="1"), pk=foreign.id
+    )
+    exec_body = json.dumps(_body(exec_response))
+    assert exec_response.status_code == 404
+    assert "org-b-scan" not in exec_body
+    assert not ScanExecution.objects.filter(task=foreign).exists()
+    assert triggered == []
+
+    delete_response = ScanTaskViewSet.as_view({"delete": "destroy"})(
+        _req("delete", user, current_team="1"), pk=foreign.id
+    )
+    delete_body = json.dumps(_body(delete_response))
+    assert delete_response.status_code == 404
+    assert "org-b-scan" not in delete_body
+    assert ScanTask.objects.filter(pk=foreign.id, name="org-b-scan").exists()
+
+    own_detail = ScanTaskViewSet.as_view({"get": "retrieve"})(_req("get", user, current_team="1"), pk=own.id)
+    assert own_detail.status_code == 200
+    assert _data(own_detail)["name"] == "org-a-scan"
+
+    _patch_task_rules(monkeypatch, lambda *_args, **_kwargs: {"team": [], "instance": []})
+    missing_rules = ScanTaskViewSet.as_view({"get": "retrieve"})(_req("get", user, current_team="1"), pk=own.id)
+    missing_body = json.dumps(_body(missing_rules))
+    assert missing_rules.status_code == 404
+    assert "org-a-scan" not in missing_body

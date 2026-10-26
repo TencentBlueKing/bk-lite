@@ -39,6 +39,14 @@ class ScanTaskViewSet(AuthViewSet):
             )
         )
 
+    def get_object(self):
+        queryset = self.get_queryset_by_permission(self.request, self.filter_queryset(self.get_queryset()))
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+        obj = get_object_or_404(queryset, **filter_kwargs)
+        self.check_object_permissions(self.request, obj)
+        return obj
+
     def get_serializer_class(self):
         if self.action == "list":
             return ScanTaskListSerializer
