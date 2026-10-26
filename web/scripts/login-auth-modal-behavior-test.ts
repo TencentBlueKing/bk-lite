@@ -39,8 +39,11 @@ assert.equal(
 );
 
 assert.equal(shouldShowLoginAuthUnmatchedUserAction('wechat'), true);
-assert.equal(shouldShowLoginAuthUnmatchedUserAction('feishu'), false);
+assert.equal(shouldShowLoginAuthUnmatchedUserAction('feishu'), true);
+assert.equal(shouldShowLoginAuthUnmatchedUserAction('wecom'), true);
+assert.equal(shouldShowLoginAuthUnmatchedUserAction('blueking'), true);
 assert.equal(shouldShowLoginAuthUnmatchedUserAction('bk_lite_builtin'), false);
+assert.equal(shouldShowLoginAuthUnmatchedUserAction('ad'), false);
 assert.equal(
   resolveLoginAuthProviderKey(12, [{ id: 12, name: 'WeChat', provider_key: 'wechat', provider_name: 'WeChat' }], {
     id: 1,
@@ -220,7 +223,7 @@ assert.deepEqual(
     description: '  desc  ',
     external_field: 'user_id',
     platform_field: 'username',
-    unmatched_user_action: 'deny',
+    unmatched_user_action: 'create',
     default_group_name: '',
   }
 );

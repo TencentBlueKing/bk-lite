@@ -43,22 +43,21 @@ def test_wecom_manifest_declares_shared_credentials_and_three_capabilities():
 
     field_keys = [field.key for group in groups for field in group.fields]
     assert field_keys == [
-        "corp_id", "corp_secret", "agent_id", "access_token_url", "proxy_url",
+        "corp_id",
+        "corp_secret",
+        "agent_id",
+        "access_token_url",
+        "proxy_url",
     ]
-    assert {capability.key for capability in WECOM_PROVIDER_MANIFEST.capabilities} == {
-        "login_auth", "user_sync", "im_notification", "im_group"
-    }
+    assert {capability.key for capability in WECOM_PROVIDER_MANIFEST.capabilities} == {"login_auth", "user_sync", "im_notification", "im_group"}
     assert template.available_external_fields == ["userid"]
     assert template.default_external_match_field == "userid"
 
 
 def test_wecom_manifest_does_not_expose_api_base_url_or_sso_base_url():
-    credentials = {
-        field.key for field in WECOM_PROVIDER_MANIFEST.instance_templates["base_connection"].groups[0].fields
-    }
+    credentials = {field.key for field in WECOM_PROVIDER_MANIFEST.instance_templates["base_connection"].groups[0].fields}
     capability_field_keys = {
-        capability.key: {field.key for field in capability.connection_template}
-        for capability in WECOM_PROVIDER_MANIFEST.capabilities
+        capability.key: {field.key for field in capability.connection_template} for capability in WECOM_PROVIDER_MANIFEST.capabilities
     }
 
     assert "api_base_url" not in credentials
@@ -76,24 +75,16 @@ def test_wecom_login_auth_manifest_limits_external_fields_to_userid():
     assert template.identity_fields == ["userid"]
 
 
-def test_wecom_login_auth_manifest_does_not_allow_unmatched_user_creation():
+def test_wecom_login_auth_manifest_exposes_unmatched_action_without_default_group():
     template = WECOM_PROVIDER_MANIFEST.business_templates["login_auth_form"]
-    field_keys = {
-        field.key
-        for group in template.groups
-        for field in group.fields
-    }
+    field_keys = {field.key for group in template.groups for field in group.fields}
 
-    assert "unmatched_user_action" not in field_keys
+    assert "unmatched_user_action" in field_keys
     assert "default_group_name" not in field_keys
 
 
 def test_wecom_base_connection_fields_reset_affected_capabilities():
-    fields = {
-        field.key: field
-        for group in WECOM_PROVIDER_MANIFEST.instance_templates["base_connection"].groups
-        for field in group.fields
-    }
+    fields = {field.key: field for group in WECOM_PROVIDER_MANIFEST.instance_templates["base_connection"].groups for field in group.fields}
 
     assert fields["corp_id"].reset_capabilities == ["login_auth", "user_sync", "im_notification", "im_group"]
     assert fields["corp_secret"].reset_capabilities == ["login_auth", "user_sync", "im_notification", "im_group"]
@@ -119,11 +110,7 @@ def test_wecom_capability_fields_reset_only_their_capability():
 
 
 def test_wecom_user_sync_manifest_exposes_recursive_toggle():
-    fields = {
-        field.key: field
-        for group in WECOM_PROVIDER_MANIFEST.business_templates["user_sync_form"].groups
-        for field in group.fields
-    }
+    fields = {field.key: field for group in WECOM_PROVIDER_MANIFEST.business_templates["user_sync_form"].groups for field in group.fields}
 
     include_child = fields["include_child_departments"]
     assert include_child.field_type == "boolean"
@@ -143,8 +130,7 @@ def test_wecom_connection_templates_prefill_official_endpoints():
     }
 
     for location, field_key, expected in (
-        (location, field_key, expected_defaults[(location, field_key)])
-        for location, field_key in expected_defaults
+        (location, field_key, expected_defaults[(location, field_key)]) for location, field_key in expected_defaults
     ):
         if location == "base_connection":
             field = next(
@@ -155,18 +141,12 @@ def test_wecom_connection_templates_prefill_official_endpoints():
             )
         else:
             capability = WECOM_PROVIDER_MANIFEST.get_capability(location)
-            field = next(
-                item for item in capability.connection_template if item.key == field_key
-            )
+            field = next(item for item in capability.connection_template if item.key == field_key)
         assert field.default == expected, (location, field_key, field.default, expected)
 
 
 def test_wecom_endpoint_field_labels_do_not_include_full_address():
-    base_fields = {
-        field.key: field
-        for group in WECOM_PROVIDER_MANIFEST.instance_templates["base_connection"].groups
-        for field in group.fields
-    }
+    base_fields = {field.key: field for group in WECOM_PROVIDER_MANIFEST.instance_templates["base_connection"].groups for field in group.fields}
     for field_key in ("access_token_url", "proxy_url"):
         assert "完整地址" not in base_fields[field_key].label, field_key
 
@@ -195,10 +175,7 @@ def test_wecom_base_connection_groups_credentials_and_endpoints_separately():
 
 
 def test_wecom_credential_fields_carry_placeholders_or_help_text():
-    credentials_group = next(
-        group for group in WECOM_PROVIDER_MANIFEST.instance_templates["base_connection"].groups
-        if group.key == "credentials"
-    )
+    credentials_group = next(group for group in WECOM_PROVIDER_MANIFEST.instance_templates["base_connection"].groups if group.key == "credentials")
     fields = {field.key: field for field in credentials_group.fields}
     assert fields["corp_id"].placeholder == "ww1234567890abcdef"
     assert fields["corp_id"].help_text == "WeCom Admin → My Company → Company Information → Corp ID"

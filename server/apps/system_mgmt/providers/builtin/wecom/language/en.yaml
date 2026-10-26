@@ -41,6 +41,8 @@ templates:
             label: External field
           platform_field:
             label: Platform field
+          unmatched_user_action:
+            label: Unmatched user action
   user_sync_form:
     title: User sync
     groups:
