@@ -1339,7 +1339,8 @@ class ServiceTreeService:
         tree = cls.get_tree(system, is_visible=is_visible)
         edges = _load_tree_edges(_nonempty_text(system.get("inst_uuid")))
         hosts_by_app = _hosts_by_application(edges)
-        host_index = _index_nodes([host_uuid for hosts in hosts_by_app.values() for host_uuid in hosts])
+        host_uuids = [host_uuid for hosts in hosts_by_app.values() for host_uuid in hosts]
+        host_index = _index_nodes(_unique(host_uuids))
         rows: list[dict[str, str]] = []
         system_name = str(system.get("inst_name") or "")
 
