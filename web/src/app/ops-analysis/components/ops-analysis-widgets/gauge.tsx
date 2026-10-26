@@ -18,9 +18,11 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartSurface from '@/components/chart-surface';
+import GaugePeriodCompare from '@/app/ops-analysis/components/widgets/shared/gaugePeriodCompare';
 
 export interface OpsAnalysisGaugeProps {
   rawData: unknown;
+  baselineData?: unknown;
   loading?: boolean;
   config?: ValueConfig;
   onReady?: (ready: boolean) => void;
@@ -34,6 +36,7 @@ const clamp = (value: number, min: number, max: number) => {
 
 const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
   rawData,
+  baselineData,
   loading = false,
   config,
   onReady,
@@ -172,12 +175,15 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
       loadingClassName="flex h-full w-full items-center justify-center"
       emptyClassName="flex h-full w-full items-center justify-center"
     >
-      <ReactEcharts
-        ref={chartRef}
-        option={option}
-        onEvents={onEvents}
-        style={{ height: '100%', width: '100%' }}
-      />
+      <div className="relative h-full w-full">
+        <ReactEcharts
+          ref={chartRef}
+          option={option}
+          onEvents={onEvents}
+          style={{ height: '100%', width: '100%' }}
+        />
+        <GaugePeriodCompare config={config} rawData={rawData} baselineData={baselineData} />
+      </div>
     </ChartSurface>
   );
 };

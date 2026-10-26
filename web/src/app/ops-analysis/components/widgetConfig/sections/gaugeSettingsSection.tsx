@@ -1,6 +1,6 @@
 import React from 'react';
 import { QuestionCircleOutlined } from '@ant-design/icons';
-import { Form, Input, InputNumber, Radio, Select, Tooltip, TreeSelect } from 'antd';
+import { Form, Input, InputNumber, Radio, Select, Switch, Tooltip, TreeSelect } from 'antd';
 import { ConfigSectionTitle } from '../configTitles';
 import { RefreshFieldsButton } from './chartRoleLabel';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
@@ -26,6 +26,7 @@ interface GaugeSettingsSectionProps {
   onThresholdBlur: (index: number, value: number | null) => void;
   onAddThreshold: (afterIndex?: number) => void;
   onRemoveThreshold: (index: number) => void;
+  compareAvailable?: boolean;
 }
 
 export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
@@ -42,6 +43,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
   onThresholdBlur,
   onAddThreshold,
   onRemoveThreshold,
+  compareAvailable = false,
 }) => {
   const resolvedSectionTitle = sectionTitle !== undefined ? sectionTitle : t('dashboard.gaugeSettings');
   const canSelectField =
@@ -181,6 +183,48 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
             </Radio.Group>
           </Form.Item>
           <div aria-hidden className="col-span-1" />
+
+          <Form.Item
+            className="min-w-0"
+            label={
+              <span>
+                {t('dashboard.compareLabel')}
+                <Tooltip title={t('dashboard.comparePreviousPeriodTip')}>
+                  <QuestionCircleOutlined className="ml-1 cursor-help text-(--color-text-3)" />
+                </Tooltip>
+              </span>
+            }
+            name="compare"
+            valuePropName="checked"
+          >
+            <Switch disabled={!compareAvailable} />
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, current) => prev.compare !== current.compare}
+          >
+            {({ getFieldValue }) => (
+              getFieldValue('compare') ? (
+                <Form.Item
+                  className="min-w-0"
+                  label={t('dashboard.compareMode')}
+                  name="compareMode"
+                  initialValue="percent"
+                >
+                  <Select
+                    className="w-full"
+                    options={[
+                      { value: 'percent', label: t('dashboard.compareModePercent') },
+                      { value: 'value', label: t('dashboard.compareModeValue') },
+                    ]}
+                  />
+                </Form.Item>
+              ) : (
+                <div aria-hidden className="col-span-1" />
+              )
+            )}
+          </Form.Item>
 
           <Form.Item
             className="min-w-0"

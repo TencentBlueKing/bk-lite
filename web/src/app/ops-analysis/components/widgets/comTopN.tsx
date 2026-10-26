@@ -26,8 +26,7 @@ import { isTopNContentReady, resolveTopNContentState } from '@/app/ops-analysis/
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 import {
   buildTopNItems,
-  resolveTopNBarPercent,
-  resolveTopNMaxValue,
+  resolveConfiguredTopNBarPercent,
 } from '@/app/ops-analysis/utils/topNData';
 
 interface TopNProps {
@@ -88,13 +87,14 @@ const TopN: React.FC<TopNProps> = ({
   const gridTemplateColumns =
     'minmax(112px, 28%) minmax(0, 1fr) minmax(48px, auto)';
   const cellPadding = scaleScreenMetric(8, screenRenderContext);
-  const items = buildTopNItems(rawData, labelField, valueField);
+  const items = buildTopNItems(rawData, labelField, valueField, {
+    scalarFields: config?.topNScalarFields,
+  });
   const { active: dataLinkActive, openPoint, hoverHint } = useWidgetDataLink(config);
   const points = useMemo(
     () => topNLinkPoints(items, valueField),
     [items, valueField],
   );
-  const maxValue = resolveTopNMaxValue(items);
   const isDataReady = items.length > 0;
   const contentState = resolveTopNContentState({
     loading,
@@ -169,7 +169,7 @@ const TopN: React.FC<TopNProps> = ({
           }}
         >
           {items.map((item, index) => {
-            const percent = resolveTopNBarPercent(item.value, maxValue);
+            const percent = resolveConfiguredTopNBarPercent(item.value, items, config);
 
             return (
               <React.Fragment key={`${item.name}-${index}`}>
@@ -210,7 +210,7 @@ const TopN: React.FC<TopNProps> = ({
                     <div
                       className="h-full rounded-full transition-all duration-300"
                       style={{
-                        width: `${Math.max(percent, (item.value ?? 0) > 0 ? 2 : 0)}%`,
+                        width: `${percent}%`,
                         background: usesScreenChartTheme && barColors.length > 0
                           ? `linear-gradient(90deg, ${barColors[index % barColors.length]} 0%, ${barColors[(index + 1) % barColors.length]} 100%)`
                           : isDark

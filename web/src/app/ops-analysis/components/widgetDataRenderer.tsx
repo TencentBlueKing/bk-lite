@@ -48,7 +48,6 @@ import { fetchCompareData, validateGaugeData } from "@/app/ops-analysis/utils/co
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
 import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
-import { buildTopNItems } from "@/app/ops-analysis/utils/topNData";
 import { buildWidgetRequestCacheKey } from "@/app/ops-analysis/utils/widgetRequestCache";
 import { useDashboardRuntimeScheduler } from "@/app/ops-analysis/context/dashboardRuntimeScheduler";
 import {
@@ -73,6 +72,7 @@ import {
   serializeTableQueryKey,
 } from "@/app/ops-analysis/utils/tablePagination";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
+import { validateTopNPayload } from "@/app/ops-analysis/utils/topNData";
 import { validateEventTimelinePayload } from "@/app/ops-analysis/utils/eventTimeline";
 import { validateCardListPayload } from "@/app/ops-analysis/utils/cardList";
 import { resolveRadarSeriesData } from "@/app/ops-analysis/utils/radarData";
@@ -89,19 +89,12 @@ const validateTopNData = (
   config?: ValueConfig,
   errorMessage?: string,
 ): { isValid: boolean; message?: string } => {
-  if (!data || (Array.isArray(data) && data.length === 0)) {
-    return { isValid: true };
-  }
-
-  if (!Array.isArray(data)) {
-    return { isValid: false, message: errorMessage || "dashboard.dataFormatMismatch" };
-  }
-
-  const hasNamedRows =
-    buildTopNItems(data, config?.topNLabelField, config?.topNValueField)
-      .length > 0;
-
-  return hasNamedRows
+  const valid = validateTopNPayload(data, {
+    labelField: config?.topNLabelField,
+    valueField: config?.topNValueField,
+    scalarFields: config?.topNScalarFields,
+  });
+  return valid
     ? { isValid: true }
     : { isValid: false, message: errorMessage || "dashboard.dataFormatMismatch" };
 };
@@ -724,6 +717,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return ChartDataTransformer.validatePieData(data, errorMessage, {
             dimensionField: config?.dimensionField,
             valueField: config?.valueField,
+            pieScalarFields: config?.pieScalarFields,
           });
         case "line":
         case "bar":

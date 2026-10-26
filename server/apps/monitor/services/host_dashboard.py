@@ -373,6 +373,43 @@ def empty_host_snapshot(*, host_count: int = 0) -> dict[str, Any]:
     return snapshot
 
 
+def average_host_series(folded: dict[str, list[list[float]]] | None) -> float | None:
+    """先取每台主机窗口内采样均值，再对有数据的主机取均值。"""
+    host_means: list[float] = []
+    for points in (folded or {}).values():
+        numbers = [float(point[1]) for point in points or [] if isinstance(point, (list, tuple)) and len(point) >= 2]
+        if not numbers:
+            continue
+        host_means.append(sum(numbers) / len(numbers))
+    if not host_means:
+        return None
+    return round(sum(host_means) / len(host_means), 2)
+
+
+def build_windowed_host_averages(
+    *,
+    vm_api: Any,
+    instances: list[Any],
+    time_range: list | tuple,
+    step: str = DEFAULT_RANGE_STEP,
+) -> dict[str, Any]:
+    """授权主机在给定时间窗内的 CPU / 内存 / 磁盘均值。最高值字段保持为空。"""
+    counted = [item for item in instances if getattr(item, "id", None)]
+    snapshot = empty_host_snapshot(host_count=len(counted))
+    if not counted:
+        return snapshot
+    service = HostMetricRangeService(vm_api=vm_api)
+    for metric_type, field_name in (("cpu", "avg_cpu"), ("memory", "avg_memory"), ("disk", "avg_disk")):
+        folded = service.run(
+            metric_type=metric_type,
+            time_range=time_range,
+            instances=counted,
+            step=step,
+        )
+        snapshot[field_name] = average_host_series(folded)
+    return snapshot
+
+
 def build_host_resource_snapshot(
     *,
     host_meta: dict[str, dict[str, Any]],

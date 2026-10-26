@@ -4,6 +4,7 @@
 """
 
 import datetime
+import logging
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -630,6 +631,7 @@ def test_get_alert_snapshot_statistics_keeps_old_active_alerts_and_ignores_time(
         "processing_count": 1,
         "auto_recovery_count": 1,
         "auto_recovery_rate": 25.0,
+        "severe_active_count": 0,
     }
 
 
@@ -861,6 +863,7 @@ def test_get_alert_level_trend_exact_span_limit_is_accepted(monkeypatch, user_in
     ("handler", "empty_data"),
     [
         (N.get_alert_trend_data, []),
+        (N.get_alert_open_close_trend, []),
         (N.get_alert_level_trend, {}),
     ],
 )
@@ -885,6 +888,7 @@ def test_alert_trend_rejects_malformed_time(user_info, handler, empty_data, time
     ("handler", "empty_data"),
     [
         (N.get_alert_trend_data, []),
+        (N.get_alert_open_close_trend, []),
         (N.get_alert_level_trend, {}),
     ],
 )
@@ -904,6 +908,7 @@ def test_alert_trend_rejects_timezone_less_time(user_info, handler, empty_data):
     ("handler", "empty_data"),
     [
         (N.get_alert_trend_data, []),
+        (N.get_alert_open_close_trend, []),
         (N.get_alert_level_trend, {}),
     ],
 )
@@ -923,6 +928,7 @@ def test_alert_trend_rejects_reversed_time(user_info, handler, empty_data):
     ("handler", "empty_data"),
     [
         (N.get_alert_trend_data, []),
+        (N.get_alert_open_close_trend, []),
         (N.get_alert_level_trend, {}),
     ],
 )
@@ -1040,6 +1046,23 @@ def test_get_alert_trend_data_requires_time(user_info):
 
 
 @pytest.mark.django_db
+def test_get_alert_trend_data_does_not_log_user_info(user_info, caplog):
+    sentinel = "password=trend-secret-token"
+    leaked_user = {**user_info, "password": sentinel}
+    with caplog.at_level(logging.INFO, logger="alert"):
+        result = N.get_alert_trend_data(user_info=leaked_user)
+    assert result["result"] is False
+    assert "required" in result["message"]
+    records = [record for record in caplog.records if record.name == "alert" and record.msg == "event=get_alert_trend_data"]
+    assert len(records) == 1
+    assert records[0].args == ()
+    assert records[0].getMessage() == "event=get_alert_trend_data"
+    assert sentinel not in records[0].msg
+    assert sentinel not in records[0].getMessage()
+    assert sentinel not in caplog.text
+
+
+@pytest.mark.django_db
 def test_get_alert_trend_data_short_window_uses_minute(user_info):
     result = N.get_alert_trend_data(
         user_info=user_info,
@@ -1074,6 +1097,161 @@ def test_get_alert_trend_data_seven_day_window_uses_hour(user_info):
     assert "告警数" in result["data"]
     # 7 天按 hour，约 168 点，不应再是日粒度的 ~7 点
     assert len(result["data"]["告警数"]) >= 160
+    assert "关闭告警数" not in result["data"]
+    assert set(result["data"]) == {"告警数", "告警关联事件数", "已恢复告警数"}
+
+
+@pytest.mark.django_db
+def test_get_alert_trend_data_ignores_removed_open_close_controls(user_info):
+    start = timezone.now().replace(microsecond=0) - datetime.timedelta(days=2)
+    end = timezone.now().replace(microsecond=0) + datetime.timedelta(minutes=1)
+    opened = Alert.objects.create(
+        alert_id="OPEN-1",
+        level="0",
+        title="opened",
+        content="c",
+        fingerprint="open-fp",
+        team=[1],
+        status=AlertStatus.PENDING,
+    )
+    closed_in_window = Alert.objects.create(
+        alert_id="CLOSED-1",
+        level="0",
+        title="closed",
+        content="c",
+        fingerprint="closed-fp",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+    recovered = Alert.objects.create(
+        alert_id="RECOVERED-1",
+        level="0",
+        title="recovered",
+        content="c",
+        fingerprint="recovered-fp",
+        team=[1],
+        status=AlertStatus.AUTO_RECOVERY,
+    )
+    Alert.objects.filter(pk=opened.pk).update(created_at=start + datetime.timedelta(hours=1))
+    Alert.objects.filter(pk=closed_in_window.pk).update(
+        created_at=start - datetime.timedelta(days=10),
+        updated_at=start + datetime.timedelta(hours=2),
+    )
+    Alert.objects.filter(pk=recovered.pk).update(
+        created_at=start - datetime.timedelta(days=10),
+        updated_at=start + datetime.timedelta(hours=3),
+    )
+    window = [start.isoformat(), end.isoformat()]
+
+    result = N.get_alert_trend_data(
+        user_info=user_info,
+        time=window,
+        bucket="day",
+        series="open_close",
+        include_closed="true",
+    )
+    assert result["result"] is True
+    assert set(result["data"]) == {"告警数", "告警关联事件数", "已恢复告警数"}
+    assert len(result["data"]["告警数"]) >= 48
+    assert sum(point[1] for point in result["data"]["告警数"]) == 1
+    assert sum(point[1] for point in result["data"]["已恢复告警数"]) == 1
+
+
+@pytest.mark.django_db
+def test_get_alert_open_close_trend_seven_day_window_uses_hour(user_info):
+    result = N.get_alert_open_close_trend(
+        user_info=user_info,
+        time=["2026-01-01T00:00:00Z", "2026-01-08T00:00:00Z"],
+        bucket="day",
+        series="open_close",
+    )
+    assert result["result"] is True
+    assert set(result["data"]) == {"告警数", "关闭告警数"}
+    assert len(result["data"]["告警数"]) >= 160
+
+
+@pytest.mark.django_db
+def test_get_alert_open_close_trend_counts_created_and_full_closed_status(user_info):
+    start = timezone.now().replace(microsecond=0) - datetime.timedelta(days=2)
+    end = timezone.now().replace(microsecond=0) + datetime.timedelta(minutes=1)
+    opened = Alert.objects.create(
+        alert_id="OPEN-2",
+        level="0",
+        title="opened",
+        content="c",
+        fingerprint="open-2",
+        team=[1],
+        status=AlertStatus.PENDING,
+    )
+    closed_in_window = Alert.objects.create(
+        alert_id="CLOSED-2",
+        level="0",
+        title="closed",
+        content="c",
+        fingerprint="closed-2",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+    recovered = Alert.objects.create(
+        alert_id="RECOVERED-2",
+        level="0",
+        title="recovered",
+        content="c",
+        fingerprint="recovered-2",
+        team=[1],
+        status=AlertStatus.AUTO_RECOVERY,
+    )
+    auto_closed = Alert.objects.create(
+        alert_id="AUTO-CLOSE-2",
+        level="0",
+        title="auto-closed",
+        content="c",
+        fingerprint="auto-close-2",
+        team=[1],
+        status=AlertStatus.AUTO_CLOSE,
+    )
+    Alert.objects.filter(pk=opened.pk).update(created_at=start + datetime.timedelta(hours=1))
+    for alert, hours in ((closed_in_window, 2), (recovered, 3), (auto_closed, 4)):
+        Alert.objects.filter(pk=alert.pk).update(
+            created_at=start - datetime.timedelta(days=10),
+            updated_at=start + datetime.timedelta(hours=hours),
+        )
+    window = [start.isoformat(), end.isoformat()]
+
+    result = N.get_alert_open_close_trend(user_info=user_info, time=window)
+    assert result["result"] is True
+    assert set(result["data"]) == {"告警数", "关闭告警数"}
+    assert sum(point[1] for point in result["data"]["告警数"]) == 1
+    assert sum(point[1] for point in result["data"]["关闭告警数"]) == 3
+
+
+@pytest.mark.django_db
+def test_get_alert_snapshot_statistics_counts_critical_level_id_not_display_name(user_info):
+    Level.objects.create(level_id=0, level_name="Critical", level_display_name="严重", level_type=LevelType.ALERT, built_in=True)
+    Level.objects.create(level_id=2, level_name="Warning", level_display_name="严重", level_type=LevelType.ALERT, built_in=True)
+    Level.objects.create(level_id=0, level_name="Critical", level_display_name="严重", level_type=LevelType.EVENT, built_in=True)
+    for index, (level, status) in enumerate(
+        (
+            ("0", AlertStatus.PENDING),
+            ("0", AlertStatus.CLOSED),
+            ("2", AlertStatus.PROCESSING),
+        )
+    ):
+        Alert.objects.create(
+            alert_id=f"SEV-{index}",
+            level=level,
+            title="sev",
+            content="c",
+            fingerprint=f"sev-{index}",
+            team=[1],
+            status=status,
+        )
+
+    result = N.get_alert_snapshot_statistics(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"]["severe_active_count"] == 1
+    assert result["data"]["active_count"] == 2
 
 
 @pytest.mark.django_db

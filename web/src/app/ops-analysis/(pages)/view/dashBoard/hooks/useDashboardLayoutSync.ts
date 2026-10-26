@@ -8,17 +8,13 @@ import type {
   FilterValue,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
-import type {
-  DatasourceItem,
-  ParamItem,
-} from '@/app/ops-analysis/types/dataSource';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import {
-  type BindableParamType,
   buildDefaultFilterBindings,
-  getBindableFilterParams,
-  getFilterDefinitionId,
+  discoverFollowedFilterParams,
+  preserveUnfollowedFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import {
   buildRelativeTimeRangeFilterValue,
@@ -73,33 +69,22 @@ export const buildFiltersFromDashboardLayout = ({
   previousDefinitions: UnifiedFilterDefinition[];
   dataSources: DatasourceItem[];
 }): UnifiedFilterDefinition[] => {
-  const discoveredParams = new Map<
-    string,
-    ParamItem & { type: BindableParamType }
-  >();
-
-  layout.forEach((item) => {
-    if (!isDashboardWidgetItem(item)) {
-      return;
-    }
-
-    const dataSourceId = item.valueConfig?.dataSource;
-    const normalizedId =
-      typeof dataSourceId === 'string'
-        ? parseInt(dataSourceId, 10)
-        : dataSourceId;
-    const dataSource = dataSources.find(
-      (source) => source.id === normalizedId,
-    );
-    const params = resolveWidgetBindableParams(item.valueConfig, dataSource);
-
-    getBindableFilterParams(params).forEach((param) => {
-      const id = getFilterDefinitionId(param.name, param.type);
-      if (!discoveredParams.has(id)) {
-        discoveredParams.set(id, param);
-      }
-    });
-  });
+  const discoveredParams = discoverFollowedFilterParams(
+    layout.filter(isDashboardWidgetItem).map((item) => {
+      const dataSourceId = item.valueConfig?.dataSource;
+      const normalizedId =
+        typeof dataSourceId === 'string'
+          ? parseInt(dataSourceId, 10)
+          : dataSourceId;
+      const dataSource = dataSources.find(
+        (source) => source.id === normalizedId,
+      );
+      return {
+        params: resolveWidgetBindableParams(item.valueConfig, dataSource),
+        filterBindings: item.valueConfig?.filterBindings,
+      };
+    }),
+  );
 
   const existingDefinitions = new Map(
     previousDefinitions.map((definition) => [definition.id, definition]),
@@ -163,6 +148,97 @@ export const buildFiltersFromDashboardLayout = ({
   );
 };
 
+export const syncDashboardLayoutFilterBindings = (
+  nextLayout: DashboardLayoutItem[],
+  definitions: UnifiedFilterDefinition[],
+  dataSources: DatasourceItem[],
+): DashboardLayoutItem[] => {
+  const allowedIds = new Set(
+    definitions.map((definition) => definition.id),
+  );
+
+  return nextLayout.map((item) => {
+    if (!isDashboardWidgetItem(item)) {
+      return item;
+    }
+
+    const existingBindings = item.valueConfig?.filterBindings;
+    const dataSourceId = item.valueConfig?.dataSource;
+    const normalizedId =
+      typeof dataSourceId === 'string'
+        ? parseInt(dataSourceId, 10)
+        : dataSourceId;
+    const dataSource = dataSources.find(
+      (source) => source.id === normalizedId,
+    );
+    const currentParams = resolveWidgetBindableParams(
+      item.valueConfig,
+      dataSource,
+    );
+
+    const autoBindings = buildDefaultFilterBindings(
+      currentParams,
+      definitions,
+      existingBindings,
+    );
+
+    if (!autoBindings) {
+      const preserved = preserveUnfollowedFilterBindings(
+        existingBindings,
+        currentParams,
+        undefined,
+      );
+      if (JSON.stringify(existingBindings ?? undefined) === JSON.stringify(preserved)) {
+        return item;
+      }
+      return {
+        ...item,
+        valueConfig: {
+          ...item.valueConfig,
+          filterBindings: preserved,
+        },
+      };
+    }
+
+    const prunedBindings = Object.entries(autoBindings).reduce<FilterBindings>(
+      (acc, [filterId, enabled]) => {
+        if (allowedIds.has(filterId)) {
+          acc[filterId] = enabled;
+        }
+        return acc;
+      },
+      {},
+    );
+
+    const boundBindings = withApplicationTopologyFilterBinding(
+      item.valueConfig?.chartType,
+      item.valueConfig?.sceneWidgetType,
+      Object.keys(prunedBindings).length ? prunedBindings : undefined,
+      definitions,
+    );
+
+    const newBindings = preserveUnfollowedFilterBindings(
+      existingBindings,
+      currentParams,
+      boundBindings && Object.keys(boundBindings).length
+        ? boundBindings
+        : undefined,
+    );
+
+    if (JSON.stringify(existingBindings ?? undefined) === JSON.stringify(newBindings)) {
+      return item;
+    }
+
+    return {
+      ...item,
+      valueConfig: {
+        ...item.valueConfig,
+        filterBindings: newBindings,
+      },
+    };
+  });
+};
+
 export const useDashboardLayoutSync = ({
   dataSources,
   namespaceDraftId,
@@ -194,84 +270,7 @@ export const useDashboardLayoutSync = ({
     (
       nextLayout: DashboardLayoutItem[],
       definitions: UnifiedFilterDefinition[],
-    ) => {
-      const allowedIds = new Set(
-        definitions.map((definition) => definition.id),
-      );
-
-      return nextLayout.map((item) => {
-        if (!isDashboardWidgetItem(item)) {
-          return item;
-        }
-
-        const existingBindings = item.valueConfig?.filterBindings;
-        const dataSourceId = item.valueConfig?.dataSource;
-        const normalizedId =
-          typeof dataSourceId === 'string'
-            ? parseInt(dataSourceId, 10)
-            : dataSourceId;
-        const dataSource = dataSources.find(
-          (source) => source.id === normalizedId,
-        );
-        const currentParams = resolveWidgetBindableParams(
-          item.valueConfig,
-          dataSource,
-        );
-
-        const autoBindings = buildDefaultFilterBindings(
-          currentParams,
-          definitions,
-          existingBindings,
-        );
-
-        if (!autoBindings) {
-          if (existingBindings === undefined) {
-            return item;
-          }
-
-          return {
-            ...item,
-            valueConfig: {
-              ...item.valueConfig,
-              filterBindings: undefined,
-            },
-          };
-        }
-
-        const prunedBindings = Object.entries(autoBindings).reduce<FilterBindings>(
-          (acc, [filterId, enabled]) => {
-            if (allowedIds.has(filterId)) {
-              acc[filterId] = enabled;
-            }
-            return acc;
-          },
-          {},
-        );
-
-        const boundBindings = withApplicationTopologyFilterBinding(
-          item.valueConfig?.chartType,
-          item.valueConfig?.sceneWidgetType,
-          Object.keys(prunedBindings).length ? prunedBindings : undefined,
-          definitions,
-        );
-
-        const newBindings = boundBindings && Object.keys(boundBindings).length
-          ? boundBindings
-          : undefined;
-
-        if (JSON.stringify(existingBindings) === JSON.stringify(newBindings)) {
-          return item;
-        }
-
-        return {
-          ...item,
-          valueConfig: {
-            ...item.valueConfig,
-            filterBindings: newBindings,
-          },
-        };
-      });
-    },
+    ) => syncDashboardLayoutFilterBindings(nextLayout, definitions, dataSources),
     [dataSources],
   );
 

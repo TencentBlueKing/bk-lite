@@ -12,6 +12,7 @@ MONITOR_NATS_HANDLER_NAMES = frozenset(
         "create_monitor_plugin",
         "create_monitor_policy",
         "delete_monitor_policy",
+        "get_cmdb_relation_alert_aggregation",
         "get_host_instance_list",
         "get_host_metric_range",
         "get_host_resource_snapshot",

@@ -65,8 +65,12 @@ export interface WidgetConfigFormValues {
   descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
+  topNScalarFields?: Array<{ field?: string; label?: string }>;
+  barMode?: 'relative' | 'absolute';
+  barMax?: number;
   dimensionField?: string;
   valueField?: string;
+  pieScalarFields?: Array<{ field?: string; label?: string }>;
   multiValueLabelField?: string;
   multiValueValueField?: string;
   nodeGraphIdentityMode?: 'ip' | 'service';
@@ -405,6 +409,9 @@ const CARD_LIST_FOREIGN_KEYS = [
   'descriptionField',
   'topNLabelField',
   'topNValueField',
+  'topNScalarFields',
+  'barMode',
+  'barMax',
   'dimensionField',
   'valueField',
   'multiValueLabelField',
@@ -450,6 +457,7 @@ const VALUE_FORMAT_CHART_TYPES = new Set([
   'pie',
   'multiValue',
   'nodeGraph',
+  'topN',
 ]);
 
 const stripUnsetOptionalNumericDisplayFields = <T extends object>(
@@ -643,6 +651,8 @@ const applyGaugeConfig = (
   if (values.gaugeMin !== undefined) result.gaugeMin = values.gaugeMin;
   if (values.gaugeMax !== undefined) result.gaugeMax = values.gaugeMax;
   if (values.gaugeShape !== undefined) result.gaugeShape = values.gaugeShape;
+  result.compare = !!values.compare;
+  result.compareMode = values.compareMode || 'percent';
 };
 
 export const buildWidgetSubmitConfig = ({
@@ -733,6 +743,21 @@ export const buildWidgetSubmitConfig = ({
     if (valueField) {
       result.valueField = valueField;
     }
+    const scalarFields: Array<{ field: string; label?: string }> = [];
+    (values.pieScalarFields || []).forEach((item) => {
+      const field = trimOptionalField(item?.field);
+      if (!field) {
+        return;
+      }
+      const label = trimOptionalField(item?.label);
+      scalarFields.push(label ? { field, label } : { field });
+    });
+    if (scalarFields.length === 1 && !forPreview) {
+      return { error: 'chartRoleFieldPairRequired' };
+    }
+    if (scalarFields.length >= 2) {
+      result.pieScalarFields = scalarFields;
+    }
   }
 
   if (chartType === 'multiValue') {
@@ -752,8 +777,33 @@ export const buildWidgetSubmitConfig = ({
   }
 
   if (chartType === 'topN') {
-    result.topNLabelField = values.topNLabelField;
-    result.topNValueField = values.topNValueField;
+    const scalarFields: Array<{ field: string; label?: string }> = [];
+    (values.topNScalarFields || []).forEach((item) => {
+      const field = trimOptionalField(item?.field);
+      if (!field) {
+        return;
+      }
+      const label = trimOptionalField(item?.label);
+      scalarFields.push(label ? { field, label } : { field });
+    });
+    if (scalarFields.length > 0) {
+      result.topNScalarFields = scalarFields;
+      result.topNLabelField = undefined;
+      result.topNValueField = undefined;
+    } else {
+      result.topNLabelField = values.topNLabelField;
+      result.topNValueField = values.topNValueField;
+      result.topNScalarFields = undefined;
+    }
+    if (values.barMode === 'absolute') {
+      result.barMode = 'absolute';
+      result.barMax = isFiniteNumber(values.barMax) && values.barMax > 0
+        ? values.barMax
+        : undefined;
+    } else {
+      result.barMode = undefined;
+      result.barMax = undefined;
+    }
   }
 
   if (chartType === 'nodeGraph') {

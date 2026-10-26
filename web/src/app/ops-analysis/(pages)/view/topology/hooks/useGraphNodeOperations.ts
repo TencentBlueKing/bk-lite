@@ -21,7 +21,7 @@ import {
   toComparableNumber,
 } from '@/app/ops-analysis/utils/compareQuery';
 import { useTranslation } from '@/utils/i18n';
-import { buildValueConfig } from '../utils/namespaceUtils';
+import { applyTopNValueConfig, buildValueConfig } from '../utils/namespaceUtils';
 import { createNodeByType, updateNodeAttributes } from '../utils/registerNode';
 import { getColorByThreshold, isFiniteNumber } from '../utils/thresholdUtils';
 import { formatUnit } from '@/app/ops-analysis/utils/unitFormat';
@@ -424,6 +424,41 @@ export const useGraphNodeOperations = ({
     values: NodeConfigFormValues,
   ): TopologyNodeData {
     const { valueConfig, styleConfig } = editingNode || {};
+    const nextValueConfig = {
+      ...valueConfig,
+      compare: values.compare ?? valueConfig?.compare,
+      ...(values.compareMode != null
+        ? { compareMode: values.compareMode }
+        : {}),
+      selectedFields: values.selectedFields || valueConfig?.selectedFields,
+      chartType: values.chartType || valueConfig?.chartType,
+      dataSource: values.dataSource || valueConfig?.dataSource,
+      dataSourceParams:
+        values.dataSourceParams || valueConfig?.dataSourceParams,
+      ...(values.filterBindings && Object.keys(values.filterBindings).length > 0
+        ? { filterBindings: values.filterBindings }
+        : {}),
+      nodeGraphIdentityMode:
+        values.nodeGraphIdentityMode ?? valueConfig?.nodeGraphIdentityMode,
+      nodeGraphSourceField:
+        values.nodeGraphSourceField ?? valueConfig?.nodeGraphSourceField,
+      nodeGraphTargetField:
+        values.nodeGraphTargetField ?? valueConfig?.nodeGraphTargetField,
+      nodeGraphValueField:
+        values.nodeGraphValueField ?? valueConfig?.nodeGraphValueField,
+      nodeGraphTargetPortField:
+        values.nodeGraphTargetPortField ?? valueConfig?.nodeGraphTargetPortField,
+      unitId: values.unitId ?? valueConfig?.unitId,
+      valueMappings: values.valueMappings ?? valueConfig?.valueMappings,
+    };
+    if ((values.chartType || valueConfig?.chartType) === 'topN') {
+      delete nextValueConfig.topNLabelField;
+      delete nextValueConfig.topNValueField;
+      delete nextValueConfig.topNScalarFields;
+      delete nextValueConfig.barMode;
+      delete nextValueConfig.barMax;
+      applyTopNValueConfig(nextValueConfig as Record<string, unknown>, values);
+    }
     return {
       id: editingNode.id,
       type: editingNode.type,
@@ -440,35 +475,7 @@ export const useGraphNodeOperations = ({
       logoType: values.logoType || editingNode.logoType,
       logoIcon: values.logoIcon || editingNode.logoIcon,
       logoUrl: values.logoUrl || editingNode.logoUrl,
-      valueConfig: {
-        ...valueConfig,
-        compare: values.compare ?? valueConfig?.compare,
-        ...(values.compareMode != null
-          ? { compareMode: values.compareMode }
-          : {}),
-        selectedFields: values.selectedFields || valueConfig?.selectedFields,
-        chartType: values.chartType || valueConfig?.chartType,
-        dataSource: values.dataSource || valueConfig?.dataSource,
-        dataSourceParams:
-          values.dataSourceParams || valueConfig?.dataSourceParams,
-        ...(values.filterBindings && Object.keys(values.filterBindings).length > 0
-          ? { filterBindings: values.filterBindings }
-          : {}),
-        topNLabelField: values.topNLabelField ?? valueConfig?.topNLabelField,
-        topNValueField: values.topNValueField ?? valueConfig?.topNValueField,
-        nodeGraphIdentityMode:
-          values.nodeGraphIdentityMode ?? valueConfig?.nodeGraphIdentityMode,
-        nodeGraphSourceField:
-          values.nodeGraphSourceField ?? valueConfig?.nodeGraphSourceField,
-        nodeGraphTargetField:
-          values.nodeGraphTargetField ?? valueConfig?.nodeGraphTargetField,
-        nodeGraphValueField:
-          values.nodeGraphValueField ?? valueConfig?.nodeGraphValueField,
-        nodeGraphTargetPortField:
-          values.nodeGraphTargetPortField ?? valueConfig?.nodeGraphTargetPortField,
-        unitId: values.unitId ?? valueConfig?.unitId,
-        valueMappings: values.valueMappings ?? valueConfig?.valueMappings,
-      },
+      valueConfig: nextValueConfig,
       styleConfig: mergeStyleConfig(values, styleConfig, [
         'textColor',
         'fontSize',

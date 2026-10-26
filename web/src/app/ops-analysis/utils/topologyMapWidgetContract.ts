@@ -40,6 +40,7 @@ export const hasRenderableChartData = (
     selectedFields?: string[];
     dimensionField?: string;
     valueField?: string;
+    pieScalarFields?: Array<{ field: string; label?: string }>;
     nodeGraphIdentityMode?: NodeGraphIdentityMode;
     nodeGraphSourceField?: string;
     nodeGraphTargetField?: string;
@@ -62,6 +63,7 @@ export const hasRenderableChartData = (
     return ChartDataTransformer.transformToPieData(data, {
       dimensionField: config?.dimensionField,
       valueField: config?.valueField,
+      pieScalarFields: config?.pieScalarFields,
     }).some(
       (item) => Number.isFinite(item.value) && item.value > 0,
     );

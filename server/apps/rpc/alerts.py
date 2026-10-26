@@ -17,6 +17,9 @@ class AlertOperationAnaRpc(BaseOperationAnaRpc):
         return_data = self.client.run("get_alert_trend_data", *args, **kwargs)
         return return_data
 
+    def get_alert_open_close_trend(self, *args, **kwargs):
+        return self.client.run("get_alert_open_close_trend", *args, **kwargs)
+
     def list_alerts(self, query_data: dict, **kwargs):
         return self.client.run("list_alerts", query_data=query_data, **kwargs)
 
