@@ -66,6 +66,7 @@
 | cpu_cores     | 物理核心数 |
 | vcpus         | 线程数（逻辑CPU） |
 | esxi_version  | ESXi版本 |
+| boot_time     | 主机启动时间（ISO，重启才变；不采集 uptime） |
 | vmware_ds     | 可访问数据存储MOID列表（逗号分隔） |
 
 **VM虚拟机(vmware_vm)**

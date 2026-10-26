@@ -3,13 +3,30 @@ import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-WINDOWS_WMI_METRICS = REPO_ROOT / "server/apps/monitor/support-files/plugins/Telegraf/http/windows_wmi/metrics.json"
+PLUGIN_ROOT = REPO_ROOT / "server/apps/monitor/support-files/plugins/Telegraf/http"
+WINDOWS_WMI_METRICS = PLUGIN_ROOT / "windows_wmi/metrics.json"
+WINDOWS_WMI_POLICY = PLUGIN_ROOT / "windows_wmi/policy.json"
+WINDOWS_WMI_UI = PLUGIN_ROOT / "windows_wmi/UI.json"
+HOST_METRICS = PLUGIN_ROOT / "host/metrics.json"
+HOST_POLICY = PLUGIN_ROOT / "host/policy.json"
+HOST_UI = PLUGIN_ROOT / "host/UI.json"
 
 
-def _load_metrics_by_name():
-    with WINDOWS_WMI_METRICS.open(encoding="utf-8") as f:
-        metrics = json.load(f)["metrics"]
-    return {metric["name"]: metric for metric in metrics}
+def _load_json(path):
+    with path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _load_metrics_by_name(path=WINDOWS_WMI_METRICS):
+    return {metric["name"]: metric for metric in _load_json(path)["metrics"]}
+
+
+def _form_fields_by_name(path):
+    return {field["name"]: field for field in _load_json(path)["form_fields"]}
+
+
+def _policy_templates_by_name(path):
+    return {item["name"]: item for item in _load_json(path)["templates"]}
 
 
 def test_windows_wmi_metrics_expose_telegraf_aligned_network_rates():
@@ -47,3 +64,53 @@ def test_windows_wmi_metrics_expose_common_host_metric_groups():
         "system_uptime",
     ]:
         assert metric_name in metrics
+
+
+def _assert_windows_service_metric(metric, query):
+    assert metric["metric_group"] == "Service"
+    assert metric["data_type"] == "Enum"
+    assert metric["dimensions"] == [{"name": "service"}]
+    assert metric["query"] == query
+    assert "service_scope" not in json.dumps(metric["dimensions"])
+
+
+def _assert_windows_service_policy(template, config_type):
+    assert template["metric_name"] == "windows_service_state"
+    assert template["algorithm"] == "last_over_time"
+    assert template["threshold"] == [{"level": "warning", "value": 0, "method": "="}]
+    filters = {(item["name"], item["method"], str(item["value"])) for item in template["filter"]}
+    assert ("service_scope", "=", "names") in filters
+    assert ("config_type", "=", config_type) in filters
+
+
+def test_windows_wmi_metrics_expose_service_state():
+    metric = _load_metrics_by_name()["windows_service_state"]
+    _assert_windows_service_metric(
+        metric,
+        'windows_service_state_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+    )
+
+
+def test_host_metrics_expose_service_state():
+    metric = _load_metrics_by_name(HOST_METRICS)["windows_service_state"]
+    _assert_windows_service_metric(
+        metric,
+        'windows_service_state_gauge{instance_type="os", __$labels__}',
+    )
+
+
+def test_windows_service_policies_only_alert_named_scope():
+    wmi_policy = _policy_templates_by_name(WINDOWS_WMI_POLICY)["Windows服务停止"]
+    host_policy = _policy_templates_by_name(HOST_POLICY)["Windows服务停止"]
+    _assert_windows_service_policy(wmi_policy, "windows_wmi")
+    _assert_windows_service_policy(host_policy, "host")
+
+
+def test_windows_service_ui_defaults_to_none():
+    wmi_fields = _form_fields_by_name(WINDOWS_WMI_UI)
+    host_fields = _form_fields_by_name(HOST_UI)
+    assert wmi_fields["service_scope"]["default_value"] == "none"
+    assert host_fields["service_scope"]["default_value"] == "none"
+    assert "service" not in wmi_fields["metrics_modules"]["default_value"]
+    assert host_fields["service_scope"]["dependency"] == {"field": "os_type", "value": "windows"}
+    assert host_fields["service_names"]["dependency"] == {"field": "os_type", "value": "windows"}

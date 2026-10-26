@@ -61,7 +61,8 @@ def _build_openai_thinking_extra_body(model: str, show_think: bool) -> dict:
     避免 ``show_think=false`` 时仍默认思考并把旁白打进正文。
 
     未识别的模型不写这些字段，避免官方 OpenAI 因未知参数返回 400。
-    Wiki 资料构建会另外带上 ``suppress_default_thinking``，强制关闭思考。
+    ``suppress_default_thinking`` 只强制已识别、默认会开思考的厂商族写关闭字段，
+    不会给未识别模型补 ``enable_thinking`` / ``thinking``。
 
     Qwen3 同类：DashScope 认顶层 ``enable_thinking``，vLLM / 本地 OpenAI 兼容
     服务只认 ``chat_template_kwargs.enable_thinking``。只写顶层字段会被静默忽略，
@@ -84,17 +85,17 @@ def _build_openai_thinking_extra_body(model: str, show_think: bool) -> dict:
 
 
 def _isolated_thinking_extra_body(request) -> dict:
-    """Thinking flags for an isolated call. Default off; Wiki can force a disable payload."""
+    """Thinking flags for an isolated call.
+
+    Known families that default thinking on get an explicit disable payload.
+    ``suppress_default_thinking`` forces that disable payload even when
+    ``show_think`` is set. Unrecognized models, including official OpenAI ids,
+    stay empty so unknown ``enable_thinking`` / ``thinking`` keys cannot 400.
+    """
     extra = request.extra_config or {}
-    show_think = bool(extra.get("show_think", False))
-    body = _build_openai_thinking_extra_body(request.model, show_think)
-    if body or show_think or not extra.get("suppress_default_thinking"):
-        return body
-    return {
-        "enable_thinking": False,
-        "chat_template_kwargs": {"enable_thinking": False},
-        "thinking": {"type": "disabled"},
-    }
+    suppress = bool(extra.get("suppress_default_thinking"))
+    show_think = False if suppress else bool(extra.get("show_think", False))
+    return _build_openai_thinking_extra_body(request.model, show_think)
 
 
 def _coerce_optional_int(value):

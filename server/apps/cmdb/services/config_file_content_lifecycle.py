@@ -60,6 +60,7 @@ class ConfigFileContentLifecycle:
                 raise RuntimeError("配置正文临时对象哈希不匹配")
 
             formal_key = version_obj.content.name
+            created_formal_object = False
             if storage.exists(formal_key):
                 with storage.open(formal_key, "rb") as formal_file:
                     if hashlib.sha256(formal_file.read()).hexdigest() != version_obj.content_hash:
@@ -67,6 +68,7 @@ class ConfigFileContentLifecycle:
                 saved_key = formal_key
             else:
                 saved_key = storage.save(formal_key, ContentFile(raw_content, name=formal_key))
+                created_formal_object = True
 
             updated = ConfigFileVersion.objects.filter(
                 id=version_id,
@@ -83,7 +85,26 @@ class ConfigFileContentLifecycle:
             if updated:
                 cls.discard_temp_content(version_obj.temp_content_key)
                 return True
-            return ConfigFileVersion.objects.filter(id=version_id, content_status=ConfigFileContentStatus.READY).exists()
+            published = ConfigFileVersion.objects.filter(
+                id=version_id,
+                content_status=ConfigFileContentStatus.READY,
+            ).exists()
+            if published:
+                return True
+            if (
+                created_formal_object
+                and saved_key
+                and not ConfigFileVersion.objects.filter(content=saved_key).exists()
+            ):
+                try:
+                    storage.delete(saved_key)
+                except Exception:
+                    logger.exception(
+                        "[ConfigFileContent] 清理无版本引用的正式对象失败 version_id=%s key=%s",
+                        version_id,
+                        saved_key,
+                    )
+            return False
         except Exception as error:
             logger.exception("[ConfigFileContent] 发布正式对象失败 version_id=%s", version_id)
             ConfigFileVersion.objects.filter(

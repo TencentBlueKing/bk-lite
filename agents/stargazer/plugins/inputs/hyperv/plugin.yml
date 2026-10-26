@@ -1,0 +1,20 @@
+name: hyperv
+version: 1.0.0
+category: virtualization
+metadata:
+  display_name: Hyper-V
+  description: Hyper-V host and VM monitoring over WinRM
+  author: WeOps
+  tags:
+  - virtualization
+  - hyperv
+  cloud_protocol: false
+  model_id: hyperv
+executors:
+  protocol:
+    type: protocol
+    execution_mode: sync
+    capacity_group: default
+    target_policy:
+      mode: skip
+default_executor: protocol

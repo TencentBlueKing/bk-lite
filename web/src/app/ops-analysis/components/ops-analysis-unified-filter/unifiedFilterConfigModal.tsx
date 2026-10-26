@@ -92,7 +92,7 @@ const SortableRow: React.FC<SortableRowProps> = (props) => {
     ...props.style,
     transform: CSS.Transform.toString(transform),
     transition,
-    ...(isDragging ? { zIndex: 9999, position: 'relative' as const, background: '#fafafa' } : {}),
+    ...(isDragging ? { zIndex: 9999, position: 'relative' as const, background: 'var(--color-fill-1)' } : {}),
   };
 
   const contextValue = useMemo(
@@ -109,13 +109,13 @@ const SortableRow: React.FC<SortableRowProps> = (props) => {
 
 const DragHandle: React.FC = () => {
   const context = React.useContext(DragHandleContext);
-  if (!context) return <HolderOutlined style={{ color: '#999' }} />;
+  if (!context) return <HolderOutlined style={{ color: 'var(--color-text-3)' }} />;
 
   return (
     <HolderOutlined
       {...context.attributes}
       {...context.listeners}
-      style={{ cursor: 'grab', color: '#999' }}
+      style={{ cursor: 'grab', color: 'var(--color-text-3)' }}
     />
   );
 };

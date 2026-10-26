@@ -7,6 +7,18 @@
   min-width: 0;
 }
 
+/* 专业盘页壳跟内容走。盖过共享 .page 的 min-height:100%，避免短 Tab 把滚动区撑满一屏。 */
+.proPage.proPage {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* 底边距交给 Tab 内容区自己的 16px，页壳不再在卡底另垫一截。 */
+.proShell.proShell {
+  padding-bottom: 0;
+}
+
 .metricsMode {
   display: flex;
   flex-direction: column;

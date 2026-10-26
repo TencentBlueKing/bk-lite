@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Divider } from '@mui/material';
+import { Box } from '@mui/material';
 
 interface Props {
   header?: React.ReactNode;
@@ -29,7 +29,6 @@ export const ControlsContainer = ({ header, children }: Props) => {
           }}
         >
           {header}
-          <Divider />
         </Box>
       )}
       <Box

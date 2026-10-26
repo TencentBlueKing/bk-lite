@@ -318,6 +318,7 @@
     "importOkf": "导入 OKF",
     "okfImportProgress": "正在导入 {progress}%",
     "okfImportEnriching": "正在完善检索",
+    "okfImportFailed": "OKF 导入未完成，请查看构建记录后重试。",
     "exportOkf": "导出 OKF",
     "reindexKnowledgeBase": "重建索引",
     "reindexKnowledgeBaseTip": "重建该知识库全部启用知识页面的页面索引与分块索引,并记录构建结果用于诊断。",

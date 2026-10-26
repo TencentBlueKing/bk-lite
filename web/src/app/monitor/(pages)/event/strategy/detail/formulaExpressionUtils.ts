@@ -2,7 +2,9 @@ import {
   FormulaQueryCondition,
   MetricExpressionQueryCondition,
   MetricExpressionRow,
-  MetricQueryCondition
+  MetricQueryCondition,
+  MultiQueryCondition,
+  MultiThresholdField
 } from './metricExpressionTypes';
 import { MetricItem, ThresholdField } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
@@ -10,9 +12,14 @@ import { InstanceItem } from '@/app/monitor/types/search';
 import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
 import { isStringArray } from '@/app/monitor/utils/common';
 
-export type MetricExpressionMode = 'metric' | 'formula' | 'auto';
-export type MetricExpressionQueryType = 'metric' | 'formula';
+export type MetricExpressionMode = 'metric' | 'formula' | 'multi' | 'auto';
+export type MetricExpressionQueryType = 'metric' | 'formula' | 'multi';
 
+export const DEFAULT_MULTI_LEVEL_THRESHOLD: MultiThresholdField[] = [
+  { level: 'critical', method: '>', value: null },
+  { level: 'error', method: '>', value: null },
+  { level: 'warning', method: '>', value: null }
+];
 export const DEFAULT_FORMULA_RESULT_NAME = '计算指标';
 export const DEFAULT_FORMULA_EXPRESSION = 'a / b * 100';
 export const VARIABLE_SEQUENCE = 'abcdefghijklmnopqrstuvwxyz'.split('');
@@ -46,8 +53,18 @@ export const shouldShowFormulaEditor = (
 ): boolean => mode === 'formula';
 
 export const getMetricExpressionModeForRows = (
-  rows: MetricExpressionRow[]
-): MetricExpressionMode => (rows.length > 1 ? 'formula' : 'metric');
+  _rows: MetricExpressionRow[],
+  explicitMode?: string | null
+): MetricExpressionMode => {
+  if (
+    explicitMode === 'formula' ||
+    explicitMode === 'multi' ||
+    explicitMode === 'metric'
+  ) {
+    return explicitMode;
+  }
+  return 'metric';
+};
 
 export const resolveMetricExpressionUnits = ({
   queryType,
@@ -88,6 +105,194 @@ export const createMetricRow = (
   groupBy: ['instance_id'],
   ...patch
 });
+
+export type ConditionCount = 'single' | 'multi';
+export type ConditionSource = 'metric' | 'formula';
+
+/** 条数 × 来源派生保存类型。多条件在放开条件内公式前仍是 multi。 */
+export const derivedQueryType = (
+  count: ConditionCount,
+  source: ConditionSource
+): MetricExpressionQueryType => (count === 'multi' ? 'multi' : source);
+
+export const conditionLayersFromQueryType = (
+  queryType: string | null | undefined
+): { count: ConditionCount; source: ConditionSource } => {
+  if (queryType === 'multi') {
+    return { count: 'multi', source: 'metric' };
+  }
+  if (queryType === 'formula') {
+    return { count: 'single', source: 'formula' };
+  }
+  return { count: 'single', source: 'metric' };
+};
+
+/** 多条件内切换来源不改变派生类型，因此不提示。 */
+export const shouldWarnQueryTypeChange = ({
+  isPersisted,
+  savedType,
+  nextType
+}: {
+  isPersisted: boolean;
+  savedType: string | null | undefined;
+  nextType: string;
+}): boolean => Boolean(isPersisted && savedType && savedType !== nextType);
+
+/** 单条件与多条件卡都渲染来源开关。多条件内切换来源不改变派生类型。 */
+export const shouldShowConditionSourceSwitch = (
+  count: ConditionCount
+): boolean => count === 'single' || count === 'multi';
+
+const FORMULA_PER_SERIES_ALGORITHMS = new Set(['rate', 'changes', 'deriv']);
+
+export const isFormulaConditionRow = (row: MetricExpressionRow): boolean =>
+  row.source === 'formula';
+
+export const switchConditionSource = (
+  row: MetricExpressionRow,
+  source: ConditionSource
+): MetricExpressionRow => {
+  if ((row.source || 'metric') === source) {
+    return row;
+  }
+  if (source === 'formula') {
+    const first = createMetricRow(0, {
+      ref: `${row.ref}1`,
+      metricId: row.metricId,
+      ...(row.metricName ? { metricName: row.metricName } : {}),
+      ...(row.metricLabel ? { metricLabel: row.metricLabel } : {}),
+      filters: row.filters,
+      groupAlgorithm: row.groupAlgorithm || 'sum',
+      groupBy: row.groupBy
+    });
+    const second = createMetricRow(1, {
+      ref: `${row.ref}2`,
+      groupAlgorithm: row.groupAlgorithm || 'sum',
+      groupBy: row.groupBy
+    });
+    const operands = row.operands && row.operands.length >= 2 ? row.operands : [first, second];
+    return {
+      ...row,
+      source: 'formula',
+      metricId: null,
+      metricName: undefined,
+      metricLabel: undefined,
+      filters: [],
+      resultName: row.resultName || row.metricLabel || '',
+      expression: row.expression || `${operands[0].ref} / ${operands[1].ref} * 100`,
+      operands: operands.map((operand) => ({ ...operand, groupBy: row.groupBy })),
+      metricUnit: '',
+      algorithm: FORMULA_PER_SERIES_ALGORITHMS.has(row.algorithm || '')
+        ? 'avg_over_time'
+        : row.algorithm
+    };
+  }
+  const first = row.operands?.[0];
+  return {
+    ...row,
+    source: 'metric',
+    metricId: first?.metricId ?? null,
+    ...(first?.metricName ? { metricName: first.metricName } : { metricName: undefined }),
+    ...(first?.metricLabel ? { metricLabel: first.metricLabel } : { metricLabel: undefined }),
+    filters: first?.filters || [],
+    groupAlgorithm: first?.groupAlgorithm || row.groupAlgorithm || 'avg',
+    expression: undefined,
+    operands: undefined,
+    resultName: undefined
+  };
+};
+
+/** 单条件从原生切到计算：保留第一行指标，补一个空操作数，变量回到 a、b。 */
+export const rowsAfterEnteringFormula = (
+  rows: MetricExpressionRow[]
+): MetricExpressionRow[] => {
+  const primary = rows[0] ?? createMetricRow(0);
+  const second = createMetricRow(1, {
+    groupBy: primary.groupBy?.length ? primary.groupBy : ['instance_id'],
+    groupAlgorithm: primary.groupAlgorithm || 'sum'
+  });
+  return assignMetricRowRefs([
+    {
+      ...primary,
+      source: undefined,
+      operands: undefined,
+      expression: undefined,
+      resultName: undefined,
+      role: undefined,
+      threshold: undefined
+    },
+    second
+  ]);
+};
+
+export const rowsAfterEnteringMulti = (
+  rows: MetricExpressionRow[],
+  defaults: { algorithm: string; groupBy: string[] }
+): MetricExpressionRow[] => {
+  const seeded = rows.map((row) => ({
+    ...row,
+    role: row.role || ('level' as const),
+    algorithm: row.algorithm || defaults.algorithm || 'avg_over_time',
+    threshold:
+      row.threshold ||
+      DEFAULT_MULTI_LEVEL_THRESHOLD.map((item) => ({ ...item }))
+  }));
+  if (seeded.length >= 2) {
+    return seeded;
+  }
+  return [
+    ...seeded,
+    createMetricRow(seeded.length, {
+      role: 'level',
+      algorithm: defaults.algorithm || 'avg_over_time',
+      groupBy: defaults.groupBy.length ? defaults.groupBy : ['instance_id'],
+      threshold: DEFAULT_MULTI_LEVEL_THRESHOLD.map((item) => ({ ...item }))
+    })
+  ];
+};
+
+export const rowsAfterLeavingMulti = (
+  rows: MetricExpressionRow[]
+): MetricExpressionRow[] => (rows.length ? rows.slice(0, 1) : [createMetricRow(0)]);
+
+/** 后续条件选指标时只保留锚点已有维度；没有交集时沿用锚点。 */
+export const groupByAfterSelectingMetric = (
+  availableGroupBy: string[],
+  anchorGroupBy: string[],
+  constrainToAnchor: boolean
+): string[] => {
+  const next = constrainToAnchor
+    ? availableGroupBy.filter((item) => anchorGroupBy.includes(item))
+    : availableGroupBy;
+  return next.length ? next : anchorGroupBy;
+};
+
+export const alignFollowerGroupBy = (
+  rows: MetricExpressionRow[],
+  anchorGroupBy: string[]
+): MetricExpressionRow[] =>
+  rows.map((row, index) => {
+    const groupBy =
+      index === 0
+        ? anchorGroupBy
+        : row.groupBy.filter((item) => anchorGroupBy.includes(item));
+    if (row.source !== 'formula') {
+      return { ...row, groupBy };
+    }
+    const allowed = groupBy.length ? groupBy : anchorGroupBy;
+    const operands = (row.operands || []).map((operand, operandIndex) => {
+      if (index === 0 && operandIndex === 0) {
+        return { ...operand, groupBy: anchorGroupBy };
+      }
+      const kept = (operand.groupBy || []).filter((item) => allowed.includes(item));
+      return { ...operand, groupBy: kept.length ? kept : allowed };
+    });
+    return {
+      ...row,
+      groupBy: operands[0]?.groupBy?.length ? operands[0].groupBy : allowed,
+      operands
+    };
+  });
 
 export const assignMetricRowRefs = (
   rows: MetricExpressionRow[]
@@ -401,6 +606,62 @@ export const toMetricExpressionStateFromQueryCondition = (
   resultName: string;
   expression: string;
 } => {
+  if (condition?.type === 'multi') {
+    return {
+      rows: condition.queries.map((query, index) => {
+        const groupBy = query.group_by?.length ? query.group_by : ['instance_id'];
+        if (query.source === 'formula') {
+          return createMetricRow(index, {
+            ref: query.ref || getMetricRowRef(index),
+            source: 'formula',
+            metricId: null,
+            resultName: storedMetricName(query.metric_name),
+            expression: query.expression || '',
+            groupBy,
+            algorithm: query.algorithm,
+            metricUnit: '',
+            calculationUnit: query.calculation_unit,
+            thresholdUnit: query.threshold_unit,
+            role: query.role,
+            threshold: query.threshold,
+            ...(query.count_predicate ? { countPredicate: query.count_predicate } : {}),
+            operands: (query.operands || []).map((operand, operandIndex) =>
+              createMetricRow(operandIndex, {
+                ref: operand.ref || `${query.ref || 'a'}${operandIndex + 1}`,
+                metricId: operand.metric_id || null,
+                ...(storedMetricName(operand.metric_name)
+                  ? { metricName: storedMetricName(operand.metric_name) }
+                  : {}),
+                filters: operand.filter || [],
+                groupAlgorithm: operand.group_algorithm || 'sum',
+                groupBy: operand.group_by?.length ? operand.group_by : groupBy
+              })
+            )
+          });
+        }
+        return createMetricRow(index, {
+          ref: query.ref || getMetricRowRef(index),
+          metricId: query.metric_id || null,
+          ...(storedMetricName(query.metric_name)
+            ? { metricName: storedMetricName(query.metric_name) }
+            : {}),
+          filters: query.filter || [],
+          groupAlgorithm: query.group_algorithm || 'avg',
+          groupBy,
+          algorithm: query.algorithm,
+          metricUnit: query.metric_unit,
+          calculationUnit: query.calculation_unit,
+          thresholdUnit: query.threshold_unit,
+          role: query.role,
+          threshold: query.threshold,
+          ...(query.count_predicate ? { countPredicate: query.count_predicate } : {})
+        });
+      }),
+      resultName: condition.result_name || '',
+      expression: ''
+    };
+  }
+
   if (condition?.type === 'formula') {
     return {
       rows: condition.queries.map((query, index) =>
@@ -490,6 +751,26 @@ export const resolveQueryConditionMetricIds = (
       }))
     };
   }
+  if (condition.type === 'multi') {
+    return {
+      ...condition,
+      queries: condition.queries.map((query) => {
+        if (query.source === 'formula') {
+          return {
+            ...query,
+            operands: (query.operands || []).map((operand) => ({
+              ...operand,
+              metric_id: resolveId(operand.metric_id, operand.metric_name)
+            }))
+          };
+        }
+        return {
+          ...query,
+          metric_id: resolveId(query.metric_id, query.metric_name)
+        };
+      })
+    };
+  }
   if (condition.type === 'metric') {
     return {
       ...condition,
@@ -545,9 +826,16 @@ export const validateMetricExpressionPayload = ({
     errors.push(`表达式引用了不存在的变量：${missingRefs.join(', ')}`);
   }
 
-  normalizedRows.forEach((row) => {
+  normalizedRows.forEach((row, index) => {
     if (!expressionRefs.has(row.ref)) {
       errors.push(`指标 ${row.ref} 未在表达式中使用`);
+    }
+    if (index === 0) {
+      return;
+    }
+    const extra = row.groupBy.filter((item) => !anchorGroupBy.includes(item));
+    if (extra.length) {
+      errors.push(`指标 ${row.ref} 包含锚点外额外维度：${extra.join(', ')}`);
     }
   });
 
@@ -588,6 +876,424 @@ export const buildFormulaQueryCondition = ({
   };
 };
 
+const MULTI_MIN_CONDITIONS = 2;
+const MULTI_MAX_CONDITIONS = 5;
+const MULTI_MIRROR_FIELDS = [
+  'algorithm',
+  'group_algorithm',
+  'group_by',
+  'metric_unit',
+  'calculation_unit',
+  'threshold_unit',
+  'threshold',
+  'compare_mode',
+  'compare_value_kind',
+  'compare_offset_hours',
+  'compare_offset_days',
+  'compare_baseline_weeks',
+  'count_predicate',
+  'forecast_target',
+  'forecast_target_unit',
+  'forecast_lookback',
+  'recovery_threshold'
+] as const;
+
+const finiteThresholdValue = (value: number | null | undefined) =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const MULTI_LEVEL_ORDER = ['critical', 'error', 'warning'] as const;
+
+const multiLevelName = (level: string): string => {
+  if (level === 'critical') return '严重';
+  if (level === 'error') return '错误';
+  if (level === 'warning') return '警告';
+  return level;
+};
+
+const isLevelCondition = (row: MetricExpressionRow): boolean =>
+  (row.role || 'level') === 'level';
+
+export const multiLevelRows = (rows: MetricExpressionRow[]): string[] => {
+  const present = new Set<string>();
+  rows.forEach((row) => {
+    if (!isLevelCondition(row)) {
+      return;
+    }
+    (row.threshold || []).forEach((item) => {
+      if (item.level) {
+        present.add(item.level);
+      }
+    });
+  });
+  const canonical = new Set<string>(MULTI_LEVEL_ORDER);
+  const ordered = MULTI_LEVEL_ORDER.filter((level) => present.has(level));
+  const extra = [...present].filter((level) => !canonical.has(level));
+  return [...ordered, ...extra];
+};
+
+export const setMultiLevelCell = (
+  rows: MetricExpressionRow[],
+  ref: string,
+  level: string,
+  patch: { method?: string; value?: number | null }
+): MetricExpressionRow[] =>
+  rows.map((row) => {
+    if (row.ref !== ref || !isLevelCondition(row)) {
+      return row;
+    }
+    const threshold = [...(row.threshold || [])];
+    const index = threshold.findIndex((item) => item.level === level);
+    if (index < 0) {
+      threshold.push({
+        level,
+        method: patch.method ?? '>',
+        value: patch.value ?? null
+      });
+      return { ...row, threshold };
+    }
+    const current = threshold[index];
+    threshold[index] = {
+      ...current,
+      ...(patch.method !== undefined ? { method: patch.method } : {}),
+      ...(patch.value !== undefined ? { value: patch.value } : {})
+    };
+    return { ...row, threshold };
+  });
+
+export const addMultiLevel = (rows: MetricExpressionRow[]): MetricExpressionRow[] => {
+  const present = new Set(multiLevelRows(rows));
+  const next = MULTI_LEVEL_ORDER.find((level) => !present.has(level));
+  if (!next) {
+    return [...rows];
+  }
+  return rows.map((row) => {
+    if (!isLevelCondition(row)) {
+      return row;
+    }
+    const threshold = row.threshold || [];
+    if (threshold.some((item) => item.level === next)) {
+      return row;
+    }
+    return {
+      ...row,
+      threshold: [...threshold, { level: next, method: '>', value: null }]
+    };
+  });
+};
+
+export const removeMultiLevel = (
+  rows: MetricExpressionRow[],
+  level: string
+): MetricExpressionRow[] =>
+  rows.map((row) => {
+    if (!isLevelCondition(row)) {
+      return row;
+    }
+    const threshold = row.threshold || [];
+    if (!threshold.some((item) => item.level === level)) {
+      return row;
+    }
+    return {
+      ...row,
+      threshold: threshold.filter((item) => item.level !== level)
+    };
+  });
+
+const validateFormulaConditionRow = (row: MetricExpressionRow): string[] => {
+  const errors: string[] = [];
+  if (!String(row.resultName || '').trim()) {
+    errors.push(`条件 ${row.ref} 必须填写结果名称`);
+  }
+  const operands = row.operands || [];
+  if (operands.length < 2) {
+    errors.push(`条件 ${row.ref} 至少需要两个操作数`);
+  }
+  errors.push(...validateMetricRows(operands));
+  if (FORMULA_PER_SERIES_ALGORITHMS.has(row.algorithm || '')) {
+    errors.push(`条件 ${row.ref} 不能使用逐序列算法`);
+  }
+  const expression = String(row.expression || '').trim();
+  if (!expression) {
+    errors.push(`条件 ${row.ref} 的表达式不能为空`);
+    return errors;
+  }
+  const parsed = parseFormulaExpression(expression);
+  errors.push(...parsed.errors.map((message) => `条件 ${row.ref} ${message}`));
+  const available = new Set(operands.map((operand) => operand.ref));
+  const referenced = new Set(parsed.refs);
+  parsed.refs.forEach((ref) => {
+    if (!available.has(ref)) {
+      errors.push(`条件 ${row.ref} 的表达式引用了不存在的变量：${ref}`);
+    }
+  });
+  if (referenced.size < 2) {
+    errors.push(`条件 ${row.ref} 的表达式至少需要引用两个不同变量`);
+  }
+  operands.forEach((operand) => {
+    if (!referenced.has(operand.ref)) {
+      errors.push(`条件 ${row.ref} 的指标 ${operand.ref} 未在表达式中使用`);
+    }
+  });
+  const firstGroupBy = operands[0]?.groupBy || [];
+  if (operands.length && firstGroupBy.join('\0') !== (row.groupBy || []).join('\0')) {
+    errors.push(`条件 ${row.ref} 的 group_by 必须与第一个操作数一致`);
+  }
+  operands.forEach((operand, index) => {
+    if (index === 0) {
+      return;
+    }
+    const extra = (operand.groupBy || []).filter((item) => !firstGroupBy.includes(item));
+    if (extra.length) {
+      errors.push(`指标 ${operand.ref} 包含锚点外额外维度：${extra.join(', ')}`);
+    }
+  });
+  return errors;
+};
+
+const withConditionDimensions = (
+  rows: MetricExpressionRow[]
+): MetricExpressionRow[] =>
+  rows.map((row) => {
+    if (row.source !== 'formula') {
+      return row;
+    }
+    const operands = row.operands || [];
+    const anchor = operands[0]?.groupBy?.length ? operands[0].groupBy : row.groupBy;
+    return {
+      ...row,
+      groupBy: anchor,
+      operands: operands.map((operand, index) =>
+        index === 0 ? { ...operand, groupBy: anchor } : operand
+      )
+    };
+  });
+
+export const validateMultiConditionRows = ({
+  resultName,
+  rows
+}: {
+  resultName: string;
+  rows: MetricExpressionRow[];
+}): string[] => {
+  const nativeRows = rows.filter((row) => row.source !== 'formula');
+  const errors = nativeRows.length ? validateMetricRows(nativeRows) : [];
+  rows.filter((row) => row.source === 'formula').forEach((row) => {
+    errors.push(...validateFormulaConditionRow(row));
+  });
+  if (!resultName.trim()) {
+    errors.push('多指标条件必须填写结果名称');
+  }
+  if (rows.length < MULTI_MIN_CONDITIONS || rows.length > MULTI_MAX_CONDITIONS) {
+    errors.push('多指标条件需要 2 到 5 条');
+  }
+  if (!rows.some((row) => (row.role || 'level') === 'level')) {
+    errors.push('多指标条件至少需要一个常规条件');
+  }
+  const anchorGroupBy = new Set(rows[0]?.groupBy || []);
+  rows.forEach((row) => {
+    const role = row.role || 'level';
+    if (!row.algorithm) {
+      errors.push(`条件 ${row.ref} 必须选择汇聚方式`);
+    }
+    if (role === 'gate') {
+      const thresholds = row.threshold || [];
+      if (thresholds.length !== 1 || thresholds[0]?.level) {
+        errors.push(`前置条件 ${row.ref} 只能有一条不带级别的阈值`);
+      } else if (!finiteThresholdValue(thresholds[0]?.value) || !thresholds[0]?.method) {
+        errors.push(`前置条件 ${row.ref} 的阈值不完整`);
+      }
+    } else {
+      const filled = (row.threshold || []).filter((item) =>
+        finiteThresholdValue(item.value)
+      );
+      const levels = filled.map((item) => item.level).filter(Boolean);
+      if (filled.some((item) => !item.level) || levels.length !== filled.length) {
+        errors.push(`条件 ${row.ref} 的阈值必须带级别`);
+      }
+      if (new Set(levels).size !== levels.length) {
+        errors.push(`条件 ${row.ref} 的级别不能重复`);
+      }
+    }
+    if (row !== rows[0]) {
+      const extra = row.groupBy.filter((item) => !anchorGroupBy.has(item));
+      if (extra.length) {
+        errors.push(`条件 ${row.ref} 包含锚点外额外维度：${extra.join(', ')}`);
+      }
+    }
+  });
+  const levelConditions = rows.filter((row) => isLevelCondition(row));
+  const levelsPresent = multiLevelRows(rows);
+  if (levelConditions.length && !levelsPresent.length) {
+    errors.push('多指标条件至少需要一个级别');
+  }
+  levelsPresent.forEach((level) => {
+    levelConditions.forEach((row) => {
+      const complete = (row.threshold || []).some(
+        (item) =>
+          item.level === level &&
+          finiteThresholdValue(item.value) &&
+          Boolean(item.method)
+      );
+      if (!complete) {
+        errors.push(`${multiLevelName(level)}级别里条件 ${row.ref} 的阈值不完整`);
+      }
+    });
+  });
+  return errors;
+};
+
+export const buildMultiQueryCondition = ({
+  resultName,
+  rows
+}: {
+  resultName: string;
+  rows: MetricExpressionRow[];
+}): MultiQueryCondition => {
+  const normalizedRows = withConditionDimensions(assignMetricRowRefs(rows));
+  const errors = validateMultiConditionRows({ resultName, rows: normalizedRows });
+  if (errors.length) {
+    throw new Error(errors.join('；'));
+  }
+  return {
+    type: 'multi',
+    result_name: resultName.trim(),
+    combinator: 'all',
+    queries: normalizedRows.map((row) => {
+      const threshold = (row.threshold || [])
+        .filter((item) => finiteThresholdValue(item.value))
+        .map((item) => ({
+          ...(item.level ? { level: item.level } : {}),
+          method: item.method,
+          value: item.value
+        }));
+      const countPredicate =
+        row.algorithm === 'count_if_over_time' && row.countPredicate?.method
+          ? { count_predicate: row.countPredicate }
+          : {};
+      if (row.source === 'formula') {
+        return {
+          ref: row.ref,
+          source: 'formula' as const,
+          metric_name: String(row.resultName || '').trim(),
+          expression: String(row.expression || '').trim(),
+          operands: (row.operands || []).map((operand) => ({
+            ref: operand.ref,
+            metric_id: operand.metricId,
+            ...(operand.metricName ? { metric_name: operand.metricName } : {}),
+            filter: operand.filters,
+            group_algorithm: operand.groupAlgorithm,
+            group_by: operand.groupBy
+          })),
+          group_by: row.groupBy,
+          algorithm: row.algorithm || '',
+          metric_unit: '',
+          calculation_unit: row.calculationUnit || '',
+          threshold_unit: row.thresholdUnit || '',
+          role: row.role || 'level',
+          threshold,
+          ...countPredicate
+        };
+      }
+      return {
+        ref: row.ref,
+        metric_id: row.metricId,
+        ...(row.metricName ? { metric_name: row.metricName } : {}),
+        filter: row.filters,
+        group_algorithm: row.groupAlgorithm,
+        group_by: row.groupBy,
+        algorithm: row.algorithm || '',
+        metric_unit: row.metricUnit || '',
+        calculation_unit: row.calculationUnit || '',
+        threshold_unit: row.thresholdUnit || '',
+        role: row.role || 'level',
+        threshold,
+        ...countPredicate
+      };
+    })
+  };
+};
+
+export const omitMultiMirrorFields = <T extends Record<string, unknown>>(params: T): T => {
+  const next = { ...params };
+  MULTI_MIRROR_FIELDS.forEach((field) => {
+    delete next[field];
+  });
+  return next;
+};
+
+const conditionDisplayName = (
+  row: MetricExpressionRow,
+  unnamedResult: string
+): string => {
+  const operandName =
+    row.operands?.find((operand) => operand.metricLabel || operand.metricName)
+      ?.metricLabel ||
+    row.operands?.find((operand) => operand.metricName)?.metricName;
+  if (row.source === 'formula') {
+    return row.resultName || operandName || unnamedResult;
+  }
+  return row.metricLabel || row.metricName || row.ref;
+};
+
+const thresholdClause = (
+  row: MetricExpressionRow,
+  threshold: { method?: string; value?: number | null } | undefined,
+  unsetThreshold: string
+): string => {
+  const name = conditionDisplayName(row, '');
+  const unit = row.thresholdUnit || '';
+  if (!threshold || !finiteThresholdValue(threshold.value) || !threshold.method) {
+    return `${name} ${unsetThreshold}`.trim();
+  }
+  return `${name} ${threshold.method} ${threshold.value ?? ''}${unit}`.trim();
+};
+
+export const buildMultiConditionSentence = (
+  rows: MetricExpressionRow[],
+  labels?: {
+    and?: string;
+    levelNames?: Record<string, string>;
+    gate?: string;
+    unsetThreshold?: string;
+    unnamedResult?: string;
+  }
+): string => {
+  const joiner = labels?.and || '且';
+  const levelNames = labels?.levelNames || {
+    info: '信息',
+    warning: '警告',
+    error: '错误',
+    critical: '严重'
+  };
+  const gateLabel = labels?.gate || '前置条件';
+  const unsetThreshold = labels?.unsetThreshold || '未设阈值';
+  const unnamedResult = labels?.unnamedResult || '未命名结果';
+  const namedRows = rows.map((row) => (
+    row.source === 'formula' && !row.resultName
+      ? { ...row, resultName: conditionDisplayName(row, unnamedResult) }
+      : row
+  ));
+  const levelConditions = namedRows.filter(isLevelCondition);
+  const gateConditions = namedRows.filter((row) => row.role === 'gate');
+  const levels = multiLevelRows(namedRows);
+  const levelParts = levels.length
+    ? levels.map((level) => {
+      const cells = levelConditions.map((row) =>
+        thresholdClause(
+          row,
+          (row.threshold || []).find((item) => item.level === level),
+          unsetThreshold
+        )
+      );
+      return `${levelNames[level] || level}：${cells.join(` ${joiner} `)}`;
+    })
+    : levelConditions.map((row) => thresholdClause(row, undefined, unsetThreshold));
+  const gateParts = gateConditions.map((row) =>
+    `${gateLabel}：${thresholdClause(row, row.threshold?.[0], unsetThreshold)}`
+  );
+  return [...levelParts, ...gateParts].join('；');
+};
+
 export const buildMetricExpressionQueryCondition = ({
   mode = 'auto',
   resultName,
@@ -599,8 +1305,10 @@ export const buildMetricExpressionQueryCondition = ({
   expression: string;
   rows: MetricExpressionRow[];
 }): MetricExpressionQueryCondition => {
-  const shouldBuildFormula =
-    mode === 'formula' || (mode === 'auto' && rows.length > 1);
+  if (mode === 'multi') {
+    return buildMultiQueryCondition({ resultName, rows });
+  }
+  const shouldBuildFormula = mode === 'formula';
 
   if (shouldBuildFormula) {
     return buildFormulaQueryCondition({
@@ -689,6 +1397,33 @@ export const buildMetricExpressionPreviewPayload = ({
   forecastLookback?: { type: string; value: number } | null;
   compareOffsetHours?: number | null;
 }) => {
+  if (mode === 'multi') {
+    if (!monitorObjId || !selectedInstance) {
+      return null;
+    }
+    const queryCondition = buildMultiQueryCondition({ resultName, rows });
+    rows.forEach((row) => {
+      const carriers = row.source === 'formula' ? row.operands || [] : [row];
+      if (carriers.some((item) => !findMetricForRow(item, metrics))) {
+        throw new Error(METRIC_NOT_READY_MESSAGE);
+      }
+    });
+    return {
+      monitor_object: monitorObjId,
+      query_condition: queryCondition,
+      source,
+      period: {
+        type: periodUnit,
+        value: period || 5
+      },
+      preview: {
+        instance_id: selectedInstance.instance_id,
+        instance_id_values: selectedInstance.instance_id_values,
+        duration_points: 30
+      }
+    };
+  }
+
   if (!monitorObjId || !selectedInstance || !algorithm) {
     return null;
   }

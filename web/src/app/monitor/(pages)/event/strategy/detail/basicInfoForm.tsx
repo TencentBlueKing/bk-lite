@@ -7,6 +7,7 @@ import { StrategyFields, SourceFeild } from '@/app/monitor/types/event';
 import { useScheduleList } from '@/app/monitor/hooks/event';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import { insertAlertNameVariableAtCursor } from './strategyDetailUtils';
+import { STRATEGY_HINT_TEXT_CLASS } from './alertDurationFields';
 
 const { Option } = Select;
 
@@ -118,7 +119,7 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
               onClick={(event) => saveAlertNameSelection(event.target)}
             />
           </Form.Item>
-          <div className="text-[var(--color-text-3)] mt-[10px]">
+          <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
             {t('monitor.events.alertNameTitle')}
           </div>
         </Form.Item>
@@ -144,7 +145,7 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
               placeholder={t('common.group')}
             />
           </Form.Item>
-          <div className="text-[var(--color-text-3)] mt-[10px]">
+          <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
             {t('monitor.events.setGroup')}
           </div>
         </Form.Item>
@@ -181,7 +182,7 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
                       onClick={onOpenInstModal}
                     ></Button>
                   </div>
-                  <div className="text-[var(--color-text-3)] mt-[10px]">
+                  <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
                     {t('monitor.events.setAssets')}
                   </div>
                 </div>

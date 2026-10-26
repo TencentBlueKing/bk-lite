@@ -10,14 +10,9 @@
 .topologyContainer {
   :global(.x6-graph-svg) {
     background:
-      radial-gradient(circle at 18% 16%, rgba(76, 142, 214, 0.1) 0%, transparent 34%),
-      radial-gradient(circle at 82% 18%, rgba(42, 179, 173, 0.07) 0%, transparent 30%),
-      linear-gradient(
-        135deg,
-        #f7fbff 0%,
-        #fcfdff 48%,
-        #f5f8fc 100%
-      ) !important;
+      radial-gradient(circle at 18% 16%, color-mix(in srgb, var(--color-primary) 10%, transparent) 0%, transparent 34%),
+      radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--color-primary) 6%, transparent) 0%, transparent 30%),
+      var(--color-bg-1) !important;
     background-size: 100% 100%, 100% 100%, 100% 100% !important;
   }
 
@@ -65,7 +60,7 @@
 
   :global(.x6-node[data-shape='icon-node'] text[selector='label']) {
     paint-order: stroke;
-    stroke: rgba(255, 255, 255, 0.8);
+    stroke: var(--color-bg-1);
     stroke-width: 2px;
   }
 
@@ -79,27 +74,28 @@
 
   :global(.x6-edge:hover path[selector='line']),
   :global(.x6-edge-selected path[selector='line']) {
-    stroke: #2d7df0 !important;
+    stroke: var(--color-primary) !important;
     stroke-width: 2 !important;
-    filter: drop-shadow(0 2px 5px rgba(45, 125, 240, 0.28)) !important;
+    filter: drop-shadow(0 2px 5px color-mix(in srgb, var(--color-primary) 28%, transparent)) !important;
   }
   
   :global(.edge-flow-animation) {
     animation: edgeFlowAnimation 1.5s linear infinite;
   }
   
-  // 全局优化minimap相关样式
+  // X6 MiniMap 自带浅色底和浅色投影，并且会强制关掉 graph background。
   :global(.x6-widget-minimap) {
+    background-color: var(--color-bg-1) !important;
     border-radius: 0 0 8px 8px !important;
     overflow: hidden !important;
-    
-    // 背景优化
+
+    :global(.x6-graph) {
+      background: var(--color-bg-1) !important;
+      box-shadow: 0 0 0 1px var(--color-border-1) !important;
+    }
+
     :global(.x6-graph-svg) {
-      background: linear-gradient(
-        135deg,
-        rgba(248, 250, 252, 0.98) 0%,
-        rgba(241, 246, 251, 0.96) 100%
-      ) !important;
+      background: var(--color-bg-1) !important;
       background-size: 100% 100% !important;
     }
   }
@@ -107,10 +103,10 @@
 
 .topologyContainer[data-topology-mode='edit'] {
   :global(.x6-node[data-shape='icon-node']:hover:not(.x6-node-selected):not(.selected) rect[selector='body']) {
-    stroke: #8dbcf2;
+    stroke: color-mix(in srgb, var(--color-primary) 55%, var(--color-border-1));
     filter:
-      drop-shadow(0 15px 28px rgba(42, 97, 160, 0.13))
-      drop-shadow(0 2px 5px rgba(15, 23, 42, 0.07));
+      drop-shadow(0 15px 28px color-mix(in srgb, var(--color-primary) 13%, transparent))
+      drop-shadow(0 2px 5px color-mix(in srgb, var(--color-text-1) 7%, transparent));
   }
 }
 
@@ -144,14 +140,12 @@
   right: 0.6rem;
   width: 200px;
   height: 135px;
-  border: 1px solid rgba(222, 228, 236, 0.92);
+  border: 1px solid var(--color-border-1);
   border-radius: 8px;
   box-shadow:
-    0 8px 20px rgba(15, 23, 42, 0.05),
-    0 1px 3px rgba(15, 23, 42, 0.03);
-  background: linear-gradient(135deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(249, 250, 252, 0.99) 100%);
+    0 8px 20px color-mix(in srgb, var(--color-text-1) 8%, transparent),
+    0 1px 3px color-mix(in srgb, var(--color-text-1) 4%, transparent);
+  background: var(--color-bg-1);
   backdrop-filter: blur(4px);
   z-index: 10;
   overflow: hidden;
@@ -171,10 +165,8 @@
     left: 0;
     right: 0;
     height: 18px;
-    background: linear-gradient(90deg, 
-      rgba(148, 163, 184, 0.05) 0%, 
-      rgba(148, 163, 184, 0.015) 100%);
-    border-bottom: 1px solid rgba(226, 232, 240, 0.92);
+    background: var(--color-fill-1);
+    border-bottom: 1px solid var(--color-border-1);
     z-index: 1;
   }
 }
@@ -246,21 +238,24 @@
     
     // 视窗样式
     :global(.x6-widget-minimap-viewport) {
-      border: 1px solid rgba(148, 163, 184, 0.28) !important;
+      border: 1px solid var(--color-border-2) !important;
       border-radius: 4px !important;
-      background: rgba(241, 245, 249, 0.82) !important;
+      background: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg-1)) !important;
       backdrop-filter: blur(1px) !important;
-      box-shadow: 
-        0 1px 3px rgba(15, 23, 42, 0.05),
-        inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
+      box-shadow:
+        0 1px 3px color-mix(in srgb, var(--color-text-1) 8%, transparent) !important;
       transition: all 0.2s ease !important;
-      
+
       &:hover {
-        background: rgba(241, 245, 249, 0.92) !important;
-        box-shadow: 
-          0 2px 5px rgba(15, 23, 42, 0.06),
-          inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
+        background: color-mix(in srgb, var(--color-primary) 18%, var(--color-bg-1)) !important;
+        box-shadow:
+          0 2px 5px color-mix(in srgb, var(--color-text-1) 12%, transparent) !important;
       }
+    }
+
+    :global(.x6-widget-minimap-viewport-zoom) {
+      background-color: var(--color-bg-1) !important;
+      border-color: var(--color-primary) !important;
     }
     
     // 节点样式优化
@@ -291,10 +286,8 @@
   right: 1rem;
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, 
-    rgba(255, 255, 255, 0.98) 0%, 
-    rgba(248, 250, 252, 1) 100%);
-  border: 1px solid rgba(222, 228, 236, 0.92);
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-border-1);
   border-radius: 10px;
   box-shadow:
     0 8px 18px rgba(15, 23, 42, 0.05),
@@ -308,10 +301,8 @@
   cursor: pointer;
   
   &:hover {
-    background: linear-gradient(135deg, 
-      rgba(248, 250, 252, 1) 0%, 
-      rgba(241, 245, 249, 1) 100%);
-    border-color: rgba(203, 213, 225, 0.92);
+    background: var(--color-fill-1);
+    border-color: var(--color-border-2);
     box-shadow: 
       0 10px 20px rgba(15, 23, 42, 0.06),
       0 2px 6px rgba(15, 23, 42, 0.04);
@@ -329,6 +320,6 @@
   }
   
   &:hover .anticon {
-    color: #64748b;
+    color: var(--color-text-2);
   }
 }

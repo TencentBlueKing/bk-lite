@@ -1,0 +1,84 @@
+{
+  "client_id": "workflow",
+  "name": "Workflow",
+  "url": "/workflow",
+  "icon": "liuchengguanli1",
+  "tags": [
+    "tag.workflow_design",
+    "tag.workflow_execution",
+    "tag.automation",
+    "tag.approval"
+  ],
+  "description": "app.workflow",
+  "menus": [
+    {
+      "name": "Home",
+      "children": [
+        {
+          "id": "workflow_home",
+          "name": "Home",
+          "operation": ["View"]
+        }
+      ]
+    },
+    {
+      "name": "Workflow",
+      "children": [
+        {
+          "id": "workflow",
+          "name": "Workflow",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Execute",
+            "Publish",
+            "Manage",
+            "Delete"
+          ]
+        },
+        {
+          "id": "workflow_market",
+          "name": "Template",
+          "operation": ["View", "Add"]
+        }
+      ]
+    },
+    {
+      "name": "Execution",
+      "children": [
+        {
+          "id": "workflow_execution",
+          "name": "Execution",
+          "operation": ["View", "Execute", "Approve"]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "workflow_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "workflow_normal",
+      "menus": [
+        "workflow_home-View",
+        "workflow-View",
+        "workflow-Add",
+        "workflow-Edit",
+        "workflow-Execute",
+        "workflow-Publish",
+        "workflow-Manage",
+        "workflow-Delete",
+        "workflow_market-View",
+        "workflow_market-Add",
+        "workflow_execution-View",
+        "workflow_execution-Execute",
+        "workflow_execution-Approve"
+      ]
+    }
+  ]
+}

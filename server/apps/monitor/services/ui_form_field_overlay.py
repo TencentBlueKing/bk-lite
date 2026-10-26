@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from apps.monitor.models import MonitorPlugin
 
-_HELP_FIELD_KEYS = ("description", "description_en", "tooltip", "guide_short")
+# 英语 locale 用 guide_short_en 替换 guide_short；不覆盖则磁盘新文案到不了英文界面。
+_HELP_FIELD_KEYS = ("description", "description_en", "tooltip", "guide_short", "guide_short_en")
 _HELP_WIDGET_KEYS = ("placeholder", "placeholder_en")
 
 

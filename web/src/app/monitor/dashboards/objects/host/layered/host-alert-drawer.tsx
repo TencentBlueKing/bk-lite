@@ -36,6 +36,10 @@ interface HostAlertDrawerProps {
   focusAlertId?: string;
   onClose: () => void;
   onCount: (count: number) => void;
+  title?: string;
+  footerHint?: string;
+  emptyCopy?: string;
+  emptyHint?: string;
 }
 
 const levelColor = (level: string) => {
@@ -69,7 +73,11 @@ export default function HostAlertDrawer({
   monitorObjectId,
   focusAlertId = '',
   onClose,
-  onCount
+  onCount,
+  title = '本机告警',
+  footerHint = '仅显示本机活跃告警',
+  emptyCopy = EMPTY_COPY,
+  emptyHint = EMPTY_HINT
 }: HostAlertDrawerProps) {
   const { getMonitorAlert } = useMonitorApi();
   const levelList = useLevelList();
@@ -229,7 +237,7 @@ export default function HostAlertDrawer({
     <Drawer
       title={(
         <span className="inline-flex items-center gap-2.5 text-[16px] font-semibold leading-6 text-[var(--color-text-1)]">
-          本机告警
+          {title}
           {showBadge ? (
             <span
               className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[12px] font-semibold leading-none ${
@@ -294,7 +302,7 @@ export default function HostAlertDrawer({
               在告警中心查看 →
             </Link>
           ) : <span />}
-          <span className="shrink-0 text-[12px] leading-5 text-[var(--color-text-3)]">仅显示本机活跃告警</span>
+          <span className="shrink-0 text-[12px] leading-5 text-[var(--color-text-3)]">{footerHint}</span>
         </div>
       )}
     >
@@ -347,8 +355,8 @@ export default function HostAlertDrawer({
             >
               <CheckOutlined />
             </span>
-            <span className="text-[13px] font-medium text-[var(--color-text-2)]">{EMPTY_COPY}</span>
-            <span className="text-[12px] text-[var(--color-text-3)]">{EMPTY_HINT}</span>
+            <span className="text-[13px] font-medium text-[var(--color-text-2)]">{emptyCopy}</span>
+            <span className="text-[12px] text-[var(--color-text-3)]">{emptyHint}</span>
           </div>
         ) : null}
         {!loading && phase === 'ready' ? (

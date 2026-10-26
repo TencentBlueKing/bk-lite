@@ -17,7 +17,8 @@ import { getItemByIdOrThrow } from 'src/utils';
 import {
   CONNECTOR_DEFAULTS,
   RECTANGLE_DEFAULTS,
-  TEXTBOX_DEFAULTS
+  TEXTBOX_DEFAULTS,
+  VIEW_ITEM_DEFAULTS
 } from 'src/config';
 
 export const useScene = () => {
@@ -127,6 +128,42 @@ export const useScene = () => {
       setState(newState);
     },
     [getState, setState, currentViewId]
+  );
+
+  const createBoundNodes = useCallback(
+    (
+      nodes: Array<
+        Pick<ViewItem, 'id' | 'tile' | 'bkBinding'> & {
+          name: string;
+          icon: string;
+        }
+      >
+    ) => {
+      if (nodes.length === 0) return;
+      let state: State = getState();
+      for (const node of nodes) {
+        state = reducers.createModelItem(
+          {
+            id: node.id,
+            name: node.name.slice(0, 100),
+            icon: node.icon
+          },
+          state
+        );
+        state = reducers.view({
+          action: 'CREATE_VIEWITEM',
+          payload: {
+            ...VIEW_ITEM_DEFAULTS,
+            id: node.id,
+            tile: node.tile,
+            bkBinding: node.bkBinding
+          },
+          ctx: { viewId: currentViewId, state }
+        });
+      }
+      setState(state);
+    },
+    [currentViewId, getState, setState]
   );
 
   const updateViewItem = useCallback(
@@ -281,6 +318,7 @@ export const useScene = () => {
     textBoxes,
     currentView,
     createModelItem,
+    createBoundNodes,
     updateModelItem,
     deleteModelItem,
     createViewItem,

@@ -164,6 +164,28 @@
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
           "description": "The network transmit rate represents the amount of data sent out per second and is an important criterion for measuring network traffic"
+        },
+        {
+          "metric_group": "System",
+          "name": "boot_time_gauge",
+          "query": "boot_time_gauge{resource_type=\"vmware_esxi\", __$labels__}",
+          "display_name": "Boot time",
+          "data_type": "Number",
+          "unit": "s",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "HostSystem.runtime.bootTime as Unix seconds. The value jumps only after a reboot."
+        },
+        {
+          "metric_group": "System",
+          "name": "uptime_seconds_gauge",
+          "query": "uptime_seconds_gauge{resource_type=\"vmware_esxi\", __$labels__}",
+          "display_name": "Uptime",
+          "data_type": "Number",
+          "unit": "s",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "HostSystem.summary.quickStats.uptime in seconds. Not converted to days. Monitor only; not a CMDB label."
         }
       ]
     },
@@ -175,8 +197,8 @@
       "description": "",
       "default_metric": "any({resource_type='vmware_ds'}) by (instance_id, resource_id)",
       "instance_id_keys": ["instance_id", "resource_id"],
-      "supplementary_indicators": ["disk_used_average_gauge", "disk_free_average_gauge", "store_accessible_gauge"],
-      "display_fields": [{"name": "Disk utilization rate", "sort_order": 0, "metrics": [{"plugin": "VMWare", "metric": "disk_used_average_gauge"}]}, {"name": "Disk remaining capacity", "sort_order": 1, "metrics": [{"plugin": "VMWare", "metric": "disk_free_average_gauge"}]}, {"name": "Storage connection status", "sort_order": 2, "metrics": [{"plugin": "VMWare", "metric": "store_accessible_gauge"}]}],
+      "supplementary_indicators": ["disk_used_average_gauge", "disk_free_average_gauge", "store_accessible_gauge", "datastore_io_read_latency_gauge", "datastore_io_write_latency_gauge"],
+      "display_fields": [{"name": "Disk utilization rate", "sort_order": 0, "metrics": [{"plugin": "VMWare", "metric": "disk_used_average_gauge"}]}, {"name": "Disk remaining capacity", "sort_order": 1, "metrics": [{"plugin": "VMWare", "metric": "disk_free_average_gauge"}]}, {"name": "Storage connection status", "sort_order": 2, "metrics": [{"plugin": "VMWare", "metric": "store_accessible_gauge"}]}, {"name": "Read latency", "sort_order": 3, "metrics": [{"plugin": "VMWare", "metric": "datastore_io_read_latency_gauge"}]}, {"name": "Write latency", "sort_order": 4, "metrics": [{"plugin": "VMWare", "metric": "datastore_io_write_latency_gauge"}]}],
       "metrics": [
         {
           "metric_group": "DataStorage",
@@ -210,6 +232,28 @@
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
           "description": "The storage connection status indicates the connectability of the storage device and is an indicator for evaluating the health status of the storage system"
+        },
+        {
+          "metric_group": "DataStorage",
+          "name": "datastore_io_read_latency_gauge",
+          "query": "datastore_io_read_latency_gauge{resource_type=\"vmware_ds\", __$labels__}",
+          "display_name": "Read latency",
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Datastore read latency in milliseconds. Uses the empty-instance aggregate sample only."
+        },
+        {
+          "metric_group": "DataStorage",
+          "name": "datastore_io_write_latency_gauge",
+          "query": "datastore_io_write_latency_gauge{resource_type=\"vmware_ds\", __$labels__}",
+          "display_name": "Write latency",
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Datastore write latency in milliseconds. Uses the empty-instance aggregate sample only."
         }
       ]
     },
@@ -355,6 +399,50 @@
           "dimensions": [],
           "instance_id_keys": ["instance_id", "resource_id"],
           "description": "It indicates the current power status of a virtual machine (VM). This metric helps administrators monitor whether a VM is powered on or off.This metric is essential for tracking VM availability, optimizing resource allocation, and automating workflows in VMware environments"
+        },
+        {
+          "metric_group": "Tools",
+          "name": "tools_status_gauge",
+          "query": "tools_status_gauge{resource_type=\"vmware_vm\", __$labels__}",
+          "display_name": "Tools status",
+          "data_type": "Enum",
+          "unit": "[{\"name\":\"toolsOk\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"toolsOld\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"toolsNotInstalled\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"toolsNotRunning\",\"id\":3,\"color\":\"#ff4d4f\"}]",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "VMware Tools status from guest.toolsStatus: 0 toolsOk, 1 toolsOld, 2 toolsNotInstalled, 3 toolsNotRunning. Unknown or empty values are not published."
+        },
+        {
+          "metric_group": "Snapshot",
+          "name": "snapshot_storage_bytes_gauge",
+          "query": "snapshot_storage_bytes_gauge{resource_type=\"vmware_vm\", __$labels__}",
+          "display_name": "Snapshot storage",
+          "data_type": "Number",
+          "unit": "bytes",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Sum of unique snapshot delta, data, and memory files. Base disks, config, and swap are excluded. Zero when the VM has no snapshots."
+        },
+        {
+          "metric_group": "Snapshot",
+          "name": "oldest_snapshot_age_seconds_gauge",
+          "query": "oldest_snapshot_age_seconds_gauge{resource_type=\"vmware_vm\", __$labels__}",
+          "display_name": "Oldest snapshot age",
+          "data_type": "Number",
+          "unit": "s",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Seconds since the oldest snapshot createTime. Zero when there is no snapshot or no valid createTime."
+        },
+        {
+          "metric_group": "Snapshot",
+          "name": "snapshot_count_gauge",
+          "query": "snapshot_count_gauge{resource_type=\"vmware_vm\", __$labels__}",
+          "display_name": "Snapshot count",
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Number of snapshots in the VM snapshot tree. Zero when there is no snapshot tree."
         }
       ]
     }

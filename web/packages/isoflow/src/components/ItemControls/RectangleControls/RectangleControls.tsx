@@ -32,7 +32,7 @@ export const RectangleControls = ({ id }: Props) => {
           activeColor={rectangle.color}
         />
       </Section>
-      <Section>
+      <Section sx={{ mt: 1 }}>
         <Box>
           <DeleteButton
             onClick={() => {

@@ -6,6 +6,7 @@ from apps.cmdb.collection.collect_tasks.custom_script import CustomScriptCollect
 from apps.cmdb.collection.collect_tasks.databases import DBCollect
 from apps.cmdb.collection.collect_tasks.host import HostCollect
 from apps.cmdb.collection.collect_tasks.middleware import MiddlewareCollect
+from apps.cmdb.collection.collect_tasks.registry import RegisteredCollect
 from apps.cmdb.constants.constants import CollectPluginTypes
 
 
@@ -21,6 +22,7 @@ class JobCollect(object):
             CollectPluginTypes.DB: self.collect_db,
             CollectPluginTypes.MIDDLEWARE: self.collect_middleware,
             CollectPluginTypes.CUSTOM_SCRIPT: self.collect_custom_script,
+            CollectPluginTypes.VM: self.collect_vm,
         }
         return result
 
@@ -41,6 +43,9 @@ class JobCollect(object):
 
     def collect_custom_script(self):
         return CustomScriptCollect(self.task.id, task=self.task)()
+
+    def collect_vm(self):
+        return RegisteredCollect(self.task.id, task=self.task)()
 
     def main(self):
         return self.collect_manage[self.task.task_type]()

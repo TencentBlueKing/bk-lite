@@ -2,10 +2,7 @@ import React from 'react';
 import { Box } from '@mui/material';
 import { PROJECTED_TILE_SIZE } from 'src/config';
 import { useDiagramVisual } from 'src/diagramOverlay/context';
-import {
-  HIGHLIGHT_STROKE,
-  NODE_TILE_FLOOR_COLOR
-} from 'src/diagramOverlay/colors';
+import { HIGHLIGHT_STROKE } from 'src/diagramOverlay/colors';
 
 interface Props {
   nodeId: string;
@@ -35,18 +32,9 @@ export const NodeStatusMark = ({ nodeId, order, part = 'marks' }: Props) => {
 
   const width = PROJECTED_TILE_SIZE.width;
   const height = PROJECTED_TILE_SIZE.height;
-  const level = status?.level;
-  const floorColor = level ? NODE_TILE_FLOOR_COLOR[level] : undefined;
-  // Only warning / critical have a floor color; other levels get no glow.
-  const tileGlow = Boolean(floorColor);
-  const glowId = `node-tile-glow-${nodeId}`;
-  const liftId = `${glowId}-lift`;
   const points = `${width / 2},0 ${width},${height / 2} ${width / 2},${height} 0,${height / 2}`;
-  // Screen-space circle under the icon. Slightly past the cell's short axis;
-  // the rim fades so the overflow stays pale.
-  const glowRadius = height * 0.64;
   if (part === 'outline') {
-    if (!highlighted && !showUnbound && !tileGlow) return null;
+    if (!highlighted && !showUnbound) return null;
 
     return (
       <Box
@@ -66,39 +54,6 @@ export const NodeStatusMark = ({ nodeId, order, part = 'marks' }: Props) => {
           viewBox={`0 0 ${width} ${height}`}
           style={{ pointerEvents: 'none', overflow: 'visible' }}
         >
-          {tileGlow && floorColor && level ? (
-            <>
-              <defs>
-                {/* Soft lift only — too much white muddies the status color on light grid. */}
-                <radialGradient id={liftId} cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.28" />
-                  <stop offset="62%" stopColor="#ffffff" stopOpacity="0.08" />
-                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-                </radialGradient>
-                <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor={floorColor} stopOpacity="0.62" />
-                  <stop offset="42%" stopColor={floorColor} stopOpacity="0.32" />
-                  <stop offset="74%" stopColor={floorColor} stopOpacity="0.12" />
-                  <stop offset="100%" stopColor={floorColor} stopOpacity="0" />
-                </radialGradient>
-              </defs>
-              <ellipse
-                cx={width / 2}
-                cy={height / 2}
-                rx={glowRadius}
-                ry={glowRadius}
-                fill={`url(#${liftId})`}
-              />
-              <ellipse
-                data-node-glow={level}
-                cx={width / 2}
-                cy={height / 2}
-                rx={glowRadius}
-                ry={glowRadius}
-                fill={`url(#${glowId})`}
-              />
-            </>
-          ) : null}
           {showUnbound && (
             <>
               <polygon
@@ -106,16 +61,17 @@ export const NodeStatusMark = ({ nodeId, order, part = 'marks' }: Props) => {
                 points={points}
                 fill="rgba(255,255,255,0.15)"
                 stroke="#ffffff"
-                strokeOpacity={0.9}
-                strokeWidth={4}
+                strokeOpacity={0.22}
+                strokeWidth={1.5}
                 strokeLinejoin="round"
               />
               <polygon
                 data-binding-unbound-diamond="dash"
                 points={points}
                 fill="none"
-                stroke="#475569"
-                strokeWidth={2}
+                stroke="#94A3B8"
+                strokeOpacity={0.55}
+                strokeWidth={1}
                 strokeDasharray="6 4"
                 strokeLinejoin="round"
               />

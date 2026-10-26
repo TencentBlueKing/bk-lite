@@ -1,5 +1,7 @@
 # -- coding: utf-8 --
 """IPAM 与 CMDB 自动对账。规格 §5。"""
+import bisect
+import ipaddress
 from datetime import datetime
 
 from django.conf import settings
@@ -35,25 +37,72 @@ def _load_bounded_reference(model_id: str, reference_name: str, limit: int | Non
 # ---------------------------------------------------------------------------
 
 
-def match_subnet_for_ip(ip: str, subnets: list):
-    """返回唯一包含该 IP 的子网（子网两两不重叠，故至多一个）。无则 None。
-
-    DEFECT D fix: malformed (non-empty but syntactically invalid) subnet records
-    no longer abort the whole reconcile — they are silently skipped so that the
-    remaining valid subnets are still checked.
-    """
+def _prepare_subnet_index(subnets: list) -> dict:
+    """本轮每个子网只解析一次。按起点排序后做相邻扫描，判断是否存在重叠。"""
     from apps.core.exceptions.base_app_exception import BaseAppException
 
+    entries = []
     for sn in subnets:
         addr, mask = sn.get("subnet_address"), sn.get("subnet_mask")
         if not addr or mask in (None, ""):
             continue
         try:
-            if ip_in_subnet(ip, parse_subnet(addr, mask)):
-                return sn
+            entries.append((sn, parse_subnet(addr, mask)))
         except (BaseAppException, ValueError):
             continue
+
+    by_start = sorted(entries, key=lambda item: int(item[1].network_address))
+    overlapped = False
+    for prev, nxt in zip(by_start, by_start[1:]):
+        if int(nxt[1].network_address) <= int(prev[1].broadcast_address):
+            overlapped = True
+            break
+    return {
+        "entries": entries,
+        "by_start": by_start,
+        "starts": [int(item[1].network_address) for item in by_start],
+        "overlapped": overlapped,
+    }
+
+
+def _ipv4_to_int(ip: str):
+    try:
+        parsed = ipaddress.ip_address(str(ip).strip())
+    except (ValueError, TypeError):
+        return None
+    if parsed.version != 4:
+        return None
+    return int(parsed)
+
+
+def _match_prepared_subnet(ip: str, prepared: dict):
+    """无重叠时按起点二分；有重叠时按原顺序返回第一个命中的原子网字典。"""
+    if prepared["overlapped"]:
+        for sn, net in prepared["entries"]:
+            if ip_in_subnet(ip, net):
+                return sn
+        return None
+
+    ip_int = _ipv4_to_int(ip)
+    if ip_int is None:
+        return None
+    idx = bisect.bisect_right(prepared["starts"], ip_int) - 1
+    if idx < 0:
+        return None
+    sn, net = prepared["by_start"][idx]
+    if ip_int <= int(net.broadcast_address):
+        return sn
     return None
+
+
+def match_subnet_for_ip(ip: str, subnets: list):
+    """返回包含该 IP 的子网原字典。无则 None。
+
+    文档约定子网两两不重叠，此时至多一个命中，按起点二分。
+    历史重叠数据仍按原列表顺序返回第一个命中。
+    空地址、空掩码和非法网段跳过，不中断对其余子网的匹配。
+    """
+    return _match_prepared_subnet(ip, _prepare_subnet_index(subnets))
 
 
 def decide_ip_status(occupant_keys: list) -> str:
@@ -244,9 +293,11 @@ def run_reconciliation() -> dict:
         1,
         min(int(getattr(settings, "IPAM_RECONCILE_OCCUPANT_LIMIT", 200000)), 1000000),
     )
+    # 解析次数随本轮子网数增长，而不是随 CI 数乘子网数增长。索引只活在这一轮。
+    prepared_subnets = _prepare_subnet_index(subnets)
     for src in sources:
         for ci in _load_ci_with_ip(src["model_id"], src["ip_attr_id"]):
-            sn = match_subnet_for_ip(ci["ip_addr"], subnets)
+            sn = _match_prepared_subnet(ci["ip_addr"], prepared_subnets)
             if not sn:
                 continue
             key = (str(sn["_id"]), ci["ip_addr"])

@@ -364,7 +364,17 @@ COLLECT_OBJ_TREE = [
                 "tag": ["vSphere API", "SDK"],
                 "desc": "通过采集vCenter内ESXi与虚拟机清单及其属性信息",
                 "encrypted_fields": ["password"],
-            }
+            },
+            {
+                "id": "hyperv_host",
+                "model_id": "hyperv_host",
+                "name": "Hyper-V",
+                "task_type": CollectPluginTypes.VM,
+                "type": CollectDriverTypes.JOB,
+                "tag": ["WinRM", "Hyper-V"],
+                "desc": "通过 WinRM 采集 Hyper-V 宿主机与虚拟机清单及其属性信息",
+                "encrypted_fields": ["password"],
+            },
         ],
     },
     {

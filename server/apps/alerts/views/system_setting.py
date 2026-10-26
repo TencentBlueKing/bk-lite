@@ -247,7 +247,7 @@ class SystemSettingModelViewSet(ModelViewSet):
             )
 
         # 编排中心已启用的 NATS 入口与 OpsPilot 一样作为可选通知通道。
-        for ch in SystemMgmtUtils.search_workflow_orchestration_nats_channels(teams=team_ids):
+        for ch in SystemMgmtUtils.search_workflow_nats_channels(teams=team_ids):
             result.append(
                 {
                     "id": ch["id"],

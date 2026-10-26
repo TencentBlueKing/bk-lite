@@ -1939,6 +1939,7 @@ export const DRY_RUN_VERDICT_I18N: Record<string, string> = {
   no_data: 'monitor.events.dryRunVerdictNoData',
   missing_baseline: 'monitor.events.dryRunVerdictMissingBaseline',
   insufficient_samples: 'monitor.events.dryRunVerdictInsufficientSamples',
+  missing_condition_data: 'monitor.events.dryRunVerdictMissingConditionData',
   hold: 'monitor.events.dryRunVerdictHold',
 };
 

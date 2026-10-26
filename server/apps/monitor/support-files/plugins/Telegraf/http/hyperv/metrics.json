@@ -1,0 +1,184 @@
+{
+  "plugin": "Hyper-V",
+  "plugin_desc": "Monitor Hyper-V hosts and virtual machines over WinRM, including CPU, memory, power state, and virtual disk read/write latency in milliseconds.",
+  "status_query": "any({instance_type='hyperv', collect_type='http'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
+  "node_selector": {
+    "is_container": true
+  },
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "Hyper-V",
+      "icon": "mm-esxi_ESXI",
+      "type": "HyperV",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='hyperv'}) by (instance_id)",
+      "instance_id_keys": ["instance_id"],
+      "supplementary_indicators": ["hyperv_host_count", "hyperv_vm_count"],
+      "display_fields": [
+        {"name": "Host count", "sort_order": 0, "metrics": [{"plugin": "Hyper-V", "metric": "hyperv_host_count"}]},
+        {"name": "VM count", "sort_order": 1, "metrics": [{"plugin": "Hyper-V", "metric": "hyperv_vm_count"}]}
+      ],
+      "metrics": [
+        {
+          "metric_group": "Quantity",
+          "name": "hyperv_host_count",
+          "query": "count by (instance_id) (sum by (instance_id, resource_id) ({resource_type=\"hyperv_host\"}))",
+          "display_name": "Number of Hyper-V hosts",
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id"],
+          "description": "Count of Hyper-V hosts in this instance"
+        },
+        {
+          "metric_group": "Quantity",
+          "name": "hyperv_vm_count",
+          "query": "count by (instance_id) (sum by (instance_id, resource_id) ({resource_type=\"hyperv_vm\"}))",
+          "display_name": "Number of Hyper-V VMs",
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id"],
+          "description": "Count of Hyper-V virtual machines in this instance"
+        }
+      ]
+    },
+    {
+      "name": "Hyper-V Host",
+      "icon": "mm-esxi_ESXI",
+      "type": "HyperV",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='hyperv_host'}) by (instance_id, resource_id)",
+      "instance_id_keys": ["instance_id", "resource_id"],
+      "supplementary_indicators": ["cpu_usage_percent", "mem_usage_percent", "storage_read_latency"],
+      "display_fields": [
+        {"name": "CPU usage", "sort_order": 0, "metrics": [{"plugin": "Hyper-V", "metric": "cpu_usage_percent"}]},
+        {"name": "Memory usage", "sort_order": 1, "metrics": [{"plugin": "Hyper-V", "metric": "mem_usage_percent"}]},
+        {"name": "Read latency", "sort_order": 2, "metrics": [{"plugin": "Hyper-V", "metric": "storage_read_latency"}]}
+      ],
+      "metrics": [
+        {
+          "metric_group": "CPU",
+          "name": "cpu_usage_percent",
+          "query": "cpu_usage_percent_gauge{resource_type=\"hyperv_host\", __$labels__}",
+          "display_name": "CPU usage",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Hyper-V host CPU utilization"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "mem_usage_percent",
+          "query": "mem_usage_percent_gauge{resource_type=\"hyperv_host\", __$labels__}",
+          "display_name": "Memory usage",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Hyper-V host memory utilization"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "storage_read_latency",
+          "query": "storage_read_latency_gauge{resource_type=\"hyperv_host\", __$labels__}",
+          "display_name": "Read latency",
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [{"name": "disk"}],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Virtual disk read latency in milliseconds"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "storage_write_latency",
+          "query": "storage_write_latency_gauge{resource_type=\"hyperv_host\", __$labels__}",
+          "display_name": "Write latency",
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [{"name": "disk"}],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Virtual disk write latency in milliseconds"
+        }
+      ]
+    },
+    {
+      "name": "Hyper-V VM",
+      "icon": "mm-vm_虚拟机",
+      "type": "HyperV",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='hyperv_vm'}) by (instance_id, resource_id)",
+      "instance_id_keys": ["instance_id", "resource_id"],
+      "supplementary_indicators": ["cpu_usage_percent", "mem_usage_percent", "power_state"],
+      "display_fields": [
+        {"name": "CPU usage", "sort_order": 0, "metrics": [{"plugin": "Hyper-V", "metric": "cpu_usage_percent"}]},
+        {"name": "Memory usage", "sort_order": 1, "metrics": [{"plugin": "Hyper-V", "metric": "mem_usage_percent"}]},
+        {"name": "Power state", "sort_order": 2, "metrics": [{"plugin": "Hyper-V", "metric": "power_state"}]}
+      ],
+      "metrics": [
+        {
+          "metric_group": "CPU",
+          "name": "cpu_usage_percent",
+          "query": "cpu_usage_percent_gauge{resource_type=\"hyperv_vm\", __$labels__}",
+          "display_name": "CPU usage",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Hyper-V virtual machine CPU utilization"
+        },
+        {
+          "metric_group": "Memory",
+          "name": "mem_usage_percent",
+          "query": "mem_usage_percent_gauge{resource_type=\"hyperv_vm\", __$labels__}",
+          "display_name": "Memory usage",
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Hyper-V virtual machine memory utilization"
+        },
+        {
+          "metric_group": "Power",
+          "name": "power_state",
+          "query": "power_state_gauge{resource_type=\"hyperv_vm\", __$labels__}",
+          "display_name": "Power state",
+          "data_type": "Enum",
+          "unit": "",
+          "dimensions": [],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Virtual machine power state, 1=Running 0=Down"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "storage_read_latency",
+          "query": "storage_read_latency_gauge{resource_type=\"hyperv_vm\", __$labels__}",
+          "display_name": "Read latency",
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [{"name": "disk"}],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Virtual disk read latency in milliseconds"
+        },
+        {
+          "metric_group": "Disk",
+          "name": "storage_write_latency",
+          "query": "storage_write_latency_gauge{resource_type=\"hyperv_vm\", __$labels__}",
+          "display_name": "Write latency",
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [{"name": "disk"}],
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "description": "Virtual disk write latency in milliseconds"
+        }
+      ]
+    }
+  ]
+}

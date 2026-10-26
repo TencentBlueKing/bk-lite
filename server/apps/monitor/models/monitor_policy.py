@@ -214,7 +214,6 @@ class PolicyGroupRule(TimeInfo, MaintainerInfo):
         verbose_name="对应监控策略",
     )
     name = models.CharField(max_length=100, verbose_name="规则名称")
-    push_alert_center = models.BooleanField(default=True, verbose_name="推送告警中心")
 
     class Meta:
         verbose_name = "策略组规则"

@@ -610,6 +610,23 @@
         "instance_id"
       ],
       "description": "System uptime in seconds"
+    },
+    {
+      "metric_group": "Service",
+      "name": "windows_service_state",
+      "query": "windows_service_state_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "display_name": "Windows Service State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"停止\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"运行\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [
+        {
+          "name": "service"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Windows service running state from Win32_Service. Running is 1; stopped, pending, paused, or missing is 0."
     }
   ]
 }

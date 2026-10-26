@@ -321,3 +321,105 @@ def test_copy_preview_reads_restored_filebeat_metadata_path():
 
     assert [item.status for item in result.results] == ["success"]
     assert result.event["beat_name"] == "filebeat"
+
+
+@pytest.mark.unit
+def test_empty_or_condition_runs_like_empty_and_and_compiler_true():
+    base = {
+        "extractor_type": "copy",
+        "source_field": "message",
+        "config": {},
+        "delete_source": False,
+    }
+    empty_or = normalize_rule(
+        {
+            **base,
+            "target_field": "copied.or",
+            "condition": {"mode": "OR", "conditions": []},
+        }
+    )
+    empty_and = normalize_rule(
+        {
+            **base,
+            "target_field": "copied.and",
+            "condition": {"mode": "AND", "conditions": []},
+        }
+    )
+    matching_or = normalize_rule(
+        {
+            **base,
+            "target_field": "copied.match",
+            "condition": {
+                "mode": "OR",
+                "conditions": [
+                    {"field": "message", "op": "==", "value": "other"},
+                    {"field": "message", "op": "==", "value": "hello"},
+                ],
+            },
+        }
+    )
+    missing_or = normalize_rule(
+        {
+            **base,
+            "target_field": "copied.miss",
+            "condition": {
+                "mode": "OR",
+                "conditions": [
+                    {"field": "message", "op": "==", "value": "other"},
+                    {"field": "level", "op": "==", "value": "debug"},
+                ],
+            },
+        }
+    )
+
+    result = execute_rules({"message": "hello"}, [empty_or, empty_and, matching_or, missing_or])
+
+    assert [item.status for item in result.results] == ["success", "success", "success", "not_matched"]
+    assert result.event["copied"]["or"] == "hello"
+    assert result.event["copied"]["and"] == "hello"
+    assert result.event["copied"]["match"] == "hello"
+    assert "miss" not in result.event["copied"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("pattern", "replacement", "payload", "expected"),
+    [
+        (r"(a)", "${1}", "a", "a"),
+        (r"user=(?P<user>\w+)", "user=${user}-masked", "user=alice", "user=alice-masked"),
+        (r"(a)", "$$", "a", "$"),
+        (r"(a)?(b)", "${1}${2}", "b", "b"),
+    ],
+    ids=["numbered", "named", "literal-dollar", "unmatched-optional"],
+)
+def test_regex_replace_expands_capture_references(pattern, replacement, payload, expected):
+    rule = normalize_rule(
+        {
+            "extractor_type": "regex_replace",
+            "source_field": "payload",
+            "target_field": "result",
+            "condition": {},
+            "config": {"pattern": pattern, "replacement": replacement},
+            "delete_source": False,
+        }
+    )
+
+    result = execute_rules({"payload": payload}, [rule])
+
+    assert result.results[0].status == "success"
+    assert result.event == {"payload": payload, "result": expected}
+
+
+@pytest.mark.unit
+def test_regex_replace_rejects_missing_numbered_group():
+    with pytest.raises(RuleValidationError, match="不存在的捕获组"):
+        normalize_rule(
+            {
+                "extractor_type": "regex_replace",
+                "source_field": "payload",
+                "target_field": "result",
+                "condition": {},
+                "config": {"pattern": r"(a)", "replacement": "${2}"},
+                "delete_source": False,
+            }
+        )

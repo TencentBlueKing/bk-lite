@@ -103,10 +103,7 @@ export const MAIN_MENU_OPTIONS: MainMenuOptions = [
   'ACTION.OPEN',
   'EXPORT.JSON',
   'EXPORT.PNG',
-  'ACTION.CLEAR_CANVAS',
-  'LINK.DISCORD',
-  'LINK.GITHUB',
-  'VERSION'
+  'ACTION.CLEAR_CANVAS'
 ];
 
 export const DEFAULT_ICON: Icon = {
@@ -120,6 +117,8 @@ export const DEFAULT_ICON: Icon = {
 export const DEFAULT_NODE_NAME = 'Untitled';
 
 export const DEFAULT_LABELS: IsoflowLabels = {
+  icon: 'Icon',
+  replaceIcon: 'Replace',
   updateIcon: 'Update icon',
   settings: 'Settings',
   name: 'Name',
@@ -144,6 +143,8 @@ export const DEFAULT_LABELS: IsoflowLabels = {
   toolRectangle: 'Rectangle',
   toolConnector: 'Connector',
   toolText: 'Text',
+  toolCollapse: 'Collapse',
+  toolExpand: 'Expand',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
   fitToScreen: 'Fit to screen',

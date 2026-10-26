@@ -10,5 +10,9 @@ class FormulaValidationError(FormulaError):
     """公式结构或语义校验错误。"""
 
 
+class MultiValidationError(FormulaError):
+    """多指标条件结构或语义校验错误。"""
+
+
 class FormulaCompileError(FormulaError):
     """公式编译错误。"""

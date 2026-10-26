@@ -13,6 +13,7 @@ from core.logger import safe_log_value
 
 from .base_collector import BaseCollector
 from .disk_filter import should_collect_disk
+from .windows_service import select_windows_services, should_collect_windows_service
 
 logger = logging.getLogger("stargazer.host_collector")
 
@@ -349,6 +350,8 @@ def parse_metrics_to_prometheus(
     *,
     disk_include_fstypes: Any = None,
     disk_exclude_fstypes: Any = None,
+    service_scope: Any = None,
+    service_names: Any = None,
 ) -> str:
     lines = []
     timestamp = int(timestamp) if timestamp is not None else int(time.time() * 1000)
@@ -523,6 +526,18 @@ def parse_metrics_to_prometheus(
             lines, "system_load15", base_labels, system, "load15", "load_15m", timestamp=timestamp, help_text="System load 15 minutes"
         )
 
+    if should_collect_windows_service(service_scope, service_names):
+        for service in select_windows_services(data.get("service"), service_scope, service_names):
+            service_labels = f"{base_labels},{_format_prometheus_labels(service=service['name'], service_scope=service['service_scope'])}"
+            _append_gauge(
+                lines,
+                "windows_service_state",
+                service_labels,
+                service.get("state", 0),
+                timestamp,
+                "Windows service running state",
+            )
+
     return "\n".join(lines) + "\n"
 
 
@@ -536,6 +551,15 @@ class HostCollector(BaseCollector):
         modules = [str(m).strip() for m in module_items if str(m).strip() in VALID_MODULES]
         if not modules:
             modules = ["cpu", "mem", "disk", "net"]
+        os_type = str(self.params.get("os_type", "linux") or "linux").strip().lower()
+        if os_type == "windows" and should_collect_windows_service(
+            self.params.get("service_scope"),
+            self.params.get("service_names"),
+        ):
+            if "service" not in modules:
+                modules.append("service")
+        else:
+            modules = [name for name in modules if name != "service"]
         return modules
 
     def _resolve_execution_config(self) -> Dict[str, Any]:
@@ -706,6 +730,8 @@ class HostCollector(BaseCollector):
                 timestamp=callback_timestamp,
                 disk_include_fstypes=self.params.get("disk_include_fstypes"),
                 disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
+                service_scope=self.params.get("service_scope"),
+                service_names=self.params.get("service_names"),
             )
 
         if os_key in DEBUG_SCRAPE_OS_TYPES:

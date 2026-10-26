@@ -16,6 +16,7 @@ monitor_object_metric_group:
     Memory: 内存
     Disk: 磁盘
     Network: 网络
+    System: 系统
   DataStorage:
     DataStorage: 数据存储
   VM:
@@ -24,6 +25,7 @@ monitor_object_metric_group:
     Disk: 磁盘
     Network: 网络
     Power: 电源
+    Snapshot: 快照
 monitor_object_metric:
   vCenter:
     vmware_esxi_count:
@@ -63,6 +65,12 @@ monitor_object_metric:
     net_bytesTx_average_gauge:
       name: 网络发送吞吐量
       desc: 每秒发送的网络数据量。
+    boot_time_gauge:
+      name: 启动时间
+      desc: ESXi 主机启动时间（Unix 秒）。仅在重启后变化。
+    uptime_seconds_gauge:
+      name: 运行时长
+      desc: ESXi 主机自启动以来的秒数。不换算成天。
   DataStorage:
     disk_used_average_gauge:
       name: 磁盘使用率
@@ -73,6 +81,12 @@ monitor_object_metric:
     store_accessible_gauge:
       name: 数据存储可访问性
       desc: 数据存储是否可访问。
+    datastore_io_read_latency_gauge:
+      name: 读延迟
+      desc: 数据存储整体读延迟，单位毫秒。
+    datastore_io_write_latency_gauge:
+      name: 写延迟
+      desc: 数据存储整体写延迟，单位毫秒。
   VM:
     cpu_usage_average_gauge:
       name: CPU 使用率
@@ -110,3 +124,15 @@ monitor_object_metric:
     power_state_gauge:
       name: 电源状态
       desc: 虚拟机当前的电源状态。
+    tools_status_gauge:
+      name: Tools 状态
+      desc: 虚拟机 VMware Tools 状态码。0 正常，1 过时，2 未安装，3 未运行。
+    snapshot_storage_bytes_gauge:
+      name: 快照占用空间
+      desc: 快照增量盘、数据文件和内存文件去重后的字节数。无快照时为 0。
+    oldest_snapshot_age_seconds_gauge:
+      name: 最老快照年龄
+      desc: 现在减去最老快照创建时间的秒数。无有效创建时间时为 0。
+    snapshot_count_gauge:
+      name: 快照数量
+      desc: 虚拟机快照树中的快照张数。无快照时为 0。

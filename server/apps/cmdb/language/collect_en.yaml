@@ -21,6 +21,9 @@ COLLECT_PLUGIN:
   vmware_vc:
     name: vCenter
     desc: Collect ESXi hosts and virtual machine inventory and attributes from vCenter
+  hyperv_host:
+    name: Hyper-V
+    desc: Collect Hyper-V hosts and virtual machine inventory over WinRM
   network:
     name: Network
     desc: Discover network devices and topology via SNMP

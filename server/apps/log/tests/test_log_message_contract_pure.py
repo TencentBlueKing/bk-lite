@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+import apps.log.services.log_event_contract as log_event_contract
 from apps.log.services.log_event_contract import (
     to_logical_event,
     to_logical_field,
@@ -157,3 +158,24 @@ def test_normalize_user_logsql_query_completes_empty_filters_and_quotes_special_
     assert normalize_user_logsql_query("message:\"Packetbeat network flow\"") == 'message:"Packetbeat network flow"'
     assert normalize_user_logsql_query("_stream_id:") == "_stream_id:"
     assert normalize_user_logsql_query("_stream:") == "_stream:"
+
+
+@pytest.mark.unit
+def test_normalize_user_logsql_query_matches_colonless_word_once(monkeypatch):
+    assert normalize_user_logsql_query("host:web") == "host:web"
+    assert normalize_user_logsql_query('message:"a|b"') == 'message:"a|b"'
+    assert normalize_user_logsql_query("agent.name:") == "agent.name:*"
+
+    word = "a" * 4000
+    calls = {"count": 0}
+    pattern = log_event_contract.UNQUOTED_LOGSQL_FIELD
+
+    class _CountingPattern:
+        def match(self, *args, **kwargs):
+            calls["count"] += 1
+            return pattern.match(*args, **kwargs)
+
+    monkeypatch.setattr(log_event_contract, "UNQUOTED_LOGSQL_FIELD", _CountingPattern())
+
+    assert normalize_user_logsql_query(word) == word
+    assert calls["count"] == 1

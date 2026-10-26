@@ -4,6 +4,8 @@ import {
   buildAlertDetailMetricQuery,
   buildAlertSnapshotChartModel,
   buildAlertSnapshotChartValues,
+  alertConditionTabLabel,
+  listAlertSnapshotSeriesRefs,
   decorateAlertSnapshotChartData,
   resolveAlertDetailChartUnit,
   resolveAlertDetailMetric
@@ -555,6 +557,51 @@ assert.equal(
     }
   }),
   null
+);
+
+const multiSnapshots = [
+  {
+    type: 'event',
+    raw_data: {
+      values: [[1, '2']],
+      series: {
+        a: { values: [[100, '90']] },
+        b: { values: [[100, '10']] },
+      },
+    },
+  },
+];
+assert.deepEqual(listAlertSnapshotSeriesRefs(multiSnapshots), ['a', 'b']);
+assert.deepEqual(
+  buildAlertSnapshotChartModel(multiSnapshots).dataValues,
+  [[1, '2']]
+);
+assert.deepEqual(
+  buildAlertSnapshotChartModel(multiSnapshots, { seriesRef: 'b' }).dataValues,
+  [[100, '10']]
+);
+assert.deepEqual(
+  buildAlertSnapshotChartModel([
+    {
+      type: 'event',
+      raw_data: { series: { a: { values: [[200, '85']] } } },
+    },
+  ]).dataValues,
+  [[200, '85']]
+);
+
+assert.equal(alertConditionTabLabel('a', '错误率'), 'a 错误率');
+assert.equal(alertConditionTabLabel('b', ''), 'b');
+
+const mixedQueries = [
+  { ref: 'a', source: 'formula', metric_name: '使用率比', role: 'level' },
+  { ref: 'b', metric_name: 'cpu_usage_total', role: 'gate' },
+];
+assert.deepEqual(
+  mixedQueries.map((query) =>
+    alertConditionTabLabel(query.ref, query.metric_name)
+  ),
+  ['a 使用率比', 'b cpu_usage_total']
 );
 
 console.log('monitor-alert-detail snapshot validation passed');

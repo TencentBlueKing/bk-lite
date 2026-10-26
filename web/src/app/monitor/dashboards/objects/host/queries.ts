@@ -211,16 +211,6 @@ export const HOST_NET_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   }
 ];
 
-/** 分核：保留 cpu 维。无该维时性能页不画分核卡。 */
-export const HOST_CPU_CORE_ENTITY_QUERIES: HostEntityMetricQuery[] = [
-  {
-    key: 'cpu_usage_core',
-    unit: 'percent',
-    labelKeys: ['cpu'],
-    query: '100 - cpu_usage_idle{cpu!="cpu-total", instance_type="os", __$labels__}'
-  }
-];
-
 /** GPU：按 index 保留多卡，禁止 max 折成一台。 */
 export const HOST_GPU_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   {
@@ -288,3 +278,48 @@ export const HOST_PROCESS_ENTITY_QUERIES: HostEntityMetricQuery[] = [
     query: 'clamp_max(count(procstat_cpu_usage{instance_type="process", __$labels__}) by (instance_id, process_name, pattern), 1)'
   }
 ];
+
+const pickEntityQueries = (
+  queries: readonly HostEntityMetricQuery[],
+  keys: readonly string[]
+): HostEntityMetricQuery[] => {
+  const wanted = new Set(keys);
+  return queries.filter((query) => wanted.has(query.key));
+};
+
+/** 概览快捷卡 + 磁盘总使用率趋势。IO / inode / 延迟进磁盘页再拉。 */
+export const HOST_DISK_OVERVIEW_ENTITY_KEYS = [
+  'disk_used_percent',
+  'disk_total',
+  'disk_free'
+] as const;
+
+/** 概览最忙网卡与吞吐捷径。错误、丢包、包量进网络页再拉。 */
+export const HOST_NET_OVERVIEW_ENTITY_KEYS = [
+  'net_bytes_recv_rate',
+  'net_bytes_sent_rate'
+] as const;
+
+/**
+ * 概览 CPU 最高进程捷径，加上进程页签危度要用的内存。
+ * RSS、线程、句柄、存活进进程页再拉。
+ */
+export const HOST_PROCESS_OVERVIEW_ENTITY_KEYS = [
+  'process_cpu_usage',
+  'process_mem_usage'
+] as const;
+
+export const HOST_DISK_OVERVIEW_ENTITY_QUERIES = pickEntityQueries(
+  HOST_DISK_ENTITY_QUERIES,
+  HOST_DISK_OVERVIEW_ENTITY_KEYS
+);
+
+export const HOST_NET_OVERVIEW_ENTITY_QUERIES = pickEntityQueries(
+  HOST_NET_ENTITY_QUERIES,
+  HOST_NET_OVERVIEW_ENTITY_KEYS
+);
+
+export const HOST_PROCESS_OVERVIEW_ENTITY_QUERIES = pickEntityQueries(
+  HOST_PROCESS_ENTITY_QUERIES,
+  HOST_PROCESS_OVERVIEW_ENTITY_KEYS
+);

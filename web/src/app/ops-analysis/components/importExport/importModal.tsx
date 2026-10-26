@@ -16,7 +16,6 @@ import {
   InboxOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  ExclamationCircleFilled,
 } from '@ant-design/icons';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
@@ -207,7 +206,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
                 <p className="ant-upload-text">
                   {t('opsAnalysisSidebar.importUploadText')}
                 </p>
-                <p className="ant-upload-hint text-gray-400 mt-2">
+                <p className="ant-upload-hint mt-2 text-[var(--color-text-3)]">
                   {t('opsAnalysisSidebar.importUploadHint')}
                 </p>
               </Dragger>
@@ -292,55 +291,51 @@ const ImportModal: React.FC<ImportModalProps> = ({
             )}
             
             {filteredWarnings.length > 0 && (
-              <div className="mb-4 rounded-lg border border-[#FFD591] bg-[#FFFBE6] px-5 py-4">
-                <div className="flex items-start gap-2">
-                  <ExclamationCircleFilled
-                    className="mt-1 text-base leading-none text-[#FAAD14]"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium leading-6 text-[rgba(0,0,0,0.88)]">
-                      {t('opsAnalysisSidebar.importWarnings')}
-                    </div>
-                    <ul className="mt-1 mb-0 text-sm leading-6 text-[rgba(0,0,0,0.65)]">
-                      {filteredWarnings.map((w, idx) => {
-                        const supplementKey = getSecretSupplementKey(w);
-                        const isSecretPlaceholder = (
-                          w.code === SECRET_PLACEHOLDER_WARNING_CODE && supplementKey
-                        );
-                        const isOverwrite = (
-                          !!w.object_key && conflictDecisions[w.object_key] === 'overwrite'
-                        );
+              <Alert
+                className="mb-4"
+                type="warning"
+                showIcon
+                message={t('opsAnalysisSidebar.importWarnings')}
+                description={(
+                  <ul className="mt-1 mb-0 text-sm leading-6 text-[var(--color-text-2)]">
+                    {filteredWarnings.map((w, idx) => {
+                      const supplementKey = getSecretSupplementKey(w);
+                      const isSecretPlaceholder = (
+                        w.code === SECRET_PLACEHOLDER_WARNING_CODE && supplementKey
+                      );
+                      const isOverwrite = (
+                        !!w.object_key && conflictDecisions[w.object_key] === 'overwrite'
+                      );
 
-                        return (
-                          <li key={supplementKey || idx} className="mb-2 last:mb-0">
-                            <div>{w.message}</div>
-                            {isSecretPlaceholder && (
-                              <Input.Password
-                                className="mt-1 max-w-xl"
-                                value={secretSupplementValues[supplementKey] || ''}
-                                onChange={(event) => setSecretSupplementValues((current) => ({
-                                  ...current,
-                                  [supplementKey]: event.target.value,
-                                }))}
-                                placeholder={t(
-                                  isOverwrite
-                                    ? 'opsAnalysisSidebar.importSecretOverwritePlaceholder'
-                                    : 'opsAnalysisSidebar.importSecretPlaceholder',
-                                )}
-                                aria-label={`${w.object_key} ${w.field}`}
-                                autoComplete="new-password"
-                              />
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                </div>
-              </div>
+                      return (
+                        <li key={supplementKey || idx} className="mb-2 last:mb-0">
+                          <div>{w.message}</div>
+                          {isSecretPlaceholder && (
+                            <Input.Password
+                              className="mt-1 max-w-xl"
+                              value={secretSupplementValues[supplementKey] || ''}
+                              onChange={(event) => setSecretSupplementValues((current) => ({
+                                ...current,
+                                [supplementKey]: event.target.value,
+                              }))}
+                              placeholder={t(
+                                isOverwrite
+                                  ? 'opsAnalysisSidebar.importSecretOverwritePlaceholder'
+                                  : 'opsAnalysisSidebar.importSecretPlaceholder',
+                              )}
+                              aria-label={`${w.object_key} ${w.field}`}
+                              autoComplete="new-password"
+                            />
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              />
             )}
 
-            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-gray-600">
+            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-[var(--color-text-2)]">
               <span>{t('opsAnalysisSidebar.totalObjects')} {precheckData?.counts.total || 0}</span>
               {precheckData?.counts.by_type && Object.entries(precheckData.counts.by_type).map(([k, v]) => (
                 v > 0 ? <span key={k}>{getObjectTypeLabel(k)}: {v}</span> : null
@@ -442,7 +437,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
                   <span>{t('opsAnalysisSidebar.totalCount')} {submitResult.summary.total}</span>
                   <span className="text-green-600">{t('opsAnalysisSidebar.successCount')} {submitResult.summary.success}</span>
                   <span className="text-yellow-600">{t('opsAnalysisSidebar.overwrittenCount')} {submitResult.summary.overwritten}</span>
-                  <span className="text-gray-500">{t('opsAnalysisSidebar.skippedCount')} {submitResult.summary.skipped}</span>
+                  <span className="text-[var(--color-text-3)]">{t('opsAnalysisSidebar.skippedCount')} {submitResult.summary.skipped}</span>
                   <span className="text-red-600">{t('opsAnalysisSidebar.failedCount')} {submitResult.summary.failed}</span>
                 </div>
               }

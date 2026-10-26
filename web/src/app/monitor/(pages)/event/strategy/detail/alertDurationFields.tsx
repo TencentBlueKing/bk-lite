@@ -21,6 +21,8 @@ const FIELD_NUMBER_CLASS = 'w-[200px]';
 export const STRATEGY_CONDITION_LABEL_WIDTH = 100;
 export const STRATEGY_CONDITION_LABEL_CLASS =
   'inline-block w-[100px] whitespace-nowrap';
+export const STRATEGY_HINT_TEXT_CLASS =
+  'text-xs leading-5 text-[var(--color-text-3)]';
 
 interface RecoveryMethodOption {
   value?: string | number;
@@ -35,6 +37,7 @@ interface AlertDurationFieldsProps {
   }) => void;
   allowedRecoveryMethods: RecoveryMethodOption[];
   recoveryThresholdUnitLabel: string;
+  hideRecoveryThreshold?: boolean;
   noDataAlert: number | null;
   nodataUnit: string;
   noDataRecovery: number | null;
@@ -96,6 +99,7 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
           addonAfter={consecutivePeriodUnit(t, recoveryCount)}
         />
       </Form.Item>
+      {props.hideRecoveryThreshold ? null : (
       <Form.Item label={fieldLabel(t('monitor.events.recoveryThreshold'))}>
         <RecoveryThresholdInput
           recoveryThreshold={props.recoveryThreshold}
@@ -106,16 +110,17 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
           onRecoveryThresholdChange={props.onRecoveryThresholdChange}
         />
       </Form.Item>
+      )}
       <Form.Item label={fieldLabel(t('monitor.events.noDataAlertLevel'))}>
         <Switch
           checked={noDataEnabled}
           onChange={(checked) => setNoDataEnabled(props, checked)}
         />
-        <div className="mt-[10px] text-[var(--color-text-3)]">
+        <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
           {t('monitor.events.noDataAlertTip')}
         </div>
         {isPodMonitorObject(props.monitorName) ? (
-          <div className="mt-[8px] text-[12px] leading-[20px] text-[var(--color-text-3)]">
+          <div className={`mt-[8px] ${STRATEGY_HINT_TEXT_CLASS}`}>
             {t('monitor.events.noDataPodTip')}
           </div>
         ) : null}
@@ -160,7 +165,7 @@ const NoDataDetailFields: React.FC<AlertDurationFieldsProps> = ({
         )}
         extra={
           functionDelayTip ? (
-            <span className="text-[12px] text-[var(--color-text-3)]">
+            <span className={STRATEGY_HINT_TEXT_CLASS}>
               {functionDelayTip}
             </span>
           ) : undefined
