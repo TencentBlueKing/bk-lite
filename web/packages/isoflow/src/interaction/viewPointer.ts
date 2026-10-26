@@ -265,6 +265,14 @@ export const resolveViewClick = (input: {
   return { kind: 'ignore' };
 };
 
+/**
+ * Only the primary button may start a click/select/drag; other buttons stay
+ * inert. Synthetic touch events carry no button and count as primary.
+ */
+export const isPrimaryPointerEvent = (event: { button?: number }) => {
+  return (event.button ?? 0) === 0;
+};
+
 export const viewHoverCursor = (input: {
   badgeId?: string | null;
   iconId: string | null;

@@ -1,27 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAlarmHref,
-  buildCmdbDetailHref,
   buildMonitorDetailHref,
   buildMonitorHrefFromContext,
+  monitorObjectIdFromContext,
   readArchitectureEffectivePlugins,
 } from '../links';
 
 describe('architecture detail links', () => {
-  it('builds cmdb, alarm and monitor links', () => {
-    const cmdb = new URL(buildCmdbDetailHref({
-      modelId: 'host',
-      instUuid: 'uuid-web',
-      instName: 'web-01',
-    }), 'http://local');
-    expect(cmdb.pathname).toBe('/cmdb/assetData/detail/baseInfo');
-    expect(cmdb.searchParams.get('model_id')).toBe('host');
-    expect(cmdb.searchParams.get('inst_uuid')).toBe('uuid-web');
-    expect(cmdb.searchParams.get('inst_name')).toBe('web-01');
-
+  it('builds alarm and monitor links', () => {
+    // The alarm entry shares the badge's monitor-caliber source: the monitor
+    // alert list filtered by instance id, never the alert-center tickets.
     const alarm = new URL(buildAlarmHref('mon-web'), 'http://local');
-    expect(alarm.pathname).toBe('/alarm/alarms');
-    expect(alarm.searchParams.get('resource_id')).toBe('mon-web');
+    expect(alarm.pathname).toBe('/monitor/event/alert');
+    expect(alarm.searchParams.get('instanceId')).toBe('mon-web');
+    expect(alarm.searchParams.get('objId')).toBeNull();
+    const alarmWithObject = new URL(buildAlarmHref('mon-web', '11'), 'http://local');
+    expect(alarmWithObject.searchParams.get('instanceId')).toBe('mon-web');
+    expect(alarmWithObject.searchParams.get('objId')).toBe('11');
 
     const monitor = new URL(buildMonitorDetailHref({
       monitorObjectId: '11',
@@ -38,6 +34,8 @@ describe('architecture detail links', () => {
     expect(monitor.searchParams.get('instance_name')).toBe('web-01');
     expect(monitor.searchParams.get('return_object_id')).toBe('11');
 
+    expect(monitorObjectIdFromContext(null)).toBe('');
+    expect(monitorObjectIdFromContext({ monitorObject: 11, monitorName: 'Host' })).toBe('11');
     expect(buildMonitorHrefFromContext(null)).toBe('');
     expect(buildMonitorHrefFromContext({
       monitorObject: '',

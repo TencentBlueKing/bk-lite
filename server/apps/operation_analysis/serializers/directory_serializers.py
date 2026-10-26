@@ -189,11 +189,12 @@ class TopologyModelSerializer(CanvasRefreshIntervalSerializerMixin, CanvasObject
         extra_kwargs = with_canvas_refresh_interval_kwargs(CanvasObjectSerializer.Meta.extra_kwargs)
 
 
-class ArchitectureModelSerializer(CanvasObjectSerializer):
+class ArchitectureModelSerializer(CanvasRefreshIntervalSerializerMixin, CanvasObjectSerializer):
     permission_key = "directory.architecture"
 
     class Meta(CanvasObjectSerializer.Meta):
         model = Architecture
+        extra_kwargs = with_canvas_refresh_interval_kwargs(CanvasObjectSerializer.Meta.extra_kwargs)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

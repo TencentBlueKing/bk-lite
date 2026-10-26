@@ -30,33 +30,61 @@ export const NodeControls = ({ id }: Props) => {
   const extra = useItemControlsExtra({ type: 'ITEM', id });
 
   return (
-    <ControlsContainer>
-      <Box sx={{ position: 'relative', height: 36 }}>
-        <IconButton
-          size="small"
-          aria-label={labels.cancel}
-          onClick={() => {
-            uiStateActions.setItemControls(null);
-          }}
+    <ControlsContainer
+      header={
+        <Box
           sx={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            boxSizing: 'border-box',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 24,
-            height: 24,
-            minWidth: 24,
-            p: 0,
-            m: 0,
-            color: 'var(--color-text-3)'
+            position: 'relative',
+            height: 36,
+            bgcolor: 'var(--color-bg)'
           }}
         >
-          <CloseIcon sx={{ display: 'block', fontSize: 16 }} />
-        </IconButton>
-      </Box>
+          <Box
+            component="h2"
+            sx={{
+              position: 'absolute',
+              top: 12,
+              left: 12,
+              display: 'flex',
+              alignItems: 'center',
+              height: 24,
+              m: 0,
+              pr: 4,
+              fontSize: 13,
+              fontWeight: 600,
+              lineHeight: 1,
+              color: 'var(--color-text-1)'
+            }}
+          >
+            {labels.nodeSettings}
+          </Box>
+          <IconButton
+            size="small"
+            aria-label={labels.cancel}
+            onClick={() => {
+              uiStateActions.setItemControls(null);
+            }}
+            sx={{
+              position: 'absolute',
+              top: 12,
+              right: 12,
+              boxSizing: 'border-box',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 24,
+              height: 24,
+              minWidth: 24,
+              p: 0,
+              m: 0,
+              color: 'var(--color-text-3)'
+            }}
+          >
+            <CloseIcon sx={{ display: 'block', fontSize: 16 }} />
+          </IconButton>
+        </Box>
+      }
+    >
       <NodeSettings
         key={viewItem.id}
         node={viewItem}

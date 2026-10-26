@@ -41,7 +41,26 @@ export const IconSelectionControls = () => {
         <Section sx={{ position: 'sticky', top: 0, pt: 1.5, pb: 1 }}>
           <Stack spacing={2}>
             <Searchbox value={filter} onChange={setFilter} />
-            <Alert severity="info">{labels.dragHint}</Alert>
+            <Alert
+              severity="info"
+              sx={{
+                alignItems: 'center',
+                py: 0,
+                px: 1.25,
+                '& .MuiAlert-icon': {
+                  fontSize: 16,
+                  py: '4px',
+                  mr: 0.75
+                },
+                '& .MuiAlert-message': {
+                  py: '4px',
+                  fontSize: 12,
+                  lineHeight: '18px'
+                }
+              }}
+            >
+              {labels.dragHint}
+            </Alert>
           </Stack>
         </Section>
       }

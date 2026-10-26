@@ -30,11 +30,18 @@ export const useArchitectureApi = () => {
     });
   };
 
+  const queryDisplayMetrics = async (instUuids: string[]) => {
+    return post('/operation_analysis/api/architecture/display_metrics/', {
+      inst_uuids: instUuids,
+    });
+  };
+
   return {
     getArchitectureDetail,
     saveArchitecture,
     createArchitecture,
     deleteArchitecture,
     queryNodeStatus,
+    queryDisplayMetrics,
   };
 };
