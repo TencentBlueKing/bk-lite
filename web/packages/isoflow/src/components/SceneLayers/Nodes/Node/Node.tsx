@@ -187,8 +187,8 @@ export const Node = ({ node, order }: Props) => {
       ? status?.hint?.trim() || ''
       : '';
   const quietReason = revealed && !resourceName ? unnamedReason : '';
-  // Model type rides the name line, one shade quieter: `redis-order-01(Redis)`.
-  const modelSuffix = modelName && modelName !== title ? `(${modelName})` : '';
+  // Model type rides the name line, one shade quieter: `redis-order-01 (Redis)`.
+  const modelSuffix = modelName && modelName !== title ? ` (${modelName})` : '';
   const labelHeight = (node.labelHeight ?? DEFAULT_LABEL_HEIGHT) + LABEL_ICON_GAP;
   // View mode: the card and its corner badge open the icon on click.
   // order is -(x + y). Negating it keeps the front plate above the icon and any plate behind it.
