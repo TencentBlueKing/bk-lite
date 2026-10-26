@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_TYPES, ScanExecution, ScanHit, is_agent_credential, resolve_scan_task_credential
+from apps.cmdb.services.host_sync_identity import parse_cloud_id
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
 from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
@@ -54,9 +55,25 @@ def _enrich_instance_for_push(instance: dict, hit: ScanHit, scan_task) -> dict:
     return merged
 
 
-def _lookup_instance_by_ip(model_id: str, host: str, port=None) -> dict | None:
-    """扫描 hit 上的 inst_uuid 可能已被后续采集 upsert 换掉，按模型+IP（库再加端口）找回现网 CI。"""
+def _hit_scan_task(hit: ScanHit):
+    execution = getattr(hit, "execution", None)
+    task = getattr(execution, "task", None)
+    if task is not None:
+        return task
+    family_run = getattr(hit, "family_run", None)
+    return getattr(getattr(family_run, "execution", None), "task", None)
+
+
+def _lookup_instance_by_ip(model_id: str, host: str, port=None, *, cloud=None) -> dict | None:
+    """扫描 hit 上的 inst_uuid 可能已被后续采集 upsert 换掉。
+
+    非主机仍按模型+IP（库再加端口）取第一条。主机身份是 IP 加云区域：查询带上任务云区域，
+    并且只接受 cloud 与该区域一致的结果；恰好一条才返回。没有区域、没有匹配或多于一条时找不到。
+    """
     if not model_id or not host:
+        return None
+    expected_cloud = parse_cloud_id(cloud) if model_id == "host" else None
+    if model_id == "host" and expected_cloud is None:
         return None
     from apps.cmdb.constants.constants import INSTANCE
     from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -70,11 +87,22 @@ def _lookup_instance_by_ip(model_id: str, host: str, port=None) -> dict | None:
             filters.append({"field": "port", "type": "int=", "value": int(port)})
         except (TypeError, ValueError):
             pass
+    if model_id == "host":
+        filters.append({"field": "cloud", "type": "int=", "value": expected_cloud})
     with GraphClient() as ag:
         rows, _ = ag.query_entity(INSTANCE, filters)
-    for row in rows or []:
-        if isinstance(row, dict) and row.get("_id") is not None:
-            return row
+    if model_id != "host":
+        for row in rows or []:
+            if isinstance(row, dict) and row.get("_id") is not None:
+                return row
+        return None
+    matched = [
+        row
+        for row in rows or []
+        if isinstance(row, dict) and row.get("_id") is not None and parse_cloud_id(row.get("cloud")) == expected_cloud
+    ]
+    if len(matched) == 1:
+        return matched[0]
     return None
 
 
@@ -97,7 +125,8 @@ def _resolve_graph_instance(hit: ScanHit) -> dict | None:
     model_id = str(hit.cmdb_model_id or "").strip()
     if not model_id or model_id == "network":
         return None
-    return _lookup_instance_by_ip(model_id, hit.host, hit.port)
+    cloud = host_cloud_from_scan(_hit_scan_task(hit)).get("cloud") if model_id == "host" else None
+    return _lookup_instance_by_ip(model_id, hit.host, hit.port, cloud=cloud)
 
 
 def _sync_hit_live_uuid(hit: ScanHit, instance: dict) -> str:
