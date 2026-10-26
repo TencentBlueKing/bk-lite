@@ -65,7 +65,7 @@
     {
       "metric_group": "HTTP",
       "name": "http_response_http_response_code",
-      "query": "http_response_http_response_code{__$labels__}",
+      "query": "max(http_response_http_response_code{__$labels__}) by (instance_id, agent_id)",
       "display_name": "HTTP Code",
       "data_type": "Number",
       "unit": "none",
