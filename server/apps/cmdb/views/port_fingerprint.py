@@ -16,6 +16,7 @@ class PortFingerprintViewSet(ModelViewSet):
     ordering = ["port", "target_type"]
     filterset_class = PortFingerprintFilter
     pagination_class = CustomPageNumberPagination
+    http_method_names = ["get", "post", "delete", "head", "options"]
 
     @HasPermission("soid_library-View")
     def list(self, request, *args, **kwargs):
