@@ -1,0 +1,187 @@
+{
+  "object_name": "Hyper-V",
+  "instance_type": "hyperv",
+  "collect_type": "http",
+  "config_type": [
+    "hyperv"
+  ],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_{{host}}",
+  "form_fields": [
+    {
+      "name": "host",
+      "label": "目标主机IP",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "Hyper-V 宿主机 IP 地址",
+      "widget_props": {
+        "placeholder": "10.0.0.1"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.host"
+      },
+      "label_en": "Target Host IP"
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true,
+      "editable": false,
+      "description": "WinRM 账号",
+      "widget_props": {
+        "placeholder": "administrator"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.username"
+      },
+      "label_en": "Username"
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "editable": false,
+      "encrypted": true,
+      "description": "WinRM 账号密码",
+      "widget_props": {
+        "placeholder": "密码",
+        "placeholder_en": "Password"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      },
+      "label_en": "Password"
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "input",
+      "required": false,
+      "default_value": "5985",
+      "description": "WinRM 端口，HTTP 默认 5985，HTTPS 默认 5986。",
+      "widget_props": {
+        "placeholder": "5985"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.port"
+      },
+      "label_en": "Port"
+    },
+    {
+      "name": "winrm_scheme",
+      "label": "WinRM协议",
+      "type": "select",
+      "required": false,
+      "default_value": "http",
+      "description": "Windows WinRM 协议",
+      "widget_props": {
+        "options": [
+          {
+            "label": "HTTP",
+            "value": "http",
+            "label_en": "HTTP"
+          },
+          {
+            "label": "HTTPS",
+            "value": "https",
+            "label_en": "HTTPS"
+          }
+        ]
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.winrm_scheme"
+      },
+      "label_en": "WinRM Protocol"
+    },
+    {
+      "name": "winrm_transport",
+      "label": "WinRM认证方式",
+      "type": "select",
+      "required": false,
+      "default_value": "ntlm",
+      "description": "推荐 NTLM。",
+      "widget_props": {
+        "options": [
+          {
+            "label": "NTLM",
+            "value": "ntlm",
+            "label_en": "NTLM"
+          },
+          {
+            "label": "Basic",
+            "value": "basic",
+            "label_en": "Basic"
+          }
+        ]
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.winrm_transport"
+      },
+      "label_en": "WinRM Authentication"
+    },
+    {
+      "name": "winrm_cert_validation",
+      "label": "校验WinRM证书",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "HTTPS WinRM 是否校验证书。自签证书场景建议关闭。",
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.winrm_cert_validation"
+      },
+      "label_en": "Verify WinRM Certificate"
+    },
+    {
+      "name": "interval",
+      "label": "采集间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 60,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 10,
+        "precision": 0,
+        "placeholder": "60",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "Collection Interval"
+    },
+    {
+      "name": "timeout",
+      "label": "超时时间",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 60,
+      "description": "单次采集超时时间（单位：秒）",
+      "widget_props": {
+        "min": 10,
+        "precision": 0,
+        "placeholder": "60",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.timeout",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "Timeout"
+    }
+  ]
+}

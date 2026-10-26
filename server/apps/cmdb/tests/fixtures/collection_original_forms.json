@@ -55,6 +55,25 @@
     ]
   },
   {
+    "id": "hyperv_host",
+    "name": "Hyper-V",
+    "model_id": "hyperv_host",
+    "task_type": "vm",
+    "type": "job",
+    "credential_protocol": "winrm",
+    "credential_default_port": 5985,
+    "category": "vmware",
+    "edition": "社区版",
+    "original_form": "winrm",
+    "form_source": "p398_883 Hyper-V WinRM",
+    "binding": "host/winrm",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ]
+  },
+  {
     "id": "zstack",
     "name": "ZStack",
     "model_id": "zstack",

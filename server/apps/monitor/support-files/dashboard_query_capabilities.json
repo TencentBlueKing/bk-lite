@@ -1083,6 +1083,13 @@
       "template": "win_exchange_adaccess_LDAP_Timeout_Errors_persec{instance_type=\"exchange\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:21de3117",
+      "object_names": [
+        "Host"
+      ],
+      "template": "cpu_usage_softirq{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} or cpu_usage_softirq_total_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:22082839",
       "object_names": [
         "MSSQL"

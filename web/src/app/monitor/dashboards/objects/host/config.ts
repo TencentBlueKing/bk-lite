@@ -100,6 +100,15 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: HOST_PALETTE.indigo
     },
     {
+      name: 'cpu_usage_softirq_total',
+      display_name: 'Softirq 占比',
+      description: 'CPU 处理软中断的时间占比。没有序列时不画。',
+      unit: 'percent',
+      query: 'cpu_usage_softirq{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_softirq_total_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.cyan,
+      linuxOnly: true
+    },
+    {
       name: 'cpu_usage_steal_total',
       display_name: 'Steal 占比',
       description: '虚拟化环境中被宿主机抢占的 CPU 时间占比。没有序列时不画。',

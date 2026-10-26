@@ -194,6 +194,13 @@ class VmwareManage(object):
                     except Exception as err:
                         logger.error(f"get_hosts host.summary.config.product host esxi_version error! {err}")
 
+                boot_time = ""
+                try:
+                    boot_time = self._dt_to_iso(host.runtime.bootTime)
+                except Exception as err:
+                    logger.error(f"get_hosts host.runtime.bootTime host boot_time error! {err}")
+                    boot_time = ""
+
                 memory_total = host.hardware.memorySize // 1024 // 1024
 
                 result.append(
@@ -207,6 +214,7 @@ class VmwareManage(object):
                         "cpu_cores": host.summary.hardware.numCpuCores,
                         "vcpus": host.summary.hardware.numCpuThreads,
                         "esxi_version": esxi_version,
+                        "boot_time": boot_time,
                         "vmware_ds": ",".join(i._moId for i in host.datastore),
                     }
                 )

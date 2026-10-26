@@ -8,7 +8,7 @@ import OperateModal from '@/components/operate-modal';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 import type { WorkflowRecord } from '../lib/types';
-import { createDefaultWorkflowName } from '../lib/workflow-draft';
+import { createCopiedWorkflowName, createDefaultWorkflowName } from '../lib/workflow-draft';
 import { WorkflowPermission, type WorkflowOperation, type WorkflowPermissionArea } from './workflow-permission';
 
 export interface WorkflowProfileValue {
@@ -67,7 +67,7 @@ export function WorkflowProfileDialog({
     }
     if (!workflow) return;
     form.setFieldsValue({
-      name: mode === 'copy' ? defaultName : workflow.name,
+      name: mode === 'copy' ? createCopiedWorkflowName(workflow.name) : workflow.name,
       description: workflow.description || '',
       team: mode === 'copy' ? currentTeam : (workflow.team?.length ? workflow.team : currentTeam),
     });
@@ -97,18 +97,18 @@ export function WorkflowProfileDialog({
       {marketCopy ? <p className="mb-3 text-sm text-[var(--color-text-3)]">{t('workflowOrchestration.workflow.marketDuplicateHint', '复制后出现在「流程」里，状态是纯草稿，不会发布，也不会改动这条内置流程。')}</p> : null}
       <Form form={form} layout="vertical" requiredMark>
         <Form.Item
-          name="team"
-          label={t('workflowOrchestration.workflow.organization', '组织')}
-          rules={[{ required: true, type: 'array', min: 1, message: t('workflowOrchestration.workflow.organizationRequired', '请选择组织') }]}
-        >
-          <GroupTreeSelect multiple disabled={organizationLocked} placeholder={t('workflowOrchestration.workflow.organizationRequired', '请选择组织')} />
-        </Form.Item>
-        <Form.Item
           name="name"
           label={t('workflowOrchestration.workflow.name', '流程名称')}
           rules={[{ required: true, whitespace: true, message: t('workflowOrchestration.workflow.nameRequired', '请填写流程名称') }]}
         >
           <Input maxLength={120} autoFocus />
+        </Form.Item>
+        <Form.Item
+          name="team"
+          label={t('workflowOrchestration.workflow.organization', '组织')}
+          rules={[{ required: true, type: 'array', min: 1, message: t('workflowOrchestration.workflow.organizationRequired', '请选择组织') }]}
+        >
+          <GroupTreeSelect multiple disabled={organizationLocked} placeholder={t('workflowOrchestration.workflow.organizationRequired', '请选择组织')} />
         </Form.Item>
         <Form.Item name="description" label={t('workflowOrchestration.workflow.description', '描述')}>
           <Input.TextArea rows={3} maxLength={500} />

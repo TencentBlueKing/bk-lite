@@ -959,7 +959,7 @@ def run_mixed_host_health_chain_scenario(
                     "type": "SIMPLE",
                     "inputParameters": {
                         "targets": [linux_target],
-                        "script_type": "shell",
+                        "script_type": "python",
                         "script_content": linux_script,
                         "execution_params": "",
                         "timeout_seconds": job_timeout,

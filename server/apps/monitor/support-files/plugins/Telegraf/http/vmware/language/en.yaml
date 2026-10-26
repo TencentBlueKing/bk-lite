@@ -17,6 +17,7 @@ monitor_object_metric_group:
     Memory: Memory
     Disk: Disk
     Network: Network
+    System: System
   DataStorage:
     DataStorage: Datastore
   VM:
@@ -25,6 +26,7 @@ monitor_object_metric_group:
     Disk: Disk
     Network: Network
     Power: Power
+    Snapshot: Snapshot
 monitor_object_metric:
   vCenter:
     vmware_esxi_count:
@@ -64,6 +66,12 @@ monitor_object_metric:
     net_bytesTx_average_gauge:
       name: Network Transmit Throughput
       desc: Amount of network data sent per second.
+    boot_time_gauge:
+      name: Boot time
+      desc: ESXi host boot time as Unix seconds. Changes only after a reboot.
+    uptime_seconds_gauge:
+      name: Uptime
+      desc: Seconds since the ESXi host booted. Not converted to days.
   DataStorage:
     disk_used_average_gauge:
       name: Disk Usage
@@ -74,6 +82,12 @@ monitor_object_metric:
     store_accessible_gauge:
       name: Datastore Accessibility
       desc: Whether the datastore is accessible.
+    datastore_io_read_latency_gauge:
+      name: Read latency
+      desc: Aggregate datastore read latency in milliseconds.
+    datastore_io_write_latency_gauge:
+      name: Write latency
+      desc: Aggregate datastore write latency in milliseconds.
   VM:
     cpu_usage_average_gauge:
       name: CPU Usage
@@ -111,3 +125,15 @@ monitor_object_metric:
     power_state_gauge:
       name: Power State
       desc: Current power state of the virtual machine.
+    tools_status_gauge:
+      name: Tools status
+      desc: VMware Tools status code. 0 toolsOk, 1 toolsOld, 2 toolsNotInstalled, 3 toolsNotRunning.
+    snapshot_storage_bytes_gauge:
+      name: Snapshot storage
+      desc: Deduplicated bytes of snapshot delta, data, and memory files. Zero when there is no snapshot.
+    oldest_snapshot_age_seconds_gauge:
+      name: Oldest snapshot age
+      desc: Seconds since the oldest snapshot was created. Zero when there is no valid createTime.
+    snapshot_count_gauge:
+      name: Snapshot count
+      desc: Number of snapshots in the VM snapshot tree. Zero when there is no snapshot.

@@ -31,6 +31,7 @@ export const HOST_PERFORMANCE_METRIC_NAMES = [
   'cpu_usage_system_total',
   'cpu_usage_iowait_total',
   'cpu_usage_irq_total',
+  'cpu_usage_softirq_total',
   'cpu_usage_steal_total',
   'system_load1',
   'system_load5',

@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactAce from 'react-ace';
 import { Button, Tooltip, message } from 'antd';
+import 'ace-builds/src-noconflict/mode-json';
 import 'ace-builds/src-noconflict/mode-python';
 import 'ace-builds/src-noconflict/mode-powershell';
 import 'ace-builds/src-noconflict/mode-sh';
@@ -52,6 +53,8 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   const enableCopy = headerOptions?.copy ?? false;
   const enableFullscreen = headerOptions?.fullscreen ?? false;
   const shouldShowHeader = enableCopy || enableFullscreen;
+  const requestedHeight = typeof restProps.height === 'string' ? restProps.height : undefined;
+  const fillWithHeader = shouldShowHeader && (requestedHeight === '100%' || requestedHeight == null);
   const tokenSurface = appearance === 'token';
   const iconColor = tokenSurface ? 'var(--color-text-2)' : 'var(--color-text-3)';
 
@@ -210,6 +213,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
         }}
         {...restProps}
         width={isFullscreen ? '100%' : (restProps.width as string)}
+        height={isFullscreen ? '100%' : fillWithHeader ? 'calc(100% - 2rem)' : requestedHeight}
         value={editorValue}
         onChange={handleChange}
       />

@@ -157,7 +157,7 @@ def test_vault_auth_maps_to_original_form_keys_without_page_secrets(monkeypatch,
         assert result["password"] == "secret-value"
 
 
-@pytest.mark.parametrize("entry", [e for e in ENTRIES if e["type"] == "job" and e["id"] != "pc"], ids=lambda e: e["id"])
+@pytest.mark.parametrize("entry", [e for e in ENTRIES if e["type"] == "job" and e["id"] not in {"pc", "hyperv_host"}], ids=lambda e: e["id"])
 def test_script_jobs_select_ssh_type_in_their_object_category(entry):
     expected = entry["binding"].split("/")[0] + "/ssh"
     assert binding_for_collect_object(entry["id"], model_id=entry["model_id"], driver_type="job") == expected

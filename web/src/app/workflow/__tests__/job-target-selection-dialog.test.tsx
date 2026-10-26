@@ -53,7 +53,7 @@ describe('作业目标选择弹窗', () => {
     const confirm = vi.fn();
     render(<App><JobTargetSelectionDialog open value={[]} onCancel={vi.fn()} onConfirm={confirm} /></App>);
 
-    expect(await screen.findByText('选择主机 · 目标主机')).not.toBeNull();
+    expect(await screen.findByText((_, element) => element?.classList.contains('ant-modal-title') === true && element.textContent === '选择主机 - 目标主机')).not.toBeNull();
     expect(screen.getByRole('tab', { name: /节点管理/ })).not.toBeNull();
     expect(screen.getByRole('tab', { name: /作业平台/ })).not.toBeNull();
     expect(screen.getByText(/节点管理与作业平台不能混选/)).not.toBeNull();

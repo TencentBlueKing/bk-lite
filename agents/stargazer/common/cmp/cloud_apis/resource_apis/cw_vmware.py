@@ -5,17 +5,15 @@ import ssl
 import time
 from ssl import SSLEOFError
 
-from pyVim import connect
-from pyVim.connect import SmartConnect
-from pyVmomi import vim
-
 from common.cmp.cloud_apis.base import PrivateCloudManage
 from common.cmp.cloud_apis.cloud_object.base import Region, Zone
 from common.cmp.cloud_apis.constant import CloudType
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.utils import convert_param_to_list
 from core.logger import logger
-
+from pyVim import connect
+from pyVim.connect import SmartConnect
+from pyVmomi import vim
 
 
 class CwVmware(object):
@@ -97,8 +95,6 @@ class Vmware(PrivateCloudManage):
         """
         try:
             import pytz
-            import os
-            from datetime import timezone, timedelta
 
             # 将时间字符串解析为naive datetime对象
             dt = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
@@ -129,22 +125,24 @@ class Vmware(PrivateCloudManage):
         获取服务器时区信息
         :return: 时区对象或时区字符串
         """
-        import pytz
         import os
-        from datetime import timezone, timedelta
+        from datetime import timedelta, timezone
+
+        import pytz
 
         try:
             # 方法1: 从环境变量获取时区
-            tz_env = os.environ.get('TZ')
+            tz_env = os.environ.get("TZ")
             if tz_env:
                 try:
                     return pytz.timezone(tz_env)
-                except:
+                except Exception:
                     pass
 
             # 方法2: 从系统获取时区信息
             try:
                 import time
+
                 # 获取系统时区偏移量（秒）
                 if time.daylight:
                     # 如果有夏令时，使用夏令时偏移
@@ -160,16 +158,16 @@ class Vmware(PrivateCloudManage):
                 # 创建固定偏移的时区对象
                 server_tz = timezone(timedelta(hours=offset_hours, minutes=offset_minutes))
                 return server_tz
-            except:
+            except Exception:
                 pass
 
             # 方法3: 尝试从/etc/timezone读取（Linux系统）
             try:
-                if os.path.exists('/etc/timezone'):
-                    with open('/etc/timezone', 'r') as f:
+                if os.path.exists("/etc/timezone"):
+                    with open("/etc/timezone", "r") as f:
                         tz_name = f.read().strip()
                         return pytz.timezone(tz_name)
-            except:
+            except Exception:
                 pass
 
             # 方法4: 默认使用UTC
@@ -262,19 +260,13 @@ class Vmware(PrivateCloudManage):
             region = kwargs["region"]
             dc_obj = self._get_obj_bymoId(self.content, [vim.Datacenter], region)
             container = self.content.viewManager.CreateContainerView(dc_obj.hostFolder, [vim.ComputeResource], True)
-            data = [
-                self._format_resource_result("zone", {"obj": i, "region_id": region, "region_name": dc_obj.name})
-                for i in container.view
-                if i
-            ]
+            data = [self._format_resource_result("zone", {"obj": i, "region_id": region, "region_name": dc_obj.name}) for i in container.view if i]
         else:
             region_rs = self.list_regions()
             if region_rs["result"]:
                 for cur_region in region_rs["data"]:
                     dc_obj = self._get_obj_bymoId(self.content, [vim.Datacenter], cur_region["resource_id"])
-                    container = self.content.viewManager.CreateContainerView(
-                        dc_obj.hostFolder, [vim.ComputeResource], True
-                    )
+                    container = self.content.viewManager.CreateContainerView(dc_obj.hostFolder, [vim.ComputeResource], True)
                     data.extend(
                         [
                             self._format_resource_result(
@@ -586,7 +578,7 @@ class Vmware(PrivateCloudManage):
 
             # 总 CPU 核心数和每核心 MHz
             num_cores = cpu_info.numCpuCores  # 总核心数
-            cpu_mhz = cpu_info.hz // 10 ** 6
+            cpu_mhz = cpu_info.hz // 10**6
 
             # 总 CPU 频率（以 MHz 为单位）
             total_cpu_mhz = num_cores * cpu_mhz
@@ -694,6 +686,10 @@ class Vmware(PrivateCloudManage):
             # 处理特殊指标
             self._process_special_metrics(special_metrics, obj_type, obj_list, filter_obj_list, data, res)
 
+            # 数据存储只有历史性能：300s 间隔，窗口至少覆盖一个 rollup。
+            if obj_type == "datastore":
+                self._prepare_datastore_perf_query(data)
+
             # 批量处理其他监控数据
             self._process_batch_monitoring_data(batch_counters, filter_obj_list, data, metrics, content, res)
 
@@ -729,6 +725,8 @@ class Vmware(PrivateCloudManage):
                     "datastore_throughput_read",
                     "datastore_throughput_write",
                     "net_usage_average",
+                    "boot_time",
+                    "uptime_seconds",
                 ],
             )
         elif resources[0]["bk_obj_id"] == "vmware_vc":
@@ -754,6 +752,8 @@ class Vmware(PrivateCloudManage):
                     "disk_used_average",
                     "disk_free_average",
                     "store_accessible",
+                    "datastore_io_read_latency",
+                    "datastore_io_write_latency",
                 ],
             )
         else:
@@ -775,9 +775,13 @@ class Vmware(PrivateCloudManage):
                     "disk_numberWrite_summation",
                     "disk_io_usage",
                     "power_state",
+                    "tools_status",
                     # 添加新的虚拟机相关指标
                     "disk_io_read_latency",
                     "disk_io_write_latency",
+                    "snapshot_storage_bytes",
+                    "oldest_snapshot_age_seconds",
+                    "snapshot_count",
                 ],
             )
 
@@ -805,11 +809,17 @@ class Vmware(PrivateCloudManage):
 
         special_metric_conditions = {
             ("vm", "power_state"): True,
+            ("vm", "tools_status"): True,
             ("vm", "disk_used_average"): True,
+            ("vm", "snapshot_storage_bytes"): True,
+            ("vm", "oldest_snapshot_age_seconds"): True,
+            ("vm", "snapshot_count"): True,
             ("datastore", "store_accessible"): True,
             ("datastore", "disk_used_average"): True,
             ("datastore", "disk_free_average"): True,
             ("esxi", "cpu_usage_average"): True,
+            ("esxi", "boot_time"): True,
+            ("esxi", "uptime_seconds"): True,
             # 添加 vCenter 特殊指标
             ("vc", "disk_usage_percent"): True,
             ("vc", "disk_free_space"): True,
@@ -834,6 +844,12 @@ class Vmware(PrivateCloudManage):
         for metric in special_metrics:
             if metric == "power_state":
                 self._process_power_state(obj_list, data, res)
+            elif metric == "tools_status":
+                self._process_tools_status(obj_list, data, res)
+            elif metric in ("snapshot_storage_bytes", "oldest_snapshot_age_seconds", "snapshot_count") and obj_type == "vm":
+                if not data.get("_vm_snapshots_done"):
+                    self._process_vm_snapshots(obj_list, data, res)
+                    data["_vm_snapshots_done"] = True
             elif metric == "disk_used_average":
                 if obj_type == "vm":
                     self._process_vm_disk_used_average(filter_obj_list, data, res)
@@ -845,6 +861,10 @@ class Vmware(PrivateCloudManage):
                 self._process_store_accessible(filter_obj_list, data, res)
             elif metric == "cpu_usage_average" and obj_type == "esxi":
                 self._process_esxi_cpu_usage(data, res)
+            elif metric == "boot_time" and obj_type == "esxi":
+                self._process_esxi_boot_time(obj_list, data, res)
+            elif metric == "uptime_seconds" and obj_type == "esxi":
+                self._process_esxi_uptime(obj_list, data, res)
             elif obj_type == "vc":
                 if metric in ["disk_usage_percent", "disk_free_space"]:
                     self._process_vc_disk_metrics(filter_obj_list, metric, data, res)
@@ -877,9 +897,7 @@ class Vmware(PrivateCloudManage):
         if metric == "disk_usage_percent":
             if total_capacity > 0:
                 usage_percent = (used_space / total_capacity) * 100
-                res.setdefault(filter_obj_list[0], {}).setdefault(metric, []).append(
-                    [timestamp, round(usage_percent, 2)]
-                )
+                res.setdefault(filter_obj_list[0], {}).setdefault(metric, []).append([timestamp, round(usage_percent, 2)])
 
         elif metric == "disk_free_space":
             free_space_gb = free_space / (1024 * 1024 * 1024)
@@ -921,9 +939,7 @@ class Vmware(PrivateCloudManage):
         if metric == "memory_usage_percent":
             if total_memory > 0:
                 usage_percent = (total_used_memory / total_memory) * 100
-                res.setdefault(filter_obj_list[0], {}).setdefault(metric, []).append(
-                    [timestamp, round(usage_percent, 2)]
-                )
+                res.setdefault(filter_obj_list[0], {}).setdefault(metric, []).append([timestamp, round(usage_percent, 2)])
 
         elif metric == "memory_free_amount":
             free_memory_mb = total_free_memory / (1024 * 1024)  # 转换为 MB
@@ -962,9 +978,7 @@ class Vmware(PrivateCloudManage):
         # 计算总的CPU使用率
         if total_cpu_mhz > 0:
             usage_percent = (used_cpu_mhz / total_cpu_mhz) * 100
-            res.setdefault(filter_obj_list[0], {}).setdefault("cpu_usage_percent", []).append(
-                [timestamp, round(usage_percent, 2)]
-            )
+            res.setdefault(filter_obj_list[0], {}).setdefault("cpu_usage_percent", []).append([timestamp, round(usage_percent, 2)])
 
     def _process_vm_disk_used_average(self, filter_obj_list, data, res):
         """处理VM磁盘使用率指标"""
@@ -981,9 +995,135 @@ class Vmware(PrivateCloudManage):
         timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
 
         for obj in obj_list:
-            res.setdefault(obj._moId, {}).setdefault("power_state", []).append(
-                [timestamp, int(obj.summary.runtime.powerState == "poweredOn")]
-            )
+            res.setdefault(obj._moId, {}).setdefault("power_state", []).append([timestamp, int(obj.summary.runtime.powerState == "poweredOn")])
+
+    @staticmethod
+    def _tools_status_code(value):
+        if value is None:
+            return None
+        name = getattr(value, "name", None)
+        if not name:
+            text = str(value).strip()
+            name = text.rsplit(".", 1)[-1] if text else ""
+        if not name:
+            return None
+        return {
+            "toolsOk": 0,
+            "toolsOld": 1,
+            "toolsNotInstalled": 2,
+            "toolsNotRunning": 3,
+        }.get(name)
+
+    def _process_tools_status(self, obj_list, data, res, metric=None):
+        """虚拟机 Tools 状态码，读 guest.toolsStatus。未知或空不出序列。"""
+        timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
+        for obj in obj_list:
+            try:
+                code = self._tools_status_code(obj.guest.toolsStatus)
+                if code is None:
+                    continue
+                res.setdefault(obj._moId, {}).setdefault("tools_status", []).append([timestamp, code])
+            except Exception:
+                logger.exception("process tools_status failed for %s", getattr(obj, "_moId", ""))
+
+    @staticmethod
+    def _snapshot_file_keys(snap_layout):
+        keys = set()
+        for attr in ("dataKey", "memoryKey"):
+            try:
+                key = int(getattr(snap_layout, attr, -1))
+            except Exception:
+                continue
+            if key >= 0:
+                keys.add(key)
+        for disk in getattr(snap_layout, "disk", None) or []:
+            for chain in getattr(disk, "chain", None) or []:
+                for file_key in getattr(chain, "fileKey", None) or []:
+                    try:
+                        key = int(file_key)
+                    except Exception:
+                        continue
+                    if key >= 0:
+                        keys.add(key)
+        return keys
+
+    @classmethod
+    def _walk_snapshot_tree(cls, nodes):
+        for node in nodes or []:
+            yield node
+            yield from cls._walk_snapshot_tree(getattr(node, "childSnapshotList", None))
+
+    @classmethod
+    def _snapshot_count_and_oldest(cls, snapshot_info):
+        if snapshot_info is None:
+            return 0, None
+        roots = getattr(snapshot_info, "rootSnapshotList", None)
+        if not roots:
+            return 0, None
+        count = 0
+        oldest = None
+        for node in cls._walk_snapshot_tree(roots):
+            count += 1
+            create_time = getattr(node, "createTime", None)
+            if not create_time:
+                continue
+            if oldest is None or create_time < oldest:
+                oldest = create_time
+        return count, oldest
+
+    @staticmethod
+    def _snapshot_storage_bytes(layout):
+        if not layout:
+            return 0
+        size_by_key = {}
+        for item in getattr(layout, "file", None) or []:
+            try:
+                size_by_key[int(item.key)] = int(item.size or 0)
+            except Exception:
+                continue
+        keys = set()
+        for snap in getattr(layout, "snapshot", None) or []:
+            keys |= Vmware._snapshot_file_keys(snap)
+        return sum(size_by_key.get(key, 0) for key in keys)
+
+    @staticmethod
+    def _snapshot_age_seconds(now, create_time):
+        if create_time.tzinfo is None and now.tzinfo is not None:
+            create_time = create_time.replace(tzinfo=datetime.timezone.utc)
+        elif create_time.tzinfo is not None and now.tzinfo is None:
+            now = now.replace(tzinfo=datetime.timezone.utc)
+        return max(0, int((now - create_time).total_seconds()))
+
+    @classmethod
+    def _compute_vm_snapshot_metrics(cls, vm, now):
+        try:
+            vm.RefreshStorageInfo()
+        except Exception:
+            logger.exception("RefreshStorageInfo failed for %s", getattr(vm, "_moId", ""))
+        snapshot_info = getattr(vm, "snapshot", None)
+        count, oldest = cls._snapshot_count_and_oldest(snapshot_info)
+        if count == 0:
+            return 0, 0, 0
+        storage = cls._snapshot_storage_bytes(getattr(vm, "layoutEx", None))
+        age = 0 if oldest is None else cls._snapshot_age_seconds(now, oldest)
+        return int(storage), int(age), int(count)
+
+    def _process_vm_snapshots(self, obj_list, data, res, metric=None):
+        """Snapshot size/age/count. No names or createTime in labels. Per-VM errors skip only snapshots."""
+        timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
+        try:
+            now = datetime.datetime.strptime(data["EndTime"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
+        except Exception:
+            now = datetime.datetime.now(datetime.timezone.utc)
+        for obj in obj_list:
+            try:
+                storage, age, count = self._compute_vm_snapshot_metrics(obj, now)
+                bucket = res.setdefault(obj._moId, {})
+                bucket.setdefault("snapshot_storage_bytes", []).append([timestamp, storage])
+                bucket.setdefault("oldest_snapshot_age_seconds", []).append([timestamp, age])
+                bucket.setdefault("snapshot_count", []).append([timestamp, count])
+            except Exception:
+                logger.exception("process vm snapshots failed for %s", getattr(obj, "_moId", ""))
 
     def _process_store_accessible(self, filter_obj_list, data, res, metric=None):
         """处理存储可访问性指标"""
@@ -1005,6 +1145,13 @@ class Vmware(PrivateCloudManage):
 
     def _add_metric_value(self, vm_name, metric, value_info, k, timestamp, entity_result, res):
         """添加指标值到结果中"""
+        if metric in ("datastore_io_read_latency", "datastore_io_write_latency"):
+            instance = value_info.id.instance or ""
+            if instance:
+                return
+            rate = value_info.value[k]
+            res.setdefault(vm_name, {}).setdefault(metric, []).append([timestamp * 1000, round(float(rate), 3)])
+            return
         no_dims = len(entity_result.value) == 1
         dims = None
         if not no_dims:
@@ -1022,6 +1169,14 @@ class Vmware(PrivateCloudManage):
             res.setdefault(vm_name, {}).setdefault(metric, []).append([timestamp * 1000, _value])
         else:
             res.setdefault(vm_name, {}).setdefault(metric, {}).setdefault(dims, []).append([timestamp * 1000, _value])
+
+    def _prepare_datastore_perf_query(self, data):
+        """Datastore 无 realtime，QueryPerf 必须用历史 300s，且窗口覆盖至少一个采样。"""
+        data["interval"] = 300
+        end_dt = datetime.datetime.now()
+        data["EndTime"] = end_dt.strftime("%Y-%m-%d %H:%M:%S")
+        data["StartTime"] = (end_dt - datetime.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        return data
 
     def _process_batch_monitoring_data(self, batch_counters, filter_obj_list, data, metrics, content, res):
         """处理批量监控数据"""
@@ -1109,6 +1264,9 @@ class Vmware(PrivateCloudManage):
 
                     no_dims = len(n.value) == 1
                     for value_info in n.value:
+                        if metric in ("datastore_io_read_latency", "datastore_io_write_latency"):
+                            self._add_metric_value(vm_name, metric, value_info, k, timestamp, n, res)
+                            continue
                         dims = None
                         if not no_dims:
                             instance = value_info.id.instance or n.entity.name
@@ -1127,9 +1285,7 @@ class Vmware(PrivateCloudManage):
                         if not dims:
                             res.setdefault(vm_name, {}).setdefault(metric, []).append([timestamp * 1000, _value])
                         else:
-                            res.setdefault(vm_name, {}).setdefault(metric, {}).setdefault(dims, []).append(
-                                [timestamp * 1000, _value]
-                            )
+                            res.setdefault(vm_name, {}).setdefault(metric, {}).setdefault(dims, []).append([timestamp * 1000, _value])
 
     @classmethod
     def _get_vmware_metrics(cls, content):
@@ -1151,6 +1307,31 @@ class Vmware(PrivateCloudManage):
             value, timestamp = metric_value
             res.setdefault(_obj, {}).setdefault("cpu_usage_average", []).append([timestamp * 1000, value])
 
+    def _process_esxi_boot_time(self, obj_list, data, res, metric=None):
+        """HostSystem.runtime.bootTime as Unix seconds. Jumps only after reboot."""
+        timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
+        for obj in obj_list:
+            try:
+                boot = obj.runtime.bootTime
+                if not boot:
+                    continue
+                unix_s = self._convert_vmware_datetime_to_timestamp(boot)
+                res.setdefault(obj._moId, {}).setdefault("boot_time", []).append([timestamp, unix_s])
+            except Exception:
+                logger.exception("process boot_time failed for %s", getattr(obj, "_moId", ""))
+
+    def _process_esxi_uptime(self, obj_list, data, res, metric=None):
+        """HostSystem.summary.quickStats.uptime in seconds. Do not convert to days."""
+        timestamp = self._convert_server_time_to_timestamp(data["EndTime"]) * 1000
+        for obj in obj_list:
+            try:
+                uptime = obj.summary.quickStats.uptime
+                if uptime is None:
+                    continue
+                res.setdefault(obj._moId, {}).setdefault("uptime_seconds", []).append([timestamp, int(uptime)])
+            except Exception:
+                logger.exception("process uptime_seconds failed for %s", getattr(obj, "_moId", ""))
+
     def _process_disk_used_average(self, filter_obj_list, data, res, metric=None):
         """处理磁盘使用率指标 - 保留向后兼容性"""
         # 这个方法保留用于向后兼容，新代码应该使用 _process_vm_disk_used_average
@@ -1165,6 +1346,7 @@ class Vmware(PrivateCloudManage):
         if vmware_datetime.tzinfo is not None:
             # 如果datetime对象带有时区信息，先转换为UTC时间戳
             import calendar
+
             utc_timestamp = calendar.timegm(vmware_datetime.utctimetuple())
             return utc_timestamp
         else:
