@@ -1,5 +1,7 @@
 # -- coding: utf-8 --
 """机房机柜布局编辑纯逻辑。"""
+from contextlib import contextmanager
+
 import pytest
 
 from apps.cmdb.services.rack_room_edit import (
@@ -26,6 +28,7 @@ from apps.cmdb.services.rack_room_edit import (
     required_asset_permission,
     user_has_asset_permission,
 )
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 pytestmark = pytest.mark.unit
 
@@ -231,6 +234,8 @@ def test_execute_unplace_rack_clears_location_keeps_instance(monkeypatch):
 def test_execute_unplace_device_clears_start_keeps_u_size(monkeypatch):
     from apps.cmdb.services import rack_room_edit as svc
 
+    _install_passthrough_rack_lock(monkeypatch)
+
     existing = {
         "_id": 11,
         "inst_uuid": "sw-1",
@@ -319,6 +324,8 @@ def test_execute_unplace_rack_rejects_other_room(monkeypatch):
 def test_execute_unplace_device_rejects_other_rack(monkeypatch):
     from apps.cmdb.services import rack_room_edit as svc
 
+    _install_passthrough_rack_lock(monkeypatch)
+
     existing = {
         "_id": 11,
         "inst_uuid": "sw-1",
@@ -360,6 +367,8 @@ def test_execute_unplace_device_rejects_other_rack(monkeypatch):
 def test_execute_place_device_rejects_host(monkeypatch):
     from apps.cmdb.services import rack_room_edit as svc
 
+    _install_passthrough_rack_lock(monkeypatch)
+
     monkeypatch.setattr(
         "apps.cmdb.services.rack_room.get_rack_layout",
         lambda *a, **k: {"rack": {"u_count": 42}, "placed": []},
@@ -378,3 +387,201 @@ def test_execute_place_device_rejects_host(monkeypatch):
             u_start=1,
             u_size=1,
         )
+
+
+RACK_UUID = "rack-9"
+OTHER_RACK_UUID = "rack-8"
+_OCCUPIED_SWITCH = {"inst_id": "sw-occupied", "model_id": "switch", "rack_u_start": 10, "u_size": 2}
+
+
+class _RackLockDouble:
+    """进入含目标机柜 inst_uuid 的锁之后，布局才能看到 U10 上的 switch。"""
+
+    def __init__(self):
+        self.held_keys: set[str] = set()
+        self.busy_uuids: set[str] = set()
+        self.hold_calls: list[list[str]] = []
+        self.locked_reads = 0
+
+    def holds(self, inst_uuid: str) -> bool:
+        return any(inst_uuid in key for key in self.held_keys)
+
+    def install(self, monkeypatch):
+        state = self
+
+        @contextmanager
+        def hold(lock_keys, *, lease_seconds=None):
+            keys = [str(key) for key in (lock_keys or [])]
+            state.hold_calls.append(keys)
+            if any(uuid in key for key in keys for uuid in state.busy_uuids):
+                raise BaseAppException("相同唯一键正在写入，请稍后重试")
+            for key in keys:
+                state.held_keys.add(key)
+            try:
+                yield "owner"
+            finally:
+                for key in keys:
+                    state.held_keys.discard(key)
+
+        monkeypatch.setattr("apps.cmdb.services.unique_write_lock.UniqueWriteLockService.hold", hold)
+
+
+@contextmanager
+def _passthrough_rack_lock(lock_keys, *, lease_seconds=None):
+    yield "passthrough"
+
+
+def _install_passthrough_rack_lock(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.services.unique_write_lock.UniqueWriteLockService.hold",
+        _passthrough_rack_lock,
+    )
+
+
+def _device(inst_id, inst_uuid, model_id, u_size=1):
+    return {
+        "_id": inst_id,
+        "inst_uuid": inst_uuid,
+        "model_id": model_id,
+        "inst_name": model_id,
+        "u_size": u_size,
+    }
+
+
+def _layout_after_lock(state: _RackLockDouble, rack_uuid: str):
+    def get_rack_layout(*_args, **_kwargs):
+        if state.holds(rack_uuid):
+            state.locked_reads += 1
+            return {"rack": {"u_count": 42}, "placed": [dict(_OCCUPIED_SWITCH)]}
+        return {"rack": {"u_count": 42}, "placed": []}
+
+    return get_rack_layout
+
+
+def _place_existing(monkeypatch, state: _RackLockDouble, *, existing, u_start, u_size, captured, rack_uuid=RACK_UUID):
+    from apps.cmdb.services import rack_room_edit as svc
+
+    class InstanceManage:
+        @staticmethod
+        def instance_association_map(model_id, inst_ids, related_model=None):
+            return {}
+
+        @staticmethod
+        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None):
+            captured["update"] = update_attr
+            captured["locked_update"] = state.holds(rack_uuid)
+            return {**existing, **update_attr}
+
+        @staticmethod
+        def instance_association_create(data, operator):
+            captured["assoc"] = data
+            captured["locked_assoc"] = state.holds(rack_uuid)
+
+    state.install(monkeypatch)
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage", InstanceManage)
+    monkeypatch.setattr("apps.cmdb.services.rack_room.get_rack_layout", _layout_after_lock(state, rack_uuid))
+    return svc.execute_layout_action(
+        action=ACTION_PLACE_EXISTING,
+        scope="rack",
+        container={"_id": 9, "model_id": "rack", "inst_uuid": rack_uuid, "u_count": 42},
+        operator="bob",
+        allowed_org_ids=[1],
+        user_groups=[],
+        roles=[],
+        existing=existing,
+        u_start=u_start,
+        u_size=u_size,
+    )
+
+
+def test_place_existing_same_u_reads_occupancy_only_inside_rack_lock(monkeypatch):
+    state = _RackLockDouble()
+    router = _device(21, "router-1", "router", u_size=2)
+    captured = {}
+    with pytest.raises(RackRoomEditError, match="U 位与已有设备重叠"):
+        _place_existing(
+            monkeypatch,
+            state,
+            existing=router,
+            u_start=10,
+            u_size=2,
+            captured=captured,
+        )
+    assert state.locked_reads >= 1
+    assert captured.get("update") is None
+    assert captured.get("assoc") is None
+
+
+def test_sequential_place_into_empty_u_holds_rack_lock_through_write(monkeypatch):
+    state = _RackLockDouble()
+    switch = _device(11, "sw-1", "switch")
+    router = _device(21, "router-1", "router")
+    first_captured = {}
+    second_captured = {}
+    first = _place_existing(
+        monkeypatch,
+        state,
+        existing=switch,
+        u_start=1,
+        u_size=1,
+        captured=first_captured,
+    )
+    second = _place_existing(
+        monkeypatch,
+        state,
+        existing=router,
+        u_start=3,
+        u_size=1,
+        captured=second_captured,
+    )
+    assert first["action"] == ACTION_PLACE_EXISTING
+    assert second["action"] == ACTION_PLACE_EXISTING
+    assert first_captured["update"] == {"rack_u_start": 1, "u_size": 1}
+    assert second_captured["update"] == {"rack_u_start": 3, "u_size": 1}
+    assert first_captured["locked_update"] is True
+    assert first_captured["locked_assoc"] is True
+    assert second_captured["locked_update"] is True
+    assert second_captured["locked_assoc"] is True
+    assert first_captured["assoc"]["model_asst_id"] == "rack_contains_switch"
+    assert second_captured["assoc"]["model_asst_id"] == "rack_contains_router"
+    assert state.locked_reads >= 1
+
+
+def test_other_rack_lock_does_not_block_device_place(monkeypatch):
+    state = _RackLockDouble()
+    state.busy_uuids.add(OTHER_RACK_UUID)
+    router = _device(21, "router-1", "router", u_size=2)
+    captured = {}
+    result = _place_existing(
+        monkeypatch,
+        state,
+        existing=router,
+        u_start=12,
+        u_size=2,
+        captured=captured,
+    )
+    assert result["action"] == ACTION_PLACE_EXISTING
+    assert captured["update"] == {"rack_u_start": 12, "u_size": 2}
+    assert captured["locked_update"] is True
+    assert captured["locked_assoc"] is True
+    assert state.hold_calls
+    assert all(RACK_UUID in key for keys in state.hold_calls for key in keys)
+    assert all(OTHER_RACK_UUID not in key for keys in state.hold_calls for key in keys)
+
+
+def test_busy_same_rack_lock_retries_without_writing(monkeypatch):
+    state = _RackLockDouble()
+    state.busy_uuids.add(RACK_UUID)
+    router = _device(21, "router-1", "router", u_size=2)
+    captured = {}
+    with pytest.raises(BaseAppException, match="相同唯一键正在写入，请稍后重试"):
+        _place_existing(
+            monkeypatch,
+            state,
+            existing=router,
+            u_start=12,
+            u_size=2,
+            captured=captured,
+        )
+    assert captured.get("update") is None
+    assert captured.get("assoc") is None
