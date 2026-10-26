@@ -43,19 +43,16 @@ def _blueking_binding_payload(instance, **overrides):
     return payload
 
 
-def test_blueking_login_auth_binding_rejects_unmatched_user_action_create(blueking_instance):
+def test_blueking_login_auth_binding_accepts_unmatched_user_action_create(blueking_instance):
     serializer = LoginAuthBindingSerializer(
         data=_blueking_binding_payload(
             blueking_instance,
             unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.CREATE,
-            default_group_name="Guests",
+            default_group_name="",
         )
     )
 
-    with pytest.raises(ValidationError) as excinfo:
-        serializer.is_valid(raise_exception=True)
-
-    assert "unmatched_user_action" in excinfo.value.detail
+    assert serializer.is_valid(), serializer.errors
 
 
 def test_blueking_login_auth_binding_rejects_non_username_external_field(blueking_instance):

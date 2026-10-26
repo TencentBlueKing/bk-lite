@@ -33,6 +33,8 @@ templates:
             label: 外部字段
           platform_field:
             label: 平台字段
+          unmatched_user_action:
+            label: 未匹配用户处理方式
     external_fields:
       username:
         label: 用户名

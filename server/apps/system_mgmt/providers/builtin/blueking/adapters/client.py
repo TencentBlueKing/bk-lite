@@ -149,6 +149,41 @@ def _iter_esb_pages(config, path, extra_params=None):
     return aggregated, None
 
 
+def retrieve_user_profile(config, username):
+    """按用户名读取目录资料。失败不记日志，把异常交回登录绑定。"""
+    error = _validate_credentials(config)
+    if error or not str(username or "").strip():
+        return None, "invalid_config", None
+    query = {
+        "bk_app_code": config.get("app_id"),
+        "bk_app_secret": config.get("app_token"),
+        "bk_username": CALLER_USERNAME,
+        "id": username,
+        "fields": "username,display_name,email,telephone",
+    }
+    try:
+        response = requests.get(_esb_url(config, RETRIEVE_USER_PATH), params=query, timeout=TIMEOUT)
+        data = _parse_json_response(response)
+    except requests.Timeout as error:
+        return None, "Timeout", error
+    except ValueError as error:
+        return None, "invalid_response", error
+    except requests.RequestException as error:
+        return None, "request_failed", error
+    if response.status_code != 200 or not data.get("result") or not isinstance(data.get("data"), dict):
+        return None, "auth_rejected", None
+    user = data["data"]
+    return (
+        {
+            "name": str(user.get("display_name") or "").strip(),
+            "email": str(user.get("email") or ""),
+            "mobile": str(user.get("telephone") or user.get("mobile") or ""),
+        },
+        None,
+        None,
+    )
+
+
 def get_login_username(config, bk_token):
     payload, error = _esb_get(config, LOGIN_GET_USER_PATH, {"bk_token": bk_token})
     if error:

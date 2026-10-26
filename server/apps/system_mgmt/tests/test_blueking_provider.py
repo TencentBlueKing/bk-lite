@@ -27,14 +27,14 @@ def test_blueking_app_token_is_secret_and_base_fields_reset_login_and_sync():
         assert field.reset_capabilities == ["login_auth", "user_sync"]
 
 
-def test_blueking_login_auth_locks_username_mapping_and_does_not_expose_unmatched_create():
+def test_blueking_login_auth_locks_username_mapping_and_exposes_unmatched_action():
     template = PROVIDER_MANIFEST.business_templates["login_auth_form"]
     field_keys = {field.key for group in template.groups for field in group.fields}
 
     assert template.available_external_fields == ["username"]
     assert template.default_external_match_field == "username"
     assert template.identity_fields == ["username"]
-    assert "unmatched_user_action" not in field_keys
+    assert "unmatched_user_action" in field_keys
     assert "default_group_name" not in field_keys
 
 

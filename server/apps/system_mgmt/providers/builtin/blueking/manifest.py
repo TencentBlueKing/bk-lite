@@ -60,6 +60,12 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                             {"key": "description", "label": "Description", "field_type": "string", "required": False},
                             {"key": "external_field", "label": "External field", "field_type": "string", "required": True},
                             {"key": "platform_field", "label": "Platform field", "field_type": "select", "required": True},
+                            {
+                                "key": "unmatched_user_action",
+                                "label": "Unmatched user action",
+                                "field_type": "select",
+                                "required": True,
+                            },
                         ],
                     }
                 ],

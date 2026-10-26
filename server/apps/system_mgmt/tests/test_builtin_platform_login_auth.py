@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from apps.system_mgmt.models import (
     IntegrationInstance,
@@ -7,7 +8,6 @@ from apps.system_mgmt.models import (
     LoginAuthBinding,
     LoginAuthBindingPlatformFieldChoices,
     LoginAuthBindingUnmatchedActionChoices,
-    LoginModule,
     User,
 )
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
@@ -698,14 +698,9 @@ def test_login_with_binding_creates_new_user_with_default_role_list_for_wechat(m
         ("guest", "mlops"),
         ("guest", "job"),
     }
-    assigned_pairs = set(
-        Role.objects.filter(id__in=new_user.role_list).values_list("name", "app")
-    )
+    assigned_pairs = set(Role.objects.filter(id__in=new_user.role_list).values_list("name", "app"))
     missing = expected_app_role_pairs - assigned_pairs
-    assert not missing, (
-        f"微信首次登录新用户缺少 role_list 中期望的 (name, app) 对: {missing}; "
-        f"实际写入: {assigned_pairs}"
-    )
+    assert not missing, f"微信首次登录新用户缺少 role_list 中期望的 (name, app) 对: {missing}; " f"实际写入: {assigned_pairs}"
 
 
 @pytest.mark.django_db
@@ -721,21 +716,23 @@ def test_serializer_allows_wechat_create_with_empty_default_group():
         capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
         enabled=True,
     )
-    serializer = LoginAuthBindingSerializer(data={
-        "name": "微信登录",
-        "integration_instance": instance.id,
-        "external_field": "openid",
-        "platform_field": LoginAuthBindingPlatformFieldChoices.USERNAME,
-        "unmatched_user_action": LoginAuthBindingUnmatchedActionChoices.CREATE,
-        "default_group_name": "",
-        "enabled": True,
-    })
+    serializer = LoginAuthBindingSerializer(
+        data={
+            "name": "微信登录",
+            "integration_instance": instance.id,
+            "external_field": "openid",
+            "platform_field": LoginAuthBindingPlatformFieldChoices.USERNAME,
+            "unmatched_user_action": LoginAuthBindingUnmatchedActionChoices.CREATE,
+            "default_group_name": "",
+            "enabled": True,
+        }
+    )
     assert serializer.is_valid(), serializer.errors
 
 
 @pytest.mark.django_db
-def test_serializer_rejects_non_wechat_create_with_empty_default_group():
-    """非 WeChat + create + 空 default_group_name 仍要求必填。"""
+def test_serializer_allows_feishu_create_with_empty_default_group():
+    """飞书创建且默认组织为空时允许保存，运行时进入 OpsPilotGuest。"""
     from apps.system_mgmt.serializers.login_auth_binding_serializer import LoginAuthBindingSerializer
 
     instance = IntegrationInstance.objects.create(
@@ -746,42 +743,71 @@ def test_serializer_rejects_non_wechat_create_with_empty_default_group():
         capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
         enabled=True,
     )
-    serializer = LoginAuthBindingSerializer(data={
-        "name": "飞书登录",
-        "integration_instance": instance.id,
-        "external_field": "user_id",
-        "platform_field": LoginAuthBindingPlatformFieldChoices.USERNAME,
-        "unmatched_user_action": LoginAuthBindingUnmatchedActionChoices.CREATE,
-        "default_group_name": "",
-        "enabled": True,
-    })
+    serializer = LoginAuthBindingSerializer(
+        data={
+            "name": "飞书登录",
+            "integration_instance": instance.id,
+            "external_field": "user_id",
+            "platform_field": LoginAuthBindingPlatformFieldChoices.USERNAME,
+            "unmatched_user_action": LoginAuthBindingUnmatchedActionChoices.CREATE,
+            "default_group_name": "",
+            "enabled": True,
+        }
+    )
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
+def test_serializer_rejects_other_provider_create_with_empty_default_group():
+    """飞书、企微、蓝鲸、微信以外的提供方，创建时仍必须填写默认组织。"""
+    from apps.system_mgmt.serializers.login_auth_binding_serializer import LoginAuthBindingSerializer
+
+    instance = IntegrationInstance.objects.create(
+        name="ad-instance",
+        provider_key="ad",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    serializer = LoginAuthBindingSerializer(
+        data={
+            "name": "AD登录",
+            "integration_instance": instance.id,
+            "external_field": "mail",
+            "platform_field": LoginAuthBindingPlatformFieldChoices.EMAIL,
+            "unmatched_user_action": LoginAuthBindingUnmatchedActionChoices.CREATE,
+            "default_group_name": "",
+            "enabled": True,
+        }
+    )
     assert not serializer.is_valid()
     assert "default_group_name" in serializer.errors
 
 
 @pytest.mark.django_db
 def test_serializer_rejects_non_wechat_update_clearing_default_group():
-    """非 WeChat create binding 在 update 场景显式提交 default_group_name="" 必须被拒绝。
+    """其它提供方的 create binding 在 update 场景显式提交 default_group_name="" 必须被拒绝。
 
     旧实现的 `attrs.get(...) or getattr(...)` 会把显式空字符串误回退为旧值,
-    让空值通过校验但仍以 "" 持久化,违反 spec。修复后用 `in` 区分未提交和显式空。
+    让空值通过校验但仍以 "" 持久化。用 `in` 区分未提交和显式空。
     """
     from apps.system_mgmt.serializers.login_auth_binding_serializer import LoginAuthBindingSerializer
 
     instance = IntegrationInstance.objects.create(
-        name="feishu-instance",
-        provider_key="feishu",
+        name="ad-instance",
+        provider_key="ad",
         config={},
         status=IntegrationInstanceStatusChoices.READY,
         capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
         enabled=True,
     )
     binding = LoginAuthBinding.objects.create(
-        name="feishu-binding",
+        name="ad-binding",
         integration_instance=instance,
         enabled=True,
-        external_field="user_id",
-        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        external_field="mail",
+        platform_field=LoginAuthBindingPlatformFieldChoices.EMAIL,
         unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.CREATE,
         default_group_name="OpsGuests",
     )

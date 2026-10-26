@@ -33,6 +33,8 @@ templates:
             label: External field
           platform_field:
             label: Platform field
+          unmatched_user_action:
+            label: Unmatched user action
     external_fields:
       username:
         label: Username

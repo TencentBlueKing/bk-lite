@@ -5,9 +5,12 @@ from django.contrib.auth.hashers import make_password
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.core.logger import safe_exception_info
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import Group, LoginAuthBinding, LoginAuthBindingUnmatchedActionChoices, Role, User
 from apps.system_mgmt.providers import RuntimeApplicationService
+from apps.system_mgmt.providers.builtin.blueking.adapters.client import retrieve_user_profile
+from apps.system_mgmt.providers.builtin.wecom.adapters.client import fetch_member_profile
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 
@@ -35,6 +38,15 @@ def _default_platform_role_ids() -> list:
 
 
 BLUEKING_PROVIDER_KEY = "blueking"
+_OPS_PILOT_GUEST_PROVIDERS = {"wechat", "feishu", "wecom", "blueking"}
+_PROFILE_ENRICH_TEMPLATE = "event=login_auth_profile_enrich_failed binding_id=%s provider_key=%s failed_stage=%s error_type=%s"
+_PROFILE_UNAVAILABLE_MESSAGE = "Failed to read the external user profile"
+
+
+class _LoginProfileUnavailable(Exception):
+    """企微或蓝鲸目录接口失败。登录失败，且不建号。"""
+
+
 _BLUEKING_PROVIDER_LOGGED_CODES = frozenset(
     {
         "provider.auth_failed",
@@ -144,7 +156,10 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         return {"result": True, "data": adapter_login_result}
 
     external_user = result.payload.get("external_user") or {}
-    user = _resolve_platform_user(binding, external_user)
+    try:
+        user = _resolve_platform_user(binding, external_user)
+    except _LoginProfileUnavailable:
+        return {"result": False, "message": _PROFILE_UNAVAILABLE_MESSAGE}
     if not user:
         # 外部认证成功但本地无匹配：通常是 binding.platform_field / external_field 配置错，
         # 或 sync 任务未跑、用户没建。WARNING 提示运维检查，不告警。
@@ -171,6 +186,42 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
     return token_result
 
 
+def _merge_login_profile(external_user, profile):
+    merged = dict(external_user)
+    for key in ("name", "email", "mobile"):
+        value = str((profile or {}).get(key) or "").strip()
+        if value:
+            merged[key] = value
+    return merged
+
+
+def _warn_profile_enrich_failed(binding_id, provider_key, error_type, error):
+    logger.warning(
+        _PROFILE_ENRICH_TEMPLATE,
+        binding_id,
+        provider_key,
+        "enrich_profile",
+        error_type,
+        exc_info=safe_exception_info(error) if error is not None else None,
+    )
+
+
+def _enrich_external_user_for_create(binding: LoginAuthBinding, external_user: dict):
+    """本地无用户且选择创建时，为企微和蓝鲸补姓名。目录接口失败则不建号。"""
+    provider_key = binding.integration_instance.provider_key
+    config = binding.integration_instance.get_runtime_config()
+    if provider_key == "wecom":
+        profile, error_type, error = fetch_member_profile(config, str(external_user.get("userid") or ""))
+    elif provider_key == BLUEKING_PROVIDER_KEY:
+        profile, error_type, error = retrieve_user_profile(config, str(external_user.get("username") or ""))
+    else:
+        return external_user
+    if error_type or not profile:
+        _warn_profile_enrich_failed(binding.id, provider_key, error_type or "invalid_response", error)
+        raise _LoginProfileUnavailable()
+    return _merge_login_profile(external_user, profile)
+
+
 def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
     platform_field = binding.platform_field
     external_value = external_user.get(binding.external_field) or external_user.get("openid") or ""
@@ -187,18 +238,19 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
     if binding.unmatched_user_action != LoginAuthBindingUnmatchedActionChoices.CREATE:
         return None
 
-    # 微信登录认证未配置默认组织时,沿用旧微信扫码登录行为,
-    # 自动加入 OpsPilotGuest 组,以便进入 ops-console 首页后触发
-    # init_user_set 首次登录创建组织弹窗。
+    external_user = _enrich_external_user_for_create(binding, external_user)
+
+    # 未填默认组织时进入 OpsPilotGuest，以便进入 ops-console 首页后触发
+    # init_user_set 首次登录创建组织弹窗。已填写的组织名称仍然优先。
+    provider_key = binding.integration_instance.provider_key
     default_group_name = binding.default_group_name
-    if not default_group_name and binding.integration_instance.provider_key == "wechat":
+    if not default_group_name and provider_key in _OPS_PILOT_GUEST_PROVIDERS:
         default_group_name = "OpsPilotGuest"
 
     default_group = None
     if default_group_name:
         default_group, _ = Group.objects.get_or_create(name=default_group_name, parent_id=0)
 
-    provider_key = binding.integration_instance.provider_key
     if provider_key == "wechat":
         username = external_user.get("openid") or external_value
         display_name = external_user.get("nickname") or username
