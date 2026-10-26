@@ -1,0 +1,176 @@
+{
+  "object": "Wanopt",
+  "plugin": "Wanopt Cisco WAAS SNMP",
+  "templates": [
+    {
+      "name": "Cisco WAAS CPU使用率过高",
+      "alert_name": "WAN优化${resource_name} CPU 使用率过高",
+      "description": "监控 Cisco WAAS / WAVE 设备五分钟 CPU 使用率，当持续高于阈值时触发告警，提示可能存在加速或管理负载过重。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco WAAS内存使用率过高",
+      "alert_name": "WAN优化${resource_name} 内存使用率过高",
+      "description": "监控 Cisco WAAS / WAVE 设备内存使用率（已用/(已用+空闲)），当超过阈值时触发告警，便于及时发现内存压力导致加速效果下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco WAAS TFO负载异常",
+      "alert_name": "WAN优化${resource_name} TFO 负载异常",
+      "description": "监控 Cisco WAAS / WAVE 设备 TFO 负载健康（1=绿色健康，2=未知/黄/红）。值为 2 表示加速负载已偏离绿色，新连接可能排队或改为直通。",
+      "metric_name": "tfo_load_ok",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Cisco WAAS TFO负载严重",
+      "alert_name": "WAN优化${resource_name} TFO 负载严重",
+      "description": "监控 Cisco WAAS / WAVE 设备 TFO 负载状态。值为 4（红色）表示加速负载已到严重级别，应立即排查优化连接与对端。",
+      "metric_name": "tfo_load_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 4,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Cisco WAAS DRE缓存异常",
+      "alert_name": "WAN优化${resource_name} DRE 缓存异常",
+      "description": "监控 Cisco WAAS / WAVE 设备 DRE 缓存健康（1=可用，2=不可用/初始化/临时失败/失败）。值为 2 表示数据缩减能力受损。",
+      "metric_name": "dre_cache_ok",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Cisco WAAS DRE缓存失败",
+      "alert_name": "WAN优化${resource_name} DRE 缓存失败",
+      "description": "监控 Cisco WAAS / WAVE 设备 DRE 缓存状态。值为 5（失败）表示缓存不可用，应立即排查磁盘与缓存服务。",
+      "metric_name": "dre_cache_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Cisco WAAS活动对等体为0",
+      "alert_name": "WAN优化${resource_name} 活动对等体为 0",
+      "description": "监控 Cisco WAAS / WAVE 设备当前活动对等体数。在本应对端在线时值为 0，表示对端加速器掉线或不可达。",
+      "metric_name": "active_peers",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "Cisco WAAS活动优化连接为0",
+      "alert_name": "WAN优化${resource_name} 活动优化连接为 0",
+      "description": "监控 Cisco WAAS / WAVE 设备当前正在优化的 TCP 连接数。在业务应在加速时值为 0，提示加速可能已停止。",
+      "metric_name": "tfo_active_opt_conn",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 0,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "Cisco WAAS存在严重告警",
+      "alert_name": "WAN优化${resource_name} 存在严重告警",
+      "description": "监控 Cisco WAAS / WAVE 设备当前严重告警数量。数量大于 0 表示设备已有需要立即处理的严重告警。",
+      "metric_name": "alarm_critical",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Cisco WAAS存在主要告警",
+      "alert_name": "WAN优化${resource_name} 存在主要告警",
+      "description": "监控 Cisco WAAS / WAVE 设备当前主要告警数量。数量大于 0 时应尽快排查，避免升级为严重告警。",
+      "metric_name": "alarm_major",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 0,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}
