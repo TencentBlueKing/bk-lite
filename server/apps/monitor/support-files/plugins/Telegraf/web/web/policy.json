@@ -65,7 +65,7 @@
           "method": "!="
         }
       ],
-      "group_algorithm": "avg"
+      "group_algorithm": "max"
     }
   ]
 }

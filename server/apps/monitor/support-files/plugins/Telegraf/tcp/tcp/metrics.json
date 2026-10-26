@@ -36,7 +36,7 @@
     {
       "metric_group": "TCPPort",
       "name": "net_response_result_code",
-      "query": "net_response_result_code{__$labels__}",
+      "query": "max(net_response_result_code{__$labels__}) by (instance_id, agent_id)",
       "display_name": "Result Code",
       "data_type": "Enum",
       "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"超时\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"连接失败\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"读取失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"返回不匹配\",\"id\":4,\"color\":\"#faad14\"}]",
