@@ -3,6 +3,7 @@ import {
   buildAlarmHref,
   buildMonitorDetailHref,
   buildMonitorHrefFromContext,
+  monitorLinkContextFromPayload,
   monitorObjectIdFromContext,
   readArchitectureEffectivePlugins,
 } from '../links';
@@ -78,5 +79,36 @@ describe('architecture detail links', () => {
     }), 'http://local');
     expect(flow.pathname).toBe('/monitor/view/dashboard/netflow');
     expect(readArchitectureEffectivePlugins({ items: [] })).toEqual([]);
+  });
+
+  it('maps the ops-analysis monitor link payload onto a specialized dashboard', () => {
+    expect(monitorLinkContextFromPayload('mon-web', null)).toBeNull();
+    expect(monitorLinkContextFromPayload('mon-web', {
+      monitor_object: null,
+      instance: null,
+      plugins: [],
+    })).toBeNull();
+    const context = monitorLinkContextFromPayload('app3d-demo-host-01', {
+      monitor_object: {
+        id: 11,
+        name: 'Host',
+        display_name: '主机',
+        instance_id_keys: ['instance_id'],
+      },
+      instance: {
+        instance_id: "('app3d-demo-host-01',)",
+        instance_name: 'web-01',
+        instance_id_values: ['app3d-demo-host-01'],
+        instance_id_keys: ['instance_id'],
+      },
+      plugins: [{ id: 7, name: 'Host', collect_type: 'netflow', display_name: '主机' }],
+    });
+    const href = new URL(buildMonitorHrefFromContext(context), 'http://local');
+    expect(context?.form?.instance_id).toBe('app3d-demo-host-01');
+    expect(context?.monitorName).toBe('Host');
+    expect(href.pathname).toBe('/monitor/view/dashboard/netflow');
+    expect(href.searchParams.get('monitorObjId')).toBe('11');
+    expect(href.searchParams.get('instance_id')).toBe('app3d-demo-host-01');
+    expect(href.searchParams.get('instance_name')).toBe('web-01');
   });
 });

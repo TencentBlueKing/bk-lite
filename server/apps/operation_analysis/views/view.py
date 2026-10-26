@@ -28,7 +28,9 @@ from apps.operation_analysis.serializers.directory_serializers import (
     TopologyModelSerializer,
 )
 from apps.operation_analysis.services.architecture_display_metrics import ArchitectureDisplayMetricsService
+from apps.operation_analysis.services.architecture_monitor_link import ArchitectureMonitorLinkService
 from apps.operation_analysis.services.architecture_node_status import ArchitectureNodeStatusService
+from apps.operation_analysis.services.architecture_resource_search import ArchitectureResourceSearchService
 from apps.operation_analysis.services.canvas.copy_service import copy_canvas
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from apps.operation_analysis.services.share_service import SharePermissionDenied, create_or_get_share
@@ -537,11 +539,30 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         return Response(ArchitectureNodeStatusService.query(request, payload.get("inst_uuids")))
 
     @HasPermission("view-View")
+    @action(detail=False, methods=["get"], url_path="models")
+    def models(self, request, *args, **kwargs):
+        """架构图模型下拉。浏览器不直连 CMDB。分享路由不暴露此接口。"""
+        return Response(ArchitectureResourceSearchService.list_models(request))
+
+    @HasPermission("view-View")
+    @action(detail=False, methods=["post"], url_path="resource_search")
+    def resource_search(self, request, *args, **kwargs):
+        """架构图插入/绑定资源搜索。浏览器不直连 CMDB。分享路由不暴露此接口。"""
+        payload = request.data if isinstance(request.data, dict) else {}
+        return Response(ArchitectureResourceSearchService.search(request, payload))
+
+    @HasPermission("view-View")
     @action(detail=False, methods=["post"], url_path="display_metrics")
     def display_metrics(self, request, *args, **kwargs):
         """查看态批量查询节点展示指标当前值。分享路由不暴露此接口。"""
         payload = request.data if isinstance(request.data, dict) else {}
         return Response(ArchitectureDisplayMetricsService.query(request, payload.get("inst_uuids")))
+
+    @HasPermission("view-View")
+    @action(detail=False, methods=["get"], url_path="monitor_link")
+    def monitor_link(self, request, *args, **kwargs):
+        """架构图打开监控/告警的实例上下文。浏览器不直连监控 HTTP。分享路由不暴露此接口。"""
+        return Response(ArchitectureMonitorLinkService.resolve(request, request.query_params.get("monitor_id")))
 
 
 class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):

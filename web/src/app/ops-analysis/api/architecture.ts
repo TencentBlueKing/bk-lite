@@ -1,5 +1,14 @@
+import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
+
+export interface ArchitectureResourceSearchParams {
+  keyword: string;
+  model_id: string;
+  page: number;
+  page_size: number;
+  case_sensitive: boolean;
+}
 
 export const useArchitectureApi = () => {
   const { get, put, post, del } = useApiClient();
@@ -30,11 +39,30 @@ export const useArchitectureApi = () => {
     });
   };
 
+  const getArchitectureModels = useCallback(
+    () => get('/operation_analysis/api/architecture/models/'),
+    [get],
+  );
+
+  const searchArchitectureResources = useCallback(
+    (params: ArchitectureResourceSearchParams) =>
+      post('/operation_analysis/api/architecture/resource_search/', params),
+    [post],
+  );
+
   const queryDisplayMetrics = async (instUuids: string[]) => {
     return post('/operation_analysis/api/architecture/display_metrics/', {
       inst_uuids: instUuids,
     });
   };
+
+  const getMonitorLink = useCallback(
+    (monitorId: string) =>
+      get('/operation_analysis/api/architecture/monitor_link/', {
+        params: { monitor_id: monitorId },
+      }),
+    [get],
+  );
 
   return {
     getArchitectureDetail,
@@ -42,6 +70,9 @@ export const useArchitectureApi = () => {
     createArchitecture,
     deleteArchitecture,
     queryNodeStatus,
+    getArchitectureModels,
+    searchArchitectureResources,
     queryDisplayMetrics,
+    getMonitorLink,
   };
 };
