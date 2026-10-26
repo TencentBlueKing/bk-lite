@@ -14,6 +14,7 @@ from apps.monitor.models import (
     MonitorAlert,
     MonitorInstance,
     MonitorInstanceOrganization,
+    MonitorPlugin,
     MonitorPolicy,
     PolicyGroup,
     PolicyGroupDefault,
@@ -80,6 +81,43 @@ _EMPTY_NO_DATA = {
 
 def _json_equal(left, right):
     return json.dumps(left, sort_keys=True, default=str) == json.dumps(right, sort_keys=True, default=str)
+
+
+def _editor_collect_type(rule, policy, value):
+    """表单提交的是插件 id。同一插件保持原来的采集类型，换插件才改。"""
+    text = "" if value is None else str(value).strip()
+    if not text or text == str(policy.collect_type or ""):
+        return policy.collect_type, None
+    if not text.isdigit() or text == str(rule.plugin_id):
+        return policy.collect_type if text == str(rule.plugin_id) else value, None
+    plugin = MonitorPlugin.objects.filter(pk=int(text), monitor_object=policy.monitor_object_id).first()
+    if plugin is None:
+        raise ValidationAppException("采集插件无效")
+    return plugin.collect_type or "", plugin
+
+
+def _editor_query_condition(policy, value):
+    """单指标回填会带上指标名。指标和筛选没变时保留原查询，避免被当成配方变更。"""
+    if not isinstance(value, dict) or str(value.get("type") or "") != "metric":
+        return value
+    current = policy.query_condition if isinstance(policy.query_condition, dict) else {}
+    same_metric = str(current.get("type") or "metric") == "metric" and str(current.get("metric_id") or "") == str(value.get("metric_id") or "")
+    if same_metric and _json_equal(current.get("filter") or [], value.get("filter") or []):
+        return current
+    return {key: item for key, item in value.items() if key != "metric_name"}
+
+
+def _keep_echoed_metric_unit(policy, payload):
+    """指标没变、计算单位也没变时，不把目录单位写回空的 metric_unit。"""
+    if "metric_unit" not in payload:
+        return
+    query = payload.get("query_condition", policy.query_condition)
+    if "query_condition" in payload and not _json_equal(query, policy.query_condition):
+        return
+    for field in ("calculation_unit", "threshold_unit"):
+        if field in payload and str(payload[field] or "") != str(getattr(policy, field) or ""):
+            return
+    payload["metric_unit"] = policy.metric_unit or ""
 
 
 def _validation_text(exc):
@@ -811,6 +849,114 @@ class PolicyGroupService:
             alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
             PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
         return rule
+
+    _RULE_EDITOR_FIELDS = (
+        "alert_name",
+        "collect_type",
+        "query_condition",
+        "period",
+        "group_algorithm",
+        "algorithm",
+        "group_by",
+        "threshold",
+        "trigger_count",
+        "recovery_condition",
+        "metric_unit",
+        "calculation_unit",
+        "threshold_unit",
+        "compare_mode",
+        "compare_value_kind",
+        "compare_offset_hours",
+        "compare_offset_days",
+        "compare_baseline_weeks",
+        "count_predicate",
+        "forecast_target",
+        "forecast_target_unit",
+        "forecast_lookback",
+        "recovery_threshold",
+    )
+    _RULE_EDITOR_CLOSE_FIELDS = tuple(field for field in _RULE_EDITOR_FIELDS if field != "alert_name")
+
+    @staticmethod
+    def apply_rule_editor(rule, payload, operator="system"):
+        """写入这条规则自己的名称、指标和告警条件。组织、实例范围、频率、无数据和通知保持原值。"""
+        if not isinstance(payload, dict):
+            raise ValidationAppException("规则内容无效")
+        with transaction.atomic():
+            locked = MonitorPolicy.objects.select_for_update().get(pk=rule.policy_id)
+            rule.policy = locked
+            policy = locked
+            closes_alerts = False
+            update_fields = ["updated_by", "updated_at"]
+            prepared = dict(payload)
+            plugin = None
+            if "collect_type" in prepared:
+                prepared["collect_type"], plugin = _editor_collect_type(rule, policy, prepared.get("collect_type"))
+            if isinstance(prepared.get("query_condition"), dict):
+                prepared["query_condition"] = _editor_query_condition(policy, prepared["query_condition"])
+            _keep_echoed_metric_unit(policy, prepared)
+            query = prepared.get("query_condition")
+            if not isinstance(query, dict):
+                query = policy.query_condition if isinstance(policy.query_condition, dict) else {}
+            for field in PolicyGroupService._RULE_EDITOR_FIELDS:
+                if field not in prepared:
+                    continue
+                if field == "recovery_threshold" and (query.get("type") == "multi" or _is_multi_policy(policy)):
+                    continue
+                value = prepared[field]
+                if field == "alert_name":
+                    value = _validate_alert_name(value)
+                elif field == "trigger_count":
+                    value = _validate_trigger_count(value)
+                elif field == "recovery_condition":
+                    value = _validate_recovery_condition(value)
+                elif field == "recovery_threshold":
+                    value = _validate_recovery_threshold(value) or {}
+                current = getattr(policy, field)
+                if field in PolicyGroupService._RULE_EDITOR_CLOSE_FIELDS and not _json_equal(current, value):
+                    closes_alerts = True
+                setattr(policy, field, copy.deepcopy(value) if isinstance(value, (dict, list)) else value)
+                update_fields.append(field)
+            rule_fields = []
+            if plugin is not None:
+                closes_alerts = True
+                rule.plugin = plugin
+                rule_fields.append("plugin")
+                previously_covered = bool((policy.source or {}).get("values"))
+                member_ids = list(
+                    rule.group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).values_list("monitor_instance_id", flat=True)
+                )
+                if member_ids:
+                    covered = list(
+                        CollectConfig.objects.filter(monitor_instance_id__in=member_ids, monitor_plugin_id=plugin.id)
+                        .order_by("monitor_instance_id")
+                        .values_list("monitor_instance_id", flat=True)
+                        .distinct()
+                    )
+                else:
+                    covered = []
+                policy.source = {"type": "instance", "values": covered}
+                update_fields.append("source")
+                PolicyGroupService._apply_scan_dispatch(policy, previously_covered=previously_covered)
+            if "name" in prepared:
+                name = str(prepared.get("name") or "").strip()
+                if not name:
+                    raise ValidationAppException("请填写规则名称")
+                if len(name) > 100:
+                    raise ValidationAppException("规则名称过长")
+                rule.name = name
+                rule_fields.append("name")
+                policy.name = name
+                update_fields.append("name")
+            if rule_fields:
+                rule.updated_by = operator
+                rule.save(update_fields=[*dict.fromkeys(rule_fields), "updated_by", "updated_at"])
+            policy.updated_by = operator
+            policy.save(update_fields=list(dict.fromkeys(update_fields)))
+            if closes_alerts:
+                alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
+                PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
+            return closes_alerts
 
     @staticmethod
     def update_detection(group, *, schedule=None, no_data=None, operator="system"):

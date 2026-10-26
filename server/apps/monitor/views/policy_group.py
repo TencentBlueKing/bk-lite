@@ -17,6 +17,7 @@ from apps.monitor.models import (
     PolicyGroupMembership,
     PolicyTemplate,
 )
+from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.policy_group import PolicyGroupService, group_detection_state, no_data_carrier_rule_ids
 from apps.monitor.utils.pagination import parse_page_params
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -386,6 +387,39 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             detail={"group_id": group.id, "rule_id": rule.id, "policy_id": rule.policy_id},
         )
         return WebUtils.response_success({"id": rule.id})
+
+    @action(methods=["get"], detail=False, url_path="rule_editor")
+    def rule_editor(self, request):
+        scope = resolve_current_team_data_scope(request)
+        group = _group_in_scope(scope, request.query_params.get("group_id"))
+        rule = group.rules.select_related("policy").filter(id=request.query_params.get("rule_id")).first()
+        if rule is None:
+            raise BaseAppException("规则不存在")
+        data = MonitorPolicySerializer(rule.policy).data
+        data["name"] = rule.name
+        data["rule_id"] = rule.id
+        data["group_id"] = group.id
+        return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False, url_path="save_rule_editor")
+    @HasPermission("strategy_list-Edit")
+    def save_rule_editor(self, request):
+        scope = resolve_current_team_data_scope(request)
+        group = _group_in_scope(scope, request.data.get("group_id"))
+        rule = group.rules.select_related("policy").filter(id=request.data.get("rule_id")).first()
+        if rule is None:
+            raise BaseAppException("规则不存在")
+        closes_alerts = PolicyGroupService.apply_rule_editor(rule, request.data, operator=_operator(scope))
+        log_operation(
+            request,
+            "update",
+            "monitor",
+            "修改策略组规则",
+            target_type="policy_group",
+            target_id=group.id,
+            detail={"group_id": group.id, "rule_id": rule.id, "policy_id": rule.policy_id},
+        )
+        return WebUtils.response_success({"id": rule.id, "closes_alerts": closes_alerts})
 
     @action(methods=["post"], detail=False, url_path="update_detection")
     @HasPermission("strategy_list-Edit")

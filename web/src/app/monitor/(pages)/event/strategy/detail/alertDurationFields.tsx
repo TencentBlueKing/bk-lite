@@ -50,6 +50,7 @@ interface AlertDurationFieldsProps {
   onNoDataRecoveryChange: (value: number | null) => void;
   onNoDataAlertLevelChange: (val: string) => void;
   onNoDataAlertNameChange: (val: string) => void;
+  hideNoData?: boolean;
 }
 
 const fieldLabel = (text: string) => (
@@ -111,6 +112,10 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
         />
       </Form.Item>
       )}
+      {props.hideNoData ? (
+        <div className={`mb-4 ${STRATEGY_HINT_TEXT_CLASS}`}>无数据告警在策略组上设置，这里保持原值。</div>
+      ) : (
+      <>
       <Form.Item label={fieldLabel(t('monitor.events.noDataAlertLevel'))}>
         <Switch
           checked={noDataEnabled}
@@ -126,6 +131,8 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
         ) : null}
       </Form.Item>
       {noDataEnabled ? <NoDataDetailFields {...props} /> : null}
+      </>
+      )}
     </>
   );
 };
