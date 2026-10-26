@@ -1651,6 +1651,19 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         response["Content-Disposition"] = 'attachment; filename="application_topology_instances.xlsx"'
         return response
 
+    _IPAM_UNVIEWABLE_FIELDS = ("inst_uuid", "_id", "inst_name", "description", "mac", "ip_user", "_creator")
+
+    @staticmethod
+    def _redact_ipam_rows_without_view(ips):
+        """没有实例 View 的格子仍占位，但不带实例属性。"""
+        for ip in ips or []:
+            if not isinstance(ip, dict):
+                continue
+            if VIEW in (ip.get("permission") or []):
+                continue
+            for field in InstanceViewSet._IPAM_UNVIEWABLE_FIELDS:
+                ip.pop(field, None)
+
     @action(detail=False, methods=["get"], url_path=r"ipam_view/(?P<inst_uuid>.+?)")
     @HasPermission("asset_info-View")
     def ipam_view(self, request, inst_uuid: str):
@@ -1671,6 +1684,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 ip.setdefault("organization", [])
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="ip")
         self.add_instance_permission(data["ips"], permissions_map, request.user.username)
+        self._redact_ipam_rows_without_view(data.get("ips"))
         return WebUtils.response_success(data)
 
     @action(detail=False, methods=["post"], url_path="ipam_ip")
