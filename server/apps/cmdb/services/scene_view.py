@@ -12,6 +12,7 @@ from django.db.models import Q
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
 from apps.cmdb.models.scene_view import SceneView
 from apps.cmdb.services.instance import InstanceManage
+from apps.core.utils.team_utils import collect_group_tree_ids
 
 TagMatch = str
 PermissionMapLoader = Callable[[str], dict]
@@ -155,6 +156,22 @@ def user_org_ids(user) -> list[int]:
         except (TypeError, ValueError):
             continue
     return ids
+
+
+class CurrentOrganizationDenied(Exception):
+    """当前组织不在调用者的组织或授权子组织内。"""
+
+
+def can_use_current_organization(user, org_id) -> bool:
+    """超级用户任意组织；其他人只允许 group_list 与组织树节点的并集。"""
+    if getattr(user, "is_superuser", False):
+        return True
+    try:
+        target = int(org_id)
+    except (TypeError, ValueError):
+        return False
+    allowed = set(user_org_ids(user)) | collect_group_tree_ids(getattr(user, "group_tree", None))
+    return target in allowed
 
 
 def _permission_set(user) -> set:
