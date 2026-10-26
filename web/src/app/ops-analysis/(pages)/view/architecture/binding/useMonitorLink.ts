@@ -23,7 +23,7 @@ export interface ArchitectureMonitorLinkApis {
  * plugin list does not carry it, and effective_plugins does.
  *
  * Shared by the hover prefetch hook and the click fallback: a slow first
- * right-click may still be resolving when the user picks the menu item.
+ * click may still be resolving when the drawer opens a monitor or alert link.
  */
 export async function resolveArchitectureMonitorContext(
   monitorId: string,

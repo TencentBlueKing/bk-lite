@@ -510,7 +510,6 @@
       "hintForbidden": "No permission to view this resource",
       "hintInvalid": "The bound resource no longer exists. Rebind it.",
       "plateInvalid": "Resource not found",
-      "nameLabel": "Resource name:",
       "modelLabel": "Type:",
       "alertLabel": "Alert:",
       "hoverAlert": "{count} (highest: {level})",

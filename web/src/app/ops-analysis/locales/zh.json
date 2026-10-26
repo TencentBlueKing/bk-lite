@@ -510,7 +510,6 @@
       "hintForbidden": "无权查看该资源",
       "hintInvalid": "绑定的资源已不存在，请重新绑定",
       "plateInvalid": "资源不存在",
-      "nameLabel": "资源名称：",
       "modelLabel": "类型：",
       "alertLabel": "告警：",
       "hoverAlert": "{count} 条（最高：{level}）",
