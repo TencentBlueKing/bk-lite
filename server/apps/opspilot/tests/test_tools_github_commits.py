@@ -6,6 +6,7 @@
 
 import json
 from unittest.mock import MagicMock, patch
+from urllib.parse import unquote
 
 import pytest
 
@@ -27,14 +28,17 @@ class TestValidateGithubUrl:
 
 class TestValidateDatetimeFormat:
     def test_z_suffix_ok(self):
-        assert gh._validate_datetime_format("2025-09-08T00:00:00Z") is True
+        assert unquote(gh._github_time_query("2025-09-08T00:00:00Z")).startswith("2025-09-08T00:00:00+00:00")
 
     def test_offset_ok(self):
-        assert gh._validate_datetime_format("2025-09-08T00:00:00+08:00") is True
+        assert unquote(gh._github_time_query("2025-09-08T00:00:00+08:00")).endswith("+08:00")
+
+    def test_naive_time_uses_shanghai(self):
+        assert unquote(gh._github_time_query("2025-09-08 00:00:00")).endswith("+08:00")
 
     def test_bad_format_raises(self):
         with pytest.raises(ValueError, match="ISO 8601"):
-            gh._validate_datetime_format("2025/09/08")
+            gh._github_time_query("2025/09/08")
 
 
 class TestProcessCommitsData:

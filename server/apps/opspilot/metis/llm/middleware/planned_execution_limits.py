@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
@@ -127,6 +128,55 @@ def is_limit_stop_ai_message(message: Any) -> bool:
 
 def filter_messages_without_limit_stop(messages: list[Any] | None) -> list[Any]:
     return [message for message in (messages or []) if not is_limit_stop_ai_message(message)]
+
+
+_EXHAUSTED_LIMIT_CLAIM_RE = re.compile(
+    r"(?:但|并且|而且)?\s*"
+    r"(?:本会话|当前步骤|当前任务|这一步)?\s*"
+    r"(?:累计\s*)?"
+    r"(?:"
+    r"(?:模型调用次数|工具调用次数|调用次数|次数|token\s*预算)\s*(?:已达上限|已达到上限|用尽)"
+    r"|(?:已达|达到)\s*(?:模型调用次数|工具调用次数|调用次数|次数|token\s*预算)\s*上限"
+    r"|token\s*已达预算上限"
+    r")"
+    r"(?:\s*[（(][^）)]*[）)])?"
+    r"|本步骤暂时停止"
+    r"|\[OPSPILOT_LIMIT:[^\]]+\]",
+    re.IGNORECASE,
+)
+_LIMIT_MENU_LINE_RE = re.compile(r"^(?:是否继续执行？|[12][\.、．]\s*(?:继续|结束本步骤)|回复后会开启新一轮.*)$")
+_STEP_TITLE_BEFORE_CONTINUE_RE = re.compile(r"步骤「[^」]*」\s*[，,]?\s*(?=是否继续执行？)")
+_UNFINISHED_BECAUSE_LIMIT_RE = re.compile(r"[，,]\s*这一步未能执行[。.]?")
+
+LIMIT_RESUME_NOTE = "【次数已重置】上一轮因调用次数或 token 预算暂停已经解除，本轮从 0 重新计数。" "历史中的「次数已达上限」「次数用尽」「暂时停止」不得作为本轮停止条件，未完成的查询继续调用工具。"
+
+
+def scrub_exhausted_limit_claims(text: str) -> str:
+    """去掉历史里「次数已用尽」的断言，保留工具结论。续跑时不得再把它当成停止条件。"""
+    body = str(text or "")
+    if not body.strip():
+        return ""
+    for marker in _LIMIT_MARKERS:
+        body = body.replace(marker, "")
+    body = _EXHAUSTED_LIMIT_CLAIM_RE.sub("", body)
+    body = _UNFINISHED_BECAUSE_LIMIT_RE.sub("", body)
+    body = _STEP_TITLE_BEFORE_CONTINUE_RE.sub("", body)
+    body = body.replace("是否继续执行？", "")
+    kept: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if _LIMIT_MENU_LINE_RE.match(stripped):
+            continue
+        if stripped in {"是否继续执行？", "这一步未能执行。", "这一步未能执行"}:
+            continue
+        kept.append(line)
+    body = "\n".join(kept)
+    body = re.sub(r"[，,]{2,}", "，", body)
+    body = re.sub(r"。{2,}", "。", body)
+    body = re.sub(r"\s*，\s*。", "。", body)
+    body = re.sub(r"[ \t]+\n", "\n", body)
+    body = re.sub(r"\n{3,}", "\n\n", body)
+    return body.strip()
 
 
 def scrub_limit_markers_from_summary(text: str) -> str:

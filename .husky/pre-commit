@@ -41,7 +41,7 @@ if [ -n "$WEB_FILES" ]; then
     WEB_LINT_FILES=$(echo "$WEB_FILES" | sed 's|^web/||' | grep -v '^scripts/' | grep -v '^packages/isoflow/' || true)
     cd web || exit 1
     if [ -n "$WEB_LINT_FILES" ]; then
-        echo "$WEB_LINT_FILES" | xargs pnpm eslint || exit 1
+        echo "$WEB_LINT_FILES" | xargs -n 20 pnpm eslint || exit 1
     fi
     pnpm type-check || exit 1
     cd ..
@@ -65,7 +65,7 @@ MOBILE_I18N_FILES=$(echo "$CHANGED_FILES" | grep -E '^mobile/src/.*\.(js|jsx|ts|
 if [ -n "$MOBILE_FILES" ]; then
     echo "Checking mobile project..."
     MOBILE_LINT_FILES=$(echo "$MOBILE_FILES" | sed 's|^mobile/||')
-    cd mobile && echo "$MOBILE_LINT_FILES" | xargs pnpm eslint || exit 1
+    cd mobile && echo "$MOBILE_LINT_FILES" | xargs -n 20 pnpm eslint || exit 1
     pnpm type-check || exit 1
     cd ..
 fi

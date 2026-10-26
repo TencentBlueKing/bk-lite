@@ -113,7 +113,12 @@ from apps.opspilot.metis.llm.chain.skill_sandbox import (  # noqa: E402,F401
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
-from apps.opspilot.metis.llm.middleware.planned_execution_limits import ask_limit_continue, detect_limit_kind
+from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
+    LIMIT_RESUME_NOTE,
+    ask_limit_continue,
+    detect_limit_kind,
+    scrub_exhausted_limit_claims,
+)
 from apps.opspilot.metis.llm.middleware.terminal_user_choice import finalize_user_choice
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS,
@@ -302,21 +307,33 @@ class BasicNode:
 
     def add_chat_history_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
         """添加聊天历史到消息列表，并在提问文本前注入上一轮工具证据。"""
+        extra = getattr(config["configurable"]["graph_request"], "extra_config", None) or {}
+        pending = extra.get("pending_question") if isinstance(extra, dict) else None
+        pending_is_limit_resume = isinstance(pending, dict) and pending.get("kind") == KIND_LIMIT_CONTINUE
         if config["configurable"]["graph_request"].chat_history:
             for chat in config["configurable"]["graph_request"].chat_history:
                 event = str(getattr(chat, "event", "") or "").strip().lower()
                 if event == "user":
                     state["messages"].append(human_message_with_images(chat.message, chat.image_data))
                 elif event in {"assistant", "bot"}:
-                    state["messages"].append(AIMessage(content=chat.message))
-        extra = getattr(config["configurable"]["graph_request"], "extra_config", None) or {}
-        pending = extra.get("pending_question") if isinstance(extra, dict) else None
+                    content = str(getattr(chat, "message", "") or "")
+                    if pending_is_limit_resume:
+                        content = scrub_exhausted_limit_claims(content)
+                    if content:
+                        state["messages"].append(AIMessage(content=content))
         if isinstance(pending, dict) and pending.get("kind") in {KIND_USER_CHOICE, KIND_LIMIT_CONTINUE}:
             evidence = deserialize_evidence(pending.get("evidence_messages"))
             state["messages"] = splice_evidence_messages(
                 state["messages"],
                 evidence,
                 str(pending.get("question_text") or ""),
+            )
+        if pending_is_limit_resume:
+            state["messages"].append(
+                HumanMessage(
+                    content=LIMIT_RESUME_NOTE,
+                    additional_kwargs={"opspilot_planned_execution": True},
+                )
             )
         return state
 
