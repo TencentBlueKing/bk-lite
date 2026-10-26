@@ -6,6 +6,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.scan_model import ScanExecution, ScanHit, ScanTask
+from apps.cmdb.serializers.scan_serializer import ScanTaskListSerializer
 from apps.cmdb.views.scan import ScanTaskViewSet
 
 pytestmark = pytest.mark.django_db
@@ -542,3 +543,59 @@ def test_other_org_scan_detail_delete_and_exec_stay_hidden(authenticated_user, m
     missing_body = json.dumps(_body(missing_rules))
     assert missing_rules.status_code == 404
     assert "org-a-scan" not in missing_body
+
+
+def test_list_queryset_loads_only_latest_execution(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = ScanTask.objects.create(name="scan-history", team=[1], families=["database"], credentials={})
+    empty = ScanTask.objects.create(name="scan-empty", team=[1], families=["database"], credentials={})
+    ScanExecution.objects.create(
+        task=task,
+        status=ScanExecution.STATUS_FAILED,
+        target_count=2,
+        received_count=1,
+        schedule={"batch": 1},
+    )
+    ScanExecution.objects.create(
+        task=task,
+        status=ScanExecution.STATUS_FAILED,
+        target_count=5,
+        received_count=3,
+        schedule={"batch": 2},
+    )
+    latest = ScanExecution.objects.create(
+        task=task,
+        status=ScanExecution.STATUS_COMPLETED,
+        target_count=8,
+        received_count=8,
+        schedule={"batch": 3},
+    )
+
+    view = ScanTaskViewSet()
+    view.action = "list"
+    loaded = {
+        item.id: item
+        for item in view.get_queryset().filter(id__in=[task.id, empty.id])
+    }
+    history = loaded[task.id]
+    blank = loaded[empty.id]
+    history_count = len(history.prefetched_executions)
+    assert history_count == 1, f"列表每个任务装入 {history_count} 条执行，应只保留最新 1 条"
+    assert len(blank.prefetched_executions) == 0
+
+    execution = history.prefetched_executions[0]
+    assert execution.id == latest.id
+    assert "schedule" in execution.get_deferred_fields()
+
+    request = _req("get", superuser, current_team="1")
+    request.user = superuser
+    summary = ScanTaskListSerializer(history, context={"request": request}).data["latest_execution"]
+    assert summary == {
+        "id": latest.id,
+        "status": ScanExecution.STATUS_COMPLETED,
+        "target_count": 8,
+        "received_count": 8,
+    }
+    assert "schedule" in execution.get_deferred_fields()
+    empty_summary = ScanTaskListSerializer(blank, context={"request": request}).data["latest_execution"]
+    assert empty_summary is None

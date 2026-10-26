@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Max, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
@@ -31,10 +31,13 @@ class ScanTaskViewSet(AuthViewSet):
     permission_key = "task"
 
     def get_queryset(self):
+        latest_ids = ScanExecution.objects.order_by().values("task_id").annotate(latest_id=Max("id")).values("latest_id")
         return ScanTask.objects.prefetch_related(
             Prefetch(
                 "executions",
-                queryset=ScanExecution.objects.order_by("-id"),
+                queryset=ScanExecution.objects.filter(id__in=latest_ids)
+                .only("id", "task", "status", "target_count", "received_count")
+                .order_by("-id"),
                 to_attr="prefetched_executions",
             )
         )
