@@ -269,6 +269,8 @@ export const SingleValueSettingsSection: React.FC<
           </Form.Item>
         ) : null}
 
+      <ConfigSectionTitle>{t('dashboard.numericSettings')}</ConfigSectionTitle>
+
       <div className="grid grid-cols-2 gap-x-4 gap-y-4 [&_.ant-form-item]:!mb-0">
         <Form.Item
           className="min-w-0"

@@ -164,6 +164,8 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
         />
       </Form.Item>
 
+        <ConfigSectionTitle>{t('dashboard.gaugeSettings')}</ConfigSectionTitle>
+
         <div className="grid grid-cols-2 gap-x-4 gap-y-4 [&_.ant-form-item]:!mb-0">
           <Form.Item
             className="min-w-0"
@@ -228,6 +230,11 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
             <InputNumber className="w-full" />
           </Form.Item>
 
+        </div>
+
+        <ConfigSectionTitle>{t('dashboard.numericSettings')}</ConfigSectionTitle>
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4 [&_.ant-form-item]:!mb-0">
           <Form.Item
             className="min-w-0"
             label={t('topology.nodeConfig.conversionFactor')}

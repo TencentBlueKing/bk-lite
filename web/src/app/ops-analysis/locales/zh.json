@@ -1400,6 +1400,7 @@
     "displayFieldTip": "从数据源取一个数值字段，作为主值展示；有多个数值时，用此项决定显示哪一个。",
     "refreshFields": "刷新字段",
     "dataFields": "数据字段",
+    "numericSettings": "数值设置",
     "dimensionField": "维度",
     "dimensionFieldTipLine": "用这一列的值作为横轴上每个点的名称。",
     "dimensionFieldTipBar": "用这一列的值作为每根柱的名称。",

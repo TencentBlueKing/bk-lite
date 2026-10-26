@@ -1400,6 +1400,7 @@
     "displayFieldTip": "Select a numeric field from the data source as the main value. If there are several numbers, this field chooses which one to show.",
     "refreshFields": "Refresh fields",
     "dataFields": "Data fields",
+    "numericSettings": "Numeric settings",
     "dimensionField": "Dimension",
     "dimensionFieldTipLine": "This column names each point on the X axis.",
     "dimensionFieldTipBar": "This column names each bar.",

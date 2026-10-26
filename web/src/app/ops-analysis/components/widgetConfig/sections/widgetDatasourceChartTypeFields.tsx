@@ -87,30 +87,18 @@ interface WidgetDatasourceChartTypeFieldsProps {
 }
 
 export const WidgetDatasourceChartTypeFields: React.FC<
-  WidgetDatasourceChartTypeFieldsProps
+  Pick<WidgetDatasourceChartTypeFieldsProps,
+    't' | 'selectedDataSource' | 'chartType' | 'chartTypes' |
+    'onChartTypeChange' | 'onOpenDataSourceSelector'>
 > = ({
   t,
   selectedDataSource,
-  effectiveDataSource,
-  hasQueryParams,
-  shouldShowUnifiedFilterSection,
-  hasUnifiedFilterBindings,
-  previewFilterDefinitions,
-  filterBindings,
   chartType,
   chartTypes,
-  onFilterBindingsChange,
   onChartTypeChange,
   onOpenDataSourceSelector,
-  onEditInputConfig,
-  onParamOptionsResolved,
-  children,
 }) => (
-  <section>
-    <ConfigSectionTitle>
-      {t('dashboard.chartConfigSection', '图表配置')}
-    </ConfigSectionTitle>
-
+  <>
     <Form.Item
       label={t('dashboard.dataSource')}
       name="dataSource"
@@ -179,6 +167,30 @@ export const WidgetDatasourceChartTypeFields: React.FC<
       </Radio.Group>
     </Form.Item>
 
+  </>
+);
+
+export const WidgetQueryFields: React.FC<
+  Pick<WidgetDatasourceChartTypeFieldsProps,
+    't' | 'selectedDataSource' | 'effectiveDataSource' | 'hasQueryParams' |
+    'shouldShowUnifiedFilterSection' | 'hasUnifiedFilterBindings' |
+    'previewFilterDefinitions' | 'filterBindings' | 'onFilterBindingsChange' |
+    'onEditInputConfig' | 'onParamOptionsResolved' | 'children'>
+> = ({
+  t,
+  selectedDataSource,
+  effectiveDataSource,
+  hasQueryParams,
+  shouldShowUnifiedFilterSection,
+  hasUnifiedFilterBindings,
+  previewFilterDefinitions,
+  filterBindings,
+  onFilterBindingsChange,
+  onEditInputConfig,
+  onParamOptionsResolved,
+  children,
+}) => (
+  <section>
     {hasQueryParams ? (
       <div className="mb-6">
         <ConfigSectionTitle>
