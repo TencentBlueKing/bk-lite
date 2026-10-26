@@ -181,19 +181,13 @@ export const Node = ({ node, order }: Props) => {
   const metricLines = showMetrics ? metricSource : [];
   const resourceName = status?.hoverName?.trim() || '';
   const modelName = status?.hoverModel?.trim() || '';
-  const nameLabel = status?.hoverNameLabel?.trim() || '';
   const unnamedReason =
     !resourceName &&
     (status?.level === 'forbidden' || status?.level === 'invalid')
       ? status?.hint?.trim() || ''
       : '';
-  // A host-supplied title replaces an empty icon name. A name the user typed stays put.
-  const showFullName = revealed && Boolean(plateTitle) && Boolean(resourceName) && resourceName !== title;
-  const resourceDetail = revealed && !plateTitle && resourceName && resourceName !== title
-    ? resourceName
-    : '';
   const quietReason = revealed && !resourceName ? unnamedReason : '';
-  const displayTitle = showFullName ? resourceName : title;
+  const displayTitle = title;
   // Model type rides the name line, one shade quieter: `redis-order-01(Redis)`.
   const modelSuffix = modelName && modelName !== displayTitle ? `(${modelName})` : '';
   const labelHeight = (node.labelHeight ?? DEFAULT_LABEL_HEIGHT) + LABEL_ICON_GAP;
@@ -218,7 +212,7 @@ export const Node = ({ node, order }: Props) => {
     title || description || showSubtitle || inlineMark || healthyDot || cornerMark ? (
       <Box
         data-plate-subtitle={showSubtitle ? subtitle : ''}
-        data-plate-expanded={showFullName || Boolean(resourceDetail) || Boolean(quietReason) ? 'true' : 'false'}
+        data-plate-expanded={quietReason ? 'true' : 'false'}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         sx={{ position: 'absolute', pointerEvents: 'auto', zIndex: labelRaised ? 3 : 0 }}
@@ -233,7 +227,8 @@ export const Node = ({ node, order }: Props) => {
             expandDirection="BOTTOM"
             labelHeight={labelHeight}
             hideConnector={Boolean(labelLayer)}
-            uncapped={metricLines.length > 0 || revealed}
+            uncapped={metricLines.length > 0 || Boolean(quietReason)}
+            sx={{ py: '3px', px: '5px', borderRadius: '4px' }}
             cardProps={plateHit}
             cornerBadge={
               cornerMark && markTone ? (
@@ -255,50 +250,24 @@ export const Node = ({ node, order }: Props) => {
                 <Box
                   sx={{
                     display: 'flex',
-                    alignItems: showFullName ? 'flex-start' : 'center',
+                    alignItems: 'center',
                     gap: '6px',
                     minWidth: 0
                   }}
                 >
                   {displayTitle ? (
                     <Typography
-                      sx={
-                        showFullName
-                          ? {
-                              minWidth: 0,
-                              maxWidth: 440,
-                              overflow: 'hidden',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              whiteSpace: 'normal',
-                              overflowWrap: 'anywhere',
-                              lineHeight: 1.35,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              color: 'var(--color-text-1)'
-                            }
-                          : {
-                              minWidth: 0,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              fontSize: 12,
-                              fontWeight: 600,
-                              lineHeight: 1.4,
-                              color: 'var(--color-text-1)'
-                            }
-                      }
+                      sx={{
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        lineHeight: 1.2,
+                        color: 'var(--color-text-1)'
+                      }}
                     >
-                      {showFullName && nameLabel ? (
-                        <Box
-                          component="span"
-                          data-testid="architecture-name-label"
-                          sx={{ color: 'var(--color-text-3)', fontWeight: 400 }}
-                        >
-                          {nameLabel}
-                        </Box>
-                      ) : null}
                       {displayTitle}
                       {modelSuffix ? (
                         <Box
@@ -359,23 +328,7 @@ export const Node = ({ node, order }: Props) => {
               {(!revealed || metricsPinned) && metricLines.length > 0 ? (
                 <MetricLines lines={metricLines} pinned={metricsPinned} />
               ) : null}
-              {!showFullName && resourceDetail ? (
-                <Typography
-                  data-testid="architecture-resource-hover"
-                  sx={{ color: 'var(--color-text-2)', fontSize: 11, lineHeight: 1.35 }}
-                >
-                  {nameLabel ? (
-                    <Box
-                      component="span"
-                      data-testid="architecture-name-label"
-                      sx={{ color: 'var(--color-text-3)' }}
-                    >
-                      {nameLabel}
-                    </Box>
-                  ) : null}
-                  {resourceDetail}
-                </Typography>
-              ) : quietReason ? (
+              {quietReason ? (
                 <Typography
                   data-testid="architecture-resource-hover"
                   sx={{ color: 'var(--color-text-3)', fontSize: 11, lineHeight: 1.35 }}

@@ -56,17 +56,9 @@ export interface NodeStatus {
   plateTitle?: string;
   /** Second line under the icon name. Hidden by the scene when zoom is below 70%. */
   plateSubtitle?: string;
-  /**
-   * Bound resource name and model. View mode expands the name plate in place
-   * while the pointer is on the icon or the plate. Omitted fields are not drawn.
-   */
+  /** Bound resource name is not drawn. Model may appear as a suffix on the title. */
   hoverName?: string;
   hoverModel?: string;
-  /**
-   * Caption drawn above the revealed resource name when the plate is expanded,
-   * so the name reads as a field instead of a stray title. Host supplies the
-   * localized word.
-   */
   hoverNameLabel?: string;
   /** Label drawn before the model name when the plate is expanded. Host supplies the localized word, including its colon. */
   hoverModelLabel?: string;

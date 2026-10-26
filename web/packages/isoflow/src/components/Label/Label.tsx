@@ -4,12 +4,12 @@ import { Box, SxProps } from '@mui/material';
 const CONNECTOR_WIDTH = 8;
 
 const LABEL_CARD_SX = {
-  bgcolor: '#FFFFFF',
-  border: '1px solid #DFE7F0',
-  borderRadius: '6px',
-  py: '6px',
-  px: '8px',
-  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.06)'
+  bgcolor: 'var(--color-bg)',
+  border: '1px solid var(--color-border-1)',
+  borderRadius: '4px',
+  py: '1px',
+  px: '5px',
+  boxShadow: 'none'
 };
 
 export interface Props {

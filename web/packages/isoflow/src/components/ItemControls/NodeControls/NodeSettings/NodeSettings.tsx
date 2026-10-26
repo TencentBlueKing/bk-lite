@@ -108,7 +108,7 @@ export const NodeSettings = ({
         <Section title={labels.labelHeight}>
           <Slider
             step={20}
-            min={60}
+            min={20}
             max={280}
             value={node.labelHeight}
             sx={{

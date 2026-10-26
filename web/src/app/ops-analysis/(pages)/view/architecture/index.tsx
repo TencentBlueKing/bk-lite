@@ -843,7 +843,6 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           plateTitle?: string;
           plateSubtitle?: string;
           hoverName?: string;
-          hoverNameLabel?: string;
           hoverModel?: string;
         }> = {};
         for (const [id, plate] of Object.entries(plates)) {
@@ -851,17 +850,13 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             plateTitle?: string;
             plateSubtitle?: string;
             hoverName?: string;
-            hoverNameLabel?: string;
             hoverModel?: string;
           } = {};
           if (plate.title) entry.plateTitle = plate.title;
           if (plate.line === 'forbidden') entry.plateSubtitle = t('opsAnalysis.architecture.bindingForbidden');
           else if (plate.line === 'invalid') entry.plateSubtitle = t('opsAnalysis.architecture.plateInvalid');
           else if (plate.subtitle) entry.plateSubtitle = plate.subtitle;
-          if (plate.hoverName) {
-            entry.hoverName = plate.hoverName;
-            entry.hoverNameLabel = t('opsAnalysis.architecture.nameLabel');
-          }
+          if (plate.hoverName) entry.hoverName = plate.hoverName;
           if (plate.hoverModel) entry.hoverModel = plate.hoverModel;
           if (entry.plateTitle || entry.plateSubtitle || entry.hoverName) next[id] = entry;
         }
@@ -881,7 +876,6 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         plateTitle?: string;
         plateSubtitle?: string;
         hoverName?: string;
-        hoverNameLabel?: string;
         hoverModel?: string;
         hoverModelLabel?: string;
         hoverStatusLabel?: string;
@@ -897,7 +891,6 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           plateTitle?: string;
           plateSubtitle?: string;
           hoverName?: string;
-          hoverNameLabel?: string;
           hoverModel?: string;
           hoverModelLabel?: string;
           hoverStatusLabel?: string;
@@ -932,10 +925,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         if (plate?.title) entry.plateTitle = plate.title;
         if (plate?.subtitle) entry.plateSubtitle = plate.subtitle;
         if (plate) {
-          if (plate.hoverName) {
-            entry.hoverName = plate.hoverName;
-            entry.hoverNameLabel = t('opsAnalysis.architecture.nameLabel');
-          }
+          if (plate.hoverName) entry.hoverName = plate.hoverName;
           if (plate.hoverModel) {
             entry.hoverModel = plate.hoverModel;
             entry.hoverModelLabel = t('opsAnalysis.architecture.modelLabel');
