@@ -1285,9 +1285,6 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         >
         <div
           className={`relative h-full min-h-0 architecture-canvas ${styles.architectureCanvas}`}
-          onContextMenu={(e) => {
-            if (!isEditMode) e.preventDefault();
-          }}
         >
           <Isoflow
             key={`${fossflowKey}-edit`}
