@@ -29,6 +29,7 @@ import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import PermissionWrapper from '@/components/permission';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import { DASHBOARD_GRID_COLS } from '@/app/ops-analysis/utils/dashboardGridColumns';
+import { DASHBOARD_GRID_ROW_HEIGHT } from '@/app/ops-analysis/utils/dashboardGridRows';
 import {
   buildDashboardGridStackLayout,
   buildDashboardGridStackStructureKey,
@@ -70,7 +71,6 @@ import {
   syncDashboardEdgeHandleVisibility,
 } from './dashboardEdgeHandles';
 
-const DASHBOARD_GRID_ROW_HEIGHT = 60;
 const DASHBOARD_GRID_MARGIN: [number, number] = [4, 4];
 const DASHBOARD_GRID_CONTAINER_PADDING: [number, number] = [6, 2];
 const DASHBOARD_WIDGET_RESIZE_HANDLES = 'se,sw,ne,nw,n,e,s,w';
@@ -215,7 +215,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
             border: `1px solid ${chartTheme.panelBorderColor}`,
           }}
         >
-          <div className="widget-header mb-2 flex min-w-0 items-start gap-2">
+          <div className="widget-header flex min-w-0 items-start gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1">
                 <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
@@ -409,6 +409,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   const dashboardScopeKey = String(dashboardId ?? 'dashboard');
   const layoutRef = useRef(layout);
   const collapsedGroupsRef = useRef(collapsedGroups);
+  const isEditModeRef = useRef(isEditMode);
   const gridStackLayoutRef = useRef(gridStackLayout);
   const emitLayoutChangeRef = useRef<() => void>(() => undefined);
   const handleWidgetMutationStopRef = useRef<
@@ -475,8 +476,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   useEffect(() => {
     layoutRef.current = layout;
     collapsedGroupsRef.current = collapsedGroups;
+    isEditModeRef.current = isEditMode;
     gridStackLayoutRef.current = gridStackLayout;
-  }, [layout, collapsedGroups, gridStackLayout]);
+  }, [layout, collapsedGroups, gridStackLayout, isEditMode]);
 
   useEffect(() => {
     const root = scrollRootRef.current;
@@ -810,11 +812,12 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         return;
       }
 
+      const fitToContent = isEditModeRef.current && !isCollapsed;
       const nextOptions = options?.preservePosition
         ? {
           id: node.id,
           h: isCollapsed ? node.item.h : node.h,
-          sizeToContent: !isCollapsed,
+          sizeToContent: fitToContent,
         }
         : {
           id: node.id,
@@ -822,12 +825,12 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           y: node.y,
           w: node.w,
           h: isCollapsed ? node.item.h : node.h,
-          sizeToContent: !isCollapsed,
+          sizeToContent: fitToContent,
         };
 
       rootGrid.update(groupElement, nextOptions);
 
-      if (!isCollapsed) {
+      if (fitToContent) {
         rootGrid.resizeToContent(groupElement as GridItemHTMLElement);
       }
     },
@@ -852,7 +855,10 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         y: node.y,
         w: node.w,
         h: node.kind === 'group' && isCollapsedGroup ? node.item.h : node.h,
-        sizeToContent: node.kind === 'group' && !isCollapsedGroup,
+        sizeToContent:
+          isEditModeRef.current &&
+          node.kind === 'group' &&
+          !isCollapsedGroup,
       });
     },
     [],
@@ -1007,7 +1013,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           y: node.y,
           w: node.w,
           h: node.kind === 'group' && isCollapsedGroup ? node.item.h : node.h,
-          sizeToContent: node.kind === 'group' && !isCollapsedGroup,
+          sizeToContent: isEditModeRef.current && node.kind === 'group' && !isCollapsedGroup,
           noMove: false,
           noResize: node.kind === 'group',
         });
@@ -1018,7 +1024,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           y: node.y,
           w: node.w,
           h: node.kind === 'group' && isCollapsedGroup ? node.item.h : node.h,
-          sizeToContent: node.kind === 'group' && !isCollapsedGroup,
+          sizeToContent: isEditModeRef.current && node.kind === 'group' && !isCollapsedGroup,
         });
       });
       const bindGridMutationEvents = (
@@ -1189,7 +1195,11 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       subGrid.enableMove(isEditMode);
       subGrid.enableResize(isEditMode);
     });
-  }, [isEditMode]);
+
+    gridStackLayout.groupNodes.forEach((node) => {
+      syncGroupPresentation(node, { preservePosition: true });
+    });
+  }, [isEditMode, gridStackLayout.groupNodes, syncGroupPresentation]);
 
   useEffect(() => {
     if (!rootGridRef.current) {

@@ -31,17 +31,17 @@ export interface SingleValueStyleDraft {
 export const SINGLE_VALUE_ICON_MAX_BYTES = 100 * 1024;
 
 /**
- * 图标高度相对数值字号。中档与数值字号等高，
- * 小档略小、大档明显更大。
+ * 图标高度相对数值字号。大档略大于数值字号，
+ * 中档略小、小档更小。
  */
 export const SINGLE_VALUE_ICON_FONT_RATIO: Record<SingleValueIconSize, number> = {
-  small: 0.85,
-  medium: 1.15,
-  large: 1.45,
+  small: 0.6,
+  medium: 0.85,
+  large: 1.15,
 };
 
-/** 约半个数字字宽（tabular 的 0.5ch ≈ 0.31em），随字号缩放 */
-export const SINGLE_VALUE_ICON_GAP_RATIO = 0.31;
+/** 约三分之一数字字宽（≈0.2em），随字号缩放 */
+export const SINGLE_VALUE_ICON_GAP_RATIO = 0.2;
 /** 窄卡片先把图标收到这个比例，再窄则隐藏 */
 export const SINGLE_VALUE_ICON_MIN_SCALE = 0.45;
 

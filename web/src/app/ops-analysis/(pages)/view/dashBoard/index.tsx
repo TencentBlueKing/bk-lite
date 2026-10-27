@@ -69,10 +69,13 @@ import { useSession } from 'next-auth/react';
 import { useDashboardLayoutSync } from './hooks/useDashboardLayoutSync';
 import {
   DASHBOARD_GRID_COLS,
-  migrateDashboardGridColumns,
   scaleDashboardGridSpan,
-  withCurrentDashboardGridCols,
 } from '@/app/ops-analysis/utils/dashboardGridColumns';
+import {
+  migrateDashboardGridLayout,
+  scaleDashboardGridHeight,
+  withCurrentDashboardGrid,
+} from '@/app/ops-analysis/utils/dashboardGridRows';
 import {
   deserializeDashboardGridStackLayout,
   serializeDashboardGridStackLayout,
@@ -338,7 +341,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         desc: selectedDashboard?.desc || '',
         view_sets: serializeDashboardGridStackLayout(layout),
         filters: definitions,
-        other: withCurrentDashboardGridCols(otherConfig),
+        other: withCurrentDashboardGrid(otherConfig),
         refresh_interval: savedRefreshInterval,
       }),
       [
@@ -352,7 +355,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
     const applyDashboardDraftPayload = useCallback(
       (payload: CanvasDraftPayload) => {
-        const migratedDraft = migrateDashboardGridColumns(
+        const migratedDraft = migrateDashboardGridLayout(
           deserializeDashboardGridStackLayout(payload.view_sets),
           (payload.other as OtherConfig) || {},
         );
@@ -626,7 +629,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               },
             };
           });
-          const migratedGrid = migrateDashboardGridColumns(
+          const migratedGrid = migrateDashboardGridLayout(
             preparedLayout,
             dashboardData.other || {},
           );
@@ -1035,7 +1038,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         setLayout(syncedLayout);
         syncFilterStateAfterLayoutChange(mergedFilters, nextValues, nextValues);
         if (applied.otherConfig) {
-          setOtherConfig((current) => withCurrentDashboardGridCols({
+          setOtherConfig((current) => withCurrentDashboardGrid({
             ...current,
             ...applied.otherConfig,
           }));
@@ -1371,7 +1374,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           name: selectedDashboard.name,
           desc: selectedDashboard.desc || '',
           filters: definitions,
-          other: withCurrentDashboardGridCols(otherConfig),
+          other: withCurrentDashboardGrid(otherConfig),
           view_sets: serializeDashboardGridStackLayout(layout),
         };
         await saveDashboard(selectedDashboard.data_id, saveData);
@@ -1619,7 +1622,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           x: 0,
           y: nextY,
           w: DASHBOARD_GRID_COLS,
-          h: 1,
+          h: scaleDashboardGridHeight(1),
           name: nextName,
         };
 
@@ -1762,7 +1765,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         x: 0,
         y: 0,
         w: scaleDashboardGridSpan(item.defaultWidth),
-        h: item.defaultHeight,
+        h: scaleDashboardGridHeight(item.defaultHeight),
         name: item.name,
         description: item.desc,
         valueConfig: {
@@ -2138,6 +2141,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             emptyDescription={t('dashboard.selectDashboardFirst')}
             headerVisible={!isFullscreen}
             filterBarVisible
+            compactHeader={homepageMode}
             toolbar={dashboardToolbar}
             filterBar={dashboardFilterBar}
             contentRef={exportRef}

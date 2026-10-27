@@ -14,6 +14,7 @@ import {
   DASHBOARD_GRID_COLS,
   DASHBOARD_PROPOSAL_CELL_WIDTH,
 } from '@/app/ops-analysis/utils/dashboardGridColumns';
+import { scaleDashboardGridHeight } from '@/app/ops-analysis/utils/dashboardGridRows';
 import { isDashboardGroupItem, isDashboardWidgetItem } from '@/app/ops-analysis/utils/dashboardGroups';
 import { syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 
@@ -359,7 +360,7 @@ const packProposalWidgets = (widgets: DashboardProposalWidget[]): DashboardPropo
   let y = 0;
   let rowH = 0;
   return widgets.map((item) => {
-    const height = readNumber(item.h) ?? 3;
+    const height = readNumber(item.h) ?? scaleDashboardGridHeight(3);
     if (x + cellW > columns) {
       x = 0;
       y += rowH;
@@ -423,7 +424,7 @@ export const applyDashboardProposal = (
       x: readNumber(proposal.x) ?? 0,
       y: readNumber(proposal.y) ?? 0,
       w: readNumber(proposal.w) ?? 4,
-      h: readNumber(proposal.h) ?? 3,
+      h: readNumber(proposal.h) ?? scaleDashboardGridHeight(3),
       groupId: null,
       name: proposal.name || proposal.valueConfig.chartType,
       description: proposal.description,

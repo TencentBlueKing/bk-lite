@@ -52,6 +52,8 @@ export interface OtherConfig {
    * 当前运行时为 24，打开旧盘时换算一次后写入 24。
    */
   gridCols?: number;
+  /** 仪表盘行高（px）。缺省为旧版 60，当前为 30；换算后的布局保存时写入。 */
+  gridRowHeight?: number;
   [key: string]: unknown;
 }
 

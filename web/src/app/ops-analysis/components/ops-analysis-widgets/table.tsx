@@ -450,7 +450,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="mt-2 flex h-full flex-col">
       {renderFilters()}
 
       <div ref={tableContainerRef} className="min-h-0 flex-1 overflow-hidden">

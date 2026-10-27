@@ -68,12 +68,13 @@ import {
   BranchesOutlined,
 } from '@ant-design/icons';
 import { resolveSidebarTreeSelection } from '@/app/ops-analysis/utils/sidebarSelection';
-import { useHomepageApi } from '@/app/ops-analysis/api/homepage';
-import { useEffectiveHomepage } from '@/app/ops-analysis/context/effectiveHomepage';
+import {
+  useHomepagePreference,
+} from '@/app/ops-analysis/context/homepagePreference';
 import {
   homepageDirectoryActionKeys,
+  homepageDirectoryLoadingPlaceholderKeys,
   type HomepageDirectoryActionKey,
-  type HomepagePreferenceState,
 } from '@/app/ops-analysis/utils/homepageDirectoryActions';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
@@ -100,23 +101,12 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
     const { getDirectoryTree, createItem, updateItem, deleteItem, copyItem } =
       useDirectoryApi();
-    const { getState: getHomepageState, applyPersonal, applyGlobal } = useHomepageApi();
-    const { refresh: refreshEffectiveHomepage } = useEffectiveHomepage();
-    const [homepageState, setHomepageState] = useState<HomepagePreferenceState | null>(null);
-
-    useEffect(() => {
-      let cancelled = false;
-      void getHomepageState()
-        .then((next) => {
-          if (!cancelled) {
-            setHomepageState(next);
-          }
-        })
-        .catch(() => undefined);
-      return () => {
-        cancelled = true;
-      };
-    }, [getHomepageState, selectedGroup?.id]);
+    const {
+      state: homepageState,
+      isLoading: homepageStateLoading,
+      applyPersonal,
+      applyGlobal,
+    } = useHomepagePreference();
     const [currentDir, setCurrentDir] = useState<DirItem | null>(null);
     const [exportModalVisible, setExportModalVisible] = useState(false);
     const [exportItem, setExportItem] = useState<DirItem | null>(null);
@@ -457,26 +447,22 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       const dashboardId = Number(item.data_id);
       try {
         if (key === 'setPersonal') {
-          setHomepageState(await applyPersonal({ action: 'set', dashboard_id: dashboardId }));
+          await applyPersonal({ action: 'set', dashboard_id: dashboardId });
           message.success(t('opsHomepage.setPersonalSuccess'));
-          await refreshEffectiveHomepage();
           return;
         }
         if (key === 'clearPersonal') {
-          setHomepageState(await applyPersonal({ action: 'clear' }));
+          await applyPersonal({ action: 'clear' });
           message.success(t('opsHomepage.clearPersonalSuccess'));
-          await refreshEffectiveHomepage();
           return;
         }
         if (key === 'setGlobal') {
-          setHomepageState(await applyGlobal({ action: 'set', dashboard_id: dashboardId }));
+          await applyGlobal({ action: 'set', dashboard_id: dashboardId });
           message.success(t('opsHomepage.setGlobalSuccess'));
-          await refreshEffectiveHomepage();
           return;
         }
-        setHomepageState(await applyGlobal({ action: 'restore' }));
+        await applyGlobal({ action: 'restore' });
         message.success(t('opsHomepage.restoreGlobalSuccess'));
-        await refreshEffectiveHomepage();
       } catch {
         // 请求层已经提示失败，设置首页后不跳转。
       }
@@ -486,16 +472,30 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       item: DirItem,
       items: MoreActionsDropdownItem[],
     ): MoreActionsDropdownItem[] => {
-      const keys = homepageDirectoryActionKeys(item, homepageState);
-      if (!keys.length) {
-        return items;
-      }
       const labels: Record<HomepageDirectoryActionKey, string> = {
         setPersonal: t('opsHomepage.setPersonal'),
         clearPersonal: t('opsHomepage.clearPersonal'),
         setGlobal: t('opsHomepage.setGlobal'),
         restoreGlobal: t('opsHomepage.restoreGlobal'),
       };
+      if (homepageStateLoading) {
+        const placeholders = homepageDirectoryLoadingPlaceholderKeys(item);
+        if (!placeholders.length) {
+          return items;
+        }
+        return [
+          ...items,
+          ...placeholders.map((key) => ({
+            key: `homepage-${key}-loading`,
+            label: labels[key],
+            disabled: true,
+          })),
+        ];
+      }
+      const keys = homepageDirectoryActionKeys(item, homepageState);
+      if (!keys.length) {
+        return items;
+      }
       return [
         ...items,
         ...keys.map((key) => ({
@@ -520,19 +520,18 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       const editPermission = isCatalogue ? 'EditCatalogue' : 'EditChart';
       const deletePermission = isCatalogue ? 'DeleteCatalogue' : 'DeleteChart';
 
-      const canvasResourceActions = (): MoreActionsDropdownItem[] => [
-        {
-          key: 'copy',
-          label: t('common.copy'),
-          permission: 'AddChart',
-          onClick: () => handleCopy(item),
-        },
-        {
-          key: 'export',
-          label: t('opsAnalysisSidebar.exportYaml'),
-          onClick: () => handleExport(item),
-        },
-      ];
+      const copyAction: MoreActionsDropdownItem = {
+        key: 'copy',
+        label: t('common.copy'),
+        permission: 'AddChart',
+        onClick: () => handleCopy(item),
+      };
+      const exportAction: MoreActionsDropdownItem = {
+        key: 'export',
+        label: t('opsAnalysisSidebar.exportYaml'),
+        onClick: () => handleExport(item),
+      };
+      const showResourceActions = shouldShowCanvasCopyAction(item);
 
       // 内置目录：有编辑权即可改所属组织；内置画布可复制为用户副本，内容仍只读。
       if (isBuiltIn) {
@@ -556,9 +555,10 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           ]);
         }
         return withHomepageActions(item, [
-          ...(shouldShowCanvasCopyAction(item) ? canvasResourceActions() : []),
+          ...(showResourceActions ? [copyAction] : []),
           { key: 'edit', label: t('common.edit'), disabled: true },
           { key: 'delete', label: t('common.delete'), disabled: true },
+          ...(showResourceActions ? [exportAction] : []),
         ]);
       }
 
@@ -638,8 +638,8 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           },
         },
       );
-      if (shouldShowCanvasCopyAction(item)) {
-        items.push(...canvasResourceActions());
+      if (showResourceActions) {
+        items.push(copyAction, exportAction);
       }
       return withHomepageActions(item, items);
     };
@@ -670,6 +670,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               items={menuItemsFor(item, parentId)}
               placement="bottomLeft"
               stopPropagation
+              labelAlign="start"
               buttonClassName="flex-shrink-0"
             />
           </span>

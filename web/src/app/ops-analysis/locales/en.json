@@ -530,7 +530,6 @@
       "unnamedIcon": "Unnamed",
       "shareStatusHint": "ⓘ Shared pages show the architecture only, without live status or alerts",
       "linkOpenMonitor": "Open in monitoring ↗",
-
       "linkOpenAlarm": "Open in alerts ↗",
       "editor": {
         "icon": "Icon",
@@ -2019,15 +2018,15 @@
     }
   },
   "opsHomepage": {
-    "setPersonal": "Set as my homepage",
-    "clearPersonal": "Unset as my homepage",
-    "setGlobal": "Set as the global default homepage",
-    "restoreGlobal": "Unset as the global default homepage",
+    "setPersonal": "Set as personal homepage",
+    "clearPersonal": "Unset personal homepage",
+    "setGlobal": "Set as default homepage",
+    "restoreGlobal": "Unset default homepage",
     "openInAnalysis": "Open in Operations Analysis",
-    "setPersonalSuccess": "Set as your homepage",
-    "clearPersonalSuccess": "Your homepage now follows the global default. If that default is still this dashboard, the next login opens it again.",
-    "setGlobalSuccess": "Set as the global default homepage",
-    "restoreGlobalSuccess": "Global default homepage unset. The default is the workbench again.",
+    "setPersonalSuccess": "Set as personal homepage",
+    "clearPersonalSuccess": "Set as default homepage",
+    "setGlobalSuccess": "Set as default homepage",
+    "restoreGlobalSuccess": "Default homepage unset",
     "fallbackMissing": "This dashboard is missing or deleted. Returned to the workbench.",
     "fallbackOrg": "This organization cannot view the dashboard. Returned to the workbench.",
     "backToHomepage": "Back to homepage"
