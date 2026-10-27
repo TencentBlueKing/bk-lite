@@ -56,6 +56,7 @@ import type {
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
 import {
+  AppViewFullscreenExit,
   useAppViewFullscreen,
 } from "@/app/ops-analysis/components/appFullscreen";
 import ViewWorkspace from "../components/viewWorkspace";
@@ -1428,6 +1429,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
             : "h-full min-h-0 w-full"
         }
       >
+        <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
         <ViewWorkspace
           selectedItem={selectedScreen}
           loading={loading}

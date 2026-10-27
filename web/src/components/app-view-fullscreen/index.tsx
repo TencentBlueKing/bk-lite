@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FullscreenExitOutlined } from '@ant-design/icons';
 import { Button, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -79,28 +79,83 @@ export interface AppViewFullscreenExitProps {
   className?: string;
 }
 
+const ESC_TIP_VISIBLE_MS = 3000;
+// 大屏拖拽控件会临时升到 z-index 10000，退出层要留在画布之上。
+const FULLSCREEN_CHROME_LAYER = 'z-[10050]';
+
 export const AppViewFullscreenExit: React.FC<AppViewFullscreenExitProps> = ({
   visible,
   onExit,
   className,
 }) => {
   const { t } = useTranslation();
+  const hotZoneRef = useRef<HTMLDivElement>(null);
+  const [tipVisible, setTipVisible] = useState(false);
+  const [cornerHovered, setCornerHovered] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      setTipVisible(false);
+      setCornerHovered(false);
+      return;
+    }
+
+    setTipVisible(true);
+    const timer = window.setTimeout(() => {
+      setTipVisible(false);
+    }, ESC_TIP_VISIBLE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [visible]);
 
   if (!visible) {
     return null;
   }
 
   return (
-    <div className={className || 'absolute right-4 top-3 z-30'}>
-      <Tooltip title={t('common.exitFullscreen')}>
-        <Button
-          type="default"
-          shape="circle"
-          aria-label={t('common.exitFullscreen')}
-          icon={<FullscreenExitOutlined style={{ fontSize: 16 }} />}
-          onClick={onExit}
-        />
-      </Tooltip>
-    </div>
+    <>
+      {tipVisible ? (
+        <div
+          role="status"
+          data-testid="app-view-fullscreen-esc-tip"
+          className={`pointer-events-none absolute left-1/2 top-4 ${FULLSCREEN_CHROME_LAYER} -translate-x-1/2 rounded-full border border-[var(--color-border-2)] bg-[var(--color-bg-1)]/90 px-4 py-1.5 text-sm leading-5 text-[var(--color-text-1)] shadow-md`}
+        >
+          {t('common.pressEscToExitFullscreen')}
+        </div>
+      ) : null}
+      <div
+        ref={hotZoneRef}
+        data-testid="app-view-fullscreen-exit-hotzone"
+        className={className || `absolute right-0 top-0 ${FULLSCREEN_CHROME_LAYER} h-20 w-20`}
+        onMouseEnter={() => setCornerHovered(true)}
+        onMouseLeave={() => setCornerHovered(false)}
+      >
+        <div
+          data-testid="app-view-fullscreen-exit-button"
+          data-shown={cornerHovered ? 'true' : 'false'}
+          className={`absolute right-4 top-3 transition-opacity duration-150 ${
+            cornerHovered ? 'opacity-100' : 'pointer-events-none opacity-0'
+          }`}
+        >
+          <Tooltip
+            title={t('common.exitFullscreen')}
+            placement="bottomRight"
+            getPopupContainer={() => hotZoneRef.current ?? document.body}
+          >
+            <Button
+              type="default"
+              shape="circle"
+              aria-label={t('common.exitFullscreen')}
+              aria-hidden={cornerHovered ? undefined : true}
+              tabIndex={cornerHovered ? 0 : -1}
+              icon={<FullscreenExitOutlined style={{ fontSize: 16 }} />}
+              onClick={onExit}
+            />
+          </Tooltip>
+        </div>
+      </div>
+    </>
   );
 };

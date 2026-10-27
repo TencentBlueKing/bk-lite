@@ -226,6 +226,7 @@
     "copy": "Copy",
     "fullscreen": "Fullscreen",
     "exitFullscreen": "Exit Fullscreen",
+    "pressEscToExitFullscreen": "Press Esc to exit fullscreen",
     "reset": "Reset",
     "inputPassword": "Please input the password",
     "passwordWhitespaceTrimmed": "Leading or trailing whitespace was detected in the password and removed automatically",
