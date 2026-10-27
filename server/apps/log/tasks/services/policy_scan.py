@@ -368,7 +368,7 @@ class LogPolicyScan:
         """关键字告警检测"""
         try:
             start_timestamp, end_timestamp = self._get_scan_window()
-            items = self.evaluate_keyword(start_timestamp, end_timestamp)
+            items = self._detection_rows(start_timestamp, end_timestamp)
             events = []
             if items:
                 group_by = items[0].get("group_by") or []
@@ -525,12 +525,85 @@ class LogPolicyScan:
             )
         return rows
 
+    def _trigger_count(self):
+        """连续满足次数。缺省和非法值按 1，不额外查窗。"""
+        rule = (getattr(self.policy, "alert_condition", None) or {}).get("rule")
+        raw = rule.get("trigger_count", 1) if isinstance(rule, dict) else 1
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+            return 1
+        return min(raw, AlertConstants.TRIGGER_COUNT_MAX)
+
+    def _row_group_key(self, row, group_by):
+        source = row.get("group_values") if isinstance(row, dict) else {}
+        return self._group_key_tuple(source or {}, group_by)
+
+    def _triggered_group_keys(self, rows, group_by):
+        keys = set()
+        for row in rows or []:
+            if isinstance(row, dict) and row.get("triggered"):
+                keys.add(self._row_group_key(row, group_by))
+        return keys
+
+    def _mark_window_failed(self, rows):
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            row["triggered"] = False
+            row["reason"] = "window_failed"
+            row["streak"] = 0
+        return rows
+
+    def _apply_streak(self, rows, previous_windows, trigger_count):
+        group_by = self._normalize_group_by((getattr(self.policy, "alert_condition", None) or {}).get("group_by"))
+        previous_keys = [self._triggered_group_keys(window_rows, group_by) for window_rows in previous_windows]
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            streak = 0
+            if row.get("triggered"):
+                streak = 1
+                key = self._row_group_key(row, group_by)
+                for keys in previous_keys:
+                    if key not in keys:
+                        break
+                    streak += 1
+            row["streak"] = streak
+            if streak < trigger_count:
+                row["triggered"] = False
+        return rows
+
+    def _rows_with_streak(self, window_start, window_end, evaluate):
+        """先查前 N-1 个平移窗，最后查本窗，避免本窗对照状态被覆盖。"""
+        trigger_count = self._trigger_count()
+        if trigger_count <= 1:
+            return evaluate(window_start, window_end)
+        duration = window_end - window_start
+        previous_windows = []
+        for index in range(1, trigger_count):
+            try:
+                previous_windows.append(evaluate(window_start - index * duration, window_end - index * duration))
+            except Exception as exc:
+                logger.warning(
+                    "event=log_policy_streak_failed policy_id=%s failed_stage=%s window_index=%s error_type=%s",
+                    getattr(self.policy, "id", ""),
+                    "streak",
+                    index,
+                    type(exc).__name__,
+                )
+                return self._mark_window_failed(evaluate(window_start, window_end))
+        return self._apply_streak(evaluate(window_start, window_end), previous_windows, trigger_count)
+
+    def _detection_rows(self, window_start, window_end):
+        if getattr(self.policy, "alert_type", None) == AlertConstants.TYPE_KEYWORD:
+            return self._rows_with_streak(window_start, window_end, self.evaluate_keyword)
+        return self._rows_with_streak(window_start, window_end, self.evaluate_aggregate)
+
     def aggregate_alert_detection(self):
         """聚合告警检测"""
         events = []
         try:
             start_timestamp, end_timestamp = self._get_scan_window()
-            rows = self.evaluate_aggregate(start_timestamp, end_timestamp)
+            rows = self._detection_rows(start_timestamp, end_timestamp)
             alert_condition = self.policy.alert_condition or {}
             group_by = self._normalize_group_by(alert_condition.get("group_by", []))
             rule = alert_condition.get("rule", {}) or {}

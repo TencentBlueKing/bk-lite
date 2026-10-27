@@ -1207,3 +1207,287 @@ class TestRatioAndNoData:
         )
         assert sentinel not in rendered
         assert sentinel not in str(record.args)
+
+
+def _capture_warnings():
+    records = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = _Capture(level=logging.WARNING)
+    logger = logging.getLogger("celery")
+    previous_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    return records, handler, logger, previous_level
+
+
+class TestTriggerCount:
+    def _aggregate_policy(self, trigger_count=None, **overrides):
+        rule = {
+            "mode": "and",
+            "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": "1"}],
+        }
+        if trigger_count is not None:
+            rule["trigger_count"] = trigger_count
+        condition = {
+            "query": "level:error",
+            "group_by": overrides.pop("group_by", []),
+            "rule": rule,
+        }
+        if "no_data" in overrides:
+            condition["no_data"] = overrides.pop("no_data")
+        alert_condition = overrides.pop("alert_condition", condition)
+        return _policy(alert_type="aggregate", alert_condition=alert_condition, **overrides)
+
+    def _run_aggregate(self, mocker, policy, fake_query):
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        mocker.patch.object(scan, "_fetch_aggregate_samples", return_value={})
+        return scan, scan.aggregate_alert_detection()
+
+    def test_three_windows_must_all_trigger(self, mocker):
+        policy = self._aggregate_policy(trigger_count=3, id=9, group_by=["service"])
+
+        def fake_query(query, start, end, limit=10):
+            if "stats" not in query:
+                return []
+            if start == 1000:
+                return [
+                    {"service": "order", "count__msg": "10"},
+                    {"service": "pay", "count__msg": "10"},
+                ]
+            if start == 700:
+                return [{"service": "order", "count__msg": "10"}]
+            return [
+                {"service": "order", "count__msg": "10"},
+                {"service": "pay", "count__msg": "10"},
+            ]
+
+        scan, events = self._run_aggregate(mocker, policy, fake_query)
+        assert [event["value"] for event in events] == [10]
+        assert events[0]["raw_data"]["query_result"]["service"] == "order"
+        rows = {row["group_values"]["service"]: row for row in scan._detection_rows(1000, 1300)}
+        assert rows["order"]["streak"] == 3
+        assert rows["order"]["triggered"] is True
+        assert rows["pay"]["streak"] == 1
+        assert rows["pay"]["triggered"] is False
+
+    def test_second_window_miss_produces_no_event(self, mocker):
+        policy = self._aggregate_policy(trigger_count=3, group_by=["service"])
+
+        def fake_query(query, start, end, limit=10):
+            if "stats" not in query:
+                return []
+            if start == 700:
+                return [{"service": "order", "count__msg": "0"}]
+            return [{"service": "order", "count__msg": "10"}]
+
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        mocker.patch.object(scan, "_fetch_aggregate_samples", return_value={})
+        rows = scan._detection_rows(1000, 1300)
+        assert rows[0]["streak"] == 1
+        assert rows[0]["triggered"] is False
+        assert scan.aggregate_alert_detection() == []
+
+    def test_trigger_count_one_does_not_add_queries(self, mocker):
+        def query_starts(trigger_count):
+            policy = self._aggregate_policy(trigger_count=trigger_count, group_by=["service"])
+            if trigger_count is None:
+                policy.alert_condition["rule"].pop("trigger_count", None)
+            starts = []
+
+            def fake_query(query, start, end, limit=10):
+                starts.append(start)
+                if "stats" in query:
+                    return [{"service": "order", "count__msg": "10"}]
+                return []
+
+            self._run_aggregate(mocker, policy, fake_query)
+            return starts
+
+        assert query_starts(None) == query_starts(1) == [1000]
+        assert query_starts(3) == [700, 400, 1000]
+
+    def test_shifted_window_failure_skips_events_and_logs_template(self, mocker):
+        sentinel = "SENTINEL_STREAK_QUERY_BODY_do_not_log"
+        policy = self._aggregate_policy(
+            trigger_count=3,
+            id=42,
+            group_by=["host"],
+            no_data={"enabled": True, "level": "warning"},
+            alert_name="${host} 断流",
+        )
+
+        def fake_query(query, start, end, limit=10):
+            if start == 400:
+                raise RuntimeError(sentinel)
+            if start == 1000 and "stats" in query:
+                return [{"host": "a", "count__msg": "10"}]
+            if start == 700 and "stats" in query:
+                return [
+                    {"host": "a", "count__msg": "8"},
+                    {"host": "b", "count__msg": "300"},
+                ]
+            return []
+
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        mocker.patch.object(scan, "_fetch_aggregate_samples", return_value={})
+        marked = {}
+        original = scan._mark_window_failed
+
+        def wrapped(rows):
+            result = original(rows)
+            marked["rows"] = result
+            return result
+
+        scan._mark_window_failed = wrapped
+        template = "event=log_policy_streak_failed policy_id=%s failed_stage=%s window_index=%s error_type=%s"
+        records, handler, logger, previous_level = _capture_warnings()
+        try:
+            events = scan.aggregate_alert_detection()
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(previous_level)
+
+        assert marked["rows"][0]["reason"] == "window_failed"
+        assert marked["rows"][0]["streak"] == 0
+        assert marked["rows"][0]["triggered"] is False
+        assert marked["rows"][0]["group_values"] == {"host": "a"}
+        normal = [event for event in events if not event["source_id"].endswith(":no_data")]
+        missing = [event for event in events if event["source_id"].endswith(":no_data")]
+        assert normal == []
+        assert len(missing) == 1
+        assert missing[0]["level"] == "warning"
+        assert missing[0]["raw_data"]["aggregate_result"]["no_data"] is True
+        assert missing[0]["raw_data"]["aggregate_result"]["baseline"]["values"]["count__msg"] == 300
+        assert missing[0]["raw_data"]["aggregate_result"]["baseline"]["window"] == {"start": 700, "end": 1000}
+        matched = [record for record in records if record.msg == template]
+        assert len(matched) == 1
+        record = matched[0]
+        assert record.levelno == logging.WARNING
+        assert record.args == (42, "streak", 2, "RuntimeError")
+        assert record.exc_info in (None, False)
+        rendered = record.getMessage()
+        assert rendered == ("event=log_policy_streak_failed policy_id=42 failed_stage=streak window_index=2 error_type=RuntimeError")
+        assert sentinel not in rendered
+        assert sentinel not in str(record.args)
+
+    def test_current_window_baseline_survives_shifted_windows(self, mocker):
+        policy = self._aggregate_policy(
+            trigger_count=3,
+            group_by=["service"],
+            alert_condition={
+                "query": "level:error",
+                "group_by": ["service"],
+                "rule": {
+                    "mode": "and",
+                    "trigger_count": 3,
+                    "conditions": [
+                        {
+                            "func": "count",
+                            "field": "_msg",
+                            "op": ">",
+                            "value": "49",
+                            "compare": {"kind": "percent", "to": "offset_24h"},
+                        }
+                    ],
+                },
+            },
+        )
+
+        def fake_query(query, start, end, limit=10):
+            if start == 1000 - 86400:
+                return [{"service": "order", "count__msg": "120"}]
+            if start == 700 - 86400:
+                return [{"service": "order", "count__msg": "100"}]
+            if start == 400 - 86400:
+                return [{"service": "order", "count__msg": "90"}]
+            if "stats" in query:
+                return [{"service": "order", "count__msg": "180"}]
+            return []
+
+        scan, events = self._run_aggregate(mocker, policy, fake_query)
+        assert len(events) == 1
+        baseline = events[0]["raw_data"]["aggregate_result"]["baseline"]
+        assert baseline["values"]["count__msg"] == 120
+        assert baseline["window"]["start"] == 1000 - 86400
+        assert scan.baselines["offset_24h"]["window"]["start"] == 1000 - 86400
+        assert scan.baseline_status == "ok"
+        assert events[0]["raw_data"]["aggregate_result"]["conditions"][0]["matched"] is True
+
+    def test_no_data_ignores_trigger_count(self, mocker):
+        policy = self._aggregate_policy(
+            trigger_count=3,
+            id=4,
+            alert_name="断流",
+            alert_level="error",
+            no_data={"enabled": True, "level": "warning"},
+        )
+
+        def fake_query(query, start, end, limit=10):
+            if start == 1000:
+                return []
+            if start == 700:
+                return [{"count__msg": "6"}]
+            return [{"count__msg": "1"}]
+
+        _scan, events = self._run_aggregate(mocker, policy, fake_query)
+        assert len(events) == 1
+        assert events[0]["source_id"] == "policy_4_:no_data"
+        assert events[0]["level"] == "warning"
+        assert events[0]["raw_data"]["aggregate_result"]["no_data"] is True
+        assert events[0]["raw_data"]["aggregate_result"]["baseline"]["values"]["count__msg"] == 6
+
+    def test_keyword_streak_and_query_count(self, mocker):
+        def run(trigger_count, miss_previous=False, fail_previous=False):
+            rule = {}
+            if trigger_count is not None:
+                rule["trigger_count"] = trigger_count
+            policy = _policy(
+                id=11,
+                alert_type="keyword",
+                alert_condition={"query": "error", "group_by": [], "rule": rule},
+            )
+            scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+            starts = []
+
+            def fake_query(query, start, end, limit=10):
+                starts.append(start)
+                if fail_previous and start == 700:
+                    raise RuntimeError("SENTINEL_KEYWORD_STREAK_QUERY")
+                if miss_previous and start == 700:
+                    return []
+                if "stats" in query:
+                    return [{"total_count": "4"}]
+                return [{"_msg": "hit"}]
+
+            mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+            return starts, scan.keyword_alert_detection()
+
+        baseline_starts, baseline_events = run(None)
+        once_starts, once_events = run(1)
+        assert baseline_starts == once_starts
+        assert len(baseline_events) == len(once_events) == 1
+        triple_starts, triple_events = run(3)
+        assert triple_starts == [700, 700, 400, 400, 1000, 1000]
+        assert len(triple_events) == 1
+        assert triple_events[0]["value"] == 4
+        _starts, missed = run(3, miss_previous=True)
+        assert missed == []
+        records, handler, logger, previous_level = _capture_warnings()
+        try:
+            _starts, failed = run(3, fail_previous=True)
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(previous_level)
+        assert failed == []
+        template = "event=log_policy_streak_failed policy_id=%s failed_stage=%s window_index=%s error_type=%s"
+        matched = [record for record in records if record.msg == template]
+        assert len(matched) == 1
+        assert matched[0].args == (11, "streak", 1, "RuntimeError")
+        assert "SENTINEL_KEYWORD_STREAK_QUERY" not in matched[0].getMessage()

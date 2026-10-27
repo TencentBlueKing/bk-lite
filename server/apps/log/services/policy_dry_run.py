@@ -131,14 +131,12 @@ class LogPolicyDryRunService:
         window_end = int(safe_now.timestamp())
         window_start = window_end - period_seconds
         scan = LogPolicyScan(policy, scan_time=safe_now, window_start=window_start, window_end=window_end)
+        rows = scan._detection_rows(window_start, window_end)
+        no_data_rows = scan.evaluate_no_data(window_start, window_end, rows)
         if policy.alert_type == AlertConstants.TYPE_KEYWORD:
-            rows = scan.evaluate_keyword(window_start, window_end)
-            no_data_rows = scan.evaluate_no_data(window_start, window_end, rows)
             items = [self._keyword_item(row) for row in rows]
             baseline_status = "not_required"
         else:
-            rows = scan.evaluate_aggregate(window_start, window_end)
-            no_data_rows = scan.evaluate_no_data(window_start, window_end, rows)
             items = [self._aggregate_item(row) for row in rows]
             baseline_status = getattr(scan, "baseline_status", "not_required")
         items.extend(self._no_data_item(row) for row in no_data_rows)
@@ -157,25 +155,38 @@ class LogPolicyDryRunService:
         }
 
     @staticmethod
+    def _with_streak(item, row):
+        if isinstance(row, dict) and "streak" in row:
+            item["streak"] = row.get("streak")
+        return item
+
+    @staticmethod
     def _keyword_item(row):
         count = row.get("total_count") or 0
-        if count > 0:
+        reason = row.get("reason") or ""
+        streak_blocks = "streak" in row and not row.get("triggered")
+        if reason == "window_failed" or streak_blocks:
+            verdict = "no_trigger"
+        elif count > 0:
             verdict = "would_trigger"
         elif count == 0:
             verdict = "no_trigger"
         else:
             verdict = "no_data"
-        return {
-            "group": row.get("group_values") or {},
-            "count": count,
-            "previous_count": None,
-            "count_rate": None,
-            "count_delta": None,
-            "conditions": [],
-            "no_data": False,
-            "verdict": verdict,
-            "reason": "",
-        }
+        return LogPolicyDryRunService._with_streak(
+            {
+                "group": row.get("group_values") or {},
+                "count": count,
+                "previous_count": None,
+                "count_rate": None,
+                "count_delta": None,
+                "conditions": [],
+                "no_data": False,
+                "verdict": verdict,
+                "reason": reason,
+            },
+            row,
+        )
 
     @staticmethod
     def _aggregate_item(row):
@@ -188,17 +199,20 @@ class LogPolicyDryRunService:
             verdict = "no_data"
         else:
             verdict = "no_trigger"
-        return {
-            "group": row.get("group_values") or {},
-            "count": aggregate_data.get("count"),
-            "previous_count": aggregate_data.get("previous_count"),
-            "count_rate": aggregate_data.get("count_rate"),
-            "count_delta": aggregate_data.get("count_delta"),
-            "conditions": list(aggregate_data.get("conditions") or []),
-            "no_data": False,
-            "verdict": verdict,
-            "reason": row.get("reason") or "",
-        }
+        return LogPolicyDryRunService._with_streak(
+            {
+                "group": row.get("group_values") or {},
+                "count": aggregate_data.get("count"),
+                "previous_count": aggregate_data.get("previous_count"),
+                "count_rate": aggregate_data.get("count_rate"),
+                "count_delta": aggregate_data.get("count_delta"),
+                "conditions": list(aggregate_data.get("conditions") or []),
+                "no_data": False,
+                "verdict": verdict,
+                "reason": row.get("reason") or "",
+            },
+            row,
+        )
 
     @staticmethod
     def _no_data_item(row):

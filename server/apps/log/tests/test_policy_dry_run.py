@@ -522,3 +522,135 @@ def test_dry_run_would_trigger_no_data(authenticated_user, mocker):
     assert item["count"] == 0
     assert item["previous_count"] == 4
     assert item["group"] == {}
+
+
+@pytest.mark.django_db
+def test_dry_run_reports_streak_without_extra_side_effects(authenticated_user, mocker):
+    _allow_policy_operations(mocker)
+    mocker.patch("apps.log.services.policy_dry_run._safe_now", return_value=FIXED_NOW)
+    window_start, _window_end, prev_start = _window_bounds()
+    oldest = window_start - 600
+    before = _row_counts()
+
+    def post(name, rows_for_start, trigger_count=3, compare=None):
+        calls = []
+
+        def fake_query(self, query, start, end, limit=10):
+            calls.append(query)
+            if "stats" not in query:
+                return [{"_msg": "sample"}]
+            count = rows_for_start(start)
+            if isinstance(count, Exception):
+                raise count
+            return [{"service": "order", "count__msg": str(count)}]
+
+        mocker.patch("apps.log.tasks.services.policy_scan.VictoriaMetricsAPI.query", fake_query)
+        condition = {"func": "count", "field": "_msg", "op": ">", "value": "1"}
+        if compare is not None:
+            condition["compare"] = compare
+            condition["value"] = "-1"
+        payload = _aggregate_payload(
+            name,
+            [1],
+            alert_condition={
+                "query": "level:error",
+                "group_by": ["service"],
+                "rule": {"mode": "and", "trigger_count": trigger_count, "conditions": [condition]},
+            },
+        )
+        response = _post_dry_run(payload, authenticated_user)
+        assert response.status_code == 200
+        return _body(response)["data"], calls
+
+    short, short_calls = post("streak-two", lambda start: 1 if start == oldest else 10)
+    assert short["items"][0]["streak"] == 2
+    assert short["items"][0]["verdict"] == "no_trigger"
+    assert short["items"][0]["reason"] == ""
+    assert len([query for query in short_calls if "stats" in query]) == 3
+
+    full, full_calls = post(
+        "streak-baseline",
+        lambda start: 10,
+        compare={"kind": "percent", "to": "previous_window"},
+    )
+    assert full["items"][0]["streak"] == 3
+    assert full["items"][0]["verdict"] == "would_trigger"
+    stats_calls = [query for query in full_calls if "stats" in query]
+    assert len(stats_calls) == 3 * (1 + 1)
+    assert len(full_calls) == len(stats_calls) + 1
+
+    sentinel = RuntimeError("SENTINEL_DRY_RUN_STREAK_QUERY")
+
+    def failing(start):
+        if start == oldest:
+            return sentinel
+        return 10
+
+    records = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = _Capture(level=logging.WARNING)
+    logger = logging.getLogger("celery")
+    previous_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    try:
+        failed, _failed_calls = post("streak-failed", failing)
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+
+    assert failed["items"][0]["streak"] == 0
+    assert failed["items"][0]["verdict"] == "no_trigger"
+    assert failed["items"][0]["reason"] == "window_failed"
+    template = "event=log_policy_streak_failed policy_id=%s failed_stage=%s window_index=%s error_type=%s"
+    matched = [record for record in records if record.msg == template]
+    assert len(matched) == 1
+    assert matched[0].args[1:] == ("streak", 2, "RuntimeError")
+    assert "SENTINEL_DRY_RUN_STREAK_QUERY" not in matched[0].getMessage()
+    assert _row_counts() == before
+
+    untouched, untouched_calls = post("streak-default", lambda start: 10, trigger_count=1)
+    assert "streak" not in untouched["items"][0]
+    assert untouched["items"][0]["verdict"] == "would_trigger"
+    assert len([query for query in untouched_calls if "stats" in query]) == 1
+
+
+@pytest.mark.django_db
+def test_dry_run_no_data_ignores_trigger_count(authenticated_user, mocker):
+    _allow_policy_operations(mocker)
+    mocker.patch("apps.log.services.policy_dry_run._safe_now", return_value=FIXED_NOW)
+    window_start, _window_end, prev_start = _window_bounds()
+
+    def fake_query(self, query, start, end, limit=10):
+        if start == prev_start:
+            return [{"count__msg": "4"}]
+        if start == window_start and "stats" in query:
+            return []
+        return [{"count__msg": "1"}]
+
+    mocker.patch("apps.log.tasks.services.policy_scan.VictoriaMetricsAPI.query", fake_query)
+    payload = _aggregate_payload(
+        "no-data-streak",
+        [1],
+        alert_condition={
+            "query": "*",
+            "group_by": [],
+            "no_data": {"enabled": True, "level": "warning"},
+            "rule": {
+                "mode": "and",
+                "trigger_count": 3,
+                "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": "1"}],
+            },
+        },
+    )
+    response = _post_dry_run(payload, authenticated_user)
+    assert response.status_code == 200
+    item = _body(response)["data"]["items"][0]
+    assert item["verdict"] == "would_trigger_no_data"
+    assert item["no_data"] is True
+    assert item["previous_count"] == 4
+    assert "streak" not in item
