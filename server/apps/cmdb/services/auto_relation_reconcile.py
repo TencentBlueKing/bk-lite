@@ -334,6 +334,8 @@ class AutoRelationRuleReconcileService:
         rules: list[AutoRelationRule],
         target_instances: list[dict] | TargetSnapshot | None = None,
         target_claims: dict[int, int] | None = None,
+        *,
+        phase: str = "full",
     ) -> dict:
         model_asst_id = association["model_asst_id"]
         if target_instances is None:
@@ -346,12 +348,17 @@ class AutoRelationRuleReconcileService:
             if edge.get(AUTO_RELATION_EDGE_SOURCE_FIELD) == AUTO_RELATION_EDGE_SOURCE and edge.get(AUTO_RELATION_EDGE_RULE_ID_FIELD) == model_asst_id
         ]
         all_existing_target_uuids = {edge.get("dst_inst_uuid") for edge in existing_edges}
+        if phase not in {"full", "delete", "create"}:
+            raise ValueError(f"unsupported reconcile phase: {phase}")
+
         desired_target_ids = cls._calculate_desired_target_ids(source_instance, association, rules, target_instances=snapshot)
+        # 删除看源自己是否还匹配，不用其他源的占用把仍匹配的自动边清掉。
+        # 多目标歧义仍会把期望清空，因此该路径下的旧自动边继续删除。
         desired_target_ids, mapping_conflicts = cls._filter_desired_targets_for_mapping(
             association,
             source_instance,
             desired_target_ids,
-            target_claims=target_claims,
+            target_claims=None if phase == "delete" else target_claims,
         )
 
         summary = {
@@ -364,13 +371,17 @@ class AutoRelationRuleReconcileService:
             "conflicts": mapping_conflicts,
         }
 
-        desired_target_uuids = {snapshot.by_id[target_id]["inst_uuid"] for target_id in desired_target_ids}
-        for edge in auto_edges:
-            if edge.get("dst_inst_uuid") in desired_target_uuids:
-                continue
-            with GraphClient() as ag:
-                ag.delete_edge(edge["_id"])
-            summary["deleted"] += 1
+        if phase != "create":
+            desired_target_uuids = {snapshot.by_id[target_id]["inst_uuid"] for target_id in desired_target_ids}
+            for edge in auto_edges:
+                if edge.get("dst_inst_uuid") in desired_target_uuids:
+                    continue
+                with GraphClient() as ag:
+                    ag.delete_edge(edge["_id"])
+                summary["deleted"] += 1
+
+        if phase == "delete":
+            return summary
 
         for dst_inst_id in desired_target_ids:
             dst_inst_uuid = snapshot.by_id[dst_inst_id]["inst_uuid"]
@@ -557,10 +568,21 @@ class AutoRelationRuleReconcileService:
             cls._query_instances_by_model(association["dst_model_id"], fields=cls._matching_fields(enabled_rules, "dst"))
         )
         source_instances = cls._query_instances_by_model(association["src_model_id"], fields=cls._matching_fields(enabled_rules, "src"))
-        target_claims: dict[int, int] | None = {} if cls._get_mapping(association) in {"1:n", "1:1"} else None
         summary["mode"] = "full_sync"
         summary["source_instances"] = len(source_instances)
+        # 快照已完整返回。先跨源删掉本规则下不再匹配的自动边，再创建。
+        # 若按源边删边建，1:n/1:1 换源时新边会撞上还没删的旧自动边，本轮被记成冲突后不再补建。
+        for source_instance in source_instances:
+            item_summary = cls.reconcile_source_instance(
+                source_instance,
+                association,
+                enabled_rules,
+                target_instances=target_instances,
+                phase="delete",
+            )
+            summary["deleted"] += item_summary["deleted"]
 
+        target_claims: dict[int, int] | None = {} if cls._get_mapping(association) in {"1:n", "1:1"} else None
         for source_instance in source_instances:
             item_summary = cls.reconcile_source_instance(
                 source_instance,
@@ -568,9 +590,9 @@ class AutoRelationRuleReconcileService:
                 enabled_rules,
                 target_instances=target_instances,
                 target_claims=target_claims,
+                phase="create",
             )
             summary["created"] += item_summary["created"]
-            summary["deleted"] += item_summary["deleted"]
             summary["skipped"] += item_summary["skipped"]
             summary["conflicts"] += item_summary["conflicts"]
 
