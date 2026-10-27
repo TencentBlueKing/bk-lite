@@ -136,6 +136,78 @@ def test_operator_log_list_no_team_returns_empty(superuser):
     assert items == []
 
 
+@pytest.mark.django_db
+def test_registered_log_route_rejects_writes_from_authenticated_viewer():
+    """已登录且仅有查看权限的用户不能通过 api/log 新增、修改或删除审计记录。"""
+    from django.urls import reverse
+    from rest_framework.test import APIClient
+
+    from apps.alerts.constants.constants import LogAction, LogTargetType
+    from apps.base.models import User
+
+    user = User.objects.create_user(
+        username="log-viewer-6715",
+        password="testpass123",
+        domain="domain.com",
+        locale="en",
+        group_list=[{"id": 1, "name": "Default Team"}],
+        roles=[],
+    )
+    user.is_superuser = False
+    user.permission = {"alarm": {"operation_log-View"}}
+
+    marker = "issue-6715-readonly-marker"
+    existing = OperatorLog.objects.create(
+        action=LogAction.ADD,
+        target_type=LogTargetType.SYSTEM,
+        operator="original-operator",
+        target_id="original-target",
+        overview=marker,
+    )
+    before_count = OperatorLog.objects.count()
+    list_url = reverse("log-list")
+    detail_url = reverse("log-detail", kwargs={"pk": existing.pk})
+    assert list_url.rstrip("/").endswith("api/log")
+
+    forged = {
+        "operator": "forged-operator",
+        "action": LogAction.ADD,
+        "target_type": LogTargetType.SYSTEM,
+        "operator_object": "forged-object",
+        "target_id": "forged-target",
+        "overview": f"{marker}-forged",
+    }
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.cookies["current_team"] = "1"
+
+    post_response = client.post(list_url, forged, format="json")
+    put_response = client.put(detail_url, forged, format="json")
+    patch_response = client.patch(
+        detail_url,
+        {"operator": "patched-operator", "overview": f"{marker}-patched"},
+        format="json",
+    )
+    delete_response = client.delete(detail_url)
+
+    assert post_response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+    assert put_response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+    assert patch_response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+    assert delete_response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+    assert OperatorLog.objects.count() == before_count
+    assert not OperatorLog.objects.filter(overview=f"{marker}-forged").exists()
+    assert not OperatorLog.objects.filter(overview=f"{marker}-patched").exists()
+    assert not OperatorLog.objects.filter(operator="forged-operator").exists()
+    assert not OperatorLog.objects.filter(operator="patched-operator").exists()
+    existing.refresh_from_db()
+    assert existing.operator == "original-operator"
+    assert existing.target_id == "original-target"
+    assert existing.overview == marker
+
+    get_response = client.get(list_url)
+    assert get_response.status_code == status.HTTP_200_OK
+
+
 # --------------------------------------------------------------------------
 # receiver function views
 # --------------------------------------------------------------------------
