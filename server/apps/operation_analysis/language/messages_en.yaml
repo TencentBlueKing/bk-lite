@@ -145,6 +145,7 @@ messages:
   dashboard_view_denied: "You do not have permission to view this dashboard"
   canvas_missing_action: "The source canvas no longer exists, so this action cannot run"
   canvas_view_denied: "You do not have permission to view this canvas"
+  canvas_edit_denied: "You do not have permission to edit this canvas"
   referenced_datasource_missing: "Datasources referenced by the canvas do not exist: {ids}"
   referenced_datasource_denied: "You do not have permission to view a datasource referenced by the canvas: {datasource_id}"
   email_channel_required: "A report subscription requires an email channel"

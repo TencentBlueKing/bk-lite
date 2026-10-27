@@ -29,6 +29,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import { useDirectoryApi } from '@/app/ops-analysis/api/index';
 import { useUserInfoContext } from '@/context/userInfo';
+import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { ExportModal, ImportModal } from './importExport';
 import CopyCanvasModal from './copyCanvasModal';
 import { ObjectType } from '@/app/ops-analysis/api/importExport';
@@ -44,8 +45,13 @@ import {
 } from '@/app/ops-analysis/constants/canvasTypes';
 import {
   buildDirectoryEditPayload,
+  collectDirectoryChainGroupIds,
   collectDirectoryExpandKeys,
+  filterGroupTreeByAllowedIds,
+  getSidebarCanvasMenuKeys,
+  isBuiltinCanvasGroupEditable,
   isBuiltinDirectory,
+  retainAllowedGroupIds,
   shouldShowCanvasCopyAction,
 } from '@/app/ops-analysis/utils/canvasDirectoryCopy';
 import {
@@ -85,7 +91,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       | undefined;
     const { t } = useTranslation();
     const searchParams = useSearchParams();
-    const { selectedGroup } = useUserInfoContext();
+    const { selectedGroup, groupTree } = useUserInfoContext();
     const { hasPermission } = useBtnPermissions();
     const networkTopologyApi = useNetworkTopologyApi();
     const [dirs, setDirs] = useState<DirItem[]>([]);
@@ -108,6 +114,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       applyGlobal,
     } = useHomepagePreference();
     const [currentDir, setCurrentDir] = useState<DirItem | null>(null);
+    const [groupScopeDirectoryId, setGroupScopeDirectoryId] = useState<
+      number | string | null
+    >(null);
     const [exportModalVisible, setExportModalVisible] = useState(false);
     const [exportItem, setExportItem] = useState<DirItem | null>(null);
     const [importModalVisible, setImportModalVisible] = useState(false);
@@ -121,6 +130,16 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const showNetworkTopologyConnectionTest =
       (isCreatingCanvas || modalAction === 'edit') &&
       activeCanvasType === 'networkTopology';
+    const builtinIdentityLocked =
+      modalAction === 'edit' &&
+      (isBuiltinDirectory(currentDir) || isBuiltinCanvasGroupEditable(currentDir));
+    const builtinCanvasGroupTree =
+      modalAction === 'edit' && isBuiltinCanvasGroupEditable(currentDir)
+        ? filterGroupTreeByAllowedIds(
+          convertGroupTreeToTreeSelectData(groupTree || []),
+          collectDirectoryChainGroupIds(dirs, groupScopeDirectoryId),
+        )
+        : undefined;
 
     useImperativeHandle(
       ref,
@@ -153,17 +172,27 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       title: string,
       defaultValue = '',
       dir: DirItem | null = null,
-      itemType: DirectoryType = 'directory'
+      itemType: DirectoryType = 'directory',
+      options?: {
+        scopeDirectoryId?: number | string | null;
+        groups?: number[];
+      },
     ) => {
       setModalAction(action);
       setModalTitle(title);
+      setGroupScopeDirectoryId(
+        action === 'edit' && isBuiltinCanvasGroupEditable(dir)
+          ? (options?.scopeDirectoryId ?? null)
+          : null,
+      );
 
       const initialGroups =
-        action === 'edit'
+        options?.groups ??
+        (action === 'edit'
           ? dir?.groups || []
           : action === 'addChild'
             ? dir?.groups || []
-            : [];
+            : []);
       const formData: any = {
         name: defaultValue,
         desc: action === 'edit' && dir ? dir.desc : '',
@@ -233,8 +262,8 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           if (onDataUpdate) {
             const updatedItem = {
               ...currentDir,
-              name: isBuiltinDirectory(currentDir) ? currentDir.name : values.name,
-              desc: isBuiltinDirectory(currentDir) ? currentDir.desc : values.desc,
+              name: builtinIdentityLocked ? currentDir.name : values.name,
+              desc: builtinIdentityLocked ? currentDir.desc : values.desc,
               groups: values.groups,
             };
             onDataUpdate(updatedItem);
@@ -325,6 +354,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       setModalVisible(false);
       form.resetFields();
       setCurrentDir(null);
+      setGroupScopeDirectoryId(null);
       setConnectionTesting(false);
     };
 
@@ -511,6 +541,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const menuItemsFor = (
       item: DirItem,
       parentId: string | null = null,
+      parentItem: DirItem | null = null,
     ): MoreActionsDropdownItem[] => {
       const isRoot = parentId === null;
       const isGroup = item.type === 'directory';
@@ -533,7 +564,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       };
       const showResourceActions = shouldShowCanvasCopyAction(item);
 
-      // 内置目录：有编辑权即可改所属组织；内置画布可复制为用户副本，内容仍只读。
+      // 内置目录与五种内置画布：有目录编辑权时可改所属组织；内容与删除仍只读。
       if (isBuiltIn) {
         if (isCatalogue) {
           return withHomepageActions(item, [
@@ -554,12 +585,57 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             },
           ]);
         }
-        return withHomepageActions(item, [
-          ...(showResourceActions ? [copyAction] : []),
-          { key: 'edit', label: t('common.edit'), disabled: true },
-          { key: 'delete', label: t('common.delete'), disabled: true },
-          ...(showResourceActions ? [exportAction] : []),
-        ]);
+        const menuKeys = getSidebarCanvasMenuKeys(item, {
+          canEditCatalogue: hasPermission(['EditCatalogue']),
+        });
+        const parentDirectoryId =
+          parentItem?.type === 'directory' ? parentItem.data_id : null;
+        const builtinCanvasActions: MoreActionsDropdownItem[] = [];
+        if (menuKeys.includes('editGroup')) {
+          builtinCanvasActions.push({
+            key: 'editGroup',
+            label: t('opsAnalysisSidebar.editGroup'),
+            onClick: () => {
+              if (!hasPermission(['EditCatalogue'])) return;
+              const allowedGroupIds = collectDirectoryChainGroupIds(
+                dirs,
+                parentDirectoryId,
+              );
+              showModal(
+                'edit',
+                t('opsAnalysisSidebar.editGroup'),
+                item.name,
+                item,
+                item.type,
+                {
+                  scopeDirectoryId: parentDirectoryId,
+                  groups: retainAllowedGroupIds(item.groups, allowedGroupIds),
+                },
+              );
+            },
+          });
+        }
+        if (menuKeys.includes('copy') && showResourceActions) {
+          builtinCanvasActions.push(copyAction);
+        }
+        if (menuKeys.includes('export') && showResourceActions) {
+          builtinCanvasActions.push(exportAction);
+        }
+        if (menuKeys.includes('edit')) {
+          builtinCanvasActions.push({
+            key: 'edit',
+            label: t('common.edit'),
+            disabled: true,
+          });
+        }
+        if (menuKeys.includes('delete')) {
+          builtinCanvasActions.push({
+            key: 'delete',
+            label: t('common.delete'),
+            disabled: true,
+          });
+        }
+        return withHomepageActions(item, builtinCanvasActions);
       }
 
       const items: MoreActionsDropdownItem[] = [];
@@ -646,7 +722,8 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
 
     const buildTreeData = (
       items: DirItem[],
-      parentId: string | null = null
+      parentId: string | null = null,
+      parentItem: DirItem | null = null,
     ): DataNode[] =>
       items.map((item) => ({
         key: item.id,
@@ -667,7 +744,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               )}
             </span>
             <MoreActionsDropdown
-              items={menuItemsFor(item, parentId)}
+              items={menuItemsFor(item, parentId, parentItem)}
               placement="bottomLeft"
               stopPropagation
               labelAlign="start"
@@ -676,7 +753,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           </span>
         ),
         children: item.children
-          ? buildTreeData(item.children, item.id)
+          ? buildTreeData(item.children, item.id, item)
           : undefined,
       }));
 
@@ -986,7 +1063,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             >
               <Input
                 placeholder={t('opsAnalysisSidebar.inputPlaceholder')}
-                disabled={modalAction === 'edit' && isBuiltinDirectory(currentDir)}
+                disabled={builtinIdentityLocked}
               />
             </Form.Item>
             {showNetworkTopologyConnectionTest && (
@@ -1048,6 +1125,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               ]}
             >
               <GroupTreeSelect
+                treeData={builtinCanvasGroupTree}
                 placeholder={`${t('common.selectMsg')}${t('common.group')}`}
                 multiple={true}
                 mode="ownership"
@@ -1057,6 +1135,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               <Form.Item name="desc" label={t('opsAnalysisSidebar.descLabel')}>
                 <Input.TextArea
                   autoSize={{ minRows: 3 }}
+                  disabled={builtinIdentityLocked}
                   placeholder={`${t('common.inputMsg')} ${t('opsAnalysisSidebar.descLabel')}`}
                 />
               </Form.Item>
