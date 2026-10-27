@@ -55,6 +55,18 @@ test('screen locales include cardList widget copy', () => {
   }
 });
 
+test('new screen widget id is generated and does not keep a pending preview key', () => {
+  const created = addConfiguredScreenWidget(emptyViewSets, {
+    name: '告警分布',
+    chartType: 'cardList',
+  } as WidgetConfig);
+  const item = created.items[0];
+  assert.equal(item.chartType, 'cardList');
+  assert.equal(item.id.includes('pending:'), false);
+  assert.notEqual(item.id, 'pending:cardList:');
+  assert.equal(JSON.stringify(item).includes('pending:'), false);
+});
+
 test('screen still rejects unknown widget types with the original error', () => {
   assert.throws(
     () => addWidget('not-a-real-chart'),

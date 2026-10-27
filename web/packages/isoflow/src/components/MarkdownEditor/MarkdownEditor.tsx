@@ -3,6 +3,12 @@ import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { Box } from '@mui/material';
 
+const BLANK_EDITOR_HTML = new Set(['', '<p><br></p>', '<p></p>']);
+
+function sameEditorHtml(current: string, next: string) {
+  return current === next || (BLANK_EDITOR_HTML.has(current) && BLANK_EDITOR_HTML.has(next));
+}
+
 interface Props {
   value: string;
   onChange: (value: string) => void;
@@ -23,6 +29,8 @@ export const MarkdownEditor = ({
   const editorRef = useRef<HTMLDivElement>(null);
   const quillRef = useRef<Quill | null>(null);
   const isUpdatingRef = useRef(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const initializeQuill = useCallback(() => {
     if (!editorRef.current || quillRef.current) return;
@@ -44,23 +52,41 @@ export const MarkdownEditor = ({
     if (!readOnly) {
       quill.on('text-change', () => {
         if (!isUpdatingRef.current) {
-          const content = quill.root.innerHTML;
-          onChange(content);
+          onChangeRef.current(quill.root.innerHTML);
         }
       });
     }
 
     quillRef.current = quill;
-  }, [onChange, placeholder, readOnly]);
+  }, [placeholder, readOnly]);
 
   useEffect(() => {
     initializeQuill();
   }, [initializeQuill]);
 
   useEffect(() => {
-    if (quillRef.current && !isUpdatingRef.current) {
-      isUpdatingRef.current = true;
-      quillRef.current.root.innerHTML = value;
+    const quill = quillRef.current;
+    if (!quill) return;
+    const next = value ?? '';
+    // Assigning innerHTML rebuilds the contenteditable and drops the caret
+    // at index 0, so the next character is inserted in front of the previous one.
+    if (sameEditorHtml(quill.root.innerHTML, next)) return;
+
+    const selection = quill.getSelection();
+    isUpdatingRef.current = true;
+    try {
+      if (BLANK_EDITOR_HTML.has(next)) {
+        quill.setText('', 'silent');
+      } else {
+        quill.setContents(quill.clipboard.convert({ html: next }), 'silent');
+      }
+      if (selection) {
+        const maxIndex = Math.max(0, quill.getLength() - 1);
+        const index = Math.min(selection.index, maxIndex);
+        const length = Math.min(selection.length, Math.max(0, maxIndex - index));
+        quill.setSelection(index, length, 'silent');
+      }
+    } finally {
       isUpdatingRef.current = false;
     }
   }, [value]);
