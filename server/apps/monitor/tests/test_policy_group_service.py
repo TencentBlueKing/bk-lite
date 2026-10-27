@@ -23,7 +23,7 @@ from apps.monitor.models import (
     PolicyTemplate,
 )
 from apps.monitor.services.policy import PolicyService
-from apps.monitor.services.policy_group import PolicyGroupService
+from apps.monitor.services.policy_group import PolicyGroupService, no_data_carrier_rule_ids
 from apps.monitor.views.policy_group import _serialize_group, _serialize_rule
 
 pytestmark = pytest.mark.django_db
@@ -1669,6 +1669,171 @@ def test_multi_rule_rejects_recovery_threshold():
     alert.refresh_from_db()
     assert rule.policy.recovery_threshold == {}
     assert alert.status == "new"
+
+
+def _number_metric(monitor_object, plugin, name):
+    metric_group, _ = MetricGroup.objects.get_or_create(
+        monitor_object=monitor_object,
+        monitor_plugin=plugin,
+        name="os",
+    )
+    return Metric.objects.create(
+        monitor_object=monitor_object,
+        monitor_plugin=plugin,
+        metric_group=metric_group,
+        name=name,
+        query=f"{name}{{__$labels__}}",
+        instance_id_keys=["instance_id"],
+        data_type="Number",
+        unit="percent",
+    )
+
+
+def _multi_condition(metric, ref, group_by, algorithm="avg_over_time", group_algorithm="avg"):
+    return {
+        "ref": ref,
+        "metric_id": metric.id,
+        "filter": [],
+        "group_algorithm": group_algorithm,
+        "group_by": list(group_by),
+        "algorithm": algorithm,
+        "metric_unit": "percent",
+        "calculation_unit": "percent",
+        "threshold_unit": "percent",
+        "role": "level",
+        "threshold": [{"level": "warning", "method": ">", "value": 80}],
+    }
+
+
+def _multi_query(*conditions):
+    return {
+        "type": "multi",
+        "result_name": "磁盘与 CPU",
+        "combinator": "all",
+        "queries": list(conditions),
+    }
+
+
+def _same_plugin_rules():
+    """同一插件两条规则。磁盘先创建，id 更小。"""
+    monitor_object = _object()
+    monitor_object.instance_id_keys = ["instance_id"]
+    monitor_object.save(update_fields=["instance_id_keys"])
+    plugin = _plugin(monitor_object, "WMI")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[
+            _template(monitor_object, plugin, "磁盘"),
+            _template(monitor_object, plugin, "CPU"),
+        ],
+    )
+    disk_rule = group.rules.select_related("policy").get(name="磁盘")
+    cpu_rule = group.rules.select_related("policy").get(name="CPU")
+    return monitor_object, plugin, disk_rule, cpu_rule
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rule_editor_multi_save_follows_anchor_and_picks_instance_carrier():
+    monitor_object, plugin, disk_rule, cpu_rule = _same_plugin_rules()
+    cpu = _number_metric(monitor_object, plugin, "cpu_usage")
+    disk = _number_metric(monitor_object, plugin, "disk_usage")
+    policy = disk_rule.policy
+    policy.group_by = ["instance_id", "device"]
+    policy.algorithm = "max_over_time"
+    policy.threshold = [{"level": "warning", "value": 90, "method": ">="}]
+    policy.recovery_threshold = {"method": "<", "value": 20}
+    policy.compare_mode = "previous_window"
+    policy.compare_value_kind = "delta"
+    policy.count_predicate = {"method": ">", "value": 1}
+    policy.save()
+    cpu_rule.policy.group_by = ["instance_id"]
+    cpu_rule.policy.save(update_fields=["group_by", "updated_at"])
+    host = _instance(monitor_object, "disk-host", 1)
+    alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new")
+    anchor_algorithm = "avg_over_time"
+
+    PolicyGroupService.apply_rule_editor(
+        disk_rule,
+        {
+            "query_condition": _multi_query(
+                _multi_condition(disk, "a", ["instance_id"], algorithm=anchor_algorithm),
+                _multi_condition(cpu, "b", ["instance_id"], algorithm="max_over_time", group_algorithm="max"),
+            )
+        },
+    )
+
+    policy.refresh_from_db()
+    cpu_rule.policy.refresh_from_db()
+    alert.refresh_from_db()
+    assert policy.group_by == ["instance_id"]
+    assert policy.algorithm == anchor_algorithm
+    assert policy.threshold == []
+    assert policy.recovery_threshold == {}
+    assert policy.compare_mode == "absolute"
+    assert policy.count_predicate == {}
+    assert policy.query_condition["queries"][0]["group_by"] == ["instance_id"]
+    assert no_data_carrier_rule_ids([disk_rule, cpu_rule]) == {min(disk_rule.id, cpu_rule.id)}
+    assert alert.status == "closed"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rule_editor_multi_save_drops_instance_level_when_anchor_has_extra_dimension():
+    monitor_object, plugin, disk_rule, cpu_rule = _same_plugin_rules()
+    cpu = _number_metric(monitor_object, plugin, "cpu_usage")
+    disk = _number_metric(monitor_object, plugin, "disk_usage")
+    disk_rule.policy.group_by = ["instance_id"]
+    disk_rule.policy.save(update_fields=["group_by", "updated_at"])
+    cpu_rule.policy.group_by = ["instance_id"]
+    cpu_rule.policy.save(update_fields=["group_by", "updated_at"])
+    assert disk_rule.id < cpu_rule.id
+    assert no_data_carrier_rule_ids([disk_rule, cpu_rule]) == {disk_rule.id}
+
+    PolicyGroupService.apply_rule_editor(
+        disk_rule,
+        {
+            "query_condition": _multi_query(
+                _multi_condition(disk, "a", ["instance_id", "device"]),
+                _multi_condition(cpu, "b", ["instance_id", "device"]),
+            )
+        },
+    )
+
+    disk_rule.policy.refresh_from_db()
+    assert disk_rule.policy.group_by == ["instance_id", "device"]
+    assert no_data_carrier_rule_ids([disk_rule, cpu_rule]) == {cpu_rule.id}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rule_editor_multi_save_rejects_missing_metric_without_changing_policy():
+    monitor_object, plugin, disk_rule, cpu_rule = _same_plugin_rules()
+    disk = _number_metric(monitor_object, plugin, "disk_usage")
+    policy = disk_rule.policy
+    policy.group_by = ["instance_id", "device"]
+    policy.threshold = [{"level": "warning", "value": 90, "method": ">="}]
+    policy.save()
+    before_query = copy.deepcopy(policy.query_condition)
+    before_group_by = copy.deepcopy(policy.group_by)
+    before_threshold = copy.deepcopy(policy.threshold)
+    host = _instance(monitor_object, "disk-host", 1)
+    alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new")
+    missing = _multi_condition(disk, "b", ["instance_id"])
+    missing["metric_id"] = (Metric.objects.order_by("-id").values_list("id", flat=True).first() or 0) + 1000
+
+    with pytest.raises(ValidationAppException):
+        PolicyGroupService.apply_rule_editor(
+            disk_rule,
+            {"query_condition": _multi_query(_multi_condition(disk, "a", ["instance_id"]), missing)},
+        )
+
+    policy.refresh_from_db()
+    alert.refresh_from_db()
+    assert policy.query_condition == before_query
+    assert policy.group_by == before_group_by
+    assert policy.threshold == before_threshold
+    assert alert.status == "new"
+    assert cpu_rule.policy.group_by == ["instance_id"]
 
 
 @pytest.mark.parametrize(

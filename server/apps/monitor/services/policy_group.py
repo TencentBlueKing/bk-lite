@@ -298,6 +298,36 @@ def _is_multi_policy(policy):
     return query.get("type") == "multi"
 
 
+def _mirror_multi_anchor(policy, query, update_fields):
+    """多条件保存时，策略行跟随第一条条件，与单策略保存一致。
+
+    返回这些字段相对当前策略行是否有变化。调用方据此结束尚未恢复的告警。
+    """
+    from apps.monitor.expression.errors import FormulaError
+    from apps.monitor.expression.validators import validate_multi_condition
+    from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+
+    query = copy.deepcopy(query)
+    try:
+        validate_multi_condition(query)
+    except FormulaError as exc:
+        raise ValidationAppException(str(exc)) from exc
+    errors = {}
+    MonitorPolicySerializer()._validate_multi_condition_metrics(query, errors)
+    if errors:
+        raise ValidationAppException(str(errors.get("query_condition") or "多指标条件不合法"))
+    attrs = {}
+    MonitorPolicySerializer(instance=policy)._mirror_multi_anchor_fields(attrs, query)
+    changed = False
+    for key, value in attrs.items():
+        stored = copy.deepcopy(value) if isinstance(value, (dict, list)) else value
+        if not _json_equal(getattr(policy, key), stored):
+            changed = True
+        setattr(policy, key, stored)
+        update_fields.append(key)
+    return changed
+
+
 def _enable_alerts_with_no_data(enable_alerts, enabled):
     current = [item for item in (enable_alerts or []) if item != AlertConstants.NO_DATA]
     if enabled:
@@ -965,6 +995,10 @@ class PolicyGroupService:
                     closes_alerts = True
                 setattr(policy, field, copy.deepcopy(value) if isinstance(value, (dict, list)) else value)
                 update_fields.append(field)
+            prepared_query = prepared.get("query_condition")
+            if isinstance(prepared_query, dict) and prepared_query.get("type") == "multi":
+                if _mirror_multi_anchor(policy, prepared_query, update_fields):
+                    closes_alerts = True
             rule_fields = []
             if plugin is not None:
                 closes_alerts = True
