@@ -52,6 +52,19 @@ class InMemoryGraph:
         ]
         return items, len(items)
 
+    def query_entity_by_inst_names(self, inst_names, model_id=None):
+        items = []
+        seen = set()
+        for name in inst_names or []:
+            if name in seen:
+                continue
+            seen.add(name)
+            entity = self.store.get(name)
+            if entity is None or (model_id is not None and entity.get("model_id") != model_id):
+                continue
+            items.append(dict(entity))
+        return items
+
     def create_entity(self, label, entity_info, check_attr_map, exist_items):
         if entity_info.get("inst_name") in self.fail_on_inst:
             raise RuntimeError("graph write boom with secret-ish detail " + "x" * 800)
@@ -328,7 +341,7 @@ def test_software_written_with_install_on_association(graph):
     assert result["software_added"] == 1
     sw = graph.store["SW-AAA"]
     assert sw["model_id"] == "pc_software"
-    assert sw["organization"] == 7
+    assert sw["organization"] == [7]
     assert sw["version"] == "126.0"
     assert len(graph.edges) == 1
     edge = graph.edges[0]
@@ -429,7 +442,7 @@ def _seed_pc_with_software(graph, pc_inst, sw_insts, owner=1):
 @pytest.mark.django_db
 def test_complete_snapshot_deletes_missing_software_and_audits(graph):
     task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
-    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"], owner=task.id)
     old_id = graph.store["SW-OLD"]["_id"]
 
     result = PCSnapshotReconciler(task).apply(_snapshot(software=[_software(inst="SW-NEW")]))
@@ -448,8 +461,8 @@ def test_complete_snapshot_deletes_missing_software_and_audits(graph):
 @pytest.mark.django_db
 def test_complete_empty_snapshot_deletes_only_current_pc(graph):
     task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
-    _seed_pc_with_software(graph, "WIN-ABC", ["SW-ABC-1"])
-    _seed_pc_with_software(graph, "WIN-XYZ", ["SW-XYZ-1"])
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-ABC-1"], owner=task.id)
+    _seed_pc_with_software(graph, "WIN-XYZ", ["SW-XYZ-1"], owner=task.id)
 
     apply_pc_snapshots(task, [_snapshot(inst="WIN-ABC", software=[], snapshot_id="s-empty")])
 
@@ -460,7 +473,7 @@ def test_complete_empty_snapshot_deletes_only_current_pc(graph):
 @pytest.mark.django_db
 def test_partial_snapshot_never_deletes(graph):
     task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
-    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"], owner=task.id)
 
     result = PCSnapshotReconciler(task).apply(_snapshot(software=[], status="partial", snapshot_id="s-p"))
 
@@ -472,7 +485,7 @@ def test_partial_snapshot_never_deletes(graph):
 @pytest.mark.django_db
 def test_delete_failure_keeps_entity_and_retries_next_round(graph):
     task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
-    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"], owner=task.id)
     graph.fail_on_inst.add("SW-OLD")
 
     result = PCSnapshotReconciler(task).apply(_snapshot(software=[], snapshot_id="s1"))
@@ -491,7 +504,7 @@ def test_delete_failure_keeps_entity_and_retries_next_round(graph):
 @pytest.mark.django_db
 def test_no_cleanup_strategy_never_deletes(graph):
     task = _task(strategy=DataCleanupStrategy.NO_CLEANUP)
-    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"], owner=task.id)
 
     result = PCSnapshotReconciler(task).apply(_snapshot(software=[], snapshot_id="s1"))
 
@@ -502,7 +515,7 @@ def test_no_cleanup_strategy_never_deletes(graph):
 @pytest.mark.django_db
 def test_after_expiration_strategy_does_not_delete_immediately(graph):
     task = _task(strategy=DataCleanupStrategy.AFTER_EXPIRATION, expire_days=7)
-    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
+    _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"], owner=task.id)
 
     PCSnapshotReconciler(task).apply(_snapshot(software=[], snapshot_id="s1"))
 

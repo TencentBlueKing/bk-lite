@@ -92,6 +92,7 @@ SOFTWARE_COLLECTED_FIELDS = frozenset(
 _OS_INST_PREFIX = {"windows": "WIN-", "macos": "MAC-"}
 
 _MAX_ERROR_DETAIL = 500
+_SOFTWARE_IDENTITY_BATCH_SIZE = 100
 _BYTES_PER_GB = 1024**3
 # 大于等于 1MiB 的容量仍是采集器上报的字节；已经换算成 GB 的数值远小于这个门槛。
 _BYTE_CAPACITY_FLOOR = 1024**2
@@ -407,25 +408,45 @@ class PCSnapshotReconciler:
             scenario=COLLECT_AUTOMATION_CHANGE,
         )
 
+    def _software_identity_index(self, ag, snapshot):
+        """按 inst_name 分块读取已有软件。同名只留返回列表的第一条；没有名称时不查询。"""
+        names = []
+        seen = set()
+        for row in snapshot.software:
+            name = row.get("inst_name") if isinstance(row, dict) else None
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            names.append(name)
+        index = {}
+        for start in range(0, len(names), _SOFTWARE_IDENTITY_BATCH_SIZE):
+            chunk = names[start : start + _SOFTWARE_IDENTITY_BATCH_SIZE]
+            rows = ag.query_entity_by_inst_names(chunk, model_id="pc_software") or []
+            for entity in rows:
+                if not isinstance(entity, dict):
+                    continue
+                inst_name = entity.get("inst_name")
+                if not inst_name or inst_name in index:
+                    continue
+                index[inst_name] = entity
+        return index
+
     def _upsert_software(self, ag, snapshot, pc_entity):
-        """软件按 inst_name 无删除 upsert + install_on 关联；任一失败计入 software_failed。"""
+        """软件按 inst_name 无删除 upsert + install_on 关联；身份按固定块读取，任一失败计入 software_failed。"""
         counts = {"software_added": 0, "software_updated": 0, "software_failed": 0, "outcomes": []}
         collect_time = snapshot.collected_at.isoformat()
+        identity_index = self._software_identity_index(ag, snapshot)
         for row in snapshot.software:
             payload = filter_software_payload(row)
             payload["last_collect_time"] = collect_time
             sw_entity = None
             created_this_round = False
             try:
-                params = [
-                    {"field": "model_id", "type": "str=", "value": "pc_software"},
-                    {"field": "inst_name", "type": "str=", "value": payload["inst_name"]},
-                ]
-                existing, _ = ag.query_entity(INSTANCE, params)
+                existing = identity_index.get(payload["inst_name"])
                 if existing:
                     update_payload = dict(payload, collect_time=collect_time)
-                    ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], update_payload, _write_check_map(update_payload), [])
-                    sw_entity = dict(existing[0], **payload)
+                    ag.set_entity_properties(INSTANCE, [existing["_id"]], update_payload, _write_check_map(update_payload), [])
+                    sw_entity = dict(existing, **payload)
                     outcome_key = "software_updated"
                 else:
                     create_payload = dict(payload)
@@ -439,6 +460,7 @@ class PCSnapshotReconciler:
                     create_payload = prepare_new_instance_identity(create_payload)
                     sw_entity = ag.create_entity(INSTANCE, create_payload, {}, [])
                     created_this_round = True
+                    identity_index[payload["inst_name"]] = sw_entity
                     outcome_key = "software_added"
                 asso_info = {
                     "model_asst_id": "pc_software_install_on_pc",
@@ -467,6 +489,7 @@ class PCSnapshotReconciler:
                 if created_this_round and sw_entity:
                     try:
                         ag.detach_delete_entity(INSTANCE, sw_entity["_id"])
+                        identity_index.pop(payload.get("inst_name"), None)
                     except Exception as cleanup_exc:  # noqa: BLE001 - 补偿失败保留，下轮继续治理
                         logger.warning(
                             "[PC] orphan software compensation failed: task=%s sw=%s err=%s",
