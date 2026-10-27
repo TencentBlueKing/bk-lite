@@ -416,6 +416,22 @@ def test_get_node_list_page_size_all_is_capped(setup, monkeypatch):
 
     assert result["count"] == 3
     assert len(result["nodes"]) == 2
+    assert [item["id"] for item in result["nodes"]] == ["node-svc-1", "node-svc-2"]
+
+    page_two = NodeService.get_node_list(
+        organization_ids=[],
+        cloud_region_id=None,
+        name=None,
+        ip=None,
+        os=None,
+        page=2,
+        page_size=-1,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
+        skip_permission=True,
+    )
+    assert [item["id"] for item in page_two["nodes"]] == ["node-svc-3"]
 
 
 @pytest.mark.django_db

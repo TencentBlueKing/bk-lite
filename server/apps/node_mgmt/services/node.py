@@ -2,7 +2,8 @@ import ipaddress
 import os
 from datetime import datetime, timedelta, timezone
 
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, Value
+from django.db.models.functions import Concat
 from django.utils import timezone as dj_timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -469,7 +470,9 @@ class NodeService:
             qs = qs.filter(ip__icontains=ip)
         keyword = NodeService._normalize_keyword(keyword)
         if keyword:
-            qs = qs.filter(Q(name__icontains=keyword) | Q(ip__icontains=keyword))
+            qs = qs.annotate(
+                _display_label=Concat("name", Value(" ("), "ip", Value(")")),
+            ).filter(Q(name__icontains=keyword) | Q(ip__icontains=keyword) | Q(_display_label__icontains=keyword))
         if os:
             qs = qs.filter(operating_system__icontains=os)
 
@@ -627,10 +630,13 @@ class NodeService:
 
     @staticmethod
     def _apply_configured_sink_order(qs, sink_child_config):
-        """将已绑定指定子配置的节点整块沉到过滤结果末尾，再交给分页。"""
+        """将已绑定指定子配置的节点整块沉到过滤结果末尾，再交给分页。
+
+        没有沉底规则时按 id 排序，保证 page_size 上限下的翻页不会漏行或重复。
+        """
         normalized = NodeService._normalize_sink_child_config(sink_child_config)
         if normalized is None:
-            return qs
+            return qs.order_by("id")
         collector, collect_type = normalized
         configured = ChildConfig.objects.filter(
             collector_config__collector__name=collector,
