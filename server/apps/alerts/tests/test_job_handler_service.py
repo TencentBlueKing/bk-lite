@@ -2,6 +2,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import apps.cmdb.models  # node_mgmt 装入后会加载 monitor，monitor 再引用 CMDB
+import apps.monitor.models  # job_mgmt 回调测试会装入 node_mgmt，其路由导入监控模型
 from apps.alerts.action.exceptions import TargetError
 from apps.alerts.action.handlers.job import JobActionHandler
 
@@ -365,6 +367,112 @@ def test_manual_trigger_event_binding_maps_alert_status(mock_target, mock_job):
     JobActionHandler().execute(rule, alert, execution)
     payload = mock_job.return_value.job_script_execute.call_args[0][0]
     assert payload["params"] == [{"name": "event", "value": "created"}]
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.action.handlers.job.JobMgmt")
+@patch("apps.alerts.action.handlers.job.resolve_node_target")
+def test_execute_early_callback_is_not_treated_as_terminal(mock_target, mock_job, api_client):
+    """job_script_execute 返回前的成功回调不能被当成已送达，否则执行记录会停在 running。"""
+    import json
+
+    from apps.alerts.models.action import ActionExecution, ActionRule
+    from apps.alerts.models.models import Alert
+    from apps.job_mgmt.utils.callback_signer import get_signed_headers
+
+    mock_target.return_value = {"node_id": "n1", "name": "h", "ip": "10.0.0.5", "os": "linux", "cloud_region_id": 1}
+    alert = Alert.objects.create(
+        alert_id="A-early-callback",
+        fingerprint="fp-early",
+        title="t",
+        content="c",
+        level="1",
+        team=[1],
+        labels={"ip": "10.0.0.5", "service": "nginx"},
+    )
+    rule = ActionRule.objects.create(
+        name="重启nginx",
+        team=[1],
+        action_config={
+            "script_id": 42,
+            "target_binding": {"source": "node_mgmt", "match_by": "ip", "host_field": "labels.ip"},
+            "param_bindings": [{"name": "service", "from": "field", "value": "labels.service"}],
+        },
+    )
+    execution = ActionExecution.objects.create(
+        rule=rule,
+        alert=alert,
+        trigger_event="created",
+        trigger_type="auto",
+        idempotency_key="early-callback",
+        status="pending",
+        action_type="job",
+    )
+    task_id = 4821
+    body = {
+        "task_id": task_id,
+        "status": "success",
+        "total_count": 1,
+        "success_count": 1,
+        "failed_count": 0,
+        "finished_at": "2026-06-23T10:32:00Z",
+    }
+    observed = {}
+
+    def execute_and_callback(_data):
+        headers = get_signed_headers(body)
+        response = api_client.post(
+            "/api/v1/alerts/api/action_callback/",
+            data=json.dumps(body),
+            content_type="application/json",
+            HTTP_X_BK_LITE_TIMESTAMP=headers["X-BK-Lite-Timestamp"],
+            HTTP_X_BK_LITE_SIGNATURE=headers["X-BK-Lite-Signature"],
+            HTTP_X_BK_LITE_SOURCE=headers["X-BK-Lite-Source"],
+        )
+        execution.refresh_from_db()
+        observed["status_code"] = response.status_code
+        observed["headers"] = headers
+        observed["status_during_callback"] = execution.status
+        observed["task_during_callback"] = execution.job_task_id
+        return {"result": True, "data": {"task_id": task_id}}
+
+    mock_job.return_value.get_script.return_value = SCRIPT
+    mock_job.return_value.job_script_execute.side_effect = execute_and_callback
+
+    JobActionHandler().execute(rule, alert, execution)
+
+    assert observed["status_code"] == 503
+    assert observed["status_during_callback"] == "pending"
+    assert observed["task_during_callback"] is None
+    mock_job.return_value.job_script_execute.assert_called_once()
+    execution.refresh_from_db()
+    assert execution.job_task_id == task_id
+    assert execution.status == "running"
+
+    headers = observed["headers"]
+    retried = api_client.post(
+        "/api/v1/alerts/api/action_callback/",
+        data=json.dumps(body),
+        content_type="application/json",
+        HTTP_X_BK_LITE_TIMESTAMP=headers["X-BK-Lite-Timestamp"],
+        HTTP_X_BK_LITE_SIGNATURE=headers["X-BK-Lite-Signature"],
+        HTTP_X_BK_LITE_SOURCE=headers["X-BK-Lite-Source"],
+    )
+    assert retried.status_code == 200
+    execution.refresh_from_db()
+    assert execution.status == "success"
+
+    duplicate = api_client.post(
+        "/api/v1/alerts/api/action_callback/",
+        data=json.dumps(body),
+        content_type="application/json",
+        HTTP_X_BK_LITE_TIMESTAMP=headers["X-BK-Lite-Timestamp"],
+        HTTP_X_BK_LITE_SIGNATURE=headers["X-BK-Lite-Signature"],
+        HTTP_X_BK_LITE_SOURCE=headers["X-BK-Lite-Source"],
+    )
+    assert duplicate.status_code == 200
+    execution.refresh_from_db()
+    assert execution.status == "success"
 
 
 def test_registry_returns_job_handler():
