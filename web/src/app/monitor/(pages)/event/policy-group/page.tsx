@@ -1239,22 +1239,10 @@ const PolicyGroupPage: React.FC = () => {
         <div className="mb-3">
           <div className="mb-1">无数据告警</div>
           {noDataNote ? <div className={`mb-1 ${CONFIG_HINT_CLASS}`}>{noDataNote}</div> : null}
-          {detectionDraft.noDataEnabled == null ? (
-            <Select
-              className="w-[160px]"
-              placeholder="请选择"
-              options={[
-                { value: 'on', label: '开启' },
-                { value: 'off', label: '关闭' },
-              ]}
-              onChange={(value) => patchDetection({ noDataEnabled: value === 'on' })}
-            />
-          ) : (
-            <Switch
-              checked={detectionDraft.noDataEnabled}
-              onChange={(checked) => patchDetection({ noDataEnabled: checked })}
-            />
-          )}
+          <Switch
+            checked={detectionDraft.noDataEnabled === true}
+            onChange={(checked) => patchDetection({ noDataEnabled: checked })}
+          />
           <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>查不到数据时告警。</div>
         </div>
         {detectionDraft.noDataEnabled ? (
