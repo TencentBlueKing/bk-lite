@@ -173,9 +173,15 @@ def process_skill_channel_im_message(self, channel_id, channel_type, method, que
 def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sender_id, config):
     """智能体企微 aibot：异步单 Agent 执行后投递回覆任务。"""
     from apps.opspilot.models import SkillChannel
-    from apps.opspilot.services.skill_channel_aibot import SkillChannelAibotUtils
+    from apps.opspilot.services.skill_channel_aibot import (
+        SHORT_CONNECTION_STREAM_FALLBACK_SECONDS,
+        SkillChannelAibotUtils,
+        finish_short_connection_stream,
+    )
     from apps.opspilot.services.skill_channel_chat_service import execute_skill_channel_im_sync
-    from apps.opspilot.services.skill_channel_im_media import rewrite_markdown_images_for_im
+    from apps.opspilot.services.skill_channel_im_media import wecom_short_connection_outbound
+
+    stream_id = str((config or {}).get("stream_id") or "")
 
     def _execute():
         handler = SkillChannelAibotUtils(channel_id)
@@ -192,6 +198,8 @@ def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sende
             if not channel:
                 logger.info("skill aibot 跳过：渠道不存在或已下线 channel_id=%s", channel_id)
                 handler.mark_message_failed(msg_id)
+                if stream_id:
+                    finish_short_connection_stream(channel_id, stream_id, "")
                 return {"skipped": True}
 
             user_message = ""
@@ -211,8 +219,15 @@ def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sende
                 session_id=session_id,
                 download_origin=(config or {}).get("download_origin") or "",
             )
-            markdown = rewrite_markdown_images_for_im(reply_text)
-            process_skill_channel_aibot_reply.delay(channel_id, msg_id, response_url, markdown)
+            visible, _items = wecom_short_connection_outbound(reply_text)
+            if stream_id:
+                finish_short_connection_stream(channel_id, stream_id, reply_text)
+                process_skill_channel_aibot_reply.apply_async(
+                    args=[channel_id, msg_id, response_url, visible, stream_id],
+                    countdown=SHORT_CONNECTION_STREAM_FALLBACK_SECONDS,
+                )
+            else:
+                process_skill_channel_aibot_reply.delay(channel_id, msg_id, response_url, visible)
             logger.info("skill aibot 已提交回覆 channel_id=%s msg_id=%s", channel_id, msg_id)
             return {"accepted": True, "channel_id": channel_id, "msg_id": msg_id}
         except Exception:
@@ -223,19 +238,31 @@ def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sende
     try:
         return _run_in_native_thread(_execute)
     except Exception as e:
+        if stream_id and self.request.retries >= self.max_retries:
+            finish_short_connection_stream(channel_id, stream_id, "处理失败，请稍后重试")
         raise self.retry(exc=e)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_skill_channel_aibot_reply", queue="opspilot_channel")
-def process_skill_channel_aibot_reply(self, channel_id, msg_id, response_url, content):
-    """异步发送智能体企微 aibot 回覆，成功后再标记 completed。"""
-    from apps.opspilot.services.skill_channel_aibot import SkillChannelAibotUtils
+def process_skill_channel_aibot_reply(self, channel_id, msg_id, response_url, content, stream_id=""):
+    """异步发送智能体企微 aibot 回覆，成功后再标记 completed。
+
+    带 stream_id 时只在流式轮询没有投递过时补发纯文本。图片已由轮询的 msg_item 送出。
+    """
+    from apps.opspilot.services.skill_channel_aibot import SkillChannelAibotUtils, claim_short_connection_delivery, release_short_connection_delivery
 
     handler = SkillChannelAibotUtils(channel_id)
+    claimed = False
     try:
+        if stream_id and not claim_short_connection_delivery(channel_id, stream_id):
+            handler.mark_message_completed(msg_id)
+            return
+        claimed = bool(stream_id)
         SkillChannelAibotUtils.send_markdown_reply(response_url, content)
         handler.mark_message_completed(msg_id)
     except Exception as e:
+        if claimed:
+            release_short_connection_delivery(channel_id, stream_id)
         logger.exception("skill aibot 回覆发送失败 channel_id=%s msg_id=%s", channel_id, msg_id)
         raise self.retry(exc=e)
 

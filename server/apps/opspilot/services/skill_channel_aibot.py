@@ -3,21 +3,31 @@
 from __future__ import annotations
 
 import os
+import time
+import uuid
 from typing import Any
 
+from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_log_value
 from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.models import SkillChannel, WorkflowAttachmentAsset
+from apps.opspilot.services.skill_channel_im_media import wecom_short_connection_outbound
 from apps.opspilot.services.workflow_attachment_service import build_server_attachment_download_path
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 from apps.opspilot.utils.enterprise_wechat_aibot_crypto import EnterpriseWechatAibotCrypto, EnterpriseWechatAibotCryptoError
 
 SHORT_CONNECTION_FILE_LINKED_LOG = "event=wecom_aibot_short_connection_file_linked channel_id=%s file_count=%s"
 SHORT_CONNECTION_FILE_SKIPPED_LOG = "event=wecom_aibot_short_connection_file_skipped channel_id=%s failed_stage=download_origin file_count=%s"
+SHORT_CONNECTION_IMAGE_REPLY_LOG = "event=wecom_aibot_short_connection_image_reply channel_id=%s image_count=%s"
 DOWNLOAD_PUBLIC_BASE_URL_ENV = "WECOM_AIBOT_PUBLIC_BASE_URL"
+SHORT_CONNECTION_PROCESSING_TEXT = "正在处理"
+SHORT_CONNECTION_STREAM_CACHE_SECONDS = 7200
+SHORT_CONNECTION_STREAM_FALLBACK_SECONDS = 20
+_STREAM_KEY = "skill_channel_aibot_stream:{channel_id}:{stream_id}"
+_STREAM_CLAIM_KEY = "skill_channel_aibot_stream_claim:{channel_id}:{stream_id}"
 
 SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE = (
     "event=skill_channel_aibot_decrypt_failed channel_id=%s failed_stage=decrypt_callback "
@@ -78,6 +88,70 @@ def append_short_connection_file_links(content: str, execution_id: str, channel_
     if not stripped:
         return block
     return f"{stripped}\n\n{block}"
+
+
+def _stream_cache_key(channel_id: int, stream_id: str) -> str:
+    return _STREAM_KEY.format(channel_id=channel_id, stream_id=stream_id)
+
+
+def open_short_connection_stream(channel_id: int, stream_id: str, response_url: str) -> None:
+    cache.set(
+        _stream_cache_key(channel_id, stream_id),
+        {"phase": "processing", "reply_text": "", "delivered": False, "response_url": response_url or ""},
+        SHORT_CONNECTION_STREAM_CACHE_SECONDS,
+    )
+
+
+def finish_short_connection_stream(channel_id: int, stream_id: str, reply_text: str) -> None:
+    key = _stream_cache_key(channel_id, stream_id)
+    state = dict(cache.get(key) or {})
+    state["phase"] = "finished"
+    state["reply_text"] = reply_text or ""
+    state.setdefault("delivered", False)
+    cache.set(key, state, SHORT_CONNECTION_STREAM_CACHE_SECONDS)
+
+
+def release_short_connection_delivery(channel_id: int, stream_id: str) -> None:
+    key = _stream_cache_key(channel_id, stream_id)
+    state = cache.get(key)
+    if isinstance(state, dict):
+        state = dict(state)
+        state["delivered"] = False
+        cache.set(key, state, SHORT_CONNECTION_STREAM_CACHE_SECONDS)
+    cache.delete(_STREAM_CLAIM_KEY.format(channel_id=channel_id, stream_id=stream_id))
+
+
+def claim_short_connection_delivery(channel_id: int, stream_id: str) -> bool:
+    """同一条流只投递一次。轮询先到则带图片，超时再走 response_url 纯文本。"""
+    key = _stream_cache_key(channel_id, stream_id)
+    state = cache.get(key)
+    if not isinstance(state, dict) or state.get("delivered"):
+        return False
+    claim_key = _STREAM_CLAIM_KEY.format(channel_id=channel_id, stream_id=stream_id)
+    if not cache.add(claim_key, "1", 30):
+        return False
+    state = dict(state)
+    state["delivered"] = True
+    cache.set(key, state, SHORT_CONNECTION_STREAM_CACHE_SECONDS)
+    return True
+
+
+def short_connection_stream_payload(channel_id: int, stream_id: str) -> dict[str, Any]:
+    """企微流式刷新。图片放 msg_item，正文不留会被拦截的图片外链。"""
+    state = cache.get(_stream_cache_key(channel_id, stream_id))
+    if not isinstance(state, dict):
+        return {"msgtype": "stream", "stream": {"id": stream_id, "finish": True, "content": ""}}
+    if state.get("phase") != "finished":
+        return {
+            "msgtype": "stream",
+            "stream": {"id": stream_id, "finish": False, "content": SHORT_CONNECTION_PROCESSING_TEXT},
+        }
+    visible, items = wecom_short_connection_outbound(state.get("reply_text") or "")
+    stream: dict[str, Any] = {"id": stream_id, "finish": True, "content": visible}
+    if claim_short_connection_delivery(channel_id, stream_id) and items:
+        stream["msg_item"] = items
+        logger.info(SHORT_CONNECTION_IMAGE_REPLY_LOG, channel_id, len(items))
+    return {"msgtype": "stream", "stream": stream}
 
 
 def normalize_aibot_channel_config(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -176,6 +250,11 @@ class SkillChannelAibotUtils(EnterpriseWechatAibotChatFlowUtils):
             logger.warning("智能体企微机器人消息缺少 msgid channel_id=%s", self.channel_id)
             return HttpResponse("success", content_type="text/plain")
 
+        if message.get("msgtype") == "stream":
+            stream_id = str((message.get("stream") or {}).get("id") or "").strip()
+            payload = short_connection_stream_payload(self.channel_id, stream_id)
+            return self._encrypted_passive_reply(request, crypto, payload, self.channel_id)
+
         if self.is_message_processed(msg_id):
             return HttpResponse("success", content_type="text/plain")
 
@@ -197,10 +276,14 @@ class SkillChannelAibotUtils(EnterpriseWechatAibotChatFlowUtils):
             message=message,
             clean_text=clean_text,
         )
+        response_url = message.get("response_url") or ""
+        stream_id = uuid.uuid4().hex
+        open_short_connection_stream(self.channel_id, stream_id, response_url)
         task_config = {
             **config,
-            "response_url": message.get("response_url") or "",
+            "response_url": response_url,
             "download_origin": resolve_download_origin(request, config),
+            "stream_id": stream_id,
         }
         from apps.opspilot.tasks import process_skill_channel_aibot_message
 
@@ -211,4 +294,36 @@ class SkillChannelAibotUtils(EnterpriseWechatAibotChatFlowUtils):
             sender_id=flow_input.get("user_id", ""),
             config=task_config,
         )
-        return HttpResponse("success", content_type="text/plain")
+        return self._encrypted_passive_reply(
+            request,
+            crypto,
+            {
+                "msgtype": "stream",
+                "stream": {
+                    "id": stream_id,
+                    "finish": False,
+                    "content": SHORT_CONNECTION_PROCESSING_TEXT,
+                },
+            },
+            self.channel_id,
+        )
+
+    @staticmethod
+    def _encrypted_passive_reply(
+        request: HttpRequest,
+        crypto: EnterpriseWechatAibotCrypto,
+        payload: dict[str, Any],
+        channel_id: int,
+    ) -> HttpResponse:
+        timestamp = (request.GET.get("timestamp") or "").strip() or str(int(time.time()))
+        nonce = (request.GET.get("nonce") or "").strip() or uuid.uuid4().hex
+        try:
+            body = crypto.encrypt_reply(payload, timestamp=timestamp, nonce=nonce)
+        except EnterpriseWechatAibotCryptoError:
+            logger.warning(
+                "event=wecom_aibot_short_connection_encrypt_failed channel_id=%s failed_stage=encrypt_reply error_type=%s",
+                channel_id,
+                "EnterpriseWechatAibotCryptoError",
+            )
+            return HttpResponse("success", content_type="text/plain")
+        return JsonResponse(body)

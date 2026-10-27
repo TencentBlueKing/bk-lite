@@ -11,6 +11,7 @@ from apps.opspilot.services.skill_channel_feishu_long_connection import (
     EMPTY_ANSWER_TEXT,
     FAILURE_TEXT,
     FILE_FAILED_TEXT,
+    IMAGE_FAILED_LOG_TEMPLATE,
     LEADER_LOCK_KEY,
     PROCESSING_TEXT,
     REPLY_FAILED_LOG_TEMPLATE,
@@ -64,8 +65,10 @@ class FakeGateway:
         self.replies = []
         self.updates = []
         self.files = []
+        self.images = []
         self.fail_updates = 0
         self.fail_files = False
+        self.fail_images = False
         self.events = []
         self.closed = False
         self._seq = 0
@@ -89,6 +92,11 @@ class FakeGateway:
         if self.fail_files:
             raise FeishuDeliveryError("file")
         self.files.append((message_id, filename, content))
+
+    def reply_image(self, message_id, filename, content, content_type):
+        if self.fail_images:
+            raise FeishuDeliveryError("image")
+        self.images.append((message_id, filename, content, content_type))
 
     def poll(self, timeout):
         if not self.events:
@@ -505,6 +513,55 @@ def test_file_failure_keeps_the_answer_and_sends_a_notice():
     assert ("om_user", FILE_FAILED_TEXT, "om_2") in gateway.replies
 
 
+def test_finished_answer_sends_image_without_url_in_the_bubble(monkeypatch):
+    from apps.opspilot.services.skill_channel_im_media import ImImage
+
+    image_url = "https://blocked.example/a.png?sig=SENTINEL_IMAGE_URL"
+    image = ImImage(alt="图", source_url=image_url, public_url=image_url, content=b"png", content_type="image/png")
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_feishu_long_connection.feishu_outbound",
+        lambda text: ("说明", [image]),
+    )
+    agent = RecordingAgent()
+    clock = ManualClock()
+    session, gateway, clock = _session(_channel(), agent, clock=clock)
+    session.handle(_text())
+    agent.requests[0].publish(f"说明\n\n![图]({image_url})")
+    clock.advance(2)
+    session.tick()
+    assert gateway.updates[-1] == ("om_1", "说明")
+    assert "SENTINEL_IMAGE_URL" not in gateway.updates[-1][1]
+    agent.requests[0].finish()
+    assert gateway.updates[-1] == ("om_1", "说明")
+    assert gateway.images == [("om_user", "图", b"png", "image/png")]
+    assert all("SENTINEL_IMAGE_URL" not in text for _mid, text in gateway.updates)
+
+
+def test_image_failure_sends_a_notice_without_the_url(monkeypatch, caplog):
+    from apps.opspilot.services.skill_channel_im_media import FEISHU_IMAGE_FAILED_TEXT, ImImage
+
+    image_url = "https://blocked.example/a.png?sig=SENTINEL_IMAGE_URL"
+    image = ImImage(alt="图", source_url=image_url, public_url=image_url, content=b"png", content_type="image/png")
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_feishu_long_connection.feishu_outbound",
+        lambda text: ("说明", [image]),
+    )
+    caplog.set_level(logging.DEBUG, logger="opspilot")
+    agent = RecordingAgent()
+    gateway = FakeGateway()
+    gateway.fail_images = True
+    session, gateway, _clock = _session(_channel(), agent, gateway)
+    session.handle(_text())
+    agent.requests[0].publish(f"说明\n\n![图]({image_url})")
+    agent.requests[0].finish()
+    assert gateway.updates[-1] == ("om_1", "说明")
+    assert ("om_user", FEISHU_IMAGE_FAILED_TEXT, "om_2") in gateway.replies
+    records = [record for record in caplog.records if record.msg == IMAGE_FAILED_LOG_TEMPLATE]
+    assert [(record.args[1], record.args[2]) for record in records] == [("image", "FeishuDeliveryError")]
+    assert "SENTINEL_IMAGE_URL" not in caplog.text
+    assert [record for record in caplog.records if record.exc_info] == []
+
+
 def test_upload_request_includes_the_filename():
     from lark_oapi.core.utils import Files
     from requests_toolbelt import MultipartEncoder
@@ -515,6 +572,19 @@ def test_upload_request_includes_the_filename():
     encoded = MultipartEncoder(Files.parse_form_data(request.body)).to_string()
     assert b'filename="\xe6\xb7\xb1\xe5\x9c\xb3\xe4\xbb\x8b\xe7\xbb\x8d_v1.0.txt"' in encoded
     assert b"hello" in encoded
+
+
+def test_upload_image_request_includes_the_filename():
+    from lark_oapi.core.utils import Files
+    from requests_toolbelt import MultipartEncoder
+
+    from apps.opspilot.services.skill_channel_feishu_long_connection_sdk import upload_image_request
+
+    request = upload_image_request("示意图", b"png-bytes", "image/png")
+    encoded = MultipartEncoder(Files.parse_form_data(request.body)).to_string()
+    assert b'filename="\xe7\xa4\xba\xe6\x84\x8f\xe5\x9b\xbe.png"' in encoded
+    assert b"png-bytes" in encoded
+    assert b"image_type" in encoded
 
 
 def test_inbound_event_keeps_mention_keys():

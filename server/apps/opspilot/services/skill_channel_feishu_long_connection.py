@@ -12,6 +12,7 @@ from typing import Any, Callable
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.services.skill_channel_aibot_long_connection import LeaderLock
 from apps.opspilot.services.skill_channel_feishu import feishu_long_connection_credentials
+from apps.opspilot.services.skill_channel_im_media import FEISHU_IMAGE_FAILED_TEXT, feishu_outbound, strip_markdown_images
 
 LEADER_LOCK_KEY = "opspilot:feishu-long-connection:leader"
 LEADER_LOCK_TTL_SECONDS = 30
@@ -33,6 +34,8 @@ CONNECT_FAILED_LOG_TEMPLATE = "event=feishu_long_connection_connect_failed chann
 REPLY_FAILED_LOG_TEMPLATE = "event=feishu_long_connection_reply_failed channel_id=%s failed_stage=%s error_type=%s"
 REPLY_FINISHED_LOG_TEMPLATE = "event=feishu_long_connection_reply_finished channel_id=%s outcome=%s"
 FILE_SENT_LOG_TEMPLATE = "event=feishu_long_connection_file_sent channel_id=%s"
+IMAGE_SENT_LOG_TEMPLATE = "event=feishu_long_connection_image_sent channel_id=%s"
+IMAGE_FAILED_LOG_TEMPLATE = "event=feishu_long_connection_image_failed channel_id=%s failed_stage=%s error_type=%s"
 FILE_FAILED_LOG_TEMPLATE = "event=feishu_long_connection_file_failed channel_id=%s failed_stage=%s error_type=%s error_code=%s error_detail=%s"
 BOT_INFO_FAILED_LOG_TEMPLATE = "event=feishu_long_connection_bot_info_failed channel_id=%s failed_stage=bot_info error_type=%s"
 DUPLICATE_APP_LOG_TEMPLATE = "event=feishu_long_connection_duplicate_app channel_id=%s"
@@ -73,6 +76,15 @@ def group_text_for_bot(text: str, mentions: list[dict[str, str]], bot_open_id: s
     if key:
         text = text.replace(key, "", 1)
     return text.strip()
+
+
+def _feishu_visible_text(text: str) -> str:
+    """刷新气泡时先去掉图片外链。结束帧再单独发图片。"""
+    raw = text or ""
+    if "![" not in raw:
+        return raw
+    visible = strip_markdown_images(raw)
+    return visible or "附图"
 
 
 def speaker_session_id(chat_id: str, sender_open_id: str) -> str:
@@ -185,10 +197,15 @@ class FeishuConnection:
     def tick(self) -> None:
         self._reap_workers()
         now = self.clock.now()
+        timed_out: list[tuple[Turn, str]] = []
         with self._lock:
             for turn in list(self._turns.values()):
-                self._apply_deadline(turn, now)
+                content = self._apply_deadline(turn, now)
+                if content:
+                    timed_out.append((turn, content))
                 self._maybe_refresh(turn, now)
+        for turn, content in timed_out:
+            self._deliver_images(turn, content)
 
     def note_generated(self, turn: Turn, text: str) -> None:
         now = self.clock.now()
@@ -220,6 +237,7 @@ class FeishuConnection:
             self._persist_assistant(turn, content)
             self._turns.pop(turn.chat_id, None)
         self._deliver_files(turn, files)
+        self._deliver_images(turn, content)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "completed")
 
     def fail_turn(self, turn: Turn, message: str | None = None) -> None:
@@ -325,7 +343,7 @@ class FeishuConnection:
         self._turns.pop(turn.chat_id, None)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "interrupted")
 
-    def _apply_deadline(self, turn: Turn, now: float) -> None:
+    def _apply_deadline(self, turn: Turn, now: float) -> str | None:
         if turn.closed:
             return
         if now - turn.started_at < STREAM_DEADLINE_SECONDS - STREAM_FINISH_LEAD_SECONDS:
@@ -339,6 +357,7 @@ class FeishuConnection:
         self._persist_assistant(turn, content)
         self._turns.pop(turn.chat_id, None)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "timeout")
+        return content if generated else None
 
     def _maybe_refresh(self, turn: Turn, now: float) -> None:
         if turn.closed:
@@ -353,14 +372,15 @@ class FeishuConnection:
         self._show(turn, generated)
 
     def _show(self, turn: Turn, text: str) -> None:
+        visible = _feishu_visible_text(text)
         try:
-            self.gateway.update_text(turn.bubble_id, text)
+            self.gateway.update_text(turn.bubble_id, visible)
         except Exception as exc:
             if turn.replaced:
                 logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "update", type(exc).__name__)
                 return
             try:
-                turn.bubble_id = self.gateway.reply_text(turn.user_message_id, text)
+                turn.bubble_id = self.gateway.reply_text(turn.user_message_id, visible)
             except Exception as reply_exc:
                 logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "fallback", type(reply_exc).__name__)
                 return
@@ -373,6 +393,28 @@ class FeishuConnection:
             self.gateway.reply_text(message_id, UNSUPPORTED_TEXT)
         except Exception as exc:
             logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "unsupported", type(exc).__name__)
+
+    def _deliver_images(self, turn: Turn, content: str) -> None:
+        _visible, images = feishu_outbound(content or "")
+        failed = False
+        for image in images:
+            try:
+                self.gateway.reply_image(
+                    turn.user_message_id,
+                    image.alt or "image",
+                    image.content,
+                    image.content_type,
+                )
+            except Exception as exc:
+                failed = True
+                logger.warning(IMAGE_FAILED_LOG_TEMPLATE, self.channel.id, "image", type(exc).__name__)
+                continue
+            logger.info(IMAGE_SENT_LOG_TEMPLATE, self.channel.id)
+        if failed:
+            try:
+                self.gateway.reply_text(turn.user_message_id, FEISHU_IMAGE_FAILED_TEXT)
+            except Exception as exc:
+                logger.warning(IMAGE_FAILED_LOG_TEMPLATE, self.channel.id, "notice", type(exc).__name__)
 
     def _deliver_files(self, turn: Turn, files: list[tuple[str, bytes]]) -> None:
         for filename, content in files:
