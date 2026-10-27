@@ -124,8 +124,8 @@ const METRIC_GROUPS: Array<{ labelKey: string; metrics: Array<{ value: ApmPolicy
       { value: 'p50', i18nKey: 'apm.policies.metricP50' },
       { value: 'p75', i18nKey: 'apm.policies.metricP75' },
       { value: 'p90', i18nKey: 'apm.policies.metricP90' },
-      { value: 'p95', i18nKey: 'apm.common.p95Latency' },
-      { value: 'p99', i18nKey: 'apm.common.p99Latency' },
+      { value: 'p95', i18nKey: 'apm.policies.metricP95' },
+      { value: 'p99', i18nKey: 'apm.policies.metricP99' },
       { value: 'latency_max', i18nKey: 'apm.policies.metricLatencyMax' },
     ],
   },
@@ -383,7 +383,7 @@ function CompareBaselineSelect({
   id?: string;
   value?: ApmCompareMode;
   onChange?: (value: ApmCompareMode) => void;
-  onModeChange?: (value: ApmCompareMode) => void;
+  onModeChange?: (value: ApmCompareMode, previous?: ApmCompareMode) => void;
 }) {
   const { t } = useTranslation();
   const family: ApmCompareMode = value === 'offset_hours' || value === 'offset_days' || value === 'offset_1h' || value === 'offset_24h'
@@ -394,8 +394,9 @@ function CompareBaselineSelect({
       id={id}
       value={family}
       onChange={(next: ApmCompareMode) => {
+        const previous = value;
         onChange?.(next);
-        onModeChange?.(next);
+        onModeChange?.(next, previous);
       }}
       options={[
         { value: 'absolute', label: t('apm.policies.compareModeAbsolute', '当前值') },
@@ -652,6 +653,16 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       window.clearTimeout(recipientSearchDebounceRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    // rc-field-form 的 errors 和 warnings 初始指向同一个空数组。字段第一次
+    // onChange 会把这份 meta 存进缓存，下一次 setFieldValue 再深比较时就会
+    // 报 “There may be circular references”，开发态遮罩会挡住整页。
+    // 挂载后用两份独立空数组写入缓存，后续切换比较基准不再误报。
+    (['compare_mode', 'compare_value_kind', 'compare_offset_amount', 'recovery_comparator', 'thresholds', 'apdex_threshold_ms'] as const)
+      .forEach((name) => form.setFieldValue(name, form.getFieldValue(name)));
+  }, [form, loading]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -1075,10 +1086,14 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       form.setFieldValue('thresholds', rows.map((row) => (
         row.comparator === 'gt' || row.comparator === 'gte' ? { ...row, comparator: 'lt' } : row
       )));
+      const recovery = form.getFieldValue('recovery_comparator') as ApmPolicyComparator | undefined;
+      if (recovery === 'lt' || recovery === 'lte') {
+        form.setFieldValue('recovery_comparator', recovery === 'lte' ? 'gte' : 'gt');
+      }
     }
   };
 
-  const applyCompareMode = (mode: ApmCompareMode) => {
+  const applyCompareMode = (mode: ApmCompareMode, previous?: ApmCompareMode) => {
     if (mode === 'absolute') {
       form.setFieldValue('compare_value_kind', '');
       form.setFieldValue('compare_offset_amount', null);
@@ -1094,11 +1109,17 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       const kind = form.getFieldValue('compare_value_kind');
       if (kind !== 'delta' && kind !== 'percent') form.setFieldValue('compare_value_kind', 'percent');
       const amount = Number(form.getFieldValue('compare_offset_amount'));
-      if (!Number.isInteger(amount) || amount < 2 || amount > 7) form.setFieldValue('compare_offset_amount', 7);
+      const fromHours = previous === 'offset_hours' || previous === 'offset_1h' || previous === 'offset_24h';
+      if (fromHours || !Number.isInteger(amount) || amount < 2 || amount > 7) {
+        form.setFieldValue('compare_offset_amount', 7);
+      }
       return;
     }
     form.setFieldValue('compare_value_kind', 'percent');
-    if (!form.getFieldValue('compare_offset_amount')) form.setFieldValue('compare_offset_amount', 1);
+    const amount = Number(form.getFieldValue('compare_offset_amount'));
+    if (previous === 'baseline_days' || !Number.isInteger(amount) || amount < 1) {
+      form.setFieldValue('compare_offset_amount', 1);
+    }
   };
 
   const offsetSelected = compareMode === 'offset_hours' || compareMode === 'offset_days' || compareMode === 'offset_1h' || compareMode === 'offset_24h';
@@ -1312,8 +1333,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                       aria-label={t('apm.policies.compareOffsetMethod', '对照方式')}
                       value={compareMode === 'offset_days' ? 'offset_days' : 'offset_hours'}
                       onChange={(mode: ApmCompareMode) => {
+                        const previous = form.getFieldValue('compare_mode') as ApmCompareMode;
                         form.setFieldValue('compare_mode', mode);
-                        applyCompareMode(mode);
+                        applyCompareMode(mode, previous);
                       }}
                       options={[
                         { value: 'offset_hours', label: t('apm.policies.compareOffsetHours', 'N 小时前') },

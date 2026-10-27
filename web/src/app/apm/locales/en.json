@@ -744,6 +744,8 @@
       "metricP50": "P50",
       "metricP75": "P75",
       "metricP90": "P90",
+      "metricP95": "P95",
+      "metricP99": "P99",
       "metricErrorCount": "Error count",
       "metricSlowCount": "Slow request count",
       "metricSlowRate": "Slow request rate",

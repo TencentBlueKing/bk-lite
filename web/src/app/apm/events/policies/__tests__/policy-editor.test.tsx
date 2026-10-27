@@ -700,6 +700,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await user.click(await screen.findByLabelText('指标'));
     expect(await screen.findByText('时延')).not.toBeNull();
+    expect(screen.getByRole('option', { name: 'P95' })).not.toBeNull();
+    expect(screen.queryByRole('option', { name: 'P95 延迟' })).toBeNull();
     await user.click(await screen.findByRole('option', { name: '慢请求数' }));
     expect(screen.queryByLabelText('汇聚方法')).toBeNull();
     const slow = screen.getByLabelText('慢阈值 (ms)') as HTMLInputElement;
@@ -782,5 +784,46 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
         }),
       ),
     );
+  });
+
+  it('同窗和近 N 天切换不沿用对方的数字，Apdex 把恢复比较符翻到对侧', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByLabelText('比较基准'));
+    await user.click(await screen.findByText('近 N 天同窗均值'));
+    expect((screen.getByLabelText('天数') as HTMLInputElement).value).toBe('7');
+
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('同窗'));
+    const hours = screen.getByLabelText('小时数') as HTMLInputElement;
+    expect(hours.value).toBe('1');
+    await user.clear(hours);
+    await user.type(hours, '6');
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('近 N 天同窗均值'));
+    expect((screen.getByLabelText('天数') as HTMLInputElement).value).toBe('7');
+
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('同窗'));
+    await user.click(screen.getByRole('combobox', { name: '对照方式' }));
+    await user.click(await screen.findByText('N 天前'));
+    const offsetDays = screen.getByLabelText('天数') as HTMLInputElement;
+    await user.clear(offsetDays);
+    await user.type(offsetDays, '3');
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('近 N 天同窗均值'));
+    expect((screen.getByLabelText('天数') as HTMLInputElement).value).toBe('3');
+
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByRole('option', { name: 'Apdex' }));
+    await user.type(screen.getByRole('spinbutton', { name: '恢复阈值' }), '40');
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(payload.metric_type).toBe('apdex');
+    expect(payload.compare_mode).toBe('baseline_days');
+    expect(payload.compare_offset_amount).toBe(3);
+    expect(payload.recovery_threshold).toEqual({ comparator: 'gt', value: 40 });
+    expect(payload.thresholds).toEqual([expect.objectContaining({ comparator: 'lt', value: 5 })]);
   });
 });
