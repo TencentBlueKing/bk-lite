@@ -54,6 +54,10 @@ from apps.opspilot.services.ppt_master_runtime import (
 _SKILLS_PATH_PATTERN = re.compile(r"/skills/[^\s'\"\|;&<>(){}\\`$?!*]*")
 # L3 扩展:匹配 ``/tmp/`` 开头、连续路径字符(不含 shell 特殊字符)
 _TMP_PATH_PATTERN = re.compile(r"/tmp/[^\s'\"\|;&<>(){}\\`$?!*]*")
+_PPT_VIRTUAL_PREFIX = "/ppt-workspace"
+_PPT_VIRTUAL_PATH_RE = re.compile(r"/ppt-workspace(?:/[^\s'\"|;&<>(){}\\`$?!*]*)?")
+# 路径段上的 ..，含相对路径。文件名里的 a..b 不算。
+_DOTDOT_SEGMENT_RE = re.compile(r"(?:^|[\\/\s'\"=])\.\.(?:$|[\\/\s'\"])")
 
 
 def extract_skill_names_from_text(text: str, skills_root: str = "/skills") -> list[str]:
@@ -560,6 +564,59 @@ def rewrite_sandbox_paths(command: str, sandbox_dir: Path, skills_root: str = "/
     return rewritten
 
 
+def ppt_workspace_physical_path(virtual: str, workspace: Path) -> Path:
+    """把 /ppt-workspace 前缀映射到工作目录内的物理路径。含 .. 或越界则拒绝。"""
+    root = Path(workspace).resolve()
+    path = str(virtual or "").replace("\\", "/")
+    if len(path) > 1:
+        path = path.rstrip("/")
+    prefix = _PPT_VIRTUAL_PREFIX
+    if path != prefix and not path.startswith(prefix + "/"):
+        raise PermissionError(f"[sandbox] 拒绝 ppt 工作目录以外的路径 {virtual!r}")
+    suffix = "" if path == prefix else path[len(prefix) + 1 :]
+    parts = [part for part in suffix.split("/") if part not in ("", ".")]
+    if any(part == ".." for part in parts):
+        raise PermissionError(f"[sandbox] 拒绝越出 ppt 工作目录的路径 {virtual!r}")
+    candidate = root.joinpath(*parts) if parts else root
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise PermissionError(f"[sandbox] 拒绝越出 ppt 工作目录的路径 {virtual!r}") from exc
+    return resolved
+
+
+def ppt_virtual_path_contained(path: str, workspace: Path | None) -> bool:
+    """校验绝对路径是否是落在工作目录内的 /ppt-workspace 虚拟路径。"""
+    if workspace is None:
+        return False
+    text = str(path or "")
+    if text != _PPT_VIRTUAL_PREFIX and not text.startswith(_PPT_VIRTUAL_PREFIX + "/"):
+        return False
+    try:
+        ppt_workspace_physical_path(text, workspace)
+    except PermissionError:
+        return False
+    return True
+
+
+def materialize_ppt_workspace_paths(command: str, workspace: Path) -> str:
+    """把命令里的 /ppt-workspace 前缀换成工作目录下的物理路径。"""
+
+    def _replace(match: re.Match[str]) -> str:
+        physical = str(ppt_workspace_physical_path(match.group(0), workspace))
+        if not any(char in physical for char in (" ", "\t")):
+            return physical
+        start, end = match.span()
+        before = command[start - 1] if start else ""
+        after = command[end] if end < len(command) else ""
+        if before in "\"'" and after == before:
+            return physical
+        return '"' + physical.replace('"', "") + '"'
+
+    return _PPT_VIRTUAL_PATH_RE.sub(_replace, command)
+
+
 def _bind_ppt_workspace_filesystem(inner: Any, workspace: Path) -> None:
     """让 /ppt-workspace 直接落到时间戳目录。
 
@@ -661,10 +718,18 @@ class PathRewritingBackend(SandboxBackendProtocol):
     def _prepare_ppt_command(self, command: str) -> str:
         if self._ppt_workspace is None:
             return command
-        # /ppt-workspace 是沙箱虚拟根。校验只放行 /skills 和 /tmp，原样传进去会被当成主机路径拒绝。
-        command = command.replace("/ppt-workspace/", "")
-        command = re.sub(r"/ppt-workspace(?=\s|$|[\"'])", ".", command)
+        # 保留 /ppt-workspace 前缀交给校验。提前剥成相对路径会让 ../../etc 绕过绝对路径检查。
+        if _DOTDOT_SEGMENT_RE.search(command):
+            raise PermissionError("[sandbox] 拒绝含 .. 的路径。ppt 工作目录不能被相对路径穿越。")
         return quote_measurement_roles(command)
+
+    def _rewrite_execute_command(self, command: str) -> str:
+        prepared = self._prepare_ppt_command(command)
+        rewritten = rewrite_sandbox_paths(prepared, self._sandbox_dir, self._skills_root)
+        self._validate_command(rewritten, original=prepared)
+        if self._ppt_workspace is not None:
+            rewritten = materialize_ppt_workspace_paths(rewritten, self._ppt_workspace)
+        return self._apply_ppt_workspace_cwd(rewritten)
 
     def _repair_ppt_svgs(self, command: str) -> None:
         if self._ppt_workspace is None or "svg_to_pptx.py" not in command:
@@ -700,15 +765,12 @@ class PathRewritingBackend(SandboxBackendProtocol):
         if denied_probe is not None:
             self._log_execute_result(command, command, denied_probe)
             return denied_probe
-        command = self._prepare_ppt_command(command)
-        rewritten = rewrite_sandbox_paths(command, self._sandbox_dir, self._skills_root)
         try:
-            self._validate_command(rewritten, original=command)
+            rewritten = self._rewrite_execute_command(command)
         except PermissionError as exc:
             denied = _sandbox_deny_result(exc, ppt=self._ppt_workspace is not None or command_uses_ppt_master(command))
-            self._log_execute_result(command, rewritten, denied)
+            self._log_execute_result(command, command, denied)
             return denied
-        rewritten = self._apply_ppt_workspace_cwd(rewritten)
         self._ensure_sandbox_dirs(rewritten)
         self._repair_ppt_svgs(command)
         with self._exec_lock:
@@ -730,15 +792,12 @@ class PathRewritingBackend(SandboxBackendProtocol):
         if denied_probe is not None:
             self._log_execute_result(command, command, denied_probe)
             return denied_probe
-        command = self._prepare_ppt_command(command)
-        rewritten = rewrite_sandbox_paths(command, self._sandbox_dir, self._skills_root)
         try:
-            self._validate_command(rewritten, original=command)
+            rewritten = self._rewrite_execute_command(command)
         except PermissionError as exc:
             denied = _sandbox_deny_result(exc, ppt=self._ppt_workspace is not None or command_uses_ppt_master(command))
-            self._log_execute_result(command, rewritten, denied)
+            self._log_execute_result(command, command, denied)
             return denied
-        rewritten = self._apply_ppt_workspace_cwd(rewritten)
         self._ensure_sandbox_dirs(rewritten)
         self._repair_ppt_svgs(command)
         await asyncio.to_thread(self._exec_lock.acquire)
@@ -1031,6 +1090,9 @@ class PathRewritingBackend(SandboxBackendProtocol):
             "/dev/stdout",
             "/dev/stderr",
         )
+        ppt_workspace = getattr(self, "_ppt_workspace", None)
+        if ppt_workspace is not None and _DOTDOT_SEGMENT_RE.search(original):
+            raise PermissionError("[sandbox] 拒绝含 .. 的路径。ppt 工作目录不能被相对路径穿越。")
         exe_token, _ = _split_first_token(original.strip())
         exe_unix = exe_token.strip("'\"").replace("\\", "/").rstrip("/")
         for match in re.finditer(r"(?:^|\s)(/[^\s'\"]+)", original):
@@ -1038,6 +1100,8 @@ class PathRewritingBackend(SandboxBackendProtocol):
             # 解释器自身的绝对路径(Linux 上的 /usr/bin/python3 或 venv/bin/python)
             # 不是 host 文件探测;脚本参数仍要过 /skills /tmp 白名单。
             if exe_unix and path.rstrip("/") == exe_unix and (is_python_interpreter(path) or command_basename(path) in self._ALLOWED_COMMANDS):
+                continue
+            if ppt_virtual_path_contained(path, ppt_workspace):
                 continue
             if not any(path.startswith(p) for p in allowed_path_prefixes):
                 raise PermissionError(f"[sandbox] 拒绝 host 路径 {path!r}。" f"只允许 {allowed_path_prefixes} 下的路径。")

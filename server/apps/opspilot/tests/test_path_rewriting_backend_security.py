@@ -371,6 +371,38 @@ def test_normalize_ad_search_args_drops_bare_help():
     assert "*" in out
 
 
+def test_ppt_execute_rejects_workspace_traversal(tmp_path):
+    """虚拟前缀里的 .. 不能在校验前被剥成相对路径。"""
+    from unittest.mock import MagicMock
+
+    inner = MagicMock()
+    inner.execute.return_value = SimpleNamespace(output="ok\n", exit_code=0, truncated=False)
+    workspace = tmp_path / "ws"
+    (workspace / "projects" / "demo").mkdir(parents=True)
+    backend = _PathRewritingBackend(inner, tmp_path / "sandbox", ppt_workspace=workspace)
+
+    denied = backend.execute("cat /ppt-workspace/../../etc/passwd")
+    assert denied.exit_code == 126
+    assert "不要 cat/head/tail/cp/rm" in denied.output
+    inner.execute.assert_not_called()
+
+    denied_virtual = backend.execute("python /skills/ppt-master/scripts/svg_to_pptx.py /ppt-workspace/../../etc/passwd")
+    assert denied_virtual.exit_code == 126
+    assert ".." in denied_virtual.output
+    inner.execute.assert_not_called()
+
+    denied_relative = backend.execute("python /skills/ppt-master/scripts/svg_to_pptx.py ../../etc/passwd")
+    assert denied_relative.exit_code == 126
+    inner.execute.assert_not_called()
+
+    allowed = backend.execute("python /skills/ppt-master/scripts/svg_to_pptx.py /ppt-workspace/projects/demo --quick-generate")
+    assert allowed.exit_code == 0
+    command = inner.execute.call_args.args[0]
+    assert "/ppt-workspace/" not in command
+    assert str(workspace / "projects" / "demo") in command
+    assert ".." not in command.split("&&")[-1]
+
+
 def test_prepare_execute_command_rewrites_ad_search_field_alias():
     import sys
 

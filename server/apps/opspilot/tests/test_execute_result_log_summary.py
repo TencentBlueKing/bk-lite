@@ -273,6 +273,30 @@ def test_ppt_workspace_write_lands_in_timestamp_dir(tmp_path):
     assert not (workspace / "hello.txt").exists()
 
 
+def test_bind_utf8_execute_only_wraps_real_local_shell(tmp_path):
+    from unittest.mock import MagicMock
+
+    from deepagents.backends.local_shell import LocalShellBackend
+
+    from apps.opspilot.services.skill_executor.utf8_local_shell import bind_utf8_execute
+
+    fake = MagicMock()
+    original = fake.execute
+    bind_utf8_execute(fake)
+    assert fake.execute is original
+
+    class _Subclass(LocalShellBackend):
+        pass
+
+    subclassed = _Subclass(root_dir=str(tmp_path), virtual_mode=True, inherit_env=False, env={})
+    bind_utf8_execute(subclassed)
+    assert "execute" not in subclassed.__dict__
+
+    backend = LocalShellBackend(root_dir=str(tmp_path), virtual_mode=True, inherit_env=False, env={})
+    bind_utf8_execute(backend)
+    assert "execute_utf8" in backend.__dict__["execute"].__code__.co_names
+
+
 def test_shell_execute_decodes_utf8_instead_of_gbk(tmp_path):
     from deepagents.backends.local_shell import LocalShellBackend
 
