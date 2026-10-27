@@ -337,6 +337,23 @@ def test_funnel_respects_window_seconds():
     assert funnel_reached(events, ["/a", "/b"], timedelta(minutes=15)) == [1, 1]
 
 
+def test_fill_view_sparks_places_counts_from_window_start():
+    from apps.rum.services.logsql_stats import fill_view_sparks
+
+    start = datetime(2026, 8, 18, 12, 0, tzinfo=timezone.utc)
+    rows = [{"route": "/cart", "release": "", "mom": {"hasDelta": False, "spark": []}}]
+    spark_rows = [
+        {
+            "rum.view.name": "/cart",
+            "_time": (start + timedelta(minutes=6)).isoformat().replace("+00:00", "Z"),
+            "views": "2",
+        }
+    ]
+    fill_view_sparks(rows, spark_rows, start, timedelta(minutes=5), 12, "route")
+    assert rows[0]["mom"]["spark"][1] == 2
+    assert rows[0]["mom"]["hasDelta"] is True
+
+
 def test_list_views_fills_cwv_device_and_spark_fields():
     """Views table needs INP/CLS/dist/deviceMix/mom — not only LCP P75."""
     now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
@@ -432,7 +449,10 @@ def test_list_views_fills_cwv_device_and_spark_fields():
         assert row["dist"]["missing"] == 0
         assert row["deviceMix"]["mobile"] == 1
         assert row["deviceMix"]["desktop"] == 1
-        assert "quantile(0.75, `rum.vital.lcp`)" in _VLHandler.got_query
+        assert any(
+            "quantile(0.75, `rum.vital.lcp`) if (`rum.vital.lcp`:*)" in query
+            for query in _VLHandler.queries
+        )
         assert "stats by" in _VLHandler.got_query
         assert page["summary"]["inpP75"] == 120.0
     finally:
