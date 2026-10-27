@@ -5,7 +5,6 @@ export type GlanceKind = 'poor' | 'watch' | 'observing' | 'empty';
 
 export function glanceKind(app: RumApplicationHealthItem): GlanceKind {
   if (!app.enabled || app.sessions <= 0) return 'empty';
-  if (app.sessions < 5) return 'observing';
   const tone = appExperienceTone(app.lcpP75, app.inpP75, app.errorRate);
   if (tone === 'danger') return 'poor';
   if (tone === 'warning') return 'watch';

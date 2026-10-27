@@ -28,4 +28,12 @@ describe('homeGlance', () => {
     expect(glance.topError?.application).toBe('store');
     expect(glance.worstLcp?.application).toBe('store');
   });
+
+  it('会话不到 5 个时仍按错误率和体验指标归类，和差体验应用同一口径', () => {
+    const glance = homeGlance([
+      app({ application: 'demo', sessions: 4, errorRate: 0.5, lcpP75: 104, inpP75: 32 }),
+    ]);
+    expect(glance.counts.poor).toBe(1);
+    expect(glance.counts.observing).toBe(0);
+  });
 });
