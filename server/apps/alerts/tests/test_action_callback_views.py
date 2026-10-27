@@ -15,6 +15,8 @@ import pytest
 from unittest.mock import patch
 
 from django.conf import settings
+import apps.cmdb.models  # node_mgmt 装入后会加载 monitor，monitor 再引用 CMDB
+import apps.monitor.models  # job_mgmt 回调测试会装入 node_mgmt，其路由导入监控模型
 from apps.alerts.models.action import ActionRule, ActionExecution
 from apps.alerts.models.models import Alert
 from apps.job_mgmt.utils.callback_signer import get_signed_headers, sign_callback
@@ -162,3 +164,51 @@ def test_callback_tampered_signature_rejected(api_client):
         HTTP_X_BK_LITE_SOURCE="bk-lite-job-mgmt",
     )
     assert resp.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_callback_before_job_task_id_is_retryable(api_client):
+    """签名合法但 job_task_id 尚未写入时不能返回成功，也不能新建记录。"""
+    execution = _exec(task_id=None, status="running")
+    before_count = ActionExecution.objects.count()
+    body = {
+        "task_id": 4821,
+        "status": "success",
+        "total_count": 3,
+        "success_count": 2,
+        "failed_count": 1,
+        "finished_at": "2026-06-23T10:32:00Z",
+    }
+    headers = get_signed_headers(body)
+    early = api_client.post(
+        "/api/v1/alerts/api/action_callback/",
+        data=json.dumps(body),
+        content_type="application/json",
+        HTTP_X_BK_LITE_TIMESTAMP=headers["X-BK-Lite-Timestamp"],
+        HTTP_X_BK_LITE_SIGNATURE=headers["X-BK-Lite-Signature"],
+        HTTP_X_BK_LITE_SOURCE=headers["X-BK-Lite-Source"],
+    )
+    assert early.status_code == 503
+    assert early.data["result"] is False
+    assert ActionExecution.objects.count() == before_count
+    execution.refresh_from_db()
+    assert execution.status == "running"
+    assert execution.job_task_id is None
+
+    execution.job_task_id = 4821
+    execution.save(update_fields=["job_task_id"])
+    linked = api_client.post(
+        "/api/v1/alerts/api/action_callback/",
+        data=json.dumps(body),
+        content_type="application/json",
+        HTTP_X_BK_LITE_TIMESTAMP=headers["X-BK-Lite-Timestamp"],
+        HTTP_X_BK_LITE_SIGNATURE=headers["X-BK-Lite-Signature"],
+        HTTP_X_BK_LITE_SOURCE=headers["X-BK-Lite-Source"],
+    )
+    assert linked.status_code == 200
+    execution.refresh_from_db()
+    assert execution.status == "success"
+    assert execution.result["total_count"] == 3
+    assert execution.result["success_count"] == 2
+    assert execution.result["failed_count"] == 1
+    assert ActionExecution.objects.count() == before_count

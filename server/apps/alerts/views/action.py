@@ -84,7 +84,7 @@ class ActionCallbackView(APIView):
         execution = ActionExecution.objects.filter(job_task_id=task_id).order_by("-id").first()
         if not execution:
             logger.info("[callback] 未找到对应的 ActionExecution: job_task_id=%s", task_id)
-            return Response({"result": True})
+            return Response({"result": False}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         status_val = "success" if data.get("status") == "success" else "failed"
         execution.status = status_val
