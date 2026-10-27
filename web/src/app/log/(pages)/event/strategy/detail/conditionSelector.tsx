@@ -21,8 +21,17 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
   const { t } = useTranslation();
   const conditionList = useConditionList();
 
+  const functionName = (item: AggregateFunctionOption) => t(item.labelKey);
+
+  const functionMethod = (item: AggregateFunctionOption) => item.value.toUpperCase();
+
+  const showFunctionMethod = (item: AggregateFunctionOption) =>
+    functionName(item).trim().toUpperCase() !== functionMethod(item);
+
   const functionLabel = (item: AggregateFunctionOption) =>
-    item.labelKey.startsWith('log.') ? t(item.labelKey) : item.labelKey;
+    showFunctionMethod(item)
+      ? `${functionName(item)}（${functionMethod(item)}）`
+      : functionName(item);
 
   const handleConditionChange = (extra: {
     val: string;
@@ -69,15 +78,15 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
             );
             const showField = !functionOption || functionOption.needsField;
             return (
-              <li
-                className={index + 1 === data.length ? '' : 'mb-[10px]'}
-                key={index}
-              >
-                <div className="flex flex-wrap items-center">
+              <li className="w-full" key={index}>
+                <div className="flex w-full flex-wrap items-center gap-2">
                   <Select
-                    className="mr-[10px] w-[240px]"
+                    style={{ width: 216 }}
+                    popupMatchSelectWidth={false}
                     placeholder={t('log.event.selectFunction')}
                     showSearch
+                    optionLabelProp="label"
+                    optionFilterProp="label"
                     value={conditionItem.func}
                     onChange={(val) =>
                       handleConditionChange({
@@ -88,14 +97,19 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                     }
                   >
                     {FUNCTION_LIST.map((item) => (
-                      <Option value={item.value} key={item.value}>
-                        {functionLabel(item)}
+                      <Option value={item.value} key={item.value} label={functionLabel(item)}>
+                        <span className="text-[var(--color-text-1)]">{functionName(item)}</span>
+                        {showFunctionMethod(item) ? (
+                          <span className="text-[var(--color-text-3)]">
+                            （{functionMethod(item)}）
+                          </span>
+                        ) : null}
                       </Option>
                     ))}
                   </Select>
                   {showField ? (
                     <Select
-                      className="mr-[10px] w-[180px]"
+                      style={{ width: 116 }}
                       placeholder={t('log.event.selectField')}
                       showSearch
                       value={conditionItem.field}
@@ -115,7 +129,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                     </Select>
                   ) : null}
                   <Select
-                    className="mr-[10px] w-[120px]"
+                    style={{ width: 112 }}
                     placeholder={t('log.event.selectCriteria')}
                     value={conditionItem.op}
                     onChange={(val) =>
@@ -133,7 +147,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                     ))}
                   </Select>
                   {functionOption?.unitKey ? (
-                    <Space.Compact className="mr-[10px] w-[160px]">
+                    <Space.Compact style={{ width: 148 }}>
                       <Input
                         placeholder={t('log.event.enterThreshold')}
                         value={conditionItem.value}
@@ -145,7 +159,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                     </Space.Compact>
                   ) : (
                     <Input
-                      className="mr-[10px] w-[160px]"
+                      style={{ width: 100 }}
                       placeholder={t('log.event.enterThreshold')}
                       value={conditionItem.value}
                       onChange={(e) => handleValueChange(e, index)}
@@ -153,7 +167,6 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                   )}
                   {!!index && (
                     <Button
-                      className="mr-[10px]"
                       icon={<CloseOutlined />}
                       onClick={() => handleDeleteCondition(index)}
                     />
@@ -161,7 +174,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                   <Button icon={<PlusOutlined />} onClick={handleAddCondition} />
                 </div>
                 {conditionItem.func === 'count_delta' ? (
-                  <div className="mt-1 text-[12px] text-[var(--color-text-3)]">
+                  <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">
                     {t('log.event.countDeltaTip')}
                   </div>
                 ) : null}

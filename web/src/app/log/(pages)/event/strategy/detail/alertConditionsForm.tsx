@@ -209,10 +209,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               }
             ]}
           >
-            <div className="flex items-center mb-[20px] w-full">
-              <span>{t('log.integration.meetRule')}</span>
+            <div className="mb-[12px] flex items-center">
+              <span className="shrink-0">{t('log.integration.meetRule')}</span>
               <Select
-                className="ml-[8px] flex-1"
+                style={{ width: 220, marginLeft: 8 }}
                 placeholder={t('log.integration.rule')}
                 showSearch
                 value={term}

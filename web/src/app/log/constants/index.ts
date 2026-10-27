@@ -18,11 +18,11 @@ export interface AggregateFunctionOption {
 }
 
 const FUNCTION_LIST: AggregateFunctionOption[] = [
-  { value: 'count', labelKey: 'count', needsField: true },
-  { value: 'sum', labelKey: 'sum', needsField: true },
-  { value: 'max', labelKey: 'max', needsField: true },
-  { value: 'min', labelKey: 'min', needsField: true },
-  { value: 'avg', labelKey: 'avg', needsField: true },
+  { value: 'count', labelKey: 'log.event.funcCount', needsField: true },
+  { value: 'sum', labelKey: 'log.event.funcSum', needsField: true },
+  { value: 'max', labelKey: 'log.event.funcMax', needsField: true },
+  { value: 'min', labelKey: 'log.event.funcMin', needsField: true },
+  { value: 'avg', labelKey: 'log.event.funcAvg', needsField: true },
   {
     value: 'count_rate',
     labelKey: 'log.event.funcCountRate',

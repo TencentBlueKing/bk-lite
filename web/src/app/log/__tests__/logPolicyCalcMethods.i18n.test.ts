@@ -23,6 +23,11 @@ const zhMessages = flattenMessages(zh as NestedMessages);
 const enMessages = flattenMessages(en as NestedMessages);
 
 const keys = [
+  'log.event.funcCount',
+  'log.event.funcSum',
+  'log.event.funcMax',
+  'log.event.funcMin',
+  'log.event.funcAvg',
   'log.event.funcCountRate',
   'log.event.funcCountDelta',
   'log.event.countRateUnit',
@@ -53,8 +58,11 @@ describe('日志策略计算方式文案', () => {
       expect(enMessages[key], key).toBeTruthy();
       expect(zhMessages[key]).not.toBe(enMessages[key]);
     }
-    expect(zhMessages['log.event.funcCountRate']).toBe('速率（条/秒）');
-    expect(zhMessages['log.event.funcCountDelta']).toBe('变化量（较上一等长窗）');
+    expect(zhMessages['log.event.funcCount']).toBe('计数');
+    expect(zhMessages['log.event.funcCountRate']).toBe('速率');
+    expect(zhMessages['log.event.funcCountDelta']).toBe('变化量');
+    expect(enMessages['log.event.funcCountRate']).toBe('Rate');
+    expect(enMessages['log.event.funcCountDelta']).toBe('Change');
     expect(zhMessages['log.event.dryRun']).toBe('试算');
     expect(zhMessages['log.event.openInSearch']).toBe('在检索中打开');
   });
