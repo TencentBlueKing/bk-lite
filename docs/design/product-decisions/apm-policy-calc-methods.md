@@ -1,7 +1,7 @@
 # APM 策略计算方式产品决策记忆
 
 - 最近更新：2026-10-27
-- 当前规格：`specs/changes/apm-alert-calc-catalog/spec.md`（第二批，approved）；第一批 `specs/changes/apm-alert-calc-enrichment/spec.md`（implemented）
+- 当前规格：`specs/changes/apm-alert-calc-catalog/spec.md`（第二批，implemented，提交 `aa7b2d9aea` / `af3db59cd1` / `a54e7d70e3`）；第一批 `specs/changes/apm-alert-calc-enrichment/spec.md`（implemented）
 - 长期契约：`specs/capabilities/apm-alerting.md`
 
 ## 产品定位
@@ -14,7 +14,7 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
 ## 已确认范围
 
 - 第一批（已落地）：相对上一等长窗 Δ / %、N 小时 / N 天前同窗 %（用户填 N，不给写死的 1h / 24h 选项）、最低请求数、只读试算。
-- 第二批（approved，2026-10-27）：
+- 第二批（implemented，2026-10-27）：
   - 指标面扩为 12 个：时延 avg / p50 / p75 / p90 / p95 / p99 / max、错误率、错误数、慢请求数 / 占比（策略级慢阈值）、Apdex（策略级 T）、吞吐、无流量。
   - 比较基准加「近 N 天同窗均值」，N 2～7，允许 Δ / %。
   - 前置条件 0～2 条，只允许绝对值、单阈值、无级别，全部满足才评估主条件。
