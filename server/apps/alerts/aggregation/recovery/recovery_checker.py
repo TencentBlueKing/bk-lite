@@ -176,7 +176,10 @@ def _attach_primary_recoveries(alert: Alert) -> int:
             created_key = build_recovery_match_key(created_event)
             if created_key is None:
                 continue
-            created_times.setdefault(created_key, []).append(AlertRecoveryChecker._get_created_event_time(created_event))
+            created_time = AlertRecoveryChecker._get_created_event_time(created_event)
+            previous = created_times.get(created_key)
+            if previous is None or created_time < previous:
+                created_times[created_key] = created_time
             external_ids.add(created_event.external_id)
     if not external_ids:
         return 0
@@ -191,11 +194,11 @@ def _attach_primary_recoveries(alert: Alert) -> int:
         for batch in iter_queryset_in_pk_batches(candidates, AGGREGATION_BATCH_SIZE):
             for recovery_event in batch:
                 recovery_key = build_recovery_match_key(recovery_event)
-                times = created_times.get(recovery_key)
-                if not times:
+                earliest = created_times.get(recovery_key)
+                if earliest is None:
                     continue
                 recovery_time = AlertRecoveryChecker._get_recovery_event_time(recovery_event)
-                if not any(recovery_time > created_time for created_time in times):
+                if not recovery_time > earliest:
                     continue
                 if associate_event_with_monitor_sources(alert.pk, recovery_event):
                     added += 1
@@ -213,10 +216,13 @@ def _attach_fallback_recoveries(alert: Alert) -> int:
             fallback_key = RecoveryHandler._build_fallback_key(created_event)
             if fallback_key is None:
                 continue
-            fallback_times.setdefault(fallback_key, []).append(AlertRecoveryChecker._get_created_event_time(created_event))
+            created_time = AlertRecoveryChecker._get_created_event_time(created_event)
+            previous = fallback_times.get(fallback_key)
+            if previous is None or created_time < previous:
+                fallback_times[fallback_key] = created_time
 
     added = 0
-    for fallback_key, times in fallback_times.items():
+    for fallback_key, earliest in fallback_times.items():
         source_pk, item, resource_name, _source_id = fallback_key
         candidate_alert_pks = set(
             Alert.objects.filter(
@@ -247,7 +253,7 @@ def _attach_fallback_recoveries(alert: Alert) -> int:
                 if _primary_match_exists(recovery_event):
                     continue
                 recovery_time = AlertRecoveryChecker._get_recovery_event_time(recovery_event)
-                if not any(recovery_time > created_time for created_time in times):
+                if not recovery_time > earliest:
                     continue
                 if associate_event_with_monitor_sources(alert.pk, recovery_event):
                     added += 1
