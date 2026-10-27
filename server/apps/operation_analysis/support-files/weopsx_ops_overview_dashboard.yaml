@@ -120,6 +120,11 @@ dashboards:
             iconSource: builtin
             iconKey: icons/mm-node_Node
           dataSource: 节点用法总览::node/get_node_usage_statistics
+          interaction:
+            kind: title
+            name: 节点管理
+            url: /node-manager/cloudregion
+            openMode: newTab
           filterBindings:
             organization__string: true
           selectedFields:
