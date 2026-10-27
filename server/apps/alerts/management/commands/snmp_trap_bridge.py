@@ -11,6 +11,17 @@ from apps.core.logger import alert_logger as logger
 from nats_client.clients import get_nc_client
 
 
+def _log_shutdown_failure(stage, err):
+    """关闭失败只记类型和堆栈，不把异常正文写入日志。"""
+    safe_error = RuntimeError("snmp trap bridge shutdown failed")
+    logger.error(
+        "event=snmp_trap_bridge_shutdown_failed failed_stage=%s error_type=%s",
+        stage,
+        type(err).__name__,
+        exc_info=(type(safe_error), safe_error, err.__traceback__),
+    )
+
+
 class Command(BaseCommand):
     """SNMP Trap bridge 运行入口。
 
@@ -46,16 +57,28 @@ class Command(BaseCommand):
             self.inner_run(*args, **options)
 
     def inner_run(self, *args, **options):
-        """创建独立事件循环并长期运行 bridge。"""
+        """连接并订阅成功后才常驻；启动失败时让异常退出进程。"""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            asyncio.ensure_future(self.bridge_coroutine())
+            loop.run_until_complete(self.bridge_coroutine())
             loop.run_forever()
         except KeyboardInterrupt:
-            loop.run_until_complete(self.nats.close())
+            pass
         finally:
-            loop.close()
+            # 清理失败只记日志。中断也在这里吞掉，避免盖住连接或订阅阶段的原始异常。
+            try:
+                loop.run_until_complete(self.nats.close())
+            except Exception as err:
+                _log_shutdown_failure("close_nats", err)
+            except KeyboardInterrupt:
+                pass
+            try:
+                loop.close()
+            except Exception as err:
+                _log_shutdown_failure("close_event_loop", err)
+            except KeyboardInterrupt:
+                pass
 
     async def bridge_coroutine(self):
         """建立 NATS 连接并持续消费目标 subject。"""
