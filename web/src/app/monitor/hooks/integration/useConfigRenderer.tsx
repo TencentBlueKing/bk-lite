@@ -948,6 +948,7 @@ export const useConfigRenderer = () => {
         pageSize: number;
         keyword: string;
       }) => Promise<{ count?: number; nodes?: any[] }>;
+      monitorNodeCacheScope?: string;
       onMonitorNodesLoaded?: (nodes: any[]) => void;
     }
   ) => {
@@ -1156,6 +1157,7 @@ export const useConfigRenderer = () => {
                     onChange={(next) => handleChange(next, record, index)}
                     placeholder={componentProps.placeholder || label}
                     status={errorMsg ? 'error' : ''}
+                    cacheScope={columnExtras.monitorNodeCacheScope}
                     loadNodes={columnExtras.loadMonitorNodes}
                     onNodesLoaded={columnExtras.onMonitorNodesLoaded}
                     excludeValues={excludedValues}

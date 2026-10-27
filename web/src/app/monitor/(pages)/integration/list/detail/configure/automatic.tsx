@@ -1324,12 +1324,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               const merged = new Map(
                 current.map((node) => [String(node.id || node.value), node])
               );
+              let changed = false;
               loaded.forEach((node) => {
-                merged.set(String(node.id || node.value), node);
+                const id = String(node.id || node.value);
+                if (!id || merged.has(id)) return;
+                merged.set(id, node);
+                changed = true;
               });
-              return Array.from(merged.values());
+              return changed ? Array.from(merged.values()) : current;
             });
           },
+          monitorNodeCacheScope: String(pluginId || 'default'),
           loadMonitorNodes: async ({ page, pageSize, keyword }) => {
             const data = await getMonitorNodeList({
               monitor_plugin_id: Number(pluginId),

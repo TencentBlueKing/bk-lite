@@ -5,6 +5,7 @@ import { Select, Tooltip } from 'antd';
 import {
   MONITOR_NODE_PAGE_SIZE,
   MONITOR_NODE_SEARCH_DELAY_MS,
+  monitorNodeQueryCache,
   scheduleMonitorNodeSearch,
   shouldLoadNextMonitorNodePage,
 } from './fetchMonitorNodePages';
@@ -28,6 +29,7 @@ interface MonitorNodeSelectProps {
   onChange?: (value: string | string[]) => void;
   placeholder?: string;
   status?: '' | 'error' | 'warning';
+  cacheScope?: string;
   loadNodes: (query: { page: number; pageSize: number; keyword: string }) => Promise<MonitorNodePageResult>;
   onNodesLoaded?: (nodes: MonitorNodeOption[]) => void;
   excludeValues?: Array<string | number>;
@@ -43,6 +45,7 @@ export default function MonitorNodeSelect({
   onChange,
   placeholder,
   status,
+  cacheScope = 'default',
   loadNodes,
   onNodesLoaded,
   excludeValues = [],
@@ -59,6 +62,8 @@ export default function MonitorNodeSelect({
   const knownRef = useRef(new Map<string, MonitorNodeOption>());
   const loadNodesRef = useRef(loadNodes);
   loadNodesRef.current = loadNodes;
+  const cacheRef = useRef(monitorNodeQueryCache<MonitorNodeOption>(cacheScope));
+  cacheRef.current = monitorNodeQueryCache<MonitorNodeOption>(cacheScope);
 
   const remember = (nodes: MonitorNodeOption[]) => {
     nodes.forEach((node) => {
@@ -68,33 +73,39 @@ export default function MonitorNodeSelect({
     onNodesLoaded?.(nodes);
   };
 
+  const showEntry = (keyword: string, entry: { nodes: MonitorNodeOption[]; page: number; total: number }) => {
+    keywordRef.current = keyword;
+    pageRef.current = entry.page;
+    totalRef.current = entry.total;
+    remember(entry.nodes);
+    setOptions(entry.nodes);
+  };
+
   const loadPage = async (page: number, keyword: string, append: boolean) => {
+    const cached = cacheRef.current.read(keyword);
+    if (cached && page <= cached.page) {
+      requestRef.current += 1;
+      showEntry(keyword, cached);
+      return;
+    }
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
     loadingRef.current = true;
     setLoading(true);
     try {
-      const data = await loadNodesRef.current({
-        page,
-        pageSize: MONITOR_NODE_PAGE_SIZE,
+      const entry = await cacheRef.current.load({
         keyword,
+        page,
+        append,
+        nodeId: nodeValue,
+        fetchPage: () => loadNodesRef.current({
+          page,
+          pageSize: MONITOR_NODE_PAGE_SIZE,
+          keyword,
+        }),
       });
       if (requestId !== requestRef.current) return;
-      const batch = data.nodes || [];
-      totalRef.current = typeof data.count === 'number' ? data.count : batch.length;
-      pageRef.current = page;
-      keywordRef.current = keyword;
-      remember(batch);
-      setOptions((current) => {
-        const merged = append ? [...current, ...batch] : batch;
-        const seen = new Set<string>();
-        return merged.filter((node) => {
-          const id = nodeValue(node);
-          if (!id || seen.has(id)) return false;
-          seen.add(id);
-          return true;
-        });
-      });
+      showEntry(keyword, entry);
     } finally {
       if (requestId === requestRef.current) {
         loadingRef.current = false;
@@ -104,11 +115,16 @@ export default function MonitorNodeSelect({
   };
 
   useEffect(() => {
-    void loadPage(1, '', false);
+    const cached = cacheRef.current.read('');
+    if (cached) {
+      showEntry('', cached);
+    } else {
+      void loadPage(1, '', false);
+    }
     return () => {
       if (searchTimer.current.id) window.clearTimeout(searchTimer.current.id);
     };
-  }, []);
+  }, [cacheScope]);
 
   const excluded = new Set(excludeValues.map((item) => String(item)));
   const selectedIds = (Array.isArray(value) ? value : value ? [value] : []).map((item) => String(item));
@@ -141,10 +157,23 @@ export default function MonitorNodeSelect({
           <span className="block min-w-0 truncate">{option.label}</span>
         </Tooltip>
       )}
-      onChange={onChange}
+      onChange={(next) => {
+        onChange?.(next);
+        if (searchTimer.current.id) window.clearTimeout(searchTimer.current.id);
+        const cached = cacheRef.current.read('');
+        if (cached) showEntry('', cached);
+      }}
       onSearch={(text) => {
         scheduleMonitorNodeSearch(searchTimer.current, MONITOR_NODE_SEARCH_DELAY_MS, () => {
-          void loadPage(1, text.trim(), false);
+          const next = text.trim();
+          if (next === keywordRef.current) return;
+          const cached = cacheRef.current.read(next);
+          if (cached) {
+            requestRef.current += 1;
+            showEntry(next, cached);
+            return;
+          }
+          void loadPage(1, next, false);
         });
       }}
       onPopupScroll={(event) => {
