@@ -231,7 +231,7 @@ export default function RumViewsPage() {
     {
       title: t('rum.views.device.label', '终端占比'),
       key: 'device',
-      width: 120,
+      width: 168,
       render: (_, r) => <DeviceMixCell mix={r.deviceMix} />,
     },
   ];
