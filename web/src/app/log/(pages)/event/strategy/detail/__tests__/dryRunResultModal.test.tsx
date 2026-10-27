@@ -138,7 +138,9 @@ describe('试算结果弹窗', () => {
     expect(screen.getByTestId('dry-run-baseline-offset_24h').textContent).toContain('ok');
     expect(screen.getByTestId('dry-run-baseline-previous_window').textContent).toContain('unavailable');
     fireEvent.click(screen.getByRole('button', { name: /expand row/i }));
-    expect(screen.getByText('count percent')).toBeTruthy();
+    expect(
+      screen.getByText('log.event.funcCount（log.event.compareKindPercent / log.event.compareToOffset24h）'),
+    ).toBeTruthy();
     expect(screen.getByText('log.event.reasonBaselineZero')).toBeTruthy();
     expect(screen.getByText('log.event.baselineValue')).toBeTruthy();
     expect(screen.getByText('log.event.computedValue')).toBeTruthy();

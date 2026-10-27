@@ -142,6 +142,7 @@ export interface AggregateResultCondition {
   matched?: boolean;
   reason?: string;
   compare?: { kind?: string; to?: string };
+  params?: { quantile?: number; filter?: string };
 }
 
 export interface AggregateResultHit {

@@ -26,7 +26,7 @@ import { LEVEL_MAP } from '@/app/log/constants';
 import EventHeatMap, { getHeatMapCellColor } from '@/components/heat-map';
 import type { ListRef } from 'rc-virtual-list';
 import { isLogHitEvent } from './alertHandlerUtils';
-import { readEventAggregateResult } from '@/app/log/components/aggregateConditionHit';
+import { aggregateDetailRows, readEventAggregateResult } from '@/app/log/components/aggregateConditionHit';
 import type { AggregateResultHit } from '@/app/log/components/public/alertRawLogEvidence';
 
 const TIMELINE_ITEM_HEIGHT = 48;
@@ -130,12 +130,11 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         const responseData = await getEventRaw(form.id);
         const isAggregate = form.alert_type === 'aggregate';
         const data = responseData?.raw_data?.data;
-        const aggregateData = data?.query_result ? [data?.query_result] : [];
         const result = !isAggregate
           ? Array.isArray(data)
             ? data
             : []
-          : aggregateData;
+          : aggregateDetailRows(data);
         const rawList = result.map((item: TableDataItem, index: number) => ({
           ...item,
           id: index

@@ -1172,6 +1172,7 @@
       "variableName": "Variable",
       "alertLevelVariable": "Alert level",
       "groupFieldVariable": "Group field",
+      "aggregateTemplateVariable": "Value computed for the current condition",
       "useVariable": "Use",
       "logPreview": "Log Preview",
       "logPreviewGuide": "Enter query criteria to preview recently matched logs.",

@@ -48,6 +48,7 @@ const keys = [
   'log.event.verdictWouldTriggerNoData',
   'log.event.reasonDenominatorZero',
   'log.event.bytesRateUnit',
+  'log.event.aggregateTemplateVariable',
   'log.event.countRateUnit',
   'log.event.countDeltaTip',
   'log.event.compareKind',

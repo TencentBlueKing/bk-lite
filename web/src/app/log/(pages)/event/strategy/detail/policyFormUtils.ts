@@ -114,10 +114,74 @@ export const getAlertConditionVisibility = (policyType: LogPolicyType) => ({
 export const buildLogFieldVariable = (field: string) =>
   field.startsWith('log.') ? '${' + field + '}' : '${log.' + field + '}';
 
-export const buildAlertNameVariables = (groupBy?: string[] | null) => {
+const fieldToken = (field?: string | null) => (field || '_msg').replace(/\./g, '_');
+
+/** 告警名称可替换的聚合键，与扫描写入 aggregate_result 的键一致。占比用条件在列表中的序号。 */
+export const aggregateTemplateVariables = (conditions?: FilterItem[] | null) => {
+  const values: string[] = [];
+  const push = (value: string) => {
+    if (value && !values.includes(value)) {
+      values.push(value);
+    }
+  };
+  (conditions || []).forEach((raw, index) => {
+    if (!raw?.func) {
+      return;
+    }
+    const condition = normalizeCondition(raw);
+    const func = condition.func;
+    const token = fieldToken(condition.field);
+    if (func === 'count') {
+      push('${count}');
+    }
+    if (func === 'count_rate') {
+      push('${count_rate}');
+    }
+    if (func === 'bytes_rate') {
+      push('${bytes_rate}');
+    }
+    if (func === 'count_uniq') {
+      push('${count_uniq_' + token + '}');
+    }
+    if (func === 'quantile' && typeof condition.params?.quantile === 'number') {
+      push('${quantile_' + String(condition.params.quantile).replace('.', '_') + '_' + token + '}');
+    }
+    if (func === 'ratio') {
+      push('${ratio_' + index + '}');
+    }
+    const kind = condition.compare?.kind;
+    const target = condition.compare?.to;
+    if (!kind || kind === 'absolute' || !target) {
+      return;
+    }
+    if (func === 'count' && kind === 'delta' && target === 'previous_window') {
+      push('${count_delta}');
+      push('${previous_count}');
+    }
+    let baselineKey = '';
+    if (func === 'count') {
+      baselineKey = 'count_' + token;
+    } else if (func === 'count_uniq') {
+      baselineKey = 'count_uniq_' + token;
+    } else if (func === 'quantile' && typeof condition.params?.quantile === 'number') {
+      baselineKey = 'quantile_' + String(condition.params.quantile).replace('.', '_') + '_' + token;
+    } else if (func === 'sum' || func === 'avg' || func === 'max' || func === 'min') {
+      baselineKey = func + '_' + token;
+    }
+    if (baselineKey) {
+      push('${baseline_' + baselineKey + '}');
+    }
+  });
+  return values;
+};
+
+export const buildAlertNameVariables = (
+  groupBy?: string[] | null,
+  conditions?: FilterItem[] | null
+) => {
   const variableItems = new Map<
     string,
-    { value: string; label: string; description: 'alertLevel' | 'groupField' }
+    { value: string; label: string; description: 'alertLevel' | 'groupField' | 'aggregateValue' }
   >();
   variableItems.set('${level}', {
     value: '${level}',
@@ -130,6 +194,13 @@ export const buildAlertNameVariables = (groupBy?: string[] | null) => {
       value,
       label: value,
       description: 'groupField'
+    });
+  });
+  aggregateTemplateVariables(conditions).forEach((value) => {
+    variableItems.set(value, {
+      value,
+      label: value,
+      description: 'aggregateValue'
     });
   });
   return Array.from(variableItems.values());

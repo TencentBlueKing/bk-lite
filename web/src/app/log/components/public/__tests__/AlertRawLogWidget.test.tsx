@@ -340,7 +340,7 @@ describe('AlertRawLogWidget Component', () => {
       expect(screen.getByText('order exploded')).toBeTruthy();
     });
     expect(screen.getByTestId('aggregate-condition-table')).toBeTruthy();
-    expect(screen.getByText('count percent')).toBeTruthy();
+    expect(screen.getByText('log.event.funcCount（log.event.compareKindPercent）')).toBeTruthy();
     expect(screen.getByText('180')).toBeTruthy();
     expect(screen.getByText('120')).toBeTruthy();
     expect(screen.getByText('50')).toBeTruthy();

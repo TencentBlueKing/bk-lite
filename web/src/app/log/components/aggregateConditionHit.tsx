@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { Table } from 'antd';
+import { COMPARE_KIND_LIST, COMPARE_TARGET_LIST, FUNCTION_LIST } from '@/app/log/constants';
 import {
   AggregateResultCondition,
   AggregateResultHit,
@@ -28,6 +29,9 @@ export const formatAggregateMetric = (value: number | null | undefined) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return '—';
   }
+  if (typeof value === 'number' && !Number.isInteger(value)) {
+    return value.toFixed(2);
+  }
   return String(value);
 };
 
@@ -38,11 +42,34 @@ export const formatAggregateReason = (reason: string | undefined, t: Translate) 
   return t(REASON_LABEL[reason] || reason);
 };
 
-export const aggregateConditionText = (condition: AggregateHitCondition) => {
+const labelOf = (list: Array<{ value: string; labelKey: string }>, value: string | undefined, t: Translate) => {
+  const item = list.find((entry) => entry.value === value);
+  return item ? t(item.labelKey) : value || '';
+};
+
+/** 条件列：函数中文名、字段或分子筛选、比较方式与对照。与表单用同一套词条。 */
+export const aggregateConditionText = (condition: AggregateHitCondition, t: Translate) => {
   const func = condition.func || '';
-  const field = condition.field && condition.field !== '_msg' ? `(${condition.field})` : '';
-  const kind = condition.compare?.kind && condition.compare.kind !== 'absolute' ? ` ${condition.compare.kind}` : '';
-  return `${func}${field}${kind}`;
+  const funcName = labelOf(FUNCTION_LIST, func, t) || func;
+  let name = funcName;
+  if (func === 'quantile') {
+    const quantile = condition.params?.quantile;
+    const mark = typeof quantile === 'number' ? `P${Math.round(quantile * 100)}` : funcName;
+    name = condition.field && condition.field !== '_msg' ? `${mark}(${condition.field})` : mark;
+  } else if (func === 'ratio') {
+    const filter = condition.params?.filter;
+    name = filter ? `${funcName}(${filter})` : funcName;
+  } else if (condition.field && condition.field !== '_msg') {
+    name = `${funcName}(${condition.field})`;
+  }
+  const kind = condition.compare?.kind;
+  if (kind && kind !== 'absolute') {
+    const kindText = labelOf(COMPARE_KIND_LIST, kind, t);
+    const target = condition.compare?.to;
+    const targetText = target ? labelOf(COMPARE_TARGET_LIST, target, t) : '';
+    name = targetText ? `${name}（${kindText} / ${targetText}）` : `${name}（${kindText}）`;
+  }
+  return name;
 };
 
 export function readRawAggregateResult(rawData: unknown): AggregateResultHit | null {
@@ -62,6 +89,24 @@ export function readEventAggregateResult(responseData: unknown): AggregateResult
   }
   const data = (responseData as { raw_data?: { data?: unknown } }).raw_data?.data;
   return readRawAggregateResult(data);
+}
+
+/** 详情「原始日志」优先样本；没有样本时退回聚合结果行。 */
+export function aggregateDetailRows(data: unknown): unknown[] {
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (!data || typeof data !== 'object') {
+    return [];
+  }
+  const record = data as { samples?: unknown; query_result?: unknown };
+  if (Array.isArray(record.samples) && record.samples.length > 0) {
+    return record.samples;
+  }
+  if (record.query_result && typeof record.query_result === 'object') {
+    return [record.query_result];
+  }
+  return [];
 }
 
 export function readAggregateConditions(aggregateResult: unknown): AggregateHitCondition[] | null {
@@ -109,7 +154,7 @@ export function AggregateConditionTable({
       {
         title: t('log.event.conditionColumn'),
         key: 'condition',
-        render: (_value: unknown, condition: AggregateHitCondition) => aggregateConditionText(condition),
+        render: (_value: unknown, condition: AggregateHitCondition) => aggregateConditionText(condition, t),
       },
       {
         title: t('log.event.currentValue'),

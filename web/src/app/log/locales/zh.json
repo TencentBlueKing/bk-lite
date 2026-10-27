@@ -1172,6 +1172,7 @@
       "variableName": "变量名",
       "alertLevelVariable": "告警级别",
       "groupFieldVariable": "分组字段",
+      "aggregateTemplateVariable": "当前条件算出的值",
       "useVariable": "选用",
       "logPreview": "日志预览",
       "logPreviewGuide": "填写查询条件后，可预览最近匹配的日志。",

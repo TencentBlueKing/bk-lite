@@ -518,7 +518,7 @@ const StrategyOperation = () => {
               />
             </Form>
             <div className={strategyStyle.sidePanel}>
-              <AlertNameVariables form={form} groupBy={alertGroupBy} />
+              <AlertNameVariables form={form} groupBy={alertGroupBy} conditions={conditions} />
               <LogPreview
                 query={previewQuery}
                 logGroups={previewLogGroups}

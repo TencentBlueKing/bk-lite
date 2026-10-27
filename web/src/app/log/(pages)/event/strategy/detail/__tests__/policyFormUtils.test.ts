@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { StrategyFields } from '@/app/log/types/event';
 import {
+  aggregateTemplateVariables,
   buildStrategyPayload,
   hasIncompleteCondition,
   normalizeCondition,
@@ -20,6 +21,26 @@ describe('日志策略处理人候选', () => {
   it('通知人为空且处理人非空时带入处理人，用户已填则不覆盖', () => {
     expect(seedNoticeUsersFromHandlers([], [11])).toEqual([11]);
     expect(seedNoticeUsersFromHandlers([9], [11])).toBeNull();
+  });
+});
+
+describe('告警名称变量', () => {
+  it('按条件序号给出占比键，变化量给出对照键', () => {
+    expect(
+      aggregateTemplateVariables([
+        { func: 'count', field: '_msg', compare: { kind: 'percent', to: 'previous_window' } },
+        { func: 'count_uniq', field: 'host_name' },
+        { func: 'ratio', field: '_msg', params: { filter: 'message:ERR' } },
+        { func: 'count_delta', field: '_msg' },
+      ])
+    ).toEqual([
+      '${count}',
+      '${baseline_count__msg}',
+      '${count_uniq_host_name}',
+      '${ratio_2}',
+      '${count_delta}',
+      '${previous_count}',
+    ]);
   });
 });
 
