@@ -26,7 +26,7 @@
 | Dockerfile | `deploy/rum/collector/Dockerfile` |
 | 构建上下文 | `deploy/rum/collector` |
 | 默认 tag | `bklite/rum-collector:0.1.0-bklite.1` |
-| 构建参数 | `GO_IMAGE` 默认 `public.ecr.aws/docker/library/golang:1.26.8-alpine`；`GOPROXY` 默认 `https://goproxy.cn,direct` |
+| 构建参数 | `GO_IMAGE` 默认 `public.ecr.aws/docker/library/golang:1.26.10-alpine`；`GOPROXY` 默认 `https://goproxy.cn,direct` |
 | 镜像内容 | 三个二进制，以及 `/etc/bklite-rum/rum.gateway.yaml` |
 | 运行用户 | `65532:65532`。镜像没有 shell，不能自己改目录属主 |
 

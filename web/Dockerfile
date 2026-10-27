@@ -1,4 +1,4 @@
-FROM node:24-alpine AS builder
+FROM node:24.22.1-alpine AS builder
 
 ARG NEXUS_NODEJS_REPOSITY
 
@@ -40,7 +40,7 @@ RUN echo 'NEXTAPI_URL="http://bklite-server:8000"' > .env.local
 RUN pnpm install --frozen-lockfile
 RUN pnpm run build
 
-FROM node:24-alpine
+FROM node:24.22.1-alpine
 RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 
 # 在生产环境也设置内存限制
