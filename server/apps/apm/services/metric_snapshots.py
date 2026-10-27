@@ -9,10 +9,13 @@ MAX_ALERT_METRIC_SNAPSHOTS = 1440
 
 
 def _metric_unit(metric_type: str) -> str:
+    if metric_type in ApmPolicy.RATIO_METRIC_TYPES:
+        return "ratio"
+    if metric_type in ApmPolicy.COUNT_METRIC_TYPES:
+        return "count"
+    if metric_type in ApmPolicy.LATENCY_METRIC_TYPES:
+        return "ms"
     return {
-        ApmPolicy.MetricType.ERROR_RATE: "ratio",
-        ApmPolicy.MetricType.P95: "ms",
-        ApmPolicy.MetricType.P99: "ms",
         ApmPolicy.MetricType.THROUGHPUT: "req/s",
         ApmPolicy.MetricType.NO_TRAFFIC: "req/s",
     }[metric_type]
@@ -54,7 +57,7 @@ class ApmAlertMetricSnapshotStore:
             if not created:
                 snapshot = ApmAlertMetricSnapshot.objects.select_for_update().get(pk=snapshot.pk)
 
-            snapshot_time = result.evaluated_at.isoformat()
+            snapshot_time = (result.window_ended_at or result.evaluated_at).isoformat()
             if any(item.get("snapshot_time") == snapshot_time for item in snapshot.snapshots):
                 return snapshot
 

@@ -879,6 +879,16 @@ def _series_payload(series):
             "error_rate": point.error_rate,
             "p95_ms": point.p95_ms,
             "p99_ms": point.p99_ms,
+            "avg_ms": point.avg_ms,
+            "max_ms": point.max_ms,
+            "p50_ms": point.p50_ms,
+            "p75_ms": point.p75_ms,
+            "p90_ms": point.p90_ms,
+            "slow_count": point.slow_count,
+            "satisfied_count": point.satisfied_count,
+            "tolerating_count": point.tolerating_count,
+            "error_count": point.error_count,
+            "request_count": point.request_count,
         }
         for point in series or ()
     ]

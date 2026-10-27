@@ -557,7 +557,21 @@ export interface ApmSpanSearchParams {
   limit?: number;
 }
 
-export type ApmPolicyMetric = 'error_rate' | 'p95' | 'p99' | 'throughput' | 'no_traffic';
+export type ApmPolicyMetric =
+  | 'error_rate'
+  | 'error_count'
+  | 'p50'
+  | 'p75'
+  | 'p90'
+  | 'p95'
+  | 'p99'
+  | 'latency_avg'
+  | 'latency_max'
+  | 'slow_request_count'
+  | 'slow_request_rate'
+  | 'apdex'
+  | 'throughput'
+  | 'no_traffic';
 export type ApmCompareMode = 'absolute' | 'previous_window' | 'offset_hours' | 'offset_days' | 'offset_1h' | 'offset_24h';
 export type ApmCompareValueKind = 'delta' | 'percent';
 export type ApmPolicyComparator = 'gt' | 'gte' | 'lt' | 'lte';
@@ -593,6 +607,8 @@ export interface ApmPolicyInput {
   compare_offset_amount?: number | null;
   compare_value_kind?: ApmCompareValueKind | '';
   min_request_count?: number | null;
+  slow_threshold_ms?: number | null;
+  apdex_threshold_ms?: number | null;
   thresholds: Array<{ severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: number | string }>;
   trigger_after: number;
   recover_after: number;
@@ -628,6 +644,16 @@ export interface ApmPolicySeriesPoint {
   error_rate: number | null;
   p95_ms: number | null;
   p99_ms: number | null;
+  avg_ms?: number | null;
+  max_ms?: number | null;
+  p50_ms?: number | null;
+  p75_ms?: number | null;
+  p90_ms?: number | null;
+  slow_count?: number | null;
+  satisfied_count?: number | null;
+  tolerating_count?: number | null;
+  error_count?: number | null;
+  request_count?: number | null;
 }
 
 export type ApmPolicyDataState = 'available' | 'no_data' | 'missing_baseline' | 'insufficient_samples';
@@ -672,6 +698,8 @@ export interface ApmPolicyDryRunResult {
   compare_mode: ApmCompareMode;
   compare_offset_amount?: number | null;
   compare_value_kind: ApmCompareValueKind | '';
+  slow_threshold_ms?: number | null;
+  apdex_threshold_ms?: number | null;
   result_unit: string;
   total_targets: number;
   truncated: boolean;

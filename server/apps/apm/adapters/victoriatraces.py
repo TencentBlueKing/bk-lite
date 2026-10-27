@@ -96,6 +96,43 @@ SAMPLE_SLICE_DAY = timedelta(days=1)
 SAMPLE_TRACE_ID_PROBE_SPANS = 5000
 RED_EXACT_DEDUP_WINDOW = timedelta(days=1)
 MAX_RED_POINTS = 120
+
+
+def _duration_threshold_ns(milliseconds: int | None) -> int | None:
+    if milliseconds is None or milliseconds <= 0:
+        return None
+    return int(milliseconds) * 1_000_000
+
+
+def _red_final_stats(query: ServiceMetricQuery) -> str:
+    """一条 stats 并列全部 RED 函数。慢阈值 / Apdex T 为空时不生成对应 count() if。"""
+    parts = [
+        "count() as requests",
+        'count() if (status_code:="2") as errors',
+        "avg(duration) as avg_duration",
+        "max(duration) as max_duration",
+        "quantile(0.5, duration) as p50",
+        "quantile(0.75, duration) as p75",
+        "quantile(0.9, duration) as p90",
+        "quantile(0.95, duration) as p95",
+        "quantile(0.99, duration) as p99",
+    ]
+    slow_ns = _duration_threshold_ns(query.slow_threshold_ms)
+    if slow_ns is not None:
+        parts.append(f"count() if (duration:>{slow_ns}) as slow")
+    apdex_ns = _duration_threshold_ns(query.apdex_threshold_ms)
+    if apdex_ns is not None:
+        parts.append(f"count() if (duration:<={apdex_ns}) as satisfied")
+        parts.append(f"count() if (duration:<={apdex_ns * 4}) as within_4t")
+    return "stats " + ", ".join(parts)
+
+
+def _count_field(values: dict[str, float], key: str) -> int | None:
+    if key not in values:
+        return None
+    return int(values[key])
+
+
 MAX_TOP_ENDPOINTS = 10
 MAX_CLIENT_ROLLUPS = 40
 MAX_ENDPOINT_NAME_LENGTH = 256
@@ -786,9 +823,7 @@ class VictoriaTracesTelemetryStore:
             endpoint=query.endpoint,
             version=query.version,
         )
-        final_stats = (
-            'stats count() as requests, count() if (status_code:="2") as errors, ' "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
-        )
+        final_stats = _red_final_stats(query)
         aggregate_base = self._bounded_spans(deduped) if exact_dedup else entry_filters
         aggregate = f"{aggregate_base} | {final_stats}"
         values = self._ungrouped_values(self._stats(aggregate, query.started_at, query.ended_at))
@@ -805,13 +840,7 @@ class VictoriaTracesTelemetryStore:
             range_aggregate = f"{deduped if exact_dedup else entry_filters} | {final_stats}"
             ranged = self._range_values(self._stats_range(range_aggregate, query.started_at, query.ended_at, step=step))
             timeseries = tuple(
-                ServiceRedPoint(
-                    timestamp=datetime.fromtimestamp(timestamp, tz=UTC),
-                    request_rate=count / step,
-                    error_rate=ranged.get("errors", {}).get(timestamp, 0.0) / count if count > 0 else None,
-                    p95_ms=self._nanoseconds_to_ms(ranged.get("p95", {}).get(timestamp)) if count > 0 else None,
-                    p99_ms=self._nanoseconds_to_ms(ranged.get("p99", {}).get(timestamp)) if count > 0 else None,
-                )
+                self._red_point(timestamp=timestamp, count=count, step=step, ranged=ranged)
                 for timestamp, count in list(ranged.get("requests", {}).items())[-MAX_RED_POINTS:]
             )
             if query.include_endpoints:
@@ -819,6 +848,9 @@ class VictoriaTracesTelemetryStore:
                     self._endpoint_stats_rows(query, exact_dedup=exact_dedup, entry_filters=entry_filters),
                     window_seconds,
                 )
+        satisfied_count = _count_field(values, "satisfied")
+        within_4t = _count_field(values, "within_4t")
+        tolerating_count = None if satisfied_count is None or within_4t is None else max(0, within_4t - satisfied_count)
         return ServiceRed(
             request_rate=requests_count / window_seconds,
             error_rate=errors_count / requests_count,
@@ -828,6 +860,14 @@ class VictoriaTracesTelemetryStore:
             top_endpoints=endpoints,
             request_count=int(requests_count),
             error_count=int(errors_count),
+            avg_ms=self._nanoseconds_to_ms(values.get("avg_duration")),
+            max_ms=self._nanoseconds_to_ms(values.get("max_duration")),
+            p50_ms=self._nanoseconds_to_ms(values.get("p50")),
+            p75_ms=self._nanoseconds_to_ms(values.get("p75")),
+            p90_ms=self._nanoseconds_to_ms(values.get("p90")),
+            slow_count=_count_field(values, "slow"),
+            satisfied_count=satisfied_count,
+            tolerating_count=tolerating_count,
         )
 
     def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
@@ -1058,9 +1098,7 @@ class VictoriaTracesTelemetryStore:
         exact_dedup: bool,
         entry_filters: str,
     ) -> list[dict[str, Any]]:
-        final_stats = (
-            'count() as requests, count() if (status_code:="2") as errors, ' "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
-        )
+        final_stats = _red_final_stats(query).removeprefix("stats ")
         if exact_dedup:
             endpoint_deduped = self._deduped_entry_query(
                 query.service_namespace,
@@ -1666,6 +1704,38 @@ class VictoriaTracesTelemetryStore:
     @staticmethod
     def _nanoseconds_to_ms(value: float | None) -> float | None:
         return value / 1_000_000 if value is not None else None
+
+    def _red_point(self, *, timestamp: float, count: float, step: int, ranged: dict[str, dict[float, float]]) -> ServiceRedPoint:
+        def bucket(name: str) -> float | None:
+            return ranged.get(name, {}).get(timestamp)
+
+        def milliseconds(name: str) -> float | None:
+            return self._nanoseconds_to_ms(bucket(name)) if count > 0 else None
+
+        errors = bucket("errors") or 0.0
+        slow = bucket("slow") if count > 0 else None
+        satisfied = bucket("satisfied") if count > 0 else None
+        within_4t = bucket("within_4t") if count > 0 else None
+        satisfied_count = int(satisfied) if satisfied is not None else None
+        within_count = int(within_4t) if within_4t is not None else None
+        tolerating = None if satisfied_count is None or within_count is None else max(0, within_count - satisfied_count)
+        return ServiceRedPoint(
+            timestamp=datetime.fromtimestamp(timestamp, tz=UTC),
+            request_rate=count / step,
+            error_rate=errors / count if count > 0 else None,
+            p95_ms=milliseconds("p95"),
+            p99_ms=milliseconds("p99"),
+            avg_ms=milliseconds("avg_duration"),
+            max_ms=milliseconds("max_duration"),
+            p50_ms=milliseconds("p50"),
+            p75_ms=milliseconds("p75"),
+            p90_ms=milliseconds("p90"),
+            slow_count=int(slow) if slow is not None else None,
+            satisfied_count=satisfied_count,
+            tolerating_count=tolerating,
+            error_count=int(errors) if count > 0 else 0,
+            request_count=int(count),
+        )
 
     def _request_json(
         self,

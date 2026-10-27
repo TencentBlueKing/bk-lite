@@ -54,15 +54,35 @@ const STATUS_KEY = { active: 'apm.status.firing', recovered: 'apm.status.recover
 const SEVERITY_KEY: Record<ApmPolicySeverity, string> = { critical: 'apm.severity.critical', error: 'apm.severity.error', warning: 'apm.severity.warning' };
 const METRIC_KEY: Record<ApmPolicyMetric, string> = {
   error_rate: 'apm.common.errorRate',
+  error_count: 'apm.policies.metricErrorCount',
+  p50: 'apm.policies.metricP50',
+  p75: 'apm.policies.metricP75',
+  p90: 'apm.policies.metricP90',
   p95: 'apm.common.p95Latency',
   p99: 'apm.common.p99Latency',
+  latency_avg: 'apm.policies.metricLatencyAvg',
+  latency_max: 'apm.policies.metricLatencyMax',
+  slow_request_count: 'apm.policies.metricSlowCount',
+  slow_request_rate: 'apm.policies.metricSlowRate',
+  apdex: 'apm.policies.metricApdex',
   throughput: 'apm.common.throughput',
   no_traffic: 'apm.alerts.noTraffic',
 };
+const RATIO_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex'];
+const LATENCY_METRICS: ApmPolicyMetric[] = ['p50', 'p75', 'p90', 'p95', 'p99', 'latency_avg', 'latency_max'];
 const METRIC_UNIT_KEY: Record<ApmPolicyMetric, string | null> = {
   error_rate: 'apm.common.percentUnit',
+  error_count: 'apm.policies.timesUnit',
+  p50: 'apm.common.millisecondUnit',
+  p75: 'apm.common.millisecondUnit',
+  p90: 'apm.common.millisecondUnit',
   p95: 'apm.common.millisecondUnit',
   p99: 'apm.common.millisecondUnit',
+  latency_avg: 'apm.common.millisecondUnit',
+  latency_max: 'apm.common.millisecondUnit',
+  slow_request_count: 'apm.policies.timesUnit',
+  slow_request_rate: 'apm.common.percentUnit',
+  apdex: 'apm.common.percentUnit',
   throughput: 'apm.common.requestsPerSecondUnit',
   no_traffic: null,
 };
@@ -84,11 +104,11 @@ function formatMetricDisplayValue(
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return String(value);
   if (unit === 'percent') return formatPercentage(numeric, numeric >= 10 ? 1 : 2);
-  if (metric === 'error_rate') {
+  if (RATIO_METRICS.includes(metric)) {
     const percent = unit === 'ratio' || Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
     return formatPercentage(percent, percent >= 10 ? 1 : 2);
   }
-  if (metric === 'p95' || metric === 'p99') {
+  if (LATENCY_METRICS.includes(metric)) {
     return formatLatency(numeric, false, t);
   }
   if (metric === 'throughput') {
@@ -106,15 +126,15 @@ function toChartMetricNumber(
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
   if (unit === 'percent') return numeric;
-  if (metric === 'error_rate' && (unit === 'ratio' || Math.abs(numeric) <= 1)) {
+  if (RATIO_METRICS.includes(metric) && (unit === 'ratio' || Math.abs(numeric) <= 1)) {
     return Number((numeric * 100).toFixed(4));
   }
   return numeric;
 }
 
 function formatChartAxisValue(metric: ApmPolicyMetric, value: number, t: Translate): string {
-  if (metric === 'error_rate') return formatPercentage(value, value >= 10 ? 1 : 2);
-  if (metric === 'p95' || metric === 'p99') {
+  if (RATIO_METRICS.includes(metric)) return formatPercentage(value, value >= 10 ? 1 : 2);
+  if (LATENCY_METRICS.includes(metric)) {
     return formatLatency(value, false, t);
   }
   if (metric === 'throughput') {
@@ -209,8 +229,17 @@ const STATE_TAG_CLASS: Record<ApmAlert['status'], string> = {
 };
 const METRIC_TAG_CLASS: Record<ApmPolicyMetric, string> = {
   error_rate: styles.alertDetailMetricTagError,
+  error_count: styles.alertDetailMetricTagError,
+  p50: styles.alertDetailMetricTagLatency,
+  p75: styles.alertDetailMetricTagLatency,
+  p90: styles.alertDetailMetricTagLatency,
   p95: styles.alertDetailMetricTagLatency,
   p99: styles.alertDetailMetricTagLatency,
+  latency_avg: styles.alertDetailMetricTagLatency,
+  latency_max: styles.alertDetailMetricTagLatency,
+  slow_request_count: styles.alertDetailMetricTagLatency,
+  slow_request_rate: styles.alertDetailMetricTagLatency,
+  apdex: styles.alertDetailMetricTagThroughput,
   throughput: styles.alertDetailMetricTagThroughput,
   no_traffic: styles.alertDetailMetricTagIdle,
 };

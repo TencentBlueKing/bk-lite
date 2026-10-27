@@ -473,6 +473,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         allow_blank=True,
     )
     min_request_count = serializers.IntegerField(min_value=1, max_value=100000, required=False, allow_null=True)
+    slow_threshold_ms = serializers.IntegerField(required=False, allow_null=True)
+    apdex_threshold_ms = serializers.IntegerField(required=False, allow_null=True)
     endpoints = serializers.ListField(
         child=serializers.CharField(max_length=512, allow_blank=False),
         required=False,
@@ -509,6 +511,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "compare_offset_amount",
             "compare_value_kind",
             "min_request_count",
+            "slow_threshold_ms",
+            "apdex_threshold_ms",
             "thresholds",
             "trigger_after",
             "recover_after",
@@ -569,6 +573,17 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         compare_offset_amount = self._stored_or_incoming(attrs, "compare_offset_amount", None)
         metric_window = self._stored_or_incoming(attrs, "metric_window", 5)
         min_request_count = self._stored_or_incoming(attrs, "min_request_count", None)
+        slow_threshold_ms = self._stored_or_incoming(attrs, "slow_threshold_ms", None)
+        apdex_threshold_ms = self._stored_or_incoming(attrs, "apdex_threshold_ms", None)
+        slow_threshold_ms, apdex_threshold_ms = self._validate_metric_params(
+            metric_type,
+            slow_threshold_ms,
+            apdex_threshold_ms,
+        )
+        attrs["slow_threshold_ms"] = slow_threshold_ms
+        attrs["apdex_threshold_ms"] = apdex_threshold_ms
+        if metric_type in ApmPolicy.COUNT_METRIC_TYPES:
+            attrs["aggregation"] = ApmPolicy.Aggregation.AVERAGE
         self._validate_compare(
             metric_type,
             compare_mode,
@@ -675,12 +690,50 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         self._validate_offset_amount(compare_mode, metric_window, compare_offset_amount)
         if metric_type == ApmPolicy.MetricType.NO_TRAFFIC and compare_mode != ApmPolicy.CompareMode.ABSOLUTE:
             raise serializers.ValidationError({"compare_mode": serializer_text(self, "error.compare_no_traffic_absolute")})
-        if min_request_count is not None and metric_type not in {
-            ApmPolicy.MetricType.ERROR_RATE,
-            ApmPolicy.MetricType.P95,
-            ApmPolicy.MetricType.P99,
-        }:
+        if min_request_count is not None and metric_type not in ApmPolicy.MIN_REQUEST_METRIC_TYPES:
             raise serializers.ValidationError({"min_request_count": serializer_text(self, "error.compare_min_request_metric")})
+
+    def _validate_metric_params(self, metric_type, slow_threshold_ms, apdex_threshold_ms):
+        errors = {}
+        if metric_type in ApmPolicy.SLOW_METRIC_TYPES:
+            slow_threshold_ms = self._bounded_ms(
+                slow_threshold_ms, "slow_threshold_ms", "error.slow_threshold_required", "error.slow_threshold_range", errors
+            )
+        elif slow_threshold_ms is not None:
+            errors["slow_threshold_ms"] = serializer_text(self, "error.slow_threshold_unused")
+            slow_threshold_ms = None
+        else:
+            slow_threshold_ms = None
+        if metric_type == ApmPolicy.MetricType.APDEX:
+            apdex_threshold_ms = self._bounded_ms(
+                apdex_threshold_ms,
+                "apdex_threshold_ms",
+                "error.apdex_threshold_required",
+                "error.apdex_threshold_range",
+                errors,
+            )
+        elif apdex_threshold_ms is not None:
+            errors["apdex_threshold_ms"] = serializer_text(self, "error.apdex_threshold_unused")
+            apdex_threshold_ms = None
+        else:
+            apdex_threshold_ms = None
+        if errors:
+            raise serializers.ValidationError(errors)
+        return slow_threshold_ms, apdex_threshold_ms
+
+    def _bounded_ms(self, value, field, required_key, range_key, errors):
+        if value is None:
+            errors[field] = serializer_text(self, required_key)
+            return None
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            errors[field] = serializer_text(self, range_key)
+            return None
+        if number != value or not 1 <= number <= 600_000:
+            errors[field] = serializer_text(self, range_key)
+            return None
+        return number
 
     def _validate_offset_amount(self, compare_mode, metric_window, amount):
         if compare_mode == ApmPolicy.CompareMode.OFFSET_HOURS:
@@ -718,13 +771,19 @@ class ApmPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_finite")}) from None
             if not value.is_finite():
                 raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_finite")})
-            if metric_type == ApmPolicy.MetricType.ERROR_RATE:
+            if metric_type in ApmPolicy.RATIO_METRIC_TYPES:
                 kind = compare_value_kind or ""
                 if compare_mode == ApmPolicy.CompareMode.ABSOLUTE or kind == "":
                     if not 0 <= value <= 1:
                         raise serializers.ValidationError({"thresholds": serializer_text(self, "error.error_rate_range")})
                 elif kind == ApmPolicy.CompareValueKind.DELTA and not -1 <= value <= 1:
                     raise serializers.ValidationError({"thresholds": serializer_text(self, "error.error_rate_delta_range")})
+            if (
+                metric_type == ApmPolicy.MetricType.APDEX
+                and compare_mode == ApmPolicy.CompareMode.ABSOLUTE
+                and comparator in {ApmPolicy.Comparator.GREATER_THAN, ApmPolicy.Comparator.GREATER_THAN_OR_EQUAL}
+            ):
+                raise serializers.ValidationError({"thresholds": serializer_text(self, "error.apdex_comparator")})
             normalized.append({"severity": severity, "comparator": comparator, "value": str(value)})
         if len(comparators) != 1:
             raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_comparator")})

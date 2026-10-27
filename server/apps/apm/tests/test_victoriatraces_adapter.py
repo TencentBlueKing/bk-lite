@@ -9,20 +9,14 @@ import requests
 from django.utils import timezone
 
 from apps.apm.adapters import TelemetryQueryTooLarge, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
-from apps.apm.adapters.victoriatraces import (
-    MAX_RESPONSE_BYTES,
-    RESPONSE_TOO_LARGE,
-    _decode_cursor,
-    _encode_cursor,
-    _pack_trace_ids,
-)
+from apps.apm.adapters.victoriatraces import MAX_RESPONSE_BYTES, RESPONSE_TOO_LARGE, _decode_cursor, _encode_cursor, _pack_trace_ids
 from apps.apm.services.contracts import (
     InstanceActivityQuery,
     MetricDataState,
     ServiceErrorBreakdownQuery,
     ServiceMetricQuery,
-    SpanSearchQuery,
     SloMetricQuery,
+    SpanSearchQuery,
     TopologyDependencyQuery,
     TopologySampleQuery,
     TraceSearchQuery,
@@ -301,11 +295,7 @@ def test_search_spans_pages_same_timestamp_without_skipping():
     span_ids = [f"{index:016x}" for index in range(3)]
 
     def fake_query_rows(_logs_query, query_started_at, query_ended_at, limit=None):
-        rows = [
-            _span_row("a" * 32, span_id, span_time, service="checkout")
-            for span_id in span_ids
-            if query_started_at <= span_time < query_ended_at
-        ]
+        rows = [_span_row("a" * 32, span_id, span_time, service="checkout") for span_id in span_ids if query_started_at <= span_time < query_ended_at]
         rows.sort(key=lambda row: row["span_id"], reverse=True)
         vt_limit = len(rows) if limit is None else limit
         return rows[:vt_limit]
@@ -877,10 +867,7 @@ def _sample_id_row(trace_id, now):
 def test_sample_traces_slices_one_hour_by_fifteen_minutes():
     now = timezone.now()
     trace_a, trace_b = "a" * 32, "b" * 32
-    span_rows = "\n".join(
-        json.dumps(_span_row(trace_id, span_id, now))
-        for trace_id, span_id in ((trace_a, "1" * 16), (trace_b, "2" * 16))
-    )
+    span_rows = "\n".join(json.dumps(_span_row(trace_id, span_id, now)) for trace_id, span_id in ((trace_a, "1" * 16), (trace_b, "2" * 16)))
     session = Mock()
     session.get.side_effect = [
         _response({}, raw=_sample_id_row(trace_a, now).encode()),
@@ -918,10 +905,7 @@ def test_sample_traces_slices_one_hour_by_fifteen_minutes():
 def test_sample_traces_slices_one_day_by_hour():
     now = timezone.now()
     trace_a, trace_b = "a" * 32, "b" * 32
-    span_rows = "\n".join(
-        json.dumps(_span_row(trace_id, span_id, now))
-        for trace_id, span_id in ((trace_a, "1" * 16), (trace_b, "2" * 16))
-    )
+    span_rows = "\n".join(json.dumps(_span_row(trace_id, span_id, now)) for trace_id, span_id in ((trace_a, "1" * 16), (trace_b, "2" * 16)))
     session = Mock()
     session.get.side_effect = [
         _response({}, raw=_sample_id_row(trace_a, now).encode()),
@@ -946,7 +930,7 @@ def test_sample_traces_slices_one_day_by_hour():
     assert first_slice["end"] == now.isoformat()
     last_slice = session.get.call_args_list[23].kwargs["params"]
     assert last_slice["start"] == (now - timedelta(days=1)).isoformat()
-    assert     last_slice["end"] == (now - timedelta(hours=23)).isoformat()
+    assert last_slice["end"] == (now - timedelta(hours=23)).isoformat()
     for call in session.get.call_args_list[:24]:
         query = call.kwargs["params"]["query"]
         assert "stats by (trace_id)" in query
@@ -958,10 +942,7 @@ def test_sample_traces_slices_one_day_by_hour():
 def test_sample_traces_slices_long_windows_and_round_robins_across_days():
     now = timezone.now()
     trace_a, trace_b = "a" * 32, "b" * 32
-    span_rows = "\n".join(
-        json.dumps(_span_row(trace_id, span_id, now))
-        for trace_id, span_id in ((trace_a, "1" * 16), (trace_b, "2" * 16))
-    )
+    span_rows = "\n".join(json.dumps(_span_row(trace_id, span_id, now)) for trace_id, span_id in ((trace_a, "1" * 16), (trace_b, "2" * 16)))
     session = Mock()
     session.get.side_effect = [
         _response({}, raw=_sample_id_row(trace_a, now).encode()),
@@ -1010,9 +991,7 @@ def test_oversized_topology_span_batch_splits_and_keeps_compact_traces(caplog):
         if "stats by (trace_id)" in query:
             return _response(
                 {},
-                raw="\n".join(
-                    [_sample_id_row(trace_ok, now), _sample_id_row(trace_fat, now)]
-                ).encode(),
+                raw="\n".join([_sample_id_row(trace_ok, now), _sample_id_row(trace_fat, now)]).encode(),
             )
         if trace_ok in query and trace_fat in query:
             return _oversized_response()
@@ -1038,8 +1017,7 @@ def test_oversized_topology_span_batch_splits_and_keeps_compact_traces(caplog):
     records = [
         record
         for record in caplog.records
-        if getattr(record, "msg", "")
-        == "event=apm_topology_trace_fetch_omitted failed_stage=sample_spans error_type=%s omitted_traces=%s"
+        if getattr(record, "msg", "") == "event=apm_topology_trace_fetch_omitted failed_stage=sample_spans error_type=%s omitted_traces=%s"
     ]
     assert records
     record: LogRecord = records[0]
@@ -1049,11 +1027,7 @@ def test_oversized_topology_span_batch_splits_and_keeps_compact_traces(caplog):
     assert "omitted_traces=1" in rendered
     assert RESPONSE_TOO_LARGE not in rendered
     assert trace_fat not in rendered
-    span_queries = [
-        call.kwargs["params"]["query"]
-        for call in session.get.call_args_list
-        if "trace_id:in(" in call.kwargs["params"]["query"]
-    ]
+    span_queries = [call.kwargs["params"]["query"] for call in session.get.call_args_list if "trace_id:in(" in call.kwargs["params"]["query"]]
     assert any(trace_ok in query and trace_fat in query for query in span_queries)
     assert any(trace_ok in query and trace_fat not in query for query in span_queries)
 
@@ -1183,7 +1157,7 @@ def _error_breakdown_session(*, red, endpoints, types, samples, recent):
             return _response(red)
         if "stats by (kind" in query:
             return _ndjson(*types)
-        if 'kind:in("2","5")' in query and "status_code:=\"2\"" in query:
+        if 'kind:in("2","5")' in query and 'status_code:="2"' in query:
             return _ndjson(*recent)
         return _ndjson(*samples)
 
@@ -1207,7 +1181,6 @@ def _grouped_vector(groups):
 
 def test_error_breakdown_coalesces_exception_over_error_type_and_merges_kinds():
     now = timezone.now()
-    start_ns = str(int(now.timestamp() * 1_000_000_000))
     session = _error_breakdown_session(
         red=_vector(requests=10, errors=4, p95=100_000_000, p99=250_000_000),
         endpoints=_grouped_vector(
@@ -1277,9 +1250,7 @@ def test_error_breakdown_coalesces_exception_over_error_type_and_merges_kinds():
         recent=[_span_row("b" * 32, "2" * 16, now, name="POST /checkout")],
     )
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
-    result = store.service_error_breakdown(
-        ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now, sample_limit=20)
-    )
+    result = store.service_error_breakdown(ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now, sample_limit=20))
 
     assert result.request_count == 10
     assert result.error_count == 4
@@ -1300,10 +1271,14 @@ def test_error_breakdown_coalesces_exception_over_error_type_and_merges_kinds():
     assert types["未携带错误信息"].count == 1
     assert result.recent_failures[0].trace_id == "b" * 32
     queries = [call.kwargs["params"]["query"] for call in session.get.call_args_list]
-    assert any("stats by (endpoint)" in query and "kind:in(\"2\",\"5\")" in query for query in queries)
+    assert any("stats by (endpoint)" in query and 'kind:in("2","5")' in query for query in queries)
     assert any("`event:event_attr:exception.type:0`" in query and "`span_attr:error.type`" in query for query in queries)
     assert any("`event:event_attr:exception.message:0`" in query for query in queries if "stats by (kind" in query)
-    assert any('shop' in query and "status_code:=\"2\"" in query and "kind:in" not in query.split("stats by")[0] for query in queries if "stats by (kind" in query)
+    assert any(
+        "shop" in query and 'status_code:="2"' in query and "kind:in" not in query.split("stats by")[0]
+        for query in queries
+        if "stats by (kind" in query
+    )
     payment_query = next(query for query in queries if "payment_declined" in query and "sort by (_time)" in query)
     assert "not `event:event_attr:exception.type:0`:*" in payment_query
     assert "not `span_attr:error.type`:*" in payment_query
@@ -1311,7 +1286,7 @@ def test_error_breakdown_coalesces_exception_over_error_type_and_merges_kinds():
     assert "not `event:event_attr:exception.type:0`:*" in http_query
     assert "not status_message:*" in http_query
     unattributed_query = next(query for query in queries if ':~"^5"' in query and "sort by (_time)" in query)
-    assert "not `span_attr:http.response.status_code`:~\"^5\"" in unattributed_query
+    assert 'not `span_attr:http.response.status_code`:~"^5"' in unattributed_query
 
 
 def test_error_breakdown_failed_endpoints_remainder_matches_entry_error_count():
@@ -1330,9 +1305,7 @@ def test_error_breakdown_failed_endpoints_remainder_matches_entry_error_count():
     )
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
-    result = store.service_error_breakdown(
-        ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now)
-    )
+    result = store.service_error_breakdown(ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now))
 
     assert sum(item.error_count for item in result.failed_endpoints) + result.other_error_count == 40
     assert result.other_error_count == 10
@@ -1365,9 +1338,7 @@ def test_error_breakdown_maps_upstream_failure_to_store_unavailable():
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
-        store.service_error_breakdown(
-            ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now)
-        )
+        store.service_error_breakdown(ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now))
 
 
 def test_pack_trace_ids_uses_span_budget_and_falls_back_to_fixed_batches():
@@ -1387,9 +1358,7 @@ def test_slo_measurement_slices_windows_longer_than_one_day():
         _response(_vector(total=5, bad=1)),
     ]
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
-    result = store.slo_measurement(
-        SloMetricQuery("shop", "checkout", "prod", now - timedelta(days=2), now, "availability")
-    )
+    result = store.slo_measurement(SloMetricQuery("shop", "checkout", "prod", now - timedelta(days=2), now, "availability"))
 
     assert session.get.call_count == 2
     assert result.compliance_percent == pytest.approx(80)
@@ -1413,3 +1382,101 @@ def test_oversized_response_raises_query_too_large():
                 limit=20,
             )
         )
+
+
+def _empty_matrix():
+    return {"status": "success", "data": {"resultType": "matrix", "result": []}}
+
+
+def test_red_stats_lists_every_function_and_skips_count_if_without_thresholds():
+    now = timezone.now()
+    session = Mock()
+    session.get.side_effect = [
+        _response(
+            _vector(
+                requests=474,
+                errors=53,
+                avg_duration=164_500_000,
+                max_duration=7_056_900_000,
+                p50=82_700_000,
+                p75=120_000_000,
+                p90=200_000_000,
+                p95=300_000_000,
+                p99=400_000_000,
+            )
+        ),
+        _response(_empty_matrix()),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    red = store.service_red(
+        ServiceMetricQuery(
+            "shop",
+            "checkout",
+            "prod",
+            now - timedelta(minutes=5),
+            now,
+            include_breakdown=True,
+            include_endpoints=False,
+        )
+    )
+
+    assert session.get.call_count == 2
+    for call in session.get.call_args_list:
+        query = call.kwargs["params"]["query"]
+        assert "avg(duration) as avg_duration" in query
+        assert "max(duration) as max_duration" in query
+        assert "quantile(0.5, duration) as p50" in query
+        assert "quantile(0.75, duration) as p75" in query
+        assert "quantile(0.9, duration) as p90" in query
+        assert "quantile(0.95, duration) as p95" in query
+        assert "quantile(0.99, duration) as p99" in query
+        assert "count() if (duration:" not in query
+    assert red.request_count == 474
+    assert red.avg_ms == pytest.approx(164.5)
+    assert red.max_ms == pytest.approx(7056.9)
+    assert red.p50_ms == pytest.approx(82.7)
+    assert red.p75_ms == pytest.approx(120)
+    assert red.p90_ms == pytest.approx(200)
+    assert red.slow_count is None
+    assert red.satisfied_count is None
+    assert red.tolerating_count is None
+
+
+def test_red_stats_adds_slow_and_apdex_counts_when_thresholds_are_set():
+    now = timezone.now()
+    session = Mock()
+    session.get.return_value = _response(
+        _vector(
+            requests=474,
+            errors=53,
+            avg_duration=164_500_000,
+            max_duration=7_056_900_000,
+            p50=82_700_000,
+            slow=1,
+            satisfied=428,
+            within_4t=474,
+        )
+    )
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    red = store.service_red(
+        ServiceMetricQuery(
+            "shop",
+            "checkout",
+            "prod",
+            now - timedelta(minutes=5),
+            now,
+            slow_threshold_ms=1000,
+            apdex_threshold_ms=500,
+        )
+    )
+
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert "count() if (duration:>1000000000) as slow" in query
+    assert "count() if (duration:<=500000000) as satisfied" in query
+    assert "count() if (duration:<=2000000000) as within_4t" in query
+    assert red.slow_count == 1
+    assert red.satisfied_count == 428
+    assert red.tolerating_count == 46
+    assert red.error_count == 53

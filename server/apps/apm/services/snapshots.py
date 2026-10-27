@@ -31,11 +31,21 @@ class ApmEventSnapshotStore:
     ) -> ApmEventSnapshot:
         unit = {
             ApmPolicy.MetricType.ERROR_RATE: "ratio",
+            ApmPolicy.MetricType.SLOW_REQUEST_RATE: "ratio",
+            ApmPolicy.MetricType.APDEX: "ratio",
+            ApmPolicy.MetricType.ERROR_COUNT: "count",
+            ApmPolicy.MetricType.SLOW_REQUEST_COUNT: "count",
+            ApmPolicy.MetricType.P50: "ms",
+            ApmPolicy.MetricType.P75: "ms",
+            ApmPolicy.MetricType.P90: "ms",
             ApmPolicy.MetricType.P95: "ms",
             ApmPolicy.MetricType.P99: "ms",
+            ApmPolicy.MetricType.LATENCY_AVG: "ms",
+            ApmPolicy.MetricType.LATENCY_MAX: "ms",
             ApmPolicy.MetricType.THROUGHPUT: "req/s",
             ApmPolicy.MetricType.NO_TRAFFIC: "req/s",
         }[policy.metric_type]
+        window_end = result.window_ended_at or event.occurred_at
         series = [
             {
                 "timestamp": point.timestamp.isoformat(),
@@ -75,6 +85,8 @@ class ApmEventSnapshotStore:
                 "compare_offset_amount": policy.compare_offset_amount,
                 "compare_value_kind": policy.compare_value_kind,
                 "min_request_count": policy.min_request_count,
+                "slow_threshold_ms": policy.slow_threshold_ms,
+                "apdex_threshold_ms": policy.apdex_threshold_ms,
             },
             "object_snapshot": {
                 "service_id": str(policy.service_id),
@@ -101,8 +113,8 @@ class ApmEventSnapshotStore:
                 "endpoint": endpoint,
                 "environment": policy.environment,
                 "version": version,
-                "started_at": (event.occurred_at - timedelta(minutes=policy.metric_window)).isoformat(),
-                "ended_at": event.occurred_at.isoformat(),
+                "started_at": (window_end - timedelta(minutes=policy.metric_window)).isoformat(),
+                "ended_at": window_end.isoformat(),
             },
             "pending_payload": {
                 "schema_version": 1,
@@ -292,10 +304,27 @@ class ApmEventSnapshotStore:
 
     @staticmethod
     def _point_value(metric_type: str, point) -> float | None:
+        if metric_type == ApmPolicy.MetricType.ERROR_COUNT:
+            return None if point.error_count is None else float(point.error_count)
+        if metric_type == ApmPolicy.MetricType.SLOW_REQUEST_COUNT:
+            return None if point.slow_count is None else float(point.slow_count)
+        if metric_type == ApmPolicy.MetricType.SLOW_REQUEST_RATE:
+            if point.slow_count is None or not point.request_count:
+                return None
+            return float(point.slow_count) / float(point.request_count)
+        if metric_type == ApmPolicy.MetricType.APDEX:
+            if point.satisfied_count is None or point.tolerating_count is None or not point.request_count:
+                return None
+            return (point.satisfied_count + point.tolerating_count / 2) / point.request_count
         return {
             ApmPolicy.MetricType.ERROR_RATE: point.error_rate,
+            ApmPolicy.MetricType.P50: point.p50_ms,
+            ApmPolicy.MetricType.P75: point.p75_ms,
+            ApmPolicy.MetricType.P90: point.p90_ms,
             ApmPolicy.MetricType.P95: point.p95_ms,
             ApmPolicy.MetricType.P99: point.p99_ms,
+            ApmPolicy.MetricType.LATENCY_AVG: point.avg_ms,
+            ApmPolicy.MetricType.LATENCY_MAX: point.max_ms,
             ApmPolicy.MetricType.THROUGHPUT: point.request_rate,
             ApmPolicy.MetricType.NO_TRAFFIC: point.request_rate,
         }[metric_type]

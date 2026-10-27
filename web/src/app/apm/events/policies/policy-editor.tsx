@@ -109,13 +109,48 @@ function directoryErrorState(error: unknown): NotificationDirectoryState {
   return error instanceof HandledRequestError && error.status === 403 ? 'forbidden' : 'error';
 }
 
-const METRICS: Array<{ value: ApmPolicyMetric; i18nKey: string }> = [
-  { value: 'error_rate', i18nKey: 'apm.common.errorRate' },
-  { value: 'p95', i18nKey: 'apm.common.p95Latency' },
-  { value: 'p99', i18nKey: 'apm.common.p99Latency' },
-  { value: 'throughput', i18nKey: 'apm.common.throughput' },
-  { value: 'no_traffic', i18nKey: 'apm.alerts.noTraffic' },
+const METRIC_GROUPS: Array<{ labelKey: string; metrics: Array<{ value: ApmPolicyMetric; i18nKey: string }> }> = [
+  {
+    labelKey: 'apm.policies.metricGroupLatency',
+    metrics: [
+      { value: 'latency_avg', i18nKey: 'apm.policies.metricLatencyAvg' },
+      { value: 'p50', i18nKey: 'apm.policies.metricP50' },
+      { value: 'p75', i18nKey: 'apm.policies.metricP75' },
+      { value: 'p90', i18nKey: 'apm.policies.metricP90' },
+      { value: 'p95', i18nKey: 'apm.common.p95Latency' },
+      { value: 'p99', i18nKey: 'apm.common.p99Latency' },
+      { value: 'latency_max', i18nKey: 'apm.policies.metricLatencyMax' },
+    ],
+  },
+  {
+    labelKey: 'apm.policies.metricGroupErrors',
+    metrics: [
+      { value: 'error_rate', i18nKey: 'apm.common.errorRate' },
+      { value: 'error_count', i18nKey: 'apm.policies.metricErrorCount' },
+    ],
+  },
+  {
+    labelKey: 'apm.policies.metricGroupSlow',
+    metrics: [
+      { value: 'slow_request_count', i18nKey: 'apm.policies.metricSlowCount' },
+      { value: 'slow_request_rate', i18nKey: 'apm.policies.metricSlowRate' },
+    ],
+  },
+  {
+    labelKey: 'apm.policies.metricGroupApdex',
+    metrics: [{ value: 'apdex', i18nKey: 'apm.policies.metricApdex' }],
+  },
+  {
+    labelKey: 'apm.policies.metricGroupThroughput',
+    metrics: [{ value: 'throughput', i18nKey: 'apm.common.throughput' }],
+  },
+  {
+    labelKey: 'apm.policies.metricGroupTraffic',
+    metrics: [{ value: 'no_traffic', i18nKey: 'apm.alerts.noTraffic' }],
+  },
 ];
+
+const METRICS: Array<{ value: ApmPolicyMetric; i18nKey: string }> = METRIC_GROUPS.flatMap((group) => group.metrics);
 
 const VERDICT_KEY = {
   would_trigger: 'apm.policies.verdictWouldTrigger',
@@ -153,10 +188,14 @@ function decodeServiceScope(scope: string) {
   };
 }
 
-const MIN_REQUEST_METRICS: ApmPolicyMetric[] = ['error_rate', 'p95', 'p99'];
+const LATENCY_METRICS: ApmPolicyMetric[] = ['p50', 'p75', 'p90', 'p95', 'p99', 'latency_avg', 'latency_max'];
+const RATIO_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex'];
+const COUNT_METRICS: ApmPolicyMetric[] = ['error_count', 'slow_request_count'];
+const SLOW_METRICS: ApmPolicyMetric[] = ['slow_request_count', 'slow_request_rate'];
+const MIN_REQUEST_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex', ...LATENCY_METRICS];
 
 function scalesStoredRatio(metric: ApmPolicyMetric, kind: ApmCompareValueKind | '') {
-  return metric === 'error_rate' && kind !== 'percent';
+  return RATIO_METRICS.includes(metric) && kind !== 'percent';
 }
 
 function thresholdToEditorValue(
@@ -220,16 +259,75 @@ function comparePayloadFields(values: PolicyEditorValues): Partial<ApmPolicyInpu
   };
   if (MIN_REQUEST_METRICS.includes(values.metric_type)) {
     fields.min_request_count = values.min_request_count ?? null;
+  } else {
+    fields.min_request_count = null;
   }
   return fields;
+}
+
+function metricParamFields(values: PolicyEditorValues): Partial<ApmPolicyInput> {
+  if (values.metric_type === 'no_traffic') {
+    const cleared: Partial<ApmPolicyInput> = {};
+    if (values.slow_threshold_ms != null) cleared.slow_threshold_ms = null;
+    if (values.apdex_threshold_ms != null) cleared.apdex_threshold_ms = null;
+    return cleared;
+  }
+  return {
+    slow_threshold_ms: SLOW_METRICS.includes(values.metric_type) ? values.slow_threshold_ms ?? null : null,
+    apdex_threshold_ms: values.metric_type === 'apdex' ? values.apdex_threshold_ms ?? 500 : null,
+  };
 }
 
 function seriesPointValue(metric: ApmPolicyMetric, point: ApmPolicySeriesPoint | undefined) {
   if (!point) return null;
   if (metric === 'error_rate') return point.error_rate == null ? null : Number(point.error_rate) * 100;
+  if (metric === 'slow_request_rate') {
+    if (point.slow_count == null || !point.request_count) return null;
+    return (Number(point.slow_count) / Number(point.request_count)) * 100;
+  }
+  if (metric === 'apdex') {
+    if (point.satisfied_count == null || point.tolerating_count == null || !point.request_count) return null;
+    return ((Number(point.satisfied_count) + Number(point.tolerating_count) / 2) / Number(point.request_count)) * 100;
+  }
+  if (metric === 'error_count') return point.error_count ?? null;
+  if (metric === 'slow_request_count') return point.slow_count ?? null;
+  if (metric === 'p50') return point.p50_ms ?? null;
+  if (metric === 'p75') return point.p75_ms ?? null;
+  if (metric === 'p90') return point.p90_ms ?? null;
   if (metric === 'p95') return point.p95_ms;
   if (metric === 'p99') return point.p99_ms;
+  if (metric === 'latency_avg') return point.avg_ms ?? null;
+  if (metric === 'latency_max') return point.max_ms ?? null;
   return point.request_rate;
+}
+
+function MetricTypeSelect({
+  id,
+  value,
+  onChange,
+  onMetricChange,
+}: {
+  id?: string;
+  value?: ApmPolicyMetric;
+  onChange?: (value: ApmPolicyMetric) => void;
+  onMetricChange?: (value: ApmPolicyMetric) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Select
+      id={id}
+      virtual={false}
+      value={value}
+      onChange={(next: ApmPolicyMetric) => {
+        onChange?.(next);
+        onMetricChange?.(next);
+      }}
+      options={METRIC_GROUPS.map((group) => ({
+        label: t(group.labelKey),
+        options: group.metrics.map((item) => ({ value: item.value, label: t(item.i18nKey) })),
+      }))}
+    />
+  );
 }
 
 function CompareBaselineSelect({
@@ -288,6 +386,8 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
     ...editorCompareState(policy),
     compare_value_kind: policy.compare_value_kind ?? '',
     min_request_count: policy.min_request_count ?? null,
+    slow_threshold_ms: policy.slow_threshold_ms ?? null,
+    apdex_threshold_ms: policy.apdex_threshold_ms ?? null,
     thresholds: SEVERITIES.map(({ value: severity }) => {
       const threshold = thresholds.get(severity);
       const kind = resolvedCompareKind(policy.metric_type, policy.compare_mode, policy.compare_value_kind);
@@ -343,8 +443,9 @@ function buildMetricPreviewPayload(
     metric_type: values.metric_type,
     evaluation_interval: values.evaluation_interval || 1,
     metric_window: values.metric_window,
-    aggregation: values.aggregation,
+    aggregation: COUNT_METRICS.includes(values.metric_type) ? 'avg' : values.aggregation,
     ...comparePayloadFields(values),
+    ...metricParamFields(values),
     thresholds,
     trigger_after: values.trigger_after || 1,
     recover_after: values.recover_after || 1,
@@ -649,20 +750,34 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const compareKind = resolvedCompareKind(metricType, compareMode, compareKindRaw);
   const showCompare = metricType !== 'no_traffic';
   const showMinRequest = MIN_REQUEST_METRICS.includes(metricType);
+  const showAggregation = !COUNT_METRICS.includes(metricType);
+  const showSlowThreshold = SLOW_METRICS.includes(metricType);
+  const showApdexThreshold = metricType === 'apdex';
+  const ratioMetric = RATIO_METRICS.includes(metricType);
   const thresholdUnit = compareKind === 'percent'
     ? t('apm.common.percentUnit', '%')
-    : metricType === 'error_rate' && compareKind === 'delta'
+    : ratioMetric && compareKind === 'delta'
       ? t('apm.policies.percentagePointUnit', '个百分点')
-      : metricType === 'error_rate'
+      : ratioMetric
         ? t('apm.common.percentUnit', '%')
-        : metricType === 'p95' || metricType === 'p99'
+        : LATENCY_METRICS.includes(metricType)
           ? t('apm.common.millisecondUnit', 'ms')
-          : t('apm.policies.perSecondUnit', 'req/s');
+          : COUNT_METRICS.includes(metricType)
+            ? t('apm.policies.timesUnit', '次')
+            : t('apm.policies.perSecondUnit', 'req/s');
   const thresholdBounds = compareKind === 'percent' || compareKind === 'delta'
-    ? (metricType === 'error_rate' && compareKind === 'delta' ? { min: -100, max: 100 } : {})
-    : metricType === 'error_rate'
+    ? (ratioMetric && compareKind === 'delta' ? { min: -100, max: 100 } : {})
+    : ratioMetric
       ? { min: 0, max: 100 }
       : { min: 0 };
+  const comparatorOptions = metricType === 'apdex' && compareKind === ''
+    ? [{ value: 'lt' as const, label: '<' }, { value: 'lte' as const, label: '≤' }]
+    : [
+      { value: 'gt' as const, label: '>' },
+      { value: 'gte' as const, label: '≥' },
+      { value: 'lt' as const, label: '<' },
+      { value: 'lte' as const, label: '≤' },
+    ];
   const previewRows = useMemo(
     () => {
       const baselineSeries = preview?.baseline_series ?? [];
@@ -769,8 +884,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       metric_type: values.metric_type,
       evaluation_interval: values.evaluation_interval,
       metric_window: values.metric_window,
-      aggregation: values.aggregation,
+      aggregation: COUNT_METRICS.includes(values.metric_type) ? 'avg' : values.aggregation,
       ...comparePayloadFields(values),
+      ...metricParamFields(values),
       thresholds,
       trigger_after: values.trigger_after,
       recover_after: values.recover_after,
@@ -869,6 +985,18 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       if (previewRequestRef.current === requestId) setPreviewFailed(true);
     } finally {
       if (previewRequestRef.current === requestId) setPreviewing(false);
+    }
+  };
+
+  const applyMetric = (metric: ApmPolicyMetric) => {
+    if (metric === 'apdex' && form.getFieldValue('apdex_threshold_ms') == null) {
+      form.setFieldValue('apdex_threshold_ms', 500);
+    }
+    if (metric === 'apdex') {
+      const rows = (form.getFieldValue('thresholds') || []) as ThresholdEditorRow[];
+      form.setFieldValue('thresholds', rows.map((row) => (
+        row.comparator === 'gt' || row.comparator === 'gte' ? { ...row, comparator: 'lt' } : row
+      )));
     }
   };
 
@@ -1035,21 +1163,41 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
             />
           </Form.Item>
           <Form.Item name="metric_type" label={t('apm.policies.metric', '指标')} rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}>
-            <Select options={metricOptions} />
+            <MetricTypeSelect onMetricChange={applyMetric} />
           </Form.Item>
+          {showSlowThreshold ? (
+            <Form.Item
+              name="slow_threshold_ms"
+              label={t('apm.policies.slowThreshold', '慢阈值 (ms)')}
+              rules={[{ required: true, message: t('apm.policies.slowThresholdRequired', '请填写慢阈值') }]}
+            >
+              <NumberWithUnit min={1} max={600000} unit="ms" aria-label={t('apm.policies.slowThreshold', '慢阈值 (ms)')} />
+            </Form.Item>
+          ) : null}
+          {showApdexThreshold ? (
+            <Form.Item
+              name="apdex_threshold_ms"
+              label={t('apm.policies.apdexThreshold', 'T (ms)')}
+              rules={[{ required: true, message: t('apm.policies.apdexThresholdRequired', '请填写 T') }]}
+            >
+              <NumberWithUnit min={1} max={600000} unit="ms" aria-label={t('apm.policies.apdexThreshold', 'T (ms)')} />
+            </Form.Item>
+          ) : null}
           <Form.Item name="metric_window" label={t('apm.policies.metricWindow', '汇聚周期')} rules={[{ required: true, message: t('apm.policies.metricWindowRequired', '请输入汇聚周期') }]}>
             <NumberWithUnit min={1} max={1440} unit={t('apm.policies.minutes', '分钟')} />
           </Form.Item>
-          <Form.Item name="aggregation" label={t('apm.policies.aggregation', '汇聚方法')} rules={[{ required: true, message: t('apm.policies.aggregationRequired', '请选择汇聚方法') }]}>
-            <Select
-              options={[
-                { value: 'avg', label: 'avg_over_time' },
-                { value: 'last', label: 'last_over_time' },
-                { value: 'max', label: 'max_over_time' },
-                { value: 'min', label: 'min_over_time' },
-              ]}
-            />
-          </Form.Item>
+          {showAggregation ? (
+            <Form.Item name="aggregation" label={t('apm.policies.aggregation', '汇聚方法')} rules={[{ required: true, message: t('apm.policies.aggregationRequired', '请选择汇聚方法') }]}>
+              <Select
+                options={[
+                  { value: 'avg', label: 'avg_over_time' },
+                  { value: 'last', label: 'last_over_time' },
+                  { value: 'max', label: 'max_over_time' },
+                  { value: 'min', label: 'min_over_time' },
+                ]}
+              />
+            </Form.Item>
+          ) : null}
           <Typography.Text type="secondary" className={styles.scopeHint}>
             {t('apm.policies.scopeHint', '环境已并入服务范围；版本固定为全部版本。')}
           </Typography.Text>
@@ -1150,12 +1298,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                       <Select
                         aria-label={t('apm.policies.comparatorAria', '{severity}比较符', { severity: severityOptions[index].label })}
                         onChange={syncComparator}
-                        options={[
-                          { value: 'gt', label: '>' },
-                          { value: 'gte', label: '≥' },
-                          { value: 'lt', label: '<' },
-                          { value: 'lte', label: '≤' },
-                        ]}
+                        options={comparatorOptions}
                       />
                     </Form.Item>
                   ),

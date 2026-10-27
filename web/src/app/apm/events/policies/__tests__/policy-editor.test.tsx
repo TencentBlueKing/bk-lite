@@ -592,7 +592,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     );
 
     await user.click(screen.getByLabelText('指标'));
-    await user.click(await screen.findByText('无流量'));
+    await user.click(await screen.findByRole('option', { name: '无流量' }));
     expect(screen.queryByLabelText('比较基准')).toBeNull();
     expect(screen.queryByLabelText('最低请求数')).toBeNull();
     await user.click(screen.getByRole('button', { name: '保存策略' }));
@@ -603,6 +603,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(payload).not.toHaveProperty('compare_offset_amount');
     expect(payload).not.toHaveProperty('compare_value_kind');
     expect(payload).not.toHaveProperty('min_request_count');
+    expect(payload).not.toHaveProperty('slow_threshold_ms');
+    expect(payload).not.toHaveProperty('apdex_threshold_ms');
   });
 
   it('新建策略默认最低请求数 20，清空后保存为 null', async () => {
@@ -691,5 +693,39 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.getByText('本轮命中 1/3，现网不会建告警')).not.toBeNull();
     expect(screen.getByText('POST /checkout v2')).not.toBeNull();
     expect(api.dryRunPolicy).toHaveBeenCalledWith(expect.objectContaining({ policy_id: 'p1' }));
+  });
+
+  it('分组指标下拉出现慢阈值和 Apdex T，计数类隐藏汇聚方法', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByLabelText('指标'));
+    expect(await screen.findByText('时延')).not.toBeNull();
+    await user.click(await screen.findByRole('option', { name: '慢请求数' }));
+    expect(screen.queryByLabelText('汇聚方法')).toBeNull();
+    const slow = screen.getByLabelText('慢阈值 (ms)') as HTMLInputElement;
+    await user.clear(slow);
+    await user.type(slow, '1000');
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          metric_type: 'slow_request_count',
+          slow_threshold_ms: 1000,
+          aggregation: 'avg',
+        }),
+      ),
+    );
+    const slowPayload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(slowPayload.apdex_threshold_ms).toBeNull();
+    expect(slowPayload.min_request_count).toBeNull();
+
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByRole('option', { name: 'Apdex' }));
+    expect((screen.getByLabelText('T (ms)') as HTMLInputElement).value).toBe('500');
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByRole('option', { name: '错误数' }));
+    expect(screen.queryByLabelText('汇聚方法')).toBeNull();
+    expect(screen.queryByLabelText('慢阈值 (ms)')).toBeNull();
   });
 });

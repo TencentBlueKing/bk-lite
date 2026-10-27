@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 from hashlib import sha256
@@ -26,6 +28,9 @@ from apps.apm.services.snapshots import ApmEventSnapshotStore
 MAX_POLICY_TARGETS = 100
 DRY_RUN_TARGET_LIMIT = 20
 BASELINE_ZERO_REASON = "baseline_zero"
+_EVALUATION_DELAY_RE = re.compile(r"^\s*(\d+)\s*s?\s*$")
+DEFAULT_EVALUATION_DELAY_SECONDS = 60
+MAX_EVALUATION_DELAY_SECONDS = 600
 SEVERITY_LEVEL = {
     ApmPolicy.Severity.CRITICAL: "0",
     ApmPolicy.Severity.ERROR: "1",
@@ -33,6 +38,15 @@ SEVERITY_LEVEL = {
 }
 MAX_NOTIFICATION_ATTEMPTS = 8
 NOTIFICATION_CLAIM_TTL = timedelta(minutes=5)
+
+
+def evaluation_delay() -> timedelta:
+    """全局评估延迟。未设置或无法解析时用 60s，超出 0～600s 的值夹到边界。"""
+    raw = os.environ.get("APM_POLICY_EVALUATION_DELAY", f"{DEFAULT_EVALUATION_DELAY_SECONDS}s")
+    match = _EVALUATION_DELAY_RE.match(raw or "")
+    seconds = int(match.group(1)) if match else DEFAULT_EVALUATION_DELAY_SECONDS
+    seconds = min(MAX_EVALUATION_DELAY_SECONDS, max(0, seconds))
+    return timedelta(seconds=seconds)
 
 
 class DjangoApmPolicyService:
@@ -50,16 +64,49 @@ class DjangoApmPolicyService:
         return evaluated_at.replace(second=0, microsecond=0).isoformat()
 
     @staticmethod
-    def _raw_value(policy: ApmPolicy, red) -> Decimal | None:
+    def _bounded_decimal(value: Decimal) -> Decimal:
+        quantized = value.quantize(Decimal("0.000001"))
+        text = format(quantized, "f").rstrip("0").rstrip(".")
+        return Decimal(text or "0")
+
+    @classmethod
+    def _apdex(cls, satisfied, tolerating, requests) -> Decimal | None:
+        if requests is None or satisfied is None or tolerating is None or int(requests) <= 0:
+            return None
+        score = (Decimal(int(satisfied)) + Decimal(int(tolerating)) / Decimal(2)) / Decimal(int(requests))
+        return cls._bounded_decimal(score)
+
+    @classmethod
+    def _slow_rate(cls, slow_count, requests) -> Decimal | None:
+        if slow_count is None or requests is None or int(requests) <= 0:
+            return None
+        return cls._bounded_decimal(Decimal(int(slow_count)) / Decimal(int(requests)))
+
+    @classmethod
+    def _raw_value(cls, policy: ApmPolicy, red) -> Decimal | None:
+        metric = policy.metric_type
+        if metric == ApmPolicy.MetricType.ERROR_COUNT:
+            return None if red.error_count is None else Decimal(int(red.error_count))
+        if metric == ApmPolicy.MetricType.SLOW_REQUEST_COUNT:
+            return None if red.slow_count is None else Decimal(int(red.slow_count))
+        if metric == ApmPolicy.MetricType.SLOW_REQUEST_RATE:
+            return cls._slow_rate(red.slow_count, red.request_count)
+        if metric == ApmPolicy.MetricType.APDEX:
+            return cls._apdex(red.satisfied_count, red.tolerating_count, red.request_count)
         values = {
             ApmPolicy.MetricType.ERROR_RATE: red.error_rate,
+            ApmPolicy.MetricType.P50: red.p50_ms,
+            ApmPolicy.MetricType.P75: red.p75_ms,
+            ApmPolicy.MetricType.P90: red.p90_ms,
             ApmPolicy.MetricType.P95: red.p95_ms,
             ApmPolicy.MetricType.P99: red.p99_ms,
+            ApmPolicy.MetricType.LATENCY_AVG: red.avg_ms,
+            ApmPolicy.MetricType.LATENCY_MAX: red.max_ms,
             ApmPolicy.MetricType.THROUGHPUT: red.request_rate,
             ApmPolicy.MetricType.NO_TRAFFIC: red.request_rate,
         }
-        value = values[policy.metric_type]
-        if policy.metric_type == ApmPolicy.MetricType.NO_TRAFFIC and value is None:
+        value = values[metric]
+        if metric == ApmPolicy.MetricType.NO_TRAFFIC and value is None:
             value = 0
         return Decimal(str(value)) if value is not None else None
 
@@ -123,19 +170,35 @@ class DjangoApmPolicyService:
             None,
         )
 
-    @staticmethod
-    def _series_value(policy: ApmPolicy, point) -> Decimal | None:
+    @classmethod
+    def _series_value(cls, policy: ApmPolicy, point) -> Decimal | None:
+        metric = policy.metric_type
+        if metric == ApmPolicy.MetricType.ERROR_COUNT:
+            return None if point.error_count is None else Decimal(int(point.error_count))
+        if metric == ApmPolicy.MetricType.SLOW_REQUEST_COUNT:
+            return None if point.slow_count is None else Decimal(int(point.slow_count))
+        if metric == ApmPolicy.MetricType.SLOW_REQUEST_RATE:
+            return cls._slow_rate(point.slow_count, point.request_count)
+        if metric == ApmPolicy.MetricType.APDEX:
+            return cls._apdex(point.satisfied_count, point.tolerating_count, point.request_count)
         value = {
             ApmPolicy.MetricType.ERROR_RATE: point.error_rate,
+            ApmPolicy.MetricType.P50: point.p50_ms,
+            ApmPolicy.MetricType.P75: point.p75_ms,
+            ApmPolicy.MetricType.P90: point.p90_ms,
             ApmPolicy.MetricType.P95: point.p95_ms,
             ApmPolicy.MetricType.P99: point.p99_ms,
+            ApmPolicy.MetricType.LATENCY_AVG: point.avg_ms,
+            ApmPolicy.MetricType.LATENCY_MAX: point.max_ms,
             ApmPolicy.MetricType.THROUGHPUT: point.request_rate,
             ApmPolicy.MetricType.NO_TRAFFIC: point.request_rate,
-        }[policy.metric_type]
+        }[metric]
         return Decimal(str(value)) if value is not None else None
 
     @classmethod
     def _aggregate(cls, policy: ApmPolicy, red) -> Decimal | None:
+        if policy.metric_type in ApmPolicy.COUNT_METRIC_TYPES:
+            return cls._raw_value(policy, red)
         values = [cls._series_value(policy, point) for point in red.timeseries]
         values = [value for value in values if value is not None]
         if not values:
@@ -196,6 +259,8 @@ class DjangoApmPolicyService:
                 include_endpoints=include_endpoints,
                 endpoint=endpoint or "",
                 version=version or "",
+                slow_threshold_ms=getattr(policy, "slow_threshold_ms", None) or None,
+                apdex_threshold_ms=getattr(policy, "apdex_threshold_ms", None) or None,
             )
         )
 
@@ -257,6 +322,7 @@ class DjangoApmPolicyService:
         baseline_series=(),
         request_count: int | None = None,
         reason: str = "",
+        window_ended_at: datetime | None = None,
     ) -> PolicyQueryResult:
         return PolicyQueryResult(
             value=value,
@@ -271,6 +337,7 @@ class DjangoApmPolicyService:
             request_count=request_count,
             reason=reason,
             result_unit=resolve_result_unit(policy),
+            window_ended_at=window_ended_at,
         )
 
     def test_query(
@@ -283,11 +350,12 @@ class DjangoApmPolicyService:
     ) -> PolicyQueryResult:
         target_endpoint, target_version = (endpoint, version) if endpoint is not None else self._targets(policy)[0]
         window = max(policy.metric_window, 1)
-        current_start = evaluated_at - timedelta(minutes=window)
+        window_end = evaluated_at - evaluation_delay()
+        current_start = window_end - timedelta(minutes=window)
         current = self._read_window(
             policy,
             started_at=current_start,
-            ended_at=evaluated_at,
+            ended_at=window_end,
             endpoint=target_endpoint or "",
             version=target_version or "",
             include_endpoints=True,
@@ -302,6 +370,7 @@ class DjangoApmPolicyService:
                 data_state=MetricDataState.NO_DATA,
                 series=current.timeseries,
                 request_count=current.request_count,
+                window_ended_at=window_end,
             )
         # 最低请求数门与比较基准正交：绝对阈值的低流量窗同样不评。
         if self._below_min_samples(policy, current):
@@ -314,6 +383,7 @@ class DjangoApmPolicyService:
                 series=current.timeseries,
                 current_value=current_value,
                 request_count=current.request_count,
+                window_ended_at=window_end,
             )
         offset = self._baseline_offset(policy, window)
         if offset is None:
@@ -328,11 +398,12 @@ class DjangoApmPolicyService:
                 threshold=threshold,
                 current_value=current_value,
                 request_count=current.request_count,
+                window_ended_at=window_end,
             )
         baseline = self._read_window(
             policy,
             started_at=current_start - offset,
-            ended_at=evaluated_at - offset,
+            ended_at=window_end - offset,
             endpoint=target_endpoint or "",
             version=target_version or "",
             include_endpoints=False,
@@ -350,6 +421,7 @@ class DjangoApmPolicyService:
                 baseline_value=baseline_value,
                 baseline_series=baseline.timeseries,
                 request_count=current.request_count,
+                window_ended_at=window_end,
             )
         kind = policy.compare_value_kind or ""
         if kind == ApmPolicy.CompareValueKind.PERCENT and baseline_value == 0:
@@ -364,6 +436,7 @@ class DjangoApmPolicyService:
                 baseline_value=baseline_value,
                 baseline_series=baseline.timeseries,
                 request_count=current.request_count,
+                window_ended_at=window_end,
                 reason=BASELINE_ZERO_REASON,
             )
         compared = self._compared_value(current_value, baseline_value, kind)
@@ -380,6 +453,7 @@ class DjangoApmPolicyService:
             baseline_value=baseline_value,
             baseline_series=baseline.timeseries,
             request_count=current.request_count,
+            window_ended_at=window_end,
         )
 
     def dry_run(
@@ -418,6 +492,8 @@ class DjangoApmPolicyService:
             "compare_offset_amount": policy.compare_offset_amount,
             "compare_value_kind": policy.compare_value_kind or "",
             "result_unit": resolve_result_unit(policy),
+            "slow_threshold_ms": getattr(policy, "slow_threshold_ms", None),
+            "apdex_threshold_ms": getattr(policy, "apdex_threshold_ms", None),
             "total_targets": len(targets),
             "truncated": len(targets) > DRY_RUN_TARGET_LIMIT,
             "items": items,
@@ -735,6 +811,7 @@ class DjangoApmPolicyService:
                 "version": state.version,
                 "compare_mode": policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
                 "compare_offset_amount": policy.compare_offset_amount,
+                "metric_type": policy.metric_type,
             },
         }
         for target in policy.notification_targets.order_by("channel_id", "id"):

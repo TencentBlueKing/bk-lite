@@ -302,10 +302,35 @@ class ApmDeploymentEvent(AuditedModel):
 class ApmPolicy(AuditedModel):
     class MetricType(models.TextChoices):
         ERROR_RATE = "error_rate", "错误率"
+        ERROR_COUNT = "error_count", "错误数"
+        P50 = "p50", "P50"
+        P75 = "p75", "P75"
+        P90 = "p90", "P90"
         P95 = "p95", "P95"
         P99 = "p99", "P99"
+        LATENCY_AVG = "latency_avg", "平均时延"
+        LATENCY_MAX = "latency_max", "最大时延"
+        SLOW_REQUEST_COUNT = "slow_request_count", "慢请求数"
+        SLOW_REQUEST_RATE = "slow_request_rate", "慢请求占比"
+        APDEX = "apdex", "Apdex"
         THROUGHPUT = "throughput", "吞吐"
         NO_TRAFFIC = "no_traffic", "无流量"
+
+    SLOW_METRIC_TYPES = frozenset({MetricType.SLOW_REQUEST_COUNT, MetricType.SLOW_REQUEST_RATE})
+    COUNT_METRIC_TYPES = frozenset({MetricType.ERROR_COUNT, MetricType.SLOW_REQUEST_COUNT})
+    LATENCY_METRIC_TYPES = frozenset(
+        {
+            MetricType.P50,
+            MetricType.P75,
+            MetricType.P90,
+            MetricType.P95,
+            MetricType.P99,
+            MetricType.LATENCY_AVG,
+            MetricType.LATENCY_MAX,
+        }
+    )
+    RATIO_METRIC_TYPES = frozenset({MetricType.ERROR_RATE, MetricType.SLOW_REQUEST_RATE, MetricType.APDEX})
+    MIN_REQUEST_METRIC_TYPES = frozenset({MetricType.ERROR_RATE, MetricType.SLOW_REQUEST_RATE, MetricType.APDEX, *LATENCY_METRIC_TYPES})
 
     class Comparator(models.TextChoices):
         GREATER_THAN = "gt", ">"
@@ -360,6 +385,8 @@ class ApmPolicy(AuditedModel):
     compare_offset_amount = models.PositiveIntegerField(null=True, blank=True)
     compare_value_kind = models.CharField(max_length=16, blank=True, default="")
     min_request_count = models.PositiveIntegerField(null=True, blank=True)
+    slow_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
+    apdex_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
     thresholds = models.JSONField(default=list)
     trigger_after = models.PositiveIntegerField(default=1)
     recover_after = models.PositiveIntegerField(default=3)
