@@ -1,7 +1,7 @@
 # SM2/SM3/SM4 国密与防重放技术方案
 
-- 最近更新：2026-10-22
-- 状态：方案已评审。本期只做 JSON 信封，文件和流式见「本期范围」
+- 最近更新：2026-10-26
+- 状态：方案已评审。实现在企业包，社区只保留加载接缝。本期只做 JSON 信封，文件和流式见「本期范围」
 - 跨模块边界：[`specs/capabilities/gm-transport.md`](../../capabilities/gm-transport.md)
 
 ## 背景
@@ -386,7 +386,7 @@ python manage.py disable_gm_transport
 
 ## 后端中间件
 
-类：`apps.core.middlewares.gm_transport_middleware.GmTransportMiddleware`。
+类：`apps.core.enterprise.gm_transport_middleware.GmTransportMiddleware`。企业包不在运行目录时不注册。
 
 挂在 `server/config/components/app.py` 的 `MIDDLEWARE` 里，位于 `SecurityMiddleware` 之后、`SessionMiddleware` 和 `AuthenticationMiddleware` 之前。这样后续中间件和视图读到的已经是还原后的正文。它不替换认证。请求还原成功后，同一层中间件在响应离开时把正文加密。
 
@@ -612,7 +612,7 @@ BK-Lite 前端走优先级 10，再由 Next 的 `NEXTAPI_URL=http://server:8000`
 
 ## 实施顺序
 
-1. 落地请求信封和响应信封的纯函数和固定向量，先让 Python 侧加解密与 MAC 测试通过。已完成：`server/apps/core/utils/crypto/gm_transport.py`，测试 `server/apps/core/tests/test_gm_transport_envelope.py`（不连数据库）。固定向量用 GM/T 0003.5 示例私钥。SM2 的 `ek` 含随机数，向量冻结一份样本密文做解密；SM4 密文和 HMAC 是确定值。HMAC 密钥仍是这把 16 字节 SM4 密钥，不拆成两把。
+1. 落地请求信封和响应信封的纯函数和固定向量，先让 Python 侧加解密与 MAC 测试通过。已完成：`enterprise/server/apps/core/enterprise/gm_crypto.py`，测试 `enterprise/server/apps/core/enterprise/tests/test_gm_transport_envelope.py`（不连数据库）。固定向量用 GM/T 0003.5 示例私钥。SM2 的 `ek` 含随机数，向量冻结一份样本密文做解密；SM4 密文和 HMAC 是确定值。HMAC 密钥仍是这把 16 字节 SM4 密钥，不拆成两把。
 2. 加中间件、环境变量、开关、公钥接口、nonce 去重和响应加密，补上放行、占坑顺序、ttl、重放和响应往返测试。同一步加上开启前自检、公钥接口降级和 `disable_gm_transport` 命令，保证开关能打开之前就有关闭手段。
 3. 前端 `gmTransport` 同时接入 axios 的请求拦截器、响应拦截器，以及登录等没有 token 的 `fetch`。请求加密、响应解密用向量测试锁定与后端一致。重试路径断言每次都是新 nonce。
 4. 清点仍直接 `fetch('/api/proxy')` 的调用。业务 JSON 改为同一个 `gmTransport`。漏掉的调用在开关打开后仍是明文，后端会放行。同时清点 `<img src>`、下载链接和 `window.open` 等浏览器原生加载。结果已写回「浏览器原生加载的资源无法加信封」。

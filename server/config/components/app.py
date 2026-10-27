@@ -68,9 +68,18 @@ AUTHENTICATION_BACKENDS = (
 
 AUTH_USER_MODEL = "base.User"
 
+
+def _gm_transport_middleware():
+    """企业包在运行目录里才挂国密中间件。没有这个文件时请求保持明文。"""
+    middleware_file = os.path.join(BASE_DIR, "apps", "core", "enterprise", "gm_transport_middleware.py")
+    if not os.path.isfile(middleware_file):
+        return ()
+    return ("apps.core.enterprise.gm_transport_middleware.GmTransportMiddleware",)
+
+
 MIDDLEWARE = (
     "django.middleware.security.SecurityMiddleware",
-    "apps.core.middlewares.gm_transport_middleware.GmTransportMiddleware",
+    *_gm_transport_middleware(),
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "apps.core.middlewares.request_timing_middleware.RequestTimingMiddleware",  # 请求耗时记录
     "django.contrib.sessions.middleware.SessionMiddleware",

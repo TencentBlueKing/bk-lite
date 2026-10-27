@@ -26,15 +26,7 @@ error:
   invalid_current_team: current_team cookie 无效
   no_permission_access_team: 无权访问该团队数据
   code_empty: 验证码不能为空
-  gm_transport_rejected: 请求无法解密
-  gm_transport_expired: 请求已过期，请校对终端时间后重试
-  gm_transport_replay: 请求已失效
-  gm_transport_unavailable: 国密传输暂不可用
-  gm_transport_too_large: 请求过大
-  gm_transport_private_key_missing: 未配置国密私钥
-  gm_transport_private_key_invalid: 国密私钥不合法
-  gm_transport_cache_unavailable: 国密传输需要可用的 Redis 缓存
-  gm_transport_self_check_failed: 国密算法自检未通过
+  gm_transport_enterprise_only: 国密传输仅企业版提供
 
 # 内置应用展示名（Console 卡片 / 左上角应用列表）
 app_name:
