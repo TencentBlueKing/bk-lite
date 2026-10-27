@@ -35,6 +35,7 @@ from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
     tool_graph_failure_plain_text,
     tool_graph_failure_user_prompt,
 )
+from apps.opspilot.services.ppt_master_runtime import packages_include_ppt_master
 from apps.opspilot.utils.pending_question import is_answer_after_choice_prompt
 
 
@@ -1678,6 +1679,19 @@ def enforce_analyze_deployment_configurations(
     return enforce_skill_report_source_tools(plan, available_names, skill_packages=skill_packages)
 
 
+def _without_generate_attachment_file(plan: ToolExecutionPlan) -> ToolExecutionPlan:
+    """命中 ppt-master 时只留一步写页面。读说明、列大纲这类步骤不会导出文件。"""
+    return ToolExecutionPlan(
+        goal=plan.goal or "生成可下载的 pptx",
+        steps=[
+            ToolExecutionStep(
+                objective="按 ppt-master 写每一页 SVG，并导出可下载的 pptx",
+                tools=[USE_SKILLS_TOOL_NAME],
+            )
+        ],
+    )
+
+
 def enforce_generate_attachment_file(
     plan: ToolExecutionPlan,
     available_names: set[str],
@@ -2023,6 +2037,7 @@ class ToolExecutionPlanner:
         user_message: str = "",
         agent_system_prompt: str = "",
         conversation_messages: Sequence[Any] | None = None,
+        ppt_master_packages: Sequence[Any] | None = None,
     ) -> ToolExecutionPlan:
         if not isinstance(payload, dict):
             raise ToolPlanningError("规划模型未返回 JSON 对象")
@@ -2085,6 +2100,9 @@ class ToolExecutionPlanner:
             available_names,
             skill_packages=skill_packages,
         )
+        hit_packages = skill_packages if ppt_master_packages is None else ppt_master_packages
+        if packages_include_ppt_master(hit_packages):
+            return _without_generate_attachment_file(plan)
         return enforce_generate_attachment_file(
             plan,
             available_names,
@@ -2202,6 +2220,7 @@ class ToolExecutionPlanner:
         agent_system_prompt: str = "",
         thread_id: str | None = None,
         conversation_messages: Sequence[Any] | None = None,
+        ppt_master_packages: Sequence[Any] | None = None,
     ) -> ToolExecutionPlan:
         started = monotonic_ms()
         model_call_ms = 0
@@ -2273,6 +2292,7 @@ class ToolExecutionPlanner:
                 user_message=user_message,
                 agent_system_prompt=agent_system_prompt,
                 conversation_messages=conversation_messages,
+                ppt_master_packages=ppt_master_packages,
             )
             if not plan.steps and conversation and is_history_continuation(user_message):
                 retry_count += 1
@@ -2303,6 +2323,7 @@ class ToolExecutionPlanner:
                         user_message=user_message,
                         agent_system_prompt=agent_system_prompt,
                         conversation_messages=conversation_messages,
+                        ppt_master_packages=ppt_master_packages,
                     )
             log_stage_timing(
                 "planning",

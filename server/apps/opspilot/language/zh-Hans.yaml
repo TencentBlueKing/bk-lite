@@ -1021,3 +1021,9 @@ skill_packages:
       面向 Kubernetes 工作负载部署与治理的场景技能包。
 
       覆盖 Deployment/StatefulSet、网络策略、RBAC、Helm、排障、GitOps、服务网格与多集群等配置与运维场景。
+  ppt-master:
+    name: PPT Master
+    description: |
+      用于生成和修改可编辑演示文稿的场景技能包。
+
+      按对话产出原生 PPTX，并在同一对话里继续确认方案或改稿。

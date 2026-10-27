@@ -146,6 +146,16 @@ try:
 except ImportError:
     PgvectorRag = None
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
+from apps.opspilot.services.ppt_master_runtime import (
+    PPT_AUTHORING_RECURSION_LIMIT,
+    begin_ppt_run,
+    current_ppt_run,
+    inspect_ppt_run,
+    is_ppt_master_package,
+    message_continues_ppt,
+    packages_include_ppt_master,
+    settle_ppt_export,
+)
 
 MISSING_PARAMS_NUDGE_LOG = "event=deepagent_missing_params_nudge objective=%s error_type=%s failed_stage=%s thread_id=%s"
 MISSING_PARAMS_ABORT_LOG = "event=deepagent_missing_params_abort objective=%s error_type=%s failed_stage=%s thread_id=%s"
@@ -2473,6 +2483,7 @@ class ToolsNodes(
                 thread_id=getattr(graph_request, "thread_id", None),
             )
             if sandbox_dir:
+                await self._publish_ppt_master_export(graph_request, None, config)
                 self._cleanup_sandbox(sandbox_dir)
 
     async def build_deepagent_nodes(  # noqa: C901
@@ -2578,6 +2589,7 @@ class ToolsNodes(
             summary_ran = False
             skill_packages = self._resolve_skill_packages(graph_request)
             has_skill_packages = bool(skill_packages)
+            matched_for_ppt = list(getattr(getattr(self, "_extra_config", None), "matched_skill_packages", None) or [])
             # 渐进路径推迟沙箱物化：空计划寒暄不应为技能包付 DeepAgent/FS 税。
             backend, skill_sources, sandbox_dir = None, [], None
             interrupt_on = self._build_interrupt_on(graph_request, tools)
@@ -2589,6 +2601,11 @@ class ToolsNodes(
                     if isinstance(message, HumanMessage):
                         planning_question = str(message.content or "").strip()
                         break
+            if not packages_include_ppt_master(matched_for_ppt):
+                enabled_for_ppt = list(getattr(getattr(self, "_extra_config", None), "enabled_skill_packages", None) or [])
+                if packages_include_ppt_master(enabled_for_ppt) and message_continues_ppt(planning_question):
+                    matched_for_ppt = [package for package in enabled_for_ppt if is_ppt_master_package(package)]
+            ppt_authoring = packages_include_ppt_master(matched_for_ppt)
 
             resumed_messages: list = []
             extra_config = getattr(graph_request, "extra_config", None) or {}
@@ -2673,6 +2690,7 @@ class ToolsNodes(
                         return {"messages": [AIMessage(content=tool_graph_failure_plain_text(_await_exc))]}
                 finally:
                     if sandbox_dir:
+                        await self._publish_ppt_master_export(graph_request, prior_attachment_filenames, config)
                         self._cleanup_sandbox(sandbox_dir)
 
                 final_messages = result.get("messages", [])
@@ -2728,6 +2746,7 @@ class ToolsNodes(
                     agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                     thread_id=missing_params_thread_id,
                     conversation_messages=original_messages,
+                    ppt_master_packages=matched_for_ppt,
                 )
             except Exception as planning_exc:
                 # 规划失败时保持零工具可见，仍允许模型直接回答，绝不退回全量工具。
@@ -2796,6 +2815,7 @@ class ToolsNodes(
                 skill_sources=skill_sources,
                 skills_only_plan=skills_only_plan,
                 registered_tools=registered_tools,
+                ppt_authoring=ppt_authoring,
             )
             # 无技能运行时时用短 system，避免 deepagent 技能/沙箱长文案挤爆小上下文模型。
             if not skill_sources:
@@ -2813,6 +2833,7 @@ class ToolsNodes(
                 skills_only_plan=skills_only_plan,
                 graph_request=graph_request,
                 token_usage_accumulator=token_usage_accumulator,
+                ppt_authoring=ppt_authoring,
             )
             final_system_prompt = self._append_planned_execution_step_prompt(final_system_prompt)
 
@@ -2840,9 +2861,15 @@ class ToolsNodes(
                     return
                 backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
                 if skill_sources:
-                    skills_only = self._plan_is_skills_only(candidate_plan)
+                    skills_only = self._plan_is_skills_only(candidate_plan) and not ppt_authoring
                     skill_guard.enabled = skills_only
-                    if skills_only:
+                    if ppt_authoring:
+                        always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
+                        always_visible.add("execute")
+                        visibility_middleware._hidden_tools = frozenset(
+                            name for name in PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS if name != "execute"
+                        )
+                    elif skills_only:
                         always_visible -= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
                         always_visible.add("execute")
                         visibility_middleware._hidden_tools = frozenset(
@@ -2870,7 +2897,7 @@ class ToolsNodes(
             matched_packages = list(getattr(ec, "matched_skill_packages", None) or []) if ec else []
             deep_config = {
                 **config,
-                "recursion_limit": 100,
+                "recursion_limit": PPT_AUTHORING_RECURSION_LIMIT if ppt_authoring else 100,
                 "callbacks": nested_callbacks,
                 "configurable": {
                     **config.get("configurable", {}),
@@ -2990,12 +3017,17 @@ class ToolsNodes(
                 total_steps = len(plan.steps)
                 require_formatted_report = False
                 self._set_hide_planned_step_text(graph_request, True)
+                ppt_run = current_ppt_run(graph_request) or (begin_ppt_run(graph_request) if ppt_authoring else None)
+                ppt_workspace_text = str(ppt_run) if ppt_run else ""
 
                 while pending_steps:
                     step = pending_steps.pop(0)
                     step_index = len(completed_steps) + 1
                     missing_params_nudged = False
                     attachment_call_nudged = False
+                    skill_call_nudged = False
+                    ppt_write_nudged = 0
+                    ppt_recursion_nudged = False
                     active_tools[:] = _resolve_step_tools(step.tools)
                     visibility_middleware.include_always_visible = True
                     visible_names = [getattr(tool, "name", "") for tool in active_tools]
@@ -3027,7 +3059,10 @@ class ToolsNodes(
                     elif skills_only_plan or (
                         USE_SKILLS_TOOL_NAME in (step.tools or []) and not any(t != USE_SKILLS_TOOL_NAME for t in (step.tools or []))
                     ):
-                        step_guidance = "\n" + self._skill_only_step_guidance(skill_packages)
+                        step_guidance = "\n" + self._skill_only_step_guidance(
+                            skill_packages,
+                            ppt_workspace=ppt_workspace_text,
+                        )
                     else:
                         is_last_step = not pending_steps
                         step_guidance = "\n" + self._planned_tool_step_guidance(
@@ -3035,12 +3070,15 @@ class ToolsNodes(
                             user_message=planning_question,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                         )
+                    finish_rule = "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
+                    if ppt_authoring:
+                        finish_rule = "本步只有写出 svg_output 里的页面才算完成。禁止只回复大纲或说即将开始。写完就停止，平台会导出 pptx。"
                     step_message = _internal_message(
                         f"执行计划当前步骤：{step.objective}\n"
                         f"本步骤计划工具：{', '.join(step.tools) or '无'}。\n"
                         f"本步骤当前可见工具：{', '.join(visible_names) or '无'} "
                         f"（含文件/交互等常驻工具）。\n"
-                        "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
+                        f"{finish_rule}"
                         f"{step_guidance}"
                     )
                     step_payload = {
@@ -3063,6 +3101,7 @@ class ToolsNodes(
                             skill_packages=skill_packages,
                             config=config,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                            ppt_master_packages=matched_for_ppt,
                             thread_id=missing_params_thread_id,
                             conversation_messages=original_messages,
                         )
@@ -3178,6 +3217,23 @@ class ToolsNodes(
                             failure = f"步骤“{step.objective}”执行异常 " f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
                             if is_llm_upstream_error(step_exc):
                                 raise
+                            if ppt_authoring and type(step_exc).__name__ == "GraphRecursionError" and not ppt_recursion_nudged:
+                                ppt_recursion_nudged = True
+                                deep_config["recursion_limit"] = PPT_AUTHORING_RECURSION_LIMIT
+                                logger.warning("ppt-master 步骤达到递归上限，改为直接导出已有页面")
+                                step_payload = {
+                                    **step_payload,
+                                    "messages": list(step_payload.get("messages") or [])
+                                    + [
+                                        _internal_message(
+                                            "递归上限到了。不要重写页面，不要运行 attribution_guard.py，不要 project_manager init，"
+                                            "不要 ls，不要 python -c，不要 text_measure，不要 svg_quality_checker。"
+                                            "svg_output 里已有的 SVG 就是成稿。只执行一次 "
+                                            "python /skills/ppt-master/scripts/svg_to_pptx.py projects/<工程名> --quick-generate。"
+                                        )
+                                    ],
+                                }
+                                continue
                             # 上下文溢出：不带着全量工具目录重规划，但压缩上下文后继续后续步骤。
                             if is_context_size_error(step_exc):
                                 logger.warning(
@@ -3312,7 +3368,76 @@ class ToolsNodes(
                                 "messages": list(agent_state.get("messages") or []) + [_internal_message(MISSING_PARAMS_CHOICE_HINT)],
                             }
                             continue
-                        limit_kind = detect_limit_kind(step_messages)
+                        if ppt_authoring and ppt_run is not None:
+                            exported, page_count = await asyncio.to_thread(inspect_ppt_run, ppt_run)
+                            if exported:
+                                setattr(graph_request, "_ppt_export_ready", True)
+                            elif page_count < 3 and ppt_write_nudged < 1:
+                                ppt_write_nudged += 1
+                                nudge = (
+                                    "还没有足够的页面。不要读说明，不要列大纲，不要 ls，不要 python -c，不要 --help，不要 init。"
+                                    "立刻用 write_file 把每一页 SVG 写到 /ppt-workspace/projects/<工程名>/svg_output/。写完就停止，平台会导出 pptx。"
+                                )
+                                agent_state = step_result
+                                step_payload = {
+                                    **agent_state,
+                                    "messages": list(agent_state.get("messages") or []) + [_internal_message(nudge)],
+                                }
+                                continue
+                            elif page_count == 0 and ppt_write_nudged < 2:
+                                ppt_write_nudged += 1
+                                nudge = (
+                                    "还没有可导出的页面。不要读说明，不要列大纲，不要 ls，不要 python -c，不要 --help，不要 init。"
+                                    "立刻用 write_file 把每一页 SVG 写到 /ppt-workspace/projects/<工程名>/svg_output/。写完就停止，平台会导出 pptx。"
+                                )
+                                agent_state = step_result
+                                step_payload = {
+                                    **agent_state,
+                                    "messages": list(agent_state.get("messages") or []) + [_internal_message(nudge)],
+                                }
+                                continue
+                            export_status = "exported" if exported else await asyncio.to_thread(settle_ppt_export, ppt_run)
+                            if export_status == "exported":
+                                setattr(graph_request, "_ppt_export_ready", True)
+                            elif ppt_write_nudged < 2:
+                                ppt_write_nudged += 1
+                                if export_status == "compile_failed":
+                                    nudge = "页面 SVG 还不能导出。不要 ls，不要 python -c，不要 --help。用 write_file 重写无法解析的页面，写完就停止。"
+                                else:
+                                    nudge = (
+                                        "还没有可导出的页面。不要读说明，不要列大纲，不要 ls，不要 python -c，不要 --help，不要 init。"
+                                        "立刻用 write_file 把每一页 SVG 写到 /ppt-workspace/projects/<工程名>/svg_output/。写完就停止，平台会导出 pptx。"
+                                    )
+                                agent_state = step_result
+                                step_payload = {
+                                    **agent_state,
+                                    "messages": list(agent_state.get("messages") or []) + [_internal_message(nudge)],
+                                }
+                                continue
+                            else:
+                                notice = "页面已经写好，但导出没有生成 pptx。" if export_status == "compile_failed" else "页面 SVG 没有写出来，所以没有导出 pptx。"
+                                setattr(graph_request, "_ppt_user_notice", notice)
+                                _collect_output_messages(step_messages + [AIMessage(content=notice)])
+                                completed_steps.append(CompletedExecutionStep(objective=step.objective, result=notice))
+                                pending_steps.clear()
+                                await _emit_step_boundary(
+                                    "planned_execution_step",
+                                    _step_end_payload(
+                                        step_index=step_index,
+                                        total_steps=total_steps,
+                                        objective=step.objective,
+                                        planned_tools=list(step.tools),
+                                        step_messages=step_messages,
+                                        status="failed",
+                                        error=notice,
+                                    ),
+                                )
+                                step_finished = True
+                                break
+                        if getattr(graph_request, "_ppt_export_ready", False):
+                            limit_kind = ""
+                        else:
+                            limit_kind = detect_limit_kind(step_messages)
                         if limit_kind:
                             summary = _step_summary_for_limit_continue(step_messages)
                             question_text, tool_message = await ask_limit_continue(
@@ -3342,6 +3467,8 @@ class ToolsNodes(
                             break
 
                         failure, unrecoverable_failure = _step_failure(step_messages)
+                        if getattr(graph_request, "_ppt_export_ready", False):
+                            failure, unrecoverable_failure = "", False
                         agent_state = step_result
                         if k8s_target_lookup_exhausted_from_messages(step_messages):
                             _collect_output_messages(step_messages)
@@ -3417,6 +3544,16 @@ class ToolsNodes(
                                     + [_internal_message("本步还没有生成新文件。现在调用一次 generate_attachment_file，" "把修改后的完整文档写入 content。调用成功前不要说已经生成新版本。")],
                                 }
                                 continue
+                        if USE_SKILLS_TOOL_NAME in (step.tools or []) and not tools_invoked_in_step(step_messages):
+                            if not skill_call_nudged:
+                                skill_call_nudged = True
+                                agent_state = step_result
+                                step_payload = {
+                                    **agent_state,
+                                    "messages": list(agent_state.get("messages") or [])
+                                    + [_internal_message("本步还没有调用技能。立刻读取技能包 SKILL.md 并执行它要求的脚本，导出 pptx。" "不要只回复即将读取或即将执行。")],
+                                }
+                                continue
                         _collect_output_messages(step_messages)
                         # 仅在本步实际跑过配置分析时提前推进修复闭环，避免列表/诊断步后抢弹选择卡。
                         if "analyze_deployment_configurations" in (step.tools or []):
@@ -3448,7 +3585,7 @@ class ToolsNodes(
                                 objective=step.objective,
                                 planned_tools=list(step.tools),
                                 step_messages=step_messages,
-                                reused=not tools_invoked_in_step(step_messages),
+                                reused=bool(completed_steps) and not tools_invoked_in_step(step_messages),
                             ),
                         )
                         step_finished = True
@@ -3463,6 +3600,19 @@ class ToolsNodes(
                 self._set_hide_planned_step_text(graph_request, False)
                 if choice_stopped:
                     result = {"messages": list(agent_state.get("messages") or [])}
+                elif ppt_authoring:
+                    if sandbox_dir:
+                        await self._publish_ppt_master_export(graph_request, prior_attachment_filenames, config)
+                    notice = str(getattr(graph_request, "_ppt_user_notice", "") or "")
+                    if isinstance(getattr(graph_request, "_ppt_download_event", None), dict):
+                        notice = "PPT 已导出，可以下载。"
+                    elif not notice and getattr(graph_request, "_ppt_export_ready", False):
+                        notice = "PPT 已经生成，但下载登记失败。请确认对象存储可用后再试。"
+                    elif not notice:
+                        notice = "这次没有导出 pptx。"
+                    _collect_output_messages([AIMessage(content=notice)])
+                    result = {"messages": list(agent_state.get("messages") or [])}
+                    final_message = None
                 else:
                     # 若分析步因上限提前结束，仍要在最终总结前补上修复闭环。
                     await _maybe_run_repair_workflow()
@@ -3561,6 +3711,7 @@ class ToolsNodes(
                 # sandbox_dir 只在 _build_skill_backend_and_sources 成功返回时
                 # 才会被赋值,setup 阶段抛错时这个变量不存在,直接 finally 会 NameError。
                 if sandbox_dir:
+                    await self._publish_ppt_master_export(graph_request, prior_attachment_filenames, config)
                     self._cleanup_sandbox(sandbox_dir)
                 log_stage_timing(
                     "planned_run",

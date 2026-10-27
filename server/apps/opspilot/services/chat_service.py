@@ -792,6 +792,9 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
         chat_kwargs["extra_config"] = runtime_extra_config
     if conversation_key:
         runtime_extra_config["conversation_key"] = conversation_key
+    skill_session_id = str(kwargs.get("skill_session_id") or "").strip()
+    if skill_session_id:
+        runtime_extra_config["skill_session_id"] = skill_session_id
     pending_question = kwargs.get("pending_question")
     if isinstance(pending_question, dict):
         runtime_extra_config["pending_question"] = pending_question

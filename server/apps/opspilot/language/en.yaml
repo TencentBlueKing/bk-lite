@@ -1026,3 +1026,9 @@ skill_packages:
       Scenario skill package for deploying and managing Kubernetes workloads.
 
       Covers Deployments/StatefulSets, network policies, RBAC, Helm, troubleshooting, GitOps, service mesh, and multi-cluster operations.
+  ppt-master:
+    name: PPT Master
+    description: |
+      Scenario skill package for creating and revising editable presentations.
+
+      Produces native PPTX files and keeps the project available for later revisions in the same conversation.

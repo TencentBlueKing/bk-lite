@@ -40,6 +40,15 @@ from deepagents.backends.protocol import SandboxBackendProtocol
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.common.tool_failure import unrecoverable_skill_result_hint
+from apps.opspilot.services.ppt_master_runtime import (
+    command_uses_ppt_master,
+    command_with_workspace_cwd,
+    newest_export_pptx,
+    ppt_probe_reason,
+    quote_measurement_roles,
+    release_svg_quality_gate,
+    repair_workspace_svgs,
+)
 
 # 匹配 ``/skills/`` 开头、连续路径字符(不含 shell 特殊字符)的子串
 _SKILLS_PATH_PATTERN = re.compile(r"/skills/[^\s'\"\|;&<>(){}\\`$?!*]*")
@@ -354,17 +363,23 @@ _SKILL_RESULT_HINT_MARKER = "[OPSPILOT_SKILL_RESULT]"
 _SANDBOX_DENY_EXIT_CODE = 126
 
 
-def _sandbox_deny_result(exc: PermissionError) -> Any:
+def _sandbox_deny_result(exc: PermissionError, *, ppt: bool = False) -> Any:
     """把沙箱拒绝变成工具结果，避免 PermissionError 把整步 ainvoke 打爆并触发重规划。"""
     message = str(exc).strip() or "命令被沙箱拒绝"
-    return SimpleNamespace(
-        output=(
-            f"{message}\n\n"
-            f"{_SKILL_RESULT_HINT_MARKER} 该命令被沙箱拒绝。"
+    if ppt:
+        hint = (
+            "不要再探测目录，不要 python -c，不要 ls，不要 --help。"
+            "立刻用 write_file 把每一页 SVG 写到 /ppt-workspace/projects/<工程名>/svg_output/。"
+            "全部写完后只 execute 一次 python /skills/ppt-master/scripts/svg_to_pptx.py projects/<工程名> --quick-generate。"
+        )
+    else:
+        hint = (
             "不要 --help，不要 2>&1 | head，不要重定向/管道。"
             "不要探测环境变量，不要 echo/$VAR，不要反复 read_file。"
             '直接再 execute：python3 /skills/ad-domain-ops/scripts/ad_search.py --query "*" --type user --limit 10 --attrs sAMAccountName'
-        ),
+        )
+    return SimpleNamespace(
+        output=f"{message}\n\n{_SKILL_RESULT_HINT_MARKER} 该命令被沙箱拒绝。{hint}",
         exit_code=_SANDBOX_DENY_EXIT_CODE,
         truncated=False,
     )
@@ -404,6 +419,18 @@ def skill_execute_result_guidance(
     available_scripts: list[str] | None = None,
 ) -> str:
     """技能脚本 execute 后给模型的停手提示：成功(含空结果)不重试；凭据类失败禁止重试。"""
+    if "/skills/ppt-master/" in (command or ""):
+        summary = _summarize_execute_output(text or "", exit_code)
+        if summary["ok"]:
+            return (
+                f"{_SKILL_RESULT_HINT_MARKER} 这一步已完成。继续用 write_file 把每一页 SVG 写到 "
+                "/ppt-workspace/projects/<工程名>/svg_output/。不要再 ls、python -c、--help 或 init。"
+                "全部写完后只 execute 一次 svg_to_pptx.py。"
+            )
+        return (
+            f"{_SKILL_RESULT_HINT_MARKER} 脚本未成功。不要 python -c，不要 ls，不要 --help，不要再次 init。"
+            "先用 write_file 把页面写到 /ppt-workspace/projects/<工程名>/svg_output/，再执行一次 svg_to_pptx.py。"
+        )
     if not _SKILL_SCRIPT_CMD_RE.search(command or ""):
         return ""
     summary = _summarize_execute_output(text or "", exit_code)
@@ -533,6 +560,44 @@ def rewrite_sandbox_paths(command: str, sandbox_dir: Path, skills_root: str = "/
     return rewritten
 
 
+def _bind_ppt_workspace_filesystem(inner: Any, workspace: Path) -> None:
+    """让 /ppt-workspace 直接落到时间戳目录。
+
+    沙箱 virtual_mode 会先 resolve。ppt-workspace 是指到沙箱外的链接，
+    resolve 之后相对沙箱根失败，write_file 抛 ValueError，页面写不进去。
+    """
+    resolve = getattr(type(inner), "_resolve_path", None)
+    to_virtual = getattr(type(inner), "_to_virtual_path", None)
+    if not isinstance(getattr(resolve, "__qualname__", None), str):
+        return
+    if not isinstance(getattr(to_virtual, "__qualname__", None), str):
+        return
+    root = workspace.resolve()
+    prefix = "/ppt-workspace"
+
+    def _resolve_path(key: str) -> Path:
+        virtual = str(key or "").replace("\\", "/")
+        if not virtual.startswith("/"):
+            virtual = "/" + virtual
+        if virtual == prefix or virtual.startswith(prefix + "/"):
+            parts = [part for part in virtual[len(prefix) :].lstrip("/").split("/") if part not in ("", ".")]
+            if any(part == ".." for part in parts):
+                raise ValueError("Path traversal not allowed")
+            return root.joinpath(*parts)
+        return resolve(inner, key)
+
+    def _to_virtual_path(path: Path) -> str:
+        try:
+            relative = Path(path).resolve().relative_to(root)
+        except ValueError:
+            return to_virtual(inner, path)
+        suffix = relative.as_posix()
+        return prefix if not suffix else f"{prefix}/{suffix}"
+
+    inner._resolve_path = _resolve_path
+    inner._to_virtual_path = _to_virtual_path
+
+
 class PathRewritingBackend(SandboxBackendProtocol):
     """包装 deepagents ``LocalShellBackend``(或任何 SandboxBackendProtocol),
     在 ``execute`` / ``aexecute`` 调用前重写 ``/skills/`` 虚拟路径。
@@ -554,21 +619,33 @@ class PathRewritingBackend(SandboxBackendProtocol):
         on_skill_access: Callable[[Iterable[str]], None] | None = None,
         params_by_package: dict[str, dict[str, str]] | None = None,
         secret_values: list[str] | None = None,
+        ppt_workspace: str | Path | None = None,
+        on_ppt_exported: Callable[[], None] | None = None,
     ) -> None:
         self._inner = inner
         self._sandbox_dir = Path(sandbox_dir)
         self._skills_root = skills_root
+        self._ppt_workspace = Path(ppt_workspace) if ppt_workspace else None
         # 渐进披露:仅在真正访问 /skills/<name>/... 时回调,用于按需装依赖。
         self._on_skill_access = on_skill_access
         self._params_by_package = params_by_package or {}
         self._secret_values = [value for value in (secret_values or []) if value]
         self._exec_lock = threading.Lock()
         self._fail_closed_hint = ""
+        self._on_ppt_exported = on_ppt_exported
+        if self._ppt_workspace is not None:
+            _bind_ppt_workspace_filesystem(self._inner, self._ppt_workspace)
 
     @property
     def id(self) -> str:
         """透传底层 backend 的 sandbox id(deepagents SandboxBackendProtocol 要求)。"""
         return getattr(self._inner, "id", f"path-rewriting-{id(self._inner)}")
+
+    def _apply_ppt_workspace_cwd(self, command: str) -> str:
+        workspace = self._ppt_workspace
+        if workspace is None or not str(command or "").strip():
+            return command
+        return command_with_workspace_cwd(command, workspace)
 
     def _notify_skill_access(self, text: str) -> None:
         if not self._on_skill_access or not text:
@@ -581,20 +658,63 @@ class PathRewritingBackend(SandboxBackendProtocol):
     # 重写的执行方法
     # ------------------------------------------------------------------
 
+    def _prepare_ppt_command(self, command: str) -> str:
+        if self._ppt_workspace is None:
+            return command
+        # /ppt-workspace 是沙箱虚拟根。校验只放行 /skills 和 /tmp，原样传进去会被当成主机路径拒绝。
+        command = command.replace("/ppt-workspace/", "")
+        command = re.sub(r"/ppt-workspace(?=\s|$|[\"'])", ".", command)
+        return quote_measurement_roles(command)
+
+    def _repair_ppt_svgs(self, command: str) -> None:
+        if self._ppt_workspace is None or "svg_to_pptx.py" not in command:
+            return
+        repair_workspace_svgs(self._ppt_workspace)
+        release_svg_quality_gate(self._ppt_workspace)
+
+    def _note_ppt_export(self, command: str, result: Any) -> None:
+        if self._on_ppt_exported is None or self._ppt_workspace is None or "svg_to_pptx.py" not in command:
+            return
+        if getattr(result, "exit_code", None) not in (0, "0"):
+            return
+        if newest_export_pptx(self._ppt_workspace) is None:
+            return
+        self._on_ppt_exported()
+
+    def _deny_ppt_probe(self, command: str) -> Any | None:
+        if self._ppt_workspace is None:
+            return None
+        reason = ppt_probe_reason(command)
+        if not reason:
+            return None
+        return _sandbox_deny_result(
+            PermissionError(f"[sandbox] {reason}本轮目录已固定为 {self._ppt_workspace}，直接在其中写页面并导出。"),
+            ppt=True,
+        )
+
     def execute(self, command: str, *, timeout: int | None = None) -> Any:
+        original = command
         command = prepare_execute_command(command)
         self._notify_skill_access(command)
+        denied_probe = self._deny_ppt_probe(original) or self._deny_ppt_probe(command)
+        if denied_probe is not None:
+            self._log_execute_result(command, command, denied_probe)
+            return denied_probe
+        command = self._prepare_ppt_command(command)
         rewritten = rewrite_sandbox_paths(command, self._sandbox_dir, self._skills_root)
         try:
             self._validate_command(rewritten, original=command)
         except PermissionError as exc:
-            denied = _sandbox_deny_result(exc)
+            denied = _sandbox_deny_result(exc, ppt=self._ppt_workspace is not None or command_uses_ppt_master(command))
             self._log_execute_result(command, rewritten, denied)
             return denied
+        rewritten = self._apply_ppt_workspace_cwd(rewritten)
         self._ensure_sandbox_dirs(rewritten)
+        self._repair_ppt_svgs(command)
         with self._exec_lock:
             with self._scoped_env(command):
                 result = self._inner.execute(rewritten, timeout=timeout)
+        self._note_ppt_export(command, result)
         redacted = self._redact(result)
         scripts = list_skill_scripts_for_command(command, self._sandbox_dir, self._skills_root)
         guided = _with_skill_result_guidance(redacted, command, self._skills_root, available_scripts=scripts)
@@ -603,20 +723,29 @@ class PathRewritingBackend(SandboxBackendProtocol):
         return guided
 
     async def aexecute(self, command: str, *, timeout: int | None = None) -> Any:
+        original = command
         command = prepare_execute_command(command)
         self._notify_skill_access(command)
+        denied_probe = self._deny_ppt_probe(original) or self._deny_ppt_probe(command)
+        if denied_probe is not None:
+            self._log_execute_result(command, command, denied_probe)
+            return denied_probe
+        command = self._prepare_ppt_command(command)
         rewritten = rewrite_sandbox_paths(command, self._sandbox_dir, self._skills_root)
         try:
             self._validate_command(rewritten, original=command)
         except PermissionError as exc:
-            denied = _sandbox_deny_result(exc)
+            denied = _sandbox_deny_result(exc, ppt=self._ppt_workspace is not None or command_uses_ppt_master(command))
             self._log_execute_result(command, rewritten, denied)
             return denied
+        rewritten = self._apply_ppt_workspace_cwd(rewritten)
         self._ensure_sandbox_dirs(rewritten)
+        self._repair_ppt_svgs(command)
         await asyncio.to_thread(self._exec_lock.acquire)
         try:
             with self._scoped_env(command):
                 result = await self._inner.aexecute(rewritten, timeout=timeout)
+            self._note_ppt_export(command, result)
         finally:
             self._exec_lock.release()
         redacted = self._redact(result)
@@ -960,6 +1089,9 @@ class PathRewritingBackend(SandboxBackendProtocol):
     def write(self, file_path: str, content: str) -> Any:
         # 不在 write 回调:建沙箱物化会 write SKILL.md,那不代表用户在用技能。
         return self._inner.write(file_path, content)
+
+    def edit(self, file_path: str, old_string: str, new_string: str, replace_all: bool = False) -> Any:
+        return self._inner.edit(file_path, old_string, new_string, replace_all)
 
     def read(self, file_path: str, offset: int = 0, limit: int = 2000) -> Any:
         # 读 SKILL.md / scripts 视为「开始使用该技能」,再装依赖。

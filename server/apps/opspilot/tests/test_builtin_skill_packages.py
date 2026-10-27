@@ -184,6 +184,33 @@ class TestSkillPackageSerializerI18n:
         assert en_data["display_name"] == "Kubernetes Configuration"
         assert "Kubernetes" in en_data["description_tr"]
 
+    def test_ppt_master_display_fields_use_language_yaml(self, mocker):
+        mocker.patch(
+            "apps.core.utils.serializers.get_permission_rules",
+            return_value={"instance": [], "team": [1]},
+        )
+        pkg = SkillPackage.objects.create(
+            package_id="ppt-master",
+            name="PPT Master Skill",
+            version="6.7.2",
+            description="AI-driven presentation workflow for generating editable PPTX decks and slides",
+            domain="domain.com",
+            is_build_in=True,
+            source_type="builtin",
+        )
+        factory = APIRequestFactory()
+        zh_request = factory.get("/")
+        zh_request.user = _user(username="ppt_pkg_zh", locale="zh-Hans")
+        en_request = factory.get("/")
+        en_request.user = _user(username="ppt_pkg_en", locale="en")
+        zh_data = SkillPackageSerializer(pkg, context={"request": zh_request}).data
+        en_data = SkillPackageSerializer(pkg, context={"request": en_request}).data
+        assert zh_data["display_name"] == "PPT Master"
+        assert "演示文稿" in zh_data["description_tr"]
+        assert "AI-driven" not in zh_data["description_tr"]
+        assert en_data["display_name"] == "PPT Master"
+        assert "native PPTX" in en_data["description_tr"]
+
     def test_display_fields_fallback_to_db(self, mocker):
         mocker.patch(
             "apps.core.utils.serializers.get_permission_rules",
