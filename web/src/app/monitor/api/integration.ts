@@ -167,6 +167,7 @@ const useIntegrationApi = () => {
         page?: number;
         page_size?: number;
         is_active?: boolean;
+        keyword?: string;
         monitor_plugin_id?: string | number;
       }) => {
         return await post('/monitor/api/node_mgmt/nodes/', data);

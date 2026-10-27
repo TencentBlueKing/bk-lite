@@ -62,6 +62,7 @@ import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
 } from '@/app/monitor/hooks/integration/snmpFilterMutex';
+import { MONITOR_NODE_PAGE_SIZE } from '@/app/monitor/hooks/integration/fetchMonitorNodePages';
 import { toMonitorNodeOption } from '@/app/monitor/hooks/integration/nodeOptions';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
@@ -1316,7 +1317,40 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         {
           node_ids_option: nodeList
         },
-        { onApplyNodeToEmptyRows: handleApplyNodeToEmptyRows }
+        {
+          onApplyNodeToEmptyRows: handleApplyNodeToEmptyRows,
+          onMonitorNodesLoaded: (loaded) => {
+            setNodeList((current) => {
+              const merged = new Map(
+                current.map((node) => [String(node.id || node.value), node])
+              );
+              loaded.forEach((node) => {
+                merged.set(String(node.id || node.value), node);
+              });
+              return Array.from(merged.values());
+            });
+          },
+          loadMonitorNodes: async ({ page, pageSize, keyword }) => {
+            const data = await getMonitorNodeList({
+              monitor_plugin_id: Number(pluginId),
+              cloud_region_id: 0,
+              page,
+              page_size: pageSize,
+              is_active: true,
+              keyword: keyword || undefined,
+            });
+            return {
+              count: data?.count,
+              nodes: (data?.nodes || []).map((node: any) =>
+                toMonitorNodeOption(
+                  node,
+                  t('monitor.integrations.hostMonitoringAlreadyConfigured'),
+                  t('monitor.integrations.hostMonitoringStatusUnavailable')
+                )
+              ),
+            };
+          },
+        }
       )
     );
     // 检查是否有 enable_row_filter 为 true 的列
@@ -1408,6 +1442,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     visibleTableColumns,
     dataSource,
     nodeList,
+    pluginId,
     renderTableColumn,
     t,
     collectType,
@@ -1745,7 +1780,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         monitor_plugin_id: Number(pluginId),
         cloud_region_id: 0,
         page: 1,
-        page_size: -1,
+        page_size: MONITOR_NODE_PAGE_SIZE,
         is_active: true
       });
       const formattedNodes = (data.nodes || []).map((node: any) =>

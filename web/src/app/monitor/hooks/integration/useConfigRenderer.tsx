@@ -31,6 +31,7 @@ import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 import FieldGuideTip from '@/components/field-guide-tip';
+import MonitorNodeSelect from './MonitorNodeSelect';
 import { applyTableChangeHandler } from './tableChangeHandler';
 import { isDependencySatisfied } from './formFieldDependency';
 import {
@@ -942,6 +943,12 @@ export const useConfigRenderer = () => {
     externalOptions?: Record<string, any[]>,
     columnExtras?: {
       onApplyNodeToEmptyRows?: (nodeIds: unknown) => void;
+      loadMonitorNodes?: (query: {
+        page: number;
+        pageSize: number;
+        keyword: string;
+      }) => Promise<{ count?: number; nodes?: any[] }>;
+      onMonitorNodesLoaded?: (nodes: any[]) => void;
     }
   ) => {
     const {
@@ -1132,6 +1139,52 @@ export const useConfigRenderer = () => {
             return String(option.value) === String(text);
           });
           const selectedLabel = selectedOption?.label || selectedOption?.name;
+
+          if (name === 'node_ids' && columnExtras?.loadMonitorNodes) {
+            const excludedValues = enable_row_filter
+              ? dataSource.flatMap((row, rowIndex) => {
+                if (rowIndex === index) return [];
+                const rowValue = row[name];
+                return Array.isArray(rowValue) ? rowValue : rowValue ? [rowValue] : [];
+              })
+              : [];
+            return (
+              <div className="flex w-full min-w-0 items-center gap-1">
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <MonitorNodeSelect
+                    value={text}
+                    onChange={(next) => handleChange(next, record, index)}
+                    placeholder={componentProps.placeholder || label}
+                    status={errorMsg ? 'error' : ''}
+                    loadNodes={columnExtras.loadMonitorNodes}
+                    onNodesLoaded={columnExtras.onMonitorNodesLoaded}
+                    excludeValues={excludedValues}
+                    componentProps={componentProps}
+                  />
+                </div>
+                {showBatchApply && (
+                  <Tooltip title={batchApplyLabel}>
+                    <span className="inline-flex shrink-0">
+                      <Button
+                        type="text"
+                        size="small"
+                        className="px-1 text-[var(--color-text-3)]"
+                        disabled={!hasSelectedNode}
+                        aria-label={batchApplyLabel}
+                        icon={<FormatPainterOutlined />}
+                        onClick={() => columnExtras?.onApplyNodeToEmptyRows?.(text)}
+                      />
+                    </span>
+                  </Tooltip>
+                )}
+                {errorMsg && (
+                  <Tooltip title={errorMsg}>
+                    <ExclamationCircleFilled className="text-[14px] text-[var(--color-fail)]" />
+                  </Tooltip>
+                )}
+              </div>
+            );
+          }
 
           return (
             <div className="flex w-full min-w-0 items-center gap-1">
