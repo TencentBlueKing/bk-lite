@@ -1,5 +1,6 @@
 # -- coding: utf-8 --
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
@@ -37,7 +38,10 @@ class IncidentUpdateViewSet(ModelViewSet):
     def get_queryset(self):
         incident_pk = self.kwargs.get("incident_pk")
         # 列表只返回顶层更新（非回复），回复通过 replies 嵌套返回
-        return IncidentUpdate.objects.filter(incident_id=incident_pk, parent__isnull=True).prefetch_related("replies")
+        replies = IncidentUpdate.objects.order_by("created_at")
+        return IncidentUpdate.objects.filter(incident_id=incident_pk, parent__isnull=True).prefetch_related(
+            Prefetch("replies", queryset=replies)
+        )
 
     def _build_author_user_map(self, updates):
         usernames = set()
