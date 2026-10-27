@@ -222,6 +222,8 @@ const PolicyGroupPage: React.FC = () => {
     pageSize: 10,
   });
   const [ruleGroup, setRuleGroup] = useState<PolicyGroupRow | null>(null);
+  const [ruleKeyword, setRuleKeyword] = useState('');
+  const [ruleNoData, setRuleNoData] = useState<'on' | 'off' | null>(null);
   const [rulePagination, setRulePagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -304,6 +306,13 @@ const PolicyGroupPage: React.FC = () => {
     void loadGroups(objectId);
   }, [objectId, pagination.current, pagination.pageSize, appliedSearch]);
 
+  const openRuleList = (group: PolicyGroupRow) => {
+    setRuleKeyword('');
+    setRuleNoData(null);
+    setRulePagination((prev) => ({ ...prev, current: 1 }));
+    setRuleGroup(group);
+  };
+
   useEffect(() => {
     if (openedRuleList.current || searchParams.get('rules') !== '1') return;
     const targetId = searchParams.get('groupId');
@@ -311,8 +320,7 @@ const PolicyGroupPage: React.FC = () => {
     const group = groups.find((item) => String(item.id) === targetId);
     if (!group) return;
     openedRuleList.current = true;
-    setRulePagination((prev) => ({ ...prev, current: 1 }));
-    setRuleGroup(group);
+    openRuleList(group);
   }, [groups, searchParams]);
 
   const openMembers = async (group: PolicyGroupRow) => {
@@ -684,10 +692,7 @@ const PolicyGroupPage: React.FC = () => {
         <Button
           type="link"
           className="px-0"
-          onClick={() => {
-            setRulePagination((prev) => ({ ...prev, current: 1 }));
-            setRuleGroup(record as PolicyGroupRow);
-          }}
+          onClick={() => openRuleList(record as PolicyGroupRow)}
         >
           {(record.rules || []).length}
         </Button>
@@ -779,7 +784,16 @@ const PolicyGroupPage: React.FC = () => {
     memberPagination.current * memberPagination.pageSize
   );
   const ruleRows = ruleGroup?.rules || [];
-  const visibleRules = ruleRows.slice(
+  const ruleKeywordText = ruleKeyword.trim().toLowerCase();
+  const filteredRules = ruleRows.filter((item) => {
+    if (ruleNoData === 'on' && !item.no_data_enabled) return false;
+    if (ruleNoData === 'off' && item.no_data_enabled) return false;
+    if (!ruleKeywordText) return true;
+    const name = String(item.name || '').toLowerCase();
+    const plugin = String(item.plugin_name || '').toLowerCase();
+    return name.includes(ruleKeywordText) || plugin.includes(ruleKeywordText);
+  });
+  const visibleRules = filteredRules.slice(
     (rulePagination.current - 1) * rulePagination.pageSize,
     rulePagination.current * rulePagination.pageSize
   );
@@ -1051,17 +1065,41 @@ const PolicyGroupPage: React.FC = () => {
         closable={false}
         onClose={() => {
           setRuleGroup(null);
+          setRuleKeyword('');
+          setRuleNoData(null);
+          setRulePagination((prev) => ({ ...prev, current: 1 }));
         }}
       >
+          <SearchActionBar
+            searchProps={{
+              placeholder: '搜索名称或模板',
+              value: ruleKeyword,
+              onChange: (event) => {
+                setRuleKeyword(event.target.value);
+                setRulePagination((prev) => ({ ...prev, current: 1 }));
+              },
+            }}
+          />
           <CustomTable
             rowKey="id"
             dataSource={visibleRules}
-            pagination={{ ...rulePagination, total: ruleRows.length }}
+            pagination={{ ...rulePagination, total: filteredRules.length }}
             scroll={{ y: 'auto' }}
-            onChange={(next: Pagination) => {
+            onChange={(next, filters, _sorter, extra) => {
+              if (extra?.action === 'filter') {
+                const selected = filters?.no_data_enabled;
+                const value = Array.isArray(selected) && selected.length ? String(selected[0]) : '';
+                setRuleNoData(value === 'on' || value === 'off' ? value : null);
+                setRulePagination((prev) => ({
+                  ...prev,
+                  current: 1,
+                  pageSize: next.pageSize || prev.pageSize,
+                }));
+                return;
+              }
               setRulePagination((prev) => ({
                 ...prev,
-                current: next.pageSize !== prev.pageSize ? 1 : next.current,
+                current: next.pageSize !== prev.pageSize ? 1 : next.current || 1,
                 pageSize: next.pageSize || prev.pageSize,
               }));
             }}
@@ -1084,6 +1122,12 @@ const PolicyGroupPage: React.FC = () => {
                 dataIndex: 'no_data_enabled',
                 key: 'no_data_enabled',
                 width: 110,
+                filters: [
+                  { text: '已开启', value: 'on' },
+                  { text: '未开启', value: 'off' },
+                ],
+                filterMultiple: false,
+                filteredValue: ruleNoData ? [ruleNoData] : null,
                 render: (_, record) => (
                   <StatusToneBadge
                     tone={record.no_data_enabled ? 'success' : 'neutral'}
