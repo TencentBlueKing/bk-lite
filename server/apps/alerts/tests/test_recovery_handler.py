@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from django.utils import timezone
 
-from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
+from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker, _attach_fallback_recoveries
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.constants.constants import AlertStatus, EventAction
 from apps.alerts.models.alert_source import AlertSource
@@ -53,6 +53,70 @@ def _make_active_alert(*events, alert_id="A1"):
     return alert
 
 
+def _fallback_events(
+    source,
+    *,
+    created_team,
+    recovery_team,
+    created_push,
+    recovery_push,
+    created_event_id,
+    recovery_event_id,
+    external_id,
+    alert_id,
+):
+    created = _make_event(
+        source,
+        created_event_id,
+        external_id=external_id,
+        action=EventAction.CREATED,
+        start_minutes_ago=30,
+        team=created_team,
+        push_source_id=created_push,
+        item="cpu",
+        resource_name="shared-host",
+        resource_id="",
+        resource_type="",
+    )
+    alert = _make_active_alert(created, alert_id=alert_id)
+    alert.team = list(created_team)
+    alert.save(update_fields=["team"])
+    recovery = _make_event(
+        source,
+        recovery_event_id,
+        external_id=external_id,
+        action=EventAction.RECOVERY,
+        start_minutes_ago=5,
+        team=recovery_team,
+        push_source_id=recovery_push,
+        item="cpu",
+        resource_name="shared-host",
+        resource_id="",
+        resource_type="",
+    )
+    return alert, recovery
+
+
+def _snapshot(alert, push_source_ids):
+    alert.push_source_ids = list(push_source_ids)
+    alert.save(update_fields=["push_source_ids"])
+    alert.refresh_from_db()
+    return (
+        tuple(alert.events.order_by("event_id").values_list("event_id", flat=True)),
+        list(alert.push_source_ids),
+        alert.status,
+    )
+
+
+def _current_snapshot(alert):
+    alert.refresh_from_db()
+    return (
+        tuple(alert.events.order_by("event_id").values_list("event_id", flat=True)),
+        list(alert.push_source_ids),
+        alert.status,
+    )
+
+
 # --------------------------------------------------------------------------
 # 纯函数
 # --------------------------------------------------------------------------
@@ -69,8 +133,14 @@ def test_build_fallback_key_missing_fields():
 
 
 def test_build_fallback_key_complete():
-    event = SimpleNamespace(item="cpu", resource_name="host", source=SimpleNamespace(source_id="s1"), source_id=5)
-    assert RecoveryHandler._build_fallback_key(event) == (5, "cpu", "host", "s1")
+    base = dict(item="cpu", resource_name="host", source=SimpleNamespace(source_id="s1"), source_id=5)
+    ordered = SimpleNamespace(**base, team=[2, 1])
+    reversed_team = SimpleNamespace(**base, team=[1, 2])
+    other_org = SimpleNamespace(**base, team=[3])
+    expected = (5, "cpu", "host", "s1", ("1", "2"))
+    assert RecoveryHandler._build_fallback_key(ordered) == expected
+    assert RecoveryHandler._build_fallback_key(reversed_team) == expected
+    assert RecoveryHandler._build_fallback_key(other_org) != expected
 
 
 def test_supports_unique_fallback():
@@ -213,3 +283,96 @@ def test_run_recovery_checks_recovers(source):
     alert.refresh_from_db()
     assert alert.status == AlertStatus.AUTO_RECOVERY
     assert alert.closed_at is not None
+
+
+def _other_organization_case(source, alert_id):
+    """组织 B 仅有一条活跃告警，并保留一条已经挂上的历史恢复。"""
+    alert, recovery = _fallback_events(
+        source,
+        created_team=[2],
+        recovery_team=[1],
+        created_push="push-b",
+        recovery_push="push-a",
+        created_event_id=f"{alert_id}-created",
+        recovery_event_id=f"{alert_id}-recovery",
+        external_id=f"{alert_id}-ext",
+        alert_id=alert_id,
+    )
+    historical = _make_event(
+        source,
+        f"{alert_id}-historical",
+        external_id=f"{alert_id}-historical-ext",
+        action=EventAction.RECOVERY,
+        start_minutes_ago=4,
+        team=[1],
+        push_source_id="push-old",
+        item="cpu",
+        resource_name="shared-host",
+        resource_id="",
+        resource_type="",
+    )
+    alert.events.add(historical)
+    before = _snapshot(alert, ["push-b", "push-old"])
+    return alert, recovery, before
+
+
+@pytest.mark.django_db
+def test_unique_fallback_does_not_attach_other_organization(source):
+    alert, recovery, before = _other_organization_case(source, "A-org-b-live")
+
+    RecoveryHandler.handle_recovery_events([recovery])
+
+    assert _current_snapshot(alert) == before
+    assert not alert.events.filter(pk=recovery.pk).exists()
+
+
+@pytest.mark.django_db
+def test_unique_fallback_attaches_same_organization_across_push_sources(source):
+    alert, recovery = _fallback_events(
+        source,
+        created_team=[2, 1],
+        recovery_team=[1, 2],
+        created_push="push-created",
+        recovery_push="push-recovery",
+        created_event_id="E-same-org-created",
+        recovery_event_id="E-same-org-recovery",
+        external_id="ext-same-org",
+        alert_id="A-same-org-live",
+    )
+
+    RecoveryHandler.handle_recovery_events([recovery])
+
+    assert alert.events.filter(pk=recovery.pk).exists()
+    alert.refresh_from_db()
+    assert alert.status == AlertStatus.PENDING
+
+
+@pytest.mark.django_db
+def test_attach_fallback_recoveries_skips_other_organization(source):
+    alert, recovery, before = _other_organization_case(source, "A-org-b-history")
+
+    added = _attach_fallback_recoveries(alert)
+
+    assert added == 0
+    assert _current_snapshot(alert) == before
+    assert not alert.events.filter(pk=recovery.pk).exists()
+
+
+@pytest.mark.django_db
+def test_attach_fallback_recoveries_links_same_organization_across_push_sources(source):
+    alert, recovery = _fallback_events(
+        source,
+        created_team=[2, 1],
+        recovery_team=[1, 2],
+        created_push="push-created",
+        recovery_push="push-recovery",
+        created_event_id="E-same-org-history-created",
+        recovery_event_id="E-same-org-history-recovery",
+        external_id="ext-same-org-history",
+        alert_id="A-same-org-history",
+    )
+
+    added = _attach_fallback_recoveries(alert)
+
+    assert added == 1
+    assert alert.events.filter(pk=recovery.pk).exists()
