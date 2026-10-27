@@ -201,13 +201,18 @@ class RelatedAlertsService:
         cache = getattr(alert, "_prefetched_objects_cache", None)
         cache_name = alert.incident_set.prefetch_cache_name
         if cache is not None and cache_name in cache:
+            incidents = sorted(
+                cache[cache_name],
+                key=lambda incident: (incident.updated_at, incident.id),
+                reverse=True,
+            )
             return [
                 {
                     "id": incident.id,
                     "incident_id": incident.incident_id,
                     "title": incident.title,
                 }
-                for incident in cache[cache_name]
+                for incident in incidents
             ]
         return list(
             alert.incident_set.order_by("-updated_at", "-id").values(

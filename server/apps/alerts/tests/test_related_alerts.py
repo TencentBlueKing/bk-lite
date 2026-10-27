@@ -234,3 +234,35 @@ def test_incident_summary_keeps_updated_at_and_id_order():
 
     _assert_order(result["current_incidents"], expected_current)
     _assert_order(result["items"][0]["incidents"], expected_candidate)
+
+
+@pytest.mark.django_db
+def test_incident_summary_orders_unordered_view_prefetch():
+    """AlertModelViewSet.get_queryset 无序 prefetch 当前告警时，摘要仍按 -updated_at,-id。"""
+    now = timezone.now()
+    newer = now - timedelta(minutes=1)
+    tie = now - timedelta(minutes=5)
+    base = _similar_alert("BASE-VIEW-PF", "fp-base-view-pf", now)
+    _similar_alert("C-VIEW-PF", "fp-cand-view-pf", now)
+
+    low = _incident("CUR-PF-low", "较早较小")
+    high = _incident("CUR-PF-high", "较早较大")
+    latest = _incident("CUR-PF-new", "较新")
+    low.alert.add(base)
+    high.alert.add(base)
+    latest.alert.add(base)
+    Incident.objects.filter(pk=low.pk).update(updated_at=tie)
+    Incident.objects.filter(pk=high.pk).update(updated_at=tie)
+    Incident.objects.filter(pk=latest.pk).update(updated_at=newer)
+
+    base = Alert.objects.prefetch_related("incident_set").get(pk=base.pk)
+    result = RAS.find_related_alerts(base, limit=1, group_ids=[1])
+    summary = result["current_incidents"]
+    _summary_fields(summary)
+    assert [item["incident_id"] for item in summary] == [
+        latest.incident_id,
+        high.incident_id,
+        low.incident_id,
+    ]
+    assert [item["id"] for item in summary] == [latest.id, high.id, low.id]
+    assert [item["title"] for item in summary] == [latest.title, high.title, low.title]
