@@ -296,7 +296,7 @@ export default function ApplicationSetupPage() {
             icon={<BarChartOutlined />}
             onClick={() => router.push(`/rum/applications/${encodeURIComponent(name)}/overview`)}
           >
-            {t('rum.overview.title', '数据总览')}
+            {t('rum.overview.title', '总览')}
           </Button>
           <RumRefreshButton onClick={() => void load()} />
           {app ? (
