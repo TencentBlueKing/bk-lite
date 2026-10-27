@@ -10,7 +10,7 @@ from rest_framework import status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from apps.operation_analysis.services.node_tree import TreeNodeBuilder
 from apps.operation_analysis.views import view as view_module
@@ -356,6 +356,157 @@ def test_dashboard_partial_update_builtin_allows_visibility_only(authenticated_u
     assert response.status_code == status.HTTP_200_OK
     assert builtin.name == "内置盘可见性"
     assert builtin.groups == [1, 2]
+
+
+_BUILTIN_CANVAS_VIEWSETS = [
+    (Dashboard, "DashboardModelViewSet"),
+    (Topology, "TopologyModelViewSet"),
+    (Architecture, "ArchitectureModelViewSet"),
+    (Screen, "ScreenModelViewSet"),
+    (Report, "ReportModelViewSet"),
+]
+
+
+def _create_builtin_canvas(model, viewset_name, *, root_groups, child_groups, canvas_groups):
+    root = Directory.objects.create(name=f"根-{viewset_name}", groups=root_groups, created_by="system")
+    child = Directory.objects.create(
+        name=f"子-{viewset_name}",
+        groups=child_groups,
+        parent=root,
+        created_by="system",
+    )
+    return model.objects.create(
+        name=f"内置-{viewset_name}",
+        desc="原始描述",
+        groups=canvas_groups,
+        directory=child,
+        is_build_in=True,
+        build_in_key=f"visibility-{viewset_name}",
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+@pytest.mark.parametrize("model,viewset_name", _BUILTIN_CANVAS_VIEWSETS)
+def test_builtin_canvas_partial_update_rejects_groups_outside_directory_chain(authenticated_user, model, viewset_name):
+    user = _superuser(authenticated_user)
+    builtin = _create_builtin_canvas(
+        model,
+        viewset_name,
+        root_groups=[1],
+        child_groups=[1, 2],
+        canvas_groups=[1],
+    )
+    request = _request("patch", f"/canvas/{builtin.id}/", user, data={"groups": [2]})
+
+    response = getattr(view_module, viewset_name).as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    payload = _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "超出目录可见范围" in json.dumps(payload, ensure_ascii=False)
+    assert builtin.groups == [1]
+    assert builtin.name == f"内置-{viewset_name}"
+    assert builtin.desc == "原始描述"
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+@pytest.mark.parametrize("model,viewset_name", _BUILTIN_CANVAS_VIEWSETS)
+def test_builtin_canvas_partial_update_rejects_non_group_fields(authenticated_user, model, viewset_name):
+    user = _superuser(authenticated_user)
+    builtin = _create_builtin_canvas(
+        model,
+        viewset_name,
+        root_groups=[1, 2],
+        child_groups=[1, 2],
+        canvas_groups=[1],
+    )
+    request = _request(
+        "patch",
+        f"/canvas/{builtin.id}/",
+        user,
+        data={"groups": [1, 2], "name": "不允许改名", "desc": "不允许改描述"},
+    )
+
+    response = getattr(view_module, viewset_name).as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert builtin.groups == [1]
+    assert builtin.name == f"内置-{viewset_name}"
+    assert builtin.desc == "原始描述"
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "model,viewset_name",
+    [item for item in _BUILTIN_CANVAS_VIEWSETS if item[0] is not Dashboard],
+)
+def test_builtin_canvas_partial_update_allows_groups_within_directory_chain(authenticated_user, model, viewset_name):
+    user = _superuser(authenticated_user)
+    builtin = _create_builtin_canvas(
+        model,
+        viewset_name,
+        root_groups=[1, 2],
+        child_groups=[1, 2],
+        canvas_groups=[1],
+    )
+    request = _request("patch", f"/canvas/{builtin.id}/", user, data={"groups": [2]})
+
+    response = getattr(view_module, viewset_name).as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_200_OK
+    assert builtin.groups == [2]
+    assert builtin.name == f"内置-{viewset_name}"
+    assert builtin.desc == "原始描述"
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_builtin_canvas_partial_update_allows_catalogue_editor(authenticated_user):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {"view-EditCatalogue"}}
+    authenticated_user.group_list = [{"id": 1, "name": "Default"}, {"id": 2, "name": "Other"}]
+    builtin = _create_builtin_canvas(
+        Dashboard,
+        "catalogue-editor",
+        root_groups=[1, 2],
+        child_groups=[1, 2],
+        canvas_groups=[1],
+    )
+    request = _request("patch", f"/dashboard/{builtin.id}/", authenticated_user, data={"groups": [1, 2]})
+
+    response = view_module.DashboardModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_200_OK
+    assert builtin.groups == [1, 2]
+    assert builtin.name == "内置-catalogue-editor"
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_catalogue_editor_cannot_partial_update_custom_canvas(authenticated_user):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {"view-EditCatalogue"}}
+    authenticated_user.group_list = [{"id": 1, "name": "Default"}]
+    directory = Directory.objects.create(name="自定义目录", groups=[1], created_by="owner")
+    canvas = Dashboard.objects.create(name="自定义盘", desc="原始描述", groups=[1], directory=directory, created_by="owner")
+    request = _request("patch", f"/dashboard/{canvas.id}/", authenticated_user, data={"groups": [1], "name": "改名"})
+
+    response = view_module.DashboardModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(canvas.id))
+    _render(response)
+
+    canvas.refresh_from_db()
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert canvas.name == "自定义盘"
+    assert canvas.groups == [1]
 
 
 # --------------------------------------------------------------------------
