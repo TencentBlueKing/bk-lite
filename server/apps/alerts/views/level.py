@@ -123,6 +123,13 @@ class LevelModelViewSet(ModelViewSet):
         for instance in queryset.only("name", "match_rules"):
             for rule_group in instance.match_rules or []:
                 for rule in rule_group or []:
-                    if rule.get("key") == rule_key and str(rule.get("value")) == level_key:
+                    if rule.get("key") != rule_key:
+                        continue
+                    value = rule.get("value")
+                    if isinstance(value, (list, tuple)):
+                        referenced = any(str(item) == level_key for item in value)
+                    else:
+                        referenced = str(value) == level_key
+                    if referenced:
                         return instance.name
         return ""
