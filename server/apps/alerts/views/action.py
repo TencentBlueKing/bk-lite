@@ -195,7 +195,7 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         scoped_alerts = apply_team_scope_for_request(Alert.objects.all(), self.request)
-        qs = super().get_queryset().filter(alert__in=scoped_alerts)
+        qs = super().get_queryset().filter(alert__in=scoped_alerts).select_related("rule", "alert")
         alert_id = self.request.query_params.get("alert_id")
         rule_id = self.request.query_params.get("rule_id")
         status_val = self.request.query_params.get("status")
