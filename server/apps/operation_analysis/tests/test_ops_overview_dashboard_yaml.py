@@ -49,6 +49,7 @@ def test_ops_overview_yaml_binds_organization_time_and_reusable_widgets():
     assert dashboard.name == "运维总览"
     assert dashboard.key == "dashboard::运维总览_内置"
     assert dashboard.other.get("gridCols") == 24
+    assert dashboard.other.get("gridRowHeight") == 30
     groups = {item["id"]: item for item in dashboard.view_sets}
     assert [
         (groups[key]["x"], groups[key]["y"], groups[key]["w"], groups[key]["h"])
@@ -59,10 +60,10 @@ def test_ops_overview_yaml_binds_organization_time_and_reusable_widgets():
             "group-alert",
         )
     ] == [
-        (0, 0, 24, 4),
-        (0, 4, 24, 5),
-        (0, 9, 24, 5),
-        (0, 14, 24, 5),
+        (0, 0, 24, 7),
+        (0, 7, 24, 10),
+        (0, 17, 24, 10),
+        (0, 27, 24, 10),
     ]
     filters = {item["key"]: item for item in dashboard.filters}
     assert set(filters) == {"organization", "time"}
@@ -113,31 +114,38 @@ def test_ops_overview_yaml_binds_organization_time_and_reusable_widgets():
         style = by_id[widget_id]["valueConfig"]["singleStyle"]
         assert style["showIcon"] is True
         assert style["iconSource"] == "upload"
+        assert style.get("iconSize") == "medium"
         assert "iconKey" not in style
         assert style["iconImage"].startswith("data:image/png;base64,")
         assert len(style["iconImage"]) == icon_length
     node = by_id["ops-kpi-nodes"]
     assert node["name"] == "节点"
-    assert (node["x"], node["y"], node["w"], node["h"]) == (10, 0, 4, 3)
+    assert (node["x"], node["y"], node["w"], node["h"]) == (20, 0, 4, 5)
     assert node["valueConfig"]["dataSource"] == "节点用法总览::node/get_node_usage_statistics"
     assert node["valueConfig"]["selectedFields"] == ["node_total"]
     assert node["valueConfig"]["singleStyle"] == {
         "showIcon": True,
         "iconSource": "builtin",
         "iconKey": "icons/mm-node_Node",
+        "iconSize": "medium",
     }
-    assert "interaction" not in node["valueConfig"]
+    assert node["valueConfig"]["interaction"] == {
+        "kind": "title",
+        "name": "节点管理",
+        "url": "/node-manager/cloudregion",
+        "openMode": "newTab",
+    }
     assert [item["color"] for item in node["valueConfig"]["thresholdColors"]] == ["#366ce4", "#366ce4", "#366ce4"]
     assert by_id["ops-kpi-resources"]["valueConfig"]["selectedFields"] == ["instance_count"]
     assert [
-        (by_id[widget_id]["x"], by_id[widget_id]["w"])
+        (by_id[widget_id]["x"], by_id[widget_id]["w"], by_id[widget_id]["h"])
         for widget_id in (
             "ops-kpi-resources",
             "ops-kpi-monitor",
             "ops-kpi-open-alerts",
             "ops-kpi-severe",
         )
-    ] == [(0, 5), (5, 5), (14, 5), (19, 5)]
+    ] == [(0, 5, 5), (5, 5, 5), (10, 5, 5), (15, 5, 5)]
     assert by_id["ops-app-total"]["valueConfig"]["chartType"] == "single"
     assert by_id["ops-app-total"]["valueConfig"]["dataSource"] == "关联告警汇总::monitor/get_cmdb_relation_alert_aggregation"
     assert by_id["ops-app-total"]["valueConfig"]["selectedFields"] == ["total_count"]
@@ -145,18 +153,18 @@ def test_ops_overview_yaml_binds_organization_time_and_reusable_widgets():
     assert by_id["ops-app-with-alert"]["valueConfig"]["selectedFields"] == ["with_alert_count"]
     assert by_id["ops-app-without-alert"]["valueConfig"]["descriptionField"] == "without_alert_share"
     assert by_id["ops-app-without-alert"]["valueConfig"]["selectedFields"] == ["without_alert_count"]
-    assert (by_id["ops-resource-types"]["x"], by_id["ops-resource-types"]["w"], by_id["ops-resource-types"]["h"]) == (0, 6, 4)
-    assert (by_id["ops-app-total"]["x"], by_id["ops-app-total"]["w"], by_id["ops-app-total"]["h"]) == (6, 4, 4)
-    assert (by_id["ops-app-with-alert"]["x"], by_id["ops-app-with-alert"]["y"], by_id["ops-app-with-alert"]["w"]) == (10, 0, 4)
-    assert (by_id["ops-app-without-alert"]["x"], by_id["ops-app-without-alert"]["y"]) == (10, 2)
-    assert (by_id["ops-app-top"]["x"], by_id["ops-app-top"]["w"], by_id["ops-app-top"]["h"]) == (14, 10, 4)
+    assert (by_id["ops-resource-types"]["x"], by_id["ops-resource-types"]["w"], by_id["ops-resource-types"]["h"]) == (9, 7, 8)
+    assert (by_id["ops-app-total"]["x"], by_id["ops-app-total"]["w"], by_id["ops-app-total"]["h"]) == (16, 4, 8)
+    assert (by_id["ops-app-with-alert"]["x"], by_id["ops-app-with-alert"]["y"], by_id["ops-app-with-alert"]["w"]) == (20, 0, 4)
+    assert (by_id["ops-app-without-alert"]["x"], by_id["ops-app-without-alert"]["y"]) == (20, 4)
+    assert (by_id["ops-app-top"]["x"], by_id["ops-app-top"]["w"], by_id["ops-app-top"]["h"]) == (0, 9, 8)
     assert by_id["ops-monitor-ring"]["valueConfig"]["pieScalarFields"][0]["field"] == "monitor_instance_active"
     assert "ops-gauge-cpu" not in by_id
     assert "ops-gauge-memory" not in by_id
     assert "ops-gauge-disk" not in by_id
     host_metrics = by_id["ops-host-key-metrics"]
     assert host_metrics["name"] == "主机关键指标"
-    assert (host_metrics["x"], host_metrics["y"], host_metrics["w"], host_metrics["h"]) == (6, 0, 8, 4)
+    assert (host_metrics["x"], host_metrics["y"], host_metrics["w"], host_metrics["h"]) == (10, 0, 8, 8)
     assert host_metrics["valueConfig"]["chartType"] == "topN"
     assert host_metrics["valueConfig"]["barMode"] == "absolute"
     assert host_metrics["valueConfig"]["barMax"] == 100
