@@ -323,14 +323,19 @@ class FieldValidator:
             try:
                 pattern = re.compile(custom_regex)
                 if not pattern.match(value):
-                    raise BaseAppException(f"值 '{value}' 不符合自定义正则表达式规则")
+                    raise BaseAppException(
+                        f"值 '{value}' 不符合自定义正则表达式规则",
+                        log=False,
+                    )
                 return
 
+            except BaseAppException:
+                raise
             except re.error as e:
                 raise BaseAppException(f"正则表达式格式错误: {str(e)}")
-            except Exception as e:
-                logger.error(f"自定义正则校验异常: {e}", exc_info=True)
-                raise BaseAppException(f"正则表达式校验异常: {str(e)}")
+            except Exception:
+                logger.error("自定义正则校验异常", exc_info=True)
+                raise BaseAppException("正则表达式校验异常")
 
         # 预定义类型校验
         regex = StringValidationType.REGEX_MAP.get(validation_type)
@@ -752,11 +757,11 @@ class FieldValidator:
             elif attr_type == "time":
                 FieldValidator.validate_time_value(value, attr.get("attr_id", "time"))
 
-        except Exception as e:
-            # 捕获意外异常,记录日志并抛出通用错误
-            attr_id = attr.get("attr_id", "unknown")
-            logger.error(f"字段 {attr_id} 校验异常: {e}", exc_info=True)
-            raise BaseAppException(f"字段校验失败: {getattr(e, 'message', str(e))}")
+        except BaseAppException:
+            raise
+        except Exception:
+            logger.error("字段校验异常", exc_info=True)
+            raise BaseAppException("字段校验失败")
 
     @staticmethod
     def validate_instance_data(instance_data: Dict, attrs: list) -> list:
@@ -800,14 +805,14 @@ class FieldValidator:
                         "error": getattr(e, "message", str(e)),
                     }
                 )
-            except Exception as e:
-                logger.error(f"字段 {attr_id} 校验异常: {e}", exc_info=True)
+            except Exception:
+                logger.error("字段校验异常", exc_info=True)
                 validation_errors.append(
                     {
                         "field": attr_id,
                         "field_name": attr.get("attr_name", attr_id),
                         "value": value,
-                        "error": f"校验异常: {getattr(e, 'message', str(e))}",
+                        "error": "校验异常",
                     }
                 )
 
