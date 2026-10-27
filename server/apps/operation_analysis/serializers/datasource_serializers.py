@@ -20,6 +20,44 @@ TRANSFORM_ALLOWED_SOURCE_TYPES = {
 DISABLED_TRANSFORM_CONFIG = {"enabled": False, "language": "python", "script": ""}
 
 
+def _validate_elasticsearch_datasource(attrs, instance):
+    from apps.operation_analysis.services.data_connection.config_crypto import decrypt_connection_config
+    from apps.operation_analysis.services.datasource_preview.base import ConnectorError
+    from apps.operation_analysis.services.datasource_preview.elasticsearch_client import normalize_elasticsearch_config
+    from apps.operation_analysis.services.datasource_preview.elasticsearch_query import validate_index_name, validate_stored_query_config
+
+    query_config = attrs.get("query_config", getattr(instance, "query_config", {}) if instance else {})
+    if query_config in (None, ""):
+        query_config = {}
+    try:
+        validate_stored_query_config(query_config or {})
+    except ConnectorError as exc:
+        raise serializers.ValidationError({"query_config": exc.message}) from exc
+
+    connection = attrs.get("connection", serializers.empty)
+    if connection is serializers.empty:
+        connection = getattr(instance, "connection", None) if instance else None
+    overrides = attrs.get("connection_overrides", getattr(instance, "connection_overrides", {}) if instance else {})
+    if not isinstance(overrides, dict):
+        overrides = {}
+
+    if connection is not None:
+        decrypted = decrypt_connection_config(connection.config or {})
+        index = overrides.get("index") or decrypted.get("index")
+        try:
+            validate_index_name(index)
+        except ConnectorError as exc:
+            raise serializers.ValidationError({"connection_overrides": exc.message}) from exc
+        return
+
+    connection_config = attrs.get("connection_config", getattr(instance, "connection_config", {}) if instance else {})
+    try:
+        normalized = normalize_elasticsearch_config(connection_config or {})
+        validate_index_name(normalized.get("index"))
+    except ConnectorError as exc:
+        raise serializers.ValidationError({"connection_config": exc.message}) from exc
+
+
 def transform_config_for_source_type(source_type, transform_config):
     if source_type not in TRANSFORM_ALLOWED_SOURCE_TYPES:
         return dict(DISABLED_TRANSFORM_CONFIG)
@@ -248,6 +286,11 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
                 validate_rest_headers(connection_config.get("headers"))
 
         should_validate_target = self.instance is None or "connection_config" in attrs or "source_type" in attrs
+        if source_type == DataSourceAPIModel.SOURCE_TYPE_ELASTICSEARCH and (
+            self.instance is None or "connection_config" in attrs or "query_config" in attrs or "connection" in attrs or "source_type" in attrs
+        ):
+            _validate_elasticsearch_datasource(attrs, self.instance)
+
         if source_type != DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS or not should_validate_target:
             return attrs
 

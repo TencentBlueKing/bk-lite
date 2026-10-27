@@ -191,7 +191,7 @@
   "dataConnection": {
     "title": "Connection mode",
     "introTitle": "Connection Library",
-    "introMsg": "Centrally manage MySQL, PostgreSQL, and REST addresses and credentials for datasource reuse. NATS still uses namespaces.",
+    "introMsg": "Centrally manage MySQL, PostgreSQL, REST, and Elasticsearch addresses and credentials for datasource reuse. NATS still uses namespaces.",
     "name": "Name",
     "type": "Type",
     "endpoint": "Endpoint",
@@ -216,6 +216,7 @@
     "extractConnectionTitle": "Extract to connection library",
     "reenterPassword": "Re-enter the password before extracting",
     "overrideDatabase": "Override database",
+    "overrideIndex": "Override index",
     "relativePath": "Relative path"
   },
   "dateRange": {
@@ -268,14 +269,20 @@
       "postgresql": "PostgreSQL",
       "restApi": "REST API",
       "excel": "Excel",
-      "prometheus": "Prometheus"
+      "prometheus": "Prometheus",
+      "elasticsearch": "Elasticsearch"
     },
     "authType": "Auth Type",
     "authTypes": {
       "none": "None",
       "basic": "Basic Auth",
-      "bearer": "Bearer Token"
+      "bearer": "Bearer Token",
+      "apiKey": "API Key"
     },
+    "index": "Index",
+    "queryDsl": "Query DSL",
+    "apiKey": "API Key",
+    "caCert": "CA certificate",
     "token": "Token",
     "testConnection": "Test Connection",
     "testConnectionSuccess": "Connection test succeeded",

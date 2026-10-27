@@ -150,6 +150,81 @@ def _execute_inline_preview(
     return result.as_dict()
 
 
+def _query_non_nats_source(request, instance, params, current_team):
+    """执行非 NATS 数据源取数。Elasticsearch 忽略请求里的连接和查询体。"""
+    try:
+        if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS:
+            executor = get_preview_executor(instance.source_type)
+            result = executor.execute(instance.connection_config or {}, params)
+            return Response({"data": result.data, "warnings": result.warnings or []})
+        runtime_limit = _normalize_preview_limit(params.get("page_size") or request.data.get("limit"))
+        if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+            from apps.operation_analysis.services.excel_materialize import load_excel_runtime
+
+            payload = load_excel_runtime(instance, limit=runtime_limit)
+            return Response(
+                {
+                    "data": apply_query_list_to_payload(
+                        payload.get("items", []),
+                        params.get("query_list"),
+                    ),
+                    "warnings": payload.get("warnings", []),
+                }
+            )
+        request_for_connection = request.data if isinstance(request.data, dict) else {}
+        if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_ELASTICSEARCH:
+            # 运行时只使用已保存的连接和查询体，组件不能改 URL、索引或 DSL。
+            request_for_connection = {}
+        connection_config = _connection_config_for_instance(
+            instance,
+            request_for_connection,
+            current_team=current_team,
+        )
+        payload = _execute_inline_preview(
+            instance.source_type,
+            connection_config,
+            instance.query_config or {},
+            runtime_limit,
+            transform_config=instance.transform_config or {},
+            org_id=current_team,
+        )
+    except ConnectionResolveError as exc:
+        return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
+    except ValueError as exc:
+        return _build_error_response(str(exc), status.HTTP_400_BAD_REQUEST)
+    except ConnectorError as exc:
+        return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
+    except Exception as exc:
+        logger.error(
+            "[DataSourceQuery] Inline 取数失败 datasource_id=%s name=%s source_type=%s：%s",
+            instance.id,
+            instance.name,
+            instance.source_type,
+            exc,
+            exc_info=True,
+        )
+        return _build_error_response(oa_message("messages.datasource_query_failed", "数据查询失败"), status.HTTP_502_BAD_GATEWAY)
+
+    # Runtime must not fall back to untransformed wide rows.
+    transform_error = payload.get("transform_error") if isinstance(payload, dict) else None
+    if isinstance(transform_error, dict) and transform_error.get("message"):
+        return _build_error_response(
+            transform_error.get("message") or oa_message("messages.datasource_transform_failed", "转换失败"),
+            status.HTTP_400_BAD_REQUEST,
+            {"code": transform_error.get("code") or "transform_failed"},
+        )
+
+    warnings = []
+    if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_ELASTICSEARCH:
+        warnings = payload.get("warnings") or []
+    return Response(
+        {
+            "data": apply_query_list_to_payload(payload.get("items", []), params.get("query_list")),
+            "warnings": warnings,
+        }
+    )
+
+
 def _strip_unmerged_placeholders(connection_config):
     return {key: None if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key) else item for key, item in connection_config.items()}
 
@@ -640,70 +715,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return _build_error_response(str(exc), status.HTTP_400_BAD_REQUEST)
 
         if instance.source_type != DataSourceAPIModel.SOURCE_TYPE_NATS:
-            try:
-                if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS:
-                    executor = get_preview_executor(instance.source_type)
-                    result = executor.execute(instance.connection_config or {}, params)
-                    return Response({"data": result.data, "warnings": result.warnings or []})
-                runtime_limit = _normalize_preview_limit(params.get("page_size") or request.data.get("limit"))
-                if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
-                    from apps.operation_analysis.services.excel_materialize import load_excel_runtime
-
-                    payload = load_excel_runtime(instance, limit=runtime_limit)
-                    return Response(
-                        {
-                            "data": apply_query_list_to_payload(
-                                payload.get("items", []),
-                                params.get("query_list"),
-                            ),
-                            "warnings": payload.get("warnings", []),
-                        }
-                    )
-                connection_config = _connection_config_for_instance(
-                    instance,
-                    request.data if isinstance(request.data, dict) else {},
-                    current_team=current_team,
-                )
-                payload = _execute_inline_preview(
-                    instance.source_type,
-                    connection_config,
-                    instance.query_config or {},
-                    runtime_limit,
-                    transform_config=instance.transform_config or {},
-                    org_id=current_team,
-                )
-            except ConnectionResolveError as exc:
-                return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
-            except ValueError as exc:
-                return _build_error_response(str(exc), status.HTTP_400_BAD_REQUEST)
-            except ConnectorError as exc:
-                return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
-            except Exception as exc:
-                logger.error(
-                    "[DataSourceQuery] Inline 取数失败 datasource_id=%s name=%s source_type=%s：%s",
-                    instance.id,
-                    instance.name,
-                    instance.source_type,
-                    exc,
-                    exc_info=True,
-                )
-                return _build_error_response(oa_message("messages.datasource_query_failed", "数据查询失败"), status.HTTP_502_BAD_GATEWAY)
-
-            # Runtime must not fall back to untransformed wide rows.
-            transform_error = payload.get("transform_error") if isinstance(payload, dict) else None
-            if isinstance(transform_error, dict) and transform_error.get("message"):
-                return _build_error_response(
-                    transform_error.get("message") or oa_message("messages.datasource_transform_failed", "转换失败"),
-                    status.HTTP_400_BAD_REQUEST,
-                    {"code": transform_error.get("code") or "transform_failed"},
-                )
-
-            return Response(
-                {
-                    "data": apply_query_list_to_payload(payload.get("items", []), params.get("query_list")),
-                    "warnings": [],
-                }
-            )
+            return _query_non_nats_source(request, instance, params, current_team)
 
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
@@ -883,7 +895,19 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     @action(detail=False, methods=["post"], url_path="test_connection")
     def test_connection_config(self, request, *args, **kwargs):
         source_type = request.data.get("source_type") or DataSourceAPIModel.SOURCE_TYPE_NATS
-        connection_config = _normalize_preview_config(request.data.get("connection_config"))
+        current_team = self._parse_current_team_cookie(request)
+        groups = request.data.get("groups")
+        if not isinstance(groups, list):
+            groups = [current_team] if current_team is not None else []
+        request_data = request.data if isinstance(request.data, dict) else {}
+        if request_data.get("connection") or request_data.get("connection_id"):
+            connection_config = _resolve_preview_connection_config(
+                request_data,
+                current_team=current_team,
+                groups=groups,
+            )
+        else:
+            connection_config = _normalize_preview_config(request_data.get("connection_config"))
         try:
             executor = get_preview_executor(source_type)
             executor.test_connection(connection_config)

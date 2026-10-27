@@ -46,6 +46,12 @@ def _summarize_endpoint(connection_type, config):
         return host or database or ""
     if connection_type == DataConnection.TYPE_REST_API:
         return config.get("base_url") or config.get("url") or ""
+    if connection_type == DataConnection.TYPE_ELASTICSEARCH:
+        url = config.get("url") or ""
+        index = config.get("index") or ""
+        if url and index:
+            return f"{url}/{index}"
+        return url or index or ""
     return ""
 
 
@@ -61,6 +67,16 @@ def _validate_connection_config_shape(connection_type, config):
         if not (config.get("base_url") or config.get("url")):
             raise serializers.ValidationError(oa_message("messages.rest_base_url_required", "REST 连接必须提供 base_url"))
         config["headers"] = validate_rest_headers(config.get("headers"))
+    elif connection_type == DataConnection.TYPE_ELASTICSEARCH:
+        from apps.operation_analysis.services.datasource_preview.base import ConnectorError
+        from apps.operation_analysis.services.datasource_preview.elasticsearch_client import normalize_elasticsearch_config
+        from apps.operation_analysis.services.datasource_preview.elasticsearch_query import validate_index_name
+
+        try:
+            normalized = normalize_elasticsearch_config(config)
+            validate_index_name(normalized.get("index"))
+        except ConnectorError as exc:
+            raise serializers.ValidationError(exc.message) from exc
     else:
         raise serializers.ValidationError(oa_message("messages.connection_type_unsupported", "连接类型不支持"))
     return config
@@ -181,6 +197,7 @@ CONNECTION_ALLOWED_SOURCE_TYPES = {
     DataSourceAPIModel.SOURCE_TYPE_MYSQL,
     DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
     DataSourceAPIModel.SOURCE_TYPE_REST_API,
+    DataSourceAPIModel.SOURCE_TYPE_ELASTICSEARCH,
 }
 
 
@@ -221,6 +238,8 @@ def validate_datasource_connection_binding(attrs, instance=None):
 
     if source_type in {DataSourceAPIModel.SOURCE_TYPE_MYSQL, DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL}:
         allowed = {"database"}
+    elif source_type == DataSourceAPIModel.SOURCE_TYPE_ELASTICSEARCH:
+        allowed = {"index"}
     else:
         allowed = {"path", "method", "timeout"}
     unexpected = sorted(set(overrides.keys()) - allowed)
@@ -241,7 +260,11 @@ def validate_datasource_connection_binding(attrs, instance=None):
         connection_config = instance.connection_config or {}
     if connection_config is None:
         connection_config = {}
-    if source_type in {DataSourceAPIModel.SOURCE_TYPE_MYSQL, DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL}:
+    if source_type in {
+        DataSourceAPIModel.SOURCE_TYPE_MYSQL,
+        DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
+        DataSourceAPIModel.SOURCE_TYPE_ELASTICSEARCH,
+    }:
         attrs["connection_config"] = {}
     else:
         # REST：请求方法/超时可保留在 connection_config，path 走 overrides；禁止 url/headers。
