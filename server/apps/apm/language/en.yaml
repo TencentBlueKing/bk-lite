@@ -37,6 +37,8 @@ error:
   compare_offset_amount_required: Enter how many hours or days ago to compare.
   compare_offset_amount_range: Hours must be from 1 to 840, and days must be from 1 to 35.
   compare_offset_amount_unused: Only a same-window comparison can set hours or days.
+  compare_baseline_days_range: The same-window mean over recent days must use 2 to 7 days.
+  compare_baseline_days_kind: The same-window mean over recent days must use either a delta or a percent change.
   compare_offset_shorter_than_window: The offset must be at least as long as the aggregation window.
   compare_no_traffic_absolute: No-traffic policies can only compare the current value.
   compare_min_request_metric: Minimum request count applies only to error rate, slow request rate, Apdex, and latency.

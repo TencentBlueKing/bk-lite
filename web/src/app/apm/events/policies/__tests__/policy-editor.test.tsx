@@ -759,4 +759,28 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(payload.trigger_window).toBe(3);
     expect(payload.recovery_threshold).toEqual({ comparator: 'lt', value: 40 });
   });
+
+  it('近 N 天同窗均值提交 2 到 7 天，并允许变化量', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByLabelText('比较基准'));
+    await user.click(await screen.findByText('近 N 天同窗均值'));
+    const days = screen.getByLabelText('天数') as HTMLInputElement;
+    expect(days.value).toBe('7');
+    expect((screen.getByRole('radio', { name: '变化率 %' }) as HTMLInputElement).checked).toBe(true);
+    await user.clear(days);
+    await user.type(days, '3');
+    await user.click(screen.getByRole('radio', { name: '变化量 Δ' }));
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          compare_mode: 'baseline_days',
+          compare_offset_amount: 3,
+          compare_value_kind: 'delta',
+        }),
+      ),
+    );
+  });
 });

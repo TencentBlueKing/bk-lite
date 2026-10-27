@@ -127,6 +127,14 @@ def _red_final_stats(query: ServiceMetricQuery) -> str:
     return "stats " + ", ".join(parts)
 
 
+def _logsql_time(value: datetime) -> str:
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _utc_day(value: datetime) -> str:
+    return value.astimezone(UTC).strftime("%Y-%m-%dT00:00:00Z")
+
+
 def _count_field(values: dict[str, float], key: str) -> int | None:
     if key not in values:
         return None
@@ -869,6 +877,37 @@ class VictoriaTracesTelemetryStore:
             satisfied_count=satisfied_count,
             tolerating_count=tolerating_count,
         )
+
+    def service_red_by_day(self, query: ServiceMetricQuery, windows: Sequence[tuple[datetime, datetime]]) -> tuple[ServiceRed, ...]:
+        """一条半开多段 `_time` 查询，按 UTC 日桶回填到每个同窗。去重路径要留下 `_time`，否则多天会并成一桶。"""
+        if not windows:
+            return ()
+        total = sum((ended_at - started_at for started_at, ended_at in windows), timedelta(0))
+        exact_dedup = total <= RED_EXACT_DEDUP_WINDOW
+        entry = self._entry_span_filters(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            endpoint=query.endpoint,
+            version=query.version,
+        )
+        spans = " or ".join(f"_time:[{_logsql_time(started_at)}, {_logsql_time(ended_at)})" for started_at, ended_at in windows)
+        scoped = f"({spans}) {entry}"
+        final_stats = _red_final_stats(query).removeprefix("stats ")
+        if exact_dedup:
+            deduped = f"{scoped} | stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code, min(_time) as _time"
+            aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:1d) {final_stats}"
+        else:
+            aggregate = f"{scoped} | stats by (_time:1d) {final_stats}"
+        started_at = min(item[0] for item in windows)
+        ended_at = max(item[1] for item in windows)
+        grouped = self._values_by_day(self._stats(aggregate, started_at, ended_at))
+        reds = []
+        for window_start, window_end in windows:
+            values = grouped.get(_utc_day(window_start), {})
+            window_seconds = max(int((window_end - window_start).total_seconds()), 1)
+            reds.append(self._red_from_values(values, window_seconds))
+        return tuple(reds)
 
     def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
         if not 1 <= query.sample_limit <= 50:
@@ -1635,6 +1674,46 @@ class VictoriaTracesTelemetryStore:
         except (UnicodeDecodeError, ValueError) as exc:
             raise TelemetryStoreUnavailable("VictoriaTraces 返回了无效的 LogsQL 行结果") from exc
         return rows
+
+    @staticmethod
+    def _values_by_day(result: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+        grouped: dict[str, dict[str, float]] = {}
+        for series in result:
+            metric = series.get("metric", {})
+            raw_value = series.get("value", [])
+            if not isinstance(metric, dict) or not isinstance(raw_value, list) or len(raw_value) != 2:
+                continue
+            day = str(metric.get("_time", ""))
+            name = str(metric.get("__name__", ""))
+            parsed = _number(raw_value[1])
+            if day and name and parsed is not None:
+                grouped.setdefault(day, {})[name] = parsed
+        return grouped
+
+    def _red_from_values(self, values: dict[str, float], window_seconds: int) -> ServiceRed:
+        requests_count = values.get("requests")
+        if requests_count is None or requests_count <= 0:
+            return ServiceRed(None, None, None, None)
+        errors_count = values.get("errors", 0.0) or 0.0
+        satisfied_count = _count_field(values, "satisfied")
+        within_4t = _count_field(values, "within_4t")
+        tolerating_count = None if satisfied_count is None or within_4t is None else max(0, within_4t - satisfied_count)
+        return ServiceRed(
+            request_rate=requests_count / window_seconds,
+            error_rate=errors_count / requests_count,
+            p95_ms=self._nanoseconds_to_ms(values.get("p95")),
+            p99_ms=self._nanoseconds_to_ms(values.get("p99")),
+            request_count=int(requests_count),
+            error_count=int(errors_count),
+            avg_ms=self._nanoseconds_to_ms(values.get("avg_duration")),
+            max_ms=self._nanoseconds_to_ms(values.get("max_duration")),
+            p50_ms=self._nanoseconds_to_ms(values.get("p50")),
+            p75_ms=self._nanoseconds_to_ms(values.get("p75")),
+            p90_ms=self._nanoseconds_to_ms(values.get("p90")),
+            slow_count=_count_field(values, "slow"),
+            satisfied_count=satisfied_count,
+            tolerating_count=tolerating_count,
+        )
 
     @staticmethod
     def _ungrouped_values(result: list[dict[str, Any]]) -> dict[str, float]:

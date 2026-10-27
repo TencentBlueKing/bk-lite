@@ -1480,3 +1480,56 @@ def test_red_stats_adds_slow_and_apdex_counts_when_thresholds_are_set():
     assert red.satisfied_count == 428
     assert red.tolerating_count == 46
     assert red.error_count == 53
+
+
+def _day_vector():
+    rows = []
+    for day, request_count in (("2026-10-19T00:00:00Z", 554), ("2026-10-20T00:00:00Z", 610), ("2026-10-21T00:00:00Z", 474)):
+        rows.append({"metric": {"__name__": "requests", "_time": day}, "value": [1, str(request_count)]})
+        rows.append({"metric": {"__name__": "p95", "_time": day}, "value": [1, "100000000"]})
+    return {"status": "success", "data": {"resultType": "vector", "result": rows}}
+
+
+def test_baseline_days_query_uses_half_open_ranges_and_maps_day_buckets():
+    session = Mock()
+    session.get.return_value = _response(_day_vector())
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+    windows = tuple(
+        (
+            datetime(2026, 10, day, 2, 7, tzinfo=UTC),
+            datetime(2026, 10, day, 2, 12, tzinfo=UTC),
+        )
+        for day in (19, 20, 21)
+    )
+
+    reds = store.service_red_by_day(
+        ServiceMetricQuery("apm-demo-shop", "demo-storefront", "local", windows[0][0], windows[-1][1]),
+        windows,
+    )
+
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert "stats by (_time:1d)" in query
+    assert "min(_time) as _time" in query
+    assert "_time:[2026-10-19T02:07:00Z, 2026-10-19T02:12:00Z)" in query
+    assert "_time:[2026-10-20T02:07:00Z, 2026-10-20T02:12:00Z)" in query
+    assert "_time:[2026-10-21T02:07:00Z, 2026-10-21T02:12:00Z)" in query
+    assert session.get.call_args.kwargs["params"]["start"] == "2026-10-19T02:07:00+00:00"
+    assert session.get.call_args.kwargs["params"]["end"] == "2026-10-21T02:12:00+00:00"
+    assert [red.request_count for red in reds] == [554, 610, 474]
+
+
+def test_baseline_days_skips_exact_dedup_when_the_total_window_exceeds_one_day():
+    session = Mock()
+    session.get.return_value = _response(_day_vector())
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+    windows = tuple((datetime(2026, 10, day, 0, 0, tzinfo=UTC), datetime(2026, 10, day, 13, 0, tzinfo=UTC)) for day in (19, 20, 21))
+
+    store.service_red_by_day(
+        ServiceMetricQuery("shop", "checkout", "prod", windows[0][0], windows[-1][1]),
+        windows,
+    )
+
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert "stats by (_time:1d)" in query
+    assert "stats by (trace_id, span_id)" not in query
+    assert "min(_time) as _time" not in query

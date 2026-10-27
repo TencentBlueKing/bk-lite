@@ -542,6 +542,7 @@ class PolicyQueryResult:
     window_ended_at: datetime | None = None
     guards: tuple = ()
     guard_blocked: bool = False
+    baseline_days_used: int | None = None
 
 
 @dataclass(frozen=True)

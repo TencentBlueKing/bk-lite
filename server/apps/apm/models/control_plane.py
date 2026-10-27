@@ -356,6 +356,7 @@ class ApmPolicy(AuditedModel):
         OFFSET_DAYS = "offset_days", "N 天前同窗"
         OFFSET_1H = "offset_1h", "1 小时前同窗"
         OFFSET_24H = "offset_24h", "24 小时前同窗"
+        BASELINE_DAYS = "baseline_days", "近 N 天同窗均值"
 
     MAX_COMPARE_OFFSET_HOURS = 840
     MAX_COMPARE_OFFSET_DAYS = 35

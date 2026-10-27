@@ -572,7 +572,7 @@ export type ApmPolicyMetric =
   | 'apdex'
   | 'throughput'
   | 'no_traffic';
-export type ApmCompareMode = 'absolute' | 'previous_window' | 'offset_hours' | 'offset_days' | 'offset_1h' | 'offset_24h';
+export type ApmCompareMode = 'absolute' | 'previous_window' | 'offset_hours' | 'offset_days' | 'offset_1h' | 'offset_24h' | 'baseline_days';
 export type ApmCompareValueKind = 'delta' | 'percent';
 export type ApmPolicyComparator = 'gt' | 'gte' | 'lt' | 'lte';
 export type ApmPolicySeverity = 'critical' | 'error' | 'warning';
@@ -698,6 +698,7 @@ export interface ApmPolicyDryRunItem {
   reason: string;
   guards?: Array<{ metric_type: ApmPolicyMetric; value: string | null; matched: boolean }>;
   hit_history_text?: string;
+  baseline_days_used?: number | null;
 }
 
 export interface ApmPolicyDryRunResult {

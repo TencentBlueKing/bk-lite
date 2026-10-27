@@ -599,7 +599,14 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             compare_offset_amount,
         )
         attrs["compare_offset_amount"] = (
-            compare_offset_amount if compare_mode in {ApmPolicy.CompareMode.OFFSET_HOURS, ApmPolicy.CompareMode.OFFSET_DAYS} else None
+            compare_offset_amount
+            if compare_mode
+            in {
+                ApmPolicy.CompareMode.OFFSET_HOURS,
+                ApmPolicy.CompareMode.OFFSET_DAYS,
+                ApmPolicy.CompareMode.BASELINE_DAYS,
+            }
+            else None
         )
         thresholds = attrs.get("thresholds")
         if thresholds is None:
@@ -784,6 +791,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_absolute_kind")})
         if compare_mode == ApmPolicy.CompareMode.PREVIOUS_WINDOW and kind not in {"delta", "percent"}:
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_previous_kind")})
+        if compare_mode == ApmPolicy.CompareMode.BASELINE_DAYS and kind not in {"delta", "percent"}:
+            raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_baseline_days_kind")})
         if compare_mode in offset_modes and kind != "percent":
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_offset_percent_only")})
         self._validate_offset_amount(compare_mode, metric_window, compare_offset_amount)
@@ -835,6 +844,10 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         return number
 
     def _validate_offset_amount(self, compare_mode, metric_window, amount):
+        if compare_mode == ApmPolicy.CompareMode.BASELINE_DAYS:
+            if isinstance(amount, bool) or not isinstance(amount, int) or not 2 <= amount <= 7:
+                raise serializers.ValidationError({"compare_offset_amount": serializer_text(self, "error.compare_baseline_days_range")})
+            return
         if compare_mode == ApmPolicy.CompareMode.OFFSET_HOURS:
             limit = ApmPolicy.MAX_COMPARE_OFFSET_HOURS
             minutes = (amount or 0) * 60

@@ -1,6 +1,6 @@
 # APM 告警计算方式目录：指标面 × 比较基准 × 判定规则
 
-Status: approved（2026-10-27 产品确认按推荐方案执行，未进入实现）
+Status: implemented
 
 需求来源：CTeam `p398_716` 第二批。第一批（相对上一等长窗、N 小时 / N 天前同窗、最低请求数、试算）已按
 `specs/changes/apm-alert-calc-enrichment/spec.md` 落地（提交 `b2d1c03967`、`98abb914a9`）。产品在 2026-10-27
@@ -339,3 +339,52 @@ recovery_threshold   {} | {"comparator": "lt", "value": "600"}
 3. 慢阈值与 Apdex T 放策略级：**采纳**。APM 没有服务级配置实体；同一服务不同接口确实需要不同慢阈值。服务级统一值另起 change。
 4. SLO 错误预算燃烧率：**不进本批**，列为下一批候选。它是以 SLO 为目标的新策略类型，不是计算方式叠加。
 5. 下游依赖调用：**不进本批**。切片 3 完成后按目标上限、试算、快照的扩展成本单独评估。
+
+## 切片 1 验收记录
+
+提交 `aa7b2d9aea`。VictoriaTraces 实跑（本机 Docker 底座，不改 D1～D9）：
+
+- `127.0.0.1:10428`，服务 `apm-demo-shop / demo-storefront`，环境 `local`，入口 Span `kind:in("2","5")`
+- 窗 `2026-10-21T02:07:00Z`–`02:12:00Z`：requests 474，`avg(duration)` 164.478ms，VT `quantile(0.5, duration)` 82.749ms，`duration:>1000000000` 的慢请求 1，`duration:<=500000000` 的 satisfied 428，`duration:<=2000000000` 的 within_4t 473，tolerating 45，Apdex `(428 + 45/2) / 474 = 0.9504`
+- 手算 nearest-rank 中位数 82.536ms；产品与 Explore 都用 VT quantile
+- 临时策略 4 条创建后删除；对「现在」试算是 `no_data`（演示 Span 停在 10-21）。演示策略 `ddbe3441-737c-41c5-bac5-b510d2c6e85f` 未改
+
+现场确认：
+
+- pytest `test_policy_calc_catalog`、适配器、memory、`test_policy_service`、快照、契约：141 passed，1 skipped
+- `policy-editor.test.tsx` 21 passed；eslint 通过；提交 hook 里的 type-check 通过
+- `APM_POLICY_EVALUATION_DELAY=0` 时窗口与升级前逐字段一致；未设置时默认 60s
+
+## 切片 2 验收记录
+
+提交 `af3db59cd1`。
+
+现场确认：
+
+- 前置条件超过 2 条、含无流量、带多余字段，`trigger_window` 小于 `trigger_after` 或大于 20，恢复阈值与阶梯同向，无流量带新字段，serializer 都拒绝
+- N 中 M 忽略样本不足轮次，触发后清空 `hit_history`；恢复带内活动告警保持且快照点 `data_state=hold`；越过恢复线走恢复计数；前置不满足不触发并计入恢复
+- 试算 `guard_not_met` / `hold` / 「近 4 轮命中 1 / 2」零副作用
+- pytest 判定、策略服务、目录、快照、契约：110 passed，1 skipped
+- `policy-editor.test.tsx` 22 passed；eslint 与 type-check 通过
+- 本机临时策略 `trigger_window=4`、前置吞吐 `gte 1`、恢复 `lt 50` 创建 201；试算 200，当前窗 `verdict=no_data`；删除 200。演示策略未改
+- 连续模式 `trigger_after` 上限仍是 60；只有设置 `trigger_window` 时才要求 M ≤ N ≤ 20
+
+## 切片 3 验收记录
+
+VictoriaTraces 实跑（`baseline_days=3`，半开窗 02:07–02:12，去重路径含 `min(_time) as _time`）：
+
+| 日 | 一条 `stats by (_time:1d)` | 三次单独 `service_red` |
+|---|---|---|
+| 10-19 | 554 请求，avg 184.347ms | 554，184.347ms |
+| 10-20 | 610 请求，avg 137.682ms | 610，137.682ms |
+| 10-21 | 474 请求，avg 164.478ms | 474，164.478ms |
+
+现场确认：
+
+- 可用天数 `< ⌈N/2⌉` 记 `missing_baseline`，reason `baseline_days_insufficient`；请求数为 0 或低于最低请求数的天不计入
+- 一条查询失败后退回逐日 `service_red`，目标上限 20；退回失败只记一条 `apm` WARNING，`failed_stage=baseline`，不含查询正文
+- 去重统计若不保留 `_time`，三个日桶会并成一桶；实现在去重段加上 `min(_time) as _time` 后与三次单独查询逐桶一致
+- pytest 本切片与策略回归 75 passed，1 skipped；适配器日桶用例 2 passed
+- `policy-editor.test.tsx` 23 passed；eslint 与 type-check 通过
+- 表单「近 N 天同窗均值」默认 7 天、变化率，可改成 3 天和变化量
+- 本机临时策略 `compare_mode=baseline_days`、N=3、变化率创建后试算 `no_data`（当前窗无 Span），已删除。演示策略未改

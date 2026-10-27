@@ -240,7 +240,7 @@ function resolvedCompareKind(
   kind: ApmCompareValueKind | '' | undefined,
 ): ApmCompareValueKind | '' {
   if (metric === 'no_traffic' || !mode || mode === 'absolute') return '';
-  if (mode === 'previous_window') return kind === 'percent' ? 'percent' : 'delta';
+  if (mode === 'previous_window' || mode === 'baseline_days') return kind === 'percent' ? 'percent' : 'delta';
   return 'percent';
 }
 
@@ -253,6 +253,9 @@ function editorCompareState(policy: ApmPolicy): Pick<PolicyEditorValues, 'compar
   if (policy.compare_mode === 'offset_hours' || policy.compare_mode === 'offset_days') {
     return { compare_mode: policy.compare_mode, compare_offset_amount: policy.compare_offset_amount ?? 1 };
   }
+  if (policy.compare_mode === 'baseline_days') {
+    return { compare_mode: 'baseline_days', compare_offset_amount: policy.compare_offset_amount ?? 7 };
+  }
   return { compare_mode: policy.compare_mode ?? 'absolute', compare_offset_amount: null };
 }
 
@@ -260,7 +263,7 @@ function comparePayloadFields(values: PolicyEditorValues): Partial<ApmPolicyInpu
   if (values.metric_type === 'no_traffic') return {};
   const compareMode = values.compare_mode || 'absolute';
   const compareKind = resolvedCompareKind(values.metric_type, compareMode, values.compare_value_kind);
-  const offset = compareMode === 'offset_hours' || compareMode === 'offset_days';
+  const offset = compareMode === 'offset_hours' || compareMode === 'offset_days' || compareMode === 'baseline_days';
   const fields: Partial<ApmPolicyInput> = {
     compare_mode: compareMode,
     compare_offset_amount: offset ? values.compare_offset_amount ?? null : null,
@@ -398,6 +401,7 @@ function CompareBaselineSelect({
         { value: 'absolute', label: t('apm.policies.compareModeAbsolute', '当前值') },
         { value: 'previous_window', label: t('apm.policies.compareModePreviousWindow', '相对上一等长窗') },
         { value: 'offset_hours', label: t('apm.policies.compareModeOffset', '同窗') },
+        { value: 'baseline_days', label: t('apm.policies.compareModeBaselineDays', '近 N 天同窗均值') },
       ]}
     />
   );
@@ -1086,6 +1090,13 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       if (kind !== 'delta' && kind !== 'percent') form.setFieldValue('compare_value_kind', 'delta');
       return;
     }
+    if (mode === 'baseline_days') {
+      const kind = form.getFieldValue('compare_value_kind');
+      if (kind !== 'delta' && kind !== 'percent') form.setFieldValue('compare_value_kind', 'percent');
+      const amount = Number(form.getFieldValue('compare_offset_amount'));
+      if (!Number.isInteger(amount) || amount < 2 || amount > 7) form.setFieldValue('compare_offset_amount', 7);
+      return;
+    }
     form.setFieldValue('compare_value_kind', 'percent');
     if (!form.getFieldValue('compare_offset_amount')) form.setFieldValue('compare_offset_amount', 1);
   };
@@ -1341,7 +1352,25 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   </Form.Item>
                 </>
               ) : null}
-              {compareMode === 'previous_window' ? (
+              {compareMode === 'baseline_days' ? (
+                <Form.Item
+                  className={styles.offsetAmount}
+                  name="compare_offset_amount"
+                  label={t('apm.policies.compareOffsetCountDay', '天数')}
+                  extra={t('apm.policies.baselineDaysHint', '和过去这些天里、同一时段的平均值比较。')}
+                  rules={[{
+                    validator: async (_, value) => {
+                      const amount = Number(value);
+                      if (!Number.isInteger(amount) || amount < 2 || amount > 7) {
+                        throw new Error(t('apm.policies.baselineDaysRange', '天数须在 2 到 7 之间'));
+                      }
+                    },
+                  }]}
+                >
+                  <InputNumber<number> min={2} max={7} precision={0} />
+                </Form.Item>
+              ) : null}
+              {compareMode === 'previous_window' || compareMode === 'baseline_days' ? (
                 <Form.Item name="compare_value_kind" label={t('apm.policies.compareValueKind', '比较方式')}>
                   <Radio.Group
                     options={[
@@ -1824,6 +1853,13 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                         },
                         { title: t('apm.policies.dryRunCurrent', '当前值'), dataIndex: 'current_value', render: (value) => value ?? '—' },
                         { title: t('apm.policies.dryRunBaseline', '对照值'), dataIndex: 'baseline_value', render: (value) => value ?? '—' },
+                        ...(compareMode === 'baseline_days'
+                          ? [{
+                            title: t('apm.policies.dryRunBaselineDaysUsed', '可用天数'),
+                            dataIndex: 'baseline_days_used',
+                            render: (value: number | null | undefined) => value ?? '—',
+                          }]
+                          : []),
                         { title: t('apm.policies.dryRunCompared', '比较值'), dataIndex: 'compared_value', render: (value) => value ?? '—' },
                         { title: t('apm.policies.dryRunRequestCount', '请求数'), dataIndex: 'request_count', render: (value) => value ?? '—' },
                         {

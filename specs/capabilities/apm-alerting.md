@@ -6,8 +6,8 @@ APM 独立拥有策略、Alert 生命周期、Event、告警指标快照、事�
 
 ## 长期契约
 
-- 策略只表达 APM Service、Endpoint、必选环境和受控版本维度，只允许 `error_rate / p95 / p99 / throughput / no_traffic`；禁止任意表达式、MonitorObject、采集插件、LogSQL 和日志组。
-- 比较基准是 `absolute / previous_window / offset_1h / offset_24h`。相对计算用两段等长 RED 窗，不用 MetricsQL。`percent` 在对照值为 0 或对照窗样本不足时记 `missing_baseline` 并保持活动告警；`error_rate / p95 / p99` 可设最低请求数，不足记 `insufficient_samples`，同样保持态。试算是只读内部端点，不写告警、事件、快照或目标状态。
+- 策略只表达 APM Service、Endpoint、必选环境和受控版本维度，指标类型是 `error_rate / error_count / p50 / p75 / p90 / p95 / p99 / latency_avg / latency_max / slow_request_count / slow_request_rate / apdex / throughput / no_traffic`；禁止任意表达式、MonitorObject、采集插件、LogSQL 和日志组。
+- 比较基准是 `absolute / previous_window / offset_hours / offset_days / baseline_days`（旧值 `offset_1h / offset_24h` 仍可读）。`baseline_days` 的 N 为 2..7，对照是近 N 天同窗的算术均值；可用天数不足 `⌈N/2⌉` 记 `missing_baseline`（reason `baseline_days_insufficient`）。相对计算用等长 RED 窗，不用 MetricsQL。`percent` 在对照值为 0 或对照窗样本不足时记 `missing_baseline` 并保持活动告警；错误率、慢请求占比、Apdex 和时延族可设最低请求数，不足记 `insufficient_samples`，同样保持态。试算是只读内部端点，不写告警、事件、快照或目标状态。
 - 策略创建必填所属组织，列表 / 详情按策略组织 fail-closed；存量策略从当时服务组织回填，之后改服务组织不改写策略组织。
 - Alert / Event 的 `organizations` 在首次生成时从当时策略组织快照，之后不随服务或策略组织变更改写。已有告警组织不变。
 - Alert 状态统一为 `active / recovered / closed`；Event 动作统一为 `triggered / escalated / claimed / assigned / reassigned / recovered / closed`。Alert 聚合完整生命周期，Event 只记录不可变状态变化。
