@@ -119,7 +119,7 @@ const InteractionTitleIcon: React.FC<InteractionTitleIconProps> = ({
       toneClass,
       floating
         ? 'absolute right-2 top-2 z-20 h-6 w-6 rounded-full bg-(--color-bg-1)/80 shadow-sm'
-        : 'h-5 w-0 min-w-0 -ml-2 overflow-hidden rounded border-0 bg-transparent p-0 group-hover:ml-0 group-hover:w-5 group-hover:overflow-visible group-focus-within:ml-0 group-focus-within:w-5 group-focus-within:overflow-visible hover:bg-(--color-fill-2)',
+        : 'h-5 w-0 min-w-0 -ml-2 -mr-2 overflow-hidden rounded border-0 bg-transparent p-0 group-hover:ml-0 group-hover:mr-0 group-hover:w-5 group-hover:overflow-visible group-focus-within:ml-0 group-focus-within:mr-0 group-focus-within:w-5 group-focus-within:overflow-visible hover:bg-(--color-fill-2)',
     ].filter(Boolean).join(' ');
 
   return (

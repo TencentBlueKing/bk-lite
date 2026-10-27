@@ -238,6 +238,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
                 onClick={exportCsv}
               />
             )}
+            <InteractionTitleIcon config={item.valueConfig} />
             {menuItems.length > 0 && (
               <div data-export-hidden="true" className="no-drag shrink-0">
                 <MoreActionsDropdown
@@ -249,7 +250,6 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
                 />
               </div>
             )}
-            <InteractionTitleIcon config={item.valueConfig} />
           </div>
           <div
             className="widget-body flex-1 h-full min-h-0"
