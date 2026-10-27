@@ -5,7 +5,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 
 from apps.alerts.constants import AlertStatus
-from apps.alerts.models.models import Alert, Event
+from apps.alerts.models.models import Alert, Event, Incident
 from apps.alerts.service.source_names import source_names_by_alert
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 
@@ -77,7 +77,10 @@ class RelatedAlertsService:
             status__in=AlertStatus.ACTIVATE_STATUS,
         ).exclude(pk=alert.pk)
         queryset = queryset.prefetch_related(
-            "incident_set",
+            Prefetch(
+                "incident_set",
+                queryset=Incident.objects.order_by("-updated_at", "-id"),
+            ),
             Prefetch(
                 "events",
                 queryset=Event.objects.only(
@@ -195,6 +198,22 @@ class RelatedAlertsService:
 
     @staticmethod
     def _get_incidents_summary(alert: Alert) -> List[Dict[str, Any]]:
+        cache = getattr(alert, "_prefetched_objects_cache", None)
+        cache_name = alert.incident_set.prefetch_cache_name
+        if cache is not None and cache_name in cache:
+            incidents = sorted(
+                cache[cache_name],
+                key=lambda incident: (incident.updated_at, incident.id),
+                reverse=True,
+            )
+            return [
+                {
+                    "id": incident.id,
+                    "incident_id": incident.incident_id,
+                    "title": incident.title,
+                }
+                for incident in incidents
+            ]
         return list(
             alert.incident_set.order_by("-updated_at", "-id").values(
                 "id",
