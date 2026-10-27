@@ -1463,6 +1463,43 @@
             "tokenHint": "The token is shown once after issuance or rotation. Copy and save it now.",
             "totalCount": "Total",
             "updatedCount": "Updated"
+        },
+        "customPlugin": {
+            "intro": "Upload a script to create a plugin. When editing, change the script in the form or upload a new file to replace it.",
+            "create": "New Plugin",
+            "loadFailed": "Failed to load custom plugins",
+            "loadScriptFailed": "Failed to load the script",
+            "uploadRequired": "Upload a script file",
+            "saved": "Saved. Tasks using this plugin will collect with the new script on the next run.",
+            "saveFailed": "Failed to save",
+            "name": "Name",
+            "pluginId": "ID",
+            "model": "Model",
+            "os": "OS",
+            "version": "Version",
+            "references": "References",
+            "action": "Actions",
+            "edit": "Edit",
+            "delete": "Delete",
+            "deleteTitle": "Delete plugin",
+            "deleteContent": "A plugin referenced by a collection task cannot be deleted.",
+            "editTitle": "Edit custom plugin",
+            "createTitle": "New custom plugin",
+            "pluginIdExtra": "Enter the suffix only. The custom_ prefix is added on save.",
+            "pluginIdRequired": "Enter an ID",
+            "pluginIdPlaceholder": "host_scan",
+            "targetModel": "Target model",
+            "targetModelRequired": "Select a target model",
+            "targetModelPlaceholder": "Select an existing model",
+            "operatingSystem": "Operating system",
+            "script": "Script",
+            "scriptRequired": "Enter or upload a script",
+            "outputHint": "The script prints a JSON array to stdout. Each record must include inst_name, and field names must match model attributes.\nExample: [{\"inst_name\":\"192.168.1.10-demo\",\"ip_addr\":\"192.168.1.10\",\"port\":\"8080\"}]",
+            "selectedFile": "Selected {name}. It takes effect after you save.",
+            "createUploadOnly": "A new plugin can only be created by uploading a script file.",
+            "uploadReplace": "Upload and replace script",
+            "upload": "Upload script",
+            "description": "Description"
         }
     },
     "OidLibrary": {
@@ -1518,10 +1555,15 @@
         "scenarioOpts": {
             "device_lifecycle": "Device Lifecycle",
             "relation_change": "Relation Change",
-            "ordinary_attribute_change": "Ordinary Attribute Change",
-            "collect_automation_change": "Collect Automation",
-            "model_management_change": "Model Management Change",
-            "custom_reporting_change": "Custom reporting change"
+            "ordinary_attribute_change": "Attribute Change",
+            "collect_automation_change": "Auto Collection",
+            "model_management_change": "Model Management",
+            "custom_reporting_change": "Custom Reporting"
+        },
+        "objectOpts": {
+            "instance": "Asset Instance",
+            "model": "Model Management",
+            "collectTask": "Collection Task"
         }
     },
     "subscription": {

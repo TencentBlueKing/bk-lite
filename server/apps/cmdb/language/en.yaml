@@ -4394,3 +4394,35 @@ ATTR:
     enabled: Enabled
     priority: Priority
     forest_inst_name: Forest instance
+ATTR_GROUP:
+  基本信息: Basic Information
+  归属信息: Ownership
+  手工备注: Manual Notes
+  技术信息: Technical Information
+  状态信息: Status
+  管理信息: Management Information
+  系统内置: Built-in
+  自动发现信息: Auto Discovery
+  连接信息: Connection
+  采集信息: Collection Information
+  系统联动: System Linkage
+  默认分组: Default Group
+  default: Default
+ChangeRecordType:
+  create_entity: Create
+  delete_entity: Delete
+  update_entity: Update
+  execute: Execute
+  create_edge: Create Association
+  delete_edge: Delete Association
+ChangeRecordScenario:
+  device_lifecycle: Device Lifecycle
+  relation_change: Relation Change
+  ordinary_attribute_change: Attribute Change
+  collect_automation_change: Auto Collection
+  model_management_change: Model Management
+  custom_reporting_change: Custom Reporting
+ChangeRecordObject:
+  instance: Asset Instance
+  model: Model Management
+  collect_task: Collection Task

@@ -2,7 +2,13 @@
 
 import pytest
 
-from apps.cmdb.language.service import apply_attr_translations, group_display_name, normalize_cmdb_language
+from apps.cmdb.language.service import (
+    SettingLanguage,
+    apply_attr_translations,
+    group_display_name,
+    model_object_display_name,
+    normalize_cmdb_language,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -34,8 +40,23 @@ def test_apply_attr_translations_zh_cn_uses_hans_catalog():
 
 def test_group_display_name_builtin_and_custom():
     assert group_display_name("基本信息", "en") == "Basic Information"
+    assert group_display_name("技术信息", "en") == "Technical Information"
+    assert group_display_name("管理信息", "en") == "Management Information"
+    assert group_display_name("自动发现信息", "en") == "Auto Discovery"
     assert group_display_name("基本信息", "zh-Hans") == "基本信息"
     assert group_display_name("我的分组", "en") == "我的分组"
+
+
+def test_change_record_labels_follow_locale():
+    en = SettingLanguage("en")
+    zh = SettingLanguage("zh-Hans")
+    assert en.get_val("ChangeRecordScenario", "ordinary_attribute_change") == "Attribute Change"
+    assert en.get_val("ChangeRecordScenario", "collect_automation_change") == "Auto Collection"
+    assert zh.get_val("ChangeRecordScenario", "ordinary_attribute_change") == "普通属性变更"
+    assert en.get_val("ChangeRecordType", "update_entity") == "Update"
+    assert model_object_display_name("资产实例", "en") == "Asset Instance"
+    assert model_object_display_name("资产实例", "zh-Hans") == "资产实例"
+    assert model_object_display_name("阿里云ECS", "en") == "阿里云ECS"
 
 
 def test_host_and_mssql_attr_names_resolve_in_both_languages():

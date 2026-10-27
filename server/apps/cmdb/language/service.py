@@ -63,6 +63,22 @@ def group_display_name(group_name: str | None, language: str | None = None) -> s
     return translated or stored
 
 
+_MODEL_OBJECT_KEYS = {
+    "资产实例": "ChangeRecordObject.instance",
+    "模型管理": "ChangeRecordObject.model",
+    "采集任务": "ChangeRecordObject.collect_task",
+}
+
+
+def model_object_display_name(model_object: str | None, language: str | None = None) -> str:
+    """内置操作对象是写入时的中文身份；展示时按 locale 覆盖，自定义对象保持原文。"""
+    stored = "" if model_object is None else str(model_object)
+    key = _MODEL_OBJECT_KEYS.get(stored)
+    if not key:
+        return stored
+    return SettingLanguage(language).loader.get(key) or stored
+
+
 def apply_collect_tree_translations(tree: list, language: str | None = None) -> list:
     """按 locale 覆盖采集分类/插件展示名与说明；id 保持存储值。"""
     if not tree:

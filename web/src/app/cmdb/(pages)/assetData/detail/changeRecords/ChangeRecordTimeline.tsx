@@ -12,6 +12,7 @@ import {
   groupChangeRecordsByMonth,
 } from './changeRecordView';
 import type { ChangeRecord } from './changeRecordTypes';
+import { localizedModelObject } from '@/app/cmdb/utils/changeRecordLabel';
 
 const MONTH_PREVIEW = 6;
 
@@ -125,7 +126,7 @@ export function ChangeRecordTimeline({
                       <div className={styles.timelineTitle}>
                         {item.message ||
                           `${typeLabel(item.type)}${
-                            item.model_object || showModelName(item.model_id)
+                            localizedModelObject(t, item.model_object) || showModelName(item.model_id)
                           }`}
                       </div>
                       <div className={styles.timelineOperator}>

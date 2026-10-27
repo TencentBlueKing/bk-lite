@@ -6,10 +6,8 @@ import Cookies from 'js-cookie';
 import CustomTable from '@/components/custom-table';
 import { useCustomCollectPluginApi } from '@/app/cmdb/api/customCollectPlugin';
 import { useModelApi } from '@/app/cmdb/api';
+import { useTranslation } from '@/utils/i18n';
 import ScriptCodeEditor, { ShellSwitch } from './scriptCodeEditor';
-
-const OUTPUT_HINT = `脚本向 stdout 输出 JSON 数组，每条记录必须有 inst_name，字段名与模型属性一致。
-示例：[{"inst_name":"192.168.1.10-demo","ip_addr":"192.168.1.10","port":"8080"}]`;
 
 interface PluginRow {
   id: number;
@@ -54,6 +52,7 @@ function stripPluginPrefix(pluginId: string) {
 }
 
 export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: string }) {
+  const { t } = useTranslation();
   const api = useCustomCollectPluginApi();
   const { getModelList } = useModelApi();
   const [rows, setRows] = useState<PluginRow[]>([]);
@@ -74,7 +73,7 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
       const list = Array.isArray(data) ? data : [];
       setRows(lockedModelId ? list.filter((item) => item.model_id === lockedModelId) : list);
     } catch {
-      message.error('加载自定义插件失败');
+      message.error(t('Collection.customPlugin.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -113,14 +112,14 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
       setUploadedName('');
       setOpen(true);
     } catch (error: any) {
-      message.error(error?.message || '加载脚本失败');
+      message.error(error?.message || t('Collection.customPlugin.loadScriptFailed'));
     }
   };
 
   const save = async () => {
     const values = await form.validateFields();
     if (!editing && !values.content) {
-      message.error('请上传脚本文件');
+      message.error(t('Collection.customPlugin.uploadRequired'));
       return;
     }
     const teamId = Number(Cookies.get('current_team'));
@@ -140,47 +139,47 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
       } else {
         await api.createPlugin(payload);
       }
-      message.success('已保存，引用中的任务将在下一轮采集使用新脚本');
+      message.success(t('Collection.customPlugin.saved'));
       setOpen(false);
       load();
     } catch (error: any) {
-      message.error(error?.message || '保存失败');
+      message.error(error?.message || t('Collection.customPlugin.saveFailed'));
     }
   };
 
   return (
     <div className="p-4">
       <div className="mb-3 flex justify-between">
-        <div className="text-sm text-[var(--color-text-2)]">新建插件请上传脚本。编辑时可以在表单里改脚本，也可以重新上传覆盖。</div>
-        <Button type="primary" onClick={openCreate}>新建插件</Button>
+        <div className="text-sm text-[var(--color-text-2)]">{t('Collection.customPlugin.intro')}</div>
+        <Button type="primary" onClick={openCreate}>{t('Collection.customPlugin.create')}</Button>
       </div>
       <CustomTable
         loading={loading}
         rowKey="id"
         dataSource={rows}
         columns={[
-          { title: '名称', dataIndex: 'name' },
-          { title: '标识', dataIndex: 'plugin_id' },
-          { title: '模型', dataIndex: 'model_id' },
-          { title: '系统', dataIndex: 'os_type' },
+          { title: t('Collection.customPlugin.name'), dataIndex: 'name' },
+          { title: t('Collection.customPlugin.pluginId'), dataIndex: 'plugin_id' },
+          { title: t('Collection.customPlugin.model'), dataIndex: 'model_id' },
+          { title: t('Collection.customPlugin.os'), dataIndex: 'os_type' },
           {
-            title: '版本',
+            title: t('Collection.customPlugin.version'),
             dataIndex: 'version',
             render: (_value: number, row: PluginRow) => formatVersionLabel(row.version, row.updated_at),
           },
-          { title: '引用', dataIndex: 'reference_count' },
+          { title: t('Collection.customPlugin.references'), dataIndex: 'reference_count' },
           {
-            title: '操作',
+            title: t('Collection.customPlugin.action'),
             render: (_value, row: PluginRow) => (
               <Space>
-                <Button type="link" onClick={() => openEdit(row)}>编辑</Button>
+                <Button type="link" onClick={() => openEdit(row)}>{t('Collection.customPlugin.edit')}</Button>
                 <Button
                   type="link"
                   danger
                   onClick={() => {
                     Modal.confirm({
-                      title: '删除插件',
-                      content: '被采集任务引用的插件无法删除。',
+                      title: t('Collection.customPlugin.deleteTitle'),
+                      content: t('Collection.customPlugin.deleteContent'),
                       onOk: async () => {
                         await api.deletePlugin(row.id);
                         load();
@@ -188,7 +187,7 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
                     });
                   }}
                 >
-                  删除
+                  {t('Collection.customPlugin.delete')}
                 </Button>
               </Space>
             ),
@@ -196,7 +195,7 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
         ]}
       />
       <Modal
-        title={editing ? '编辑自定义插件' : '新建自定义插件'}
+        title={editing ? t('Collection.customPlugin.editTitle') : t('Collection.customPlugin.createTitle')}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={save}
@@ -204,25 +203,25 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
         destroyOnClose
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="name" label={t('Collection.customPlugin.name')} rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item
             name="plugin_id"
-            label="标识"
-            extra="只需填写后缀，保存时自动加上 custom_ 前缀"
-            rules={[{ required: true, message: '请填写标识' }]}
+            label={t('Collection.customPlugin.pluginId')}
+            extra={t('Collection.customPlugin.pluginIdExtra')}
+            rules={[{ required: true, message: t('Collection.customPlugin.pluginIdRequired') }]}
           >
-            <Input disabled={Boolean(editing)} placeholder="host_scan" />
+            <Input disabled={Boolean(editing)} placeholder={t('Collection.customPlugin.pluginIdPlaceholder')} />
           </Form.Item>
-          <Form.Item name="model_id" label="目标模型" rules={[{ required: true, message: '请选择目标模型' }]}>
+          <Form.Item name="model_id" label={t('Collection.customPlugin.targetModel')} rules={[{ required: true, message: t('Collection.customPlugin.targetModelRequired') }]}>
             <Select
               showSearch
               optionFilterProp="label"
               disabled={Boolean(lockedModelId || editing)}
               options={models}
-              placeholder="选择已有模型"
+              placeholder={t('Collection.customPlugin.targetModelPlaceholder')}
             />
           </Form.Item>
-          <Form.Item name="os_type" label="操作系统" rules={[{ required: true }]}>
+          <Form.Item name="os_type" label={t('Collection.customPlugin.operatingSystem')} rules={[{ required: true }]}>
             <Select
               disabled={Boolean(editing)}
               options={[{ value: 'linux', label: 'Linux' }, { value: 'windows', label: 'Windows' }]}
@@ -238,12 +237,12 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
             <ShellSwitch osType={osType} value={shell} onChange={(next) => form.setFieldValue('shell', next)} />
           </div>
           {editing ? (
-            <Form.Item name="content" label="脚本" rules={[{ required: true, message: '请填写或上传脚本' }]} extra={OUTPUT_HINT}>
+            <Form.Item name="content" label={t('Collection.customPlugin.script')} rules={[{ required: true, message: t('Collection.customPlugin.scriptRequired') }]} extra={t('Collection.customPlugin.outputHint')}>
               <ScriptCodeEditor shell={shell} />
             </Form.Item>
           ) : (
-            <Form.Item label="脚本" required extra={uploadedName ? `已选择 ${uploadedName}，确认保存后生效` : '新建只能上传脚本文件'}>
-              <Form.Item name="content" noStyle rules={[{ required: true, message: '请上传脚本文件' }]}>
+            <Form.Item label={t('Collection.customPlugin.script')} required extra={uploadedName ? t('Collection.customPlugin.selectedFile', undefined, { name: uploadedName }) : t('Collection.customPlugin.createUploadOnly')}>
+              <Form.Item name="content" noStyle rules={[{ required: true, message: t('Collection.customPlugin.uploadRequired') }]}>
                 <Input type="hidden" />
               </Form.Item>
             </Form.Item>
@@ -259,9 +258,9 @@ export default function PluginManager({ lockedModelId = '' }: { lockedModelId?: 
               return false;
             }}
           >
-            <Button>{editing ? '上传并覆盖脚本' : '上传脚本'}</Button>
+            <Button>{editing ? t('Collection.customPlugin.uploadReplace') : t('Collection.customPlugin.upload')}</Button>
           </Upload>
-          <Form.Item name="desc" label="描述"><Input /></Form.Item>
+          <Form.Item name="desc" label={t('Collection.customPlugin.description')}><Input /></Form.Item>
         </Form>
       </Modal>
     </div>
