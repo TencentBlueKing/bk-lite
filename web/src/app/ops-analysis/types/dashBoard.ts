@@ -301,6 +301,13 @@ export interface ViewConfigProps {
   /** 大屏当前容器样式。样式页切换时单独传入，避免整表重开。 */
   screenFrame?: ScreenWidgetFrame;
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * 样式页已经写在组件上的单值样式。只盖到预览配置。
+   * 数据表单 includeSingleStyle 仍为 false，提交不会带上它。
+   */
+  previewSingleStyle?: SingleValueStyleConfig;
+  /** 面板模式把预览传送到这个节点。抽屉模式忽略。 */
+  previewHost?: HTMLElement | null;
 }
 
 export interface ComponentSelectorConfigItem extends DatasourceItem {
