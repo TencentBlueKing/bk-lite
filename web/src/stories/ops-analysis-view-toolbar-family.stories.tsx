@@ -25,7 +25,9 @@ const FullscreenCanvasDemo = () => {
   return (
     <div
       style={{
-        position: 'relative',
+        position: isFullscreen ? 'fixed' : 'relative',
+        inset: isFullscreen ? 0 : undefined,
+        zIndex: isFullscreen ? 1000 : undefined,
         width: isFullscreen ? '100vw' : '100%',
         height: isFullscreen ? '100vh' : 320,
         border: isFullscreen ? 'none' : '1px solid var(--color-border)',

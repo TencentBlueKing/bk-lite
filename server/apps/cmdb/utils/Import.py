@@ -465,7 +465,10 @@ class Import:
             except Exception:  # noqa: BLE001 - 字面量解析失败时使用原始值
                 value = cell.value
 
-            if not value:
+            # 0、0.0 和 False 是有效值。只省略空单元格、空白文本、文本 None 和空容器。
+            if value is None or (isinstance(value, str) and value.strip() in {"", "None"}) or (
+                isinstance(value, (list, dict, tuple)) and len(value) == 0
+            ):
                 continue
 
             row_has_data = True
@@ -474,9 +477,9 @@ class Import:
             if key == "inst_name":
                 inst_name = value
 
-            # 处理关联字段
+            # 关联列只接受非空字符串。0 和 False 不能调用 split，也不写出关联。
             if key in asso_key_map:
-                if inst_name:
+                if inst_name and isinstance(value, str) and value.strip():
                     split_value = value.split(",")
                     asso_key_map[key].setdefault(inst_name, []).extend(split_value)
                 continue

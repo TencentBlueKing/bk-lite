@@ -50,7 +50,7 @@ vi.mock('@/components/code-editor', () => ({
   ),
 }));
 
-vi.mock('@/app/job/components/script-editor', () => ({
+vi.mock('@/components/script-editor', () => ({
   default: ({
     activeLang,
     value,

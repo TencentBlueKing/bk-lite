@@ -74,7 +74,7 @@ import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSecti
 import { CardListSettingsSection } from './widgetConfig/sections/cardListSettingsSection';
 import { SingleValueStyleSection } from './widgetConfig/sections/singleValueStyleSection';
 import { WidgetConfigBasicFields } from './widgetConfig/sections/widgetConfigBasicFields';
-import { WidgetDatasourceChartTypeFields } from './widgetConfig/sections/widgetDatasourceChartTypeFields';
+import { WidgetDatasourceChartTypeFields, WidgetQueryFields } from './widgetConfig/sections/widgetDatasourceChartTypeFields';
 import { NetworkStatusTopologyDataFields } from './widgetConfig/sections/networkStatusTopologyDataFields';
 import { resolveCardListSettingsRemountKey } from './widgetConfig/utils/cardListSettingsRemountKey';
 import { viewConfigReloadKey } from './widgetConfig/utils/viewConfigReloadKey';
@@ -1447,7 +1447,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           isNetworkStatusTopology={isNetworkStatusTopology}
           surface={surface}
           filterTemplateTokens={filterTemplateTokens}
-        />
+        >
+          {!isSceneWidget && (
+            <WidgetDatasourceChartTypeFields
+              t={t}
+              selectedDataSource={selectedDataSource}
+              chartType={chartType}
+              chartTypes={getDataSourceChartTypes}
+              onChartTypeChange={handleChartTypeChange}
+              onOpenDataSourceSelector={() => setDataSourceSelectorVisible(true)}
+            />
+          )}
+        </WidgetConfigBasicFields>
 
         {variant === 'drawer' ? (
           <Tabs
@@ -1546,7 +1557,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             <Room3DRackTopFields />
           </section>
         ) : isSceneWidget ? null : (
-          <WidgetDatasourceChartTypeFields
+          <WidgetQueryFields
             t={t}
             selectedDataSource={selectedDataSource}
             effectiveDataSource={effectiveDataSource}
@@ -1555,11 +1566,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             hasUnifiedFilterBindings={hasUnifiedFilterBindings}
             previewFilterDefinitions={previewFilterDefinitions}
             filterBindings={filterBindings}
-            chartType={chartType}
-            chartTypes={getDataSourceChartTypes}
             onFilterBindingsChange={setFilterBindings}
-            onChartTypeChange={handleChartTypeChange}
-            onOpenDataSourceSelector={() => setDataSourceSelectorVisible(true)}
             onEditInputConfig={handleEditInputConfig}
             onParamOptionsResolved={(param, options) =>
               reconcileParamWithOptions(param.name, options)
@@ -1680,7 +1687,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             )}
 
             {showValueFormat && (
-              <div className="space-y-4">
+              <section className="mb-6 space-y-4">
+                <ConfigSectionTitle>
+                  {t('dashboard.numericSettings')}
+                </ConfigSectionTitle>
                 <ValueFormatConfigSection t={t} />
                 {chartType === 'multiValue' && (
                   <>
@@ -1701,7 +1711,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                     </Form.Item>
                   </>
                 )}
-              </div>
+              </section>
             )}
 
             {chartType === 'eventTimeline' && (
@@ -1752,7 +1762,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 onRefreshFields={fetchRoleFields}
               />
             )}
-          </WidgetDatasourceChartTypeFields>
+          </WidgetQueryFields>
         )}
         </div>
 
