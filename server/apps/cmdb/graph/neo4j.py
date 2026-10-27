@@ -178,7 +178,7 @@ class Neo4jClient:
             validation_errors = FieldValidator.validate_instance_data(properties, attrs)
             if validation_errors:
                 error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
-                raise BaseAppException(f"字段校验失败: {error_msg}")
+                raise BaseAppException(f"字段校验失败: {error_msg}", log=False)
 
         # 校验唯一属性
         self.check_unique_attr(properties, check_attr_map.get("is_only", {}), exist_items)
@@ -569,7 +569,7 @@ class Neo4jClient:
             validation_errors = FieldValidator.validate_instance_data(properties, attrs)
             if validation_errors:
                 error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
-                raise BaseAppException(f"字段校验失败: {error_msg}")
+                raise BaseAppException(f"字段校验失败: {error_msg}", log=False)
 
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return self.entity_to_list(nodes)

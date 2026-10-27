@@ -135,6 +135,34 @@ def test_unexpected_custom_regex_failure_logs_one_traceback_without_value(monkey
         assert exception_text not in message
 
 
+def test_falkordb_create_entity_custom_regex_mismatch_keeps_message_without_exception_log(caplog):
+    from apps.cmdb.graph.falkordb import FalkorDBClient
+
+    _watch(caplog)
+    client = FalkorDBClient()
+
+    with pytest.raises(BaseAppException) as caught:
+        client.create_entity(
+            label="instance",
+            properties={"asset_code": SENTINEL},
+            check_attr_map={},
+            exist_items=[],
+            attrs=[_attr()],
+        )
+
+    assert type(caught.value) is BaseAppException
+    assert EXPECTED_MISMATCH in caught.value.message
+    for record in caplog.records:
+        if record.name != EXCEPTION_LOGGER:
+            continue
+        rendered = _render(record)
+        assert SENTINEL not in record.getMessage()
+        assert SENTINEL not in (record.exc_text or "")
+        assert SENTINEL not in rendered
+        assert record.exc_info is None
+        assert "Traceback" not in rendered
+
+
 def test_base_app_exception_logs_by_default_and_skips_when_disabled(caplog):
     _watch(caplog)
 
