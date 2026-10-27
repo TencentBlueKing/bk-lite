@@ -15,6 +15,7 @@ from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Event, Level
+from apps.alerts.service.k8s_install import K8sInstallService
 from apps.alerts.views.alert_source import AlertSourceModelViewSet
 
 
@@ -791,6 +792,65 @@ def test_k8s_install_command(permission_user):
     assert response.status_code == status.HTTP_200_OK
     assert payload["data"]["command"]
     assert payload["data"]["token"]
+
+
+def _k8s_token_yaml(token):
+    rendered = APIClient().post(
+        "/api/v1/alerts/open_api/k8s/render/",
+        {"token": token},
+        format="json",
+    )
+    assert rendered.status_code == status.HTTP_200_OK
+    assert rendered["X-Token-Remaining-Usage"] == "4"
+    return rendered.content.decode("utf-8")
+
+
+@pytest.mark.django_db
+def test_k8s_install_token_render_keeps_insecure_skip_verify(permission_user, settings):
+    """安装命令写入的 insecure_skip_verify 必须进入 token 渲染；false 和旧载荷保持校验。"""
+    settings.K8S_INSTALL_TOKEN_DB_ENABLED = True
+    _make_source(
+        "k8s",
+        source_type="webhook",
+        config={"url": "/recv"},
+        team_secrets={"1": "team-sec-1"},
+    )
+    permission_user.permission = {"alarm": {"Integration-Detail"}}
+
+    def render_from_install(insecure_skip_verify):
+        request = _request(
+            "post",
+            "/alert_source/k8s_install_command/",
+            permission_user,
+            data={
+                "server_url": "https://host:8000",
+                "cluster_name": "prod",
+                "team_id": 1,
+                "insecure_skip_verify": insecure_skip_verify,
+            },
+        )
+        response = AlertSourceModelViewSet.as_view({"post": "k8s_install_command"})(request)
+        payload = _render(response)
+        assert response.status_code == status.HTTP_200_OK
+        return _k8s_token_yaml(payload["data"]["token"])
+
+    yaml_on = render_from_install(True)
+    assert "          tls:\n            insecureSkipVerify: true" in yaml_on
+
+    yaml_off = render_from_install(False)
+    assert "insecureSkipVerify" not in yaml_off
+
+    legacy_token = K8sInstallService.generate_install_token(
+        {
+            "server_url": "https://host:8000",
+            "cluster_name": "prod",
+            "push_source_id": "k8s",
+            "source_id": "k8s",
+            "receiver_url": "https://host:8000/recv",
+            "secret": "team-sec-1",
+        }
+    )
+    assert "insecureSkipVerify" not in _k8s_token_yaml(legacy_token)
 
 
 @pytest.mark.django_db
