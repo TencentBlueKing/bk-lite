@@ -70,6 +70,16 @@ class IncidentUpdateViewSet(ModelViewSet):
         serializer = self.get_serializer(queryset, many=True, context={**self.get_serializer_context(), "author_user_map": author_user_map})
         return WebUtils.response_success(serializer.data)
 
+    @HasPermission("Incidents-View")
+    def retrieve(self, request, *args, **kwargs):
+        incident = self._get_incident()
+        if not incident:
+            return WebUtils.response_error(error_message="事故不存在或无权限访问")
+
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     @HasPermission("Incidents-Edit")
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -107,6 +117,22 @@ class IncidentUpdateViewSet(ModelViewSet):
         )
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @HasPermission("Incidents-Edit")
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        incident = self._get_incident()
+        if not incident:
+            return WebUtils.response_error(error_message="事故不存在或无权限访问")
+
+        instance = self.get_object()
+        if instance.author != request.user.username:
+            return Response({"detail": alerts_message(request, "error.incident_update_author_edit")}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = self.get_serializer(instance, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
     @HasPermission("Incidents-Edit")
     @transaction.atomic
