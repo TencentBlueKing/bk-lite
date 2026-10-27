@@ -16,11 +16,18 @@ class Command(BaseCommand):
             created_count = 0
             for level_data in DEFAULT_LEVEL:
                 level_data["built_in"] = True
+                defaults = {
+                    "level_name": level_data["level_name"],
+                    "level_display_name": level_data["level_display_name"],
+                    "color": level_data["color"],
+                    "icon": level_data["icon"],
+                    "description": level_data["description"],
+                    "built_in": level_data["built_in"],
+                }
                 _, created = Level.objects.get_or_create(
-                    level_type=level_data["level_type"], 
+                    level_type=level_data["level_type"],
                     level_id=level_data["level_id"],
-                    level_name=level_data["level_name"],
-                    defaults=level_data
+                    defaults=defaults,
                 )
                 if created:
                     created_count += 1
