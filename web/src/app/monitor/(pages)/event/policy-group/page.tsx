@@ -5,14 +5,13 @@ import { Badge, Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, P
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
-import { useSearchParams } from 'next/navigation';
-import { cloneDeep } from 'lodash';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
-import { COMPARISON_METHOD } from '@/app/monitor/constants/event';
+import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
 import { ColumnItem, ObjectItem, Pagination, TableDataItem, TreeItem, UserItem } from '@/app/monitor/types';
 import { findLabelById } from '@/app/monitor/utils/common';
 import CustomTable from '@/components/custom-table';
@@ -23,9 +22,6 @@ import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery
 import { resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
 import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import assetStyle from '../strategy/index.module.scss';
-import ThresholdList, { ThresholdItem } from '../strategy/detail/thresholdList';
-import MultiThresholdGrid from '../strategy/detail/multiThresholdGrid';
-import { MetricExpressionRow } from '../strategy/detail/metricExpressionTypes';
 import SelectCard from '../strategy/detail/selectCard';
 import { seedNoticeUsersFromHandlers, shouldRequireNoticeUsers } from '../strategy/detail/strategyDetailUtils';
 import { buildPolicyGroupNoticePayload, policyGroupListBadges } from './policyGroupNotice';
@@ -33,7 +29,6 @@ import {
   DURATION_UNIT_OPTIONS,
   NO_DATA_LEVEL_OPTIONS,
   buildPolicyGroupDetectionPayload,
-  buildPolicyGroupRulePayload,
   defaultConfigTab,
   detectionConfirm,
   detectionDraftFromGroup,
@@ -41,13 +36,8 @@ import {
   durationBounds,
   policyGroupDetectionBadges,
   policyGroupDetectionNotes,
-  ruleEditClosesAlerts,
-  ruleEditConfirm,
-  ruleEditDraftFromRule,
-  ruleSaveBlocker,
   type DetectionDraft,
   type PolicyGroupConfigTab,
-  type RuleEditDraft,
 } from './policyGroupDetection';
 import { ChannelItem } from '@/app/monitor/types/event';
 import { formatUserName } from '@/utils/userDisplay';
@@ -65,6 +55,7 @@ interface PolicyGroupRule {
   recovery_condition?: number;
   recovery_threshold?: { method?: string; value?: number | null };
   no_data_carrier?: boolean;
+  policy_id?: number;
   open_alert_count?: number;
 }
 
@@ -102,13 +93,6 @@ interface TemplateOption {
   pluginName: string;
 }
 
-const MEMBER_STATE: Record<string, string> = {
-  member: '在组',
-  declined: '不自动入组',
-  skipped: '未入组',
-  failed: '加入失败',
-};
-
 interface InstanceCandidate {
   instance_id?: string;
   instance_name?: string;
@@ -116,6 +100,8 @@ interface InstanceCandidate {
   name?: string;
   ip?: string | null;
   summary_facts?: { 'asset.ip'?: string };
+  policy_group_id?: number | null;
+  policy_group_name?: string;
 }
 
 const logicalInstanceId = (instanceId: string) => {
@@ -162,50 +148,6 @@ const noticeSnapshot = (
   handlers: string[]
 ) => JSON.stringify({ enabled, typeIds, userIds, handlers });
 
-type ConditionThresholdDraft = Array<{
-  level?: string;
-  method?: string;
-  value?: number | null;
-}>;
-
-const rowsFromConditionDraft = (
-  draft: Record<string, ConditionThresholdDraft>
-): MetricExpressionRow[] =>
-  Object.entries(draft).map(([ref, thresholds]) => {
-    const gate = thresholds.length <= 1 && !thresholds[0]?.level;
-    return {
-      ref,
-      metricId: null,
-      filters: [],
-      groupAlgorithm: 'avg',
-      groupBy: [],
-      role: gate ? 'gate' : 'level',
-      threshold: thresholds.map((item) => ({
-        ...(item.level ? { level: item.level } : {}),
-        method: item.method || '>',
-        value: item.value ?? null,
-      })),
-    };
-  });
-
-const conditionDraftFromRows = (
-  rows: MetricExpressionRow[]
-): Record<string, ConditionThresholdDraft> =>
-  Object.fromEntries(
-    rows.map((row) => [
-      row.ref,
-      (row.threshold || []).map((item) =>
-        row.role === 'gate'
-          ? { method: item.method, value: item.value }
-          : {
-            ...(item.level ? { level: item.level } : {}),
-            method: item.method,
-            value: item.value,
-          }
-      ),
-    ])
-  );
-
 const CHANNEL_TYPE_KEY: Record<string, string> = {
   email: 'monitor.events.channelTypeEmail',
   enterprise_wechat_bot: 'monitor.events.channelTypeWechatBot',
@@ -217,14 +159,15 @@ const CHANNEL_TYPE_KEY: Record<string, string> = {
 
 const PolicyGroupPage: React.FC = () => {
   const { t } = useTranslation();
+  const router = useRouter();
   const { isLoading } = useApiClient();
   const { getMonitorObject, getInstanceList, getAllUsers } = useMonitorApi();
   const {
     getPolicyGroups,
     getPolicyGroupMembers,
+    getPolicyGroupInstanceGroups,
     joinPolicyGroup,
     leavePolicyGroup,
-    updatePolicyGroupRule,
     updatePolicyGroupDetection,
     updatePolicyGroupNotice,
     updatePolicyGroupEnable,
@@ -284,19 +227,7 @@ const PolicyGroupPage: React.FC = () => {
     total: 0,
     pageSize: 10,
   });
-  const [rule, setRule] = useState<PolicyGroupRule | null>(null);
-  const [ruleSaving, setRuleSaving] = useState(false);
-  const [thresholdDraft, setThresholdDraft] = useState<ThresholdItem[]>([]);
-  const [conditionDraft, setConditionDraft] = useState<
-    Record<string, Array<{ level?: string; method?: string; value?: number | null }>>
-  >({});
-  const [alertNameDraft, setAlertNameDraft] = useState('');
-  const [triggerCountDraft, setTriggerCountDraft] = useState<number | null>(1);
-  const [recoveryConditionDraft, setRecoveryConditionDraft] = useState<number | null>(1);
-  const [recoveryThresholdDraft, setRecoveryThresholdDraft] = useState<{ method?: string; value?: number | null }>({
-    method: '>',
-    value: null,
-  });
+  const openedRuleList = useRef(false);
   const [configGroup, setConfigGroup] = useState<PolicyGroupRow | null>(null);
   const [configTab, setConfigTab] = useState<PolicyGroupConfigTab>('detection');
   const [detectionInitial, setDetectionInitial] = useState<DetectionDraft>(() => detectionDraftFromGroup({}));
@@ -373,6 +304,17 @@ const PolicyGroupPage: React.FC = () => {
     void loadGroups(objectId);
   }, [objectId, pagination.current, pagination.pageSize, appliedSearch]);
 
+  useEffect(() => {
+    if (openedRuleList.current || searchParams.get('rules') !== '1') return;
+    const targetId = searchParams.get('groupId');
+    if (!targetId) return;
+    const group = groups.find((item) => String(item.id) === targetId);
+    if (!group) return;
+    openedRuleList.current = true;
+    setRulePagination((prev) => ({ ...prev, current: 1 }));
+    setRuleGroup(group);
+  }, [groups, searchParams]);
+
   const openMembers = async (group: PolicyGroupRow) => {
     setMemberGroup(group);
     setMemberKeyword('');
@@ -400,10 +342,26 @@ const PolicyGroupPage: React.FC = () => {
         name: name.trim(),
       });
       const results = (data?.results || []) as InstanceCandidate[];
-      setJoinRows(results);
+      const ids = results.map((item) => String(item.instance_id || item.id || '')).filter(Boolean);
+      const grouped = ids.length ? await getPolicyGroupInstanceGroups(ids) : [];
+      const groupByInstance = new Map(
+        (Array.isArray(grouped) ? grouped : []).map((item: { instance_id?: string; group_id?: number; group_name?: string }) => [
+          String(item.instance_id || ''),
+          item,
+        ])
+      );
+      const rows = results.map((item) => {
+        const hit = groupByInstance.get(String(item.instance_id || item.id || ''));
+        return {
+          ...item,
+          policy_group_id: hit?.group_id ?? null,
+          policy_group_name: hit?.group_name || '',
+        };
+      });
+      setJoinRows(rows);
       setJoinLabels((prev) => {
         const next = { ...prev };
-        results.forEach((item) => {
+        rows.forEach((item) => {
           const id = String(item.instance_id || item.id || '');
           if (id) next[id] = candidateLabel(item);
         });
@@ -648,16 +606,6 @@ const PolicyGroupPage: React.FC = () => {
     });
   };
 
-  const currentRuleDraft = (source: PolicyGroupRule): RuleEditDraft => ({
-    ...ruleEditDraftFromRule(source),
-    threshold: thresholdDraft,
-    conditionThresholds: conditionDraft,
-    alertName: alertNameDraft,
-    triggerCount: triggerCountDraft,
-    recoveryCondition: recoveryConditionDraft,
-    recoveryThreshold: recoveryThresholdDraft,
-  });
-
   const submitGroupEnable = async (record: PolicyGroupRow, enable: boolean) => {
     if (enableSavingId != null) return;
     setEnableSavingId(record.id);
@@ -737,7 +685,6 @@ const PolicyGroupPage: React.FC = () => {
           type="link"
           className="px-0"
           onClick={() => {
-            setRule(null);
             setRulePagination((prev) => ({ ...prev, current: 1 }));
             setRuleGroup(record as PolicyGroupRow);
           }}
@@ -837,44 +784,6 @@ const PolicyGroupPage: React.FC = () => {
     rulePagination.current * rulePagination.pageSize
   );
 
-  const saveRule = () => {
-    if (!rule || !ruleGroup || ruleSaving) return;
-    const draft = currentRuleDraft(rule);
-    const blocker = ruleSaveBlocker(draft);
-    if (blocker) {
-      message.warning(blocker);
-      return;
-    }
-    const original = ruleEditDraftFromRule(rule);
-    const closesAlerts = ruleEditClosesAlerts(original, draft);
-    const confirm = ruleEditConfirm({
-      closesAlerts,
-      alertNameChanged: original.alertName !== draft.alertName,
-      openAlertCount: rule.open_alert_count || 0,
-    });
-    Modal.confirm({
-      title: confirm.title,
-      content: confirm.content,
-      onOk: () => persistRule(closesAlerts),
-    });
-  };
-
-  const persistRule = async (closesAlerts: boolean) => {
-    if (!rule || !ruleGroup || ruleSaving) return;
-    const draft = currentRuleDraft(rule);
-    setRuleSaving(true);
-    try {
-      await updatePolicyGroupRule(buildPolicyGroupRulePayload(ruleGroup.id, rule.id, draft));
-      message.success(closesAlerts ? '已修改当前规则，未恢复告警会结束' : '已修改当前规则，正在响的告警不结束');
-      const items = await loadGroups(objectId);
-      const next = (items || []).find((item) => item.id === ruleGroup.id);
-      setRule(null);
-      if (next) setRuleGroup(next);
-    } finally {
-      setRuleSaving(false);
-    }
-  };
-
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col">
       <div className={assetStyle.asset}>
@@ -943,7 +852,7 @@ const PolicyGroupPage: React.FC = () => {
       <Drawer
         title={joinOpen ? '加入实例' : memberGroup ? `${memberGroup.name} 的实例` : '实例'}
         open={Boolean(memberGroup)}
-        width={760}
+        width={600}
         closable={false}
         onClose={() => {
           setMemberGroup(null);
@@ -1026,12 +935,23 @@ const PolicyGroupPage: React.FC = () => {
                   title: t('common.name'),
                   dataIndex: 'instance_name',
                   key: 'instance_name',
+                  render: (_, record) => candidateLabel(record),
+                },
+                {
+                  title: '所属策略组',
+                  dataIndex: 'policy_group_name',
+                  key: 'policy_group_name',
+                  width: 180,
                   render: (_, record) => {
-                    const joined = members.some((item) => String(item.instance_id) === String(record.instance_id));
+                    const joinedHere = members.some((item) => String(item.instance_id) === String(record.instance_id));
+                    if (joinedHere) return <Tag>已在组</Tag>;
+                    if (!record.policy_group_name) {
+                      return <span className="text-[var(--color-text-3)]">未加入</span>;
+                    }
+                    const text = `已在 ${record.policy_group_name}`;
                     return (
-                      <span className="inline-flex items-center gap-2">
-                        <span>{candidateLabel(record)}</span>
-                        {joined ? <Tag>已在组</Tag> : null}
+                      <span className="block min-w-0 truncate" title={text}>
+                        {text}
                       </span>
                     );
                   },
@@ -1074,39 +994,9 @@ const PolicyGroupPage: React.FC = () => {
           columns={[
             { title: t('common.name'), dataIndex: 'name', key: 'name' },
             {
-              title: '状态',
-              dataIndex: 'state',
-              key: 'state',
-              width: 110,
-              render: (_, record) => (
-                <StatusToneBadge
-                  tone={record.state === 'member' ? 'success' : record.state === 'declined' ? 'warning' : 'neutral'}
-                  label={MEMBER_STATE[record.state] || record.state}
-                />
-              ),
-            },
-            {
-              title: '旧策略',
-              dataIndex: 'legacy_policies',
-              key: 'legacy_policies',
-              render: (_, record) =>
-                (record.legacy_policies || []).length ? (
-                  <div className="flex flex-col gap-1">
-                    {(record.legacy_policies || []).map((item: { id: number; name: string; enable: boolean }) => (
-                      <span key={item.id}>
-                        {item.name}
-                        <span className="text-[var(--color-text-3)]">{item.enable ? ' · 仍会告警' : ' · 已停用'}</span>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  '--'
-                ),
-            },
-            {
               title: t('common.action'),
               key: 'action',
-              width: 140,
+              width: 120,
               render: (_, record) => {
                 const otherGroups = switchGroups.filter((item) => item.id !== memberGroup?.id);
                 return (
@@ -1155,112 +1045,14 @@ const PolicyGroupPage: React.FC = () => {
         )}
       </Drawer>
       <Drawer
-        title={rule ? `修改 ${rule.name}` : ruleGroup ? `${ruleGroup.name} 的规则` : '规则'}
+        title={ruleGroup ? `${ruleGroup.name} 的规则` : '规则'}
         open={Boolean(ruleGroup)}
         width={760}
         closable={false}
         onClose={() => {
           setRuleGroup(null);
-          setRule(null);
         }}
-        footer={
-          rule ? (
-            <div className="flex justify-end gap-2">
-              <Button type="primary" loading={ruleSaving} onClick={() => void saveRule()}>
-                确认
-              </Button>
-              <Button
-                disabled={ruleSaving}
-                onClick={() => {
-                  setRule(null);
-                }}
-              >
-                取消
-              </Button>
-            </div>
-          ) : null
-        }
       >
-        {rule ? (
-          <>
-            {rule.query_type === 'multi' ? (
-              <MultiThresholdGrid
-                rows={rowsFromConditionDraft(conditionDraft)}
-                unitList={[]}
-                onChange={(next) => setConditionDraft(conditionDraftFromRows(next))}
-              />
-            ) : (
-            <div className="mb-3">
-              <div className="mb-1">阈值</div>
-              <ThresholdList
-                data={thresholdDraft}
-                onChange={setThresholdDraft}
-                thresholdUnit={null}
-                onThresholdUnitChange={() => undefined}
-                showUnitSelector={false}
-                allowStructureEdit
-              />
-            </div>
-            )}
-            <div className="mb-3">
-              <div className="mb-1">告警名称</div>
-              <Input value={alertNameDraft} onChange={(event) => setAlertNameDraft(event.target.value)} />
-            </div>
-            <div className="mb-3 flex flex-wrap gap-4">
-              <div>
-                <div className="mb-1">连续触发周期</div>
-                <InputNumber
-                  className="w-[160px]"
-                  min={1}
-                  precision={0}
-                  value={triggerCountDraft}
-                  onChange={(value) => setTriggerCountDraft(typeof value === 'number' ? value : null)}
-                />
-              </div>
-              <div>
-                <div className="mb-1">连续恢复周期</div>
-                <InputNumber
-                  className="w-[160px]"
-                  min={1}
-                  precision={0}
-                  value={recoveryConditionDraft}
-                  onChange={(value) => setRecoveryConditionDraft(typeof value === 'number' ? value : null)}
-                />
-              </div>
-            </div>
-            {rule.query_type === 'multi' ? null : (
-              <div className="mb-3">
-                <div className="mb-1">恢复阈值</div>
-                <div className="flex items-center gap-2">
-                  <Select
-                    className="w-[88px]"
-                    value={recoveryThresholdDraft.method || '>'}
-                    options={COMPARISON_METHOD.map((item) => ({
-                      value: String(item.value),
-                      label: item.label,
-                    }))}
-                    onChange={(method) =>
-                      setRecoveryThresholdDraft((current) => ({ ...current, method: String(method) }))
-                    }
-                  />
-                  <InputNumber
-                    className="w-[160px]"
-                    value={recoveryThresholdDraft.value ?? null}
-                    onChange={(value) =>
-                      setRecoveryThresholdDraft((current) => ({
-                        ...current,
-                        value: typeof value === 'number' ? value : null,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-            )}
-            <div className="text-[var(--color-text-3)]">
-              改连续周期、恢复阈值或阈值会结束这条规则上正在响的告警。只改告警名称不会。
-            </div>
-          </>
-        ) : (
           <CustomTable
             rowKey="id"
             dataSource={visibleRules}
@@ -1301,14 +1093,17 @@ const PolicyGroupPage: React.FC = () => {
                     type="link"
                     className="px-0"
                     onClick={() => {
-                      const nextDraft = ruleEditDraftFromRule(record);
-                      setRule(record);
-                      setThresholdDraft(cloneDeep(record.threshold || []) as ThresholdItem[]);
-                      setConditionDraft(cloneDeep(record.condition_thresholds || {}));
-                      setAlertNameDraft(nextDraft.alertName);
-                      setTriggerCountDraft(nextDraft.triggerCount);
-                      setRecoveryConditionDraft(nextDraft.recoveryCondition);
-                      setRecoveryThresholdDraft(nextDraft.recoveryThreshold);
+                      if (!ruleGroup || !objectId) return;
+                      router.push(
+                        buildMonitorStrategyDetailUrl('groupRule', {
+                          monitorObjId: String(objectId),
+                          monitorName: findLabelById(treeData, String(objectId)) || '',
+                          id: record.policy_id,
+                          name: record.name,
+                          groupId: ruleGroup.id,
+                          ruleId: record.id,
+                        })
+                      );
                     }}
                   >
                     修改
@@ -1317,7 +1112,6 @@ const PolicyGroupPage: React.FC = () => {
               },
             ]}
           />
-        )}
       </Drawer>
       <Drawer
         title={configGroup ? `${configGroup.name} 的配置` : '配置'}

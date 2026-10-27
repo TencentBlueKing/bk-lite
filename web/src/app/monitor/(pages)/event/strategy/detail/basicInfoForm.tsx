@@ -21,10 +21,11 @@ interface BasicInfoFormProps {
   onOpenInstModal: () => void;
   onUnitChange: (val: string) => void;
   isTrap: (getFieldValue: any) => boolean;
+  groupLocked?: boolean;
 }
 
 const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
-  ({ source, unit, onOpenInstModal, onUnitChange, isTrap }, ref) => {
+  ({ source, unit, onOpenInstModal, onUnitChange, isTrap, groupLocked = false }, ref) => {
     const form = Form.useFormInstance<StrategyFields>();
     const alertNameInputRef = useRef<InputRef>(null);
     const alertNameSelectionRef = useRef<{ start: number; end: number } | null>(
@@ -138,6 +139,7 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
             ]}
           >
             <GroupTreeSelector
+              disabled={groupLocked}
               style={{
                 width: '100%',
                 marginRight: '8px'
@@ -146,7 +148,7 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
             />
           </Form.Item>
           <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
-            {t('monitor.events.setGroup')}
+            {groupLocked ? '组织跟策略组走，这里不能改。' : t('monitor.events.setGroup')}
           </div>
         </Form.Item>
         <Form.Item
@@ -175,15 +177,17 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
                     {source.type === 'instance'
                       ? t('monitor.assets')
                       : t('monitor.group')}
+                    {groupLocked ? null : (
                     <Button
                       className="ml-[10px]"
                       icon={<PlusOutlined />}
                       size="small"
                       onClick={onOpenInstModal}
                     ></Button>
+                    )}
                   </div>
                   <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
-                    {t('monitor.events.setAssets')}
+                    {groupLocked ? '实例范围由策略组的成员决定。' : t('monitor.events.setAssets')}
                   </div>
                 </div>
               </Form.Item>
@@ -198,15 +202,24 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
           }
           name="schedule"
           rules={[{ required: true, message: t('common.required') }]}
+          extra={
+            groupLocked ? (
+              <span className={STRATEGY_HINT_TEXT_CLASS}>
+                检测频率在策略组上设置，这里保持原值。
+              </span>
+            ) : null
+          }
         >
           <InputNumber
             className="w-full"
+            disabled={groupLocked}
             min={SCHEDULE_UNIT_MAP[`${unit}Min`]}
             max={SCHEDULE_UNIT_MAP[`${unit}Max`]}
             precision={0}
             addonAfter={
               <Select
                 value={unit}
+                disabled={groupLocked}
                 style={{ width: 120 }}
                 onChange={onUnitChange}
               >
