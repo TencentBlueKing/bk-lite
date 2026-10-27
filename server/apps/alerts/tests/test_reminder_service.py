@@ -95,6 +95,8 @@ def test_create_reminder_task_existing_active_returns_existing():
     second = RS.create_reminder_task(alert, assignment)
     assert first.pk == second.pk
     assert AlertReminderTask.objects.filter(alert=alert).count() == 1
+    second.refresh_from_db()
+    assert second.generation == 0
 
 
 @pytest.mark.django_db
@@ -111,6 +113,7 @@ def test_create_reminder_task_reactivates_inactive():
     task = RS.create_reminder_task(alert, assignment)
     assert task.is_active is True
     assert task.reminder_count == 0
+    assert task.generation == 1
     assert task.current_frequency_minutes == 30
 
 
@@ -403,3 +406,70 @@ def test_check_and_process_reminders_due_task_is_processed():
     result = RS.check_and_process_reminders()
 
     assert result["processed"] == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_reminder_after_count_reset_creates_distinct_outbox(monkeypatch):
+    """计数归零后必须写入新的 outbox；同一代的同一序号再次发送仍只保留这一条。
+
+    复现缺陷：幂等键是 reminder:{pk}:{count+1}。升级把 reminder_count 置回 0 后，
+    下一次提醒再次使用 reminder:{pk}:1，get_or_create 命中旧行，次数照样增加。
+    """
+    from django.utils import timezone
+
+    from apps.alerts.constants.constants import AlertStatus
+    from apps.alerts.models import AlertOutbox
+    from apps.alerts.service.escalation_service import EscalationService
+
+    alert = _make_alert(level="0")
+    alert.status = AlertStatus.PENDING
+    alert.save()
+    assignment = _make_assignment(frequency={"0": {"interval_minutes": 30}})
+    assignment.personnel = ["op1"]
+    assignment.notify_channels = [{"id": 1, "channel_type": "email"}]
+    assignment.save()
+    reminder = AlertReminderTask.objects.create(
+        alert=alert,
+        assignment=assignment,
+        is_active=True,
+        reminder_count=0,
+        current_frequency_minutes=30,
+        current_max_reminders=5,
+        next_reminder_time=timezone.now(),
+    )
+    monkeypatch.setattr(
+        "apps.alerts.service.escalation_service.EscalationService.active_roster_for_reminder",
+        staticmethod(lambda _alert: (None, None)),
+    )
+    monkeypatch.setattr(
+        "apps.alerts.common.notify.dispatcher.build_channel_params",
+        lambda *args, **kwargs: [{"channel_id": 1, "channel_type": "email"}],
+    )
+    monkeypatch.setattr(
+        "apps.alerts.tasks.deliver_alert_outbox.delay",
+        lambda _pk: (_ for _ in ()).throw(RuntimeError("broker down")),
+    )
+
+    assert RS._send_reminder_notification(assignment, alert, reminder.pk) is True
+    reminder.refresh_from_db()
+    assert reminder.reminder_count == 1
+    assert AlertOutbox.objects.count() == 1
+    assert AlertOutbox.objects.get().idempotency_key == f"reminder:{reminder.pk}:1"
+
+    EscalationService._reset_reminder_for_new_roster(alert)
+    reminder.refresh_from_db()
+    assert reminder.reminder_count == 0
+
+    assert RS._send_reminder_notification(assignment, alert, reminder.pk) is True
+    assert AlertOutbox.objects.count() == 2
+
+    reminder.refresh_from_db()
+    assert reminder.generation == 1
+    assert reminder.reminder_count == 1
+    second_key = f"reminder:{reminder.pk}:1:1"
+    assert AlertOutbox.objects.filter(idempotency_key=second_key).count() == 1
+
+    AlertReminderTask.objects.filter(pk=reminder.pk).update(reminder_count=0)
+    assert RS._send_reminder_notification(assignment, alert, reminder.pk) is True
+    assert AlertOutbox.objects.count() == 2
+    assert AlertOutbox.objects.filter(idempotency_key=second_key).count() == 1
