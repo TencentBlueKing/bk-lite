@@ -191,7 +191,7 @@
   "dataConnection": {
     "title": "连接方式",
     "introTitle": "连接库",
-    "introMsg": "统一管理 MySQL、PostgreSQL、REST 的地址和凭据，供数据源复用。NATS 仍使用命名空间。",
+    "introMsg": "统一管理 MySQL、PostgreSQL、REST、Elasticsearch 的地址和凭据，供数据源复用。NATS 仍使用命名空间。",
     "name": "名称",
     "type": "类型",
     "endpoint": "地址摘要",
@@ -216,6 +216,7 @@
     "extractConnectionTitle": "提取到连接库",
     "reenterPassword": "请重新输入密码后再提取",
     "overrideDatabase": "覆盖数据库名",
+    "overrideIndex": "覆盖索引",
     "relativePath": "相对路径"
   },
   "dateRange": {
@@ -268,14 +269,20 @@
       "postgresql": "PostgreSQL",
       "restApi": "REST API",
       "excel": "Excel",
-      "prometheus": "Prometheus"
+      "prometheus": "Prometheus",
+      "elasticsearch": "Elasticsearch"
     },
     "authType": "认证类型",
     "authTypes": {
       "none": "无",
       "basic": "Basic Auth",
-      "bearer": "Bearer Token"
+      "bearer": "Bearer Token",
+      "apiKey": "API Key"
     },
+    "index": "索引",
+    "queryDsl": "Query DSL",
+    "apiKey": "API Key",
+    "caCert": "CA 证书",
     "token": "Token",
     "testConnection": "测试连接",
     "testConnectionSuccess": "连接测试成功",

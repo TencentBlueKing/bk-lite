@@ -40,6 +40,7 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
   } = useDataConnectionApi();
   const connectionType = (Form.useWatch('connection_type', form) ||
     'mysql') as DataConnectionType;
+  const authType = (Form.useWatch('auth_type', form) || 'none') as string;
   const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
 
   useEffect(() => {
@@ -60,6 +61,12 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
         password: PASSWORD_PLACEHOLDER,
         base_url: config.base_url || config.url,
         headersText: formatJsonText(config.headers || {}),
+        url: config.url,
+        auth_type: config.auth_type || 'none',
+        api_key: config.api_key ? PASSWORD_PLACEHOLDER : undefined,
+        ca_cert: config.ca_cert,
+        timeout_seconds: config.timeout_seconds ?? 30,
+        index: config.index,
       });
     } else {
       form.setFieldsValue({
@@ -100,6 +107,28 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
         JSON.stringify(prev.headers || {}) !== JSON.stringify(config.headers || {})
       );
     }
+    if (type === 'elasticsearch') {
+      if (String(prev.url ?? '') !== String(config.url ?? '')) return true;
+      if (String(prev.auth_type ?? 'none') !== String(config.auth_type ?? 'none')) return true;
+      if (String(prev.username ?? '') !== String(config.username ?? '')) return true;
+      if (String(prev.index ?? '') !== String(config.index ?? '')) return true;
+      if (String(prev.ca_cert ?? '') !== String(config.ca_cert ?? '')) return true;
+      if (
+        config.password &&
+        config.password !== PASSWORD_PLACEHOLDER &&
+        config.password !== prev.password
+      ) {
+        return true;
+      }
+      if (
+        config.api_key &&
+        config.api_key !== PASSWORD_PLACEHOLDER &&
+        config.api_key !== prev.api_key
+      ) {
+        return true;
+      }
+      return false;
+    }
     if (String(prev.host ?? '') !== String(config.host ?? '')) return true;
     if (String(prev.port ?? '') !== String(config.port ?? '')) return true;
     if (String(prev.database ?? '') !== String(config.database ?? '')) return true;
@@ -132,14 +161,23 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
       const connectionFields =
         connectionType === 'rest_api'
           ? ['connection_type', 'base_url', 'headersText']
-          : [
-            'connection_type',
-            'host',
-            'port',
-            'database',
-            'username',
-            'password',
-          ];
+          : connectionType === 'elasticsearch'
+            ? [
+              'connection_type',
+              'url',
+              'index',
+              'auth_type',
+              ...(authType === 'basic' ? ['username', 'password'] : []),
+              ...(authType === 'api_key' ? ['api_key'] : []),
+            ]
+            : [
+              'connection_type',
+              'host',
+              'port',
+              'database',
+              'username',
+              'password',
+            ];
       await form.validateFields(connectionFields);
       const values = form.getFieldsValue(true);
       const config: Record<string, unknown> =
@@ -151,13 +189,25 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
               `${t('dataSource.headers')}${t('dataSource.jsonObjectRequired')}`,
             ),
           }
-          : {
-            host: values.host,
-            port: values.port,
-            database: values.database,
-            username: values.username,
-            password: values.password,
-          };
+          : connectionType === 'elasticsearch'
+            ? {
+              url: values.url,
+              auth_type: values.auth_type || 'none',
+              timeout_seconds: values.timeout_seconds ?? 30,
+              index: values.index,
+              ...(String(values.ca_cert || '').trim() ? { ca_cert: values.ca_cert } : {}),
+              ...(values.auth_type === 'basic'
+                ? { username: values.username, password: values.password }
+                : {}),
+              ...(values.auth_type === 'api_key' ? { api_key: values.api_key } : {}),
+            }
+            : {
+              host: values.host,
+              port: values.port,
+              database: values.database,
+              username: values.username,
+              password: values.password,
+            };
       const payload: DataConnectionTestPayload = {
         connection_type: connectionType,
         config,
@@ -203,6 +253,32 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
             `${t('dataSource.headers')}${t('dataSource.jsonObjectRequired')}`,
           ),
         };
+      } else if (type === 'elasticsearch') {
+        const esAuth = values.auth_type || 'none';
+        config = {
+          url: values.url,
+          auth_type: esAuth,
+          timeout_seconds: values.timeout_seconds ?? 30,
+          index: values.index,
+        };
+        if (String(values.ca_cert || '').trim()) {
+          config.ca_cert = values.ca_cert;
+        }
+        if (esAuth === 'basic') {
+          config.username = values.username;
+          config.password =
+            currentRow &&
+            (!values.password?.trim() || values.password === PASSWORD_PLACEHOLDER)
+              ? PASSWORD_PLACEHOLDER
+              : values.password;
+        }
+        if (esAuth === 'api_key') {
+          config.api_key =
+            currentRow &&
+            (!values.api_key?.trim() || values.api_key === PASSWORD_PLACEHOLDER)
+              ? PASSWORD_PLACEHOLDER
+              : values.api_key;
+        }
       } else {
         config = {
           host: values.host,
@@ -325,6 +401,7 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
             <Radio.Button value="mysql">MySQL</Radio.Button>
             <Radio.Button value="postgresql">PostgreSQL</Radio.Button>
             <Radio.Button value="rest_api">REST API</Radio.Button>
+            <Radio.Button value="elasticsearch">Elasticsearch</Radio.Button>
           </Radio.Group>
         </Form.Item>
         <Form.Item
@@ -353,7 +430,85 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
           />
         </Form.Item>
 
-        {connectionType === 'rest_api' ? (
+        {connectionType === 'elasticsearch' ? (
+          <>
+            <Form.Item
+              name="url"
+              label={t('dataSource.url')}
+              rules={[{ required: true, message: t('common.inputMsg') }]}
+            >
+              <Input placeholder="https://es.example.com:9200" />
+            </Form.Item>
+            <Form.Item
+              name="index"
+              label={t('dataSource.index')}
+              rules={[{ required: true, message: t('common.inputMsg') }]}
+            >
+              <Input placeholder="logs-*" />
+            </Form.Item>
+            <Form.Item name="auth_type" label={t('dataSource.authType')} initialValue="none">
+              <Radio.Group>
+                <Radio.Button value="none">{t('dataSource.authTypes.none')}</Radio.Button>
+                <Radio.Button value="basic">{t('dataSource.authTypes.basic')}</Radio.Button>
+                <Radio.Button value="api_key">{t('dataSource.authTypes.apiKey')}</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+            {authType === 'basic' ? (
+              <>
+                <Form.Item
+                  name="username"
+                  label={t('dataSource.username')}
+                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                >
+                  <Input />
+                </Form.Item>
+                <Form.Item
+                  name="password"
+                  label={t('dataSource.password')}
+                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                >
+                  <Input.Password
+                    autoComplete="new-password"
+                    onFocus={handlePasswordFocus}
+                    onBlur={handlePasswordBlur}
+                  />
+                </Form.Item>
+              </>
+            ) : null}
+            {authType === 'api_key' ? (
+              <Form.Item
+                name="api_key"
+                label={t('dataSource.apiKey')}
+                rules={[{ required: true, message: t('common.inputMsg') }]}
+              >
+                <Input.Password
+                  autoComplete="new-password"
+                  onFocus={(event) => {
+                    if (!currentRow) return;
+                    if (event.target.value === PASSWORD_PLACEHOLDER) {
+                      form.setFieldValue('api_key', '');
+                    }
+                  }}
+                  onBlur={(event) => {
+                    if (!currentRow) return;
+                    if (!event.target.value?.trim()) {
+                      form.setFieldValue('api_key', PASSWORD_PLACEHOLDER);
+                    }
+                  }}
+                />
+              </Form.Item>
+            ) : null}
+            <Form.Item name="timeout_seconds" label={t('dataSource.timeout')} initialValue={30}>
+              <InputNumber className="w-full" min={1} max={60} />
+            </Form.Item>
+            <Form.Item name="ca_cert" label={t('dataSource.caCert')}>
+              <Input.TextArea
+                rows={4}
+                placeholder={'-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----'}
+              />
+            </Form.Item>
+          </>
+        ) : connectionType === 'rest_api' ? (
           <>
             <Form.Item
               name="base_url"

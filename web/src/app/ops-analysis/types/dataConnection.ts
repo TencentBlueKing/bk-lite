@@ -1,4 +1,4 @@
-export type DataConnectionType = 'mysql' | 'postgresql' | 'rest_api';
+export type DataConnectionType = 'mysql' | 'postgresql' | 'rest_api' | 'elasticsearch';
 
 export interface DataConnectionTestPayload {
   connection_type: DataConnectionType;

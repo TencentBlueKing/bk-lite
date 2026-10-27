@@ -20,6 +20,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 import {
   canEditBuiltinDatasourceGroups,
   isBuiltinDatasource,
+  SOURCE_TYPE_ELASTICSEARCH,
   SOURCE_TYPE_EXCEL,
   SOURCE_TYPE_MYSQL,
   SOURCE_TYPE_NATS,
@@ -70,6 +71,7 @@ const Datasource: React.FC = () => {
     rest_api: t('dataSource.sourceTypes.restApi'),
     excel: t('dataSource.sourceTypes.excel'),
     prometheus: t('dataSource.sourceTypes.prometheus'),
+    elasticsearch: t('dataSource.sourceTypes.elasticsearch'),
   };
 
   const sourceTypeFilterOptions: Array<{
@@ -83,6 +85,7 @@ const Datasource: React.FC = () => {
     { value: SOURCE_TYPE_MYSQL, label: sourceTypeLabels.mysql },
     { value: SOURCE_TYPE_EXCEL, label: sourceTypeLabels.excel },
     { value: SOURCE_TYPE_PROMETHEUS, label: sourceTypeLabels.prometheus },
+    { value: SOURCE_TYPE_ELASTICSEARCH, label: sourceTypeLabels.elasticsearch },
   ];
 
   // 获取数据源列表
@@ -250,6 +253,11 @@ const Datasource: React.FC = () => {
 
     if (sourceType === 'prometheus') {
       return connectionConfig.url || '-';
+    }
+
+    if (sourceType === 'elasticsearch') {
+      const index = row.connection_overrides?.index || connectionConfig.index;
+      return index || t('dataSource.queryDsl');
     }
 
     return '-';

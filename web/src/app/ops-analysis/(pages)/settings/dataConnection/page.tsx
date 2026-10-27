@@ -40,6 +40,7 @@ const DataConnectionPage: React.FC = () => {
     mysql: 'MySQL',
     postgresql: 'PostgreSQL',
     rest_api: 'REST API',
+    elasticsearch: 'Elasticsearch',
   };
 
   const fetchList = async (

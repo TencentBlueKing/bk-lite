@@ -104,7 +104,7 @@ SENSITIVE_FIELDS = frozenset({"password", "secret", "token"})
 
 # 连接器配置允许嵌套自定义 headers/body，敏感键不一定是固定字段名。
 # 与数据源 API 的脱敏口径保持一致，避免 Authorization、api_key 等配置随 YAML 导出。
-SENSITIVE_FIELD_KEYWORDS = ("password", "token", "secret", "authorization", "apikey")
+SENSITIVE_FIELD_KEYWORDS = ("password", "token", "secret", "authorization", "apikey", "api_key")
 
 
 def is_sensitive_field_name(field: object) -> bool:
