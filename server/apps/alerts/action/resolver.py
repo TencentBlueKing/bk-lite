@@ -15,13 +15,18 @@ def plain_script_default(param_def: dict) -> str:
     return value
 
 
-def resolve_params(payload: dict, bindings: list, script_params: list, overrides: dict | None = None) -> list:
-    """按脚本参数顺序解析。const 空值原样下发；field 缺失回退明文 default。"""
+def resolve_params(payload: dict, bindings: list, script_params: list | None, overrides: dict | None = None) -> list:
+    """按脚本参数顺序解析。const 空值原样下发；field 缺失回退明文 default。
+
+    script_params 为 None 表示没有参数定义，仍从绑定取出有 name 的项。
+    传入列表时只使用其中有 name 的项；空列表保持为空，不再用旧绑定补回。
+    """
     overrides = overrides or {}
     by_name = {b["name"]: b for b in (bindings or []) if b.get("name")}
-    defs = [p for p in (script_params or []) if p.get("name")]
-    if not defs:
+    if script_params is None:
         defs = [{"name": b["name"]} for b in (bindings or []) if b.get("name")]
+    else:
+        defs = [p for p in script_params if p.get("name")]
     out = []
     for param_def in defs:
         name = param_def["name"]
