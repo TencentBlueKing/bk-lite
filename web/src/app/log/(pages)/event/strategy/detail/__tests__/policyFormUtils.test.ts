@@ -3,6 +3,7 @@ import { StrategyFields } from '@/app/log/types/event';
 import {
   buildStrategyPayload,
   hasIncompleteCondition,
+  normalizeCondition,
   pruneNoticeUsers,
   seedNoticeUsersFromHandlers,
 } from '../policyFormUtils';
@@ -60,5 +61,92 @@ describe('聚合条件函数', () => {
     expect(
       hasIncompleteCondition([{ func: 'count', field: null, op: '>', value: '1' }])
     ).toBe(true);
+  });
+
+  it('透传 compare、params、no_data 和 trigger_count', () => {
+    const payload = buildStrategyPayload(
+      {
+        alert_type: 'aggregate',
+        query: 'level:error',
+        group_by: ['service'],
+        show_fields: ['message'],
+        schedule: { type: 'min', value: 5 },
+        period: { type: 'min', value: 5 },
+        trigger_count: 3,
+        no_data: { enabled: true, level: 'warning' },
+      } as StrategyFields,
+      {
+        unit: 'min',
+        periodUnit: 'min',
+        channelList: [],
+        conditions: [
+          {
+            func: 'count',
+            field: '_msg',
+            op: '>',
+            value: '50',
+            compare: { kind: 'percent', to: 'offset_24h' },
+            params: { quantile: 0.95 },
+          },
+        ],
+        term: 'and',
+        isEdit: false,
+      }
+    );
+
+    expect(payload.alert_condition?.rule?.conditions).toEqual([
+      {
+        func: 'count',
+        field: '_msg',
+        op: '>',
+        value: '50',
+        compare: { kind: 'percent', to: 'offset_24h' },
+        params: { quantile: 0.95 },
+      },
+    ]);
+    expect(payload.alert_condition?.rule?.trigger_count).toBe(3);
+    expect(payload.alert_condition?.no_data).toEqual({ enabled: true, level: 'warning' });
+  });
+
+  it('count_delta 读入显示为计数、变化量和上一窗', () => {
+    expect(
+      normalizeCondition({ func: 'count_delta', field: 'host', op: '>', value: '50' })
+    ).toEqual({
+      func: 'count',
+      field: '_msg',
+      op: '>',
+      value: '50',
+      compare: { kind: 'delta', to: 'previous_window' },
+      params: {},
+    });
+  });
+
+  it('变化率缺对照、分位缺分位、占比缺分子筛选时视为未完成', () => {
+    expect(
+      hasIncompleteCondition([
+        { func: 'count', field: '_msg', op: '>', value: '50', compare: { kind: 'percent' } },
+      ])
+    ).toBe(true);
+    expect(
+      hasIncompleteCondition([
+        { func: 'quantile', field: 'duration', op: '>', value: '1', params: {} },
+      ])
+    ).toBe(true);
+    expect(
+      hasIncompleteCondition([
+        { func: 'ratio', field: '_msg', op: '>', value: '5', params: { filter: '' } },
+      ])
+    ).toBe(true);
+    expect(
+      hasIncompleteCondition([
+        {
+          func: 'count',
+          field: '_msg',
+          op: '>',
+          value: '50',
+          compare: { kind: 'delta', to: 'previous_window' },
+        },
+      ])
+    ).toBe(false);
   });
 });

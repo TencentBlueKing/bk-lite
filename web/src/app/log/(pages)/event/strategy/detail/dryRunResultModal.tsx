@@ -4,6 +4,20 @@ import React, { useMemo } from 'react';
 import { Modal, Table, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { parseRawLogData } from '@/app/log/components/public/alertRawLogEvidence';
+import { COMPARE_TARGET_LIST } from '@/app/log/constants';
+
+export interface LogDryRunCondition {
+  func?: string;
+  field?: string;
+  current?: number | null;
+  baseline?: number | null;
+  value?: number | null;
+  op?: string;
+  threshold?: string | number;
+  matched?: boolean;
+  reason?: string;
+  compare?: { kind?: string; to?: string };
+}
 
 export interface LogDryRunItem {
   group?: Record<string, string>;
@@ -11,6 +25,7 @@ export interface LogDryRunItem {
   previous_count?: number | null;
   count_rate?: number | null;
   count_delta?: number | null;
+  conditions?: LogDryRunCondition[];
   verdict?: string;
   reason?: string;
 }
@@ -20,11 +35,17 @@ export interface LogDryRunWindow {
   end?: number;
 }
 
+export interface LogDryRunBaseline {
+  window?: LogDryRunWindow;
+  status?: string;
+}
+
 export interface LogDryRunResult {
   alert_type?: string;
   window?: LogDryRunWindow;
   previous_window?: LogDryRunWindow;
   baseline_status?: string;
+  baselines?: Record<string, LogDryRunBaseline>;
   items?: LogDryRunItem[];
   truncated?: boolean;
   sample_preview?: Array<Record<string, unknown>>;
@@ -43,6 +64,17 @@ const VERDICT_LABEL: Record<string, string> = {
   missing_baseline: 'log.event.verdictMissingBaseline',
   no_data: 'log.event.verdictNoData',
 };
+
+const REASON_LABEL: Record<string, string> = {
+  missing_baseline: 'log.event.verdictMissingBaseline',
+  baseline_zero: 'log.event.reasonBaselineZero',
+  baseline_missing: 'log.event.reasonBaselineMissing',
+  not_numeric: 'log.event.reasonNotNumeric',
+};
+
+const TARGET_LABEL = Object.fromEntries(
+  COMPARE_TARGET_LIST.map((item) => [item.value, item.labelKey]),
+);
 
 const formatWindow = (window?: LogDryRunWindow) => {
   if (!window || window.start == null || window.end == null) {
@@ -93,8 +125,23 @@ const VerdictTag = ({ verdict, t }: { verdict?: string; t: (key: string) => stri
   return <Tag>{label}</Tag>;
 };
 
+const formatReason = (reason: string | undefined, t: (key: string) => string) => {
+  if (!reason) {
+    return '—';
+  }
+  return t(REASON_LABEL[reason] || reason);
+};
+
+const conditionText = (condition: LogDryRunCondition) => {
+  const func = condition.func || '';
+  const field = condition.field && condition.field !== '_msg' ? `(${condition.field})` : '';
+  const kind = condition.compare?.kind && condition.compare.kind !== 'absolute' ? ` ${condition.compare.kind}` : '';
+  return `${func}${field}${kind}`;
+};
+
 const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClose, t }) => {
   const items = data?.items || [];
+  const baselines = Object.entries(data?.baselines || {});
   const keyword = data?.alert_type === 'keyword';
   const showPreviousWindow = Boolean(data?.baseline_status && data.baseline_status !== 'not_required');
   const verdictCounts = useMemo(() => {
@@ -161,6 +208,53 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
     ];
   }, [keyword, t]);
 
+  const conditionColumns = useMemo(
+    () => [
+      {
+        title: t('log.event.conditionColumn'),
+        key: 'condition',
+        render: (_value: unknown, condition: LogDryRunCondition) => conditionText(condition),
+      },
+      {
+        title: t('log.event.currentValue'),
+        dataIndex: 'current',
+        key: 'current',
+        render: (value: number | null | undefined) => formatCount(value),
+      },
+      {
+        title: t('log.event.baselineValue'),
+        dataIndex: 'baseline',
+        key: 'baseline',
+        render: (value: number | null | undefined) => formatCount(value),
+      },
+      {
+        title: t('log.event.computedValue'),
+        dataIndex: 'value',
+        key: 'value',
+        render: (value: number | null | undefined) => formatCount(value),
+      },
+      {
+        title: t('log.event.threshold'),
+        key: 'threshold',
+        render: (_value: unknown, condition: LogDryRunCondition) =>
+          `${condition.op || ''} ${condition.threshold ?? ''}`.trim(),
+      },
+      {
+        title: t('log.event.matched'),
+        dataIndex: 'matched',
+        key: 'matched',
+        render: (matched: boolean | undefined) => (matched ? t('log.event.verdictWouldTrigger') : t('log.event.verdictNoTrigger')),
+      },
+      {
+        title: t('log.event.reason'),
+        dataIndex: 'reason',
+        key: 'reason',
+        render: (reason: string | undefined) => formatReason(reason, t),
+      },
+    ],
+    [t],
+  );
+
   const sample = useMemo(() => parseRawLogData(data?.sample_preview || []), [data?.sample_preview]);
 
   return (
@@ -185,6 +279,15 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
             {formatWindow(data?.previous_window)}
           </span>
         ) : null}
+        {baselines.map(([target, info]) => (
+          <span key={target} data-testid={`dry-run-baseline-${target}`}>
+            <span>{t(TARGET_LABEL[target] || target)}</span>
+            {': '}
+            {formatWindow(info.window)}
+            {' '}
+            {info.status}
+          </span>
+        ))}
       </div>
       {items.length > 0 ? (
         <div className="mb-3 flex flex-wrap gap-2">
@@ -210,6 +313,21 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
           rowKey="rowKey"
           dataSource={tableItems}
           columns={columns}
+          expandable={{
+            rowExpandable: (record) => Array.isArray(record.conditions) && record.conditions.length > 0,
+            expandedRowRender: (record) => (
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="key"
+                dataSource={(record.conditions || []).map((condition, index) => ({
+                  ...condition,
+                  key: String(index),
+                }))}
+                columns={conditionColumns}
+              />
+            ),
+          }}
         />
       ) : null}
       {sample.isTabular && sample.rows.length > 0 ? (

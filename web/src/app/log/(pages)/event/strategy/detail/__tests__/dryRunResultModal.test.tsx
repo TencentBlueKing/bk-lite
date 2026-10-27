@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/utils/i18n', () => ({
@@ -99,5 +99,48 @@ describe('试算结果弹窗', () => {
     expect(screen.queryByText('log.event.countDelta')).toBeNull();
     expect(screen.getByText('service=pay')).toBeTruthy();
     expect(screen.getByTestId('dry-run-verdict-would-trigger')).toBeTruthy();
+  });
+
+  it('展开行显示条件子表和原因，多个对照分别显示', () => {
+    renderModal({
+      alert_type: 'aggregate',
+      baseline_status: 'ok',
+      window: { start: 1761550000, end: 1761550300 },
+      previous_window: { start: 1761549700, end: 1761550000 },
+      baselines: {
+        offset_24h: { window: { start: 1761463700, end: 1761464000 }, status: 'ok' },
+        previous_window: { window: { start: 1761549700, end: 1761550000 }, status: 'unavailable' },
+      },
+      items: [
+        {
+          group: { service: 'cart' },
+          count: 15,
+          verdict: 'no_trigger',
+          reason: 'baseline_zero',
+          conditions: [
+            {
+              func: 'count',
+              field: '_msg',
+              current: 15,
+              baseline: 0,
+              value: null,
+              op: '>',
+              threshold: '50',
+              matched: false,
+              reason: 'baseline_zero',
+              compare: { kind: 'percent', to: 'offset_24h' },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(screen.getByTestId('dry-run-baseline-offset_24h').textContent).toContain('ok');
+    expect(screen.getByTestId('dry-run-baseline-previous_window').textContent).toContain('unavailable');
+    fireEvent.click(screen.getByRole('button', { name: /expand row/i }));
+    expect(screen.getByText('count percent')).toBeTruthy();
+    expect(screen.getByText('log.event.reasonBaselineZero')).toBeTruthy();
+    expect(screen.getByText('log.event.baselineValue')).toBeTruthy();
+    expect(screen.getByText('log.event.computedValue')).toBeTruthy();
   });
 });

@@ -8,7 +8,13 @@ import { ListItem } from '@/app/log/types';
 import { useTranslation } from '@/utils/i18n';
 import groupingStyle from '../index.module.scss';
 import { cloneDeep } from 'lodash';
-import { AggregateFunctionOption, FUNCTION_LIST } from '@/app/log/constants';
+import {
+  AggregateFunctionOption,
+  COMPARE_KIND_LIST,
+  COMPARE_TARGET_LIST,
+  FUNCTION_LIST,
+  QUANTILE_LIST,
+} from '@/app/log/constants';
 import { useConditionList } from '@/app/log/hooks/event';
 
 const { Option } = Select;
@@ -45,7 +51,39 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
       if (option && !option.needsField) {
         newData[extra.index].field = '_msg';
       }
+      if (option && option.comparable === false) {
+        newData[extra.index].compare = { kind: 'absolute' };
+      }
+      if (!option?.needsQuantile && newData[extra.index].params?.quantile != null) {
+        const params = { ...(newData[extra.index].params || {}) };
+        delete params.quantile;
+        newData[extra.index].params = params;
+      }
     }
+    onChange?.(newData);
+  };
+
+  const handleCompareKind = (kind: string, index: number) => {
+    const newData = cloneDeep(data);
+    const current = newData[index].compare || {};
+    if (kind === 'absolute') {
+      newData[index].compare = { kind: 'absolute' };
+    } else {
+      newData[index].compare = current.to ? { kind, to: current.to } : { kind };
+    }
+    onChange?.(newData);
+  };
+
+  const handleCompareTarget = (target: string, index: number) => {
+    const newData = cloneDeep(data);
+    const kind = newData[index].compare?.kind || 'delta';
+    newData[index].compare = { kind, to: target };
+    onChange?.(newData);
+  };
+
+  const handleQuantile = (quantile: number, index: number) => {
+    const newData = cloneDeep(data);
+    newData[index].params = { ...(newData[index].params || {}), quantile };
     onChange?.(newData);
   };
 
@@ -76,7 +114,15 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
             const functionOption = FUNCTION_LIST.find(
               (item) => item.value === conditionItem.func
             );
-            const showField = !functionOption || functionOption.needsField;
+            const legacyDelta = conditionItem.func === 'count_delta';
+            const showField = !legacyDelta && (!functionOption || functionOption.needsField);
+            const compareKind = conditionItem.compare?.kind || 'absolute';
+            const comparable = functionOption ? functionOption.comparable !== false : !legacyDelta;
+            const kindOptions = comparable
+              ? COMPARE_KIND_LIST
+              : COMPARE_KIND_LIST.filter((item) => item.value === 'absolute');
+            const showTarget = comparable && compareKind !== 'absolute';
+            const showPercent = compareKind === 'percent';
             return (
               <li className="w-full" key={index}>
                 <div className="flex w-full flex-wrap items-center gap-2">
@@ -128,6 +174,46 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                       ))}
                     </Select>
                   ) : null}
+                  {functionOption?.needsQuantile ? (
+                    <Select
+                      style={{ width: 100 }}
+                      placeholder={t('log.event.quantileLabel')}
+                      value={conditionItem.params?.quantile}
+                      onChange={(val) => handleQuantile(val, index)}
+                    >
+                      {QUANTILE_LIST.map((item) => (
+                        <Option value={item} key={item}>
+                          {`P${Math.round(item * 100)}`}
+                        </Option>
+                      ))}
+                    </Select>
+                  ) : null}
+                  <Select
+                    style={{ width: 120 }}
+                    placeholder={t('log.event.compareKind')}
+                    value={compareKind}
+                    onChange={(val) => handleCompareKind(val, index)}
+                  >
+                    {kindOptions.map((item) => (
+                      <Option value={item.value} key={item.value}>
+                        {t(item.labelKey)}
+                      </Option>
+                    ))}
+                  </Select>
+                  {showTarget ? (
+                    <Select
+                      style={{ width: 140 }}
+                      placeholder={t('log.event.compareTo')}
+                      value={conditionItem.compare?.to}
+                      onChange={(val) => handleCompareTarget(val, index)}
+                    >
+                      {COMPARE_TARGET_LIST.map((item) => (
+                        <Option value={item.value} key={item.value}>
+                          {t(item.labelKey)}
+                        </Option>
+                      ))}
+                    </Select>
+                  ) : null}
                   <Select
                     style={{ width: 112 }}
                     placeholder={t('log.event.selectCriteria')}
@@ -146,7 +232,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                       </Option>
                     ))}
                   </Select>
-                  {functionOption?.unitKey ? (
+                  {functionOption?.unitKey || showPercent ? (
                     <Space.Compact style={{ width: 148 }}>
                       <Input
                         placeholder={t('log.event.enterThreshold')}
@@ -154,7 +240,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                         onChange={(e) => handleValueChange(e, index)}
                       />
                       <span className="flex items-center whitespace-nowrap border border-[var(--color-border)] px-2 text-[12px] text-[var(--color-text-3)]">
-                        {t(functionOption.unitKey)}
+                        {showPercent ? '%' : t(functionOption?.unitKey || '')}
                       </span>
                     </Space.Compact>
                   ) : (
@@ -173,9 +259,14 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                   )}
                   <Button icon={<PlusOutlined />} onClick={handleAddCondition} />
                 </div>
-                {conditionItem.func === 'count_delta' ? (
+                {legacyDelta ? (
                   <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">
                     {t('log.event.countDeltaTip')}
+                  </div>
+                ) : null}
+                {showPercent ? (
+                  <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">
+                    {t('log.event.percentTip')}
                   </div>
                 ) : null}
               </li>

@@ -24,6 +24,7 @@ import {
   buildStrategyPayload,
   getDefaultShowFields,
   getLockedPolicyType,
+  normalizeCondition,
   pruneNoticeUsers,
   shouldPruneNoticeUsers,
   shouldRequireNoticeUsers
@@ -333,7 +334,7 @@ const StrategyOperation = () => {
     };
     if (alert_type === 'aggregate') {
       setTerm(alert_condition.rule?.mode || '');
-      setConditions(alert_condition.rule?.conditions || []);
+      setConditions((alert_condition.rule?.conditions || []).map((item) => normalizeCondition(item)));
     } else {
       setConditions([{ op: null, field: null, value: '', func: null }]);
     }

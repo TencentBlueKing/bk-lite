@@ -4,17 +4,51 @@ import { FilterItem } from '@/app/log/types/integration';
 import { ChannelItem, StrategyFields } from '@/app/log/types/event';
 
 export const conditionRequiresField = (func?: string | null) => {
+  if (func === 'count_delta' || func === 'count_rate' || func === 'bytes_rate' || func === 'ratio') {
+    return false;
+  }
   const option = FUNCTION_LIST.find((item) => item.value === func);
   return option ? option.needsField : true;
 };
 
-/** needsField=false 的函数（速率 / 变化量）不要求选择字段。 */
+/** 读入旧策略时，count_delta 显示为计数 + 变化量 + 上一窗。 */
+export const normalizeCondition = (condition: FilterItem): FilterItem => {
+  if (condition.func === 'count_delta') {
+    return {
+      ...condition,
+      func: 'count',
+      field: '_msg',
+      compare: { kind: 'delta', to: 'previous_window' },
+      params: condition.params || {},
+    };
+  }
+  return {
+    ...condition,
+    compare: condition.compare?.kind ? condition.compare : { kind: 'absolute' },
+    params: condition.params || {},
+  };
+};
+
+/** 变化量 / 变化率要对照，分位要分位，占比要分子筛选。 */
 export const hasIncompleteCondition = (conditions: FilterItem[]) =>
   conditions.some((item) => {
     if (!item.func || !item.op || item.value == null || String(item.value) === '') {
       return true;
     }
-    return conditionRequiresField(item.func) && !item.field;
+    if (conditionRequiresField(item.func) && !item.field) {
+      return true;
+    }
+    const kind = item.compare?.kind || 'absolute';
+    if ((kind === 'percent' || kind === 'delta') && !item.compare?.to) {
+      return true;
+    }
+    if (item.func === 'quantile' && item.params?.quantile == null) {
+      return true;
+    }
+    if (item.func === 'ratio' && !String(item.params?.filter || '').trim()) {
+      return true;
+    }
+    return false;
   });
 
 export type LogPolicyType = 'keyword' | 'aggregate';
@@ -233,6 +267,12 @@ export const buildStrategyPayload = (
       mode: options.term || 'and',
       conditions: options.conditions
     };
+    if (typeof values.trigger_count === 'number') {
+      params.alert_condition.rule.trigger_count = values.trigger_count;
+    }
+  }
+  if (values.no_data && typeof values.no_data === 'object') {
+    params.alert_condition.no_data = values.no_data as StrategyFields['no_data'];
   }
 
   if (options.isEdit) {
