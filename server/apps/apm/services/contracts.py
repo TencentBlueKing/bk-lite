@@ -346,6 +346,7 @@ class ServiceMetricQuery:
     include_breakdown: bool = False
     endpoint: str = ""
     version: str = ""
+    include_endpoints: bool = True
 
 
 @dataclass(frozen=True)
@@ -499,6 +500,8 @@ class PublishResult:
 class MetricDataState(StrEnum):
     AVAILABLE = "available"
     NO_DATA = "no_data"
+    MISSING_BASELINE = "missing_baseline"
+    INSUFFICIENT_SAMPLES = "insufficient_samples"
 
 
 @dataclass(frozen=True)
@@ -509,6 +512,12 @@ class PolicyQueryResult:
     data_state: MetricDataState = MetricDataState.AVAILABLE
     series: tuple[ServiceRedPoint, ...] = ()
     threshold: Mapping[str, str] | None = None
+    current_value: Decimal | None = None
+    baseline_value: Decimal | None = None
+    baseline_series: tuple[ServiceRedPoint, ...] = ()
+    request_count: int | None = None
+    reason: str = ""
+    result_unit: str = ""
 
 
 @dataclass(frozen=True)

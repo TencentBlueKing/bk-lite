@@ -324,6 +324,16 @@ class ApmPolicy(AuditedModel):
         MINIMUM = "min", "最小值"
         LAST = "last", "最新值"
 
+    class CompareMode(models.TextChoices):
+        ABSOLUTE = "absolute", "当前值"
+        PREVIOUS_WINDOW = "previous_window", "相对上一等长窗"
+        OFFSET_1H = "offset_1h", "1 小时前同窗"
+        OFFSET_24H = "offset_24h", "24 小时前同窗"
+
+    class CompareValueKind(models.TextChoices):
+        DELTA = "delta", "变化量"
+        PERCENT = "percent", "变化率"
+
     class VersionMode(models.TextChoices):
         ALL = "all", "全部版本"
         SPECIFIC = "specific", "指定版本"
@@ -341,6 +351,9 @@ class ApmPolicy(AuditedModel):
     evaluation_interval = models.PositiveIntegerField(default=1)
     metric_window = models.PositiveIntegerField(default=5)
     aggregation = models.CharField(max_length=16, choices=Aggregation.choices, default=Aggregation.AVERAGE)
+    compare_mode = models.CharField(max_length=32, choices=CompareMode.choices, default=CompareMode.ABSOLUTE)
+    compare_value_kind = models.CharField(max_length=16, blank=True, default="")
+    min_request_count = models.PositiveIntegerField(null=True, blank=True)
     thresholds = models.JSONField(default=list)
     trigger_after = models.PositiveIntegerField(default=1)
     recover_after = models.PositiveIntegerField(default=3)

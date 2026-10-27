@@ -11,6 +11,7 @@ import {
   InputNumber,
   message,
   Popconfirm,
+  Radio,
   Select,
   Space,
   Steps,
@@ -26,19 +27,25 @@ import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell'
 import CatalogState from '@/app/apm/components/catalog-state';
 import { formatClockTime, formatErrorRate } from '@/app/apm/components/metric-format';
 import GroupTreeSelect from '@/components/group-tree-select';
-import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import TimeSeriesComposedChart, {
+  type TimeSeriesComposedChartSeries,
+} from '@/components/time-series-composed-chart';
 import { ALERT_LEVEL_COLORS, OBSERVABILITY_SERIES_COLORS } from '@/constants/observabilityChart';
 import { useTranslation } from '@/utils/i18n';
 import { HandledRequestError } from '@/utils/request';
 import { formatUserName } from '@/utils/userDisplay';
 import type {
+  ApmCompareMode,
+  ApmCompareValueKind,
   ApmNotificationChannel,
   ApmNotificationRecipient,
   ApmPolicy,
   ApmPolicyComparator,
+  ApmPolicyDryRunResult,
   ApmPolicyInput,
   ApmPolicyMetric,
   ApmPolicyQueryResult,
+  ApmPolicySeriesPoint,
   ApmPolicySeverity,
   ApmService,
 } from '@/app/apm/types';
@@ -80,6 +87,9 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   evaluation_interval: 1,
   metric_window: 5,
   aggregation: 'avg',
+  compare_mode: 'absolute',
+  compare_value_kind: '',
+  min_request_count: 20,
   thresholds: SEVERITIES.map(({ value }) => ({
     severity: value,
     comparator: 'gt',
@@ -105,6 +115,16 @@ const METRICS: Array<{ value: ApmPolicyMetric; i18nKey: string }> = [
   { value: 'throughput', i18nKey: 'apm.common.throughput' },
   { value: 'no_traffic', i18nKey: 'apm.alerts.noTraffic' },
 ];
+
+const VERDICT_KEY = {
+  would_trigger: 'apm.policies.verdictWouldTrigger',
+  ok: 'apm.policies.verdictOk',
+  would_recover: 'apm.policies.verdictWouldRecover',
+  would_escalate: 'apm.policies.verdictWouldEscalate',
+  no_data: 'apm.policies.verdictNoData',
+  missing_baseline: 'apm.policies.verdictMissingBaseline',
+  insufficient_samples: 'apm.policies.verdictInsufficient',
+} as const;
 
 const TEMPLATE_VARIABLES = [
   { name: '${service}', i18nKey: 'apm.policies.variableService' },
@@ -132,13 +152,27 @@ function decodeServiceScope(scope: string) {
   };
 }
 
-function thresholdToEditorValue(metric: ApmPolicyMetric, value: number | string) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return null;
-  return metric === 'error_rate' ? numeric * 100 : numeric;
+const MIN_REQUEST_METRICS: ApmPolicyMetric[] = ['error_rate', 'p95', 'p99'];
+
+function scalesStoredRatio(metric: ApmPolicyMetric, kind: ApmCompareValueKind | '') {
+  return metric === 'error_rate' && kind !== 'percent';
 }
 
-function normalizeThresholds(metric: ApmPolicyMetric, rows: ThresholdEditorRow[] = []) {
+function thresholdToEditorValue(
+  metric: ApmPolicyMetric,
+  kind: ApmCompareValueKind | '',
+  value: number | string,
+) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return scalesStoredRatio(metric, kind) ? numeric * 100 : numeric;
+}
+
+function normalizeThresholds(
+  metric: ApmPolicyMetric,
+  kind: ApmCompareValueKind | '',
+  rows: ThresholdEditorRow[] = [],
+) {
   return rows.flatMap((item, index) => {
     if (item.value === null || item.value === undefined) return [];
     const numericValue = Number(item.value);
@@ -146,9 +180,41 @@ function normalizeThresholds(metric: ApmPolicyMetric, rows: ThresholdEditorRow[]
     return [{
       severity: item.severity ?? SEVERITIES[index].value,
       comparator: item.comparator,
-      value: metric === 'error_rate' ? numericValue / 100 : numericValue,
+      value: scalesStoredRatio(metric, kind) ? numericValue / 100 : numericValue,
     }];
   });
+}
+
+function resolvedCompareKind(
+  metric: ApmPolicyMetric,
+  mode: ApmCompareMode | undefined,
+  kind: ApmCompareValueKind | '' | undefined,
+): ApmCompareValueKind | '' {
+  if (metric === 'no_traffic' || !mode || mode === 'absolute') return '';
+  if (mode === 'previous_window') return kind === 'percent' ? 'percent' : 'delta';
+  return 'percent';
+}
+
+function comparePayloadFields(values: PolicyEditorValues): Partial<ApmPolicyInput> {
+  if (values.metric_type === 'no_traffic') return {};
+  const compareMode = values.compare_mode || 'absolute';
+  const compareKind = resolvedCompareKind(values.metric_type, compareMode, values.compare_value_kind);
+  const fields: Partial<ApmPolicyInput> = {
+    compare_mode: compareMode,
+    compare_value_kind: compareKind,
+  };
+  if (MIN_REQUEST_METRICS.includes(values.metric_type)) {
+    fields.min_request_count = values.min_request_count ?? null;
+  }
+  return fields;
+}
+
+function seriesPointValue(metric: ApmPolicyMetric, point: ApmPolicySeriesPoint | undefined) {
+  if (!point) return null;
+  if (metric === 'error_rate') return point.error_rate == null ? null : Number(point.error_rate) * 100;
+  if (metric === 'p95') return point.p95_ms;
+  if (metric === 'p99') return point.p99_ms;
+  return point.request_rate;
 }
 
 function NumberWithUnit({ unit, ...props }: ComponentProps<typeof InputNumber<number>> & { unit: string }) {
@@ -172,12 +238,16 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
     evaluation_interval: policy.evaluation_interval,
     metric_window: policy.metric_window,
     aggregation: policy.aggregation,
+    compare_mode: policy.compare_mode ?? 'absolute',
+    compare_value_kind: policy.compare_value_kind ?? '',
+    min_request_count: policy.min_request_count ?? null,
     thresholds: SEVERITIES.map(({ value: severity }) => {
       const threshold = thresholds.get(severity);
+      const kind = resolvedCompareKind(policy.metric_type, policy.compare_mode, policy.compare_value_kind);
       return {
         severity,
         comparator: threshold?.comparator ?? commonComparator,
-        value: threshold ? thresholdToEditorValue(policy.metric_type, threshold.value) : null,
+        value: threshold ? thresholdToEditorValue(policy.metric_type, kind, threshold.value) : null,
       };
     }),
     trigger_after: policy.trigger_after,
@@ -200,7 +270,8 @@ function buildMetricPreviewPayload(
   previewName: string,
 ): ApmPolicyInput | null {
   const scope = decodeServiceScope(values.service_scope ?? '');
-  const thresholds = normalizeThresholds(values.metric_type, values.thresholds);
+  const compareKind = resolvedCompareKind(values.metric_type, values.compare_mode, values.compare_value_kind);
+  const thresholds = normalizeThresholds(values.metric_type, compareKind, values.thresholds);
   if (
     !scope.serviceId
     || !scope.environment
@@ -226,6 +297,7 @@ function buildMetricPreviewPayload(
     evaluation_interval: values.evaluation_interval || 1,
     metric_window: values.metric_window,
     aggregation: values.aggregation,
+    ...comparePayloadFields(values),
     thresholds,
     trigger_after: values.trigger_after || 1,
     recover_after: values.recover_after || 1,
@@ -263,11 +335,15 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     getServices,
     isLoading,
     previewPolicy,
+    dryRunPolicy,
     updatePolicy,
   } = useApmApi();
   const [form] = Form.useForm<PolicyEditorValues>();
   const serviceScope = Form.useWatch('service_scope', form);
   const metricType = Form.useWatch('metric_type', form) ?? 'error_rate';
+  const compareMode = Form.useWatch('compare_mode', form) ?? 'absolute';
+  const compareKindRaw = Form.useWatch('compare_value_kind', form) ?? '';
+  const minRequestCount = Form.useWatch('min_request_count', form);
   const evaluationInterval = Form.useWatch('evaluation_interval', form);
   const metricWindow = Form.useWatch('metric_window', form);
   const aggregation = Form.useWatch('aggregation', form);
@@ -292,6 +368,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const [deleting, setDeleting] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
+  const [dryRun, setDryRun] = useState<ApmPolicyDryRunResult | null>(null);
+  const [dryRunning, setDryRunning] = useState(false);
   const [noticeEnabled, setNoticeEnabled] = useState(false);
   const [handlerUsers, setHandlerUsers] = useState<ApmNotificationRecipient[]>([]);
   const [directoriesRefreshing, setDirectoriesRefreshing] = useState(false);
@@ -520,27 +598,69 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   );
 
   const selectedScope = decodeServiceScope(serviceScope ?? '');
-  const thresholdUnit = metricType === 'error_rate'
+  const compareKind = resolvedCompareKind(metricType, compareMode, compareKindRaw);
+  const showCompare = metricType !== 'no_traffic';
+  const showMinRequest = MIN_REQUEST_METRICS.includes(metricType);
+  const thresholdUnit = compareKind === 'percent'
     ? t('apm.common.percentUnit', '%')
-    : metricType === 'p95' || metricType === 'p99'
-      ? t('apm.common.millisecondUnit', 'ms')
-      : t('apm.policies.perSecondUnit', 'req/s');
+    : metricType === 'error_rate' && compareKind === 'delta'
+      ? t('apm.policies.percentagePointUnit', '个百分点')
+      : metricType === 'error_rate'
+        ? t('apm.common.percentUnit', '%')
+        : metricType === 'p95' || metricType === 'p99'
+          ? t('apm.common.millisecondUnit', 'ms')
+          : t('apm.policies.perSecondUnit', 'req/s');
+  const thresholdBounds = compareKind === 'percent' || compareKind === 'delta'
+    ? (metricType === 'error_rate' && compareKind === 'delta' ? { min: -100, max: 100 } : {})
+    : metricType === 'error_rate'
+      ? { min: 0, max: 100 }
+      : { min: 0 };
   const previewRows = useMemo(
-    () =>
-      (preview?.series ?? []).map((point) => ({
+    () => {
+      const baselineSeries = preview?.baseline_series ?? [];
+      return (preview?.series ?? []).map((point, index) => ({
         timestamp: point.timestamp,
-        value:
-          metricType === 'error_rate'
-            ? Number(point.error_rate ?? 0) * 100
-            : metricType === 'p95'
-              ? point.p95_ms
-              : metricType === 'p99'
-                ? point.p99_ms
-                : point.request_rate,
-        threshold: preview?.threshold ? thresholdToEditorValue(metricType, preview.threshold.value) : null,
-      })),
-    [metricType, preview],
+        value: seriesPointValue(metricType, point),
+        baseline: compareKind ? seriesPointValue(metricType, baselineSeries[index]) : null,
+        threshold: preview?.threshold
+          ? thresholdToEditorValue(metricType, compareKind, preview.threshold.value)
+          : null,
+      }));
+    },
+    [compareKind, metricType, preview],
   );
+  const previewSeries = useMemo(() => {
+    const rows: Array<TimeSeriesComposedChartSeries<(typeof previewRows)[number]>> = [
+      {
+        name: metricOptions.find((item) => item.value === metricType)?.label ?? metricType,
+        type: 'line',
+        dataKey: 'value',
+        color: OBSERVABILITY_SERIES_COLORS[0],
+        showArea: true,
+        areaOpacity: 0.36,
+        smooth: false,
+        lineWidth: 1,
+      },
+    ];
+    if (compareKind) {
+      rows.push({
+        name: t('apm.policies.previewBaselineSeries', '对照'),
+        type: 'line',
+        dataKey: 'baseline',
+        color: OBSERVABILITY_SERIES_COLORS[1],
+        lineType: 'dashed',
+        lineWidth: 1,
+      });
+    }
+    rows.push({
+      name: t('apm.policies.currentThreshold', '当前阈值'),
+      type: 'line',
+      dataKey: 'threshold',
+      color: ALERT_LEVEL_COLORS[preview?.threshold?.severity ?? 'critical'],
+      lineWidth: 1,
+    });
+    return rows;
+  }, [compareKind, metricOptions, metricType, preview?.threshold?.severity, t]);
   const previewConfiguration = JSON.stringify({
     serviceScope,
     endpoints: selectedEndpoints || [],
@@ -548,12 +668,16 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     evaluationInterval,
     metricWindow,
     aggregation,
+    compareMode,
+    compareKind,
+    minRequestCount,
     thresholds: watchedThresholds || [],
   });
 
   const buildPayload = (values: PolicyEditorValues): ApmPolicyInput | null => {
     const scope = decodeServiceScope(values.service_scope);
-    const thresholds = normalizeThresholds(values.metric_type, values.thresholds);
+    const compareKind = resolvedCompareKind(values.metric_type, values.compare_mode, values.compare_value_kind);
+    const thresholds = normalizeThresholds(values.metric_type, compareKind, values.thresholds);
     if (!thresholds.length) {
       const error = t('apm.policies.thresholdRequiredOne', '至少启用一个告警级别');
       form.setFields([{ name: ['thresholds', 2, 'value'], errors: [error] }]);
@@ -597,6 +721,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       evaluation_interval: values.evaluation_interval,
       metric_window: values.metric_window,
       aggregation: values.aggregation,
+      ...comparePayloadFields(values),
       thresholds,
       trigger_after: values.trigger_after,
       recover_after: values.recover_after,
@@ -695,6 +820,34 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       if (previewRequestRef.current === requestId) setPreviewFailed(true);
     } finally {
       if (previewRequestRef.current === requestId) setPreviewing(false);
+    }
+  };
+
+  const applyCompareMode = (mode: ApmCompareMode) => {
+    if (mode === 'absolute') {
+      form.setFieldValue('compare_value_kind', '');
+      return;
+    }
+    if (mode === 'previous_window') {
+      const kind = form.getFieldValue('compare_value_kind');
+      if (kind !== 'delta' && kind !== 'percent') form.setFieldValue('compare_value_kind', 'delta');
+      return;
+    }
+    form.setFieldValue('compare_value_kind', 'percent');
+  };
+
+  const runDryRun = async () => {
+    const values = form.getFieldsValue(true);
+    const payload = buildPayload({
+      ...values,
+      name: values.name?.trim() || t('apm.policies.metricPreview', '指标预览'),
+    });
+    if (!payload) return;
+    setDryRunning(true);
+    try {
+      setDryRun(await dryRunPolicy(policyId ? { ...payload, policy_id: policyId } : payload));
+    } finally {
+      setDryRunning(false);
     }
   };
 
@@ -854,6 +1007,31 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       status: 'process' as const,
       description: (
         <div className={styles.stepContent}>
+          {showCompare ? (
+            <div className="mb-3">
+              <Form.Item name="compare_mode" label={t('apm.policies.compareBaseline', '比较基准')}>
+                <Select
+                  onChange={applyCompareMode}
+                  options={[
+                    { value: 'absolute', label: t('apm.policies.compareModeAbsolute', '当前值') },
+                    { value: 'previous_window', label: t('apm.policies.compareModePreviousWindow', '相对上一等长窗') },
+                    { value: 'offset_1h', label: t('apm.policies.compareModeOffset1h', '1 小时前同窗') },
+                    { value: 'offset_24h', label: t('apm.policies.compareModeOffset24h', '24 小时前同窗') },
+                  ]}
+                />
+              </Form.Item>
+              {compareMode === 'previous_window' ? (
+                <Form.Item name="compare_value_kind" label={t('apm.policies.compareValueKind', '比较方式')}>
+                  <Radio.Group
+                    options={[
+                      { value: 'delta', label: t('apm.policies.compareKindDelta', '变化量 Δ') },
+                      { value: 'percent', label: t('apm.policies.compareKindPercent', '变化率 %') },
+                    ]}
+                  />
+                </Form.Item>
+              ) : null}
+            </div>
+          ) : null}
           <Typography.Text strong className={styles.thresholdTitle}>{t('apm.policies.threeLevelThresholds', '3 级别阈值')}</Typography.Text>
           <Table
             className={styles.thresholdTable}
@@ -894,8 +1072,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   <Form.Item name={['thresholds', index, 'value']} noStyle>
                     <NumberWithUnit
                       aria-label={t('apm.policies.thresholdAria', '{severity}阈值', { severity: severityOptions[index].label })}
-                      min={0}
-                      max={metricType === 'error_rate' ? 100 : undefined}
+                      min={thresholdBounds.min}
+                      max={thresholdBounds.max}
                       placeholder={t('apm.policies.notEnabled', '不启用')}
                       unit={thresholdUnit}
                     />
@@ -904,6 +1082,22 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               },
             ]}
           />
+          {showMinRequest ? (
+            <Form.Item
+              className="mt-3"
+              name="min_request_count"
+              label={t('apm.policies.minRequestCount', '最低请求数')}
+              tooltip={t('apm.policies.minRequestCountTooltip', '本窗请求数低于该值时不评，试算记为样本不足')}
+            >
+              <InputNumber<number>
+                className="w-40"
+                min={1}
+                max={100000}
+                placeholder={t('apm.policies.minRequestUnlimited', '不限')}
+                aria-label={t('apm.policies.minRequestCount', '最低请求数')}
+              />
+            </Form.Item>
+          ) : null}
           <div className={styles.conditionRows}>
             <div className={styles.conditionRow}>
               <span className={styles.conditionLabel}><span aria-hidden="true">*</span>{t('apm.policies.triggerCondition', '触发条件：')}</span>
@@ -1111,22 +1305,41 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                         : ` · ${t('apm.policies.previewAutoRefresh', '配置变化后自动刷新')}`}
                     </Typography.Text>
                   </div>
-                  <Button type="link" loading={previewing} onClick={() => void runPreview()}>{t('apm.common.refresh', '刷新')}</Button>
+                  <Space>
+                    <Button type="link" loading={dryRunning} onClick={() => void runDryRun()}>{t('apm.policies.dryRun', '试算')}</Button>
+                    <Button type="link" loading={previewing} onClick={() => void runPreview()}>{t('apm.common.refresh', '刷新')}</Button>
+                  </Space>
                 </div>
                 {preview ? (
                   <>
                     <Space className={styles.previewValue}>
                       <Typography.Text strong>
                         {preview.value === null
-                          ? t('apm.common.noData', '无数据')
-                          : metricType === 'error_rate'
-                            ? formatErrorRate(Number(preview.value), false, t)
-                            : preview.value}
+                          ? preview.data_state === 'insufficient_samples'
+                            ? t('apm.policies.previewInsufficientSamples', '样本不足')
+                            : preview.data_state === 'missing_baseline'
+                              ? preview.reason === 'baseline_zero'
+                                ? t('apm.policies.previewBaselineZero', '对照值为 0，无法计算变化率')
+                                : t('apm.policies.previewMissingBaseline', '对照缺失')
+                              : t('apm.common.noData', '无数据')
+                          : compareKind === 'percent'
+                            ? `${preview.value}%`
+                            : metricType === 'error_rate' && compareKind === 'delta'
+                              ? `${Number(preview.value) * 100} ${t('apm.policies.percentagePointUnit', '个百分点')}`
+                              : metricType === 'error_rate'
+                                ? formatErrorRate(Number(preview.value), false, t)
+                                : preview.value}
                       </Typography.Text>
                       <Typography.Text type="secondary">
                         {preview.data_state === 'no_data'
                           ? t('apm.policies.previewNoSamples', 'VictoriaTraces 当前窗口无样本')
-                          : formatClockTime(preview.evaluated_at)}
+                          : preview.data_state === 'insufficient_samples'
+                            ? t('apm.policies.previewInsufficientSamples', '样本不足')
+                            : preview.data_state === 'missing_baseline'
+                              ? preview.reason === 'baseline_zero'
+                                ? t('apm.policies.previewBaselineZero', '对照值为 0，无法计算变化率')
+                                : t('apm.policies.previewMissingBaseline', '对照缺失')
+                              : formatClockTime(preview.evaluated_at)}
                       </Typography.Text>
                     </Space>
                     <div className={styles.previewChart}>
@@ -1135,25 +1348,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                         xDataKey="timestamp"
                         getXLabel={(item) => formatClockTime(String(item.timestamp), false)}
                         xAxisBoundaryGap={false}
-                        series={[
-                          {
-                            name: metricOptions.find((item) => item.value === metricType)?.label ?? metricType,
-                            type: 'line',
-                            dataKey: 'value',
-                            color: OBSERVABILITY_SERIES_COLORS[0],
-                            showArea: true,
-                            areaOpacity: 0.36,
-                            smooth: false,
-                            lineWidth: 1,
-                          },
-                          {
-                            name: t('apm.policies.currentThreshold', '当前阈值'),
-                            type: 'line',
-                            dataKey: 'threshold',
-                            color: ALERT_LEVEL_COLORS[preview.threshold?.severity ?? 'critical'],
-                            lineWidth: 1,
-                          },
-                        ]}
+                        series={previewSeries}
                       />
                     </div>
                   </>
@@ -1168,6 +1363,51 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     </Typography.Text>
                   </div>
                 )}
+                {dryRun ? (
+                  <div className="mt-4">
+                    {dryRun.truncated ? (
+                      <Typography.Text type="warning" className="mb-2 block">
+                        {t('apm.policies.dryRunTruncated', '共 {count} 个目标，只试算前 20 个，请在端点里缩小范围', { count: dryRun.total_targets })}
+                      </Typography.Text>
+                    ) : null}
+                    <Table
+                      size="small"
+                      pagination={false}
+                      rowKey={(row) => `${row.endpoint}|${row.version}`}
+                      dataSource={dryRun.items}
+                      columns={[
+                        {
+                          title: t('apm.policies.dryRunTarget', '目标'),
+                          dataIndex: 'endpoint',
+                          render: (_value, row) => [row.endpoint, row.version].filter(Boolean).join(' ') || t('apm.alerts.serviceLevel', '服务级'),
+                        },
+                        {
+                          title: t('apm.policies.dryRunVerdict', '结论'),
+                          dataIndex: 'verdict',
+                          render: (verdict: ApmPolicyDryRunResult['items'][number]['verdict']) => (
+                            <Tag color={verdict === 'would_trigger' || verdict === 'would_escalate' ? 'red' : verdict === 'would_recover' ? 'green' : verdict === 'ok' ? 'blue' : 'gold'}>
+                              {t(VERDICT_KEY[verdict])}
+                            </Tag>
+                          ),
+                        },
+                        { title: t('apm.policies.dryRunCurrent', '当前值'), dataIndex: 'current_value', render: (value) => value ?? '—' },
+                        { title: t('apm.policies.dryRunBaseline', '对照值'), dataIndex: 'baseline_value', render: (value) => value ?? '—' },
+                        { title: t('apm.policies.dryRunCompared', '比较值'), dataIndex: 'compared_value', render: (value) => value ?? '—' },
+                        { title: t('apm.policies.dryRunRequestCount', '请求数'), dataIndex: 'request_count', render: (value) => value ?? '—' },
+                        {
+                          title: t('apm.policies.dryRunMatchedThreshold', '命中阈值'),
+                          dataIndex: 'matched_threshold',
+                          render: (threshold: ApmPolicyDryRunResult['items'][number]['matched_threshold']) => (
+                            threshold
+                              ? `${threshold.comparator} ${thresholdToEditorValue(metricType, compareKind, threshold.value) ?? threshold.value}`
+                              : '—'
+                          ),
+                        },
+                        { title: t('apm.policies.dryRunReason', '说明'), dataIndex: 'reason', render: (value: string) => value || '—' },
+                      ]}
+                    />
+                  </div>
+                ) : null}
               </section>
             </aside>
           </div>

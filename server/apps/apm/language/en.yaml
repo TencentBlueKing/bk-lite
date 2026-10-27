@@ -30,6 +30,12 @@ error:
   level_duplicate: The same alert level cannot be configured twice.
   threshold_finite: Threshold must be a finite number.
   error_rate_range: Error-rate threshold must be between 0 and 1.
+  error_rate_delta_range: Error-rate delta threshold must be between -1 and 1.
+  compare_absolute_kind: Current-value comparison cannot also select a delta or percent change.
+  compare_previous_kind: The previous equal window must use either a delta or a percent change.
+  compare_offset_percent_only: The 1-hour and 24-hour same windows only allow a percent change.
+  compare_no_traffic_absolute: No-traffic policies can only compare the current value.
+  compare_min_request_metric: Minimum request count applies only to error rate, P95, and P99.
   threshold_comparator: Multi-level thresholds must use the same comparator.
   threshold_monotonic: Multi-level thresholds must stay monotonic across critical, error, and warning.
   deployment_window_limit: Deployment event query window cannot exceed 90 days

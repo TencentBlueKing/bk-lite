@@ -83,6 +83,7 @@ function formatMetricDisplayValue(
   if (value == null || value === '') return noDataLabel;
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return String(value);
+  if (unit === 'percent') return formatPercentage(numeric, numeric >= 10 ? 1 : 2);
   if (metric === 'error_rate') {
     const percent = unit === 'ratio' || Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
     return formatPercentage(percent, percent >= 10 ? 1 : 2);
@@ -104,6 +105,7 @@ function toChartMetricNumber(
   if (value == null || value === '') return null;
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
+  if (unit === 'percent') return numeric;
   if (metric === 'error_rate' && (unit === 'ratio' || Math.abs(numeric) <= 1)) {
     return Number((numeric * 100).toFixed(4));
   }
@@ -134,6 +136,13 @@ interface SnapshotChartRow {
   value: number | null;
   threshold: number | null;
   event: number | null;
+  current: number | null;
+  baseline: number | null;
+}
+
+function snapshotUsesPercentAxis(snapshot: ApmAlertMetricSnapshot | null) {
+  return snapshot?.unit === 'percent'
+    || (snapshot?.snapshots ?? []).some((item) => item.result_unit === 'percent');
 }
 
 function buildAlertSnapshotChartRows(
@@ -152,14 +161,15 @@ function buildAlertSnapshotChartRows(
     const slot = Math.max(0, Math.round(dayjs(item.snapshot_time).diff(origin, 'minute') / intervalMin));
     bySlot.set(slot, item);
   });
+  const percentAxis = snapshotUsesPercentAxis(snapshot);
   let lastThreshold: number | null = null;
   return Array.from({ length: lastSlot + 1 }, (_, slot) => {
     const item = bySlot.get(slot);
     const value = item
-      ? toChartMetricNumber(alert.metric_type, item.value, snapshot?.unit)
+      ? toChartMetricNumber(alert.metric_type, item.value, percentAxis ? 'percent' : snapshot?.unit)
       : null;
     const threshold = item
-      ? toChartMetricNumber(alert.metric_type, item.threshold?.value, snapshot?.unit)
+      ? toChartMetricNumber(alert.metric_type, item.threshold?.value, percentAxis ? 'percent' : snapshot?.unit)
       : lastThreshold;
     if (threshold != null) lastThreshold = threshold;
     return {
@@ -168,6 +178,12 @@ function buildAlertSnapshotChartRows(
       value,
       threshold,
       event: item?.type === 'event' ? value : null,
+      current: percentAxis && item
+        ? toChartMetricNumber(alert.metric_type, item.current_value, alert.metric_type === 'error_rate' ? 'ratio' : undefined)
+        : null,
+      baseline: percentAxis && item
+        ? toChartMetricNumber(alert.metric_type, item.baseline_value, alert.metric_type === 'error_rate' ? 'ratio' : undefined)
+        : null,
     };
   });
 }
@@ -443,6 +459,7 @@ export default function AlertDetailDrawer({
     () => (alert ? buildAlertSnapshotChartRows(alert, metricSnapshot) : []),
     [alert, metricSnapshot],
   );
+  const percentAxis = snapshotUsesPercentAxis(metricSnapshot);
   const eventStreamRows = useMemo(() => {
     if (!alert) return [];
     const windowStart = dayjs(alert.started_at).valueOf();
@@ -692,6 +709,7 @@ export default function AlertDetailDrawer({
                     <Typography.Text type="secondary" className={styles.alertDetailChartHint}>
                       {t('apm.alerts.eachPolicyScan', '每点一次策略扫描')}
                       {metricSnapshot ? ` · ${t('apm.alerts.scanInterval', '检测频率 {minutes}m', { minutes: metricSnapshot.evaluation_interval })}` : ''}
+                      {percentAxis ? ` · ${t('apm.alerts.resultUnitPercent', '变化率（%）')}` : ''}
                       {METRIC_UNIT_KEY[alert.metric_type]
                         ? ` · ${t(METRIC_KEY[alert.metric_type])}(${t(METRIC_UNIT_KEY[alert.metric_type])})`
                         : ` · ${t(METRIC_KEY[alert.metric_type])}`}
@@ -712,7 +730,12 @@ export default function AlertDetailDrawer({
                         xDataKey="timestamp"
                         getXLabel={(item) => snapshotElapsedLabel(item.elapsedMinutes, t('apm.alerts.trigger', '触发'), t)}
                         xAxisBoundaryGap={false}
-                        yAxes={[{ formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) }]}
+                        yAxes={percentAxis
+                          ? [
+                            { formatter: (value) => formatPercentage(value, Math.abs(value) >= 10 ? 1 : 2) },
+                            { formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) },
+                          ]
+                          : [{ formatter: (value) => formatChartAxisValue(alert.metric_type, value, t) }]}
                         series={[
                           {
                             name: t('apm.alerts.evaluationValue', '评估值'),
@@ -741,6 +764,27 @@ export default function AlertDetailDrawer({
                             showSymbol: true,
                             lineWidth: 0,
                           },
+                          ...(percentAxis
+                            ? [
+                              {
+                                name: t('apm.alerts.currentValue', '当前值'),
+                                type: 'line' as const,
+                                dataKey: 'current',
+                                color: OBSERVABILITY_SERIES_COLORS[1],
+                                yAxisIndex: 1,
+                                lineWidth: 1,
+                              },
+                              {
+                                name: t('apm.alerts.baselineValue', '对照值'),
+                                type: 'line' as const,
+                                dataKey: 'baseline',
+                                color: OBSERVABILITY_SERIES_COLORS[2],
+                                yAxisIndex: 1,
+                                lineType: 'dashed' as const,
+                                lineWidth: 1,
+                              },
+                            ]
+                            : []),
                         ]}
                       />
                     </div>

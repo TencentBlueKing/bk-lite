@@ -18,6 +18,16 @@ def _metric_unit(metric_type: str) -> str:
     }[metric_type]
 
 
+def resolve_result_unit(policy: ApmPolicy) -> str:
+    """percent 用结果单位；delta 与 absolute 沿用指标单位。"""
+    if (
+        getattr(policy, "compare_mode", ApmPolicy.CompareMode.ABSOLUTE) != ApmPolicy.CompareMode.ABSOLUTE
+        and getattr(policy, "compare_value_kind", "") == ApmPolicy.CompareValueKind.PERCENT
+    ):
+        return "percent"
+    return _metric_unit(policy.metric_type)
+
+
 class ApmAlertMetricSnapshotStore:
     """按 Monitor 的 Alert 一对一模型追加策略扫描结果。"""
 
@@ -34,7 +44,7 @@ class ApmAlertMetricSnapshotStore:
             snapshot, created = ApmAlertMetricSnapshot.objects.get_or_create(
                 alert=alert,
                 defaults={
-                    "unit": _metric_unit(policy.metric_type),
+                    "unit": resolve_result_unit(policy),
                     "aggregation": policy.aggregation,
                     "evaluation_interval": policy.evaluation_interval,
                     "metric_window": policy.metric_window,
@@ -48,13 +58,7 @@ class ApmAlertMetricSnapshotStore:
             if any(item.get("snapshot_time") == snapshot_time for item in snapshot.snapshots):
                 return snapshot
 
-            snapshot_type = (
-                "no_data"
-                if result.data_state == MetricDataState.NO_DATA
-                else "event"
-                if event is not None
-                else "info"
-            )
+            snapshot_type = "no_data" if result.data_state == MetricDataState.NO_DATA else "event" if event is not None else "info"
             snapshot.snapshots.append(
                 {
                     "type": snapshot_type,
@@ -62,6 +66,9 @@ class ApmAlertMetricSnapshotStore:
                     "event_id": event.event_id if event is not None else None,
                     "event_time": event.occurred_at.isoformat() if event is not None else None,
                     "value": str(result.value) if result.value is not None else None,
+                    "current_value": str(result.current_value) if result.current_value is not None else None,
+                    "baseline_value": str(result.baseline_value) if result.baseline_value is not None else None,
+                    "result_unit": resolve_result_unit(policy),
                     "threshold": threshold,
                     "data_state": str(result.data_state),
                 }

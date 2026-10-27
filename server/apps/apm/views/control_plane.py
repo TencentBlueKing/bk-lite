@@ -1,5 +1,7 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
+from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q, QuerySet
@@ -85,6 +87,7 @@ from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS, ProbeArt
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.apm.utils.locale_text import public_detail, request_text
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.rpc.node_mgmt import NodeMgmt
@@ -846,6 +849,57 @@ class ApmSloViewSet(viewsets.GenericViewSet):
         return self._set_enabled(request, enabled=False)
 
 
+class ApmPolicyDryRunError(BaseAppException):
+    """试算失败。日志由视图持有，构造时不再写第二条。"""
+
+    ERROR_CODE = "5001601"
+    MESSAGE = "试算失败"
+    STATUS_CODE = 500
+    LOG_LEVEL = logging.WARNING
+
+    def __init__(self):
+        self.message = self.MESSAGE
+        self.data = None
+        Exception.__init__(self, self.message)
+
+
+def _metric_text(value):
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return DjangoApmPolicyService._decimal_text(value)
+    return str(value)
+
+
+def _series_payload(series):
+    return [
+        {
+            "timestamp": point.timestamp,
+            "request_rate": point.request_rate,
+            "error_rate": point.error_rate,
+            "p95_ms": point.p95_ms,
+            "p99_ms": point.p99_ms,
+        }
+        for point in series or ()
+    ]
+
+
+def _policy_query_payload(result) -> dict:
+    return {
+        "value": _metric_text(getattr(result, "value", None)),
+        "breached": result.breached,
+        "evaluated_at": result.evaluated_at,
+        "data_state": str(result.data_state),
+        "threshold": getattr(result, "threshold", None),
+        "series": _series_payload(getattr(result, "series", ())),
+        "current_value": _metric_text(getattr(result, "current_value", None)),
+        "baseline_value": _metric_text(getattr(result, "baseline_value", None)),
+        "baseline_series": _series_payload(getattr(result, "baseline_series", ())),
+        "result_unit": getattr(result, "result_unit", "") or "",
+        "reason": getattr(result, "reason", "") or "",
+    }
+
+
 class ApmPolicyViewSet(viewsets.GenericViewSet):
     renderer_classes = (ApmRenderer,)
     serializer_class = ApmPolicySerializer
@@ -1081,25 +1135,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
             result = self._service().test_query(policy, evaluated_at=timezone.now())
         except TelemetryStoreUnavailable as exc:
             return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return Response(
-            {
-                "value": str(result.value) if result.value is not None else None,
-                "breached": result.breached,
-                "evaluated_at": result.evaluated_at,
-                "data_state": str(result.data_state),
-                "threshold": getattr(result, "threshold", None),
-                "series": [
-                    {
-                        "timestamp": point.timestamp,
-                        "request_rate": point.request_rate,
-                        "error_rate": point.error_rate,
-                        "p95_ms": point.p95_ms,
-                        "p99_ms": point.p99_ms,
-                    }
-                    for point in getattr(result, "series", ())
-                ],
-            }
-        )
+        return Response(_policy_query_payload(result))
 
     @action(methods=("post",), detail=False)
     @HasPermission("policies-Operate")
@@ -1117,25 +1153,42 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
             result = self._service().test_query(policy, evaluated_at=timezone.now())
         except TelemetryStoreUnavailable as exc:
             return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return Response(
-            {
-                "value": str(result.value) if result.value is not None else None,
-                "breached": result.breached,
-                "evaluated_at": result.evaluated_at,
-                "data_state": str(result.data_state),
-                "threshold": result.threshold,
-                "series": [
-                    {
-                        "timestamp": point.timestamp,
-                        "request_rate": point.request_rate,
-                        "error_rate": point.error_rate,
-                        "p95_ms": point.p95_ms,
-                        "p99_ms": point.p99_ms,
-                    }
-                    for point in result.series
-                ],
-            }
-        )
+        return Response(_policy_query_payload(result))
+
+    @action(methods=("post",), detail=False, url_path="dry-run")
+    @HasPermission("policies-Operate")
+    def dry_run(self, request, *args, **kwargs):
+        payload = dict(request.data)
+        policy_id = payload.pop("policy_id", None) or None
+        payload["notification_targets"] = []
+        serializer = self.get_serializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        values = dict(serializer.validated_data)
+        service_id = values.pop("service_id")
+        values.pop("notification_targets", None)
+        values.pop("organizations", None)
+        service = self._visible_service(service_id)
+        saved_policy = get_object_or_404(self.get_queryset(), id=policy_id) if policy_id else None
+        try:
+            policy = ApmPolicy(service=service, **values)
+            result = self._service().dry_run(policy, evaluated_at=timezone.now(), saved_policy=saved_policy)
+        except TelemetryStoreUnavailable as exc:
+            return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception as exc:
+            proxy = RuntimeError(type(exc).__name__)
+            logger.warning(
+                "event=apm_policy_dry_run_failed policy_id=%s failed_stage=%s error_type=%s",
+                "" if policy_id is None else str(policy_id),
+                "dry_run",
+                type(exc).__name__,
+                exc_info=(type(proxy), proxy, exc.__traceback__),
+            )
+            failure = ApmPolicyDryRunError()
+            return Response(
+                {"data": failure.render_data() or {}, "result": False, "message": failure.message},
+                status=failure.STATUS_CODE,
+            )
+        return Response(result)
 
 
 class ApmEventViewSet(viewsets.GenericViewSet):

@@ -30,6 +30,12 @@ error:
   level_duplicate: 同一告警级别不能重复配置。
   threshold_finite: 阈值必须是有限数值。
   error_rate_range: 错误率阈值必须在 0 到 1 之间。
+  error_rate_delta_range: 错误率变化量阈值必须在 -1 到 1 之间。
+  compare_absolute_kind: 当前值比较不能再选择变化量或变化率。
+  compare_previous_kind: 相对上一等长窗必须选择变化量或变化率。
+  compare_offset_percent_only: 1 小时前同窗和 24 小时前同窗只允许变化率。
+  compare_no_traffic_absolute: 无流量只允许和当前值比较。
+  compare_min_request_metric: 最低请求数只适用于错误率、P95 和 P99。
   threshold_comparator: 多级阈值必须使用相同比较符。
   threshold_monotonic: 多级阈值必须按严重、错误、警告保持单调。
   deployment_window_limit: 部署事件查询时间窗不能超过 90 天

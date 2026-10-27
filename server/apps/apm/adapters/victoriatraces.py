@@ -814,10 +814,11 @@ class VictoriaTracesTelemetryStore:
                 )
                 for timestamp, count in list(ranged.get("requests", {}).items())[-MAX_RED_POINTS:]
             )
-            endpoints = self._endpoint_red(
-                self._endpoint_stats_rows(query, exact_dedup=exact_dedup, entry_filters=entry_filters),
-                window_seconds,
-            )
+            if query.include_endpoints:
+                endpoints = self._endpoint_red(
+                    self._endpoint_stats_rows(query, exact_dedup=exact_dedup, entry_filters=entry_filters),
+                    window_seconds,
+                )
         return ServiceRed(
             request_rate=requests_count / window_seconds,
             error_rate=errors_count / requests_count,

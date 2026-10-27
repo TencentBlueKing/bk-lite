@@ -20,10 +20,12 @@ from apps.apm.services.contracts import (
     PublishResult,
     ServiceMetricQuery,
 )
-from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore
+from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore, resolve_result_unit
 from apps.apm.services.snapshots import ApmEventSnapshotStore
 
 MAX_POLICY_TARGETS = 100
+DRY_RUN_TARGET_LIMIT = 20
+BASELINE_ZERO_REASON = "baseline_zero"
 SEVERITY_LEVEL = {
     ApmPolicy.Severity.CRITICAL: "0",
     ApmPolicy.Severity.ERROR: "1",
@@ -173,6 +175,99 @@ class DjangoApmPolicyService:
     def _target_key(endpoint: str, version: str) -> str:
         return sha256(f"endpoint={endpoint}\x00version={version}".encode()).hexdigest()
 
+    def _read_window(
+        self,
+        policy: ApmPolicy,
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+        endpoint: str,
+        version: str,
+        include_endpoints: bool,
+    ):
+        return self.metric_store.service_red(
+            ServiceMetricQuery(
+                service_namespace=policy.service.namespace,
+                service_name=policy.service.name,
+                environment=policy.environment,
+                started_at=started_at,
+                ended_at=ended_at,
+                include_breakdown=True,
+                include_endpoints=include_endpoints,
+                endpoint=endpoint or "",
+                version=version or "",
+            )
+        )
+
+    @staticmethod
+    def _baseline_offset(policy: ApmPolicy, window_minutes: int) -> timedelta | None:
+        mode = policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE
+        if mode == ApmPolicy.CompareMode.PREVIOUS_WINDOW:
+            return timedelta(minutes=window_minutes)
+        if mode == ApmPolicy.CompareMode.OFFSET_1H:
+            return timedelta(hours=1)
+        if mode == ApmPolicy.CompareMode.OFFSET_24H:
+            return timedelta(hours=24)
+        return None
+
+    @staticmethod
+    def _below_min_samples(policy: ApmPolicy, red) -> bool:
+        minimum = policy.min_request_count
+        if minimum is None:
+            return False
+        count = red.request_count if red.request_count is not None else 0
+        return count < minimum
+
+    @staticmethod
+    def _compared_value(current: Decimal, baseline: Decimal, kind: str) -> Decimal:
+        if kind == ApmPolicy.CompareValueKind.PERCENT:
+            raw = (current - baseline) / baseline * Decimal(100)
+        else:
+            raw = current - baseline
+        quantized = raw.quantize(Decimal("0.000001"))
+        text = format(quantized, "f").rstrip("0").rstrip(".")
+        return Decimal(text or "0")
+
+    @staticmethod
+    def _decimal_text(value: Decimal | None) -> str | None:
+        if value is None:
+            return None
+        rendered = format(value, "f")
+        if "." in rendered:
+            rendered = rendered.rstrip("0").rstrip(".")
+        return rendered or "0"
+
+    def _query_result(
+        self,
+        policy: ApmPolicy,
+        *,
+        value: Decimal | None,
+        breached: bool | None,
+        evaluated_at: datetime,
+        data_state: MetricDataState,
+        series,
+        threshold=None,
+        current_value: Decimal | None = None,
+        baseline_value: Decimal | None = None,
+        baseline_series=(),
+        request_count: int | None = None,
+        reason: str = "",
+    ) -> PolicyQueryResult:
+        return PolicyQueryResult(
+            value=value,
+            breached=breached,
+            evaluated_at=evaluated_at,
+            data_state=data_state,
+            series=series,
+            threshold=threshold,
+            current_value=current_value,
+            baseline_value=baseline_value,
+            baseline_series=baseline_series,
+            request_count=request_count,
+            reason=reason,
+            result_unit=resolve_result_unit(policy),
+        )
+
     def test_query(
         self,
         policy: ApmPolicy,
@@ -183,36 +278,178 @@ class DjangoApmPolicyService:
     ) -> PolicyQueryResult:
         target_endpoint, target_version = (endpoint, version) if endpoint is not None else self._targets(policy)[0]
         window = max(policy.metric_window, 1)
-        red = self.metric_store.service_red(
-            ServiceMetricQuery(
-                service_namespace=policy.service.namespace,
-                service_name=policy.service.name,
-                environment=policy.environment,
-                started_at=evaluated_at - timedelta(minutes=window),
-                ended_at=evaluated_at,
-                include_breakdown=True,
-                endpoint=target_endpoint or "",
-                version=target_version or "",
-            )
+        current_start = evaluated_at - timedelta(minutes=window)
+        current = self._read_window(
+            policy,
+            started_at=current_start,
+            ended_at=evaluated_at,
+            endpoint=target_endpoint or "",
+            version=target_version or "",
+            include_endpoints=True,
         )
-        value = self._aggregate(policy, red)
-        if value is None:
-            return PolicyQueryResult(
+        current_value = self._aggregate(policy, current)
+        if current_value is None:
+            return self._query_result(
+                policy,
                 value=None,
                 breached=None,
                 evaluated_at=evaluated_at,
                 data_state=MetricDataState.NO_DATA,
-                series=red.timeseries,
+                series=current.timeseries,
+                request_count=current.request_count,
             )
-        threshold = self._matching_threshold(policy, value)
-        return PolicyQueryResult(
-            value=value,
+        # 最低请求数门与比较基准正交：绝对阈值的低流量窗同样不评。
+        if self._below_min_samples(policy, current):
+            return self._query_result(
+                policy,
+                value=None,
+                breached=None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.INSUFFICIENT_SAMPLES,
+                series=current.timeseries,
+                current_value=current_value,
+                request_count=current.request_count,
+            )
+        offset = self._baseline_offset(policy, window)
+        if offset is None:
+            threshold = self._matching_threshold(policy, current_value)
+            return self._query_result(
+                policy,
+                value=current_value,
+                breached=threshold is not None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.AVAILABLE,
+                series=current.timeseries,
+                threshold=threshold,
+                current_value=current_value,
+                request_count=current.request_count,
+            )
+        baseline = self._read_window(
+            policy,
+            started_at=current_start - offset,
+            ended_at=evaluated_at - offset,
+            endpoint=target_endpoint or "",
+            version=target_version or "",
+            include_endpoints=False,
+        )
+        baseline_value = self._aggregate(policy, baseline)
+        if baseline_value is None or self._below_min_samples(policy, baseline):
+            return self._query_result(
+                policy,
+                value=None,
+                breached=None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.MISSING_BASELINE,
+                series=current.timeseries,
+                current_value=current_value,
+                baseline_value=baseline_value,
+                baseline_series=baseline.timeseries,
+                request_count=current.request_count,
+            )
+        kind = policy.compare_value_kind or ""
+        if kind == ApmPolicy.CompareValueKind.PERCENT and baseline_value == 0:
+            return self._query_result(
+                policy,
+                value=None,
+                breached=None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.MISSING_BASELINE,
+                series=current.timeseries,
+                current_value=current_value,
+                baseline_value=baseline_value,
+                baseline_series=baseline.timeseries,
+                request_count=current.request_count,
+                reason=BASELINE_ZERO_REASON,
+            )
+        compared = self._compared_value(current_value, baseline_value, kind)
+        threshold = self._matching_threshold(policy, compared)
+        return self._query_result(
+            policy,
+            value=compared,
             breached=threshold is not None,
             evaluated_at=evaluated_at,
             data_state=MetricDataState.AVAILABLE,
-            series=red.timeseries,
+            series=current.timeseries,
             threshold=threshold,
+            current_value=current_value,
+            baseline_value=baseline_value,
+            baseline_series=baseline.timeseries,
+            request_count=current.request_count,
         )
+
+    def dry_run(
+        self,
+        policy: ApmPolicy,
+        *,
+        evaluated_at: datetime,
+        saved_policy: ApmPolicy | None = None,
+    ) -> dict:
+        """只读复用 test_query。不写目标状态、告警、事件、快照或通知。"""
+        targets = self._targets(policy)
+        states = {}
+        if saved_policy is not None and getattr(saved_policy, "pk", None):
+            states = {(state.endpoint, state.version): state for state in saved_policy.target_states.all()}
+        items = []
+        for endpoint, version in targets[:DRY_RUN_TARGET_LIMIT]:
+            result = self.test_query(policy, evaluated_at=evaluated_at, endpoint=endpoint, version=version)
+            state = states.get((endpoint, version))
+            verdict = self._dry_run_verdict(result, state)
+            items.append(
+                {
+                    "endpoint": endpoint,
+                    "version": version,
+                    "verdict": verdict,
+                    "current_value": self._decimal_text(result.current_value),
+                    "baseline_value": self._decimal_text(result.baseline_value),
+                    "compared_value": self._decimal_text(result.value),
+                    "request_count": result.request_count,
+                    "matched_threshold": dict(result.threshold) if result.threshold and result.breached else None,
+                    "reason": self._dry_run_reason(policy, result, state, verdict),
+                }
+            )
+        return {
+            "evaluated_at": evaluated_at,
+            "compare_mode": policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
+            "compare_value_kind": policy.compare_value_kind or "",
+            "result_unit": resolve_result_unit(policy),
+            "total_targets": len(targets),
+            "truncated": len(targets) > DRY_RUN_TARGET_LIMIT,
+            "items": items,
+        }
+
+    def _dry_run_verdict(self, result: PolicyQueryResult, state: ApmPolicyTargetState | None) -> str:
+        if result.data_state == MetricDataState.NO_DATA:
+            return "no_data"
+        if result.data_state == MetricDataState.MISSING_BASELINE:
+            return "missing_baseline"
+        if result.data_state == MetricDataState.INSUFFICIENT_SAMPLES:
+            return "insufficient_samples"
+        matched = result.threshold if result.breached else None
+        active = state is not None and state.status == ApmPolicyTargetState.Status.ACTIVE
+        if matched and active and self._severity_rank(matched["severity"]) < self._severity_rank(state.current_severity):
+            return "would_escalate"
+        if matched and not active:
+            return "would_trigger"
+        if active and not matched:
+            return "would_recover"
+        return "ok"
+
+    def _dry_run_reason(self, policy: ApmPolicy, result: PolicyQueryResult, state, verdict: str) -> str:
+        if result.data_state == MetricDataState.INSUFFICIENT_SAMPLES:
+            return "样本不足"
+        if result.data_state == MetricDataState.MISSING_BASELINE:
+            if result.reason == BASELINE_ZERO_REASON:
+                return "对照值为 0，无法计算变化率"
+            return "对照缺失"
+        if verdict in {"would_trigger", "would_escalate"}:
+            needed = policy.trigger_after or 1
+            hits = 1 if state is None else state.consecutive_hits + 1
+            if needed > 1 and hits < needed:
+                return f"本轮命中 {hits}/{needed}，现网不会建告警"
+            return ""
+        if verdict == "would_recover":
+            return f"需连续 {policy.recover_after} 次"
+        return ""
 
     def evaluate(self, policy_id: UUID, *, evaluated_at: datetime) -> None:
         policy = ApmPolicy.objects.select_related("service").prefetch_related("organization_links").get(id=policy_id)
@@ -238,10 +475,7 @@ class DjangoApmPolicyService:
 
             with transaction.atomic():
                 locked_policy = (
-                    ApmPolicy.objects.select_related("service")
-                    .prefetch_related("organization_links")
-                    .select_for_update()
-                    .get(id=policy_id)
+                    ApmPolicy.objects.select_related("service").prefetch_related("organization_links").select_for_update().get(id=policy_id)
                 )
                 state, _ = ApmPolicyTargetState.objects.select_for_update().get_or_create(
                     policy=locked_policy,
@@ -272,6 +506,8 @@ class DjangoApmPolicyService:
                 state.save()
 
     def _advance_target(self, policy, state, result, evaluated_at):
+        if result.data_state in {MetricDataState.MISSING_BASELINE, MetricDataState.INSUFFICIENT_SAMPLES}:
+            return None
         threshold = dict(result.threshold) if result.threshold else None
         trigger_after = policy.trigger_after
         recover_after = policy.recover_after
@@ -380,10 +616,15 @@ class DjangoApmPolicyService:
             ApmEvent.Action.CLOSED: "人工关闭",
         }[action]
         title = f"APM {policy.name}{action_label}"
-        description = (
-            f"{policy.service.namespace}/{policy.service.name} "
-            f"[{policy.environment}] {metric_label}={result.value if result.value is not None else '无数据'}"
-        )
+        shown = result.value if result.value is not None else "无数据"
+        description = f"{policy.service.namespace}/{policy.service.name} [{policy.environment}] {metric_label}={shown}"
+        if (policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE) != ApmPolicy.CompareMode.ABSOLUTE:
+            current = result.current_value if result.current_value is not None else "无数据"
+            baseline = result.baseline_value if result.baseline_value is not None else "无数据"
+            compared = result.value if result.value is not None else "无数据"
+            description = (
+                f"{policy.service.namespace}/{policy.service.name} " f"[{policy.environment}] {metric_label} 当前 {current}，对照 {baseline}，变化 {compared}"
+            )
         resource_name = f"{policy.service.namespace}/{policy.service.name}".lstrip("/")
         alert_defaults = {
             "policy": policy,
@@ -486,6 +727,7 @@ class DjangoApmPolicyService:
                 "service_name": policy.service.name,
                 "endpoint": state.endpoint,
                 "version": state.version,
+                "compare_mode": policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
             },
         }
         for target in policy.notification_targets.order_by("channel_id", "id"):

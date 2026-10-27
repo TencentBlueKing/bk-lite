@@ -558,6 +558,8 @@ export interface ApmSpanSearchParams {
 }
 
 export type ApmPolicyMetric = 'error_rate' | 'p95' | 'p99' | 'throughput' | 'no_traffic';
+export type ApmCompareMode = 'absolute' | 'previous_window' | 'offset_1h' | 'offset_24h';
+export type ApmCompareValueKind = 'delta' | 'percent';
 export type ApmPolicyComparator = 'gt' | 'gte' | 'lt' | 'lte';
 export type ApmPolicySeverity = 'critical' | 'error' | 'warning';
 export type ApmPolicyAggregation = 'avg' | 'max' | 'min' | 'last';
@@ -587,6 +589,9 @@ export interface ApmPolicyInput {
   evaluation_interval: number;
   metric_window: number;
   aggregation: ApmPolicyAggregation;
+  compare_mode?: ApmCompareMode;
+  compare_value_kind?: ApmCompareValueKind | '';
+  min_request_count?: number | null;
   thresholds: Array<{ severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: number | string }>;
   trigger_after: number;
   recover_after: number;
@@ -616,19 +621,59 @@ export interface ApmPolicy extends ApmPolicyInput {
   updated_by: string;
 }
 
+export interface ApmPolicySeriesPoint {
+  timestamp: string;
+  request_rate: number | null;
+  error_rate: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+}
+
+export type ApmPolicyDataState = 'available' | 'no_data' | 'missing_baseline' | 'insufficient_samples';
+
 export interface ApmPolicyQueryResult {
   value: string | null;
   breached: boolean | null;
   evaluated_at: string;
-  data_state: 'available' | 'no_data';
+  data_state: ApmPolicyDataState;
   threshold: { severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: string } | null;
-  series: Array<{
-    timestamp: string;
-    request_rate: number | null;
-    error_rate: number | null;
-    p95_ms: number | null;
-    p99_ms: number | null;
-  }>;
+  series: ApmPolicySeriesPoint[];
+  current_value?: string | null;
+  baseline_value?: string | null;
+  baseline_series?: ApmPolicySeriesPoint[];
+  result_unit?: string;
+  reason?: string;
+}
+
+export type ApmPolicyDryRunVerdict =
+  | 'would_trigger'
+  | 'ok'
+  | 'would_recover'
+  | 'would_escalate'
+  | 'no_data'
+  | 'missing_baseline'
+  | 'insufficient_samples';
+
+export interface ApmPolicyDryRunItem {
+  endpoint: string;
+  version: string;
+  verdict: ApmPolicyDryRunVerdict;
+  current_value: string | null;
+  baseline_value: string | null;
+  compared_value: string | null;
+  request_count: number | null;
+  matched_threshold: { severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: string } | null;
+  reason: string;
+}
+
+export interface ApmPolicyDryRunResult {
+  evaluated_at: string;
+  compare_mode: ApmCompareMode;
+  compare_value_kind: ApmCompareValueKind | '';
+  result_unit: string;
+  total_targets: number;
+  truncated: boolean;
+  items: ApmPolicyDryRunItem[];
 }
 
 export interface ApmEvent {
@@ -722,12 +767,15 @@ export interface ApmAlertMetricSnapshotItem {
   event_id: string | null;
   event_time: string | null;
   value: string | null;
+  current_value?: string | null;
+  baseline_value?: string | null;
+  result_unit?: string;
   threshold: {
     severity: ApmPolicySeverity;
     comparator: ApmPolicyComparator | 'no_data';
     value: string | number;
   } | null;
-  data_state: 'available' | 'no_data';
+  data_state: ApmPolicyDataState;
 }
 
 export interface ApmAlertMetricSnapshot {
@@ -752,7 +800,10 @@ export interface ApmEventSnapshot {
     comparator?: ApmPolicyComparator | 'closed' | null;
     threshold?: string | null;
     severity?: ApmPolicySeverity;
-    data_state: 'available' | 'no_data';
+    data_state: ApmPolicyDataState;
+    current_value?: string | null;
+    baseline_value?: string | null;
+    result_unit?: string;
   };
   trace_context: Record<string, unknown>;
   payload_status: 'pending' | 'available' | 'unavailable' | 'expired';
@@ -761,6 +812,7 @@ export interface ApmEventSnapshot {
     event_point: string;
     threshold: { severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: string } | null;
     series: Array<{ timestamp: string; value: number | null }>;
+    baseline_series?: Array<{ timestamp: string; value: number | null }>;
   } | null;
   retention_expires_at: string;
 }

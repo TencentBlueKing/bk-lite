@@ -52,6 +52,7 @@ const api = {
   getServices: vi.fn(),
   isLoading: false,
   previewPolicy: vi.fn(),
+  dryRunPolicy: vi.fn(),
   updatePolicy: vi.fn(),
 };
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
@@ -520,5 +521,159 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
         }),
       ),
     );
+  });
+
+  it('存量策略按当前值保存，错误率阈值仍除以 100，最低请求数缺省为 null', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          compare_mode: 'absolute',
+          compare_value_kind: '',
+          min_request_count: null,
+          thresholds: [expect.objectContaining({ severity: 'warning', value: 0.05 })],
+        }),
+      ),
+    );
+  });
+
+  it('相对上一等长窗切换变化量和变化率，阈值单位跟着变且数字不重算', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    expect((await screen.findAllByText('%')).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('相对上一等长窗'));
+    expect(screen.getByRole('radio', { name: '变化量 Δ' })).not.toBeNull();
+    expect(screen.getAllByText('个百分点').length).toBeGreaterThan(0);
+    expect((screen.getByLabelText('警告阈值') as HTMLInputElement).value).toBe('5');
+
+    await user.click(screen.getByRole('radio', { name: '变化率 %' }));
+    expect(screen.queryByText('个百分点')).toBeNull();
+    expect((screen.getByLabelText('警告阈值') as HTMLInputElement).value).toBe('5');
+
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          compare_mode: 'previous_window',
+          compare_value_kind: 'percent',
+          thresholds: [expect.objectContaining({ severity: 'warning', value: 5 })],
+        }),
+      ),
+    );
+  });
+
+  it('同窗固定变化率并隐藏单选，无流量不提交比较字段', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByLabelText('比较基准'));
+    await user.click(await screen.findByText('1 小时前同窗'));
+    expect(screen.queryByRole('radio', { name: '变化量 Δ' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '变化率 %' })).toBeNull();
+
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByText('无流量'));
+    expect(screen.queryByLabelText('比较基准')).toBeNull();
+    expect(screen.queryByLabelText('最低请求数')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(payload.metric_type).toBe('no_traffic');
+    expect(payload).not.toHaveProperty('compare_mode');
+    expect(payload).not.toHaveProperty('compare_value_kind');
+    expect(payload).not.toHaveProperty('min_request_count');
+  });
+
+  it('新建策略默认最低请求数 20，清空后保存为 null', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor />);
+    await user.type(await screen.findByLabelText('策略名称'), '新策略');
+    await user.click(screen.getByLabelText('服务'));
+    await user.click(await screen.findByText('shop / checkout'));
+    expect((screen.getByLabelText('最低请求数') as HTMLInputElement).value).toBe('20');
+    await user.clear(screen.getByLabelText('最低请求数'));
+    await user.click(screen.getByRole('button', { name: '创建策略' }));
+    await waitFor(() =>
+      expect(api.createPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          compare_mode: 'absolute',
+          compare_value_kind: '',
+          min_request_count: null,
+          metric_type: 'error_rate',
+        }),
+      ),
+    );
+  });
+
+  it('未填策略名时试算使用预览名称，不要求先保存', async () => {
+    const user = userEvent.setup();
+    api.dryRunPolicy.mockResolvedValue({
+      evaluated_at: '2026-08-14T02:00:00Z',
+      compare_mode: 'absolute',
+      compare_value_kind: '',
+      result_unit: 'ratio',
+      total_targets: 1,
+      truncated: false,
+      items: [],
+    });
+    renderWithApmIntl(<ApmPolicyEditor />);
+    await user.click(await screen.findByLabelText('服务'));
+    await user.click(await screen.findByText('shop / checkout'));
+    await user.click(screen.getByRole('button', { name: '试算' }));
+    await waitFor(() =>
+      expect(api.dryRunPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({ name: '指标预览', service_id: 'svc-1' }),
+      ),
+    );
+    expect(api.createPolicy).not.toHaveBeenCalled();
+  });
+
+  it('试算表展示结论、截断提示和连续命中文案', async () => {
+    const user = userEvent.setup();
+    api.dryRunPolicy.mockResolvedValue({
+      evaluated_at: '2026-08-14T02:00:00Z',
+      compare_mode: 'previous_window',
+      compare_value_kind: 'percent',
+      result_unit: 'percent',
+      total_targets: 21,
+      truncated: true,
+      items: [
+        {
+          endpoint: 'POST /checkout',
+          version: 'v2',
+          verdict: 'would_trigger',
+          current_value: '0.06',
+          baseline_value: '0.04',
+          compared_value: '50',
+          request_count: 12,
+          matched_threshold: { severity: 'error', comparator: 'gt', value: '40' },
+          reason: '本轮命中 1/3，现网不会建告警',
+        },
+        {
+          endpoint: 'GET /cart',
+          version: '',
+          verdict: 'insufficient_samples',
+          current_value: '0.5',
+          baseline_value: null,
+          compared_value: null,
+          request_count: 8,
+          matched_threshold: null,
+          reason: '样本不足',
+        },
+      ],
+    });
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '试算' }));
+    expect(await screen.findByText('共 21 个目标，只试算前 20 个，请在端点里缩小范围')).not.toBeNull();
+    expect(screen.getByText('将触发')).not.toBeNull();
+    expect(screen.getAllByText('样本不足').length).toBeGreaterThan(0);
+    expect(screen.getByText('本轮命中 1/3，现网不会建告警')).not.toBeNull();
+    expect(screen.getByText('POST /checkout v2')).not.toBeNull();
+    expect(api.dryRunPolicy).toHaveBeenCalledWith(expect.objectContaining({ policy_id: 'p1' }));
   });
 });
