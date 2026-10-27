@@ -9,6 +9,7 @@ from apps.alerts.utils.enrichment import is_enrichment_path
 from apps.alerts.utils.i18n import serializer_message
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
+from apps.alerts.aggregation.window.factory import parse_session_timeout_minutes
 from apps.alerts.utils.util import parse_aggregation_window_size
 
 # 允许的聚合维度白名单（防止 SQL 注入）
@@ -127,6 +128,12 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
             params["window_size"] = normalized_window_size
         except ValueError as error:
             params_errors["window_size"] = str(error)
+
+        if "time_minutes" in params:
+            try:
+                params["time_minutes"] = parse_session_timeout_minutes(params.get("time_minutes"))
+            except ValueError as error:
+                params_errors["time_minutes"] = str(error)
 
         group_by = params.get("group_by", [])
         if group_by:
