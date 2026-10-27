@@ -161,3 +161,70 @@ def test_cold_start_rebuilds_from_recent_events():
     Event.objects.filter(pk=old.pk).update(received_at=now - timedelta(days=91))
     cache = counts()
     assert cache.list_for_source([1], "k8s") == [{"id": "cluster-a", "count": 2}]
+
+
+def test_rebuild_keeps_increment_observed_during_snapshot():
+    cache = counts()
+
+    def mapping(team_id, source_id):
+        cache.observe_events([_event("k8s", "cluster-a", [1])])
+        return {"cluster-a": 10}
+
+    cache._event_mapping = mapping
+    cache.rebuild_for_team_source(1, "k8s")
+    assert cache.list_for_source([1], "k8s") == [{"id": "cluster-a", "count": 11}]
+    assert cache.list_for_source([1], "k8s") == [{"id": "cluster-a", "count": 11}]
+
+
+def test_rebuild_keeps_snapshot_when_earlier_observe_is_included():
+    cache = counts()
+    cache.observe_events([_event("k8s", "cluster-a", [1])])
+
+    def mapping(team_id, source_id):
+        return {"cluster-a": 10}
+
+    cache._event_mapping = mapping
+    cache.rebuild_for_team_source(1, "k8s")
+    assert cache.list_for_source([1], "k8s") == [{"id": "cluster-a", "count": 10}]
+    assert cache.list_for_source([1], "k8s") == [{"id": "cluster-a", "count": 10}]
+
+
+def test_rebuild_hset_error_leaves_ready_unset_and_drops_sidecar():
+    class BoomOnce(MemoryHashStore):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def hset(self, key, mapping):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("hset failed")
+            return super().hset(key, mapping)
+
+    cache = PushSourceCountCache(store=BoomOnce())
+    calls = {"n": 0}
+
+    def mapping(team_id, source_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            cache.observe_events([_event("k8s", "cluster-a", [1])])
+        return {"cluster-a": 10}
+
+    cache._event_mapping = mapping
+    cache.rebuild_for_team_source(1, "k8s")
+    assert cache.store.get(cache.ready_key(1, "k8s")) != 1
+    cache.rebuild_for_team_source(1, "k8s")
+    assert cache.list_for_source([1], "k8s") == [{"id": "cluster-a", "count": 10}]
+
+
+def test_losing_rebuild_does_not_clear_holder_increment():
+    cache = counts()
+
+    def mapping(team_id, source_id):
+        cache.observe_events([_event("k8s", "cluster-a", [1])])
+        assert cache.rebuild_for_team_source(team_id, source_id) == {}
+        return {"cluster-a": 10}
+
+    cache._event_mapping = mapping
+    cache.rebuild_for_team_source(1, "k8s")
+    assert cache.list_for_source([1], "k8s") == [{"id": "cluster-a", "count": 11}]
