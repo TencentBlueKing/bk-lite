@@ -1,7 +1,7 @@
 # 日志策略计算方式产品决策记忆
 
 - 最近更新：2026-10-27
-- 当前规格：`specs/changes/log-policy-calc-catalog/spec.md`（第二批，approved）；第一批 `specs/changes/log-policy-calc-methods/spec.md`（implemented）
+- 当前规格：`specs/changes/log-policy-calc-catalog/spec.md`（第二批，implemented，2026-10-27）；第一批 `specs/changes/log-policy-calc-methods/spec.md`（implemented）
 
 ## 产品定位
 
@@ -10,7 +10,7 @@
 ## 已确认范围
 
 - 第一批（已落地）：`count_rate`（条/秒）、变化量、只读试算端点、聚合样本 ≤10、回跳查询冻结、通知带命中数 / 样本 / 检索链接。
-- 第二批（approved，2026-10-27）：
+- 第二批（已落地，2026-10-27）：
   - 函数新增 `count_uniq`（去重计数）、`quantile`（P50/P90/P95/P99）、`ratio`（占比，分子为 LogsQL 过滤、分母为策略查询）、`bytes_rate`（字节/秒）。
   - 比较方式 `absolute / delta / percent`，对照 `previous_window / offset_1h / offset_24h / offset_7d`，适用于 `count / sum / avg / max / min / count_uniq / quantile`。
   - 策略级无数据告警开关 + 独立级别；无分组看本窗 0 行，有分组看「上一等长窗出现、本窗缺失」的分组。
@@ -26,7 +26,9 @@
 - `ratio` 用 VictoriaLogs 条件计数 `count() if (<filter>)` 在同一条查询里算，分母为 0 不触发；不另写分母查询。
 - 对照查询失败：依赖它的条件判 False，不告警不通知，记有界 WARNING；不重试不阻塞。
 - 无数据是策略级开关而不是 `count < 1` 条件；有分组时以上一等长窗分组集合为全集；无数据事件与正常事件 `source_id` 不同，互不归并；连续次数不作用于无数据。
-- 连续次数无状态实现（重查前 N−1 窗），N ≤ 5 限住查询放大；任一窗失败本轮不判。
+- 连续次数无状态实现（重查前 N−1 窗），N ≤ 5 限住查询放大；任一平移窗失败本轮该策略全部分组不判（实现时按策略粒度而非分组粒度，原因：失败的是整条查询，不是某个分组）。
+- 无分组无数据以 VictoriaLogs 现网行为为准：`stats` 在 0 条时返回一行 `count=0`，扫描把空列表与 `count==0` 同视为无数据；该行若已有条件成立则不另产无数据事件。
+- 无数据级别表单复用现有三档（严重 / 错误 / 警告），后端仍接受 `info`，不单独加一档。
 - 不做公式编辑器 / 任意 SQL / 自定义触发表达式。原因：表达式会让校验、试算、回跳、通知渲染全退化成字符串。
 - `ratio` 分子筛选拒绝 `|`，并经检索同一套 `message → _msg` 映射后整体加括号拼接。
 - 速率单位固定条/秒；`delta` 允许负阈值表示骤降。

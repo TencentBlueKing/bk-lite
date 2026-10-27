@@ -1,6 +1,8 @@
 # 日志策略计算方式目录：函数 × 比较方式 × 对照 + 占比 / 无数据 / 连续次数
 
-Status: approved
+Status: implemented
+
+实施记录：B1 `1215d99119` / `ba074cfa8f`，B2 `03c696af7a` / `7fa8e1cc4f`，B3 `03536ea953` / `efdaae8a46`；验证与已接受偏差见 `verification.md`。
 
 需求来源：CTeam 需求 p398_715 的第二批。第一批（速率、变化量、试算、样本回跳）已按
 `specs/changes/log-policy-calc-methods/spec.md` 落地（提交 `437e5c1f24`）。产品在 2026-10-27 复核后要求
