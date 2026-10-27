@@ -54,7 +54,7 @@ interface PolicyGroupRule {
   trigger_count?: number;
   recovery_condition?: number;
   recovery_threshold?: { method?: string; value?: number | null };
-  no_data_carrier?: boolean;
+  no_data_enabled?: boolean;
   policy_id?: number;
   open_alert_count?: number;
 }
@@ -1070,12 +1070,7 @@ const PolicyGroupPage: React.FC = () => {
                 title: t('common.name'),
                 dataIndex: 'name',
                 key: 'name',
-                render: (_, record) => (
-                  <span className="inline-flex flex-wrap items-center gap-2">
-                    <span>{record.name}</span>
-                    {record.no_data_carrier ? <StatusToneBadge tone="neutral" label="承载无数据" /> : null}
-                  </span>
-                ),
+                render: (_, record) => record.name,
               },
               {
                 title: '模板',
@@ -1083,6 +1078,18 @@ const PolicyGroupPage: React.FC = () => {
                 key: 'plugin_name',
                 width: 160,
                 render: (_, record) => record.plugin_name || '--',
+              },
+              {
+                title: '无数据',
+                dataIndex: 'no_data_enabled',
+                key: 'no_data_enabled',
+                width: 110,
+                render: (_, record) => (
+                  <StatusToneBadge
+                    tone={record.no_data_enabled ? 'success' : 'neutral'}
+                    label={record.no_data_enabled ? '已开启' : '未开启'}
+                  />
+                ),
               },
               {
                 title: t('common.action'),

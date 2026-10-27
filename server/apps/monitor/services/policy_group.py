@@ -305,6 +305,51 @@ def _enable_alerts_with_no_data(enable_alerts, enabled):
     return current
 
 
+def _assign_rule_editor_no_data(policy, prepared, update_fields):
+    """把这条规则自己的无数据写到策略上。没有 no_data 时保持原值。"""
+    was_no_data = AlertConstants.NO_DATA in (policy.enable_alerts or [])
+    if "no_data" not in prepared:
+        return was_no_data, was_no_data, False
+    validated_no_data = _validate_no_data(prepared.get("no_data"))
+    no_data_enabled = validated_no_data["enabled"]
+    policy.enable_alerts = _enable_alerts_with_no_data(policy.enable_alerts, no_data_enabled)
+    update_fields.append("enable_alerts")
+    if no_data_enabled:
+        policy.no_data_period = copy.deepcopy(validated_no_data["period"])
+        policy.no_data_level = validated_no_data["level"]
+        policy.no_data_alert_name = validated_no_data["alert_name"]
+        policy.no_data_recovery_period = copy.deepcopy(validated_no_data["recovery_period"])
+    elif was_no_data:
+        policy.no_data_period = {}
+        policy.no_data_level = ""
+        policy.no_data_alert_name = ""
+        policy.no_data_recovery_period = {}
+    if no_data_enabled or was_no_data:
+        update_fields.extend(["no_data_period", "no_data_level", "no_data_alert_name", "no_data_recovery_period"])
+    return no_data_enabled, was_no_data, was_no_data and not no_data_enabled
+
+
+def _sync_rule_editor_baselines(
+    policy, *, operator, closes_alerts, closes_no_data, no_data_enabled, was_no_data, old_query, old_group_by, old_source
+):
+    """关掉无数据时清基准；打开或指标范围变了才重建。只改窗口不重建。"""
+    from apps.monitor.services.policy_baseline import PolicyBaselineService
+
+    baseline_changed = (
+        not _json_equal(old_query, policy.query_condition)
+        or not _json_equal(old_group_by, policy.group_by)
+        or not _json_equal(old_source, policy.source)
+    )
+    if closes_no_data and not closes_alerts:
+        no_data_alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, alert_type=AlertConstants.NO_DATA, status="new"))
+        PolicyGroupService._publish_closed_alerts(no_data_alerts, [policy], operator, "no_data_disabled")
+    if closes_no_data:
+        PolicyBaselineService(policy).clear()
+        return
+    if no_data_enabled and (not was_no_data or baseline_changed):
+        PolicyBaselineService(policy).refresh()
+
+
 class PolicyGroupService:
     """策略组成员决定的唯一写入入口。"""
 
@@ -879,7 +924,7 @@ class PolicyGroupService:
 
     @staticmethod
     def apply_rule_editor(rule, payload, operator="system"):
-        """写入这条规则自己的名称、指标和告警条件。组织、实例范围、频率、无数据和通知保持原值。"""
+        """写入这条规则自己的名称、指标、告警条件和无数据。组织、实例范围、频率和通知保持原值。"""
         if not isinstance(payload, dict):
             raise ValidationAppException("规则内容无效")
         with transaction.atomic():
@@ -889,6 +934,9 @@ class PolicyGroupService:
             closes_alerts = False
             update_fields = ["updated_by", "updated_at"]
             prepared = dict(payload)
+            old_query = copy.deepcopy(policy.query_condition)
+            old_group_by = copy.deepcopy(policy.group_by)
+            old_source = copy.deepcopy(policy.source)
             plugin = None
             if "collect_type" in prepared:
                 prepared["collect_type"], plugin = _editor_collect_type(rule, policy, prepared.get("collect_type"))
@@ -948,6 +996,7 @@ class PolicyGroupService:
                 rule_fields.append("name")
                 policy.name = name
                 update_fields.append("name")
+            no_data_enabled, was_no_data, closes_no_data = _assign_rule_editor_no_data(policy, prepared, update_fields)
             if rule_fields:
                 rule.updated_by = operator
                 rule.save(update_fields=[*dict.fromkeys(rule_fields), "updated_by", "updated_at"])
@@ -956,7 +1005,18 @@ class PolicyGroupService:
             if closes_alerts:
                 alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
                 PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
-            return closes_alerts
+            _sync_rule_editor_baselines(
+                policy,
+                operator=operator,
+                closes_alerts=closes_alerts,
+                closes_no_data=closes_no_data,
+                no_data_enabled=no_data_enabled,
+                was_no_data=was_no_data,
+                old_query=old_query,
+                old_group_by=old_group_by,
+                old_source=old_source,
+            )
+            return {"closes_alerts": closes_alerts, "closes_no_data": closes_no_data and not closes_alerts}
 
     @staticmethod
     def update_detection(group, *, schedule=None, no_data=None, operator="system"):

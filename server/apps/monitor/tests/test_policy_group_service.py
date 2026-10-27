@@ -24,7 +24,7 @@ from apps.monitor.models import (
 )
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_group import PolicyGroupService
-from apps.monitor.views.policy_group import _serialize_group
+from apps.monitor.views.policy_group import _serialize_group, _serialize_rule
 
 pytestmark = pytest.mark.django_db
 
@@ -145,7 +145,7 @@ def test_rule_editor_keeps_group_fields_and_closes_alerts_for_recipe_changes():
     rule.refresh_from_db()
     policy.refresh_from_db()
     alert.refresh_from_db()
-    assert closed is False
+    assert closed["closes_alerts"] is False
     assert rule.name == "磁盘读速过高"
     assert policy.name == "磁盘读速过高"
     assert policy.alert_name == "新告警名"
@@ -157,7 +157,7 @@ def test_rule_editor_keeps_group_fields_and_closes_alerts_for_recipe_changes():
     closed = PolicyGroupService.apply_rule_editor(rule, {"algorithm": "max"})
     policy.refresh_from_db()
     alert.refresh_from_db()
-    assert closed is True
+    assert closed["closes_alerts"] is True
     assert policy.algorithm == "max"
     assert alert.status == "closed"
 
@@ -208,7 +208,7 @@ def test_rule_editor_name_save_ignores_form_echo():
     rule.refresh_from_db()
     policy.refresh_from_db()
     alert.refresh_from_db()
-    assert closed is False
+    assert closed["closes_alerts"] is False
     assert rule.name == "只改名字"
     assert rule.plugin_id == plugin.id
     assert policy.collect_type == "host"
@@ -223,10 +223,75 @@ def test_rule_editor_name_save_ignores_form_echo():
     rule.refresh_from_db()
     policy.refresh_from_db()
     alert.refresh_from_db()
-    assert closed is True
+    assert closed["closes_alerts"] is True
     assert rule.plugin_id == other.id
     assert policy.collect_type == "host"
     assert alert.status == "closed"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rule_editor_no_data_stays_on_one_rule_until_group_save():
+    group, wmi, _ssh = _mixed_group()
+    host = _instance(group.monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    disk_rule = group.rules.select_related("policy").get(name="WMI 磁盘")
+    cpu_rule = group.rules.select_related("policy").get(name="WMI CPU")
+
+    with _existence_query("web-01"):
+        opened = PolicyGroupService.apply_rule_editor(disk_rule, {"no_data": _no_data_payload()})
+
+    disk_rule.policy.refresh_from_db()
+    cpu_rule.policy.refresh_from_db()
+    assert opened["closes_alerts"] is False
+    assert opened["closes_no_data"] is False
+    assert "no_data" in (disk_rule.policy.enable_alerts or [])
+    assert disk_rule.policy.no_data_alert_name == "{{host}} 无数据"
+    assert "no_data" not in (cpu_rule.policy.enable_alerts or [])
+    assert _serialize_rule(disk_rule)["no_data_enabled"] is True
+    assert _serialize_rule(cpu_rule)["no_data_enabled"] is False
+    no_data_alert = MonitorAlert.objects.create(policy_id=disk_rule.policy_id, monitor_instance_id=host.id, status="new", alert_type="no_data")
+    threshold_alert = MonitorAlert.objects.create(policy_id=disk_rule.policy_id, monitor_instance_id=host.id, status="new", alert_type="alert")
+    before = set(PolicyInstanceBaseline.objects.filter(policy=disk_rule.policy).values_list("id", "metric_instance_id"))
+    assert before
+
+    with _existence_query("replaced"):
+        changed = PolicyGroupService.apply_rule_editor(
+            disk_rule,
+            {"no_data": _no_data_payload(period={"type": "min", "value": 15})},
+        )
+
+    disk_rule.policy.refresh_from_db()
+    no_data_alert.refresh_from_db()
+    threshold_alert.refresh_from_db()
+    assert changed["closes_alerts"] is False
+    assert changed["closes_no_data"] is False
+    assert disk_rule.policy.no_data_period == {"type": "min", "value": 15}
+    assert no_data_alert.status == "new"
+    assert threshold_alert.status == "new"
+    assert set(PolicyInstanceBaseline.objects.filter(policy=disk_rule.policy).values_list("id", "metric_instance_id")) == before
+
+    closed = PolicyGroupService.apply_rule_editor(disk_rule, {"no_data": {"enabled": False}})
+    disk_rule.policy.refresh_from_db()
+    no_data_alert.refresh_from_db()
+    threshold_alert.refresh_from_db()
+    assert closed["closes_alerts"] is False
+    assert closed["closes_no_data"] is True
+    assert "no_data" not in (disk_rule.policy.enable_alerts or [])
+    assert no_data_alert.status == "closed"
+    assert threshold_alert.status == "new"
+    assert not PolicyInstanceBaseline.objects.filter(policy=disk_rule.policy).exists()
+
+    with _existence_query("web-01"):
+        PolicyGroupService.apply_rule_editor(disk_rule, {"no_data": _no_data_payload()})
+        PolicyGroupService.update_detection(group, no_data=_no_data_payload())
+
+    disk_rule.policy.refresh_from_db()
+    cpu_rule.policy.refresh_from_db()
+    assert "no_data" not in (disk_rule.policy.enable_alerts or [])
+    assert "no_data" in (cpu_rule.policy.enable_alerts or [])
+    assert _serialize_rule(disk_rule)["no_data_enabled"] is False
+    assert _serialize_rule(cpu_rule, no_data_carrier=True)["no_data_carrier"] is True
 
 
 def test_create_group_keeps_one_policy_per_rule_and_skips_notice_users():
