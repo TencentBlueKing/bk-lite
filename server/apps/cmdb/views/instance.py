@@ -1128,7 +1128,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             if not uploaded_file:
                 return JsonResponse({"data": [], "result": False, "message": "请上传Excel文件"})
 
-            import_result = InstanceManage().inst_import_support_edit(
+            importer = InstanceManage()
+            # 与 partial_update 相同：创建者且当前组织命中，或组织交集加 OPERATE。不给超级管理员另开短路。
+            importer.matched_instance_permission_check = lambda instance: self._can_operate_instance(request, instance)
+            import_result = importer.inst_import_support_edit(
                 model_id=model_id,
                 file_stream=uploaded_file.file,
                 operator=request.user.username,

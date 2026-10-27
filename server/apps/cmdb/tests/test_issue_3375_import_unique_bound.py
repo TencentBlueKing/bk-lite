@@ -141,6 +141,8 @@ def test_inst_import_support_edit_loads_candidates_after_parse(monkeypatch, fake
 
     def capture_update(self, inst_list):
         captured["exist_items"] = list(self.exist_items)
+        if not inst_list:
+            return [], []
         return (
             [{"success": True, "data": {**inst_list[0], "_id": 1, "model_id": "host"}}],
             [],
