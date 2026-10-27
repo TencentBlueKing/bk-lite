@@ -345,6 +345,10 @@ class CollectModelService(object):
         格式化更新时的凭据参数
         """
         credential = data.get("credential")
+        if getattr(instance, "model_id", "") == "ssl_cer" and not credential:
+            # format_params 会丢掉空列表。证书任务没有凭据，更新名称或周期时写回 []。
+            data["credential"] = []
+            return
         task_type = getattr(instance, "task_type", "")
         if not credential and not instance.is_k8s and task_type != CollectPluginTypes.IP:
             raise BaseAppException("采集凭据不能为空！")
