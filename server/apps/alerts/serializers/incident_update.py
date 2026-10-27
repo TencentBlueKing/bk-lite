@@ -77,16 +77,25 @@ class IncidentUpdateSerializer(serializers.ModelSerializer):
             return author_user_map.get(obj.author, obj.author)
         return obj.author
 
+    def _replies_for_serialization(self, obj):
+        prefetched = getattr(obj, "_prefetched_objects_cache", None)
+        if prefetched is not None and "replies" in prefetched:
+            return list(prefetched["replies"])
+
+        cache = self.context.setdefault("_incident_update_replies", {})
+        key = obj.pk
+        if key not in cache:
+            cache[key] = list(obj.replies.order_by("created_at"))
+        return cache[key]
+
     def get_replies(self, obj):
-        replies_qs = obj.replies.all().order_by("created_at")
-        if not replies_qs.exists():
+        replies = self._replies_for_serialization(obj)
+        if not replies:
             return []
-        return IncidentUpdateReplySerializer(
-            replies_qs, many=True, context=self.context
-        ).data
+        return IncidentUpdateReplySerializer(replies, many=True, context=self.context).data
 
     def get_reply_count(self, obj):
-        return obj.replies.count()
+        return len(self._replies_for_serialization(obj))
 
 
 def _parent_assignment_rejected(instance, payload):
