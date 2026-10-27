@@ -35,6 +35,7 @@ KEYS = (
     "error.policy_field_required",
     "error.policy_trigger_count_range",
     "error.policy_no_data_level_invalid",
+    "error.policy_no_data_enabled_invalid",
     "error.policy_group_by_invalid",
     "error.policy_sample_limit_range",
     "error.topn_unsupported",

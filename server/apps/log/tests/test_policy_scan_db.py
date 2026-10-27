@@ -323,6 +323,75 @@ class TestAggregateAlertDetection:
         raw = EventRawData.objects.get(event=persisted)
         assert raw.data["aggregate_result"]["conditions"][0]["matched"] is True
 
+    def test_no_data_event_is_persisted_with_level_and_source_suffix(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_level="warning",
+            alert_name="断流",
+            alert_condition={
+                "query": "*",
+                "group_by": [],
+                "no_data": {"enabled": True, "level": "error"},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 1}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=100, window_end=400)
+
+        def fake_query(query, start, end, limit=10):
+            if start == 100:
+                return []
+            return [{"count__msg": "11"}]
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        _install_memory_json_storage(mocker)
+        events = scan.aggregate_alert_detection()
+        assert len(events) == 1
+        persisted = scan.create_events(events)[0]
+        assert persisted.level == "error"
+        assert persisted.value == 0
+        assert persisted.content == "无数据：断流"
+        assert persisted.source_id.endswith(":no_data")
+        assert persisted.alert.source_id == persisted.source_id
+        assert persisted.alert.level == "error"
+        raw = EventRawData.objects.get(event=persisted)
+        assert raw.data["aggregate_result"]["no_data"] is True
+        assert raw.data["aggregate_result"]["count"] == 0
+        assert raw.data["samples"] == []
+        snapshot = AlertSnapshot.objects.get(alert=persisted.alert)
+        assert snapshot.source_id == persisted.source_id
+        event_snapshot = next(item for item in snapshot.snapshots if item.get("event_id") == persisted.id)
+        assert event_snapshot["raw_data"]["aggregate_result"]["no_data"] is True
+        assert event_snapshot["jump_query"] == events[0]["jump_query"]
+
+    def test_no_data_switch_off_persists_nothing(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="断流",
+            alert_condition={
+                "query": "*",
+                "group_by": [],
+                "no_data": {"enabled": False},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 1}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=100, window_end=400)
+        starts = []
+
+        def fake_query(query, start, end, limit=10):
+            starts.append(start)
+            return []
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        assert scan.aggregate_alert_detection() == []
+        assert starts == [100]
+        assert Alert.objects.filter(policy=policy).count() == 0
+
 
 def _install_memory_json_storage(mocker):
     """覆盖 autouse 的空回读，让快照条目可以按写入内容断言。"""

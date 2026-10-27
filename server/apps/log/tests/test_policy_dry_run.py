@@ -421,3 +421,104 @@ def test_dry_run_returns_conditions_and_baselines(authenticated_user, mocker):
     assert item["conditions"][1]["value"] == 23
     assert item["conditions"][1]["matched"] is True
     assert item["count"] == 180
+    assert item["no_data"] is False
+
+
+@pytest.mark.django_db
+def test_dry_run_ratio_denominator_zero_and_hit_ratio(authenticated_user, mocker):
+    _allow_policy_operations(mocker)
+    mocker.patch("apps.log.services.policy_dry_run._safe_now", return_value=FIXED_NOW)
+
+    def fake_query(self, query, start, end, limit=10):
+        if "stats" in query:
+            return [{"count__msg": "180", "ratio_0_hit": "13"}]
+        return []
+
+    mocker.patch("apps.log.tasks.services.policy_scan.VictoriaMetricsAPI.query", fake_query)
+    payload = _aggregate_payload(
+        "ratio-hit",
+        [1],
+        alert_condition={
+            "query": "*",
+            "group_by": [],
+            "rule": {
+                "mode": "and",
+                "conditions": [
+                    {
+                        "func": "ratio",
+                        "field": "_msg",
+                        "op": ">",
+                        "value": "5",
+                        "params": {"filter": "status:500"},
+                    }
+                ],
+            },
+        },
+    )
+    response = _post_dry_run(payload, authenticated_user)
+    assert response.status_code == 200
+    item = _body(response)["data"]["items"][0]
+    assert item["verdict"] == "would_trigger"
+    assert item["no_data"] is False
+    assert item["conditions"][0]["matched"] is True
+    assert item["conditions"][0]["value"] == pytest.approx(13 / 180 * 100)
+    assert item["reason"] == ""
+
+    def zero_query(self, query, start, end, limit=10):
+        if "stats" in query:
+            return [{"count__msg": "0", "ratio_0_hit": "0"}]
+        return []
+
+    mocker.patch("apps.log.tasks.services.policy_scan.VictoriaMetricsAPI.query", zero_query)
+    zero_payload = _aggregate_payload(
+        "ratio-zero",
+        [1],
+        alert_condition=payload["alert_condition"],
+    )
+    zero = _post_dry_run(zero_payload, authenticated_user)
+    assert zero.status_code == 200
+    zero_item = _body(zero)["data"]["items"][0]
+    assert zero_item["verdict"] == "no_trigger"
+    assert zero_item["no_data"] is False
+    assert zero_item["reason"] == "denominator_zero"
+    assert zero_item["conditions"][0]["reason"] == "denominator_zero"
+    assert zero_item["conditions"][0]["matched"] is False
+
+
+@pytest.mark.django_db
+def test_dry_run_would_trigger_no_data(authenticated_user, mocker):
+    _allow_policy_operations(mocker)
+    mocker.patch("apps.log.services.policy_dry_run._safe_now", return_value=FIXED_NOW)
+    window_start, _, prev_start = _window_bounds()
+
+    def fake_query(self, query, start, end, limit=10):
+        if start == prev_start:
+            return [{"count__msg": "4"}]
+        if start == window_start and "stats" in query:
+            return []
+        return []
+
+    mocker.patch("apps.log.tasks.services.policy_scan.VictoriaMetricsAPI.query", fake_query)
+    payload = _aggregate_payload(
+        "no-data-dry-run",
+        [1],
+        alert_condition={
+            "query": "*",
+            "group_by": [],
+            "no_data": {"enabled": True, "level": "warning"},
+            "rule": {
+                "mode": "and",
+                "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": "1"}],
+            },
+        },
+    )
+    response = _post_dry_run(payload, authenticated_user)
+    assert response.status_code == 200
+    data = _body(response)["data"]
+    assert len(data["items"]) == 1
+    item = data["items"][0]
+    assert item["verdict"] == "would_trigger_no_data"
+    assert item["no_data"] is True
+    assert item["count"] == 0
+    assert item["previous_count"] == 4
+    assert item["group"] == {}

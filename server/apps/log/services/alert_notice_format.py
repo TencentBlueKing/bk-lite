@@ -214,27 +214,44 @@ def build_search_url(base_url, jump_query, log_groups):
     return f"{base_url}/log/search?{urlencode(params)}"
 
 
+def _previous_window_count(aggregate_result):
+    baseline = aggregate_result.get("baseline") if isinstance(aggregate_result.get("baseline"), dict) else {}
+    values = baseline.get("values") if isinstance(baseline.get("values"), dict) else {}
+    raw = values.get("count__msg", values.get("count", 0))
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
 def format_aggregate_notice(event_obj, policy, raw_data, jump_query, *, base_url, sample_limit=10, text_limit=200):
     """含 aggregate_result 时的通知正文。调用方保证 raw_data 是聚合字典。"""
     aggregate_result = raw_data.get("aggregate_result") if isinstance(raw_data, dict) else {}
-    lines = [
-        f"时间：{event_obj.event_time}",
-        f"告警内容：{event_obj.content}",
-        f"策略名称：{policy.name}",
-    ]
-    hit_line = format_hit_line(aggregate_result)
-    if hit_line:
-        lines.append(hit_line)
+    no_data = isinstance(aggregate_result, dict) and aggregate_result.get("no_data") is True
+    lines = [f"时间：{event_obj.event_time}"]
+    if no_data:
+        lines.append(f"本窗无日志，上一窗 {_previous_window_count(aggregate_result)} 条")
+    lines.extend(
+        [
+            f"告警内容：{event_obj.content}",
+            f"策略名称：{policy.name}",
+        ]
+    )
+    if not no_data:
+        hit_line = format_hit_line(aggregate_result)
+        if hit_line:
+            lines.append(hit_line)
     if isinstance(jump_query, dict) and jump_query.get("window_start") is not None and jump_query.get("window_end") is not None:
         lines.append(f"检测窗口：{format_window_text(jump_query['window_start'], jump_query['window_end'])}")
-    samples = truncate_samples(
-        raw_data.get("samples") if isinstance(raw_data, dict) else [],
-        sample_limit=sample_limit,
-        text_limit=text_limit,
-    )
-    if samples:
-        lines.append("样本（最多 10 条）：")
-        lines.extend(f"  - {line}" for line in samples)
+    if not no_data:
+        samples = truncate_samples(
+            raw_data.get("samples") if isinstance(raw_data, dict) else [],
+            sample_limit=sample_limit,
+            text_limit=text_limit,
+        )
+        if samples:
+            lines.append("样本（最多 10 条）：")
+            lines.extend(f"  - {line}" for line in samples)
     search_url = build_search_url(base_url, jump_query, getattr(policy, "log_groups", None))
     if search_url:
         lines.append(f'查看命中日志：<a href="{search_url}">点击查看</a>')

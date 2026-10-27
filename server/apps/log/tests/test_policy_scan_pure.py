@@ -920,3 +920,290 @@ class TestConditionBaseline:
             },
         )
         assert rendered == "63 120"
+
+
+class TestRatioAndNoData:
+    def test_ratio_uses_hit_over_total_and_zero_denominator(self):
+        scan = _scan(alert_name="${ratio_0}")
+        rule = {
+            "conditions": [
+                {
+                    "func": "ratio",
+                    "field": "_msg",
+                    "op": ">",
+                    "value": "5",
+                    "params": {"filter": "status:500"},
+                }
+            ]
+        }
+        data = scan._extract_aggregate_data(
+            {"ratio_0_hit": "13", "count__msg": "180"},
+            rule,
+            window_seconds=300,
+        )
+        assert data["ratio_0"] == pytest.approx(13 / 180 * 100)
+        assert data["ratio_0_hit"] == 13
+        assert data["ratio_0_total"] == 180
+        assert data["count"] == 180
+        assert data["count__msg"] == 180
+        assert data["conditions"][0]["matched"] is True
+        assert data["conditions"][0]["reason"] == ""
+        assert data["conditions"][0]["hit"] == 13
+        assert data["conditions"][0]["total"] == 180
+        assert scan._render_alert_name(aggregate_data=data) == "7.22"
+
+        zero = scan._extract_aggregate_data(
+            {"ratio_0_hit": "0", "count__msg": "0"},
+            rule,
+            window_seconds=300,
+        )
+        assert zero["ratio_0"] is None
+        assert zero["ratio_0_hit"] == 0
+        assert zero["ratio_0_total"] == 0
+        assert zero["conditions"][0]["value"] is None
+        assert zero["conditions"][0]["reason"] == "denominator_zero"
+        assert zero["conditions"][0]["matched"] is False
+
+    def test_grouped_no_data_is_previous_minus_current(self, mocker):
+        policy = _policy(
+            id=7,
+            alert_type="aggregate",
+            alert_level="error",
+            alert_name="${host} 断流",
+            alert_condition={
+                "query": "*",
+                "group_by": ["host"],
+                "no_data": {"enabled": True, "level": "warning"},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": "1"}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+
+        def fake_query(query, start, end, limit=10):
+            if "stats" in query and start == 1000:
+                return [{"host": "a", "count__msg": "10"}]
+            if "stats" in query and start == 700:
+                return [
+                    {"host": "a", "count__msg": "8"},
+                    {"host": "b", "count__msg": "300"},
+                ]
+            return [{"_msg": "kept"}]
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        mocker.patch.object(scan, "_fetch_aggregate_samples", return_value={0: [{"message": "kept"}]})
+        events = scan.aggregate_alert_detection()
+        normal = [event for event in events if not event["source_id"].endswith(":no_data")]
+        missing = [event for event in events if event["source_id"].endswith(":no_data")]
+        assert len(normal) == 1
+        assert len(missing) == 1
+        assert normal[0]["value"] == 10
+        assert "source_id_aliases" not in missing[0]
+        assert missing[0]["level"] == "warning"
+        assert missing[0]["value"] == 0
+        assert missing[0]["content"] == "无数据：b 断流"
+        assert missing[0]["raw_data"]["samples"] == []
+        assert missing[0]["raw_data"]["aggregate_result"] == {
+            "count": 0,
+            "no_data": True,
+            "baseline": {
+                "to": "previous_window",
+                "window": {"start": 700, "end": 1000},
+                "status": "ok",
+                "values": {"count__msg": 300},
+            },
+        }
+        assert missing[0]["jump_query"]["window_start"] == 1000
+        assert missing[0]["jump_query"]["window_end"] == 1300
+        assert 'host:="b"' in missing[0]["jump_query"]["query"]
+        assert missing[0]["source_id"] != normal[0]["source_id"]
+        assert len(missing[0]["source_id"]) <= 100
+        assert missing[0]["source_id"].startswith("policy_7_g2_")
+
+    def test_no_data_switch_off_does_not_query_previous_window(self, mocker):
+        policy = _policy(
+            alert_type="aggregate",
+            alert_condition={
+                "query": "*",
+                "group_by": ["host"],
+                "no_data": {"enabled": False},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": "1"}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+        starts = []
+
+        def fake_query(query, start, end, limit=10):
+            starts.append(start)
+            if "stats" in query:
+                return [{"host": "a", "count__msg": "10"}]
+            return []
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        mocker.patch.object(scan, "_fetch_aggregate_samples", return_value={})
+        events = scan.aggregate_alert_detection()
+        assert events
+        assert all(not event["source_id"].endswith(":no_data") for event in events)
+        assert 700 not in starts
+
+    def test_ungrouped_zero_rows_emit_one_no_data_event(self, mocker):
+        policy = _policy(
+            id=3,
+            alert_type="aggregate",
+            alert_level="error",
+            alert_name="断流",
+            alert_condition={
+                "query": "*",
+                "group_by": [],
+                "no_data": {"enabled": True, "level": "warning"},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": "1"}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+
+        def fake_query(query, start, end, limit=10):
+            if start == 1000:
+                return []
+            return [{"count__msg": "12"}]
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        events = scan.aggregate_alert_detection()
+        assert len(events) == 1
+        assert events[0]["source_id"] == "policy_3_:no_data"
+        assert events[0]["level"] == "warning"
+        assert events[0]["content"] == "无数据：断流"
+        assert events[0]["value"] == 0
+        assert events[0]["raw_data"]["samples"] == []
+        assert events[0]["raw_data"]["aggregate_result"]["baseline"]["values"]["count__msg"] == 12
+
+    def test_ungrouped_zero_count_row_is_no_data(self, mocker):
+        policy = _policy(
+            id=4,
+            alert_type="aggregate",
+            alert_level="error",
+            alert_name="断流",
+            alert_condition={
+                "query": "*",
+                "group_by": [],
+                "no_data": {"enabled": True, "level": "warning"},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": "1"}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+
+        def fake_query(query, start, end, limit=10):
+            if start == 1000:
+                return [{"count__msg": "0"}]
+            return [{"count__msg": "6"}]
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        events = scan.aggregate_alert_detection()
+        assert len(events) == 1
+        assert events[0]["source_id"] == "policy_4_:no_data"
+        assert events[0]["level"] == "warning"
+        assert events[0]["raw_data"]["aggregate_result"]["no_data"] is True
+        assert events[0]["raw_data"]["aggregate_result"]["baseline"]["values"]["count__msg"] == 6
+
+    def test_keyword_grouped_no_data_uses_keyword_group_query(self, mocker):
+        policy = _policy(
+            id=8,
+            alert_type="keyword",
+            alert_level="error",
+            alert_name="${host} 断流",
+            alert_condition={
+                "query": "error",
+                "group_by": ["host"],
+                "no_data": {"enabled": True, "level": "warning"},
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+        queries = []
+
+        def fake_query(query, start, end, limit=10):
+            queries.append((query, start))
+            if "stats by" in query and start == 1000:
+                return [{"host": "a", "total_count": "4"}]
+            if "stats by" in query and start == 700:
+                return [
+                    {"host": "a", "total_count": "2"},
+                    {"host": "b", "total_count": "9"},
+                ]
+            return [{"_msg": "sample"}]
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        events = scan.keyword_alert_detection()
+        previous = [query for query, start in queries if start == 700]
+        assert previous == ["error | stats by (host) count() as total_count"]
+        normal = [event for event in events if not event["source_id"].endswith(":no_data")]
+        missing = [event for event in events if event["source_id"].endswith(":no_data")]
+        assert len(normal) == 1
+        assert normal[0]["value"] == 4
+        assert len(missing) == 1
+        assert missing[0]["content"] == "无数据：b 断流"
+        assert missing[0]["level"] == "warning"
+        assert missing[0]["raw_data"]["aggregate_result"]["baseline"]["values"]["count__msg"] == 9
+        assert missing[0]["raw_data"]["samples"] == []
+
+    def test_previous_window_failure_skips_no_data_and_logs_template(self):
+        sentinel = "SENTINEL_NO_DATA_QUERY_BODY"
+        policy = _policy(
+            id=42,
+            alert_type="aggregate",
+            alert_condition={
+                "query": "*",
+                "group_by": ["host"],
+                "no_data": {"enabled": True, "level": "warning"},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": "1"}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+        scan.window_observed = True
+        scan.aggregation_query = sentinel
+
+        def boom(query, start, end, limit=10):
+            raise RuntimeError(sentinel)
+
+        scan.vlogs_api.query = boom
+        template = "event=log_policy_baseline_failed policy_id=%s failed_stage=%s compare_to=%s error_type=%s"
+        records = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        handler = _Capture(level=logging.WARNING)
+        logger = logging.getLogger("celery")
+        previous_level = logger.level
+        logger.addHandler(handler)
+        logger.setLevel(logging.WARNING)
+        try:
+            result = scan.evaluate_no_data(1000, 1300, [{"group_values": {"host": "a"}}])
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(previous_level)
+
+        assert result == []
+        matched = [record for record in records if record.msg == template]
+        assert len(matched) == 1
+        record = matched[0]
+        assert record.args == (42, "baseline", "previous_window", "RuntimeError")
+        rendered = record.getMessage()
+        assert rendered == (
+            "event=log_policy_baseline_failed policy_id=42 failed_stage=baseline " "compare_to=previous_window error_type=RuntimeError"
+        )
+        assert sentinel not in rendered
+        assert sentinel not in str(record.args)

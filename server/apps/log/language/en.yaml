@@ -140,6 +140,7 @@ error:
   policy_field_required: Aggregation field is required
   policy_trigger_count_range: Consecutive match count must be an integer from 1 to 5
   policy_no_data_level_invalid: No-data alert level is invalid
+  policy_no_data_enabled_invalid: No-data alert switch must be a boolean
   policy_group_by_invalid: Group-by fields are invalid
   policy_sample_limit_range: Sample size must be an integer from 1 to 10
   topn_unsupported: This field does not support TopN statistics

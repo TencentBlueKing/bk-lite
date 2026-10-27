@@ -186,6 +186,8 @@ class PolicySerializer(serializers.ModelSerializer):
         no_data = value.get("no_data")
         if not isinstance(no_data, dict):
             raise serializers.ValidationError(serializer_text(self, "error.policy_no_data_level_invalid"))
+        if "enabled" in no_data and not isinstance(no_data.get("enabled"), bool):
+            raise serializers.ValidationError(serializer_text(self, "error.policy_no_data_enabled_invalid"))
         level = no_data.get("level")
         if level is None:
             return

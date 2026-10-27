@@ -133,12 +133,15 @@ class LogPolicyDryRunService:
         scan = LogPolicyScan(policy, scan_time=safe_now, window_start=window_start, window_end=window_end)
         if policy.alert_type == AlertConstants.TYPE_KEYWORD:
             rows = scan.evaluate_keyword(window_start, window_end)
+            no_data_rows = scan.evaluate_no_data(window_start, window_end, rows)
             items = [self._keyword_item(row) for row in rows]
             baseline_status = "not_required"
         else:
             rows = scan.evaluate_aggregate(window_start, window_end)
+            no_data_rows = scan.evaluate_no_data(window_start, window_end, rows)
             items = [self._aggregate_item(row) for row in rows]
             baseline_status = getattr(scan, "baseline_status", "not_required")
+        items.extend(self._no_data_item(row) for row in no_data_rows)
         duration = window_end - window_start
         return {
             "alert_type": policy.alert_type,
@@ -169,6 +172,7 @@ class LogPolicyDryRunService:
             "count_rate": None,
             "count_delta": None,
             "conditions": [],
+            "no_data": False,
             "verdict": verdict,
             "reason": "",
         }
@@ -191,8 +195,26 @@ class LogPolicyDryRunService:
             "count_rate": aggregate_data.get("count_rate"),
             "count_delta": aggregate_data.get("count_delta"),
             "conditions": list(aggregate_data.get("conditions") or []),
+            "no_data": False,
             "verdict": verdict,
             "reason": row.get("reason") or "",
+        }
+
+    @staticmethod
+    def _no_data_item(row):
+        aggregate = row.get("aggregate_result") or {}
+        baseline = aggregate.get("baseline") if isinstance(aggregate.get("baseline"), dict) else {}
+        values = baseline.get("values") if isinstance(baseline.get("values"), dict) else {}
+        return {
+            "group": row.get("group_values") or {},
+            "count": 0,
+            "previous_count": values.get("count__msg"),
+            "count_rate": None,
+            "count_delta": None,
+            "conditions": [],
+            "no_data": True,
+            "verdict": "would_trigger_no_data",
+            "reason": "",
         }
 
     @staticmethod
