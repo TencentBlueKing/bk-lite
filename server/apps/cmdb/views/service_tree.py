@@ -63,6 +63,29 @@ class ServiceTreeViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 return None, WebUtils.response_error("主机不可见", status_code=status.HTTP_403_FORBIDDEN)
         return wanted, None
 
+    def _visible_model_instances(self, request, uuids: list[str], model_id: str) -> dict[str, dict]:
+        wanted: list[str] = []
+        seen: set[str] = set()
+        for raw in uuids:
+            value = str(raw).strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            wanted.append(value)
+        if not wanted:
+            return {}
+        rows = InstanceManage.query_entity_by_uuids(wanted) or []
+        found = {str(item.get("inst_uuid") or ""): item for item in rows}
+        visible: dict[str, dict] = {}
+        for uuid in wanted:
+            item = found.get(uuid)
+            if not item or item.get("model_id") != model_id:
+                continue
+            if self.require_instance_permission(request, item, operator=VIEW) is not None:
+                continue
+            visible[uuid] = item
+        return visible
+
     @action(detail=False, methods=["get"], url_path=r"(?P<system_uuid>.+?)/tree")
     @HasPermission("asset_info-View")
     def tree(self, request, system_uuid: str):
@@ -230,7 +253,26 @@ class ServiceTreeViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         app_uuids = self._uuid_list(request.data.get("uuids"))
         if app_uuids is None:
             return WebUtils.response_error("uuids 必须是列表", status_code=status.HTTP_400_BAD_REQUEST)
-        return WebUtils.response_success(ServiceTreeService.systems_for_applications(app_uuids))
+        visible_apps = self._visible_model_instances(request, app_uuids, "application")
+        mapping = ServiceTreeService.systems_for_applications(list(visible_apps)) if visible_apps else {}
+        system_uuids = [
+            str(item.get("inst_uuid") or "")
+            for item in mapping.values()
+            if isinstance(item, dict)
+        ]
+        visible_systems = self._visible_model_instances(request, system_uuids, "system")
+        result = {}
+        for app_uuid, system in mapping.items():
+            if not isinstance(system, dict):
+                continue
+            loaded = visible_systems.get(str(system.get("inst_uuid") or ""))
+            if not loaded:
+                continue
+            result[str(app_uuid)] = {
+                "inst_uuid": str(loaded.get("inst_uuid") or ""),
+                "inst_name": str(loaded.get("inst_name") or ""),
+            }
+        return WebUtils.response_success(result)
 
     @action(detail=False, methods=["post"], url_path=r"(?P<system_uuid>.+?)/import")
     @HasPermission("asset_info-Add")
