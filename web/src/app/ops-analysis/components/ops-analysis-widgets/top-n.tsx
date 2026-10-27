@@ -9,8 +9,7 @@ import ChartSurface from '@/components/chart-surface';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 import {
   buildTopNItems,
-  resolveTopNBarPercent,
-  resolveTopNMaxValue,
+  resolveConfiguredTopNBarPercent,
 } from '@/app/ops-analysis/utils/topNData';
 
 export interface OpsAnalysisTopNProps {
@@ -45,8 +44,9 @@ const OpsAnalysisTopN: React.FC<OpsAnalysisTopNProps> = ({
   const labelHeader = resolveTopNHeaderLabel(labelField, dataSource?.field_schema);
   const valueHeader = resolveTopNHeaderLabel(valueField, dataSource?.field_schema);
 
-  const items = buildTopNItems(rawData, labelField, valueField);
-  const maxValue = resolveTopNMaxValue(items);
+  const items = buildTopNItems(rawData, labelField, valueField, {
+    scalarFields: config?.topNScalarFields,
+  });
   const isDataReady = items.length > 0;
 
   useEffect(() => {
@@ -90,7 +90,7 @@ const OpsAnalysisTopN: React.FC<OpsAnalysisTopNProps> = ({
         }}
       >
         {items.map((item, index) => {
-          const percent = resolveTopNBarPercent(item.value, maxValue);
+          const percent = resolveConfiguredTopNBarPercent(item.value, items, config);
 
           return (
             <React.Fragment key={`${item.name}-${index}`}>
@@ -113,7 +113,7 @@ const OpsAnalysisTopN: React.FC<OpsAnalysisTopNProps> = ({
                   <div
                     className="h-full rounded-full transition-all duration-300"
                     style={{
-                      width: `${Math.max(percent, (item.value ?? 0) > 0 ? 2 : 0)}%`,
+                      width: `${percent}%`,
                       background: isDark
                         ? 'linear-gradient(90deg, #5b8cff 0%, #2f6bff 100%)'
                         : 'linear-gradient(90deg, #4f7df3 0%, #235ee8 100%)',

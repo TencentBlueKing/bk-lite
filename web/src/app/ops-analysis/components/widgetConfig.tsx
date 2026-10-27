@@ -84,6 +84,7 @@ import {
 } from './widgetConfig/utils/columnProbing';
 import { buildRoleFieldOptions, dropRoleValueMissingFrom } from './widgetConfig/utils/chartFieldOptions';
 import { ChartRoleFieldsSection, buildChartRoleFields, chartRoleValuePaths } from './widgetConfig/sections/chartRoleFieldsSection';
+import { PieScalarFieldsSection } from './widgetConfig/sections/pieScalarFieldsSection';
 import {
   buildDisplayColumnFieldOptions,
   resolveDatasourceChartTypes,
@@ -1643,6 +1644,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 onThresholdBlur={singleValueConfig.handleThresholdBlur}
                 onAddThreshold={singleValueConfig.addThreshold}
                 onRemoveThreshold={singleValueConfig.removeThreshold}
+                compareAvailable={singleValueConfig.compareAvailable}
               />
             )}
 
@@ -1666,6 +1668,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 roles={chartRoleFields}
                 loadingFields={loadingRoleFields}
                 onRefreshFields={fetchRoleFields}
+              />
+            )}
+
+            {chartType === 'pie' && (
+              <PieScalarFieldsSection
+                t={t}
+                options={roleFieldOptions}
+                disabled={!selectedDataSource || loadingRoleFields}
               />
             )}
 

@@ -34,8 +34,11 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 
+import GaugePeriodCompare from './shared/gaugePeriodCompare';
+
 interface ComGaugeProps {
   rawData: unknown;
+  baselineData?: unknown;
   loading?: boolean;
   config?: ValueConfig;
   screenRenderContext?: ScreenRenderContext;
@@ -50,6 +53,7 @@ const clamp = (value: number, min: number, max: number) => {
 
 const ComGauge: React.FC<ComGaugeProps> = ({
   rawData,
+  baselineData,
   loading = false,
   config,
   screenRenderContext,
@@ -299,13 +303,14 @@ const ComGauge: React.FC<ComGaugeProps> = ({
   }
 
   return (
-    <div ref={containerRef} className="h-full w-full">
+    <div ref={containerRef} className="relative h-full w-full">
       <ReactEcharts
         ref={chartRef}
         option={option}
         onEvents={onEvents}
         style={{ height: '100%', width: '100%' }}
       />
+      <GaugePeriodCompare config={config} rawData={rawData} baselineData={baselineData} />
     </div>
   );
 };

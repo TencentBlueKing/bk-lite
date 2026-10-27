@@ -344,68 +344,122 @@ def _build_period_series(queryset, time_field, trunc_func, target_tz, aware_star
     return result
 
 
-@nats_client.register
-def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
-    """
-    获取告警趋势数据。
-
-    聚合粒度按时间窗自动推导：
-    ≤6h minute / ≤7d hour / ≤2y day / 更长 month。
-    """
-    logger.info("[AlertNatsRPC] === get_alert_trend_data ===, args=%s, kwargs=%s", args, kwargs)
-    user_info = kwargs.pop("user_info", {})
-    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
+def _query_alert_trend_frame(handler_name, user_info, timezone_name, time_values, extra_filters):
+    """解析授权告警、时间窗和自动粒度，供告警趋势类接口复用。"""
+    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or timezone_name)
     queryset, error = _get_authorized_alert_queryset(user_info)
     if error:
-        return error
+        return None, error
 
-    time_values = kwargs.pop("time", [])
-    kwargs.pop("group_by", None)
-    aware_start, aware_end, group_by, validation_error = _resolve_alert_trend_group_by(time_values, target_tz, "get_alert_trend_data")
+    aware_start, aware_end, group_by, validation_error = _resolve_alert_trend_group_by(time_values, target_tz, handler_name)
     if validation_error:
-        return {
-            "result": False,
-            "data": [],
-            "message": validation_error,
-        }
+        return None, {"result": False, "data": [], "message": validation_error}
 
     start_dt = aware_start.astimezone(target_tz)
     end_dt = aware_end.astimezone(target_tz)
     trunc_func, _ = group_dy_date_format(group_by)
-
-    # 构建告警过滤条件
     alert_filter = Q()
     alert_model_fields = set(Alert.model_fields())
-    for key, value in kwargs.items():
+    for key, value in extra_filters.items():
         if key not in alert_model_fields:
             logger.warning("[AlertNatsRPC] 过滤条件包含非法字段 '%s'，已忽略", key)
             continue
         alert_filter &= Q(**{key: value})
 
-    # 生成时间序列
     all_periods = _generate_time_periods(group_by, start_dt, end_dt)
+    return {
+        "queryset": queryset,
+        "alert_qs": queryset.filter(alert_filter) if alert_filter else queryset,
+        "trunc_func": trunc_func,
+        "target_tz": target_tz,
+        "aware_start": aware_start,
+        "aware_end": aware_end,
+        "all_periods": all_periods,
+    }, None
 
-    # 固定返回三条系列：告警数、事件数、已恢复告警数
-    alert_qs = queryset.filter(alert_filter) if alert_filter else queryset
 
-    data = {
-        "告警数": _build_period_series(alert_qs, "created_at", trunc_func, target_tz, aware_start, aware_end, all_periods),
-        "告警关联事件数": _build_period_series(
-            Event.objects.filter(alert__in=queryset).distinct(), "received_at", trunc_func, target_tz, aware_start, aware_end, all_periods
-        ),
-        "已恢复告警数": _build_period_series(
-            alert_qs,
-            "updated_at",
-            trunc_func,
-            target_tz,
-            aware_start,
-            aware_end,
-            all_periods,
-            extra_filter=Q(status=AlertStatus.AUTO_RECOVERY),
-        ),
+def _trend_series(frame, queryset, time_field, extra_filter=None):
+    return _build_period_series(
+        queryset,
+        time_field,
+        frame["trunc_func"],
+        frame["target_tz"],
+        frame["aware_start"],
+        frame["aware_end"],
+        frame["all_periods"],
+        extra_filter=extra_filter,
+    )
+
+
+def _pop_alert_trend_controls(kwargs):
+    user_info = kwargs.pop("user_info", {})
+    timezone_name = kwargs.pop("timezone", None)
+    time_values = kwargs.pop("time", [])
+    kwargs.pop("group_by", None)
+    kwargs.pop("organization", None)
+    return user_info, timezone_name, time_values
+
+
+@nats_client.register
+def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
+    """获取告警、关联事件和已恢复告警的时间序列。
+
+    聚合粒度按时间窗自动推导：≤6h minute / ≤7d hour / ≤2y day / 更长 month。
+    """
+    del args
+    user_info, timezone_name, time_values = _pop_alert_trend_controls(kwargs)
+    logger.info("event=get_alert_trend_data")
+    frame, error = _query_alert_trend_frame("get_alert_trend_data", user_info, timezone_name, time_values, kwargs)
+    if error:
+        return error
+
+    return {
+        "result": True,
+        "data": {
+            "告警数": _trend_series(frame, frame["alert_qs"], "created_at"),
+            "告警关联事件数": _trend_series(
+                frame,
+                Event.objects.filter(alert__in=frame["queryset"]).distinct(),
+                "received_at",
+            ),
+            "已恢复告警数": _trend_series(
+                frame,
+                frame["alert_qs"],
+                "updated_at",
+                extra_filter=Q(status=AlertStatus.AUTO_RECOVERY),
+            ),
+        },
+        "message": "",
     }
 
-    return {"result": True, "data": data, "message": ""}
+
+@nats_client.register
+def get_alert_open_close_trend(*args, **kwargs) -> Dict[str, Any]:
+    """获取新增告警和关闭告警两条时间序列。
+
+    折线直接使用字典键作图例，与告警趋势一样用中文键：
+    告警数按 created_at，关闭告警数按 updated_at 且 status 属于全部 CLOSED_STATUS。
+    粒度按时间窗自动推导，不接受 bucket 或 series。
+    """
+    del args
+    user_info, timezone_name, time_values = _pop_alert_trend_controls(kwargs)
+    frame, error = _query_alert_trend_frame("get_alert_open_close_trend", user_info, timezone_name, time_values, kwargs)
+    if error:
+        return error
+
+    return {
+        "result": True,
+        "data": {
+            "告警数": _trend_series(frame, frame["alert_qs"], "created_at"),
+            "关闭告警数": _trend_series(
+                frame,
+                frame["alert_qs"],
+                "updated_at",
+                extra_filter=Q(status__in=AlertStatus.CLOSED_STATUS),
+            ),
+        },
+        "message": "",
+    }
 
 
 @nats_client.register
@@ -1191,6 +1245,9 @@ def get_alert_snapshot_statistics(**kwargs):
         processing_count=Count("id", filter=Q(status=AlertStatus.PROCESSING)),
         auto_recovery_count=Count("id", filter=Q(status=AlertStatus.AUTO_RECOVERY)),
     )
+    critical_level_ids = Level.objects.filter(level_type=LevelType.ALERT, level_name__iexact="Critical").values_list("level_id", flat=True)
+    severe_level_keys = [str(level_id) for level_id in critical_level_ids]
+    severe_active_count = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS, level__in=severe_level_keys).count() if severe_level_keys else 0
     return {
         "result": True,
         "data": {
@@ -1202,6 +1259,7 @@ def get_alert_snapshot_statistics(**kwargs):
             "auto_recovery_rate": (
                 round(status_counts["auto_recovery_count"] / status_counts["total_count"] * 100, 1) if status_counts["total_count"] else 0
             ),
+            "severe_active_count": severe_active_count,
         },
         "message": "",
     }

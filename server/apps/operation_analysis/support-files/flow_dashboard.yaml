@@ -20,6 +20,7 @@ dashboards:
   name: Flow 网络流量分析仪表盘
   desc: 按所选网络设备展示流量大小和趋势、协议分布、会话以及设备之间的通信关系，帮助运维人员查看流量特征和主要通信对象。设备需要先接入流量监控，并在画布上选中。
   other:
+    gridCols: 24
     timeSelector:
       selectValue: 360
   view_sets:
@@ -29,14 +30,14 @@ dashboards:
     description: 所选设备在时间窗内的总流量、包速、平均包大小与有效采样率
     x: 0
     y: 0
-    w: 12
+    w: 24
     h: 4
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 3
-        w: 3
+        w: 6
         x: 0
         y: 0
         id: flow-kpi-bytes
@@ -129,8 +130,8 @@ dashboards:
           - color: '#366ce4'
             value: '0'
       - h: 3
-        w: 3
-        x: 3
+        w: 6
+        x: 6
         y: 0
         id: flow-kpi-packets
         name: 总包速
@@ -164,8 +165,8 @@ dashboards:
           - *id004
           thresholdColors: *id002
       - h: 3
-        w: 3
-        x: 6
+        w: 6
+        x: 12
         y: 0
         id: flow-kpi-avg-size
         name: 平均包大小
@@ -199,8 +200,8 @@ dashboards:
           - *id004
           thresholdColors: *id002
       - h: 3
-        w: 3
-        x: 9
+        w: 6
+        x: 18
         y: 0
         id: flow-kpi-sampling
         name: 有效采样率
@@ -238,14 +239,14 @@ dashboards:
     description: Bytes/s、Packets/s 与协议流量趋势
     x: 0
     y: 4
-    w: 12
+    w: 24
     h: 7
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 6
-        w: 4
+        w: 8
         x: 0
         y: 0
         id: flow-trend-bytes
@@ -289,8 +290,8 @@ dashboards:
           unitId: bps
           conversionFactor: 8
       - h: 6
-        w: 4
-        x: 4
+        w: 8
+        x: 8
         y: 0
         id: flow-trend-packets
         name: 总包速趋势
@@ -320,8 +321,8 @@ dashboards:
           - *id004
           unit: pps
       - h: 6
-        w: 4
-        x: 8
+        w: 8
+        x: 16
         y: 0
         id: flow-trend-protocol
         name: 协议流量趋势
@@ -357,14 +358,14 @@ dashboards:
     description: 协议占比与 Source / Destination / IP+端口 / Protocol TopN
     x: 0
     y: 11
-    w: 12
+    w: 24
     h: 7
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 6
-        w: 6
+        w: 12
         x: 0
         y: 0
         id: flow-pie-protocol
@@ -396,8 +397,8 @@ dashboards:
           - *id008
           - *id004
       - h: 6
-        w: 6
-        x: 6
+        w: 12
+        x: 12
         y: 0
         id: flow-topn
         name: 流量 TopN
@@ -446,14 +447,14 @@ dashboards:
     description: Top Conversation 的源、目的、端口、协议和流量
     x: 0
     y: 18
-    w: 12
+    w: 24
     h: 8
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 7
-        w: 12
+        w: 24
         x: 0
         y: 0
         id: flow-table-conversation
@@ -517,14 +518,14 @@ dashboards:
     description: 按会话流量画主机互访与访问服务
     x: 0
     y: 26
-    w: 12
+    w: 24
     h: 9
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 8
-        w: 6
+        w: 12
         x: 0
         y: 0
         id: flow-node-graph-ip
@@ -566,8 +567,8 @@ dashboards:
             alias_name: 返回条数
             filterType: params
       - h: 8
-        w: 6
-        x: 6
+        w: 12
+        x: 12
         y: 0
         id: flow-node-graph-service
         name: 访问服务

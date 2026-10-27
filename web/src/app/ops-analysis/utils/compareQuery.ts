@@ -278,6 +278,34 @@ export const validateGaugeData = (
     : { isValid: false, message: failMessage };
 };
 
+export const formatPeriodCompare = ({
+  current,
+  baseline,
+  compareMode,
+  decimalPlaces,
+  unitLabel,
+}: {
+  current: number | null;
+  baseline: number | null;
+  compareMode?: 'percent' | 'value';
+  decimalPlaces?: number;
+  unitLabel?: string;
+}): { text: string; tone: 'up' | 'down' | 'flat' } => {
+  const changeValue = current !== null && baseline !== null ? current - baseline : null;
+  const changePercent = getChangePercent(current, baseline);
+  const amount = compareMode === 'value' ? changeValue : changePercent;
+  if (amount === null) {
+    return { text: '--', tone: 'flat' };
+  }
+  const arrow = amount > 0 ? '↑' : amount < 0 ? '↓' : '';
+  const digits = compareMode === 'value' ? (decimalPlaces ?? 0) : 1;
+  const suffix = compareMode === 'value' ? (unitLabel || '') : '%';
+  return {
+    text: `${arrow}${Math.abs(amount).toFixed(digits)}${suffix}`,
+    tone: amount > 0 ? 'up' : amount < 0 ? 'down' : 'flat',
+  };
+};
+
 export const getChangePercent = (
   currentValue: number | null,
   baselineValue: number | null,

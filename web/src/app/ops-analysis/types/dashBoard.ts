@@ -47,6 +47,11 @@ export interface TimeConfig {
 
 export interface OtherConfig {
   timeSelector?: TimeConfig;
+  /**
+   * 仪表盘横向格数。缺省或 12 表示按旧 12 列保存的 x/w；
+   * 当前运行时为 24，打开旧盘时换算一次后写入 24。
+   */
+  gridCols?: number;
   [key: string]: unknown;
 }
 
@@ -132,8 +137,16 @@ export interface ValueConfig {
   descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
+  /** 从单个对象的多个数值字段拆成多行，并保持配置顺序。未配置时仍按数组排名。 */
+  topNScalarFields?: Array<{ field: string; label?: string }>;
+  /** 缺省 relative：条宽按当前列表最大值。absolute：按 barMax，没有则用 gaugeMax。 */
+  barMode?: 'relative' | 'absolute';
+  /** absolute 模式下的满分。条宽为 clamp(value, 0, barMax) / barMax。 */
+  barMax?: number;
   dimensionField?: string;
   valueField?: string;
+  /** 从标量对象取两个及以上字段合成饼图；已有数组饼图不受影响。 */
+  pieScalarFields?: Array<{ field: string; label?: string }>;
   multiValueLabelField?: string;
   multiValueValueField?: string;
   nodeGraphIdentityMode?: 'ip' | 'service';

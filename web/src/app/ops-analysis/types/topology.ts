@@ -340,6 +340,9 @@ export interface ViewConfigFormValues {
   selectedFields?: string[];
   topNLabelField?: string;
   topNValueField?: string;
+  topNScalarFields?: Array<{ field: string; label?: string }>;
+  barMode?: 'relative' | 'absolute';
+  barMax?: number;
   nodeGraphIdentityMode?: 'ip' | 'service';
   nodeGraphSourceField?: string;
   nodeGraphTargetField?: string;
@@ -378,6 +381,9 @@ export interface NodeConfigFormValues {
   builtinNamespaceId?: number;
   topNLabelField?: string;
   topNValueField?: string;
+  topNScalarFields?: Array<{ field: string; label?: string }>;
+  barMode?: 'relative' | 'absolute';
+  barMax?: number;
   nodeGraphIdentityMode?: 'ip' | 'service';
   nodeGraphSourceField?: string;
   nodeGraphTargetField?: string;

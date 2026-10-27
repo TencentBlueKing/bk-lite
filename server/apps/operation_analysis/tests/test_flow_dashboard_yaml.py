@@ -52,6 +52,7 @@ def test_sample_yaml_parses_and_binds_flow_sources():
     dashboard = document.dashboards[0]
     assert dashboard.name == "Flow 网络流量分析仪表盘"
     assert dashboard.key == "dashboard::Flow网络流量分析仪表盘"
+    assert dashboard.other.get("gridCols") == 24
 
     groups = dashboard.view_sets
     assert [item["id"] for item in groups] == [
@@ -62,6 +63,7 @@ def test_sample_yaml_parses_and_binds_flow_sources():
         "group-node-graph",
     ]
     assert all(item["itemType"] == "group" for item in groups)
+    assert all(item["w"] == 24 and item["x"] == 0 for item in groups)
 
     widgets = list(_iter_widgets(groups))
     by_id = {item["id"]: item for item in widgets}

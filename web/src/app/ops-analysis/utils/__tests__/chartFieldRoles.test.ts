@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateGaugeData } from '../compareQuery';
+import { formatPeriodCompare, validateGaugeData } from '../compareQuery';
 import { ChartDataTransformer } from '../chartDataTransform';
 
 test('mapped line chart reads selected columns and leaves incomplete numbers empty', () => {
@@ -110,4 +110,78 @@ test('mapped pie chart omits slices that are not complete numbers', () => {
   ]);
   assert.equal(slices[0]?.__link?.numeric, 4);
   assert.equal(slices[1]?.__link?.numeric, 0);
+});
+
+test('scalar pie binds two object fields and leaves root arrays on the existing path', () => {
+  const slices = ChartDataTransformer.transformToPieData(
+    {
+      collected_instance_count: 3,
+      uncollected_instance_count: null,
+      extra: 9,
+    },
+    {
+      pieScalarFields: [
+        { field: 'collected_instance_count', label: '已采集' },
+        { field: 'uncollected_instance_count' },
+        { field: ' ' },
+      ],
+    },
+  );
+
+  assert.deepEqual(slices.map(({ name, value }) => ({ name, value })), [
+    { name: '已采集', value: 3 },
+    { name: 'uncollected_instance_count', value: 0 },
+  ]);
+
+  const arraySlices = ChartDataTransformer.transformToPieData(
+    [{ name: '主机', value: 4 }],
+    {
+      pieScalarFields: [
+        { field: 'collected_instance_count', label: '已采集' },
+        { field: 'uncollected_instance_count', label: '未采集' },
+      ],
+    },
+  );
+  assert.deepEqual(arraySlices.map(({ name, value }) => ({ name, value })), [
+    { name: '主机', value: 4 },
+  ]);
+
+  const oneField = ChartDataTransformer.transformToPieData(
+    { collected_instance_count: 3, uncollected_instance_count: 1 },
+    { pieScalarFields: [{ field: 'collected_instance_count' }] },
+  );
+  assert.deepEqual(oneField, []);
+
+  const invalid = ChartDataTransformer.validatePieData(
+    { collected_instance_count: 3, uncollected_instance_count: '1abc' },
+    '数据格式不匹配',
+    {
+      pieScalarFields: [
+        { field: 'collected_instance_count' },
+        { field: 'uncollected_instance_count' },
+      ],
+    },
+  );
+  assert.equal(invalid.isValid, false);
+});
+
+test('period compare formats the same arrow as a single value', () => {
+  assert.deepEqual(
+    formatPeriodCompare({ current: 86, baseline: 80, compareMode: 'percent' }),
+    { text: '↑7.5%', tone: 'up' },
+  );
+  assert.deepEqual(
+    formatPeriodCompare({
+      current: 40,
+      baseline: 45,
+      compareMode: 'value',
+      decimalPlaces: 1,
+      unitLabel: '%',
+    }),
+    { text: '↓5.0%', tone: 'down' },
+  );
+  assert.equal(
+    formatPeriodCompare({ current: null, baseline: 1 }).text,
+    '--',
+  );
 });

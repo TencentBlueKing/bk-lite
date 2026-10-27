@@ -236,10 +236,10 @@ test('packs a fresh proposal into three widgets per row', () => {
   assert.deepEqual(
     result.layout.map((item) => [item.i, item.x, item.y, item.w, item.h]),
     [
-      ['a', 0, 0, 4, 3],
-      ['b', 4, 0, 4, 3],
-      ['c', 8, 0, 4, 3],
-      ['d', 0, 3, 4, 3],
+      ['a', 0, 0, 8, 3],
+      ['b', 8, 0, 8, 3],
+      ['c', 16, 0, 8, 3],
+      ['d', 0, 3, 8, 3],
     ],
   );
 });

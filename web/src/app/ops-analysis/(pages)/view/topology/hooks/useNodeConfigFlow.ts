@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
+import {
+  buildDefaultFilterBindings,
+  preserveUnfollowedFilterBindings,
+} from '@/app/ops-analysis/utils/widgetDataTransform';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   FilterValue,
@@ -176,15 +179,20 @@ export const useNodeConfigFlow = ({
               const dataSource = canvasDataSources.find(
                 (ds) => ds.id === result.valueConfig?.dataSource,
               );
+              const bindingParams = Array.isArray(result.valueConfig.dataSourceParams) &&
+                result.valueConfig.dataSourceParams.length > 0
+                ? result.valueConfig.dataSourceParams
+                : dataSource?.params;
               const nextValueConfig = {
                 ...result.valueConfig,
-                filterBindings: buildDefaultFilterBindings(
-                  Array.isArray(result.valueConfig.dataSourceParams) &&
-                    result.valueConfig.dataSourceParams.length > 0
-                    ? result.valueConfig.dataSourceParams
-                    : dataSource?.params,
-                  newDefinitions,
+                filterBindings: preserveUnfollowedFilterBindings(
                   result.valueConfig.filterBindings,
+                  bindingParams,
+                  buildDefaultFilterBindings(
+                    bindingParams,
+                    newDefinitions,
+                    result.valueConfig.filterBindings,
+                  ),
                 ),
               };
 
