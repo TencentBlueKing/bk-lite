@@ -371,6 +371,8 @@ recovery_threshold   {} | {"comparator": "lt", "value": "600"}
 
 ## 切片 3 验收记录
 
+提交 `a54e7d70e3`。
+
 VictoriaTraces 实跑（`baseline_days=3`，半开窗 02:07–02:12，去重路径含 `min(_time) as _time`）：
 
 | 日 | 一条 `stats by (_time:1d)` | 三次单独 `service_red` |
