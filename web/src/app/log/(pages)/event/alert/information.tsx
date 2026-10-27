@@ -20,12 +20,14 @@ import AlertHandlerActions from './alertHandlerActions';
 import useLogEventApi from '@/app/log/api/event';
 import { buildSearchJumpUrl } from './buildSearchJumpUrl';
 import { formatAlertHandlers } from './alertHandlerUtils';
+import { AggregateHitSummary } from '@/app/log/components/aggregateConditionHit';
 
 const Information: React.FC<TableDataItem> = ({
   formData,
   userList,
   onClose,
-  rawData = []
+  rawData = [],
+  aggregateResult
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -174,6 +176,7 @@ const Information: React.FC<TableDataItem> = ({
         </Button>
       </div>
       <div className="mt-4">
+        <AggregateHitSummary aggregateResult={aggregateResult} t={t} />
         <div>
           <h3 className="font-[600] text-[16px] mb-[15px]">
             {t('log.event.originalLog')}

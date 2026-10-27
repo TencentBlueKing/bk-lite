@@ -5,6 +5,7 @@ import {
   hasIncompleteCondition,
   normalizeCondition,
   readPolicyNoData,
+  readPolicyTriggerCount,
   pruneNoticeUsers,
   seedNoticeUsersFromHandlers,
 } from '../policyFormUtils';
@@ -158,5 +159,32 @@ describe('聚合条件函数', () => {
     });
     expect(readPolicyNoData({})).toEqual({ enabled: false });
     expect(readPolicyNoData({ no_data: { enabled: false } })).toEqual({ enabled: false });
+  });
+
+  it('读入时回填连续满足次数，缺省和越界都是 1', () => {
+    expect(readPolicyTriggerCount({ rule: { mode: 'and', conditions: [], trigger_count: 3 } })).toBe(3);
+    expect(readPolicyTriggerCount({})).toBe(1);
+    expect(readPolicyTriggerCount({ rule: { mode: 'and', conditions: [], trigger_count: 6 } })).toBe(1);
+  });
+
+  it('关键字策略也写入连续满足次数', () => {
+    const payload = buildStrategyPayload(
+      {
+        alert_type: 'keyword',
+        query: 'error',
+        trigger_count: 2,
+        schedule: 5,
+        period: 5,
+      } as StrategyFields,
+      {
+        unit: 'min',
+        periodUnit: 'min',
+        channelList: [],
+        conditions: [],
+        term: 'and',
+        isEdit: false,
+      }
+    );
+    expect(payload.alert_condition?.rule?.trigger_count).toBe(2);
   });
 });

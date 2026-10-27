@@ -3,6 +3,10 @@
 import React, { useMemo } from 'react';
 import { Modal, Table, Tag } from 'antd';
 import dayjs from 'dayjs';
+import {
+  AggregateConditionTable,
+  formatAggregateReason,
+} from '@/app/log/components/aggregateConditionHit';
 import { parseRawLogData } from '@/app/log/components/public/alertRawLogEvidence';
 import { COMPARE_TARGET_LIST } from '@/app/log/constants';
 
@@ -29,6 +33,7 @@ export interface LogDryRunItem {
   verdict?: string;
   reason?: string;
   no_data?: boolean;
+  streak?: number | null;
 }
 
 export interface LogDryRunWindow {
@@ -65,14 +70,6 @@ const VERDICT_LABEL: Record<string, string> = {
   missing_baseline: 'log.event.verdictMissingBaseline',
   no_data: 'log.event.verdictNoData',
   would_trigger_no_data: 'log.event.verdictWouldTriggerNoData',
-};
-
-const REASON_LABEL: Record<string, string> = {
-  missing_baseline: 'log.event.verdictMissingBaseline',
-  baseline_zero: 'log.event.reasonBaselineZero',
-  baseline_missing: 'log.event.reasonBaselineMissing',
-  not_numeric: 'log.event.reasonNotNumeric',
-  denominator_zero: 'log.event.reasonDenominatorZero',
 };
 
 const TARGET_LABEL = Object.fromEntries(
@@ -128,20 +125,6 @@ const VerdictTag = ({ verdict, t }: { verdict?: string; t: (key: string) => stri
   return <Tag>{label}</Tag>;
 };
 
-const formatReason = (reason: string | undefined, t: (key: string) => string) => {
-  if (!reason) {
-    return '—';
-  }
-  return t(REASON_LABEL[reason] || reason);
-};
-
-const conditionText = (condition: LogDryRunCondition) => {
-  const func = condition.func || '';
-  const field = condition.field && condition.field !== '_msg' ? `(${condition.field})` : '';
-  const kind = condition.compare?.kind && condition.compare.kind !== 'absolute' ? ` ${condition.compare.kind}` : '';
-  return `${func}${field}${kind}`;
-};
-
 const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClose, t }) => {
   const items = data?.items || [];
   const baselines = Object.entries(data?.baselines || {});
@@ -163,6 +146,7 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
     () => items.map((item, index) => ({ ...item, rowKey: String(index) })),
     [items],
   );
+  const showStreak = items.some((item) => typeof item.streak === 'number');
 
   const columns = useMemo(() => {
     const groupColumn = {
@@ -180,18 +164,31 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
           ? t('log.event.currentWindowEmpty')
           : formatCount(value),
     };
+    const streakColumn = {
+      title: t('log.event.streak'),
+      dataIndex: 'streak',
+      key: 'streak',
+      render: (value: number | null | undefined) => formatCount(value),
+    };
     const verdictColumn = {
       title: t('log.event.dryRunVerdict'),
       dataIndex: 'verdict',
       key: 'verdict',
-      render: (verdict: string) => <VerdictTag verdict={verdict} t={t} />,
+      render: (verdict: string, record: LogDryRunItem) => (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <VerdictTag verdict={verdict} t={t} />
+          {record.reason === 'window_failed' ? <span>{formatAggregateReason(record.reason, t)}</span> : null}
+        </span>
+      ),
     };
+    const leading = showStreak
+      ? [groupColumn, countColumn, streakColumn]
+      : [groupColumn, countColumn];
     if (keyword) {
-      return [groupColumn, countColumn, verdictColumn];
+      return [...leading, verdictColumn];
     }
     return [
-      groupColumn,
-      countColumn,
+      ...leading,
       {
         title: t('log.event.previousCount'),
         dataIndex: 'previous_count',
@@ -212,54 +209,7 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
       },
       verdictColumn,
     ];
-  }, [keyword, t]);
-
-  const conditionColumns = useMemo(
-    () => [
-      {
-        title: t('log.event.conditionColumn'),
-        key: 'condition',
-        render: (_value: unknown, condition: LogDryRunCondition) => conditionText(condition),
-      },
-      {
-        title: t('log.event.currentValue'),
-        dataIndex: 'current',
-        key: 'current',
-        render: (value: number | null | undefined) => formatCount(value),
-      },
-      {
-        title: t('log.event.baselineValue'),
-        dataIndex: 'baseline',
-        key: 'baseline',
-        render: (value: number | null | undefined) => formatCount(value),
-      },
-      {
-        title: t('log.event.computedValue'),
-        dataIndex: 'value',
-        key: 'value',
-        render: (value: number | null | undefined) => formatCount(value),
-      },
-      {
-        title: t('log.event.threshold'),
-        key: 'threshold',
-        render: (_value: unknown, condition: LogDryRunCondition) =>
-          `${condition.op || ''} ${condition.threshold ?? ''}`.trim(),
-      },
-      {
-        title: t('log.event.matched'),
-        dataIndex: 'matched',
-        key: 'matched',
-        render: (matched: boolean | undefined) => (matched ? t('log.event.verdictWouldTrigger') : t('log.event.verdictNoTrigger')),
-      },
-      {
-        title: t('log.event.reason'),
-        dataIndex: 'reason',
-        key: 'reason',
-        render: (reason: string | undefined) => formatReason(reason, t),
-      },
-    ],
-    [t],
-  );
+  }, [keyword, showStreak, t]);
 
   const sample = useMemo(() => parseRawLogData(data?.sample_preview || []), [data?.sample_preview]);
 
@@ -322,16 +272,7 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
           expandable={{
             rowExpandable: (record) => Array.isArray(record.conditions) && record.conditions.length > 0,
             expandedRowRender: (record) => (
-              <Table
-                size="small"
-                pagination={false}
-                rowKey="key"
-                dataSource={(record.conditions || []).map((condition, index) => ({
-                  ...condition,
-                  key: String(index),
-                }))}
-                columns={conditionColumns}
-              />
+              <AggregateConditionTable conditions={record.conditions || []} t={t} />
             ),
           }}
         />

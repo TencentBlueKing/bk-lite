@@ -302,6 +302,22 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         </div>
       </Form.Item>
       <Form.Item<StrategyFields>
+        label={<span className="w-[100px]">{t('log.event.triggerCount')}</span>}
+      >
+        <Form.Item name="trigger_count" initialValue={1} noStyle>
+          <InputNumber
+            data-testid="trigger-count"
+            min={1}
+            max={5}
+            precision={0}
+            style={{ width: 120 }}
+          />
+        </Form.Item>
+        <div className="text-[var(--color-text-3)] mt-[10px]">
+          {t('log.event.triggerCountTip')}
+        </div>
+      </Form.Item>
+      <Form.Item<StrategyFields>
         required
         label={<span className="w-[100px]">{t('log.event.period')}</span>}
       >

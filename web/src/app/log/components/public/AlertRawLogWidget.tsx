@@ -20,6 +20,7 @@ import {
   parseRawLogData,
   RawLogTableRow,
 } from './alertRawLogEvidence';
+import { AggregateHitSummary, readRawAggregateResult } from '@/app/log/components/aggregateConditionHit';
 import { publicWidgetErrorMessage } from './publicWidgetError';
 import { buildSearchJumpUrl } from '@/app/log/(pages)/event/alert/buildSearchJumpUrl';
 
@@ -297,6 +298,7 @@ const AlertRawLogWidget = ({ logAlertId }: AlertRawLogWidgetProps) => {
       : Math.max(0, snapshots.length - 1);
 
   const currentSnapshot = snapshots[safeIndex];
+  const aggregateResult = readRawAggregateResult(currentSnapshot?.raw_data);
 
   const tableSource = useMemo(() => {
     const raw = currentSnapshot?.raw_data;
@@ -542,6 +544,8 @@ const AlertRawLogWidget = ({ logAlertId }: AlertRawLogWidgetProps) => {
             )}
           </div>
         </div>
+
+        <AggregateHitSummary aggregateResult={aggregateResult} t={t} />
 
         {hasSnapshotRawData(currentSnapshot?.raw_data) ? (
           effectiveViewMode === 'table' && isCurrentTabular ? (

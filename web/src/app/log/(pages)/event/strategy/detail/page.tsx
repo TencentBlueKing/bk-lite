@@ -27,6 +27,7 @@ import {
   normalizeCondition,
   pruneNoticeUsers,
   readPolicyNoData,
+  readPolicyTriggerCount,
   shouldPruneNoticeUsers,
   shouldRequireNoticeUsers
 } from './policyFormUtils';
@@ -332,7 +333,8 @@ const StrategyOperation = () => {
       schedule: scheduleValue || '',
       query: alert_condition.query || '',
       group_by: alert_condition.group_by || null,
-      no_data: readPolicyNoData(alert_condition)
+      no_data: readPolicyNoData(alert_condition),
+      trigger_count: readPolicyTriggerCount(alert_condition)
     };
     if (alert_type === 'aggregate') {
       setTerm(alert_condition.rule?.mode || '');

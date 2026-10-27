@@ -302,4 +302,75 @@ describe('AlertRawLogWidget Component', () => {
     expect(String(open.mock.calls[0][0])).not.toContain('%7C+stats');
     open.mockRestore();
   });
+
+  it('快照带 conditions 时逐行显示，没有 conditions 时不改现有展示', async () => {
+    apis.getAlertSnapshots.mockResolvedValueOnce({
+      snapshots: [
+        {
+          event_id: 'ev-hit',
+          event_time: '2026-10-27T07:55:00Z',
+          query_clue: { policy_name: 'rate policy', alert_condition: { query: 'level:error' } },
+          raw_data: {
+            aggregate_result: {
+              count: 180,
+              conditions: [
+                {
+                  func: 'count',
+                  field: '_msg',
+                  current: 180,
+                  baseline: 120,
+                  value: 50,
+                  op: '>',
+                  threshold: '49',
+                  matched: true,
+                  reason: '',
+                  compare: { kind: 'percent' },
+                },
+              ],
+            },
+            samples: [{ _time: '2026-10-27T07:55:00Z', _msg: 'order exploded' }],
+          },
+        },
+      ],
+    });
+
+    render(<AlertRawLogWidget logAlertId="alert-hit" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('order exploded')).toBeTruthy();
+    });
+    expect(screen.getByTestId('aggregate-condition-table')).toBeTruthy();
+    expect(screen.getByText('count percent')).toBeTruthy();
+    expect(screen.getByText('180')).toBeTruthy();
+    expect(screen.getByText('120')).toBeTruthy();
+    expect(screen.getByText('50')).toBeTruthy();
+    expect(screen.getByText('log.event.verdictWouldTrigger')).toBeTruthy();
+  });
+
+  it('无数据快照显示本窗无日志和上一窗条数', async () => {
+    apis.getAlertSnapshots.mockResolvedValueOnce({
+      snapshots: [
+        {
+          event_id: 'ev-empty-window',
+          event_time: '2026-10-27T07:55:00Z',
+          query_clue: { policy_name: 'gap' },
+          raw_data: {
+            aggregate_result: {
+              count: 0,
+              no_data: true,
+              baseline: { values: { count__msg: 6 } },
+            },
+            samples: [],
+          },
+        },
+      ],
+    });
+
+    render(<AlertRawLogWidget logAlertId="alert-empty-window" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('aggregate-no-data-line').textContent).toBe('log.event.noDataWindowLine');
+    });
+    expect(screen.queryByTestId('aggregate-condition-table')).toBeNull();
+  });
 });

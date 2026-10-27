@@ -73,3 +73,18 @@ describe('无数据告警开关', () => {
     expect(screen.queryByText('log.event.noDataLevel')).toBeNull();
   });
 });
+
+describe('连续满足次数', () => {
+  it('缺省 1，上限 5', () => {
+    render(<Harness />);
+
+    expect(screen.getByText('log.event.triggerCount')).toBeTruthy();
+    expect(screen.getByText('log.event.triggerCountTip')).toBeTruthy();
+    const node = screen.getByTestId('trigger-count');
+    const input = node.tagName === 'INPUT' ? node : node.querySelector('input');
+    expect(input).toBeTruthy();
+    expect(input?.getAttribute('aria-valuemax')).toBe('5');
+    expect(input?.getAttribute('aria-valuemin')).toBe('1');
+    expect(input?.getAttribute('aria-valuenow')).toBe('1');
+  });
+});

@@ -46,6 +46,17 @@ export const readPolicyNoData = (
   return next;
 };
 
+/** 读入策略时回填连续满足次数。缺省 1。 */
+export const readPolicyTriggerCount = (
+  alertCondition?: StrategyFields['alert_condition']
+): number => {
+  const raw = alertCondition?.rule?.trigger_count;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > 5) {
+    return 1;
+  }
+  return raw;
+};
+
 /** 变化量 / 变化率要对照，分位要分位，占比要分子筛选。 */
 export const hasIncompleteCondition = (conditions: FilterItem[]) =>
   conditions.some((item) => {
@@ -284,9 +295,14 @@ export const buildStrategyPayload = (
       mode: options.term || 'and',
       conditions: options.conditions
     };
-    if (typeof values.trigger_count === 'number') {
-      params.alert_condition.rule.trigger_count = values.trigger_count;
-    }
+  }
+  if (typeof values.trigger_count === 'number') {
+    const rule = params.alert_condition.rule;
+    params.alert_condition.rule = {
+      mode: rule?.mode || options.term || 'and',
+      conditions: rule?.conditions || [],
+      trigger_count: values.trigger_count
+    };
   }
   if (values.no_data && typeof values.no_data === 'object') {
     params.alert_condition.no_data = values.no_data as StrategyFields['no_data'];

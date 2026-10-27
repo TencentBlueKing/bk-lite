@@ -142,6 +142,7 @@ describe('试算结果弹窗', () => {
     expect(screen.getByText('log.event.reasonBaselineZero')).toBeTruthy();
     expect(screen.getByText('log.event.baselineValue')).toBeTruthy();
     expect(screen.getByText('log.event.computedValue')).toBeTruthy();
+    expect(screen.queryByText('log.event.streak')).toBeNull();
   });
 
   it('无数据胶囊和本窗无日志行', () => {
@@ -161,5 +162,32 @@ describe('试算结果弹窗', () => {
     expect(screen.getByText('log.event.verdictWouldTriggerNoData 1')).toBeTruthy();
     expect(screen.getByText('log.event.currentWindowEmpty')).toBeTruthy();
     expect(screen.getByText('host=b')).toBeTruthy();
+  });
+
+  it('连续满足大于 1 时显示连续满足列和查询失败原因', () => {
+    renderModal({
+      alert_type: 'aggregate',
+      baseline_status: 'not_required',
+      items: [
+        {
+          group: { service: 'order' },
+          count: 10,
+          streak: 2,
+          verdict: 'no_trigger',
+        },
+        {
+          group: { service: 'pay' },
+          count: 8,
+          streak: 0,
+          verdict: 'no_trigger',
+          reason: 'window_failed',
+        },
+      ],
+    });
+
+    expect(screen.getByText('log.event.streak')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.getByText('0')).toBeTruthy();
+    expect(screen.getByText('log.event.reasonWindowFailed')).toBeTruthy();
   });
 });

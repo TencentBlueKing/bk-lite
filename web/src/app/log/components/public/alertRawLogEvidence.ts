@@ -131,6 +131,31 @@ export interface FormattedCondition {
   rawText?: string;
 }
 
+export interface AggregateResultCondition {
+  func?: string;
+  field?: string;
+  current?: number | null;
+  baseline?: number | null;
+  value?: number | null;
+  op?: string;
+  threshold?: string | number;
+  matched?: boolean;
+  reason?: string;
+  compare?: { kind?: string; to?: string };
+}
+
+export interface AggregateResultHit {
+  count?: number;
+  no_data?: boolean;
+  conditions?: AggregateResultCondition[];
+  baseline?: {
+    to?: string;
+    window?: { start?: number; end?: number };
+    status?: string;
+    values?: Record<string, number | string | null>;
+  };
+}
+
 export function parseAlertCondition(
   rawCondition: unknown,
   fallbackQuery?: unknown,

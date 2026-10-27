@@ -39,6 +39,11 @@ const keys = [
   'log.event.noDataAlert',
   'log.event.noDataLevel',
   'log.event.noDataTip',
+  'log.event.triggerCount',
+  'log.event.triggerCountTip',
+  'log.event.streak',
+  'log.event.reasonWindowFailed',
+  'log.event.noDataWindowLine',
   'log.event.currentWindowEmpty',
   'log.event.verdictWouldTriggerNoData',
   'log.event.reasonDenominatorZero',
@@ -99,5 +104,7 @@ describe('日志策略计算方式文案', () => {
     expect(enMessages['log.event.funcCountDelta']).toBe('Change');
     expect(zhMessages['log.event.dryRun']).toBe('试算');
     expect(zhMessages['log.event.openInSearch']).toBe('在检索中打开');
+    expect(zhMessages['log.event.triggerCountTip']).toBe('连续 N 个检测窗都满足才告警');
+    expect(zhMessages['log.event.noDataWindowLine']).toBe('本窗无日志，上一窗 {count} 条');
   });
 });
