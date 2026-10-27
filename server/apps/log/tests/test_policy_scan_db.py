@@ -298,6 +298,31 @@ class TestAggregateAlertDetection:
         assert event_snapshot["jump_query"] == events[0]["jump_query"]
         assert len(event_snapshot["raw_data"]["samples"]) == 10
 
+    def test_aggregate_event_persists_condition_results(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="条件",
+            alert_condition={
+                "query": "level:error",
+                "group_by": [],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 1}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=100, window_end=400)
+        mocker.patch.object(scan.vlogs_api, "query", return_value=[{"count__msg": "9"}])
+        _install_memory_json_storage(mocker)
+        events = scan.aggregate_alert_detection()
+        matched = events[0]["raw_data"]["aggregate_result"]["conditions"][0]
+        assert matched["func"] == "count"
+        assert matched["matched"] is True
+        assert matched["current"] == 9
+        persisted = scan.create_events(events)[0]
+        raw = EventRawData.objects.get(event=persisted)
+        assert raw.data["aggregate_result"]["conditions"][0]["matched"] is True
+
 
 def _install_memory_json_storage(mocker):
     """覆盖 autouse 的空回读，让快照条目可以按写入内容断言。"""

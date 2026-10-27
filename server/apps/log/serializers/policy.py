@@ -5,12 +5,23 @@ from rest_framework import serializers
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.models.policy import Alert, Event, EventRawData, Policy
 from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.services.policy_condition import canonical_quantile, normalize_condition
 from apps.log.utils.locale_text import serializer_text
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.policy_config import validate_timing_config
 from apps.log.utils.user_display import format_user_identifiers
 
 _NUMERIC_COMPARE_OPS = {">", "<", ">=", "<=", "=", "!="}
+_FIELD_REQUIRED_FUNCS = frozenset({"sum", "avg", "max", "min", "count_uniq", "quantile"})
+_ALWAYS_NUMERIC_FUNCS = frozenset({"count_rate", "count_delta", "count_uniq", "quantile", "ratio", "bytes_rate"})
+_ALERT_LEVELS = frozenset(
+    {
+        AlertConstants.LEVEL_INFO,
+        AlertConstants.LEVEL_WARNING,
+        AlertConstants.LEVEL_ERROR,
+        AlertConstants.LEVEL_CRITICAL,
+    }
+)
 
 
 def _is_finite_number(value):
@@ -134,8 +145,13 @@ class PolicySerializer(serializers.ModelSerializer):
         return None
 
     def validate_alert_condition(self, value):
-        """只校验聚合策略的新增函数、分组和样本条数。旧函数不追加比较符限制。"""
-        if not isinstance(value, dict) or self._current_alert_type() != AlertConstants.TYPE_AGGREGATE:
+        """聚合条件校验比较方式与新函数。无数据级别、连续次数对两种告警类型都校验。"""
+        if not isinstance(value, dict):
+            return value
+        self._validate_no_data(value)
+        rule = value.get("rule") if isinstance(value.get("rule"), dict) else {}
+        self._validate_trigger_count(rule)
+        if self._current_alert_type() != AlertConstants.TYPE_AGGREGATE:
             return value
 
         if "group_by" in value and value.get("group_by") is not None:
@@ -148,26 +164,87 @@ class PolicySerializer(serializers.ModelSerializer):
             if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= AlertConstants.SAMPLE_LIMIT_MAX:
                 raise serializers.ValidationError(serializer_text(self, "error.policy_sample_limit_range"))
 
-        rule = value.get("rule") or {}
         conditions = rule.get("conditions") if isinstance(rule, dict) else None
         if not conditions:
             return value
         if not isinstance(conditions, list):
             raise serializers.ValidationError(serializer_text(self, "error.policy_aggregate_func_unsupported"))
 
+        normalized_conditions = []
         for condition in conditions:
-            if not isinstance(condition, dict):
-                raise serializers.ValidationError(serializer_text(self, "error.policy_aggregate_func_unsupported"))
-            func = condition.get("func")
-            if func not in AlertConstants.AGGREGATE_FUNCS:
-                raise serializers.ValidationError(serializer_text(self, "error.policy_aggregate_func_unsupported"))
-            if func not in AlertConstants.COUNT_DERIVED_FUNCS:
-                continue
+            self._validate_aggregate_condition(condition)
+            normalized_conditions.append(normalize_condition(condition))
+        stored = dict(value)
+        stored_rule = dict(rule)
+        stored_rule["conditions"] = normalized_conditions
+        stored["rule"] = stored_rule
+        return stored
+
+    def _validate_no_data(self, value):
+        if "no_data" not in value or value.get("no_data") is None:
+            return
+        no_data = value.get("no_data")
+        if not isinstance(no_data, dict):
+            raise serializers.ValidationError(serializer_text(self, "error.policy_no_data_level_invalid"))
+        level = no_data.get("level")
+        if level is None:
+            return
+        if level not in _ALERT_LEVELS:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_no_data_level_invalid"))
+
+    def _validate_trigger_count(self, rule):
+        if not isinstance(rule, dict) or "trigger_count" not in rule or rule.get("trigger_count") is None:
+            return
+        trigger_count = rule.get("trigger_count")
+        if isinstance(trigger_count, bool) or not isinstance(trigger_count, int) or not 1 <= trigger_count <= AlertConstants.TRIGGER_COUNT_MAX:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_trigger_count_range"))
+
+    def _validate_aggregate_condition(self, condition):
+        if not isinstance(condition, dict):
+            raise serializers.ValidationError(serializer_text(self, "error.policy_aggregate_func_unsupported"))
+        func = condition.get("func")
+        if func not in AlertConstants.AGGREGATE_FUNCS and func != "count_delta":
+            raise serializers.ValidationError(serializer_text(self, "error.policy_aggregate_func_unsupported"))
+        if func in _FIELD_REQUIRED_FUNCS:
+            field = condition.get("field")
+            if not isinstance(field, str) or not field.strip():
+                raise serializers.ValidationError(serializer_text(self, "error.policy_field_required"))
+        compare = condition.get("compare")
+        kind = "absolute"
+        if compare is not None:
+            if not isinstance(compare, dict):
+                raise serializers.ValidationError(serializer_text(self, "error.policy_compare_invalid"))
+            kind = compare.get("kind") or "absolute"
+            if kind not in AlertConstants.COMPARE_KINDS:
+                raise serializers.ValidationError(serializer_text(self, "error.policy_compare_invalid"))
+            if kind != "absolute":
+                if compare.get("to") not in AlertConstants.COMPARE_TARGETS:
+                    raise serializers.ValidationError(serializer_text(self, "error.policy_compare_invalid"))
+                comparable = "count" if func == "count_delta" else func
+                if comparable not in AlertConstants.COMPARABLE_FUNCS:
+                    raise serializers.ValidationError(serializer_text(self, "error.policy_compare_func_unsupported"))
+        if (
+            func == "quantile"
+            and canonical_quantile((condition.get("params") or {}).get("quantile") if isinstance(condition.get("params"), dict) else None) is None
+        ):
+            raise serializers.ValidationError(serializer_text(self, "error.policy_quantile_invalid"))
+        if func == "ratio":
+            self._validate_ratio_filter(condition.get("params"))
+        if func in _ALWAYS_NUMERIC_FUNCS or kind != "absolute":
             if condition.get("op") not in _NUMERIC_COMPARE_OPS:
                 raise serializers.ValidationError(serializer_text(self, "error.policy_numeric_op_only"))
             if not _is_finite_number(condition.get("value")):
                 raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_number"))
-        return value
+
+    def _validate_ratio_filter(self, params):
+        if not isinstance(params, dict):
+            raise serializers.ValidationError(serializer_text(self, "error.policy_ratio_filter_invalid"))
+        raw_filter = params.get("filter")
+        if not isinstance(raw_filter, str):
+            raise serializers.ValidationError(serializer_text(self, "error.policy_ratio_filter_invalid"))
+        text = raw_filter.strip()
+        if not text or len(text) > AlertConstants.RATIO_FILTER_MAX_LEN or "|" in raw_filter:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_ratio_filter_invalid"))
 
     def _policy_organization_ids(self, attrs):
         if "policy_organizations" in self.context:

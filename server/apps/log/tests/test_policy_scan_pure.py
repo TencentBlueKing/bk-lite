@@ -675,3 +675,248 @@ class TestJumpQueryAndAggregateSamples:
         warnings = [record for record in caplog.records if record.levelno == logging.WARNING and "aggregate_sample_failed" in record.getMessage()]
         assert warnings
         assert secret not in warnings[-1].getMessage()
+
+
+class TestConditionBaseline:
+    def _rule(self, *conditions, mode="and"):
+        return {"mode": mode, "conditions": list(conditions)}
+
+    def test_percent_triggers_and_baseline_zero_blocks_only_that_condition(self):
+        scan = _scan()
+        rule = self._rule(
+            {
+                "func": "count",
+                "field": "_msg",
+                "op": ">",
+                "value": "49",
+                "compare": {"kind": "percent", "to": "offset_24h"},
+            },
+            {"func": "count", "field": "_msg", "op": ">=", "value": "20"},
+        )
+        baselines = {
+            "offset_24h": {
+                "status": "ok",
+                "window": {"start": 113600, "end": 113900},
+                "rows": {("order",): {"count__msg": 120}, ("cart",): {"count__msg": 0}},
+            }
+        }
+        order = scan._extract_aggregate_data(
+            {"service": "order", "count__msg": 180},
+            rule,
+            window_seconds=300,
+            group_by=["service"],
+            baselines=baselines,
+        )
+        percent = order["conditions"][0]
+        assert percent["current"] == 180
+        assert percent["baseline"] == 120
+        assert percent["value"] == pytest.approx(50.0)
+        assert percent["matched"] is True
+        assert order["conditions"][1]["matched"] is True
+        assert scan._check_rule_conditions(order, rule) is True
+
+        cart = scan._extract_aggregate_data(
+            {"service": "cart", "count__msg": 15},
+            rule,
+            window_seconds=300,
+            group_by=["service"],
+            baselines=baselines,
+        )
+        assert cart["conditions"][0]["value"] is None
+        assert cart["conditions"][0]["reason"] == "baseline_zero"
+        assert cart["conditions"][0]["matched"] is False
+        assert scan._check_rule_conditions(cart, rule) is False
+
+        either = self._rule(
+            {
+                "func": "count",
+                "field": "_msg",
+                "op": ">",
+                "value": "49",
+                "compare": {"kind": "percent", "to": "offset_24h"},
+            },
+            {"func": "count", "field": "_msg", "op": ">=", "value": "10"},
+            mode="or",
+        )
+        opened = scan._extract_aggregate_data(
+            {"service": "cart", "count__msg": 15},
+            either,
+            window_seconds=300,
+            group_by=["service"],
+            baselines=baselines,
+        )
+        assert scan._check_rule_conditions(opened, either) is True
+
+    def test_delta_and_missing_group_distinguish_zero_from_none(self):
+        scan = _scan()
+        rule = self._rule(
+            {"func": "count_uniq", "field": "client_ip", "op": ">", "value": "10", "compare": {"kind": "delta", "to": "previous_window"}},
+            {"func": "sum", "field": "bytes", "op": ">", "value": "1", "compare": {"kind": "delta", "to": "previous_window"}},
+            {"func": "avg", "field": "duration", "op": ">", "value": "1", "compare": {"kind": "delta", "to": "previous_window"}},
+            {
+                "func": "quantile",
+                "field": "duration",
+                "op": ">",
+                "value": "1",
+                "params": {"quantile": 0.95},
+                "compare": {"kind": "delta", "to": "previous_window"},
+            },
+        )
+        baselines = {
+            "previous_window": {
+                "status": "ok",
+                "window": {"start": 700, "end": 1000},
+                "rows": {
+                    ("order",): {
+                        "count_uniq_client_ip": 40,
+                        "sum_bytes": 100,
+                        "avg_duration": 10,
+                        "quantile_0_95_duration": 20,
+                    }
+                },
+            }
+        }
+        present = scan._extract_aggregate_data(
+            {
+                "service": "order",
+                "count_uniq_client_ip": 63,
+                "sum_bytes": 130,
+                "avg_duration": 12,
+                "quantile_0_95_duration": 30,
+            },
+            rule,
+            window_seconds=300,
+            group_by=["service"],
+            baselines=baselines,
+        )
+        assert present["conditions"][0]["value"] == 23
+        assert present["conditions"][1]["value"] == pytest.approx(30)
+        assert present["conditions"][2]["value"] == pytest.approx(2)
+        assert present["conditions"][0]["matched"] is True
+
+        missing = scan._extract_aggregate_data(
+            {"service": "pay", "count_uniq_client_ip": 3, "sum_bytes": 5, "avg_duration": 9, "quantile_0_95_duration": 11},
+            rule,
+            window_seconds=300,
+            group_by=["service"],
+            baselines=baselines,
+        )
+        assert missing["conditions"][0]["baseline"] == 0
+        assert missing["conditions"][1]["baseline"] == 0
+        assert missing["conditions"][2]["value"] is None
+        assert missing["conditions"][2]["reason"] == "baseline_missing"
+        assert missing["conditions"][3]["reason"] == "baseline_missing"
+        assert missing["conditions"][2]["matched"] is False
+
+    def test_offset_windows_and_distinct_targets_query_once_each(self, mocker):
+        scan = _scan(
+            alert_type="aggregate",
+            alert_condition={
+                "query": "level:error",
+                "group_by": ["service"],
+                "rule": {"mode": "and", "conditions": []},
+            },
+        )
+        calls = []
+
+        def fake_query(query, start, end, limit=10):
+            calls.append((query, start, end))
+            return [{"service": "order", "count__msg": "1"}]
+
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+        grouped = scan._query_baseline("level:error | stats count() as count__msg", "offset_24h", 200000, 200300)
+        assert grouped[("order",)]["count__msg"] == "1"
+        assert calls == [("level:error | stats count() as count__msg", 200000 - 86400, 200300 - 86400)]
+
+        policy = _policy(
+            alert_type="aggregate",
+            alert_condition={
+                "query": "level:error",
+                "group_by": ["service"],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [
+                        {"func": "count", "field": "_msg", "op": ">", "value": "1", "compare": {"kind": "percent", "to": "offset_24h"}},
+                        {"func": "count", "field": "_msg", "op": ">", "value": "1", "compare": {"kind": "percent", "to": "offset_24h"}},
+                        {"func": "sum", "field": "bytes", "op": ">", "value": "1", "compare": {"kind": "delta", "to": "previous_window"}},
+                    ],
+                },
+            },
+        )
+        mixed = LogPolicyScan(policy)
+        mixed_calls = []
+
+        def fake_mixed(query, start, end, limit=10):
+            mixed_calls.append(start)
+            return [{"service": "order", "count__msg": "2", "sum_bytes": "3"}]
+
+        mocker.patch.object(mixed.vlogs_api, "query", side_effect=fake_mixed)
+        mixed.evaluate_aggregate(200000, 200300)
+        assert mixed_calls == [200000, 200000 - 86400, 200000 - 300]
+        assert set(mixed.baselines) == {"offset_24h", "previous_window"}
+        assert mixed.baseline_status == "ok"
+
+    def test_quantile_not_numeric_and_bytes_rate(self):
+        scan = _scan()
+        rule = self._rule(
+            {"func": "quantile", "field": "duration", "op": ">", "value": "2000", "params": {"quantile": 0.95}},
+            {"func": "bytes_rate", "field": "_msg", "op": ">", "value": "1"},
+        )
+        data = scan._extract_aggregate_data(
+            {"quantile_0_95_duration": "NaN", "bytes__msg": "3000"},
+            rule,
+            window_seconds=300,
+            group_by=[],
+        )
+        assert data["conditions"][0]["value"] is None
+        assert data["conditions"][0]["reason"] == "not_numeric"
+        assert data["conditions"][0]["matched"] is False
+        assert data["bytes_rate"] == pytest.approx(10)
+        assert data["conditions"][1]["value"] == pytest.approx(10)
+        assert data["conditions"][1]["matched"] is True
+
+    def test_baseline_failure_logs_template_without_query_text(self):
+        sentinel = "SENTINEL_QUERY_BODY_offset_do_not_log"
+        scan = _scan(id=42, alert_condition={"query": "level:error", "group_by": ["service"]})
+        scan.vlogs_api.query = lambda **kwargs: (_ for _ in ()).throw(RuntimeError(sentinel))
+        template = "event=log_policy_baseline_failed policy_id=%s failed_stage=%s compare_to=%s error_type=%s"
+        records = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        handler = _Capture(level=logging.WARNING)
+        logger = logging.getLogger("celery")
+        previous_level = logger.level
+        logger.addHandler(handler)
+        logger.setLevel(logging.WARNING)
+        try:
+            result = scan._query_baseline(sentinel, "offset_24h", 200000, 200300)
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(previous_level)
+
+        assert result is None
+        matched = [record for record in records if record.msg == template]
+        assert len(matched) == 1
+        record = matched[0]
+        assert record.args == (42, "baseline", "offset_24h", "RuntimeError")
+        assert record.exc_info in (None, False)
+        rendered = record.getMessage()
+        assert rendered == "event=log_policy_baseline_failed policy_id=42 failed_stage=baseline compare_to=offset_24h error_type=RuntimeError"
+        assert sentinel not in rendered
+        assert sentinel not in str(record.args)
+
+    def test_alert_name_renders_baseline_and_new_keys(self):
+        scan = _scan(alert_name="${count_uniq_client_ip} ${baseline_count__msg}")
+        rendered = scan._render_alert_name(
+            {"service": "order"},
+            ["service"],
+            aggregate_data={
+                "count_uniq_client_ip": 63,
+                "baseline": {"to": "offset_24h", "status": "ok", "values": {"count__msg": 120}},
+                "conditions": [{"func": "count"}],
+            },
+        )
+        assert rendered == "63 120"

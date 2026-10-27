@@ -354,3 +354,70 @@ def test_unexpected_failure_logs_once_without_query(authenticated_user, mocker, 
     assert formatted.count("Traceback") == 1
     policy.refresh_from_db()
     assert policy.last_run_time == FIXED_NOW
+
+
+@pytest.mark.django_db
+def test_dry_run_returns_conditions_and_baselines(authenticated_user, mocker):
+    _allow_policy_operations(mocker)
+    mocker.patch("apps.log.services.policy_dry_run._safe_now", return_value=FIXED_NOW)
+    window_start, window_end, prev_start = _window_bounds()
+    offset_start = window_start - 86400
+    starts = []
+
+    def fake_query(self, query, start, end, limit=10):
+        starts.append(start)
+        if start == offset_start:
+            return [{"service": "order", "count__msg": "120"}]
+        if start == prev_start:
+            return [{"service": "order", "count_uniq_client_ip": "40", "count__msg": "10"}]
+        if "stats" in query:
+            return [{"service": "order", "count__msg": "180", "count_uniq_client_ip": "63"}]
+        return [{"_msg": "sample"}]
+
+    mocker.patch("apps.log.tasks.services.policy_scan.VictoriaMetricsAPI.query", fake_query)
+    payload = _aggregate_payload(
+        "catalog-dry-run",
+        [1],
+        alert_condition={
+            "query": "level:error",
+            "group_by": ["service"],
+            "rule": {
+                "mode": "and",
+                "conditions": [
+                    {
+                        "func": "count",
+                        "field": "_msg",
+                        "op": ">",
+                        "value": "49",
+                        "compare": {"kind": "percent", "to": "offset_24h"},
+                    },
+                    {
+                        "func": "count_uniq",
+                        "field": "client_ip",
+                        "op": ">",
+                        "value": "10",
+                        "compare": {"kind": "delta", "to": "previous_window"},
+                    },
+                ],
+            },
+        },
+    )
+
+    response = _post_dry_run(payload, authenticated_user)
+
+    assert response.status_code == 200
+    data = _body(response)["data"]
+    assert data["baseline_status"] == "ok"
+    assert set(data["baselines"]) == {"offset_24h", "previous_window"}
+    assert data["baselines"]["offset_24h"]["status"] == "ok"
+    assert data["baselines"]["offset_24h"]["window"] == {"start": offset_start, "end": window_end - 86400}
+    assert data["baselines"]["previous_window"]["window"]["start"] == prev_start
+    assert starts.count(offset_start) == 1
+    assert starts.count(prev_start) == 1
+    item = data["items"][0]
+    assert item["verdict"] == "would_trigger"
+    assert item["conditions"][0]["value"] == pytest.approx(50.0)
+    assert item["conditions"][0]["matched"] is True
+    assert item["conditions"][1]["value"] == 23
+    assert item["conditions"][1]["matched"] is True
+    assert item["count"] == 180

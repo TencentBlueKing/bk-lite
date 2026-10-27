@@ -31,6 +31,15 @@ from apps.log.services.alert_access import snapshot_policy_organization_ids
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.services.alert_query_clue import freeze_log_alert_query_clue
 from apps.log.services.log_event_contract import to_logical_event
+from apps.log.services.policy_condition import (
+    collect_stats_expressions,
+    compare_targets,
+    condition_alias,
+    normalize_condition,
+    parse_metric,
+    stats_alias,
+    uses_previous_count_delta,
+)
 from apps.log.services.search import SearchService
 from apps.log.tasks.utils.policy import period_to_seconds
 from apps.log.utils.query_log import VictoriaMetricsAPI
@@ -50,6 +59,7 @@ class LogPolicyScan:
         self.cursor_time = cursor_time
         self.organizations = snapshot_policy_organization_ids(policy)
         self.baseline_status = "not_required"
+        self.baselines = {}
 
     def _get_scan_window(self):
         window_start = getattr(self, "window_start", None)
@@ -442,12 +452,18 @@ class LogPolicyScan:
     def evaluate_aggregate(self, window_start, window_end):
         """只读聚合判定。每项含 group_values、result、aggregate_data、triggered、reason。"""
         self.baseline_status = "not_required"
+        self.baselines = {}
         alert_condition = self.policy.alert_condition or {}
         base_query = alert_condition.get("query", "*")
         group_by = self._normalize_group_by(alert_condition.get("group_by", []))
         rule = alert_condition.get("rule", {}) or {}
         if not rule.get("conditions"):
-            logger.warning(f"policy {self.policy.id} has no rule conditions for aggregate alert")
+            logger.warning(
+                "event=log_policy_aggregate_scan policy_id=%s failed_stage=%s error_type=%s",
+                getattr(self.policy, "id", ""),
+                "conditions",
+                "missing_conditions",
+            )
             return []
 
         base_query_with_groups = self._build_query_with_log_groups(base_query)
@@ -460,10 +476,7 @@ class LogPolicyScan:
             limit=1000,
         )
         window_seconds = window_end - window_start
-        previous_counts = None
-        if self._rule_uses_func(rule, "count_delta"):
-            previous_counts = self._query_previous_window_counts(base_query_with_groups, group_by, window_start, window_end)
-            self.baseline_status = "unavailable" if previous_counts is None else "ok"
+        self._load_baselines(aggregation_query, rule, window_start, window_end)
 
         if not aggregation_results:
             logger.info("event=log_policy_aggregate_scan policy_id=%s group_count=%s", self.policy.id, 0)
@@ -478,13 +491,13 @@ class LogPolicyScan:
                 result,
                 rule,
                 window_seconds=window_seconds,
-                previous_counts=previous_counts,
                 group_by=group_by,
+                baselines=self.baselines,
             )
             triggered = self._check_rule_conditions(aggregate_data, rule)
             reason = ""
-            if not triggered and self._rule_uses_func(rule, "count_delta") and aggregate_data.get("count_delta") is None:
-                reason = "missing_baseline"
+            if not triggered:
+                reason = self._first_condition_reason(aggregate_data)
             rows.append(
                 {
                     "group_values": group_values,
@@ -578,65 +591,26 @@ class LogPolicyScan:
             return f"({query}) AND {collect_type_filter}"
 
     def _build_aggregation_query(self, base_query, group_by, rule):
-        """构建LogSQL聚合查询语句"""
+        """构建 LogSQL 聚合查询。片段由 policy_condition.stats_expression 生成。"""
         conditions = rule.get("conditions", [])
 
         if not conditions:
             raise BaseAppException("rule conditions cannot be empty")
 
-        # 收集需要计算的聚合函数
-        stats_functions = []
-
-        for condition in conditions:
-            func = condition.get("func")
-            field = condition.get("field", "_msg")
-
-            if not func:
-                logger.warning(f"condition missing func: {condition}")
-                continue
-
-            if func in ("count", "count_rate", "count_delta"):
-                # 速率和变化量都从本窗 count() 派生，别名与 count(_msg) 相同以便去重。
-                if func in AlertConstants.COUNT_DERIVED_FUNCS:
-                    field = "_msg"
-                alias = f"count_{field.replace('.', '_')}"
-                stats_functions.append(f"count() as {alias}")
-            elif func == "sum":
-                alias = f"sum_{field.replace('.', '_')}"
-                stats_functions.append(f"sum({field}) as {alias}")
-            elif func == "avg":
-                alias = f"avg_{field.replace('.', '_')}"
-                stats_functions.append(f"avg({field}) as {alias}")
-            elif func == "max":
-                alias = f"max_{field.replace('.', '_')}"
-                stats_functions.append(f"max({field}) as {alias}")
-            elif func == "min":
-                alias = f"min_{field.replace('.', '_')}"
-                stats_functions.append(f"min({field}) as {alias}")
-            else:
-                logger.warning(f"unsupported aggregation function: {func}")
-
-        # 如果没有有效的聚合函数，默认使用count
+        stats_functions = collect_stats_expressions(conditions, self._map_storage_filter)
         if not stats_functions:
             stats_functions.append("count() as total_count")
 
-        # 去重聚合函数
-        stats_functions = list(dict.fromkeys(stats_functions))
-
-        # 构建stats子句
         stats_clause = ", ".join(stats_functions)
-
-        # 构建完整查询 - 使用正确的语法顺序
         if group_by:
-            # 有分组的情况：query | stats by (field1, field2) func1() as alias1, func2() as alias2
             by_fields = ", ".join(group_by)
-            query = f"{base_query} | stats by ({by_fields}) {stats_clause}"
-        else:
-            # 无分组的情况：query | stats func1() as alias1, func2() as alias2
-            query = f"{base_query} | stats {stats_clause}"
+            return f"{base_query} | stats by ({by_fields}) {stats_clause}"
+        return f"{base_query} | stats {stats_clause}"
 
-        logger.debug(f"Built aggregation query: {query}")
-        return query
+    def _map_storage_filter(self, raw_filter):
+        """占比分子走检索的 message → _msg 映射。不记录筛选原文。"""
+        mapped, _group_info = SearchService._build_storage_query(raw_filter, None)
+        return mapped
 
     def _group_key_tuple(self, source, group_by):
         """分组键：按 group_by 顺序的字符串元组；无分组时为 ()。"""
@@ -667,8 +641,69 @@ class LogPolicyScan:
         conditions = rule.get("conditions", []) if isinstance(rule, dict) else []
         return any(isinstance(condition, dict) and condition.get("func") == func_name for condition in conditions)
 
+    def _baseline_bounds(self, compare_to, window_start, window_end):
+        duration = window_end - window_start
+        if compare_to == "previous_window":
+            return window_start - duration, window_start
+        offset = AlertConstants.COMPARE_OFFSET_SECONDS.get(compare_to)
+        if offset is None:
+            return None, None
+        return window_start - offset, window_end - offset
+
+    def _load_baselines(self, aggregation_query, rule, window_start, window_end):
+        """每个不同的对照时段查一次。任一失败则 baseline_status 为 unavailable。"""
+        targets = compare_targets((rule or {}).get("conditions"))
+        self.baselines = {}
+        if not targets:
+            self.baseline_status = "not_required"
+            return
+        failed = False
+        for compare_to in targets:
+            start, end = self._baseline_bounds(compare_to, window_start, window_end)
+            rows = self._query_baseline(aggregation_query, compare_to, window_start, window_end)
+            if rows is None:
+                failed = True
+            self.baselines[compare_to] = {
+                "status": "unavailable" if rows is None else "ok",
+                "window": {"start": start, "end": end} if start is not None else {},
+                "rows": rows,
+            }
+        self.baseline_status = "unavailable" if failed else "ok"
+
+    def _query_baseline(self, aggregation_query, compare_to, window_start, window_end):
+        """同一条聚合查询平移到对照窗。异常返回 None，不记录查询正文。"""
+        start, end = self._baseline_bounds(compare_to, window_start, window_end)
+        if start is None or end is None:
+            logger.warning(
+                "event=log_policy_baseline_failed policy_id=%s failed_stage=%s compare_to=%s error_type=%s",
+                getattr(self.policy, "id", ""),
+                "baseline",
+                compare_to,
+                "ValueError",
+            )
+            return None
+        try:
+            rows = self.vlogs_api.query(query=aggregation_query, start=start, end=end, limit=1000)
+        except Exception as exc:
+            logger.warning(
+                "event=log_policy_baseline_failed policy_id=%s failed_stage=%s compare_to=%s error_type=%s",
+                getattr(self.policy, "id", ""),
+                "baseline",
+                compare_to,
+                type(exc).__name__,
+            )
+            return None
+
+        group_by = self._normalize_group_by((getattr(self.policy, "alert_condition", None) or {}).get("group_by"))
+        grouped = {}
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            grouped[self._group_key_tuple(row, group_by)] = row
+        return grouped
+
     def _query_previous_window_counts(self, base_query_with_groups, group_by, window_start, window_end):
-        """查询上一等长窗各分组 count。查询异常返回 None，不把查询正文写入日志。"""
+        """查询上一等长窗各分组 count。保留给第一批回归；新扫描走 _query_baseline。"""
         window_seconds = window_end - window_start
         prev_start = window_start - window_seconds
         prev_end = window_start
@@ -697,57 +732,96 @@ class LogPolicyScan:
             counts[key] = self._parse_count_value(row.get("count__msg", row.get("total_count")), default=0)
         return counts
 
-    def _extract_aggregate_data(self, result, rule, *, window_seconds=None, previous_counts=None, group_by=None):
-        """从查询结果中提取聚合数据。
+    def _extract_aggregate_data(self, result, rule, *, window_seconds=None, previous_counts=None, group_by=None, baselines=None):
+        """从查询结果提取聚合数据，并写出 conditions / baseline。
 
-        window_seconds / previous_counts 缺省时保持旧调用的返回形状。
-        previous_counts 为 None 且条件含 count_delta 时，count_delta 为 None（缺对照）。
+        previous_counts 仍接受：第一批直接调用把它当作 previous_window 的 count 对照。
         """
-        aggregate_data = {}
         conditions = rule.get("conditions", []) if isinstance(rule, dict) else []
+        usable = [condition for condition in conditions if isinstance(condition, dict) and condition.get("func")]
+        if not usable:
+            return {}
 
-        for condition in conditions:
-            func = condition.get("func")
-            field = condition.get("field", "_msg")
+        normalized = [normalize_condition(condition) for condition in usable]
+        group_fields = self._normalize_group_by(group_by)
+        group_key = self._group_key_tuple(result, group_fields)
+        baseline_view = self._baseline_view(usable, previous_counts, baselines)
+        aggregate_data = {}
+        resolved = []
+        for index, (raw, condition) in enumerate(zip(usable, normalized)):
+            self._write_current_metric(aggregate_data, result, raw, condition, index)
+            resolved.append(
+                self._resolve_condition(
+                    raw,
+                    condition,
+                    result,
+                    baseline_view,
+                    group_key,
+                    window_seconds,
+                    index,
+                )
+            )
+        self._write_derived_legacy_keys(
+            aggregate_data,
+            result,
+            usable,
+            baseline_view,
+            group_key,
+            window_seconds,
+        )
+        aggregate_data["conditions"] = resolved
+        baseline_payload = self._baseline_payload(baseline_view, group_key, normalized)
+        if baseline_payload is not None:
+            aggregate_data["baseline"] = baseline_payload
+        return aggregate_data
 
-            if not func:
-                continue
-
-            # 根据别名格式提取数据
-            if func == "count":
-                alias = f"count_{field.replace('.', '_')}"
-                raw_value = result.get(alias, result.get("total_count", 0))
-                # count函数结果转换为整数
-                try:
-                    numeric_value = int(float(str(raw_value))) if raw_value not in [None, ""] else 0
-                except (ValueError, TypeError):
-                    logger.warning(f"Failed to convert count value '{raw_value}' to integer, using 0")
-                    numeric_value = 0
-
-                aggregate_data[f"{func}_{field}"] = numeric_value
-                # 兼容原有逻辑，设置通用的count值
-                if "count" not in aggregate_data:
-                    aggregate_data["count"] = numeric_value
-            elif func in ["sum", "avg", "max", "min"]:
-                alias = f"{func}_{field.replace('.', '_')}"
-                raw_value = result.get(alias, 0)
-                # 数值聚合函数结果转换为浮点数
-                try:
-                    numeric_value = float(str(raw_value)) if raw_value not in [None, ""] else 0.0
-                except (ValueError, TypeError):
-                    logger.warning(f"Failed to convert {func} value '{raw_value}' to float, using 0.0")
-                    numeric_value = 0.0
-
-                aggregate_data[f"{func}_{field}"] = numeric_value
+    def _baseline_view(self, conditions, previous_counts, baselines):
+        if baselines is not None:
+            return baselines
+        targets = compare_targets(conditions)
+        if not targets:
+            return {}
+        view = {}
+        for target in targets:
+            if target == "previous_window" and previous_counts is not None:
+                rows = {key: {"count__msg": count} for key, count in previous_counts.items()}
+                view[target] = {"status": "ok", "window": {}, "rows": rows}
             else:
-                # 其他函数保持原值；速率 / 变化量在循环后按本窗 count 派生。
-                if func in AlertConstants.COUNT_DERIVED_FUNCS:
-                    continue
-                alias = f"{func}_{field.replace('.', '_')}"
-                aggregate_data[f"{func}_{field}"] = result.get(alias, 0)
+                view[target] = {"status": "unavailable", "window": {}, "rows": None}
+        return view
 
-        needs_rate = self._rule_uses_func(rule, "count_rate")
-        needs_delta = self._rule_uses_func(rule, "count_delta")
+    def _write_current_metric(self, aggregate_data, result, raw, condition, index):
+        func = raw.get("func")
+        if func in AlertConstants.COUNT_DERIVED_FUNCS or func in ("bytes_rate", "ratio"):
+            return
+        alias = stats_alias(condition, index)
+        if func == "count":
+            raw_value = result.get(alias, result.get("total_count", 0)) if isinstance(result, dict) else 0
+            numeric_value = parse_metric(raw_value, as_int=True)
+            if numeric_value is None:
+                numeric_value = 0
+            aggregate_data[condition_alias(condition, index)] = numeric_value
+            if "count" not in aggregate_data:
+                aggregate_data["count"] = numeric_value
+            return
+        if func in ("sum", "avg", "max", "min"):
+            raw_value = result.get(alias, 0) if isinstance(result, dict) else 0
+            numeric_value = parse_metric(raw_value, as_int=False)
+            aggregate_data[condition_alias(condition, index)] = 0.0 if numeric_value is None else numeric_value
+            return
+        if func == "count_uniq":
+            raw_value = result.get(alias, 0) if isinstance(result, dict) else 0
+            numeric_value = parse_metric(raw_value, as_int=True)
+            aggregate_data[condition_alias(condition, index)] = 0 if numeric_value is None else numeric_value
+            return
+        if func == "quantile":
+            raw_value = result.get(alias) if isinstance(result, dict) else None
+            aggregate_data[condition_alias(condition, index)] = parse_metric(raw_value, as_int=False)
+
+    def _write_derived_legacy_keys(self, aggregate_data, result, conditions, baselines, group_key, window_seconds):
+        needs_rate = any(isinstance(condition, dict) and condition.get("func") == "count_rate" for condition in conditions)
+        needs_delta = any(uses_previous_count_delta(condition) for condition in conditions)
+        needs_bytes = any(isinstance(condition, dict) and condition.get("func") == "bytes_rate" for condition in conditions)
         if needs_rate or needs_delta:
             message_count = self._message_count_from_result(result)
             aggregate_data["count__msg"] = message_count
@@ -756,21 +830,193 @@ class LogPolicyScan:
             if window_seconds is not None:
                 aggregate_data["window_seconds"] = window_seconds
             if needs_rate:
-                if window_seconds:
-                    aggregate_data["count_rate"] = message_count / window_seconds
-                else:
-                    aggregate_data["count_rate"] = None
+                aggregate_data["count_rate"] = message_count / window_seconds if window_seconds else None
             if needs_delta:
-                if previous_counts is None:
+                previous_count, _reason = self._baseline_metric(
+                    "count",
+                    "count__msg",
+                    baselines,
+                    "previous_window",
+                    group_key,
+                )
+                if _reason == "missing_baseline":
                     aggregate_data["previous_count"] = None
                     aggregate_data["count_delta"] = None
                 else:
-                    key = self._group_key_tuple(result, self._normalize_group_by(group_by))
-                    previous_count = previous_counts.get(key, 0)
                     aggregate_data["previous_count"] = previous_count
                     aggregate_data["count_delta"] = message_count - previous_count
+        if needs_bytes:
+            raw_bytes = result.get("bytes__msg", 0) if isinstance(result, dict) else 0
+            parsed_bytes = parse_metric(raw_bytes, as_int=False)
+            aggregate_data["bytes__msg"] = 0.0 if parsed_bytes is None else parsed_bytes
+            if window_seconds is not None and "window_seconds" not in aggregate_data:
+                aggregate_data["window_seconds"] = window_seconds
+            aggregate_data["bytes_rate"] = aggregate_data["bytes__msg"] / window_seconds if window_seconds else None
 
-        return aggregate_data
+    def _baseline_metric(self, func, alias, baselines, compare_to, group_key):
+        info = (baselines or {}).get(compare_to) or {}
+        if info.get("status") != "ok" or not isinstance(info.get("rows"), dict):
+            return None, "missing_baseline"
+        row = info["rows"].get(group_key)
+        if row is None:
+            if func in AlertConstants.MISSING_GROUP_ZERO_FUNCS:
+                return 0 if func != "sum" else 0.0, ""
+            return None, "baseline_missing"
+        raw_value = row.get(alias, row.get("total_count")) if func == "count" else row.get(alias)
+        if func == "count" and raw_value is None:
+            raw_value = row.get("count__msg", row.get("total_count"))
+        as_int = func in ("count", "count_uniq")
+        parsed = parse_metric(raw_value, as_int=as_int)
+        if parsed is None:
+            if func in AlertConstants.MISSING_GROUP_ZERO_FUNCS:
+                return 0 if func != "sum" else 0.0, ""
+            if func == "quantile":
+                return None, "not_numeric"
+            return None, "baseline_missing"
+        return parsed, ""
+
+    def _resolve_condition(self, raw, condition, result, baselines, group_key, window_seconds, index):
+        func = condition.get("func")
+        field = condition.get("field") or "_msg"
+        compare = dict(condition.get("compare") or {"kind": "absolute"})
+        kind = compare.get("kind") or "absolute"
+        params = condition.get("params") or {}
+        current, current_reason = self._current_metric(func, condition, result, window_seconds, index)
+        baseline_number = None
+        reason = current_reason
+        if kind != "absolute" and not reason:
+            baseline_number, reason = self._baseline_metric(
+                func,
+                stats_alias(condition, index),
+                baselines,
+                compare.get("to"),
+                group_key,
+            )
+        value = None
+        if reason:
+            value = None
+        elif kind == "absolute":
+            value = current
+        elif kind == "percent" and baseline_number == 0:
+            value = None
+            reason = "baseline_zero"
+        elif kind == "delta":
+            value = current - baseline_number
+        elif kind == "percent":
+            value = (current - baseline_number) / float(baseline_number) * 100
+        else:
+            value = current
+        op = raw.get("op")
+        threshold = raw.get("value")
+        matched = False
+        if value is not None and op and threshold is not None:
+            matched = bool(self._compare_values(value, op, threshold))
+        resolved = {
+            "func": func,
+            "field": field,
+            "compare": compare,
+            "current": current,
+            "value": value,
+            "op": op,
+            "threshold": threshold,
+            "matched": matched,
+            "reason": reason or "",
+        }
+        if kind != "absolute":
+            resolved["baseline"] = baseline_number
+        if params:
+            resolved["params"] = params
+        return resolved
+
+    def _current_metric(self, func, condition, result, window_seconds, index):
+        if func == "count_rate":
+            message_count = self._message_count_from_result(result)
+            if not window_seconds:
+                return None, ""
+            return message_count / window_seconds, ""
+        if func == "bytes_rate":
+            raw_bytes = result.get("bytes__msg", 0) if isinstance(result, dict) else 0
+            parsed = parse_metric(raw_bytes, as_int=False)
+            amount = 0.0 if parsed is None else parsed
+            if not window_seconds:
+                return None, ""
+            return amount / window_seconds, ""
+        if func == "ratio":
+            return None, ""
+        alias = stats_alias(condition, index)
+        if func == "count":
+            raw_value = result.get(alias, result.get("total_count", 0)) if isinstance(result, dict) else 0
+            parsed = parse_metric(raw_value, as_int=True)
+            return (0 if parsed is None else parsed), ""
+        if func in ("sum", "avg", "max", "min"):
+            raw_value = result.get(alias, 0) if isinstance(result, dict) else 0
+            parsed = parse_metric(raw_value, as_int=False)
+            return (0.0 if parsed is None else parsed), ""
+        if func == "count_uniq":
+            raw_value = result.get(alias, 0) if isinstance(result, dict) else 0
+            parsed = parse_metric(raw_value, as_int=True)
+            return (0 if parsed is None else parsed), ""
+        if func == "quantile":
+            raw_value = result.get(alias) if isinstance(result, dict) else None
+            parsed = parse_metric(raw_value, as_int=False)
+            if parsed is None:
+                return None, "not_numeric"
+            return parsed, ""
+        raw_value = result.get(alias, 0) if isinstance(result, dict) else 0
+        parsed = parse_metric(raw_value, as_int=False)
+        return parsed, ""
+
+    def _baseline_payload(self, baselines, group_key, conditions):
+        targets = compare_targets(conditions)
+        if not targets:
+            return None
+        values = {}
+        any_bad = False
+        for target in targets:
+            info = (baselines or {}).get(target) or {}
+            if info.get("status") != "ok" or not isinstance(info.get("rows"), dict):
+                any_bad = True
+                continue
+            row = info["rows"].get(group_key)
+            if isinstance(row, dict):
+                for key, raw in row.items():
+                    if key in values:
+                        continue
+                    parsed = parse_metric(raw, as_int=str(key).startswith("count"))
+                    if parsed is not None:
+                        values[key] = parsed
+            else:
+                for condition in conditions:
+                    compare = condition.get("compare") or {}
+                    if compare.get("to") != target or compare.get("kind") in (None, "absolute"):
+                        continue
+                    if condition.get("func") in AlertConstants.MISSING_GROUP_ZERO_FUNCS:
+                        alias = stats_alias(condition, 0)
+                        values.setdefault(alias, 0 if condition.get("func") != "sum" else 0.0)
+        if len(targets) == 1:
+            info = (baselines or {}).get(targets[0]) or {}
+            return {
+                "to": targets[0],
+                "window": info.get("window") or {},
+                "status": info.get("status") or "unavailable",
+                "values": values,
+            }
+        return {
+            "status": "unavailable" if any_bad else "ok",
+            "values": values,
+        }
+
+    def _first_condition_reason(self, aggregate_data):
+        for item in (aggregate_data or {}).get("conditions") or []:
+            if not isinstance(item, dict) or item.get("matched"):
+                continue
+            if item.get("reason"):
+                return item["reason"]
+        if aggregate_data.get("count_delta") is None and any(
+            uses_previous_count_delta(item) for item in (aggregate_data or {}).get("conditions") or []
+        ):
+            return "missing_baseline"
+        return ""
 
     def _render_alert_name(self, result=None, group_by=None, aggregate_data=None):
         """渲染告警名称模板
@@ -797,11 +1043,14 @@ class LogPolicyScan:
                 if not str(field).startswith("log."):
                     context[f"log.{field}"] = value
         if isinstance(aggregate_data, dict):
+            baseline = aggregate_data.get("baseline") if isinstance(aggregate_data.get("baseline"), dict) else {}
+            baseline_values = baseline.get("values") if isinstance(baseline.get("values"), dict) else {}
+            for key, value in baseline_values.items():
+                context[f"baseline_{key}"] = self._format_template_value(value)
             for key, value in aggregate_data.items():
-                if key == "count_rate" and isinstance(value, (int, float)) and not isinstance(value, bool):
-                    context[key] = f"{float(value):.2f}"
-                else:
-                    context[key] = value
+                if key in ("conditions", "baseline"):
+                    continue
+                context[key] = self._format_template_value(value)
 
         try:
 
@@ -812,38 +1061,69 @@ class LogPolicyScan:
 
             rendered_name = self._ALERT_NAME_TOKEN_RE.sub(replace_token, alert_name)
             return rendered_name.strip()
-        except Exception as e:
-            logger.warning(f"Failed to render alert name template '{alert_name}': {e}")
+        except Exception as exc:
+            logger.warning(
+                "event=log_policy_alert_name_failed policy_id=%s failed_stage=%s error_type=%s",
+                getattr(self.policy, "id", ""),
+                "alert_name",
+                type(exc).__name__,
+            )
             return alert_name
 
-    def _check_rule_conditions(self, aggregate_data, rule):
-        """检查规则条件"""
-        conditions = rule.get("conditions", [])
-        mode = rule.get("mode", "and")
+    @staticmethod
+    def _format_template_value(value):
+        if isinstance(value, float) and not isinstance(value, bool):
+            return f"{value:.2f}"
+        return value
 
+    def _check_rule_conditions(self, aggregate_data, rule):
+        """按 conditions[i].matched 组合。没有解析结果时沿用第一批的键比较。"""
+        conditions = rule.get("conditions", []) if isinstance(rule, dict) else []
+        mode = rule.get("mode", "and") if isinstance(rule, dict) else "and"
         if not conditions:
             return False
+        resolved = aggregate_data.get("conditions") if isinstance(aggregate_data, dict) else None
+        if isinstance(resolved, list) and resolved:
+            return self._combine_resolved_conditions(resolved, mode)
+        return self._check_rule_conditions_legacy(aggregate_data, rule, mode)
 
+    def _combine_resolved_conditions(self, resolved, mode):
+        results = []
+        for item in resolved:
+            if not isinstance(item, dict):
+                continue
+            if not item.get("func") or not item.get("op") or item.get("threshold") is None:
+                continue
+            matched = bool(item.get("matched"))
+            reason = item.get("reason") or ""
+            if not matched and reason:
+                logger.debug(
+                    "event=log_policy_condition_skipped policy_id=%s reason=%s",
+                    getattr(self.policy, "id", ""),
+                    reason,
+                )
+            results.append(matched)
+        return self._combine_condition_results(results, mode)
+
+    def _check_rule_conditions_legacy(self, aggregate_data, rule, mode):
         condition_results = []
-        for condition in conditions:
+        for condition in rule.get("conditions", []):
             func = condition.get("func")
             field = condition.get("field", "_msg")
             op = condition.get("op")
             expected_value = condition.get("value")
-
             if not all([func, op, expected_value is not None]):
-                logger.warning(f"incomplete condition: {condition}")
                 continue
-
-            # 获取聚合值。速率 / 变化量读派生键；None 表示缺对照，该条件不成立。
+            normalized = normalize_condition(condition)
             key = f"{func}_{field}"
-            if func == "count":
+            if uses_previous_count_delta(condition):
+                actual_value = aggregate_data.get("count_delta")
+            elif func == "count" or normalized.get("func") == "count":
                 actual_value = aggregate_data.get("count", aggregate_data.get(key, 0))
             elif func in AlertConstants.COUNT_DERIVED_FUNCS:
                 actual_value = aggregate_data.get(func)
             else:
-                actual_value = aggregate_data.get(key, 0)
-
+                actual_value = aggregate_data.get(condition_alias(normalized), aggregate_data.get(key, 0))
             if actual_value is None:
                 logger.debug(
                     "event=log_policy_condition_skipped policy_id=%s reason=%s",
@@ -852,24 +1132,23 @@ class LogPolicyScan:
                 )
                 condition_results.append(False)
                 continue
+            condition_results.append(self._compare_values(actual_value, op, expected_value))
+        return self._combine_condition_results(condition_results, mode)
 
-            # 执行条件比较
-            comparison_result = self._compare_values(actual_value, op, expected_value)
-            condition_results.append(comparison_result)
-
-            logger.debug(f"condition check: {key}={actual_value} {op} {expected_value} -> {comparison_result}")
-
-        if not condition_results:
+    def _combine_condition_results(self, results, mode):
+        if not results:
             return False
-
-        # 根据mode组合结果
         if mode == "and":
-            return all(condition_results)
-        elif mode == "or":
-            return any(condition_results)
-        else:
-            logger.warning(f"unsupported rule mode: {mode}")
-            return False
+            return all(results)
+        if mode == "or":
+            return any(results)
+        logger.warning(
+            "event=log_policy_rule_mode_unsupported policy_id=%s failed_stage=%s error_type=%s",
+            getattr(self.policy, "id", ""),
+            "rule_mode",
+            "unsupported_mode",
+        )
+        return False
 
     def _compare_values(self, actual_value, op, expected_value):  # noqa: C901
         """比较值"""

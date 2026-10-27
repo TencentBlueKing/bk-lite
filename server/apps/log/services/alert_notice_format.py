@@ -45,10 +45,37 @@ def format_window_text(window_start, window_end):
     return f"{start_text} ~ {end_text}"
 
 
+_FUNC_LABELS = {
+    "count": "计数",
+    "sum": "求和",
+    "avg": "平均",
+    "max": "最大",
+    "min": "最小",
+    "count_uniq": "去重计数",
+    "count_rate": "速率",
+    "bytes_rate": "字节速率",
+    "ratio": "占比",
+}
+_TARGET_LABELS = {
+    "previous_window": "上一窗",
+    "offset_1h": "1 小时前",
+    "offset_24h": "24 小时前",
+    "offset_7d": "7 天前",
+}
+
+
 def format_hit_line(aggregate_result):
     if not isinstance(aggregate_result, dict) or aggregate_result.get("count") is None:
         return ""
     text = f"命中条数：{aggregate_result['count']}"
+    conditions = aggregate_result.get("conditions")
+    if isinstance(conditions, list) and conditions:
+        lines = [text]
+        for condition in conditions:
+            rendered = format_condition_line(condition)
+            if rendered:
+                lines.append(rendered)
+        return "\n".join(lines)
     extras = []
     rate = aggregate_result.get("count_rate")
     if "count_rate" in aggregate_result and rate is not None:
@@ -63,6 +90,105 @@ def format_hit_line(aggregate_result):
         extras.append(f"较上一窗 {signed}")
     if extras:
         text += "（" + "，".join(extras) + "）"
+    return text
+
+
+def format_condition_line(condition):
+    """一条条件的命中行。旧聚合结果没有 conditions 时不走这里。"""
+    if not isinstance(condition, dict):
+        return ""
+    func = condition.get("func")
+    label = _condition_label(condition)
+    if not label:
+        return ""
+    headline = condition.get("current")
+    if headline is None:
+        headline = condition.get("value")
+    if func == "ratio":
+        body = _format_ratio_value(condition.get("value"))
+    elif func == "count_rate":
+        body = f"{_format_metric(headline)} 条/秒"
+    elif func == "bytes_rate":
+        body = f"{_format_metric(headline)} 字节/秒"
+    elif func == "quantile":
+        body = _format_metric(headline)
+    else:
+        body = _format_countish(headline)
+    text = f"{label}：{body}"
+    compare = condition.get("compare") if isinstance(condition.get("compare"), dict) else {}
+    kind = compare.get("kind") or "absolute"
+    if kind in ("delta", "percent") and condition.get("baseline") is not None and condition.get("value") is not None:
+        target = _TARGET_LABELS.get(compare.get("to"), compare.get("to") or "")
+        if kind == "percent":
+            change = f"{float(condition['value']):+.1f}%"
+        else:
+            change = _signed_count(condition.get("value"))
+        text += f"（较 {target} {change}，对照 {_format_countish(condition.get('baseline'))}）"
+    if func == "ratio" and condition.get("hit") is not None and condition.get("total") is not None:
+        text += f"（{condition['hit']} / {condition['total']}）"
+    return text
+
+
+def _condition_label(condition):
+    func = condition.get("func")
+    field = condition.get("field") or ""
+    if func == "quantile":
+        params = condition.get("params") if isinstance(condition.get("params"), dict) else {}
+        try:
+            mark = int(round(float(params.get("quantile")) * 100))
+        except (TypeError, ValueError):
+            mark = None
+        prefix = f"P{mark}" if mark is not None else "分位数"
+        return f"{prefix}({field})" if field else prefix
+    if func == "count_uniq":
+        return f"去重计数({field})" if field else "去重计数"
+    if func == "ratio":
+        params = condition.get("params") if isinstance(condition.get("params"), dict) else {}
+        raw_filter = params.get("filter") or ""
+        return f"占比({raw_filter})" if raw_filter else "占比"
+    if func in ("count", "sum", "avg", "max", "min") and field and field != "_msg":
+        return f"{_FUNC_LABELS.get(func, func)}({field})"
+    return _FUNC_LABELS.get(func, "")
+
+
+def _format_metric(value):
+    if isinstance(value, bool) or value is None:
+        return ""
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    return str(value)
+
+
+def _format_countish(value):
+    if isinstance(value, bool) or value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    return str(value)
+
+
+def _format_ratio_value(value):
+    if isinstance(value, bool) or value is None:
+        return ""
+    try:
+        return f"{float(value):.1f}%"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _signed_count(value):
+    try:
+        number = int(value) if isinstance(value, int) or (isinstance(value, float) and float(value).is_integer()) else float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if isinstance(number, float):
+        text = f"{number:.2f}"
+    else:
+        text = str(number)
+    if isinstance(number, (int, float)) and number >= 0:
+        return f"+{text}"
     return text
 
 

@@ -145,6 +145,7 @@ class LogPolicyDryRunService:
             "window": {"start": window_start, "end": window_end},
             "previous_window": {"start": window_start - duration, "end": window_start},
             "baseline_status": baseline_status,
+            "baselines": self._baseline_summary(scan),
             "items": items[: AlertConstants.DRY_RUN_ITEM_LIMIT],
             "truncated": len(items) > AlertConstants.DRY_RUN_ITEM_LIMIT,
             "_rows": rows,
@@ -167,6 +168,7 @@ class LogPolicyDryRunService:
             "previous_count": None,
             "count_rate": None,
             "count_delta": None,
+            "conditions": [],
             "verdict": verdict,
             "reason": "",
         }
@@ -188,9 +190,23 @@ class LogPolicyDryRunService:
             "previous_count": aggregate_data.get("previous_count"),
             "count_rate": aggregate_data.get("count_rate"),
             "count_delta": aggregate_data.get("count_delta"),
+            "conditions": list(aggregate_data.get("conditions") or []),
             "verdict": verdict,
             "reason": row.get("reason") or "",
         }
+
+    @staticmethod
+    def _baseline_summary(scan):
+        source = getattr(scan, "baselines", None) or {}
+        summary = {}
+        for key, info in source.items():
+            if not isinstance(info, dict):
+                continue
+            summary[key] = {
+                "window": info.get("window") or {},
+                "status": info.get("status") or "unavailable",
+            }
+        return summary
 
     def _sample_preview(self, policy, scan, rows, window):
         if not rows:
