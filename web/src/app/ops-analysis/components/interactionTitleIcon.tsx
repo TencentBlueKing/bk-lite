@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback } from 'react';
-import { RightOutlined } from '@ant-design/icons';
+import { ExportOutlined } from '@ant-design/icons';
 import { Button, Tooltip, message } from 'antd';
 
 import { useFilterTemplateSnapshot } from '@/app/ops-analysis/context/filterTemplate';
@@ -110,14 +110,16 @@ const InteractionTitleIcon: React.FC<InteractionTitleIconProps> = ({
   const toneClass = color
     ? ''
     : 'text-(--color-text-3) transition-colors hover:text-(--color-primary)';
+  const hoverRevealClass = 'pointer-events-none opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100';
   const layoutClass = variant === 'screen' || variant === 'text'
     ? `screen-widget-frame__title-link${variant === 'text' ? ' screen-text-item__title-link' : ''}`
     : [
       'inline-flex shrink-0 cursor-pointer items-center justify-center',
+      hoverRevealClass,
       toneClass,
       floating
         ? 'absolute right-2 top-2 z-20 h-6 w-6 rounded-full bg-(--color-bg-1)/80 shadow-sm'
-        : 'h-5 w-5 rounded hover:bg-(--color-fill-2)',
+        : 'h-5 w-0 min-w-0 -ml-2 overflow-hidden rounded border-0 bg-transparent p-0 group-hover:ml-0 group-hover:w-5 group-hover:overflow-visible group-focus-within:ml-0 group-focus-within:w-5 group-focus-within:overflow-visible hover:bg-(--color-fill-2)',
     ].filter(Boolean).join(' ');
 
   return (
@@ -138,7 +140,7 @@ const InteractionTitleIcon: React.FC<InteractionTitleIconProps> = ({
           if (variant !== 'text') event.stopPropagation();
         }}
       >
-        <RightOutlined aria-hidden />
+        <ExportOutlined aria-hidden />
       </button>
     </Tooltip>
   );

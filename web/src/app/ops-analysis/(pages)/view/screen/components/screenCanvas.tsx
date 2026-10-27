@@ -1158,7 +1158,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           flex: 1 1 auto;
         }
 
-        .screen-widget-frame--editable .screen-widget-frame__header:has(.screen-widget-frame__title-link) {
+        .screen-widget-frame--editable:hover .screen-widget-frame__header:has(.screen-widget-frame__title-link),
+        .screen-widget-frame--editable:focus-within .screen-widget-frame__header:has(.screen-widget-frame__title-link) {
           padding-right: calc((var(--screen-widget-title-padding, 10px) + 8px) * var(--screen-widget-ui-scale));
         }
 
@@ -1167,8 +1168,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           flex-shrink: 0;
           align-items: center;
           justify-content: center;
-          margin-left: auto;
-          width: calc(14px * var(--screen-widget-ui-scale));
+          margin-left: calc(-6px * var(--screen-widget-ui-scale));
+          width: 0;
           height: calc(14px * var(--screen-widget-ui-scale));
           padding: 0;
           border: 0;
@@ -1177,6 +1178,20 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           font-size: calc(14px * var(--screen-widget-ui-scale));
           line-height: 1;
           cursor: pointer;
+          overflow: hidden;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .screen-rnd-node:hover .screen-widget-frame__title-link,
+        .screen-rnd-node:focus-within .screen-widget-frame__title-link,
+        .screen-widget-frame:hover .screen-widget-frame__title-link,
+        .screen-widget-frame:focus-within .screen-widget-frame__title-link {
+          width: calc(14px * var(--screen-widget-ui-scale));
+          margin-left: auto;
+          overflow: visible;
+          opacity: 1;
+          pointer-events: auto;
         }
 
         .screen-widget-frame__title-link .anticon {
@@ -1189,12 +1204,19 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         }
 
         .screen-text-item__title-link {
-          width: 1em;
+          width: 0;
+          margin-left: -0.4em;
           height: 1em;
           flex-shrink: 0;
           font-size: 1em;
           outline: none;
           box-shadow: none;
+        }
+
+        .screen-rnd-node:hover .screen-text-item__title-link,
+        .screen-rnd-node:focus-within .screen-text-item__title-link {
+          width: 1em;
+          margin-left: 0;
         }
 
         .screen-text-item__title-link:focus,

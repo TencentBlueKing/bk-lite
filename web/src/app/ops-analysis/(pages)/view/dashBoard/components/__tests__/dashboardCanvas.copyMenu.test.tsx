@@ -350,8 +350,10 @@ describe('Dashboard title link', () => {
     const csv = screen.getByRole('button', { name: 'dashboard.exportCsv' });
     const slot = header.querySelector('.overflow-x-auto') as HTMLElement;
 
-    expect(link.querySelector('.anticon-right')).toBeTruthy();
-    expect(link.querySelector('.anticon-link')).toBeNull();
+    expect(link.querySelector('.anticon-export')).toBeTruthy();
+    expect(link.querySelector('.anticon-share-alt')).toBeNull();
+    expect(link.className).toContain('w-0');
+    expect(link.className).toContain('group-hover:w-5');
     expect(link.getAttribute('data-export-hidden')).toBe('true');
     expect(link.className).toContain('no-drag');
     expect(title.className).toContain('truncate');

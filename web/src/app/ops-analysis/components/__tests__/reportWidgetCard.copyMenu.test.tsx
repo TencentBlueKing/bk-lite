@@ -344,8 +344,10 @@ describe('Report title link', () => {
     const title = screen.getByRole('heading', { name: 'CMDB 模型实例明细' });
     const header = title.closest('.mb-2') as HTMLElement;
 
-    expect(link.querySelector('.anticon-right')).toBeTruthy();
-    expect(link.querySelector('.anticon-link')).toBeNull();
+    expect(link.querySelector('.anticon-export')).toBeTruthy();
+    expect(link.querySelector('.anticon-share-alt')).toBeNull();
+    expect(link.className).toContain('w-0');
+    expect(link.className).toContain('group-hover:w-5');
     expect(link.getAttribute('data-export-hidden')).toBe('true');
     expect(link.className).toContain('no-drag');
     expect(title.className).toContain('truncate');
