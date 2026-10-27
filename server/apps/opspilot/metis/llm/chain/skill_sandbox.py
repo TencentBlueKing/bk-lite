@@ -11,6 +11,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import ExtraConfig
 from apps.opspilot.services.ppt_master_runtime import (
     begin_ppt_run,
+    discard_ppt_run,
     is_ppt_master_package,
     link_workspace,
     packages_include_ppt_master,
@@ -21,7 +22,7 @@ from apps.opspilot.services.ppt_master_runtime import (
 class SkillSandboxMixin:
     """Mixin for ToolsNodes; extracted without behavior change."""
 
-    def _build_skill_backend_and_sources(self, graph_request):
+    def _build_skill_backend_and_sources(self, graph_request, packages=None):
         """把启用的 SkillPackage 物化到「一次性沙箱目录」，返回 (backend, sources, sandbox_dir)。
 
         采用 deepagents 自带的 ``LocalShellBackend``：它既是 ``FilesystemBackend``
@@ -41,12 +42,14 @@ class SkillSandboxMixin:
         NATS worker / 容器沙箱实现,本函数调用方不变(materializer 接口
         向后兼容,通过 feature flag 切换 backend)。
         """
-        packages = self._resolve_skill_packages(graph_request)
+        if packages is None:
+            packages = self._resolve_skill_packages(graph_request)
         if not packages:
             return None, [], None
         backend = None
         sources = []
         sandbox_dir = None
+        ppt_workspace = None
         try:
             import os
             import tempfile
@@ -89,7 +92,6 @@ class SkillSandboxMixin:
                 env=self._sandbox_env(sandbox_dir),
             )
             bind_utf8_execute(inner_backend)
-            ppt_workspace = None
             if packages_include_ppt_master(packages):
                 ppt_workspace = begin_ppt_run(graph_request)
                 link_workspace(Path(sandbox_dir) / "ppt-workspace", ppt_workspace)
@@ -142,6 +144,8 @@ class SkillSandboxMixin:
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("技能 backend 构建失败，跳过 skills: %r", e)
             self._cleanup_sandbox(sandbox_dir)
+            if ppt_workspace is not None:
+                discard_ppt_run(graph_request)
             return None, [], None
 
     @staticmethod

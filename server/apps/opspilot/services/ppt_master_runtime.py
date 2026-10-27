@@ -109,6 +109,10 @@ def session_id_from_request(graph_request: object) -> str:
 
 
 def conversation_workspace(session_id: str, *, create: bool = False) -> Path | None:
+    """会话级目录。发布导出只读已有目录（create=False）。
+
+    create=True 只给显式准备目录用，运行时发布路径不调用它。
+    """
     safe = safe_session_id(session_id)
     if not safe:
         return None
@@ -123,6 +127,29 @@ def remove_conversation_workspace(session_id: str) -> None:
     if path is None or not path.exists():
         return
     shutil.rmtree(path, ignore_errors=True)
+
+
+def _sweep_stale_ppt_runs(root: Path, *, keep: Path) -> None:
+    """清掉超过 TTL 的时间戳目录。失败不影响本轮。"""
+    cutoff = time.time() - _PPT_RUN_TTL_SECONDS
+    removed = 0
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        return
+    for child in children:
+        if child == keep or not child.is_dir():
+            continue
+        try:
+            if child.stat().st_mtime >= cutoff:
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(child, ignore_errors=True)
+        if not child.exists():
+            removed += 1
+    if removed:
+        logger.info("ppt tmp swept count=%s", removed)
 
 
 def begin_ppt_run(graph_request: object) -> Path:
@@ -143,6 +170,7 @@ def begin_ppt_run(graph_request: object) -> Path:
     setattr(graph_request, "_ppt_run_stamp", path.name)
     setattr(graph_request, "_ppt_run_dir", path)
     mark_export_window(graph_request)
+    _sweep_stale_ppt_runs(root, keep=path)
     logger.info("ppt run directory ready stamp=%s", path.name)
     return path
 
@@ -165,11 +193,21 @@ def discard_ppt_run(graph_request: object) -> None:
 
 
 _PPT_PROBE_COMMANDS = frozenset({"ls", "dir", "pwd", "cd", "find", "echo"})
+_PPT_FILE_PROBE_COMMANDS = frozenset({"cat", "head", "tail", "cp", "rm"})
+_PPT_RUN_TTL_SECONDS = 24 * 60 * 60
 # 归一化后解释器会变成绝对路径 python.exe，仍然要拦住 -c。
 _PYTHON_INLINE_RE = re.compile(
     r"(?:^|[\s\"'/\\])(?:python(?:\d+(?:\.\d+)?)?|py)(?:\.exe)?[\"']?(?:\s+-[a-bd-zA-Z]\S*)*\s+-c\b",
     re.IGNORECASE,
 )
+
+
+def _command_basename(command: str) -> str:
+    first = str(command or "").split()[0].strip("\"'")
+    base = first.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if base.endswith(".exe"):
+        base = base[:-4]
+    return base
 
 
 def ppt_probe_reason(command: str) -> str:
@@ -181,14 +219,11 @@ def ppt_probe_reason(command: str) -> str:
         return "不要 --help。"
     if _PYTHON_INLINE_RE.search(text):
         return "不要 python -c。"
-    first = text.split()[0].strip("\"'")
-    base = first.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    base = _command_basename(text)
     if base in _PPT_PROBE_COMMANDS:
         return "不要探测目录。"
-    if base.endswith(".exe"):
-        base = base[:-4]
-    if base in _PPT_PROBE_COMMANDS:
-        return "不要探测目录。"
+    if base in _PPT_FILE_PROBE_COMMANDS:
+        return "不要 cat/head/tail/cp/rm。"
     return ""
 
 
@@ -308,20 +343,27 @@ def release_svg_quality_gate(workspace: Path) -> int:
         report["schema"] = _QUALITY_REPORT_SCHEMA
         report["stage"] = "final"
         report["source_fingerprint"] = _svg_source_fingerprint(pages)
-        summary = report.get("summary")
-        if not isinstance(summary, dict):
-            summary = {}
-        summary["total"] = len(pages)
-        summary["errors"] = 0
-        summary["passed"] = len(pages)
-        report["summary"] = summary
         categories = report.get("categories")
         if not isinstance(categories, dict):
             categories = {}
+        blocking = categories.get("blocking")
+        previous_blocking = blocking.get("count") if isinstance(blocking, dict) else None
         categories["blocking"] = {"count": 0, "issues": []}
         report["categories"] = categories
+        # 上游闸门只看 blocking。summary.errors/passed 保持原检查结果，不改写成已通过。
+        report["platform_override"] = {
+            "released": True,
+            "reason": "well_formed_svg",
+            "previous_blocking_count": previous_blocking if isinstance(previous_blocking, int) else 0,
+        }
         report_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
         released += 1
+        if isinstance(previous_blocking, int) and previous_blocking > 0:
+            logger.warning(
+                "ppt svg quality gate overridden previous_blocking=%s page_count=%s",
+                previous_blocking,
+                len(pages),
+            )
     if released:
         logger.info("ppt svg quality gate released count=%s", released)
     return released
@@ -335,6 +377,48 @@ def message_continues_ppt(message: str) -> bool:
     return any(marker in text for marker in _PPT_CONTINUE_MARKERS)
 
 
+def _package_dicts(source: object, key: str) -> list:
+    if source is None:
+        return []
+    if isinstance(source, dict):
+        raw = source.get(key) or []
+    else:
+        raw = getattr(source, key, None) or []
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def _write_matched_packages(source: object, packages: list) -> None:
+    if source is None:
+        return
+    copied = list(packages)
+    if isinstance(source, dict):
+        source["matched_skill_packages"] = copied
+        return
+    if hasattr(source, "matched_skill_packages"):
+        setattr(source, "matched_skill_packages", copied)
+
+
+def apply_ppt_continuation_packages(extra_config: object, message: str, *, model: object | None = None) -> list:
+    """短确认命中时，把 enabled 里的 ppt-master 写回 matched，供解析和物化共用。"""
+    matched_source = model if model is not None else extra_config
+    matched = _package_dicts(matched_source, "matched_skill_packages")
+    enabled = _package_dicts(model, "enabled_skill_packages")
+    if not enabled:
+        enabled = _package_dicts(extra_config, "enabled_skill_packages")
+    if packages_include_ppt_master(matched):
+        return list(matched)
+    if not (packages_include_ppt_master(enabled) and message_continues_ppt(message)):
+        return list(matched)
+    continued = [package for package in enabled if is_ppt_master_package(package)]
+    _write_matched_packages(extra_config, continued)
+    if model is not extra_config:
+        _write_matched_packages(model, continued)
+    logger.info("ppt continuation selected package=%s", PPT_MASTER_PACKAGE_ID)
+    return list(continued)
+
+
 def execution_guidance(workspace: str) -> str:
     directory = str(workspace or "").strip() or "（本对话没有持久工作目录，停下来说明无法保存工程）"
     stamp = Path(directory).name if directory and "没有持久" not in directory else ""
@@ -345,7 +429,8 @@ def execution_guidance(workspace: str) -> str:
         "沙箱里对应 /ppt-workspace，工作目录已经切到这里。文件只写这个目录。"
         "先 read_file /skills/ppt-master/SKILL.md，再 read_file 它点名的 workflows/。"
         "execute 一次只跑一条命令，禁止 &&、管道和重定向，不要改跑其他技能包的脚本。"
-        "不要执行 pwd 或 cd，不要 ls、dir、find、echo，不要 python -c，不要 --help。这些探测会被直接拒绝。"
+        "不要执行 pwd 或 cd，不要 ls、dir、find、echo，不要 cat、head、tail、cp、rm，不要 python -c，不要 --help。"
+        "这些探测会被直接拒绝。"
         "禁止运行 attribution_guard.py。工程目录已存在时不要再次 init，也不要在 svg_output 还是空的时候跑 text_measure.py。"
         "页面 SVG 用 write_file 写到 /ppt-workspace/projects/<工程名>/svg_output/。"
         "写完后只执行一次 python /skills/ppt-master/scripts/svg_to_pptx.py projects/<工程名> --quick-generate。"

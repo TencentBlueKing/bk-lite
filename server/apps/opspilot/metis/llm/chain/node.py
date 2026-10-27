@@ -148,11 +148,10 @@ except ImportError:
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 from apps.opspilot.services.ppt_master_runtime import (
     PPT_AUTHORING_RECURSION_LIMIT,
+    apply_ppt_continuation_packages,
     begin_ppt_run,
     current_ppt_run,
     inspect_ppt_run,
-    is_ppt_master_package,
-    message_continues_ppt,
     packages_include_ppt_master,
     settle_ppt_export,
 )
@@ -2587,9 +2586,6 @@ class ToolsNodes(
                 registered_tools = list(tools)
             collected_output_messages: List[BaseMessage] = []
             summary_ran = False
-            skill_packages = self._resolve_skill_packages(graph_request)
-            has_skill_packages = bool(skill_packages)
-            matched_for_ppt = list(getattr(getattr(self, "_extra_config", None), "matched_skill_packages", None) or [])
             # 渐进路径推迟沙箱物化：空计划寒暄不应为技能包付 DeepAgent/FS 税。
             backend, skill_sources, sandbox_dir = None, [], None
             interrupt_on = self._build_interrupt_on(graph_request, tools)
@@ -2601,10 +2597,14 @@ class ToolsNodes(
                     if isinstance(message, HumanMessage):
                         planning_question = str(message.content or "").strip()
                         break
-            if not packages_include_ppt_master(matched_for_ppt):
-                enabled_for_ppt = list(getattr(getattr(self, "_extra_config", None), "enabled_skill_packages", None) or [])
-                if packages_include_ppt_master(enabled_for_ppt) and message_continues_ppt(planning_question):
-                    matched_for_ppt = [package for package in enabled_for_ppt if is_ppt_master_package(package)]
+            # 短确认要回写 matched，解析、物化、工作目录和执行说明才能用同一包列表。
+            matched_for_ppt = apply_ppt_continuation_packages(
+                getattr(graph_request, "extra_config", None),
+                planning_question,
+                model=getattr(self, "_extra_config", None),
+            )
+            skill_packages = self._resolve_skill_packages(graph_request)
+            has_skill_packages = bool(skill_packages)
             ppt_authoring = packages_include_ppt_master(matched_for_ppt)
 
             resumed_messages: list = []
@@ -2634,7 +2634,7 @@ class ToolsNodes(
 
             # 紧急关闭：回退全量 Schema + 单次 DeepAgent 调用
             if not is_progressive_tools_enabled():
-                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
+                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request, packages=skill_packages)
                 agent_kwargs = self._build_deep_agent_kwargs(
                     llm=llm,
                     registered_tools=registered_tools,
@@ -2807,7 +2807,7 @@ class ToolsNodes(
 
             needs_skill_runtime = has_skill_packages and _plan_needs_skill_runtime(plan)
             if needs_skill_runtime:
-                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
+                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request, packages=skill_packages)
 
             skills_only_plan = bool(skill_sources) and self._plan_is_skills_only(plan)
             active_tools = []
@@ -2859,7 +2859,7 @@ class ToolsNodes(
                     return
                 if skill_sources:
                     return
-                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
+                backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request, packages=skill_packages)
                 if skill_sources:
                     skills_only = self._plan_is_skills_only(candidate_plan) and not ppt_authoring
                     skill_guard.enabled = skills_only
