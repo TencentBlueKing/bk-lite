@@ -1192,6 +1192,112 @@ class TestLongConnectionConversation:
         assert _stream_body(_streams(transport)[1])["content"] == PROCESSING_TEXT
         assert self._history(channel) == [("user", "第一句"), ("user", "第二句")]
 
+    def test_interrupt_delivers_images_from_generated_answer(self, monkeypatch, caplog):
+        from apps.opspilot.services.skill_channel_aibot_long_connection import IMAGE_REPLY_LOG_TEMPLATE, IMAGE_SENT_LOG_TEMPLATE
+
+        image_url = "https://blocked.example/a.png?sig=SENTINEL_IMAGE_URL"
+        image_bytes = b"\x89PNG\r\n\x1a\nhello"
+
+        def fake_outbound(text):
+            if image_url in text:
+                return "说明", [("image-1.png", image_bytes)]
+            return text, []
+
+        monkeypatch.setattr(
+            "apps.opspilot.services.skill_channel_aibot_long_connection.wecom_long_connection_outbound",
+            fake_outbound,
+        )
+        uploaded = {}
+
+        def fake_upload(exchange, *, filename, content, media_type="file"):
+            uploaded["filename"] = filename
+            uploaded["content"] = content
+            uploaded["media_type"] = media_type
+            return "media-img"
+
+        monkeypatch.setattr(
+            "apps.opspilot.services.skill_channel_aibot_long_connection.upload_wecom_file",
+            fake_upload,
+        )
+        channel = self._saved_channel(self._skill())
+        agent = RecordingAgent()
+        session, transport, _clock = self._session(channel, agent)
+        transport.exchange = lambda payload: transport.sent.append(payload) or {"errcode": 0}
+        session.handle_frame(_text_frame("req-1", "第一句"))
+        answer = f"说明\n\n![图]({image_url})"
+        agent.requests[0].publish(answer)
+        caplog.set_level(logging.INFO, logger="opspilot")
+        session.handle_frame(_text_frame("req-2", "第二句"))
+
+        assert _stream_body(_streams(transport)[1])["finish"] is True
+        assert _stream_body(_streams(transport)[1])["content"] == PROCESSING_TEXT
+        assert _streams(transport)[1]["headers"]["req_id"] == "req-1"
+        image_frames = [item for item in transport.sent if (item.get("body") or {}).get("msgtype") == "image"]
+        assert image_frames == [
+            {
+                "cmd": "aibot_respond_msg",
+                "headers": {"req_id": "req-1"},
+                "body": {"msgtype": "image", "image": {"media_id": "media-img"}},
+            }
+        ]
+        assert uploaded == {"filename": "image-1.png", "content": image_bytes, "media_type": "image"}
+        assert ("assistant", answer) in self._history(channel)
+        rendered = " ".join(record.getMessage() for record in caplog.records)
+        assert "SENTINEL_IMAGE_URL" not in rendered
+        image_logs = [record for record in caplog.records if record.msg == IMAGE_REPLY_LOG_TEMPLATE]
+        assert image_logs[-1].args == (channel.id, 1)
+        sent_logs = [record for record in caplog.records if record.msg == IMAGE_SENT_LOG_TEMPLATE]
+        assert sent_logs[-1].args == (channel.id,)
+
+    def test_interrupt_delivers_images_already_stripped_from_the_finish_frame(self, monkeypatch):
+        image_url = "https://blocked.example/a.png?sig=SENTINEL_IMAGE_URL"
+        image_bytes = b"\x89PNG\r\n\x1a\nhello"
+        calls = []
+
+        def fake_outbound(text):
+            calls.append(text)
+            if image_url in text:
+                return "说明", [("image-1.png", image_bytes)]
+            return text, []
+
+        monkeypatch.setattr(
+            "apps.opspilot.services.skill_channel_aibot_long_connection.wecom_long_connection_outbound",
+            fake_outbound,
+        )
+        uploaded = []
+
+        def fake_upload(exchange, *, filename, content, media_type="file"):
+            uploaded.append((filename, content, media_type))
+            return "media-img"
+
+        monkeypatch.setattr(
+            "apps.opspilot.services.skill_channel_aibot_long_connection.upload_wecom_file",
+            fake_upload,
+        )
+        channel = self._saved_channel(self._skill())
+        agent = RecordingAgent()
+        clock = ManualClock()
+        session, transport, clock = self._session(channel, agent, clock)
+        transport.exchange = lambda payload: transport.sent.append(payload) or {"errcode": 0}
+        session.handle_frame(_text_frame("req-1", "看图"))
+        answer = f"说明\n\n![图]({image_url})"
+        agent.requests[0].publish(answer)
+        clock.advance(2)
+        session.tick()
+        assert not any((item.get("body") or {}).get("msgtype") == "image" for item in transport.sent)
+        session.handle_frame(_text_frame("req-2", "下一句"))
+
+        assert calls == [answer]
+        finished = [
+            item
+            for item in transport.sent
+            if (item.get("body") or {}).get("msgtype") == "stream" and (item["body"]["stream"]["finish"] is True)
+        ]
+        assert finished[0]["headers"]["req_id"] == "req-1"
+        assert finished[0]["body"]["stream"]["content"] == "说明"
+        assert image_url not in json.dumps(finished[0]["body"]["stream"])
+        assert uploaded == [("image-1.png", image_bytes, "image")]
+
     def test_timeout_without_body_ends_with_timeout_copy(self):
         channel = self._saved_channel(self._skill())
         agent = RecordingAgent()

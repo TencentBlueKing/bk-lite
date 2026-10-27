@@ -16,9 +16,11 @@ from apps.opspilot.services.skill_channel_aibot import (
     SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE,
     SkillChannelAibotUtils,
     append_short_connection_file_links,
+    claim_short_connection_delivery,
     finish_short_connection_stream,
     normalize_aibot_channel_config,
     open_short_connection_stream,
+    short_connection_stream_payload,
 )
 from apps.opspilot.services.skill_channel_im_media import ImImage
 from apps.opspilot.tasks import process_skill_channel_aibot_message, process_skill_channel_aibot_reply
@@ -333,10 +335,68 @@ class TestAibotHttp:
         ch = _aibot_channel(skill)
         image_url = "https://blocked.example/wiki.png?sig=SENTINEL_IMAGE_URL"
         png = b"\x89PNG\r\n\x1a\n" + b"pixels"
+        image_item = {"msgtype": "image", "image": {"base64": "cGl4", "md5": "abc"}}
         open_short_connection_stream(ch.id, "stream-1", "https://example.com/response")
-        finish_short_connection_stream(ch.id, "stream-1", f"说明\n\n![图]({image_url})")
         image = ImImage(alt="图", source_url=image_url, public_url=image_url, content=png, content_type="image/png")
         message = {"msgid": "poll-1", "msgtype": "stream", "stream": {"id": "stream-1"}}
+        req = RequestFactory().post(
+            "/",
+            data=b"{}",
+            content_type="application/json",
+            QUERY_STRING="msg_signature=s&timestamp=1&nonce=n",
+        )
+        caplog.set_level(logging.INFO, logger="opspilot")
+        with patch(
+            "apps.opspilot.services.skill_channel_aibot.wecom_short_connection_outbound",
+            return_value=("说明", [image_item]),
+        ) as outbound, patch(
+            "apps.opspilot.services.skill_channel_im_media.prepare_im_markdown",
+            side_effect=AssertionError("poll must not download images"),
+        ):
+            finish_short_connection_stream(ch.id, "stream-1", f"说明\n\n![图]({image_url})")
+            outbound.assert_called_once()
+            assert image_url in outbound.call_args.args[0]
+            with patch(
+                "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.decrypt_callback",
+                return_value=message,
+            ):
+                resp = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+                again = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+
+        assert outbound.call_count == 1
+        assert claim_short_connection_delivery(ch.id, "stream-1") is False
+        payload = _decrypt_passive(resp)
+        assert payload["stream"]["finish"] is True
+        assert payload["stream"]["content"] == "说明"
+        assert payload["stream"]["msg_item"] == [image_item]
+        assert "msg_item" not in _decrypt_passive(again)["stream"]
+        assert image_url not in resp.content.decode("utf-8")
+        rendered = " ".join(record.getMessage() for record in caplog.records)
+        formatted = " ".join(logging.Formatter().format(record) for record in caplog.records)
+        assert image_url not in rendered
+        assert "SENTINEL_IMAGE_URL" not in rendered
+        assert "cGl4" not in rendered
+        assert "cGl4" not in formatted
+        image_logs = [record for record in caplog.records if record.msg == SHORT_CONNECTION_IMAGE_REPLY_LOG]
+        assert len(image_logs) == 1
+        assert image_logs[0].args == (ch.id, 1)
+        assert image.content == png
+
+    def test_encrypt_failure_releases_claim_and_keeps_images_for_fallback(self, caplog, settings):
+        settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "aibot-stream-encrypt"}}
+        skill = _skill()
+        ch = _aibot_channel(skill)
+        image_url = "https://blocked.example/wiki.png?sig=SENTINEL_IMAGE_URL"
+        image_item = {"msgtype": "image", "image": {"base64": "cGl4", "md5": "abc"}}
+        open_short_connection_stream(ch.id, "stream-1", "https://example.com/response")
+        finish_short_connection_stream(
+            ch.id,
+            "stream-1",
+            f"说明\n\n![图]({image_url})",
+            visible="说明",
+            msg_items=[image_item],
+        )
+        message = {"msgid": "poll-enc", "msgtype": "stream", "stream": {"id": "stream-1"}}
         req = RequestFactory().post(
             "/",
             data=b"{}",
@@ -348,25 +408,35 @@ class TestAibotHttp:
             "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.decrypt_callback",
             return_value=message,
         ), patch(
-            "apps.opspilot.services.skill_channel_aibot.wecom_short_connection_outbound",
-            return_value=("说明", [{"msgtype": "image", "image": {"base64": "cGl4", "md5": "abc"}}]),
-        ) as outbound:
+            "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.encrypt_reply",
+            side_effect=EnterpriseWechatAibotCryptoError("encrypt-failed"),
+        ), patch(
+            "apps.opspilot.services.skill_channel_im_media.prepare_im_markdown",
+            side_effect=AssertionError("encrypt failure must not download images"),
+        ):
             resp = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
 
-        outbound.assert_called_once()
-        assert image_url in outbound.call_args.args[0]
-        payload = _decrypt_passive(resp)
-        assert payload["stream"]["finish"] is True
-        assert payload["stream"]["content"] == "说明"
-        assert payload["stream"]["msg_item"] == [{"msgtype": "image", "image": {"base64": "cGl4", "md5": "abc"}}]
-        assert image_url not in resp.content.decode("utf-8")
+        assert resp.content == b"success"
         rendered = " ".join(record.getMessage() for record in caplog.records)
         assert image_url not in rendered
-        assert "SENTINEL_IMAGE_URL" not in rendered
-        image_logs = [record for record in caplog.records if record.msg == SHORT_CONNECTION_IMAGE_REPLY_LOG]
-        assert len(image_logs) == 1
-        assert image_logs[0].args == (ch.id, 1)
-        assert image.content == png
+        assert "cGl4" not in rendered
+        with patch.object(SkillChannelAibotUtils, "send_markdown_reply") as send, patch.object(
+            SkillChannelAibotUtils, "mark_message_completed"
+        ) as completed:
+            process_skill_channel_aibot_reply.run(ch.id, "poll-enc", "https://example.com/response", "说明", "stream-1")
+        send.assert_called_once_with("https://example.com/response", "说明")
+        completed.assert_called_once_with("poll-enc")
+
+        with patch(
+            "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.decrypt_callback",
+            return_value=message,
+        ), patch(
+            "apps.opspilot.services.skill_channel_im_media.prepare_im_markdown",
+            side_effect=AssertionError("retry poll must not download images"),
+        ):
+            retried = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+        assert _decrypt_passive(retried)["stream"]["msg_item"] == [image_item]
+        assert claim_short_connection_delivery(ch.id, "stream-1") is False
 
 
 class TestAibotTasks:
@@ -405,14 +475,23 @@ class TestAibotTasks:
         skill = _skill()
         ch = _aibot_channel(skill)
         image_url = "https://blocked.example/shot.png?sig=KEEP_IN_HISTORY"
+        image_item = {"msgtype": "image", "image": {"base64": "YQ==", "md5": "abc"}}
+        from django.core.cache import cache
+
+        scheduled = {}
+
+        def _capture_async(*args, **kwargs):
+            scheduled["state"] = cache.get(f"skill_channel_aibot_stream:{ch.id}:stream-9")
+            scheduled["kwargs"] = kwargs
+
         with patch("apps.opspilot.tasks.channel._run_in_native_thread", side_effect=lambda f, *a, **k: f(*a, **k)), patch(
             "apps.opspilot.services.skill_channel_chat_service.execute_skill_channel_im_sync",
             return_value=f"见 ![图]({image_url})",
         ), patch(
             "apps.opspilot.services.skill_channel_im_media.wecom_short_connection_outbound",
-            return_value=("见", []),
-        ), patch.object(
-            process_skill_channel_aibot_reply, "apply_async"
+            return_value=("见", [image_item]),
+        ) as outbound, patch.object(
+            process_skill_channel_aibot_reply, "apply_async", side_effect=_capture_async
         ) as reply_async, patch.object(
             process_skill_channel_aibot_reply, "delay"
         ) as reply_delay:
@@ -423,15 +502,73 @@ class TestAibotTasks:
                 "user-1",
                 {"response_url": "https://example.com/response", "stream_id": "stream-9"},
             )
+        outbound.assert_called_once()
         reply_delay.assert_not_called()
         assert reply_async.call_args.kwargs["args"] == [ch.id, "m1", "https://example.com/response", "见", "stream-9"]
         assert reply_async.call_args.kwargs["countdown"] == 20
-        from django.core.cache import cache
-
         state = cache.get(f"skill_channel_aibot_stream:{ch.id}:stream-9")
         assert state["phase"] == "finished"
         assert image_url in state["reply_text"]
+        assert state["visible"] == "见"
+        assert state["msg_items"] == [image_item]
         assert state["delivered"] is False
+        assert scheduled["state"]["msg_items"] == [image_item]
+        assert scheduled["state"]["phase"] == "finished"
+
+    def test_slow_materialize_then_fallback_claim_still_lets_poll_send_images(self, settings):
+        settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "aibot-stream-race"}}
+        skill = _skill()
+        ch = _aibot_channel(skill)
+        image_url = "https://blocked.example/shot.png?sig=KEEP_IN_HISTORY"
+        image_item = {"msgtype": "image", "image": {"base64": "YQ==", "md5": "abc"}}
+        open_short_connection_stream(ch.id, "stream-9", "https://example.com/response")
+
+        def slow_outbound(_text):
+            payload, included = short_connection_stream_payload(ch.id, "stream-9")
+            assert payload["stream"]["finish"] is False
+            assert included is False
+            assert claim_short_connection_delivery(ch.id, "stream-9") is False
+            return "说明", [image_item]
+
+        with patch("apps.opspilot.tasks.channel._run_in_native_thread", side_effect=lambda f, *a, **k: f(*a, **k)), patch(
+            "apps.opspilot.services.skill_channel_chat_service.execute_skill_channel_im_sync",
+            return_value=f"说明\n\n![图]({image_url})",
+        ), patch(
+            "apps.opspilot.services.skill_channel_im_media.wecom_short_connection_outbound",
+            side_effect=slow_outbound,
+        ) as outbound, patch.object(process_skill_channel_aibot_reply, "apply_async"):
+            process_skill_channel_aibot_message.run(
+                ch.id,
+                "m1",
+                {"last_message": "看图"},
+                "user-1",
+                {"response_url": "https://example.com/response", "stream_id": "stream-9"},
+            )
+        outbound.assert_called_once()
+        assert claim_short_connection_delivery(ch.id, "stream-9") is True
+        message = {"msgid": "poll-race", "msgtype": "stream", "stream": {"id": "stream-9"}}
+        req = RequestFactory().post(
+            "/",
+            data=b"{}",
+            content_type="application/json",
+            QUERY_STRING="msg_signature=s&timestamp=1&nonce=n",
+        )
+        with patch(
+            "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.decrypt_callback",
+            return_value=message,
+        ), patch(
+            "apps.opspilot.services.skill_channel_im_media.prepare_im_markdown",
+            side_effect=AssertionError("poll must not download images"),
+        ), patch(
+            "apps.opspilot.services.skill_channel_aibot.wecom_short_connection_outbound",
+            side_effect=AssertionError("poll must not outbound"),
+        ):
+            resp = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+        payload = _decrypt_passive(resp)
+        assert payload["stream"]["finish"] is True
+        assert payload["stream"]["content"] == "说明"
+        assert payload["stream"]["msg_item"] == [image_item]
+        assert image_url not in resp.content.decode("utf-8")
 
     def test_message_task_skips_when_offline(self):
         skill = _skill()
