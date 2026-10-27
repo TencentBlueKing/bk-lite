@@ -9,7 +9,7 @@ import JobListWorkspaceShell from '@/app/job/components/list-workspace-shell';
 import JobPlaybookDetailDrawer from '@/app/job/components/playbook-detail-drawer';
 import JobPlaybookUploadModal from '@/app/job/components/playbook-upload-modal';
 import JobPlaybookUpgradeModal from '@/app/job/components/playbook-upgrade-modal';
-import JobScriptEditor from '@/app/job/components/script-editor';
+import JobScriptEditor from '@/components/script-editor';
 import JobScriptTypeBadge from '@/app/job/components/script-type-badge';
 import PageFormHeaderCard from '@/components/page-form-header-card';
 import SectionHeader from '@/components/section-header';
@@ -558,6 +558,28 @@ const FamilyOverview = () => {
             }}
             onChange={() => undefined}
             activeLang="shell"
+            variablePanel={{
+              visible: true,
+              followFullscreen: false,
+              defaultExpanded: false,
+              variables: [
+                {
+                  key: 'BK_JOB_USER',
+                  description: '执行用户',
+                  token: { shell: '$BK_JOB_USER', powershell: '$BK_JOB_USER', python: 'BK_JOB_USER', bat: '%BK_JOB_USER%' },
+                },
+                {
+                  key: 'BK_JOB_USER_NAME',
+                  description: '用户中文名',
+                  token: { shell: '$BK_JOB_USER_NAME', powershell: '$BK_JOB_USER_NAME', python: 'BK_JOB_USER_NAME', bat: '%BK_JOB_USER_NAME%' },
+                },
+                {
+                  key: 'BK_JOB_ID',
+                  description: '作业 ID',
+                  token: { shell: '$BK_JOB_ID', powershell: '$BK_JOB_ID', python: 'BK_JOB_ID', bat: '%BK_JOB_ID%' },
+                },
+              ],
+            }}
           />
         </div>
       </section>
