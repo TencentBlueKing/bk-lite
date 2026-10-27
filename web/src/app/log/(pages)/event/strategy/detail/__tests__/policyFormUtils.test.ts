@@ -4,6 +4,7 @@ import {
   buildStrategyPayload,
   hasIncompleteCondition,
   normalizeCondition,
+  readPolicyNoData,
   pruneNoticeUsers,
   seedNoticeUsersFromHandlers,
 } from '../policyFormUtils';
@@ -148,5 +149,14 @@ describe('聚合条件函数', () => {
         },
       ])
     ).toBe(false);
+  });
+
+  it('读入时回填无数据开关，缺省关闭', () => {
+    expect(readPolicyNoData({ no_data: { enabled: true, level: 'warning' } })).toEqual({
+      enabled: true,
+      level: 'warning',
+    });
+    expect(readPolicyNoData({})).toEqual({ enabled: false });
+    expect(readPolicyNoData({ no_data: { enabled: false } })).toEqual({ enabled: false });
   });
 });

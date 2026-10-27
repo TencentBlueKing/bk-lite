@@ -143,4 +143,23 @@ describe('试算结果弹窗', () => {
     expect(screen.getByText('log.event.baselineValue')).toBeTruthy();
     expect(screen.getByText('log.event.computedValue')).toBeTruthy();
   });
+
+  it('无数据胶囊和本窗无日志行', () => {
+    renderModal({
+      alert_type: 'aggregate',
+      baseline_status: 'not_required',
+      items: [
+        {
+          group: { host: 'b' },
+          count: 0,
+          no_data: true,
+          verdict: 'would_trigger_no_data',
+        },
+      ],
+    });
+
+    expect(screen.getByText('log.event.verdictWouldTriggerNoData 1')).toBeTruthy();
+    expect(screen.getByText('log.event.currentWindowEmpty')).toBeTruthy();
+    expect(screen.getByText('host=b')).toBeTruthy();
+  });
 });

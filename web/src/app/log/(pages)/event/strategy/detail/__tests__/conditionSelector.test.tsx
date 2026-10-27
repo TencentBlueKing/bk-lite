@@ -121,4 +121,40 @@ describe('条件函数选择', () => {
 
     expect(screen.getAllByRole('combobox')).toHaveLength(4);
   });
+
+  it('选择占比后出现分子筛选、提示和百分号', () => {
+    const onChange = vi.fn();
+    render(
+      <ConditionFilter
+        data={[
+          {
+            func: 'ratio',
+            field: '_msg',
+            op: '>',
+            value: '5',
+            params: { filter: 'status:500' },
+          },
+        ]}
+        fields={['service', '_msg']}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getByPlaceholderText('log.event.ratioFilter')).toBeTruthy();
+    expect(screen.getByDisplayValue('status:500')).toBeTruthy();
+    expect(screen.getByText('log.event.ratioFilterTip')).toBeTruthy();
+    expect(screen.getByText('%')).toBeTruthy();
+    expect(screen.queryByText('service')).toBeNull();
+
+    fireEvent.change(screen.getByPlaceholderText('log.event.ratioFilter'), {
+      target: { value: 'message:ERR' },
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({
+        func: 'ratio',
+        field: '_msg',
+        params: { filter: 'message:ERR' },
+      }),
+    ]);
+  });
 });

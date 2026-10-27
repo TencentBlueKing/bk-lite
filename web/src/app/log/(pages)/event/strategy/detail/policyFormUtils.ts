@@ -29,6 +29,23 @@ export const normalizeCondition = (condition: FilterItem): FilterItem => {
   };
 };
 
+/** 读入策略时回填无数据开关。缺省关闭。 */
+export const readPolicyNoData = (
+  alertCondition?: StrategyFields['alert_condition']
+): NonNullable<StrategyFields['no_data']> => {
+  const source = alertCondition?.no_data;
+  if (!source || typeof source !== 'object') {
+    return { enabled: false };
+  }
+  const next: NonNullable<StrategyFields['no_data']> = {
+    enabled: source.enabled === true,
+  };
+  if (source.level) {
+    next.level = source.level;
+  }
+  return next;
+};
+
 /** 变化量 / 变化率要对照，分位要分位，占比要分子筛选。 */
 export const hasIncompleteCondition = (conditions: FilterItem[]) =>
   conditions.some((item) => {

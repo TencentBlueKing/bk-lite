@@ -52,6 +52,13 @@ const FUNCTION_LIST: AggregateFunctionOption[] = [
     comparable: true,
   },
   {
+    value: 'ratio',
+    labelKey: 'log.event.funcRatio',
+    needsField: false,
+    needsFilter: true,
+    comparable: false,
+  },
+  {
     value: 'bytes_rate',
     labelKey: 'log.event.funcBytesRate',
     needsField: false,

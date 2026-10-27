@@ -26,6 +26,7 @@ import {
   getLockedPolicyType,
   normalizeCondition,
   pruneNoticeUsers,
+  readPolicyNoData,
   shouldPruneNoticeUsers,
   shouldRequireNoticeUsers
 } from './policyFormUtils';
@@ -330,7 +331,8 @@ const StrategyOperation = () => {
       period: periodValue || '',
       schedule: scheduleValue || '',
       query: alert_condition.query || '',
-      group_by: alert_condition.group_by || null
+      group_by: alert_condition.group_by || null,
+      no_data: readPolicyNoData(alert_condition)
     };
     if (alert_type === 'aggregate') {
       setTerm(alert_condition.rule?.mode || '');

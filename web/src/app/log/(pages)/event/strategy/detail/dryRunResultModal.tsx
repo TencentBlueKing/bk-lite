@@ -28,6 +28,7 @@ export interface LogDryRunItem {
   conditions?: LogDryRunCondition[];
   verdict?: string;
   reason?: string;
+  no_data?: boolean;
 }
 
 export interface LogDryRunWindow {
@@ -63,6 +64,7 @@ const VERDICT_LABEL: Record<string, string> = {
   no_trigger: 'log.event.verdictNoTrigger',
   missing_baseline: 'log.event.verdictMissingBaseline',
   no_data: 'log.event.verdictNoData',
+  would_trigger_no_data: 'log.event.verdictWouldTriggerNoData',
 };
 
 const REASON_LABEL: Record<string, string> = {
@@ -70,6 +72,7 @@ const REASON_LABEL: Record<string, string> = {
   baseline_zero: 'log.event.reasonBaselineZero',
   baseline_missing: 'log.event.reasonBaselineMissing',
   not_numeric: 'log.event.reasonNotNumeric',
+  denominator_zero: 'log.event.reasonDenominatorZero',
 };
 
 const TARGET_LABEL = Object.fromEntries(
@@ -119,7 +122,7 @@ const VerdictTag = ({ verdict, t }: { verdict?: string; t: (key: string) => stri
       </Tag>
     );
   }
-  if (verdict === 'missing_baseline') {
+  if (verdict === 'missing_baseline' || verdict === 'would_trigger_no_data') {
     return <Tag color="warning">{label}</Tag>;
   }
   return <Tag>{label}</Tag>;
@@ -172,7 +175,10 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
       title: t('log.event.currentCount'),
       dataIndex: 'count',
       key: 'count',
-      render: (value: number | null | undefined) => formatCount(value),
+      render: (value: number | null | undefined, record: LogDryRunItem) =>
+        record.no_data || record.verdict === 'would_trigger_no_data'
+          ? t('log.event.currentWindowEmpty')
+          : formatCount(value),
     };
     const verdictColumn = {
       title: t('log.event.dryRunVerdict'),

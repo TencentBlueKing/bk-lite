@@ -54,11 +54,14 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
       if (option && option.comparable === false) {
         newData[extra.index].compare = { kind: 'absolute' };
       }
-      if (!option?.needsQuantile && newData[extra.index].params?.quantile != null) {
-        const params = { ...(newData[extra.index].params || {}) };
+      const params = { ...(newData[extra.index].params || {}) };
+      if (!option?.needsQuantile && params.quantile != null) {
         delete params.quantile;
-        newData[extra.index].params = params;
       }
+      if (!option?.needsFilter && params.filter != null) {
+        delete params.filter;
+      }
+      newData[extra.index].params = params;
     }
     onChange?.(newData);
   };
@@ -84,6 +87,19 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
   const handleQuantile = (quantile: number, index: number) => {
     const newData = cloneDeep(data);
     newData[index].params = { ...(newData[index].params || {}), quantile };
+    onChange?.(newData);
+  };
+
+  const handleRatioFilter = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    index: number
+  ) => {
+    const newData = cloneDeep(data);
+    newData[index].field = '_msg';
+    newData[index].params = {
+      ...(newData[index].params || {}),
+      filter: event.target.value,
+    };
     onChange?.(newData);
   };
 
@@ -123,6 +139,8 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
               : COMPARE_KIND_LIST.filter((item) => item.value === 'absolute');
             const showTarget = comparable && compareKind !== 'absolute';
             const showPercent = compareKind === 'percent';
+            const showRatio = functionOption?.needsFilter === true;
+            const showUnitSuffix = Boolean(functionOption?.unitKey) || showPercent || showRatio;
             return (
               <li className="w-full" key={index}>
                 <div className="flex w-full flex-wrap items-center gap-2">
@@ -188,6 +206,14 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                       ))}
                     </Select>
                   ) : null}
+                  {showRatio ? (
+                    <Input
+                      style={{ width: 180 }}
+                      placeholder={t('log.event.ratioFilter')}
+                      value={conditionItem.params?.filter}
+                      onChange={(event) => handleRatioFilter(event, index)}
+                    />
+                  ) : null}
                   <Select
                     style={{ width: 120 }}
                     placeholder={t('log.event.compareKind')}
@@ -232,7 +258,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                       </Option>
                     ))}
                   </Select>
-                  {functionOption?.unitKey || showPercent ? (
+                  {showUnitSuffix ? (
                     <Space.Compact style={{ width: 148 }}>
                       <Input
                         placeholder={t('log.event.enterThreshold')}
@@ -240,7 +266,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                         onChange={(e) => handleValueChange(e, index)}
                       />
                       <span className="flex items-center whitespace-nowrap border border-[var(--color-border)] px-2 text-[12px] text-[var(--color-text-3)]">
-                        {showPercent ? '%' : t(functionOption?.unitKey || '')}
+                        {showPercent || showRatio ? '%' : t(functionOption?.unitKey || '')}
                       </span>
                     </Space.Compact>
                   ) : (
@@ -267,6 +293,11 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                 {showPercent ? (
                   <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">
                     {t('log.event.percentTip')}
+                  </div>
+                ) : null}
+                {showRatio ? (
+                  <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">
+                    {t('log.event.ratioFilterTip')}
                   </div>
                 ) : null}
               </li>
