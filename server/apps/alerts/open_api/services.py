@@ -275,11 +275,13 @@ class AlertsOpenAPIService:
         filterset = AlertModelFilter(data=query_params, queryset=queryset, request=request)
         queryset = filterset.qs.order_by(parse_ordering(query_params))
         count, page, page_size, page_items = self._paginate(queryset, query_params, max_page_size=max_page_size)
+        rows = list(page_items)
+        timezone_name = self._display_timezone() if rows else None
         return {
             "count": count,
             "page": page,
             "page_size": page_size,
-            "items": [serialize_alert(alert, detail=False, timezone_name=self._display_timezone()) for alert in page_items],
+            "items": [serialize_alert(alert, detail=False, timezone_name=timezone_name) for alert in rows],
         }
 
     def get_alert(self, alert_id):
@@ -298,9 +300,11 @@ class AlertsOpenAPIService:
             self._not_found()
         events_qs = Event.objects.select_related("source").filter(alert=alert).order_by("-received_at")
         count, page, page_size, page_items = self._paginate(events_qs, query_params, max_page_size=max_page_size)
+        rows = list(page_items)
+        timezone_name = self._display_timezone() if rows else None
         return {
             "count": count,
             "page": page,
             "page_size": page_size,
-            "items": [serialize_event(event, timezone_name=self._display_timezone()) for event in page_items],
+            "items": [serialize_event(event, timezone_name=timezone_name) for event in rows],
         }
