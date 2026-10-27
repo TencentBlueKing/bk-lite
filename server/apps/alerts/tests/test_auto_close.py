@@ -139,3 +139,34 @@ def test_auto_close_main_no_valid_strategy():
     AlertAutoClose().main()
     # 告警保持活跃
     assert Alert.objects.get(alert_id="A1").status == AlertStatus.PROCESSING
+
+
+@pytest.mark.django_db
+def test_auto_close_main_skips_when_last_event_updates_while_waiting_for_lock(monkeypatch):
+    """锁外已超时；等待行锁期间 last_event_time 更新到现在时不得关闭。"""
+    strategy = _make_strategy(close_minutes=60)
+    alert = _make_alert(strategy, last_event_minutes_ago=120)
+    closer = AlertAutoClose()
+    original = closer.auto_close_alert
+    stopped = []
+
+    def interleaved(alert_arg, strategy_arg):
+        Alert.objects.filter(pk=alert.pk).update(last_event_time=timezone.now())
+        return original(alert_arg, strategy_arg)
+
+    monkeypatch.setattr(closer, "auto_close_alert", interleaved)
+
+    from apps.alerts.service.reminder_service import ReminderService
+
+    def record_stop(cls, locked_alert):
+        stopped.append(locked_alert.alert_id)
+        return True
+
+    monkeypatch.setattr(ReminderService, "stop_reminder_task", classmethod(record_stop))
+
+    closer.main()
+
+    alert.refresh_from_db()
+    assert alert.status == AlertStatus.PROCESSING
+    assert alert.closed_at is None
+    assert stopped == []
