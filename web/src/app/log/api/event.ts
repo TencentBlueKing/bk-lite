@@ -30,6 +30,10 @@ const useLogEventApi = () => {
     return await post('/log/policy/', data);
   };
 
+  const dryRunPolicy = async (data: StrategyFields) => {
+    return await post('/log/policy/dry_run/', data);
+  };
+
   const patchPolicy = async (data: StrategyFields) => {
     const { id, ...rest } = data;
     return await patch(`/log/policy/${id}/`, rest);
@@ -121,6 +125,7 @@ const useLogEventApi = () => {
 
   return {
     createPolicy,
+    dryRunPolicy,
     getPolicy,
     getSystemChannelList,
     patchPolicy,

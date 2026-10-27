@@ -8,7 +8,7 @@ import { FilterItem } from '@/app/log/types/integration';
 import { ListItem } from '@/app/log/types';
 import { SCHEDULE_UNIT_MAP } from '@/app/log/constants';
 import { useScheduleList, useLevelList } from '@/app/log/hooks/event';
-import { getAlertConditionVisibility } from './policyFormUtils';
+import { getAlertConditionVisibility, hasIncompleteCondition } from './policyFormUtils';
 import LogQueryInput from '@/app/log/components/log-query-input';
 
 const { Option } = Select;
@@ -56,12 +56,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     if (!term || !conditions.length) {
       return Promise.reject(new Error(t('log.event.ruleValidate')));
     }
-    if (
-      conditions.length &&
-      conditions.some((item) => {
-        return Object.values(item).some((tex) => !tex);
-      })
-    ) {
+    if (conditions.length && hasIncompleteCondition(conditions)) {
       return Promise.reject(new Error(t('log.event.conditionValidate')));
     }
     return Promise.resolve();

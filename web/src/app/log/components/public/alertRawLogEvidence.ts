@@ -15,6 +15,12 @@ export interface FrozenQueryClue {
   window_end?: number | string | null;
 }
 
+export interface FrozenJumpQuery {
+  query?: string;
+  window_start?: number | string | null;
+  window_end?: number | string | null;
+}
+
 export interface AlertSnapshotItem {
   type?: string;
   event_id?: string;
@@ -22,6 +28,7 @@ export interface AlertSnapshotItem {
   snapshot_time?: string;
   raw_data?: unknown;
   query_clue?: FrozenQueryClue | null;
+  jump_query?: FrozenJumpQuery | null;
 }
 
 export interface AlertInfoEvidence {

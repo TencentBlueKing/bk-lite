@@ -41,3 +41,10 @@ class AlertConstants:
     LEVEL_WARNING = "warning"
     LEVEL_ERROR = "error"
     LEVEL_CRITICAL = "critical"
+
+    # 聚合条件函数。count_rate / count_delta 从本窗 count() 派生，不单独下推聚合。
+    AGGREGATE_FUNCS = frozenset({"count", "sum", "avg", "max", "min", "count_rate", "count_delta"})
+    COUNT_DERIVED_FUNCS = frozenset({"count_rate", "count_delta"})
+    SAMPLE_LIMIT_MAX = 10
+    DRY_RUN_ITEM_LIMIT = 200
+    NOTICE_SAMPLE_TEXT_MAX = 200

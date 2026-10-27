@@ -1,11 +1,33 @@
+import math
+
 from rest_framework import serializers
 
+from apps.log.constants.alert_policy import AlertConstants
 from apps.log.models.policy import Alert, Event, EventRawData, Policy
 from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.utils.locale_text import serializer_text
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.policy_config import validate_timing_config
-from apps.log.utils.locale_text import serializer_text
 from apps.log.utils.user_display import format_user_identifiers
+
+_NUMERIC_COMPARE_OPS = {">", "<", ">=", "<=", "=", "!="}
+
+
+def _is_finite_number(value):
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return math.isfinite(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return False
+        try:
+            number = float(text)
+        except ValueError:
+            return False
+        return math.isfinite(number)
+    return False
 
 
 class AssignHandlersSerializer(serializers.Serializer):
@@ -58,7 +80,9 @@ class PolicySerializer(serializers.ModelSerializer):
         return collect_type
 
     def validate_name(self, value):
-        """验证策略名称唯一性"""
+        """验证策略名称唯一性。试算不落库，跳过唯一性。"""
+        if self.context.get("dry_run"):
+            return value
         collect_type = self._get_collect_type_scope()
         queryset = Policy.objects.filter(name=value)
 
@@ -100,6 +124,50 @@ class PolicySerializer(serializers.ModelSerializer):
             return validate_timing_config(value, "period")
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
+
+    def _current_alert_type(self):
+        initial_data = getattr(self, "initial_data", None)
+        if isinstance(initial_data, dict) and initial_data.get("alert_type"):
+            return initial_data.get("alert_type")
+        if self.instance is not None:
+            return getattr(self.instance, "alert_type", None)
+        return None
+
+    def validate_alert_condition(self, value):
+        """只校验聚合策略的新增函数、分组和样本条数。旧函数不追加比较符限制。"""
+        if not isinstance(value, dict) or self._current_alert_type() != AlertConstants.TYPE_AGGREGATE:
+            return value
+
+        if "group_by" in value and value.get("group_by") is not None:
+            group_by = value.get("group_by")
+            if not isinstance(group_by, list) or any(not isinstance(field, str) or not field for field in group_by):
+                raise serializers.ValidationError(serializer_text(self, "error.policy_group_by_invalid"))
+
+        if "limit" in value and value.get("limit") is not None:
+            limit = value.get("limit")
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= AlertConstants.SAMPLE_LIMIT_MAX:
+                raise serializers.ValidationError(serializer_text(self, "error.policy_sample_limit_range"))
+
+        rule = value.get("rule") or {}
+        conditions = rule.get("conditions") if isinstance(rule, dict) else None
+        if not conditions:
+            return value
+        if not isinstance(conditions, list):
+            raise serializers.ValidationError(serializer_text(self, "error.policy_aggregate_func_unsupported"))
+
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                raise serializers.ValidationError(serializer_text(self, "error.policy_aggregate_func_unsupported"))
+            func = condition.get("func")
+            if func not in AlertConstants.AGGREGATE_FUNCS:
+                raise serializers.ValidationError(serializer_text(self, "error.policy_aggregate_func_unsupported"))
+            if func not in AlertConstants.COUNT_DERIVED_FUNCS:
+                continue
+            if condition.get("op") not in _NUMERIC_COMPARE_OPS:
+                raise serializers.ValidationError(serializer_text(self, "error.policy_numeric_op_only"))
+            if not _is_finite_number(condition.get("value")):
+                raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_number"))
+        return value
 
     def _policy_organization_ids(self, attrs):
         if "policy_organizations" in self.context:

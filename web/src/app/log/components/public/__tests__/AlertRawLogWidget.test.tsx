@@ -258,4 +258,48 @@ describe('AlertRawLogWidget Component', () => {
       expect(screen.getByText('log.event.rawDataUnavailable')).toBeTruthy();
     });
   });
+
+  it('opens frozen search from jump_query and tables samples first', async () => {
+    apis.getAlertSnapshots.mockResolvedValueOnce({
+      alert_info: { id: 'alert-jump', source_id: 'policy-jump' },
+      snapshots: [
+        {
+          event_id: 'ev-jump',
+          event_time: '2026-10-27T07:55:00Z',
+          jump_query: {
+            query: 'level:error AND service:="order"',
+            window_start: 1761550000,
+            window_end: 1761550300,
+          },
+          query_clue: {
+            policy_name: 'rate policy',
+            log_groups: ['g1'],
+            alert_condition: { query: 'level:error' },
+          },
+          raw_data: {
+            aggregate_result: { count: 180 },
+            samples: [{ _time: '2026-10-27T07:55:00Z', _msg: 'order exploded' }],
+          },
+        },
+      ],
+    });
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    render(<AlertRawLogWidget logAlertId="alert-jump" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('order exploded')).toBeTruthy();
+    });
+    expect(screen.queryByText('180')).toBeNull();
+    fireEvent.click(screen.getByText('log.event.openInSearch'));
+    expect(open).toHaveBeenCalledWith(
+      expect.stringContaining('query=level%3Aerror+AND+service%3A%3D%22order%22'),
+      '_blank',
+      'noopener,noreferrer',
+    );
+    expect(String(open.mock.calls[0][0])).toContain('startTime=1761550000000');
+    expect(String(open.mock.calls[0][0])).toContain('log_groups=g1');
+    expect(String(open.mock.calls[0][0])).not.toContain('%7C+stats');
+    open.mockRestore();
+  });
 });

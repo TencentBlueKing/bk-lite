@@ -1,6 +1,21 @@
 import type React from 'react';
+import { FUNCTION_LIST } from '@/app/log/constants';
 import { FilterItem } from '@/app/log/types/integration';
 import { ChannelItem, StrategyFields } from '@/app/log/types/event';
+
+export const conditionRequiresField = (func?: string | null) => {
+  const option = FUNCTION_LIST.find((item) => item.value === func);
+  return option ? option.needsField : true;
+};
+
+/** needsField=false 的函数（速率 / 变化量）不要求选择字段。 */
+export const hasIncompleteCondition = (conditions: FilterItem[]) =>
+  conditions.some((item) => {
+    if (!item.func || !item.op || item.value == null || String(item.value) === '') {
+      return true;
+    }
+    return conditionRequiresField(item.func) && !item.field;
+  });
 
 export type LogPolicyType = 'keyword' | 'aggregate';
 

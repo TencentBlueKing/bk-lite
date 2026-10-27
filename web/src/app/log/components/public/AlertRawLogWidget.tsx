@@ -21,6 +21,7 @@ import {
   RawLogTableRow,
 } from './alertRawLogEvidence';
 import { publicWidgetErrorMessage } from './publicWidgetError';
+import { buildSearchJumpUrl } from '@/app/log/(pages)/event/alert/buildSearchJumpUrl';
 
 export interface AlertRawLogWidgetProps {
   logAlertId: string;
@@ -297,12 +298,26 @@ const AlertRawLogWidget = ({ logAlertId }: AlertRawLogWidgetProps) => {
 
   const currentSnapshot = snapshots[safeIndex];
 
+  const tableSource = useMemo(() => {
+    const raw = currentSnapshot?.raw_data;
+    if (
+      raw &&
+      typeof raw === 'object' &&
+      !Array.isArray(raw) &&
+      Array.isArray((raw as { samples?: unknown }).samples) &&
+      ((raw as { samples: unknown[] }).samples.length > 0)
+    ) {
+      return (raw as { samples: unknown[] }).samples;
+    }
+    return raw;
+  }, [currentSnapshot]);
+
   const parsedData = useMemo(() => {
-    if (!currentSnapshot || !hasSnapshotRawData(currentSnapshot.raw_data)) {
+    if (!hasSnapshotRawData(tableSource)) {
       return { isTabular: false, isAggregate: false, rows: [], columns: [] };
     }
-    return parseRawLogData(currentSnapshot.raw_data);
-  }, [currentSnapshot]);
+    return parseRawLogData(tableSource);
+  }, [tableSource]);
 
   const isCurrentTabular = parsedData.isTabular;
   const effectiveViewMode = isCurrentTabular ? viewMode : 'json';
@@ -465,13 +480,32 @@ const AlertRawLogWidget = ({ logAlertId }: AlertRawLogWidgetProps) => {
           <span className="font-medium text-[var(--color-text-1)]">
             {t('log.event.queryClue')}
           </span>
-          <span className="text-xs text-[var(--color-text-3)]">
-            {t('log.event.hitTime')}:{' '}
-            {formatClueTimestamp(
-              currentSnapshot?.event_time || currentSnapshot?.snapshot_time,
-              convertToLocalizedTime,
-            )}
-          </span>
+          <div className="flex items-center gap-3">
+            {currentSnapshot?.jump_query?.query ? (
+              <Button
+                size="small"
+                type="link"
+                className="!p-0 text-xs"
+                onClick={() => {
+                  const clue = currentSnapshot.query_clue;
+                  const url = buildSearchJumpUrl({
+                    jumpQuery: currentSnapshot.jump_query,
+                    logGroups: Array.isArray(clue?.log_groups) ? clue.log_groups : [],
+                  });
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                {t('log.event.openInSearch')}
+              </Button>
+            ) : null}
+            <span className="text-xs text-[var(--color-text-3)]">
+              {t('log.event.hitTime')}:{' '}
+              {formatClueTimestamp(
+                currentSnapshot?.event_time || currentSnapshot?.snapshot_time,
+                convertToLocalizedTime,
+              )}
+            </span>
+          </div>
         </div>
         <QueryClueBlock
           clue={currentSnapshot?.query_clue}

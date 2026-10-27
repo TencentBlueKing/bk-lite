@@ -10,7 +10,31 @@ const NODE_STATUS_MAP: Record<string, string> = {
   unavailable: 'gray',
 };
 
-const FUNCTION_LIST: string[] = ['count', 'sum', 'max', 'min', 'avg'];
+export interface AggregateFunctionOption {
+  value: string;
+  labelKey: string;
+  needsField: boolean;
+  unitKey?: string;
+}
+
+const FUNCTION_LIST: AggregateFunctionOption[] = [
+  { value: 'count', labelKey: 'count', needsField: true },
+  { value: 'sum', labelKey: 'sum', needsField: true },
+  { value: 'max', labelKey: 'max', needsField: true },
+  { value: 'min', labelKey: 'min', needsField: true },
+  { value: 'avg', labelKey: 'avg', needsField: true },
+  {
+    value: 'count_rate',
+    labelKey: 'log.event.funcCountRate',
+    needsField: false,
+    unitKey: 'log.event.countRateUnit',
+  },
+  {
+    value: 'count_delta',
+    labelKey: 'log.event.funcCountDelta',
+    needsField: false,
+  },
+];
 
 const SCHEDULE_UNIT_MAP: UnitMap = {
   minMin: 1,

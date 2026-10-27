@@ -130,6 +130,11 @@ error:
   handler_invalid: Invalid handler identifier
   handler_required: Specify at least one handler
   policy_name_exists: A policy with this name already exists in the current scope
+  policy_aggregate_func_unsupported: Unsupported aggregation function
+  policy_numeric_op_only: This function only supports numeric comparison
+  policy_threshold_number: Threshold must be a number
+  policy_group_by_invalid: Group-by fields are invalid
+  policy_sample_limit_range: Sample size must be an integer from 1 to 10
   topn_unsupported: This field does not support TopN statistics
   type_extractor_unsupported: Only syslog and snmp_trap support type-level extractors
   collect_type_missing: Collect type does not exist

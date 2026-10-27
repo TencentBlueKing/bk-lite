@@ -49,6 +49,7 @@ class LogPolicyScan:
         self.execution_key = execution_key
         self.cursor_time = cursor_time
         self.organizations = snapshot_policy_organization_ids(policy)
+        self.baseline_status = "not_required"
 
     def _get_scan_window(self):
         window_start = getattr(self, "window_start", None)
@@ -131,13 +132,13 @@ class LogPolicyScan:
         return claims_by_alias, current_alerts
 
     def _get_keyword_sample_limit(self, alert_condition):
-        """获取关键字告警样本条数限制"""
-        limit = alert_condition.get("limit", 5)
+        """样本条数：缺省 5，读取时钳到 1..SAMPLE_LIMIT_MAX。"""
+        limit = alert_condition.get("limit", 5) if isinstance(alert_condition, dict) else 5
         try:
             limit = int(limit)
         except (TypeError, ValueError):
             limit = 5
-        return max(limit, 1)
+        return min(max(limit, 1), AlertConstants.SAMPLE_LIMIT_MAX)
 
     def _normalize_group_by(self, group_by):
         if not group_by:
@@ -179,6 +180,76 @@ class LogPolicyScan:
             return group_filter
         return f"{query} | filter {group_filter}"
 
+    def _build_jump_query(self, base_query, group_values, window_start, window_end):
+        """冻结检索语句：展开日志分组后再用 AND 精确过滤分组值。"""
+        expanded = self._build_query_with_log_groups(base_query)
+        return self._build_jump_query_from_expanded(expanded, group_values, window_start, window_end)
+
+    def _build_jump_query_from_expanded(self, expanded_query, group_values, window_start, window_end):
+        filters = []
+        for field, value in (group_values or {}).items():
+            filters.append(self._build_exact_field_filter(field, value))
+        query = (expanded_query or "").strip() or "*"
+        if filters:
+            group_filter = " AND ".join(filters)
+            if query == "*":
+                query = group_filter
+            else:
+                query = f"{query} AND {group_filter}"
+        return {"query": query, "window_start": window_start, "window_end": window_end}
+
+    def _fetch_aggregate_samples(self, jobs, expanded_query, start_timestamp, end_timestamp, sample_limit):
+        """聚合触发行取样。失败只让该行 samples 为空，不丢掉事件。"""
+        if not jobs:
+            return {}
+        try:
+            max_workers = int(os.getenv("LOG_GROUPED_ALERT_MAX_WORKERS", "10"))
+        except (TypeError, ValueError):
+            max_workers = 10
+        results = {}
+
+        def fetch(index, group_values):
+            # 延迟导入：通知正文回归夹具会替换 django.db，模块顶层不能依赖该符号。
+            from django.db import close_old_connections
+
+            close_old_connections()
+            sample_query = self._build_group_sample_query(expanded_query, group_values)
+            try:
+                logs = self.vlogs_api.query(
+                    query=sample_query,
+                    start=start_timestamp,
+                    end=end_timestamp,
+                    limit=sample_limit,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "event=log_policy_aggregate_sample_failed policy_id=%s failed_stage=%s error_type=%s",
+                    getattr(self.policy, "id", ""),
+                    "sample",
+                    type(exc).__name__,
+                )
+                logs = []
+            finally:
+                close_old_connections()
+            return index, self._to_logical_logs((logs or [])[:sample_limit])
+
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(jobs))) as executor:
+            futures = [executor.submit(fetch, index, group_values) for index, group_values in jobs]
+            for future in as_completed(futures):
+                try:
+                    index, logs = future.result()
+                    results[index] = logs
+                except Exception as exc:
+                    logger.warning(
+                        "event=log_policy_aggregate_sample_failed policy_id=%s failed_stage=%s error_type=%s",
+                        getattr(self.policy, "id", ""),
+                        "sample",
+                        type(exc).__name__,
+                    )
+        for index, _group_values in jobs:
+            results.setdefault(index, [])
+        return results
+
     def _extract_group_values(self, result, group_by):
         group_values = {}
         for field in group_by:
@@ -217,57 +288,100 @@ class LogPolicyScan:
             logger.warning(f"Failed to parse keyword match count for policy {self.policy.id}: {raw_total}")
             return 0
 
-    def keyword_alert_detection(self):
-        """关键字告警检测"""
-        events = []
+    def evaluate_keyword(self, window_start, window_end):
+        """只读关键字判定。每项含 group_values、total_count、triggered。"""
+        alert_condition = self.policy.alert_condition or {}
+        query = alert_condition.get("query", "")
+        if not query:
+            logger.warning(f"policy {self.policy.id} has empty query for keyword alert")
+            return []
 
-        try:
-            start_timestamp, end_timestamp = self._get_scan_window()
-
-            # 构建查询条件
-            alert_condition = self.policy.alert_condition
-            query = alert_condition.get("query", "")
-
-            if not query:
-                logger.warning(f"policy {self.policy.id} has empty query for keyword alert")
-                return events
-
-            # 应用日志分组规则
-            final_query = self._build_query_with_log_groups(query)
-
-            sample_limit = self._get_keyword_sample_limit(alert_condition)
-            group_by = self._normalize_group_by(alert_condition.get("group_by", []))
-            if group_by:
-                return self._keyword_grouped_alert_detection(final_query, group_by, sample_limit, start_timestamp, end_timestamp)
-
-            # 查询日志
-            logs = self.vlogs_api.query(
-                query=final_query,
-                start=start_timestamp,
-                end=end_timestamp,
-                limit=sample_limit,
-            )
-
-            if logs:
-                total_count = self._get_keyword_match_count(final_query, start_timestamp, end_timestamp)
-                if total_count <= 0:
-                    total_count = len(logs)
-
-                # 关键字告警按策略聚合，所有匹配日志合并到一个告警中
-                source_id = f"policy_{self.policy.id}"
-                content = f"{self._render_alert_name()}: 检测到 {total_count} 条匹配日志"
-                events.append(
+        final_query = self._build_query_with_log_groups(query)
+        sample_limit = self._get_keyword_sample_limit(alert_condition)
+        group_by = self._normalize_group_by(alert_condition.get("group_by", []))
+        if group_by:
+            group_query = self._build_keyword_group_query(final_query, group_by)
+            grouped_results = self.vlogs_api.query(query=group_query, start=window_start, end=window_end, limit=1000)
+            items = []
+            for result in grouped_results or []:
+                group_values = self._extract_group_values(result, group_by)
+                if not group_values:
+                    logger.warning(
+                        "event=log_policy_keyword_group_skipped policy_id=%s reason=%s",
+                        self.policy.id,
+                        "incomplete_group",
+                    )
+                    continue
+                total_count = self._parse_count_value(result.get("total_count"), default=0)
+                items.append(
                     {
-                        "source_id": source_id,
-                        "level": self.policy.alert_level,
-                        "content": content,
-                        "value": total_count,
-                        "raw_data": self._to_logical_logs(logs[:sample_limit]),  # 只保留少量样本日志作为原始数据
+                        "group_values": group_values,
+                        "total_count": total_count,
+                        "triggered": total_count > 0,
+                        "final_query": final_query,
+                        "sample_limit": sample_limit,
+                        "group_by": group_by,
+                        "base_query": query,
                     }
                 )
+            return items
 
-            return events
+        logs = self.vlogs_api.query(query=final_query, start=window_start, end=window_end, limit=sample_limit)
+        if not logs:
+            return []
+        total_count = self._get_keyword_match_count(final_query, window_start, window_end)
+        if total_count <= 0:
+            total_count = len(logs)
+        return [
+            {
+                "group_values": {},
+                "total_count": total_count,
+                "triggered": total_count > 0,
+                "final_query": final_query,
+                "sample_limit": sample_limit,
+                "group_by": [],
+                "base_query": query,
+                "sample_logs": logs,
+            }
+        ]
 
+    def keyword_alert_detection(self):
+        """关键字告警检测"""
+        try:
+            start_timestamp, end_timestamp = self._get_scan_window()
+            items = self.evaluate_keyword(start_timestamp, end_timestamp)
+            if not items:
+                return []
+            group_by = items[0].get("group_by") or []
+            if group_by:
+                pending = [(idx, item["group_values"], item["total_count"]) for idx, item in enumerate(items) if item["triggered"]]
+                if not pending:
+                    return []
+                return self._collect_grouped_keyword_events(
+                    pending,
+                    items[0]["final_query"],
+                    items[0]["sample_limit"],
+                    start_timestamp,
+                    end_timestamp,
+                    group_by,
+                )
+
+            item = items[0]
+            if not item["triggered"]:
+                return []
+            logs = item.get("sample_logs") or []
+            sample_limit = item["sample_limit"]
+            total_count = item["total_count"]
+            return [
+                {
+                    "source_id": f"policy_{self.policy.id}",
+                    "level": self.policy.alert_level,
+                    "content": f"{self._render_alert_name()}: 检测到 {total_count} 条匹配日志",
+                    "value": total_count,
+                    "raw_data": self._to_logical_logs(logs[:sample_limit]),
+                    "jump_query": self._build_jump_query(item.get("base_query") or "", {}, start_timestamp, end_timestamp),
+                }
+            ]
         except Exception as e:
             logger.error(f"keyword alert detection failed for policy {self.policy.id}: {e}")
             raise
@@ -286,25 +400,11 @@ class LogPolicyScan:
             "content": self._render_alert_name(group_values, group_by),
             "value": total_count,
             "raw_data": self._to_logical_logs((logs or [])[:sample_limit]),
+            "jump_query": self._build_jump_query_from_expanded(final_query, group_values, start_timestamp, end_timestamp),
         }
         return idx, event
 
-    def _keyword_grouped_alert_detection(self, final_query, group_by, sample_limit, start_timestamp, end_timestamp):
-        group_query = self._build_keyword_group_query(final_query, group_by)
-        grouped_results = self.vlogs_api.query(query=group_query, start=start_timestamp, end=end_timestamp, limit=1000)
-
-        # 预处理：筛出有效分组，记录原始序号以便并发后保序
-        pending = []
-        for idx, result in enumerate(grouped_results or []):
-            group_values = self._extract_group_values(result, group_by)
-            if not group_values:
-                logger.warning(f"Skip keyword grouped result without complete group values for policy {self.policy.id}: {result}")
-                continue
-            total_count = self._parse_count_value(result.get("total_count"), default=0)
-            if total_count <= 0:
-                continue
-            pending.append((idx, group_values, total_count))
-
+    def _collect_grouped_keyword_events(self, pending, final_query, sample_limit, start_timestamp, end_timestamp, group_by):
         if not pending:
             return []
 
@@ -339,69 +439,113 @@ class LogPolicyScan:
         # 按原始分组顺序返回
         return [results_map[idx] for idx, _, _ in pending if idx in results_map]
 
+    def evaluate_aggregate(self, window_start, window_end):
+        """只读聚合判定。每项含 group_values、result、aggregate_data、triggered、reason。"""
+        self.baseline_status = "not_required"
+        alert_condition = self.policy.alert_condition or {}
+        base_query = alert_condition.get("query", "*")
+        group_by = self._normalize_group_by(alert_condition.get("group_by", []))
+        rule = alert_condition.get("rule", {}) or {}
+        if not rule.get("conditions"):
+            logger.warning(f"policy {self.policy.id} has no rule conditions for aggregate alert")
+            return []
+
+        base_query_with_groups = self._build_query_with_log_groups(base_query)
+        aggregation_query = self._build_aggregation_query(base_query_with_groups, group_by, rule)
+        logger.info("event=log_policy_aggregate_scan policy_id=%s", self.policy.id)
+        aggregation_results = self.vlogs_api.query(
+            query=aggregation_query,
+            start=window_start,
+            end=window_end,
+            limit=1000,
+        )
+        window_seconds = window_end - window_start
+        previous_counts = None
+        if self._rule_uses_func(rule, "count_delta"):
+            previous_counts = self._query_previous_window_counts(base_query_with_groups, group_by, window_start, window_end)
+            self.baseline_status = "unavailable" if previous_counts is None else "ok"
+
+        if not aggregation_results:
+            logger.info("event=log_policy_aggregate_scan policy_id=%s group_count=%s", self.policy.id, 0)
+            return []
+
+        rows = []
+        for result in aggregation_results:
+            if not isinstance(result, dict):
+                continue
+            group_values = self._extract_group_values(result, group_by) if group_by else {}
+            aggregate_data = self._extract_aggregate_data(
+                result,
+                rule,
+                window_seconds=window_seconds,
+                previous_counts=previous_counts,
+                group_by=group_by,
+            )
+            triggered = self._check_rule_conditions(aggregate_data, rule)
+            reason = ""
+            if not triggered and self._rule_uses_func(rule, "count_delta") and aggregate_data.get("count_delta") is None:
+                reason = "missing_baseline"
+            rows.append(
+                {
+                    "group_values": group_values,
+                    "result": result,
+                    "aggregate_data": aggregate_data,
+                    "triggered": triggered,
+                    "reason": reason,
+                }
+            )
+        return rows
+
     def aggregate_alert_detection(self):
         """聚合告警检测"""
         events = []
-
         try:
             start_timestamp, end_timestamp = self._get_scan_window()
-
-            alert_condition = self.policy.alert_condition
+            rows = self.evaluate_aggregate(start_timestamp, end_timestamp)
+            alert_condition = self.policy.alert_condition or {}
+            group_by = self._normalize_group_by(alert_condition.get("group_by", []))
+            rule = alert_condition.get("rule", {}) or {}
+            pending_samples = []
             base_query = alert_condition.get("query", "*")
-            group_by = alert_condition.get("group_by", [])
-            rule = alert_condition.get("rule", {})
-
-            # 验证必要参数
-            if not rule.get("conditions"):
-                logger.warning(f"policy {self.policy.id} has no rule conditions for aggregate alert")
-                return events
-
-            # 应用日志分组规则
-            base_query_with_groups = self._build_query_with_log_groups(base_query)
-
-            # 构建LogSQL聚合查询语句
-            aggregation_query = self._build_aggregation_query(base_query_with_groups, group_by, rule)
-            logger.info(f"Executing aggregation query for policy {self.policy.id}: {aggregation_query}")
-
-            # 执行聚合查询
-            aggregation_results = self.vlogs_api.query(
-                query=aggregation_query,
-                start=start_timestamp,
-                end=end_timestamp,
-                limit=1000,  # 聚合结果通常数量较少
+            expanded_query = self._build_query_with_log_groups(base_query)
+            sample_limit = self._get_keyword_sample_limit(alert_condition)
+            for row in rows:
+                if not row["triggered"]:
+                    continue
+                result = row["result"]
+                aggregate_data = row["aggregate_data"]
+                group_values = row.get("group_values") or {}
+                rendered_alert_name = self._render_alert_name(result, group_by, aggregate_data=aggregate_data)
+                identity = build_aggregate_group_identity(self.policy.id, result, group_by)
+                jump_query = self._build_jump_query_from_expanded(expanded_query, group_values, start_timestamp, end_timestamp)
+                event = {
+                    "source_id": identity.source_id,
+                    "level": self.policy.alert_level,
+                    "content": rendered_alert_name,
+                    "value": aggregate_data.get("count", 0),
+                    "jump_query": jump_query,
+                    "raw_data": {
+                        "aggregate_result": aggregate_data,
+                        "rule": rule,
+                        "query_result": result,
+                        "samples": [],
+                        "jump_query": jump_query,
+                    },
+                }
+                if identity.legacy_source_ids:
+                    event["source_id_aliases"] = list(identity.legacy_source_ids)
+                pending_samples.append((len(events), group_values))
+                events.append(event)
+            samples_by_index = self._fetch_aggregate_samples(
+                pending_samples,
+                expanded_query,
+                start_timestamp,
+                end_timestamp,
+                sample_limit,
             )
-
-            if not aggregation_results:
-                logger.info(f"No aggregation results for policy {self.policy.id}")
-                return events
-
-            # 处理聚合查询结果
-            for result in aggregation_results:
-                # 从聚合结果中提取计算值
-                aggregate_data = self._extract_aggregate_data(result, rule)
-
-                # 检查是否满足告警条件
-                if self._check_rule_conditions(aggregate_data, rule):
-                    # 渲染告警名称模板
-                    rendered_alert_name = self._render_alert_name(result, group_by)
-                    identity = build_aggregate_group_identity(self.policy.id, result, group_by)
-                    event = {
-                        "source_id": identity.source_id,
-                        "level": self.policy.alert_level,
-                        "content": rendered_alert_name,
-                        "value": aggregate_data.get("count", 0),
-                        "raw_data": {
-                            "aggregate_result": aggregate_data,
-                            "rule": rule,
-                            "query_result": result,
-                        },
-                    }
-                    if identity.legacy_source_ids:
-                        event["source_id_aliases"] = list(identity.legacy_source_ids)
-                    events.append(event)
-
+            for index, samples in samples_by_index.items():
+                events[index]["raw_data"]["samples"] = samples
             return events
-
         except Exception as e:
             logger.error(f"aggregate alert detection failed for policy {self.policy.id}: {e}")
             raise
@@ -451,9 +595,11 @@ class LogPolicyScan:
                 logger.warning(f"condition missing func: {condition}")
                 continue
 
-            if func == "count":
-                # count函数不需要字段参数，使用别名
-                alias = f"count_{field.replace('.', '_')}"  # 处理字段名中的特殊字符
+            if func in ("count", "count_rate", "count_delta"):
+                # 速率和变化量都从本窗 count() 派生，别名与 count(_msg) 相同以便去重。
+                if func in AlertConstants.COUNT_DERIVED_FUNCS:
+                    field = "_msg"
+                alias = f"count_{field.replace('.', '_')}"
                 stats_functions.append(f"count() as {alias}")
             elif func == "sum":
                 alias = f"sum_{field.replace('.', '_')}"
@@ -492,10 +638,73 @@ class LogPolicyScan:
         logger.debug(f"Built aggregation query: {query}")
         return query
 
-    def _extract_aggregate_data(self, result, rule):
-        """从查询结果中提取聚合数据"""
+    def _group_key_tuple(self, source, group_by):
+        """分组键：按 group_by 顺序的字符串元组；无分组时为 ()。"""
+        if not group_by:
+            return ()
+        if not isinstance(source, dict):
+            return tuple("" for _ in group_by)
+        values = []
+        for field in group_by:
+            raw = source.get(field)
+            values.append("" if raw in (None, "") else str(raw))
+        return tuple(values)
+
+    def _message_count_from_result(self, result):
+        raw_value = result.get("count__msg", result.get("total_count", 0)) if isinstance(result, dict) else 0
+        try:
+            return int(float(str(raw_value))) if raw_value not in (None, "") else 0
+        except (TypeError, ValueError):
+            logger.warning(
+                "event=log_policy_count_parse_failed policy_id=%s failed_stage=%s error_type=%s",
+                getattr(self.policy, "id", ""),
+                "count_parse",
+                "ValueError",
+            )
+            return 0
+
+    def _rule_uses_func(self, rule, func_name):
+        conditions = rule.get("conditions", []) if isinstance(rule, dict) else []
+        return any(isinstance(condition, dict) and condition.get("func") == func_name for condition in conditions)
+
+    def _query_previous_window_counts(self, base_query_with_groups, group_by, window_start, window_end):
+        """查询上一等长窗各分组 count。查询异常返回 None，不把查询正文写入日志。"""
+        window_seconds = window_end - window_start
+        prev_start = window_start - window_seconds
+        prev_end = window_start
+        normalized_group_by = self._normalize_group_by(group_by)
+        if normalized_group_by:
+            by_fields = ", ".join(normalized_group_by)
+            query = f"{base_query_with_groups} | stats by ({by_fields}) count() as count__msg"
+        else:
+            query = f"{base_query_with_groups} | stats count() as count__msg"
+        try:
+            rows = self.vlogs_api.query(query=query, start=prev_start, end=prev_end, limit=1000)
+        except Exception as exc:
+            logger.warning(
+                "event=log_policy_previous_window_failed policy_id=%s failed_stage=%s error_type=%s",
+                getattr(self.policy, "id", ""),
+                "previous_window",
+                type(exc).__name__,
+            )
+            return None
+
+        counts = {}
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            key = self._group_key_tuple(row, normalized_group_by)
+            counts[key] = self._parse_count_value(row.get("count__msg", row.get("total_count")), default=0)
+        return counts
+
+    def _extract_aggregate_data(self, result, rule, *, window_seconds=None, previous_counts=None, group_by=None):
+        """从查询结果中提取聚合数据。
+
+        window_seconds / previous_counts 缺省时保持旧调用的返回形状。
+        previous_counts 为 None 且条件含 count_delta 时，count_delta 为 None（缺对照）。
+        """
         aggregate_data = {}
-        conditions = rule.get("conditions", [])
+        conditions = rule.get("conditions", []) if isinstance(rule, dict) else []
 
         for condition in conditions:
             func = condition.get("func")
@@ -531,13 +740,39 @@ class LogPolicyScan:
 
                 aggregate_data[f"{func}_{field}"] = numeric_value
             else:
-                # 其他函数保持原值
+                # 其他函数保持原值；速率 / 变化量在循环后按本窗 count 派生。
+                if func in AlertConstants.COUNT_DERIVED_FUNCS:
+                    continue
                 alias = f"{func}_{field.replace('.', '_')}"
                 aggregate_data[f"{func}_{field}"] = result.get(alias, 0)
 
+        needs_rate = self._rule_uses_func(rule, "count_rate")
+        needs_delta = self._rule_uses_func(rule, "count_delta")
+        if needs_rate or needs_delta:
+            message_count = self._message_count_from_result(result)
+            aggregate_data["count__msg"] = message_count
+            if "count" not in aggregate_data:
+                aggregate_data["count"] = message_count
+            if window_seconds is not None:
+                aggregate_data["window_seconds"] = window_seconds
+            if needs_rate:
+                if window_seconds:
+                    aggregate_data["count_rate"] = message_count / window_seconds
+                else:
+                    aggregate_data["count_rate"] = None
+            if needs_delta:
+                if previous_counts is None:
+                    aggregate_data["previous_count"] = None
+                    aggregate_data["count_delta"] = None
+                else:
+                    key = self._group_key_tuple(result, self._normalize_group_by(group_by))
+                    previous_count = previous_counts.get(key, 0)
+                    aggregate_data["previous_count"] = previous_count
+                    aggregate_data["count_delta"] = message_count - previous_count
+
         return aggregate_data
 
-    def _render_alert_name(self, result=None, group_by=None):
+    def _render_alert_name(self, result=None, group_by=None, aggregate_data=None):
         """渲染告警名称模板
 
         将告警名称中的${field}占位符替换为实际的分组字段值
@@ -546,6 +781,7 @@ class LogPolicyScan:
         Args:
             result: 查询结果，包含分组字段的值
             group_by: 分组字段列表（聚合告警中必定存在）
+            aggregate_data: 聚合结果，支持 ${count} / ${count_rate} / ${count_delta} / ${previous_count}
 
         Returns:
             str: 渲染后的告警名称
@@ -560,6 +796,12 @@ class LogPolicyScan:
             for field, value in result.items():
                 if not str(field).startswith("log."):
                     context[f"log.{field}"] = value
+        if isinstance(aggregate_data, dict):
+            for key, value in aggregate_data.items():
+                if key == "count_rate" and isinstance(value, (int, float)) and not isinstance(value, bool):
+                    context[key] = f"{float(value):.2f}"
+                else:
+                    context[key] = value
 
         try:
 
@@ -593,12 +835,23 @@ class LogPolicyScan:
                 logger.warning(f"incomplete condition: {condition}")
                 continue
 
-            # 获取聚合值
+            # 获取聚合值。速率 / 变化量读派生键；None 表示缺对照，该条件不成立。
             key = f"{func}_{field}"
             if func == "count":
                 actual_value = aggregate_data.get("count", aggregate_data.get(key, 0))
+            elif func in AlertConstants.COUNT_DERIVED_FUNCS:
+                actual_value = aggregate_data.get(func)
             else:
                 actual_value = aggregate_data.get(key, 0)
+
+            if actual_value is None:
+                logger.debug(
+                    "event=log_policy_condition_skipped policy_id=%s reason=%s",
+                    getattr(self.policy, "id", ""),
+                    "missing_baseline",
+                )
+                condition_results.append(False)
+                continue
 
             # 执行条件比较
             comparison_result = self._compare_values(actual_value, op, expected_value)
@@ -1072,6 +1325,11 @@ class LogPolicyScan:
                 # 建立事件ID到原始数据的映射
                 event_raw_data_map = {event_obj.id: source_raw_data_map.get(event_obj.source_id, {}) for event_obj in event_objs}
 
+            jump_by_source = {
+                event.get("source_id"): event.get("jump_query") for event in raw_events or [] if event.get("source_id") and event.get("jump_query")
+            }
+            event_jump_map = {event_obj.id: jump_by_source.get(event_obj.source_id) for event_obj in event_objs}
+
             # 建立告警ID到事件对象的映射（使用 defaultdict 优化）
             from collections import defaultdict
 
@@ -1092,6 +1350,7 @@ class LogPolicyScan:
                     event_objs=related_events,
                     event_raw_data_map=event_raw_data_map,
                     snapshot_time=self.scan_time,
+                    event_jump_map=event_jump_map,
                 )
 
             logger.debug(f"Updated snapshots for {len(alert_events_map)} alerts")
@@ -1108,6 +1367,7 @@ class LogPolicyScan:
         event_objs,
         event_raw_data_map,
         snapshot_time,
+        event_jump_map=None,
     ):
         """更新告警的快照数据
 
@@ -1144,8 +1404,10 @@ class LogPolicyScan:
                     # 批量构建快照数据
                     new_snapshots = []
                     snapshots_changed = False
+                    jump_map = event_jump_map or {}
                     for event_obj in event_objs:
                         raw_data = event_raw_data_map.get(event_obj.id, {})
+                        jump_query = jump_map.get(event_obj.id)
                         event_snapshot = existing_snapshots.get(event_obj.id)
                         if event_snapshot:
                             # 主数据事务与快照事务刻意分离；旧 worker 可能晚于新 worker
@@ -1164,14 +1426,15 @@ class LogPolicyScan:
                                 )
                             if persisted_time and candidate_time and persisted_time > candidate_time:
                                 continue
-                            event_snapshot.update(
-                                {
-                                    "event_time": event_obj.event_time.isoformat() if event_obj.event_time else None,
-                                    "snapshot_time": snapshot_time.isoformat(),
-                                    "raw_data": raw_data,
-                                    "query_clue": query_clue,
-                                }
-                            )
+                            updated_snapshot = {
+                                "event_time": event_obj.event_time.isoformat() if event_obj.event_time else None,
+                                "snapshot_time": snapshot_time.isoformat(),
+                                "raw_data": raw_data,
+                                "query_clue": query_clue,
+                            }
+                            if jump_query:
+                                updated_snapshot["jump_query"] = jump_query
+                            event_snapshot.update(updated_snapshot)
                             snapshots_changed = True
                             continue
 
@@ -1183,6 +1446,8 @@ class LogPolicyScan:
                             "raw_data": raw_data,
                             "query_clue": query_clue,
                         }
+                        if jump_query:
+                            event_snapshot["jump_query"] = jump_query
                         new_snapshots.append(event_snapshot)
 
                     # 同一执行的重试覆盖快照；新执行追加，并裁剪至上限。
@@ -1204,9 +1469,24 @@ class LogPolicyScan:
             tuple: (title, content) 格式化后的标题和内容
         """
         # 格式化标题
+        raw_data = self._load_notice_raw_data(event_obj)
+        if isinstance(raw_data, dict) and isinstance(raw_data.get("aggregate_result"), dict):
+            from apps.log.services.alert_notice_format import _jump_query_for_event, format_aggregate_notice
+
+            jump_query = _jump_query_for_event(event_obj, raw_data)
+            return format_aggregate_notice(
+                event_obj,
+                self.policy,
+                raw_data,
+                jump_query,
+                base_url=WebConstants.URL,
+                sample_limit=AlertConstants.SAMPLE_LIMIT_MAX,
+                text_limit=AlertConstants.NOTICE_SAMPLE_TEXT_MAX,
+            )
+
         title = "【日志告警通知】"
         url = f"{WebConstants.URL}/log/event/alert"
-        # 格式化内容
+        # 没有聚合结果时保持原四行，避免旧渠道正文变化。
         content_parts = [
             f"时间：{event_obj.event_time}",
             f"告警内容：{event_obj.content}",
@@ -1217,6 +1497,23 @@ class LogPolicyScan:
         content = "\n".join(content_parts)
 
         return title, content
+
+    def _load_notice_raw_data(self, event_obj):
+        """读取事件原始数据。没有管理器时直接返回，避免旧通知路径触库。"""
+        raw = getattr(event_obj, "raw_data", None)
+        if raw is not None:
+            return raw
+        manager = getattr(EventRawData, "objects", None)
+        event_id = getattr(event_obj, "id", None)
+        if manager is None or not event_id:
+            return None
+        try:
+            row = manager.filter(event_id=event_id).order_by("-id").first()
+        except Exception:
+            return None
+        if row is None:
+            return None
+        return getattr(row, "data", None)
 
     def send_notice(self, event_obj, max_attempts=None):
         """发送通知

@@ -18,6 +18,7 @@ import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
 import AlertNameVariables from './alertNameVariables';
 import LogPreview from './logPreview';
+import DryRunResultModal, { LogDryRunResult } from './dryRunResultModal';
 import usePolicyFieldCatalog from './usePolicyFieldCatalog';
 import {
   buildStrategyPayload,
@@ -35,7 +36,7 @@ import {
 const StrategyOperation = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getSystemChannelList, getPolicy, createPolicy, updatePolicy } =
+  const { getSystemChannelList, getPolicy, createPolicy, updatePolicy, dryRunPolicy } =
     useLogEventApi();
   const { getAllUsers } = useLogApi();
   const { getLogStreams } = useLogIntegrationApi();
@@ -51,6 +52,9 @@ const StrategyOperation = () => {
   const urlAlertType = searchParams.get('alert_type');
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const [dryRunLoading, setDryRunLoading] = useState<boolean>(false);
+  const [dryRunOpen, setDryRunOpen] = useState<boolean>(false);
+  const [dryRunResult, setDryRunResult] = useState<LogDryRunResult | null>(null);
   const [unit, setUnit] = useState<string>('min');
   const [periodUnit, setPeriodUnit] = useState<string>('min');
   const [conditions, setConditions] = useState<FilterItem[]>([]);
@@ -372,24 +376,41 @@ const StrategyOperation = () => {
     router.push(targetUrl);
   };
 
+  const buildCurrentPayload = (values: StrategyFields) =>
+    buildStrategyPayload(
+      {
+        ...values,
+        alert_type: lockedAlertType
+      },
+      {
+        unit,
+        periodUnit,
+        channelList,
+        conditions,
+        term,
+        isEdit,
+        formData
+      }
+    );
+
   const createStrategy = () => {
     form?.validateFields().then((values) => {
-      const params = buildStrategyPayload(
-        {
-          ...values,
-          alert_type: lockedAlertType
-        },
-        {
-          unit,
-          periodUnit,
-          channelList,
-          conditions,
-          term,
-          isEdit,
-          formData
-        }
-      );
-      operateStrategy(params);
+      operateStrategy(buildCurrentPayload(values));
+    });
+  };
+
+  const runDryRun = () => {
+    form?.validateFields().then(async (values) => {
+      try {
+        setDryRunLoading(true);
+        const result = await dryRunPolicy(buildCurrentPayload(values));
+        setDryRunResult(result as LogDryRunResult);
+        setDryRunOpen(true);
+      } catch (error) {
+        console.log(error);
+      } finally {
+        setDryRunLoading(false);
+      }
     });
   };
 
@@ -501,6 +522,9 @@ const StrategyOperation = () => {
             </div>
           </div>
           <div className={strategyStyle.footer}>
+            <Button className="mr-[10px]" loading={dryRunLoading} onClick={runDryRun}>
+              {t('log.event.dryRun')}
+            </Button>
             <Button
               type="primary"
               className="mr-[10px]"
@@ -511,6 +535,12 @@ const StrategyOperation = () => {
             </Button>
             <Button onClick={goBack}>{t('common.cancel')}</Button>
           </div>
+          <DryRunResultModal
+            open={dryRunOpen}
+            data={dryRunResult}
+            onClose={() => setDryRunOpen(false)}
+            t={t}
+          />
         </div>
       )}
     </Spin>
