@@ -10,7 +10,6 @@ class Command(BaseCommand):
         try:
             from apps.core.enterprise.gm_transport import disable_gm_transport_setting
         except ImportError:
-            self.stdout.write("当前版本不包含国密传输，未修改开关")
             return
         before = disable_gm_transport_setting()
         self.stdout.write(f"{before} -> 0")

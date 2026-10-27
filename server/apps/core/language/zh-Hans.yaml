@@ -26,7 +26,6 @@ error:
   invalid_current_team: current_team cookie 无效
   no_permission_access_team: 无权访问该团队数据
   code_empty: 验证码不能为空
-  gm_transport_enterprise_only: 国密传输仅企业版提供
 
 # 内置应用展示名（Console 卡片 / 左上角应用列表）
 app_name:

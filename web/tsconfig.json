@@ -91,10 +91,6 @@
       "@/app/apm/(enterprise)/*": [
         "./src/app/apm/(enterprise)/*",
         "./src/lib/enterpriseStub.ts"
-      ],
-      "@/app/workflow/(enterprise)/*": [
-        "./src/app/workflow/(enterprise)/*",
-        "./src/lib/enterpriseStub.ts"
       ]
     }
   },

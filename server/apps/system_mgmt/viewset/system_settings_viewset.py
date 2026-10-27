@@ -229,9 +229,10 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
             try:
                 from apps.core.enterprise.gm_transport import self_check_failure
             except ImportError:
-                failure = "gm_transport_enterprise_only"
-            else:
-                failure = self_check_failure()
+                locale = resolve_system_mgmt_language(getattr(getattr(request, "user", None), "locale", None))
+                message = LanguageLoader(app="core", default_lang=locale).get("error.system_error") or "system_error"
+                return JsonResponse({"result": False, "message": message}, status=400)
+            failure = self_check_failure()
             if failure:
                 locale = resolve_system_mgmt_language(getattr(getattr(request, "user", None), "locale", None))
                 message = LanguageLoader(app="core", default_lang=locale).get(f"error.{failure}") or failure

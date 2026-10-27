@@ -26,7 +26,6 @@ error:
   invalid_current_team: Invalid current_team cookie
   no_permission_access_team: No permission to access this team
   code_empty: code is required
-  gm_transport_enterprise_only: GM transport is only available in the enterprise edition
 
 # Built-in application display names
 app_name:

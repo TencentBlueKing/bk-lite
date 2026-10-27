@@ -62,7 +62,7 @@ def test_disable_command_leaves_the_switch_when_enterprise_is_absent(monkeypatch
     _block_enterprise_gm(monkeypatch)
     out = StringIO()
     call_command("disable_gm_transport", stdout=out)
-    assert "未修改开关" in out.getvalue()
+    assert out.getvalue() == ""
     assert SystemSettings.objects.get(key=SETTING).value == "1"
 
 
@@ -76,7 +76,8 @@ def test_enabling_is_rejected_when_enterprise_is_absent(monkeypatch):
     response = SystemSettingsViewSet.as_view({"post": "update_sys_set"})(request)
     body = json.loads(response.content)
     assert response.status_code == 400
-    assert body["code"] == "gm_transport_enterprise_only"
+    assert body["message"] == "系统发生错误"
+    assert "code" not in body
     assert SystemSettings.objects.get(key=SETTING).value == "0"
 
 
