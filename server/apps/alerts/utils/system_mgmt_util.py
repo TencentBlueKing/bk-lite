@@ -8,6 +8,13 @@ class SystemMgmtUtils:
         return result["data"]
 
     @staticmethod
+    def get_users_by_usernames(usernames):
+        if not usernames:
+            return []
+        result = SystemMgmt().get_users_by_usernames(usernames)
+        return result["data"]
+
+    @staticmethod
     def search_channel_list(channel_type=""):
         """email、enterprise_wechat"""
         result = SystemMgmt().search_channel_list(channel_type)
