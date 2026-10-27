@@ -725,6 +725,14 @@
   margin-bottom: 18px;
 }
 
+.editor :global(.ant-form-item-label) {
+  padding-inline-end: 12px;
+}
+
+.editor :global(.ant-form-item-label > label::after) {
+  margin-inline-end: 0;
+}
+
 .stepContent :global(.ant-input),
 .stepContent :global(.ant-input-number),
 .stepContent :global(.ant-select),
@@ -758,7 +766,7 @@
 
 .scopeHint {
   display: block;
-  margin: -6px 0 0 120px;
+  margin: -6px 0 0 152px;
   font-size: 12px;
 }
 
@@ -782,6 +790,11 @@
   background: var(--color-border-2);
 }
 
+.thresholdBlock {
+  margin: 0 0 18px 152px;
+  max-width: 560px;
+}
+
 .thresholdTitle {
   display: block;
   margin-bottom: 8px;
@@ -790,8 +803,7 @@
 
 .thresholdTable {
   width: 100%;
-  max-width: 840px;
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .thresholdTable :global(.ant-table-cell) {
@@ -827,8 +839,14 @@
   min-height: 40px;
 }
 
+.minRequestCount :global(.ant-input-number),
+.offsetAmount :global(.ant-input-number) {
+  width: 160px;
+  max-width: 160px;
+}
+
 .conditionLabel {
-  flex: 0 0 120px;
+  flex: 0 0 152px;
   padding-right: 12px;
   color: var(--color-text-1);
   text-align: right;
@@ -977,7 +995,7 @@
     gap: 6px;
   }
 
-  .conditionLabel {
+  .conditionRow .conditionLabel {
     flex-basis: auto;
     padding-right: 0;
     text-align: left;
@@ -1036,10 +1054,16 @@
     flex-direction: column;
   }
 
+  .thresholdBlock {
+    margin-left: 0;
+    max-width: none;
+  }
+
   .editor :global(.ant-form-item-label) {
     flex: none !important;
     max-width: 100%;
     padding-bottom: 6px;
+    padding-inline-end: 0;
     text-align: left;
   }
 

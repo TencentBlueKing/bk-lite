@@ -79,12 +79,14 @@ Datadog 的「最少 N hits」是唯一把低流量失真当成一等问题的�
 `ApmPolicy` 新增字段，缺省对存量策略无感：
 
 ```text
-compare_mode        absolute | previous_window | offset_1h | offset_24h   默认 absolute
+compare_mode        absolute | previous_window | offset_hours | offset_days   默认 absolute
+compare_offset_amount  同窗时的 N。小时 1..840，天 1..35。其它比较基准必须为 null
+                        已保存的 offset_1h / offset_24h 仍按 1 小时 / 24 小时评估，编辑时回填为 N 小时前
 compare_value_kind  "" | delta | percent                                  absolute 时必须为 ""
 min_request_count   null | 1..100000                                      null = 不限
 ```
 
-- `previous_window` 允许 `delta` / `percent`；`offset_1h` / `offset_24h` 只允许 `percent`（跨 1h / 24h 的绝对差没有稳定含义）。
+- `previous_window` 允许 `delta` / `percent`；`offset_hours` / `offset_days` 只允许 `percent`（跨时段的绝对差没有稳定含义）。已保存的 `offset_1h` / `offset_24h` 仍只允许 `percent`。
 - `no_traffic` 只允许 `absolute`，且 `min_request_count` 必须为 null：它的 0 就是信号。
 - `throughput` 允许比较基准，`min_request_count` 必须为 null。
 - `min_request_count` 只对 `error_rate / p95 / p99`；前端新建默认 20，存量策略为 null。
@@ -191,7 +193,7 @@ offset   = W (previous_window) | 1h (offset_1h) | 24h (offset_24h)
 
 ### D7. 表单与页面（`policy-editor.tsx`）
 
-- 「告警条件」里阈值上方新增「比较基准」Select：当前值（默认）/ 相对上一等长窗 / 1 小时前同窗 / 24 小时前同窗。选相对上一等长窗再出现「变化量 Δ / 变化率 %」Radio；选同窗固定 %。`no_traffic` 隐藏整组。
+- 「告警条件」里阈值上方的「比较基准」是：当前值（默认）/ 相对上一等长窗 / 同窗。选同窗后再选「N 小时前」或「N 天前」，并填写数字，不提供写死的 1 小时、24 小时选项。选相对上一等长窗再出现「变化量 Δ / 变化率 %」；同窗固定变化率。`no_traffic` 隐藏整组。
 - 阈值单位随结果单位变：`error_rate + absolute` → `%`（现有 ×100）；`error_rate + delta` → `个百分点`（×100）；任意指标 `+ percent` → `%`（不换算）；时延 / 吞吐 `+ delta` → 原单位。`thresholdToEditorValue` / `normalizeThresholds` 按 `(metric_type, compare_value_kind)` 决定是否 ×100。
 - 「最低请求数」InputNumber 放阈值下方，只对 `error_rate / p95 / p99` 出现，新建默认 20，可清空为「不限」，Tooltip 写明「本窗请求数低于该值时不评，试算记为样本不足」。
 - 右侧预览仍叫预览：非 `absolute` 时叠画当前曲线与对照曲线（`baseline_series`），阈值线按结果单位；状态文案增加对照缺失 / 样本不足。

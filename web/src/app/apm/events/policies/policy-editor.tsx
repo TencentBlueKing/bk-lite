@@ -88,6 +88,7 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   metric_window: 5,
   aggregation: 'avg',
   compare_mode: 'absolute',
+  compare_offset_amount: null,
   compare_value_kind: '',
   min_request_count: 20,
   thresholds: SEVERITIES.map(({ value }) => ({
@@ -195,12 +196,26 @@ function resolvedCompareKind(
   return 'percent';
 }
 
+const MAX_COMPARE_OFFSET_HOURS = 840;
+const MAX_COMPARE_OFFSET_DAYS = 35;
+
+function editorCompareState(policy: ApmPolicy): Pick<PolicyEditorValues, 'compare_mode' | 'compare_offset_amount'> {
+  if (policy.compare_mode === 'offset_1h') return { compare_mode: 'offset_hours', compare_offset_amount: 1 };
+  if (policy.compare_mode === 'offset_24h') return { compare_mode: 'offset_hours', compare_offset_amount: 24 };
+  if (policy.compare_mode === 'offset_hours' || policy.compare_mode === 'offset_days') {
+    return { compare_mode: policy.compare_mode, compare_offset_amount: policy.compare_offset_amount ?? 1 };
+  }
+  return { compare_mode: policy.compare_mode ?? 'absolute', compare_offset_amount: null };
+}
+
 function comparePayloadFields(values: PolicyEditorValues): Partial<ApmPolicyInput> {
   if (values.metric_type === 'no_traffic') return {};
   const compareMode = values.compare_mode || 'absolute';
   const compareKind = resolvedCompareKind(values.metric_type, compareMode, values.compare_value_kind);
+  const offset = compareMode === 'offset_hours' || compareMode === 'offset_days';
   const fields: Partial<ApmPolicyInput> = {
     compare_mode: compareMode,
+    compare_offset_amount: offset ? values.compare_offset_amount ?? null : null,
     compare_value_kind: compareKind,
   };
   if (MIN_REQUEST_METRICS.includes(values.metric_type)) {
@@ -215,6 +230,38 @@ function seriesPointValue(metric: ApmPolicyMetric, point: ApmPolicySeriesPoint |
   if (metric === 'p95') return point.p95_ms;
   if (metric === 'p99') return point.p99_ms;
   return point.request_rate;
+}
+
+function CompareBaselineSelect({
+  id,
+  value,
+  onChange,
+  onModeChange,
+}: {
+  id?: string;
+  value?: ApmCompareMode;
+  onChange?: (value: ApmCompareMode) => void;
+  onModeChange?: (value: ApmCompareMode) => void;
+}) {
+  const { t } = useTranslation();
+  const family: ApmCompareMode = value === 'offset_hours' || value === 'offset_days' || value === 'offset_1h' || value === 'offset_24h'
+    ? 'offset_hours'
+    : (value || 'absolute');
+  return (
+    <Select
+      id={id}
+      value={family}
+      onChange={(next: ApmCompareMode) => {
+        onChange?.(next);
+        onModeChange?.(next);
+      }}
+      options={[
+        { value: 'absolute', label: t('apm.policies.compareModeAbsolute', '当前值') },
+        { value: 'previous_window', label: t('apm.policies.compareModePreviousWindow', '相对上一等长窗') },
+        { value: 'offset_hours', label: t('apm.policies.compareModeOffset', '同窗') },
+      ]}
+    />
+  );
 }
 
 function NumberWithUnit({ unit, ...props }: ComponentProps<typeof InputNumber<number>> & { unit: string }) {
@@ -238,7 +285,7 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
     evaluation_interval: policy.evaluation_interval,
     metric_window: policy.metric_window,
     aggregation: policy.aggregation,
-    compare_mode: policy.compare_mode ?? 'absolute',
+    ...editorCompareState(policy),
     compare_value_kind: policy.compare_value_kind ?? '',
     min_request_count: policy.min_request_count ?? null,
     thresholds: SEVERITIES.map(({ value: severity }) => {
@@ -342,6 +389,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const serviceScope = Form.useWatch('service_scope', form);
   const metricType = Form.useWatch('metric_type', form) ?? 'error_rate';
   const compareMode = Form.useWatch('compare_mode', form) ?? 'absolute';
+  const compareOffsetAmount = Form.useWatch('compare_offset_amount', form);
   const compareKindRaw = Form.useWatch('compare_value_kind', form) ?? '';
   const minRequestCount = Form.useWatch('min_request_count', form);
   const evaluationInterval = Form.useWatch('evaluation_interval', form);
@@ -669,6 +717,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     metricWindow,
     aggregation,
     compareMode,
+    compareOffsetAmount,
     compareKind,
     minRequestCount,
     thresholds: watchedThresholds || [],
@@ -826,15 +875,20 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const applyCompareMode = (mode: ApmCompareMode) => {
     if (mode === 'absolute') {
       form.setFieldValue('compare_value_kind', '');
+      form.setFieldValue('compare_offset_amount', null);
       return;
     }
     if (mode === 'previous_window') {
+      form.setFieldValue('compare_offset_amount', null);
       const kind = form.getFieldValue('compare_value_kind');
       if (kind !== 'delta' && kind !== 'percent') form.setFieldValue('compare_value_kind', 'delta');
       return;
     }
     form.setFieldValue('compare_value_kind', 'percent');
+    if (!form.getFieldValue('compare_offset_amount')) form.setFieldValue('compare_offset_amount', 1);
   };
+
+  const offsetSelected = compareMode === 'offset_hours' || compareMode === 'offset_days' || compareMode === 'offset_1h' || compareMode === 'offset_24h';
 
   const runDryRun = async () => {
     const values = form.getFieldsValue(true);
@@ -1008,18 +1062,57 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       description: (
         <div className={styles.stepContent}>
           {showCompare ? (
-            <div className="mb-3">
+            <>
               <Form.Item name="compare_mode" label={t('apm.policies.compareBaseline', '比较基准')}>
-                <Select
-                  onChange={applyCompareMode}
-                  options={[
-                    { value: 'absolute', label: t('apm.policies.compareModeAbsolute', '当前值') },
-                    { value: 'previous_window', label: t('apm.policies.compareModePreviousWindow', '相对上一等长窗') },
-                    { value: 'offset_1h', label: t('apm.policies.compareModeOffset1h', '1 小时前同窗') },
-                    { value: 'offset_24h', label: t('apm.policies.compareModeOffset24h', '24 小时前同窗') },
-                  ]}
-                />
+                <CompareBaselineSelect onModeChange={applyCompareMode} />
               </Form.Item>
+              {offsetSelected ? (
+                <>
+                  <Form.Item label={t('apm.policies.compareOffsetMethod', '对照方式')}>
+                    <Select
+                      aria-label={t('apm.policies.compareOffsetMethod', '对照方式')}
+                      value={compareMode === 'offset_days' ? 'offset_days' : 'offset_hours'}
+                      onChange={(mode: ApmCompareMode) => {
+                        form.setFieldValue('compare_mode', mode);
+                        applyCompareMode(mode);
+                      }}
+                      options={[
+                        { value: 'offset_hours', label: t('apm.policies.compareOffsetHours', 'N 小时前') },
+                        { value: 'offset_days', label: t('apm.policies.compareOffsetDays', 'N 天前') },
+                      ]}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    className={styles.offsetAmount}
+                    name="compare_offset_amount"
+                    label={t(
+                      compareMode === 'offset_days' ? 'apm.policies.compareOffsetCountDay' : 'apm.policies.compareOffsetCountHour',
+                      compareMode === 'offset_days' ? '天数' : '小时数',
+                    )}
+                    extra={t('apm.policies.compareOffsetHint', '和这段时间之前、同样长度的窗口比较。')}
+                    rules={[{
+                      validator: async (_, value) => {
+                        const amount = Number(value);
+                        const max = compareMode === 'offset_days' ? MAX_COMPARE_OFFSET_DAYS : MAX_COMPARE_OFFSET_HOURS;
+                        if (!Number.isInteger(amount) || amount < 1 || amount > max) {
+                          throw new Error(t('apm.policies.compareOffsetRequired', '请填写对照的小时数或天数'));
+                        }
+                        const windowMinutes = Number(form.getFieldValue('metric_window')) || 1;
+                        const offsetMinutes = compareMode === 'offset_days' ? amount * 24 * 60 : amount * 60;
+                        if (offsetMinutes < windowMinutes) {
+                          throw new Error(t('apm.policies.compareOffsetShorterThanWindow', '对照长度不能短于汇聚周期'));
+                        }
+                      },
+                    }]}
+                  >
+                    <InputNumber<number>
+                      min={1}
+                      max={compareMode === 'offset_days' ? MAX_COMPARE_OFFSET_DAYS : MAX_COMPARE_OFFSET_HOURS}
+                      precision={0}
+                    />
+                  </Form.Item>
+                </>
+              ) : null}
               {compareMode === 'previous_window' ? (
                 <Form.Item name="compare_value_kind" label={t('apm.policies.compareValueKind', '比较方式')}>
                   <Radio.Group
@@ -1030,67 +1123,69 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   />
                 </Form.Item>
               ) : null}
-            </div>
+            </>
           ) : null}
-          <Typography.Text strong className={styles.thresholdTitle}>{t('apm.policies.threeLevelThresholds', '3 级别阈值')}</Typography.Text>
-          <Table
-            className={styles.thresholdTable}
-            size="small"
-            pagination={false}
-            rowKey="value"
-            dataSource={severityOptions}
-            columns={[
-              {
-                title: t('apm.alerts.level', '级别'),
-                dataIndex: 'value',
-                width: '26%',
-                render: (severity: ApmPolicySeverity, row) => <Tag color={row.color}>{row.label}</Tag>,
-              },
-              {
-                title: t('apm.policies.comparator', '比较符'),
-                dataIndex: 'value',
-                width: '32%',
-                render: (_, __, index) => (
-                  <Form.Item name={['thresholds', index, 'comparator']} noStyle>
-                    <Select
-                      aria-label={t('apm.policies.comparatorAria', '{severity}比较符', { severity: severityOptions[index].label })}
-                      onChange={syncComparator}
-                      options={[
-                        { value: 'gt', label: '>' },
-                        { value: 'gte', label: '≥' },
-                        { value: 'lt', label: '<' },
-                        { value: 'lte', label: '≤' },
-                      ]}
-                    />
-                  </Form.Item>
-                ),
-              },
-              {
-                title: t('apm.policies.threshold', '阈值'),
-                dataIndex: 'value',
-                render: (_, __, index) => (
-                  <Form.Item name={['thresholds', index, 'value']} noStyle>
-                    <NumberWithUnit
-                      aria-label={t('apm.policies.thresholdAria', '{severity}阈值', { severity: severityOptions[index].label })}
-                      min={thresholdBounds.min}
-                      max={thresholdBounds.max}
-                      placeholder={t('apm.policies.notEnabled', '不启用')}
-                      unit={thresholdUnit}
-                    />
-                  </Form.Item>
-                ),
-              },
-            ]}
-          />
+          <div className={styles.thresholdBlock}>
+            <Typography.Text strong className={styles.thresholdTitle}>{t('apm.policies.threeLevelThresholds', '3 级别阈值')}</Typography.Text>
+            <Table
+              className={styles.thresholdTable}
+              tableLayout="fixed"
+              size="small"
+              pagination={false}
+              rowKey="value"
+              dataSource={severityOptions}
+              columns={[
+                {
+                  title: t('apm.alerts.level', '级别'),
+                  dataIndex: 'value',
+                  width: 96,
+                  render: (severity: ApmPolicySeverity, row) => <Tag color={row.color}>{row.label}</Tag>,
+                },
+                {
+                  title: t('apm.policies.comparator', '比较符'),
+                  dataIndex: 'value',
+                  width: 132,
+                  render: (_, __, index) => (
+                    <Form.Item name={['thresholds', index, 'comparator']} noStyle>
+                      <Select
+                        aria-label={t('apm.policies.comparatorAria', '{severity}比较符', { severity: severityOptions[index].label })}
+                        onChange={syncComparator}
+                        options={[
+                          { value: 'gt', label: '>' },
+                          { value: 'gte', label: '≥' },
+                          { value: 'lt', label: '<' },
+                          { value: 'lte', label: '≤' },
+                        ]}
+                      />
+                    </Form.Item>
+                  ),
+                },
+                {
+                  title: t('apm.policies.threshold', '阈值'),
+                  dataIndex: 'value',
+                  render: (_, __, index) => (
+                    <Form.Item name={['thresholds', index, 'value']} noStyle>
+                      <NumberWithUnit
+                        aria-label={t('apm.policies.thresholdAria', '{severity}阈值', { severity: severityOptions[index].label })}
+                        min={thresholdBounds.min}
+                        max={thresholdBounds.max}
+                        placeholder={t('apm.policies.notEnabled', '不启用')}
+                        unit={thresholdUnit}
+                      />
+                    </Form.Item>
+                  ),
+                },
+              ]}
+            />
+          </div>
           {showMinRequest ? (
             <Form.Item
-              className="mt-3"
+              className={styles.minRequestCount}
               name="min_request_count"
               label={t('apm.policies.minRequestCount', '最低请求数')}
               tooltip={t('apm.policies.minRequestCountTooltip', '本窗请求数低于该值时不评，试算记为样本不足')}
             >
               <InputNumber<number>
-                className="w-40"
                 min={1}
                 max={100000}
                 placeholder={t('apm.policies.minRequestUnlimited', '不限')}
@@ -1224,7 +1319,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       <Form
         form={form}
         layout="horizontal"
-        labelCol={{ flex: '120px' }}
+        labelCol={{ flex: '152px' }}
         wrapperCol={{ flex: '1 1 0' }}
         onFinish={(values) => void submit(values)}
       >

@@ -72,6 +72,7 @@ class ApmEventSnapshotStore:
                 "no_data_severity": policy.no_data_severity,
                 "no_data_alert_name": policy.no_data_alert_name,
                 "compare_mode": policy.compare_mode,
+                "compare_offset_amount": policy.compare_offset_amount,
                 "compare_value_kind": policy.compare_value_kind,
                 "min_request_count": policy.min_request_count,
             },

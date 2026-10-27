@@ -558,7 +558,7 @@ export interface ApmSpanSearchParams {
 }
 
 export type ApmPolicyMetric = 'error_rate' | 'p95' | 'p99' | 'throughput' | 'no_traffic';
-export type ApmCompareMode = 'absolute' | 'previous_window' | 'offset_1h' | 'offset_24h';
+export type ApmCompareMode = 'absolute' | 'previous_window' | 'offset_hours' | 'offset_days' | 'offset_1h' | 'offset_24h';
 export type ApmCompareValueKind = 'delta' | 'percent';
 export type ApmPolicyComparator = 'gt' | 'gte' | 'lt' | 'lte';
 export type ApmPolicySeverity = 'critical' | 'error' | 'warning';
@@ -590,6 +590,7 @@ export interface ApmPolicyInput {
   metric_window: number;
   aggregation: ApmPolicyAggregation;
   compare_mode?: ApmCompareMode;
+  compare_offset_amount?: number | null;
   compare_value_kind?: ApmCompareValueKind | '';
   min_request_count?: number | null;
   thresholds: Array<{ severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: number | string }>;
@@ -669,6 +670,7 @@ export interface ApmPolicyDryRunItem {
 export interface ApmPolicyDryRunResult {
   evaluated_at: string;
   compare_mode: ApmCompareMode;
+  compare_offset_amount?: number | null;
   compare_value_kind: ApmCompareValueKind | '';
   result_unit: string;
   total_targets: number;

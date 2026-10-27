@@ -208,6 +208,46 @@ def _compare_payload(service, **updates):
             },
             "thresholds",
         ),
+        (
+            {
+                "compare_mode": "offset_hours",
+                "compare_value_kind": "percent",
+                "thresholds": [{"severity": "error", "comparator": "gt", "value": "10"}],
+            },
+            "compare_offset_amount",
+        ),
+        (
+            {
+                "compare_mode": "offset_hours",
+                "compare_offset_amount": 1,
+                "compare_value_kind": "delta",
+                "thresholds": [{"severity": "error", "comparator": "gt", "value": "10"}],
+            },
+            "compare_value_kind",
+        ),
+        (
+            {"compare_mode": "absolute", "compare_value_kind": "", "compare_offset_amount": 3},
+            "compare_offset_amount",
+        ),
+        (
+            {
+                "compare_mode": "offset_hours",
+                "compare_offset_amount": 1,
+                "metric_window": 120,
+                "compare_value_kind": "percent",
+                "thresholds": [{"severity": "error", "comparator": "gt", "value": "10"}],
+            },
+            "compare_offset_amount",
+        ),
+        (
+            {
+                "compare_mode": "offset_days",
+                "compare_offset_amount": 36,
+                "compare_value_kind": "percent",
+                "thresholds": [{"severity": "error", "comparator": "gt", "value": "10"}],
+            },
+            "compare_offset_amount",
+        ),
     ],
 )
 def test_policy_compare_rules_reject_illegal_combinations(apm_api_client, updates, field):
@@ -235,6 +275,18 @@ def test_policy_compare_rules_reject_illegal_combinations(apm_api_client, update
         {"compare_mode": "offset_1h", "compare_value_kind": "percent", "thresholds": [{"severity": "error", "comparator": "gt", "value": "50"}]},
         {"compare_mode": "offset_24h", "compare_value_kind": "percent", "thresholds": [{"severity": "error", "comparator": "gt", "value": "50"}]},
         {
+            "compare_mode": "offset_hours",
+            "compare_offset_amount": 6,
+            "compare_value_kind": "percent",
+            "thresholds": [{"severity": "error", "comparator": "gt", "value": "50"}],
+        },
+        {
+            "compare_mode": "offset_days",
+            "compare_offset_amount": 2,
+            "compare_value_kind": "percent",
+            "thresholds": [{"severity": "error", "comparator": "gt", "value": "50"}],
+        },
+        {
             "metric_type": "no_traffic",
             "compare_mode": "absolute",
             "compare_value_kind": "",
@@ -251,6 +303,7 @@ def test_policy_compare_rules_accept_legal_combinations(apm_api_client, updates)
 
     assert response.status_code == 201
     assert response.data["compare_mode"] == updates.get("compare_mode", "absolute")
+    assert response.data["compare_offset_amount"] == updates.get("compare_offset_amount")
     assert response.data["compare_value_kind"] == updates.get("compare_value_kind", "")
     assert response.data["min_request_count"] == updates.get("min_request_count")
 
@@ -260,6 +313,7 @@ def test_legacy_policy_payload_defaults_compare_fields(apm_api_client):
 
     assert created.status_code == 201
     assert created.data["compare_mode"] == "absolute"
+    assert created.data["compare_offset_amount"] is None
     assert created.data["compare_value_kind"] == ""
     assert created.data["min_request_count"] is None
 

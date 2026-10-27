@@ -208,6 +208,11 @@ class DjangoApmPolicyService:
             return timedelta(hours=1)
         if mode == ApmPolicy.CompareMode.OFFSET_24H:
             return timedelta(hours=24)
+        amount = getattr(policy, "compare_offset_amount", None)
+        if mode == ApmPolicy.CompareMode.OFFSET_HOURS and amount:
+            return timedelta(hours=int(amount))
+        if mode == ApmPolicy.CompareMode.OFFSET_DAYS and amount:
+            return timedelta(days=int(amount))
         return None
 
     @staticmethod
@@ -410,6 +415,7 @@ class DjangoApmPolicyService:
         return {
             "evaluated_at": evaluated_at,
             "compare_mode": policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
+            "compare_offset_amount": policy.compare_offset_amount,
             "compare_value_kind": policy.compare_value_kind or "",
             "result_unit": resolve_result_unit(policy),
             "total_targets": len(targets),
@@ -728,6 +734,7 @@ class DjangoApmPolicyService:
                 "endpoint": state.endpoint,
                 "version": state.version,
                 "compare_mode": policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
+                "compare_offset_amount": policy.compare_offset_amount,
             },
         }
         for target in policy.notification_targets.order_by("channel_id", "id"):

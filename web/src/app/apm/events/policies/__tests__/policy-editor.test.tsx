@@ -572,9 +572,24 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await user.click(await screen.findByLabelText('比较基准'));
-    await user.click(await screen.findByText('1 小时前同窗'));
+    await user.click(await screen.findByText('同窗'));
     expect(screen.queryByRole('radio', { name: '变化量 Δ' })).toBeNull();
     expect(screen.queryByRole('radio', { name: '变化率 %' })).toBeNull();
+    const hours = screen.getByLabelText('小时数') as HTMLInputElement;
+    expect(hours.value).toBe('1');
+    await user.clear(hours);
+    await user.type(hours, '6');
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          compare_mode: 'offset_hours',
+          compare_offset_amount: 6,
+          compare_value_kind: 'percent',
+        }),
+      ),
+    );
 
     await user.click(screen.getByLabelText('指标'));
     await user.click(await screen.findByText('无流量'));
@@ -585,6 +600,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
     expect(payload.metric_type).toBe('no_traffic');
     expect(payload).not.toHaveProperty('compare_mode');
+    expect(payload).not.toHaveProperty('compare_offset_amount');
     expect(payload).not.toHaveProperty('compare_value_kind');
     expect(payload).not.toHaveProperty('min_request_count');
   });

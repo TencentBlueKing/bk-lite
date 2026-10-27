@@ -380,16 +380,19 @@ def test_previous_window_percent_and_delta_use_two_equal_windows(policy):
 
 
 @pytest.mark.parametrize(
-    ("mode", "offset"),
+    ("mode", "amount", "offset"),
     [
-        (ApmPolicy.CompareMode.OFFSET_1H, timedelta(hours=1)),
-        (ApmPolicy.CompareMode.OFFSET_24H, timedelta(hours=24)),
+        (ApmPolicy.CompareMode.OFFSET_1H, None, timedelta(hours=1)),
+        (ApmPolicy.CompareMode.OFFSET_24H, None, timedelta(hours=24)),
+        (ApmPolicy.CompareMode.OFFSET_HOURS, 6, timedelta(hours=6)),
+        (ApmPolicy.CompareMode.OFFSET_DAYS, 2, timedelta(days=2)),
     ],
 )
-def test_offset_windows_keep_the_metric_window_length(policy, mode, offset):
+def test_offset_windows_keep_the_metric_window_length(policy, mode, amount, offset):
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
     policy.metric_window = 5
     policy.compare_mode = mode
+    policy.compare_offset_amount = amount
     policy.compare_value_kind = ApmPolicy.CompareValueKind.PERCENT
     policy.thresholds = [{"severity": "error", "comparator": "gt", "value": "10"}]
     policy.save()

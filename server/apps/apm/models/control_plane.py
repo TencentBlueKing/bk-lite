@@ -327,8 +327,13 @@ class ApmPolicy(AuditedModel):
     class CompareMode(models.TextChoices):
         ABSOLUTE = "absolute", "当前值"
         PREVIOUS_WINDOW = "previous_window", "相对上一等长窗"
+        OFFSET_HOURS = "offset_hours", "N 小时前同窗"
+        OFFSET_DAYS = "offset_days", "N 天前同窗"
         OFFSET_1H = "offset_1h", "1 小时前同窗"
         OFFSET_24H = "offset_24h", "24 小时前同窗"
+
+    MAX_COMPARE_OFFSET_HOURS = 840
+    MAX_COMPARE_OFFSET_DAYS = 35
 
     class CompareValueKind(models.TextChoices):
         DELTA = "delta", "变化量"
@@ -352,6 +357,7 @@ class ApmPolicy(AuditedModel):
     metric_window = models.PositiveIntegerField(default=5)
     aggregation = models.CharField(max_length=16, choices=Aggregation.choices, default=Aggregation.AVERAGE)
     compare_mode = models.CharField(max_length=32, choices=CompareMode.choices, default=CompareMode.ABSOLUTE)
+    compare_offset_amount = models.PositiveIntegerField(null=True, blank=True)
     compare_value_kind = models.CharField(max_length=16, blank=True, default="")
     min_request_count = models.PositiveIntegerField(null=True, blank=True)
     thresholds = models.JSONField(default=list)
