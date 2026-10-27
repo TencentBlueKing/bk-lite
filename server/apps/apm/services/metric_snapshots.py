@@ -74,6 +74,7 @@ class ApmAlertMetricSnapshotStore:
                     "result_unit": resolve_result_unit(policy),
                     "threshold": threshold,
                     "data_state": str(result.data_state),
+                    "recovery_threshold": dict(policy.recovery_threshold or {}) or None,
                 }
             )
             if len(snapshot.snapshots) > MAX_ALERT_METRIC_SNAPSHOTS:

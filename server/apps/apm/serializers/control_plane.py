@@ -475,6 +475,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     min_request_count = serializers.IntegerField(min_value=1, max_value=100000, required=False, allow_null=True)
     slow_threshold_ms = serializers.IntegerField(required=False, allow_null=True)
     apdex_threshold_ms = serializers.IntegerField(required=False, allow_null=True)
+    guard_conditions = serializers.JSONField(required=False)
+    trigger_window = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=20)
+    recovery_threshold = serializers.JSONField(required=False, allow_null=True)
     endpoints = serializers.ListField(
         child=serializers.CharField(max_length=512, allow_blank=False),
         required=False,
@@ -513,8 +516,11 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "min_request_count",
             "slow_threshold_ms",
             "apdex_threshold_ms",
+            "guard_conditions",
             "thresholds",
             "trigger_after",
+            "trigger_window",
+            "recovery_threshold",
             "recover_after",
             "no_data_after",
             "no_data_severity",
@@ -628,6 +634,16 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         )
         attrs["no_data_alert_name"] = str(no_data_alert_name).strip()
 
+        self._validate_judgment(
+            attrs,
+            metric_type=metric_type,
+            slow_threshold_ms=slow_threshold_ms,
+            apdex_threshold_ms=apdex_threshold_ms,
+            thresholds=normalized_thresholds,
+            compare_mode=compare_mode,
+            compare_value_kind=compare_value_kind,
+        )
+
         notification_targets = attrs.get("notification_targets")
         if notification_targets is not None:
             channel_ids = [target["channel_id"] for target in notification_targets]
@@ -657,6 +673,89 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"handlers": str(exc)}) from exc
         if handlers_provided:
             attrs["handlers"] = resolved
+
+    def _validate_judgment(self, attrs, *, metric_type, slow_threshold_ms, apdex_threshold_ms, thresholds, compare_mode, compare_value_kind):
+        guards = self._stored_or_incoming(attrs, "guard_conditions", []) or []
+        trigger_window = self._stored_or_incoming(attrs, "trigger_window", None)
+        recovery = self._stored_or_incoming(attrs, "recovery_threshold", {}) or {}
+        trigger_after = self._stored_or_incoming(attrs, "trigger_after", 1)
+        plain = metric_type == ApmPolicy.MetricType.NO_TRAFFIC
+        if plain and (guards or trigger_window is not None or recovery):
+            raise serializers.ValidationError({"metric_type": serializer_text(self, "error.no_traffic_plain")})
+        attrs["guard_conditions"] = self._validate_guards(guards, slow_threshold_ms, apdex_threshold_ms)
+        if trigger_window is not None and (trigger_window < trigger_after or trigger_window > 20):
+            raise serializers.ValidationError({"trigger_window": serializer_text(self, "error.trigger_window_order")})
+        attrs["trigger_window"] = trigger_window
+        attrs["recovery_threshold"] = self._validate_recovery(recovery, thresholds, metric_type, compare_mode, compare_value_kind)
+
+    def _validate_guards(self, guards, slow_threshold_ms, apdex_threshold_ms):
+        if not isinstance(guards, list):
+            raise serializers.ValidationError({"guard_conditions": serializer_text(self, "error.guard_shape")})
+        if len(guards) > 2:
+            raise serializers.ValidationError({"guard_conditions": serializer_text(self, "error.guard_limit")})
+        allowed_metrics = {choice for choice, _label in ApmPolicy.MetricType.choices} - {ApmPolicy.MetricType.NO_TRAFFIC}
+        allowed_comparators = {choice for choice, _label in ApmPolicy.Comparator.choices}
+        normalized = []
+        for guard in guards:
+            if not isinstance(guard, dict) or set(guard) - {"metric_type", "comparator", "value"}:
+                raise serializers.ValidationError({"guard_conditions": serializer_text(self, "error.guard_shape")})
+            metric = str(guard.get("metric_type") or "")
+            comparator = str(guard.get("comparator") or "")
+            if metric not in allowed_metrics:
+                raise serializers.ValidationError({"guard_conditions": serializer_text(self, "error.guard_metric")})
+            if comparator not in allowed_comparators:
+                raise serializers.ValidationError({"guard_conditions": serializer_text(self, "error.guard_shape")})
+            if metric in ApmPolicy.SLOW_METRIC_TYPES and slow_threshold_ms is None:
+                raise serializers.ValidationError({"guard_conditions": serializer_text(self, "error.guard_needs_slow")})
+            if metric == ApmPolicy.MetricType.APDEX and apdex_threshold_ms is None:
+                raise serializers.ValidationError({"guard_conditions": serializer_text(self, "error.guard_needs_apdex")})
+            if metric == ApmPolicy.MetricType.APDEX and comparator in {ApmPolicy.Comparator.GREATER_THAN, ApmPolicy.Comparator.GREATER_THAN_OR_EQUAL}:
+                raise serializers.ValidationError({"guard_conditions": serializer_text(self, "error.apdex_comparator")})
+            value = self._finite_decimal(guard.get("value"), "guard_conditions", "error.guard_value")
+            if metric in ApmPolicy.RATIO_METRIC_TYPES and not 0 <= value <= 1:
+                raise serializers.ValidationError({"guard_conditions": serializer_text(self, "error.guard_ratio_range")})
+            normalized.append({"metric_type": metric, "comparator": comparator, "value": self._decimal_payload(value)})
+        return normalized
+
+    def _validate_recovery(self, recovery, thresholds, metric_type, compare_mode, compare_value_kind):
+        if recovery in (None, {}, ""):
+            return {}
+        if not isinstance(recovery, dict) or set(recovery) - {"comparator", "value"}:
+            raise serializers.ValidationError({"recovery_threshold": serializer_text(self, "error.recovery_shape")})
+        comparator = str(recovery.get("comparator") or "")
+        allowed = {choice for choice, _label in ApmPolicy.Comparator.choices}
+        if comparator not in allowed:
+            raise serializers.ValidationError({"recovery_threshold": serializer_text(self, "error.recovery_shape")})
+        ladder = str(thresholds[0]["comparator"])
+        higher = {ApmPolicy.Comparator.GREATER_THAN, ApmPolicy.Comparator.GREATER_THAN_OR_EQUAL}
+        lower = {ApmPolicy.Comparator.LESS_THAN, ApmPolicy.Comparator.LESS_THAN_OR_EQUAL}
+        opposite = (ladder in higher and comparator in lower) or (ladder in lower and comparator in higher)
+        if not opposite:
+            raise serializers.ValidationError({"recovery_threshold": serializer_text(self, "error.recovery_direction")})
+        value = self._finite_decimal(recovery.get("value"), "recovery_threshold", "error.recovery_value")
+        kind = compare_value_kind or ""
+        if metric_type in ApmPolicy.RATIO_METRIC_TYPES and (compare_mode == ApmPolicy.CompareMode.ABSOLUTE or kind == ""):
+            if not 0 <= value <= 1:
+                raise serializers.ValidationError({"recovery_threshold": serializer_text(self, "error.error_rate_range")})
+        elif metric_type in ApmPolicy.RATIO_METRIC_TYPES and kind == ApmPolicy.CompareValueKind.DELTA and not -1 <= value <= 1:
+            raise serializers.ValidationError({"recovery_threshold": serializer_text(self, "error.error_rate_delta_range")})
+        return {"comparator": comparator, "value": self._decimal_payload(value)}
+
+    def _finite_decimal(self, raw, field, error_key):
+        try:
+            value = Decimal(str(raw))
+        except (InvalidOperation, TypeError, ValueError):
+            raise serializers.ValidationError({field: serializer_text(self, error_key)}) from None
+        if not value.is_finite():
+            raise serializers.ValidationError({field: serializer_text(self, error_key)})
+        return value
+
+    @staticmethod
+    def _decimal_payload(value: Decimal) -> str:
+        text = format(value, "f")
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text or "0"
 
     def _stored_or_incoming(self, attrs, field, default):
         if field in attrs:

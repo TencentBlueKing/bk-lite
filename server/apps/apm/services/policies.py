@@ -83,8 +83,8 @@ class DjangoApmPolicyService:
         return cls._bounded_decimal(Decimal(int(slow_count)) / Decimal(int(requests)))
 
     @classmethod
-    def _raw_value(cls, policy: ApmPolicy, red) -> Decimal | None:
-        metric = policy.metric_type
+    def _raw_value(cls, policy: ApmPolicy, red, metric: str | None = None) -> Decimal | None:
+        metric = metric or policy.metric_type
         if metric == ApmPolicy.MetricType.ERROR_COUNT:
             return None if red.error_count is None else Decimal(int(red.error_count))
         if metric == ApmPolicy.MetricType.SLOW_REQUEST_COUNT:
@@ -171,8 +171,8 @@ class DjangoApmPolicyService:
         )
 
     @classmethod
-    def _series_value(cls, policy: ApmPolicy, point) -> Decimal | None:
-        metric = policy.metric_type
+    def _series_value(cls, policy: ApmPolicy, point, metric: str | None = None) -> Decimal | None:
+        metric = metric or policy.metric_type
         if metric == ApmPolicy.MetricType.ERROR_COUNT:
             return None if point.error_count is None else Decimal(int(point.error_count))
         if metric == ApmPolicy.MetricType.SLOW_REQUEST_COUNT:
@@ -196,13 +196,14 @@ class DjangoApmPolicyService:
         return Decimal(str(value)) if value is not None else None
 
     @classmethod
-    def _aggregate(cls, policy: ApmPolicy, red) -> Decimal | None:
-        if policy.metric_type in ApmPolicy.COUNT_METRIC_TYPES:
-            return cls._raw_value(policy, red)
-        values = [cls._series_value(policy, point) for point in red.timeseries]
+    def _aggregate(cls, policy: ApmPolicy, red, metric: str | None = None) -> Decimal | None:
+        metric = metric or policy.metric_type
+        if metric in ApmPolicy.COUNT_METRIC_TYPES:
+            return cls._raw_value(policy, red, metric)
+        values = [cls._series_value(policy, point, metric) for point in red.timeseries]
         values = [value for value in values if value is not None]
         if not values:
-            return cls._raw_value(policy, red)
+            return cls._raw_value(policy, red, metric)
         if policy.aggregation == ApmPolicy.Aggregation.MAXIMUM:
             return max(values)
         if policy.aggregation == ApmPolicy.Aggregation.MINIMUM:
@@ -323,6 +324,8 @@ class DjangoApmPolicyService:
         request_count: int | None = None,
         reason: str = "",
         window_ended_at: datetime | None = None,
+        guards=(),
+        guard_blocked: bool = False,
     ) -> PolicyQueryResult:
         return PolicyQueryResult(
             value=value,
@@ -338,6 +341,8 @@ class DjangoApmPolicyService:
             reason=reason,
             result_unit=resolve_result_unit(policy),
             window_ended_at=window_ended_at,
+            guards=tuple(guards),
+            guard_blocked=guard_blocked,
         )
 
     def test_query(
@@ -388,17 +393,20 @@ class DjangoApmPolicyService:
         offset = self._baseline_offset(policy, window)
         if offset is None:
             threshold = self._matching_threshold(policy, current_value)
+            decision = self._decision(policy, current, current_value, threshold)
             return self._query_result(
                 policy,
                 value=current_value,
-                breached=threshold is not None,
+                breached=decision["breached"],
                 evaluated_at=evaluated_at,
-                data_state=MetricDataState.AVAILABLE,
+                data_state=decision["data_state"],
                 series=current.timeseries,
-                threshold=threshold,
+                threshold=decision["threshold"],
                 current_value=current_value,
                 request_count=current.request_count,
                 window_ended_at=window_end,
+                guards=decision["guards"],
+                guard_blocked=decision["guard_blocked"],
             )
         baseline = self._read_window(
             policy,
@@ -441,20 +449,75 @@ class DjangoApmPolicyService:
             )
         compared = self._compared_value(current_value, baseline_value, kind)
         threshold = self._matching_threshold(policy, compared)
+        decision = self._decision(policy, current, compared, threshold)
         return self._query_result(
             policy,
             value=compared,
-            breached=threshold is not None,
+            breached=decision["breached"],
             evaluated_at=evaluated_at,
-            data_state=MetricDataState.AVAILABLE,
+            data_state=decision["data_state"],
             series=current.timeseries,
-            threshold=threshold,
+            threshold=decision["threshold"],
             current_value=current_value,
             baseline_value=baseline_value,
             baseline_series=baseline.timeseries,
             request_count=current.request_count,
             window_ended_at=window_end,
+            guards=decision["guards"],
+            guard_blocked=decision["guard_blocked"],
         )
+
+    def _decision(self, policy: ApmPolicy, red, value: Decimal, threshold):
+        """前置不满足按未越线；有恢复线且落在两线之间记 hold。越线优先于恢复线。"""
+        guards = self._guard_rows(policy, red)
+        blocked = any(not item["matched"] for item in guards)
+        if blocked:
+            return {
+                "breached": False,
+                "data_state": MetricDataState.AVAILABLE,
+                "threshold": None,
+                "guards": guards,
+                "guard_blocked": True,
+            }
+        if threshold is not None:
+            return {
+                "breached": True,
+                "data_state": MetricDataState.AVAILABLE,
+                "threshold": threshold,
+                "guards": guards,
+                "guard_blocked": False,
+            }
+        recovery = getattr(policy, "recovery_threshold", None) or {}
+        if recovery and value is not None and not self._breached(str(recovery["comparator"]), Decimal(str(recovery["value"])), value):
+            return {
+                "breached": False,
+                "data_state": MetricDataState.HOLD,
+                "threshold": None,
+                "guards": guards,
+                "guard_blocked": False,
+            }
+        return {
+            "breached": False,
+            "data_state": MetricDataState.AVAILABLE,
+            "threshold": None,
+            "guards": guards,
+            "guard_blocked": False,
+        }
+
+    def _guard_rows(self, policy: ApmPolicy, red) -> tuple[dict, ...]:
+        rows = []
+        for guard in list(getattr(policy, "guard_conditions", None) or []):
+            metric = str(guard.get("metric_type") or "")
+            value = self._aggregate(policy, red, metric)
+            matched = value is not None and self._breached(str(guard.get("comparator")), Decimal(str(guard.get("value"))), value)
+            rows.append(
+                {
+                    "metric_type": metric,
+                    "value": self._decimal_text(value),
+                    "matched": matched,
+                }
+            )
+        return tuple(rows)
 
     def dry_run(
         self,
@@ -473,6 +536,7 @@ class DjangoApmPolicyService:
             result = self.test_query(policy, evaluated_at=evaluated_at, endpoint=endpoint, version=version)
             state = states.get((endpoint, version))
             verdict = self._dry_run_verdict(result, state)
+            history_text = self._hit_history_text(policy, state, result)
             items.append(
                 {
                     "endpoint": endpoint,
@@ -483,7 +547,9 @@ class DjangoApmPolicyService:
                     "compared_value": self._decimal_text(result.value),
                     "request_count": result.request_count,
                     "matched_threshold": dict(result.threshold) if result.threshold and result.breached else None,
-                    "reason": self._dry_run_reason(policy, result, state, verdict),
+                    "reason": history_text or self._dry_run_reason(policy, result, state, verdict),
+                    "guards": [dict(item) for item in result.guards],
+                    "hit_history_text": history_text,
                 }
             )
         return {
@@ -500,6 +566,11 @@ class DjangoApmPolicyService:
         }
 
     def _dry_run_verdict(self, result: PolicyQueryResult, state: ApmPolicyTargetState | None) -> str:
+        if result.guard_blocked:
+            return "guard_not_met"
+        if result.data_state == MetricDataState.HOLD:
+            active = state is not None and state.status == ApmPolicyTargetState.Status.ACTIVE
+            return "hold" if active else "ok"
         if result.data_state == MetricDataState.NO_DATA:
             return "no_data"
         if result.data_state == MetricDataState.MISSING_BASELINE:
@@ -517,6 +588,10 @@ class DjangoApmPolicyService:
         return "ok"
 
     def _dry_run_reason(self, policy: ApmPolicy, result: PolicyQueryResult, state, verdict: str) -> str:
+        if result.guard_blocked:
+            return "前置条件不满足"
+        if verdict == "hold":
+            return "恢复带内"
         if result.data_state == MetricDataState.INSUFFICIENT_SAMPLES:
             return "样本不足"
         if result.data_state == MetricDataState.MISSING_BASELINE:
@@ -524,6 +599,8 @@ class DjangoApmPolicyService:
                 return "对照值为 0，无法计算变化率"
             return "对照缺失"
         if verdict in {"would_trigger", "would_escalate"}:
+            if getattr(policy, "trigger_window", None):
+                return ""
             needed = policy.trigger_after or 1
             hits = 1 if state is None else state.consecutive_hits + 1
             if needed > 1 and hits < needed:
@@ -532,6 +609,20 @@ class DjangoApmPolicyService:
         if verdict == "would_recover":
             return f"需连续 {policy.recover_after} 次"
         return ""
+
+    @classmethod
+    def _hit_history_text(cls, policy: ApmPolicy, state, result: PolicyQueryResult) -> str:
+        window = getattr(policy, "trigger_window", None)
+        if not window or not result.breached:
+            return ""
+        needed = policy.trigger_after or 1
+        prior = "" if state is None else (state.hit_history or "")
+        counted = (prior + "1")[-int(window) :].count("1")
+        if counted >= needed:
+            return ""
+        if not prior:
+            return f"本轮命中 1 / {needed}（{window} 轮内）"
+        return f"近 {window} 轮命中 {counted} / {needed}"
 
     def evaluate(self, policy_id: UUID, *, evaluated_at: datetime) -> None:
         policy = ApmPolicy.objects.select_related("service").prefetch_related("organization_links").get(id=policy_id)
@@ -591,7 +682,6 @@ class DjangoApmPolicyService:
         if result.data_state in {MetricDataState.MISSING_BASELINE, MetricDataState.INSUFFICIENT_SAMPLES}:
             return None
         threshold = dict(result.threshold) if result.threshold else None
-        trigger_after = policy.trigger_after
         recover_after = policy.recover_after
         if result.data_state == MetricDataState.NO_DATA:
             state.consecutive_hits = 0
@@ -608,19 +698,30 @@ class DjangoApmPolicyService:
             return None
 
         state.consecutive_no_data = 0
+        if result.data_state == MetricDataState.HOLD:
+            self._remember_hit(state, False)
+            if state.status == ApmPolicyTargetState.Status.ACTIVE:
+                return None
+            state.consecutive_recoveries = 0
+            state.consecutive_hits = 0
+            return None
+
+        hit = threshold is not None and not result.guard_blocked
+        self._remember_hit(state, hit)
         if state.status == ApmPolicyTargetState.Status.NORMAL:
             state.consecutive_recoveries = 0
-            state.consecutive_hits = state.consecutive_hits + 1 if threshold else 0
-            if threshold and state.consecutive_hits >= trigger_after:
+            state.consecutive_hits = state.consecutive_hits + 1 if hit else 0
+            if hit and self._trigger_ready(policy, state):
                 return self._open_alert(policy, state, result, evaluated_at, threshold)
             return None
 
-        if threshold:
+        if hit:
             state.consecutive_recoveries = 0
             if self._severity_rank(threshold["severity"]) < self._severity_rank(state.current_severity):
                 state.consecutive_hits += 1
-                if state.consecutive_hits >= trigger_after:
+                if self._trigger_ready(policy, state):
                     state.consecutive_hits = 0
+                    state.hit_history = ""
                     state.current_severity = threshold["severity"]
                     return self._record_event(
                         policy,
@@ -638,7 +739,7 @@ class DjangoApmPolicyService:
         state.consecutive_hits = 0
         state.consecutive_recoveries += 1
         if state.consecutive_recoveries >= recover_after:
-            recovery_threshold = {
+            recovery_marker = {
                 "severity": state.current_severity,
                 "comparator": "recovered",
                 "value": "",
@@ -650,20 +751,34 @@ class DjangoApmPolicyService:
                 evaluated_at,
                 state.active_alert_id,
                 ApmEvent.Action.RECOVERED,
-                recovery_threshold,
+                recovery_marker,
             )
             state.status = ApmPolicyTargetState.Status.NORMAL
             state.current_severity = ""
             state.active_alert_id = ""
             state.consecutive_recoveries = 0
+            state.hit_history = ""
             return snapshot
         return None
+
+    @staticmethod
+    def _remember_hit(state, hit: bool) -> None:
+        state.hit_history = ((getattr(state, "hit_history", "") or "") + ("1" if hit else "0"))[-20:]
+
+    @staticmethod
+    def _trigger_ready(policy, state) -> bool:
+        needed = policy.trigger_after or 1
+        window = getattr(policy, "trigger_window", None)
+        if not window:
+            return state.consecutive_hits >= needed
+        return (state.hit_history or "")[-int(window) :].count("1") >= needed
 
     def _open_alert(self, policy, state, result, evaluated_at, threshold):
         state.status = ApmPolicyTargetState.Status.ACTIVE
         state.current_severity = threshold["severity"]
         state.active_alert_id = f"apm-{policy.id}-{uuid4().hex}"
         state.consecutive_hits = 0
+        state.hit_history = ""
         return self._record_event(
             policy,
             state,
@@ -707,6 +822,14 @@ class DjangoApmPolicyService:
             description = (
                 f"{policy.service.namespace}/{policy.service.name} " f"[{policy.environment}] {metric_label} 当前 {current}，对照 {baseline}，变化 {compared}"
             )
+        guards = list(getattr(policy, "guard_conditions", None) or [])
+        if guards:
+            parts = []
+            for guard in guards:
+                metric = ApmPolicy.MetricType(str(guard["metric_type"])).label
+                comparator = ApmPolicy.Comparator(str(guard["comparator"])).label
+                parts.append(f"{metric} {comparator} {guard['value']}")
+            description = f"{description}；前置条件 {'，'.join(parts)}"
         resource_name = f"{policy.service.namespace}/{policy.service.name}".lstrip("/")
         alert_defaults = {
             "policy": policy,

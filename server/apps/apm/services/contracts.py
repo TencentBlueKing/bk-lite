@@ -522,6 +522,7 @@ class MetricDataState(StrEnum):
     NO_DATA = "no_data"
     MISSING_BASELINE = "missing_baseline"
     INSUFFICIENT_SAMPLES = "insufficient_samples"
+    HOLD = "hold"
 
 
 @dataclass(frozen=True)
@@ -539,6 +540,8 @@ class PolicyQueryResult:
     reason: str = ""
     result_unit: str = ""
     window_ended_at: datetime | None = None
+    guards: tuple = ()
+    guard_blocked: bool = False
 
 
 @dataclass(frozen=True)

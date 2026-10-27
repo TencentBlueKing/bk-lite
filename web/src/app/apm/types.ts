@@ -609,8 +609,11 @@ export interface ApmPolicyInput {
   min_request_count?: number | null;
   slow_threshold_ms?: number | null;
   apdex_threshold_ms?: number | null;
+  guard_conditions?: Array<{ metric_type: ApmPolicyMetric; comparator: ApmPolicyComparator; value: number | string | null }>;
   thresholds: Array<{ severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: number | string }>;
   trigger_after: number;
+  trigger_window?: number | null;
+  recovery_threshold?: { comparator: ApmPolicyComparator; value: number | string } | Record<string, never>;
   recover_after: number;
   no_data_after?: number | null;
   no_data_severity?: ApmPolicySeverity | '';
@@ -656,7 +659,7 @@ export interface ApmPolicySeriesPoint {
   request_count?: number | null;
 }
 
-export type ApmPolicyDataState = 'available' | 'no_data' | 'missing_baseline' | 'insufficient_samples';
+export type ApmPolicyDataState = 'available' | 'no_data' | 'missing_baseline' | 'insufficient_samples' | 'hold';
 
 export interface ApmPolicyQueryResult {
   value: string | null;
@@ -679,7 +682,9 @@ export type ApmPolicyDryRunVerdict =
   | 'would_escalate'
   | 'no_data'
   | 'missing_baseline'
-  | 'insufficient_samples';
+  | 'insufficient_samples'
+  | 'guard_not_met'
+  | 'hold';
 
 export interface ApmPolicyDryRunItem {
   endpoint: string;
@@ -691,6 +696,8 @@ export interface ApmPolicyDryRunItem {
   request_count: number | null;
   matched_threshold: { severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: string } | null;
   reason: string;
+  guards?: Array<{ metric_type: ApmPolicyMetric; value: string | null; matched: boolean }>;
+  hit_history_text?: string;
 }
 
 export interface ApmPolicyDryRunResult {
@@ -806,6 +813,7 @@ export interface ApmAlertMetricSnapshotItem {
     value: string | number;
   } | null;
   data_state: ApmPolicyDataState;
+  recovery_threshold?: { comparator: string; value: string } | null;
 }
 
 export interface ApmAlertMetricSnapshot {

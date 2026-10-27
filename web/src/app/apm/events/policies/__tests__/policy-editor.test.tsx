@@ -728,4 +728,35 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.queryByLabelText('汇聚方法')).toBeNull();
     expect(screen.queryByLabelText('慢阈值 (ms)')).toBeNull();
   });
+
+  it('前置条件最多两行，触发方式提交周期窗口，恢复阈值单位跟着比较基准且数字不重算', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByText('前置条件'));
+    await user.click(await screen.findByRole('button', { name: '添加前置条件' }));
+    await user.click(screen.getByRole('button', { name: '添加前置条件' }));
+    expect(screen.queryByRole('button', { name: '添加前置条件' })).toBeNull();
+    const guardValue = screen.getAllByLabelText('前置条件值')[0] as HTMLInputElement;
+    await user.clear(guardValue);
+    await user.type(guardValue, '20');
+
+    await user.click(screen.getByRole('combobox', { name: '触发方式' }));
+    await user.click(await screen.findByText('在最近 N 个周期内'));
+    expect((screen.getByRole('spinbutton', { name: '周期数' }) as HTMLInputElement).value).toBe('3');
+
+    const recovery = screen.getByRole('spinbutton', { name: '恢复阈值' }) as HTMLInputElement;
+    await user.clear(recovery);
+    await user.type(recovery, '40');
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('相对上一等长窗'));
+    await user.click(screen.getByRole('radio', { name: '变化率 %' }));
+    expect((screen.getByRole('spinbutton', { name: '恢复阈值' }) as HTMLInputElement).value).toBe('40');
+
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(payload.guard_conditions).toEqual([{ metric_type: 'throughput', comparator: 'gte', value: 20 }]);
+    expect(payload.trigger_window).toBe(3);
+    expect(payload.recovery_threshold).toEqual({ comparator: 'lt', value: 40 });
+  });
 });

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { DeleteOutlined } from '@ant-design/icons';
 import {
   Button,
+  Collapse,
   Form,
   Input,
   InputNumber,
@@ -69,6 +70,8 @@ interface PolicyEditorValues extends Omit<
   no_data_alert_name: string;
   handlers: Array<string | number>;
   thresholds: ThresholdEditorRow[];
+  recovery_comparator: ApmPolicyComparator;
+  recovery_value: number | null;
 }
 
 const SEVERITIES: Array<{ value: ApmPolicySeverity; i18nKey: string; color: string }> = [
@@ -97,6 +100,10 @@ const DEFAULT_VALUES: PolicyEditorValues = {
     value: value === 'warning' ? 5 : null,
   })),
   trigger_after: 3,
+  trigger_window: null,
+  guard_conditions: [],
+  recovery_comparator: 'lt',
+  recovery_value: null,
   recover_after: 3,
   no_data_after: null,
   no_data_severity: '',
@@ -160,6 +167,8 @@ const VERDICT_KEY = {
   no_data: 'apm.policies.verdictNoData',
   missing_baseline: 'apm.policies.verdictMissingBaseline',
   insufficient_samples: 'apm.policies.verdictInsufficient',
+  guard_not_met: 'apm.policies.verdictGuardNotMet',
+  hold: 'apm.policies.verdictHold',
 } as const;
 
 const TEMPLATE_VARIABLES = [
@@ -275,6 +284,38 @@ function metricParamFields(values: PolicyEditorValues): Partial<ApmPolicyInput> 
   return {
     slow_threshold_ms: SLOW_METRICS.includes(values.metric_type) ? values.slow_threshold_ms ?? null : null,
     apdex_threshold_ms: values.metric_type === 'apdex' ? values.apdex_threshold_ms ?? 500 : null,
+  };
+}
+
+function judgmentFields(values: PolicyEditorValues): Partial<ApmPolicyInput> {
+  const kind = resolvedCompareKind(values.metric_type, values.compare_mode, values.compare_value_kind);
+  const guards = (values.guard_conditions || []).flatMap((guard) => {
+    if (guard.value === null || guard.value === undefined || guard.value === '') return [];
+    const numeric = Number(guard.value);
+    if (!Number.isFinite(numeric)) return [];
+    return [{
+      metric_type: guard.metric_type,
+      comparator: guard.comparator,
+      value: scalesStoredRatio(guard.metric_type, '') ? numeric / 100 : numeric,
+    }];
+  });
+  const recovery: NonNullable<ApmPolicyInput['recovery_threshold']> = values.recovery_value === null || values.recovery_value === undefined
+    ? {}
+    : {
+      comparator: values.recovery_comparator,
+      value: scalesStoredRatio(values.metric_type, kind) ? Number(values.recovery_value) / 100 : Number(values.recovery_value),
+    };
+  if (values.metric_type === 'no_traffic') {
+    const cleared: Partial<ApmPolicyInput> = {};
+    if (guards.length) cleared.guard_conditions = [];
+    if (values.trigger_window != null) cleared.trigger_window = null;
+    if (values.recovery_value != null) cleared.recovery_threshold = {};
+    return cleared;
+  }
+  return {
+    guard_conditions: guards,
+    trigger_window: values.trigger_window ?? null,
+    recovery_threshold: recovery,
   };
 }
 
@@ -398,6 +439,22 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
       };
     }),
     trigger_after: policy.trigger_after,
+    trigger_window: policy.trigger_window ?? null,
+    guard_conditions: (policy.guard_conditions || []).map((guard) => ({
+      metric_type: guard.metric_type,
+      comparator: guard.comparator,
+      value: thresholdToEditorValue(guard.metric_type, '', guard.value),
+    })),
+    recovery_comparator: policy.recovery_threshold && 'comparator' in policy.recovery_threshold
+      ? policy.recovery_threshold.comparator
+      : 'lt',
+    recovery_value: policy.recovery_threshold && 'value' in policy.recovery_threshold
+      ? thresholdToEditorValue(
+        policy.metric_type,
+        resolvedCompareKind(policy.metric_type, policy.compare_mode, policy.compare_value_kind),
+        policy.recovery_threshold.value,
+      )
+      : null,
     recover_after: policy.recover_after,
     no_data_after: policy.no_data_after,
     no_data_severity: policy.no_data_severity,
@@ -446,6 +503,7 @@ function buildMetricPreviewPayload(
     aggregation: COUNT_METRICS.includes(values.metric_type) ? 'avg' : values.aggregation,
     ...comparePayloadFields(values),
     ...metricParamFields(values),
+    ...judgmentFields(values),
     thresholds,
     trigger_after: values.trigger_after || 1,
     recover_after: values.recover_after || 1,
@@ -497,6 +555,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const metricWindow = Form.useWatch('metric_window', form);
   const aggregation = Form.useWatch('aggregation', form);
   const watchedThresholds = Form.useWatch('thresholds', form);
+  const triggerWindow = Form.useWatch('trigger_window', form);
+  const guardConditions = Form.useWatch('guard_conditions', form) ?? [];
   const selectedEndpoints = Form.useWatch('endpoints', form);
   const noDataSeverity = Form.useWatch('no_data_severity', form);
   const notificationTargets = Form.useWatch('notification_targets', form) ?? [];
@@ -512,6 +572,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const [availableEndpoints, setAvailableEndpoints] = useState<string[]>([]);
   const [loadedPolicy, setLoadedPolicy] = useState<ApmPolicy | null>(null);
   const [preview, setPreview] = useState<ApmPolicyQueryResult | null>(null);
+  const [guardOpen, setGuardOpen] = useState(false);
+  const [triggerMode, setTriggerMode] = useState<'consecutive' | 'window'>('consecutive');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -601,6 +663,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         form.setFieldsValue(policy
           ? toEditorValues(policy, defaultNoDataAlertNameRef.current)
           : { ...DEFAULT_VALUES, no_data_alert_name: defaultNoDataAlertNameRef.current });
+        setTriggerMode(policy?.trigger_window ? 'window' : 'consecutive');
       })
       .finally(() => setLoading(false));
     void loadNotificationDirectories();
@@ -770,6 +833,16 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     : ratioMetric
       ? { min: 0, max: 100 }
       : { min: 0 };
+  const ladderComparator = (watchedThresholds || []).find((row) => row?.comparator)?.comparator || 'gt';
+  const recoveryOptions: { value: ApmPolicyComparator; label: string }[] = ladderComparator === 'lt' || ladderComparator === 'lte'
+    ? [{ value: 'gt', label: '>' }, { value: 'gte', label: '≥' }]
+    : [{ value: 'lt', label: '<' }, { value: 'lte', label: '≤' }];
+  const absoluteMetricUnit = (metric: ApmPolicyMetric) => {
+    if (RATIO_METRICS.includes(metric)) return t('apm.common.percentUnit', '%');
+    if (LATENCY_METRICS.includes(metric)) return t('apm.common.millisecondUnit', 'ms');
+    if (COUNT_METRICS.includes(metric)) return t('apm.policies.timesUnit', '次');
+    return t('apm.policies.perSecondUnit', 'req/s');
+  };
   const comparatorOptions = metricType === 'apdex' && compareKind === ''
     ? [{ value: 'lt' as const, label: '<' }, { value: 'lte' as const, label: '≤' }]
     : [
@@ -887,6 +960,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       aggregation: COUNT_METRICS.includes(values.metric_type) ? 'avg' : values.aggregation,
       ...comparePayloadFields(values),
       ...metricParamFields(values),
+      ...judgmentFields(values),
       thresholds,
       trigger_after: values.trigger_after,
       recover_after: values.recover_after,
@@ -1057,6 +1131,12 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const syncComparator = (comparator: ApmPolicyComparator) => {
     const rows = form.getFieldValue('thresholds') ?? [];
     form.setFieldValue('thresholds', rows.map((row) => ({ ...row, comparator })));
+    const recovery = form.getFieldValue('recovery_comparator');
+    const higher = comparator === 'gt' || comparator === 'gte';
+    const recoveryHigher = recovery === 'gt' || recovery === 'gte';
+    if (higher === recoveryHigher) {
+      form.setFieldValue('recovery_comparator', higher ? 'lt' : 'gt');
+    }
   };
 
   if (loading)
@@ -1321,6 +1401,75 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               ]}
             />
           </div>
+          {showCompare ? (
+            <Collapse
+              className="bg-transparent"
+              bordered={false}
+              activeKey={guardConditions.length || guardOpen ? ['guards'] : []}
+              onChange={(key) => setGuardOpen(Array.isArray(key) ? key.includes('guards') : key === 'guards')}
+              items={[{
+                key: 'guards',
+                label: t('apm.policies.guardConditions', '前置条件'),
+                children: (
+                  <Form.List name="guard_conditions">
+                    {(fields, { add, remove }) => (
+                      <div className="flex flex-col gap-2">
+                        {fields.map((field) => {
+                          const metric = form.getFieldValue(['guard_conditions', field.name, 'metric_type']) as ApmPolicyMetric | undefined;
+                          const guardMetric = metric || 'throughput';
+                          return (
+                            <div key={field.key} className="flex flex-wrap items-center gap-2">
+                              <Form.Item name={[field.name, 'metric_type']} noStyle>
+                                <Select
+                                  aria-label={t('apm.policies.guardMetricAria', '前置条件指标')}
+                                  virtual={false}
+                                  className="min-w-40"
+                                  options={METRICS.filter((item) => item.value !== 'no_traffic').map((item) => ({
+                                    value: item.value,
+                                    label: t(item.i18nKey),
+                                  }))}
+                                />
+                              </Form.Item>
+                              <Form.Item name={[field.name, 'comparator']} noStyle>
+                                <Select
+                                  aria-label={t('apm.policies.guardComparatorAria', '前置条件比较符')}
+                                  virtual={false}
+                                  className="w-24"
+                                  options={guardMetric === 'apdex'
+                                    ? [{ value: 'lt', label: '<' }, { value: 'lte', label: '≤' }]
+                                    : [
+                                      { value: 'gt', label: '>' },
+                                      { value: 'gte', label: '≥' },
+                                      { value: 'lt', label: '<' },
+                                      { value: 'lte', label: '≤' },
+                                    ]}
+                                />
+                              </Form.Item>
+                              <Form.Item name={[field.name, 'value']} noStyle>
+                                <NumberWithUnit
+                                  aria-label={t('apm.policies.guardValueAria', '前置条件值')}
+                                  unit={absoluteMetricUnit(guardMetric)}
+                                />
+                              </Form.Item>
+                              <Button type="text" aria-label={t('apm.policies.removeGuard', '删除前置条件')} icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
+                            </div>
+                          );
+                        })}
+                        {fields.length < 2 ? (
+                          <Button
+                            type="dashed"
+                            onClick={() => add({ metric_type: 'throughput', comparator: 'gte', value: null })}
+                          >
+                            {t('apm.policies.addGuard', '添加前置条件')}
+                          </Button>
+                        ) : null}
+                      </div>
+                    )}
+                  </Form.List>
+                ),
+              }]}
+            />
+          ) : null}
           {showMinRequest ? (
             <Form.Item
               className={styles.minRequestCount}
@@ -1340,11 +1489,41 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
             <div className={styles.conditionRow}>
               <span className={styles.conditionLabel}><span aria-hidden="true">*</span>{t('apm.policies.triggerCondition', '触发条件：')}</span>
               <span className={styles.conditionSentence}>
-                {t('apm.policies.consecutive', '连续')}
                 <Form.Item name="trigger_after" noStyle rules={[{ required: true }]}>
-                  <InputNumber<number> min={1} max={60} aria-label={t('apm.policies.triggerCountAria', '连续触发次数')} />
+                  <InputNumber<number> min={1} max={triggerWindow == null ? 60 : 20} aria-label={t('apm.policies.triggerCountAria', '触发次数')} />
                 </Form.Item>
-                {t('apm.policies.triggerSentenceSuffix', '个汇聚周期满足阈值时触发告警。')}
+                {showCompare ? (
+                  <>
+                    {t('apm.policies.triggerTimes', '次')}
+                    <Select
+                      aria-label={t('apm.policies.triggerModeAria', '触发方式')}
+                      virtual={false}
+                      value={triggerMode}
+                      onChange={(mode: 'consecutive' | 'window') => {
+                        setTriggerMode(mode);
+                        if (mode === 'consecutive') {
+                          form.setFieldValue('trigger_window', null);
+                          return;
+                        }
+                        const count = Number(form.getFieldValue('trigger_after') || 1);
+                        form.setFieldValue('trigger_window', Math.min(20, Math.max(count, 3)));
+                      }}
+                      options={[
+                        { value: 'consecutive', label: t('apm.policies.triggerConsecutive', '连续') },
+                        { value: 'window', label: t('apm.policies.triggerWithinWindow', '在最近 N 个周期内') },
+                      ]}
+                    />
+                    {triggerMode === 'window' ? (
+                      <>
+                        {t('apm.policies.triggerWithinPrefix', '在最近')}
+                        <Form.Item name="trigger_window" noStyle>
+                          <InputNumber<number> min={1} max={20} aria-label={t('apm.policies.triggerWindowAria', '周期数')} />
+                        </Form.Item>
+                        {t('apm.policies.triggerWithinSuffix', '个周期内')}
+                      </>
+                    ) : null}
+                  </>
+                ) : t('apm.policies.triggerSentenceSuffix', '个汇聚周期满足阈值时触发告警。')}
               </span>
             </div>
             <div className={styles.conditionRow}>
@@ -1355,6 +1534,21 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   <InputNumber<number> min={1} max={60} aria-label={t('apm.policies.recoveryCountAria', '连续恢复次数')} />
                 </Form.Item>
                 {t('apm.policies.recoverySentenceSuffix', '个周期不满足阈值时自动恢复。')}
+                {showCompare ? (
+                  <>
+                    <span>{t('apm.policies.recoveryThreshold', '恢复阈值')}</span>
+                    <Form.Item name="recovery_comparator" noStyle>
+                      <Select aria-label={t('apm.policies.recoveryComparatorAria', '恢复阈值比较符')} virtual={false} options={recoveryOptions} />
+                    </Form.Item>
+                    <Form.Item name="recovery_value" noStyle>
+                      <NumberWithUnit
+                        aria-label={t('apm.policies.recoveryThreshold', '恢复阈值')}
+                        placeholder={t('apm.policies.recoveryThresholdPlaceholder', '不填则与触发线相同')}
+                        unit={thresholdUnit}
+                      />
+                    </Form.Item>
+                  </>
+                ) : null}
               </span>
             </div>
             <div className={styles.conditionRow}>

@@ -155,6 +155,8 @@ interface SnapshotChartRow {
   elapsedMinutes: number;
   value: number | null;
   threshold: number | null;
+  recovery: number | null;
+  hold: number | null;
   event: number | null;
   current: number | null;
   baseline: number | null;
@@ -183,6 +185,7 @@ function buildAlertSnapshotChartRows(
   });
   const percentAxis = snapshotUsesPercentAxis(snapshot);
   let lastThreshold: number | null = null;
+  let lastRecovery: number | null = null;
   return Array.from({ length: lastSlot + 1 }, (_, slot) => {
     const item = bySlot.get(slot);
     const value = item
@@ -192,11 +195,17 @@ function buildAlertSnapshotChartRows(
       ? toChartMetricNumber(alert.metric_type, item.threshold?.value, percentAxis ? 'percent' : snapshot?.unit)
       : lastThreshold;
     if (threshold != null) lastThreshold = threshold;
+    const recovery = item?.recovery_threshold?.value == null
+      ? lastRecovery
+      : toChartMetricNumber(alert.metric_type, item.recovery_threshold.value, percentAxis ? 'percent' : snapshot?.unit);
+    if (recovery != null) lastRecovery = recovery;
     return {
       timestamp: origin.add(slot * intervalMin, 'minute').toISOString(),
       elapsedMinutes: slot * intervalMin,
       value,
       threshold,
+      recovery,
+      hold: item?.data_state === 'hold' ? value : null,
       event: item?.type === 'event' ? value : null,
       current: percentAxis && item
         ? toChartMetricNumber(alert.metric_type, item.current_value, alert.metric_type === 'error_rate' ? 'ratio' : undefined)
@@ -785,6 +794,26 @@ export default function AlertDetailDrawer({
                             lineType: 'dashed',
                             lineWidth: 1.5,
                           },
+                          ...(metricSnapshotRows.some((row) => row.recovery != null)
+                            ? [{
+                              name: t('apm.alerts.recoveryLine', '恢复阈值'),
+                              type: 'line' as const,
+                              dataKey: 'recovery',
+                              color: OBSERVABILITY_SERIES_COLORS[3],
+                              lineType: 'dashed' as const,
+                              lineWidth: 1.5,
+                            }]
+                            : []),
+                          ...(metricSnapshotRows.some((row) => row.hold != null)
+                            ? [{
+                              name: t('apm.alerts.holdBand', '恢复带内'),
+                              type: 'line' as const,
+                              dataKey: 'hold',
+                              color: OBSERVABILITY_SERIES_COLORS[0],
+                              showSymbol: true,
+                              lineWidth: 0,
+                            }]
+                            : []),
                           {
                             name: t('apm.alerts.lifecycleEvent', '生命周期事件'),
                             type: 'line',
