@@ -12,17 +12,33 @@ export interface MenuPermissionNode {
   children?: readonly MenuPermissionNode[] | null;
 }
 
-/** 父行右侧：跟随 / 固定控制台写选项名；个人盘与未知状态仍写「首页」。 */
+/**
+ * 父行右侧 i18n：跟随→默认首页，控制台→控制台。
+ * 个人盘由调用方直接显示盘名；未知/加载中返回 null，避免左右都写「首页」。
+ */
 export const homepageParentLabelKey = (
   mode: HomepagePersonalMode | null | undefined,
-): string => {
+): string | null => {
   if (mode === 'follow') {
     return 'common.homepageFollowGlobal';
   }
   if (mode === 'workbench') {
     return 'common.homepagePinWorkbench';
   }
-  return 'common.homepage';
+  return null;
+};
+
+/** 父行右侧展示文案：有个人盘名用盘名，否则走 i18n 短状态。 */
+export const homepageParentRightLabel = (
+  mode: HomepagePersonalMode | null | undefined,
+  dashboardName: string | null | undefined,
+): { kind: 'text'; value: string } | { kind: 'i18n'; key: string } | null => {
+  if (mode === 'dashboard') {
+    const name = dashboardName?.trim();
+    return name ? { kind: 'text', value: name } : null;
+  }
+  const key = homepageParentLabelKey(mode);
+  return key ? { kind: 'i18n', key } : null;
 };
 
 /** 单选只认 personal_mode。dashboard 与未知状态两项都不勾。 */

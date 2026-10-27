@@ -377,6 +377,7 @@ const UserInfo: React.FC = () => {
           <div ref={homepageMenuItemRef}>
             <HomepageSwitcherRow
               mode={homepageMenu.personalMode}
+              dashboardName={homepageMenu.personalDashboardCaption}
               onToggle={toggleHomepagePanel}
             />
           </div>
@@ -396,7 +397,7 @@ const UserInfo: React.FC = () => {
     ];
 
     return items;
-  }, [consoleVersion, selectedGroup, groupTree, isLoading, isSuperUser, session, groupPanelContent, groupPanelVisible, homepageMenu.personalMode, toggleHomepagePanel, toggleLayoutPanel, t]);
+  }, [consoleVersion, selectedGroup, groupTree, isLoading, isSuperUser, session, groupPanelContent, groupPanelVisible, homepageMenu.personalMode, homepageMenu.personalDashboardCaption, toggleHomepagePanel, toggleLayoutPanel, t]);
 
   const handleMenuClick = ({ key }: any) => {
     // 点击组选项时不关闭菜单（由 Popover 控制）

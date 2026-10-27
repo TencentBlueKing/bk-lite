@@ -104,6 +104,69 @@ export const isDashboardHomepagePath = (
   return Boolean(dashboardId && dashboardId.trim());
 };
 
+/** 是否在门户首页落地路径（含裸工作台与带 dashboard_id 的仪表盘首页）。 */
+export const isPortalHomePath = (pathname: string | null | undefined): boolean => {
+  const path = normalizePathname(pathname || '');
+  return path === PORTAL_HOME_PATH || path === '/';
+};
+
+export interface PreferenceLandingState {
+  personal_mode: 'follow' | 'workbench' | 'dashboard';
+  personal_dashboard_id?: number | null;
+  global_mode: 'workbench' | 'dashboard';
+  global_dashboard_id?: number | null;
+}
+
+/** 根据已保存的偏好算出门户首页落地 URL。 */
+export const preferenceLandingHref = (
+  state: PreferenceLandingState | null | undefined,
+): string => {
+  if (!state) {
+    return PORTAL_HOME_PATH;
+  }
+  if (state.personal_mode === 'workbench') {
+    return PORTAL_HOME_PATH;
+  }
+  if (state.personal_mode === 'dashboard' && state.personal_dashboard_id) {
+    return `${PORTAL_HOME_PATH}?dashboard_id=${encodeURIComponent(String(state.personal_dashboard_id))}`;
+  }
+  if (state.global_mode === 'dashboard' && state.global_dashboard_id) {
+    return `${PORTAL_HOME_PATH}?dashboard_id=${encodeURIComponent(String(state.global_dashboard_id))}`;
+  }
+  return PORTAL_HOME_PATH;
+};
+
+const normalizeLocationKey = (pathname: string, search: string): string => {
+  const path = normalizePathname(pathname || '');
+  const params = new URLSearchParams(search.replace(/^\?/, ''));
+  const dashboardId = params.get('dashboard_id')?.trim();
+  if (dashboardId) {
+    return `${path}?dashboard_id=${dashboardId}`;
+  }
+  return path;
+};
+
+/**
+ * 当前已在门户首页时，若新偏好落地 URL 与当前不一致则返回目标；
+ * 不在首页、或已在目标上则返回 null（不导航）。
+ */
+export const homepagePreferenceNavigationTarget = (
+  pathname: string | null | undefined,
+  search: string | null | undefined,
+  state: PreferenceLandingState | null | undefined,
+): string | null => {
+  if (!isPortalHomePath(pathname)) {
+    return null;
+  }
+  const target = preferenceLandingHref(state);
+  const current = normalizeLocationKey(pathname || '', search || '');
+  const next = normalizeLocationKey(
+    target.split('?')[0] || PORTAL_HOME_PATH,
+    target.includes('?') ? target.slice(target.indexOf('?')) : '',
+  );
+  return current === next ? null : target;
+};
+
 const readLandingPayload = (payload: unknown): HomepageLandingResolution | null => {
   if (!payload || typeof payload !== 'object') {
     return null;

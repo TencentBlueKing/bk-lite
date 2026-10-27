@@ -524,7 +524,6 @@
       "shareStatusHint": "ⓘ 分享页只展示架构，不显示实时状态和告警",
       "linkOpenMonitor": "在监控中打开 ↗",
       "linkOpenAlarm": "在告警中打开 ↗",
-
       "editor": {
         "icon": "图标",
         "replaceIcon": "替换",
@@ -2012,15 +2011,15 @@
     }
   },
   "opsHomepage": {
-    "setPersonal": "设为首页",
-    "clearPersonal": "取消设为首页",
+    "setPersonal": "设为个人首页",
+    "clearPersonal": "取消个人首页",
     "setGlobal": "设为默认首页",
     "restoreGlobal": "取消默认首页",
     "openInAnalysis": "在运营分析中打开",
-    "setPersonalSuccess": "已设为我的首页",
-    "clearPersonalSuccess": "已取消我的首页，改为跟随全局默认。若全局默认仍是该仪表盘，下次登录还会进入。",
-    "setGlobalSuccess": "已设为全局默认首页",
-    "restoreGlobalSuccess": "已取消默认首页，默认首页恢复为工作台",
+    "setPersonalSuccess": "已设为个人首页",
+    "clearPersonalSuccess": "已设为默认首页",
+    "setGlobalSuccess": "已设为默认首页",
+    "restoreGlobalSuccess": "已取消默认首页",
     "fallbackMissing": "仪表盘不存在或已删除，已返回工作台",
     "fallbackOrg": "当前组织无法查看该仪表盘，已返回工作台",
     "backToHomepage": "返回首页"
