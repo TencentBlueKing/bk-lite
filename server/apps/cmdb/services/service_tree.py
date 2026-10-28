@@ -585,10 +585,9 @@ def parse_import_row(row: dict[str, Any], *, expected_system_name: str) -> dict[
     }
 
 
-def match_host(identifier: str, hosts: Iterable[dict[str, Any]] | None) -> dict[str, Any]:
-    key = _nonempty_text(identifier)
-    if not key:
-        raise ValidationAppException("导入行缺少主机标识")
+def _index_hosts(
+    hosts: Iterable[dict[str, Any]] | None,
+) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
     by_uuid: dict[str, dict[str, Any]] = {}
     by_name: dict[str, list[dict[str, Any]]] = {}
     by_ip: dict[str, list[dict[str, Any]]] = {}
@@ -600,6 +599,15 @@ def match_host(identifier: str, hosts: Iterable[dict[str, Any]] | None) -> dict[
             by_uuid[uuid] = host
             by_name.setdefault(_nonempty_text(host.get("inst_name")), []).append(host)
             by_ip.setdefault(_nonempty_text(host.get("ip_addr")), []).append(host)
+    return by_uuid, by_name, by_ip
+
+
+def _match_indexed_host(
+    key: str,
+    by_uuid: dict[str, dict[str, Any]],
+    by_name: dict[str, list[dict[str, Any]]],
+    by_ip: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
     if key in by_uuid:
         return by_uuid[key]
     name_hits = [item for item in by_name.get(key, []) if _nonempty_text(item.get("inst_uuid"))]
@@ -613,6 +621,14 @@ def match_host(identifier: str, hosts: Iterable[dict[str, Any]] | None) -> dict[
     if len(ip_hits) > 1:
         raise ValidationAppException("主机标识匹配不唯一")
     raise ValidationAppException("找不到对应的主机")
+
+
+def match_host(identifier: str, hosts: Iterable[dict[str, Any]] | None) -> dict[str, Any]:
+    key = _nonempty_text(identifier)
+    if not key:
+        raise ValidationAppException("导入行缺少主机标识")
+    by_uuid, by_name, by_ip = _index_hosts(hosts)
+    return _match_indexed_host(key, by_uuid, by_name, by_ip)
 
 
 def _app_key(application: str) -> str:
@@ -632,11 +648,12 @@ def plan_import_rows(
     created_keys: set[str] = set()
     assign: list[dict[str, str]] = []
     errors: list[dict[str, Any]] = []
+    by_uuid, by_name, by_ip = _index_hosts(hosts)
 
     for index, raw in enumerate(rows or [], start=1):
         try:
             parsed = parse_import_row(raw, expected_system_name=system_name)
-            host = match_host(parsed["host"], hosts)
+            host = _match_indexed_host(parsed["host"], by_uuid, by_name, by_ip)
             app_key = _app_key(parsed["application"])
             if app_key not in existing_apps and app_key not in created_keys:
                 create_nodes.append(
