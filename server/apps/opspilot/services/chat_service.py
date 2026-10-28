@@ -19,6 +19,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
     BUILTIN_LOG_TOOL_NAME,
+    BUILTIN_MLOPS_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_MSSQL_TOOL_NAME,
     BUILTIN_MYSQL_TOOL_NAME,
@@ -30,6 +31,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_attachment_file_runtime_tool,
     build_builtin_cmdb_runtime_tool,
     build_builtin_log_runtime_tool,
+    build_builtin_mlops_runtime_tool,
     build_builtin_monitor_runtime_tool,
     build_builtin_mssql_runtime_tool,
     build_builtin_mysql_runtime_tool,
@@ -458,6 +460,7 @@ class ChatService:
             BUILTIN_ORACLE_TOOL_NAME: None,
             BUILTIN_MSSQL_TOOL_NAME: None,
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: None,
+            BUILTIN_MLOPS_TOOL_NAME: None,
         }
         builtin_builders = {
             BUILTIN_ATTACHMENT_FILE_TOOL_NAME: build_builtin_attachment_file_runtime_tool,
@@ -470,6 +473,7 @@ class ChatService:
             BUILTIN_ORACLE_TOOL_NAME: build_builtin_oracle_runtime_tool,
             BUILTIN_MSSQL_TOOL_NAME: build_builtin_mssql_runtime_tool,
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: build_builtin_activedirectory_runtime_tool,
+            BUILTIN_MLOPS_TOOL_NAME: build_builtin_mlops_runtime_tool,
         }
 
         selected_tool_ids = [tool["id"] for tool in selected_tools if isinstance(tool.get("id"), int) and tool["id"] > 0]

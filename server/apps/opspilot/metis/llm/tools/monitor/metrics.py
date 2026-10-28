@@ -5,6 +5,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.core.utils.time_util import format_rfc3339_utc
+from apps.opspilot.metis.llm.tools.mlops.monitor_store import record_monitor_metric_query
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, resolve_metric_window, wrap_error, wrap_success
 from apps.opspilot.metis.llm.tools.search_terms import user_message_from_config
 from apps.opspilot.metis.llm.tools.user_clock import parse_user_wall_time, timezone_name_from_config
@@ -276,6 +277,7 @@ def monitor_query_metric_data(
         skipped = (result.get("data") or {}).get("skipped_instance_ids") if isinstance(result.get("data"), dict) else None
         if skipped:
             result["_next_step_hint"] = "部分实例无法识别或无权限，已跳过并写在 skipped_instance_ids。其余实例的时序仍在结果里，不要逐个重试被跳过的实例。"
+    record_monitor_metric_query(config, metric, instance_ids, result, monitor_obj_id=monitor_obj_id or "")
     return result
 
 

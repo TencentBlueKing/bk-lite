@@ -62,6 +62,15 @@ class ToolPlanningError(RuntimeError):
 # 弱模型常忽略模糊描述；目录含 monitor_* 时用系统侧导读强制对齐主机指标场景。
 _MONITOR_LIST_METRICS_TOOL = "monitor_list_object_metrics"
 _MONITOR_QUERY_TOOL = "monitor_query_metric_data"
+_MLOPS_PREDICT_TOOL = "mlops_predict_timeseries"
+_MLOPS_PREDICT_OBJECTIVE = "调用预测时必须传入与 monitor_query_metric_data 相同的 monitor_obj_id、metric、instance_ids，原样复制这三个参数，禁止把监控点写入 data。"
+_MLOPS_MONITOR_LINK_HINT = (
+    "预测联动：目录含 mlops_predict_timeseries 时，未来预测必须与 monitor_query_metric_data 放在同一步。"
+    "先查时序，再调用 mlops_predict_timeseries，原样复制查询的 monitor_obj_id、metric、instance_ids。"
+    "instance_ids 就是这次查询已经声明的实例范围，禁止改成 IP 或主机名。"
+    "禁止把监控返回的点写入 data，禁止另起一步分析监控结果再交给预测。"
+    "只有用户自己贴出序列、且本步不查监控时，才传 data。"
+)
 _MONITOR_CATALOG_HINT = (
     "能力导读：目录含 monitor_* 时，可查 BK-Lite 已纳管主机/实例的 CPU使用率、内存、磁盘，以及监控策略扫描出的活跃告警。"
     "用户问「主机名或IP xxx的CPU」必须规划对应 monitor_* 步骤，典型顺序："
@@ -1333,6 +1342,76 @@ def enforce_list_metrics_with_query(
     return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
 
+def _order_monitor_query_before_predict(tools: list[str], cap: int) -> list[str]:
+    must = [name for name in (_MONITOR_LIST_METRICS_TOOL, _MONITOR_QUERY_TOOL, _MLOPS_PREDICT_TOOL) if name in tools]
+    extras = [name for name in tools if name not in must]
+    ordered = []
+    for name in must[:1] + extras + must[1:]:
+        if name not in ordered:
+            ordered.append(name)
+    if _MONITOR_QUERY_TOOL in ordered and _MLOPS_PREDICT_TOOL in ordered:
+        ordered = [name for name in ordered if name != _MLOPS_PREDICT_TOOL]
+        query_at = ordered.index(_MONITOR_QUERY_TOOL)
+        ordered.insert(query_at + 1, _MLOPS_PREDICT_TOOL)
+    if len(ordered) <= cap:
+        return ordered
+    kept_must = [name for name in ordered if name in {_MONITOR_LIST_METRICS_TOOL, _MONITOR_QUERY_TOOL, _MLOPS_PREDICT_TOOL}]
+    kept_extra = [name for name in ordered if name not in set(kept_must)]
+    room = max(0, cap - len(kept_must))
+    trimmed = kept_must[:1] + kept_extra[:room] + kept_must[1:]
+    return trimmed[:cap]
+
+
+def _mlops_monitor_link_hints(has_monitor: bool, available_names: set[str]) -> list[str]:
+    if has_monitor and _MLOPS_PREDICT_TOOL in available_names:
+        return [_MLOPS_MONITOR_LINK_HINT]
+    return []
+
+
+def colocate_mlops_predict_with_monitor_query(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    *,
+    max_tools_per_step: int = 4,
+) -> ToolExecutionPlan:
+    """预测与查时序放在同一步，避免模型把截断后的点传给预测工具。"""
+    if _MLOPS_PREDICT_TOOL not in available_names or _MONITOR_QUERY_TOOL not in available_names:
+        return plan
+    steps = list(plan.steps or [])
+    query_at = next((index for index, step in enumerate(steps) if _MONITOR_QUERY_TOOL in (step.tools or [])), None)
+    predict_at = [index for index, step in enumerate(steps) if _MLOPS_PREDICT_TOOL in (step.tools or [])]
+    if query_at is None or not predict_at:
+        return plan
+    cap = max(2, max_tools_per_step)
+    target = steps[query_at]
+    tools = list(target.tools or [])
+    if _MLOPS_PREDICT_TOOL not in tools:
+        tools.append(_MLOPS_PREDICT_TOOL)
+    tools = _order_monitor_query_before_predict(tools, cap)
+    objective = str(target.objective or "")
+    if _MLOPS_PREDICT_OBJECTIVE not in objective:
+        objective = f"{objective} {_MLOPS_PREDICT_OBJECTIVE}".strip()
+    kept: list[ToolExecutionStep] = []
+    changed = tools != list(target.tools or []) or objective != str(target.objective or "") or predict_at != [query_at]
+    for index, step in enumerate(steps):
+        if index == query_at:
+            kept.append(step.model_copy(update={"tools": tools, "objective": objective}))
+            continue
+        remaining = [name for name in (step.tools or []) if name != _MLOPS_PREDICT_TOOL]
+        if not remaining:
+            changed = True
+            continue
+        if remaining != list(step.tools or []):
+            changed = True
+            kept.append(step.model_copy(update={"tools": remaining}))
+            continue
+        kept.append(step)
+    if not changed:
+        return plan
+    logger.info("DeepAgent 规划硬校验：时序预测已与查时序放在同一步")
+    return ToolExecutionPlan(goal=plan.goal, steps=kept)
+
+
 def drop_k8s_followup_steps_after_unresolved_target(steps: Sequence[ToolExecutionStep]) -> list[ToolExecutionStep]:
     """反查已收口后，去掉重复反查和仍依赖 namespace 的后续步骤。"""
     skip = _K8S_NAMESPACE_LOOKUP_TOOLS | _K8S_NAMESPACE_SCAN_TOOLS | _K8S_NAMESPACE_REQUIRED_TOOLS
@@ -2003,6 +2082,7 @@ class ToolExecutionPlanner:
         hints = []
         if has_monitor:
             hints.append(_MONITOR_CATALOG_HINT)
+        hints.extend(_mlops_monitor_link_hints(has_monitor, available_names))
         if has_monitor and has_cmdb:
             hints.append(_CMDB_MONITOR_LINK_HINT)
         if has_monitor and has_alerts:
@@ -2084,6 +2164,7 @@ class ToolExecutionPlanner:
             user_message=user_message,
         )
         plan = enforce_list_metrics_with_query(plan, available_names, max_tools_per_step=self._max_tools_per_step)
+        plan = colocate_mlops_predict_with_monitor_query(plan, available_names, max_tools_per_step=self._max_tools_per_step)
         plan = rewrite_generic_alert_query_to_alerts_center(plan, available_names, user_message=user_message)
         plan = rewrite_cmdb_search_for_declared_model(plan, available_names, user_message=user_message)
         plan = drop_type_choice_when_declared(plan, user_message, conversation_messages)

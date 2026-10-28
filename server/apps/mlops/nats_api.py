@@ -44,6 +44,9 @@ from apps.mlops.models.timeseries_predict import (
     TimeSeriesPredictTrainJob,
 )
 from apps.mlops.utils.i18n import mlops_message_for_locale
+from apps.mlops.views.timeseries_predict import execute_timeseries_predict
+from apps.system_mgmt.models.user import User as SystemUser
+from apps.system_mgmt.nats.auth import build_user_authorization_context
 
 ROOT_MODULE_MODEL_MAP = {
     "dataset": {
@@ -279,3 +282,86 @@ def get_mlops_module_data(module, child_module, page, page_size, group_id, actor
     data_list = queryset.values("id", "name")[start:end]
 
     return {"result": True, "count": total_count, "items": list(data_list)}
+
+
+TIMESERIES_PREDICT_PERMISSION = "timeseries_predict-Predict"
+
+
+def _load_predict_actor(actor_context, locale):
+    """按用户名和域重新计算权限，不采用调用方附带的权限集合。"""
+    if not isinstance(actor_context, dict):
+        return None, _nats_message(locale, "error.nats_missing_actor_context")
+    username = actor_context.get("username")
+    domain = actor_context.get("domain")
+    if not isinstance(username, str) or not username.strip() or not isinstance(domain, str) or not domain.strip():
+        return None, _nats_message(locale, "error.nats_missing_actor_context")
+
+    user = SystemUser.objects.filter(username=username, domain=domain, disabled=False).first()
+    if user is None:
+        return None, _nats_message(locale, "error.nats_predict_user_not_found")
+    return build_user_authorization_context(user), ""
+
+
+def _actor_may_predict(context, team_id):
+    if context.get("is_superuser"):
+        return True, ""
+    permissions = context.get("permission") or {}
+    names = permissions.get("mlops") or []
+    if TIMESERIES_PREDICT_PERMISSION not in names:
+        return False, "permission"
+    group_ids = set()
+    for group in context.get("group_list") or []:
+        group_id = group.get("id") if isinstance(group, dict) else group
+        try:
+            group_ids.add(int(group_id))
+        except (TypeError, ValueError):
+            continue
+    if team_id not in group_ids:
+        return False, "group"
+    return True, ""
+
+
+@nats_client.register
+def predict_timeseries_serving(serving_id, data, steps=5, actor_context=None, locale=None):
+    """转调现有时序预测。一次一条序列，权限和组织以系统用户为准。"""
+    locale = _resolve_nats_locale(locale=locale, actor_context=actor_context)
+    context, message = _load_predict_actor(actor_context, locale)
+    if context is None:
+        return {"result": False, "message": message}
+
+    try:
+        serving_id = int(serving_id)
+    except (TypeError, ValueError):
+        return {"result": False, "message": _nats_message(locale, "error.nats_predict_serving_not_found")}
+
+    try:
+        team_id = int((actor_context or {}).get("team_id"))
+    except (TypeError, ValueError):
+        return {"result": False, "message": _nats_message(locale, "error.nats_invalid_group_id")}
+
+    allowed, reason = _actor_may_predict(context, team_id)
+    if not allowed and reason == "permission":
+        return {"result": False, "message": _nats_message(locale, "error.nats_predict_permission_denied")}
+    if not allowed:
+        return {"result": False, "message": _nats_message(locale, "error.nats_group_access_denied")}
+
+    serving = TimeSeriesPredictServing.objects.filter(id=serving_id).first()
+    if serving is None:
+        return {"result": False, "message": _nats_message(locale, "error.nats_predict_serving_not_found")}
+
+    if not context.get("is_superuser"):
+        teams = serving.team or []
+        if team_id not in teams and str(team_id) not in {str(item) for item in teams}:
+            return {"result": False, "message": _nats_message(locale, "error.nats_predict_serving_access_denied")}
+
+    if steps is None:
+        steps = 5
+    body, http_status = execute_timeseries_predict(
+        serving,
+        data,
+        steps,
+        lambda key, **values: _nats_message(locale, key, **values),
+    )
+    if http_status == 200:
+        return {"result": True, "data": body}
+    return {"result": False, "message": body.get("error") or "", "status": http_status, "data": body}
