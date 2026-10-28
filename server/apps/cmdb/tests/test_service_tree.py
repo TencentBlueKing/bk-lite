@@ -1,6 +1,9 @@
 import logging
 
+import pytest
+
 from apps.cmdb.services.application_system import expand_systems_to_host_uuids
+from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.service_tree import (
     APPLICATION_RUN_HOST,
     SYSTEM_CONTAINS_APPLICATION,
@@ -18,7 +21,7 @@ from apps.cmdb.services.service_tree import (
     transfer_host_plan,
     unbind_host_plan,
 )
-from apps.core.exceptions.base_app_exception import ValidationAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 
 
 def _edges(*items):
@@ -944,3 +947,116 @@ def test_delete_node_logs_lifecycle_template(monkeypatch, caplog):
     assert records[0].args == ("s1", "a1", "application")
     assert records[0].getMessage() == "event=service_tree_node_deleted system_uuid=s1 node_uuid=a1 kind=application"
     assert "alice" not in records[0].getMessage()
+
+
+_PORTAL_SYSTEM = "11111111-1111-4111-8111-111111111111"
+_PORTAL_FRONT = "22222222-2222-4222-8222-222222222222"
+_PORTAL_BACK = "33333333-3333-4333-8333-333333333333"
+_HOST_WEB = "44444444-4444-4444-8444-444444444444"
+_HOST_DB = "55555555-5555-4555-8555-555555555555"
+
+
+def _service_tree_edge(asst_id, model_asst, src_model, src, dst_model, dst):
+    edge = _edge(model_asst, src_model, src, dst_model, dst)
+    edge["asst_id"] = asst_id
+    edge["_id"] = f"{model_asst}:{src}:{dst}"
+    return edge
+
+
+def _stub_service_tree_graph(monkeypatch, edges, entities):
+    """只替换图查询。批量实例查询仍走 query_entity_by_uuids 的重复校验。"""
+    queried: list[list[str]] = []
+
+    def _matches(edge, params):
+        for item in params or []:
+            field = item.get("field")
+            value = item.get("value")
+            kind = str(item.get("type") or "")
+            current = edge.get(field)
+            if kind.endswith("[]"):
+                if current not in set(value or []):
+                    return False
+            elif current != value:
+                return False
+        return True
+
+    def _wrap(edge):
+        src_uuid = edge["src_inst_uuid"]
+        dst_uuid = edge["dst_inst_uuid"]
+        src = dict(entities.get(src_uuid) or {"inst_uuid": src_uuid, "model_id": edge["src_model_id"]})
+        dst = dict(entities.get(dst_uuid) or {"inst_uuid": dst_uuid, "model_id": edge["dst_model_id"]})
+        return {"edge": dict(edge), "src": src, "dst": dst}
+
+    class _Graph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def query_edge(self, _label, params, **_kwargs):
+            return [_wrap(edge) for edge in edges if _matches(edge, params)]
+
+        def query_entity_by_inst_uuids(self, values):
+            queried.append(list(values))
+            return [dict(entities[value]) for value in values if value in entities]
+
+    monkeypatch.setattr("apps.cmdb.services.service_tree._layer_schema", lambda: layer_schema_from([], []))
+    monkeypatch.setattr("apps.cmdb.services.application_system.GraphClient", lambda **_kwargs: _Graph())
+    monkeypatch.setattr("apps.cmdb.services.instance.GraphClient", lambda **_kwargs: _Graph())
+    return queried
+
+
+def _portal_entities(*hosts):
+    entities = {
+        _PORTAL_FRONT: {"inst_uuid": _PORTAL_FRONT, "inst_name": "门户前端", "model_id": "application"},
+        _PORTAL_BACK: {"inst_uuid": _PORTAL_BACK, "inst_name": "门户后端", "model_id": "application"},
+    }
+    for host_uuid, name in hosts:
+        entities[host_uuid] = {"inst_uuid": host_uuid, "inst_name": name, "model_id": "host", "ip_addr": "10.0.0.1"}
+    return entities
+
+
+def _portal_edges(*host_links):
+    edges = [
+        _service_tree_edge("contains", SYSTEM_CONTAINS_APPLICATION, "system", _PORTAL_SYSTEM, "application", _PORTAL_FRONT),
+        _service_tree_edge("contains", SYSTEM_CONTAINS_APPLICATION, "system", _PORTAL_SYSTEM, "application", _PORTAL_BACK),
+    ]
+    for app_uuid, host_uuid in host_links:
+        edges.append(_service_tree_edge("run", APPLICATION_RUN_HOST, "application", app_uuid, "host", host_uuid))
+    return edges
+
+
+def test_export_rows_distinct_hosts_keeps_one_row_per_application(monkeypatch):
+    queried = _stub_service_tree_graph(
+        monkeypatch,
+        _portal_edges((_PORTAL_FRONT, _HOST_WEB), (_PORTAL_BACK, _HOST_DB)),
+        _portal_entities((_HOST_WEB, "web-1"), (_HOST_DB, "db-1")),
+    )
+
+    rows = ServiceTreeService.export_rows({"inst_uuid": _PORTAL_SYSTEM, "inst_name": "门户"})
+
+    assert rows == [
+        {"应用系统": "门户", "应用": "门户前端", "主机标识": "web-1"},
+        {"应用系统": "门户", "应用": "门户后端", "主机标识": "db-1"},
+    ]
+    assert [call for call in queried if _HOST_WEB in call or _HOST_DB in call] == [[_HOST_WEB, _HOST_DB]]
+
+
+def test_export_rows_shared_host_keeps_one_row_per_application(monkeypatch):
+    with pytest.raises(BaseAppException, match="inst_uuid 不允许重复"):
+        InstanceManage.query_entity_by_uuids([_HOST_WEB, _HOST_WEB])
+
+    queried = _stub_service_tree_graph(
+        monkeypatch,
+        _portal_edges((_PORTAL_FRONT, _HOST_WEB), (_PORTAL_BACK, _HOST_WEB)),
+        _portal_entities((_HOST_WEB, "web-1")),
+    )
+
+    rows = ServiceTreeService.export_rows({"inst_uuid": _PORTAL_SYSTEM, "inst_name": "门户"})
+
+    assert rows == [
+        {"应用系统": "门户", "应用": "门户前端", "主机标识": "web-1"},
+        {"应用系统": "门户", "应用": "门户后端", "主机标识": "web-1"},
+    ]
+    assert [call for call in queried if _HOST_WEB in call] == [[_HOST_WEB]]
