@@ -35,16 +35,16 @@ Status: implemented（2026-10-28 产品确认方案 1，同日实现，未提交
          ├──────────────────────────────────────────────────────────┤
          │ ┌ 1 ┐  统计  [计数 ▾] [level ▾]                      ✕  │  ← 条件卡
          │ │   │  比较  [当前值 | 变化量 | 变化率]                   │
-         │ └───┘  触发  当结果 [> ▾] [100        ]                  │
+         │ └───┘  触发  [大于 ▾] [100        ]                      │
          │ ┌ 2 ┐  统计  [平均值 ▾] [duration ▾]                 ✕  │
          │ │   │  比较  [当前值 | 变化量 | 变化率●] 对照 [N 小时前 ▾] [24 小时] │
-         │ └───┘  触发  当结果 [> ▾] [20      %]                    │
+         │ └───┘  触发  [大于 ▾] [20      %]                        │
          │        对照为 0 时不判定                                  │
          │ [＋ 添加条件]                                             │
          └──────────────────────────────────────────────────────────┘
 ```
 
-- 一条条件 = 一张卡，卡内三行：**统计**（函数 + 字段 + 函数参数）、**比较**（当前值 / 变化量 / 变化率 → 对照）、**触发**（当结果 运算符 阈值 单位）。顺序即用户的思考顺序。
+- 一条条件 = 一张卡，卡内三行：**统计**（函数 + 字段 + 函数参数）、**比较**（当前值 / 变化量 / 变化率 → 对照）、**触发**（运算符 + 阈值 + 单位）。三行控件左缘对齐。顺序即用户的思考顺序。
 - 不可比较的函数（速率、占比、字节速率）**不渲染**「比较」行，而不是禁用。
 - 「满足 任意 / 全部 条件」放在面板栏头左侧，用 `Radio.Group optionType="button" size="small"`。
 - 删除是卡右上角的文字图标按钮，只在条件数 > 1 时出现；添加是面板底部的 `type="dashed"` 按钮。
@@ -82,10 +82,10 @@ Status: implemented（2026-10-28 产品确认方案 1，同日实现，未提交
 
 - 外壳：`rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3`。可输入区域用 `--color-bg`，不要再用 `fill-1` 灰底（`web/DESIGN.md` Inputs 节）。
 - 内部：`flex items-start gap-3`。
-  - 左：序号徽标 `inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]`，内容为 1 起的序号，带 `aria-label={t('log.event.conditionIndex', '条件 {index}', { index })}`（项目 `t` 的签名是 `t(id, defaultMessage?, values?)`，见 `web/src/utils/i18n.ts`）。
-  - 中：`flex min-w-0 flex-1 flex-col gap-2.5`，放三行与提示。
+  - 左：序号徽标 `inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]`，与 32px 控件同高。内容为 1 起的序号，带 `aria-label={t('log.event.conditionIndex', '条件 {index}', { index })}`（项目 `t` 的签名是 `t(id, defaultMessage?, values?)`，见 `web/src/utils/i18n.ts`）。
+  - 中：`grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-2.5`。第一列是行标签，第二列是控件，三行控件左缘对齐。提示占 `col-span-2`。
   - 右：`data.length > 1` 时渲染 `<Button type="text" size="small" icon={<CloseOutlined />} aria-label={t('log.event.deleteCondition')} />`；只有一条时不渲染任何占位。
-- 每一行：`flex flex-wrap items-center gap-2`，行首标签 `<span className="w-10 shrink-0 text-[var(--color-text-2)]">`。三行标签 key：`log.event.statRow`（统计）、`log.event.compareRow`（比较）、`log.event.triggerRow`（触发）。
+- 行标签 class：`text-[var(--color-text-2)]`。三行标签 key：`log.event.statRow`（统计）、`log.event.compareRow`（比较）、`log.event.triggerRow`（触发）。控件行：`flex min-w-0 flex-wrap items-center gap-2`。
 
 #### 行 1 统计
 
@@ -102,9 +102,9 @@ Status: implemented（2026-10-28 产品确认方案 1，同日实现，未提交
 
 #### 行 3 触发
 
-- `<span className="text-[var(--color-text-2)]">{t('log.event.whenResult')}</span>`。
-- 运算符 `Select`：`style={{ width: 96 }}`，`optionLabelProp="label"`，选项来自 `useConditionList()`（`=`、`!=`、`>`、`<`、`in`、`nin`，不增不删）。选项内容显示「符号 + 中文」（如 `> 大于`），选中后只显示符号；`in` / `nin` 没有符号，选项与选中态都显示中文。placeholder `log.event.selectCriteria`。
-- 阈值 `Input`：`style={{ width: 140 }}`，placeholder `log.event.enterThreshold`。有单位时用 AntD `addonAfter`（不再手写 `Space.Compact + span`）：
+- 不再在运算符前重复「当结果」。行标签「触发」已经说明这一行，重复词会把运算符顶到函数、比较控件的右边。
+- 运算符 `Select`：宽度 `112`，placeholder `log.event.selectCriteria`。收起和下拉都只显示中文。新建任何条件下拉只有等于 / 不等于 / 大于 / 小于。旧条件 `op` 为 `in` / `nin` 且当前不是数值比较时，把该项追加回选项原样回显；用户改成别的后不再出现。切到数值比较时，把 `in` / `nin` 清成空。
+- 阈值：数值比较时用 `InputNumber`（`style={{ width: 140 }}`，不设 `min`、不设 `precision`，值仍以字符串写回 `FilterItem.value`），否则用 `Input`。placeholder `log.event.enterThreshold`。有单位时用 AntD `addonAfter`（不再手写 `Space.Compact + span`）：
   - `count_rate` → `t('log.event.countRateUnit')`（条/秒）
   - `bytes_rate` → `t('log.event.bytesRateUnit')`（字节/秒）
   - `compareKind === 'percent'` 或 `func === 'ratio'` → `%`
@@ -168,7 +168,7 @@ Status: implemented（2026-10-28 产品确认方案 1，同日实现，未提交
 - 新增：点击 `log.event.addCondition` 触发 `onChange`，新数组末尾为 `{ field: null, op: null, value: '' }`。
 - 新增：序号徽标文本 `1`、`2`。
 
-`alertConditionsForm.test.tsx` 现有用例应保持通过；若 Harness 需要补 `term` 相关断言，加一条「栏头显示 matchPrefix」。
+`alertConditionsForm.tsx` 的 `name="rule"` 使用 `validateStatus=""`：组校验失败时错误说明仍出现在「规则」下方，不把错误边框铺到卡内每一个输入框。现有用例应保持通过。
 
 ### 验收
 

@@ -16,12 +16,11 @@ import {
 } from '@/app/log/constants';
 import { useConditionList } from '@/app/log/hooks/event';
 import { compareOffsetLimit, presentCompare } from '@/app/log/utils/compareTarget';
+import { isNumericCompare } from './policyFormUtils';
 
 const { Option } = Select;
 
-const SYMBOLIC_OPERATORS = new Set(['=', '!=', '>', '<']);
-
-const operatorHasSymbol = (id: ListItem['id']) => SYMBOLIC_OPERATORS.has(String(id));
+const MEMBERSHIP_OPS = new Set(['in', 'nin']);
 
 const ConditionSelector: React.FC<ConditionFilterProps> = ({
   data = [],
@@ -68,6 +67,10 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
         delete params.filter;
       }
       newData[extra.index].params = params;
+      const nextKind = presentCompare(newData[extra.index].compare).kind || 'absolute';
+      if (isNumericCompare(extra.val, nextKind) && MEMBERSHIP_OPS.has(String(newData[extra.index].op))) {
+        newData[extra.index].op = null;
+      }
     }
     onChange?.(newData);
   };
@@ -82,6 +85,9 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
       newData[index].compare = to === 'offset_hours' || to === 'offset_days'
         ? { kind, to, offset: current.offset || 1 }
         : { kind, to };
+    }
+    if (isNumericCompare(newData[index].func, kind) && MEMBERSHIP_OPS.has(String(newData[index].op))) {
+      newData[index].op = null;
     }
     onChange?.(newData);
   };
@@ -141,6 +147,12 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
     onChange?.(newData);
   };
 
+  const handleNumericValueChange = (val: number | string | null, index: number) => {
+    const newData = [...data];
+    newData[index] = { ...newData[index], value: String(val ?? '') };
+    onChange?.(newData);
+  };
+
   const handleAddCondition = () => {
     const newData = [...data, { field: null, op: null, value: '' }];
     onChange?.(newData);
@@ -184,6 +196,18 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
           const showPercent = compareKind === 'percent';
           const showRatio = functionOption?.needsFilter === true;
           const showUnitSuffix = Boolean(functionOption?.unitKey) || showPercent || showRatio;
+          const numericCompare = isNumericCompare(conditionItem.func, compareKind);
+          const operatorOptions = conditionList.filter(
+            (item) => !MEMBERSHIP_OPS.has(String(item.id))
+          );
+          if (MEMBERSHIP_OPS.has(String(conditionItem.op)) && !numericCompare) {
+            const currentOp = conditionList.find(
+              (item) => String(item.id) === String(conditionItem.op)
+            );
+            if (currentOp) {
+              operatorOptions.push(currentOp);
+            }
+          }
           const thresholdAddon = !showUnitSuffix
             ? undefined
             : conditionItem.func === 'count_rate'
@@ -198,16 +222,14 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
             >
               <div className="flex items-start gap-3">
                 <span
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]"
                   aria-label={t('log.event.conditionIndex', '条件 {index}', { index: index + 1 })}
                 >
                   {index + 1}
                 </span>
-                <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="w-10 shrink-0 text-[var(--color-text-2)]">
-                      {t('log.event.statRow')}
-                    </span>
+                <div className="grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-2.5">
+                  <span className="text-[var(--color-text-2)]">{t('log.event.statRow')}</span>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <Select
                       style={{ width: 140 }}
                       popupMatchSelectWidth={false}
@@ -288,10 +310,9 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
                     ) : null}
                   </div>
                   {comparable ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="w-10 shrink-0 text-[var(--color-text-2)]">
-                        {t('log.event.compareRow')}
-                      </span>
+                    <>
+                      <span className="text-[var(--color-text-2)]">{t('log.event.compareRow')}</span>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <Radio.Group
                         name={`log-policy-condition-compare-${index}`}
                         aria-label={t('log.event.compareKind')}
@@ -341,18 +362,23 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
                           ) : null}
                         </>
                       ) : null}
-                    </div>
+                      </div>
+                    </>
                   ) : null}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="w-10 shrink-0 text-[var(--color-text-2)]">
-                      {t('log.event.triggerRow')}
-                    </span>
-                    <span className="text-[var(--color-text-2)]">{t('log.event.whenResult')}</span>
+                  <span className="text-[var(--color-text-2)]">{t('log.event.triggerRow')}</span>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <Select
-                      style={{ width: 96 }}
-                      optionLabelProp="label"
+                      style={{ width: 112 }}
                       placeholder={t('log.event.selectCriteria')}
-                      value={conditionItem.op}
+                      value={
+                        MEMBERSHIP_OPS.has(String(conditionItem.op)) && numericCompare
+                          ? undefined
+                          : conditionItem.op
+                      }
+                      options={operatorOptions.map((item: ListItem) => ({
+                        value: item.id,
+                        label: item.name,
+                      }))}
                       onChange={(val) =>
                         handleConditionChange({
                           val,
@@ -360,37 +386,41 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
                           field: 'op'
                         })
                       }
-                    >
-                      {conditionList.map((item: ListItem) => (
-                        <Option
-                          value={item.id}
-                          key={item.id}
-                          label={operatorHasSymbol(item.id) ? String(item.id) : item.name}
-                        >
-                          {operatorHasSymbol(item.id) ? `${item.id} ${item.name}` : item.name}
-                        </Option>
-                      ))}
-                    </Select>
-                    <Input
-                      style={{ width: 140 }}
-                      placeholder={t('log.event.enterThreshold')}
-                      value={conditionItem.value}
-                      onChange={(e) => handleValueChange(e, index)}
-                      {...(thresholdAddon ? { addonAfter: thresholdAddon } : {})}
                     />
+                    {numericCompare ? (
+                      <InputNumber
+                        style={{ width: 140 }}
+                        placeholder={t('log.event.enterThreshold')}
+                        addonAfter={thresholdAddon}
+                        value={
+                          Number.isFinite(Number(conditionItem.value)) && conditionItem.value !== ''
+                            ? Number(conditionItem.value)
+                            : null
+                        }
+                        onChange={(val) => handleNumericValueChange(val, index)}
+                      />
+                    ) : (
+                      <Input
+                        style={{ width: 140 }}
+                        placeholder={t('log.event.enterThreshold')}
+                        value={conditionItem.value}
+                        onChange={(e) => handleValueChange(e, index)}
+                        {...(thresholdAddon ? { addonAfter: thresholdAddon } : {})}
+                      />
+                    )}
                   </div>
                   {legacyDelta ? (
-                    <div className="text-xs leading-5 text-[var(--color-text-3)]">
+                    <div className="col-span-2 text-xs leading-5 text-[var(--color-text-3)]">
                       {t('log.event.countDeltaTip')}
                     </div>
                   ) : null}
                   {showPercent ? (
-                    <div className="text-xs leading-5 text-[var(--color-text-3)]">
+                    <div className="col-span-2 text-xs leading-5 text-[var(--color-text-3)]">
                       {t('log.event.percentTip')}
                     </div>
                   ) : null}
                   {showRatio ? (
-                    <div className="text-xs leading-5 text-[var(--color-text-3)]">
+                    <div className="col-span-2 text-xs leading-5 text-[var(--color-text-3)]">
                       {t('log.event.ratioFilterTip')}
                     </div>
                   ) : null}

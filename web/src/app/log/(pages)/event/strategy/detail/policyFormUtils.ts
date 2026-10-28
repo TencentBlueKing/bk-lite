@@ -63,10 +63,22 @@ export const hasIncompleteCondition = (conditions: FilterItem[]) =>
     return false;
   });
 
+const NUMERIC_ONLY_FUNCS = new Set(['count_rate', 'count_delta', 'count_uniq', 'quantile', 'ratio', 'bytes_rate']);
+/** 与 PolicySerializer 一致：数值函数，或比较方式不是当前值时，阈值必须是有限数。 */
+export const isNumericCompare = (func?: string | null, kind?: string | null) =>
+  NUMERIC_ONLY_FUNCS.has(String(func)) || (kind || 'absolute') !== 'absolute';
+/** 数值比较场景下阈值不是有限数。只在 hasIncompleteCondition 为 false 后调用。 */
+export const hasNonNumericThreshold = (conditions: FilterItem[]) =>
+  conditions.some((item) => {
+    const kind = presentCompare(item.compare).kind || 'absolute';
+    return isNumericCompare(item.func, kind) && !Number.isFinite(Number(item.value));
+  });
+
 export type LogPolicyType = 'keyword' | 'aggregate';
 
 const POLICY_TYPES = new Set<LogPolicyType>(['keyword', 'aggregate']);
-const DEFAULT_SHOW_FIELDS = ['timestamp', 'message'];
+export const FIXED_SHOW_FIELDS = ['timestamp', 'message'] as const;
+const DEFAULT_SHOW_FIELDS = [...FIXED_SHOW_FIELDS];
 
 export const getLockedPolicyType = ({
   urlAlertType,
@@ -87,6 +99,18 @@ export const getLockedPolicyType = ({
 export const getDefaultShowFields = (fields?: string[] | null): string[] => {
   const merged = [...DEFAULT_SHOW_FIELDS, ...(fields || [])].filter(Boolean);
   return Array.from(new Set(merged));
+};
+
+/** 与服务端 AlertConstants.MAX_BACKFILL_COUNT 一致：一轮最多补扫 10 个周期。 */
+export const MAX_BACKFILL_COUNT = 10;
+const UNIT_SECONDS: Record<string, number> = { min: 60, hour: 3600, day: 86400 };
+export const toTimingSeconds = (value: unknown, unit: string) =>
+  typeof value === 'number' && Number.isFinite(value) ? value * (UNIT_SECONDS[unit] || 0) : 0;
+/** 频率超过周期 × 补扫上限时返回 true。 */
+export const hasBackfillGap = (schedule: unknown, unit: string, period: unknown, periodUnit: string) => {
+  const s = toTimingSeconds(schedule, unit);
+  const p = toTimingSeconds(period, periodUnit);
+  return s > 0 && p > 0 && s > MAX_BACKFILL_COUNT * p;
 };
 
 export const getAlertConditionVisibility = (policyType: LogPolicyType) => ({

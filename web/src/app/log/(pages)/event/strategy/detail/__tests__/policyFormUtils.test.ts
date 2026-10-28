@@ -3,7 +3,11 @@ import { StrategyFields } from '@/app/log/types/event';
 import {
   aggregateTemplateVariables,
   buildStrategyPayload,
+  getDefaultShowFields,
+  hasBackfillGap,
   hasIncompleteCondition,
+  hasNonNumericThreshold,
+  isNumericCompare,
   normalizeCondition,
   readPolicyTriggerCount,
   pruneNoticeUsers,
@@ -216,5 +220,50 @@ describe('聚合条件函数', () => {
       }
     );
     expect(payload.alert_condition?.rule?.trigger_count).toBe(2);
+  });
+
+  it('数值比较只认数值函数和非当前值', () => {
+    expect(isNumericCompare('count', 'absolute')).toBe(false);
+    expect(isNumericCompare('count', 'percent')).toBe(true);
+    expect(isNumericCompare('count_rate', 'absolute')).toBe(true);
+  });
+
+  it('数值比较的非数字阈值会被标出，当前值文本和负数不会', () => {
+    expect(
+      hasNonNumericThreshold([
+        {
+          func: 'count',
+          field: '_msg',
+          op: '>',
+          value: 'abc',
+          compare: { kind: 'percent', to: 'previous_window' },
+        },
+      ])
+    ).toBe(true);
+    expect(
+      hasNonNumericThreshold([{ func: 'count', field: '_msg', op: '=', value: 'error' }])
+    ).toBe(false);
+    expect(
+      hasNonNumericThreshold([
+        {
+          func: 'count',
+          field: '_msg',
+          op: '>',
+          value: '-30',
+          compare: { kind: 'percent', to: 'previous_window' },
+        },
+      ])
+    ).toBe(false);
+  });
+
+  it('检测频率超过周期补扫上限时才提示缺口', () => {
+    expect(hasBackfillGap(1, 'day', 5, 'min')).toBe(true);
+    expect(hasBackfillGap(5, 'min', 5, 'min')).toBe(false);
+    expect(hasBackfillGap(1, 'hour', 5, 'min')).toBe(true);
+    expect(hasBackfillGap(50, 'min', 5, 'min')).toBe(false);
+  });
+
+  it('展示字段把 timestamp 和 message 固定在前面', () => {
+    expect(getDefaultShowFields(['level', 'message'])).toEqual(['timestamp', 'message', 'level']);
   });
 });

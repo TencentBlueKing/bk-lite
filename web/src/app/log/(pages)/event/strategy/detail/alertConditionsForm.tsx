@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Input, Select, InputNumber, Radio } from 'antd';
+import { Form, Input, Select, InputNumber, Radio, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import ConditionSelector from './conditionSelector';
 import { StrategyFields } from '@/app/log/types/event';
@@ -7,7 +7,15 @@ import { FilterItem } from '@/app/log/types/integration';
 import { ListItem } from '@/app/log/types';
 import { SCHEDULE_UNIT_MAP } from '@/app/log/constants';
 import { useScheduleList, useLevelList } from '@/app/log/hooks/event';
-import { getAlertConditionVisibility, hasIncompleteCondition } from './policyFormUtils';
+import {
+  FIXED_SHOW_FIELDS,
+  MAX_BACKFILL_COUNT,
+  getAlertConditionVisibility,
+  getDefaultShowFields,
+  hasBackfillGap,
+  hasIncompleteCondition,
+  hasNonNumericThreshold,
+} from './policyFormUtils';
 import LogQueryInput from '@/app/log/components/log-query-input';
 
 const { Option } = Select;
@@ -48,14 +56,19 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const SCHEDULE_LIST = useScheduleList();
   const lockedPolicyType = policyType || 'keyword';
   const conditionVisibility = getAlertConditionVisibility(lockedPolicyType);
+  const schedule = Form.useWatch('schedule');
+  const period = Form.useWatch('period');
 
   // 验证条件函数
   const validateConidtion = async () => {
     if (!term || !conditions.length) {
       return Promise.reject(new Error(t('log.event.ruleValidate')));
     }
-    if (conditions.length && hasIncompleteCondition(conditions)) {
+    if (hasIncompleteCondition(conditions)) {
       return Promise.reject(new Error(t('log.event.conditionValidate')));
+    }
+    if (hasNonNumericThreshold(conditions)) {
+      return Promise.reject(new Error(t('log.event.thresholdNumberValidate')));
     }
     return Promise.resolve();
   };
@@ -114,7 +127,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           />
         </Form.Item>
         <div className="text-[var(--color-text-3)] mt-[10px]">
-          {t('log.event.queryCriteriaTips')}
+          {lockedPolicyType === 'aggregate'
+            ? t('log.event.aggregateQueryCriteriaTips')
+            : t('log.event.queryCriteriaTips')}
         </div>
       </Form.Item>
       {conditionVisibility.showDisplayFields && (
@@ -127,6 +142,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           <Form.Item
             name="show_fields"
             noStyle
+            normalize={(value) => getDefaultShowFields(value)}
             rules={[
               {
                 required: true,
@@ -140,6 +156,15 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               showSearch
               mode="multiple"
               maxTagCount="responsive"
+              tagRender={(tagProps) => {
+                const { label, value, closable, onClose } = tagProps;
+                const fixed = (FIXED_SHOW_FIELDS as readonly string[]).includes(String(value));
+                return (
+                  <Tag closable={fixed ? false : closable} onClose={onClose}>
+                    {label}
+                  </Tag>
+                );
+              }}
               options={fieldList
                 .filter(
                   (item) =>
@@ -201,7 +226,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
             name="rule"
             noStyle
             // 条件存在父组件 state。这个触发名不会被调用，避免 onChange 把条件写进表单字段 rule。
+            // 组校验失败时只在「规则」下展示说明。空状态避免把错误边框铺到卡内每一个输入框。
             trigger="onCollect"
+            validateStatus=""
             rules={[
               {
                 validator: validateConidtion,
@@ -270,7 +297,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           />
         </Form.Item>
         <div className="text-[var(--color-text-3)] mt-[10px]">
-          {t('log.event.triggerCountTip')}
+          {lockedPolicyType === 'keyword'
+            ? t('log.event.keywordTriggerCountTip')
+            : t('log.event.triggerCountTip')}
         </div>
       </Form.Item>
       <Form.Item<StrategyFields>
@@ -310,6 +339,11 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         <div className="text-[var(--color-text-3)] mt-[10px]">
           {t('log.event.setPeriod')}
         </div>
+        {hasBackfillGap(schedule, unit, period, periodUnit) ? (
+          <div className="mt-1 text-[var(--color-warning)]">
+            {t('log.event.backfillGapWarning', undefined, { count: MAX_BACKFILL_COUNT })}
+          </div>
+        ) : null}
       </Form.Item>
       <Form.Item<StrategyFields>
         name="alert_level"

@@ -217,6 +217,68 @@ describe('条件函数选择', () => {
     expect(onChange).toHaveBeenCalledWith([second]);
   });
 
+  it('比较符收起和下拉都只显示中文', () => {
+    render(
+      <ConditionFilter
+        data={[{ func: 'count', field: '_msg', op: '=', value: '1' }]}
+        fields={['_msg']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={vi.fn()}
+      />
+    );
+
+    const selected = screen.getByText('log.equalto');
+    expect(selected.closest('.ant-select-selection-item')).toBeTruthy();
+    expect(selected.closest('.ant-select-selection-item')?.textContent).toBe('log.equalto');
+
+    fireEvent.mouseDown(selected.closest('.ant-select')!.querySelector('.ant-select-selector')!);
+    const optionText = (label: string) =>
+      screen.getAllByText(label).find((node) => node.closest('.ant-select-item-option'))?.closest('.ant-select-item-option')?.textContent;
+    expect(optionText('log.equalto')).toBe('log.equalto');
+    expect(optionText('log.notequalTo')).toBe('log.notequalTo');
+    expect(optionText('log.moreThan')).toBe('log.moreThan');
+    expect(optionText('log.lessThan')).toBe('log.lessThan');
+    expect(
+      [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
+    ).toEqual(['log.equalto', 'log.notequalTo', 'log.moreThan', 'log.lessThan']);
+  });
+
+  it('变化量和变化率不提供包括、不包括，并清掉已选的包括', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <ConditionFilter
+        data={[{ func: 'count', field: 'level', op: 'in', value: 'error' }]}
+        fields={['level']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={onChange}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: 'log.event.compareKindDelta' }));
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({
+        op: null,
+        compare: expect.objectContaining({ kind: 'delta' }),
+      }),
+    ]);
+
+    rerender(
+      <ConditionFilter
+        data={[{ func: 'count', field: 'level', op: '>', value: '10', compare: { kind: 'percent', to: 'previous_window' } }]}
+        fields={['level']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={onChange}
+      />
+    );
+    fireEvent.mouseDown(screen.getByText('log.moreThan').closest('.ant-select')!.querySelector('.ant-select-selector')!);
+    expect(
+      [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
+    ).toEqual(['log.equalto', 'log.notequalTo', 'log.moreThan', 'log.lessThan']);
+  });
+
   it('点击添加条件时在末尾追加空条件', () => {
     const current = { func: 'count', field: '_msg', op: '>', value: '1' };
     const onChange = vi.fn();
@@ -235,5 +297,76 @@ describe('条件函数选择', () => {
       current,
       { field: null, op: null, value: '' },
     ]);
+  });
+
+  it('变化率阈值是数字框，可以输入负数', () => {
+    const onChange = vi.fn();
+    render(
+      <ConditionFilter
+        data={[
+          {
+            func: 'count',
+            field: '_msg',
+            op: '>',
+            value: '',
+            compare: { kind: 'percent', to: 'previous_window' },
+          },
+        ]}
+        fields={['_msg']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getByRole('spinbutton')).toBeTruthy();
+    expect(screen.getByText('%')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('log.event.enterThreshold'), {
+      target: { value: '-30' },
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({ value: '-30' }),
+    ]);
+  });
+
+  it('新建计数当前值的运算符只有四个数值比较，阈值仍是文本框', () => {
+    render(
+      <ConditionFilter
+        data={[{ func: 'count', field: null, op: null, value: '' }]}
+        fields={['service']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('textbox')).toBe(screen.getByPlaceholderText('log.event.enterThreshold'));
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+
+    fireEvent.mouseDown(
+      screen.getByText('log.event.selectCriteria').closest('.ant-select')!.querySelector('.ant-select-selector')!
+    );
+    expect(
+      [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
+    ).toEqual(['log.equalto', 'log.notequalTo', 'log.moreThan', 'log.lessThan']);
+  });
+
+  it('旧的包括条件在当前值下仍然回显', () => {
+    render(
+      <ConditionFilter
+        data={[{ func: 'count', field: 'level', op: 'in', value: 'error' }]}
+        fields={['level']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={vi.fn()}
+      />
+    );
+
+    const selected = screen.getByText('log.include');
+    expect(selected.closest('.ant-select-selection-item')).toBeTruthy();
+    fireEvent.mouseDown(selected.closest('.ant-select')!.querySelector('.ant-select-selector')!);
+    expect(
+      [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
+    ).toContain('log.include');
   });
 });
