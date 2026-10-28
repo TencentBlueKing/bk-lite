@@ -3,7 +3,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from django.db import connection, transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.alerts.common.notification_target import (
@@ -177,18 +177,24 @@ class EscalationService:
         if effective[0].get("notification_target", {}).get("type") == ORGANIZATION_TARGET:
             effective[0]["personnel"] = list(alert.operator or [])
         now = timezone.now()
-        task, _ = AlertEscalationTask.objects.update_or_create(
-            alert=alert,
-            defaults={
-                "assignment": assignment,
-                "is_active": True,
-                "mode": normalized["mode"],
-                "layers": effective,
-                "current_layer_index": 0,
-                "layer_started_at": now,
-                "next_escalation_at": cls._next_escalation_at(effective, 0, now),
-            },
-        )
+        # 新建行使用字段默认 cycle=0。已有行是改派重置：其余字段照常回到第 0 层，周期加 1。
+        # 不能把 cycle=0 放进 defaults，否则会清掉已发生的周期。两次写入放在同一事务里。
+        with transaction.atomic():
+            task, created = AlertEscalationTask.objects.update_or_create(
+                alert=alert,
+                defaults={
+                    "assignment": assignment,
+                    "is_active": True,
+                    "mode": normalized["mode"],
+                    "layers": effective,
+                    "current_layer_index": 0,
+                    "layer_started_at": now,
+                    "next_escalation_at": cls._next_escalation_at(effective, 0, now),
+                },
+            )
+            if not created:
+                AlertEscalationTask.objects.filter(pk=task.pk).update(cycle=F("cycle") + 1)
+                task.refresh_from_db()
         from apps.alerts.notification_templates.binding import sync_escalation_template_references
 
         sync_escalation_template_references(task)
@@ -267,6 +273,13 @@ class EscalationService:
         params = build_channel_params(roster, channels, [alert], alert.alert_id, scene="escalation")
         return enqueue_notifications(params, idempotency_key=idempotency_key)
 
+    @staticmethod
+    def _escalation_idempotency_key(alert_id: str, cycle: int, layer_index: int) -> str:
+        """周期 0 保持 escalation:{alert_id}:{layer}，之后的周期把 cycle 写入键。"""
+        if cycle == 0:
+            return f"escalation:{alert_id}:{layer_index}"
+        return f"escalation:{alert_id}:{cycle}:{layer_index}"
+
     @classmethod
     def _advance_layer(cls, task: AlertEscalationTask) -> bool:
         """推进到下一层并通知；返回是否真正升级了一层。"""
@@ -314,7 +327,7 @@ class EscalationService:
             task.assignment,
             roster,
             task.layers[next_index].get("notify_channels") or [],
-            idempotency_key=f"escalation:{alert.alert_id}:{next_index}",
+            idempotency_key=cls._escalation_idempotency_key(alert.alert_id, task.cycle, next_index),
         )
         logger.info("告警升级到第 %s 层: alert_id=%s, roster=%s", next_index, alert.alert_id, roster)
         return True
