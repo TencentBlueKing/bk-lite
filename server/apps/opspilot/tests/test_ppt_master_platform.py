@@ -46,7 +46,9 @@ def test_repair_svg_markup_drops_illegal_xml_characters():
 
 def test_message_continues_ppt_accepts_short_confirmation_only():
     assert message_continues_ppt("确认生成") is True
-    assert message_continues_ppt("继续") is True
+    assert message_continues_ppt("继续生成") is True
+    assert message_continues_ppt("继续") is False
+    assert message_continues_ppt("导出") is False
     assert message_continues_ppt("帮我写个广州美食介绍的ppt") is False
     assert message_continues_ppt("你好") is False
 

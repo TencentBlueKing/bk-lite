@@ -263,9 +263,13 @@ def test_ppt_workspace_write_lands_in_timestamp_dir(tmp_path):
     assert read.error is None
     assert "深圳" in read.file_data["content"]
 
-    with pytest.raises(ValueError, match="traversal"):
-        backend.write("/ppt-workspace/../outside.txt", "no")
+    # write/read 把 PermissionError 收成 error；_resolve_path 本身仍抛出。
+    denied = backend.write("/ppt-workspace/../outside.txt", "no")
+    assert denied.error
+    assert "ppt 工作目录" in denied.error
     assert not (tmp_path / "outside.txt").exists()
+    with pytest.raises(PermissionError, match="ppt 工作目录"):
+        inner._resolve_path("/ppt-workspace/../outside.txt")
 
     inside = backend.write("/hello.txt", "hi")
     assert inside.error is None, inside.error

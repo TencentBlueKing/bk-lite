@@ -24,7 +24,7 @@ PPT_MASTER_PACKAGE_ID = "ppt-master"
 # 一页 SVG 加读说明、初始化、导出，10 次模型调用不够完成一份稿。
 PPT_AUTHORING_MIN_MODEL_CALLS = 40
 PPT_AUTHORING_RECURSION_LIMIT = 250
-_PPT_CONTINUE_MARKERS = ("确认生成", "继续生成", "开始生成", "直接生成", "生成吧", "就这样生成", "导出", "继续")
+_PPT_CONTINUE_MARKERS = ("确认生成", "继续生成", "开始生成", "直接生成", "生成吧", "就这样生成")
 PPT_MASTER_TRIGGERS = ("ppt", "pptx", "幻灯片", "演示文稿")
 _PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 _QUALITY_REPORT_SCHEMA = "ppt-master.svg-quality-report.v1"
@@ -370,7 +370,7 @@ def release_svg_quality_gate(workspace: Path) -> int:
 
 
 def message_continues_ppt(message: str) -> bool:
-    """短确认句。工作目录已经在时，这类话仍走 ppt-master，而不是文本转文件。"""
+    """完整确认短语。单独的「继续」「导出」不续写选包。"""
     text = re.sub(r"\s+", "", str(message or ""))
     if not text or len(text) > 24:
         return False

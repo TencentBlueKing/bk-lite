@@ -420,7 +420,11 @@ def test_ppt_probe_commands_are_rejected():
 
 def test_short_confirmation_stays_on_ppt_master():
     assert message_continues_ppt("确认生成") is True
-    assert message_continues_ppt("继续") is True
+    assert message_continues_ppt("继续生成") is True
+    assert message_continues_ppt("开始生成") is True
+    assert message_continues_ppt("继续") is False
+    assert message_continues_ppt("导出") is False
+    assert message_continues_ppt("请继续") is False
     assert message_continues_ppt("帮我写个广州美食介绍的ppt") is False
     assert message_continues_ppt("你好") is False
 

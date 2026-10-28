@@ -371,6 +371,62 @@ def test_normalize_ad_search_args_drops_bare_help():
     assert "*" in out
 
 
+def test_ppt_workspace_resolve_rejects_symlink_escape(tmp_path):
+    """write/read 走 bind 的 _resolve_path，符号链接不能把文件带出工作目录。"""
+    from deepagents.backends.local_shell import LocalShellBackend
+
+    sandbox = tmp_path / "sandbox"
+    workspace = tmp_path / "ws"
+    outside = tmp_path / "outside"
+    sandbox.mkdir()
+    workspace.mkdir()
+    outside.mkdir()
+    secret = outside / "secret.txt"
+    secret.write_text("secret-sentinel", encoding="utf-8")
+    (workspace / "leak").symlink_to(outside, target_is_directory=True)
+    (workspace / "file-link").symlink_to(secret)
+    (workspace / "up").symlink_to(tmp_path, target_is_directory=True)
+
+    inner = LocalShellBackend(root_dir=str(sandbox), virtual_mode=True, inherit_env=False, env={})
+    backend = _PathRewritingBackend(inner, sandbox, ppt_workspace=workspace)
+    resolve = inner._resolve_path
+
+    for virtual in (
+        "/ppt-workspace/leak/secret.txt",
+        "/ppt-workspace/leak/pwned.txt",
+        "/ppt-workspace/file-link",
+        "/ppt-workspace/up/outside/secret.txt",
+        "/ppt-workspace/../outside/secret.txt",
+    ):
+        with pytest.raises(PermissionError, match="ppt 工作目录"):
+            resolve(virtual)
+
+    def _rejected(action):
+        try:
+            result = action()
+        except (PermissionError, ValueError):
+            return
+        assert getattr(result, "error", None), result
+
+    _rejected(lambda: backend.write("/ppt-workspace/leak/pwned.txt", "escaped"))
+    assert not (outside / "pwned.txt").exists()
+    _rejected(lambda: backend.write("/ppt-workspace/file-link", "overwrite"))
+    assert secret.read_text(encoding="utf-8") == "secret-sentinel"
+    _rejected(lambda: backend.read("/ppt-workspace/leak/secret.txt"))
+    _rejected(lambda: backend.read("/ppt-workspace/file-link"))
+    assert secret.read_text(encoding="utf-8") == "secret-sentinel"
+
+    written = backend.write("/ppt-workspace/projects/demo/page.svg", "<svg>ok</svg>")
+    assert written.error is None, written.error
+    page = workspace / "projects" / "demo" / "page.svg"
+    assert page.read_text(encoding="utf-8") == "<svg>ok</svg>"
+    assert page.resolve().is_relative_to(workspace.resolve())
+    read = backend.read("/ppt-workspace/projects/demo/page.svg")
+    assert read.error is None, read.error
+    assert "ok" in read.file_data["content"]
+    assert resolve("/ppt-workspace/projects/demo/page.svg") == page.resolve()
+
+
 def test_ppt_execute_rejects_workspace_traversal(tmp_path):
     """虚拟前缀里的 .. 不能在校验前被剥成相对路径。"""
     from unittest.mock import MagicMock

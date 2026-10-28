@@ -618,10 +618,11 @@ def materialize_ppt_workspace_paths(command: str, workspace: Path) -> str:
 
 
 def _bind_ppt_workspace_filesystem(inner: Any, workspace: Path) -> None:
-    """让 /ppt-workspace 直接落到时间戳目录。
+    """让 /ppt-workspace 落到时间戳目录，并在 resolve 后确认仍在该目录内。
 
-    沙箱 virtual_mode 会先 resolve。ppt-workspace 是指到沙箱外的链接，
-    resolve 之后相对沙箱根失败，write_file 抛 ValueError，页面写不进去。
+    沙箱 virtual_mode 会按沙箱根 resolve。ppt-workspace 指到沙箱外时，
+    相对沙箱根会失败，页面写不进去。这里改按工作目录收口：``..`` 直接拒绝，
+    符号链接 resolve 之后若离开工作目录也拒绝。
     """
     resolve = getattr(type(inner), "_resolve_path", None)
     to_virtual = getattr(type(inner), "_to_virtual_path", None)
@@ -630,17 +631,14 @@ def _bind_ppt_workspace_filesystem(inner: Any, workspace: Path) -> None:
     if not isinstance(getattr(to_virtual, "__qualname__", None), str):
         return
     root = workspace.resolve()
-    prefix = "/ppt-workspace"
+    prefix = _PPT_VIRTUAL_PREFIX
 
     def _resolve_path(key: str) -> Path:
         virtual = str(key or "").replace("\\", "/")
         if not virtual.startswith("/"):
             virtual = "/" + virtual
         if virtual == prefix or virtual.startswith(prefix + "/"):
-            parts = [part for part in virtual[len(prefix) :].lstrip("/").split("/") if part not in ("", ".")]
-            if any(part == ".." for part in parts):
-                raise ValueError("Path traversal not allowed")
-            return root.joinpath(*parts)
+            return ppt_workspace_physical_path(virtual, root)
         return resolve(inner, key)
 
     def _to_virtual_path(path: Path) -> str:
