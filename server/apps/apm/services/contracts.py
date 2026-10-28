@@ -540,8 +540,6 @@ class PolicyQueryResult:
     reason: str = ""
     result_unit: str = ""
     window_ended_at: datetime | None = None
-    guards: tuple = ()
-    guard_blocked: bool = False
     baseline_days_used: int | None = None
 
 

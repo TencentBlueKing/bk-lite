@@ -49,18 +49,11 @@ error:
   apdex_threshold_range: Apdex T must be between 1 and 600000 milliseconds.
   apdex_threshold_unused: Only Apdex can set T.
   apdex_comparator: Apdex current-value comparison only allows less-than or less-than-or-equal.
-  guard_limit: At most 2 guard conditions are allowed.
-  guard_shape: A guard condition only allows a metric, a comparator, and an absolute value.
-  guard_metric: Guard conditions cannot use no-traffic.
-  guard_value: A guard value must be a finite number.
-  guard_ratio_range: Ratio guard conditions must be between 0 and 1.
-  guard_needs_slow: A slow-request guard requires the policy slow threshold.
-  guard_needs_apdex: An Apdex guard requires T.
   trigger_window_order: The trigger window must be at least the trigger count and at most 20.
   recovery_shape: A recovery threshold only allows a comparator and a value.
   recovery_direction: The recovery threshold must point the opposite way from the trigger line.
   recovery_value: The recovery threshold must be a finite number.
-  no_traffic_plain: No-traffic policies cannot set guards, a trigger window, or a recovery threshold.
+  no_traffic_plain: No-traffic policies cannot set a trigger window or a recovery threshold.
   threshold_comparator: Multi-level thresholds must use the same comparator.
   threshold_monotonic: Multi-level thresholds must stay monotonic across critical, error, and warning.
   deployment_window_limit: Deployment event query window cannot exceed 90 days

@@ -388,7 +388,6 @@ class ApmPolicy(AuditedModel):
     min_request_count = models.PositiveIntegerField(null=True, blank=True)
     slow_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
     apdex_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
-    guard_conditions = models.JSONField(default=list, blank=True)
     thresholds = models.JSONField(default=list)
     trigger_after = models.PositiveIntegerField(default=1)
     trigger_window = models.PositiveIntegerField(null=True, blank=True)

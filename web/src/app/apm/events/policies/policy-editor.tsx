@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { DeleteOutlined } from '@ant-design/icons';
 import {
   Button,
-  Collapse,
   Form,
   Input,
   InputNumber,
@@ -101,7 +100,6 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   })),
   trigger_after: 3,
   trigger_window: null,
-  guard_conditions: [],
   recovery_comparator: 'lt',
   recovery_value: null,
   recover_after: 3,
@@ -167,7 +165,6 @@ const VERDICT_KEY = {
   no_data: 'apm.policies.verdictNoData',
   missing_baseline: 'apm.policies.verdictMissingBaseline',
   insufficient_samples: 'apm.policies.verdictInsufficient',
-  guard_not_met: 'apm.policies.verdictGuardNotMet',
   hold: 'apm.policies.verdictHold',
 } as const;
 
@@ -292,16 +289,6 @@ function metricParamFields(values: PolicyEditorValues): Partial<ApmPolicyInput> 
 
 function judgmentFields(values: PolicyEditorValues): Partial<ApmPolicyInput> {
   const kind = resolvedCompareKind(values.metric_type, values.compare_mode, values.compare_value_kind);
-  const guards = (values.guard_conditions || []).flatMap((guard) => {
-    if (guard.value === null || guard.value === undefined || guard.value === '') return [];
-    const numeric = Number(guard.value);
-    if (!Number.isFinite(numeric)) return [];
-    return [{
-      metric_type: guard.metric_type,
-      comparator: guard.comparator,
-      value: scalesStoredRatio(guard.metric_type, '') ? numeric / 100 : numeric,
-    }];
-  });
   const recovery: NonNullable<ApmPolicyInput['recovery_threshold']> = values.recovery_value === null || values.recovery_value === undefined
     ? {}
     : {
@@ -310,13 +297,11 @@ function judgmentFields(values: PolicyEditorValues): Partial<ApmPolicyInput> {
     };
   if (values.metric_type === 'no_traffic') {
     const cleared: Partial<ApmPolicyInput> = {};
-    if (guards.length) cleared.guard_conditions = [];
     if (values.trigger_window != null) cleared.trigger_window = null;
     if (values.recovery_value != null) cleared.recovery_threshold = {};
     return cleared;
   }
   return {
-    guard_conditions: guards,
     trigger_window: values.trigger_window ?? null,
     recovery_threshold: recovery,
   };
@@ -445,11 +430,6 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
     }),
     trigger_after: policy.trigger_after,
     trigger_window: policy.trigger_window ?? null,
-    guard_conditions: (policy.guard_conditions || []).map((guard) => ({
-      metric_type: guard.metric_type,
-      comparator: guard.comparator,
-      value: thresholdToEditorValue(guard.metric_type, '', guard.value),
-    })),
     recovery_comparator: policy.recovery_threshold && 'comparator' in policy.recovery_threshold
       ? policy.recovery_threshold.comparator
       : 'lt',
@@ -561,7 +541,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const aggregation = Form.useWatch('aggregation', form);
   const watchedThresholds = Form.useWatch('thresholds', form);
   const triggerWindow = Form.useWatch('trigger_window', form);
-  const guardConditions = Form.useWatch('guard_conditions', form) ?? [];
   const selectedEndpoints = Form.useWatch('endpoints', form);
   const noDataSeverity = Form.useWatch('no_data_severity', form);
   const notificationTargets = Form.useWatch('notification_targets', form) ?? [];
@@ -577,7 +556,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const [availableEndpoints, setAvailableEndpoints] = useState<string[]>([]);
   const [loadedPolicy, setLoadedPolicy] = useState<ApmPolicy | null>(null);
   const [preview, setPreview] = useState<ApmPolicyQueryResult | null>(null);
-  const [guardOpen, setGuardOpen] = useState(false);
   const [triggerMode, setTriggerMode] = useState<'consecutive' | 'window'>('consecutive');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -852,12 +830,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const recoveryOptions: { value: ApmPolicyComparator; label: string }[] = ladderComparator === 'lt' || ladderComparator === 'lte'
     ? [{ value: 'gt', label: '>' }, { value: 'gte', label: '≥' }]
     : [{ value: 'lt', label: '<' }, { value: 'lte', label: '≤' }];
-  const absoluteMetricUnit = (metric: ApmPolicyMetric) => {
-    if (RATIO_METRICS.includes(metric)) return t('apm.common.percentUnit', '%');
-    if (LATENCY_METRICS.includes(metric)) return t('apm.common.millisecondUnit', 'ms');
-    if (COUNT_METRICS.includes(metric)) return t('apm.policies.timesUnit', '次');
-    return t('apm.policies.perSecondUnit', 'req/s');
-  };
   const comparatorOptions = metricType === 'apdex' && compareKind === ''
     ? [{ value: 'lt' as const, label: '<' }, { value: 'lte' as const, label: '≤' }]
     : [
@@ -1452,75 +1424,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               ]}
             />
           </div>
-          {showCompare ? (
-            <Collapse
-              className="bg-transparent"
-              bordered={false}
-              activeKey={guardConditions.length || guardOpen ? ['guards'] : []}
-              onChange={(key) => setGuardOpen(Array.isArray(key) ? key.includes('guards') : key === 'guards')}
-              items={[{
-                key: 'guards',
-                label: t('apm.policies.guardConditions', '前置条件'),
-                children: (
-                  <Form.List name="guard_conditions">
-                    {(fields, { add, remove }) => (
-                      <div className="flex flex-col gap-2">
-                        {fields.map((field) => {
-                          const metric = form.getFieldValue(['guard_conditions', field.name, 'metric_type']) as ApmPolicyMetric | undefined;
-                          const guardMetric = metric || 'throughput';
-                          return (
-                            <div key={field.key} className="flex flex-wrap items-center gap-2">
-                              <Form.Item name={[field.name, 'metric_type']} noStyle>
-                                <Select
-                                  aria-label={t('apm.policies.guardMetricAria', '前置条件指标')}
-                                  virtual={false}
-                                  className="min-w-40"
-                                  options={METRICS.filter((item) => item.value !== 'no_traffic').map((item) => ({
-                                    value: item.value,
-                                    label: t(item.i18nKey),
-                                  }))}
-                                />
-                              </Form.Item>
-                              <Form.Item name={[field.name, 'comparator']} noStyle>
-                                <Select
-                                  aria-label={t('apm.policies.guardComparatorAria', '前置条件比较符')}
-                                  virtual={false}
-                                  className="w-24"
-                                  options={guardMetric === 'apdex'
-                                    ? [{ value: 'lt', label: '<' }, { value: 'lte', label: '≤' }]
-                                    : [
-                                      { value: 'gt', label: '>' },
-                                      { value: 'gte', label: '≥' },
-                                      { value: 'lt', label: '<' },
-                                      { value: 'lte', label: '≤' },
-                                    ]}
-                                />
-                              </Form.Item>
-                              <Form.Item name={[field.name, 'value']} noStyle>
-                                <NumberWithUnit
-                                  aria-label={t('apm.policies.guardValueAria', '前置条件值')}
-                                  unit={absoluteMetricUnit(guardMetric)}
-                                />
-                              </Form.Item>
-                              <Button type="text" aria-label={t('apm.policies.removeGuard', '删除前置条件')} icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
-                            </div>
-                          );
-                        })}
-                        {fields.length < 2 ? (
-                          <Button
-                            type="dashed"
-                            onClick={() => add({ metric_type: 'throughput', comparator: 'gte', value: null })}
-                          >
-                            {t('apm.policies.addGuard', '添加前置条件')}
-                          </Button>
-                        ) : null}
-                      </div>
-                    )}
-                  </Form.List>
-                ),
-              }]}
-            />
-          ) : null}
           {showMinRequest ? (
             <Form.Item
               className={styles.minRequestCount}

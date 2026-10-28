@@ -2,6 +2,8 @@
 
 Status: implemented
 
+2026-10-28 产品撤回 D3 前置条件：它和监控多指标条件同类，这批不交付，后续再考虑。编辑器、API、评估和 `guard_conditions` 字段已去掉；N 中 M、恢复阈值、指标面和近 N 天同窗均值保持。下文 D3 只保留当时的设计，不再是当前范围。
+
 需求来源：CTeam `p398_716` 第二批。第一批（相对上一等长窗、N 小时 / N 天前同窗、最低请求数、试算）已按
 `specs/changes/apm-alert-calc-enrichment/spec.md` 落地（提交 `b2d1c03967`、`98abb914a9`）。产品在 2026-10-27
 复核后要求按客户实际场景对照竞品补齐 APM 告警的计算能力，并以本仓库技术栈（VictoriaTraces LogsQL 流式聚合、

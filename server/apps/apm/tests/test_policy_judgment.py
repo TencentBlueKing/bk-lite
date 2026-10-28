@@ -102,18 +102,7 @@ def _red(p95, requests=20, rate=4):
 @pytest.mark.parametrize(
     ("updates", "field"),
     [
-        (
-            {"guard_conditions": [{"metric_type": "throughput", "comparator": "lte", "value": "1"}] * 3},
-            "guard_conditions",
-        ),
-        (
-            {"guard_conditions": [{"metric_type": "no_traffic", "comparator": "lte", "value": "0"}]},
-            "guard_conditions",
-        ),
-        (
-            {"guard_conditions": [{"metric_type": "throughput", "comparator": "lte", "value": "1", "severity": "error"}]},
-            "guard_conditions",
-        ),
+        ({"guard_conditions": []}, "guard_conditions"),
         ({"trigger_after": 3, "trigger_window": 2}, "trigger_window"),
         ({"trigger_window": 21}, "trigger_window"),
         ({"recovery_threshold": {"comparator": "gt", "value": "200"}}, "recovery_threshold"),
@@ -122,14 +111,6 @@ def _red(p95, requests=20, rate=4):
                 "metric_type": "no_traffic",
                 "thresholds": [{"severity": "error", "comparator": "lte", "value": "0"}],
                 "recovery_threshold": {"comparator": "gt", "value": "1"},
-            },
-            "metric_type",
-        ),
-        (
-            {
-                "metric_type": "no_traffic",
-                "thresholds": [{"severity": "error", "comparator": "lte", "value": "0"}],
-                "guard_conditions": [{"metric_type": "throughput", "comparator": "lte", "value": "1"}],
             },
             "metric_type",
         ),
@@ -151,13 +132,12 @@ def test_judgment_rules_reject_illegal_combinations(apm_api_client, updates, fie
     assert field in response.data
 
 
-def test_judgment_rules_accept_guards_window_and_recovery_and_keep_legacy_payload(apm_api_client):
+def test_judgment_rules_accept_window_and_recovery_and_keep_legacy_payload(apm_api_client):
     service = _service("accept-judgment")
     created = apm_api_client.post(
         "/api/v1/apm/policies/",
         _payload(
             service,
-            guard_conditions=[{"metric_type": "throughput", "comparator": "lte", "value": "16.67"}],
             trigger_window=4,
             recovery_threshold={"comparator": "lt", "value": "80"},
         ),
@@ -166,11 +146,11 @@ def test_judgment_rules_accept_guards_window_and_recovery_and_keep_legacy_payloa
     legacy = apm_api_client.post("/api/v1/apm/policies/", _payload(_service("legacy-judgment"), name="旧判定"), format="json")
 
     assert created.status_code == 201
-    assert created.data["guard_conditions"] == [{"metric_type": "throughput", "comparator": "lte", "value": "16.67"}]
+    assert "guard_conditions" not in created.data
     assert created.data["trigger_window"] == 4
     assert created.data["recovery_threshold"] == {"comparator": "lt", "value": "80"}
     assert legacy.status_code == 201
-    assert legacy.data["guard_conditions"] == []
+    assert "guard_conditions" not in legacy.data
     assert legacy.data["trigger_window"] is None
     assert legacy.data["recovery_threshold"] == {}
 
@@ -228,32 +208,9 @@ def test_crossing_the_recovery_line_counts_toward_recovery():
     assert ApmAlert.objects.get(policy=policy).status == ApmAlert.Status.RECOVERED
 
 
-def test_guard_miss_does_not_trigger_and_counts_as_recovery():
-    policy = _policy(
-        name="guard",
-        trigger_after=1,
-        recover_after=1,
-        guard_conditions=[{"metric_type": "throughput", "comparator": "gte", "value": "10"}],
-    )
-    state = _run(policy, [_red(150, rate=20), _red(150, rate=1)])
-
-    assert state.status == ApmPolicyTargetState.Status.NORMAL
-    assert state.consecutive_hits == 0
-    alert = ApmAlert.objects.get(policy=policy)
-    assert alert.status == ApmAlert.Status.RECOVERED
-    assert "前置条件" in alert.events.get(action=ApmEvent.Action.TRIGGERED).description
-    assert alert.events.get(action=ApmEvent.Action.TRIGGERED).snapshot.policy_snapshot["guard_conditions"][0]["metric_type"] == "throughput"
-    assert alert.events.get(action=ApmEvent.Action.TRIGGERED).snapshot.evaluation_snapshot["guards"][0]["matched"] is True
-
-
-def test_dry_run_reports_guard_hold_and_window_text_without_writing_state():
+def test_dry_run_reports_hold_and_window_text_without_writing_state():
     window_policy = _policy(name="dry-window", trigger_after=2, trigger_window=4)
     window_policy.target_states.create(target_key="existing", endpoint="", version="", hit_history="000", status="normal")
-    guard_policy = _policy(
-        name="dry-guard",
-        trigger_after=1,
-        guard_conditions=[{"metric_type": "throughput", "comparator": "gte", "value": "10"}],
-    )
     hold_policy = _policy(
         name="dry-hold",
         trigger_after=1,
@@ -270,7 +227,6 @@ def test_dry_run_reports_guard_hold_and_window_text_without_writing_state():
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
 
     window = service.dry_run(window_policy, evaluated_at=evaluated_at, saved_policy=window_policy)
-    guard = service.dry_run(guard_policy, evaluated_at=evaluated_at)
     hold = DjangoApmPolicyService(_Store(_red(80)), InMemoryNotificationDispatcher()).dry_run(
         hold_policy,
         evaluated_at=evaluated_at,
@@ -280,11 +236,10 @@ def test_dry_run_reports_guard_hold_and_window_text_without_writing_state():
 
     assert window["items"][0]["verdict"] == "would_trigger"
     assert window["items"][0]["hit_history_text"] == "近 4 轮命中 1 / 2"
-    assert guard["items"][0]["verdict"] == "guard_not_met"
-    assert guard["items"][0]["guards"] == [{"metric_type": "throughput", "value": "1", "matched": False}]
+    assert "guards" not in window["items"][0]
     assert hold["items"][0]["verdict"] == "hold"
     assert draft_band["items"][0]["verdict"] == "ok"
-    assert ApmAlert.objects.filter(policy__in=[window_policy, guard_policy, hold_policy]).count() == 0
+    assert ApmAlert.objects.filter(policy__in=[window_policy, hold_policy]).count() == 0
     assert window_policy.target_states.get().hit_history == "000"
 
 

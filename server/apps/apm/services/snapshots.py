@@ -87,7 +87,6 @@ class ApmEventSnapshotStore:
                 "min_request_count": policy.min_request_count,
                 "slow_threshold_ms": policy.slow_threshold_ms,
                 "apdex_threshold_ms": policy.apdex_threshold_ms,
-                "guard_conditions": list(policy.guard_conditions or []),
                 "trigger_window": policy.trigger_window,
                 "recovery_threshold": dict(policy.recovery_threshold or {}),
             },
@@ -109,7 +108,6 @@ class ApmEventSnapshotStore:
                 "current_value": str(result.current_value) if result.current_value is not None else None,
                 "baseline_value": str(result.baseline_value) if result.baseline_value is not None else None,
                 "result_unit": resolve_result_unit(policy),
-                "guards": [dict(item) for item in result.guards],
             },
             "trace_context": {
                 "service_namespace": policy.service.namespace,
