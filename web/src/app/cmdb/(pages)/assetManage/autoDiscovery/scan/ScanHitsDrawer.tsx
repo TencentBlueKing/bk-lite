@@ -967,7 +967,6 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
                         <span className="ml-1 font-mono">{confidenceCounts[level]}</span>
                       </Tag.CheckableTag>
                     ))}
-                    <span className="text-xs text-[var(--color-text-4)]">{t('Scan.confidenceFilterTip')}</span>
                   </div>
                   {!hitsLoading && visibleMatchedHits.length === 0 ? (
                     <div className="py-8">
