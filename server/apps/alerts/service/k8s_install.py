@@ -232,6 +232,8 @@ class K8sInstallService:
             "receiver_url": data["receiver_url"],
             "secret": data["secret"],
             "remaining_usage": max_usage - usage_count,
+            # 缺键的旧令牌保持 False；只有显式 True 才关闭 TLS 校验。
+            "insecure_skip_verify": data.get("insecure_skip_verify", False) is True,
         }
 
     @staticmethod
