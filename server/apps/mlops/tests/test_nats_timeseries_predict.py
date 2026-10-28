@@ -1,4 +1,8 @@
+import json
+import types
+
 import pytest
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.mlops import nats_api
 from apps.mlops.models.timeseries_predict import TimeSeriesPredictServing, TimeSeriesPredictTrainJob
@@ -51,46 +55,119 @@ def _actor(group, *, with_permission=True, username="predict-user"):
     }, group_row.id
 
 
-def test_module_data_lists_only_servings_that_can_predict():
-    from django.db import connection
+def _actor_for_module_list(team_id):
+    return {"is_superuser": False, "group_list": [team_id], "locale": "zh-Hans"}
 
-    _actor_row, team_id = _actor(1, username="list-user")
-    ready = _serving(team_id)
+
+def _patch_team_contains(monkeypatch):
+    """sqlite 不支持 JSON contains。测试里用等值判断代替 team__contains，过滤逻辑仍走原函数。"""
+    original = TimeSeriesPredictServing.objects.filter
+
+    def _filter(**kwargs):
+        team_id = kwargs.pop("team__contains", None)
+        queryset = original(**kwargs)
+        if team_id is None:
+            return queryset
+        matched = [row.id for row in queryset if team_id in (row.team or [])]
+        return original(id__in=matched)
+
+    monkeypatch.setattr(TimeSeriesPredictServing.objects, "filter", _filter)
+
+
+def _create_port_variants(team_id, train_job):
     TimeSeriesPredictServing.objects.create(
         name="no-port",
         description="",
         team=[team_id],
-        train_job=ready.train_job,
+        train_job=train_job,
         model_version="latest",
         status="inactive",
-        container_info={"state": "running"},
+        container_info={},
+    )
+    TimeSeriesPredictServing.objects.create(
+        name="empty-port",
+        description="",
+        team=[team_id],
+        train_job=train_job,
+        model_version="latest",
+        status="inactive",
+        container_info={"port": "", "state": "exited"},
     )
     TimeSeriesPredictServing.objects.create(
         name="zero-port",
         description="",
         team=[team_id],
-        train_job=ready.train_job,
+        train_job=train_job,
         model_version="latest",
         status="active",
         container_info={"port": 0, "state": "running"},
     )
-    names = set(
-        nats_api._predictable_timeseries_servings(TimeSeriesPredictServing.objects.filter(team=[team_id])).values_list("name", flat=True)
+
+
+def test_data_permission_module_data_lists_servings_without_port(monkeypatch):
+    """组织数据权限走 get_mlops_module_data 默认参数，未启动或已停止的服务仍可勾选。"""
+    from apps.system_mgmt.viewset.group_data_rule_viewset import GroupDataRuleViewSet
+
+    _patch_team_contains(monkeypatch)
+    _actor_row, team_id = _actor(1, username="permission-list")
+    ready = _serving(team_id)
+    _create_port_variants(team_id, ready.train_job)
+
+    class LocalMLOps:
+        def get_module_data(self, **kwargs):
+            assert "predictable_only" not in kwargs
+            return nats_api.get_mlops_module_data(**kwargs)
+
+    monkeypatch.setattr("apps.system_mgmt.viewset.group_data_rule_viewset.MLOps", LocalMLOps)
+    request = APIRequestFactory().get(
+        "/system_mgmt/api/group_data_rule/get_app_data/",
+        {
+            "app": "mlops",
+            "module": "serving",
+            "child_module": "timeseries_predict_serving",
+            "page": "1",
+            "page_size": "50",
+            "group_id": str(team_id),
+        },
     )
-    assert names == {ready.name}
-    # 本机 sqlite 不支持 JSON contains；Postgres 上再核对列表接口的分页结果。
-    if connection.features.supports_json_field_contains:
-        listed = nats_api.get_mlops_module_data(
-            "serving",
-            "timeseries_predict_serving",
-            1,
-            50,
-            team_id,
-            actor_context={"is_superuser": False, "group_list": [team_id], "locale": "zh-Hans"},
-        )
-        assert listed["result"] is True
-        assert {item["name"] for item in listed["items"]} == {ready.name}
-        assert listed["count"] == 1
+    request.COOKIES["current_team"] = str(team_id)
+    force_authenticate(
+        request,
+        user=types.SimpleNamespace(
+            username="permission-list",
+            domain="domain.com",
+            locale="zh-Hans",
+            is_authenticated=True,
+            is_superuser=True,
+            permission={"system-manager": {"data_permission-View"}},
+            group_list=[{"id": team_id}],
+        ),
+    )
+    response = GroupDataRuleViewSet.as_view({"get": "get_app_data"})(request)
+    payload = json.loads(response.content)
+    assert response.status_code == 200
+    assert payload["result"] is True
+    assert {item["name"] for item in payload["data"]["items"]} == {ready.name, "no-port", "empty-port", "zero-port"}
+    assert payload["data"]["count"] == 4
+
+
+def test_agent_binding_list_keeps_only_servings_that_can_predict(monkeypatch):
+    _patch_team_contains(monkeypatch)
+    _actor_row, team_id = _actor(1, username="binding-list")
+    ready = _serving(team_id)
+    _create_port_variants(team_id, ready.train_job)
+    listed = nats_api.get_mlops_module_data(
+        "serving",
+        "timeseries_predict_serving",
+        1,
+        50,
+        team_id,
+        actor_context=_actor_for_module_list(team_id),
+        predictable_only=True,
+    )
+    assert listed["result"] is True
+    assert {item["name"] for item in listed["items"]} == {ready.name}
+    assert listed["count"] == 1
 
 
 def test_predict_timeseries_serving_requires_actor():

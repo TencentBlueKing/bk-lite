@@ -251,7 +251,16 @@ def _predictable_timeseries_servings(queryset):
 
 
 @nats_client.register
-def get_mlops_module_data(module, child_module, page, page_size, group_id, actor_context=None, locale=None):
+def get_mlops_module_data(
+    module,
+    child_module,
+    page,
+    page_size,
+    group_id,
+    actor_context=None,
+    locale=None,
+    predictable_only=False,
+):
     locale = _resolve_nats_locale(locale=locale, actor_context=actor_context)
     registry = _get_module_registry()
 
@@ -282,7 +291,8 @@ def get_mlops_module_data(module, child_module, page, page_size, group_id, actor
 
     model, team_lookup = entry
     queryset = model.objects.filter(**{f"{team_lookup}__contains": group_id})
-    if child_module == "timeseries_predict_serving":
+    # 数据权限等共享目录走默认结果。只有智能体绑定显式传入时才按可预测端口过滤。
+    if predictable_only is True and child_module == "timeseries_predict_serving":
         queryset = _predictable_timeseries_servings(queryset)
 
     total_count = queryset.count()

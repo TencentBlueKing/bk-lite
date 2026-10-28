@@ -1227,6 +1227,7 @@ class SkillToolsViewSet(AuthViewSet):
             500,
             team_id,
             actor_context=actor_context,
+            predictable_only=True,
         )
         return Response(result)
 
