@@ -1,10 +1,10 @@
-import json
-
 import pytest
 
-from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
+from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_TYPES, ScanExecution, ScanFamilyRun, ScanTask
+from apps.cmdb.services.port_fingerprint import sync_builtin_port_fingerprints
+from apps.cmdb.services.process_fingerprint import sync_builtin_process_fingerprints
 from apps.cmdb.services.scan_trigger_service import poll_scan_finalize, trigger_scan_execution
-from apps.cmdb.services.stargazer_collect_trigger import StargazerCollectPermanentError, TriggerResult
+from apps.cmdb.services.stargazer_collect_trigger import TriggerResult
 
 pytestmark = pytest.mark.django_db
 
@@ -26,49 +26,189 @@ def _scan_task(**overrides):
     return ScanTask.objects.create(**values)
 
 
-def test_trigger_scan_admits_each_family_and_schedules_finalize(mocker):
-    task = _scan_task()
-    execution = ScanExecution.objects.create(task=task)
-    admit = mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=[TriggerResult("accepted", 3, 3), TriggerResult("accepted", 3, 3)],
+def _patch_stargazer(mocker, *, scan_total=3, admit=None, scan_side_effect=None):
+    scan = mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit_scan_discover",
+        side_effect=scan_side_effect,
+        return_value=None if scan_side_effect else TriggerResult("accepted", scan_total, scan_total),
     )
-    apply_async = mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    push = mocker.patch("apps.cmdb.services.collect_service.CollectModelService.push_butch_node_params")
-
-    result = trigger_scan_execution(execution.id)
-
-    assert result["target_count"] == 6
-    assert admit.call_count == 2
-    execution.refresh_from_db()
-    assert execution.status == ScanExecution.STATUS_RUNNING
-    assert execution.claim_token
-    assert execution.target_count == 6
-    assert execution.deadline_at is not None
-    assert execution.family_runs.count() == 2
-    apply_async.assert_called_once()
-    assert apply_async.call_args.kwargs["countdown"] == 30
-    push.assert_not_called()
-
-
-def test_trigger_scan_continues_other_families_when_one_admit_fails(mocker):
-    task = _scan_task()
-    execution = ScanExecution.objects.create(task=task)
-    mocker.patch(
+    protocol = mocker.patch(
         "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=[
-            StargazerCollectPermanentError("mysql down"),
-            TriggerResult("accepted", 4, 4),
-        ],
+        side_effect=admit,
+        return_value=None if admit else TriggerResult("accepted", scan_total, scan_total),
     )
     mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+    return scan, protocol
+
+
+def test_trigger_scan_admits_discover_and_network(mocker):
+    sync_builtin_port_fingerprints()
+    task = _scan_task()
+    execution = ScanExecution.objects.create(task=task)
+    scan, admit = _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.collect_service.CollectModelService.push_butch_node_params")
 
     result = trigger_scan_execution(execution.id)
 
-    assert result["target_count"] == 4
-    statuses = set(ScanFamilyRun.objects.filter(execution=execution).values_list("admit_status", flat=True))
-    assert ScanFamilyRun.ADMIT_FAILED in statuses
-    assert ScanFamilyRun.ADMIT_ACCEPTED in statuses
+    assert result["target_count"] == 3
+    scan.assert_called_once()
+    assert admit.call_count == 1
+    body = scan.call_args.args[0]
+    types = {item["target_type"] for item in body["port_fingerprints"]}
+    assert "mysql" in types
+    assert "nginx" in types
+    execution.refresh_from_db()
+    assert execution.status == ScanExecution.STATUS_RUNNING
+    assert execution.target_count == 3
+    assert ScanFamilyRun.objects.filter(execution=execution, model_id="network").exists()
+    assert not ScanFamilyRun.objects.filter(execution=execution, model_id="mysql").exists()
+
+
+def test_trigger_host_only_puts_host_collect_creds(mocker):
+    sync_builtin_port_fingerprints()
+    task = _scan_task(
+        families=["host"],
+        credentials={"host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
+        cloud_region={"id": 1},
+    )
+    execution = ScanExecution.objects.create(task=task)
+    scan, admit = _patch_stargazer(mocker, scan_total=3)
+
+    trigger_scan_execution(execution.id)
+
+    admit.assert_not_called()
+    body = scan.call_args.args[0]
+    assert "host" in body["collect_credentials"]
+    assert body["host_login"]["execution_id"] == execution.id
+    assert body["skip_hosts"] == []
+
+
+def test_trigger_influx_uses_collect_creds_not_protocol_admit(mocker):
+    sync_builtin_port_fingerprints()
+    task = _scan_task(
+        families=["influxdb"],
+        credentials={"influxdb": [{"credential_id": "cred-inf", "token": "t", "port": 8086}]},
+    )
+    execution = ScanExecution.objects.create(task=task)
+    scan, admit = _patch_stargazer(mocker, scan_total=3)
+
+    trigger_scan_execution(execution.id)
+
+    admit.assert_not_called()
+    body = scan.call_args.args[0]
+    assert "influxdb" in body["collect_credentials"]
+    assert body["collect_credentials"]["influxdb"][0]["token"] == "t"
+
+
+def test_get_nodes_by_ips_accepts_scan_execution_id(mocker):
+    from apps.node_mgmt.nats import node as node_nats
+    from apps.node_mgmt.services.node import NodeService
+
+    task = _scan_task()
+    execution = ScanExecution.objects.create(task=task)
+    captured = {}
+
+    def query(ips, **context):
+        captured.update(ips=ips, context=context)
+        return {"nodes": []}
+
+    mocker.patch.object(NodeService, "get_nodes_by_ips", query)
+    result = node_nats.get_nodes_by_ips(
+        {
+            "ips": ["10.0.0.1"],
+            "collect_task_id": execution.id,
+            "cloud_region_id": 7,
+        }
+    )
+    assert result == {"nodes": []}
+    assert captured["context"]["organization_ids"]
+    assert captured["context"]["cloud_region_id"] == 7
+
+
+def test_trigger_host_only_still_sends_fingerprint_types(mocker):
+    sync_builtin_port_fingerprints()
+    sync_builtin_process_fingerprints()
+    task = _scan_task(
+        families=["host"],
+        credentials={"host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
+        cloud_region={"id": 1},
+    )
+    execution = ScanExecution.objects.create(task=task)
+    scan, admit = _patch_stargazer(mocker, scan_total=3)
+
+    trigger_scan_execution(execution.id)
+
+    scan.assert_called_once()
+    admit.assert_not_called()
+    body = scan.call_args.args[0]
+    types = {item["target_type"] for item in body["port_fingerprints"]}
+    assert "mysql" in types
+    assert "nginx" in types
+    assert body.get("host_login")
+    assert "nginx_info" not in str(body)
+
+
+def test_trigger_without_host_login_still_admits_port_stage(mocker):
+    sync_builtin_port_fingerprints()
+    task = _scan_task(families=["network"], credentials={"network": [{"version": "v2c", "community": "public"}]})
+    execution = ScanExecution.objects.create(task=task)
+    scan, admit = _patch_stargazer(mocker, scan_total=3)
+
+    trigger_scan_execution(execution.id)
+
+    body = scan.call_args.args[0]
+    assert not body.get("host_login")
+    admit.assert_called_once()
+
+
+def test_trigger_database_selected_puts_sql_creds_and_skips_mysql_info(mocker):
+    sync_builtin_port_fingerprints()
+    task = _scan_task(
+        families=["database"],
+        credentials={"database": [{"credential_id": "cred-db", "username": "u", "password": "p"}]},
+    )
+    execution = ScanExecution.objects.create(task=task)
+    scan, admit = _patch_stargazer(mocker, scan_total=3)
+
+    trigger_scan_execution(execution.id)
+
+    admit.assert_not_called()
+    body = scan.call_args.args[0]
+    assert "mysql" in body["collect_credentials"]
+    assert body["collect_credentials"]["mysql"][0]["username"] == "u"
+
+
+def test_trigger_database_not_selected_omits_mysql_collect_creds(mocker):
+    sync_builtin_port_fingerprints()
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    scan, _admit = _patch_stargazer(mocker, scan_total=3)
+
+    trigger_scan_execution(execution.id)
+
+    body = scan.call_args.args[0]
+    assert "mysql" not in (body.get("collect_credentials") or {})
+
+
+def test_trigger_middleware_discover_once_includes_seven_types(mocker):
+    sync_builtin_port_fingerprints()
+    task = _scan_task(
+        families=["middleware"],
+        credentials={"middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
+        cloud_region={"id": 1},
+    )
+    execution = ScanExecution.objects.create(task=task)
+    scan, admit = _patch_stargazer(mocker, scan_total=3)
+
+    trigger_scan_execution(execution.id)
+
+    scan.assert_called_once()
+    admit.assert_not_called()
+    body = scan.call_args.args[0]
+    types = {item["target_type"] for item in body["port_fingerprints"]}
+    assert SCAN_MIDDLEWARE_TYPES <= types
+    for mw in SCAN_MIDDLEWARE_TYPES:
+        assert mw in body["collect_credentials"]
 
 
 def test_finalize_with_stale_token_does_not_mutate(mocker):
@@ -85,320 +225,200 @@ def test_finalize_with_stale_token_does_not_mutate(mocker):
     assert result["status"] == "stale"
     execution.refresh_from_db()
     assert execution.status == ScanExecution.STATUS_RUNNING
-    assert execution.claim_token == "token-new"
 
 
-def test_trigger_database_family_splits_catalog_ports_and_skips_middleware(mocker):
-    from apps.cmdb.models.collect_model import PortFingerprint
-    from apps.cmdb.services.port_fingerprint import sync_builtin_port_fingerprints
+def _mark_scan_done(execution):
+    schedule = dict(execution.schedule or {})
+    schedule["scan_done"] = True
+    execution.schedule = schedule
+    execution.save(update_fields=["schedule"])
 
-    sync_builtin_port_fingerprints()
-    PortFingerprint.objects.create(port=3307, target_type="mysql", protocol="tcp", built_in=False)
-    PortFingerprint.objects.create(port=6379, target_type="redis", protocol="tcp", built_in=False)
-    task = _scan_task(
-        families=["database", "network"],
-        credentials={
-            "database": [{"credential_id": "cred-db", "username": "u", "password": "p"}],
-            "network": [{"version": "v2c", "community": "public"}],
-        },
-    )
+
+def test_poll_does_not_complete_on_received_count_while_scan_admitted(mocker):
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
     execution = ScanExecution.objects.create(task=task)
-    headers_by_model = {}
-
-    def fake_admit(headers):
-        headers_by_model[headers.get("cmdbmodel_id") or headers.get("config_type")] = headers
-        return TriggerResult("accepted", 2, 2)
-
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=fake_admit,
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-
-    result = trigger_scan_execution(execution.id)
-
-    model_ids = set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True))
-    assert model_ids == {"mysql", "postgresql", "mssql", "network"}
-    assert "database" not in model_ids
-    mysql_headers = headers_by_model["mysql"]
-    mysql_ports = {
-        mysql_headers.get("cmdbcredential_0_port"),
-        mysql_headers.get("cmdbcredential_1_port"),
-    }
-    assert mysql_ports == {"3306", "3307"}
-    assert "6379" not in json.dumps(mysql_headers)
-    assert result["target_count"] == 8
-
-
-def test_trigger_database_family_skips_sql_when_catalog_empty(mocker):
-    from apps.cmdb.models.collect_model import PortFingerprint
-
-    PortFingerprint.objects.all().delete()
-    task = _scan_task(
-        families=["database", "network"],
-        credentials={
-            "database": [{"username": "u", "password": "p"}],
-            "network": [{"version": "v2c", "community": "public"}],
-        },
-    )
-    execution = ScanExecution.objects.create(task=task)
-    admit = mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        return_value=TriggerResult("accepted", 3, 3),
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-
+    _patch_stargazer(mocker, scan_total=3)
     trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    execution.received_count = 3
+    execution.save(update_fields=["received_count"])
 
-    assert admit.call_count == 1
-    assert set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True)) == {"network"}
+    result = poll_scan_finalize(execution.id, execution.claim_token)
 
-
-def _mark_family_runs_received(execution, *, host_success=()):
-    total = 0
-    for family_run in execution.family_runs.all():
-        family_run.received_count = family_run.target_count
-        family_run.save(update_fields=["received_count", "updated_at"])
-        total += int(family_run.target_count or 0)
-        if family_run.model_id == "host":
-            for host in host_success:
-                ScanHit.objects.get_or_create(
-                    family_run=family_run,
-                    host=host,
-                    port=22,
-                    credential_id="cred-ssh",
-                    defaults={
-                        "execution": execution,
-                        "protocol": "host",
-                        "status": ScanHit.STATUS_SUCCESS,
-                    },
-                )
-    execution.received_count = total
-    execution.save(update_fields=["received_count", "updated_at"])
+    assert result["status"] == "waiting"
+    execution.refresh_from_db()
+    assert execution.status == ScanExecution.STATUS_RUNNING
 
 
-def _drain_scan_jobs(execution, mocker, *, host_success=(), max_steps=30):
+def test_poll_completes_when_scan_done(mocker):
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
     mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
-    last = None
-    for _ in range(max_steps):
-        execution.refresh_from_db()
-        if execution.status in {
-            ScanExecution.STATUS_COMPLETED,
-            ScanExecution.STATUS_FAILED,
-            ScanExecution.STATUS_TIMED_OUT,
-        }:
-            return last
-        _mark_family_runs_received(execution, host_success=host_success)
-        last = poll_scan_finalize(execution.id, execution.claim_token)
-        if last["status"] in {
-            ScanExecution.STATUS_COMPLETED,
-            ScanExecution.STATUS_FAILED,
-            ScanExecution.STATUS_TIMED_OUT,
-        }:
-            return last
-    raise AssertionError("JOB 队列未在预期步数内排空")
-
-
-def test_trigger_middleware_family_splits_job_types_and_skips_redis_ports(mocker):
-    from apps.cmdb.models.collect_model import PortFingerprint
-    from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_TYPES
-
-    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
-    PortFingerprint.objects.create(port=6379, target_type="redis", protocol="tcp", built_in=False)
-    task = _scan_task(
-        families=["middleware"],
-        credentials={"middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
-        cloud_region={"id": 1},
-    )
-    execution = ScanExecution.objects.create(task=task)
-    headers_by_model = {}
-
-    def fake_admit(headers):
-        headers_by_model[headers.get("cmdbmodel_id") or headers.get("config_type")] = headers
-        return TriggerResult("accepted", 2, 2)
-
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=fake_admit,
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-
     trigger_scan_execution(execution.id)
-    admitted = set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True))
-    assert len(admitted) == 1
-    assert admitted <= set(SCAN_MIDDLEWARE_TYPES)
-    assert "middleware" not in admitted
-    assert "redis" not in admitted
+    execution.refresh_from_db()
+    _mark_scan_done(execution)
 
-    _drain_scan_jobs(execution, mocker)
-    model_ids = set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True))
-    assert model_ids == set(SCAN_MIDDLEWARE_TYPES)
-    assert "redis" not in model_ids
-    nginx = headers_by_model["nginx"]
-    assert nginx.get("cmdbexecutor_type") == "job" or nginx.get("config_type") == "nginx"
-    assert nginx.get("cmdbip_precheck") == "True"
-    assert "6379" not in json.dumps(headers_by_model)
+    result = poll_scan_finalize(execution.id, execution.claim_token)
+
+    assert result["status"] == ScanExecution.STATUS_COMPLETED
 
 
-def test_trigger_middleware_ssh_does_not_use_listen_port(mocker):
-    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
-    task = _scan_task(
-        families=["middleware"],
-        credentials={"middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p", "port": 80}]},
-        cloud_region={"id": 1},
-    )
+def test_poll_waits_when_scan_done_but_protocol_family_pending(mocker):
+    task = _scan_task()
     execution = ScanExecution.objects.create(task=task)
-    headers_by_model = {}
-
-    def fake_admit(headers):
-        headers_by_model[headers.get("cmdbmodel_id") or headers.get("config_type")] = headers
-        return TriggerResult("accepted", 1, 1)
-
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=fake_admit,
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.collect_service.CollectModelService.push_butch_node_params")
     trigger_scan_execution(execution.id)
-    _drain_scan_jobs(execution, mocker)
+    execution.refresh_from_db()
+    _mark_scan_done(execution)
 
-    nginx = headers_by_model["nginx"]
-    consul = headers_by_model["consul"]
-    for headers in (nginx, consul):
-        assert headers.get("cmdbport") != "80"
-        assert headers.get("cmdbcredential_0_port") != "80"
-        assert headers.get("cmdbport") == "22" or headers.get("cmdbcredential_0_port") == "22"
+    result = poll_scan_finalize(execution.id, execution.claim_token)
+
+    assert result["status"] == "waiting"
+    execution.refresh_from_db()
+    assert execution.status == ScanExecution.STATUS_RUNNING
 
 
-def test_trigger_zero_timeout_sends_positive_job_timeout(mocker):
-    from apps.cmdb.services.scan_trigger_service import SCAN_DEFAULT_PLUGIN_TIMEOUT
-
-    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
-    task = _scan_task(
-        families=["middleware"],
-        credentials={"middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
-        timeout=0,
-    )
+def test_poll_completes_when_scan_done_and_protocol_family_finished(mocker):
+    task = _scan_task()
     execution = ScanExecution.objects.create(task=task)
-    captured = []
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.collect_service.CollectModelService.push_butch_node_params")
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    family_run = ScanFamilyRun.objects.get(execution=execution, model_id="network")
+    family_run.received_count = family_run.target_count
+    family_run.save(update_fields=["received_count"])
+    _mark_scan_done(execution)
 
-    def fake_admit(headers):
-        captured.append(headers)
-        return TriggerResult("accepted", 1, 1)
+    result = poll_scan_finalize(execution.id, execution.claim_token)
 
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=fake_admit,
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+    assert result["status"] == ScanExecution.STATUS_COMPLETED
 
+
+def test_recover_completes_when_celery_poll_chain_is_lost(mocker):
+    from apps.cmdb.services.scan_trigger_service import recover_due_scan_execution
+
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    _mark_scan_done(execution)
+
+    recovered = recover_due_scan_execution(execution)
+
+    assert recovered.status == ScanExecution.STATUS_COMPLETED
+    assert recovered.finished_at is not None
+
+
+def test_recover_times_out_past_deadline_without_waiting_for_celery(mocker):
+    from datetime import timedelta
+
+    from django.utils.timezone import now
+
+    from apps.cmdb.services.scan_trigger_service import recover_due_scan_execution
+
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    execution.deadline_at = now() - timedelta(minutes=1)
+    execution.save(update_fields=["deadline_at"])
+
+    recovered = recover_due_scan_execution(execution)
+
+    assert recovered.status == ScanExecution.STATUS_TIMED_OUT
+
+
+def test_recover_leaves_in_progress_execution_alone(mocker):
+    from apps.cmdb.services.scan_trigger_service import recover_due_scan_execution
+
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+
+    recovered = recover_due_scan_execution(execution)
+
+    assert recovered.status == ScanExecution.STATUS_RUNNING
+    assert recovered.finished_at is None
+
+
+def test_poll_waits_when_scan_in_progress(mocker):
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+
+    result = poll_scan_finalize(execution.id, execution.claim_token)
+
+    assert result["status"] == "waiting"
+    execution.refresh_from_db()
+    assert execution.status == ScanExecution.STATUS_RUNNING
+
+
+def test_recover_stuck_scan_executions_closes_due_without_get(mocker):
+    from datetime import timedelta
+
+    from django.utils.timezone import now
+
+    from apps.cmdb.services.scan_trigger_service import recover_stuck_scan_executions
+
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    execution.deadline_at = now() - timedelta(minutes=1)
+    execution.save(update_fields=["deadline_at"])
+
+    result = recover_stuck_scan_executions()
+
+    execution.refresh_from_db()
+    assert result["recovered"] == 1
+    assert execution.status == ScanExecution.STATUS_TIMED_OUT
+
+
+def test_recover_stuck_scan_executions_closes_scan_done_without_get(mocker):
+    from apps.cmdb.services.scan_trigger_service import recover_stuck_scan_executions
+
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    _mark_scan_done(execution)
+
+    result = recover_stuck_scan_executions()
+
+    execution.refresh_from_db()
+    assert result["recovered"] == 1
+    assert execution.status == ScanExecution.STATUS_COMPLETED
+
+
+def test_recover_stuck_scan_executions_ignores_in_progress(mocker):
+    from apps.cmdb.services.scan_trigger_service import recover_stuck_scan_executions
+
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
     trigger_scan_execution(execution.id)
 
-    assert captured
-    timeouts = [float(h.get("cmdbtimeout") or h.get("timeout") or 0) for h in captured]
-    assert all(t > 0 for t in timeouts)
-    assert timeouts[0] == float(SCAN_DEFAULT_PLUGIN_TIMEOUT)
+    result = recover_stuck_scan_executions()
 
-
-def test_trigger_empty_middleware_pool_admits_agent_placeholder(mocker):
-    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
-    task = _scan_task(
-        families=["middleware"],
-        credentials={"middleware": []},
-        cloud_region={"id": 1, "name": "default"},
-    )
-    execution = ScanExecution.objects.create(task=task)
-    admit = mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        return_value=TriggerResult("accepted", 1, 1),
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-
-    result = trigger_scan_execution(execution.id)
-    assert admit.call_count == 1
-    assert result["target_count"] == 1
-    assert ScanFamilyRun.objects.filter(execution=execution, admit_status=ScanFamilyRun.ADMIT_FAILED).count() == 0
-    first_call = admit.call_args_list[0]
-    first_headers = first_call.args[0] if first_call.args else first_call.kwargs.get("headers")
-    assert "agent" in json.dumps(first_headers)
-
-
-def test_trigger_empty_host_pool_admits_agent_placeholder(mocker):
-    task = _scan_task(
-        families=["host"],
-        credentials={"host": []},
-        cloud_region={"id": 1, "name": "default"},
-    )
-    execution = ScanExecution.objects.create(task=task)
-    admit = mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        return_value=TriggerResult("accepted", 1, 1),
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    trigger_scan_execution(execution.id)
-    assert admit.call_count == 1
-    assert ScanFamilyRun.objects.get(execution=execution, model_id="host").admit_status != ScanFamilyRun.ADMIT_FAILED
-
-
-def test_trigger_incomplete_middleware_ssh_reuses_host_secret(mocker):
-    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
-    task = _scan_task(
-        families=["host", "middleware"],
-        credentials={
-            "host": [{"credential_id": "cred-host", "username": "root", "password": "host-secret", "port": 22}],
-            "middleware": [{"credential_id": "cred-mw", "username": "root", "port": 80}],
-        },
-        cloud_region={"id": 1},
-    )
-    execution = ScanExecution.objects.create(task=task)
-    seen = []
-
-    def fake_admit(headers):
-        seen.append(headers)
-        return TriggerResult("accepted", 1, 1)
-
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=fake_admit,
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    trigger_scan_execution(execution.id)
-    _drain_scan_jobs(execution, mocker, host_success=["10.0.1.1"])
-    nginx = [h for h in seen if (h.get("cmdbmodel_id") or h.get("config_type")) == "nginx"][0]
-    assert nginx.get("cmdbport") == "22" or nginx.get("cmdbcredential_0_port") == "22"
-    assert nginx.get("cmdbpassword")
-    assert nginx.get("cmdbport") != "80"
-    assert nginx.get("cmdbcredential_0_port") != "80"
-
-
-def test_trigger_middleware_reuses_host_ssh_pool(mocker):
-    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
-    task = _scan_task(
-        families=["host", "middleware"],
-        credentials={"host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
-        cloud_region={"id": 1},
-    )
-    execution = ScanExecution.objects.create(task=task)
-    seen = []
-
-    def fake_admit(headers):
-        seen.append(headers)
-        return TriggerResult("accepted", 1, 1)
-
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=fake_admit,
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    trigger_scan_execution(execution.id)
-    first_model = seen[0].get("cmdbmodel_id") or seen[0].get("config_type")
-    assert first_model == "host"
-    assert not [h for h in seen if (h.get("cmdbmodel_id") or h.get("config_type")) == "nginx"]
-
-    _drain_scan_jobs(execution, mocker, host_success=["10.0.1.1"])
-    nginx_headers = [h for h in seen if (h.get("cmdbmodel_id") or h.get("config_type")) == "nginx"][0]
-    assert "root" in json.dumps(nginx_headers)
+    execution.refresh_from_db()
+    assert result["recovered"] == 0
+    assert execution.status == ScanExecution.STATUS_RUNNING
 
 
 def test_trigger_network_defaults_missing_snmp_version(mocker):
@@ -418,287 +438,24 @@ def test_trigger_network_defaults_missing_snmp_version(mocker):
         captured.append(headers)
         return TriggerResult("accepted", 1, 1)
 
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=fake_admit,
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-
+    _patch_stargazer(mocker, scan_total=3, admit=fake_admit)
     trigger_scan_execution(execution.id)
-
     assert captured
     headers = captured[0]
     assert headers.get("cmdbcredential_0_version") == "v2"
     assert headers.get("cmdbcredential_1_version") == "v3"
 
 
-def test_trigger_network_plus_host_admits_protocol_first(mocker):
-    task = _scan_task(
-        families=["network", "host"],
-        credentials={
-            "network": [{"version": "v2c", "community": "public"}],
-            "host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}],
-        },
-        cloud_region={"id": 1},
+def test_recover_due_scan_executions_task_is_registered(mocker):
+    from apps.cmdb.config import CELERY_BEAT_SCHEDULE
+    from apps.cmdb.tasks import celery_tasks
+
+    recover = mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.recover_stuck_scan_executions",
+        return_value={"scanned": 2, "recovered": 1},
     )
-    execution = ScanExecution.objects.create(task=task)
-    admit = mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        return_value=TriggerResult("accepted", 3, 3),
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-
-    result = trigger_scan_execution(execution.id)
-
-    assert admit.call_count == 1
-    assert result["target_count"] == 3
-    assert set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True)) == {"network"}
-
-
-def test_poll_does_not_complete_while_job_queue_pending(mocker):
-    task = _scan_task(
-        families=["network", "host"],
-        credentials={
-            "network": [{"version": "v2c", "community": "public"}],
-            "host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}],
-        },
-        cloud_region={"id": 1},
-    )
-    execution = ScanExecution.objects.create(task=task)
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        return_value=TriggerResult("accepted", 3, 3),
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
-    trigger_scan_execution(execution.id)
-    execution.refresh_from_db()
-    _mark_family_runs_received(execution)
-
-    result = poll_scan_finalize(execution.id, execution.claim_token)
-
-    assert result["status"] == "waiting"
-    execution.refresh_from_db()
-    assert execution.status == ScanExecution.STATUS_RUNNING
-    assert ScanFamilyRun.objects.filter(execution=execution, model_id="host").exists()
-
-
-def test_poll_host_job_skips_snmp_success_ips(mocker):
-    from apps.cmdb.models.scan_model import ScanHit as Hit
-
-    task = _scan_task(
-        families=["network", "host"],
-        credentials={
-            "network": [{"version": "v2c", "community": "public"}],
-            "host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}],
-        },
-        cloud_region={"id": 1},
-    )
-    execution = ScanExecution.objects.create(task=task)
-    captured = []
-
-    def fake_admit(headers):
-        captured.append(headers)
-        return TriggerResult("accepted", 2, 2)
-
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=fake_admit,
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    trigger_scan_execution(execution.id)
-    execution.refresh_from_db()
-    network_run = ScanFamilyRun.objects.get(execution=execution, model_id="network")
-    Hit.objects.create(
-        execution=execution,
-        family_run=network_run,
-        protocol="snmp",
-        host="10.0.1.1",
-        port=161,
-        credential_id="cred-snmp",
-        status=Hit.STATUS_SUCCESS,
-    )
-    _mark_family_runs_received(execution)
-    poll_scan_finalize(execution.id, execution.claim_token)
-
-    host_headers = [h for h in captured if (h.get("cmdbmodel_id") or h.get("config_type")) == "host"][0]
-    hosts = host_headers.get("cmdbhosts") or ""
-    assert "10.0.1.1" not in hosts
-    assert "10.0.1.2" in hosts
-    assert "10.0.1.3" in hosts
-    assert host_headers.get("cmdbip_precheck") == "True"
-
-
-def test_poll_protocol_deadline_starts_job_instead_of_dropping_queue(mocker):
-    from datetime import timedelta
-
-    from django.utils.timezone import now
-
-    task = _scan_task(
-        families=["network", "host"],
-        credentials={
-            "network": [{"version": "v2c", "community": "public"}],
-            "host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}],
-        },
-        cloud_region={"id": 1},
-    )
-    execution = ScanExecution.objects.create(task=task)
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        return_value=TriggerResult("accepted", 3, 3),
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
-    trigger_scan_execution(execution.id)
-    execution.refresh_from_db()
-    execution.deadline_at = now() - timedelta(seconds=1)
-    execution.save(update_fields=["deadline_at"])
-
-    result = poll_scan_finalize(execution.id, execution.claim_token)
-
-    assert result["status"] != ScanExecution.STATUS_TIMED_OUT
-    assert ScanFamilyRun.objects.filter(execution=execution, model_id="host").exists()
-
-
-def test_poll_chunks_host_jobs_and_admits_next_batch(mocker):
-    mocker.patch("apps.cmdb.services.scan_schedule_service.SCAN_JOB_BATCH_SIZE", 2)
-    task = _scan_task(
-        families=["host"],
-        credentials={"host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
-        cloud_region={"id": 1},
-        ip_ranges=[{"begin": "10.0.1.1", "end": "10.0.1.3"}],
-    )
-    execution = ScanExecution.objects.create(task=task)
-    captured = []
-
-    def fake_admit(headers):
-        captured.append(headers)
-        return TriggerResult("accepted", 2, 2)
-
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        side_effect=fake_admit,
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
-    trigger_scan_execution(execution.id)
-    execution.refresh_from_db()
-    assert ScanFamilyRun.objects.filter(execution=execution, model_id="host").count() == 1
-    first_hosts = captured[0].get("cmdbhosts") or ""
-    assert "10.0.1.3" not in first_hosts
-
-    _mark_family_runs_received(execution)
-    poll_scan_finalize(execution.id, execution.claim_token)
-    assert ScanFamilyRun.objects.filter(execution=execution, model_id="host").count() == 2
-    second_hosts = captured[1].get("cmdbhosts") or ""
-    assert "10.0.1.3" in second_hosts
-
-
-def test_poll_middleware_port_probe_keeps_matching_types_only(mocker):
-    mocker.patch(
-        "apps.cmdb.services.scan_schedule_service.probe_open_ports",
-        return_value={"10.0.1.2": [80]},
-    )
-    task = _scan_task(
-        families=["middleware"],
-        credentials={"middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
-        cloud_region={"id": 1},
-    )
-    execution = ScanExecution.objects.create(task=task)
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        return_value=TriggerResult("accepted", 1, 1),
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
-    trigger_scan_execution(execution.id)
-    _drain_scan_jobs(execution, mocker)
-    model_ids = set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True))
-    assert model_ids == {"nginx"}
-
-
-def _expire_batch_and_execution(execution):
-    from datetime import timedelta
-
-    from django.utils.timezone import now
-
-    execution.refresh_from_db()
-    past = now() - timedelta(seconds=1)
-    schedule = dict(execution.schedule or {})
-    schedule["batch_deadline_at"] = past.isoformat()
-    execution.schedule = schedule
-    execution.deadline_at = past
-    execution.save(update_fields=["schedule", "deadline_at", "updated_at"])
-
-
-def _host_and_middleware_task(**overrides):
-    values = {
-        "families": ["host", "middleware"],
-        "credentials": {
-            "host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}],
-            "middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}],
-        },
-        "cloud_region": {"id": 1},
-        "ip_ranges": [{"begin": "10.0.1.1", "end": "10.0.1.1"}],
-    }
-    values.update(overrides)
-    return _scan_task(**values)
-
-
-def test_poll_skipped_host_timeout_enqueues_empty_middleware_and_completes(mocker):
-    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
-    task = _host_and_middleware_task()
-    execution = ScanExecution.objects.create(task=task)
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        return_value=TriggerResult("accepted", 1, 1),
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
-    trigger_scan_execution(execution.id)
-    execution.refresh_from_db()
-    host_run = ScanFamilyRun.objects.get(execution=execution, model_id="host")
-    assert host_run.admit_status == ScanFamilyRun.ADMIT_ACCEPTED
-    assert int(host_run.target_count or 0) == 1
-    assert host_run.received_count == 0
-
-    _expire_batch_and_execution(execution)
-    result = poll_scan_finalize(execution.id, execution.claim_token)
-
-    assert result["status"] == ScanExecution.STATUS_COMPLETED
-    execution.refresh_from_db()
-    assert execution.schedule.get("middleware_enqueued") is True
-    host_run.refresh_from_db()
-    assert host_run.received_count == 0
-    assert host_run.admit_status == ScanFamilyRun.ADMIT_ACCEPTED
-    assert not ScanFamilyRun.objects.filter(execution=execution).exclude(model_id="host").exists()
-
-
-def test_poll_skipped_host_batch_waits_while_later_host_batch_unfinished(mocker):
-    mocker.patch("apps.cmdb.services.scan_schedule_service.SCAN_JOB_BATCH_SIZE", 1)
-    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
-    task = _host_and_middleware_task(ip_ranges=[{"begin": "10.0.1.1", "end": "10.0.1.2"}])
-    execution = ScanExecution.objects.create(task=task)
-    mocker.patch(
-        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
-        return_value=TriggerResult("accepted", 1, 1),
-    )
-    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
-    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
-    trigger_scan_execution(execution.id)
-    execution.refresh_from_db()
-    assert ScanFamilyRun.objects.filter(execution=execution, model_id="host").count() == 1
-
-    _expire_batch_and_execution(execution)
-    result = poll_scan_finalize(execution.id, execution.claim_token)
-
-    assert result["status"] == "waiting"
-    execution.refresh_from_db()
-    assert execution.schedule.get("middleware_enqueued") is False
-    host_runs = list(ScanFamilyRun.objects.filter(execution=execution, model_id="host").order_by("batch_index"))
-    assert len(host_runs) == 2
-    assert host_runs[0].received_count == 0
-    assert host_runs[1].admit_status == ScanFamilyRun.ADMIT_ACCEPTED
-    assert int(host_runs[1].target_count or 0) == 1
-    assert host_runs[1].received_count == 0
-    assert not ScanFamilyRun.objects.filter(execution=execution).exclude(model_id="host").exists()
+    entry = CELERY_BEAT_SCHEDULE["recover_due_scan_executions"]
+    assert entry["task"] == "apps.cmdb.tasks.celery_tasks.recover_due_scan_executions"
+    assert celery_tasks.recover_due_scan_executions.name == entry["task"]
+    assert celery_tasks.recover_due_scan_executions.run() == {"scanned": 2, "recovered": 1}
+    recover.assert_called_once_with()

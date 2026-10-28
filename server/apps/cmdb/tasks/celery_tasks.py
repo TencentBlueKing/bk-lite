@@ -1418,6 +1418,13 @@ def finalize_scan_execution(self, execution_id, claim_token):
     return poll_scan_finalize(execution_id, claim_token)
 
 
+@shared_task(name="apps.cmdb.tasks.celery_tasks.recover_due_scan_executions")
+def recover_due_scan_executions():
+    from apps.cmdb.services.scan_trigger_service import recover_stuck_scan_executions
+
+    return recover_stuck_scan_executions()
+
+
 @shared_task(bind=True, name="apps.cmdb.tasks.celery_tasks.enrich_scan_middleware_snapshots")
 def enrich_scan_middleware_snapshots(self, execution_id, attempt=0, deadline_ts=None):
     from apps.cmdb.services.scan_finalize_service import enrich_middleware_snapshots

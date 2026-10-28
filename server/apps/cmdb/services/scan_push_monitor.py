@@ -2,16 +2,31 @@
 
 from __future__ import annotations
 
-from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_TYPES, ScanExecution, ScanHit, is_agent_credential, resolve_scan_task_credential
-from apps.cmdb.services.host_sync_identity import parse_cloud_id
+from apps.cmdb.models.scan_model import (
+    SCAN_WRITE_DATABASE_TYPES,
+    SCAN_WRITE_MIDDLEWARE_TYPES,
+    ScanExecution,
+    ScanHit,
+    is_agent_credential,
+    resolve_scan_task_credential,
+)
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
 from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
 from apps.cmdb.services.scan_identity import ensure_scan_execution_terminal
 from apps.core.logger import cmdb_logger as logger
+from apps.module_link.services.cmdb_monitor import CmdbMonitorTaskService
+
+_LINK_MONITOR_TYPES = SCAN_WRITE_MIDDLEWARE_TYPES | (SCAN_WRITE_DATABASE_TYPES - {"influxdb"})
 
 _NETWORK_MODELS = frozenset({"switch", "router", "firewall", "loadbalance"})
 _DB_MODELS = frozenset({"mysql", "postgresql", "mssql", "influxdb"})
+
+
+def _is_module_link_hit(hit: ScanHit) -> bool:
+    family = str(getattr(hit.family_run, "model_id", "") or "").strip()
+    model = str(hit.cmdb_model_id or "").strip()
+    return family in _LINK_MONITOR_TYPES or model in _LINK_MONITOR_TYPES
 
 
 def _resolve_credential_item(task, family_model_id: str, credential_id: str) -> dict | None:
@@ -55,25 +70,9 @@ def _enrich_instance_for_push(instance: dict, hit: ScanHit, scan_task) -> dict:
     return merged
 
 
-def _hit_scan_task(hit: ScanHit):
-    execution = getattr(hit, "execution", None)
-    task = getattr(execution, "task", None)
-    if task is not None:
-        return task
-    family_run = getattr(hit, "family_run", None)
-    return getattr(getattr(family_run, "execution", None), "task", None)
-
-
-def _lookup_instance_by_ip(model_id: str, host: str, port=None, *, cloud=None) -> dict | None:
-    """扫描 hit 上的 inst_uuid 可能已被后续采集 upsert 换掉。
-
-    非主机仍按模型+IP（库再加端口）取第一条。主机身份是 IP 加云区域：查询带上任务云区域，
-    并且只接受 cloud 与该区域一致的结果；恰好一条才返回。没有区域、没有匹配或多于一条时找不到。
-    """
+def _lookup_instance_by_ip(model_id: str, host: str, port=None) -> dict | None:
+    """扫描 hit 上的 inst_uuid 可能已被后续采集 upsert 换掉，按模型+IP（库再加端口）找回现网 CI。"""
     if not model_id or not host:
-        return None
-    expected_cloud = parse_cloud_id(cloud) if model_id == "host" else None
-    if model_id == "host" and expected_cloud is None:
         return None
     from apps.cmdb.constants.constants import INSTANCE
     from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -87,22 +86,11 @@ def _lookup_instance_by_ip(model_id: str, host: str, port=None, *, cloud=None) -
             filters.append({"field": "port", "type": "int=", "value": int(port)})
         except (TypeError, ValueError):
             pass
-    if model_id == "host":
-        filters.append({"field": "cloud", "type": "int=", "value": expected_cloud})
     with GraphClient() as ag:
         rows, _ = ag.query_entity(INSTANCE, filters)
-    if model_id != "host":
-        for row in rows or []:
-            if isinstance(row, dict) and row.get("_id") is not None:
-                return row
-        return None
-    matched = [
-        row
-        for row in rows or []
-        if isinstance(row, dict) and row.get("_id") is not None and parse_cloud_id(row.get("cloud")) == expected_cloud
-    ]
-    if len(matched) == 1:
-        return matched[0]
+    for row in rows or []:
+        if isinstance(row, dict) and row.get("_id") is not None:
+            return row
     return None
 
 
@@ -125,8 +113,7 @@ def _resolve_graph_instance(hit: ScanHit) -> dict | None:
     model_id = str(hit.cmdb_model_id or "").strip()
     if not model_id or model_id == "network":
         return None
-    cloud = host_cloud_from_scan(_hit_scan_task(hit)).get("cloud") if model_id == "host" else None
-    return _lookup_instance_by_ip(model_id, hit.host, hit.port, cloud=cloud)
+    return _lookup_instance_by_ip(model_id, hit.host, hit.port)
 
 
 def _sync_hit_live_uuid(hit: ScanHit, instance: dict) -> str:
@@ -207,8 +194,22 @@ class ScanPushMonitorService:
                 "cmdb_model_id": hit.cmdb_model_id,
             }
 
-            if family_model_id in SCAN_MIDDLEWARE_TYPES:
-                item.update({"status": "skipped", "reason": "middleware_needs_monitor_credential"})
+            if _is_module_link_hit(hit):
+                live_uuid = str(hit.inst_uuid or "").strip()
+                if not live_uuid:
+                    item.update({"status": "skipped", "reason": "no_ci"})
+                    results.append(item)
+                    continue
+                if request is None:
+                    item.update({"status": "failed", "reason": "no_request"})
+                    results.append(item)
+                    continue
+                try:
+                    link_task = CmdbMonitorTaskService.create([live_uuid], request=request)
+                    item.update({"status": "linked", "link_task_id": getattr(link_task, "id", None)})
+                except Exception as exc:
+                    logger.exception("[ScanPushMonitor] 同步监控任务失败 hit=%s host=%s", hit.id, hit.host)
+                    item.update({"status": "failed", "reason": str(exc)})
                 results.append(item)
                 continue
             if not str(hit.inst_uuid or "").strip():
@@ -284,7 +285,7 @@ class ScanPushMonitorService:
                 item.update({"status": "failed", "reason": str(exc)})
             results.append(item)
 
-        pushed = sum(1 for row in results if row.get("status") == "pushed")
+        pushed = sum(1 for row in results if row.get("status") in {"pushed", "linked"})
         skipped = sum(1 for row in results if row.get("status") == "skipped")
         failed = sum(1 for row in results if row.get("status") == "failed")
         return {

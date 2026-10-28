@@ -205,6 +205,7 @@ def test_hits_require_pagination(superuser, monkeypatch):
         status=ScanHit.STATUS_FAILED,
         error_code="auth_failed",
     )
+    monkeypatch.setattr("apps.cmdb.services.scan_hit_managed.annotate_scan_hits_managed", lambda hits, execution=None: hits)
     request = _req("get", superuser, query={"page": "1", "page_size": "20"}, current_team="1")
     response = ScanTaskViewSet.as_view({"get": "execution_hits"})(request, eid=str(execution.id))
     assert response.status_code == 200
@@ -213,8 +214,40 @@ def test_hits_require_pagination(superuser, monkeypatch):
     by_host = {item["host"]: item for item in body["items"]}
     assert by_host["10.0.1.20"]["credential_label"] == "db@3306"
     assert by_host["10.0.1.20"]["unmatch_reason"] == ""
+    assert by_host["10.0.1.20"]["cmdb_managed"] is False
+    assert by_host["10.0.1.20"]["monitor_managed"] is False
     assert by_host["10.0.1.11"]["unmatch_reason"] == "unknown_soid"
     assert by_host["10.0.1.22"]["unmatch_reason"] == "credential_failed"
+
+
+def test_hits_serialize_live_managed_flags(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = ScanTask.objects.create(name="scan-managed", team=[1], families=["host"])
+    execution = ScanExecution.objects.create(task=task)
+    host_run = execution.family_runs.create(model_id="host", driver_type="job")
+    ScanHit.objects.create(
+        execution=execution,
+        family_run=host_run,
+        protocol="host",
+        host="10.0.1.21",
+        port=22,
+        credential_id="cred-ssh",
+        status=ScanHit.STATUS_SUCCESS,
+    )
+
+    def fake_annotate(hits, execution=None):
+        for hit in hits:
+            hit.cmdb_managed = True
+            hit.monitor_managed = False
+        return hits
+
+    monkeypatch.setattr("apps.cmdb.services.scan_hit_managed.annotate_scan_hits_managed", fake_annotate)
+    request = _req("get", superuser, query={"page": "1", "page_size": "20"}, current_team="1")
+    response = ScanTaskViewSet.as_view({"get": "execution_hits"})(request, eid=str(execution.id))
+    assert response.status_code == 200
+    item = _data(response)["items"][0]
+    assert item["cmdb_managed"] is True
+    assert item["monitor_managed"] is False
 
 
 def test_generate_collect_returns_created_summary(superuser, monkeypatch):
@@ -573,10 +606,7 @@ def test_list_queryset_loads_only_latest_execution(superuser, monkeypatch):
 
     view = ScanTaskViewSet()
     view.action = "list"
-    loaded = {
-        item.id: item
-        for item in view.get_queryset().filter(id__in=[task.id, empty.id])
-    }
+    loaded = {item.id: item for item in view.get_queryset().filter(id__in=[task.id, empty.id])}
     history = loaded[task.id]
     blank = loaded[empty.id]
     history_count = len(history.prefetched_executions)
@@ -640,6 +670,7 @@ def test_execution_endpoints_follow_parent_task_scope(authenticated_user, monkey
         return {"written": 1, "skipped": 0, "failed": 0, "items": []}
 
     monkeypatch.setattr("apps.cmdb.services.scan_write_ci_service.ScanWriteCiService.write", _write)
+    monkeypatch.setattr("apps.cmdb.services.scan_hit_managed.annotate_scan_hits_managed", lambda hits, execution=None: hits)
     _own_task, own_execution = _scan_execution("org-a-scan", [1], "10.1.1.1", 3306)
     _foreign_task, foreign_execution = _scan_execution("org-b-scan", [2], "10.9.9.9", 39999)
 

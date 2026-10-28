@@ -186,6 +186,7 @@ class Command(BaseCommand):
         call_command("model_init")
         call_command("init_oid")
         call_command("init_port_fingerprint")
+        call_command("init_process_fingerprint")
         call_command("update_collect_task_data")
         call_command("init_field_groups")
         call_command("init_display_fields")

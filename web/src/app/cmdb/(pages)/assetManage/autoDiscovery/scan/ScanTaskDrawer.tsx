@@ -372,6 +372,7 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
             <Form.Item
               label={t('Scan.families')}
               name="families"
+              extra={t('Scan.familyCredentialHint')}
               rules={[{ required: true, message: t('common.selectTip') }]}
             >
               <Checkbox.Group className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
