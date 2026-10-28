@@ -1238,7 +1238,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       title: t('workflowOrchestration.atom.nodeType.trigger', '触发'),
       description: t('workflowOrchestration.editor.triggerGroupHint', '定义流程从何时、以什么输入开始。'),
       items: (pendingSource ? [] : ['FORM', 'SCHEDULE', 'WEBHOOK', 'NATS'] as const)
-        .map((type) => ({ key: type, title: triggerLabels[type], description: t('workflowOrchestration.editor.createEntry', '创建一个流程入口'), icon: <AtomIcon nodeType="TRIGGER" className="text-2xl" />, onClick: () => addTrigger(type) }))
+        .map((type) => ({ key: type, title: triggerLabels[type], description: t('workflowOrchestration.editor.createEntry', '创建一个流程入口'), icon: <AtomIcon nodeType="TRIGGER" triggerType={type} className="text-2xl" />, onClick: () => addTrigger(type) }))
         .filter((item) => matchesPickerQuery(`${item.title} ${item.key} ${item.description}`)),
     },
     {
