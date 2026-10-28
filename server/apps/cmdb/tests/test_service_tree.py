@@ -1285,3 +1285,75 @@ def test_export_rows_shared_host_keeps_one_row_per_application(monkeypatch):
         {"应用系统": "门户", "应用": "门户后端", "主机标识": "web-1"},
     ]
     assert [call for call in queried if _HOST_WEB in call] == [[_HOST_WEB]]
+
+
+def _service_tree_visibility_catalog():
+    return {
+        "aa": {"inst_uuid": "aa", "model_id": "application", "inst_name": "应用甲"},
+        "ab": {"inst_uuid": "ab", "model_id": "application", "inst_name": "应用乙"},
+        "hv": {"inst_uuid": "hv", "model_id": "host", "inst_name": "可见主机", "ip_addr": "10.1.1.1"},
+        "hb": {"inst_uuid": "hb", "model_id": "host", "inst_name": "隐藏主机", "ip_addr": "10.9.9.9"},
+        "hip": {"inst_uuid": "hip", "model_id": "host", "inst_name": "", "ip_addr": "10.2.2.2"},
+        "huid": {"inst_uuid": "huid", "model_id": "host", "inst_name": "", "ip_addr": ""},
+    }
+
+
+def _install_service_tree_visibility_graph(monkeypatch):
+    catalog = _service_tree_visibility_catalog()
+    graph = [
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "aa"),
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "ab"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "hv"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "hb"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "hm"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "hip"),
+        _edge(APPLICATION_RUN_HOST, "application", "aa", "host", "huid"),
+        _edge(APPLICATION_RUN_HOST, "application", "ab", "host", "hv"),
+    ]
+    monkeypatch.setattr("apps.cmdb.services.service_tree._layer_schema", lambda: layer_schema_from([], []))
+    monkeypatch.setattr("apps.cmdb.services.service_tree.query_association_edges", _loader(graph))
+    monkeypatch.setattr(
+        "apps.cmdb.services.service_tree.InstanceManage.instance_association_instance_list_by_uuid",
+        lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.service_tree.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [catalog[item] for item in uuids if item in catalog],
+    )
+
+
+def test_export_rows_omits_hidden_and_missing_hosts(monkeypatch):
+    _install_service_tree_visibility_graph(monkeypatch)
+    system = {"inst_uuid": "s1", "inst_name": "门户"}
+
+    def is_visible(item):
+        return item.get("inst_uuid") != "hb"
+
+    detail = ServiceTreeService.list_node_hosts(system, "aa", is_visible=is_visible)
+    listed = detail["hosts"]
+    assert "hb" not in [row["inst_uuid"] for row in listed]
+    assert "隐藏主机" not in [row["inst_name"] for row in listed]
+    assert "10.9.9.9" not in [row["ip_addr"] for row in listed]
+    assert "hv" in [row["inst_uuid"] for row in listed]
+
+    rows = ServiceTreeService.export_rows(system, is_visible=is_visible)
+    assert rows == [
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "可见主机"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "10.2.2.2"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "huid"},
+        {"应用系统": "门户", "应用": "应用乙", "主机标识": "可见主机"},
+    ]
+    identifiers = [row["主机标识"] for row in rows]
+    assert identifiers.count("可见主机") == 2
+    for leaked in ("隐藏主机", "10.9.9.9", "hb", "hm"):
+        assert leaked not in identifiers
+
+    plain = ServiceTreeService.export_rows(system, is_visible=None)
+    assert plain == [
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "可见主机"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "隐藏主机"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "10.2.2.2"},
+        {"应用系统": "门户", "应用": "应用甲", "主机标识": "huid"},
+        {"应用系统": "门户", "应用": "应用乙", "主机标识": "可见主机"},
+    ]
+    assert "hm" not in [row["主机标识"] for row in plain]
