@@ -37,12 +37,17 @@ describe('条件函数选择', () => {
       <ConditionFilter
         data={[{ func: 'count_rate', field: '_msg', op: '>', value: '' }]}
         fields={['service', '_msg']}
+        term="or"
+        onTermChange={vi.fn()}
         onChange={onChange}
       />
     );
 
-    expect(screen.getAllByRole('combobox')).toHaveLength(3);
+    expect(screen.getAllByRole('combobox')).toHaveLength(2);
     expect(screen.queryByText('service')).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'log.event.compareKindAbsolute' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'log.event.compareKindDelta' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'log.event.compareKindPercent' })).toBeNull();
     expect(screen.getByText('log.event.countRateUnit')).toBeTruthy();
 
     fireEvent.change(screen.getByPlaceholderText('log.event.enterThreshold'), {
@@ -58,12 +63,13 @@ describe('条件函数选择', () => {
       <ConditionFilter
         data={[{ func: 'count_delta', field: '_msg', op: '>', value: '50' }]}
         fields={['service']}
+        term="or"
+        onTermChange={vi.fn()}
         onChange={vi.fn()}
       />
     );
 
     expect(screen.getByText('log.event.countDeltaTip')).toBeTruthy();
-    expect(screen.getAllByRole('combobox')).toHaveLength(3);
   });
 
   it('选择变化率后出现对照下拉和百分号', () => {
@@ -79,11 +85,15 @@ describe('条件函数选择', () => {
           },
         ]}
         fields={['service', '_msg']}
+        term="or"
+        onTermChange={vi.fn()}
         onChange={vi.fn()}
       />
     );
 
-    expect(screen.getByText('log.event.compareKindPercent')).toBeTruthy();
+    expect(
+      (screen.getByRole('radio', { name: 'log.event.compareKindPercent' }) as HTMLInputElement).checked
+    ).toBe(true);
     expect(screen.getByText('log.event.compareOffsetHours')).toBeTruthy();
     expect(screen.getByLabelText('log.event.compareOffsetCountHour')).toBeTruthy();
     expect(screen.getByText('%')).toBeTruthy();
@@ -103,6 +113,8 @@ describe('条件函数选择', () => {
           },
         ]}
         fields={['duration']}
+        term="or"
+        onTermChange={vi.fn()}
         onChange={vi.fn()}
       />
     );
@@ -116,11 +128,14 @@ describe('条件函数选择', () => {
       <ConditionFilter
         data={[{ func: 'count', field: null, op: null, value: '' }]}
         fields={['service']}
+        term="or"
+        onTermChange={vi.fn()}
         onChange={vi.fn()}
       />
     );
 
-    expect(screen.getAllByRole('combobox')).toHaveLength(4);
+    expect(screen.getAllByRole('combobox')).toHaveLength(3);
+    expect(screen.queryByLabelText('log.event.deleteCondition')).toBeNull();
   });
 
   it('选择占比后出现分子筛选、提示和百分号', () => {
@@ -137,6 +152,8 @@ describe('条件函数选择', () => {
           },
         ]}
         fields={['service', '_msg']}
+        term="or"
+        onTermChange={vi.fn()}
         onChange={onChange}
       />
     );
@@ -156,6 +173,67 @@ describe('条件函数选择', () => {
         field: '_msg',
         params: { filter: 'message:ERR' },
       }),
+    ]);
+  });
+
+  it('栏头切换全部条件', () => {
+    const onTermChange = vi.fn();
+    render(
+      <ConditionFilter
+        data={[{ func: 'count', field: '_msg', op: '>', value: '' }]}
+        fields={['service']}
+        term="or"
+        onTermChange={onTermChange}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('log.event.termAny')).toBeTruthy();
+    expect(screen.getByText('log.event.termAll')).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'log.event.termAll' }));
+    expect(onTermChange).toHaveBeenCalledWith('and');
+  });
+
+  it('多条条件时每条都可删除，并显示序号', () => {
+    const first = { func: 'count', field: 'level', op: '>', value: '100' };
+    const second = { func: 'avg', field: 'duration', op: '>', value: '20' };
+    const onChange = vi.fn();
+    render(
+      <ConditionFilter
+        data={[first, second]}
+        fields={['level', 'duration']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={onChange}
+      />
+    );
+
+    expect(
+      screen.getAllByLabelText('log.event.conditionIndex').map((node) => node.textContent)
+    ).toEqual(['1', '2']);
+    const deleteButtons = screen.getAllByLabelText('log.event.deleteCondition');
+    expect(deleteButtons).toHaveLength(2);
+    fireEvent.click(deleteButtons[0]);
+    expect(onChange).toHaveBeenCalledWith([second]);
+  });
+
+  it('点击添加条件时在末尾追加空条件', () => {
+    const current = { func: 'count', field: '_msg', op: '>', value: '1' };
+    const onChange = vi.fn();
+    render(
+      <ConditionFilter
+        data={[current]}
+        fields={['_msg']}
+        term="or"
+        onTermChange={vi.fn()}
+        onChange={onChange}
+      />
+    );
+
+    fireEvent.click(screen.getByText('log.event.addCondition'));
+    expect(onChange).toHaveBeenCalledWith([
+      current,
+      { field: null, op: null, value: '' },
     ]);
   });
 });

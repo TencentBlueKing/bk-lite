@@ -90,6 +90,18 @@ const keys = [
   'log.event.truncatedHint',
   'log.event.dryRunGroup',
   'log.event.dryRunVerdict',
+  'log.event.matchPrefix',
+  'log.event.matchSuffix',
+  'log.event.termAny',
+  'log.event.termAll',
+  'log.event.statRow',
+  'log.event.compareRow',
+  'log.event.triggerRow',
+  'log.event.whenResult',
+  'log.event.ratioNumerator',
+  'log.event.addCondition',
+  'log.event.deleteCondition',
+  'log.event.conditionIndex',
 ];
 
 describe('日志策略计算方式文案', () => {
@@ -99,6 +111,8 @@ describe('日志策略计算方式文案', () => {
       expect(enMessages[key], key).toBeTruthy();
       expect(zhMessages[key]).not.toBe(enMessages[key]);
     }
+    expect(zhMessages['log.event.compareKindAbsolute']).toBe('当前值');
+    expect(enMessages['log.event.compareKindAbsolute']).toBe('Current value');
     expect(zhMessages['log.event.funcCount']).toBe('计数');
     expect(zhMessages['log.event.funcCountRate']).toBe('速率');
     expect(zhMessages['log.event.funcCountDelta']).toBe('变化量');

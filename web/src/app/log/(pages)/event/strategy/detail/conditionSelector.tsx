@@ -1,12 +1,11 @@
 'use client';
 
 import React from 'react';
-import { Button, Input, InputNumber, Select, Space } from 'antd';
+import { Button, Input, InputNumber, Radio, Select } from 'antd';
 import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import { ConditionFilterProps } from '@/app/log/types/event';
 import { ListItem } from '@/app/log/types';
 import { useTranslation } from '@/utils/i18n';
-import groupingStyle from '../index.module.scss';
 import { cloneDeep } from 'lodash';
 import {
   AggregateFunctionOption,
@@ -20,9 +19,15 @@ import { compareOffsetLimit, presentCompare } from '@/app/log/utils/compareTarge
 
 const { Option } = Select;
 
-const ConditionFilter: React.FC<ConditionFilterProps> = ({
+const SYMBOLIC_OPERATORS = new Set(['=', '!=', '>', '<']);
+
+const operatorHasSymbol = (id: ListItem['id']) => SYMBOLIC_OPERATORS.has(String(id));
+
+const ConditionSelector: React.FC<ConditionFilterProps> = ({
   data = [],
   fields = [],
+  term,
+  onTermChange,
   onChange
 }) => {
   const { t } = useTranslation();
@@ -147,217 +152,273 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
   };
 
   return (
-    <div className="w-full">
-      {data.length ? (
-        <ul className={groupingStyle.conditions}>
-          {data.map((conditionItem, index) => {
-            const functionOption = FUNCTION_LIST.find(
-              (item) => item.value === conditionItem.func
-            );
-            const legacyDelta = conditionItem.func === 'count_delta';
-            const showField = !legacyDelta && (!functionOption || functionOption.needsField);
-            const presentedCompare = presentCompare(conditionItem.compare);
-            const compareKind = presentedCompare.kind || 'absolute';
-            const comparable = functionOption ? functionOption.comparable !== false : !legacyDelta;
-            const kindOptions = comparable
-              ? COMPARE_KIND_LIST
-              : COMPARE_KIND_LIST.filter((item) => item.value === 'absolute');
-            const showTarget = comparable && compareKind !== 'absolute';
-            const customOffset = presentedCompare.to === 'offset_hours' || presentedCompare.to === 'offset_days';
-            const showPercent = compareKind === 'percent';
-            const showRatio = functionOption?.needsFilter === true;
-            const showUnitSuffix = Boolean(functionOption?.unitKey) || showPercent || showRatio;
-            return (
-              <li className="flex w-full flex-col items-stretch gap-2" key={index}>
-                <div className="flex w-full flex-wrap items-center gap-2">
-                  <Select
-                    style={{ width: 148 }}
-                    popupMatchSelectWidth={false}
-                    placeholder={t('log.event.selectFunction')}
-                    showSearch
-                    optionLabelProp="label"
-                    optionFilterProp="label"
-                    value={conditionItem.func}
-                    onChange={(val) =>
-                      handleConditionChange({
-                        val,
-                        index,
-                        field: 'func'
-                      })
-                    }
-                  >
-                    {FUNCTION_LIST.map((item) => (
-                      <Option value={item.value} key={item.value} label={functionLabel(item)}>
-                        <span className="text-[var(--color-text-1)]">{functionName(item)}</span>
-                        {showFunctionMethod(item) ? (
-                          <span className="text-[var(--color-text-3)]">
-                            （{functionMethod(item)}）
-                          </span>
-                        ) : null}
-                      </Option>
-                    ))}
-                  </Select>
-                  {showField ? (
+    <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-sm">
+      <div className="flex min-h-11 flex-wrap items-center gap-2 border-b border-[var(--color-border-2)] px-3">
+        <span>{t('log.event.matchPrefix')}</span>
+        <Radio.Group
+          name="log-policy-condition-term"
+          aria-label={t('log.integration.rule')}
+          optionType="button"
+          size="small"
+          value={term}
+          onChange={(event) => onTermChange(event.target.value)}
+          options={[
+            { value: 'or', label: t('log.event.termAny') },
+            { value: 'and', label: t('log.event.termAll') },
+          ]}
+        />
+        <span>{t('log.event.matchSuffix')}</span>
+      </div>
+      <div className="flex flex-col gap-3 p-3">
+        {data.map((conditionItem, index) => {
+          const functionOption = FUNCTION_LIST.find(
+            (item) => item.value === conditionItem.func
+          );
+          const legacyDelta = conditionItem.func === 'count_delta';
+          const showField = !legacyDelta && (!functionOption || functionOption.needsField);
+          const presentedCompare = presentCompare(conditionItem.compare);
+          const compareKind = presentedCompare.kind || 'absolute';
+          const comparable = functionOption ? functionOption.comparable !== false : !legacyDelta;
+          const showTarget = comparable && compareKind !== 'absolute';
+          const customOffset = presentedCompare.to === 'offset_hours' || presentedCompare.to === 'offset_days';
+          const showPercent = compareKind === 'percent';
+          const showRatio = functionOption?.needsFilter === true;
+          const showUnitSuffix = Boolean(functionOption?.unitKey) || showPercent || showRatio;
+          const thresholdAddon = !showUnitSuffix
+            ? undefined
+            : conditionItem.func === 'count_rate'
+              ? t('log.event.countRateUnit')
+              : conditionItem.func === 'bytes_rate'
+                ? t('log.event.bytesRateUnit')
+                : '%';
+          return (
+            <div
+              className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3"
+              key={index}
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]"
+                  aria-label={t('log.event.conditionIndex', '条件 {index}', { index: index + 1 })}
+                >
+                  {index + 1}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-10 shrink-0 text-[var(--color-text-2)]">
+                      {t('log.event.statRow')}
+                    </span>
                     <Select
-                      style={{ width: 104 }}
-                      placeholder={t('log.event.selectField')}
+                      style={{ width: 140 }}
+                      popupMatchSelectWidth={false}
+                      placeholder={t('log.event.selectFunction')}
                       showSearch
-                      value={conditionItem.field}
+                      optionLabelProp="label"
+                      optionFilterProp="title"
+                      value={conditionItem.func}
                       onChange={(val) =>
                         handleConditionChange({
                           val,
                           index,
-                          field: 'field'
+                          field: 'func'
                         })
                       }
                     >
-                      {fields.map((item: string) => (
-                        <Option value={item} key={item}>
-                          {item}
+                      {FUNCTION_LIST.map((item) => (
+                        <Option
+                          value={item.value}
+                          key={item.value}
+                          label={functionName(item)}
+                          title={functionLabel(item)}
+                        >
+                          <span className="text-[var(--color-text-1)]">{functionName(item)}</span>
+                          {showFunctionMethod(item) ? (
+                            <span className="text-[var(--color-text-3)]">
+                              （{functionMethod(item)}）
+                            </span>
+                          ) : null}
                         </Option>
                       ))}
                     </Select>
-                  ) : null}
-                  {functionOption?.needsQuantile ? (
-                    <Select
-                      style={{ width: 100 }}
-                      placeholder={t('log.event.quantileLabel')}
-                      value={conditionItem.params?.quantile}
-                      onChange={(val) => handleQuantile(val, index)}
-                    >
-                      {QUANTILE_LIST.map((item) => (
-                        <Option value={item} key={item}>
-                          {`P${Math.round(item * 100)}`}
-                        </Option>
-                      ))}
-                    </Select>
-                  ) : null}
-                  {showRatio ? (
-                    <Input
-                      style={{ width: 180 }}
-                      placeholder={t('log.event.ratioFilter')}
-                      value={conditionItem.params?.filter}
-                      onChange={(event) => handleRatioFilter(event, index)}
-                    />
-                  ) : null}
-                  <Select
-                    style={{ width: 96 }}
-                    placeholder={t('log.event.compareKind')}
-                    value={compareKind}
-                    onChange={(val) => handleCompareKind(val, index)}
-                  >
-                    {kindOptions.map((item) => (
-                      <Option value={item.value} key={item.value}>
-                        {t(item.labelKey)}
-                      </Option>
-                    ))}
-                  </Select>
-                  <Select
-                    style={{ width: 112 }}
-                    placeholder={t('log.event.selectCriteria')}
-                    value={conditionItem.op}
-                    onChange={(val) =>
-                      handleConditionChange({
-                        val,
-                        index,
-                        field: 'op'
-                      })
-                    }
-                  >
-                    {conditionList.map((item: ListItem) => (
-                      <Option value={item.id} key={item.id}>
-                        {item.name}
-                      </Option>
-                    ))}
-                  </Select>
-                  {showUnitSuffix ? (
-                    <Space.Compact style={{ width: 128 }}>
-                      <Input
-                        placeholder={t('log.event.enterThreshold')}
-                        value={conditionItem.value}
-                        onChange={(e) => handleValueChange(e, index)}
-                      />
-                      <span className="flex items-center whitespace-nowrap border border-[var(--color-border)] px-2 text-[12px] text-[var(--color-text-3)]">
-                        {showPercent || showRatio ? '%' : t(functionOption?.unitKey || '')}
+                    {showField ? (
+                      <Select
+                        style={{ width: 160 }}
+                        placeholder={t('log.event.selectField')}
+                        showSearch
+                        value={conditionItem.field}
+                        onChange={(val) =>
+                          handleConditionChange({
+                            val,
+                            index,
+                            field: 'field'
+                          })
+                        }
+                      >
+                        {fields.map((item: string) => (
+                          <Option value={item} key={item}>
+                            {item}
+                          </Option>
+                        ))}
+                      </Select>
+                    ) : null}
+                    {functionOption?.needsQuantile ? (
+                      <Select
+                        style={{ width: 88 }}
+                        placeholder={t('log.event.quantileLabel')}
+                        value={conditionItem.params?.quantile}
+                        onChange={(val) => handleQuantile(val, index)}
+                      >
+                        {QUANTILE_LIST.map((item) => (
+                          <Option value={item} key={item}>
+                            {`P${Math.round(item * 100)}`}
+                          </Option>
+                        ))}
+                      </Select>
+                    ) : null}
+                    {showRatio ? (
+                      <>
+                        <span className="text-[var(--color-text-2)]">{t('log.event.ratioNumerator')}</span>
+                        <Input
+                          style={{ width: 220 }}
+                          placeholder={t('log.event.ratioFilter')}
+                          value={conditionItem.params?.filter}
+                          onChange={(event) => handleRatioFilter(event, index)}
+                        />
+                      </>
+                    ) : null}
+                  </div>
+                  {comparable ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="w-10 shrink-0 text-[var(--color-text-2)]">
+                        {t('log.event.compareRow')}
                       </span>
-                    </Space.Compact>
-                  ) : (
+                      <Radio.Group
+                        name={`log-policy-condition-compare-${index}`}
+                        aria-label={t('log.event.compareKind')}
+                        optionType="button"
+                        size="small"
+                        value={compareKind}
+                        onChange={(event) => handleCompareKind(event.target.value, index)}
+                        options={COMPARE_KIND_LIST.map((item) => ({
+                          value: item.value,
+                          label: t(item.labelKey),
+                        }))}
+                      />
+                      {showTarget ? (
+                        <>
+                          <span className="text-[var(--color-text-2)]">{t('log.event.compareTo')}</span>
+                          <Select
+                            style={{ width: 120 }}
+                            aria-label={t('log.event.compareTo')}
+                            value={presentedCompare.to}
+                            onChange={(val) => handleCompareTarget(val, index)}
+                          >
+                            {COMPARE_OFFSET_METHOD_LIST.map((item) => (
+                              <Option value={item.value} key={item.value}>
+                                {t(item.labelKey)}
+                              </Option>
+                            ))}
+                          </Select>
+                          {customOffset ? (
+                            <InputNumber
+                              style={{ width: 120 }}
+                              min={1}
+                              max={compareOffsetLimit(presentedCompare.to)}
+                              precision={0}
+                              value={presentedCompare.offset}
+                              aria-label={t(
+                                presentedCompare.to === 'offset_days'
+                                  ? 'log.event.compareOffsetCountDay'
+                                  : 'log.event.compareOffsetCountHour'
+                              )}
+                              addonAfter={t(
+                                presentedCompare.to === 'offset_days'
+                                  ? 'log.event.compareOffsetUnitDay'
+                                  : 'log.event.compareOffsetUnitHour'
+                              )}
+                              onChange={(value) => handleOffset(typeof value === 'number' ? value : null, index)}
+                            />
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-10 shrink-0 text-[var(--color-text-2)]">
+                      {t('log.event.triggerRow')}
+                    </span>
+                    <span className="text-[var(--color-text-2)]">{t('log.event.whenResult')}</span>
+                    <Select
+                      style={{ width: 96 }}
+                      optionLabelProp="label"
+                      placeholder={t('log.event.selectCriteria')}
+                      value={conditionItem.op}
+                      onChange={(val) =>
+                        handleConditionChange({
+                          val,
+                          index,
+                          field: 'op'
+                        })
+                      }
+                    >
+                      {conditionList.map((item: ListItem) => (
+                        <Option
+                          value={item.id}
+                          key={item.id}
+                          label={operatorHasSymbol(item.id) ? String(item.id) : item.name}
+                        >
+                          {operatorHasSymbol(item.id) ? `${item.id} ${item.name}` : item.name}
+                        </Option>
+                      ))}
+                    </Select>
                     <Input
-                      style={{ width: 100 }}
+                      style={{ width: 140 }}
                       placeholder={t('log.event.enterThreshold')}
                       value={conditionItem.value}
                       onChange={(e) => handleValueChange(e, index)}
+                      {...(thresholdAddon ? { addonAfter: thresholdAddon } : {})}
                     />
-                  )}
-                  {!!index && (
-                    <Button
-                      icon={<CloseOutlined />}
-                      onClick={() => handleDeleteCondition(index)}
-                    />
-                  )}
-                  <Button icon={<PlusOutlined />} onClick={handleAddCondition} />
+                  </div>
+                  {legacyDelta ? (
+                    <div className="text-xs leading-5 text-[var(--color-text-3)]">
+                      {t('log.event.countDeltaTip')}
+                    </div>
+                  ) : null}
+                  {showPercent ? (
+                    <div className="text-xs leading-5 text-[var(--color-text-3)]">
+                      {t('log.event.percentTip')}
+                    </div>
+                  ) : null}
+                  {showRatio ? (
+                    <div className="text-xs leading-5 text-[var(--color-text-3)]">
+                      {t('log.event.ratioFilterTip')}
+                    </div>
+                  ) : null}
                 </div>
-                {showTarget ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[var(--color-text-2)]">{t('log.event.compareTo')}</span>
-                    <Select
-                      style={{ width: 140 }}
-                      aria-label={t('log.event.compareTo')}
-                      value={presentedCompare.to}
-                      onChange={(val) => handleCompareTarget(val, index)}
-                    >
-                      {COMPARE_OFFSET_METHOD_LIST.map((item) => (
-                        <Option value={item.value} key={item.value}>
-                          {t(item.labelKey)}
-                        </Option>
-                      ))}
-                    </Select>
-                    {customOffset ? (
-                      <InputNumber
-                        style={{ width: 140 }}
-                        min={1}
-                        max={compareOffsetLimit(presentedCompare.to)}
-                        precision={0}
-                        value={presentedCompare.offset}
-                        aria-label={t(
-                          presentedCompare.to === 'offset_days'
-                            ? 'log.event.compareOffsetCountDay'
-                            : 'log.event.compareOffsetCountHour'
-                        )}
-                        addonAfter={t(
-                          presentedCompare.to === 'offset_days'
-                            ? 'log.event.compareOffsetUnitDay'
-                            : 'log.event.compareOffsetUnitHour'
-                        )}
-                        onChange={(value) => handleOffset(typeof value === 'number' ? value : null, index)}
-                      />
-                    ) : null}
-                  </div>
+                {data.length > 1 ? (
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CloseOutlined />}
+                    aria-label={t('log.event.deleteCondition')}
+                    onClick={() => handleDeleteCondition(index)}
+                  />
                 ) : null}
-                {legacyDelta ? (
-                  <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">
-                    {t('log.event.countDeltaTip')}
-                  </div>
-                ) : null}
-                {showPercent ? (
-                  <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">
-                    {t('log.event.percentTip')}
-                  </div>
-                ) : null}
-                {showRatio ? (
-                  <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">
-                    {t('log.event.ratioFilterTip')}
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <Button icon={<PlusOutlined />} onClick={handleAddCondition} />
-      )}
+              </div>
+            </div>
+          );
+        })}
+        <Button
+          type="dashed"
+          icon={<PlusOutlined aria-hidden />}
+          className="w-fit"
+          onClick={handleAddCondition}
+        >
+          {t('log.event.addCondition')}
+        </Button>
+      </div>
     </div>
   );
 };
 
-export default ConditionFilter;
+export default ConditionSelector;

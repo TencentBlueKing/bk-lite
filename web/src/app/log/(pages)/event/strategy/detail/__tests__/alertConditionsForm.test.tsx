@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Form } from 'antd';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -35,10 +35,14 @@ afterEach(() => {
   cleanup();
 });
 
-const Harness = () => {
+const Harness = ({
+  onValuesChange,
+}: {
+  onValuesChange?: (changed: Record<string, unknown>) => void;
+}) => {
   const [form] = Form.useForm();
   return (
-    <Form form={form}>
+    <Form form={form} onValuesChange={onValuesChange}>
       <AlertConditionsForm
         policyType="aggregate"
         unit="min"
@@ -69,5 +73,22 @@ describe('连续满足次数', () => {
     expect(input?.getAttribute('aria-valuemax')).toBe('5');
     expect(input?.getAttribute('aria-valuemin')).toBe('1');
     expect(input?.getAttribute('aria-valuenow')).toBe('1');
+  });
+
+  it('栏头显示 matchPrefix', () => {
+    render(<Harness />);
+
+    expect(screen.getByText('log.event.matchPrefix')).toBeTruthy();
+  });
+
+  it('编辑条件不把条件写进表单字段 rule', () => {
+    const onValuesChange = vi.fn();
+    render(<Harness onValuesChange={onValuesChange} />);
+
+    fireEvent.change(screen.getByPlaceholderText('log.event.enterThreshold'), {
+      target: { value: '9' },
+    });
+
+    expect(onValuesChange).not.toHaveBeenCalled();
   });
 });

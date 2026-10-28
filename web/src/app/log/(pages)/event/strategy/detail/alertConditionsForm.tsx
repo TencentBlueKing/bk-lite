@@ -1,7 +1,6 @@
 import React from 'react';
 import { Form, Input, Select, InputNumber, Radio } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { useTermList } from '@/app/log/hooks/integration/common/other';
 import ConditionSelector from './conditionSelector';
 import { StrategyFields } from '@/app/log/types/event';
 import { FilterItem } from '@/app/log/types/integration';
@@ -47,7 +46,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const { t } = useTranslation();
   const LEVEL_LIST = useLevelList();
   const SCHEDULE_LIST = useScheduleList();
-  const TERM_LIST = useTermList();
   const lockedPolicyType = policyType || 'keyword';
   const conditionVisibility = getAlertConditionVisibility(lockedPolicyType);
 
@@ -202,6 +200,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           <Form.Item
             name="rule"
             noStyle
+            // 条件存在父组件 state。这个触发名不会被调用，避免 onChange 把条件写进表单字段 rule。
+            trigger="onCollect"
             rules={[
               {
                 validator: validateConidtion,
@@ -209,27 +209,13 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               }
             ]}
           >
-            <div className="mb-[12px] flex items-center">
-              <span className="shrink-0">{t('log.integration.meetRule')}</span>
-              <Select
-                style={{ width: 220, marginLeft: 8 }}
-                placeholder={t('log.integration.rule')}
-                showSearch
-                value={term}
-                onChange={onTermChange}
-              >
-                {TERM_LIST.map((item: ListItem) => (
-                  <Option value={item.value} key={item.value}>
-                    {item.name}
-                  </Option>
-                ))}
-              </Select>
-            </div>
             <ConditionSelector
               fields={fieldList}
               data={conditions}
+              term={term}
+              onTermChange={onTermChange}
               onChange={onConditionsChange}
-            ></ConditionSelector>
+            />
           </Form.Item>
         </Form.Item>
       )}

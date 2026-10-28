@@ -111,6 +111,8 @@ export interface SelectCardsProps {
 export interface ConditionFilterProps {
   data: FilterItem[];
   fields: string[];
+  term: string | null;
+  onTermChange: (val: string) => void;
   onChange?: (data: FilterItem[]) => void;
 }
 
