@@ -141,6 +141,8 @@
 
 .sidePanel {
     width: 100%;
+    // 单列时跟表单同宽。否则卡片会铺满页面最小宽度，表格和说明被拉空。
+    max-width: 840px;
 }
 
 @media (min-width: 1440px) {
@@ -157,6 +159,7 @@
         flex-direction: column;
         gap: 16px;
         min-width: 0;
+        max-width: none;
     }
 }
 
@@ -229,8 +232,8 @@
 .variableCardHeader {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
+    flex-wrap: wrap;
+    gap: 4px 12px;
     margin-bottom: 12px;
     color: var(--color-text-1);
     font-size: 14px;
@@ -238,12 +241,12 @@
 }
 
 .variableHint {
-    flex: 1;
+    flex: 1 1 16rem;
+    min-width: 0;
     color: #6f89ad;
     font-size: 12px;
     font-weight: 400;
     line-height: 1.5;
-    text-align: right;
 }
 
 .variableTable :global(.ant-table-thead > tr > th) {
