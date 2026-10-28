@@ -120,7 +120,7 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
         指定ID参数：
         - selected_ids: ID列表，如 [1, 2, 3]
 
-        行数超过 AUDIT_LOG_EXPORT_MAX_ROWS（默认 10000）时返回 400，不截断。
+        行数超过 EXPORT_MAX_ROWS（10000）时返回 400，不截断。
 
         返回：Excel文件流
         """

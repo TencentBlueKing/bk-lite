@@ -13,22 +13,6 @@ APP_CODE = os.getenv("APP_CODE", "bk-lite")
 DASHBOARD_SHARE_SIGNING_KEY = os.getenv("DASHBOARD_SHARE_SIGNING_KEY", "")
 DASHBOARD_SHARE_SESSION_AGE = int(os.getenv("DASHBOARD_SHARE_SESSION_AGE", "28800"))
 
-
-def _audit_log_export_max_rows(default=10000):
-    """审计日志 Excel 单次导出行数上限。非法或非正数回退默认值。"""
-    raw = os.getenv("AUDIT_LOG_EXPORT_MAX_ROWS")
-    if raw is None or str(raw).strip() == "":
-        return default
-    try:
-        value = int(str(raw).strip())
-    except ValueError:
-        return default
-    return value if value > 0 else default
-
-
-# 与 apps.system_mgmt.utils.audit_log_export.EXPORT_MAX_ROWS 默认值保持一致。
-AUDIT_LOG_EXPORT_MAX_ROWS = _audit_log_export_max_rows()
-
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7 * 2
 SESSION_COOKIE_NAME = f"{APP_CODE}_sessionid"
 LOGIN_CACHE_EXPIRED = 60 * 60

@@ -4,12 +4,12 @@ from io import BytesIO
 from unittest.mock import patch
 
 import pytest
-from django.test import override_settings
 from openpyxl import load_workbook
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.system_mgmt.models import Group, OperationLog, User, UserLoginLog
-from apps.system_mgmt.utils.audit_log_export import EXPORT_MAX_ROWS, configured_export_max_rows
+from apps.system_mgmt.utils import audit_log_export
+from apps.system_mgmt.utils.audit_log_export import EXPORT_MAX_ROWS
 from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin
 from apps.system_mgmt.utils.i18n import system_mgmt_message
 from apps.system_mgmt.viewset.operation_log_viewset import OperationLogViewSet
@@ -35,20 +35,13 @@ def scope_export_queryset_like_current_team(monkeypatch):
     monkeypatch.setattr(GroupFilterMixin, "get_queryset", _visible)
 
 
-def test_export_max_rows_defaults_to_10000():
+def test_export_max_rows_is_hardcoded_10000():
     assert EXPORT_MAX_ROWS == 10000
-    assert configured_export_max_rows() == 10000
+    assert audit_log_export.EXPORT_MAX_ROWS == 10000
 
 
-@override_settings(AUDIT_LOG_EXPORT_MAX_ROWS="2500")
-def test_configured_export_max_rows_reads_settings():
-    assert configured_export_max_rows() == 2500
-
-
-@pytest.mark.parametrize("raw", [0, -3, "nope", "", None])
-def test_configured_export_max_rows_rejects_invalid_values(raw):
-    with override_settings(AUDIT_LOG_EXPORT_MAX_ROWS=raw):
-        assert configured_export_max_rows() == EXPORT_MAX_ROWS
+def _set_export_max_rows(monkeypatch, limit):
+    monkeypatch.setattr(audit_log_export, "EXPORT_MAX_ROWS", limit)
 
 
 def _admin():
@@ -105,8 +98,8 @@ def _sheet(response):
     return load_workbook(BytesIO(response.content)).active
 
 
-@override_settings(AUDIT_LOG_EXPORT_MAX_ROWS=1)
-def test_operation_log_export_over_limit_returns_400_without_workbook():
+def test_operation_log_export_over_limit_returns_400_without_workbook(monkeypatch):
+    _set_export_max_rows(monkeypatch, 1)
     admin = _admin()
     team_id = _team_and_user("oplog-user")
     for index in range(2):
@@ -136,8 +129,8 @@ def test_operation_log_export_over_limit_returns_400_without_workbook():
     assert OperationLog.objects.filter(username="oplog-user").count() == 3
 
 
-@override_settings(AUDIT_LOG_EXPORT_MAX_ROWS=2)
-def test_operation_log_export_at_limit_keeps_every_row():
+def test_operation_log_export_at_limit_keeps_every_row(monkeypatch):
+    _set_export_max_rows(monkeypatch, 2)
     admin = _admin()
     team_id = _team_and_user("oplog-full")
     for index in range(2):
@@ -165,8 +158,8 @@ def test_operation_log_export_at_limit_keeps_every_row():
     assert "kept-hidden" not in {sheet.cell(row=row, column=7).value for row in range(2, sheet.max_row + 1)}
 
 
-@override_settings(AUDIT_LOG_EXPORT_MAX_ROWS=1)
-def test_operation_log_selected_ids_within_limit_exports_only_those_rows():
+def test_operation_log_selected_ids_within_limit_exports_only_those_rows(monkeypatch):
+    _set_export_max_rows(monkeypatch, 1)
     admin = _admin()
     team_id = _team_and_user("oplog-pick")
     chosen = OperationLog.objects.create(
@@ -192,8 +185,8 @@ def test_operation_log_selected_ids_within_limit_exports_only_those_rows():
     assert sheet.cell(row=2, column=7).value == "chosen"
 
 
-@override_settings(AUDIT_LOG_EXPORT_MAX_ROWS=1)
-def test_operation_log_selected_ids_over_limit_returns_400():
+def test_operation_log_selected_ids_over_limit_returns_400(monkeypatch):
+    _set_export_max_rows(monkeypatch, 1)
     admin = _admin()
     team_id = _team_and_user("oplog-many")
     rows = [
@@ -219,8 +212,8 @@ def test_operation_log_selected_ids_over_limit_returns_400():
     _assert_rejected(response, workbook, count=2)
 
 
-@override_settings(AUDIT_LOG_EXPORT_MAX_ROWS=1)
-def test_operation_log_narrow_filter_exports_when_filtered_count_is_within_limit():
+def test_operation_log_narrow_filter_exports_when_filtered_count_is_within_limit(monkeypatch):
+    _set_export_max_rows(monkeypatch, 1)
     admin = _admin()
     team_id = _team_and_user("alice-op")
     _team_and_user("bob-op")
@@ -247,8 +240,8 @@ def test_operation_log_narrow_filter_exports_when_filtered_count_is_within_limit
     assert sheet.cell(row=2, column=7).value == "alice-only"
 
 
-@override_settings(AUDIT_LOG_EXPORT_MAX_ROWS=1)
-def test_login_log_export_over_limit_returns_400_without_workbook():
+def test_login_log_export_over_limit_returns_400_without_workbook(monkeypatch):
+    _set_export_max_rows(monkeypatch, 1)
     admin = _admin()
     team_id = _team_and_user("login-user")
     for index in range(2):
@@ -274,8 +267,8 @@ def test_login_log_export_over_limit_returns_400_without_workbook():
     assert b"login-row-0" not in response.content
 
 
-@override_settings(AUDIT_LOG_EXPORT_MAX_ROWS=2)
-def test_login_log_export_at_limit_keeps_every_row():
+def test_login_log_export_at_limit_keeps_every_row(monkeypatch):
+    _set_export_max_rows(monkeypatch, 2)
     admin = _admin()
     team_id = _team_and_user("login-full")
     for index in range(2):
@@ -301,8 +294,8 @@ def test_login_log_export_at_limit_keeps_every_row():
     assert values == {"kept-login-0", "kept-login-1"}
 
 
-@override_settings(AUDIT_LOG_EXPORT_MAX_ROWS=1)
-def test_login_log_selected_ids_over_limit_returns_400_and_within_limit_exports():
+def test_login_log_selected_ids_over_limit_returns_400_and_within_limit_exports(monkeypatch):
+    _set_export_max_rows(monkeypatch, 1)
     admin = _admin()
     team_id = _team_and_user("login-pick")
     chosen = UserLoginLog.objects.create(
