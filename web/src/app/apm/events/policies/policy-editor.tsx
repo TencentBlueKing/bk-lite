@@ -40,6 +40,7 @@ import type {
   ApmNotificationChannel,
   ApmNotificationRecipient,
   ApmPolicy,
+  ApmPolicyAggregation,
   ApmPolicyComparator,
   ApmPolicyDryRunResult,
   ApmPolicyInput,
@@ -197,6 +198,23 @@ function decodeServiceScope(scope: string) {
 const LATENCY_METRICS: ApmPolicyMetric[] = ['p50', 'p75', 'p90', 'p95', 'p99', 'latency_avg', 'latency_max'];
 const RATIO_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex'];
 const COUNT_METRICS: ApmPolicyMetric[] = ['error_count', 'slow_request_count'];
+
+const AGGREGATION_OPTIONS: Array<{
+  value: ApmPolicyAggregation;
+  method: string;
+  i18nKey: string;
+  fallback: string;
+}> = [
+  { value: 'avg', method: 'AVG_OVER_TIME', i18nKey: 'apm.policies.aggregationAvg', fallback: '平均' },
+  { value: 'last', method: 'LAST_OVER_TIME', i18nKey: 'apm.policies.aggregationLast', fallback: '末值' },
+  { value: 'max', method: 'MAX_OVER_TIME', i18nKey: 'apm.policies.aggregationMax', fallback: '最大' },
+  { value: 'min', method: 'MIN_OVER_TIME', i18nKey: 'apm.policies.aggregationMin', fallback: '最小' },
+];
+
+function aggregationDisplayLabel(name: string, method: string) {
+  if (!method || name.trim().toUpperCase() === method) return name;
+  return `${name}（${method}）`;
+}
 const SLOW_METRICS: ApmPolicyMetric[] = ['slow_request_count', 'slow_request_rate'];
 const MIN_REQUEST_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex', ...LATENCY_METRICS];
 
@@ -1300,13 +1318,32 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           {showAggregation ? (
             <Form.Item name="aggregation" label={t('apm.policies.aggregation', '汇聚方法')} rules={[{ required: true, message: t('apm.policies.aggregationRequired', '请选择汇聚方法') }]}>
               <Select
-                options={[
-                  { value: 'avg', label: 'avg_over_time' },
-                  { value: 'last', label: 'last_over_time' },
-                  { value: 'max', label: 'max_over_time' },
-                  { value: 'min', label: 'min_over_time' },
-                ]}
-              />
+                showSearch
+                optionFilterProp="label"
+                filterOption={(input, option) => {
+                  const query = input.trim().toLowerCase();
+                  if (!query) return true;
+                  const label = String(option?.label || '').toLowerCase();
+                  const value = String(option?.value || '').toLowerCase();
+                  return label.includes(query) || value.includes(query);
+                }}
+              >
+                {AGGREGATION_OPTIONS.map((item) => {
+                  const name = t(item.i18nKey, item.fallback);
+                  return (
+                    <Select.Option
+                      key={item.value}
+                      value={item.value}
+                      label={aggregationDisplayLabel(name, item.method)}
+                    >
+                      <span className="flex w-full min-w-0 items-center">
+                        <span className="shrink-0 text-[var(--color-text-1)]">{name}</span>
+                        <span className="text-[var(--color-text-3)]">（{item.method}）</span>
+                      </span>
+                    </Select.Option>
+                  );
+                })}
+              </Select>
             </Form.Item>
           ) : null}
           <Typography.Text type="secondary" className={styles.scopeHint}>

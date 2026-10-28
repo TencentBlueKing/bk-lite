@@ -138,6 +138,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.getByText('${endpoint}')).not.toBeNull();
     expect(screen.queryByLabelText('环境（必选）')).toBeNull();
     expect(screen.getByLabelText('端点')).not.toBeNull();
+    expect(screen.getByLabelText('汇聚方法').closest('.ant-select')?.textContent).toContain('平均（AVG_OVER_TIME）');
     expect(screen.queryByLabelText('版本维度')).toBeNull();
     expect(screen.getAllByLabelText('告警名称')).toHaveLength(1);
     expect(screen.queryByText(/LogSQL|MonitorObject|采集插件/)).toBeNull();

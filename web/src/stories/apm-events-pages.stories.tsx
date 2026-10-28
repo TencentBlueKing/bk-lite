@@ -2029,10 +2029,10 @@ function PolicyEdit() {
                             defaultValue="avg_over_time"
                             style={inputStyle}
                             options={[
-                              { value: 'avg_over_time', label: 'avg_over_time' },
-                              { value: 'last_over_time', label: 'last_over_time' },
-                              { value: 'max_over_time', label: 'max_over_time' },
-                              { value: 'min_over_time', label: 'min_over_time' },
+                              { value: 'avg_over_time', label: '平均（AVG_OVER_TIME）' },
+                              { value: 'last_over_time', label: '末值（LAST_OVER_TIME）' },
+                              { value: 'max_over_time', label: '最大（MAX_OVER_TIME）' },
+                              { value: 'min_over_time', label: '最小（MIN_OVER_TIME）' },
                             ]}
                           />
                         </Form.Item>
