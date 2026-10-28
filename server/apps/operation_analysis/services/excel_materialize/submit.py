@@ -53,6 +53,8 @@ def submit_excel_candidate(
             old_candidate_id = datasource.excel_candidate_slot_id
             datasource.excel_candidate_slot = slot
             datasource.excel_materialization_generation = generation
+            # 候选一旦落库，重算意图改由 PENDING 槽承接，避免补扫再投一次。
+            datasource.excel_resubmit_pending = False
             query_config = dict(datasource.query_config or {})
             if sheet_name:
                 query_config["sheet_name"] = sheet_name
@@ -61,6 +63,7 @@ def submit_excel_candidate(
                 update_fields=[
                     "excel_candidate_slot",
                     "excel_materialization_generation",
+                    "excel_resubmit_pending",
                     "query_config",
                     "updated_at",
                 ]
@@ -167,7 +170,10 @@ def schedule_materialize_candidate(slot_id: int) -> None:
 
 
 def schedule_resubmit_excel_from_saved_source(datasource_id: int) -> None:
-    """脚本变更：Celery 只接收 ID，配置与脚本由 Worker 从数据库读取。"""
+    """脚本变更：先记下重算意图，事务提交后再投递。投递失败只记日志，意图留给补扫。"""
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    DataSourceAPIModel.objects.filter(pk=int(datasource_id)).update(excel_resubmit_pending=True)
 
     def _enqueue() -> None:
         from apps.core.logger import operation_analysis_logger as logger

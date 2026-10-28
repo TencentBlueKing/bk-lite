@@ -277,6 +277,17 @@ def excel_has_saved_source(datasource) -> bool:
     return _slot_has_source_file(datasource.excel_candidate_slot) or _slot_has_source_file(datasource.excel_success_slot)
 
 
+def _excel_candidate_in_progress(candidate) -> bool:
+    return bool(
+        candidate
+        and candidate.status
+        in {
+            ExcelMaterializationSlot.STATUS_PENDING,
+            ExcelMaterializationSlot.STATUS_PROCESSING,
+        }
+    )
+
+
 def resolve_excel_runtime_status(datasource) -> str:
     """Derive Spec runtime status without requiring frontend."""
     success = datasource.excel_success_slot
@@ -284,11 +295,10 @@ def resolve_excel_runtime_status(datasource) -> str:
     query_config = datasource.query_config if isinstance(datasource.query_config, dict) else {}
     has_legacy = isinstance(query_config.get("imported_items"), list) and bool(query_config.get("imported_items"))
 
-    if candidate and candidate.status in {
-        ExcelMaterializationSlot.STATUS_PENDING,
-        ExcelMaterializationSlot.STATUS_PROCESSING,
-    }:
-        return "processing" if success or has_legacy else "processing"
+    if _excel_candidate_in_progress(candidate):
+        return "processing"
+    if getattr(datasource, "excel_resubmit_pending", False):
+        return "processing"
     if candidate and candidate.status == ExcelMaterializationSlot.STATUS_FAILED:
         return "update_failed_using_previous" if (success or has_legacy) else "failed"
     if success and success.status == ExcelMaterializationSlot.STATUS_SUCCEEDED:
@@ -299,9 +309,12 @@ def resolve_excel_runtime_status(datasource) -> str:
 
 
 def excel_can_retry(datasource) -> bool:
-    """Retry only when a saved original exists and the latest candidate failed."""
+    """Retry when a saved original exists and the latest attempt failed or never started."""
     if not excel_has_saved_source(datasource):
         return False
+    candidate = datasource.excel_candidate_slot
+    if getattr(datasource, "excel_resubmit_pending", False) and not _excel_candidate_in_progress(candidate):
+        return True
     status = resolve_excel_runtime_status(datasource)
     return status in {"failed", "update_failed_using_previous"}
 
