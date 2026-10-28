@@ -303,9 +303,64 @@ def test_same_chat_interrupts_the_previous_turn():
     session.handle(_text(message_id="om_new", text="第二句"))
     session.wait()
     assert agent.requests[0].cancelled is True
-    assert ("om_1", "半截") not in gateway.updates
+    assert ("om_1", "半截") in gateway.updates
+    assert gateway.images == []
     assert gateway.replies[-1][1] == PROCESSING_TEXT
     assert gateway.replies[-1][0] == "om_new"
+
+
+def test_interrupt_delivers_images_from_generated_answer(monkeypatch):
+    from apps.opspilot.services.skill_channel_im_media import ImImage
+
+    image_url = "https://blocked.example/a.png?sig=SENTINEL_IMAGE_URL"
+    image = ImImage(alt="图", source_url=image_url, public_url=image_url, content=b"png", content_type="image/png")
+
+    def fake_outbound(text):
+        if image_url in (text or ""):
+            return "说明", [image]
+        return text, []
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_feishu_long_connection.feishu_outbound",
+        fake_outbound,
+    )
+    agent = RecordingAgent()
+    session, gateway, _clock = _session(_channel(), agent)
+    session.handle(_text(message_id="om_old", text="第一句"))
+    answer = f"说明\n\n![图]({image_url})"
+    agent.requests[0].publish(answer)
+    session.handle(_text(message_id="om_new", text="第二句"))
+
+    assert gateway.images == [("om_old", "图", b"png", "image/png")]
+    assert ("om_1", "说明") in gateway.updates
+    assert all("SENTINEL_IMAGE_URL" not in text for _mid, text in gateway.updates)
+    assert gateway.replies[-1] == ("om_new", PROCESSING_TEXT, "om_2")
+    assert agent.requests[0].cancelled is True
+    assert agent.requests[1].user_message == "第二句"
+
+
+def test_interrupt_delivers_images_after_bubble_already_refreshed(monkeypatch):
+    from apps.opspilot.services.skill_channel_im_media import ImImage
+
+    image_url = "https://blocked.example/a.png?sig=SENTINEL_IMAGE_URL"
+    image = ImImage(alt="图", source_url=image_url, public_url=image_url, content=b"png", content_type="image/png")
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_feishu_long_connection.feishu_outbound",
+        lambda text: ("说明", [image]) if image_url in (text or "") else (text, []),
+    )
+    agent = RecordingAgent()
+    clock = ManualClock()
+    session, gateway, clock = _session(_channel(), agent, clock=clock)
+    session.handle(_text(text="看图"))
+    answer = f"说明\n\n![图]({image_url})"
+    agent.requests[0].publish(answer)
+    clock.advance(2)
+    session.tick()
+    assert gateway.images == []
+    assert gateway.updates[-1] == ("om_1", "说明")
+    session.handle(_text(message_id="om_next", text="下一句"))
+    assert gateway.images == [("om_user", "图", b"png", "image/png")]
+    assert all("SENTINEL_IMAGE_URL" not in text for _mid, text in gateway.updates)
 
 
 def test_duplicate_message_does_not_start_another_turn():

@@ -337,9 +337,13 @@ class FeishuConnection:
             self._turns.pop(turn.chat_id, None)
             return
         turn.closed = True
-        generated = (turn.generated or "").strip()
-        if generated:
-            self._persist_assistant(turn, turn.generated)
+        generated = turn.generated or ""
+        if generated.strip():
+            # 气泡还停在「正在处理」时先刷出正文，再按原文投图，然后才摘掉回合。
+            if turn.displayed != generated:
+                self._show(turn, generated)
+            self._deliver_images(turn, generated)
+            self._persist_assistant(turn, generated)
         self._turns.pop(turn.chat_id, None)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "interrupted")
 
