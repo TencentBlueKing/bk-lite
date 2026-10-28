@@ -751,15 +751,27 @@
   min-width: 0;
 }
 
+.numberPrefix,
 .numberUnit {
   display: inline-flex;
-  min-width: 52px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
+  height: 32px;
   padding: 0 11px;
   color: var(--color-text-2);
+  white-space: nowrap;
   background: var(--color-fill-1);
   border: 1px solid var(--color-border);
+}
+
+.numberPrefix {
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.numberUnit {
+  min-width: 52px;
   border-left: 0;
   border-radius: 0 6px 6px 0;
 }
@@ -790,85 +802,77 @@
   background: var(--color-border-2);
 }
 
-.thresholdBlock {
-  margin: 0 0 18px 152px;
-  max-width: 560px;
-}
-
-.thresholdTitle {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 14px;
-}
-
-.thresholdTable {
-  width: 100%;
-  margin-bottom: 0;
-}
-
-.thresholdTable :global(.ant-table-cell) {
-  vertical-align: middle;
-}
-
-.thresholdTable :global(.ant-select),
-.thresholdTable :global(.ant-input-number) {
-  width: 100%;
-  max-width: none;
-}
-
-.thresholdTable :global(.ant-tag) {
-  min-width: 44px;
-  margin: 0;
-  text-align: center;
-  font-weight: 600;
-}
-
-.conditionRows {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.conditionRow,
-.conditionSentence {
-  display: flex;
-  align-items: center;
-}
-
-.conditionRow {
-  min-height: 40px;
-}
+$compact-field-width: 220px;
 
 .minRequestCount :global(.ant-input-number),
 .offsetAmount :global(.ant-input-number) {
-  width: 160px;
-  max-width: 160px;
+  width: $compact-field-width;
+  max-width: $compact-field-width;
 }
 
-.conditionLabel {
-  flex: 0 0 152px;
-  padding-right: 12px;
-  color: var(--color-text-1);
-  text-align: right;
-}
-
-.conditionLabel > span {
-  margin-right: 3px;
-  color: var(--color-fail);
-}
-
-.conditionSentence {
+.conditionControls {
+  display: flex;
   flex-wrap: wrap;
-  color: var(--color-text-3);
+  align-items: center;
   gap: 8px;
 }
 
-.conditionSentence :global(.ant-input-number) {
-  width: 72px;
+.conditionControls :global(.ant-select) {
+  width: $compact-field-width;
+  max-width: $compact-field-width;
 }
 
-.conditionSentence :global(.ant-select) {
-  width: 176px;
+.conditionNumber {
+  width: $compact-field-width;
+  max-width: $compact-field-width;
+}
+
+.conditionWindow {
+  width: 280px;
+  max-width: 280px;
+}
+
+.conditionNumber :global(.ant-input-number),
+.conditionWindow :global(.ant-input-number),
+.recoveryValue {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 64px;
+  max-width: none;
+}
+
+.thresholdComparator:global(.ant-select) {
+  flex: 0 0 100px;
+  width: 100px;
+  max-width: 100px;
+  margin-right: 10px;
+}
+
+.thresholdValue {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.conditionMode:global(.ant-select) {
+  width: $compact-field-width;
+  max-width: $compact-field-width;
+}
+
+.recoveryCompact {
+  width: auto;
+  max-width: none;
+}
+
+.recoveryCompact :global(.ant-select) {
+  width: 72px;
+  max-width: 72px;
+}
+
+.recoveryCompact :global(.ant-input-number) {
+  width: $compact-field-width;
+  max-width: $compact-field-width;
 }
 
 .noDataAlertName {
@@ -988,18 +992,6 @@
   .scopeHint {
     margin-left: 0;
   }
-
-  .conditionRow {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .conditionRow .conditionLabel {
-    flex-basis: auto;
-    padding-right: 0;
-    text-align: left;
-  }
 }
 
 @media (max-width: 640px) {
@@ -1054,11 +1046,6 @@
     flex-direction: column;
   }
 
-  .thresholdBlock {
-    margin-left: 0;
-    max-width: none;
-  }
-
   .editor :global(.ant-form-item-label) {
     flex: none !important;
     max-width: 100%;
@@ -1076,14 +1063,6 @@
     width: 100%;
     max-width: 100%;
     min-height: 40px;
-  }
-
-  .thresholdTable :global(.ant-table-cell) {
-    padding: 8px !important;
-  }
-
-  .thresholdTable .numberUnit {
-    display: none;
   }
 }
 

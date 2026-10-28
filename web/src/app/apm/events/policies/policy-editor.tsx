@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DeleteOutlined } from '@ant-design/icons';
@@ -393,11 +393,26 @@ function CompareBaselineSelect({
   );
 }
 
-function NumberWithUnit({ unit, ...props }: ComponentProps<typeof InputNumber<number>> & { unit: string }) {
+function NumberWithUnit({ unit, className, ...props }: ComponentProps<typeof InputNumber<number>> & { unit: string }) {
   return (
-    <Space.Compact className={styles.numberWithUnit}>
+    <Space.Compact className={[styles.numberWithUnit, className].filter(Boolean).join(' ')}>
       <InputNumber<number> {...props} />
       <span className={styles.numberUnit}>{unit}</span>
+    </Space.Compact>
+  );
+}
+
+function AffixedNumber({
+  before,
+  after,
+  className,
+  ...props
+}: ComponentProps<typeof InputNumber<number>> & { before?: string; after?: string }) {
+  return (
+    <Space.Compact className={className}>
+      {before ? <span className={styles.numberPrefix}>{before}</span> : null}
+      <InputNumber<number> {...props} />
+      {after ? <span className={styles.numberUnit}>{after}</span> : null}
     </Space.Compact>
   );
 }
@@ -542,7 +557,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const watchedThresholds = Form.useWatch('thresholds', form);
   const triggerWindow = Form.useWatch('trigger_window', form);
   const selectedEndpoints = Form.useWatch('endpoints', form);
-  const noDataSeverity = Form.useWatch('no_data_severity', form);
   const notificationTargets = Form.useWatch('notification_targets', form) ?? [];
   const organizations = Form.useWatch('organizations', form);
   const selectedHandlers = Form.useWatch('handlers', form);
@@ -557,6 +571,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const [loadedPolicy, setLoadedPolicy] = useState<ApmPolicy | null>(null);
   const [preview, setPreview] = useState<ApmPolicyQueryResult | null>(null);
   const [triggerMode, setTriggerMode] = useState<'consecutive' | 'window'>('consecutive');
+  const [noDataOpen, setNoDataOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -632,15 +647,26 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (loading) return;
     // rc-field-form 的 errors 和 warnings 初始指向同一个空数组。字段第一次
     // onChange 会把这份 meta 存进缓存，下一次 setFieldValue 再深比较时就会
     // 报 “There may be circular references”，开发态遮罩会挡住整页。
-    // 挂载后用两份独立空数组写入缓存，后续切换比较基准不再误报。
-    (['compare_mode', 'compare_value_kind', 'compare_offset_amount', 'recovery_comparator', 'thresholds', 'apdex_threshold_ms'] as const)
-      .forEach((name) => form.setFieldValue(name, form.getFieldValue(name)));
-  }, [form, loading]);
+    // 字段挂载后立刻用两份独立空数组写入缓存。触发周期和无数据是后挂上的，
+    // 所以切换模式或开关后也要再写一次。
+    ([
+      'compare_mode',
+      'compare_value_kind',
+      'compare_offset_amount',
+      'recovery_comparator',
+      'thresholds',
+      'apdex_threshold_ms',
+      'trigger_window',
+      'no_data_severity',
+      'no_data_after',
+      'no_data_alert_name',
+    ] as const).forEach((name) => form.setFieldValue(name, form.getFieldValue(name)));
+  }, [compareMode, form, loading, noDataOpen, triggerMode]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -657,6 +683,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           ? toEditorValues(policy, defaultNoDataAlertNameRef.current)
           : { ...DEFAULT_VALUES, no_data_alert_name: defaultNoDataAlertNameRef.current });
         setTriggerMode(policy?.trigger_window ? 'window' : 'consecutive');
+        setNoDataOpen(Boolean(policy?.no_data_severity));
       })
       .finally(() => setLoading(false));
     void loadNotificationDirectories();
@@ -1376,54 +1403,45 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               ) : null}
             </>
           ) : null}
-          <div className={styles.thresholdBlock}>
-            <Typography.Text strong className={styles.thresholdTitle}>{t('apm.policies.threeLevelThresholds', '3 级别阈值')}</Typography.Text>
-            <Table
-              className={styles.thresholdTable}
-              tableLayout="fixed"
-              size="small"
-              pagination={false}
-              rowKey="value"
-              dataSource={severityOptions}
-              columns={[
-                {
-                  title: t('apm.alerts.level', '级别'),
-                  dataIndex: 'value',
-                  width: 96,
-                  render: (severity: ApmPolicySeverity, row) => <Tag color={row.color}>{row.label}</Tag>,
-                },
-                {
-                  title: t('apm.policies.comparator', '比较符'),
-                  dataIndex: 'value',
-                  width: 132,
-                  render: (_, __, index) => (
-                    <Form.Item name={['thresholds', index, 'comparator']} noStyle>
-                      <Select
-                        aria-label={t('apm.policies.comparatorAria', '{severity}比较符', { severity: severityOptions[index].label })}
-                        onChange={syncComparator}
-                        options={comparatorOptions}
-                      />
-                    </Form.Item>
-                  ),
-                },
-                {
-                  title: t('apm.policies.threshold', '阈值'),
-                  dataIndex: 'value',
-                  render: (_, __, index) => (
-                    <Form.Item name={['thresholds', index, 'value']} noStyle>
-                      <NumberWithUnit
-                        aria-label={t('apm.policies.thresholdAria', '{severity}阈值', { severity: severityOptions[index].label })}
-                        min={thresholdBounds.min}
-                        max={thresholdBounds.max}
-                        placeholder={t('apm.policies.notEnabled', '不启用')}
-                        unit={thresholdUnit}
-                      />
-                    </Form.Item>
-                  ),
-                },
-              ]}
-            />
-          </div>
+          <Form.Item label={t('apm.policies.alertThreshold', '告警阈值')}>
+            <div className="w-full max-w-[560px] rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-4 shadow-md">
+              {severityOptions.map((row, index) => (
+                <div
+                  key={row.value}
+                  className="relative mt-[10px] overflow-hidden rounded-md border border-[var(--color-border-2)] p-3 first:mt-0"
+                >
+                  <div
+                    className="absolute bottom-0 left-0 top-0 w-1"
+                    style={{ backgroundColor: ALERT_LEVEL_COLORS[row.value] }}
+                  />
+                  <div className="pl-[10px]">
+                    <div className="my-1 font-[800]">{row.label}</div>
+                    <div className="flex items-center">
+                      <span className="mr-[10px] shrink-0">{t('apm.policies.whenResultIs', '当结果是')}</span>
+                      <Form.Item name={['thresholds', index, 'comparator']} noStyle>
+                        <Select
+                          className={styles.thresholdComparator}
+                          aria-label={t('apm.policies.comparatorAria', '{severity}比较符', { severity: row.label })}
+                          onChange={syncComparator}
+                          options={comparatorOptions}
+                        />
+                      </Form.Item>
+                      <Form.Item name={['thresholds', index, 'value']} noStyle>
+                        <NumberWithUnit
+                          className={styles.thresholdValue}
+                          aria-label={t('apm.policies.thresholdAria', '{severity}阈值', { severity: row.label })}
+                          min={thresholdBounds.min}
+                          max={thresholdBounds.max}
+                          placeholder={t('apm.policies.notEnabled', '不启用')}
+                          unit={thresholdUnit}
+                        />
+                      </Form.Item>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Form.Item>
           {showMinRequest ? (
             <Form.Item
               className={styles.minRequestCount}
@@ -1439,127 +1457,164 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               />
             </Form.Item>
           ) : null}
-          <div className={styles.conditionRows}>
-            <div className={styles.conditionRow}>
-              <span className={styles.conditionLabel}><span aria-hidden="true">*</span>{t('apm.policies.triggerCondition', '触发条件：')}</span>
-              <span className={styles.conditionSentence}>
-                <Form.Item name="trigger_after" noStyle rules={[{ required: true }]}>
-                  <InputNumber<number> min={1} max={triggerWindow == null ? 60 : 20} aria-label={t('apm.policies.triggerCountAria', '触发次数')} />
-                </Form.Item>
-                {showCompare ? (
-                  <>
-                    {t('apm.policies.triggerTimes', '次')}
-                    <Select
-                      aria-label={t('apm.policies.triggerModeAria', '触发方式')}
-                      virtual={false}
-                      value={triggerMode}
-                      onChange={(mode: 'consecutive' | 'window') => {
-                        setTriggerMode(mode);
-                        if (mode === 'consecutive') {
-                          form.setFieldValue('trigger_window', null);
-                          return;
-                        }
-                        const count = Number(form.getFieldValue('trigger_after') || 1);
-                        form.setFieldValue('trigger_window', Math.min(20, Math.max(count, 3)));
-                      }}
-                      options={[
-                        { value: 'consecutive', label: t('apm.policies.triggerConsecutive', '连续') },
-                        { value: 'window', label: t('apm.policies.triggerWithinWindow', '在最近 N 个周期内') },
-                      ]}
+          <Form.Item label={t('apm.policies.triggerCondition', '触发条件')} required>
+            <Form.Item name="trigger_after" noStyle rules={[{ required: true }]}>
+              <AffixedNumber
+                className={styles.conditionNumber}
+                min={1}
+                max={triggerWindow == null ? 60 : 20}
+                precision={0}
+                before={!showCompare || triggerMode !== 'window' ? t('apm.policies.consecutive', '连续') : undefined}
+                after={!showCompare || triggerMode !== 'window' ? t('apm.policies.periodUnit', '个周期') : t('apm.policies.triggerTimes', '次')}
+                aria-label={t('apm.policies.triggerCountAria', '触发次数')}
+              />
+            </Form.Item>
+          </Form.Item>
+          {showCompare ? (
+            <Form.Item label={t('apm.policies.triggerModeAria', '触发方式')}>
+              <div className={styles.conditionControls}>
+                <Select
+                  aria-label={t('apm.policies.triggerModeAria', '触发方式')}
+                  virtual={false}
+                  value={triggerMode}
+                  onChange={(mode: 'consecutive' | 'window') => {
+                    setTriggerMode(mode);
+                    if (mode === 'consecutive') {
+                      form.setFieldValue('trigger_window', null);
+                      return;
+                    }
+                    const count = Number(form.getFieldValue('trigger_after') || 1);
+                    form.setFieldValue('trigger_window', Math.min(20, Math.max(count, 3)));
+                  }}
+                  options={[
+                    { value: 'consecutive', label: t('apm.policies.triggerConsecutive', '连续') },
+                    { value: 'window', label: t('apm.policies.triggerWithinWindow', '在最近 N 个周期内') },
+                  ]}
+                />
+                {triggerMode === 'window' ? (
+                  <Form.Item name="trigger_window" noStyle>
+                    <AffixedNumber
+                      className={styles.conditionWindow}
+                      min={1}
+                      max={20}
+                      precision={0}
+                      before={t('apm.policies.triggerWithinPrefix', '在最近')}
+                      after={t('apm.policies.triggerWithinSuffix', '个周期内')}
+                      aria-label={t('apm.policies.triggerWindowAria', '周期数')}
                     />
-                    {triggerMode === 'window' ? (
-                      <>
-                        {t('apm.policies.triggerWithinPrefix', '在最近')}
-                        <Form.Item name="trigger_window" noStyle>
-                          <InputNumber<number> min={1} max={20} aria-label={t('apm.policies.triggerWindowAria', '周期数')} />
-                        </Form.Item>
-                        {t('apm.policies.triggerWithinSuffix', '个周期内')}
-                      </>
-                    ) : null}
-                  </>
-                ) : t('apm.policies.triggerSentenceSuffix', '个汇聚周期满足阈值时触发告警。')}
-              </span>
-            </div>
-            <div className={styles.conditionRow}>
-              <span className={styles.conditionLabel}>{t('apm.policies.autoRecovery', '自动恢复：')}</span>
-              <span className={styles.conditionSentence}>
-                {t('apm.policies.consecutive', '连续')}
-                <Form.Item name="recover_after" noStyle rules={[{ required: true }]}>
-                  <InputNumber<number> min={1} max={60} aria-label={t('apm.policies.recoveryCountAria', '连续恢复次数')} />
-                </Form.Item>
-                {t('apm.policies.recoverySentenceSuffix', '个周期不满足阈值时自动恢复。')}
-                {showCompare ? (
-                  <>
-                    <span>{t('apm.policies.recoveryThreshold', '恢复阈值')}</span>
-                    <Form.Item name="recovery_comparator" noStyle>
-                      <Select aria-label={t('apm.policies.recoveryComparatorAria', '恢复阈值比较符')} virtual={false} options={recoveryOptions} />
-                    </Form.Item>
-                    <Form.Item name="recovery_value" noStyle>
-                      <NumberWithUnit
-                        aria-label={t('apm.policies.recoveryThreshold', '恢复阈值')}
-                        placeholder={t('apm.policies.recoveryThresholdPlaceholder', '不填则与触发线相同')}
-                        unit={thresholdUnit}
-                      />
-                    </Form.Item>
-                  </>
+                  </Form.Item>
                 ) : null}
-              </span>
-            </div>
-            <div className={styles.conditionRow}>
-              <span className={styles.conditionLabel}>{t('apm.policies.noDataAlert', '无数据告警：')}</span>
-              <span className={styles.conditionSentence}>
-                {t('apm.policies.consecutive', '连续')}
-                <Form.Item
-                  name="no_data_after"
-                  noStyle
-                  rules={[
-                    {
-                      validator: async (_, value) => {
-                        if (!value || form.getFieldValue('no_data_severity')) return;
-                        throw new Error(t('apm.policies.noDataSeverityRequired', '请选择无数据告警级别'));
-                      },
-                    },
-                  ]}
-                >
-                  <InputNumber<number> min={1} max={60} placeholder={t('apm.common.close', '关闭')} aria-label={t('apm.policies.noDataCountAria', '无数据持续次数')} />
-                </Form.Item>
-                {t('apm.policies.noDataSentenceSuffix', '个周期无数据时')}
-                <Form.Item
-                  name="no_data_severity"
-                  noStyle
-                  rules={[
-                    {
-                      validator: async (_, value) => {
-                        if (!value || form.getFieldValue('no_data_after')) return;
-                        throw new Error(t('apm.policies.noDataCountRequired', '请填写无数据持续次数'));
-                      },
-                    },
-                  ]}
-                >
+              </div>
+            </Form.Item>
+          ) : null}
+          <Form.Item label={t('apm.policies.autoRecovery', '自动恢复')}>
+            <Form.Item name="recover_after" noStyle rules={[{ required: true }]}>
+              <AffixedNumber
+                className={styles.conditionNumber}
+                min={1}
+                max={60}
+                precision={0}
+                before={t('apm.policies.consecutive', '连续')}
+                after={t('apm.policies.periodUnit', '个周期')}
+                aria-label={t('apm.policies.recoveryCountAria', '连续恢复次数')}
+              />
+            </Form.Item>
+          </Form.Item>
+          {showCompare ? (
+            <Form.Item label={t('apm.policies.recoveryThreshold', '恢复阈值')}>
+              <Space.Compact className={styles.recoveryCompact}>
+                <Form.Item name="recovery_comparator" noStyle>
                   <Select
-                    aria-label={t('apm.policies.noDataSeverityAria', '无数据告警级别')}
-                    allowClear
-                    placeholder={t('apm.policies.noDataDisabled', '不触发告警')}
-                    options={severityOptions.map((item) => ({
-                      value: item.value,
-                      label: t('apm.policies.triggerSeverityAlert', '触发{severity}告警', { severity: item.label }),
-                    }))}
+                    aria-label={t('apm.policies.recoveryComparatorAria', '恢复阈值比较符')}
+                    virtual={false}
+                    options={recoveryOptions}
                   />
                 </Form.Item>
-              </span>
+                <Form.Item name="recovery_value" noStyle>
+                  <InputNumber<number>
+                    className={styles.recoveryValue}
+                    aria-label={t('apm.policies.recoveryThreshold', '恢复阈值')}
+                    placeholder={t('apm.policies.recoveryThresholdPlaceholder', '不填则与触发线相同')}
+                  />
+                </Form.Item>
+                <span className={styles.numberUnit}>{thresholdUnit}</span>
+              </Space.Compact>
+            </Form.Item>
+          ) : null}
+          <Form.Item label={t('apm.policies.noDataAlert', '无数据告警')}>
+            <Switch
+              checked={noDataOpen}
+              aria-label={t('apm.policies.noDataAlert', '无数据告警')}
+              onChange={(checked) => {
+                setNoDataOpen(checked);
+                if (!checked) {
+                  form.setFieldValue('no_data_severity', '');
+                  form.setFieldValue('no_data_after', null);
+                  return;
+                }
+                if (!form.getFieldValue('no_data_severity')) {
+                  form.setFieldValue('no_data_severity', 'warning');
+                }
+                if (!form.getFieldValue('no_data_after')) {
+                  form.setFieldValue('no_data_after', 5);
+                }
+                if (!form.getFieldValue('no_data_alert_name')) {
+                  form.setFieldValue('no_data_alert_name', defaultNoDataAlertName);
+                }
+              }}
+            />
+            <div className="mt-[10px] text-xs leading-5 text-[var(--color-text-3)]">
+              {t('apm.policies.noDataAlertTip', '连续若干个周期没有数据时触发无数据告警。')}
             </div>
-            {noDataSeverity ? (
+          </Form.Item>
+          {noDataOpen ? (
+            <>
               <Form.Item
                 name="no_data_alert_name"
-                label={t('apm.policies.noDataAlertName', '无数据告警名称')}
+                label={t('apm.policies.noDataNameLabel', '告警名称')}
                 className={styles.noDataAlertName}
                 extra={t('apm.policies.noDataAlertNameHint', '告警名称模板，变量可从右侧变量表复制')}
                 rules={[{ required: true, message: t('apm.policies.noDataAlertNameRequired', '请输入无数据告警名称') }]}
               >
                 <Input maxLength={512} placeholder={defaultNoDataAlertName} />
               </Form.Item>
-            ) : null}
-          </div>
+              <Form.Item
+                name="no_data_after"
+                label={t('apm.policies.noDataWindow', '持续周期')}
+                rules={[{
+                  validator: async (_, value) => {
+                    if (value) return;
+                    throw new Error(t('apm.policies.noDataCountRequired', '请填写无数据持续次数'));
+                  },
+                }]}
+              >
+                <AffixedNumber
+                  className={styles.conditionNumber}
+                  min={1}
+                  max={60}
+                  precision={0}
+                  after={t('apm.policies.periodUnit', '个周期')}
+                  aria-label={t('apm.policies.noDataCountAria', '无数据持续次数')}
+                />
+              </Form.Item>
+              <Form.Item
+                name="no_data_severity"
+                label={t('apm.policies.noDataLevel', '级别')}
+                rules={[{
+                  validator: async (_, value) => {
+                    if (value) return;
+                    throw new Error(t('apm.policies.noDataSeverityRequired', '请选择无数据告警级别'));
+                  },
+                }]}
+              >
+                <Select
+                  className={styles.conditionMode}
+                  aria-label={t('apm.policies.noDataSeverityAria', '无数据告警级别')}
+                  options={severityOptions.map((item) => ({ value: item.value, label: item.label }))}
+                />
+              </Form.Item>
+            </>
+          ) : null}
         </div>
       ),
     },

@@ -130,7 +130,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.getByText('指标定义')).not.toBeNull();
     expect(screen.getByText('告警条件')).not.toBeNull();
     expect(screen.getByText('通知配置')).not.toBeNull();
-    expect(screen.getByText('3 级别阈值')).not.toBeNull();
+    expect(screen.getByText('告警阈值')).not.toBeNull();
+    expect(screen.getAllByText('当结果是')).toHaveLength(3);
     expect(screen.getByLabelText('严重阈值')).not.toBeNull();
     expect(screen.getByLabelText('错误阈值')).not.toBeNull();
     expect(screen.getByLabelText('警告阈值')).not.toBeNull();
@@ -138,7 +139,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.queryByLabelText('环境（必选）')).toBeNull();
     expect(screen.getByLabelText('端点')).not.toBeNull();
     expect(screen.queryByLabelText('版本维度')).toBeNull();
-    expect(screen.queryByLabelText('无数据告警名称')).toBeNull();
+    expect(screen.getAllByLabelText('告警名称')).toHaveLength(1);
     expect(screen.queryByText(/LogSQL|MonitorObject|采集插件/)).toBeNull();
     expect(screen.getByRole('switch', { name: '启用通知' })).not.toBeNull();
     const organizationLabel = screen.getByText('所属组织');
@@ -160,7 +161,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     });
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
 
-    expect(await screen.findByLabelText('无数据告警名称')).not.toBeNull();
+    expect(await screen.findAllByLabelText('告警名称')).toHaveLength(2);
   });
 
   it('新策略按渠道能力逐个添加通知目标，并能远程搜索首批目录之外的系统用户', async () => {
