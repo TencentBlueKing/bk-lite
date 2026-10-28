@@ -52,6 +52,7 @@ const api = {
   getServices: vi.fn(),
   isLoading: false,
   previewPolicy: vi.fn(),
+  dryRunPolicy: vi.fn(),
   updatePolicy: vi.fn(),
 };
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
@@ -129,7 +130,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.getByText('指标定义')).not.toBeNull();
     expect(screen.getByText('告警条件')).not.toBeNull();
     expect(screen.getByText('通知配置')).not.toBeNull();
-    expect(screen.getByText('3 级别阈值')).not.toBeNull();
+    expect(screen.getByText('告警阈值')).not.toBeNull();
+    expect(screen.getAllByText('当结果是')).toHaveLength(3);
     expect(screen.getByLabelText('严重阈值')).not.toBeNull();
     expect(screen.getByLabelText('错误阈值')).not.toBeNull();
     expect(screen.getByLabelText('警告阈值')).not.toBeNull();
@@ -137,7 +139,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.queryByLabelText('环境（必选）')).toBeNull();
     expect(screen.getByLabelText('端点')).not.toBeNull();
     expect(screen.queryByLabelText('版本维度')).toBeNull();
-    expect(screen.queryByLabelText('无数据告警名称')).toBeNull();
+    expect(screen.getAllByLabelText('告警名称')).toHaveLength(1);
     expect(screen.queryByText(/LogSQL|MonitorObject|采集插件/)).toBeNull();
     expect(screen.getByRole('switch', { name: '启用通知' })).not.toBeNull();
     const organizationLabel = screen.getByText('所属组织');
@@ -159,7 +161,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     });
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
 
-    expect(await screen.findByLabelText('无数据告警名称')).not.toBeNull();
+    expect(await screen.findAllByLabelText('告警名称')).toHaveLength(2);
   });
 
   it('新策略按渠道能力逐个添加通知目标，并能远程搜索首批目录之外的系统用户', async () => {
@@ -520,5 +522,304 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
         }),
       ),
     );
+  });
+
+  it('存量策略按当前值保存，错误率阈值仍除以 100，最低请求数缺省为 null', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          compare_mode: 'absolute',
+          compare_value_kind: '',
+          min_request_count: null,
+          thresholds: [expect.objectContaining({ severity: 'warning', value: 0.05 })],
+        }),
+      ),
+    );
+  });
+
+  it('相对上一等长窗切换变化量和变化率，阈值单位跟着变且数字不重算', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    expect((await screen.findAllByText('%')).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('相对上一等长窗'));
+    expect(screen.getByRole('radio', { name: '变化量 Δ' })).not.toBeNull();
+    expect(screen.getAllByText('个百分点').length).toBeGreaterThan(0);
+    expect((screen.getByLabelText('警告阈值') as HTMLInputElement).value).toBe('5');
+
+    await user.click(screen.getByRole('radio', { name: '变化率 %' }));
+    expect(screen.queryByText('个百分点')).toBeNull();
+    expect((screen.getByLabelText('警告阈值') as HTMLInputElement).value).toBe('5');
+
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          compare_mode: 'previous_window',
+          compare_value_kind: 'percent',
+          thresholds: [expect.objectContaining({ severity: 'warning', value: 5 })],
+        }),
+      ),
+    );
+  });
+
+  it('同窗固定变化率并隐藏单选，无流量不提交比较字段', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByLabelText('比较基准'));
+    await user.click(await screen.findByText('同窗'));
+    expect(screen.queryByRole('radio', { name: '变化量 Δ' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '变化率 %' })).toBeNull();
+    const hours = screen.getByLabelText('小时数') as HTMLInputElement;
+    expect(hours.value).toBe('1');
+    await user.clear(hours);
+    await user.type(hours, '6');
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          compare_mode: 'offset_hours',
+          compare_offset_amount: 6,
+          compare_value_kind: 'percent',
+        }),
+      ),
+    );
+
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByRole('option', { name: '无流量' }));
+    expect(screen.queryByLabelText('比较基准')).toBeNull();
+    expect(screen.queryByLabelText('最低请求数')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(payload.metric_type).toBe('no_traffic');
+    expect(payload).not.toHaveProperty('compare_mode');
+    expect(payload).not.toHaveProperty('compare_offset_amount');
+    expect(payload).not.toHaveProperty('compare_value_kind');
+    expect(payload).not.toHaveProperty('min_request_count');
+    expect(payload).not.toHaveProperty('slow_threshold_ms');
+    expect(payload).not.toHaveProperty('apdex_threshold_ms');
+  });
+
+  it('新建策略默认最低请求数 20，清空后保存为 null', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor />);
+    await user.type(await screen.findByLabelText('策略名称'), '新策略');
+    await user.click(screen.getByLabelText('服务'));
+    await user.click(await screen.findByText('shop / checkout'));
+    expect((screen.getByLabelText('最低请求数') as HTMLInputElement).value).toBe('20');
+    await user.clear(screen.getByLabelText('最低请求数'));
+    await user.click(screen.getByRole('button', { name: '创建策略' }));
+    await waitFor(() =>
+      expect(api.createPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          compare_mode: 'absolute',
+          compare_value_kind: '',
+          min_request_count: null,
+          metric_type: 'error_rate',
+        }),
+      ),
+    );
+  });
+
+  it('未填策略名时试算使用预览名称，不要求先保存', async () => {
+    const user = userEvent.setup();
+    api.dryRunPolicy.mockResolvedValue({
+      evaluated_at: '2026-08-14T02:00:00Z',
+      compare_mode: 'absolute',
+      compare_value_kind: '',
+      result_unit: 'ratio',
+      total_targets: 1,
+      truncated: false,
+      items: [],
+    });
+    renderWithApmIntl(<ApmPolicyEditor />);
+    await user.click(await screen.findByLabelText('服务'));
+    await user.click(await screen.findByText('shop / checkout'));
+    await user.click(screen.getByRole('button', { name: '试算' }));
+    await waitFor(() =>
+      expect(api.dryRunPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({ name: '指标预览', service_id: 'svc-1' }),
+      ),
+    );
+    expect(api.createPolicy).not.toHaveBeenCalled();
+  });
+
+  it('试算表展示结论、截断提示和连续命中文案', async () => {
+    const user = userEvent.setup();
+    api.dryRunPolicy.mockResolvedValue({
+      evaluated_at: '2026-08-14T02:00:00Z',
+      compare_mode: 'previous_window',
+      compare_value_kind: 'percent',
+      result_unit: 'percent',
+      total_targets: 21,
+      truncated: true,
+      items: [
+        {
+          endpoint: 'POST /checkout',
+          version: 'v2',
+          verdict: 'would_trigger',
+          current_value: '0.06',
+          baseline_value: '0.04',
+          compared_value: '50',
+          request_count: 12,
+          matched_threshold: { severity: 'error', comparator: 'gt', value: '40' },
+          reason: '本轮命中 1/3，现网不会建告警',
+        },
+        {
+          endpoint: 'GET /cart',
+          version: '',
+          verdict: 'insufficient_samples',
+          current_value: '0.5',
+          baseline_value: null,
+          compared_value: null,
+          request_count: 8,
+          matched_threshold: null,
+          reason: '样本不足',
+        },
+      ],
+    });
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '试算' }));
+    expect(await screen.findByText('共 21 个目标，只试算前 20 个，请在端点里缩小范围')).not.toBeNull();
+    expect(screen.getByText('将触发')).not.toBeNull();
+    expect(screen.getAllByText('样本不足').length).toBeGreaterThan(0);
+    expect(screen.getByText('本轮命中 1/3，现网不会建告警')).not.toBeNull();
+    expect(screen.getByText('POST /checkout v2')).not.toBeNull();
+    expect(api.dryRunPolicy).toHaveBeenCalledWith(expect.objectContaining({ policy_id: 'p1' }));
+  });
+
+  it('分组指标下拉出现慢阈值和 Apdex T，计数类隐藏汇聚方法', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByLabelText('指标'));
+    expect(await screen.findByText('时延')).not.toBeNull();
+    expect(screen.getByRole('option', { name: 'P95' })).not.toBeNull();
+    expect(screen.queryByRole('option', { name: 'P95 延迟' })).toBeNull();
+    await user.click(await screen.findByRole('option', { name: '慢请求数' }));
+    expect(screen.queryByLabelText('汇聚方法')).toBeNull();
+    const slow = screen.getByLabelText('慢阈值 (ms)') as HTMLInputElement;
+    await user.clear(slow);
+    await user.type(slow, '1000');
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          metric_type: 'slow_request_count',
+          slow_threshold_ms: 1000,
+          aggregation: 'avg',
+        }),
+      ),
+    );
+    const slowPayload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(slowPayload.apdex_threshold_ms).toBeNull();
+    expect(slowPayload.min_request_count).toBeNull();
+
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByRole('option', { name: 'Apdex' }));
+    expect((screen.getByLabelText('T (ms)') as HTMLInputElement).value).toBe('500');
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByRole('option', { name: '错误数' }));
+    expect(screen.queryByLabelText('汇聚方法')).toBeNull();
+    expect(screen.queryByLabelText('慢阈值 (ms)')).toBeNull();
+  });
+
+  it('触发方式提交周期窗口，恢复阈值单位跟着比较基准且数字不重算', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await screen.findByRole('combobox', { name: '触发方式' });
+    expect(screen.queryByText('前置条件')).toBeNull();
+
+    await user.click(screen.getByRole('combobox', { name: '触发方式' }));
+    await user.click(await screen.findByText('在最近 N 个周期内'));
+    expect((screen.getByRole('spinbutton', { name: '周期数' }) as HTMLInputElement).value).toBe('3');
+
+    const recovery = screen.getByRole('spinbutton', { name: '恢复阈值' }) as HTMLInputElement;
+    await user.clear(recovery);
+    await user.type(recovery, '40');
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('相对上一等长窗'));
+    await user.click(screen.getByRole('radio', { name: '变化率 %' }));
+    expect((screen.getByRole('spinbutton', { name: '恢复阈值' }) as HTMLInputElement).value).toBe('40');
+
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(payload).not.toHaveProperty('guard_conditions');
+    expect(payload.trigger_window).toBe(3);
+    expect(payload.recovery_threshold).toEqual({ comparator: 'lt', value: 40 });
+  });
+
+  it('近 N 天同窗均值提交 2 到 7 天，并允许变化量', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByLabelText('比较基准'));
+    await user.click(await screen.findByText('近 N 天同窗均值'));
+    const days = screen.getByLabelText('天数') as HTMLInputElement;
+    expect(days.value).toBe('7');
+    expect((screen.getByRole('radio', { name: '变化率 %' }) as HTMLInputElement).checked).toBe(true);
+    await user.clear(days);
+    await user.type(days, '3');
+    await user.click(screen.getByRole('radio', { name: '变化量 Δ' }));
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          compare_mode: 'baseline_days',
+          compare_offset_amount: 3,
+          compare_value_kind: 'delta',
+        }),
+      ),
+    );
+  });
+
+  it('同窗和近 N 天切换不沿用对方的数字，Apdex 把恢复比较符翻到对侧', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByLabelText('比较基准'));
+    await user.click(await screen.findByText('近 N 天同窗均值'));
+    expect((screen.getByLabelText('天数') as HTMLInputElement).value).toBe('7');
+
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('同窗'));
+    const hours = screen.getByLabelText('小时数') as HTMLInputElement;
+    expect(hours.value).toBe('1');
+    await user.clear(hours);
+    await user.type(hours, '6');
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('近 N 天同窗均值'));
+    expect((screen.getByLabelText('天数') as HTMLInputElement).value).toBe('7');
+
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('同窗'));
+    await user.click(screen.getByRole('combobox', { name: '对照方式' }));
+    await user.click(await screen.findByText('N 天前'));
+    const offsetDays = screen.getByLabelText('天数') as HTMLInputElement;
+    await user.clear(offsetDays);
+    await user.type(offsetDays, '3');
+    await user.click(screen.getByLabelText('比较基准'));
+    await user.click(await screen.findByText('近 N 天同窗均值'));
+    expect((screen.getByLabelText('天数') as HTMLInputElement).value).toBe('3');
+
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByRole('option', { name: 'Apdex' }));
+    await user.type(screen.getByRole('spinbutton', { name: '恢复阈值' }), '40');
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(payload.metric_type).toBe('apdex');
+    expect(payload.compare_mode).toBe('baseline_days');
+    expect(payload.compare_offset_amount).toBe(3);
+    expect(payload.recovery_threshold).toEqual({ comparator: 'gt', value: 40 });
+    expect(payload.thresholds).toEqual([expect.objectContaining({ comparator: 'lt', value: 5 })]);
   });
 });

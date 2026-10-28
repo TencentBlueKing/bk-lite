@@ -8,7 +8,7 @@ import { FilterItem } from '@/app/log/types/integration';
 import { ListItem } from '@/app/log/types';
 import { SCHEDULE_UNIT_MAP } from '@/app/log/constants';
 import { useScheduleList, useLevelList } from '@/app/log/hooks/event';
-import { getAlertConditionVisibility } from './policyFormUtils';
+import { getAlertConditionVisibility, hasIncompleteCondition } from './policyFormUtils';
 import LogQueryInput from '@/app/log/components/log-query-input';
 
 const { Option } = Select;
@@ -56,12 +56,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     if (!term || !conditions.length) {
       return Promise.reject(new Error(t('log.event.ruleValidate')));
     }
-    if (
-      conditions.length &&
-      conditions.some((item) => {
-        return Object.values(item).some((tex) => !tex);
-      })
-    ) {
+    if (conditions.length && hasIncompleteCondition(conditions)) {
       return Promise.reject(new Error(t('log.event.conditionValidate')));
     }
     return Promise.resolve();
@@ -214,10 +209,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               }
             ]}
           >
-            <div className="flex items-center mb-[20px] w-full">
-              <span>{t('log.integration.meetRule')}</span>
+            <div className="mb-[12px] flex items-center">
+              <span className="shrink-0">{t('log.integration.meetRule')}</span>
               <Select
-                className="ml-[8px] flex-1"
+                style={{ width: 220, marginLeft: 8 }}
                 placeholder={t('log.integration.rule')}
                 showSearch
                 value={term}
@@ -274,6 +269,22 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         </Form.Item>
         <div className="text-[var(--color-text-3)] mt-[10px]">
           {t('log.event.setFrequency')}
+        </div>
+      </Form.Item>
+      <Form.Item<StrategyFields>
+        label={<span className="w-[100px]">{t('log.event.triggerCount')}</span>}
+      >
+        <Form.Item name="trigger_count" initialValue={1} noStyle>
+          <InputNumber
+            data-testid="trigger-count"
+            min={1}
+            max={5}
+            precision={0}
+            style={{ width: 120 }}
+          />
+        </Form.Item>
+        <div className="text-[var(--color-text-3)] mt-[10px]">
+          {t('log.event.triggerCountTip')}
         </div>
       </Form.Item>
       <Form.Item<StrategyFields>

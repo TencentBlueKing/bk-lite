@@ -50,7 +50,7 @@ interface AlertDurationFieldsProps {
   onNoDataRecoveryChange: (value: number | null) => void;
   onNoDataAlertLevelChange: (val: string) => void;
   onNoDataAlertNameChange: (val: string) => void;
-  hideNoData?: boolean;
+  noDataSplitHint?: boolean;
 }
 
 const fieldLabel = (text: string) => (
@@ -112,10 +112,6 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
         />
       </Form.Item>
       )}
-      {props.hideNoData ? (
-        <div className={`mb-4 ${STRATEGY_HINT_TEXT_CLASS}`}>无数据告警在策略组上设置，这里保持原值。</div>
-      ) : (
-      <>
       <Form.Item label={fieldLabel(t('monitor.events.noDataAlertLevel'))}>
         <Switch
           checked={noDataEnabled}
@@ -124,6 +120,11 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
         <div className={`mt-[10px] ${STRATEGY_HINT_TEXT_CLASS}`}>
           {t('monitor.events.noDataAlertTip')}
         </div>
+        {props.noDataSplitHint ? (
+          <div className={`mt-[8px] ${STRATEGY_HINT_TEXT_CLASS}`}>
+            这是按磁盘、网卡等设备拆开的指标，一台主机中断会按设备各报一条。
+          </div>
+        ) : null}
         {isPodMonitorObject(props.monitorName) ? (
           <div className={`mt-[8px] ${STRATEGY_HINT_TEXT_CLASS}`}>
             {t('monitor.events.noDataPodTip')}
@@ -131,8 +132,6 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
         ) : null}
       </Form.Item>
       {noDataEnabled ? <NoDataDetailFields {...props} /> : null}
-      </>
-      )}
     </>
   );
 };

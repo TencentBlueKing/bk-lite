@@ -258,4 +258,119 @@ describe('AlertRawLogWidget Component', () => {
       expect(screen.getByText('log.event.rawDataUnavailable')).toBeTruthy();
     });
   });
+
+  it('opens frozen search from jump_query and tables samples first', async () => {
+    apis.getAlertSnapshots.mockResolvedValueOnce({
+      alert_info: { id: 'alert-jump', source_id: 'policy-jump' },
+      snapshots: [
+        {
+          event_id: 'ev-jump',
+          event_time: '2026-10-27T07:55:00Z',
+          jump_query: {
+            query: 'level:error AND service:="order"',
+            window_start: 1761550000,
+            window_end: 1761550300,
+          },
+          query_clue: {
+            policy_name: 'rate policy',
+            log_groups: ['g1'],
+            alert_condition: { query: 'level:error' },
+          },
+          raw_data: {
+            aggregate_result: { count: 180 },
+            samples: [{ _time: '2026-10-27T07:55:00Z', _msg: 'order exploded' }],
+          },
+        },
+      ],
+    });
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    render(<AlertRawLogWidget logAlertId="alert-jump" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('order exploded')).toBeTruthy();
+    });
+    expect(screen.queryByText('180')).toBeNull();
+    fireEvent.click(screen.getByText('log.event.openInSearch'));
+    expect(open).toHaveBeenCalledWith(
+      expect.stringContaining('query=level%3Aerror+AND+service%3A%3D%22order%22'),
+      '_blank',
+      'noopener,noreferrer',
+    );
+    expect(String(open.mock.calls[0][0])).toContain('startTime=1761550000000');
+    expect(String(open.mock.calls[0][0])).toContain('log_groups=g1');
+    expect(String(open.mock.calls[0][0])).not.toContain('%7C+stats');
+    open.mockRestore();
+  });
+
+  it('快照带 conditions 时逐行显示，没有 conditions 时不改现有展示', async () => {
+    apis.getAlertSnapshots.mockResolvedValueOnce({
+      snapshots: [
+        {
+          event_id: 'ev-hit',
+          event_time: '2026-10-27T07:55:00Z',
+          query_clue: { policy_name: 'rate policy', alert_condition: { query: 'level:error' } },
+          raw_data: {
+            aggregate_result: {
+              count: 180,
+              conditions: [
+                {
+                  func: 'count',
+                  field: '_msg',
+                  current: 180,
+                  baseline: 120,
+                  value: 50,
+                  op: '>',
+                  threshold: '49',
+                  matched: true,
+                  reason: '',
+                  compare: { kind: 'percent' },
+                },
+              ],
+            },
+            samples: [{ _time: '2026-10-27T07:55:00Z', _msg: 'order exploded' }],
+          },
+        },
+      ],
+    });
+
+    render(<AlertRawLogWidget logAlertId="alert-hit" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('order exploded')).toBeTruthy();
+    });
+    expect(screen.getByTestId('aggregate-condition-table')).toBeTruthy();
+    expect(screen.getByText('log.event.funcCount（log.event.compareKindPercent）')).toBeTruthy();
+    expect(screen.getByText('180')).toBeTruthy();
+    expect(screen.getByText('120')).toBeTruthy();
+    expect(screen.getByText('50')).toBeTruthy();
+    expect(screen.getByText('log.event.verdictWouldTrigger')).toBeTruthy();
+  });
+
+  it('无数据快照显示本窗无日志和上一窗条数', async () => {
+    apis.getAlertSnapshots.mockResolvedValueOnce({
+      snapshots: [
+        {
+          event_id: 'ev-empty-window',
+          event_time: '2026-10-27T07:55:00Z',
+          query_clue: { policy_name: 'gap' },
+          raw_data: {
+            aggregate_result: {
+              count: 0,
+              no_data: true,
+              baseline: { values: { count__msg: 6 } },
+            },
+            samples: [],
+          },
+        },
+      ],
+    });
+
+    render(<AlertRawLogWidget logAlertId="alert-empty-window" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('aggregate-no-data-line').textContent).toBe('log.event.noDataWindowLine');
+    });
+    expect(screen.queryByTestId('aggregate-condition-table')).toBeNull();
+  });
 });

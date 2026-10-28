@@ -108,7 +108,7 @@ interface AlertConditionsFormProps {
   countPredicate?: { method?: string; value?: number | null } | null;
   onCountPredicateChange?: (val: { method: string; value: number | null }) => void;
   isTrap: (getFieldValue: any) => boolean;
-  hideNoData?: boolean;
+  noDataSplitHint?: boolean;
 }
 
 const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
@@ -154,7 +154,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onForecastLookbackChange,
   onRecoveryThresholdChange,
   isTrap,
-  hideNoData = false
+  noDataSplitHint = false
 }) => {
   const { t } = useTranslation();
   const commonContext = useCommon();
@@ -834,7 +834,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 onNoDataRecoveryChange={onNoDataRecoveryChange}
                 onNoDataAlertLevelChange={onNoDataAlertLevelChange}
                 onNoDataAlertNameChange={onNoDataAlertNameChange}
-                hideNoData={hideNoData}
+                noDataSplitHint={noDataSplitHint}
               />
             </>
           )

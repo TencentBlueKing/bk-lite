@@ -73,10 +73,10 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
     const SCHEDULE_LIST = useScheduleList();
 
     const validateAssets = async () => {
-      if (!source.values.length) {
-        return Promise.reject(new Error(t('monitor.assetValidate')));
+      if (groupLocked || source.values.length) {
+        return Promise.resolve();
       }
-      return Promise.resolve();
+      return Promise.reject(new Error(t('monitor.assetValidate')));
     };
 
     return (
@@ -166,7 +166,7 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
                   </span>
                 }
                 name="source"
-                rules={[{ required: true, validator: validateAssets }]}
+                rules={groupLocked ? [] : [{ required: true, validator: validateAssets }]}
               >
                 <div>
                   <div className="flex">

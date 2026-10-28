@@ -27,6 +27,7 @@ import type {
   ApmSlo,
   ApmSloInput,
   ApmPolicy,
+  ApmPolicyDryRunResult,
   ApmPolicyInput,
   ApmPolicyQueryResult,
   ApmPage,
@@ -307,6 +308,12 @@ const useApmApi = () => {
     [post]
   );
 
+  const dryRunPolicy = useCallback(
+    (payload: ApmPolicyInput & { policy_id?: string }) =>
+      post<ApmPolicyDryRunResult>('/apm/policies/dry-run/', payload),
+    [post]
+  );
+
   const getEvents = useCallback(
     (params: ApmEventQuery = {}) => get<ApmEvent[]>('/apm/events/', { params }),
     [get]
@@ -425,6 +432,7 @@ const useApmApi = () => {
     setPolicyEnabled,
     testPolicy,
     previewPolicy,
+    dryRunPolicy,
     getEvents,
     getAlerts,
     getAlertDistribution,

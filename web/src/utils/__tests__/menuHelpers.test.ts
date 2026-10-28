@@ -4,9 +4,11 @@ import {
   findMatchedMenuPath,
   getDeepestMatchedMenuItems,
   getFirstLayerSiblingMenuItems,
+  groupRuleListUrlFromEditor,
   isMenuPathMatch,
   isPathCoveredByMenus,
   resolveMenuIcon,
+  resolveSegmentedSelectedUrl,
 } from '../menuHelpers';
 import type { MenuItem } from '@/types/index';
 
@@ -335,5 +337,33 @@ describe('integration center second-layer tabs', () => {
       '/system-manager/integration-center',
     ).filter((item) => !item.isNotMenuItem);
     expect(tabs.map((item) => item.name)).toEqual(['integration_instances', 'provider_packs']);
+  });
+});
+
+describe('resolveSegmentedSelectedUrl', () => {
+  const eventTabs = [
+    { name: 'alert_list', url: '/monitor/event/alert' },
+    { name: 'strategy_list', url: '/monitor/event/policy-group' },
+    { name: 'strategy_list', url: '/monitor/event/strategy' },
+    { name: 'template_list', url: '/monitor/event/template' },
+  ];
+
+  it('keeps a single-policy detail page on the single-policy tab', () => {
+    expect(resolveSegmentedSelectedUrl('/monitor/event/strategy/detail', eventTabs, 'edit')).toBe(
+      '/monitor/event/strategy',
+    );
+  });
+
+  it('keeps a group-rule editor on the policy-group tab', () => {
+    expect(resolveSegmentedSelectedUrl('/monitor/event/strategy/detail', eventTabs, 'groupRule')).toBe(
+      '/monitor/event/policy-group',
+    );
+  });
+
+  it('returns to the same monitor object when leaving a group-rule editor', () => {
+    expect(groupRuleListUrlFromEditor('/monitor/event/strategy/detail', 'groupRule', '25')).toBe(
+      '/monitor/event/policy-group?objId=25',
+    );
+    expect(groupRuleListUrlFromEditor('/monitor/event/strategy/detail', 'edit', '25')).toBeNull();
   });
 });

@@ -1,5 +1,4 @@
 from datetime import timedelta
-from uuid import uuid4
 
 import pytest
 from django.utils import timezone
@@ -13,7 +12,6 @@ from apps.apm.services.contracts import (
     ServiceMetricQuery,
     ServiceRed,
     SpanSummary,
-    TraceDetail,
     TraceSearchQuery,
     TraceSummary,
 )
@@ -60,6 +58,13 @@ def test_metric_store_supports_exact_red_and_bounded_activity_queries():
     store = InMemoryMetricStore(service_metrics=[(metric_query, red)], activities=[activity])
 
     assert store.service_red(metric_query) == red
+    slow_query = ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(hours=1), now, slow_threshold_ms=1000, apdex_threshold_ms=500)
+    slow_red = ServiceRed(
+        request_rate=12, error_rate=0.1, p95_ms=80, p99_ms=120, slow_count=2, satisfied_count=8, tolerating_count=2, request_count=10
+    )
+    store.set_service_red(slow_query, slow_red)
+    assert store.service_red(slow_query) == slow_red
+    assert store.service_red(metric_query).slow_count is None
     assert store.instance_activity(
         InstanceActivityQuery(
             started_at=now - timedelta(minutes=5),
@@ -203,9 +208,7 @@ def test_memory_store_error_breakdown_returns_no_data_without_entry_spans():
         )
     )
 
-    result = store.service_error_breakdown(
-        ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(hours=1), now)
-    )
+    result = store.service_error_breakdown(ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(hours=1), now))
 
     assert result.data_state == MetricDataState.NO_DATA
     assert result.request_count is None
@@ -238,9 +241,7 @@ def test_memory_store_error_breakdown_prefers_status_message_over_http_then_unat
         )
     )
 
-    result = store.service_error_breakdown(
-        ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(hours=1), now)
-    )
+    result = store.service_error_breakdown(ServiceErrorBreakdownQuery("shop", "checkout", "prod", now - timedelta(hours=1), now))
 
     types = {item.error_type: item for item in result.error_types}
     assert types["upstream timeout"].count == 1

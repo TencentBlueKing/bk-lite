@@ -143,9 +143,9 @@ describe('策略组检测配置', () => {
     ).toBe('无数据检测窗不能小于恢复窗');
   });
 
-  it('频率和无数据各自标出不一致', () => {
+  it('只有检测频率不一致才出现在组名上', () => {
     expect(policyGroupDetectionBadges({ scheduleUniform: false, noDataUniform: true })).toEqual(['频率不一致']);
-    expect(policyGroupDetectionBadges({ scheduleUniform: true, noDataUniform: false })).toEqual(['无数据不一致']);
+    expect(policyGroupDetectionBadges({ scheduleUniform: true, noDataUniform: false })).toEqual([]);
     expect(policyGroupDetectionBadges({})).toEqual([]);
   });
 
