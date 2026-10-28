@@ -577,6 +577,11 @@ class ChatService:
 
         for i in tool_map.values():
             extra_config.update(i)
+        # 负 ID 内置工具不进 tool_map。mlops 的 serving_ids 必须进 extra_config，
+        # 运行时才会随 extra_config 展开到 configurable，供 _resolve_serving 读取。
+        mlops_kwargs = selected_builtin_kwargs.get(BUILTIN_MLOPS_TOOL_NAME) or {}
+        if mlops_kwargs.get("serving_ids") not in (None, ""):
+            extra_config["serving_ids"] = mlops_kwargs["serving_ids"]
         extra_config.update({"execution_id": chat_kwargs["execution_id"]})
         if kwargs.get("attachment_id"):
             extra_config["attachment_id"] = kwargs["attachment_id"]

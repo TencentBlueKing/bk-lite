@@ -1,6 +1,8 @@
 import os
 
 import nats_client
+from django.db.models import Q
+
 from apps.mlops.models.anomaly_detection import (
     AnomalyDetectionDataset,
     AnomalyDetectionDatasetRelease,
@@ -243,6 +245,11 @@ def get_mlops_module_list(locale=None, actor_context=None):
     ]
 
 
+def _predictable_timeseries_servings(queryset):
+    """只列出 container_info.port 可用、从而能 build_predict_url 的时序预测服务。"""
+    return queryset.exclude(Q(container_info__port__isnull=True) | Q(container_info__port="") | Q(container_info__port=0))
+
+
 @nats_client.register
 def get_mlops_module_data(module, child_module, page, page_size, group_id, actor_context=None, locale=None):
     locale = _resolve_nats_locale(locale=locale, actor_context=actor_context)
@@ -275,6 +282,8 @@ def get_mlops_module_data(module, child_module, page, page_size, group_id, actor
 
     model, team_lookup = entry
     queryset = model.objects.filter(**{f"{team_lookup}__contains": group_id})
+    if child_module == "timeseries_predict_serving":
+        queryset = _predictable_timeseries_servings(queryset)
 
     total_count = queryset.count()
     start = (page - 1) * page_size

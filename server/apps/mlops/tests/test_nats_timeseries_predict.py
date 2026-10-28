@@ -51,6 +51,48 @@ def _actor(group, *, with_permission=True, username="predict-user"):
     }, group_row.id
 
 
+def test_module_data_lists_only_servings_that_can_predict():
+    from django.db import connection
+
+    _actor_row, team_id = _actor(1, username="list-user")
+    ready = _serving(team_id)
+    TimeSeriesPredictServing.objects.create(
+        name="no-port",
+        description="",
+        team=[team_id],
+        train_job=ready.train_job,
+        model_version="latest",
+        status="inactive",
+        container_info={"state": "running"},
+    )
+    TimeSeriesPredictServing.objects.create(
+        name="zero-port",
+        description="",
+        team=[team_id],
+        train_job=ready.train_job,
+        model_version="latest",
+        status="active",
+        container_info={"port": 0, "state": "running"},
+    )
+    names = set(
+        nats_api._predictable_timeseries_servings(TimeSeriesPredictServing.objects.filter(team=[team_id])).values_list("name", flat=True)
+    )
+    assert names == {ready.name}
+    # 本机 sqlite 不支持 JSON contains；Postgres 上再核对列表接口的分页结果。
+    if connection.features.supports_json_field_contains:
+        listed = nats_api.get_mlops_module_data(
+            "serving",
+            "timeseries_predict_serving",
+            1,
+            50,
+            team_id,
+            actor_context={"is_superuser": False, "group_list": [team_id], "locale": "zh-Hans"},
+        )
+        assert listed["result"] is True
+        assert {item["name"] for item in listed["items"]} == {ready.name}
+        assert listed["count"] == 1
+
+
 def test_predict_timeseries_serving_requires_actor():
     result = nats_api.predict_timeseries_serving(1, [{"timestamp": 1, "value": 1}])
     assert result["result"] is False

@@ -63,12 +63,12 @@ class ToolPlanningError(RuntimeError):
 _MONITOR_LIST_METRICS_TOOL = "monitor_list_object_metrics"
 _MONITOR_QUERY_TOOL = "monitor_query_metric_data"
 _MLOPS_PREDICT_TOOL = "mlops_predict_timeseries"
-_MLOPS_PREDICT_OBJECTIVE = "调用预测时必须传入与 monitor_query_metric_data 相同的 monitor_obj_id、metric、instance_ids，原样复制这三个参数，禁止把监控点写入 data。"
+_MLOPS_PREDICT_OBJECTIVE = "调用预测时必须传入与 monitor_query_metric_data 相同的 metric、instance_ids，原样复制这两个参数，禁止把监控点写入 data。不要重发监控查询。"
 _MLOPS_MONITOR_LINK_HINT = (
     "预测联动：目录含 mlops_predict_timeseries 时，未来预测必须与 monitor_query_metric_data 放在同一步。"
-    "先查时序，再调用 mlops_predict_timeseries，原样复制查询的 monitor_obj_id、metric、instance_ids。"
+    "先查时序，再调用 mlops_predict_timeseries，原样复制查询的 metric、instance_ids。"
     "instance_ids 就是这次查询已经声明的实例范围，禁止改成 IP 或主机名。"
-    "禁止把监控返回的点写入 data，禁止另起一步分析监控结果再交给预测。"
+    "禁止把监控返回的点写入 data，禁止另起一步分析监控结果再交给预测，禁止重发监控查询。"
     "只有用户自己贴出序列、且本步不查监控时，才传 data。"
 )
 _MONITOR_CATALOG_HINT = (
