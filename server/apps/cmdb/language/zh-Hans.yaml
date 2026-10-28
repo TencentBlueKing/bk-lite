@@ -7,6 +7,7 @@ CLASSIFICATION:
   device: 物理设备
   k8s: K8S
   vmware: VMware
+  hyperv: Hyper-V
   aliyun: 阿里云
   qcloud: 腾讯云
   hwcloud: 华为云
@@ -83,6 +84,8 @@ MODEL:
   vmware_vm: VMware VM
   vmware_esxi: ESXi
   vmware_ds: Data Storage
+  hyperv_host: Hyper-V 主机
+  hyperv_vm: Hyper-V 虚拟机
   aliyun_account: 阿里云
   aliyun_ecs: 阿里云ECS
   qcloud: 腾讯云
@@ -1401,6 +1404,7 @@ ATTR:
     vcpus: vCPU数
     memory: 内存容量(MB)
     esxi_version: ESXi版本
+    boot_time: 启动时间
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
@@ -1417,6 +1421,31 @@ ATTR:
     collect_time: 上次更新时间
     auto_collect: 是否自动发现
     self_vc: 所属vCenter
+    tag: 标签
+  hyperv_host:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    resource_id: 资源ID
+    cpu_cores: CPU核数
+    memory: 内存容量(MB)
+    hyperv_version: Hyper-V版本
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+    tag: 标签
+  hyperv_vm:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP地址
+    resource_id: 资源ID
+    power_state: 电源状态
+    vcpus: vCPU数
+    memory: 内存容量(MB)
+    self_host: 所属宿主机
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
     tag: 标签
   aliyun_account:
     inst_name: 实例名
@@ -4365,3 +4394,35 @@ ATTR:
     enabled: 是否启用
     priority: 优先级
     forest_inst_name: 林实例名
+ATTR_GROUP:
+  基本信息: 基本信息
+  归属信息: 归属信息
+  手工备注: 手工备注
+  技术信息: 技术信息
+  状态信息: 状态信息
+  管理信息: 管理信息
+  系统内置: 系统内置
+  自动发现信息: 自动发现信息
+  连接信息: 连接信息
+  采集信息: 采集信息
+  系统联动: 系统联动
+  默认分组: 默认分组
+  default: default
+ChangeRecordType:
+  create_entity: 创建
+  delete_entity: 删除
+  update_entity: 修改
+  execute: 执行
+  create_edge: 创建关联
+  delete_edge: 取消关联
+ChangeRecordScenario:
+  device_lifecycle: 设备流转
+  relation_change: 关系变更
+  ordinary_attribute_change: 普通属性变更
+  collect_automation_change: 自动采集
+  model_management_change: 模型管理变更
+  custom_reporting_change: 自定义上报变更
+ChangeRecordObject:
+  instance: 资产实例
+  model: 模型管理
+  collect_task: 采集任务

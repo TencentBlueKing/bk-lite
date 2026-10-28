@@ -1,5 +1,6 @@
 import React from 'react';
-import { Button, Dropdown, Tooltip } from 'antd';
+import { Button, Dropdown, Switch, Tooltip } from 'antd';
+import TimeSelector from '@/components/time-selector';
 import {
   EditOutlined,
   FullscreenOutlined,
@@ -33,6 +34,11 @@ interface ArchitectureToolbarProps {
     unbound: number;
     onToggleHighlight: () => void;
   };
+  showMetrics?: boolean;
+  onShowMetricsChange?: (enabled: boolean) => void;
+  onRefresh?: () => void;
+  onFrequencyChange?: (intervalMs: number) => void;
+  frequenceValue?: number;
 }
 
 const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
@@ -50,6 +56,11 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
   onAddResources,
   editExtra,
   bindingMeter,
+  showMetrics = true,
+  onShowMetricsChange,
+  onRefresh,
+  onFrequencyChange,
+  frequenceValue = 0,
 }) => {
   const { t } = useTranslation();
   const iconButtonClassName =
@@ -84,6 +95,20 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
 
   return (
     <div className="flex items-center gap-2">
+      {!shareMode && !isEditMode && onRefresh && onFrequencyChange ? (
+        <TimeSelector
+          onlyRefresh
+          frequenceValue={frequenceValue}
+          onRefresh={onRefresh}
+          onFrequenceChange={onFrequencyChange}
+        />
+      ) : null}
+      {!shareMode && !isEditMode && onShowMetricsChange ? (
+        <label className="inline-flex items-center gap-1.5 text-sm text-[var(--color-text-2)]">
+          <span>{t('opsAnalysis.architecture.showMetrics')}</span>
+          <Switch size="small" checked={showMetrics} onChange={onShowMetricsChange} />
+        </label>
+      ) : null}
       {isEditMode ? bindingMeterTrigger : null}
       <div className="flex items-center gap-0.5">
         <Tooltip

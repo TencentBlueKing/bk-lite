@@ -1,12 +1,10 @@
 import type { Graph, Node } from '@antv/x6';
-import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import type { LayoutItem, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { ViewConfigFormValues } from '@/app/ops-analysis/types/topology';
 import {
-  type BindableParamType,
-  getFilterDefinitionId,
-  getBindableFilterParams,
+  discoverFollowedFilterParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import {
@@ -119,34 +117,29 @@ export const buildFiltersFromNodes = (
 ): UnifiedFilterDefinition[] => {
   if (!graphInstance) return previousDefinitions;
 
-  const discoveredParams = new Map<
-    string,
-    ParamItem & { type: BindableParamType }
-  >();
-
   const nodes = graphInstance.getNodes();
-  nodes.forEach((node: Node) => {
-    const nodeData = node.getData();
-    const nodeType = nodeData?.type;
+  const discoveredParams = discoverFollowedFilterParams(
+    nodes.flatMap((node: Node) => {
+      const nodeData = node.getData();
+      const nodeType = nodeData?.type;
 
-    if (nodeType !== 'chart' && nodeType !== 'single-value' && nodeType !== 'table') {
-      return;
-    }
-
-    const dataSourceId = nodeData?.valueConfig?.dataSource;
-    const normalizedId = typeof dataSourceId === 'string' ? parseInt(dataSourceId, 10) : dataSourceId;
-    const dataSource = dataSources.find((source) => source.id === normalizedId);
-    const params = nodeData?.valueConfig?.dataSourceParams?.length
-      ? nodeData.valueConfig.dataSourceParams
-      : dataSource?.params;
-
-    getBindableFilterParams(params).forEach((param) => {
-      const id = getFilterDefinitionId(param.name, param.type);
-      if (!discoveredParams.has(id)) {
-        discoveredParams.set(id, param);
+      if (nodeType !== 'chart' && nodeType !== 'single-value' && nodeType !== 'table') {
+        return [];
       }
-    });
-  });
+
+      const dataSourceId = nodeData?.valueConfig?.dataSource;
+      const normalizedId = typeof dataSourceId === 'string' ? parseInt(dataSourceId, 10) : dataSourceId;
+      const dataSource = dataSources.find((source) => source.id === normalizedId);
+      const params = nodeData?.valueConfig?.dataSourceParams?.length
+        ? nodeData.valueConfig.dataSourceParams
+        : dataSource?.params;
+
+      return [{
+        params,
+        filterBindings: nodeData?.valueConfig?.filterBindings,
+      }];
+    }),
+  );
 
   const existingDefinitions = new Map(
     previousDefinitions.map((definition) => [definition.id, definition]),
@@ -200,6 +193,7 @@ const VALUE_FORMAT_CHART_TYPES = new Set([
   'pie',
   'multiValue',
   'nodeGraph',
+  'topN',
 ]);
 
 const applyValueFormatFields = (
@@ -214,6 +208,64 @@ const applyValueFormatFields = (
   if (isFiniteNumber(values.decimalPlaces)) {
     valueConfig.decimalPlaces = values.decimalPlaces;
   }
+};
+
+const trimOptionalField = (value?: string) => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+type TopNSaveValues = Pick<
+  ViewConfigFormValues,
+  'topNLabelField' | 'topNValueField' | 'topNScalarFields' | 'barMode' | 'barMax'
+>;
+
+/**
+ * 与仪表盘 submitConfig 对齐：有标量行时去掉排名字段；相对模式不保留 barMode/barMax。
+ * 在已有 valueConfig 上删除旧键，避免 `??` 把上一份绝对条宽写回去。
+ */
+export const applyTopNValueConfig = (
+  valueConfig: Record<string, unknown>,
+  values: TopNSaveValues,
+): Record<string, unknown> => {
+  const scalarFields: Array<{ field: string; label?: string }> = [];
+  (values.topNScalarFields || []).forEach((item) => {
+    const field = trimOptionalField(item?.field);
+    if (!field) {
+      return;
+    }
+    const label = trimOptionalField(item?.label);
+    scalarFields.push(label ? { field, label } : { field });
+  });
+  if (scalarFields.length > 0) {
+    valueConfig.topNScalarFields = scalarFields;
+    delete valueConfig.topNLabelField;
+    delete valueConfig.topNValueField;
+  } else {
+    delete valueConfig.topNScalarFields;
+    if (values.topNLabelField !== undefined) {
+      valueConfig.topNLabelField = values.topNLabelField;
+    } else {
+      delete valueConfig.topNLabelField;
+    }
+    if (values.topNValueField !== undefined) {
+      valueConfig.topNValueField = values.topNValueField;
+    } else {
+      delete valueConfig.topNValueField;
+    }
+  }
+  if (values.barMode === 'absolute') {
+    valueConfig.barMode = 'absolute';
+    if (isFiniteNumber(values.barMax) && values.barMax > 0) {
+      valueConfig.barMax = values.barMax;
+    } else {
+      delete valueConfig.barMax;
+    }
+  } else {
+    delete valueConfig.barMode;
+    delete valueConfig.barMax;
+  }
+  return valueConfig;
 };
 
 /**
@@ -268,8 +320,7 @@ export const buildValueConfig = (
     valueConfig.tableConfig = values.tableConfig;
   }
   if (values.chartType === 'topN') {
-    valueConfig.topNLabelField = values.topNLabelField;
-    valueConfig.topNValueField = values.topNValueField;
+    applyTopNValueConfig(valueConfig, values);
   }
   if (values.chartType === 'nodeGraph') {
     const identityMode = values.nodeGraphIdentityMode || 'ip';

@@ -39,7 +39,7 @@ class UnDispatchService:
         if not notify_people or not notify_channel or not alerts:
             return result
 
-        param_format = NotifyParamsFormat(username_list=notify_people, alerts=alerts)
+        param_format = NotifyParamsFormat(username_list=notify_people, alerts=alerts, build_in=False)
         title = param_format.format_title()
         content = param_format.format_content()
         for channel in notify_channel:

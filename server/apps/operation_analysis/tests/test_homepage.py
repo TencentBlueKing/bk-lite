@@ -454,3 +454,32 @@ def test_landing_defers_when_team_cookie_belongs_to_another_account(authenticate
 
     own_but_hidden = _render(landing_view(_request("get", "/homepage/landing/", user, team="2")))["data"]
     assert own_but_hidden == {"dashboard_id": None, "fallback": "org"}
+
+
+@pytest.mark.django_db
+def test_forged_team_cookie_cannot_bind_or_read_foreign_dashboard(authenticated_user):
+    """伪造 current_team 不能读取别的组织仪表盘元信息，也不能绑成个人首页。"""
+
+    user = _viewer(authenticated_user, groups=[{"id": 1, "name": "Default"}])
+    user.group_tree = [{"id": 1, "subGroups": []}]
+    foreign = _dashboard("外组织盘", groups=[99])
+
+    access = _render(HomepageViewSet.as_view({"get": "access"})(_request("get", f"/homepage/access/?dashboard_id={foreign.id}", user, team="99")))[
+        "data"
+    ]
+    assert access == {"status": "org", "name": "", "desc": "", "is_build_in": False}
+
+    bind = HomepageViewSet.as_view({"post": "personal"})(
+        _request(
+            "post",
+            "/homepage/personal/",
+            user,
+            data={"action": "set", "dashboard_id": foreign.id},
+            team="99",
+        )
+    )
+    assert bind.status_code == status.HTTP_403_FORBIDDEN
+    assert not HomepagePreference.objects.filter(scope=HomepagePreference.SCOPE_USER).exists()
+
+    shortcut = _render(HomepageViewSet.as_view({"get": "shortcut"})(_request("get", "/homepage/shortcut/", user, team="99")))["data"]
+    assert shortcut == {"dashboard_id": None}

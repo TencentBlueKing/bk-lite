@@ -60,8 +60,9 @@ class CmdbPermissionMixin:
         """
         Check if the current user is the creator AND has organization access.
 
-        This is a fast-path check: if the user created the object and is in one
-        of its organizations, they have full access without further permission checks.
+        This is a fast-path check: current_team must be one of the user's own
+        organizations, and the user must have created an instance in that
+        organization (or a child organization when include_children is on).
 
         Args:
             request: The HTTP request object
@@ -72,6 +73,9 @@ class CmdbPermissionMixin:
         """
         organizations = instance.get("organization", [])
         current_team = get_current_team_from_request(request, required=False)
+        authorized_teams = {group["id"] for group in request.user.group_list}
+        if current_team not in authorized_teams:
+            return False
         include_children = request.COOKIES.get("include_children") == "1"
 
         if include_children:

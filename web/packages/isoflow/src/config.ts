@@ -43,7 +43,7 @@ export const VIEW_DEFAULTS: Required<
 };
 
 export const VIEW_ITEM_DEFAULTS: Required<
-  Omit<ViewItem, 'id' | 'tile' | 'bkBinding'>
+  Omit<ViewItem, 'id' | 'tile' | 'bkBinding' | 'bkDisplayMetrics'>
 > = {
   labelHeight: 80
 };
@@ -120,6 +120,7 @@ export const DEFAULT_LABELS: IsoflowLabels = {
   icon: 'Icon',
   replaceIcon: 'Replace',
   updateIcon: 'Update icon',
+  nodeSettings: 'Node settings',
   settings: 'Settings',
   name: 'Name',
   description: 'Description',

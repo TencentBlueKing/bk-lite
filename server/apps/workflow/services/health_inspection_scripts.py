@@ -1,4 +1,4 @@
-"""内置主机健康巡检脚本（Windows PowerShell / Linux bash+python）。
+"""内置主机健康巡检脚本（Windows PowerShell / Linux Python）。
 
 约束：
 - 禁止出现 Conductor 表达式字面量 ``${...}``（发布时虽会转义，脚本源码仍保持干净便于契约测试）。
@@ -231,10 +231,7 @@ Write-Output ("result=" + ($result | ConvertTo-Json -Depth 8 -Compress))
 
 
 LINUX_HEALTH_SCRIPT = r"""
-#!/bin/bash
-set -euo pipefail
-# 采集逻辑集中在 python3，避免 bash 花括号变量写法触发 Conductor 表达式。
-python3 - <<'PY'
+#!/usr/bin/env python3
 import json
 import os
 import shutil
@@ -597,5 +594,4 @@ result = {
     "conclusion": "需关注" if (critical or warning) else "健康",
 }
 print("result=" + json.dumps(result, ensure_ascii=False, separators=(",", ":")))
-PY
 """.strip()

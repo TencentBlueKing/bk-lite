@@ -1,0 +1,21 @@
+[[inputs.prometheus]]
+    startup_error_behavior = "retry"
+    urls = ["${STARGAZER_URL}/api/monitor/hyperv/metrics"]
+    interval = "{{ interval | default(60, true) }}s"
+    timeout = "{{ timeout | default(60, true) }}s"
+    response_timeout = "{{ response_timeout | default(60, true) }}s"
+
+    [inputs.prometheus.http_headers]
+        host = "{{ host }}"
+        username = "{{ username }}"
+        password = "${PASSWORD__{{ config_id }}}"
+        credential_encoding = "{{ credential_encoding | default('url', true) }}"
+        port = "{{ port | default('5985', true) }}"
+        winrm_scheme = "{{ winrm_scheme | default('http', true) }}"
+        winrm_transport = "{{ winrm_transport | default('ntlm', true) }}"
+        winrm_cert_validation = "{{ winrm_cert_validation | default('false', true) }}"
+        ansible_node_id = "{{ node_id }}"
+        instance_id = "{{ instance_id }}"
+        instance_type = "hyperv"
+        collect_type = "http"
+        config_type = "hyperv"

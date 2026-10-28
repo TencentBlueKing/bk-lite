@@ -110,6 +110,10 @@ def _actor_group_ids(actor):
         return []
 
 
+def _platform_admin_role_ids():
+    return set(Role.objects.filter(name="admin").filter(Q(app="") | Q(app="system-manager")).values_list("id", flat=True))
+
+
 def _actor_is_platform_superuser(actor):
     """平台超管只认持久化角色，不接受请求参数声明。"""
     from apps.system_mgmt.nats.common import get_user_all_roles
@@ -117,7 +121,63 @@ def _actor_is_platform_superuser(actor):
     role_ids = get_user_all_roles(actor)
     if not role_ids:
         return False
-    return Role.objects.filter(id__in=role_ids, name="admin").filter(Q(app="") | Q(app="system-manager")).exists()
+    admin_role_ids = _platform_admin_role_ids()
+    return bool(admin_role_ids.intersection(role_ids))
+
+
+def _users_platform_superuser_flags(users):
+    """与 _actor_is_platform_superuser 同一口径：个人角色 + 组织角色（含继承）。"""
+    from apps.system_mgmt.nats.common import _collect_ancestor_group_ids
+
+    flags = {user.id: False for user in users}
+    admin_role_ids = _platform_admin_role_ids()
+    if not admin_role_ids:
+        return flags
+
+    pending = []
+    for user in users:
+        if admin_role_ids.intersection(user.role_list or []):
+            flags[user.id] = True
+        else:
+            pending.append(user)
+    if not pending:
+        return flags
+
+    seed_ids = []
+    for user in pending:
+        for raw in user.group_list or []:
+            try:
+                seed_ids.append(int(raw))
+            except (TypeError, ValueError):
+                continue
+    ancestor_ids = _collect_ancestor_group_ids(seed_ids) if seed_ids else set()
+    groups = {group.id: group for group in GroupUtils.active_queryset(id__in=ancestor_ids).prefetch_related("roles")} if ancestor_ids else {}
+    for user in pending:
+        stack = []
+        for raw in user.group_list or []:
+            try:
+                stack.append(int(raw))
+            except (TypeError, ValueError):
+                continue
+        visited = set()
+        group_role_ids = set()
+        while stack:
+            group_id = stack.pop()
+            if group_id in visited:
+                continue
+            visited.add(group_id)
+            group = groups.get(group_id)
+            if not group:
+                continue
+            for role in group.roles.all():
+                group_role_ids.add(role.id)
+            parent_id = group.parent_id
+            if parent_id:
+                parent = groups.get(parent_id)
+                if parent and parent.allow_inherit_roles:
+                    stack.append(parent_id)
+        flags[user.id] = bool(group_role_ids & admin_role_ids)
+    return flags
 
 
 def _active_group_ids():
@@ -207,7 +267,7 @@ def _text(value):
     return "" if value is None else str(value)
 
 
-def _serialize_user(user, authorized_group_ids):
+def _serialize_user(user, authorized_group_ids, *, is_superuser=False):
     allowed = set(authorized_group_ids)
     group_ids = []
     seen = set()
@@ -229,6 +289,7 @@ def _serialize_user(user, authorized_group_ids):
         "disabled": bool(user.disabled),
         "locale": _text(user.locale),
         "group_list": [str(gid) for gid in group_ids],
+        "is_superuser": bool(is_superuser),
     }
 
 
@@ -315,12 +376,14 @@ def openapi_list_users(
             "disabled",
             "locale",
             "group_list",
+            "role_list",
         )
         .order_by("id")
         .distinct()
     )
     visible_group_ids = _active_group_ids() if superuser else query_ids
-    serialized = [_serialize_user(user, visible_group_ids) for user in users]
+    superuser_flags = _users_platform_superuser_flags(users)
+    serialized = [_serialize_user(user, visible_group_ids, is_superuser=superuser_flags.get(user.id, False)) for user in users]
     return _paginate(serialized, page, page_size)
 
 

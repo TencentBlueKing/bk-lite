@@ -2,7 +2,7 @@ import './test-mocks';
 
 import { App } from 'antd';
 import { ReactFlowProvider } from '@xyflow/react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { vi } from 'vitest';
 
 import { WorkflowCanvasActionRail, WorkflowCanvasControls, WorkflowNodeInspector, WorkflowNodePickerPanel } from '../components/workflow-editor-surface';
@@ -94,9 +94,13 @@ describe('n8n 风格流程画布表现层', () => {
     fireEvent.dragStart(reference, { dataTransfer: { effectAllowed: 'none', setData } });
     expect(setData).toHaveBeenCalledWith('application/x-bklite-workflow-reference', '${scan.output}');
     fireEvent.click(screen.getAllByText('JSON')[0]);
-    expect(screen.getByText(/"scan"/)).not.toBeNull();
+    const inputJson = screen.getByRole('textbox', { name: 'code-editor-json' }) as HTMLTextAreaElement;
+    expect(inputJson.dataset.theme).toBe('textmate');
+    expect(inputJson.dataset.copy).toBe('true');
+    expect(inputJson.dataset.fullscreen).toBe('true');
+    expect(inputJson.value).toContain('"scan"');
+    expect(inputJson.value).toContain('"cpu": 42');
     expect(screen.queryByText(/主机扫描/)).toBeNull();
-    expect(screen.getByText(/"cpu": 42/)).not.toBeNull();
     fireEvent.click(screen.getAllByText('Schema')[1]);
     expect(screen.getByText(/report_url/)).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /执行节点/ }));
@@ -154,5 +158,46 @@ describe('n8n 风格流程画布表现层', () => {
     expect(screen.queryByText('${system.trigger_type}')).toBeNull();
     fireEvent.change(screen.getByPlaceholderText('搜索上游字段'), { target: { value: '触发' } });
     expect(screen.getByText('${system.trigger_type}')).not.toBeNull();
+  });
+
+  it('输出字段可按名称搜索，并同步过滤 JSON', () => {
+    render(
+      <App>
+        <WorkflowNodeInspector
+          open
+          title="作业执行"
+          meta="bklite_job_execute"
+          references={[]}
+          outputSchema={{
+            type: 'object',
+            properties: {
+              data: { type: 'array' },
+              summary: { type: 'object', properties: { total: { type: 'integer' }, succeeded: { type: 'integer' } } },
+              job_task_ids: { type: 'array' },
+            },
+          }}
+          outputData={{ data: [{ host: 'a' }], summary: { total: 1, succeeded: 1 }, job_task_ids: [9] }}
+          readOnly={false}
+          onClose={vi.fn()}
+        >
+          <div>参数</div>
+        </WorkflowNodeInspector>
+      </App>,
+    );
+
+    const output = screen.getByRole('region', { name: '节点输出' });
+    expect(within(output).getByPlaceholderText('搜索输出字段')).not.toBeNull();
+    expect(within(output).getByText('data')).not.toBeNull();
+    expect(within(output).getByText('job_task_ids')).not.toBeNull();
+    fireEvent.change(within(output).getByPlaceholderText('搜索输出字段'), { target: { value: 'total' } });
+    expect(within(output).getByText('summary.total')).not.toBeNull();
+    expect(within(output).queryByText('job_task_ids')).toBeNull();
+    expect(within(output).queryByText('data')).toBeNull();
+    fireEvent.click(within(output).getByText('JSON'));
+    const outputJson = within(output).getByRole('textbox', { name: 'code-editor-json' }) as HTMLTextAreaElement;
+    expect(outputJson.value).toContain('total');
+    expect(outputJson.value).not.toContain('job_task_ids');
+    fireEvent.change(within(output).getByPlaceholderText('搜索输出字段'), { target: { value: '不存在的字段' } });
+    expect(within(output).getByText('没有匹配的输出字段')).not.toBeNull();
   });
 });

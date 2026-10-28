@@ -122,23 +122,26 @@ export const useInteractionManager = (enableGlobalDragHandlers: boolean = true) 
 
   const onContextMenu = useCallback(
     (e: SlimMouseEvent) => {
-      e.preventDefault();
-
       const itemAtTile = getItemAtTile({
         tile: uiState.mouse.position.tile,
         scene
       });
-
-      if (itemAtTile?.type === 'RECTANGLE') {
+      // Edit mode still uses the layer-order menu on areas. Everywhere else,
+      // including view mode, the browser menu stays available.
+      if (uiState.editorMode === 'EDITABLE' && itemAtTile?.type === 'RECTANGLE') {
+        e.preventDefault();
         uiState.actions.setContextMenu({
           item: itemAtTile,
           tile: uiState.mouse.position.tile
         });
-      } else if (uiState.contextMenu) {
+        return;
+      }
+
+      if (uiState.contextMenu) {
         uiState.actions.setContextMenu(null);
       }
     },
-    [uiState.mouse, scene, uiState.contextMenu, uiState.actions]
+    [uiState.mouse, scene, uiState.contextMenu, uiState.actions, uiState.editorMode]
   );
 
   useEffect(() => {

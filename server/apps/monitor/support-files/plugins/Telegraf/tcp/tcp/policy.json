@@ -15,7 +15,7 @@
           "method": ">="
         }
       ],
-      "group_algorithm": "avg"
+      "group_algorithm": "max"
     },
     {
       "name": "TCP 响应时间过高",

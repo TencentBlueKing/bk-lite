@@ -8,6 +8,7 @@ from apps.cmdb.models.collect_task_credential_hit import CollectTaskCredentialHi
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.scan_collect_generate import ScanCollectGenerateService, _normalize_credential_item
+from apps.cmdb.services.scan_collect_task import _build_update_payload, _collect_view, require_request, sync_scan_collect_task
 
 pytestmark = pytest.mark.django_db
 
@@ -759,3 +760,92 @@ def test_normalize_agent_credential_drops_ssh_fields():
         )
         == {}
     )
+
+
+def _instance(host):
+    return {"inst_uuid": HOST_UUIDS[host], "model_id": "switch"}
+
+
+def _snmp_credential(credential_id, community):
+    return {
+        "credential_id": credential_id,
+        "version": "v2",
+        "community": community,
+        "snmp_port": "161",
+    }
+
+
+def test_stale_scan_append_keeps_targets_and_credentials_written_under_lock(mocker, authenticated_user):
+    """调用者还拿着只含 A 的旧对象时，库里已写成 A+C，再追加 B 不能把 C 盖掉。"""
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    task = _task()
+    execution, hits = _execution_with_hits(task, ["10.0.1.10"])
+    request = _request(authenticated_user)
+    ScanCollectGenerateService.generate(execution, [hits[0].id], operator="alice", request=request)
+
+    stale = CollectModels.objects.get()
+    current = CollectModels.objects.get(pk=stale.pk)
+    current.instances = [_instance("10.0.1.10"), _instance("10.0.1.11")]
+    current.credential = [
+        *list(current.decrypt_credentials),
+        _snmp_credential("cred-snmp-3", "other"),
+    ]
+    current.save(update_fields=["instances", "credential"])
+
+    sync_scan_collect_task(
+        stale,
+        scan_task=task,
+        instances=[_instance("10.0.1.12")],
+        credentials=[_snmp_credential("cred-snmp-2", "private")],
+        request=request,
+    )
+
+    collect = CollectModels.objects.get(pk=stale.pk)
+    assert {item.get("inst_uuid") for item in (collect.instances or [])} == {
+        HOST_UUIDS["10.0.1.10"],
+        HOST_UUIDS["10.0.1.12"],
+        HOST_UUIDS["10.0.1.11"],
+    }
+    assert {item.get("credential_id") for item in collect.decrypt_credentials} == {
+        "cred-snmp-1",
+        "cred-snmp-2",
+        "cred-snmp-3",
+    }
+
+
+def test_plain_update_replaces_submitted_instances(mocker, authenticated_user):
+    """不带追加标记的普通更新用提交的完整列表覆盖，不留数据库里多出来的目标。"""
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    task = _task()
+    execution, hits = _execution_with_hits(task, ["10.0.1.10"])
+    request = _request(authenticated_user)
+    ScanCollectGenerateService.generate(execution, [hits[0].id], operator="alice", request=request)
+
+    stale = CollectModels.objects.get()
+    current = CollectModels.objects.get(pk=stale.pk)
+    current.instances = [_instance("10.0.1.10"), _instance("10.0.1.11")]
+    current.credential = [
+        *list(current.decrypt_credentials),
+        _snmp_credential("cred-snmp-3", "other"),
+    ]
+    current.save(update_fields=["instances", "credential"])
+
+    payload = _build_update_payload(
+        stale,
+        instances=[_instance("10.0.1.10"), _instance("10.0.1.12")],
+        credentials=list(stale.decrypt_credentials),
+    )
+    drf_request = require_request(request)
+    view = _collect_view(drf_request, action="update", pk=stale.pk)
+    CollectModelService.update(drf_request, view, payload=payload)
+
+    collect = CollectModels.objects.get(pk=stale.pk)
+    assert {item.get("inst_uuid") for item in (collect.instances or [])} == {
+        HOST_UUIDS["10.0.1.10"],
+        HOST_UUIDS["10.0.1.12"],
+    }
+    assert {item.get("credential_id") for item in collect.decrypt_credentials} == {"cred-snmp-1"}

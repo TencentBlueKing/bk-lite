@@ -28,6 +28,8 @@ import type {
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import PermissionWrapper from '@/components/permission';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import { DASHBOARD_GRID_COLS } from '@/app/ops-analysis/utils/dashboardGridColumns';
+import { DASHBOARD_GRID_ROW_HEIGHT } from '@/app/ops-analysis/utils/dashboardGridRows';
 import {
   buildDashboardGridStackLayout,
   buildDashboardGridStackStructureKey,
@@ -69,8 +71,6 @@ import {
   syncDashboardEdgeHandleVisibility,
 } from './dashboardEdgeHandles';
 
-const DASHBOARD_GRID_COLS = 12;
-const DASHBOARD_GRID_ROW_HEIGHT = 60;
 const DASHBOARD_GRID_MARGIN: [number, number] = [4, 4];
 const DASHBOARD_GRID_CONTAINER_PADDING: [number, number] = [6, 2];
 const DASHBOARD_WIDGET_RESIZE_HANDLES = 'se,sw,ne,nw,n,e,s,w';
@@ -215,7 +215,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
             border: `1px solid ${chartTheme.panelBorderColor}`,
           }}
         >
-          <div className="widget-header mb-2 flex min-w-0 items-start gap-2">
+          <div className="widget-header flex min-w-0 items-start gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1">
                 <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
@@ -238,6 +238,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
                 onClick={exportCsv}
               />
             )}
+            <InteractionTitleIcon config={item.valueConfig} />
             {menuItems.length > 0 && (
               <div data-export-hidden="true" className="no-drag shrink-0">
                 <MoreActionsDropdown
@@ -249,7 +250,6 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
                 />
               </div>
             )}
-            <InteractionTitleIcon config={item.valueConfig} />
           </div>
           <div
             className="widget-body flex-1 h-full min-h-0"
@@ -409,6 +409,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   const dashboardScopeKey = String(dashboardId ?? 'dashboard');
   const layoutRef = useRef(layout);
   const collapsedGroupsRef = useRef(collapsedGroups);
+  const isEditModeRef = useRef(isEditMode);
   const gridStackLayoutRef = useRef(gridStackLayout);
   const emitLayoutChangeRef = useRef<() => void>(() => undefined);
   const handleWidgetMutationStopRef = useRef<
@@ -475,8 +476,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   useEffect(() => {
     layoutRef.current = layout;
     collapsedGroupsRef.current = collapsedGroups;
+    isEditModeRef.current = isEditMode;
     gridStackLayoutRef.current = gridStackLayout;
-  }, [layout, collapsedGroups, gridStackLayout]);
+  }, [layout, collapsedGroups, gridStackLayout, isEditMode]);
 
   useEffect(() => {
     const root = scrollRootRef.current;
@@ -810,11 +812,12 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         return;
       }
 
+      const fitToContent = isEditModeRef.current && !isCollapsed;
       const nextOptions = options?.preservePosition
         ? {
           id: node.id,
           h: isCollapsed ? node.item.h : node.h,
-          sizeToContent: !isCollapsed,
+          sizeToContent: fitToContent,
         }
         : {
           id: node.id,
@@ -822,12 +825,12 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           y: node.y,
           w: node.w,
           h: isCollapsed ? node.item.h : node.h,
-          sizeToContent: !isCollapsed,
+          sizeToContent: fitToContent,
         };
 
       rootGrid.update(groupElement, nextOptions);
 
-      if (!isCollapsed) {
+      if (fitToContent) {
         rootGrid.resizeToContent(groupElement as GridItemHTMLElement);
       }
     },
@@ -852,7 +855,10 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         y: node.y,
         w: node.w,
         h: node.kind === 'group' && isCollapsedGroup ? node.item.h : node.h,
-        sizeToContent: node.kind === 'group' && !isCollapsedGroup,
+        sizeToContent:
+          isEditModeRef.current &&
+          node.kind === 'group' &&
+          !isCollapsedGroup,
       });
     },
     [],
@@ -1007,7 +1013,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           y: node.y,
           w: node.w,
           h: node.kind === 'group' && isCollapsedGroup ? node.item.h : node.h,
-          sizeToContent: node.kind === 'group' && !isCollapsedGroup,
+          sizeToContent: isEditModeRef.current && node.kind === 'group' && !isCollapsedGroup,
           noMove: false,
           noResize: node.kind === 'group',
         });
@@ -1018,7 +1024,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           y: node.y,
           w: node.w,
           h: node.kind === 'group' && isCollapsedGroup ? node.item.h : node.h,
-          sizeToContent: node.kind === 'group' && !isCollapsedGroup,
+          sizeToContent: isEditModeRef.current && node.kind === 'group' && !isCollapsedGroup,
         });
       });
       const bindGridMutationEvents = (
@@ -1090,7 +1096,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
 
         const subGrid = GridStack.init(
           {
-            column: 'auto',
+            // 手动 init 时若写 auto，GridStack 会删掉该选项并回落默认 12；
+            // 子项 x/w 已按 DASHBOARD_GRID_COLS 存，必须显式对齐，否则分组内错乱。
+            column: DASHBOARD_GRID_COLS,
             cellHeight: DASHBOARD_GRID_ROW_HEIGHT,
             margin: DASHBOARD_GRID_MARGIN[0],
             float: false,
@@ -1187,7 +1195,11 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       subGrid.enableMove(isEditMode);
       subGrid.enableResize(isEditMode);
     });
-  }, [isEditMode]);
+
+    gridStackLayout.groupNodes.forEach((node) => {
+      syncGroupPresentation(node, { preservePosition: true });
+    });
+  }, [isEditMode, gridStackLayout.groupNodes, syncGroupPresentation]);
 
   useEffect(() => {
     if (!rootGridRef.current) {

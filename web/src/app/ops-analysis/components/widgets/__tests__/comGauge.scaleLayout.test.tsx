@@ -61,6 +61,10 @@ beforeAll(() => {
   vi.stubGlobal('cancelAnimationFrame', () => undefined);
 });
 
+vi.mock('@/utils/i18n', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 vi.mock('echarts-for-react', () => {
   const MockEcharts = React.forwardRef(
     ({ option }: { option: { series?: GaugeSeriesOption[] } }, ref) => {
@@ -115,11 +119,13 @@ const renderGaugeAtSize = (
   width: number,
   height: number,
   config: Record<string, unknown> = {},
+  baselineData?: unknown,
 ) => {
   mockContainerSize = { width, height };
   const result = render(
     <ComGauge
       rawData={{ score: 86 }}
+      baselineData={baselineData}
       config={{
         chartType: 'gauge',
         selectedFields: ['score'],
@@ -178,6 +184,17 @@ describe('Gauge responsive scale layout', () => {
   it('treats wide-but-short widgets as small based on height', () => {
     renderGaugeAtSize(320, 100);
     expect(lastOption?.series?.[0]?.splitNumber).toBe(2);
+  });
+
+  it('renders period compare from the baseline value', () => {
+    const { getByTestId } = renderGaugeAtSize(180, 180, {
+      compare: true,
+      compareMode: 'percent',
+      selectedFields: ['score'],
+    }, { score: 80 });
+    const compare = getByTestId('gauge-compare');
+    expect(compare.textContent).toContain('dashboard.comparePreviousShortLabel');
+    expect(compare.textContent).toContain('↑7.5%');
   });
 
   it('preserves custom min/max contract', () => {

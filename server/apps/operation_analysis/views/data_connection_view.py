@@ -185,8 +185,9 @@ def extract_inline_connection(datasource, *, name=None, description=None, create
         DataSourceAPIModel.SOURCE_TYPE_MYSQL,
         DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
         DataSourceAPIModel.SOURCE_TYPE_REST_API,
+        DataSourceAPIModel.SOURCE_TYPE_ELASTICSEARCH,
     }:
-        raise ValueError(oa_message("messages.extract_connection_unsupported", "仅 MySQL/PostgreSQL/REST 支持提取为数据连接"))
+        raise ValueError(oa_message("messages.extract_connection_unsupported", "仅 MySQL/PostgreSQL/REST/Elasticsearch 支持提取为数据连接"))
 
     connection_name = (name or "").strip()
     if not connection_name:
@@ -222,6 +223,36 @@ def extract_inline_connection(datasource, *, name=None, description=None, create
             if path and path != "/":
                 overrides["path"] = path
         cleaned_connection_config = {"method": overrides["method"], "timeout": overrides["timeout"]}
+    elif datasource.source_type == DataSourceAPIModel.SOURCE_TYPE_ELASTICSEARCH:
+        from apps.operation_analysis.services.datasource_preview.base import ConnectorError
+        from apps.operation_analysis.services.datasource_preview.elasticsearch_client import normalize_elasticsearch_config
+        from apps.operation_analysis.services.datasource_preview.elasticsearch_query import validate_index_name
+
+        extracted = {
+            "url": config.get("url"),
+            "auth_type": config.get("auth_type") or "none",
+            "timeout_seconds": config.get("timeout_seconds") or 30,
+            "index": config.get("index") or "",
+        }
+        if config.get("ca_cert"):
+            extracted["ca_cert"] = config.get("ca_cert")
+        if extracted["auth_type"] == "basic":
+            extracted["username"] = config.get("username")
+            extracted["password"] = config.get("password")
+        elif extracted["auth_type"] == "api_key":
+            extracted["api_key"] = config.get("api_key")
+        try:
+            normalized = normalize_elasticsearch_config(extracted)
+            extracted["url"] = normalized["url"]
+            extracted["auth_type"] = normalized["auth_type"]
+            extracted["timeout_seconds"] = normalized["timeout_seconds"]
+            extracted["index"] = validate_index_name(normalized.get("index"))
+            if normalized.get("ca_cert"):
+                extracted["ca_cert"] = normalized["ca_cert"]
+        except ConnectorError as exc:
+            raise ValueError(exc.message) from exc
+        overrides = {}
+        cleaned_connection_config = {}
     else:
         extracted = {
             "host": config.get("host"),

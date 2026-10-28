@@ -196,6 +196,7 @@ export interface ValueConfig {
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
+  compareMode?: 'percent' | 'value';
   params?: Record<string, string | number | boolean | [number, number] | null>;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;
@@ -203,8 +204,12 @@ export interface ValueConfig {
   selectedFields?: string[];
   topNLabelField?: string;
   topNValueField?: string;
+  topNScalarFields?: Array<{ field: string; label?: string }>;
+  barMode?: 'relative' | 'absolute';
+  barMax?: number;
   dimensionField?: string;
   valueField?: string;
+  pieScalarFields?: Array<{ field: string; label?: string }>;
   multiValueLabelField?: string;
   multiValueValueField?: string;
   unit?: string;

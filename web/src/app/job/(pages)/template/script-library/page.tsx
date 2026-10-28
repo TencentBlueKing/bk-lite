@@ -34,7 +34,8 @@ import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
 import SearchActionBar from '@/components/search-action-bar';
 import TopSection from '@/components/top-section';
-import ScriptEditor from '@/app/job/components/script-editor';
+import ScriptEditor from '@/components/script-editor';
+import { buildJobBuiltinScriptVariables } from '@/app/job/constants/builtin-script-vars';
 import TemplateVersionDrawer from '@/app/job/components/template-version-drawer';
 import VersionBadge from '@/components/version-badge';
 import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
@@ -146,6 +147,7 @@ const ScriptLibraryPage = () => {
 
   // Script editor state
   const [scriptLang, setScriptLang] = useState<ScriptType>('shell');
+  const [scriptVariablePanelExpanded, setScriptVariablePanelExpanded] = useState(false);
   const [scriptContent, setScriptContent] = useState<Record<ScriptType, string>>({
     shell: '',
     bat: '',
@@ -220,6 +222,7 @@ const ScriptLibraryPage = () => {
     setScriptLang('shell');
     setScriptContent({ shell: '', bat: '', python: '', powershell: '' });
     setParams([]);
+    setScriptVariablePanelExpanded(false);
   };
 
   const openAddModal = () => {
@@ -755,7 +758,7 @@ const ScriptLibraryPage = () => {
             </div>
           )
         }
-        width={720}
+        width={scriptVariablePanelExpanded ? 1080 : 720}
       >
         <Form form={form} layout="vertical" colon={false} disabled={isViewMode}>
           <Form.Item
@@ -766,13 +769,20 @@ const ScriptLibraryPage = () => {
             <Input placeholder={t('job.scriptNamePlaceholder')} />
           </Form.Item>
 
-          <Form.Item label={t('job.scriptContent')} tooltip={t('job.builtinScriptVarsHint')}>
+          <Form.Item label={t('job.scriptContent')} tooltip={t('job.optionalVariablesHint')}>
             <ScriptEditor
               value={scriptContent}
               onChange={isViewMode ? undefined : setScriptContent}
               activeLang={scriptLang}
               onLangChange={setScriptLang}
               readOnly={isViewMode}
+              variablePanel={{
+                visible: true,
+                followFullscreen: false,
+                defaultExpanded: false,
+                variables: buildJobBuiltinScriptVariables(t),
+              }}
+              onVariablePanelExpandedChange={setScriptVariablePanelExpanded}
             />
           </Form.Item>
 

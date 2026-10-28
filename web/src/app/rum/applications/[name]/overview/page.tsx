@@ -161,7 +161,11 @@ export default function ApplicationOverviewPage() {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto">
       <RumListToolbar
         leading={
-          <RumDetailTitle title={name} onBack={() => router.push('/rum/applications')} />
+          <RumDetailTitle
+            title={name}
+            subtitle={t('rum.overview.subtitle', '只描述这一个应用。从这里进会话、视图与性能、错误追踪和转化漏斗。')}
+            onBack={() => router.push('/rum/applications')}
+          />
         }
         trailing={
           <>
@@ -200,6 +204,21 @@ export default function ApplicationOverviewPage() {
             onOpenViews={() => router.push(`/rum/views?${scope}`)}
             onOpenErrors={() => router.push(`/rum/errors?${scope}`)}
           />
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => router.push(`/rum/sessions?${scope}`)}>
+              {t('rum.overview.openSessions', '会话')}
+            </Button>
+            <Button onClick={() => router.push(`/rum/views?${scope}`)}>
+              {t('rum.overview.openViews', '视图与性能')}
+            </Button>
+            <Button onClick={() => router.push(`/rum/errors?${scope}`)}>
+              {t('rum.overview.openErrors', '错误追踪')}
+            </Button>
+            <Button onClick={() => router.push(`/rum/funnels?${scope}`)}>
+              {t('rum.overview.openFunnels', '转化漏斗')}
+            </Button>
+          </div>
 
           {/* 会话趋势卡片 */}
           <SessionTrendChart points={overview.trend} asCard />

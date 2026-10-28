@@ -7,7 +7,19 @@ import { useChannelApi } from '@/app/system-manager/api/channel';
 import { useUserApi } from '@/app/system-manager/api/user';
 import LoginSettings from '@/app/system-manager/components/security/authSettings';
 import { useTranslation } from '@/utils/i18n';
-import { invalidateGmTransportCache } from '@/utils/gmTransport';
+import { gmTransportAvailable, invalidateGmTransportCache } from '@/utils/gmTransport';
+
+function loadGmTransportSection() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('@/app/system-manager/(enterprise)/components/GmTransportSection');
+    return mod.GmTransportSection || null;
+  } catch {
+    return null;
+  }
+}
+
+const GmTransportSection = gmTransportAvailable ? loadGmTransportSection() : null;
 
 type InitialPasswordMode = 'fixed' | 'random' | 'none';
 
@@ -60,7 +72,9 @@ const SecuritySettingsPage: React.FC = () => {
   const { getUserIdAll } = useUserApi();
   useEffect(() => {
     fetchSystemSettings();
-    fetchGmTransportStatus();
+    if (gmTransportAvailable) {
+      fetchGmTransportStatus();
+    }
     fetchEmailChannels();
     getUserIdAll().then((res: unknown) => {
       const users = Array.isArray(res) ? res : [];
@@ -269,7 +283,7 @@ const SecuritySettingsPage: React.FC = () => {
         pwdSetExpiryReminderDays: pendingReminderDays,
         otpWhitelist: pendingOtpWhitelist,
         otpRecommendedApps: pendingOtpRecommendedApps.length ? pendingOtpRecommendedApps.join(',') : undefined,
-        enableGmTransport: pendingGmTransportEnabled ? '1' : '0',
+        enableGmTransport: gmTransportAvailable ? (pendingGmTransportEnabled ? '1' : '0') : undefined,
         userCreateInitialPasswordMode: pendingInitialPasswordMode,
         userCreateInitialPassword: initialPassword || undefined,
         userCreateInitialPasswordEmailChannelId:
@@ -277,8 +291,10 @@ const SecuritySettingsPage: React.FC = () => {
       });
       setOtpEnabled(pendingOtpEnabled);
       setGmTransportEnabled(pendingGmTransportEnabled);
-      invalidateGmTransportCache();
-      await fetchGmTransportStatus();
+      if (gmTransportAvailable) {
+        invalidateGmTransportCache();
+        await fetchGmTransportStatus();
+      }
       setOtpWhitelist(pendingOtpWhitelist);
       setOtpRecommendedApps(pendingOtpRecommendedApps);
       setLoginExpiredTime(pendingLoginExpiredTime);
@@ -323,9 +339,15 @@ const SecuritySettingsPage: React.FC = () => {
   return (
     <LoginSettings
       otpEnabled={pendingOtpEnabled}
-      gmTransportEnabled={pendingGmTransportEnabled}
-      gmTransportDegraded={gmTransportDegraded}
-      onGmTransportChange={handleGmTransportChange}
+      gmTransportSlot={GmTransportSection ? (
+        <GmTransportSection
+          enabled={pendingGmTransportEnabled}
+          degraded={gmTransportDegraded}
+          loading={loading}
+          disabled={fetching}
+          onChange={handleGmTransportChange}
+        />
+      ) : null}
       otpWhitelist={pendingOtpWhitelist}
       otpRecommendedApps={pendingOtpRecommendedApps}
       otpUsers={otpUsers}

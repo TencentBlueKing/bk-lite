@@ -69,19 +69,32 @@ class InfraService:
             )
             raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
 
-        data["usage_count"] = usage_count + 1
-        cache.set(cache_key, data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
+        # 独立计数键：add 只在缺失时按 payload 播种一次，incr 才是原子扣减。
+        # 成功路径不回写令牌键，避免把剩余有效期重置成 30 分钟。
+        usage_cache_key = f"{cache_key}:usage_count"
+        cache.add(usage_cache_key, usage_count, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
+        try:
+            claimed_usage = cache.incr(usage_cache_key)
+        except ValueError as error:
+            raise BaseAppException("Invalid or expired token") from error
+
+        if claimed_usage > max_usage:
+            cache.delete(cache_key)
+            logger.warning(
+                f"Token 已达到最大使用次数: usage={claimed_usage}/{max_usage}, cluster={data.get('cluster_name')}"
+            )
+            raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
 
         logger.info(
             f"Token 验证成功: "
             f"cluster={data['cluster_name']}, region={data['cloud_region_id']}, "
-            f"使用次数={data['usage_count']}/{max_usage}"
+            f"使用次数={claimed_usage}/{max_usage}"
         )
 
         result = {
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
-            "remaining_usage": max_usage - data["usage_count"],
+            "remaining_usage": max_usage - claimed_usage,
         }
         include_stored_tolerations(result, data.get("tolerations"))
         return result

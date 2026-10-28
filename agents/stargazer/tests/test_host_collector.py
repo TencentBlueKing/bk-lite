@@ -502,6 +502,43 @@ exit 1
         assert (SCRIPTS_DIR / "linux" / "footer.sh").exists()
         assert (SCRIPTS_DIR / "windows" / "header.ps1").exists()
         assert (SCRIPTS_DIR / "windows" / "footer.ps1").exists()
+        assert (SCRIPTS_DIR / "windows" / "service.ps1").exists()
+        assert not (SCRIPTS_DIR / "linux" / "service.sh").exists()
+
+    def test_windows_service_script_queries_win32_service_not_process(self):
+        script = build_script("windows", ["service"])
+        assert "Win32_Service" in script
+        assert "Win32_Process" not in script
+        linux_script = build_script("linux", ["cpu", "service"])
+        assert "Win32_Service" not in linux_script
+
+    def test_host_collector_adds_service_module_only_for_windows_scope(self):
+        base = {
+            "host": "10.0.0.1",
+            "username": "administrator",
+            "password": "secret",
+            "ansible_node_id": "node-1",
+            "metrics_modules": "cpu",
+        }
+        none_collector = HostCollector({**base, "os_type": "windows", "service_scope": "none"})
+        assert "service" not in none_collector._resolve_modules()
+
+        empty_collector = HostCollector({**base, "os_type": "windows"})
+        assert "service" not in empty_collector._resolve_modules()
+
+        names_empty = HostCollector({**base, "os_type": "windows", "service_scope": "names", "service_names": ""})
+        assert "service" not in names_empty._resolve_modules()
+
+        all_collector = HostCollector({**base, "os_type": "windows", "service_scope": "all"})
+        assert "service" in all_collector._resolve_modules()
+
+        named = HostCollector({**base, "os_type": "windows", "service_scope": "names", "service_names": "Spooler"})
+        assert "service" in named._resolve_modules()
+
+        linux = HostCollector({**base, "os_type": "linux", "service_scope": "all"})
+        assert "service" not in linux._resolve_modules()
+        linux_script = linux._resolve_execution_config()["module_args"]
+        assert "Win32_Service" not in linux_script
 
 
 class TestParseMetricsToPrometheus:
@@ -537,6 +574,46 @@ class TestParseMetricsToPrometheus:
         result = parse_metrics_to_prometheus(data, "test_instance", "linux")
 
         assert "1234567" in result
+
+    def test_windows_service_metrics_match_wmi_state_codes(self):
+        data = {
+            "cpu": {"usage_percent": 12.5, "core_count": 4},
+            "service": [
+                {"name": "Spooler", "state": "Running"},
+                {"name": "W32Time", "state": "Stopped"},
+                {"name": "wuauserv", "state": "Start Pending"},
+                {"name": "bits", "state": "Paused"},
+            ],
+        }
+        result = parse_metrics_to_prometheus(
+            data,
+            "inst1",
+            "windows",
+            timestamp=1700000000000,
+            service_scope="names",
+            service_names="spooler, Missing, W32Time, wuauserv, bits",
+        )
+        labels = 'instance_id="inst1",os_type="windows"'
+        assert f'windows_service_state{{{labels},service="Spooler",service_scope="names"}} 1 1700000000000' in result
+        assert f'windows_service_state{{{labels},service="W32Time",service_scope="names"}} 0 1700000000000' in result
+        assert f'windows_service_state{{{labels},service="wuauserv",service_scope="names"}} 0 1700000000000' in result
+        assert f'windows_service_state{{{labels},service="bits",service_scope="names"}} 0 1700000000000' in result
+        assert f'windows_service_state{{{labels},service="Missing",service_scope="names"}} 0 1700000000000' in result
+        assert "cpu_usage_total" in result
+
+    def test_windows_service_metrics_skip_when_scope_is_none(self):
+        data = {"service": [{"name": "Spooler", "state": "Running"}]}
+        result = parse_metrics_to_prometheus(data, "inst1", "windows", timestamp=1)
+        assert "windows_service_state" not in result
+        named_empty = parse_metrics_to_prometheus(
+            data,
+            "inst1",
+            "windows",
+            timestamp=1,
+            service_scope="names",
+            service_names="",
+        )
+        assert "windows_service_state" not in named_empty
 
     def test_cpu_metrics(self):
         data = {

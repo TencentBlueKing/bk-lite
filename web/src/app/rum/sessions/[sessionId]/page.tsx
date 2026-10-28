@@ -9,12 +9,8 @@ import {
   CheckOutlined,
   ClockCircleOutlined,
   CodeOutlined,
-  CompassOutlined,
   CopyOutlined,
-  DashboardOutlined,
   EnvironmentOutlined,
-  ExclamationCircleOutlined,
-  InteractionOutlined,
   LaptopOutlined,
   MobileOutlined,
   PlayCircleFilled,
@@ -41,6 +37,7 @@ import {
 } from '@/app/rum/lib/format';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
+import { groupTimelineByView } from '@/app/rum/sessions/lib/group-timeline';
 import { presentTimelineError } from '@/app/rum/sessions/lib/timeline-error';
 import { useTranslation } from '@/utils/i18n';
 
@@ -636,40 +633,107 @@ export default function SessionDetailPage() {
                           : t('rum.sessions.timelineEmpty', '此会话暂无事件')
                       }
                     />
+                  ) : tab === 'activity' ? (
+                    <div className="flex flex-col gap-2.5">
+                      {groupTimelineByView(filtered).map((group) => {
+                        const view = group.view;
+                        return (
+                          <section
+                            key={view?.id || group.rest[0]?.id || group.vitals[0]?.id}
+                            className="overflow-hidden rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)]"
+                          >
+                            {view ? (
+                              <div className="flex items-center justify-between gap-2 bg-[var(--color-fill-1)]/60 px-3 py-2">
+                                <span className="truncate font-mono text-sm font-semibold text-[var(--color-text-1)]">
+                                  {view.title}
+                                </span>
+                                <span className="shrink-0 font-mono text-xs tabular-nums text-[var(--color-text-3)]">
+                                  {formatRelativeOffset(view.at, baseTime)} · {formatEventTime(view.at)}
+                                </span>
+                              </div>
+                            ) : null}
+                            {group.vitals.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5 px-3 py-2">
+                                {group.vitals.map((item) => {
+                                  const metricName = String(item.raw?.name || '').toLowerCase();
+                                  const val = Number(item.raw?.value || 0);
+                                  const tone = cwvTone(metricName, val);
+                                  return (
+                                    <span
+                                      key={item.id}
+                                      className="inline-flex items-center gap-1 rounded border border-[var(--color-border-2)] bg-[var(--color-bg)] px-2 py-0.5 font-mono text-[11px] text-[var(--color-text-2)]"
+                                    >
+                                      {item.title}
+                                      {tone !== 'neutral' ? (
+                                        <span className={tone === 'success' ? 'text-[var(--color-success)]' : tone === 'warning' ? 'text-[var(--theme-color-status-warning)]' : 'text-[var(--color-fail)]'}>
+                                          {tone === 'success'
+                                            ? t('rum.cwv.good', '良好')
+                                            : tone === 'warning'
+                                              ? t('rum.cwv.needsImprove', '需改进')
+                                              : t('rum.cwv.poor', '较差')}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                            {group.rest.map((item) => {
+                              const presentedError =
+                                item.kind === 'error' ? presentTimelineError(item.raw) : null;
+                              const errorHref =
+                                presentedError?.fingerprint && app
+                                  ? `/rum/errors/detail?fingerprint=${encodeURIComponent(presentedError.fingerprint)}&application=${encodeURIComponent(app)}&range=${range}`
+                                  : null;
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="flex items-start justify-between gap-2 border-t border-[var(--color-fill-2)] px-3 py-2"
+                                >
+                                  <div className="min-w-0">
+                                    <Tag
+                                      className="m-0 border-0 font-medium uppercase text-[11px]"
+                                      color={item.kind === 'error' ? 'error' : item.kind === 'action' ? 'processing' : 'default'}
+                                    >
+                                      {t(`rum.sessions.kind.${item.kind}`, item.kind)}
+                                    </Tag>
+                                    {errorHref ? (
+                                      <Link
+                                        href={errorHref}
+                                        className="ml-2 font-mono text-sm hover:text-[var(--color-primary)] hover:underline"
+                                      >
+                                        {item.title}
+                                      </Link>
+                                    ) : (
+                                      <span className="ml-2 font-mono text-sm">{item.title}</span>
+                                    )}
+                                    {item.detail ? (
+                                      <span className="ml-2 font-mono text-xs text-[var(--color-text-3)]">{item.detail}</span>
+                                    ) : null}
+                                    {presentedError?.traceId ? (
+                                      <span className="ml-2 font-mono text-xs text-[var(--color-text-3)]">Trace: {presentedError.traceId}</span>
+                                    ) : null}
+                                  </div>
+                                  <span className="shrink-0 font-mono text-xs tabular-nums text-[var(--color-text-3)]">
+                                    {formatRelativeOffset(item.at, baseTime)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </section>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <div className="relative pl-6 before:absolute before:bottom-3 before:left-2.5 before:top-3 before:w-px before:bg-[var(--color-border-2)]/60">
                       <div className="flex flex-col gap-3.5">
                         {filtered.map((item) => {
                           const relOffset = formatRelativeOffset(item.at, baseTime);
                           const absTime = formatEventTime(item.at);
-                          const presentedError =
-                            item.kind === 'error' ? presentTimelineError(item.raw) : null;
-                          const errorHref =
-                            presentedError?.fingerprint && app
-                              ? `/rum/errors/detail?fingerprint=${encodeURIComponent(presentedError.fingerprint)}&application=${encodeURIComponent(app)}&range=${range}`
-                              : null;
-
                           return (
                             <div key={item.id} className="group relative flex items-start gap-3">
-                              {/* 节点图标徽标 */}
                               <div className="absolute -left-6 mt-1 flex size-5 items-center justify-center rounded-full bg-[var(--color-bg)] ring-4 ring-[var(--color-bg)]">
-                                {item.kind === 'view' ? (
-                                  <span className="flex size-3.5 items-center justify-center rounded-full bg-[var(--color-success)] text-[9px] text-white">
-                                    <CompassOutlined />
-                                  </span>
-                                ) : item.kind === 'action' ? (
-                                  <span className="flex size-3.5 items-center justify-center rounded-full bg-[var(--color-primary)] text-[9px] text-white">
-                                    <InteractionOutlined />
-                                  </span>
-                                ) : item.kind === 'vital' ? (
-                                  <span className="flex size-3.5 items-center justify-center rounded-full bg-[var(--theme-color-status-warning)] text-[9px] text-white">
-                                    <DashboardOutlined />
-                                  </span>
-                                ) : item.kind === 'error' ? (
-                                  <span className="flex size-3.5 items-center justify-center rounded-full bg-[var(--color-fail)] text-[9px] text-white">
-                                    <ExclamationCircleOutlined />
-                                  </span>
-                                ) : item.kind === 'network' ? (
+                                {item.kind === 'network' ? (
                                   <span className="flex size-3.5 items-center justify-center rounded-full bg-[var(--color-text-3)] text-[9px] text-white">
                                     <ApiOutlined />
                                   </span>
@@ -679,104 +743,23 @@ export default function SessionDetailPage() {
                                   </span>
                                 )}
                               </div>
-
-                              {/* 卡片内容 */}
-                              <div className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3 transition-colors hover:border-[var(--color-border-1)] hover:bg-[var(--color-fill-1)]">
+                              <div className="min-w-0 flex-1 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <Tag
-                                      className="m-0 border-0 font-medium uppercase text-[11px]"
-                                      color={
-                                        item.kind === 'error'
-                                          ? 'error'
-                                          : item.kind === 'vital'
-                                            ? 'warning'
-                                            : item.kind === 'view'
-                                              ? 'success'
-                                              : item.kind === 'action'
-                                                ? 'processing'
-                                                : 'default'
-                                      }
-                                    >
-                                      {t(`rum.sessions.kind.${item.kind}`, item.kind)}
-                                    </Tag>
-                                    <span
-                                      className="truncate font-mono text-sm font-semibold text-[var(--color-text-1)]"
-                                      title={item.title}
-                                    >
-                                      {errorHref ? (
-                                        <Link
-                                          href={errorHref}
-                                          className="hover:text-[var(--color-primary)] hover:underline"
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          {item.title}
-                                        </Link>
-                                      ) : (
-                                        item.title
-                                      )}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-xs text-[var(--color-text-3)] font-mono tabular-nums">
-                                    <span className="font-semibold text-[var(--color-text-2)]">{relOffset}</span>
-                                    <span aria-hidden>·</span>
-                                    <span>{absTime}</span>
-                                  </div>
+                                  <span className="truncate font-mono text-sm font-semibold">{item.title}</span>
+                                  <span className="font-mono text-xs tabular-nums text-[var(--color-text-3)]">
+                                    {relOffset} · {absTime}
+                                  </span>
                                 </div>
-
-                                {/* 详细附加属性 */}
-                                {item.kind === 'vital' && item.raw ? (
-                                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                                    {(() => {
-                                      const metricName = String(item.raw.name || '').toLowerCase();
-                                      const val = Number(item.raw.value || 0);
-                                      const tone = cwvTone(metricName, val);
-                                      if (tone === 'neutral') return null;
-                                      const toneLabel =
-                                        tone === 'success'
-                                          ? t('rum.cwv.good', '良好 (Good)')
-                                          : tone === 'warning'
-                                            ? t('rum.cwv.needsImprove', '需改进')
-                                            : t('rum.cwv.poor', '较差 (Poor)');
-                                      return (
-                                        <Tag
-                                          color={tone === 'success' ? 'success' : tone === 'warning' ? 'warning' : 'error'}
-                                          className="m-0 border-0"
-                                        >
-                                          {toneLabel}
-                                        </Tag>
-                                      );
-                                    })()}
-                                    {item.route ? (
-                                      <span className="text-[var(--color-text-3)] font-mono">
-                                        {displayRoute(item.route)}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-
-                                {presentedError && (presentedError.hint || presentedError.traceId) ? (
-                                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--color-text-3)]">
-                                    {presentedError.hint ? (
-                                      <span className="font-mono">{presentedError.hint}</span>
-                                    ) : null}
-                                    {presentedError.traceId ? (
-                                      <span className="font-mono">Trace: {presentedError.traceId}</span>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-
                                 {item.kind === 'network' && item.raw ? (
                                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                                     <Tag color={Number(item.raw.status) >= 400 ? 'error' : 'success'} className="m-0 border-0 font-mono">
                                       {String(item.raw.status || 200)}
                                     </Tag>
-                                    <span className="font-mono text-[var(--color-text-3)] break-all">
+                                    <span className="break-all font-mono text-[var(--color-text-3)]">
                                       {String(item.raw.url || '')}
                                     </span>
                                   </div>
                                 ) : null}
-
                                 {item.kind === 'console' && item.raw ? (
                                   <div className="mt-2 rounded bg-[var(--color-fill-2)] p-2 font-mono text-xs text-[var(--color-text-2)] break-all">
                                     {String(item.raw.message || '')}

@@ -7,3 +7,4 @@ export * from './connector';
 export * from './rectangle';
 export * from './textBox';
 export * from './bkBinding';
+export * from './bkDisplayMetrics';

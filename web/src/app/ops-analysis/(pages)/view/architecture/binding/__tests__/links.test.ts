@@ -1,27 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAlarmHref,
-  buildCmdbDetailHref,
   buildMonitorDetailHref,
   buildMonitorHrefFromContext,
+  monitorLinkContextFromPayload,
+  monitorObjectIdFromContext,
   readArchitectureEffectivePlugins,
 } from '../links';
 
 describe('architecture detail links', () => {
-  it('builds cmdb, alarm and monitor links', () => {
-    const cmdb = new URL(buildCmdbDetailHref({
-      modelId: 'host',
-      instUuid: 'uuid-web',
-      instName: 'web-01',
-    }), 'http://local');
-    expect(cmdb.pathname).toBe('/cmdb/assetData/detail/baseInfo');
-    expect(cmdb.searchParams.get('model_id')).toBe('host');
-    expect(cmdb.searchParams.get('inst_uuid')).toBe('uuid-web');
-    expect(cmdb.searchParams.get('inst_name')).toBe('web-01');
-
+  it('builds alarm and monitor links', () => {
+    // The alarm entry shares the badge's monitor-caliber source: the monitor
+    // alert list filtered by instance id, never the alert-center tickets.
     const alarm = new URL(buildAlarmHref('mon-web'), 'http://local');
-    expect(alarm.pathname).toBe('/alarm/alarms');
-    expect(alarm.searchParams.get('resource_id')).toBe('mon-web');
+    expect(alarm.pathname).toBe('/monitor/event/alert');
+    expect(alarm.searchParams.get('instanceId')).toBe('mon-web');
+    expect(alarm.searchParams.get('objId')).toBeNull();
+    const alarmWithObject = new URL(buildAlarmHref('mon-web', '11'), 'http://local');
+    expect(alarmWithObject.searchParams.get('instanceId')).toBe('mon-web');
+    expect(alarmWithObject.searchParams.get('objId')).toBe('11');
 
     const monitor = new URL(buildMonitorDetailHref({
       monitorObjectId: '11',
@@ -38,6 +35,8 @@ describe('architecture detail links', () => {
     expect(monitor.searchParams.get('instance_name')).toBe('web-01');
     expect(monitor.searchParams.get('return_object_id')).toBe('11');
 
+    expect(monitorObjectIdFromContext(null)).toBe('');
+    expect(monitorObjectIdFromContext({ monitorObject: 11, monitorName: 'Host' })).toBe('11');
     expect(buildMonitorHrefFromContext(null)).toBe('');
     expect(buildMonitorHrefFromContext({
       monitorObject: '',
@@ -80,5 +79,36 @@ describe('architecture detail links', () => {
     }), 'http://local');
     expect(flow.pathname).toBe('/monitor/view/dashboard/netflow');
     expect(readArchitectureEffectivePlugins({ items: [] })).toEqual([]);
+  });
+
+  it('maps the ops-analysis monitor link payload onto a specialized dashboard', () => {
+    expect(monitorLinkContextFromPayload('mon-web', null)).toBeNull();
+    expect(monitorLinkContextFromPayload('mon-web', {
+      monitor_object: null,
+      instance: null,
+      plugins: [],
+    })).toBeNull();
+    const context = monitorLinkContextFromPayload('app3d-demo-host-01', {
+      monitor_object: {
+        id: 11,
+        name: 'Host',
+        display_name: '主机',
+        instance_id_keys: ['instance_id'],
+      },
+      instance: {
+        instance_id: "('app3d-demo-host-01',)",
+        instance_name: 'web-01',
+        instance_id_values: ['app3d-demo-host-01'],
+        instance_id_keys: ['instance_id'],
+      },
+      plugins: [{ id: 7, name: 'Host', collect_type: 'netflow', display_name: '主机' }],
+    });
+    const href = new URL(buildMonitorHrefFromContext(context), 'http://local');
+    expect(context?.form?.instance_id).toBe('app3d-demo-host-01');
+    expect(context?.monitorName).toBe('Host');
+    expect(href.pathname).toBe('/monitor/view/dashboard/netflow');
+    expect(href.searchParams.get('monitorObjId')).toBe('11');
+    expect(href.searchParams.get('instance_id')).toBe('app3d-demo-host-01');
+    expect(href.searchParams.get('instance_name')).toBe('web-01');
   });
 });

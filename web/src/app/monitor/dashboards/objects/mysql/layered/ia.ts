@@ -26,8 +26,8 @@ export type MysqlIaTab = (typeof MYSQL_IA_TABS)[number]['key'];
 /** 专业盘实例载荷没有采集开关，空态合并「未开」与「已开仍空」。 */
 export const MYSQL_EMPTY_COPY = {
   statements: {
-    title: '暂无语句数据',
-    hint: '请在采集配置中开启「语句采集」，并确认实例已启用 Performance Schema，监控账号有 Performance Schema 的查询权限。若已开启，保存配置后等待至少一个采集周期。'
+    title: '暂无 Top SQL 数据',
+    hint: '请在采集配置中开启「Top SQL 采集」，并确认实例已启用 Performance Schema，监控账号有 Performance Schema 的查询权限。若已开启，保存配置后等待至少一个采集周期。'
   },
   waits: {
     title: '暂无等待数据',
@@ -1047,7 +1047,7 @@ export interface MysqlRoleBlockModel {
 }
 
 export interface MysqlProHeader {
-  pill: '主库' | '从库' | 'GR' | 'Galera';
+  pill: '主库' | '从库' | 'GR' | 'Galera' | '角色未知';
   aside?: '写入源' | '只读';
   binlog?: 'Binlog · 已开启' | 'Binlog · 已关闭';
   /** 版本，如 8.0.36 / 8.0。标签缺失或无法截取时为「未知」。 */
@@ -1151,7 +1151,11 @@ const readonlyOn = (metricMap: Record<string, MetricSeries | undefined>) => {
   return (readOnly != null && readOnly > 0) || (superReadOnly != null && superReadOnly > 0);
 };
 
-/** 专业盘实例摘要。Binlog 开关只出小标签；位点/Relay 也认从库，避免 secondary 被标成主库。 */
+/**
+ * 专业盘实例摘要。Binlog 开关只出小标签；位点/Relay 也认从库。
+ * 无 IO/SQL/延迟/位点/Relay 时不标主库：缺采从库不能写成「主库」，
+ * read_only 单独只出「只读」，不得拼成「主库·只读」。
+ */
 export const readMysqlProHeader = (
   metricMap: Record<string, MetricSeries | undefined>
 ): MysqlProHeader => {
@@ -1169,10 +1173,8 @@ export const readMysqlProHeader = (
       ? 'Galera'
       : replica
         ? '从库'
-        : '主库';
-  const aside: MysqlProHeader['aside'] = pill === '主库'
-    ? (readonlyOn(metricMap) ? '只读' : '写入源')
-    : (readonlyOn(metricMap) ? '只读' : undefined);
+        : '角色未知';
+  const aside: MysqlProHeader['aside'] = readonlyOn(metricMap) ? '只读' : undefined;
   return {
     pill,
     aside,

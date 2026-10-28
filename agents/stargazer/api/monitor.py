@@ -346,6 +346,8 @@ async def windows_wmi_metrics(request):
         "disk_exclude_fstypes",
         "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32,cdfs",
     )
+    service_scope = request.headers.get("service_scope", "none")
+    service_names = request.headers.get("service_names", "")
     timeout = _header_timeout(request, 60)
 
     task_params = {
@@ -357,6 +359,8 @@ async def windows_wmi_metrics(request):
         "metrics_modules": metrics_modules,
         "disk_include_fstypes": disk_include_fstypes,
         "disk_exclude_fstypes": disk_exclude_fstypes,
+        "service_scope": service_scope,
+        "service_names": service_names,
         "timeout": timeout,
         "tags": _standard_tags(
             request,
@@ -399,6 +403,8 @@ async def host_metrics(request):
         "disk_exclude_fstypes",
         "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32,cdfs",
     )
+    service_scope = request.headers.get("service_scope", "none")
+    service_names = request.headers.get("service_names", "")
     ansible_node_id = request.headers.get("ansible_node_id", "")
     winrm_scheme = request.headers.get("winrm_scheme", "https")
     winrm_transport = request.headers.get("winrm_transport", "ntlm")
@@ -448,6 +454,8 @@ async def host_metrics(request):
             "metrics_modules": metrics_modules,
             "disk_include_fstypes": disk_include_fstypes,
             "disk_exclude_fstypes": disk_exclude_fstypes,
+            "service_scope": service_scope,
+            "service_names": service_names,
             "ansible_node_id": ansible_node_id,
             "auth_type": auth_type,
             "private_key_content": private_key_content,
@@ -473,6 +481,54 @@ async def host_metrics(request):
         accept_labels=lambda params: {"host": params.get("host")},
         error_labels=lambda: {"host": host},
         log_name="Host",
+    )
+
+
+@monitor_router.get("/hyperv/metrics")
+async def hyperv_metrics(request):
+    host = request.headers.get("host")
+    username = request.headers.get("username")
+    password = request.headers.get("password")
+    ansible_node_id = request.headers.get("ansible_node_id", "")
+    if not host or not username or not password:
+        return _monitor_error_response(
+            "hyperv",
+            "missing required headers: host, username, password",
+            status=400,
+        )
+    if not ansible_node_id:
+        return _monitor_error_response("hyperv", "missing ansible_node_id header", status=400)
+
+    def build_params(req):
+        return {
+            "monitor_type": "hyperv",
+            "host": host,
+            "username": username,
+            "password": password,
+            "port": req.headers.get("port", "5985"),
+            "ansible_node_id": ansible_node_id,
+            "credential_encoding": req.headers.get("credential_encoding", "url"),
+            "winrm_scheme": req.headers.get("winrm_scheme", "http"),
+            "winrm_transport": req.headers.get("winrm_transport", "ntlm"),
+            "winrm_cert_validation": req.headers.get("winrm_cert_validation", "false"),
+            "timeout": _header_timeout(req, 60),
+            "tags": _standard_tags(
+                req,
+                defaults={
+                    "instance_type": "hyperv",
+                    "collect_type": "http",
+                    "config_type": "hyperv",
+                },
+            ),
+        }
+
+    return await _run_monitor_handler(
+        request,
+        monitor_type="hyperv",
+        build_params=build_params,
+        accept_labels=lambda params: {"host": params.get("host")},
+        error_labels=lambda: {"host": host},
+        log_name="Hyper-V",
     )
 
 

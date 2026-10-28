@@ -26,6 +26,7 @@ describe('transformConfigForSourceType', () => {
     });
     assert.equal(transformConfigForSourceType('mysql', leftoverTransform).enabled, false);
     assert.equal(transformConfigForSourceType('prometheus', leftoverTransform).enabled, false);
+    assert.equal(transformConfigForSourceType('elasticsearch', leftoverTransform).enabled, false);
     assert.equal(transformConfigForSourceType('nats', leftoverTransform).enabled, false);
   });
 });
@@ -108,6 +109,50 @@ describe('buildConnectorPayload type-specific transform', () => {
     );
     assert.equal(prometheusPayload.connection, null);
     assert.deepEqual(prometheusPayload.connection_overrides, {});
+  });
+
+  it('keeps elasticsearch query body on the datasource and overrides only the index', () => {
+    const shared = buildConnectorPayload(
+      {
+        source_type: 'elasticsearch',
+        connection: 4,
+        connection_mode: 'connection',
+        connection_overrides: { index: 'logs-today' },
+        connection_config: { url: 'http://10.0.0.8:9200', index: 'logs' },
+        query_config: {
+          body: '{ "size": 20, "query": { "match_all": {} } }',
+        },
+        transform_config: leftoverTransform,
+      },
+      { t },
+    );
+    assert.equal(shared.connection, 4);
+    assert.deepEqual(shared.connection_config, {});
+    assert.deepEqual(shared.connection_overrides, { index: 'logs-today' });
+    assert.deepEqual(shared.query_config.body, { size: 20, query: { match_all: {} } });
+    assert.equal(shared.query_config.time_field, undefined);
+    assert.equal(shared.transform_config.enabled, false);
+
+    const inline = buildConnectorPayload(
+      {
+        source_type: 'elasticsearch',
+        connection_mode: 'inline',
+        connection_config: {
+          url: 'https://10.0.0.8:9200',
+          auth_type: 'api_key',
+          api_key: 'id:secret',
+          index: 'logs-*',
+          timeout_seconds: 15,
+        },
+        query_config: { body: '{ "query": { "match_all": {} } }' },
+      },
+      { t },
+    );
+    assert.equal(inline.connection, null);
+    assert.equal(inline.connection_config.auth_type, 'api_key');
+    assert.equal(inline.connection_config.api_key, 'id:secret');
+    assert.equal(inline.connection_config.index, 'logs-*');
+    assert.equal(inline.connection_config.password, undefined);
   });
 });
 

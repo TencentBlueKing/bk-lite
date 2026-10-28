@@ -91,7 +91,7 @@ describe('表单触发运行表单', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /请选择目标主机/ }));
 
-    expect(await screen.findByRole('dialog', { name: /选择主机 · 目标主机/ })).not.toBeNull();
+    expect(await screen.findByText((_, element) => element?.classList.contains('ant-modal-title') === true && element.textContent === '选择主机 - 目标主机')).not.toBeNull();
     await waitFor(() => expect(screen.getByText('host-01')).not.toBeNull());
     expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('/workflows/targets/?source=node_mgmt'), expect.anything());
   });

@@ -31,7 +31,11 @@ import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
 import { useShareOrganizationSeed } from "@/app/ops-analysis/context/shareOrganization";
 import { useCanvasResources } from "@/app/ops-analysis/hooks/useCanvasResources";
 import { useDataSourceManager } from "@/app/ops-analysis/hooks/useDataSource";
-import { areScreenDataConfigPropsEqual } from "./utils/screenDataConfigProps";
+import {
+  areScreenDataConfigPropsEqual,
+  isScreenPreviewHostVisible,
+  screenPreviewHostClassName,
+} from "./utils/screenDataConfigProps";
 import { useOpsAnalysisQueryState } from "@/app/ops-analysis/hooks/useOpsAnalysisQueryState";
 import {
   collectScreenDataSourceIds,
@@ -44,6 +48,7 @@ import type {
   UnifiedFilterDefinition,
   WidgetConfig,
 } from "@/app/ops-analysis/types/dashBoard";
+import type { SingleValueStyleConfig } from "@/app/ops-analysis/utils/singleValueStyle";
 import type {
   ScreenDecorationPresetId,
   ScreenDecorationType,
@@ -56,6 +61,7 @@ import type {
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
 import {
+  AppViewFullscreenExit,
   useAppViewFullscreen,
 } from "@/app/ops-analysis/components/appFullscreen";
 import ViewWorkspace from "../components/viewWorkspace";
@@ -168,6 +174,8 @@ const ScreenDataConfig = memo(
     configSection,
     onConfigSectionChange,
     screenFrame,
+    previewSingleStyle,
+    previewHost,
     onDirtyChange,
     onConfirm,
     onClose,
@@ -180,6 +188,8 @@ const ScreenDataConfig = memo(
     configSection?: "data" | "interaction";
     onConfigSectionChange?: (section: "data" | "interaction") => void;
     screenFrame?: "panel" | "bare";
+    previewSingleStyle?: SingleValueStyleConfig;
+    previewHost?: HTMLElement | null;
     onDirtyChange?: (dirty: boolean) => void;
     onConfirm?: (values: WidgetConfig) => void;
     onClose?: () => void;
@@ -191,6 +201,8 @@ const ScreenDataConfig = memo(
         configSection={configSection}
         onConfigSectionChange={onConfigSectionChange}
         screenFrame={screenFrame}
+        previewSingleStyle={previewSingleStyle}
+        previewHost={previewHost}
         item={item}
         dataSourceManager={dataSourceManager}
         showChartThemeMode={false}
@@ -252,6 +264,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [widgetSelectorOpen, setWidgetSelectorOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [widgetPreviewHost, setWidgetPreviewHost] = useState<HTMLDivElement | null>(null);
+  const bindWidgetPreviewHost = useCallback((node: HTMLDivElement | null) => {
+    setWidgetPreviewHost(node);
+  }, []);
   const [itemMenu, setItemMenu] = useState<{
     itemId: string;
     x: number;
@@ -346,7 +362,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     () =>
       pendingConfigItem
         ? {
-          i: "",
+          // 还没落到画布上，没有稳定 id。临时 i 跟着所选图表变，预览才会在切换类型时收起。
+          // 确定保存只提交表单 WidgetConfig；新组件 id 由 addConfiguredScreenWidget 里的 uuid 生成。
+          i: `pending:${pendingConfigItem.chartType}:${pendingConfigItem.sceneWidgetType ?? ""}`,
           x: 0,
           y: 0,
           w: pendingConfigItem.defaultWidth,
@@ -1401,6 +1419,12 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       configSection={activeInspectorTab === "interaction" ? "interaction" : "data"}
       onConfigSectionChange={setInspectorTab}
       screenFrame={interactionScreenFrame}
+      previewSingleStyle={
+        pendingConfigItem
+          ? undefined
+          : currentConfigItem?.valueConfig?.singleStyle
+      }
+      previewHost={widgetPreviewHost}
       onDirtyChange={setDataFormDirty}
       onConfirm={
         pendingViewConfigItem
@@ -1428,6 +1452,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
             : "h-full min-h-0 w-full"
         }
       >
+        <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
         <ViewWorkspace
           selectedItem={selectedScreen}
           loading={loading}
@@ -1528,7 +1553,16 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                 onOpenItemMenu={openItemMenu}
                 onReorderItem={handleReorderItem}
               />
-              <div className="min-h-0 min-w-0 flex-1">{screenCanvas}</div>
+              <div className="relative min-h-0 min-w-0 flex-1">
+                {screenCanvas}
+                <div
+                  ref={bindWidgetPreviewHost}
+                  data-testid="screen-widget-preview-host"
+                  className={screenPreviewHostClassName(
+                    isScreenPreviewHostVisible(activeInspectorTab),
+                  )}
+                />
+              </div>
               <ScreenInspectorPane
                 label={t("opsAnalysis.screen.inspectorResize")}
                 collapsed={inspectorCollapsed}

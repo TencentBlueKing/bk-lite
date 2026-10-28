@@ -29,7 +29,7 @@ describe('报告契约与模板语法抽屉', () => {
     </App></IntlProvider>);
 
     fireEvent.click(screen.getByRole('button', { name: '模板语法说明' }));
-    expect(screen.getByRole('dialog', { name: '模板语法说明' })).not.toBeNull();
+    expect(screen.getByRole('dialog', { name: '模板语法说明' }).className).toContain('customDrawer');
     expect(screen.getByText('怎么工作')).not.toBeNull();
     expect(screen.getByText('Word（docxtpl）')).not.toBeNull();
     expect(screen.getByText('Excel（xlsxjinja）')).not.toBeNull();
@@ -44,7 +44,7 @@ describe('报告契约与模板语法抽屉', () => {
     </App></IntlProvider>);
 
     fireEvent.click(screen.getByRole('button', { name: '数据结构说明' }));
-    expect(screen.getByRole('dialog', { name: '数据结构说明' })).not.toBeNull();
+    expect(screen.getByRole('dialog', { name: '数据结构说明' }).className).toContain('customDrawer');
     expect(screen.getByText('平台字段')).not.toBeNull();
     expect(screen.getByText('数据如何进模板')).not.toBeNull();
     expect(screen.getAllByText(/result=/).length).toBeGreaterThan(0);
@@ -58,7 +58,7 @@ describe('报告契约与模板语法抽屉', () => {
     </App></IntlProvider>);
 
     fireEvent.click(screen.getByRole('button', { name: '脚本输出说明' }));
-    expect(screen.getByRole('dialog', { name: '脚本输出说明' })).not.toBeNull();
+    expect(screen.getByRole('dialog', { name: '脚本输出说明' }).className).toContain('customDrawer');
     expect(screen.getByText('平台字段')).not.toBeNull();
     expect(screen.getByText('脚本输出')).not.toBeNull();
     expect(screen.getByText(/行首固定为/)).not.toBeNull();

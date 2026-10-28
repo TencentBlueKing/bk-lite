@@ -18,6 +18,7 @@ import {
   filterChangeRecordsByScenarios,
   getChangeRecordRelationInfo,
 } from '@/app/cmdb/(pages)/assetData/detail/changeRecords/changeRecordView';
+import { localizedEnumLabel } from '@/app/cmdb/utils/changeRecordLabel';
 import styles from '@/app/cmdb/(pages)/assetData/detail/changeRecords/index.module.scss';
 
 export interface AssetChangeWidgetProps {
@@ -243,9 +244,9 @@ const AssetChangeWidget = ({
   }, [selectedId, visibleRecords]);
 
   const scenarioLabel = (key: string) =>
-    scenarioEnum[key] || t(`OperationLog.scenarioOpts.${key}`) || key;
+    localizedEnumLabel(t, 'OperationLog.scenarioOpts', key, scenarioEnum);
   const typeLabel = (key: string) =>
-    typeEnum[key] || t(`OperationLog.operationOpts.${key}`) || key;
+    localizedEnumLabel(t, 'OperationLog.operationOpts', key, typeEnum);
   const showModelName = (id: string) => id;
 
   if (loading) {

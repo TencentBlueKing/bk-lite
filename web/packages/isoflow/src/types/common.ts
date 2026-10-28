@@ -23,7 +23,10 @@ export type BoundingBox = [Coords, Coords, Coords, Coords];
 export type SlimMouseEvent = Pick<
   MouseEvent,
   'clientX' | 'clientY' | 'target' | 'type' | 'preventDefault'
->;
+> & {
+  /** Missing on synthetic touch events; consumers treat undefined as the primary button. */
+  button?: number;
+};
 
 export const EditorModeEnum = {
   NON_INTERACTIVE: 'NON_INTERACTIVE',

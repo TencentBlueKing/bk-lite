@@ -353,8 +353,8 @@ def sync_scan_collect_task(
     params = collect.params if isinstance(collect.params, dict) else {}
     if collect.model_id == "host" or collect.model_id in SCAN_MIDDLEWARE_TYPES:
         params = {**params, **collect_params(scan_task, collect.model_id)}
-    merged_instances = merge_instance_payloads(collect.instances, instances)
-    merged_credentials = merge_credential_items(collect.model_id, collect.decrypt_credentials, credentials)
+    # 是否需要写入仍看调用者手里的快照。真正合并放到保存锁内重读之后，
+    # 避免先提交的追加被这份旧列表整表盖掉。
     existing_uuids = {str(item.get("inst_uuid") or "") for item in (collect.instances or []) if isinstance(item, dict)}
     incoming_uuids = {str(item.get("inst_uuid") or "") for item in (instances or []) if isinstance(item, dict)}
     existing_creds = {str(item.get("credential_id") or "") for item in (collect.decrypt_credentials or []) if isinstance(item, dict)}
@@ -368,10 +368,16 @@ def sync_scan_collect_task(
     request = require_request(request)
     payload = _build_update_payload(
         collect,
-        instances=merged_instances,
+        instances=list(instances or []),
         params=params,
-        credentials=merged_credentials,
+        credentials=list(credentials or []),
     )
     view = _collect_view(request, action="update", pk=collect.id)
-    collect_id = CollectModelService.update(request, view, payload=payload, credential_pool_max_size=None)
+    collect_id = CollectModelService.update(
+        request,
+        view,
+        payload=payload,
+        credential_pool_max_size=None,
+        scan_append=True,
+    )
     return CollectModels.objects.get(pk=collect_id)

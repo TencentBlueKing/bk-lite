@@ -458,7 +458,14 @@ export class ChartDataTransformer {
     rawData: any,
     mapping?: ChartFieldMapping,
   ): PieChartData {
-    if (mapping?.dimensionField?.trim() || mapping?.valueField?.trim()) {
+    const scalarFieldCount = (mapping?.pieScalarFields || []).filter(
+      (item) => item?.field?.trim(),
+    ).length;
+    if (
+      mapping?.dimensionField?.trim()
+      || mapping?.valueField?.trim()
+      || scalarFieldCount >= 2
+    ) {
       return SharedChartDataTransformer.transformToPieData(rawData, mapping);
     }
 

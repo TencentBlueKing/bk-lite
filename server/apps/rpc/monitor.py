@@ -70,6 +70,31 @@ class Monitor(object):
             **kwargs,
         )
 
+    def query_instance_display_metrics(self, instance_ids=None, **kwargs):
+        """按监控实例回填展示指标当前值。处理函数在 nats.monitor。"""
+        return self.ingest_client.run(
+            "query_instance_display_metrics",
+            instance_ids=instance_ids,
+            **kwargs,
+        )
+
+    def lookup_monitor_instance(self, instance_id, **kwargs):
+        """按 instance_id 定位监控对象。处理函数在 nats.monitor。"""
+        return self.ingest_client.run(
+            "lookup_monitor_instance",
+            instance_id=instance_id,
+            **kwargs,
+        )
+
+    def get_monitor_effective_plugins(self, monitor_object_id, instance_id, **kwargs):
+        """查询实例生效插件。处理函数在 nats.monitor。"""
+        return self.ingest_client.run(
+            "get_monitor_effective_plugins",
+            monitor_object_id=monitor_object_id,
+            instance_id=instance_id,
+            **kwargs,
+        )
+
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def __init__(self, *args, **kwargs):

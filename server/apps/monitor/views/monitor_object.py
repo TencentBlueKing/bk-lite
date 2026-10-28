@@ -13,6 +13,7 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_object import MonitorObjectFilter
+from apps.monitor.filters.monitor_policy import exclude_policy_group_rules
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorPolicy, PolicyOrganization
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.models.user_habit import UserHabit
@@ -126,9 +127,9 @@ def _build_instance_count_map(instance_permissions, cur_team):
 
 
 def _build_policy_count_map(policy_permissions, cur_team):
-    """按权限统计各对象策略数，只取 id / object_id / 组织关系。"""
-    # 权限规则仍要求逐策略判定；此处只拉 id 三元组，避免装载完整 Policy ORM。
-    rows = list(MonitorPolicy.objects.all().values_list("id", "monitor_object_id"))
+    """按权限统计各对象的单策略数，组内规则不计入，与单策略列表一致。"""
+    # 权限规则仍要求逐策略判定；此处只拉 id / object_id，避免装载完整 Policy ORM。
+    rows = list(exclude_policy_group_rules(MonitorPolicy.objects.all()).values_list("id", "monitor_object_id"))
     if not rows:
         return {}
     org_map = _build_org_map_for_ids(PolicyOrganization, "policy_id", [row[0] for row in rows])

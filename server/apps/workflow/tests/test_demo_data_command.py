@@ -106,7 +106,7 @@ def test_demo_command_rebuilds_seven_workflows_and_visible_scenarios(api_client,
         "bklite_notification",
     ]
     assert health_word.definition["tasks"][0]["inputParameters"]["script_type"] == "powershell"
-    assert health_excel.definition["tasks"][0]["inputParameters"]["script_type"] == "shell"
+    assert health_excel.definition["tasks"][0]["inputParameters"]["script_type"] == "python"
     assert health_word.definition["tasks"][2]["inputParameters"]["template_snapshot"]["format"] == "docx"
     assert health_excel.definition["tasks"][2]["inputParameters"]["template_snapshot"]["format"] == "xlsx"
     word_targets = health_word.canvas_metadata["trigger_nodes"][0]["input_schema"]["properties"]["targets"]

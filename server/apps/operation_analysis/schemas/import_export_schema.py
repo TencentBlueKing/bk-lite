@@ -231,6 +231,22 @@ class DatasourceItem(BaseModel):
             raise ValueError(oa_message("messages.yaml_nats_rest_api_required", "NATS 数据源的 rest_api 不能为空"))
         return self
 
+    @model_validator(mode="after")
+    def validate_elasticsearch_datasource(self):
+        if self.source_type != "elasticsearch":
+            return self
+        from apps.operation_analysis.services.datasource_preview.base import ConnectorError
+        from apps.operation_analysis.services.datasource_preview.elasticsearch_client import normalize_elasticsearch_config
+        from apps.operation_analysis.services.datasource_preview.elasticsearch_query import validate_index_name, validate_stored_query_config
+
+        try:
+            normalized = normalize_elasticsearch_config(self.connection_config or {}, resolve_dns=False)
+            validate_index_name(normalized.get("index"))
+            validate_stored_query_config(self.query_config or {})
+        except ConnectorError as exc:
+            raise ValueError(str(exc)) from exc
+        return self
+
 
 class CanvasRefs(BaseModel):
     """画布对象引用关系"""
@@ -313,6 +329,7 @@ class ArchitectureItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")

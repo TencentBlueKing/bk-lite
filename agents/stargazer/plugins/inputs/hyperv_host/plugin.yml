@@ -1,0 +1,26 @@
+name: hyperv_host
+version: 1.0.0
+category: virtualization
+metadata:
+  display_name: Hyper-V
+  description: Hyper-V 宿主机与虚拟机配置采集，通过 WinRM 调用 root\virtualization\v2
+  author: WeOps
+  tags:
+  - virtualization
+  - hyperv
+  cloud_protocol: false
+  model_id: hyperv_host
+executors:
+  job:
+    type: job
+    execution_mode: remote
+    capacity_group: remote_job
+    scripts:
+      windows: plugins/inputs/hyperv_host/hyperv_discover.ps1
+    collector:
+      module: plugins.inputs.hyperv_host.hyperv_info
+      class: HypervInfo
+    default_script: windows
+    target_policy:
+      mode: remote_channel
+default_executor: job

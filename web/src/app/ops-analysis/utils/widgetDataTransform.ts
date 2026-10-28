@@ -162,6 +162,72 @@ export const getBindableFilterParams = (
   );
 };
 
+/** 缺省绑定视为跟随；只有显式 false 表示该组件不跟随这个画布筛选。 */
+export const widgetFollowsCanvasFilter = (
+  filterBindings: FilterBindings | null | undefined,
+  filterId: string,
+): boolean => filterBindings?.[filterId] !== false;
+
+/**
+ * 筛选项芯片只在仍有组件跟随时出现。
+ * 先收集参数，再丢掉所有相关组件都显式关闭的项，避免 YAML 缺省绑定被当成未跟随。
+ */
+export const discoverFollowedFilterParams = (
+  widgets: Array<{
+    params?: ParamItem[];
+    filterBindings?: FilterBindings | null;
+  }>,
+): Map<string, ParamItem & { type: BindableParamType }> => {
+  const discovered = new Map<string, ParamItem & { type: BindableParamType }>();
+  const followed = new Set<string>();
+
+  widgets.forEach((widget) => {
+    getBindableFilterParams(widget.params).forEach((param) => {
+      const id = getFilterDefinitionId(param.name, param.type);
+      if (!discovered.has(id)) {
+        discovered.set(id, param);
+      }
+      if (widgetFollowsCanvasFilter(widget.filterBindings, id)) {
+        followed.add(id);
+      }
+    });
+  });
+
+  Array.from(discovered.keys()).forEach((id) => {
+    if (!followed.has(id)) {
+      discovered.delete(id);
+    }
+  });
+  return discovered;
+};
+
+/**
+ * 发现先于同步时，无人跟随的筛选项会从定义里消失。
+ * 同步若据此剪掉显式 false，下一轮缺省又会被当成跟随，芯片会回来。
+ * 组件仍声明该参数时，把显式关闭的绑定补回去。
+ */
+export const preserveUnfollowedFilterBindings = (
+  existingBindings: FilterBindings | null | undefined,
+  params: ParamItem[] | undefined,
+  nextBindings: FilterBindings | undefined,
+): FilterBindings | undefined => {
+  const migratedExisting = existingBindings
+    ? migrateFilterBindings(existingBindings)
+    : undefined;
+  const bindableIds = new Set(
+    getBindableFilterParams(params).map((param) =>
+      getFilterDefinitionId(param.name, param.type),
+    ),
+  );
+  const preserved: FilterBindings = { ...(nextBindings || {}) };
+  Object.entries(migratedExisting || {}).forEach(([filterId, enabled]) => {
+    if (enabled === false && bindableIds.has(filterId) && !(filterId in preserved)) {
+      preserved[filterId] = false;
+    }
+  });
+  return Object.keys(preserved).length ? preserved : undefined;
+};
+
 export const buildDefaultFilterBindings = (
   params: ParamItem[] | undefined,
   definitions: UnifiedFilterDefinition[],

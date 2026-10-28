@@ -32,7 +32,8 @@ def _request(method, path, user, data=None, team="1"):
     fn = getattr(factory, method)
     request = fn(path) if data is None else fn(path, data=data, format="json")
     request.COOKIES["current_team"] = team
-    force_authenticate(request, user=user)
+    if user is not None:
+        force_authenticate(request, user=user)
     return request
 
 
@@ -154,3 +155,163 @@ def test_incident_update_destroy_by_author(superuser):
     _render(response)
     assert response.status_code in (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT)
     assert not IncidentUpdate.objects.filter(id=upd.id).exists()
+
+
+def _member(username, team_id, permissions):
+    from apps.base.models import User
+
+    user = User.objects.create_user(
+        username=username,
+        password="testpass123",
+        domain="domain.com",
+        locale="zh-Hans",
+        group_list=[{"id": team_id, "name": f"Team {team_id}"}],
+        roles=[],
+    )
+    user.is_superuser = False
+    user.permission = {"alarm": set(permissions)}
+    user.save(update_fields=["is_superuser", "group_list"])
+    return user
+
+
+def _put_update(user, incident, upd, data, team="1"):
+    request = _request(
+        "put",
+        f"/incident/{incident.id}/updates/{upd.id}/",
+        user,
+        data=data,
+        team=team,
+    )
+    response = IncidentUpdateViewSet.as_view({"put": "update"})(
+        request, incident_pk=str(incident.id), pk=str(upd.id)
+    )
+    return response, _render(response)
+
+
+@pytest.mark.django_db
+def test_incident_update_retrieve_other_org_hides_content():
+    author = _member("retrieve-author-a", 1, ["Incidents-View", "Incidents-Edit"])
+    outsider = _member("retrieve-outsider-b", 2, ["Incidents-View", "Incidents-Edit"])
+    incident = _make_incident(operator=[author.username])
+    secret = "other-org-secret-body-6718"
+    upd = IncidentUpdate.objects.create(
+        incident=incident, author=author.username, update_type="progress", content=secret
+    )
+    request = _request("get", f"/incident/{incident.id}/updates/{upd.id}/", outsider, team="2")
+    response = IncidentUpdateViewSet.as_view({"get": "retrieve"})(
+        request, incident_pk=str(incident.id), pk=str(upd.id)
+    )
+    payload = _render(response)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert payload.get("message") == "事故不存在或无权限访问"
+    assert secret not in json.dumps(payload, ensure_ascii=False)
+
+
+@pytest.mark.django_db
+def test_incident_update_put_other_org_leaves_content_unchanged():
+    author = _member("put-author-a", 1, ["Incidents-View", "Incidents-Edit"])
+    outsider = _member("put-outsider-b", 2, ["Incidents-View", "Incidents-Edit"])
+    incident = _make_incident(operator=[author.username])
+    upd = IncidentUpdate.objects.create(
+        incident=incident,
+        author=author.username,
+        update_type="progress",
+        content="other-org-original-body-6718",
+        attachments=[],
+    )
+    response, payload = _put_update(
+        outsider,
+        incident,
+        upd,
+        {
+            "update_type": "conclusion",
+            "content": "other-org-put-should-not-stick",
+            "attachments": [{"name": "evil.txt"}],
+        },
+        team="2",
+    )
+    upd.refresh_from_db()
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert payload.get("message") == "事故不存在或无权限访问"
+    rendered = json.dumps(payload, ensure_ascii=False)
+    assert "other-org-original-body-6718" not in rendered
+    assert "other-org-put-should-not-stick" not in rendered
+    assert upd.content == "other-org-original-body-6718"
+    assert upd.update_type == "progress"
+    assert upd.attachments == []
+    assert upd.author == author.username
+
+
+@pytest.mark.django_db
+def test_incident_update_put_same_org_non_author_forbidden():
+    author = _member("put-owner-a", 1, ["Incidents-Edit"])
+    colleague = _member("put-colleague-a", 1, ["Incidents-Edit"])
+    incident = _make_incident(operator=[author.username, colleague.username])
+    upd = IncidentUpdate.objects.create(
+        incident=incident,
+        author=author.username,
+        update_type="progress",
+        content="same-org-original-body-6718",
+        attachments=[],
+    )
+    response, payload = _put_update(
+        colleague,
+        incident,
+        upd,
+        {
+            "update_type": "conclusion",
+            "content": "same-org-non-author-should-not-stick",
+            "attachments": [{"name": "x.txt"}],
+        },
+    )
+    upd.refresh_from_db()
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    rendered = json.dumps(payload, ensure_ascii=False)
+    assert "same-org-original-body-6718" not in rendered
+    assert "same-org-non-author-should-not-stick" not in rendered
+    assert upd.content == "same-org-original-body-6718"
+    assert upd.update_type == "progress"
+    assert upd.attachments == []
+    assert upd.author == author.username
+
+
+@pytest.mark.django_db
+def test_incident_update_put_same_org_author_updates_content():
+    author = _member("put-author-ok", 1, ["Incidents-Edit"])
+    incident = _make_incident(operator=[author.username])
+    upd = IncidentUpdate.objects.create(
+        incident=incident, author=author.username, update_type="progress", content="旧正文", attachments=[]
+    )
+    response, payload = _put_update(
+        author,
+        incident,
+        upd,
+        {
+            "update_type": "conclusion",
+            "content": "作者改后的正文",
+            "attachments": [{"name": "note.txt"}],
+        },
+    )
+    upd.refresh_from_db()
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"]["content"] == "作者改后的正文"
+    assert upd.content == "作者改后的正文"
+    assert upd.update_type == "conclusion"
+    assert upd.attachments == [{"name": "note.txt"}]
+    assert upd.author == author.username
+
+
+@pytest.mark.django_db
+def test_incident_update_retrieve_unauthenticated_hides_content():
+    incident = _make_incident(operator=["update-author-a"])
+    secret = "unauthenticated-secret-body-6718"
+    upd = IncidentUpdate.objects.create(
+        incident=incident, author="update-author-a", update_type="progress", content=secret
+    )
+    request = _request("get", f"/incident/{incident.id}/updates/{upd.id}/", None, team="1")
+    response = IncidentUpdateViewSet.as_view({"get": "retrieve"})(
+        request, incident_pk=str(incident.id), pk=str(upd.id)
+    )
+    payload = _render(response)
+    assert response.status_code != status.HTTP_200_OK
+    assert secret not in json.dumps(payload, ensure_ascii=False)

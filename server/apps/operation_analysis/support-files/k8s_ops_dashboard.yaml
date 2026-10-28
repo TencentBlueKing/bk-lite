@@ -21,6 +21,7 @@ dashboards:
   name: K8S 运维仪表盘
   desc: 按所选单个 K8S 集群查看节点/Pod/内存/磁盘态势、趋势，以及告警中心 K8s Event 通道的活跃告警。供运维排障与 AI 排查共用。集群筛选为单选，避免多集群把使用率加总。
   other:
+    gridCols: 24
     timeSelector:
       selectValue: 360
   view_sets:
@@ -30,14 +31,14 @@ dashboards:
     description: 所选集群的 Pod/节点数量与内存、磁盘使用率
     x: 0
     y: 0
-    w: 12
+    w: 24
     h: 4
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 3
-        w: 3
+        w: 6
         x: 0
         y: 0
         id: k8s-kpi-pods
@@ -98,8 +99,8 @@ dashboards:
           - color: '#366ce4'
             value: '0'
       - h: 3
-        w: 3
-        x: 3
+        w: 6
+        x: 6
         y: 0
         id: k8s-kpi-nodes
         name: 节点数
@@ -126,8 +127,8 @@ dashboards:
           - *id004
           thresholdColors: *id002
       - h: 3
-        w: 3
-        x: 6
+        w: 6
+        x: 12
         y: 0
         id: k8s-kpi-memory
         name: 内存使用率
@@ -161,8 +162,8 @@ dashboards:
           - color: '#67a567'
             value: '0'
       - h: 3
-        w: 3
-        x: 9
+        w: 6
+        x: 18
         y: 0
         id: k8s-kpi-disk
         name: 磁盘使用率
@@ -201,14 +202,14 @@ dashboards:
     description: 告警中心 K8s Event 通道当前未关闭告警，按持续时长升序
     x: 0
     y: 4
-    w: 12
+    w: 24
     h: 9
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 8
-        w: 12
+        w: 24
         x: 0
         y: 0
         id: k8s-active-alerts
@@ -273,14 +274,14 @@ dashboards:
     description: 所选集群内存与磁盘使用率趋势
     x: 0
     y: 13
-    w: 12
+    w: 24
     h: 7
     headerH: 1
     sizeToContent: true
     subGridOpts:
       children:
       - h: 6
-        w: 6
+        w: 12
         x: 0
         y: 0
         id: k8s-trend-memory
@@ -312,8 +313,8 @@ dashboards:
             required: true
           - *id004
       - h: 6
-        w: 6
-        x: 6
+        w: 12
+        x: 12
         y: 0
         id: k8s-trend-disk
         name: 磁盘使用率趋势

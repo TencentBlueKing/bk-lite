@@ -2464,15 +2464,21 @@ class InstanceManage(object):
         file_stream: bytes,
         operator: str,
         allowed_org_ids: list = None,
+        matched_instance_permission_check=None,
     ):
         """实例导入-支持编辑"""
         attrs = ModelManage.search_model_attr_v2(model_id)
         model_info = ModelManage.search_model_info(model_id)
 
+        permission_check = matched_instance_permission_check
+        if permission_check is None:
+            permission_check = getattr(self, "matched_instance_permission_check", None)
+
         _import = Import(model_id, attrs, [], operator)
         add_results, update_results, asso_result = _import.import_inst_list_support_edit(
             file_stream,
             allowed_org_ids=allowed_org_ids,
+            matched_instance_permission_check=permission_check,
         )
 
         add_changes = [

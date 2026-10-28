@@ -6,6 +6,8 @@ export interface IsoflowLabels {
   /** Hover mask on the icon thumbnail. */
   replaceIcon: string;
   updateIcon: string;
+  /** Title of the node settings panel. */
+  nodeSettings: string;
   settings: string;
   name: string;
   description: string;

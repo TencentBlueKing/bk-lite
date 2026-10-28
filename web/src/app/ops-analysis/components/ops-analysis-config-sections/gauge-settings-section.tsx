@@ -1,5 +1,6 @@
 import React from 'react';
-import { Form, InputNumber, Radio } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Form, InputNumber, Radio, Select, Switch, Tooltip } from 'antd';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/components/ops-analysis-config-sections/types';
 import { MetricFieldSelectorFormItem } from './metric-field-selector-form-item';
 import { ThresholdColorConfigSection } from './threshold-color-config-section';
@@ -24,6 +25,7 @@ interface GaugeSettingsSectionProps {
   onThresholdBlur: (index: number, value: number | null) => void;
   onAddThreshold: (afterIndex?: number) => void;
   onRemoveThreshold: (index: number) => void;
+  compareAvailable?: boolean;
 }
 
 export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
@@ -40,6 +42,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
   onThresholdBlur,
   onAddThreshold,
   onRemoveThreshold,
+  compareAvailable = false,
 }) => {
   const resolvedSectionTitle = sectionTitle || t('dashboard.gaugeSettings');
   return (
@@ -110,6 +113,45 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
             <InputNumber className="w-full" />
           </Form.Item>
         </div>
+
+        <Form.Item
+          label={
+            <span>
+              {t('dashboard.compareLabel')}
+              <Tooltip title={t('dashboard.comparePreviousPeriodTip')}>
+                <QuestionCircleOutlined className="ml-1 cursor-help text-(--color-text-3)" />
+              </Tooltip>
+            </span>
+          }
+          name="compare"
+          valuePropName="checked"
+          className="mt-4"
+        >
+          <Switch disabled={!compareAvailable} />
+        </Form.Item>
+
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, current) => prev.compare !== current.compare}
+        >
+          {({ getFieldValue }) =>
+            getFieldValue('compare') ? (
+              <Form.Item
+                label={t('dashboard.compareMode')}
+                name="compareMode"
+                initialValue="percent"
+              >
+                <Select
+                  className="w-full"
+                  options={[
+                    { value: 'percent', label: t('dashboard.compareModePercent') },
+                    { value: 'value', label: t('dashboard.compareModeValue') },
+                  ]}
+                />
+              </Form.Item>
+            ) : null
+          }
+        </Form.Item>
 
         <Form.Item
           label={t('dashboard.gaugeShape')}

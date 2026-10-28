@@ -47,6 +47,11 @@ const useIntegrationApi = () => {
           () => demoPolicyGroups({ ...params, create_default })
         );
       },
+      getPolicyGroupInstanceGroups: async (instanceIds: string[]) => {
+        return await get(`/monitor/api/policy_group/instance_groups/`, {
+          params: { instance_ids: JSON.stringify(instanceIds) },
+        });
+      },
       getPolicyGroupMembers: async (groupId: number | string) => {
         return await withMonitorUiDemoFallback(
           () => get(`/monitor/api/policy_group/members/`, {
@@ -167,6 +172,7 @@ const useIntegrationApi = () => {
         page?: number;
         page_size?: number;
         is_active?: boolean;
+        keyword?: string;
         monitor_plugin_id?: string | number;
       }) => {
         return await post('/monitor/api/node_mgmt/nodes/', data);

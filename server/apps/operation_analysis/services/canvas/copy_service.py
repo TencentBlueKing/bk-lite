@@ -23,7 +23,7 @@ NAME_EXHAUSTED_ERROR = "无法生成唯一的副本名称"
 COPY_CONTENT_FIELDS = {
     Dashboard: ("desc", "filters", "other", "view_sets", "refresh_interval"),
     Topology: ("desc", "other", "view_sets", "refresh_interval"),
-    Architecture: ("desc", "other", "view_sets"),
+    Architecture: ("desc", "other", "view_sets", "refresh_interval"),
     Screen: ("desc", "other", "view_sets", "refresh_interval"),
     Report: ("desc", "other", "view_sets", "refresh_interval"),
     NetworkTopology: ("desc", "base_url", "refresh_interval", "status", "view_sets"),

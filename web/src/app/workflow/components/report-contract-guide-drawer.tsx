@@ -1,8 +1,9 @@
 'use client';
 
-import { Button, Drawer, Typography } from 'antd';
+import { Button, Typography } from 'antd';
 import { useState, type ReactNode } from 'react';
 
+import OperateDrawer from '@/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 
 export type ReportContractGuideMode = 'template' | 'structure';
@@ -161,7 +162,7 @@ export function ReportContractGuideDrawer({
     <Button type="link" size="small" className="h-auto px-0" onClick={() => setOpen(true)}>
       {triggerLabel || title}
     </Button>
-    <Drawer
+    <OperateDrawer
       title={title}
       width={560}
       open={open}
@@ -169,6 +170,6 @@ export function ReportContractGuideDrawer({
       destroyOnClose
     >
       {mode === 'template' ? <TemplateGuide /> : <StructureGuide audience={audience} />}
-    </Drawer>
+    </OperateDrawer>
   </>;
 }

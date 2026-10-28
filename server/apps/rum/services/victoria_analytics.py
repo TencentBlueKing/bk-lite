@@ -288,6 +288,17 @@ class VictoriaAnalytics:
             return {"mode": mode, "summary": {"lcpP75": 0.0, "inpP75": 0.0, "clsP75": 0.0}, "releases": [], "rows": [], "truncated": False}
         rows = self._stats(tenant_id, logsql_stats.view_stats_query(self._tenant(tenant_id), opts), opts, limit=500)
         mapped = [logsql_stats.map_view_row(row, mode) for row in rows]
+        start = opts.get("from")
+        end = opts.get("to")
+        if isinstance(start, datetime) and isinstance(end, datetime):
+            step, buckets = sparkline_layout(start, end)
+            spark_rows = self._stats(
+                tenant_id,
+                logsql_stats.view_spark_query(self._tenant(tenant_id), opts, step),
+                opts,
+                limit=10000,
+            )
+            logsql_stats.fill_view_sparks(mapped, spark_rows, start, step, buckets, mode)
         mapped.sort(key=lambda row: row["impact"], reverse=True)
         releases = sorted({row["release"] for row in mapped if row.get("release")})
         def _avg(name: str) -> float:

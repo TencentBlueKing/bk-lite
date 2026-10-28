@@ -358,7 +358,51 @@ def _execute_room_action(
     return {"action": ACTION_PLACE_EXISTING, "instance": updated}
 
 
+def _rack_layout_lock_key(rack: dict) -> str:
+    inst_uuid = str((rack or {}).get("inst_uuid") or "").strip()
+    if not inst_uuid:
+        raise RackRoomEditError("实例缺少 inst_uuid，无法锁定机柜布局")
+    return f"cmdb:rack-layout:{inst_uuid}"
+
+
 def _execute_rack_action(
+    *,
+    action,
+    rack,
+    operator,
+    allowed_org_ids,
+    user_groups,
+    roles,
+    existing,
+    instance_info,
+    model_id,
+    u_start,
+    u_size,
+    get_rack_layout,
+    InstanceManage,
+):
+    from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
+
+    # 先拿机柜锁，再进入实例更新里的模型唯一键锁。锁内重读布局，避免并发放置写到同一段 U。
+    with UniqueWriteLockService.hold([_rack_layout_lock_key(rack)]):
+        return _execute_rack_action_locked(
+            action=action,
+            rack=rack,
+            operator=operator,
+            allowed_org_ids=allowed_org_ids,
+            user_groups=user_groups,
+            roles=roles,
+            existing=existing,
+            instance_info=instance_info,
+            model_id=model_id,
+            u_start=u_start,
+            u_size=u_size,
+            get_rack_layout=get_rack_layout,
+            InstanceManage=InstanceManage,
+        )
+
+
+def _execute_rack_action_locked(
     *,
     action,
     rack,

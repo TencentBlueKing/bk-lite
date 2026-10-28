@@ -139,6 +139,27 @@ export function sliceBindingPage(
   };
 }
 
+/**
+ * Ops-analysis resource_search page.
+ * by-type and by-model-text are already one server page.
+ * fulltext still arrives as the whole hit list and is sliced here.
+ */
+export function architectureSearchPage(
+  raw: unknown,
+  page: number,
+  pageSize: number,
+): BindingSearchPage {
+  const record = isRecord(raw) ? raw : {};
+  const hits = normalizeBindingSearchHits(record.hits);
+  if (record.mode === 'fulltext') {
+    return sliceBindingPage(hits, page, pageSize);
+  }
+  const total = typeof record.total === 'number' && Number.isFinite(record.total)
+    ? record.total
+    : hits.length;
+  return bindingPageFromTotal(hits, page, pageSize, total);
+}
+
 /** Appends a page, skipping rows already listed (offset paging can shift between requests). */
 export function appendBindingHits(
   current: BindingSearchHit[],
@@ -152,24 +173,6 @@ export function appendBindingHits(
     merged.push(hit);
   }
   return merged;
-}
-
-export function normalizeInstanceSearchPage(raw: unknown): { hits: BindingSearchHit[]; total: number } {
-  const record = isRecord(raw) ? raw : {};
-  const hits = normalizeBindingSearchHits(record.insts);
-  const total = typeof record.count === 'number' && Number.isFinite(record.count)
-    ? record.count
-    : hits.length;
-  return { hits, total };
-}
-
-export function normalizeFulltextModelPage(raw: unknown): { hits: BindingSearchHit[]; total: number } {
-  const record = isRecord(raw) ? raw : {};
-  const hits = normalizeBindingSearchHits(record.data);
-  const total = typeof record.total === 'number' && Number.isFinite(record.total)
-    ? record.total
-    : hits.length;
-  return { hits, total };
 }
 
 export function bindingModelLabel(models: ModelOption[], modelId: string): string {

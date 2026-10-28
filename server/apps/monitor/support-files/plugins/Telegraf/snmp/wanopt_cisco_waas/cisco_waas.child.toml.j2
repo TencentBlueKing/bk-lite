@@ -1,0 +1,121 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cisco_waas"
+        config_type = "cisco_waas"
+        brand = "cisco_waas"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- TFO / peers / DRE：标量，顶层 field GET 必须带实例 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.762.1.1.1.0"
+        name = "active_peers"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.762.1.1.2.0"
+        name = "max_active_peers"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.762.1.2.1.2.0"
+        name = "tfo_active_opt_conn"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.762.1.2.1.9.0"
+        name = "tfo_pending_conn"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.762.1.2.1.10.0"
+        name = "tfo_active_pt_conn"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.762.1.2.1.13.0"
+        name = "tfo_load_status"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.762.1.7.1.1.0"
+        name = "dre_cache_status"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.762.1.7.1.3.0"
+        name = "dre_cache_total_mb"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.762.1.7.1.4.0"
+        name = "dre_cache_used_percent"
+    # ---- 设备告警计数：标量 field 带 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.178.1.6.2.1.0"
+        name = "alarm_critical"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.178.1.6.2.2.0"
+        name = "alarm_major"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.178.1.6.2.3.0"
+        name = "alarm_minor"
+    # ---- CPU：CISCO-PROCESS 表列，禁止 .0；5 分钟% → usage，1 分钟% → usage_1min ----
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+        oid = "1.3.6.1.4.1.9.9.109.1.1.1"
+        [[inputs.snmp.table.field]]
+            oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.8"
+            name = "usage"
+        [[inputs.snmp.table.field]]
+            oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.7"
+            name = "usage_1min"
+    # ---- 内存：同表 used/free（kbytes 量级），禁止 .0；勿把 HTTP 代理短窗口当整机 CPU ----
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+        [[inputs.snmp.table.field]]
+            oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.12"
+            name = "used"
+        [[inputs.snmp.table.field]]
+            oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.13"
+            name = "free"
+# TFO 负载：unknown(1)/green(2)/yellow(3)/red(4) → tfo_load_ok 仅 green→1，其余→2
+# DRE 缓存：notUsable(1)/initializing(2)/usable(3)/tempFailed(4)/failed(5) → dre_cache_ok 仅 usable→1
+[[processors.enum]]
+    namepass = ["snmp"]
+    [processors.enum.tagpass]
+        brand = ["cisco_waas"]
+    [[processors.enum.mapping]]
+        field = "tfo_load_status"
+        dest = "tfo_load_ok"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "2" = 1
+            "1" = 2
+            "3" = 2
+            "4" = 2
+    [[processors.enum.mapping]]
+        field = "dre_cache_status"
+        dest = "dre_cache_ok"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "3" = 1
+            "1" = 2
+            "2" = 2
+            "4" = 2
+            "5" = 2

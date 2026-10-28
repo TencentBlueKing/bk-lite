@@ -6,12 +6,7 @@ import time
 from typing import Any, Mapping
 
 import core.collection.host_remote.callback as callback_state
-from core.collection.contracts import (
-    CollectOutcome,
-    CollectOutcomeStatus,
-    TargetCollectionContext,
-    build_collection_result_id,
-)
+from core.collection.contracts import CollectOutcome, CollectOutcomeStatus, TargetCollectionContext, build_collection_result_id
 from tasks.collectors.host_collector import HostCollector
 
 
@@ -32,6 +27,8 @@ async def submit_host_remote_collection(
             "metrics_modules",
             "disk_include_fstypes",
             "disk_exclude_fstypes",
+            "service_scope",
+            "service_names",
             "tags",
             "ansible_node_id",
             "collection_task_id",
@@ -89,16 +86,11 @@ async def submit_host_remote_collection(
     ]
     if v2_enabled:
         binding_fields.insert(0, "protocol_version")
-    if any(
-        persisted_identity.get(key) != trusted_identity.get(key)
-        for key in binding_fields
-    ):
+    if any(persisted_identity.get(key) != trusted_identity.get(key) for key in binding_fields):
         raise RuntimeError("Host Remote stored identity conflict")
     callback_payload = {}
     if v2_enabled:
-        callback_payload["context"] = (
-            callback_state.restore_host_remote_callback_identity(persisted_identity)
-        )
+        callback_payload["context"] = callback_state.restore_host_remote_callback_identity(persisted_identity)
     accepted = await HostCollector(params).submit_collection(
         callback_task_id,
         callback_subject,

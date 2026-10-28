@@ -27,7 +27,7 @@ function NodeIcon({ data }: { data: InteractiveWorkflowNodeData }) {
     if (data.taskType === 'SWITCH') return <AtomIcon nodeType="CONTROL" controlKind="condition" className="text-5xl" />;
     return <AtomIcon nodeType="CONTROL" className="text-5xl" />;
   }
-  return <AtomIcon nodeType="ACTION" category={data.atomCategory} className="text-5xl" />;
+  return <AtomIcon nodeType="ACTION" category={data.atomCategory} atomKey={data.atomKey} className="text-5xl" />;
 }
 
 function ToolbarButton({ label, icon, danger, operation, onClick }: { label: string; icon: ReactNode; danger?: boolean; operation: 'View' | 'Edit' | 'Execute'; onClick: () => void }) {

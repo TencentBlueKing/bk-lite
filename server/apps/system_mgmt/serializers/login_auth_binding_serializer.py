@@ -1,13 +1,12 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import UsernameSerializer
-from apps.system_mgmt.models import (
-    IntegrationInstanceStatusChoices,
-    LoginAuthBinding,
-    LoginAuthBindingUnmatchedActionChoices,
-)
+from apps.system_mgmt.models import LoginAuthBinding, LoginAuthBindingUnmatchedActionChoices
 from apps.system_mgmt.providers.pack_i18n import resolve_bound_instance_provider_name
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
+
+# 这四家创建用户时允许不填默认组织，运行时进入 OpsPilotGuest。
+_EMPTY_DEFAULT_GROUP_PROVIDERS = {"wechat", "feishu", "wecom", "blueking"}
 
 
 class LoginAuthBindingSerializer(UsernameSerializer):
@@ -62,50 +61,45 @@ class LoginAuthBindingSerializer(UsernameSerializer):
         if instance.provider_key == "":
             raise serializers.ValidationError({"integration_instance": "Integration instance provider is invalid"})
 
-        changes_instance = bool(
-            self.instance
-            and "integration_instance" in attrs
-            and instance.id != self.instance.integration_instance_id
-        )
-        enables_binding = bool(
-            self.instance and attrs.get("enabled") is True and not self.instance.enabled
-        )
-        if (self.instance is None or changes_instance or enables_binding) and not get_integration_capability_availability(
-            instance, "login_auth"
-        )["available"]:
-            raise serializers.ValidationError(
-                {"integration_instance": "Integration instance login_auth capability is not ready"}
-            )
+        changes_instance = bool(self.instance and "integration_instance" in attrs and instance.id != self.instance.integration_instance_id)
+        enables_binding = bool(self.instance and attrs.get("enabled") is True and not self.instance.enabled)
+        if (self.instance is None or changes_instance or enables_binding) and not get_integration_capability_availability(instance, "login_auth")[
+            "available"
+        ]:
+            raise serializers.ValidationError({"integration_instance": "Integration instance login_auth capability is not ready"})
 
         # 用 `in` 区分 "未提交" 与 "显式空字符串",避免 attrs.get(...) or getattr(...)
         # 把显式空字符串误回退为旧值、导致非 WeChat create 在 update 场景绕过校验。
         if "unmatched_user_action" in attrs:
             unmatched_action = attrs["unmatched_user_action"]
         else:
-            unmatched_action = getattr(
-                self.instance, "unmatched_user_action", LoginAuthBindingUnmatchedActionChoices.DENY
-            )
+            unmatched_action = getattr(self.instance, "unmatched_user_action", LoginAuthBindingUnmatchedActionChoices.DENY)
         if "default_group_name" in attrs:
             default_group_name = attrs["default_group_name"]
         else:
             default_group_name = getattr(self.instance, "default_group_name", "")
 
-        if unmatched_action == LoginAuthBindingUnmatchedActionChoices.CREATE and not default_group_name:
-            # WeChat provider 允许 default_group_name 为空,运行时由后端 fallback 到 OpsPilotGuest
-            if instance.provider_key != "wechat":
-                raise serializers.ValidationError({"default_group_name": "Default group name is required when unmatched user action is create"})
+        if (
+            unmatched_action == LoginAuthBindingUnmatchedActionChoices.CREATE
+            and not default_group_name
+            and instance.provider_key not in _EMPTY_DEFAULT_GROUP_PROVIDERS
+        ):
+            raise serializers.ValidationError({"default_group_name": "Default group name is required when unmatched user action is create"})
 
         if instance.provider_key == "wecom":
-            errors = {}
-            # WeCom OAuth adapter 只返回 userid,external_field 必须限制为 userid,
-            # 防止运营误填 name/email/mobile 后回退到不存在的字段导致匹配静默失败。
+            # WeCom 登录只返回 userid。外部字段限制为 userid，避免填成姓名或邮箱后匹配静默失败。
             external_field = attrs.get("external_field", getattr(self.instance, "external_field", ""))
             if external_field != "userid":
-                errors["external_field"] = "WeCom login only supports external_field=userid"
-            # WeCom 必须"先同步、后登录",登录阶段不允许自动创建平台账号;
-            # 创建用户语义只保留给 wechat provider。
-            if unmatched_action == LoginAuthBindingUnmatchedActionChoices.CREATE:
-                errors["unmatched_user_action"] = "WeCom login does not allow unmatched user creation, use deny"
+                raise serializers.ValidationError({"external_field": "WeCom login only supports external_field=userid"})
+
+        if instance.provider_key == "blueking":
+            errors = {}
+            external_field = attrs.get("external_field", getattr(self.instance, "external_field", ""))
+            if external_field != "username":
+                errors["external_field"] = "BlueKing login only supports external_field=username"
+            platform_field = attrs.get("platform_field", getattr(self.instance, "platform_field", ""))
+            if platform_field != "username":
+                errors["platform_field"] = "BlueKing login only supports platform_field=username"
             if errors:
                 raise serializers.ValidationError(errors)
 

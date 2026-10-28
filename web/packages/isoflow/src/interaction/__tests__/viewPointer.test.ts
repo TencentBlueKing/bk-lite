@@ -7,6 +7,7 @@ import {
   findIconHit,
   findRectangleBadgeId,
   readIconHitRects,
+  isPrimaryPointerEvent,
   regionIdForTextClick,
   resolveViewClick,
   viewHoverCursor,
@@ -332,5 +333,11 @@ assert.equal(
   }),
   null
 );
+
+// Primary-button gate: right button never starts click/select/drag.
+assert.equal(isPrimaryPointerEvent({ button: 0 }), true);
+assert.equal(isPrimaryPointerEvent({ button: 2 }), false);
+assert.equal(isPrimaryPointerEvent({ button: 1 }), false);
+assert.equal(isPrimaryPointerEvent({}), true);
 
 console.log('viewPointer ok');

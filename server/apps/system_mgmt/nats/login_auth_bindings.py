@@ -9,22 +9,19 @@ NATS layout can stay consistent.
 """
 
 import nats_client
-
-from apps.system_mgmt.services.login_auth_binding_service import (
-    get_active_login_auth_bindings,
-    login_with_binding as execute_login_with_binding,
-    serialize_public_login_auth_binding,
-)
+from apps.system_mgmt.services.login_auth_binding_service import get_active_login_auth_bindings
+from apps.system_mgmt.services.login_auth_binding_service import login_with_binding as execute_login_with_binding
+from apps.system_mgmt.services.login_auth_binding_service import serialize_public_login_auth_binding
 
 
 @nats_client.register
-def login_with_binding(binding_id, auth_code="", username="", password=""):
-    return _login_with_binding_service(binding_id, auth_code, username=username, password=password)
+def login_with_binding(binding_id, auth_code="", username="", password="", bk_token=""):
+    return _login_with_binding_service(binding_id, auth_code, username=username, password=password, bk_token=bk_token)
 
 
-def _login_with_binding_service(binding_id, auth_code="", username="", password=""):
+def _login_with_binding_service(binding_id, auth_code="", username="", password="", bk_token=""):
     try:
-        return execute_login_with_binding(int(binding_id), auth_code, username=username, password=password)
+        return execute_login_with_binding(int(binding_id), auth_code, username=username, password=password, bk_token=bk_token)
     except (TypeError, ValueError):
         return {"result": False, "message": "Invalid login auth binding id"}
 

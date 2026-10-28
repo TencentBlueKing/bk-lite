@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.db import transaction
 
-from apps.core.utils.team_utils import get_current_team, group_tree_allows_team
+from apps.core.utils.team_utils import get_current_team
 from apps.operation_analysis.models.homepage import HomepagePreference
 from apps.operation_analysis.models.models import Dashboard
 from apps.operation_analysis.services.builtin_i18n import apply_canvas_representation
@@ -142,6 +142,21 @@ def build_state(user) -> dict:
     }
 
 
+def user_may_use_current_team(request) -> bool:
+    """当前组织是否属于登录用户。超管豁免，与 GenericViewSetFun 一致。"""
+
+    if getattr(request.user, "is_superuser", False):
+        return True
+    from apps.core.utils.viewset_utils import user_group_id_set
+
+    team = get_current_team(request)
+    try:
+        team_id = int(team)
+    except (TypeError, ValueError):
+        return False
+    return team_id in user_group_id_set(request.user)
+
+
 class _TeamUnresolved(Exception):
     """current_team 缺失或非法，目录树无法判定。"""
 
@@ -176,7 +191,7 @@ def build_landing(request) -> dict:
         return empty
     if not Dashboard.objects.filter(pk=target_id).exists():
         return {"dashboard_id": None, "fallback": FALLBACK_MISSING}
-    if not group_tree_allows_team(getattr(user, "group_tree", []), get_current_team(request)):
+    if not user_may_use_current_team(request):
         # 浏览器里残留的是别的账号的组织，登录后才会改正，交给 access 判定。
         return {"dashboard_id": target_id, "fallback": None}
     try:
@@ -192,6 +207,8 @@ def build_shortcut(request) -> dict:
     """顶栏 Logo 的有效首页。解析顺序与 landing 相同，并要求当前组织目录树可见。"""
 
     empty = {"dashboard_id": None}
+    if not user_may_use_current_team(request):
+        return empty
     landing = build_landing(request)
     target_id = landing.get("dashboard_id")
     if not target_id:
@@ -216,6 +233,10 @@ def build_access(request) -> dict:
 
     if not user_can_view_ops_analysis(request.user):
         return {"status": FALLBACK_PERMISSION, "name": "", "desc": "", "is_build_in": False}
+
+    if not user_may_use_current_team(request):
+        # 伪造/残留的组织 cookie 不能用来读元信息或绕过目录树。
+        return {"status": FALLBACK_ORG, "name": "", "desc": "", "is_build_in": False}
 
     dashboard = Dashboard.objects.filter(pk=dashboard_id).first()
     if dashboard is None:
@@ -244,9 +265,18 @@ def build_access(request) -> dict:
 def _require_org_visible_dashboard(request, dashboard_id: int) -> Dashboard:
     from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
+    from apps.core.utils.viewset_utils import team_access_denied_message
+
     dashboard = Dashboard.objects.filter(pk=dashboard_id).first()
     if dashboard is None:
         raise NotFound(oa_message("messages.homepage_not_found", "仪表盘不存在"))
+    team_raw = get_current_team(request)
+    try:
+        int(team_raw)
+    except (TypeError, ValueError):
+        raise ValidationError({"detail": oa_message("messages.homepage_team_missing", "current_team cookie 缺失或格式错误")})
+    if not user_may_use_current_team(request):
+        raise PermissionDenied(team_access_denied_message(request))
     try:
         visible = dashboard_in_directory_tree(request, dashboard.id)
     except _TeamUnresolved:

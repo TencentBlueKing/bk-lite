@@ -26,10 +26,26 @@ export interface LineBarChartData {
   points?: ChartLinkPoint[];
 }
 
+export interface PieScalarField {
+  field: string;
+  label?: string;
+}
+
 export interface ChartFieldMapping {
   dimensionField?: string;
   valueField?: string;
+  pieScalarFields?: PieScalarField[];
 }
+
+export const toPieFieldMapping = (config?: {
+  dimensionField?: string;
+  valueField?: string;
+  pieScalarFields?: PieScalarField[];
+}): ChartFieldMapping => ({
+  dimensionField: config?.dimensionField,
+  valueField: config?.valueField,
+  pieScalarFields: config?.pieScalarFields,
+});
 
 export type PieChartData = ChartDataItem[];
 
@@ -59,6 +75,16 @@ const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
 
 const hasExplicitFieldMapping = (mapping?: ChartFieldMapping) =>
   Boolean(mapping?.dimensionField?.trim() || mapping?.valueField?.trim());
+
+const scalarPieFields = (mapping?: ChartFieldMapping): PieScalarField[] => {
+  const fields = (mapping?.pieScalarFields || [])
+    .map((item) => ({
+      field: String(item?.field || '').trim(),
+      label: String(item?.label || '').trim(),
+    }))
+    .filter((item) => item.field);
+  return fields.length >= 2 ? fields : [];
+};
 
 export class ChartDataTransformer {
   static formatCategoryValue(value: any): string {
@@ -463,6 +489,31 @@ export class ChartDataTransformer {
     rawData: any,
     mapping?: ChartFieldMapping,
   ): PieChartData {
+    const scalarFields = scalarPieFields(mapping);
+    if (
+      scalarFields.length >= 2
+      && isPlainRecord(rawData)
+      && !this.isMultiSeriesData(rawData)
+    ) {
+      return scalarFields.map((item) => {
+        const raw = rawData[item.field];
+        const missing = raw === null || raw === undefined || raw === '';
+        const value = missing ? 0 : parseFiniteDecimal(raw);
+        const name = item.label || item.field;
+        return {
+          name,
+          value,
+          __link: this.linkPoint({
+            seriesName: name,
+            dimension: item.field,
+            numeric: Number.isFinite(value) ? value : null,
+            raw,
+            row: rawData,
+          }),
+        };
+      });
+    }
+
     if (hasExplicitFieldMapping(mapping)) {
       return this.transformMappedPie(rawData, mapping);
     }

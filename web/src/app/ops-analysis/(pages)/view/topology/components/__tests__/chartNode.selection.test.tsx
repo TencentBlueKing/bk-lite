@@ -353,8 +353,10 @@ describe('ChartNode title link', () => {
     const title = container.querySelector('.truncate') as HTMLElement;
     const csv = container.querySelector('[data-csv-export-hover]') as HTMLElement;
 
-    expect(link.querySelector('.anticon-right')).toBeTruthy();
-    expect(link.querySelector('.anticon-link')).toBeNull();
+    expect(link.querySelector('.anticon-export')).toBeTruthy();
+    expect(link.querySelector('.anticon-share-alt')).toBeNull();
+    expect(link.className).toContain('w-0');
+    expect(link.className).toContain('group-hover:w-5');
     expect(link.className).not.toContain('absolute');
     expect(link.className).not.toContain('text-(--color-text-3)');
     expect(title.textContent).toBe('CPU');
@@ -373,7 +375,8 @@ describe('ChartNode title link', () => {
     const { container } = render(<ChartNode node={node} />);
     const link = container.querySelector('button[aria-label="查看详情"]') as HTMLButtonElement;
 
-    expect(link.querySelector('.anticon-right')).toBeTruthy();
+    expect(link.querySelector('.anticon-export')).toBeTruthy();
+    expect(link.className).not.toContain('w-0');
     expect(link.className).toContain('absolute');
     expect(link.className).toContain('right-2');
     expect(link.className).toContain('top-2');

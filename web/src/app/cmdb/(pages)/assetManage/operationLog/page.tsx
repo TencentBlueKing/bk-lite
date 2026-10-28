@@ -14,6 +14,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useCmdbUserList } from '@/app/cmdb/context/common';
 import { UserItem } from '@/app/cmdb/types/assetManage';
 import { useChangeRecordApi } from '@/app/cmdb/api';
+import { localizedEnumLabel, localizedModelObject } from '@/app/cmdb/utils/changeRecordLabel';
 
 interface ListItem {
   id: string;
@@ -228,6 +229,7 @@ const OperationLog: React.FC = () => {
         dataIndex: 'model_object',
         key: 'model_object',
         width: 160,
+        render: (value: string) => localizedModelObject(t, value),
       },
       {
         title: t('OperationLog.operationType'),
@@ -242,8 +244,9 @@ const OperationLog: React.FC = () => {
         key: 'scenario',
         width: 140,
         render: (scenario: string) =>
-          scenarioEnum[scenario] ||
-          (scenario ? t(`OperationLog.scenarioOpts.${scenario}`) : '--'),
+          scenario
+            ? localizedEnumLabel(t, 'OperationLog.scenarioOpts', scenario, scenarioEnum)
+            : '--',
       },
       {
         title: t('OperationLog.operationTime'),

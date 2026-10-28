@@ -350,8 +350,10 @@ describe('Dashboard title link', () => {
     const csv = screen.getByRole('button', { name: 'dashboard.exportCsv' });
     const slot = header.querySelector('.overflow-x-auto') as HTMLElement;
 
-    expect(link.querySelector('.anticon-right')).toBeTruthy();
-    expect(link.querySelector('.anticon-link')).toBeNull();
+    expect(link.querySelector('.anticon-export')).toBeTruthy();
+    expect(link.querySelector('.anticon-share-alt')).toBeNull();
+    expect(link.className).toContain('w-0');
+    expect(link.className).toContain('group-hover:w-5');
     expect(link.getAttribute('data-export-hidden')).toBe('true');
     expect(link.className).toContain('no-drag');
     expect(title.className).toContain('truncate');
@@ -362,13 +364,15 @@ describe('Dashboard title link', () => {
     expect(isLastIn(link, header)).toBe(true);
   });
 
-  it('places the chevron after the edit menu', async () => {
+  it('places the jump icon before the edit menu so the menu stays at the end', async () => {
     renderCanvas([titleLinkWidget], { isEditMode: true, renderMode: false });
     const link = await screen.findByRole('button', { name: '查看详情' });
     const more = screen.getByRole('button', { name: 'common.more' });
+    const header = link.closest('.widget-header') as HTMLElement;
 
-    expect(more.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(isLastIn(link, link.closest('.widget-header') as HTMLElement)).toBe(true);
+    expect(link.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(link.className).toContain('-mr-2');
+    expect(isLastIn(more, header)).toBe(true);
     expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
   });
 

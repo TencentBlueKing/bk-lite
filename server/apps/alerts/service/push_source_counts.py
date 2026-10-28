@@ -134,6 +134,8 @@ class PushSourceCountCache:
     KEY = "alerts:push_source_counts:v1:{team_id}:{source_id}"
     READY_KEY = "alerts:push_source_counts:ready:v1:{team_id}:{source_id}"
     LOCK_KEY = "alerts:push_source_counts:rebuild:v1:{team_id}:{source_id}"
+    DELTA_KEY = "alerts:push_source_counts:delta:v1:{team_id}:{source_id}"
+    CAPTURE_KEY = "alerts:push_source_counts:capture:v1:{team_id}:{source_id}"
     MAX_MEMBERS = 2000
     STALE_SECONDS = 90 * 24 * 3600
     REBUILD_LOCK_TIMEOUT = 30
@@ -149,6 +151,12 @@ class PushSourceCountCache:
 
     def lock_key(self, team_id, source_id):
         return self.LOCK_KEY.format(team_id=team_id, source_id=source_id)
+
+    def delta_key(self, team_id, source_id):
+        return self.DELTA_KEY.format(team_id=team_id, source_id=source_id)
+
+    def capture_key(self, team_id, source_id):
+        return self.CAPTURE_KEY.format(team_id=team_id, source_id=source_id)
 
     def observe_events(self, events):
         buckets = {}
@@ -191,7 +199,10 @@ class PushSourceCountCache:
         if not acquired:
             return {}
         mapping = {}
+        flushed = False
         try:
+            self._discard_sidecar(team_id, source_id)
+            self.store.set(self.capture_key(team_id, source_id), 1)
             mapping = self._event_mapping(team_id, source_id)
             if len(mapping) > self.MAX_MEMBERS:
                 mapping = dict(sorted(mapping.items(), key=lambda item: (-item[1], item[0]))[: self.MAX_MEMBERS])
@@ -199,17 +210,44 @@ class PushSourceCountCache:
             try:
                 if mapping:
                     self.store.hset(key, mapping)
+                self._flush_sidecar(team_id, source_id)
+                flushed = True
                 self.store.set(self.ready_key(team_id, source_id), 1)
             except Exception:
                 return mapping
             return mapping
         finally:
+            if not flushed:
+                try:
+                    self._discard_sidecar(team_id, source_id)
+                except Exception:
+                    pass
             try:
                 self.store.delete(lock_key)
             except Exception:
                 pass
 
+    def _capturing(self, team_id, source_id):
+        return self.store.get(self.capture_key(team_id, source_id)) == 1
+
+    def _discard_sidecar(self, team_id, source_id):
+        self.store.delete(self.capture_key(team_id, source_id))
+        self.store.delete(self.delta_key(team_id, source_id))
+
+    def _flush_sidecar(self, team_id, source_id):
+        delta_key = self.delta_key(team_id, source_id)
+        self.store.delete(self.capture_key(team_id, source_id))
+        delta = self.store.hgetall(delta_key) or {}
+        for member, amount in delta.items():
+            count = _as_count(amount)
+            if count:
+                self._incr(team_id, source_id, member, count)
+        self.store.delete(delta_key)
+
     def _incr(self, team_id, source_id, push_source_id, amount):
+        if self._capturing(team_id, source_id):
+            self.store.hincrby(self.delta_key(team_id, source_id), push_source_id, amount)
+            return
         key = self.hash_key(team_id, source_id)
         if not self.store.hexists(key, push_source_id):
             size = self.store.hlen(key) or 0

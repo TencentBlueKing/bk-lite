@@ -6,6 +6,8 @@ import { Label, Props as LabelProps } from './Label';
 
 type Props = Omit<LabelProps, 'maxHeight'> & {
   onToggleExpand?: (isExpanded: boolean) => void;
+  /** Skip the 80px clip. Used when the name card is showing metrics or hover detail. */
+  uncapped?: boolean;
 };
 
 const STANDARD_LABEL_HEIGHT = 80;
@@ -14,6 +16,7 @@ const EXPAND_TOGGLE_HEIGHT = 85;
 export const ExpandableLabel = ({
   children,
   onToggleExpand,
+  uncapped = false,
   ...rest
 }: Props) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -22,8 +25,8 @@ export const ExpandableLabel = ({
   const [contentHeight, setContentHeight] = useState(0);
 
   const containerMaxHeight = useMemo(() => {
-    return isExpanded ? undefined : STANDARD_LABEL_HEIGHT;
-  }, [isExpanded]);
+    return uncapped || isExpanded ? undefined : STANDARD_LABEL_HEIGHT;
+  }, [isExpanded, uncapped]);
 
   // 观察未被 maxHeight 限制的内容高度，描述修改后也能及时更新展开按钮
   useEffect(() => {
@@ -41,7 +44,7 @@ export const ExpandableLabel = ({
   }, []);
 
   const isContentTruncated =
-    !isExpanded && contentHeight > EXPAND_TOGGLE_HEIGHT;
+    !uncapped && !isExpanded && contentHeight > EXPAND_TOGGLE_HEIGHT;
 
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0 });

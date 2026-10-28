@@ -32,7 +32,12 @@ export const ItemControlsManager = () => {
   return (
     <Box
       sx={{
-        width: '100%'
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        minHeight: 0,
+        maxHeight: 'inherit',
+        overflow: 'hidden'
       }}
     >
       {Controls}

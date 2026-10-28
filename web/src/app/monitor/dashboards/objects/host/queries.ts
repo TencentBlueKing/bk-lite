@@ -211,16 +211,6 @@ export const HOST_NET_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   }
 ];
 
-/** 分核：保留 cpu 维。无该维时性能页不画分核卡。 */
-export const HOST_CPU_CORE_ENTITY_QUERIES: HostEntityMetricQuery[] = [
-  {
-    key: 'cpu_usage_core',
-    unit: 'percent',
-    labelKeys: ['cpu'],
-    query: '100 - cpu_usage_idle{cpu!="cpu-total", instance_type="os", __$labels__}'
-  }
-];
-
 /** GPU：按 index 保留多卡，禁止 max 折成一台。 */
 export const HOST_GPU_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   {

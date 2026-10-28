@@ -9,6 +9,11 @@ import { useTranslation } from '@/utils/i18n';
 import VersionModal from './versionModal';
 import ThemeSwitcher from './themeSwitcher';
 import LayoutSwitcher, { LayoutSwitcherPanel, getLayoutPanelPosition } from './layoutSwitcher';
+import {
+  HomepageSwitcherPanel,
+  HomepageSwitcherRow,
+  useHomepageMenu,
+} from './homepageSwitcher';
 import { useUserInfoContext } from '@/context/userInfo';
 import { clearAuthToken } from '@/utils/crossDomainAuth';
 import Cookies from 'js-cookie';
@@ -34,6 +39,7 @@ const UserInfo: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   const { groupTree, selectedGroup, setSelectedGroup, displayName, isSuperUser } = useUserInfoContext();
+  const homepageMenu = useHomepageMenu(selectedGroup?.id);
 
   const [versionVisible, setVersionVisible] = useState<boolean>(false);
   const [userInfoVisible, setUserInfoVisible] = useState<boolean>(false);
@@ -41,6 +47,8 @@ const UserInfo: React.FC = () => {
   const [groupPanelVisible, setGroupPanelVisible] = useState<boolean>(false);
   const [layoutPanelVisible, setLayoutPanelVisible] = useState<boolean>(false);
   const [layoutPanelPos, setLayoutPanelPos] = useState({ top: 50, right: 200 });
+  const [homepagePanelVisible, setHomepagePanelVisible] = useState<boolean>(false);
+  const [homepagePanelPos, setHomepagePanelPos] = useState({ top: 50, right: 200 });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [consoleVersion, setConsoleVersion] = useState<string>('--');
   const [includeChildren, setIncludeChildren] = useState<boolean>(false);
@@ -96,6 +104,8 @@ const UserInfo: React.FC = () => {
   const groupMenuItemRef = useRef<HTMLDivElement>(null);
   const layoutPanelRef = useRef<HTMLDivElement>(null);
   const layoutMenuItemRef = useRef<HTMLDivElement>(null);
+  const homepagePanelRef = useRef<HTMLDivElement>(null);
+  const homepageMenuItemRef = useRef<HTMLDivElement>(null);
 
   // 搜索时自动展开所有节点（仅在从无搜索变为有搜索时触发）
   const prevSearchValueRef = useRef<string>('');
@@ -145,8 +155,31 @@ const UserInfo: React.FC = () => {
       setLayoutPanelPos(getLayoutPanelPosition(item));
     }
     setGroupPanelVisible(false);
+    setHomepagePanelVisible(false);
     setLayoutPanelVisible(true);
   }, [layoutPanelVisible]);
+
+  const toggleHomepagePanel = useCallback(() => {
+    if (homepagePanelVisible) {
+      setHomepagePanelVisible(false);
+      return;
+    }
+    const item = homepageMenuItemRef.current;
+    if (item) {
+      setHomepagePanelPos(getLayoutPanelPosition(item));
+    }
+    setGroupPanelVisible(false);
+    setLayoutPanelVisible(false);
+    setHomepagePanelVisible(true);
+    void homepageMenu.reloadState();
+  }, [homepageMenu.reloadState, homepagePanelVisible]);
+
+  const closeUserMenus = useCallback(() => {
+    setDropdownVisible(false);
+    setGroupPanelVisible(false);
+    setLayoutPanelVisible(false);
+    setHomepagePanelVisible(false);
+  }, []);
 
   const federatedLogout = useCallback(async () => {
     setIsLoading(true);
@@ -323,6 +356,7 @@ const UserInfo: React.FC = () => {
             onClick={(e) => {
               e.stopPropagation();
               setLayoutPanelVisible(false);
+              setHomepagePanelVisible(false);
               setGroupPanelVisible(!groupPanelVisible);
             }}
           >
@@ -333,6 +367,19 @@ const UserInfo: React.FC = () => {
               </span>
               <RightOutlined className="text-[10px]" />
             </span>
+          </div>
+        ),
+      },
+      { type: 'divider' },
+      {
+        key: 'homepage',
+        label: (
+          <div ref={homepageMenuItemRef}>
+            <HomepageSwitcherRow
+              mode={homepageMenu.personalMode}
+              dashboardName={homepageMenu.personalDashboardCaption}
+              onToggle={toggleHomepagePanel}
+            />
           </div>
         ),
       },
@@ -350,11 +397,11 @@ const UserInfo: React.FC = () => {
     ];
 
     return items;
-  }, [consoleVersion, selectedGroup, groupTree, isLoading, isSuperUser, session, groupPanelContent, groupPanelVisible, toggleLayoutPanel, t]);
+  }, [consoleVersion, selectedGroup, groupTree, isLoading, isSuperUser, session, groupPanelContent, groupPanelVisible, homepageMenu.personalMode, homepageMenu.personalDashboardCaption, toggleHomepagePanel, toggleLayoutPanel, t]);
 
   const handleMenuClick = ({ key }: any) => {
     // 点击组选项时不关闭菜单（由 Popover 控制）
-    if (key === 'groups' || key === 'layout') {
+    if (key === 'groups' || key === 'layout' || key === 'homepage') {
       return;
     }
 
@@ -362,19 +409,18 @@ const UserInfo: React.FC = () => {
     if (key === 'userInfo') setUserInfoVisible(true);
     if (key === 'logout') federatedLogout();
 
-    setDropdownVisible(false);
-    setGroupPanelVisible(false);
-    setLayoutPanelVisible(false);
+    closeUserMenus();
   };
 
   const handleOpenChange = (open: boolean) => {
-    if ((groupPanelVisible || layoutPanelVisible) && !open) {
+    if ((groupPanelVisible || layoutPanelVisible || homepagePanelVisible) && !open) {
       return;
     }
     setDropdownVisible(open);
     if (!open) {
       setGroupPanelVisible(false);
       setLayoutPanelVisible(false);
+      setHomepagePanelVisible(false);
     }
   };
 
@@ -440,6 +486,54 @@ const UserInfo: React.FC = () => {
           </div>
         </>
       )}
+      {homepagePanelVisible && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[1079]"
+            onClick={(e) => {
+              e.stopPropagation();
+              setHomepagePanelVisible(false);
+              setDropdownVisible(false);
+            }}
+          />
+          <div
+            ref={homepagePanelRef}
+            className="fixed z-[1080] overflow-hidden rounded-xl border border-[var(--color-border-1)] bg-[var(--color-bg-1)] shadow-[0_8px_24px_color-mix(in_srgb,var(--color-text-1)_10%,transparent)]"
+            style={{
+              top: homepagePanelPos.top,
+              right: homepagePanelPos.right,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <HomepageSwitcherPanel
+              personalMode={homepageMenu.personalMode}
+              adminDashboardName={homepageMenu.adminDashboardName}
+              personalDashboardCaption={homepageMenu.personalDashboardCaption}
+              showSettingsLink={homepageMenu.showSettingsLink}
+              applying={homepageMenu.applying}
+              onFollow={() => {
+                void homepageMenu.followGlobal().then((ok) => {
+                  if (ok) {
+                    closeUserMenus();
+                  }
+                });
+              }}
+              onPinWorkbench={() => {
+                void homepageMenu.pinWorkbench().then((ok) => {
+                  if (ok) {
+                    closeUserMenus();
+                  }
+                });
+              }}
+              onOpenSettings={() => {
+                homepageMenu.openDashboardSettings();
+                closeUserMenus();
+              }}
+            />
+          </div>
+        </>,
+        document.body,
+      )}
       {layoutPanelVisible && createPortal(
         <>
           <div
@@ -464,6 +558,7 @@ const UserInfo: React.FC = () => {
                 setLayoutPanelVisible(false);
                 setDropdownVisible(false);
                 setGroupPanelVisible(false);
+                setHomepagePanelVisible(false);
               }}
             />
           </div>

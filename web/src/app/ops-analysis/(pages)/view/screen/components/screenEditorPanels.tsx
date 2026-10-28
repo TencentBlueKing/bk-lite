@@ -670,7 +670,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
   return (
     <aside
       ref={rootRef}
-      className={`relative z-20 h-full shrink-0 transition-[width] duration-300 ${
+      className={`relative z-40 h-full shrink-0 transition-[width] duration-300 ${
         collapsed
           ? 'w-0 border-r-0'
           : 'w-[192px] border-r border-(--color-border-1) bg-(--color-bg-1)'

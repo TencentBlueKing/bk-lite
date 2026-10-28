@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'rea
 import CodeEditor from '@/components/code-editor';
 import { useTranslation } from '@/utils/i18n';
 
+import { DataTransformSqlGuideDrawer } from './data-transform-sql-guide-drawer';
 import { JsonValueInput } from './json-value-input';
 import {
   compileNodeInputBinding,
@@ -218,6 +219,9 @@ function LiteralField({
             />
           </div>
         ))}
+        <div className="self-start">
+          <DataTransformSqlGuideDrawer />
+        </div>
         {disabled ? null : (
           <WorkflowPermission operation="Edit" className="block">
             <Button

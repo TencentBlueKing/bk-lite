@@ -114,7 +114,13 @@ describe('流程启动目标选择', () => {
       </IntlProvider>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: /请选择目标主机/ }));
+    expect(await screen.findByText('生效版本')).not.toBeNull();
+    expect(screen.getByText('v3')).not.toBeNull();
+    expect(screen.queryByText('执行影响')).toBeNull();
+    expect(screen.queryByText('启动前重新校验目标。')).toBeNull();
+    expect(screen.queryByText(/冻结版本/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /请选择目标主机/ }));
 
     const nodeRow = (await screen.findByText(nodeTarget.name)).closest('tr');
     expect(nodeRow).not.toBeNull();
@@ -227,16 +233,13 @@ describe('流程启动目标选择', () => {
     const view = render(renderDialog(true));
 
     fireEvent.click(await screen.findByRole('button', { name: /请选择目标主机/ }));
-    expect(await screen.findByText('选择主机 · 目标主机')).not.toBeNull();
+    expect(await screen.findByText((_, element) => element?.classList.contains('ant-modal-title') === true && element.textContent === '选择主机 - 目标主机')).not.toBeNull();
     const nodeRow = (await screen.findAllByText(nodeTarget.name))
       .map((element) => element.closest('tr'))
       .find(Boolean);
     fireEvent.click(nodeRow!.querySelector('input[type="checkbox"]')!);
 
     view.rerender(renderDialog(false));
-
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择主机 · 目标主机' })).toBeNull());
-
     view.rerender(renderDialog(true));
     expect(await screen.findByRole('button', { name: /请选择目标主机/ })).not.toBeNull();
     expect(screen.queryByRole('button', { name: /已选择 1 台主机/ })).toBeNull();

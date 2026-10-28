@@ -141,6 +141,7 @@ def test_system_tenant_can_read_own_org_users(tenants):
         "disabled": False,
         "locale": "en",
         "group_list": [str(tenants.a.team.id)],
+        "is_superuser": False,
     }
     assert _SENSITIVE_USER_FIELDS.isdisjoint(own)
 
@@ -522,6 +523,34 @@ def test_app_admin_cannot_read_other_org_users(tenants):
     ids = set(_user_ids(response.json()))
     assert str(tenants.a.member.id) in ids
     assert str(tenants.b.member.id) not in ids
+    actor = next(item for item in response.json()["data"]["results"] if item["id"] == str(tenants.a.system_user.id))
+    assert actor["is_superuser"] is False
+
+
+@pytest.mark.parametrize("role_app", ["", "system-manager"])
+def test_user_directory_marks_platform_superuser(tenants, role_app):
+    _grant_role(tenants.a.member, name="admin", app=role_app)
+
+    response = APIClient().get(USERS_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    by_id = {item["id"]: item for item in response.json()["data"]["results"]}
+    assert by_id[str(tenants.a.member.id)]["is_superuser"] is True
+    assert by_id[str(tenants.a.disabled_member.id)]["is_superuser"] is False
+    assert by_id[str(tenants.a.system_user.id)]["is_superuser"] is False
+
+
+def test_user_directory_inherited_group_admin_is_superuser(tenants):
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="", defaults={"menu_list": []})
+    tenants.a.team.roles.add(admin_role)
+
+    response = APIClient().get(USERS_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    by_id = {item["id"]: item for item in response.json()["data"]["results"]}
+    assert by_id[str(tenants.a.member.id)]["is_superuser"] is True
+    assert by_id[str(tenants.a.system_user.id)]["is_superuser"] is True
+    assert by_id[str(tenants.b.member.id)]["is_superuser"] is False
 
 
 def test_superuser_search_finds_user_outside_acting_team(tenants):

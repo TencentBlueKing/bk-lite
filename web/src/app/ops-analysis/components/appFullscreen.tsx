@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { FullscreenExitOutlined } from '@ant-design/icons';
-import { Button, Tooltip } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
 
 import { setAppViewFullscreenActive } from '@/components/app-view-fullscreen';
-import { useTranslation } from '@/utils/i18n';
+
+export { AppViewFullscreenExit } from '@/components/app-view-fullscreen';
+export type { AppViewFullscreenExitProps } from '@/components/app-view-fullscreen';
 
 export const useAppViewFullscreen = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -57,34 +57,3 @@ export const useAppViewFullscreen = () => {
   };
 };
 
-interface AppViewFullscreenExitProps {
-  visible: boolean;
-  onExit: () => void;
-  className?: string;
-}
-
-export const AppViewFullscreenExit: React.FC<AppViewFullscreenExitProps> = ({
-  visible,
-  onExit,
-  className,
-}) => {
-  const { t } = useTranslation();
-
-  if (!visible) {
-    return null;
-  }
-
-  return (
-    <div className={className || 'absolute right-4 top-3 z-30'}>
-      <Tooltip title={t('common.exitFullscreen')}>
-        <Button
-          type="default"
-          shape="circle"
-          aria-label={t('common.exitFullscreen')}
-          icon={<FullscreenExitOutlined style={{ fontSize: 16 }} />}
-          onClick={onExit}
-        />
-      </Tooltip>
-    </div>
-  );
-};

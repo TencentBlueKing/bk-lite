@@ -17,7 +17,7 @@
     {
       "metric_group": "HTTP",
       "name": "http_response_result_code",
-      "query": "http_response_result_code{__$labels__}",
+      "query": "max(http_response_result_code{__$labels__}) by (instance_id, agent_id)",
       "display_name": "Probe Result",
       "data_type": "Enum",
       "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"响应内容不匹配\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"响应体读取失败\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"连接失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"超时\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"DNS错误\",\"id\":5,\"color\":\"#ff4d4f\"},{\"name\":\"响应状态码不匹配\",\"id\":6,\"color\":\"#faad14\"}]",
@@ -65,7 +65,7 @@
     {
       "metric_group": "HTTP",
       "name": "http_response_http_response_code",
-      "query": "http_response_http_response_code{__$labels__}",
+      "query": "max(http_response_http_response_code{__$labels__}) by (instance_id, agent_id)",
       "display_name": "HTTP Code",
       "data_type": "Number",
       "unit": "none",

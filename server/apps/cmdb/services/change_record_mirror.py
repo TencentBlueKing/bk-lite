@@ -76,8 +76,22 @@ class ChangeRecordMirrorService:
         event = ChangeRecordMirrorOutbox.objects.get(event_id=event_id)
         try:
             client = SystemMgmt()
-            for payload in event.payloads[: cls.BATCH_SIZE]:
-                client.save_operation_log(**payload)
+            payloads = list(event.payloads)
+            for index, payload in enumerate(payloads[: cls.BATCH_SIZE]):
+                receipt = client.save_operation_log(**payload)
+                if isinstance(receipt, dict) and receipt.get("result") is True:
+                    continue
+                status = CmdbOperationOutboxStatus.FAILED if event.attempt_count >= cls.MAX_ATTEMPTS else CmdbOperationOutboxStatus.RETRY
+                delay = min(3600, 2 ** max(0, event.attempt_count - 1) * 30)
+                ChangeRecordMirrorOutbox.objects.filter(id=event.id, status=CmdbOperationOutboxStatus.SENDING, owner_token=token).update(
+                    status=status,
+                    owner_token="",
+                    lease_expires_at=None,
+                    next_attempt_at=now() + timedelta(seconds=delay),
+                    last_error="operation_log_rejected",
+                    payloads=payloads[index:],
+                )
+                return False
         except Exception as exc:
             status = CmdbOperationOutboxStatus.FAILED if event.attempt_count >= cls.MAX_ATTEMPTS else CmdbOperationOutboxStatus.RETRY
             delay = min(3600, 2 ** max(0, event.attempt_count - 1) * 30)

@@ -14,6 +14,7 @@ SOURCES = [
     SUPPORT / "builtin_canvases.yaml",
     SUPPORT / "flow_dashboard.yaml",
     SUPPORT / "weopsx_platform_usage_dashboard.yaml",
+    SUPPORT / "weopsx_ops_overview_dashboard.yaml",
     SUPPORT / "builtin_network_topology_screen.yaml",
     SUPPORT / "zombie_host_report.yaml",
 ]
@@ -23,6 +24,7 @@ REQUIRED_DASHBOARDS = {
     "dashboard::监控中心仪表盘_内置",
     "dashboard::Flow网络流量分析仪表盘",
     "dashboard::WeOpsX平台使用_内置",
+    "dashboard::运维总览_内置",
 }
 REQUIRED_SCREENS = {
     "screen::告警运营大屏_内置",

@@ -36,13 +36,14 @@ class RecoveryHandler:
         return str(value).strip()
 
     @classmethod
-    def _build_fallback_key(cls, event: Event) -> Optional[Tuple[int, str, str, str]]:
+    def _build_fallback_key(cls, event: Event) -> Optional[Tuple[int, str, str, str, tuple]]:
         item = cls._normalize_value(event.item)
         resource_name = cls._normalize_value(event.resource_name)
         source_id = cls._normalize_value(getattr(event.source, "source_id", None))
         if not item or not resource_name or not source_id:
             return None
-        return event.source_id, item, resource_name, source_id
+        team = tuple(sorted(str(team_id) for team_id in (event.team or [])))
+        return event.source_id, item, resource_name, source_id, team
 
     @classmethod
     def _supports_unique_fallback(cls, event: Event) -> bool:
@@ -119,7 +120,7 @@ class RecoveryHandler:
         if external_ids:
             candidate_q |= Q(events__external_id__in=external_ids, events__action=EventAction.CREATED)
 
-        for source_pk, item, resource_name, _ in fallback_keys:
+        for source_pk, item, resource_name, _source_id, _team in fallback_keys:
             candidate_q |= Q(
                 events__source_id=source_pk,
                 events__item=item,

@@ -178,7 +178,8 @@ export function WorkflowTriggerRuntimeForm({ workflowId, schema, value, disabled
       width={1040}
       title={targetDialogField?.allowed_sources.length === 1 && targetDialogField.allowed_sources[0] === 'job_mgmt'
         ? t('workflowOrchestration.editor.selectJobHostsTitle', '选择作业平台主机')
-        : targetDialogField ? t('workflowOrchestration.launch.selectTargetTitle', '选择主机 · {name}', { name: targetDialogField.name }) : t('workflowOrchestration.launch.selectTarget', '选择主机')}
+        : t('workflowOrchestration.launch.selectTarget', '选择主机')}
+      subTitle={targetDialogField && !(targetDialogField.allowed_sources.length === 1 && targetDialogField.allowed_sources[0] === 'job_mgmt') ? targetDialogField.name : undefined}
       open={Boolean(targetDialogField)}
       destroyOnHidden
       zIndex={WORKFLOW_NESTED_SELECTOR_Z_INDEX}

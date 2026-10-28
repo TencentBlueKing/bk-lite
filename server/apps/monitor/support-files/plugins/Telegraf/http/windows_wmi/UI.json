@@ -126,6 +126,52 @@
       "label_en": "Excluded Filesystem Types"
     },
     {
+      "name": "service_scope",
+      "label": "Windows服务采集范围",
+      "type": "select",
+      "required": false,
+      "default_value": "none",
+      "description": "默认不采集。选择全部服务仅供查看；选择指定服务名后才套用停止告警。",
+      "widget_props": {
+        "options": [
+          {
+            "label": "不采集",
+            "value": "none",
+            "label_en": "Do not collect"
+          },
+          {
+            "label": "全部服务",
+            "value": "all",
+            "label_en": "All services"
+          },
+          {
+            "label": "指定服务名",
+            "value": "names",
+            "label_en": "Named services"
+          }
+        ]
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.service_scope"
+      },
+      "label_en": "Windows Service Scope"
+    },
+    {
+      "name": "service_names",
+      "label": "服务名",
+      "type": "input",
+      "required": false,
+      "default_value": "",
+      "description": "逗号分隔的服务名，例如 Spooler,W32Time。仅采集名单中的服务，比较忽略大小写。",
+      "widget_props": {
+        "placeholder": "Spooler,W32Time"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.service_names"
+      },
+      "label_en": "Service Names"
+    },
+    {
       "name": "timeout",
       "label": "超时",
       "type": "inputNumber",

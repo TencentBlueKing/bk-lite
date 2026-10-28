@@ -28,16 +28,15 @@ export const ConnectorLabel = ({ connector }: Props) => {
         top: labelPosition.y
       }}
     >
-      <Label
-        maxWidth={150}
-        labelHeight={0}
-        sx={{
-          py: '5px',
-          px: '8px',
-          borderRadius: '6px'
-        }}
-      >
-        <Typography color="text.secondary" variant="body2">
+      <Label maxWidth={150} labelHeight={0} sx={{ px: '3px' }}>
+        <Typography
+          sx={{
+            fontSize: 11,
+            lineHeight: 1.2,
+            color: 'var(--color-text-3)',
+            whiteSpace: 'nowrap'
+          }}
+        >
           {connector.description}
         </Typography>
       </Label>

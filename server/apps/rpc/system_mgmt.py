@@ -10,13 +10,14 @@ class SystemMgmt(object):
         return_data = self.client.run("bk_lite_user_login", username=username, domain=domain)
         return return_data
 
-    def login_with_binding(self, binding_id, auth_code="", username="", password=""):
+    def login_with_binding(self, binding_id, auth_code="", username="", password="", bk_token=""):
         return self.client.run(
             "login_with_binding",
             binding_id=binding_id,
             auth_code=auth_code,
             username=username,
             password=password,
+            bk_token=bk_token,
         )
 
     def get_login_auth_bindings(self):
@@ -67,6 +68,10 @@ class SystemMgmt(object):
     def get_all_users(self):
         return_data = self.client.run("get_all_users")
         return return_data
+
+    def get_users_by_usernames(self, usernames):
+        """按用户名集合读取目录字段，不拉取全站用户。"""
+        return self.client.run("get_users_by_usernames", usernames=usernames)
 
     def get_authorized_groups_scoped(self, actor_context, include_children=False):
         return_data = self.client.run(

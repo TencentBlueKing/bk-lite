@@ -18,7 +18,7 @@ const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
   { key: 'redis', groupKey: 'database', objectName: 'Redis', objectDisplayName: 'Redis', inheritedPermissionPath: '/monitor/view' },
   { key: 'mongodb', groupKey: 'database', objectName: 'MongoDB', objectDisplayName: 'MongoDB', inheritedPermissionPath: '/monitor/view' },
   { key: 'mssql', groupKey: 'database', objectName: 'MSSQL', objectDisplayName: 'MSSQL', inheritedPermissionPath: '/monitor/view' },
-  { key: 'nginx', groupKey: 'middleware', objectName: 'nginx', objectDisplayName: 'Nginx', inheritedPermissionPath: '/monitor/view' },
+  { key: 'nginx', groupKey: 'middleware', objectName: 'Nginx', objectDisplayName: 'Nginx', inheritedPermissionPath: '/monitor/view' },
   { key: 'docker', groupKey: 'middleware', objectName: 'Docker', objectDisplayName: 'Docker', inheritedPermissionPath: '/monitor/view' },
   { key: 'activemq', aliases: ['active_mq'], groupKey: 'middleware', objectName: 'ActiveMQ', objectDisplayName: 'ActiveMQ', inheritedPermissionPath: '/monitor/view' },
   { key: 'apache', groupKey: 'middleware', objectName: 'Apache', objectDisplayName: 'Apache', inheritedPermissionPath: '/monitor/view' },

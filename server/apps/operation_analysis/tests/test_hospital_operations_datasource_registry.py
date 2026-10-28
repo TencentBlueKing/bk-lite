@@ -19,8 +19,14 @@ def test_network_device_resource_top_registry_contract():
     assert metric["inputConfig"]["componentSwitch"] is True
     assert [x["value"] for x in metric["inputConfig"]["optionsSource"]["staticItems"]] == ["cpu", "memory", "traffic"]
     assert [x["key"] for x in source["field_schema"]] == [
-        "rank", "display_name", "value", "unit", "ip", "instance_id",
-        "device_type", "sampled_at",
+        "rank",
+        "display_name",
+        "value",
+        "unit",
+        "ip",
+        "instance_id",
+        "device_type",
+        "sampled_at",
     ]
 
 
@@ -35,4 +41,9 @@ def test_alert_source_distribution_registry_contract():
 def test_builtin_alert_trend_uses_the_canonical_chart_contract():
     sources = sources_by_api()
     assert sources["alert/get_alert_trend_data"]["chart_type"] == ["line", "bar"]
+    assert {param["name"] for param in sources["alert/get_alert_trend_data"]["params"]} == {"time", "organization"}
+    open_close = sources["alert/get_alert_open_close_trend"]
+    assert open_close["name"] == "告警新增与关闭趋势"
+    assert open_close["chart_type"] == ["line", "bar"]
+    assert {param["name"] for param in open_close["params"]} == {"time", "organization"}
     assert "alert/get_active_alert_top" not in sources

@@ -17,7 +17,8 @@ export const useHomepageApi = () => {
   const { get, post } = useApiClient();
 
   const getState = useCallback(
-    () => get<HomepagePreferenceState>('/operation_analysis/api/homepage/state/'),
+    (config?: { suppressErrorNotification?: boolean }) =>
+      get<HomepagePreferenceState>('/operation_analysis/api/homepage/state/', config),
     [get],
   );
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import copy
 import re
 from datetime import datetime, time, timedelta
@@ -14,6 +15,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.generics import get_object_or_404
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
@@ -114,6 +116,7 @@ from apps.workflow.services.webhook_test_sessions import (
     read_webhook_test_session,
     wait_for_webhook_test_event,
 )
+from apps.workflow.services.workflow_pack import MAX_PACK_MEMBERS, PackRejected, export_workflow_pack, import_workflow_pack
 from apps.workflow.services.workflow_projections import workflow_trigger_types
 from apps.workflow.services.workflows import WorkflowDeleteConflict, soft_delete_workflow
 from apps.workflow.utils.i18n import workflow_message
@@ -178,6 +181,24 @@ def _audit(request, action_type: str, summary: str, *, target_type: str, target_
         target_id=str(target_id),
         detail=detail,
     )
+
+
+def _pack_export_ids(request):
+    raw = request.data.get("ids") if isinstance(request.data, dict) else None
+    if not isinstance(raw, list) or not raw:
+        return None, Response({"detail": render_known_message(request, "请选择要导出的流程")}, status=status.HTTP_400_BAD_REQUEST)
+    if len(raw) > MAX_PACK_MEMBERS:
+        return None, Response({"detail": render_known_message(request, "一次导出的流程数量异常")}, status=status.HTTP_400_BAD_REQUEST)
+    ids = []
+    seen = set()
+    for item in raw:
+        if isinstance(item, bool) or not isinstance(item, int) or item <= 0:
+            return None, Response({"detail": render_known_message(request, "请选择要导出的流程")}, status=status.HTTP_400_BAD_REQUEST)
+        if item in seen:
+            continue
+        seen.add(item)
+        ids.append(item)
+    return ids, None
 
 
 def _workflow_name_conflict_response():
@@ -1219,6 +1240,70 @@ class WorkflowViewSet(AuthViewSet):
         )
         return Response(self.get_serializer(workflow).data)
 
+    @action(methods=["POST"], detail=False, url_path="export")
+    @HasPermission("workflow-View", app_name=APP_NAME)
+    def export_pack(self, request):
+        self._validate_current_team_permission(request)
+        ids, error = _pack_export_ids(request)
+        if error is not None:
+            return error
+        try:
+            content, failures = export_workflow_pack(self._scoped_queryset(request), ids)
+        except PackRejected as error:
+            return Response({"detail": render_known_message(request, str(error))}, status=status.HTTP_400_BAD_REQUEST)
+        if content is None:
+            return Response(
+                {
+                    "detail": render_known_message(request, "没有可导出的流程"),
+                    "data": {"exported": 0, "failed": failures},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        exported = len(ids) - len(failures)
+        _audit(
+            request,
+            "export",
+            f"导出流程 {exported} 条",
+            target_type="workflow",
+            target_id=ids[0],
+            detail={"exported": exported, "failed": len(failures)},
+        )
+        if failures:
+            return Response({"exported": exported, "failed": failures, "pack": base64.b64encode(content).decode("ascii")})
+        return FileResponse(
+            BytesIO(content),
+            as_attachment=True,
+            filename="workflow-pack.zip",
+            content_type="application/zip",
+        )
+
+    @action(methods=["POST"], detail=False, url_path="import", parser_classes=[MultiPartParser, FormParser])
+    @HasPermission("workflow-Add", app_name=APP_NAME)
+    def import_pack(self, request):
+        self._validate_current_team_permission(request)
+        raw_team = request.data.getlist("team") if hasattr(request.data, "getlist") else request.data.get("team")
+        team_ids, error = self._team_ids_from_payload(request, list(raw_team) if isinstance(raw_team, list) else raw_team)
+        if error is not None:
+            return error
+        upload = request.FILES.get("file")
+        if upload is None:
+            return Response({"detail": render_known_message(request, "请选择要导入的压缩包")}, status=status.HTTP_400_BAD_REQUEST)
+        username, domain = _identity(request)
+        try:
+            result = import_workflow_pack(upload, request=request, team=team_ids, username=username, domain=domain)
+        except PackRejected as error:
+            return Response({"detail": render_known_message(request, str(error))}, status=status.HTTP_400_BAD_REQUEST)
+        target_id = result["created"][0]["id"] if result["created"] else 0
+        _audit(
+            request,
+            "import",
+            f"导入流程，成功 {len(result['created'])} 条，失败 {len(result['failed'])} 条",
+            target_type="workflow",
+            target_id=target_id,
+            detail={"created": len(result["created"]), "failed": len(result["failed"])},
+        )
+        return Response(result)
+
     @action(methods=["GET"], detail=False)
     @HasPermission("workflow-View,workflow_market-View", app_name=APP_NAME)
     def atoms(self, request):
@@ -1756,7 +1841,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
             {
                 "kpis": {
                     "workflow_total": workflow_queryset.count(),
-                    "published_workflows": workflow_queryset.filter(current_version__gt=0).count(),
+                    "published_workflows": workflow_queryset.filter(current_version__gt=0, is_builtin=False).count(),
                     "enabled_workflows": workflow_queryset.filter(current_version__gt=0, enabled=True).count(),
                     "draft_workflows": workflow_queryset.filter(Q(current_version=0) | Q(has_draft=True)).count(),
                     "today_executions": today_queryset.count(),

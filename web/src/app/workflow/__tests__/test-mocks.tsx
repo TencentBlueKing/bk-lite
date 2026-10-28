@@ -17,12 +17,40 @@ vi.mock('@/components/permission', () => ({
 }));
 
 vi.mock('@/components/code-editor', () => ({
-  default: ({ value, mode, theme, height, readOnly, onChange }: { value?: string; mode?: string; theme?: string; height?: string; readOnly?: boolean; onChange?: (value: string) => void }) => (
-    <textarea aria-label={`code-editor-${mode || 'text'}`} data-height={height} data-theme={theme} readOnly={readOnly} value={value || ''} onChange={(event) => onChange?.(event.target.value)} />
+  default: ({
+    value,
+    mode,
+    theme,
+    height,
+    readOnly,
+    onChange,
+    headerOptions,
+    appearance,
+  }: {
+    value?: string;
+    mode?: string;
+    theme?: string;
+    height?: string;
+    readOnly?: boolean;
+    appearance?: string;
+    headerOptions?: { copy?: boolean; fullscreen?: boolean };
+    onChange?: (value: string) => void;
+  }) => (
+    <textarea
+      aria-label={`code-editor-${mode || 'text'}`}
+      data-appearance={appearance}
+      data-copy={headerOptions?.copy ? 'true' : 'false'}
+      data-fullscreen={headerOptions?.fullscreen ? 'true' : 'false'}
+      data-height={height}
+      data-theme={theme}
+      readOnly={readOnly}
+      value={value || ''}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
   ),
 }));
 
-vi.mock('@/app/job/components/script-editor', () => ({
+vi.mock('@/components/script-editor', () => ({
   default: ({
     activeLang,
     value,

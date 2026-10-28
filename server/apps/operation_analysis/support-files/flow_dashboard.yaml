@@ -20,8 +20,10 @@ dashboards:
   name: Flow 网络流量分析仪表盘
   desc: 按所选网络设备展示流量大小和趋势、协议分布、会话以及设备之间的通信关系，帮助运维人员查看流量特征和主要通信对象。设备需要先接入流量监控，并在画布上选中。
   other:
+    gridCols: 24
     timeSelector:
       selectValue: 360
+    gridRowHeight: 30
   view_sets:
   - id: group-overview
     itemType: group
@@ -29,14 +31,14 @@ dashboards:
     description: 所选设备在时间窗内的总流量、包速、平均包大小与有效采样率
     x: 0
     y: 0
-    w: 12
-    h: 4
-    headerH: 1
+    w: 24
+    h: 8
+    headerH: 2
     sizeToContent: true
     subGridOpts:
       children:
-      - h: 3
-        w: 3
+      - h: 6
+        w: 6
         x: 0
         y: 0
         id: flow-kpi-bytes
@@ -61,7 +63,7 @@ dashboards:
             value: []
             alias_name: 设备
             filterType: filter
-            inputConfig: &id006
+            inputConfig: &id008
               control: select
               multiple: true
               picker: table
@@ -83,7 +85,7 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: &id007
+                staticItems: &id002
                 - label: 总流量
                   value: device_flow_bytes_rate
                 - label: 总包速
@@ -108,7 +110,7 @@ dashboards:
                   value: device_flow_dst_port_bytes_rate
                 - label: Top 会话
                   value: device_flow_top_conversation_bytes_rate
-          - &id008
+          - &id003
             name: mode
             type: string
             value: instant
@@ -121,16 +123,16 @@ dashboards:
             value: 360
             alias_name: 时间范围
             filterType: filter
-          thresholdColors: &id002
+          thresholdColors: &id005
           - color: '#366ce4'
             value: '70'
           - color: '#366ce4'
             value: '30'
           - color: '#366ce4'
             value: '0'
-      - h: 3
-        w: 3
-        x: 3
+      - h: 6
+        w: 6
+        x: 6
         y: 0
         id: flow-kpi-packets
         name: 总包速
@@ -159,13 +161,13 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: *id007
-          - *id008
+                staticItems: *id002
+          - *id003
           - *id004
-          thresholdColors: *id002
-      - h: 3
-        w: 3
-        x: 6
+          thresholdColors: *id005
+      - h: 6
+        w: 6
+        x: 12
         y: 0
         id: flow-kpi-avg-size
         name: 平均包大小
@@ -194,13 +196,13 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: *id007
-          - *id008
+                staticItems: *id002
+          - *id003
           - *id004
-          thresholdColors: *id002
-      - h: 3
-        w: 3
-        x: 9
+          thresholdColors: *id005
+      - h: 6
+        w: 6
+        x: 18
         y: 0
         id: flow-kpi-sampling
         name: 有效采样率
@@ -228,24 +230,24 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: *id007
-          - *id008
+                staticItems: *id002
+          - *id003
           - *id004
-          thresholdColors: *id002
+          thresholdColors: *id005
   - id: group-trend
     itemType: group
     name: 流量趋势
     description: Bytes/s、Packets/s 与协议流量趋势
     x: 0
-    y: 4
-    w: 12
-    h: 7
-    headerH: 1
+    y: 8
+    w: 24
+    h: 14
+    headerH: 2
     sizeToContent: true
     subGridOpts:
       children:
-      - h: 6
-        w: 4
+      - h: 12
+        w: 8
         x: 0
         y: 0
         id: flow-trend-bytes
@@ -271,14 +273,14 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: &id009
+                staticItems: &id006
                 - label: 总流量
                   value: device_flow_bytes_rate
                 - label: 总包速
                   value: device_flow_packets_rate
                 - label: 协议流量
                   value: device_flow_protocol_bytes_rate
-          - &id010
+          - &id007
             name: mode
             type: string
             value: range
@@ -288,9 +290,9 @@ dashboards:
           - *id004
           unitId: bps
           conversionFactor: 8
-      - h: 6
-        w: 4
-        x: 4
+      - h: 12
+        w: 8
+        x: 8
         y: 0
         id: flow-trend-packets
         name: 总包速趋势
@@ -315,13 +317,13 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: *id009
-          - *id010
+                staticItems: *id006
+          - *id007
           - *id004
           unit: pps
-      - h: 6
-        w: 4
-        x: 8
+      - h: 12
+        w: 8
+        x: 16
         y: 0
         id: flow-trend-protocol
         name: 协议流量趋势
@@ -346,8 +348,8 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: *id009
-          - *id010
+                staticItems: *id006
+          - *id007
           - *id004
           unitId: bps
           conversionFactor: 8
@@ -356,15 +358,15 @@ dashboards:
     name: 协议与排行
     description: 协议占比与 Source / Destination / IP+端口 / Protocol TopN
     x: 0
-    y: 11
-    w: 12
-    h: 7
-    headerH: 1
+    y: 22
+    w: 24
+    h: 14
+    headerH: 2
     sizeToContent: true
     subGridOpts:
       children:
-      - h: 6
-        w: 6
+      - h: 12
+        w: 12
         x: 0
         y: 0
         id: flow-pie-protocol
@@ -392,12 +394,12 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: *id007
-          - *id008
+                staticItems: *id002
+          - *id003
           - *id004
-      - h: 6
-        w: 6
-        x: 6
+      - h: 12
+        w: 12
+        x: 12
         y: 0
         id: flow-topn
         name: 流量 TopN
@@ -438,22 +440,22 @@ dashboards:
                   value: device_flow_top_dst_ip_port_bytes_rate
                 - label: 协议
                   value: device_flow_protocol_bytes_rate
-          - *id008
+          - *id003
           - *id004
   - id: group-conversation
     itemType: group
     name: 会话
     description: Top Conversation 的源、目的、端口、协议和流量
     x: 0
-    y: 18
-    w: 12
-    h: 8
-    headerH: 1
+    y: 36
+    w: 24
+    h: 16
+    headerH: 2
     sizeToContent: true
     subGridOpts:
       children:
-      - h: 7
-        w: 12
+      - h: 14
+        w: 24
         x: 0
         y: 0
         id: flow-table-conversation
@@ -508,23 +510,23 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: *id007
-          - *id008
+                staticItems: *id002
+          - *id003
           - *id004
   - id: group-node-graph
     itemType: group
     name: 通信关系
     description: 按会话流量画主机互访与访问服务
     x: 0
-    y: 26
-    w: 12
-    h: 9
-    headerH: 1
+    y: 52
+    w: 24
+    h: 18
+    headerH: 2
     sizeToContent: true
     subGridOpts:
       children:
-      - h: 8
-        w: 6
+      - h: 16
+        w: 12
         x: 0
         y: 0
         id: flow-node-graph-ip
@@ -557,17 +559,17 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: *id007
-          - *id008
+                staticItems: *id002
+          - *id003
           - *id004
           - name: limit
             type: number
             value: 100
             alias_name: 返回条数
             filterType: params
-      - h: 8
-        w: 6
-        x: 6
+      - h: 16
+        w: 12
+        x: 12
         y: 0
         id: flow-node-graph-service
         name: 访问服务
@@ -600,8 +602,8 @@ dashboards:
               componentSwitch: false
               optionsSource:
                 type: static
-                staticItems: *id007
-          - *id008
+                staticItems: *id002
+          - *id003
           - *id004
           - name: limit
             type: number
@@ -623,7 +625,7 @@ dashboards:
     order: 0
     enabled: true
     inputMode: select
-    inputConfig: *id006
+    inputConfig: *id008
   - id: time__timeRange
     key: time
     name: 时间范围

@@ -153,6 +153,34 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Windows服务停止",
+      "alert_name": "主机${instance_id}服务${metric__service} 已停止",
+      "description": "监控指定 Windows 服务运行状态，服务未处于 Running 时告警。仅对采集范围为指定服务名的序列生效。",
+      "metric_name": "windows_service_state",
+      "algorithm": "last_over_time",
+      "group_by": ["instance_id", "service"],
+      "filter": [
+        {
+          "name": "service_scope",
+          "method": "=",
+          "value": "names"
+        },
+        {
+          "name": "config_type",
+          "method": "=",
+          "value": "host"
+        }
+      ],
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 0,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

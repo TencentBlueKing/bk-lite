@@ -36,7 +36,7 @@ COPY_CASES = [
         Architecture,
         view_module.ArchitectureModelViewSet,
         "/architecture/",
-        {"other": {"zoom": 1}, "view_sets": {"items": [{"id": "a1"}], "views": []}},
+        {"other": {"zoom": 1}, "view_sets": {"items": [{"id": "a1"}], "views": []}, "refresh_interval": 60000},
     ),
     (
         Screen,

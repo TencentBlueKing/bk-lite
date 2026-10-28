@@ -104,22 +104,11 @@ export const NodeSettings = ({
           </Box>
         </Section>
       ) : null}
-      <Section title={labels.description}>
-        <MarkdownEditor
-          height={100}
-          placeholder={labels.descriptionPlaceholder}
-          value={modelItem.description || ''}
-          onChange={(text) => {
-            if (modelItem.description !== text)
-              onModelItemUpdated({ description: text });
-          }}
-        />
-      </Section>
       {modelItem.name && (
         <Section title={labels.labelHeight}>
           <Slider
             step={20}
-            min={60}
+            min={20}
             max={280}
             value={node.labelHeight}
             sx={{
@@ -135,6 +124,17 @@ export const NodeSettings = ({
         </Section>
       )}
       {extra ? <Section sx={{ pt: 2 }}>{extra}</Section> : null}
+      <Section title={labels.description} sx={extra ? { pt: 3 } : undefined}>
+        <MarkdownEditor
+          height={82}
+          placeholder={labels.descriptionPlaceholder}
+          value={modelItem.description || ''}
+          onChange={(text) => {
+            if (modelItem.description !== text)
+              onModelItemUpdated({ description: text });
+          }}
+        />
+      </Section>
       <Section sx={{ pt: 2.5, pb: 0.5 }}>
         <Box sx={{ borderTop: '1px solid var(--color-border-1)', pt: 1.5 }}>
           <DeleteButton onClick={onDeleted} />

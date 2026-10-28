@@ -4,6 +4,7 @@ import type {
   LayoutChangeItem,
   DashboardWidgetLayoutItem,
 } from '../types/dashBoard';
+import { scaleDashboardGridHeight } from './dashboardGridRows';
 
 export interface DashboardGroupSection {
   group: DashboardGroupLayoutItem;
@@ -28,7 +29,7 @@ export interface DashboardTopLevelBlock {
   top: number;
 }
 
-const DASHBOARD_EMPTY_GROUP_DROP_ROWS = 4;
+const DASHBOARD_EMPTY_GROUP_DROP_ROWS = scaleDashboardGridHeight(4);
 
 export const isDashboardGroupItem = (
   item: DashboardLayoutItem,
