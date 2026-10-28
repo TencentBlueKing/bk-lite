@@ -339,6 +339,40 @@ def test_interrupt_delivers_images_from_generated_answer(monkeypatch):
     assert agent.requests[1].user_message == "第二句"
 
 
+def test_interrupt_image_delivery_releases_the_connection_lock(monkeypatch):
+    from apps.opspilot.services.skill_channel_im_media import ImImage
+
+    image_url = "https://blocked.example/a.png?sig=SENTINEL_IMAGE_URL"
+    image = ImImage(alt="图", source_url=image_url, public_url=image_url, content=b"png", content_type="image/png")
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_feishu_long_connection.feishu_outbound",
+        lambda text: ("说明", [image]) if image_url in (text or "") else (text, []),
+    )
+    held = {"show": None, "images": None}
+    original_show = FeishuConnection._show
+    original_deliver = FeishuConnection._deliver_images
+
+    def spy_show(self, turn, text):
+        held["show"] = self._lock.locked()
+        return original_show(self, turn, text)
+
+    def spy_deliver(self, turn, content):
+        held["images"] = self._lock.locked()
+        return original_deliver(self, turn, content)
+
+    monkeypatch.setattr(FeishuConnection, "_show", spy_show)
+    monkeypatch.setattr(FeishuConnection, "_deliver_images", spy_deliver)
+    agent = RecordingAgent()
+    session, gateway, _clock = _session(_channel(), agent)
+    session.handle(_text(message_id="om_old", text="第一句"))
+    agent.requests[0].publish(f"说明\n\n![图]({image_url})")
+    session.handle(_text(message_id="om_new", text="第二句"))
+
+    assert held == {"show": False, "images": False}
+    assert gateway.images == [("om_old", "图", b"png", "image/png")]
+    assert ("om_1", "说明") in gateway.updates
+
+
 def test_interrupt_delivers_images_after_bubble_already_refreshed(monkeypatch):
     from apps.opspilot.services.skill_channel_im_media import ImImage
 

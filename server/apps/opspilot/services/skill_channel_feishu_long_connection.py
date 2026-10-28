@@ -262,25 +262,35 @@ class FeishuConnection:
     def _begin_turn(self, event: FeishuInbound, text: str, bubble_id: str) -> None:
         now = self.clock.now()
         sender = event.sender_open_id or event.message_id
-        with self._lock:
-            previous = self._turns.get(event.chat_id)
-            if previous is not None:
-                self._interrupt_locked(previous)
-            turn = Turn(
-                chat_id=event.chat_id,
-                user_message_id=event.message_id,
-                bubble_id=bubble_id,
-                session_id=speaker_session_id(event.chat_id, sender),
-                external_user_id=sender,
-                user_message=text,
-                started_at=now,
-                last_sent_at=now,
-                displayed=PROCESSING_TEXT,
-            )
-            request = AnswerRequest(self, turn)
-            turn.request = request
-            self._turns[event.chat_id] = turn
-            self._persist_user(turn)
+        interrupted: tuple[Turn, str] | None = None
+        try:
+            with self._lock:
+                previous = self._turns.get(event.chat_id)
+                if previous is not None:
+                    content = self._interrupt_locked(previous)
+                    if content:
+                        interrupted = (previous, content)
+                turn = Turn(
+                    chat_id=event.chat_id,
+                    user_message_id=event.message_id,
+                    bubble_id=bubble_id,
+                    session_id=speaker_session_id(event.chat_id, sender),
+                    external_user_id=sender,
+                    user_message=text,
+                    started_at=now,
+                    last_sent_at=now,
+                    displayed=PROCESSING_TEXT,
+                )
+                request = AnswerRequest(self, turn)
+                turn.request = request
+                self._turns[event.chat_id] = turn
+                self._persist_user(turn)
+        finally:
+            if interrupted is not None:
+                previous_turn, content = interrupted
+                if previous_turn.displayed != content:
+                    self._show(previous_turn, content)
+                self._deliver_images(previous_turn, content)
         if self.sync_agents:
             self._run_agent(request)
             return
@@ -330,22 +340,21 @@ class FeishuConnection:
             logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "agent", type(exc).__name__)
             request.fail(None)
 
-    def _interrupt_locked(self, turn: Turn) -> None:
+    def _interrupt_locked(self, turn: Turn) -> str | None:
+        """结束旧回合并返回待投图正文。上传放在锁外。"""
         if turn.request is not None:
             turn.request.cancelled = True
         if turn.closed:
             self._turns.pop(turn.chat_id, None)
-            return
+            return None
         turn.closed = True
         generated = turn.generated or ""
-        if generated.strip():
-            # 气泡还停在「正在处理」时先刷出正文，再按原文投图，然后才摘掉回合。
-            if turn.displayed != generated:
-                self._show(turn, generated)
-            self._deliver_images(turn, generated)
+        pending = generated if generated.strip() else None
+        if pending:
             self._persist_assistant(turn, generated)
         self._turns.pop(turn.chat_id, None)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "interrupted")
+        return pending
 
     def _apply_deadline(self, turn: Turn, now: float) -> str | None:
         if turn.closed:
