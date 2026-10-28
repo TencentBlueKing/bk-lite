@@ -17,6 +17,7 @@ from apps.opspilot.services.skill_channel_aibot import (
     SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE,
     SkillChannelAibotUtils,
     append_short_connection_file_links,
+    _image_claim_key,
     claim_short_connection_delivery,
     finish_short_connection_stream,
     normalize_aibot_channel_config,
@@ -372,9 +373,12 @@ class TestAibotHttp:
         assert payload["stream"]["content"] == "说明"
         assert payload["stream"]["msg_item"] == [image_item]
         held = _decrypt_passive(again)
-        assert held["stream"]["finish"] is False
-        assert held["stream"]["content"] == SHORT_CONNECTION_PROCESSING_TEXT
+        assert held["stream"]["finish"] is True
+        assert held["stream"]["content"] == "说明"
         assert "msg_item" not in held["stream"]
+        from django.core.cache import cache
+
+        assert cache.get(_image_claim_key(ch.id, "stream-1")) is None
         assert image_url not in resp.content.decode("utf-8")
         rendered = " ".join(record.getMessage() for record in caplog.records)
         formatted = " ".join(logging.Formatter().format(record) for record in caplog.records)
@@ -488,6 +492,17 @@ class TestAibotHttp:
         assert delivered_payload["stream"]["finish"] is True
         assert delivered_payload["stream"]["msg_item"] == [image_item]
         assert cache.get(f"skill_channel_aibot_stream:{ch.id}:stream-1")["stream_committed"] is True
+        assert cache.get(f"skill_channel_aibot_stream:{ch.id}:stream-1")["images_delivered"] is True
+        assert cache.get(_image_claim_key(ch.id, "stream-1")) is None
+        with patch(
+            "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.decrypt_callback",
+            return_value=message,
+        ):
+            repeated = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+        repeated_payload = _decrypt_passive(repeated)
+        assert repeated_payload["stream"]["finish"] is True
+        assert repeated_payload["stream"]["content"] == "说明"
+        assert "msg_item" not in repeated_payload["stream"]
 
 
 class TestAibotTasks:
