@@ -237,6 +237,7 @@ messages:
   excel_transform_unavailable: "Python 转换服务不可用，请确认转换服务已启动且认证配置正确"
   excel_worker_unavailable: "后台处理服务异常，请确认任务服务已启动后重试"
   excel_process_retry: "Excel 处理失败，请重新选择文件并保存；若持续失败请查看服务端日志"
+  excel_processing_expired: "处理中断，请用已保存文件重新处理"
   connection_rest_host_changed: "REST 相对路径不得改变目标主机"
   connection_datasource_invalid: "数据源无效"
   connection_inactive: "数据连接已停用，请启用或更换连接"

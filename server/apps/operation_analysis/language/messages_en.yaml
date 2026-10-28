@@ -237,6 +237,7 @@ messages:
   excel_transform_unavailable: "The Python transform service is unavailable. Confirm it is running and its authentication is correct"
   excel_worker_unavailable: "The background task service failed. Confirm the task service is running and try again"
   excel_process_retry: "Excel processing failed. Select the file again and save. If it keeps failing, check the server logs"
+  excel_processing_expired: "Processing was interrupted. Retry with the saved file."
   connection_rest_host_changed: "A REST relative path must not change the target host"
   connection_datasource_invalid: "The datasource is invalid"
   connection_inactive: "The data connection is disabled. Enable it or choose another connection"
