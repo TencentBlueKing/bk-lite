@@ -1,7 +1,7 @@
 # APM 策略计算方式产品决策记忆
 
 - 最近更新：2026-10-28
-- 当前规格：`specs/changes/apm-alert-calc-catalog/spec.md`（第二批，implemented，提交 `aa7b2d9aea` / `af3db59cd1` / `a54e7d70e3`）；第一批 `specs/changes/apm-alert-calc-enrichment/spec.md`（implemented）
+- 当前规格：`specs/changes/apm-policy-conditions-and-scope/spec.md`（第三批，implemented）；第二批 `specs/changes/apm-alert-calc-catalog/spec.md`（implemented，提交 `aa7b2d9aea` / `af3db59cd1` / `a54e7d70e3`）；第一批 `specs/changes/apm-alert-calc-enrichment/spec.md`（implemented）
 - 长期契约：`specs/capabilities/apm-alerting.md`
 
 ## 产品定位
@@ -20,6 +20,12 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
   - 触发条件「N 次 ⟨连续 | 最近 N 个周期内⟩」；恢复阈值（滞回）一条线。
   - 全局评估延迟 `APM_POLICY_EVALUATION_DELAY`，默认 60s。
   - 试算、快照、告警详情随契约扩展。
+- 第三批（implemented，2026-10-28）：
+  - 最多 3 条常规条件，全部满足；前置条件最多 2 条，只做绝对门槛。
+  - 作用范围：单服务、多服务或按应用；端点模式为整体 / 手选 / 全部端点；实例维度为不拆 / 按实例。
+  - 下游依赖作为目标类型，不按端点或实例拆。
+  - SLO 燃烧率：一条策略一组长短窗，快燃 / 慢燃用预设各建一条。
+  - `baseline_days` 且 N ≥ 3 时可选 σ；试算可回放最近 24h，只读。
 
 ## 已确认设计决策
 
@@ -27,7 +33,7 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
 - 新指标全部并入现有那一条 LogsQL `stats`（`avg / max / quantile / count() if`），零额外查询；本机 VT 已实跑确认。
 - 计数类指标（错误数、慢请求数）是整窗总数，不套汇聚方式，也不允许最低请求数；率 / 分位 / 均值 / Apdex 才受最低请求数门控。
 - 近 N 天同窗均值用一条多段 `_time:[s, e)` 加 `stats by (_time:1d)` 的查询拿齐；区间必须半开。可用天数 < ⌈N/2⌉ 记 `missing_baseline`。
-  不做均值 ± k·σ 动态区间，先看现场反馈。
+  第三批在 N ≥ 3 时追加 σ：比较值是 `(当前 − 均值) / 样本标准差`，不是把均值线画成动态阈值带。
 - N 中 M 用 `ApmPolicyTargetState.hit_history` 位串，不重查前 N 窗；保持态不推位；触发后清空。
 - 恢复阈值方向必须与阈值阶梯相反；带内 `hold` 不触发、不计恢复、活动告警保持，与监控 `hold_events` 同义。
 - 评估延迟做全局环境变量而不是策略级。原因：延迟是采集链路属性；竞品要么显式默认 2 分钟（New Relic），要么靠分钟桶天然晚 1～2 分钟
@@ -37,13 +43,7 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
 
 ## 明确后置
 
-- 前置条件（0～2 条绝对值门槛）。2026-10-28 从第二批撤回：它和监控多指标条件同类，后续和监控一起考虑，不在 APM 策略里单做一条。
-- SLO 错误预算燃烧率告警（以 SLO 为目标的新策略类型，`ApmSlo` 已在）。
-- 下游依赖调用（client Span 按 `peer.service` / `db.system`）、实例维度。
-- 均值 ± k·σ 动态区间、离群检测、周级同窗均值。
-- 机器学习异常检测、时序预测、查询语言框、任意 AND / OR、复合策略、距容量线剩余时间。
-- 静默期、通知间隔、维护窗（告警中心）。
-- 策略级评估延迟；服务级统一慢阈值 / Apdex T。
+无。机器学习异常检测、时序预测、查询语言框、任意满足、复合策略、静默期、通知间隔、维护窗、策略级评估延迟和服务级统一慢阈值仍不做，不记成待排期项。
 
 ## 仍待确认
 
@@ -56,6 +56,7 @@ SkyWalking Alarm、阿里云 ARMS、蓝鲸监控）只做能力覆盖与术语�
 - 2026-10-27 把第一批「不进表单」里的 7d 同窗、近 N 天均值、滞回、AND 组合从明确后置移入第二批范围，
   形态分别收敛为「N 天前同窗」「近 N 天同窗均值」「恢复阈值」「0～2 条绝对值前置条件」。
 - 2026-10-28 撤回「0～2 条绝对值前置条件」。产品认为它和监控多指标条件同类，这批没必要单独做，后续再考虑。
+- 2026-10-28 第三批把上述撤回改回：前置条件作为多条件里的绝对门槛落地，并补上作用范围、下游依赖、SLO 燃烧率、σ 和 24h 回放。多服务用轻量 scope，不引入监控策略组。
 
 ## 决策来源
 
