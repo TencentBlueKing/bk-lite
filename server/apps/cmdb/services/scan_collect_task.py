@@ -234,12 +234,9 @@ def _first_instance_uuid(collect: CollectModels) -> str:
 
 
 def find_scan_generated_collect(scan_task, family_model_id: str, inst_uuid: str | None = None) -> CollectModels | None:
-    """只匹配本扫描生成的同族任务，避免改到手建采集。"""
+    """只匹配带本扫描来源标记的同族任务，避免按名称改到手建采集。"""
     qs = CollectModels.objects.filter(is_system=False, model_id=family_model_id)
     marked = list(qs.filter(params__contains={SCAN_SOURCE_PARAM: scan_task.id}))
-    if not marked:
-        name_prefix = f"{scan_task.name}-{family_model_id}"
-        marked = list(qs.filter(name__startswith=name_prefix))
     for collect in marked:
         if uses_single_endpoint(family_model_id) and inst_uuid:
             if _first_instance_uuid(collect) != str(inst_uuid):
