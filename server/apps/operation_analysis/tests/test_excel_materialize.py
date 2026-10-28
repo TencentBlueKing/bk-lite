@@ -505,6 +505,55 @@ def test_sweep_abandons_slots_left_on_non_excel_datasource(django_capture_on_com
 
 
 @pytest.mark.django_db
+def test_sweep_skips_datasource_restored_to_excel_before_delete(django_capture_on_commit_callbacks, monkeypatch):
+    from apps.operation_analysis.services.excel_materialize import cleanup as cleanup_mod
+    from apps.operation_analysis.services.excel_materialize import sweep_abandoned_excel_materializations
+
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    storage = slot.source_file.storage
+    source_name = slot.source_file.name
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(source_type=DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL)
+    original_exclude = cleanup_mod.ExcelMaterializationSlot.objects.exclude
+
+    def exclude_then_restore(*args, **kwargs):
+        queryset = original_exclude(*args, **kwargs)
+
+        class _StaleIds:
+            def values_list(self, *args, **kwargs):
+                self.queryset = queryset.values_list(*args, **kwargs)
+                return self
+
+            def distinct(self):
+                self.queryset = self.queryset.distinct()
+                return self
+
+            def order_by(self, *args, **kwargs):
+                self.queryset = self.queryset.order_by(*args, **kwargs)
+                return self
+
+            def __getitem__(self, item):
+                ids = list(self.queryset[item])
+                DataSourceAPIModel.objects.filter(pk=ds.id).update(source_type=DataSourceAPIModel.SOURCE_TYPE_EXCEL)
+                return ids
+
+        return _StaleIds()
+
+    monkeypatch.setattr(cleanup_mod.ExcelMaterializationSlot.objects, "exclude", exclude_then_restore)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        stats = sweep_abandoned_excel_materializations()
+
+    ds.refresh_from_db()
+    assert stats["cleaned"] == 0
+    assert stats["errors"] == 0
+    assert ds.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL
+    assert ds.excel_candidate_slot_id == slot.id
+    assert ExcelMaterializationSlot.objects.filter(pk=slot.id).exists()
+    assert storage.exists(source_name) is True
+
+
+@pytest.mark.django_db
 def test_serializer_switch_from_excel_to_postgresql_abandons_slots(authenticated_user, django_capture_on_commit_callbacks):
     from rest_framework.test import APIRequestFactory, force_authenticate
 
