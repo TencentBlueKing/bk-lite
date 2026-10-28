@@ -224,13 +224,16 @@ class EscalationService:
         reminder = AlertReminderTask.objects.filter(alert=alert).first()
         if not reminder:
             return
+        from apps.alerts.service.reminder_service import ReminderService
+
         now = timezone.now()
-        reminder.reminder_count = 0
+        ReminderService._restart_reminder_budget(reminder)
         reminder.is_active = True
         reminder.last_reminder_time = None
         reminder.next_reminder_time = now + timedelta(minutes=reminder.current_frequency_minutes)
         reminder.save(
             update_fields=[
+                "generation",
                 "reminder_count",
                 "is_active",
                 "last_reminder_time",
