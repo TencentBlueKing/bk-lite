@@ -156,12 +156,74 @@ def resubmit_excel_from_saved_source_task(datasource_id: int) -> dict:
     return {"ok": True, "slot_id": slot.id, "generation": slot.generation}
 
 
+def _converge_stuck_excel_processing(*, deadline_seconds: int, limit: int) -> dict[str, int]:
+    """期限内的 processing 不动；空时钟只补当前时间；超时槽比较更新为 failed，不重投。"""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
+    from apps.operation_analysis.services.user_messages import oa_message
+
+    now = timezone.now()
+    bounded_limit = max(1, int(limit))
+    deadline = max(60, int(deadline_seconds))
+    expired_before = now - timedelta(seconds=deadline)
+    processing = ExcelMaterializationSlot.objects.filter(
+        role=ExcelMaterializationSlot.ROLE_CANDIDATE,
+        status=ExcelMaterializationSlot.STATUS_PROCESSING,
+        datasource__source_type=DataSourceAPIModel.SOURCE_TYPE_EXCEL,
+    )
+    missing_clock_ids = list(
+        processing.filter(processing_started_at__isnull=True)
+        .order_by("id")
+        .values_list("id", flat=True)[:bounded_limit]
+    )
+    clock_filled = 0
+    for slot_id in missing_clock_ids:
+        clock_filled += ExcelMaterializationSlot.objects.filter(
+            pk=slot_id,
+            role=ExcelMaterializationSlot.ROLE_CANDIDATE,
+            status=ExcelMaterializationSlot.STATUS_PROCESSING,
+            processing_started_at__isnull=True,
+        ).update(processing_started_at=now)
+
+    expired_ids = list(
+        processing.filter(processing_started_at__lte=expired_before)
+        .order_by("id")
+        .values_list("id", flat=True)[:bounded_limit]
+    )
+    summary = oa_message(
+        "messages.excel_processing_expired",
+        "处理中断，请用已保存文件重新处理",
+    )[:512]
+    expired = 0
+    for slot_id in expired_ids:
+        expired += ExcelMaterializationSlot.objects.filter(
+            pk=slot_id,
+            role=ExcelMaterializationSlot.ROLE_CANDIDATE,
+            status=ExcelMaterializationSlot.STATUS_PROCESSING,
+            processing_started_at__lte=expired_before,
+        ).update(
+            status=ExcelMaterializationSlot.STATUS_FAILED,
+            error_code="excel_processing_expired",
+            error_summary=summary,
+        )
+    return {"clock_filled": clock_filled, "expired": expired}
+
+
 @shared_task(
     name="operation_analysis.rescan_pending_excel_materializations",
     max_retries=0,
 )
-def rescan_pending_excel_materializations_task(*, older_than_seconds: int = 60, limit: int = 50) -> dict:
-    """补投长时间停留在 PENDING 的候选（broker 瞬时失败兜底）。"""
+def rescan_pending_excel_materializations_task(
+    *,
+    older_than_seconds: int = 60,
+    limit: int = 50,
+    processing_deadline_seconds: int = 900,
+) -> dict:
+    """补投长时间停留在 PENDING 的候选，并把超时的 processing 收敛为可重试失败。"""
     from datetime import timedelta
 
     from django.utils import timezone
@@ -172,6 +234,10 @@ def rescan_pending_excel_materializations_task(*, older_than_seconds: int = 60, 
     from apps.operation_analysis.services.excel_materialize import sweep_abandoned_excel_materializations
     from apps.operation_analysis.tasks.tasks import materialize_excel_candidate_task
 
+    processing = _converge_stuck_excel_processing(
+        deadline_seconds=processing_deadline_seconds,
+        limit=limit,
+    )
     cutoff = timezone.now() - timedelta(seconds=max(15, int(older_than_seconds)))
     pending = list(
         ExcelMaterializationSlot.objects.filter(
@@ -220,5 +286,7 @@ def rescan_pending_excel_materializations_task(*, older_than_seconds: int = 60, 
         "enqueued": enqueued,
         "resubmit_scanned": len(pending_resubmits),
         "resubmit_enqueued": resubmit_enqueued,
+        "processing_clock_filled": processing["clock_filled"],
+        "processing_expired": processing["expired"],
         "sweep": sweep_abandoned_excel_materializations(limit=limit),
     }

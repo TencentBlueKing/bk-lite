@@ -42,6 +42,7 @@ class ExcelMaterializationSlot(TimeInfo):
     role = models.CharField(max_length=16, choices=ROLE_CHOICES, default=ROLE_CANDIDATE, verbose_name="槽位角色")
     generation = models.PositiveIntegerField(default=0, verbose_name="候选代数")
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
+    processing_started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始处理时间")
 
     source_filename = models.CharField(max_length=255, blank=True, default="", verbose_name="原文件名")
     source_file = models.FileField(
