@@ -46,6 +46,7 @@ import {
   filterHitsByConfidence,
   groupDbUnmatchedByFamily,
   groupNetworkUnmatchedBySoid,
+  hitHasCmdbInstance,
   hitHasCollectCredential,
   hitSoid,
   isLinkMonitorFamilyTab,
@@ -371,6 +372,10 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     const validExportIds = validExportHits.map((item) => item.id);
 
     if (kind === 'monitor' && networkUnmatchedSelected.length > 0) {
+      message.warning(t('Scan.needWriteCmdbFirst'));
+      return;
+    }
+    if (kind === 'monitor' && validExportHits.some((item) => !hitHasCmdbInstance(item))) {
       message.warning(t('Scan.needWriteCmdbFirst'));
       return;
     }
@@ -767,7 +772,8 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
   const actionsDisabled = hitsLoading || !canSplitUnmatched;
   const exportDisabled = hitsLoading || isOnlyDbUnmatchedSelected || !selectedHitIds.length || !canSplitUnmatched;
   const collectDisabled = exportDisabled || selectedHits.some((item) => !hitHasCollectCredential(item));
-  const monitorDisabled = exportDisabled;
+  const monitorNeedsCmdb = selectedHits.some((item) => !hitHasCmdbInstance(item));
+  const monitorDisabled = exportDisabled || monitorNeedsCmdb;
   const linkMonitorTab = isLinkMonitorFamilyTab(familyTab);
   const targetCount = activeExecution?.target_count ?? 0;
   const receivedCount = activeExecution?.received_count ?? 0;
@@ -789,25 +795,43 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
       width="min(82vw, 1440px)"
       onClose={onClose}
       footer={
-        <div className="flex items-center justify-between">
-          <div className="text-xs text-[var(--color-text-3)]">
-            {selectedHitIds.length > 0 ? (
-              <span>
-                {t('common.selected')} <strong className="text-[var(--color-primary)]">{selectedHitIds.length}</strong>{' '}
-                {t('common.items')}
-              </span>
-            ) : (
-              <span>{t('Scan.selectHitsTip')}</span>
-            )}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs text-[var(--color-text-3)]">
+              {selectedHitIds.length > 0 ? (
+                <span>
+                  {t('common.selected')} <strong className="text-[var(--color-primary)]">{selectedHitIds.length}</strong>{' '}
+                  {t('common.items')}
+                </span>
+              ) : (
+                <span>{t('Scan.selectHitsTip')}</span>
+              )}
+            </div>
+            <div className="mt-0.5 text-xs text-[var(--color-text-4)]">{t('Scan.writeThenMonitorTip')}</div>
           </div>
-          <Space>
+          <Space wrap>
             <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
-              <Button loading={batchLoading} disabled={exportDisabled} onClick={() => handleBatch('cmdb')}>
-                {t('Scan.writeCmdb')}
-              </Button>
+              <Tooltip title={t('Scan.writeCmdbHint')}>
+                <span>
+                  <Button
+                    type="primary"
+                    loading={batchLoading}
+                    disabled={exportDisabled}
+                    onClick={() => handleBatch('cmdb')}
+                  >
+                    {t('Scan.writeCmdb')}
+                  </Button>
+                </span>
+              </Tooltip>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
-              <Tooltip title={collectDisabled && selectedHits.length ? t('Scan.generateCollectNeedsCredential') : undefined}>
+              <Tooltip
+                title={
+                  collectDisabled && selectedHits.length
+                    ? t('Scan.generateCollectNeedsCredential')
+                    : t('Scan.writeCmdbAndGenerateHint')
+                }
+              >
                 <span>
                   <Button loading={batchLoading} disabled={collectDisabled} onClick={() => handleBatch('collect')}>
                     {t('Scan.writeCmdbAndGenerate')}
@@ -816,14 +840,17 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
               </Tooltip>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
-              <Button
-                type="primary"
-                loading={batchLoading}
-                disabled={monitorDisabled}
-                onClick={() => handleBatch('monitor')}
+              <Tooltip
+                title={
+                  selectedHits.length && monitorNeedsCmdb ? t('Scan.needWriteCmdbFirst') : t('Scan.syncToMonitorHint')
+                }
               >
-                {linkMonitorTab ? t('Scan.syncToMonitor') : t('Scan.pushMonitor')}
-              </Button>
+                <span>
+                  <Button loading={batchLoading} disabled={monitorDisabled} onClick={() => handleBatch('monitor')}>
+                    {linkMonitorTab ? t('Scan.syncToMonitor') : t('Scan.pushMonitor')}
+                  </Button>
+                </span>
+              </Tooltip>
             </PermissionWrapper>
           </Space>
         </div>

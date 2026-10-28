@@ -5,6 +5,7 @@ import {
   DEFAULT_SCAN_CONFIDENCE_FILTER,
   filterHitsByConfidence,
   hitConfidence,
+  hitHasCmdbInstance,
   hitHasCollectCredential,
   isLinkMonitorFamilyTab,
   isScanDatabaseType,
@@ -37,6 +38,12 @@ describe('扫描清单辅助', () => {
 
   it('有采集凭据的命中允许生成采集', () => {
     expect(hitHasCollectCredential(hit({ credential_id: 'cred-db' }))).toBe(true);
+  });
+
+  it('未写入 CMDB 的命中没有实例，不能同步监控', () => {
+    expect(hitHasCmdbInstance(hit())).toBe(false);
+    expect(hitHasCmdbInstance(hit({ inst_uuid: '  ' }))).toBe(false);
+    expect(hitHasCmdbInstance(hit({ inst_uuid: 'inst-1' }))).toBe(true);
   });
 
   it('可信度缺省为低，并按选中档过滤', () => {

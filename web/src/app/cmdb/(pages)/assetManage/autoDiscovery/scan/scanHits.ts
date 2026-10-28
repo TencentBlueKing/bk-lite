@@ -85,6 +85,8 @@ export const isScanLinkMonitorType = (hit: ScanHitItem) => {
 
 export const hitHasCollectCredential = (hit: ScanHitItem) => Boolean(String(hit.credential_id || '').trim());
 
+export const hitHasCmdbInstance = (hit: ScanHitItem) => Boolean(String(hit.inst_uuid || '').trim());
+
 export const isLinkMonitorFamilyTab = (familyTab?: string) =>
   familyTab === 'middleware' ||
   familyTab === 'database' ||
