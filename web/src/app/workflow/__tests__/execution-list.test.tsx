@@ -97,8 +97,14 @@ describe('执行记录统一详情入口', () => {
     expect(screen.queryByPlaceholderText('状态')).toBeNull();
     expect(screen.queryByPlaceholderText('触发器')).toBeNull();
     expect(screen.getByRole('columnheader', { name: /^状态/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
-    expect(screen.getByRole('columnheader', { name: /^触发器/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: /^模式/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: /^触发器/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
+    const headerNames = screen.getAllByRole('columnheader').map((header) => header.textContent || '');
+    const statusIndex = headerNames.findIndex((name) => name.startsWith('状态'));
+    const modeIndex = headerNames.findIndex((name) => name.startsWith('模式'));
+    const triggerIndex = headerNames.findIndex((name) => name.startsWith('触发器'));
+    expect(statusIndex).toBeLessThan(modeIndex);
+    expect(modeIndex).toBeLessThan(triggerIndex);
     expect(screen.queryByText('全部流程')).toBeNull();
     expect(screen.queryByRole('button', { name: '暂停' })).toBeNull();
     expect(screen.queryByRole('button', { name: '终止' })).toBeNull();
