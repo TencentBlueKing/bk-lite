@@ -219,9 +219,15 @@ def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sende
                 session_id=session_id,
                 download_origin=(config or {}).get("download_origin") or "",
             )
-            visible, _items = wecom_short_connection_outbound(reply_text)
+            visible, items = wecom_short_connection_outbound(reply_text)
             if stream_id:
-                finish_short_connection_stream(channel_id, stream_id, reply_text)
+                finish_short_connection_stream(
+                    channel_id,
+                    stream_id,
+                    reply_text,
+                    visible=visible,
+                    msg_items=items,
+                )
                 process_skill_channel_aibot_reply.apply_async(
                     args=[channel_id, msg_id, response_url, visible, stream_id],
                     countdown=SHORT_CONNECTION_STREAM_FALLBACK_SECONDS,
@@ -247,7 +253,7 @@ def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sende
 def process_skill_channel_aibot_reply(self, channel_id, msg_id, response_url, content, stream_id=""):
     """异步发送智能体企微 aibot 回覆，成功后再标记 completed。
 
-    带 stream_id 时只在流式轮询没有投递过时补发纯文本。图片已由轮询的 msg_item 送出。
+    带 stream_id 时，结束帧还没加密成功才补发纯文本。图片留在缓存里，后续轮询仍可带上。
     """
     from apps.opspilot.services.skill_channel_aibot import SkillChannelAibotUtils, claim_short_connection_delivery, release_short_connection_delivery
 

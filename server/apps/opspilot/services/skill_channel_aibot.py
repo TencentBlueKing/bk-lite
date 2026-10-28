@@ -28,6 +28,8 @@ SHORT_CONNECTION_STREAM_CACHE_SECONDS = 7200
 SHORT_CONNECTION_STREAM_FALLBACK_SECONDS = 20
 _STREAM_KEY = "skill_channel_aibot_stream:{channel_id}:{stream_id}"
 _STREAM_CLAIM_KEY = "skill_channel_aibot_stream_claim:{channel_id}:{stream_id}"
+_STREAM_IMAGE_KEY = "skill_channel_aibot_stream_image:{channel_id}:{stream_id}"
+_DELIVERY_CLAIM_SECONDS = 30
 
 SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE = (
     "event=skill_channel_aibot_decrypt_failed channel_id=%s failed_stage=decrypt_callback "
@@ -102,56 +104,151 @@ def open_short_connection_stream(channel_id: int, stream_id: str, response_url: 
     )
 
 
-def finish_short_connection_stream(channel_id: int, stream_id: str, reply_text: str) -> None:
+def finish_short_connection_stream(
+    channel_id: int,
+    stream_id: str,
+    reply_text: str,
+    *,
+    visible: str | None = None,
+    msg_items: list[dict] | None = None,
+) -> None:
+    """写入完成态。图片在这里物化进缓存，轮询不再下载。"""
+    if visible is None or msg_items is None:
+        materialized_visible, materialized_items = wecom_short_connection_outbound(reply_text or "")
+        if visible is None:
+            visible = materialized_visible
+        if msg_items is None:
+            msg_items = materialized_items
     key = _stream_cache_key(channel_id, stream_id)
     state = dict(cache.get(key) or {})
     state["phase"] = "finished"
     state["reply_text"] = reply_text or ""
+    state["visible"] = visible or ""
+    state["msg_items"] = list(msg_items or [])
     state.setdefault("delivered", False)
+    state.setdefault("stream_committed", False)
+    state.setdefault("text_delivered", False)
+    state.setdefault("images_delivered", False)
     cache.set(key, state, SHORT_CONNECTION_STREAM_CACHE_SECONDS)
 
 
+def _image_claim_key(channel_id: int, stream_id: str) -> str:
+    return _STREAM_IMAGE_KEY.format(channel_id=channel_id, stream_id=stream_id)
+
+
+def _text_claim_key(channel_id: int, stream_id: str) -> str:
+    return _STREAM_CLAIM_KEY.format(channel_id=channel_id, stream_id=stream_id)
+
+
 def release_short_connection_delivery(channel_id: int, stream_id: str) -> None:
+    """放弃尚未加密成功的文本认领。已加密结束的流保持 stream_committed。"""
     key = _stream_cache_key(channel_id, stream_id)
     state = cache.get(key)
     if isinstance(state, dict):
         state = dict(state)
-        state["delivered"] = False
-        cache.set(key, state, SHORT_CONNECTION_STREAM_CACHE_SECONDS)
-    cache.delete(_STREAM_CLAIM_KEY.format(channel_id=channel_id, stream_id=stream_id))
+        if not state.get("stream_committed"):
+            state["delivered"] = False
+            state["text_delivered"] = False
+            cache.set(key, state, SHORT_CONNECTION_STREAM_CACHE_SECONDS)
+    cache.delete(_text_claim_key(channel_id, stream_id))
 
 
 def claim_short_connection_delivery(channel_id: int, stream_id: str) -> bool:
-    """同一条流只投递一次。轮询先到则带图片，超时再走 response_url 纯文本。"""
+    """补发 response_url 纯文本。不消耗已物化图片，轮询仍可把图片放进结束帧。"""
     key = _stream_cache_key(channel_id, stream_id)
     state = cache.get(key)
-    if not isinstance(state, dict) or state.get("delivered"):
+    if not isinstance(state, dict) or state.get("phase") != "finished":
         return False
-    claim_key = _STREAM_CLAIM_KEY.format(channel_id=channel_id, stream_id=stream_id)
-    if not cache.add(claim_key, "1", 30):
+    if state.get("stream_committed") or state.get("delivered") or state.get("text_delivered"):
         return False
-    state = dict(state)
-    state["delivered"] = True
+    claim_key = _text_claim_key(channel_id, stream_id)
+    if not cache.add(claim_key, "1", _DELIVERY_CLAIM_SECONDS):
+        return False
+    state = dict(cache.get(key) or {})
+    if (
+        state.get("phase") != "finished"
+        or state.get("stream_committed")
+        or state.get("delivered")
+        or state.get("text_delivered")
+    ):
+        cache.delete(claim_key)
+        return False
+    state["text_delivered"] = True
     cache.set(key, state, SHORT_CONNECTION_STREAM_CACHE_SECONDS)
     return True
 
 
-def short_connection_stream_payload(channel_id: int, stream_id: str) -> dict[str, Any]:
-    """企微流式刷新。图片放 msg_item，正文不留会被拦截的图片外链。"""
+def commit_short_connection_stream_delivery(channel_id: int, stream_id: str, *, images_included: bool) -> None:
+    """加密结束帧已经可以返回给企微，这时才挡住 response_url 补发。"""
+    key = _stream_cache_key(channel_id, stream_id)
+    state = cache.get(key)
+    if not isinstance(state, dict):
+        return
+    state = dict(state)
+    state["stream_committed"] = True
+    state["delivered"] = True
+    if images_included:
+        state["images_delivered"] = True
+    cache.set(key, state, SHORT_CONNECTION_STREAM_CACHE_SECONDS)
+    if images_included:
+        cache.delete(_image_claim_key(channel_id, stream_id))
+        items = state.get("msg_items")
+        logger.info(SHORT_CONNECTION_IMAGE_REPLY_LOG, channel_id, len(items) if isinstance(items, list) else 0)
+
+
+def settle_short_connection_poll(
+    channel_id: int,
+    stream_id: str,
+    *,
+    encrypted: bool,
+    finish: bool,
+    images_included: bool,
+) -> None:
+    """结束帧只有加密成功才固化认领；失败则释放，让补发还能 claim。"""
+    if not finish or not stream_id:
+        return
+    if encrypted:
+        commit_short_connection_stream_delivery(channel_id, stream_id, images_included=images_included)
+        return
+    if images_included:
+        cache.delete(_image_claim_key(channel_id, stream_id))
+    state = cache.get(_stream_cache_key(channel_id, stream_id))
+    text_delivered = isinstance(state, dict) and bool(state.get("text_delivered"))
+    stream_committed = isinstance(state, dict) and bool(state.get("stream_committed"))
+    if not stream_committed and not text_delivered:
+        release_short_connection_delivery(channel_id, stream_id)
+
+
+def short_connection_stream_payload(channel_id: int, stream_id: str) -> tuple[dict[str, Any], bool]:
+    """企微流式刷新只读缓存。图片在 finish 时已经物化，这里不再下载。"""
     state = cache.get(_stream_cache_key(channel_id, stream_id))
     if not isinstance(state, dict):
-        return {"msgtype": "stream", "stream": {"id": stream_id, "finish": True, "content": ""}}
+        return {"msgtype": "stream", "stream": {"id": stream_id, "finish": True, "content": ""}}, False
     if state.get("phase") != "finished":
         return {
             "msgtype": "stream",
             "stream": {"id": stream_id, "finish": False, "content": SHORT_CONNECTION_PROCESSING_TEXT},
-        }
-    visible, items = wecom_short_connection_outbound(state.get("reply_text") or "")
+        }, False
+    visible = state.get("visible")
+    if not isinstance(visible, str):
+        visible = ""
+    items = state.get("msg_items")
+    if not isinstance(items, list):
+        items = []
     stream: dict[str, Any] = {"id": stream_id, "finish": True, "content": visible}
-    if claim_short_connection_delivery(channel_id, stream_id) and items:
+    if state.get("images_delivered"):
+        return {"msgtype": "stream", "stream": stream}, False
+    images_included = False
+    if items:
+        # 认领只留给还没投递的那一次。没抢到就继续处理中，避免无图结束帧停掉轮询。
+        if not cache.add(_image_claim_key(channel_id, stream_id), "1", _DELIVERY_CLAIM_SECONDS):
+            return {
+                "msgtype": "stream",
+                "stream": {"id": stream_id, "finish": False, "content": SHORT_CONNECTION_PROCESSING_TEXT},
+            }, False
         stream["msg_item"] = items
-        logger.info(SHORT_CONNECTION_IMAGE_REPLY_LOG, channel_id, len(items))
-    return {"msgtype": "stream", "stream": stream}
+        images_included = True
+    return {"msgtype": "stream", "stream": stream}, images_included
 
 
 def normalize_aibot_channel_config(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -252,8 +349,16 @@ class SkillChannelAibotUtils(EnterpriseWechatAibotChatFlowUtils):
 
         if message.get("msgtype") == "stream":
             stream_id = str((message.get("stream") or {}).get("id") or "").strip()
-            payload = short_connection_stream_payload(self.channel_id, stream_id)
-            return self._encrypted_passive_reply(request, crypto, payload, self.channel_id)
+            payload, images_included = short_connection_stream_payload(self.channel_id, stream_id)
+            response = self._encrypted_passive_reply(request, crypto, payload, self.channel_id)
+            settle_short_connection_poll(
+                self.channel_id,
+                stream_id,
+                encrypted=isinstance(response, JsonResponse),
+                finish=bool((payload.get("stream") or {}).get("finish")),
+                images_included=images_included,
+            )
+            return response
 
         if self.is_message_processed(msg_id):
             return HttpResponse("success", content_type="text/plain")

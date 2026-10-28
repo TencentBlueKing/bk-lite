@@ -318,11 +318,12 @@ class WecomAibotConnection:
         session_id, external_user_id = _conversation_identity(body)
         session_key = session_id or external_user_id or req_id
         now = self.clock.now()
-        previous = None
         with self._lock:
             previous = self._turns.get(session_key)
             if previous is not None:
-                self._interrupt_locked(previous)
+                images = self._interrupt_locked(previous)
+                # 图片必须用旧 req_id，并且排在下一条流式帧之前。
+                self._deliver_images(previous, images)
             turn = Turn(
                 req_id=req_id,
                 stream_id=uuid.uuid4().hex,
@@ -341,18 +342,20 @@ class WecomAibotConnection:
             turn.displayed = PROCESSING_TEXT
         self.agent_runner(request)
 
-    def _interrupt_locked(self, turn: Turn) -> None:
+    def _interrupt_locked(self, turn: Turn) -> list[tuple[str, bytes]]:
         if turn.request is not None:
             turn.request.cancelled = True
         if turn.closed:
-            return
+            return []
         turn.closed = True
-        self._send_stream(turn, turn.displayed or PROCESSING_TEXT, finish=True)
-        generated = (turn.generated or "").strip()
-        if generated:
+        generated = turn.generated or ""
+        content = generated if generated.strip() else (turn.displayed or PROCESSING_TEXT)
+        images = list(self._send_stream(turn, content, finish=True))
+        if generated.strip():
             self._persist_assistant(turn, turn.generated)
         self._turns.pop(turn.session_key, None)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "interrupted")
+        return images
 
     def _apply_deadline(self, turn: Turn, now: float) -> list[tuple[Turn, list[tuple[str, bytes]]]]:
         if turn.closed:
