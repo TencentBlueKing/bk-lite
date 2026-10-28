@@ -567,8 +567,8 @@ class ConfigFileService(object):
         """把在途任务里旧图 _id 键收敛到 UUID，避免汇总按 len(items) 误判完成。"""
         raw_items = items if isinstance(items, dict) else {}
         aliases = cls._instance_key_aliases(task)
-        expected = cls._get_expected_instance_ids(task)
-        if not expected:
+        expected_ids = set(cls._get_expected_instance_ids(task))
+        if not expected_ids:
             return dict(raw_items)
 
         normalized: dict = {}
@@ -576,7 +576,7 @@ class ConfigFileService(object):
             if not isinstance(item, dict):
                 continue
             canonical = aliases.get(str(key), str(key))
-            if canonical not in expected:
+            if canonical not in expected_ids:
                 continue
             existing = normalized.get(canonical)
             if existing is None or str(item.get("version") or "") >= str(existing.get("version") or ""):
