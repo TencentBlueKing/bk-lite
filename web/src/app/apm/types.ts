@@ -574,7 +574,7 @@ export type ApmPolicyMetric =
   | 'no_traffic'
   | 'slo_burn_rate';
 export type ApmCompareMode = 'absolute' | 'previous_window' | 'offset_hours' | 'offset_days' | 'offset_1h' | 'offset_24h' | 'baseline_days';
-export type ApmCompareValueKind = 'delta' | 'percent';
+export type ApmCompareValueKind = 'delta' | 'percent' | 'sigma';
 export type ApmPolicyComparator = 'gt' | 'gte' | 'lt' | 'lte';
 export type ApmPolicySeverity = 'critical' | 'error' | 'warning';
 export type ApmPolicyAggregation = 'avg' | 'max' | 'min' | 'last';
@@ -738,6 +738,7 @@ export interface ApmPolicyDryRunItem {
   reason: string;
   hit_history_text?: string;
   baseline_days_used?: number | null;
+  replay?: { windows: number; hits: number; hit_at: string[] };
   conditions?: Array<{
     ref: string;
     current_value: string | null;

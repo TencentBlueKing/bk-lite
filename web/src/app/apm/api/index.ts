@@ -309,7 +309,7 @@ const useApmApi = () => {
   );
 
   const dryRunPolicy = useCallback(
-    (payload: ApmPolicyInput & { policy_id?: string }) =>
+    (payload: ApmPolicyInput & { policy_id?: string; replay_hours?: 0 | 24 }) =>
       post<ApmPolicyDryRunResult>('/apm/policies/dry-run/', payload),
     [post]
   );

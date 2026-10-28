@@ -761,6 +761,52 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(payload.recovery_threshold).toEqual({ comparator: 'lt', value: 40 });
   });
 
+  it('近 N 天同窗均值可以选择标准差，试算可以回放 24h', async () => {
+    const user = userEvent.setup();
+    api.dryRunPolicy.mockResolvedValue({
+      evaluated_at: '2026-08-14T02:00:00Z',
+      compare_mode: 'baseline_days',
+      compare_value_kind: 'sigma',
+      result_unit: 'sigma',
+      total_targets: 1,
+      truncated: false,
+      items: [{
+        endpoint: '',
+        version: '',
+        verdict: 'would_trigger',
+        current_value: '125',
+        baseline_value: '100',
+        compared_value: '2.5',
+        request_count: 20,
+        matched_threshold: { severity: 'error', comparator: 'gt', value: '2' },
+        reason: '',
+        replay: { windows: 24, hits: 2, hit_at: ['2026-08-14T01:00:00+00:00'] },
+      }],
+    });
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByLabelText('比较基准'));
+    await user.click(await screen.findByText('近 N 天同窗均值'));
+    await user.click(screen.getByRole('radio', { name: '标准差 σ' }));
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          compare_mode: 'baseline_days',
+          compare_offset_amount: 7,
+          compare_value_kind: 'sigma',
+        }),
+      ),
+    );
+    await user.click(screen.getByRole('checkbox', { name: '回放最近 24h' }));
+    await user.click(screen.getByRole('button', { name: '试算' }));
+    await waitFor(() =>
+      expect(api.dryRunPolicy).toHaveBeenCalledWith(expect.objectContaining({ replay_hours: 24, policy_id: 'p1' })),
+    );
+    expect(await screen.findByText('2/24')).not.toBeNull();
+    expect(screen.getByText('2026-08-14T01:00:00+00:00')).not.toBeNull();
+  });
+
   it('近 N 天同窗均值提交 2 到 7 天，并允许变化量', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);

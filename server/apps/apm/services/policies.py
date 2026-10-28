@@ -450,6 +450,13 @@ class DjangoApmPolicyService:
         return count < minimum
 
     @staticmethod
+    def _sample_stdev(values: list[Decimal], mean: Decimal) -> Decimal:
+        if len(values) < 2:
+            return Decimal(0)
+        square = sum(((item - mean) ** 2 for item in values), Decimal(0))
+        return (square / Decimal(len(values) - 1)).sqrt()
+
+    @staticmethod
     def _compared_value(current: Decimal, baseline: Decimal, kind: str) -> Decimal:
         if kind == ApmPolicy.CompareValueKind.PERCENT:
             raw = (current - baseline) / baseline * Decimal(100)
@@ -738,8 +745,59 @@ class DjangoApmPolicyService:
                 reason=BASELINE_DAYS_INSUFFICIENT_REASON,
                 baseline_days_used=used,
             )
-        baseline_value = self._bounded_decimal(sum(usable, Decimal(0)) / Decimal(used))
+        mean = sum(usable, Decimal(0)) / Decimal(used)
+        baseline_value = self._bounded_decimal(mean)
         kind = policy.compare_value_kind or ""
+        if kind == ApmPolicy.CompareValueKind.SIGMA and used < 3:
+            return self._query_result(
+                policy,
+                value=None,
+                breached=None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.MISSING_BASELINE,
+                series=current.timeseries,
+                current_value=current_value,
+                baseline_value=baseline_value,
+                request_count=current.request_count,
+                window_ended_at=window_end,
+                reason=BASELINE_DAYS_INSUFFICIENT_REASON,
+                baseline_days_used=used,
+            )
+        if kind == ApmPolicy.CompareValueKind.SIGMA:
+            sigma = self._sample_stdev(usable, mean)
+            if sigma == 0:
+                return self._query_result(
+                    policy,
+                    value=None,
+                    breached=None,
+                    evaluated_at=evaluated_at,
+                    data_state=MetricDataState.MISSING_BASELINE,
+                    series=current.timeseries,
+                    current_value=current_value,
+                    baseline_value=baseline_value,
+                    request_count=current.request_count,
+                    window_ended_at=window_end,
+                    reason=BASELINE_DAYS_INSUFFICIENT_REASON,
+                    baseline_days_used=used,
+                )
+            compared = self._bounded_decimal((current_value - mean) / sigma)
+            threshold = self._matching_threshold(policy, compared)
+            decision = self._decision(policy, compared, threshold)
+            return self._query_result(
+                policy,
+                value=compared,
+                breached=decision["breached"],
+                evaluated_at=evaluated_at,
+                data_state=decision["data_state"],
+                series=current.timeseries,
+                threshold=decision["threshold"],
+                current_value=current_value,
+                baseline_value=baseline_value,
+                baseline_series=self._mean_line(policy, current.timeseries, baseline_value, current_start, window_end),
+                request_count=current.request_count,
+                window_ended_at=window_end,
+                baseline_days_used=used,
+            )
         if kind == ApmPolicy.CompareValueKind.PERCENT and baseline_value == 0:
             return self._query_result(
                 policy,
@@ -1321,12 +1379,165 @@ class DjangoApmPolicyService:
             "baseline_days_used": None,
         }
 
+    def _replay_history(self, policy: ApmPolicy, window: int) -> timedelta:
+        mode = policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE
+        if mode == ApmPolicy.CompareMode.BASELINE_DAYS:
+            return timedelta(days=int(policy.compare_offset_amount or 0))
+        if mode == ApmPolicy.CompareMode.PREVIOUS_WINDOW:
+            return timedelta(minutes=window)
+        offset = self._baseline_offset(policy, window)
+        return offset or timedelta(0)
+
+    def _replay_ends(self, window_end: datetime, window: int) -> list[datetime]:
+        slots = (24 * 60) // window
+        return [window_end - timedelta(minutes=window * (slots - 1 - index)) for index in range(slots)]
+
+    def _read_replay_series(self, policy, target: PolicyTarget, started_at: datetime, ended_at: datetime, window: int) -> dict:
+        query = self._metric_query(
+            policy,
+            started_at=started_at,
+            ended_at=ended_at,
+            endpoint=target.endpoint,
+            version=target.version,
+            instance_id=target.instance_id,
+            service=target.service,
+            dependency=target.dependency,
+        )
+        reader_name = "dependency_red_by_window" if dependency_parts(target.dependency) else "service_red_by_window"
+        reader = getattr(self.metric_store, reader_name, None)
+        if reader is None:
+            return {}
+        return {end: red for end, red in reader(query, window)}
+
+    def _replay_compared(self, policy: ApmPolicy, series: dict, end: datetime, window: int) -> Decimal | None:
+        current = series.get(end)
+        if current is None:
+            return None
+        current_value = self._aggregate(policy, current)
+        if current_value is None:
+            return None
+        mode = policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE
+        kind = policy.compare_value_kind or ""
+        if mode == ApmPolicy.CompareMode.ABSOLUTE or kind == "":
+            return current_value
+        if mode == ApmPolicy.CompareMode.BASELINE_DAYS:
+            amount = int(policy.compare_offset_amount or 0)
+            usable = []
+            for day in range(1, amount + 1):
+                red = series.get(end - timedelta(days=day))
+                if red is None or not self._baseline_day_usable(policy, red):
+                    continue
+                value = self._aggregate(policy, red)
+                if value is not None:
+                    usable.append(value)
+            if kind == ApmPolicy.CompareValueKind.SIGMA and len(usable) < 3:
+                return None
+            if len(usable) < math.ceil(amount / 2):
+                return None
+            mean = sum(usable, Decimal(0)) / Decimal(len(usable))
+            if kind == ApmPolicy.CompareValueKind.SIGMA:
+                sigma = self._sample_stdev(usable, mean)
+                if sigma == 0:
+                    return None
+                return self._bounded_decimal((current_value - mean) / sigma)
+            if kind == ApmPolicy.CompareValueKind.PERCENT and mean == 0:
+                return None
+            return self._compared_value(current_value, mean, kind)
+        baseline_end = end - (self._replay_history(policy, window) or timedelta(0))
+        baseline = series.get(baseline_end)
+        if baseline is None:
+            return None
+        baseline_value = self._aggregate(policy, baseline)
+        if baseline_value is None:
+            return None
+        if kind == ApmPolicy.CompareValueKind.PERCENT and baseline_value == 0:
+            return None
+        return self._compared_value(current_value, baseline_value, kind)
+
+    def _replay_target(self, policy: ApmPolicy, target: PolicyTarget, *, evaluated_at: datetime) -> dict:
+        if getattr(policy, "metric_type", None) == ApmPolicy.MetricType.SLO_BURN_RATE:
+            return self._replay_burn(policy, target, evaluated_at)
+        window = max(int(policy.metric_window or 1), 1)
+        _start, window_end = self._window_bounds(policy, evaluated_at)
+        ends = self._replay_ends(window_end, window)
+        if not ends:
+            return {"windows": 0, "hits": 0, "hit_at": []}
+        history = self._replay_history(policy, window)
+        series = self._read_replay_series(
+            policy,
+            target,
+            ends[0] - timedelta(minutes=window) - history,
+            ends[-1],
+            window,
+        )
+        hits = []
+        for end in ends:
+            value = self._replay_compared(policy, series, end, window)
+            if value is not None and self._matching_threshold(policy, value):
+                hits.append(end.isoformat())
+        return {"windows": len(ends), "hits": len(hits), "hit_at": hits}
+
+    def _replay_burn(self, policy: ApmPolicy, target: PolicyTarget, evaluated_at: datetime) -> dict:
+        short = int(policy.burn_short_window_minutes or 0)
+        long = int(policy.burn_long_window_minutes or 0)
+        slo = getattr(policy, "slo", None)
+        if short < 1 or long < 1 or slo is None:
+            return {"windows": 0, "hits": 0, "hit_at": []}
+        ends = self._replay_ends(evaluated_at, short)
+        if not ends:
+            return {"windows": 0, "hits": 0, "hit_at": []}
+        source = getattr(slo, "service", None) or target.service
+        query = SloMetricQuery(
+            service_namespace=source.namespace,
+            service_name=source.name,
+            environment=slo.environment,
+            endpoint=slo.endpoint or "",
+            sli_type=slo.sli_type,
+            latency_threshold_ms=slo.latency_threshold_ms,
+            started_at=ends[0] - timedelta(minutes=long),
+            ended_at=ends[-1],
+        )
+        reader = getattr(self.metric_store, "slo_compliance_by_window", None)
+        buckets = {} if reader is None else {end: (total, good) for end, total, good in reader(query, short)}
+        hits = []
+        for end in ends:
+            long_compliance = self._bucket_compliance(buckets, end - timedelta(minutes=long), end, short)
+            short_compliance = self._bucket_compliance(buckets, end - timedelta(minutes=short), end, short)
+            if long_compliance is None or short_compliance is None:
+                continue
+            long_burn = self._burn_rate(slo.objective, long_compliance)
+            short_burn = self._burn_rate(slo.objective, short_compliance)
+            if long_burn is None or short_burn is None:
+                continue
+            if self._matching_threshold(policy, long_burn) and self._matching_threshold(policy, short_burn):
+                hits.append(end.isoformat())
+        return {"windows": len(ends), "hits": len(hits), "hit_at": hits}
+
+    @staticmethod
+    def _bucket_compliance(buckets: dict, start: datetime, end: datetime, step_minutes: int) -> float | None:
+        total = 0.0
+        good = 0.0
+        found = False
+        cursor = end
+        step = timedelta(minutes=step_minutes)
+        while cursor > start:
+            item = buckets.get(cursor)
+            if item is not None:
+                found = True
+                total += item[0]
+                good += item[1]
+            cursor -= step
+        if not found or total <= 0:
+            return None
+        return good / total * 100
+
     def dry_run(
         self,
         policy: ApmPolicy,
         *,
         evaluated_at: datetime,
         saved_policy: ApmPolicy | None = None,
+        replay_hours: int = 0,
     ) -> dict:
         """只读复用 test_query。不写目标状态、告警、事件、快照或通知。"""
         states = {}
@@ -1389,6 +1600,8 @@ class DjangoApmPolicyService:
                 "hit_history_text": history_text,
                 "baseline_days_used": result.baseline_days_used,
             }
+            if replay_hours:
+                item["replay"] = self._replay_target(policy, target, evaluated_at=evaluated_at)
             if result.condition_rows or result.guard_rows or result.guard_blocked:
                 item["conditions"] = [
                     {

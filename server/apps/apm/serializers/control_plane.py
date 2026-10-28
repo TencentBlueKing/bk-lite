@@ -480,10 +480,11 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     compare_mode = serializers.ChoiceField(choices=ApmPolicy.CompareMode.choices, required=False)
     compare_offset_amount = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     compare_value_kind = serializers.ChoiceField(
-        choices=(("delta", "delta"), ("percent", "percent")),
+        choices=(("delta", "delta"), ("percent", "percent"), ("sigma", "sigma")),
         required=False,
         allow_blank=True,
     )
+    replay_hours = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     min_request_count = serializers.IntegerField(min_value=1, max_value=100000, required=False, allow_null=True)
     slow_threshold_ms = serializers.IntegerField(required=False, allow_null=True)
     apdex_threshold_ms = serializers.IntegerField(required=False, allow_null=True)
@@ -535,6 +536,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "compare_mode",
             "compare_offset_amount",
             "compare_value_kind",
+            "replay_hours",
             "min_request_count",
             "slow_threshold_ms",
             "apdex_threshold_ms",
@@ -753,6 +755,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
+        replay_hours = attrs.pop("replay_hours", 0) or 0
+        if replay_hours not in (0, 24):
+            raise serializers.ValidationError({"replay_hours": serializer_text(self, "error.replay_hours")})
         initial = self.initial_data if isinstance(getattr(self, "initial_data", None), dict) else {}
         metric_type = attrs.get("metric_type", getattr(self.instance, "metric_type", None))
         burn = metric_type == ApmPolicy.MetricType.SLO_BURN_RATE
@@ -1139,6 +1144,10 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         compare_offset_amount,
     ):
         kind = compare_value_kind or ""
+        if kind == ApmPolicy.CompareValueKind.SIGMA and (
+            compare_mode != ApmPolicy.CompareMode.BASELINE_DAYS or not isinstance(compare_offset_amount, int) or compare_offset_amount < 3
+        ):
+            raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.sigma_baseline")})
         offset_modes = {
             ApmPolicy.CompareMode.OFFSET_1H,
             ApmPolicy.CompareMode.OFFSET_24H,
@@ -1149,7 +1158,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_absolute_kind")})
         if compare_mode == ApmPolicy.CompareMode.PREVIOUS_WINDOW and kind not in {"delta", "percent"}:
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_previous_kind")})
-        if compare_mode == ApmPolicy.CompareMode.BASELINE_DAYS and kind not in {"delta", "percent"}:
+        if compare_mode == ApmPolicy.CompareMode.BASELINE_DAYS and kind not in {"delta", "percent", "sigma"}:
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_baseline_days_kind")})
         if compare_mode in offset_modes and kind != "percent":
             raise serializers.ValidationError({"compare_value_kind": serializer_text(self, "error.compare_offset_percent_only")})
@@ -1241,13 +1250,15 @@ class ApmPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_finite")}) from None
             if not value.is_finite():
                 raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_finite")})
+            kind = compare_value_kind or ""
             if metric_type in ApmPolicy.RATIO_METRIC_TYPES:
-                kind = compare_value_kind or ""
                 if compare_mode == ApmPolicy.CompareMode.ABSOLUTE or kind == "":
                     if not 0 <= value <= 1:
                         raise serializers.ValidationError({"thresholds": serializer_text(self, "error.error_rate_range")})
                 elif kind == ApmPolicy.CompareValueKind.DELTA and not -1 <= value <= 1:
                     raise serializers.ValidationError({"thresholds": serializer_text(self, "error.error_rate_delta_range")})
+            if kind == ApmPolicy.CompareValueKind.SIGMA and not Decimal("0.5") <= value <= Decimal(5):
+                raise serializers.ValidationError({"thresholds": serializer_text(self, "error.sigma_k")})
             if (
                 metric_type == ApmPolicy.MetricType.APDEX
                 and compare_mode == ApmPolicy.CompareMode.ABSOLUTE

@@ -136,6 +136,13 @@ def _utc_day(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT00:00:00Z")
 
 
+def _parse_bucket_time(value: str) -> datetime | None:
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
 def _count_field(values: dict[str, float], key: str) -> int | None:
     if key not in values:
         return None
@@ -914,6 +921,29 @@ class VictoriaTracesTelemetryStore:
             reds.append(self._red_from_values(values, window_seconds))
         return tuple(reds)
 
+    def service_red_by_window(self, query: ServiceMetricQuery, window_minutes: int) -> tuple[tuple[datetime, ServiceRed], ...]:
+        """一条 `stats by (_time:W)` 拿回放窗。桶结束时间是桶起点加 W。"""
+        minutes = max(int(window_minutes), 1)
+        span = query.ended_at - query.started_at
+        exact_dedup = span <= RED_EXACT_DEDUP_WINDOW
+        entry = self._entry_span_filters(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            endpoint=query.endpoint,
+            version=query.version,
+            instance_id=query.instance_id or "",
+        )
+        scoped = f"(_time:[{_logsql_time(query.started_at)}, {_logsql_time(query.ended_at)})) {entry}"
+        final_stats = _red_final_stats(query).removeprefix("stats ")
+        if exact_dedup:
+            deduped = f"{scoped} | stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code, min(_time) as _time"
+            aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:{minutes}m) {final_stats}"
+        else:
+            aggregate = f"{scoped} | stats by (_time:{minutes}m) {final_stats}"
+        grouped = self._values_by_day(self._stats(aggregate, query.started_at, query.ended_at))
+        return self._reds_by_bucket(grouped, minutes)
+
     def service_endpoints(self, query: ServiceMetricQuery, limit: int = MAX_SERVICE_ENDPOINTS) -> tuple[ServiceEndpointRed, ...]:
         """当前窗入口 Span 按端点计数，上限 100，按请求数降序。不复用 top_endpoints 的 10 条上限。"""
         window_seconds = _validate_window(query.started_at, query.ended_at)
@@ -1012,6 +1042,15 @@ class VictoriaTracesTelemetryStore:
             window_seconds = max(int((window_end - window_start).total_seconds()), 1)
             reds.append(self._red_from_values(values, window_seconds))
         return tuple(reds)
+
+    def dependency_red_by_window(self, query: DependencyMetricQuery, window_minutes: int) -> tuple[tuple[datetime, ServiceRed], ...]:
+        minutes = max(int(window_minutes), 1)
+        filters = self._dependency_span_filters(query)
+        scoped = f"(_time:[{_logsql_time(query.started_at)}, {_logsql_time(query.ended_at)})) {filters}"
+        final_stats = _red_final_stats(query).removeprefix("stats ")
+        aggregate = f"{scoped} | stats by (_time:{minutes}m) {final_stats}"
+        grouped = self._values_by_day(self._stats(aggregate, query.started_at, query.ended_at))
+        return self._reds_by_bucket(grouped, minutes)
 
     def _dependency_span_filters(self, query: DependencyMetricQuery) -> str:
         filters = [
@@ -1324,6 +1363,37 @@ class VictoriaTracesTelemetryStore:
             total_rate=total / window_seconds,
             data_state=MetricDataState.AVAILABLE,
         )
+
+    def slo_compliance_by_window(self, query: SloMetricQuery, window_minutes: int) -> tuple[tuple[datetime, float, float], ...]:
+        """按短窗分桶返回 (桶结束, total, good)，供燃烧率回放在内存里平移长短窗。"""
+        minutes = max(int(window_minutes), 1)
+        deduped = self._deduped_entry_query(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            endpoint=query.endpoint,
+        )
+        if query.sli_type == "availability":
+            final = 'count() as total, count() if (status_code:="2") as bad'
+            good_metric = None
+        else:
+            if query.latency_threshold_ms is None or query.latency_threshold_ms <= 0:
+                raise ValueError("时延 SLO 必须提供正数阈值")
+            threshold_ns = query.latency_threshold_ms * 1_000_000
+            final = f"count() as total, count() if (duration:<={threshold_ns}) as good"
+            good_metric = "good"
+        aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:{minutes}m) {final}"
+        grouped = self._values_by_day(self._stats(aggregate, query.started_at, query.ended_at))
+        points = []
+        for key, values in grouped.items():
+            started = _parse_bucket_time(key)
+            if started is None:
+                continue
+            total = values.get("total") or 0.0
+            good = values.get(good_metric, 0.0) if good_metric else max(0.0, total - values.get("bad", 0.0))
+            points.append((started + timedelta(minutes=minutes), float(total), float(good)))
+        points.sort(key=lambda item: item[0])
+        return tuple(points)
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
         _validate_window(query.started_at, query.ended_at)
@@ -1822,6 +1892,17 @@ class VictoriaTracesTelemetryStore:
             if day and name and parsed is not None:
                 grouped.setdefault(day, {})[name] = parsed
         return grouped
+
+    def _reds_by_bucket(self, grouped: dict[str, dict[str, float]], minutes: int) -> tuple[tuple[datetime, ServiceRed], ...]:
+        window_seconds = minutes * 60
+        points = []
+        for key, values in grouped.items():
+            started = _parse_bucket_time(key)
+            if started is None:
+                continue
+            points.append((started + timedelta(minutes=minutes), self._red_from_values(values, window_seconds)))
+        points.sort(key=lambda item: item[0])
+        return tuple(points)
 
     def _red_from_values(self, values: dict[str, float], window_seconds: int) -> ServiceRed:
         requests_count = values.get("requests")

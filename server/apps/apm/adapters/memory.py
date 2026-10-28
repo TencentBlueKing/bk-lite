@@ -276,6 +276,15 @@ class InMemoryMetricStore:
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         return next(value for key, value in self._service_metrics if key == query)
 
+    def service_red_by_window(self, query: ServiceMetricQuery, window_minutes: int) -> tuple:
+        return ()
+
+    def dependency_red_by_window(self, query, window_minutes: int) -> tuple:
+        return ()
+
+    def slo_compliance_by_window(self, query: SloMetricQuery, window_minutes: int) -> tuple:
+        return ()
+
     def service_red_by_day(self, query: ServiceMetricQuery, windows: Sequence[tuple[datetime, datetime]]) -> tuple[ServiceRed, ...]:
         return tuple(
             self.service_red(replace(query, started_at=started_at, ended_at=ended_at, include_breakdown=False, include_endpoints=False))

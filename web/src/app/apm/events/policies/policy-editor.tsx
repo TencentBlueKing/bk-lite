@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { DeleteOutlined } from '@ant-design/icons';
 import {
   Button,
+  Checkbox,
   Form,
   Input,
   InputNumber,
@@ -336,7 +337,7 @@ const SLOW_METRICS: ApmPolicyMetric[] = ['slow_request_count', 'slow_request_rat
 const MIN_REQUEST_METRICS: ApmPolicyMetric[] = ['error_rate', 'slow_request_rate', 'apdex', ...LATENCY_METRICS];
 
 function scalesStoredRatio(metric: ApmPolicyMetric, kind: ApmCompareValueKind | '') {
-  return RATIO_METRICS.includes(metric) && kind !== 'percent';
+  return RATIO_METRICS.includes(metric) && kind !== 'percent' && kind !== 'sigma';
 }
 
 function thresholdToEditorValue(
@@ -372,7 +373,11 @@ function resolvedCompareKind(
   kind: ApmCompareValueKind | '' | undefined,
 ): ApmCompareValueKind | '' {
   if (metric === 'no_traffic' || !mode || mode === 'absolute') return '';
-  if (mode === 'previous_window' || mode === 'baseline_days') return kind === 'percent' ? 'percent' : 'delta';
+  if (mode === 'baseline_days') {
+    if (kind === 'percent' || kind === 'sigma') return kind;
+    return 'delta';
+  }
+  if (mode === 'previous_window') return kind === 'percent' ? 'percent' : 'delta';
   return 'percent';
 }
 
@@ -871,6 +876,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const [previewing, setPreviewing] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
   const [dryRun, setDryRun] = useState<ApmPolicyDryRunResult | null>(null);
+  const [replayEnabled, setReplayEnabled] = useState(false);
   const [dryRunning, setDryRunning] = useState(false);
   const [noticeEnabled, setNoticeEnabled] = useState(false);
   const [handlerUsers, setHandlerUsers] = useState<ApmNotificationRecipient[]>([]);
@@ -1187,24 +1193,28 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const showSlowThreshold = SLOW_METRICS.includes(metricType);
   const showApdexThreshold = metricType === 'apdex';
   const ratioMetric = RATIO_METRICS.includes(metricType);
-  const thresholdUnit = compareKind === 'percent'
-    ? t('apm.common.percentUnit', '%')
-    : ratioMetric && compareKind === 'delta'
-      ? t('apm.policies.percentagePointUnit', '个百分点')
+  const thresholdUnit = compareKind === 'sigma'
+    ? 'σ'
+    : compareKind === 'percent'
+      ? t('apm.common.percentUnit', '%')
+      : ratioMetric && compareKind === 'delta'
+        ? t('apm.policies.percentagePointUnit', '个百分点')
+        : ratioMetric
+          ? t('apm.common.percentUnit', '%')
+          : LATENCY_METRICS.includes(metricType)
+            ? t('apm.common.millisecondUnit', 'ms')
+            : metricType === 'slo_burn_rate'
+              ? '×'
+              : COUNT_METRICS.includes(metricType)
+                ? t('apm.policies.timesUnit', '次')
+                : t('apm.policies.perSecondUnit', 'req/s');
+  const thresholdBounds = compareKind === 'sigma'
+    ? { min: 0.5, max: 5 }
+    : compareKind === 'percent' || compareKind === 'delta'
+      ? (ratioMetric && compareKind === 'delta' ? { min: -100, max: 100 } : {})
       : ratioMetric
-        ? t('apm.common.percentUnit', '%')
-        : LATENCY_METRICS.includes(metricType)
-          ? t('apm.common.millisecondUnit', 'ms')
-          : metricType === 'slo_burn_rate'
-            ? '×'
-            : COUNT_METRICS.includes(metricType)
-              ? t('apm.policies.timesUnit', '次')
-              : t('apm.policies.perSecondUnit', 'req/s');
-  const thresholdBounds = compareKind === 'percent' || compareKind === 'delta'
-    ? (ratioMetric && compareKind === 'delta' ? { min: -100, max: 100 } : {})
-    : ratioMetric
-      ? { min: 0, max: 100 }
-      : { min: 0 };
+        ? { min: 0, max: 100 }
+        : { min: 0 };
   const ladderComparator = (watchedThresholds || []).find((row) => row?.comparator)?.comparator || 'gt';
   const recoveryOptions: { value: ApmPolicyComparator; label: string }[] = ladderComparator === 'lt' || ladderComparator === 'lte'
     ? [{ value: 'gt', label: '>' }, { value: 'gte', label: '≥' }]
@@ -1524,7 +1534,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     }
     if (mode === 'baseline_days') {
       const kind = form.getFieldValue('compare_value_kind');
-      if (kind !== 'delta' && kind !== 'percent') form.setFieldValue('compare_value_kind', 'percent');
+      if (kind !== 'delta' && kind !== 'percent' && kind !== 'sigma') form.setFieldValue('compare_value_kind', 'percent');
       const amount = Number(form.getFieldValue('compare_offset_amount'));
       const fromHours = previous === 'offset_hours' || previous === 'offset_1h' || previous === 'offset_24h';
       if (fromHours || !Number.isInteger(amount) || amount < 2 || amount > 7) {
@@ -1550,7 +1560,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     if (!payload) return;
     setDryRunning(true);
     try {
-      setDryRun(await dryRunPolicy(policyId ? { ...payload, policy_id: policyId } : payload));
+      setDryRun(await dryRunPolicy({
+        ...payload,
+        ...(policyId ? { policy_id: policyId } : {}),
+        replay_hours: replayEnabled ? 24 : 0,
+      }));
     } finally {
       setDryRunning(false);
     }
@@ -2094,6 +2108,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     options={[
                       { value: 'delta', label: t('apm.policies.compareKindDelta', '变化量 Δ') },
                       { value: 'percent', label: t('apm.policies.compareKindPercent', '变化率 %') },
+                      ...(compareMode === 'baseline_days'
+                        ? [{ value: 'sigma' as const, label: t('apm.policies.compareKindSigma', '标准差 σ') }]
+                        : []),
                     ]}
                   />
                 </Form.Item>
@@ -2488,6 +2505,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     </Typography.Text>
                   </div>
                   <Space>
+                    <Checkbox checked={replayEnabled} onChange={(event) => setReplayEnabled(event.target.checked)}>
+                      {t('apm.policies.replay24h', '回放最近 24h')}
+                    </Checkbox>
                     <Button type="link" loading={dryRunning} onClick={() => void runDryRun()}>{t('apm.policies.dryRun', '试算')}</Button>
                     <Button type="link" loading={previewing} onClick={() => void runPreview()}>{t('apm.common.refresh', '刷新')}</Button>
                   </Space>
@@ -2591,6 +2611,20 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                           : []),
                         { title: t('apm.policies.dryRunCompared', '比较值'), dataIndex: 'compared_value', render: (value) => value ?? '—' },
                         { title: t('apm.policies.dryRunRequestCount', '请求数'), dataIndex: 'request_count', render: (value) => value ?? '—' },
+                        ...(dryRun.items.some((item) => item.replay)
+                          ? [{
+                            title: t('apm.policies.replayHits', '24h 命中'),
+                            dataIndex: 'replay',
+                            render: (replay: { windows: number; hits: number; hit_at: string[] } | undefined) => (
+                              replay ? (
+                                <span>
+                                  {`${replay.hits}/${replay.windows}`}
+                                  {replay.hit_at.length ? <span className="mt-1 block text-xs text-[var(--color-text-3)]">{replay.hit_at.join('、')}</span> : null}
+                                </span>
+                              ) : '—'
+                            ),
+                          }]
+                          : []),
                         {
                           title: t('apm.policies.dryRunMatchedThreshold', '命中阈值'),
                           dataIndex: 'matched_threshold',

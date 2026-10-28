@@ -365,6 +365,7 @@ class ApmPolicy(AuditedModel):
     class CompareValueKind(models.TextChoices):
         DELTA = "delta", "变化量"
         PERCENT = "percent", "变化率"
+        SIGMA = "sigma", "标准差倍数"
 
     class VersionMode(models.TextChoices):
         ALL = "all", "全部版本"

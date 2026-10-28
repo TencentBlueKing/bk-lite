@@ -38,7 +38,10 @@ error:
   compare_offset_amount_range: Hours must be from 1 to 840, and days must be from 1 to 35.
   compare_offset_amount_unused: Only a same-window comparison can set hours or days.
   compare_baseline_days_range: The same-window mean over recent days must use 2 to 7 days.
-  compare_baseline_days_kind: The same-window mean over recent days must use either a delta or a percent change.
+  compare_baseline_days_kind: The same-window mean over recent days must use a delta, a percent change, or a standard-deviation multiple.
+  sigma_baseline: Standard-deviation multiples apply only to the same-window mean over at least 3 recent days.
+  sigma_k: The standard-deviation threshold k must be between 0.5 and 5.
+  replay_hours: Replay supports only 0 or 24 hours.
   compare_offset_shorter_than_window: The offset must be at least as long as the aggregation window.
   compare_no_traffic_absolute: No-traffic policies can only compare the current value.
   compare_min_request_metric: Minimum request count applies only to error rate, slow request rate, Apdex, and latency.
