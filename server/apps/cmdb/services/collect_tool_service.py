@@ -401,7 +401,12 @@ class CollectToolService:
 
     @staticmethod
     def _get_decrypted_credential(instance: CollectModels) -> dict:
-        decrypted_cred = instance.decrypt_credentials or {}
+        decrypted_cred = instance.decrypt_credentials
+        if isinstance(decrypted_cred, list):
+            first = decrypted_cred[0] if decrypted_cred else {}
+            decrypted_cred = first if isinstance(first, dict) else {}
+        elif not decrypted_cred:
+            decrypted_cred = {}
         if not decrypted_cred and isinstance(instance.credential, dict):
             return dict(instance.credential)
         return decrypted_cred
