@@ -1,6 +1,15 @@
 from rest_framework import serializers
 
+from apps.cmdb.services.instance_identity import normalize_inst_uuid
 from apps.cmdb.services.k8s_resource_overview import LAYER_LIMITS, RESOURCE_KINDS
+from apps.core.exceptions.base_app_exception import BaseAppException
+
+
+def _require_uuid(value):
+    try:
+        return normalize_inst_uuid(value)
+    except BaseAppException as exc:
+        raise serializers.ValidationError("必须是 UUIDv4") from exc
 
 
 class K8sPageQuerySerializer(serializers.Serializer):
@@ -14,10 +23,7 @@ class K8sLayerQuerySerializer(K8sPageQuerySerializer):
     def validate_namespace_ids(self, value):
         if not value:
             return []
-        try:
-            return [int(item.strip()) for item in str(value).split(",") if item.strip()]
-        except ValueError as exc:
-            raise serializers.ValidationError("namespace_ids 必须是逗号分隔的整数") from exc
+        return [_require_uuid(item.strip()) for item in str(value).split(",") if item.strip()]
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -49,9 +55,24 @@ class K8sResourceListQuerySerializer(serializers.Serializer):
             "-replicas",
         ],
     )
-    namespace_id = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
-    workload_id = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
-    node_id = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
+    namespace_id = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
+    workload_id = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
+    node_id = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
+
+    def validate_namespace_id(self, value):
+        if value in (None, ""):
+            return None
+        return _require_uuid(value)
+
+    def validate_workload_id(self, value):
+        if value in (None, ""):
+            return None
+        return _require_uuid(value)
+
+    def validate_node_id(self, value):
+        if value in (None, ""):
+            return None
+        return _require_uuid(value)
 
 
 class K8sResourceKindSerializer(serializers.Serializer):
