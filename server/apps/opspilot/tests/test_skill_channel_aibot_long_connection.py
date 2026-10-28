@@ -1167,7 +1167,7 @@ class TestLongConnectionConversation:
         frames = _streams(transport)
         assert _stream_body(frames[0])["content"] == PROCESSING_TEXT
         assert _stream_body(frames[0])["finish"] is False
-        assert _stream_body(frames[1])["content"] == PROCESSING_TEXT
+        assert _stream_body(frames[1])["content"] == "半截回答"
         assert _stream_body(frames[1])["finish"] is True
         assert frames[1]["headers"]["req_id"] == "req-1"
         assert _stream_body(frames[2])["content"] == PROCESSING_TEXT
@@ -1230,16 +1230,20 @@ class TestLongConnectionConversation:
         session.handle_frame(_text_frame("req-2", "第二句"))
 
         assert _stream_body(_streams(transport)[1])["finish"] is True
-        assert _stream_body(_streams(transport)[1])["content"] == PROCESSING_TEXT
+        assert _stream_body(_streams(transport)[1])["content"] == "说明"
         assert _streams(transport)[1]["headers"]["req_id"] == "req-1"
-        image_frames = [item for item in transport.sent if (item.get("body") or {}).get("msgtype") == "image"]
-        assert image_frames == [
-            {
-                "cmd": "aibot_respond_msg",
-                "headers": {"req_id": "req-1"},
-                "body": {"msgtype": "image", "image": {"media_id": "media-img"}},
-            }
-        ]
+        image_at = next(index for index, item in enumerate(transport.sent) if (item.get("body") or {}).get("msgtype") == "image")
+        next_stream_at = next(
+            index
+            for index, item in enumerate(transport.sent)
+            if item.get("headers", {}).get("req_id") == "req-2" and (item.get("body") or {}).get("msgtype") == "stream"
+        )
+        assert image_at < next_stream_at
+        assert transport.sent[image_at] == {
+            "cmd": "aibot_respond_msg",
+            "headers": {"req_id": "req-1"},
+            "body": {"msgtype": "image", "image": {"media_id": "media-img"}},
+        }
         assert uploaded == {"filename": "image-1.png", "content": image_bytes, "media_type": "image"}
         assert ("assistant", answer) in self._history(channel)
         rendered = " ".join(record.getMessage() for record in caplog.records)
@@ -1297,6 +1301,14 @@ class TestLongConnectionConversation:
         assert finished[0]["body"]["stream"]["content"] == "说明"
         assert image_url not in json.dumps(finished[0]["body"]["stream"])
         assert uploaded == [("image-1.png", image_bytes, "image")]
+        image_at = next(index for index, item in enumerate(transport.sent) if (item.get("body") or {}).get("msgtype") == "image")
+        next_stream_at = next(
+            index
+            for index, item in enumerate(transport.sent)
+            if item.get("headers", {}).get("req_id") == "req-2" and (item.get("body") or {}).get("msgtype") == "stream"
+        )
+        assert image_at < next_stream_at
+        assert transport.sent[image_at]["headers"]["req_id"] == "req-1"
 
     def test_timeout_without_body_ends_with_timeout_copy(self):
         channel = self._saved_channel(self._skill())

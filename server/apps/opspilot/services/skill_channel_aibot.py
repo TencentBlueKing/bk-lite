@@ -191,7 +191,6 @@ def commit_short_connection_stream_delivery(channel_id: int, stream_id: str, *, 
         state["images_delivered"] = True
     cache.set(key, state, SHORT_CONNECTION_STREAM_CACHE_SECONDS)
     if images_included:
-        cache.delete(_image_claim_key(channel_id, stream_id))
         items = state.get("msg_items")
         logger.info(SHORT_CONNECTION_IMAGE_REPLY_LOG, channel_id, len(items) if isinstance(items, list) else 0)
 
@@ -237,10 +236,15 @@ def short_connection_stream_payload(channel_id: int, stream_id: str) -> tuple[di
         items = []
     stream: dict[str, Any] = {"id": stream_id, "finish": True, "content": visible}
     images_included = False
-    if items and not state.get("images_delivered"):
-        if cache.add(_image_claim_key(channel_id, stream_id), "1", _DELIVERY_CLAIM_SECONDS):
-            stream["msg_item"] = items
-            images_included = True
+    if items:
+        # 没拿到图片认领就结束，企微会停轮询，慢的那帧或重试会把图丢掉。
+        if not cache.add(_image_claim_key(channel_id, stream_id), "1", _DELIVERY_CLAIM_SECONDS):
+            return {
+                "msgtype": "stream",
+                "stream": {"id": stream_id, "finish": False, "content": SHORT_CONNECTION_PROCESSING_TEXT},
+            }, False
+        stream["msg_item"] = items
+        images_included = True
     return {"msgtype": "stream", "stream": stream}, images_included
 
 

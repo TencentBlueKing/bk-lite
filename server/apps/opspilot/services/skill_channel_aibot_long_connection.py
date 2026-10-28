@@ -78,18 +78,6 @@ def _long_connection_stream_outbound(content: str, *, finish: bool) -> tuple[str
     return wecom_long_connection_outbound(raw)
 
 
-def _merge_image_files(*groups: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
-    merged: list[tuple[str, bytes]] = []
-    seen: set[bytes] = set()
-    for group in groups:
-        for filename, content in group:
-            if content in seen:
-                continue
-            seen.add(content)
-            merged.append((filename, content))
-    return merged
-
-
 def long_connection_url() -> str:
     configured = (os.environ.get(LONG_CONNECTION_URL_ENV) or "").strip()
     return configured or DEFAULT_LONG_CONNECTION_URL
@@ -330,13 +318,12 @@ class WecomAibotConnection:
         session_id, external_user_id = _conversation_identity(body)
         session_key = session_id or external_user_id or req_id
         now = self.clock.now()
-        pending_images: tuple[Turn, list[tuple[str, bytes]]] | None = None
         with self._lock:
             previous = self._turns.get(session_key)
             if previous is not None:
                 images = self._interrupt_locked(previous)
-                if images:
-                    pending_images = (previous, images)
+                # 图片必须用旧 req_id，并且排在下一条流式帧之前。
+                self._deliver_images(previous, images)
             turn = Turn(
                 req_id=req_id,
                 stream_id=uuid.uuid4().hex,
@@ -353,8 +340,6 @@ class WecomAibotConnection:
             self._persist_user(turn)
             self._send_stream(turn, PROCESSING_TEXT, finish=False)
             turn.displayed = PROCESSING_TEXT
-        if pending_images is not None:
-            self._deliver_images(pending_images[0], pending_images[1])
         self.agent_runner(request)
 
     def _interrupt_locked(self, turn: Turn) -> list[tuple[str, bytes]]:
@@ -363,16 +348,11 @@ class WecomAibotConnection:
         if turn.closed:
             return []
         turn.closed = True
-        displayed = turn.displayed or PROCESSING_TEXT
-        images = list(self._send_stream(turn, displayed, finish=True))
         generated = turn.generated or ""
+        content = generated if generated.strip() else (turn.displayed or PROCESSING_TEXT)
+        images = list(self._send_stream(turn, content, finish=True))
         if generated.strip():
             self._persist_assistant(turn, turn.generated)
-            if generated != displayed:
-                _visible, extra = _long_connection_stream_outbound(generated, finish=True)
-                if extra:
-                    images = _merge_image_files(images, extra)
-                    logger.info(IMAGE_REPLY_LOG_TEMPLATE, self.channel.id, len(images))
         self._turns.pop(turn.session_key, None)
         logger.info(REPLY_FINISHED_LOG_TEMPLATE, self.channel.id, "interrupted")
         return images

@@ -13,6 +13,7 @@ from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation
 from apps.opspilot.services.skill_channel_aibot import (
     SHORT_CONNECTION_IMAGE_REPLY_LOG,
+    SHORT_CONNECTION_PROCESSING_TEXT,
     SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE,
     SkillChannelAibotUtils,
     append_short_connection_file_links,
@@ -20,6 +21,7 @@ from apps.opspilot.services.skill_channel_aibot import (
     finish_short_connection_stream,
     normalize_aibot_channel_config,
     open_short_connection_stream,
+    settle_short_connection_poll,
     short_connection_stream_payload,
 )
 from apps.opspilot.services.skill_channel_im_media import ImImage
@@ -369,7 +371,10 @@ class TestAibotHttp:
         assert payload["stream"]["finish"] is True
         assert payload["stream"]["content"] == "说明"
         assert payload["stream"]["msg_item"] == [image_item]
-        assert "msg_item" not in _decrypt_passive(again)["stream"]
+        held = _decrypt_passive(again)
+        assert held["stream"]["finish"] is False
+        assert held["stream"]["content"] == SHORT_CONNECTION_PROCESSING_TEXT
+        assert "msg_item" not in held["stream"]
         assert image_url not in resp.content.decode("utf-8")
         rendered = " ".join(record.getMessage() for record in caplog.records)
         formatted = " ".join(logging.Formatter().format(record) for record in caplog.records)
@@ -437,6 +442,52 @@ class TestAibotHttp:
             retried = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
         assert _decrypt_passive(retried)["stream"]["msg_item"] == [image_item]
         assert claim_short_connection_delivery(ch.id, "stream-1") is False
+
+    def test_poll_without_image_claim_stays_processing_and_does_not_commit(self, settings):
+        from django.core.cache import cache
+
+        settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "aibot-stream-claim-wait"}}
+        skill = _skill()
+        ch = _aibot_channel(skill)
+        image_item = {"msgtype": "image", "image": {"base64": "cGl4", "md5": "abc"}}
+        open_short_connection_stream(ch.id, "stream-1", "https://example.com/response")
+        finish_short_connection_stream(ch.id, "stream-1", "说明", visible="说明", msg_items=[image_item])
+        reserved, included = short_connection_stream_payload(ch.id, "stream-1")
+        assert included is True
+        assert reserved["stream"]["finish"] is True
+        assert reserved["stream"]["msg_item"] == [image_item]
+
+        message = {"msgid": "poll-wait", "msgtype": "stream", "stream": {"id": "stream-1"}}
+        req = RequestFactory().post(
+            "/",
+            data=b"{}",
+            content_type="application/json",
+            QUERY_STRING="msg_signature=s&timestamp=1&nonce=n",
+        )
+        with patch(
+            "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.decrypt_callback",
+            return_value=message,
+        ):
+            waiting = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+        waiting_payload = _decrypt_passive(waiting)
+        assert waiting_payload["stream"]["finish"] is False
+        assert waiting_payload["stream"]["content"] == SHORT_CONNECTION_PROCESSING_TEXT
+        assert "msg_item" not in waiting_payload["stream"]
+        state = cache.get(f"skill_channel_aibot_stream:{ch.id}:stream-1")
+        assert state["stream_committed"] is False
+        assert state["delivered"] is False
+        assert claim_short_connection_delivery(ch.id, "stream-1") is True
+
+        settle_short_connection_poll(ch.id, "stream-1", encrypted=False, finish=True, images_included=True)
+        with patch(
+            "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.decrypt_callback",
+            return_value=message,
+        ):
+            delivered = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+        delivered_payload = _decrypt_passive(delivered)
+        assert delivered_payload["stream"]["finish"] is True
+        assert delivered_payload["stream"]["msg_item"] == [image_item]
+        assert cache.get(f"skill_channel_aibot_stream:{ch.id}:stream-1")["stream_committed"] is True
 
 
 class TestAibotTasks:
