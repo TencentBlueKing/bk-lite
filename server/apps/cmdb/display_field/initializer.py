@@ -35,6 +35,24 @@ from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.core.logger import cmdb_logger as logger
 
 
+class _DisplayFieldQueryError(Exception):
+    """实例查询失败。原始 traceback 只留在查询处的日志里。"""
+
+    def __init__(self, model_id: str):
+        self.model_id = model_id
+        super().__init__(model_id)
+
+
+class _DisplayFieldInstanceUpdateError(Exception):
+    """同一模型有实例写入失败。errors 只收一条摘要。"""
+
+    def __init__(self, inst_id, failure_count: int, instances_processed: int):
+        self.inst_id = inst_id
+        self.failure_count = failure_count
+        self.instances_processed = instances_processed
+        super().__init__(str(failure_count))
+
+
 class DisplayFieldInitializer:
     """
     显示字段初始化器
@@ -102,6 +120,15 @@ class DisplayFieldInitializer:
 
                     logger.info(f"[DisplayFieldInitializer] 模型处理完成: {model_id}, " f"实例数: {instance_count}")
 
+                except _DisplayFieldQueryError:
+                    result["errors"].append(f"查询实例失败，model_id={model_id}")
+                    result["success"] = False
+                except _DisplayFieldInstanceUpdateError as exc:
+                    result["instances_processed"] += exc.instances_processed
+                    result["errors"].append(
+                        f"更新实例失败，model_id={model_id}，inst_id={exc.inst_id}，失败{exc.failure_count}次"
+                    )
+                    result["success"] = False
                 except Exception as e:
                     error_msg = f"处理模型 {model_id} 失败: {e}"
                     logger.error(f"[DisplayFieldInitializer] {error_msg}", exc_info=True)
@@ -347,10 +374,12 @@ class DisplayFieldInitializer:
                 f"[DisplayFieldInitializer] 查询模型 {model_id} 实例失败: {e}",
                 exc_info=True,
             )
-            return 0
+            raise _DisplayFieldQueryError(model_id) from None
 
         # 2. 批量处理实例
         processed_count = 0
+        failure_count = 0
+        first_failed_inst_id = None
 
         for instance in instances:
             try:
@@ -380,9 +409,19 @@ class DisplayFieldInitializer:
                     f"[DisplayFieldInitializer] 更新实例 {instance.get('inst_id')} 失败: {e}",
                     exc_info=True,
                 )
+                if failure_count == 0:
+                    first_failed_inst_id = instance.get("inst_id")
+                failure_count += 1
                 continue
 
         logger.info(f"[DisplayFieldInitializer] 模型 {model_id} 实例处理完成, " f"总数: {len(instances)}, 更新数: {processed_count}")
+
+        if failure_count:
+            raise _DisplayFieldInstanceUpdateError(
+                inst_id=first_failed_inst_id,
+                failure_count=failure_count,
+                instances_processed=processed_count,
+            )
 
         return processed_count
 
