@@ -465,6 +465,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     instance_mode = serializers.ChoiceField(choices=ApmPolicy.InstanceMode.choices, required=False)
     target_kind = serializers.ChoiceField(choices=ApmPolicy.TargetKind.choices, required=False)
     dependencies = serializers.ListField(child=serializers.DictField(), required=False, allow_empty=True, max_length=20)
+    slo = serializers.PrimaryKeyRelatedField(queryset=ApmSlo.objects.all(), required=False, allow_null=True)
+    burn_long_window_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=60, max_value=1440)
+    burn_short_window_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=5, max_value=720)
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
     organizations = PolicyOrganizationsField(
@@ -514,6 +517,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "instance_mode",
             "target_kind",
             "dependencies",
+            "slo",
+            "burn_long_window_minutes",
+            "burn_short_window_minutes",
             "service_namespace",
             "service_name",
             "organizations",
@@ -655,6 +661,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             self._condition_error("error.conditions_guard_shape")
         metric_type = str(item.get("metric_type") or "")
         allowed = {choice for choice, _label in ApmPolicy.MetricType.choices} | {REQUEST_COUNT_METRIC}
+        if metric_type == ApmPolicy.MetricType.SLO_BURN_RATE:
+            self._condition_error("error.burn_plain")
         if metric_type not in allowed:
             self._condition_error("error.conditions_shape")
         comparator = str(item.get("comparator") or "")
@@ -673,6 +681,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if set(item) - self._REGULAR_KEYS:
             self._condition_error("error.conditions_shape")
         metric_type = str(item.get("metric_type") or "")
+        if metric_type == ApmPolicy.MetricType.SLO_BURN_RATE:
+            self._condition_error("error.burn_plain")
         if metric_type not in {choice for choice, _label in ApmPolicy.MetricType.choices}:
             self._condition_error("error.conditions_shape")
         aggregation = str(item.get("aggregation") or ApmPolicy.Aggregation.AVERAGE)
@@ -744,16 +754,32 @@ class ApmPolicySerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         initial = self.initial_data if isinstance(getattr(self, "initial_data", None), dict) else {}
+        metric_type = attrs.get("metric_type", getattr(self.instance, "metric_type", None))
+        burn = metric_type == ApmPolicy.MetricType.SLO_BURN_RATE
+        if burn:
+            self._reject_burn_conflicts(attrs, initial)
+            attrs["compare_mode"] = ApmPolicy.CompareMode.ABSOLUTE
+            attrs["compare_value_kind"] = ""
+            attrs["compare_offset_amount"] = None
+            attrs["min_request_count"] = None
+            attrs["recovery_threshold"] = {}
+        elif attrs.get("slo") is not None or attrs.get("burn_long_window_minutes") or attrs.get("burn_short_window_minutes"):
+            raise serializers.ValidationError({"metric_type": serializer_text(self, "error.burn_metric")})
+        elif "metric_type" in attrs:
+            attrs["slo"] = None
+            attrs["burn_long_window_minutes"] = None
+            attrs["burn_short_window_minutes"] = None
         scope_mode = attrs.get(
             "scope_mode",
             getattr(self.instance, "scope_mode", ApmPolicy.ScopeMode.SERVICE) or ApmPolicy.ScopeMode.SERVICE,
         )
-        if self.instance is None and "service_id" not in attrs and scope_mode == ApmPolicy.ScopeMode.SERVICE:
+        if self.instance is None and "service_id" not in attrs and scope_mode == ApmPolicy.ScopeMode.SERVICE and not burn:
             raise serializers.ValidationError({"service_id": serializer_text(self, "error.field_required")})
         environment = attrs.get("environment", getattr(self.instance, "environment", ""))
-        if not str(environment).strip():
+        if str(environment).strip():
+            attrs["environment"] = str(environment).strip()
+        elif not burn:
             raise serializers.ValidationError({"environment": serializer_text(self, "error.environment_required")})
-        attrs["environment"] = str(environment).strip()
         self._conditions_supplied = "conditions" in initial
         if self._conditions_supplied:
             metric_window = self._stored_or_incoming(attrs, "metric_window", 5)
@@ -846,6 +872,12 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             if len(channel_ids) != len(set(channel_ids)):
                 raise serializers.ValidationError({"notification_targets": serializer_text(self, "error.channel_duplicate")})
         self._validate_policy_handlers(attrs)
+        if burn:
+            self._lock_burn_identity(attrs)
+            metric_type = attrs["metric_type"]
+            compare_mode = attrs["compare_mode"]
+            compare_value_kind = attrs["compare_value_kind"]
+            min_request_count = attrs["min_request_count"]
         anchor_fields = self._validated_anchor_fields(attrs, metric_type, compare_mode, compare_value_kind, min_request_count)
         if getattr(self, "_conditions_supplied", False):
             synced = []
@@ -862,6 +894,67 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         elif self.instance is None or any(field in initial for field in MIRROR_FIELDS):
             attrs["conditions"] = [{"ref": "a", "role": "regular", **anchor_fields}]
         return attrs
+
+    def _reject_burn_conflicts(self, attrs, initial):
+        message = serializer_text(self, "error.burn_plain")
+        if "conditions" in initial:
+            raise serializers.ValidationError({"conditions": message})
+        if attrs.get("scope_mode") not in (None, ApmPolicy.ScopeMode.SERVICE):
+            raise serializers.ValidationError({"scope_mode": message})
+        if attrs.get("service_ids"):
+            raise serializers.ValidationError({"service_ids": message})
+        if attrs.get("application"):
+            raise serializers.ValidationError({"application": message})
+        if attrs.get("endpoint_mode") not in (None, ApmPolicy.EndpointMode.SERVICE):
+            raise serializers.ValidationError({"endpoint_mode": message})
+        if attrs.get("instance_mode") not in (None, ApmPolicy.InstanceMode.ALL):
+            raise serializers.ValidationError({"instance_mode": message})
+        if attrs.get("target_kind") not in (None, ApmPolicy.TargetKind.ENTRY):
+            raise serializers.ValidationError({"target_kind": message})
+        if attrs.get("dependencies"):
+            raise serializers.ValidationError({"dependencies": message})
+        if attrs.get("compare_mode") not in (None, ApmPolicy.CompareMode.ABSOLUTE):
+            raise serializers.ValidationError({"compare_mode": message})
+        if attrs.get("min_request_count") is not None:
+            raise serializers.ValidationError({"min_request_count": message})
+        if attrs.get("recovery_threshold"):
+            raise serializers.ValidationError({"recovery_threshold": message})
+
+    def _lock_burn_identity(self, attrs):
+        slo = attrs.get("slo", getattr(self.instance, "slo", None))
+        if slo is None:
+            raise serializers.ValidationError({"slo": serializer_text(self, "error.burn_slo")})
+        long = attrs.get("burn_long_window_minutes", getattr(self.instance, "burn_long_window_minutes", None))
+        if long is None:
+            raise serializers.ValidationError({"burn_long_window_minutes": serializer_text(self, "error.burn_window")})
+        long = int(long)
+        if "burn_short_window_minutes" in attrs and attrs.get("burn_short_window_minutes") is not None:
+            short = int(attrs["burn_short_window_minutes"])
+        elif "burn_short_window_minutes" not in attrs and getattr(self.instance, "burn_short_window_minutes", None):
+            short = int(self.instance.burn_short_window_minutes)
+        else:
+            short = long // 12
+        if short < 5 or short * 2 > long:
+            raise serializers.ValidationError({"burn_short_window_minutes": serializer_text(self, "error.burn_window")})
+        attrs["slo"] = slo
+        attrs["metric_type"] = ApmPolicy.MetricType.SLO_BURN_RATE
+        attrs["burn_long_window_minutes"] = long
+        attrs["burn_short_window_minutes"] = short
+        attrs["service_id"] = slo.service_id
+        attrs["environment"] = slo.environment
+        attrs["endpoints"] = []
+        attrs["endpoint_mode"] = ApmPolicy.EndpointMode.SERVICE
+        attrs["instance_mode"] = ApmPolicy.InstanceMode.ALL
+        attrs["scope_mode"] = ApmPolicy.ScopeMode.SERVICE
+        attrs["service_ids"] = []
+        attrs["application"] = None
+        attrs["target_kind"] = ApmPolicy.TargetKind.ENTRY
+        attrs["dependencies"] = []
+        attrs["compare_mode"] = ApmPolicy.CompareMode.ABSOLUTE
+        attrs["compare_value_kind"] = ""
+        attrs["compare_offset_amount"] = None
+        attrs["min_request_count"] = None
+        attrs["recovery_threshold"] = {}
 
     def _apply_scope(self, attrs, initial):
         scope_mode = attrs.get(
@@ -1161,6 +1254,11 @@ class ApmPolicySerializer(serializers.ModelSerializer):
                 and comparator in {ApmPolicy.Comparator.GREATER_THAN, ApmPolicy.Comparator.GREATER_THAN_OR_EQUAL}
             ):
                 raise serializers.ValidationError({"thresholds": serializer_text(self, "error.apdex_comparator")})
+            if metric_type == ApmPolicy.MetricType.SLO_BURN_RATE and comparator in {
+                ApmPolicy.Comparator.LESS_THAN,
+                ApmPolicy.Comparator.LESS_THAN_OR_EQUAL,
+            }:
+                raise serializers.ValidationError({"thresholds": serializer_text(self, "error.burn_comparator")})
             normalized.append({"severity": severity, "comparator": comparator, "value": str(value)})
         if len(comparators) != 1:
             raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_comparator")})

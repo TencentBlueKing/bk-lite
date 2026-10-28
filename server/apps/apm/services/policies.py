@@ -27,6 +27,7 @@ from apps.apm.services.contracts import (
     PublishResult,
     ServiceMetricQuery,
     ServiceRedPoint,
+    SloMetricQuery,
 )
 from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore, resolve_result_unit
 from apps.apm.services.policy_conditions import evaluate_policy_conditions, uses_legacy_evaluation
@@ -487,6 +488,7 @@ class DjangoApmPolicyService:
         condition_rows=(),
         guard_rows=(),
         guard_blocked: bool = False,
+        budget_remaining: Decimal | None = None,
     ) -> PolicyQueryResult:
         return PolicyQueryResult(
             value=value,
@@ -506,6 +508,7 @@ class DjangoApmPolicyService:
             condition_rows=tuple(condition_rows),
             guard_rows=tuple(guard_rows),
             guard_blocked=guard_blocked,
+            budget_remaining=budget_remaining,
         )
 
     def test_query(
@@ -520,6 +523,12 @@ class DjangoApmPolicyService:
         target_service=None,
         dependency=None,
     ) -> PolicyQueryResult:
+        if getattr(policy, "metric_type", None) == ApmPolicy.MetricType.SLO_BURN_RATE:
+            return self._evaluate_burn_rate(
+                policy,
+                evaluated_at=evaluated_at,
+                target_service=target_service,
+            )
         if isinstance(policy, ApmPolicy) and not uses_legacy_evaluation(policy):
             return evaluate_policy_conditions(
                 self,
@@ -916,6 +925,186 @@ class DjangoApmPolicyService:
             exc_info=(type(proxy), proxy, exc.__traceback__),
         )
 
+    @staticmethod
+    def _log_burn_failure(policy: ApmPolicy, exc: Exception) -> None:
+        proxy = RuntimeError(type(exc).__name__)
+        logger.warning(
+            "event=apm_policy_burn_failed policy_id=%s failed_stage=%s error_type=%s",
+            "" if getattr(policy, "pk", None) is None else str(policy.pk),
+            "slo_burn_rate",
+            type(exc).__name__,
+            exc_info=(type(proxy), proxy, exc.__traceback__),
+        )
+
+    def _read_burn_window(self, policy: ApmPolicy, slo, service, started_at: datetime, ended_at: datetime):
+        query = SloMetricQuery(
+            service_namespace=service.namespace,
+            service_name=service.name,
+            environment=slo.environment,
+            endpoint=slo.endpoint or "",
+            sli_type=slo.sli_type,
+            latency_threshold_ms=slo.latency_threshold_ms,
+            started_at=started_at,
+            ended_at=ended_at,
+        )
+        try:
+            return self.metric_store.slo_measurement(query)
+        except TelemetryStoreUnavailable:
+            raise
+        except Exception as exc:
+            self._log_burn_failure(policy, exc)
+            raise TelemetryStoreUnavailable("slo burn rate unavailable") from None
+
+    @classmethod
+    def _burn_rate(cls, objective_percent, compliance_percent) -> Decimal | None:
+        objective = Decimal(str(objective_percent)) / Decimal(100)
+        compliance = Decimal(str(compliance_percent)) / Decimal(100)
+        allowed = Decimal(1) - objective
+        if allowed <= 0:
+            return None
+        return cls._bounded_decimal((Decimal(1) - compliance) / allowed)
+
+    @classmethod
+    def _budget_remaining(cls, objective_percent, compliance_percent) -> Decimal:
+        allowed = Decimal(100) - Decimal(str(objective_percent))
+        current_failure = Decimal(100) - Decimal(str(compliance_percent))
+        if allowed <= 0:
+            return Decimal(100) if current_failure <= 0 else Decimal(0)
+        value = (allowed - current_failure) / allowed * Decimal(100)
+        if value < 0:
+            value = Decimal(0)
+        if value > 100:
+            value = Decimal(100)
+        return cls._bounded_decimal(value)
+
+    @staticmethod
+    def _burn_compliance(measurement):
+        if measurement is None or measurement.compliance_percent is None:
+            return None
+        if measurement.data_state != MetricDataState.AVAILABLE:
+            return None
+        return measurement.compliance_percent
+
+    def _evaluate_burn_rate(self, policy: ApmPolicy, *, evaluated_at: datetime, target_service) -> PolicyQueryResult:
+        slo = getattr(policy, "slo", None)
+        if slo is None:
+            return self._query_result(
+                policy,
+                value=None,
+                breached=None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.NO_DATA,
+                series=(),
+                reason="no_data",
+                window_ended_at=evaluated_at,
+            )
+        source = getattr(slo, "service", None) or target_service
+        ended_at = evaluated_at
+        long_minutes = int(policy.burn_long_window_minutes or 0)
+        short_minutes = int(policy.burn_short_window_minutes or 0)
+        long_measurement = self._read_burn_window(
+            policy,
+            slo,
+            source,
+            ended_at - timedelta(minutes=long_minutes),
+            ended_at,
+        )
+        long_compliance = self._burn_compliance(long_measurement)
+        if long_compliance is None:
+            return self._query_result(
+                policy,
+                value=None,
+                breached=None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.NO_DATA,
+                series=(),
+                reason="no_data",
+                window_ended_at=ended_at,
+            )
+        short_measurement = self._read_burn_window(
+            policy,
+            slo,
+            source,
+            ended_at - timedelta(minutes=short_minutes),
+            ended_at,
+        )
+        short_compliance = self._burn_compliance(short_measurement)
+        long_burn = self._burn_rate(slo.objective, long_compliance)
+        if short_compliance is None or long_burn is None:
+            return self._query_result(
+                policy,
+                value=long_burn,
+                breached=None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.INSUFFICIENT_SAMPLES if short_compliance is None else MetricDataState.NO_DATA,
+                series=(),
+                reason="insufficient_samples" if short_compliance is None else "no_data",
+                window_ended_at=ended_at,
+                current_value=long_burn,
+            )
+        short_burn = self._burn_rate(slo.objective, short_compliance)
+        if short_burn is None:
+            return self._query_result(
+                policy,
+                value=long_burn,
+                breached=None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.NO_DATA,
+                series=(),
+                reason="no_data",
+                window_ended_at=ended_at,
+                current_value=long_burn,
+            )
+        long_hit = self._matching_threshold(policy, long_burn)
+        short_hit = self._matching_threshold(policy, short_burn)
+        if long_hit and short_hit:
+            threshold = long_hit if self._severity_rank(str(long_hit["severity"])) >= self._severity_rank(str(short_hit["severity"])) else short_hit
+            breached = True
+            value = long_burn if threshold is long_hit else short_burn
+        else:
+            threshold = None
+            breached = False
+            value = long_burn
+        return self._query_result(
+            policy,
+            value=value,
+            breached=breached,
+            evaluated_at=evaluated_at,
+            data_state=MetricDataState.AVAILABLE,
+            series=(),
+            threshold=threshold,
+            current_value=long_burn,
+            baseline_value=short_burn,
+            window_ended_at=ended_at,
+            budget_remaining=self._budget_remaining(slo.objective, long_compliance),
+        )
+
+    def retire_policies_for_slo(self, slo, *, evaluated_at: datetime) -> None:
+        policies = ApmPolicy.objects.filter(slo=slo).select_related("service", "slo")
+        for policy in policies:
+            for state in list(policy.target_states.filter(status=ApmPolicyTargetState.Status.ACTIVE)):
+                if state.active_alert_id:
+                    result = self._query_result(
+                        policy,
+                        value=None,
+                        breached=False,
+                        evaluated_at=evaluated_at,
+                        data_state=MetricDataState.AVAILABLE,
+                        series=(),
+                    )
+                    self._record_event(
+                        policy,
+                        state,
+                        result,
+                        evaluated_at,
+                        state.active_alert_id,
+                        ApmEvent.Action.RECOVERED,
+                        {"severity": state.current_severity or ApmPolicy.Severity.WARNING, "comparator": "gt", "value": ""},
+                    )
+                state.delete()
+            policy.is_enabled = False
+            policy.save(update_fields=["is_enabled", "updated_at"])
+
     def _decision(self, policy: ApmPolicy, value: Decimal, threshold):
         """有恢复线且落在两线之间记 hold。越线优先于恢复线。"""
         if threshold is not None:
@@ -1020,6 +1209,10 @@ class DjangoApmPolicyService:
         return product, len(rows) > limit, [], [], [item for item, _count in rows]
 
     def _expand_service(self, policy, service, *, evaluated_at: datetime):
+        if getattr(policy, "metric_type", None) == ApmPolicy.MetricType.SLO_BURN_RATE:
+            slo = getattr(policy, "slo", None)
+            endpoint = "" if slo is None else (slo.endpoint or "")
+            return [PolicyTarget(service, endpoint, "", "", 0)], False, [endpoint], [], []
         if (getattr(policy, "target_kind", None) or ApmPolicy.TargetKind.ENTRY) == ApmPolicy.TargetKind.DEPENDENCY:
             return self._expand_dependencies(policy, service, evaluated_at=evaluated_at)
         started_at, ended_at = self._window_bounds(policy, evaluated_at)
@@ -1066,7 +1259,8 @@ class DjangoApmPolicyService:
         dynamic_endpoints = effective_endpoint_mode(policy) == ApmPolicy.EndpointMode.ALL
         dynamic_instances = (getattr(policy, "instance_mode", None) or ApmPolicy.InstanceMode.ALL) == ApmPolicy.InstanceMode.GROUPED
         dependency_mode = (getattr(policy, "target_kind", None) or ApmPolicy.TargetKind.ENTRY) == ApmPolicy.TargetKind.DEPENDENCY
-        if not dynamic_endpoints and not dynamic_instances and not dependency_mode:
+        burn = getattr(policy, "metric_type", None) == ApmPolicy.MetricType.SLO_BURN_RATE
+        if not dynamic_endpoints and not dynamic_instances and not dependency_mode and not burn:
             return
         endpoint_set = set(known_endpoints)
         instance_set = set(known_instances)
@@ -1076,7 +1270,8 @@ class DjangoApmPolicyService:
         for state in states:
             ident = dependency_parts(getattr(state, "dependency", None))
             absent = (
-                (dynamic_endpoints and bool(state.endpoint) and state.endpoint not in endpoint_set)
+                (burn and state.endpoint not in endpoint_set)
+                or (dynamic_endpoints and bool(state.endpoint) and state.endpoint not in endpoint_set)
                 or (dynamic_instances and bool(state.instance_id) and state.instance_id not in instance_set)
                 or (dependency_mode and ident is not None and ident not in dependency_set)
             )
@@ -1293,7 +1488,9 @@ class DjangoApmPolicyService:
         return f"近 {window} 轮命中 {counted} / {needed}"
 
     def evaluate(self, policy_id: UUID, *, evaluated_at: datetime, service_id=None) -> None:
-        policy = ApmPolicy.objects.select_related("service", "application").prefetch_related("organization_links").get(id=policy_id)
+        policy = (
+            ApmPolicy.objects.select_related("service", "application", "slo", "slo__service").prefetch_related("organization_links").get(id=policy_id)
+        )
         if not policy.is_enabled:
             return
         cursor = self._cursor(evaluated_at)
@@ -1352,7 +1549,7 @@ class DjangoApmPolicyService:
 
         with transaction.atomic():
             locked_policy = (
-                ApmPolicy.objects.select_related("service", "application")
+                ApmPolicy.objects.select_related("service", "application", "slo")
                 .prefetch_related("organization_links")
                 .select_for_update(of=("self",))
                 .get(id=policy.id)
@@ -1669,6 +1866,11 @@ class DjangoApmPolicyService:
                 "metric_type": policy.metric_type,
             },
         }
+        if policy.metric_type == ApmPolicy.MetricType.SLO_BURN_RATE:
+            slo = getattr(policy, "slo", None)
+            payload["labels"]["slo_name"] = "" if slo is None else slo.name
+            payload["labels"]["burn_rate"] = "" if result.value is None else str(result.value)
+            payload["labels"]["budget_remaining"] = "" if getattr(result, "budget_remaining", None) is None else str(result.budget_remaining)
         for row in result.condition_rows:
             rendered = DjangoApmPolicyService._decimal_text(row.get("compared_value"))
             if rendered is not None:

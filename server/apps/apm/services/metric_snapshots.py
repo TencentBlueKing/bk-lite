@@ -19,6 +19,7 @@ def _metric_unit(metric_type: str) -> str:
     return {
         ApmPolicy.MetricType.THROUGHPUT: "req/s",
         ApmPolicy.MetricType.NO_TRAFFIC: "req/s",
+        ApmPolicy.MetricType.SLO_BURN_RATE: "x",
     }[metric_type]
 
 
@@ -86,6 +87,7 @@ class ApmAlertMetricSnapshotStore:
                         }
                         for row in (result.condition_rows or ())
                     ],
+                    **({} if getattr(result, "budget_remaining", None) is None else {"budget_remaining": str(result.budget_remaining)}),
                 }
             )
             if len(snapshot.snapshots) > MAX_ALERT_METRIC_SNAPSHOTS:

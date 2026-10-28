@@ -74,6 +74,7 @@ const METRIC_KEY: Record<ApmAlert['metric_type'], string> = {
   apdex: 'apm.policies.metricApdex',
   throughput: 'apm.common.throughput',
   no_traffic: 'apm.alerts.noTraffic',
+  slo_burn_rate: 'apm.policies.metricSloBurnRate',
 };
 
 function resolveTimeParams(view: AlertView, historyTimeRange: [number, number] | null) {

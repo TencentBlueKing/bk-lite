@@ -563,6 +563,7 @@ class PolicyQueryResult:
     condition_rows: tuple[Mapping[str, object], ...] = ()
     guard_rows: tuple[Mapping[str, object], ...] = ()
     guard_blocked: bool = False
+    budget_remaining: Decimal | None = None
 
 
 @dataclass(frozen=True)

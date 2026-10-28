@@ -68,6 +68,11 @@ error:
   dependency_scope: Downstream targets cannot be split by endpoint or instance.
   dependency_metric: Apdex and no-traffic do not apply to downstream dependencies.
   dependency_item: Each dependency needs a channel, system, and statement.
+  burn_plain: An SLO burn-rate policy follows that SLO only and cannot add scope, dependencies, extra conditions, a comparison baseline, or a recovery threshold.
+  burn_slo: Choose an SLO.
+  burn_window: The long window is 60 to 1440 minutes, and the short window is 5 minutes up to half of the long window.
+  burn_comparator: SLO burn rate only allows greater-than or greater-than-or-equal.
+  burn_metric: Only an SLO burn-rate policy can set an SLO and burn windows.
   threshold_comparator: Multi-level thresholds must use the same comparator.
   threshold_monotonic: Multi-level thresholds must stay monotonic across critical, error, and warning.
   deployment_window_limit: Deployment event query window cannot exceed 90 days

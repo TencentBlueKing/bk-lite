@@ -315,6 +315,7 @@ class ApmPolicy(AuditedModel):
         APDEX = "apdex", "Apdex"
         THROUGHPUT = "throughput", "吞吐"
         NO_TRAFFIC = "no_traffic", "无流量"
+        SLO_BURN_RATE = "slo_burn_rate", "SLO 燃烧率"
 
     SLOW_METRIC_TYPES = frozenset({MetricType.SLOW_REQUEST_COUNT, MetricType.SLOW_REQUEST_RATE})
     COUNT_METRIC_TYPES = frozenset({MetricType.ERROR_COUNT, MetricType.SLOW_REQUEST_COUNT})
@@ -407,6 +408,15 @@ class ApmPolicy(AuditedModel):
     instance_mode = models.CharField(max_length=16, choices=InstanceMode.choices, default=InstanceMode.ALL)
     target_kind = models.CharField(max_length=16, choices=TargetKind.choices, default=TargetKind.ENTRY)
     dependencies = models.JSONField(default=list, blank=True)
+    slo = models.ForeignKey(
+        "ApmSlo",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="policies",
+    )
+    burn_long_window_minutes = models.PositiveIntegerField(null=True, blank=True)
+    burn_short_window_minutes = models.PositiveIntegerField(null=True, blank=True)
     version_mode = models.CharField(max_length=16, choices=VersionMode.choices, default=VersionMode.ALL)
     versions = models.JSONField(default=list)
     metric_type = models.CharField(max_length=32, choices=MetricType.choices)

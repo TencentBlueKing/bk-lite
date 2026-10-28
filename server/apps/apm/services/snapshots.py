@@ -47,6 +47,7 @@ class ApmEventSnapshotStore:
             ApmPolicy.MetricType.LATENCY_MAX: "ms",
             ApmPolicy.MetricType.THROUGHPUT: "req/s",
             ApmPolicy.MetricType.NO_TRAFFIC: "req/s",
+            ApmPolicy.MetricType.SLO_BURN_RATE: "x",
         }[policy.metric_type]
         window_end = result.window_ended_at or event.occurred_at
         series = [
@@ -99,6 +100,9 @@ class ApmEventSnapshotStore:
                 "instance_mode": getattr(policy, "instance_mode", None) or "all",
                 "target_kind": getattr(policy, "target_kind", None) or "entry",
                 "dependencies": list(getattr(policy, "dependencies", None) or []),
+                "slo": "" if getattr(policy, "slo_id", None) is None else str(policy.slo_id),
+                "burn_long_window_minutes": getattr(policy, "burn_long_window_minutes", None),
+                "burn_short_window_minutes": getattr(policy, "burn_short_window_minutes", None),
             },
             "object_snapshot": {
                 "service_id": str((service or policy.service).id),

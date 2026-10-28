@@ -907,4 +907,51 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(payload.endpoint_mode).toBe('service');
     expect(payload.endpoints).toEqual([]);
   });
+
+  it('SLO 燃烧率只保留 SLO 选择，快燃预设写入长短窗和严重阈值', async () => {
+    api.getSlos = vi.fn().mockResolvedValue([{
+      id: 'slo-1',
+      name: '结算可用性',
+      service_id: 'svc-1',
+      service_namespace: 'shop',
+      service_name: 'checkout',
+      environment: 'production',
+      sli_type: 'availability',
+      objective: '99.900',
+      evaluation_window: 'rolling7d',
+      is_enabled: true,
+      current_rate: null,
+      budget_remaining: null,
+      data_state: 'available',
+      started_at: null,
+      ended_at: '',
+      created_at: '',
+      updated_at: '',
+      created_by: '',
+      updated_by: '',
+    }]);
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor />);
+    await user.type(await screen.findByLabelText('策略名称'), '快燃策略');
+    await user.click(screen.getByLabelText('指标'));
+    await user.click(await screen.findByText('SLO 燃烧率'));
+    await waitFor(() => expect(screen.queryByLabelText('范围模式')).toBeNull());
+    expect(screen.queryByLabelText('比较基准')).toBeNull();
+    await user.click(screen.getByRole('combobox', { name: 'SLO' }));
+    await user.click(await screen.findByText('结算可用性 · shop/checkout'));
+    expect((screen.getByLabelText('长窗（分钟）') as HTMLInputElement).value).toBe('60');
+    await user.click(screen.getByRole('button', { name: '慢 燃' }));
+    await user.click(screen.getByRole('button', { name: '创建策略' }));
+    await waitFor(() => expect(api.createPolicy).toHaveBeenCalled());
+    const payload = api.createPolicy.mock.calls.at(-1)?.[0];
+    expect(payload.metric_type).toBe('slo_burn_rate');
+    expect(payload.slo).toBe('slo-1');
+    expect(payload.burn_long_window_minutes).toBe(360);
+    expect(payload.burn_short_window_minutes).toBe(30);
+    expect(payload.thresholds).toEqual([expect.objectContaining({ severity: 'warning', comparator: 'gte', value: 6 })]);
+    expect(payload.service_id).toBe('svc-1');
+    expect(payload.environment).toBe('production');
+    expect(payload.recovery_threshold).toEqual({});
+    expect(payload).not.toHaveProperty('conditions');
+  });
 });

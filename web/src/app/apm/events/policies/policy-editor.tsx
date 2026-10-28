@@ -54,6 +54,7 @@ import type {
   ApmPolicySeriesPoint,
   ApmPolicySeverity,
   ApmService,
+  ApmSlo,
 } from '@/app/apm/types';
 import styles from '@/app/apm/events/event-workspace.module.scss';
 import NotificationTargetFields, {
@@ -101,6 +102,9 @@ interface PolicyEditorValues extends Omit<
   guards: GuardEditor[];
   scope_environment?: string;
   dependency_keys?: string[];
+  slo?: string | null;
+  burn_long_window_minutes?: number | null;
+  burn_short_window_minutes?: number | null;
 }
 
 const SEVERITIES: Array<{ value: ApmPolicySeverity; i18nKey: string; color: string }> = [
@@ -147,6 +151,9 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   notification_targets: [],
   extra_conditions: [],
   guards: [],
+  slo: null,
+  burn_long_window_minutes: null,
+  burn_short_window_minutes: null,
 };
 
 const CONDITION_REFS = ['b', 'c', 'd', 'e'] as const;
@@ -217,6 +224,10 @@ const METRIC_GROUPS: Array<{ labelKey: string; metrics: Array<{ value: ApmPolicy
     labelKey: 'apm.policies.metricGroupTraffic',
     metrics: [{ value: 'no_traffic', i18nKey: 'apm.alerts.noTraffic' }],
   },
+  {
+    labelKey: 'apm.policies.metricGroupSlo',
+    metrics: [{ value: 'slo_burn_rate', i18nKey: 'apm.policies.metricSloBurnRate' }],
+  },
 ];
 
 const METRICS: Array<{ value: ApmPolicyMetric; i18nKey: string }> = METRIC_GROUPS.flatMap((group) => group.metrics);
@@ -239,6 +250,9 @@ const TEMPLATE_VARIABLES = [
   { name: '${service}', i18nKey: 'apm.policies.variableService' },
   { name: '${instance}', i18nKey: 'apm.policies.variableInstance' },
   { name: '${dependency}', i18nKey: 'apm.policies.variableDependency' },
+  { name: '${slo_name}', i18nKey: 'apm.policies.variableSloName' },
+  { name: '${burn_rate}', i18nKey: 'apm.policies.variableBurnRate' },
+  { name: '${budget_remaining}', i18nKey: 'apm.policies.variableBudgetRemaining' },
   { name: '${endpoint}', i18nKey: 'apm.policies.variableEndpoint' },
   { name: '${version}', i18nKey: 'apm.policies.variableVersion' },
   { name: '${metric}', i18nKey: 'apm.policies.variableMetric' },
@@ -707,6 +721,9 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
     endpoint_mode: policy.endpoint_mode || (policy.endpoints.length ? 'selected' : 'service'),
     instance_mode: policy.instance_mode || 'all',
     target_kind: policy.target_kind || 'entry',
+    slo: policy.slo || null,
+    burn_long_window_minutes: policy.burn_long_window_minutes ?? null,
+    burn_short_window_minutes: policy.burn_short_window_minutes ?? null,
     dependency_keys: (policy.dependencies || []).map((item) => encodeDependencyKey(item)),
     handlers: policy.handlers || [],
     notification_targets: policy.notification_targets.map((target) => ({
@@ -791,6 +808,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     getServices,
     getApplications,
     getServiceClientRollups,
+    getSlos,
     isLoading,
     previewPolicy,
     dryRunPolicy,
@@ -836,6 +854,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const policyName = Form.useWatch('name', form);
   const [services, setServices] = useState<ApmService[]>([]);
   const [applications, setApplications] = useState<ApmApplication[]>([]);
+  const [slos, setSlos] = useState<ApmSlo[]>([]);
   const [dependencyOptions, setDependencyOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [channels, setChannels] = useState<ApmNotificationChannel[]>([]);
   const [recipients, setRecipients] = useState<ApmNotificationRecipient[]>([]);
@@ -1043,6 +1062,21 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   }, [getApplications, scopeMode]);
 
   useEffect(() => {
+    if (metricType !== 'slo_burn_rate' || !getSlos) return undefined;
+    let cancelled = false;
+    void getSlos()
+      .then((items) => {
+        if (!cancelled) setSlos(items);
+      })
+      .catch(() => {
+        if (!cancelled) setSlos([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSlos, metricType]);
+
+  useEffect(() => {
     if (targetKind !== 'dependency' || !getServiceClientRollups) return undefined;
     const decoded = decodeServiceScope(serviceScope || '');
     if (!decoded.serviceId || !decoded.environment) return undefined;
@@ -1147,9 +1181,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
 
   const selectedScope = decodeServiceScope(serviceScope ?? '');
   const compareKind = resolvedCompareKind(metricType, compareMode, compareKindRaw);
-  const showCompare = metricType !== 'no_traffic';
+  const showCompare = metricType !== 'no_traffic' && metricType !== 'slo_burn_rate';
   const showMinRequest = MIN_REQUEST_METRICS.includes(metricType);
-  const showAggregation = !COUNT_METRICS.includes(metricType);
+  const showAggregation = !COUNT_METRICS.includes(metricType) && metricType !== 'slo_burn_rate';
   const showSlowThreshold = SLOW_METRICS.includes(metricType);
   const showApdexThreshold = metricType === 'apdex';
   const ratioMetric = RATIO_METRICS.includes(metricType);
@@ -1161,9 +1195,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         ? t('apm.common.percentUnit', '%')
         : LATENCY_METRICS.includes(metricType)
           ? t('apm.common.millisecondUnit', 'ms')
-          : COUNT_METRICS.includes(metricType)
-            ? t('apm.policies.timesUnit', '次')
-            : t('apm.policies.perSecondUnit', 'req/s');
+          : metricType === 'slo_burn_rate'
+            ? '×'
+            : COUNT_METRICS.includes(metricType)
+              ? t('apm.policies.timesUnit', '次')
+              : t('apm.policies.perSecondUnit', 'req/s');
   const thresholdBounds = compareKind === 'percent' || compareKind === 'delta'
     ? (ratioMetric && compareKind === 'delta' ? { min: -100, max: 100 } : {})
     : ratioMetric
@@ -1173,14 +1209,16 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const recoveryOptions: { value: ApmPolicyComparator; label: string }[] = ladderComparator === 'lt' || ladderComparator === 'lte'
     ? [{ value: 'gt', label: '>' }, { value: 'gte', label: '≥' }]
     : [{ value: 'lt', label: '<' }, { value: 'lte', label: '≤' }];
-  const comparatorOptions = metricType === 'apdex' && compareKind === ''
-    ? [{ value: 'lt' as const, label: '<' }, { value: 'lte' as const, label: '≤' }]
-    : [
-      { value: 'gt' as const, label: '>' },
-      { value: 'gte' as const, label: '≥' },
-      { value: 'lt' as const, label: '<' },
-      { value: 'lte' as const, label: '≤' },
-    ];
+  const comparatorOptions = metricType === 'slo_burn_rate'
+    ? [{ value: 'gt' as const, label: '>' }, { value: 'gte' as const, label: '≥' }]
+    : metricType === 'apdex' && compareKind === ''
+      ? [{ value: 'lt' as const, label: '<' }, { value: 'lte' as const, label: '≤' }]
+      : [
+        { value: 'gt' as const, label: '>' },
+        { value: 'gte' as const, label: '≥' },
+        { value: 'lt' as const, label: '<' },
+        { value: 'lte' as const, label: '≤' },
+      ];
   const previewRows = useMemo(
     () => {
       const baselineSeries = preview?.baseline_series ?? [];
@@ -1285,7 +1323,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       : null;
     const preserveLegacyScope = Boolean(loadedPolicy && values.service_scope === originalScope);
     const conditions = buildConditions(values);
-    return {
+    const payload: ApmPolicyInput = {
       name: values.name,
       service_id: scope.serviceId,
       organizations: values.organizations || [],
@@ -1319,6 +1357,26 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       ...(conditions ? { conditions } : {}),
       ...scopePayload(values),
     };
+    if (values.metric_type === 'slo_burn_rate') {
+      const selectedSlo = slos.find((item) => item.id === values.slo);
+      if (selectedSlo) {
+        payload.service_id = selectedSlo.service_id;
+        payload.environment = selectedSlo.environment;
+      }
+      delete payload.conditions;
+      payload.slo = values.slo || null;
+      payload.burn_long_window_minutes = values.burn_long_window_minutes ?? null;
+      payload.burn_short_window_minutes = values.burn_short_window_minutes ?? null;
+      payload.compare_mode = 'absolute';
+      payload.compare_offset_amount = null;
+      payload.compare_value_kind = '';
+      payload.min_request_count = null;
+      payload.recovery_threshold = {};
+      payload.endpoints = [];
+      payload.slow_threshold_ms = null;
+      payload.apdex_threshold_ms = null;
+    }
+    return payload;
   };
 
   useEffect(() => {
@@ -1404,7 +1462,35 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     }
   };
 
+  const applyBurnPreset = (kind: 'fast' | 'slow') => {
+    const fast = kind === 'fast';
+    form.setFieldValue('burn_long_window_minutes', fast ? 60 : 360);
+    form.setFieldValue('burn_short_window_minutes', fast ? 5 : 30);
+    form.setFieldValue('compare_mode', 'absolute');
+    form.setFieldValue('compare_value_kind', '');
+    form.setFieldValue('recovery_value', null);
+    form.setFieldValue('thresholds', SEVERITIES.map(({ value }) => ({
+      severity: value,
+      comparator: 'gte' as const,
+      value: fast ? (value === 'critical' ? 14.4 : null) : (value === 'warning' ? 6 : null),
+    })));
+  };
+
   const applyMetric = (metric: ApmPolicyMetric) => {
+    if (metric === 'slo_burn_rate') {
+      form.setFieldValue('compare_mode', 'absolute');
+      form.setFieldValue('compare_value_kind', '');
+      form.setFieldValue('recovery_value', null);
+      form.setFieldValue('extra_conditions', []);
+      form.setFieldValue('guards', []);
+      form.setFieldValue('scope_mode', 'service');
+      form.setFieldValue('endpoint_mode', 'service');
+      form.setFieldValue('instance_mode', 'all');
+      form.setFieldValue('target_kind', 'entry');
+      if (form.getFieldValue('burn_long_window_minutes') == null) {
+        applyBurnPreset('fast');
+      }
+    }
     if (metric === 'no_traffic') {
       form.setFieldValue('extra_conditions', []);
       form.setFieldValue('guards', []);
@@ -1544,6 +1630,30 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       status: 'process' as const,
       description: (
         <div className={styles.stepContent}>
+          {metricType === 'slo_burn_rate' ? (
+            <Form.Item
+              name="slo"
+              label={t('apm.policies.slo', 'SLO')}
+              rules={[{ required: true, message: t('apm.policies.sloRequired', '请选择 SLO') }]}
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={slos.map((item) => ({
+                  value: item.id,
+                  label: `${item.name} · ${item.service_namespace}/${item.service_name}`,
+                }))}
+                onChange={(value: string) => {
+                  const selected = slos.find((item) => item.id === value);
+                  if (!selected) return;
+                  form.setFieldValue('service_scope', encodeServiceScope(selected.service_id, selected.environment));
+                  form.setFieldValue('scope_mode', 'service');
+                  form.setFieldValue('scope_environment', selected.environment);
+                }}
+              />
+            </Form.Item>
+          ) : (
+          <>
           <Form.Item name="scope_mode" label={t('apm.policies.scopeMode', '范围模式')}>
             <Select
               options={[
@@ -1713,6 +1823,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           </Form.Item>
           </>
           ) : null}
+          </>
+          )}
           <Form.Item name="metric_type" label={t('apm.policies.metric', '指标')} rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}>
             <MetricTypeSelect onMetricChange={applyMetric} />
           </Form.Item>
@@ -1734,9 +1846,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               <NumberWithUnit min={1} max={600000} unit="ms" aria-label={t('apm.policies.apdexThreshold', 'T (ms)')} />
             </Form.Item>
           ) : null}
-          <Form.Item name="metric_window" label={t('apm.policies.metricWindow', '汇聚周期')} rules={[{ required: true, message: t('apm.policies.metricWindowRequired', '请输入汇聚周期') }]}>
-            <NumberWithUnit min={1} max={1440} unit={t('apm.policies.minutes', '分钟')} />
-          </Form.Item>
+          {metricType === 'slo_burn_rate' ? null : (
+            <Form.Item name="metric_window" label={t('apm.policies.metricWindow', '汇聚周期')} rules={[{ required: true, message: t('apm.policies.metricWindowRequired', '请输入汇聚周期') }]}>
+              <NumberWithUnit min={1} max={1440} unit={t('apm.policies.minutes', '分钟')} />
+            </Form.Item>
+          )}
           {showAggregation ? (
             <Form.Item name="aggregation" label={t('apm.policies.aggregation', '汇聚方法')} rules={[{ required: true, message: t('apm.policies.aggregationRequired', '请选择汇聚方法') }]}>
               <Select
@@ -1768,7 +1882,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               </Select>
             </Form.Item>
           ) : null}
-          {metricType !== 'no_traffic' ? (
+          {metricType !== 'no_traffic' && metricType !== 'slo_burn_rate' ? (
             <Form.List name="extra_conditions">
               {(fields, { add, remove }) => (
                 <div className="flex flex-col gap-3">
@@ -1838,7 +1952,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               )}
             </Form.List>
           ) : null}
-          {metricType !== 'no_traffic' ? (
+          {metricType !== 'no_traffic' && metricType !== 'slo_burn_rate' ? (
             <Collapse
               ghost
               items={[{
@@ -1984,6 +2098,30 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   />
                 </Form.Item>
               ) : null}
+            </>
+          ) : null}
+          {metricType === 'slo_burn_rate' ? (
+            <>
+              <Form.Item label={t('apm.policies.burnPreset', '燃烧率预设')}>
+                <div className="flex gap-2">
+                  <Button onClick={() => applyBurnPreset('fast')}>{t('apm.policies.burnFast', '快燃')}</Button>
+                  <Button onClick={() => applyBurnPreset('slow')}>{t('apm.policies.burnSlow', '慢燃')}</Button>
+                </div>
+              </Form.Item>
+              <Form.Item
+                name="burn_long_window_minutes"
+                label={t('apm.policies.burnLongWindow', '长窗（分钟）')}
+                rules={[{ required: true, message: t('apm.policies.burnWindowRequired', '请填写燃烧窗口') }]}
+              >
+                <InputNumber min={60} max={1440} precision={0} className="w-full max-w-[560px]" />
+              </Form.Item>
+              <Form.Item
+                name="burn_short_window_minutes"
+                label={t('apm.policies.burnShortWindow', '短窗（分钟）')}
+                rules={[{ required: true, message: t('apm.policies.burnWindowRequired', '请填写燃烧窗口') }]}
+              >
+                <InputNumber min={5} max={720} precision={0} className="w-full max-w-[560px]" />
+              </Form.Item>
             </>
           ) : null}
           <Form.Item label={t('apm.policies.alertThreshold', '告警阈值')}>

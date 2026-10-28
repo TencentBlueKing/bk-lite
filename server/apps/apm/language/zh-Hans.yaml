@@ -68,6 +68,11 @@ error:
   dependency_scope: 下游依赖不能再按端点或实例拆开。
   dependency_metric: Apdex 和无流量不适用于下游依赖。
   dependency_item: 每条依赖都要有通道、系统和语句。
+  burn_plain: SLO 燃烧率只按这条 SLO 计算，不能再叠加范围、依赖、多条件、比较基准或恢复阈值。
+  burn_slo: 请选择一条 SLO。
+  burn_window: 长窗为 60 到 1440 分钟，短窗为 5 分钟到长窗的一半。
+  burn_comparator: SLO 燃烧率只允许大于或大于等于。
+  burn_metric: 只有 SLO 燃烧率策略可以填写 SLO 和燃烧窗口。
   threshold_comparator: 多级阈值必须使用相同比较符。
   threshold_monotonic: 多级阈值必须按严重、错误、警告保持单调。
   deployment_window_limit: 部署事件查询时间窗不能超过 90 天

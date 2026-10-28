@@ -571,7 +571,8 @@ export type ApmPolicyMetric =
   | 'slow_request_rate'
   | 'apdex'
   | 'throughput'
-  | 'no_traffic';
+  | 'no_traffic'
+  | 'slo_burn_rate';
 export type ApmCompareMode = 'absolute' | 'previous_window' | 'offset_hours' | 'offset_days' | 'offset_1h' | 'offset_24h' | 'baseline_days';
 export type ApmCompareValueKind = 'delta' | 'percent';
 export type ApmPolicyComparator = 'gt' | 'gte' | 'lt' | 'lte';
@@ -624,6 +625,9 @@ export interface ApmPolicyInput {
   instance_mode?: 'all' | 'grouped';
   target_kind?: 'entry' | 'dependency';
   dependencies?: Array<{ channel: 'database' | 'outbound' | 'http'; system: string; statement: string }>;
+  slo?: string | null;
+  burn_long_window_minutes?: number | null;
+  burn_short_window_minutes?: number | null;
   organizations: number[];
   environment: string;
   alert_name?: string;
@@ -861,6 +865,7 @@ export interface ApmAlertMetricSnapshotItem {
   data_state: ApmPolicyDataState;
   recovery_threshold?: { comparator: string; value: string } | null;
   condition_values?: Record<string, string | null>;
+  budget_remaining?: string | null;
   condition_details?: Array<{
     ref: string;
     value: string | null;

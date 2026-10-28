@@ -828,7 +828,10 @@ class ApmSloViewSet(viewsets.GenericViewSet):
 
     @HasPermission("services-Operate")
     def destroy(self, request, *args, **kwargs):
-        self.get_object().delete()
+        slo = self.get_object()
+        with transaction.atomic():
+            DjangoApmPolicyService(None, None).retire_policies_for_slo(slo, evaluated_at=timezone.now())
+            slo.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _set_enabled(self, request, *, enabled):
