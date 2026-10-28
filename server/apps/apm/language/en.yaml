@@ -65,6 +65,9 @@ error:
   scope_service_ids: A multi-service scope needs 2 to 20 existing services.
   scope_application_required: An application scope requires an application.
   scope_application_empty: The application has no services to monitor.
+  dependency_scope: Downstream targets cannot be split by endpoint or instance.
+  dependency_metric: Apdex and no-traffic do not apply to downstream dependencies.
+  dependency_item: Each dependency needs a channel, system, and statement.
   threshold_comparator: Multi-level thresholds must use the same comparator.
   threshold_monotonic: Multi-level thresholds must stay monotonic across critical, error, and warning.
   deployment_window_limit: Deployment event query window cannot exceed 90 days

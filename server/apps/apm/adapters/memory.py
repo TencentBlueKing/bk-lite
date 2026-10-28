@@ -267,6 +267,12 @@ class InMemoryMetricStore:
     def service_endpoints(self, query: ServiceMetricQuery, limit: int = 100) -> tuple:
         return ()
 
+    def dependency_red(self, query) -> ServiceRed:
+        return ServiceRed(None, None, None, None)
+
+    def client_db_rollups(self, namespace: str, service_name: str, environment: str, started_at, ended_at) -> list:
+        return []
+
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         return next(value for key, value in self._service_metrics if key == query)
 

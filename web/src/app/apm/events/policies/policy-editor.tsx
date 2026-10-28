@@ -88,7 +88,7 @@ interface GuardEditor {
 
 interface PolicyEditorValues extends Omit<
   ApmPolicyInput,
-  'service_id' | 'environment' | 'version_mode' | 'versions' | 'thresholds' | 'organizations' | 'conditions'
+  'service_id' | 'environment' | 'version_mode' | 'versions' | 'thresholds' | 'organizations' | 'conditions' | 'dependencies'
 > {
   service_scope: string;
   organizations: number[];
@@ -100,6 +100,7 @@ interface PolicyEditorValues extends Omit<
   extra_conditions: ExtraConditionEditor[];
   guards: GuardEditor[];
   scope_environment?: string;
+  dependency_keys?: string[];
 }
 
 const SEVERITIES: Array<{ value: ApmPolicySeverity; i18nKey: string; color: string }> = [
@@ -117,6 +118,8 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   scope_mode: 'service',
   endpoint_mode: 'selected',
   instance_mode: 'all',
+  target_kind: 'entry',
+  dependency_keys: [],
   service_ids: [],
   scope_environment: '',
   metric_type: 'error_rate',
@@ -235,6 +238,7 @@ const VERDICT_KEY = {
 const TEMPLATE_VARIABLES = [
   { name: '${service}', i18nKey: 'apm.policies.variableService' },
   { name: '${instance}', i18nKey: 'apm.policies.variableInstance' },
+  { name: '${dependency}', i18nKey: 'apm.policies.variableDependency' },
   { name: '${endpoint}', i18nKey: 'apm.policies.variableEndpoint' },
   { name: '${version}', i18nKey: 'apm.policies.variableVersion' },
   { name: '${metric}', i18nKey: 'apm.policies.variableMetric' },
@@ -246,19 +250,38 @@ const TEMPLATE_VARIABLES = [
   { name: '${group_by}', i18nKey: 'apm.policies.variableGroupBy' },
 ];
 
+function encodeDependencyKey(item: { channel: string; system: string; statement: string }) {
+  return JSON.stringify({ channel: item.channel, system: item.system, statement: item.statement });
+}
+
+function decodeDependencyKey(value: string): NonNullable<ApmPolicyInput['dependencies']>[number] {
+  return JSON.parse(value) as NonNullable<ApmPolicyInput['dependencies']>[number];
+}
+
 function scopePayload(values: PolicyEditorValues): Partial<ApmPolicyInput> {
   const scopeMode = values.scope_mode || 'service';
   const endpointMode = values.endpoint_mode || 'selected';
   const instanceMode = values.instance_mode || 'all';
-  const legacy = scopeMode === 'service' && instanceMode === 'all' && endpointMode !== 'all';
-  if (legacy) return {};
+  const targetKind = values.target_kind || 'entry';
+  const legacy = scopeMode === 'service' && instanceMode === 'all' && endpointMode !== 'all' && targetKind !== 'dependency';
+  const scope = legacy
+    ? {}
+    : {
+      scope_mode: scopeMode,
+      endpoint_mode: endpointMode,
+      instance_mode: instanceMode,
+      endpoints: endpointMode === 'selected' ? values.endpoints || [] : [],
+      ...(scopeMode === 'services' ? { service_ids: values.service_ids || [] } : {}),
+      ...(scopeMode === 'application' && values.application ? { application: values.application } : {}),
+    };
+  if (targetKind !== 'dependency') return scope;
   return {
-    scope_mode: scopeMode,
-    endpoint_mode: endpointMode,
-    instance_mode: instanceMode,
-    endpoints: endpointMode === 'selected' ? values.endpoints || [] : [],
-    ...(scopeMode === 'services' ? { service_ids: values.service_ids || [] } : {}),
-    ...(scopeMode === 'application' && values.application ? { application: values.application } : {}),
+    ...scope,
+    target_kind: 'dependency',
+    dependencies: (values.dependency_keys || []).map((item) => decodeDependencyKey(item)),
+    endpoint_mode: 'service',
+    instance_mode: 'all',
+    endpoints: [],
   };
 }
 
@@ -683,6 +706,8 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
     scope_environment: policy.environment,
     endpoint_mode: policy.endpoint_mode || (policy.endpoints.length ? 'selected' : 'service'),
     instance_mode: policy.instance_mode || 'all',
+    target_kind: policy.target_kind || 'entry',
+    dependency_keys: (policy.dependencies || []).map((item) => encodeDependencyKey(item)),
     handlers: policy.handlers || [],
     notification_targets: policy.notification_targets.map((target) => ({
       channel_id: target.channel_id,
@@ -765,6 +790,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     getServiceRed,
     getServices,
     getApplications,
+    getServiceClientRollups,
     isLoading,
     previewPolicy,
     dryRunPolicy,
@@ -775,6 +801,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const scopeMode = Form.useWatch('scope_mode', form) || 'service';
   const endpointMode = Form.useWatch('endpoint_mode', form) || 'selected';
   const instanceMode = Form.useWatch('instance_mode', form) || 'all';
+  const targetKind = Form.useWatch('target_kind', form) || 'entry';
   const metricType = Form.useWatch('metric_type', form) ?? 'error_rate';
   const compareMode = Form.useWatch('compare_mode', form) ?? 'absolute';
   const compareOffsetAmount = Form.useWatch('compare_offset_amount', form);
@@ -809,6 +836,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const policyName = Form.useWatch('name', form);
   const [services, setServices] = useState<ApmService[]>([]);
   const [applications, setApplications] = useState<ApmApplication[]>([]);
+  const [dependencyOptions, setDependencyOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [channels, setChannels] = useState<ApmNotificationChannel[]>([]);
   const [recipients, setRecipients] = useState<ApmNotificationRecipient[]>([]);
   const [channelState, setChannelState] = useState<NotificationDirectoryState>('loading');
@@ -1013,6 +1041,33 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       cancelled = true;
     };
   }, [getApplications, scopeMode]);
+
+  useEffect(() => {
+    if (targetKind !== 'dependency' || !getServiceClientRollups) return undefined;
+    const decoded = decodeServiceScope(serviceScope || '');
+    if (!decoded.serviceId || !decoded.environment) return undefined;
+    let cancelled = false;
+    const ended = new Date();
+    const started = new Date(ended.getTime() - 5 * 60 * 1000);
+    void getServiceClientRollups(decoded.serviceId, {
+      environment: decoded.environment,
+      started_at: started.toISOString(),
+      ended_at: ended.toISOString(),
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setDependencyOptions((result.rows || []).map((row) => ({
+          value: encodeDependencyKey(row),
+          label: `${row.system} ${row.statement}`,
+        })));
+      })
+      .catch(() => {
+        if (!cancelled) setDependencyOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getServiceClientRollups, serviceScope, targetKind]);
 
   const serviceOptions = useMemo(() => {
     const activeOptions = services
@@ -1581,6 +1636,42 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                 : t('apm.policies.selectOrganizationFirst', '请先选择所属组织')}
             />
           </Form.Item>
+          <Form.Item name="target_kind" label={t('apm.policies.targetKind', '目标类型')}>
+            <Select
+              options={[
+                { value: 'entry', label: t('apm.policies.targetKindEntry', '入口') },
+                { value: 'dependency', label: t('apm.policies.targetKindDependency', '下游依赖') },
+              ]}
+              onChange={(value) => {
+                if (value === 'dependency') {
+                  form.setFieldValue('endpoint_mode', 'service');
+                  form.setFieldValue('instance_mode', 'all');
+                  form.setFieldValue('endpoints', []);
+                }
+              }}
+            />
+          </Form.Item>
+          {targetKind === 'dependency' ? (
+            <Form.Item
+              name="dependency_keys"
+              label={t('apm.policies.dependencies', '下游依赖')}
+              extra={t('apm.policies.dependencyHint', '不选则监控当前窗全部依赖，最多 40 条')}
+            >
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={dependencyOptions}
+                placeholder={serviceScope
+                  ? t('apm.policies.dependencyPlaceholder', '选择依赖，不选表示全部')
+                  : t('apm.policies.selectServiceFirst', '请先选择服务')}
+                disabled={!serviceScope}
+              />
+            </Form.Item>
+          ) : null}
+          {targetKind === 'entry' ? (
+          <>
           <Form.Item name="endpoint_mode" label={t('apm.policies.endpointMode', '端点模式')}>
             <Select
               options={[
@@ -1620,6 +1711,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               ]}
             />
           </Form.Item>
+          </>
+          ) : null}
           <Form.Item name="metric_type" label={t('apm.policies.metric', '指标')} rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}>
             <MetricTypeSelect onMetricChange={applyMetric} />
           </Form.Item>
@@ -2324,13 +2417,13 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     <Table
                       size="small"
                       pagination={false}
-                      rowKey={(row) => `${row.service || ''}|${row.instance || ''}|${row.endpoint}|${row.version}`}
+                      rowKey={(row) => `${row.service || ''}|${row.instance || ''}|${row.dependency || ''}|${row.endpoint}|${row.version}`}
                       dataSource={dryRun.items}
                       columns={[
                         {
                           title: t('apm.policies.dryRunTarget', '目标'),
                           dataIndex: 'endpoint',
-                          render: (_value, row) => [row.service, row.instance, row.endpoint, row.version].filter(Boolean).join(' ') || t('apm.alerts.serviceLevel', '服务级'),
+                          render: (_value, row) => [row.service, row.instance, row.dependency, row.endpoint, row.version].filter(Boolean).join(' ') || t('apm.alerts.serviceLevel', '服务级'),
                         },
                         {
                           title: t('apm.policies.dryRunVerdict', '结论'),

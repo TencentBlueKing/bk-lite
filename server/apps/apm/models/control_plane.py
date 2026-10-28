@@ -384,6 +384,10 @@ class ApmPolicy(AuditedModel):
         ALL = "all", "不按实例拆"
         GROUPED = "grouped", "按实例"
 
+    class TargetKind(models.TextChoices):
+        ENTRY = "entry", "入口"
+        DEPENDENCY = "dependency", "下游依赖"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=256)
     service = models.ForeignKey(ApmService, on_delete=models.CASCADE, related_name="policies")
@@ -401,6 +405,8 @@ class ApmPolicy(AuditedModel):
     endpoints = models.JSONField(default=list)
     endpoint_mode = models.CharField(max_length=16, choices=EndpointMode.choices, default=EndpointMode.SERVICE)
     instance_mode = models.CharField(max_length=16, choices=InstanceMode.choices, default=InstanceMode.ALL)
+    target_kind = models.CharField(max_length=16, choices=TargetKind.choices, default=TargetKind.ENTRY)
+    dependencies = models.JSONField(default=list, blank=True)
     version_mode = models.CharField(max_length=16, choices=VersionMode.choices, default=VersionMode.ALL)
     versions = models.JSONField(default=list)
     metric_type = models.CharField(max_length=32, choices=MetricType.choices)
@@ -501,6 +507,7 @@ class ApmPolicyTargetState(AuditedModel):
     endpoint = models.CharField(max_length=512, blank=True, default="")
     version = models.CharField(max_length=256, blank=True, default="")
     instance_id = models.CharField(max_length=256, blank=True, default="")
+    dependency = models.JSONField(default=dict, blank=True)
     missed_rounds = models.PositiveIntegerField(default=0)
     evaluation_cursor = models.CharField(max_length=512, blank=True, default="")
     hit_history = models.CharField(max_length=20, blank=True, default="")
@@ -553,6 +560,7 @@ class ApmAlert(AuditedModel):
     endpoint = models.CharField(max_length=512, blank=True, default="")
     version = models.CharField(max_length=256, blank=True, default="")
     instance_id = models.CharField(max_length=256, blank=True, default="")
+    dependency = models.JSONField(default=dict, blank=True)
     operator = models.CharField(max_length=150, blank=True, default="")
     handlers = models.JSONField(default=list)
     current_value = models.DecimalField(max_digits=20, decimal_places=6, null=True, blank=True)

@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmEventSnapshot, ApmPolicy, ApmPolicyNotificationTarget, ApmPolicyTargetState
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
-from apps.apm.services.policies import DjangoApmPolicyService
+from apps.apm.services.policies import DjangoApmPolicyService, dependency_label
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.user_display import build_user_display_map, format_user_identifiers
 from apps.core.utils.user_lookup import find_user, is_int_identifier, resolve_actor_user_id
@@ -158,6 +158,7 @@ class DjangoApmAlertService:
             "endpoint": alert.endpoint,
             "version": alert.version,
             "instance_id": alert.instance_id,
+            "dependency": dependency_label(getattr(alert, "dependency", None)),
             "metric_type": alert.metric_type,
             "severity": alert.severity,
             "status": alert.status,

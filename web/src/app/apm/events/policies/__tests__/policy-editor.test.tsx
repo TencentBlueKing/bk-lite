@@ -878,4 +878,33 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(payload).not.toHaveProperty('endpoint_mode');
     expect(payload).not.toHaveProperty('instance_mode');
   });
+
+  it('下游依赖从 client rollups 取列表，保存带目标类型并隐藏端点', async () => {
+    api.getServiceClientRollups = vi.fn().mockResolvedValue({
+      rows: [{
+        channel: 'database',
+        system: 'mysql',
+        statement: 'SELECT orders',
+        duration_ms: 12,
+        call_count: 3,
+        error_count: 0,
+        inferred: true,
+      }],
+    });
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+
+    await user.click(await screen.findByLabelText('目标类型'));
+    await user.click(await screen.findByText('下游依赖'));
+    await waitFor(() => expect(screen.queryByLabelText('端点')).toBeNull());
+    await user.click(screen.getByRole('combobox', { name: '下游依赖' }));
+    await user.click(await screen.findByText('mysql SELECT orders'));
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(payload.target_kind).toBe('dependency');
+    expect(payload.dependencies).toEqual([{ channel: 'database', system: 'mysql', statement: 'SELECT orders' }]);
+    expect(payload.endpoint_mode).toBe('service');
+    expect(payload.endpoints).toEqual([]);
+  });
 });

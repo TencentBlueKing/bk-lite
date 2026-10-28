@@ -463,6 +463,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     application = serializers.PrimaryKeyRelatedField(queryset=ApmApplication.objects.all(), required=False, allow_null=True)
     endpoint_mode = serializers.ChoiceField(choices=ApmPolicy.EndpointMode.choices, required=False)
     instance_mode = serializers.ChoiceField(choices=ApmPolicy.InstanceMode.choices, required=False)
+    target_kind = serializers.ChoiceField(choices=ApmPolicy.TargetKind.choices, required=False)
+    dependencies = serializers.ListField(child=serializers.DictField(), required=False, allow_empty=True, max_length=20)
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
     organizations = PolicyOrganizationsField(
@@ -510,6 +512,8 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "application",
             "endpoint_mode",
             "instance_mode",
+            "target_kind",
+            "dependencies",
             "service_namespace",
             "service_name",
             "organizations",
@@ -804,6 +808,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         endpoints = attrs.get("endpoints", list(getattr(self.instance, "endpoints", []) or []))
         attrs["endpoints"] = list(dict.fromkeys(item.strip() for item in endpoints))
         self._apply_scope(attrs, initial)
+        self._apply_target(attrs, initial)
         versions = attrs.get("versions", list(getattr(self.instance, "versions", []) or []))
         attrs["versions"] = list(dict.fromkeys(item.strip() for item in versions))
         version_mode = attrs.get("version_mode", getattr(self.instance, "version_mode", ApmPolicy.VersionMode.ALL))
@@ -914,6 +919,42 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "instance_mode",
             getattr(self.instance, "instance_mode", None) or ApmPolicy.InstanceMode.ALL,
         )
+
+    def _apply_target(self, attrs, initial):
+        if "target_kind" in initial:
+            target_kind = attrs.get("target_kind") or ApmPolicy.TargetKind.ENTRY
+        else:
+            target_kind = getattr(self.instance, "target_kind", None) or ApmPolicy.TargetKind.ENTRY
+        attrs["target_kind"] = target_kind
+        if target_kind != ApmPolicy.TargetKind.DEPENDENCY:
+            attrs["dependencies"] = []
+            return
+        if attrs.get("endpoint_mode") != ApmPolicy.EndpointMode.SERVICE or attrs.get("instance_mode") == ApmPolicy.InstanceMode.GROUPED:
+            raise serializers.ValidationError({"target_kind": serializer_text(self, "error.dependency_scope")})
+        metrics = [attrs.get("metric_type", getattr(self.instance, "metric_type", None))]
+        for condition in list(attrs.get("conditions") or getattr(self.instance, "conditions", None) or []):
+            if isinstance(condition, dict):
+                metrics.append(condition.get("metric_type"))
+        blocked = {ApmPolicy.MetricType.APDEX, ApmPolicy.MetricType.NO_TRAFFIC}
+        if any(item in blocked for item in metrics):
+            raise serializers.ValidationError({"target_kind": serializer_text(self, "error.dependency_metric")})
+        raw = attrs.get("dependencies")
+        if raw is None:
+            raw = list(getattr(self.instance, "dependencies", None) or [])
+        normalized = []
+        for item in raw:
+            if not isinstance(item, dict):
+                raise serializers.ValidationError({"dependencies": serializer_text(self, "error.dependency_item")})
+            channel = str(item.get("channel") or "").strip()
+            system = str(item.get("system") or "").strip()
+            statement = str(item.get("statement") or "").strip()
+            if channel not in {"database", "outbound", "http"} or not system or not statement:
+                raise serializers.ValidationError({"dependencies": serializer_text(self, "error.dependency_item")})
+            normalized.append({"channel": channel, "system": system, "statement": statement})
+        attrs["dependencies"] = normalized
+        attrs["endpoints"] = []
+        attrs["endpoint_mode"] = ApmPolicy.EndpointMode.SERVICE
+        attrs["instance_mode"] = ApmPolicy.InstanceMode.ALL
 
     def _policy_organization_ids(self, attrs):
         if "organizations" in attrs:

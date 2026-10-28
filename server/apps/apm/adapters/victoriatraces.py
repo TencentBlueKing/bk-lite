@@ -28,6 +28,7 @@ from apps.apm.adapters.span_aliases import (
     client_db_statement,
 )
 from apps.apm.services.contracts import (
+    DependencyMetricQuery,
     DeploymentReleaseQuery,
     InferredDeploymentRelease,
     InstanceActivity,
@@ -941,6 +942,94 @@ class VictoriaTracesTelemetryStore:
                 }
             )
         return self._endpoint_red(remapped, window_seconds)[:bounded]
+
+    def dependency_red(self, query: DependencyMetricQuery) -> ServiceRed:
+        """Client Span RED。过滤 kind=3，stats 函数集与入口 service_red 一致。"""
+        window_seconds = _validate_window(query.started_at, query.ended_at)
+        exact_dedup = query.ended_at - query.started_at <= RED_EXACT_DEDUP_WINDOW
+        filters = self._dependency_span_filters(query)
+        deduped = f"{filters} | stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code"
+        final_stats = _red_final_stats(query)
+        aggregate_base = self._bounded_spans(deduped) if exact_dedup else filters
+        values = self._ungrouped_values(self._stats(f"{aggregate_base} | {final_stats}", query.started_at, query.ended_at))
+        requests_count = values.get("requests")
+        if requests_count is None or requests_count <= 0:
+            return ServiceRed(None, None, None, None)
+        if exact_dedup:
+            self._reject_truncated_unique_spans(deduped, requests_count, query.started_at, query.ended_at)
+        errors_count = values.get("errors", 0.0) or 0.0
+        timeseries: tuple[ServiceRedPoint, ...] = ()
+        if query.include_breakdown:
+            step = max(15, math.ceil(window_seconds / (MAX_RED_POINTS - 1)))
+            ranged = self._range_values(
+                self._stats_range(f"{deduped if exact_dedup else filters} | {final_stats}", query.started_at, query.ended_at, step=step)
+            )
+            timeseries = tuple(
+                self._red_point(timestamp=timestamp, count=count, step=step, ranged=ranged)
+                for timestamp, count in list(ranged.get("requests", {}).items())[-MAX_RED_POINTS:]
+            )
+        satisfied_count = _count_field(values, "satisfied")
+        within_4t = _count_field(values, "within_4t")
+        tolerating_count = None if satisfied_count is None or within_4t is None else max(0, within_4t - satisfied_count)
+        return ServiceRed(
+            request_rate=requests_count / window_seconds,
+            error_rate=errors_count / requests_count,
+            p95_ms=self._nanoseconds_to_ms(values.get("p95")),
+            p99_ms=self._nanoseconds_to_ms(values.get("p99")),
+            timeseries=timeseries,
+            request_count=int(requests_count),
+            error_count=int(errors_count),
+            avg_ms=self._nanoseconds_to_ms(values.get("avg_duration")),
+            max_ms=self._nanoseconds_to_ms(values.get("max_duration")),
+            p50_ms=self._nanoseconds_to_ms(values.get("p50")),
+            p75_ms=self._nanoseconds_to_ms(values.get("p75")),
+            p90_ms=self._nanoseconds_to_ms(values.get("p90")),
+            slow_count=_count_field(values, "slow"),
+            satisfied_count=satisfied_count,
+            tolerating_count=tolerating_count,
+        )
+
+    def dependency_red_by_day(self, query: DependencyMetricQuery, windows: Sequence[tuple[datetime, datetime]]) -> tuple[ServiceRed, ...]:
+        if not windows:
+            return ()
+        total = sum((ended_at - started_at for started_at, ended_at in windows), timedelta(0))
+        exact_dedup = total <= RED_EXACT_DEDUP_WINDOW
+        filters = self._dependency_span_filters(query)
+        spans = " or ".join(f"_time:[{_logsql_time(started_at)}, {_logsql_time(ended_at)})" for started_at, ended_at in windows)
+        scoped = f"({spans}) {filters}"
+        final_stats = _red_final_stats(query).removeprefix("stats ")
+        if exact_dedup:
+            deduped = f"{scoped} | stats by (trace_id, span_id) max(duration) as duration, max(status_code) as status_code, min(_time) as _time"
+            aggregate = f"{self._bounded_spans(deduped)} | stats by (_time:1d) {final_stats}"
+        else:
+            aggregate = f"{scoped} | stats by (_time:1d) {final_stats}"
+        started_at = min(item[0] for item in windows)
+        ended_at = max(item[1] for item in windows)
+        grouped = self._values_by_day(self._stats(aggregate, started_at, ended_at))
+        reds = []
+        for window_start, window_end in windows:
+            values = grouped.get(_utc_day(window_start), {})
+            window_seconds = max(int((window_end - window_start).total_seconds()), 1)
+            reds.append(self._red_from_values(values, window_seconds))
+        return tuple(reds)
+
+    def _dependency_span_filters(self, query: DependencyMetricQuery) -> str:
+        filters = [
+            "*",
+            f"{_NAMESPACE_FIELD}:={_logsql_string(query.service_namespace)}",
+            f"{_SERVICE_FIELD}:={_logsql_string(query.service_name)}",
+            f"{_ENVIRONMENT_FIELD}:={_logsql_string(query.environment)}",
+            'kind:="3"',
+        ]
+        system = _logsql_string(query.system)
+        statement = _logsql_string(query.statement)
+        if query.channel == "http":
+            filters.append(f"({_HTTP_METHOD_FIELD}:* OR {_HTTP_REQUEST_METHOD_FIELD}:*)")
+            filters.append(f"(name:={statement} OR {_HTTP_ROUTE_FIELD}:* OR {_PEER_SERVICE_FIELD}:={system})")
+        else:
+            filters.append(f"({_DB_SYSTEM_NAME_FIELD}:={system} OR {_DB_SYSTEM_FIELD}:={system})")
+            filters.append(f"({_DB_STATEMENT_FIELD}:={statement} OR {_DB_QUERY_TEXT_FIELD}:={statement} OR name:={statement})")
+        return " ".join(filters)
 
     def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
         if not 1 <= query.sample_limit <= 50:

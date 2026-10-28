@@ -30,6 +30,7 @@ class ApmEventSnapshotStore:
         version: str,
         threshold: dict[str, str] | None,
         service=None,
+        dependency: str = "",
     ) -> ApmEventSnapshot:
         unit = {
             ApmPolicy.MetricType.ERROR_RATE: "ratio",
@@ -96,6 +97,8 @@ class ApmEventSnapshotStore:
                 "service_ids": [str(item) for item in (getattr(policy, "service_ids", None) or [])],
                 "endpoint_mode": getattr(policy, "endpoint_mode", None) or "service",
                 "instance_mode": getattr(policy, "instance_mode", None) or "all",
+                "target_kind": getattr(policy, "target_kind", None) or "entry",
+                "dependencies": list(getattr(policy, "dependencies", None) or []),
             },
             "object_snapshot": {
                 "service_id": str((service or policy.service).id),
@@ -104,6 +107,7 @@ class ApmEventSnapshotStore:
                 "endpoint": endpoint,
                 "environment": policy.environment,
                 "version": version,
+                **({"dependency": dependency} if dependency else {}),
             },
             "evaluation_snapshot": {
                 "value": str(result.value) if result.value is not None else None,

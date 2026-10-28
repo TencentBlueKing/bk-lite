@@ -622,6 +622,8 @@ export interface ApmPolicyInput {
   application?: string | null;
   endpoint_mode?: 'service' | 'selected' | 'all';
   instance_mode?: 'all' | 'grouped';
+  target_kind?: 'entry' | 'dependency';
+  dependencies?: Array<{ channel: 'database' | 'outbound' | 'http'; system: string; statement: string }>;
   organizations: number[];
   environment: string;
   alert_name?: string;
@@ -720,6 +722,7 @@ export type ApmPolicyDryRunVerdict =
 export interface ApmPolicyDryRunItem {
   service?: string;
   instance?: string;
+  dependency?: string;
   endpoint: string;
   version: string;
   verdict: ApmPolicyDryRunVerdict;
@@ -811,6 +814,7 @@ export interface ApmAlert {
   endpoint: string;
   version: string;
   instance_id?: string;
+  dependency?: string;
   metric_type: ApmPolicyMetric;
   severity: ApmPolicySeverity;
   status: 'active' | 'recovered' | 'closed';

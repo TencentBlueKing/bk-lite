@@ -353,6 +353,23 @@ class ServiceMetricQuery:
 
 
 @dataclass(frozen=True)
+class DependencyMetricQuery:
+    """下游 Client Span 的 RED 查询。channel / system / statement 与 client rollup 分类一致。"""
+
+    service_namespace: str
+    service_name: str
+    environment: str
+    started_at: datetime
+    ended_at: datetime
+    channel: str
+    system: str
+    statement: str
+    slow_threshold_ms: int | None = None
+    apdex_threshold_ms: int | None = None
+    include_breakdown: bool = False
+
+
+@dataclass(frozen=True)
 class ServiceRedPoint:
     timestamp: datetime
     request_rate: float | None
