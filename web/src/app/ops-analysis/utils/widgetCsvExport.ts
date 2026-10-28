@@ -256,6 +256,7 @@ export const buildPieCsvTable = (
   const slices = ChartDataTransformer.transformToPieData(rawData, {
     dimensionField: config?.dimensionField,
     valueField: config?.valueField,
+    pieScalarFields: config?.pieScalarFields,
   });
   return {
     headers: [
@@ -279,7 +280,9 @@ export const buildTopNCsvTable = (
     resolveTopNHeaderLabel(config?.topNValueField, schema, { preferTitleOnly }) || labels.value,
     config,
   );
-  const items = buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField);
+  const items = buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField, {
+    scalarFields: config?.topNScalarFields,
+  });
   return {
     headers: [labelHeader, valueHeader],
     rows: items.map((item) => [item.name, formatChartCell(item.value, config)]),

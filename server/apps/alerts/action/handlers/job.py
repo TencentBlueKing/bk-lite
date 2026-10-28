@@ -53,7 +53,7 @@ class JobActionHandler(ActionHandler):
             params = resolve_params(
                 payload,
                 cfg.get("param_bindings", []),
-                script.get("params", []),
+                script.get("params"),
                 overrides=param_overrides,
             )
             execution.result = {

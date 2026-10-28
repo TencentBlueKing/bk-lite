@@ -90,17 +90,59 @@ def view_stats_query(tenant_id: str, opts: dict) -> str:
         f"{base} | stats by ({group}) "
         'count() if ("rum.event.type":view) as views, '
         "count_uniq(`rum.session.key`) as sessions, "
-        "quantile(0.75, `rum.vital.lcp`) as lcp_p75, "
-        "quantile(0.75, `rum.vital.inp`) as inp_p75, "
-        "quantile(0.75, `rum.vital.cls`) as cls_p75, "
-        "quantile(0.75, `rum.context.loading_time_ms`) as loading_p75, "
+        "quantile(0.75, `rum.vital.lcp`) if (`rum.vital.lcp`:*) as lcp_p75, "
+        "quantile(0.75, `rum.vital.inp`) if (`rum.vital.inp`:*) as inp_p75, "
+        "quantile(0.75, `rum.vital.cls`) if (`rum.vital.cls`:*) as cls_p75, "
+        "quantile(0.75, `rum.context.loading_time_ms`) if (`rum.context.loading_time_ms`:*) as loading_p75, "
         "count() if (`rum.vital.lcp`:<=2500) as lcp_good, "
         "count() if (`rum.vital.lcp`:>2500 AND `rum.vital.lcp`:<=4000) as lcp_needs, "
         "count() if (`rum.vital.lcp`:>4000) as lcp_poor, "
-        'count() if ("user_agent.original":Mobile OR "user_agent.original":Android OR "user_agent.original":iPhone) as mobile, '
+        'count() if ("rum.event.type":view ("user_agent.original":Mobile OR "user_agent.original":Android OR "user_agent.original":iPhone)) as mobile, '
         'count() if ("rum.event.type":view) as view_events '
         "| sort by (views desc) | offset 0 | limit 500"
     )
+
+
+def view_spark_query(tenant_id: str, opts: dict, step: timedelta) -> str:
+    extra = ['"rum.event.type":view']
+    release = (opts.get("release") or "").strip()
+    if release:
+        extra.append(f'"rum.release":{quote_logsql(release)}')
+    base = _filtered(tenant_id, opts, " ".join(extra))
+    group = "`rum.view.name`"
+    if (opts.get("mode") or "route") == "release":
+        group = "`rum.release`, `rum.view.name`"
+    bucket = _time_bucket(step)
+    return f"{base} | stats by ({group}, {bucket}) count() as views | sort by ({bucket}) | limit 10000"
+
+
+def fill_view_sparks(rows: list[dict], spark_rows: list[dict], start: datetime, step: timedelta, buckets: int, mode: str) -> None:
+    n = max(buckets, 1)
+    sec = max(60, int(step.total_seconds()))
+    start_ts = start.timestamp()
+    series: dict[str, list[int]] = {}
+    for raw in spark_rows:
+        seen = _parse_time(_text(raw, "_time"))
+        if seen is None:
+            continue
+        idx = int((seen.timestamp() - start_ts) // sec)
+        if idx < 0:
+            continue
+        if idx >= n:
+            idx = n - 1
+        key = _spark_key(_text(raw, "rum.view.name"), _text(raw, "rum.release"), mode)
+        bucket = series.setdefault(key, [0] * n)
+        bucket[idx] += int(_num(raw, "views"))
+    for row in rows:
+        key = _spark_key(str(row.get("route") or ""), str(row.get("release") or ""), mode)
+        spark = series.get(key) or [0] * n
+        row["mom"] = {"hasDelta": any(point > 0 for point in spark), "spark": spark}
+
+
+def _spark_key(route: str, release: str, mode: str) -> str:
+    if mode == "release":
+        return f"{release}\x00{route}"
+    return route
 
 
 def error_list_query(tenant_id: str, opts: dict) -> str:
@@ -160,8 +202,8 @@ def release_stats_query(tenant_id: str, opts: dict) -> str:
         'count_uniq(`rum.error.fingerprint`) if ("rum.event.type":error) as distinct_issues, '
         "min(_time) as first_seen, "
         "max(_time) as last_seen, "
-        "quantile(0.75, `rum.vital.lcp`) as lcp_p75, "
-        "quantile(0.75, `rum.vital.inp`) as inp_p75 "
+        "quantile(0.75, `rum.vital.lcp`) if (`rum.vital.lcp`:*) as lcp_p75, "
+        "quantile(0.75, `rum.vital.inp`) if (`rum.vital.inp`:*) as inp_p75 "
         f"| sort by (affected_sessions desc) | offset 0 | limit {limit}"
     )
 

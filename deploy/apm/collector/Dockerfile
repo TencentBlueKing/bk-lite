@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/golang:1.25.6-alpine AS builder
+FROM public.ecr.aws/docker/library/golang:1.26.10-alpine AS builder
 
 ARG GOPROXY=https://goproxy.cn,direct
 ENV GOPROXY=${GOPROXY}

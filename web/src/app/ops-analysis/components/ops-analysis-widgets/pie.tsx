@@ -49,8 +49,9 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
     () => ChartDataTransformer.transformToPieData(rawData, {
       dimensionField: config?.dimensionField,
       valueField: config?.valueField,
+      pieScalarFields: config?.pieScalarFields,
     }),
-    [config?.dimensionField, config?.valueField, rawData],
+    [config?.dimensionField, config?.pieScalarFields, config?.valueField, rawData],
   );
   const isDataReady = chartData.some(
     (item) => Number.isFinite(item.value) && item.value > 0,

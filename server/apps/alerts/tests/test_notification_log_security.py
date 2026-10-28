@@ -29,7 +29,7 @@ def test_notify_logs_channel_without_content_or_downstream(caplog):
     downstream = {"result": True, "token": "must-not-log-notify-result"}
     users = [{"username": "u1", "id": 42, "email": "a@b.c"}]
     with mock.patch(
-        "apps.alerts.common.notify.notify.SystemMgmtUtils.get_user_all",
+        "apps.alerts.common.notify.notify.SystemMgmtUtils.get_users_by_usernames",
         return_value=users,
     ):
         with mock.patch(
@@ -71,7 +71,7 @@ def test_notify_logs_downstream_failure_without_claiming_success_or_leaking_deta
     }
     users = [{"username": "u1", "id": 42, "email": "a@b.c"}]
     with mock.patch(
-        "apps.alerts.common.notify.notify.SystemMgmtUtils.get_user_all",
+        "apps.alerts.common.notify.notify.SystemMgmtUtils.get_users_by_usernames",
         return_value=users,
     ):
         with mock.patch(

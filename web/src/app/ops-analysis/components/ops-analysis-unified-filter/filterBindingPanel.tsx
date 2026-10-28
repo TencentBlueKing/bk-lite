@@ -32,6 +32,7 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
   definitions,
   dataSourceParams,
   filterBindings,
+  onChange,
 }) => {
   const { t } = useTranslation();
   const safeFilterBindings = filterBindings || {};
@@ -76,7 +77,7 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
   return (
     <div className="divide-y divide-(--color-border-1) rounded-md border border-(--color-border-1) bg-(--color-bg)">
       {bindableParams.map(({ param, matchedDefinition, canBind, filterId }) => {
-        const isEnabled = safeFilterBindings[filterId] ?? false;
+        const followsFilter = safeFilterBindings[filterId] !== false;
         const displayName = matchedDefinition?.name || param.alias_name || param.name;
         const hasCustomName = Boolean(displayName && displayName !== param.name);
 
@@ -114,14 +115,21 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
             </div>
             <div className="ml-3 flex shrink-0 items-center gap-2">
               <span className="text-xs text-(--color-text-3)">
-                {canBind && isEnabled
+                {canBind && followsFilter
                   ? t('dashboard.filterLinked')
                   : t('dashboard.filterUnlinked')}
               </span>
               <Switch
                 size="small"
-                checked={canBind && isEnabled}
-                disabled
+                checked={canBind && followsFilter}
+                disabled={!canBind}
+                onChange={(checked) => {
+                  if (!onChange || !canBind) return;
+                  onChange({
+                    ...safeFilterBindings,
+                    [filterId]: checked,
+                  });
+                }}
               />
             </div>
           </div>

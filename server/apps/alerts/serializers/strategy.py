@@ -9,6 +9,7 @@ from apps.alerts.utils.enrichment import is_enrichment_path
 from apps.alerts.utils.i18n import serializer_message
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
+from apps.alerts.aggregation.window.factory import parse_session_timeout_minutes
 from apps.alerts.utils.util import parse_aggregation_window_size
 
 # 允许的聚合维度白名单（防止 SQL 注入）
@@ -113,6 +114,21 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
 
         return attrs
 
+    def _params_for_typed_validation(self, attrs, strategy_type):
+        """同类型更新没带 params 时，用已保存参数做必填校验。
+
+        请求显式带了 params（包括空对象）就按提交内容校验，不回填旧参数。
+        创建和切换 strategy_type 不把旧类型的 params 带进新类型。
+        返回值的第二个布尔表示请求省略了 params；为真时不要回写 params。
+        """
+        if (
+            self.instance is not None
+            and self.instance.strategy_type == strategy_type
+            and "params" not in attrs
+        ):
+            return dict(self.instance.params or {}), True
+        return dict(attrs.get("params") or {}), False
+
     def _validate_aggregation_strategy(self, attrs):
         existing_params = {}
         if self.instance and self.instance.strategy_type != AlarmStrategyType.MISSING_DETECTION:
@@ -127,6 +143,12 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
             params["window_size"] = normalized_window_size
         except ValueError as error:
             params_errors["window_size"] = str(error)
+
+        if "time_minutes" in params:
+            try:
+                params["time_minutes"] = parse_session_timeout_minutes(params.get("time_minutes"))
+            except ValueError as error:
+                params_errors["time_minutes"] = str(error)
 
         group_by = params.get("group_by", [])
         if group_by:
@@ -162,7 +184,7 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         if not match_rules or not any(group for group in match_rules):
             raise serializers.ValidationError({"match_rules": serializer_message(self, "error.instant_match_rules_required")})
 
-        params = dict(attrs.get("params") or {})
+        params, params_omitted = self._params_for_typed_validation(attrs, AlarmStrategyType.INSTANT)
         alert_template = dict(params.get("alert_template") or {})
         template_title = (alert_template.get("title") or "").strip()
         template_description = (alert_template.get("description") or "").strip()
@@ -175,20 +197,21 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         if params_errors:
             raise serializers.ValidationError({"params": params_errors})
 
-        # 即时告警不参与聚合，强制清理聚合参数
-        attrs["params"] = {
-            "alert_template": {
-                "title": template_title,
-                "description": template_description,
+        # 即时告警不参与聚合，强制清理聚合参数。省略 params 的同类型更新只做校验，不改已保存参数。
+        if not params_omitted:
+            attrs["params"] = {
+                "alert_template": {
+                    "title": template_title,
+                    "description": template_description,
+                }
             }
-        }
         # 即时告警不自动关闭
         attrs["auto_close"] = False
         return attrs
 
     def _validate_missing_detection(self, attrs):
         match_rules = attrs.get("match_rules", getattr(self.instance, "match_rules", []))
-        params = dict(attrs.get("params") or {})
+        params, params_omitted = self._params_for_typed_validation(attrs, AlarmStrategyType.MISSING_DETECTION)
         params_errors = {}
 
         if not match_rules:
@@ -243,19 +266,21 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         if self.instance and self.instance.strategy_type == AlarmStrategyType.MISSING_DETECTION:
             existing_runtime = dict(self.instance.params or {})
 
-        attrs["params"] = {
-            "check_mode": HeartbeatCheckMode.CRON,
-            "cron_expr": cron_expr,
-            "grace_period": grace_period,
-            "activation_mode": activation_mode,
-            "auto_recovery": bool(auto_recovery),
-            "heartbeat_status": existing_runtime.get("heartbeat_status", HeartbeatStatus.WAITING),
-            "last_heartbeat_time": existing_runtime.get("last_heartbeat_time"),
-            "last_heartbeat_context": existing_runtime.get("last_heartbeat_context"),
-            "alert_template": {
-                "title": template_title,
-                "level": template_level,
-                "description": template_description,
-            },
-        }
+        # 省略 params 的同类型更新只做校验。心跳运行时字段仍只从同类型实例保留。
+        if not params_omitted:
+            attrs["params"] = {
+                "check_mode": HeartbeatCheckMode.CRON,
+                "cron_expr": cron_expr,
+                "grace_period": grace_period,
+                "activation_mode": activation_mode,
+                "auto_recovery": bool(auto_recovery),
+                "heartbeat_status": existing_runtime.get("heartbeat_status", HeartbeatStatus.WAITING),
+                "last_heartbeat_time": existing_runtime.get("last_heartbeat_time"),
+                "last_heartbeat_context": existing_runtime.get("last_heartbeat_context"),
+                "alert_template": {
+                    "title": template_title,
+                    "level": template_level,
+                    "description": template_description,
+                },
+            }
         return attrs

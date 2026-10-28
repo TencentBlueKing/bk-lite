@@ -6,6 +6,7 @@ import pytest
 from apps.monitor.services.host_dashboard import (
     EMPTY_SNAPSHOT,
     HostMetricRangeService,
+    average_host_series,
     build_host_instance_rows,
     build_host_resource_snapshot,
     fold_host_range_series,
@@ -19,6 +20,11 @@ from apps.monitor.services.host_resource_top import HostCandidate
 
 NOW = datetime(2026, 8, 20, 6, 0, tzinfo=timezone.utc)
 TS = 1755669600.0
+
+
+def test_average_host_series_means_points_then_hosts():
+    assert average_host_series({"a": [[1, 10], [2, 30]], "b": [[1, 40]]}) == 30.0
+    assert average_host_series({"a": []}) is None
 
 
 def test_range_metric_type_rejects_unknown():

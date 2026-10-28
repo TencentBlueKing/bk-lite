@@ -9,7 +9,10 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.alerts.models.alert_operator import AlarmStrategy, AlertAssignment, AlertShield
 from apps.alerts.models.models import Alert, Level
+from apps.alerts.serializers.assignment_shield import AlertAssignmentModelSerializer, AlertShieldModelSerializer
+from apps.alerts.serializers.strategy import AlarmStrategySerializer
 from apps.alerts.views.level import LevelModelViewSet
 
 
@@ -188,3 +191,128 @@ def test_find_match_rules_reference_name():
         AlertShield.objects.all(), "0", "level"
     )
     assert name == "屏蔽A"
+
+
+def _delete_level(user, level):
+    request = _request("delete", f"/level/{level.id}/", user)
+    return LevelModelViewSet.as_view({"delete": "destroy"})(request, pk=str(level.id))
+
+
+def _persist_validated_match_rules(serializer_cls, model, name, rules, **fields):
+    validated_rules = serializer_cls().validate_match_rules(rules)
+    return model.objects.create(name=name, match_rules=validated_rules, **fields)
+
+
+class _RuleQuery:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def only(self, *args, **kwargs):
+        return self._rows
+
+
+class _RuleRow:
+    def __init__(self, name, match_rules):
+        self.name = name
+        self.match_rules = match_rules
+
+
+_LIST_REFERENCE_CASES = [
+    pytest.param(
+        "event",
+        AlertShieldModelSerializer,
+        AlertShield,
+        "any_of",
+        {"match_type": "filter", "suppression_time": {}},
+        id="shield-any-of",
+    ),
+    pytest.param(
+        "event",
+        AlertShieldModelSerializer,
+        AlertShield,
+        "none_of",
+        {"match_type": "filter", "suppression_time": {}},
+        id="shield-none-of",
+    ),
+    pytest.param(
+        "alert",
+        AlertAssignmentModelSerializer,
+        AlertAssignment,
+        "any_of",
+        {"match_type": "filter"},
+        id="assignment-any-of",
+    ),
+    pytest.param(
+        "alert",
+        AlertAssignmentModelSerializer,
+        AlertAssignment,
+        "none_of",
+        {"match_type": "filter"},
+        id="assignment-none-of",
+    ),
+    pytest.param(
+        "event",
+        AlarmStrategySerializer,
+        AlarmStrategy,
+        "any_of",
+        {},
+        id="correlation-any-of",
+    ),
+    pytest.param(
+        "event",
+        AlarmStrategySerializer,
+        AlarmStrategy,
+        "none_of",
+        {},
+        id="correlation-none-of",
+    ),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("level_type,serializer_cls,model,operator,extra", _LIST_REFERENCE_CASES)
+def test_level_destroy_rejects_list_match_rule_reference(superuser, level_type, serializer_cls, model, operator, extra):
+    referenced = _make_level(10, level_type=level_type)
+    other = _make_level(1, level_type=level_type)
+    spare = _make_level(2, level_type=level_type)
+    rules = [[{"key": "level", "operator": operator, "value": ["10", "2"]}]]
+    _persist_validated_match_rules(serializer_cls, model, f"{model.__name__}-{operator}", rules, **extra)
+
+    response = _delete_level(superuser, referenced)
+    payload = _render(response)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "引用" in json.dumps(payload, ensure_ascii=False)
+    assert Level.objects.filter(id=referenced.id).exists()
+
+    response = _delete_level(superuser, other)
+    response.render()
+    assert response.status_code == status.HTTP_200_OK
+    assert not Level.objects.filter(id=other.id).exists()
+    assert Level.objects.filter(id=referenced.id).exists()
+    assert Level.objects.filter(id=spare.id).exists()
+
+
+@pytest.mark.django_db
+def test_find_match_rules_reference_name_scalar_and_tuple():
+    shield = AlertShield.objects.create(
+        name="标量整值",
+        match_type="filter",
+        match_rules=[[{"key": "level", "value": "10"}]],
+        suppression_time={},
+    )
+    shields = AlertShield.objects.filter(id=shield.id)
+    assert LevelModelViewSet._find_match_rules_reference_name(shields, "10", "level") == "标量整值"
+    assert LevelModelViewSet._find_match_rules_reference_name(shields, "1", "level") == ""
+    assert LevelModelViewSet._find_match_rules_reference_name(shields, "0", "level") == ""
+
+    shield.match_rules = [[{"key": "level", "value": 10}]]
+    shield.save(update_fields=["match_rules"])
+    shields = AlertShield.objects.filter(id=shield.id)
+    assert LevelModelViewSet._find_match_rules_reference_name(shields, "10", "level") == "标量整值"
+    assert LevelModelViewSet._find_match_rules_reference_name(shields, "1", "level") == ""
+
+    query = _RuleQuery([_RuleRow("元组级别", [[{"key": "level", "value": ("10", "2")}]])])
+    assert LevelModelViewSet._find_match_rules_reference_name(query, "10", "level") == "元组级别"
+    assert LevelModelViewSet._find_match_rules_reference_name(query, "2", "level") == "元组级别"
+    assert LevelModelViewSet._find_match_rules_reference_name(query, "1", "level") == ""
+    assert LevelModelViewSet._find_match_rules_reference_name(query, "0", "level") == ""

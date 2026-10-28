@@ -26,9 +26,11 @@ class Notify:
         Get the list of users to notify.
         This method should be implemented by subclasses if needed.
         """
+        if not username_list:
+            return []
+        matched_users = SystemMgmtUtils.get_users_by_usernames(username_list)
+        user_map = {user["username"]: user for user in matched_users}
         result = []
-        all_users = SystemMgmtUtils.get_user_all()
-        user_map = {i["username"]: i for i in all_users}
         for username in username_list:
             user_info = user_map.get(username)
             if user_info:

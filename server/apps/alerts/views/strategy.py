@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.db import transaction
 
+from apps.alerts.aggregation.window.factory import coerce_session_timeout_minutes
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import AlarmStrategyModelFilter
 from apps.alerts.models.alert_operator import AlarmStrategy
@@ -124,7 +125,7 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
 
         old_params = instance.params or {}
         old_time_out = old_params.get("time_out", False)
-        old_time_minutes = old_params.get("time_minutes", 0)
+        old_time_minutes = coerce_session_timeout_minutes(old_params.get("time_minutes", 0))
 
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
@@ -135,7 +136,7 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
 
         new_params = instance.params or {}
         new_time_out = new_params.get("time_out", False)
-        new_time_minutes = new_params.get("time_minutes", 0)
+        new_time_minutes = coerce_session_timeout_minutes(new_params.get("time_minutes", 0))
 
         session_disabled = (
             old_time_out
@@ -174,9 +175,8 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
         rule_name = instance.name
 
         params = instance.params or {}
-        is_session_strategy = (
-            params.get("time_out", False) and params.get("time_minutes", 0) > 0
-        )
+        time_minutes = coerce_session_timeout_minutes(params.get("time_minutes", 0))
+        is_session_strategy = params.get("time_out", False) and time_minutes > 0
 
         if is_session_strategy:
             from apps.alerts.aggregation.recovery.timeout_checker import (

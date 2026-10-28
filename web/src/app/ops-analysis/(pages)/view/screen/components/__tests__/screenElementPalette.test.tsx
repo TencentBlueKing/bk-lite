@@ -36,9 +36,10 @@ describe('screen element palette', () => {
     );
 
     expect(screen.getByRole('button', { name: '说明' })).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'opsAnalysis.screen.collapseDisplayElements' }),
-    ).toBeTruthy();
+    const collapsePalette = screen.getByRole('button', {
+      name: 'opsAnalysis.screen.collapseDisplayElements',
+    });
+    expect(collapsePalette.closest('aside')?.className).toContain('z-40');
     expect(screen.queryByText('opsAnalysis.screen.elementCorner')).toBeNull();
     expect(screen.queryByText('opsAnalysis.screen.titleFrame.hero-6')).toBeNull();
     expect(screen.queryByText('opsAnalysis.screen.panelFrame.border-22')).toBeNull();

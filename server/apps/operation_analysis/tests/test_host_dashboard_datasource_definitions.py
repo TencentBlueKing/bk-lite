@@ -60,3 +60,21 @@ def test_host_resource_snapshot_has_no_health_fields():
     instance_ids = next(item for item in source["params"] if item["name"] == "instance_ids")
     assert instance_ids["type"] == "string"
     assert instance_ids["filterType"] == "filter"
+    scope = next(item for item in source["params"] if item["name"] == "scope")
+    assert scope["alias_name"] == "主机范围"
+    assert scope["filterType"] == "params"
+    assert scope["value"] == ""
+    assert scope["inputConfig"]["control"] == "select"
+    assert scope["inputConfig"]["optionsSource"]["staticItems"] == [
+        {"label": "所选主机", "value": "selected"},
+        {"label": "全部授权主机", "value": "all_authorized"},
+    ]
+    time_param = next(item for item in source["params"] if item["name"] == "time")
+    assert time_param["type"] == "timeRange"
+    assert time_param["filterType"] == "filter"
+    assert time_param["value"] == ""
+    assert "可选" in time_param["desc"]
+    assert "近实时" in source["desc"]
+    assert "窗口均值" in source["desc"]
+    assert "不退化为全量" in source["desc"]
+    assert "topN" in source["chart_type"]

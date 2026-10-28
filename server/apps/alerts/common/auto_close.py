@@ -174,6 +174,11 @@ class AlertAutoClose:
                     logger.info("[AlertAutoClose] 告警 %s 已被其他进程处理，当前状态: %s", alert.id, locked_alert.status)
                     return False
 
+                # 锁外用的是旧事件时间。等待行锁期间新事件可能已把 last_event_time 更新到现在。
+                if not self.should_auto_close(locked_alert, strategy):
+                    logger.info("[AlertAutoClose] 告警 %s 获取行锁后不再满足自动关闭条件，跳过关闭", alert.id)
+                    return False
+
                 # 更新告警状态为已关闭
                 locked_alert.updated_at = timezone.now()
                 locked_alert.operate = AlertOperate.CLOSE

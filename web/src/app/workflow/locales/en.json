@@ -68,7 +68,22 @@
       "unpublishedSuffix": " · Unpublished changes",
       "deletedSuffix": " (Deleted)",
       "defaultNamePrefix": "Workflow",
-      "duplicateSuffix": " (Copy)"
+      "duplicateSuffix": " (Copy)",
+      "export": "Export",
+      "import": "Import",
+      "exportSuccess": "Workflow pack downloaded",
+      "exportSummary": "Exported {exported}, failed {failed}",
+      "exportResultTitle": "Export result",
+      "exportFailed": "No workflows could be exported",
+      "importSummary": "Imported {created}, failed {failed}",
+      "importResultTitle": "Import result",
+      "rebindLine": "{name} needs to be selected again: {nodes}",
+      "importFailed": "Import failed",
+      "importFileInvalid": "Choose a zip archive",
+      "importPack": "Workflow pack",
+      "importPackChoose": "Choose a pack",
+      "importPackTooLarge": "The workflow pack cannot exceed 200MB",
+      "importedElsewhere": "Imported into {organizations}. Switch organization to see them"
     },
     "execution": {
       "records": "Execution Records",

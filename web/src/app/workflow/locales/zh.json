@@ -68,7 +68,22 @@
       "unpublishedSuffix": " · 有未发布更改",
       "deletedSuffix": "（已删除）",
       "defaultNamePrefix": "流程",
-      "duplicateSuffix": "（副本）"
+      "duplicateSuffix": "（副本）",
+      "export": "导出",
+      "import": "导入",
+      "exportSuccess": "已下载流程压缩包",
+      "exportSummary": "已导出 {exported} 条，失败 {failed} 条",
+      "exportResultTitle": "导出结果",
+      "exportFailed": "没有可导出的流程",
+      "importSummary": "已导入 {created} 条，失败 {failed} 条",
+      "importResultTitle": "导入结果",
+      "rebindLine": "{name}需要重新选择：{nodes}",
+      "importFailed": "导入失败",
+      "importFileInvalid": "请选择 zip 压缩包",
+      "importPack": "流程压缩包",
+      "importPackChoose": "选择压缩包",
+      "importPackTooLarge": "流程压缩包不能超过 200MB",
+      "importedElsewhere": "已导入到 {organizations}，切换组织后可见"
     },
     "execution": {
       "records": "执行记录",

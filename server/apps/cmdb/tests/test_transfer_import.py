@@ -229,6 +229,108 @@ def test_run_updates_when_all_unique_fields_match(monkeypatch):
     assert updated[0]["serial"] == "IT-225"
 
 
+def _enum_name_attr():
+    return {
+        "attr_id": "inst_name",
+        "attr_name": "实例名",
+        "attr_type": "enum",
+        "enum_select_mode": "single",
+        "is_only": True,
+        "is_required": True,
+        "editable": True,
+        "option": [{"id": "core", "name": "核心"}],
+    }
+
+
+def _run_enum_name_import(monkeypatch, existing):
+    from types import SimpleNamespace
+
+    from apps.cmdb.services.instance import InstanceManage
+    from apps.cmdb.services.operation_service import OperationService
+    from apps.cmdb.services.transfer_authorization import TransferAuthorization
+    from apps.cmdb.services.transfer_import import TransferImport
+    from apps.cmdb.utils.Import import Import
+
+    attrs = [_enum_name_attr()]
+    queries = []
+    updated = []
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_attr_v2", lambda *a, **k: attrs)
+    monkeypatch.setattr(Import, "get_model_asso_map", lambda self: {})
+    monkeypatch.setattr(
+        Import,
+        "iter_transfer_rows",
+        lambda self, stream, teams: [(4, {"model_id": "system", "inst_name": ["core"]}, {}, [])],
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.utils.Import.build_unique_rule_context",
+        lambda _: SimpleNamespace(unique_rules=[], attrs_by_id={item["attr_id"]: item for item in attrs}),
+    )
+
+    class DummyGraph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def query_entity(self, label, params, **kwargs):
+            queries.append(params)
+            inst_name = next(item for item in params if item["field"] == "inst_name")
+            if inst_name["type"] == "list_any[]" and existing.get("inst_name") == ["core"] and "core" in inst_name["value"]:
+                return [existing], 0
+            if inst_name["type"] == "str[]" and existing.get("inst_name") == "核心" and "核心" in inst_name["value"]:
+                return [existing], 0
+            return [], 0
+
+    monkeypatch.setattr("apps.cmdb.services.transfer_import.GraphClient", lambda *a, **k: DummyGraph())
+    monkeypatch.setattr(TransferAuthorization, "revalidate", lambda task: context)
+    monkeypatch.setattr(TransferAuthorization, "check_instance", lambda *a, **k: None)
+    monkeypatch.setattr("apps.cmdb.services.transfer_import.load_attribute_snapshot", lambda *a, **k: {})
+    monkeypatch.setattr(OperationService, "start", lambda **kw: SimpleNamespace(operation=SimpleNamespace()))
+    monkeypatch.setattr(OperationService, "events_for_operation", lambda operation: [])
+    monkeypatch.setattr(OperationService, "execute_graph", lambda operation, graph_write, events: graph_write("op-1"))
+    monkeypatch.setattr(
+        InstanceManage,
+        "instance_update_by_uuid",
+        lambda teams, roles, uuid, data, operator, **kw: updated.append(data) or {**existing, **data},
+    )
+    monkeypatch.setattr(InstanceManage, "instance_create", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should update")))
+    task = SimpleNamespace(pk="task-1", model_id="system", team_id=1)
+    context = SimpleNamespace(actor=SimpleNamespace(username="admin", roles=["admin"]), teams=[1], associations=[])
+    summary, errors = TransferImport.run(task, stream=None, context=context, progress=lambda *a: None)
+    return summary, errors, updated, queries
+
+
+def test_enum_inst_name_updates_list_value_without_crashing(monkeypatch):
+    existing = {
+        "_id": 1,
+        "inst_uuid": "11111111-1111-4111-8111-111111111111",
+        "inst_name": ["core"],
+        "organization": [1],
+    }
+    summary, errors, updated, queries = _run_enum_name_import(monkeypatch, existing)
+    assert summary["updated"] == 1
+    assert summary["created"] == 0
+    assert errors == []
+    assert updated[0]["inst_name"] == ["core"]
+    assert {"list_any[]", "str[]"} <= {next(item["type"] for item in params if item["field"] == "inst_name") for params in queries}
+
+
+def test_enum_inst_name_matches_legacy_string(monkeypatch):
+    existing = {
+        "_id": 1,
+        "inst_uuid": "11111111-1111-4111-8111-111111111111",
+        "inst_name": "核心",
+        "organization": [1],
+    }
+    summary, errors, updated, queries = _run_enum_name_import(monkeypatch, existing)
+    assert summary["updated"] == 1
+    assert errors == []
+    assert updated[0]["inst_name"] == ["core"]
+    string_query = next(params for params in queries if any(item["field"] == "inst_name" and item["type"] == "str[]" for item in params))
+    assert "核心" in next(item["value"] for item in string_query if item["field"] == "inst_name")
+
+
 def test_unique_write_failure_only_matches_pre_write_unique_errors():
     from apps.cmdb.services.transfer_import import TransferImport
     from apps.core.exceptions.base_app_exception import BaseAppException

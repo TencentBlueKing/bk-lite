@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
+import apps.monitor.models  # noqa: F401  INSTALL_APPS 需含 monitor
+import apps.node_mgmt.models  # noqa: F401  INSTALL_APPS 需含 node_mgmt（monitor.apps.ready → nats.monitor）
 from apps.cmdb.services.instance import InstanceManage
 from apps.core.logger import SafeLogException
 from apps.operation_analysis.services.application3d.errors import (
@@ -2162,6 +2164,191 @@ def test_architecture_marks_unmonitored_and_unreadable_hosts_without_failing_sys
     assert by_id[SYSTEM_A]["health"]["state"] == "alarming"
     assert by_id[SYSTEM_A]["health"]["activeAlarmCount"] == 1
     assert by_id[SYSTEM_A]["health"]["severityCounts"]["critical"] == 0
+
+
+def _scale_architecture_graph(app_count: int, hosts_per_app: int):
+    child_apps = []
+    hosts_by_app = {}
+    visible_hosts = []
+    host_index = 0
+    for app_index in range(app_count):
+        app_id = f"{app_index:08x}-1111-4111-8111-111111111111"
+        child_apps.append(_application(app_id, f"app-{app_index}"))
+        host_ids = []
+        for _ in range(hosts_per_app):
+            host_id = f"host-{host_index:04d}"
+            host_ids.append(host_id)
+            visible_hosts.append(
+                {
+                    "inst_uuid": host_id,
+                    "inst_name": host_id,
+                    "monitor_id": f"monitor-{host_index:04d}",
+                }
+            )
+            host_index += 1
+        hosts_by_app[app_id] = host_ids
+    return child_apps, hosts_by_app, visible_hosts
+
+
+def _architecture_group_by_batches(
+    monkeypatch,
+    *,
+    child_apps,
+    hosts_by_app,
+    visible_hosts,
+    authorized_monitor_ids=None,
+    alert_rows=None,
+):
+    """Count MonitorAlert values().annotate() batches. Permission filters are not counted."""
+    systems = [_system(SYSTEM_A, "architecture-batch")]
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(lambda cls, request, application_id: systems[0]),
+    )
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=child_apps,
+        hosts_by_app=hosts_by_app,
+        visible_hosts=visible_hosts,
+        authorized_monitor_ids=authorized_monitor_ids,
+    )
+    batches = {"group_by": 0}
+    source_rows = list(alert_rows or [])
+
+    class _Grouped:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def annotate(self, **kwargs):
+            batches["group_by"] += 1
+            grouped: dict[tuple, int] = {}
+            for row in self._rows:
+                key = (row.get("monitor_instance_id"), row.get("alert_type"), row.get("level"))
+                grouped[key] = grouped.get(key, 0) + 1
+            return [
+                {"monitor_instance_id": monitor_id, "alert_type": alert_type, "level": level, "count": count}
+                for (monitor_id, alert_type, level), count in grouped.items()
+            ]
+
+    class _Query:
+        def __init__(self, rows):
+            self._rows = list(rows)
+
+        def filter(self, **kwargs):
+            rows = self._rows
+            if "status" in kwargs:
+                rows = [row for row in rows if row.get("status", "new") == kwargs["status"]]
+            if "monitor_instance_id__in" in kwargs:
+                allowed = {str(item) for item in kwargs["monitor_instance_id__in"]}
+                rows = [row for row in rows if str(row.get("monitor_instance_id")) in allowed]
+            return _Query(rows)
+
+        def values(self, *args):
+            assert args == ("monitor_instance_id", "alert_type", "level")
+            return _Grouped(self._rows)
+
+        def values_list(self, *args, **kwargs):
+            return self
+
+        def distinct(self):
+            return []
+
+        def exclude(self, **kwargs):
+            return self
+
+    manager = SimpleNamespace(filter=lambda **kwargs: _Query(source_rows).filter(**kwargs), none=lambda: _Query([]))
+    _stub_alert_manager(monkeypatch, manager)
+    result = Application3DQueryService.architecture(_request(), SYSTEM_A)
+    return batches["group_by"], result
+
+
+def _assert_readable_architecture_nodes(result, child_apps, hosts_by_app):
+    assert [node["id"] for node in result["nodes"] if node["kind"] == "system"] == [SYSTEM_A]
+    assert [node["id"] for node in result["nodes"] if node["kind"] == "application"] == [app["inst_uuid"] for app in child_apps]
+    assert [node["id"] for node in result["nodes"] if node["kind"] == "host"] == [
+        host_id for app in child_apps for host_id in hosts_by_app[app["inst_uuid"]]
+    ]
+    run_edges = {
+        (edge["sourceId"], edge["targetId"]) for edge in result["edges"] if edge["relation"] == "application_run_host"
+    }
+    assert run_edges == {(app["inst_uuid"], host_id) for app in child_apps for host_id in hosts_by_app[app["inst_uuid"]]}
+    for node in result["nodes"]:
+        assert node["health"]["state"] == "normal"
+        assert node["health"]["reason"] == "no_active_alarm"
+
+
+def test_architecture_group_by_batches_do_not_scale_with_hosts(monkeypatch):
+    """Architecture shares one MonitorAlert GROUP BY for the system, apps, and hosts."""
+    measured = []
+    for app_count, hosts_per_app in ((1, 1), (1, 10), (10, 10)):
+        child_apps, hosts_by_app, visible_hosts = _scale_architecture_graph(app_count, hosts_per_app)
+        distinct_ids = {host["monitor_id"] for host in visible_hosts}
+        assert len(distinct_ids) == app_count * hosts_per_app
+        batch_count, result = _architecture_group_by_batches(
+            monkeypatch,
+            child_apps=child_apps,
+            hosts_by_app=hosts_by_app,
+            visible_hosts=visible_hosts,
+        )
+        _assert_readable_architecture_nodes(result, child_apps, hosts_by_app)
+        measured.append(batch_count)
+
+    edge_apps = [_application(APP_A, "门户"), _application(APP_B, "共享应用")]
+    edge_hosts_by_app = {
+        APP_A: ["host-shared", "host-unreadable"],
+        APP_B: ["host-shared", "host-unmonitored"],
+    }
+    edge_batches, edge = _architecture_group_by_batches(
+        monkeypatch,
+        child_apps=edge_apps,
+        hosts_by_app=edge_hosts_by_app,
+        visible_hosts=[
+            {"inst_uuid": "host-shared", "inst_name": "shared", "monitor_id": "monitor-shared"},
+            {"inst_uuid": "host-unreadable", "inst_name": "no-perm", "monitor_id": "m-hidden"},
+            {"inst_uuid": "host-unmonitored", "inst_name": "bare", "monitor_id": ""},
+        ],
+        authorized_monitor_ids={"monitor-shared"},
+        alert_rows=[
+            {"monitor_instance_id": "monitor-shared", "policy_id": 1, "alert_type": "alert", "level": "warning", "status": "new"},
+            {"monitor_instance_id": "m-hidden", "policy_id": 1, "alert_type": "alert", "level": "critical", "status": "new"},
+        ],
+    )
+    by_id = {node["id"]: node for node in edge["nodes"]}
+    assert [node["id"] for node in edge["nodes"] if node["kind"] == "system"] == [SYSTEM_A]
+    assert [node["id"] for node in edge["nodes"] if node["kind"] == "application"] == [APP_A, APP_B]
+    assert [node["id"] for node in edge["nodes"] if node["kind"] == "host"] == [
+        "host-shared",
+        "host-unreadable",
+        "host-unmonitored",
+    ]
+    assert [node["id"] for node in edge["nodes"] if node["kind"] == "host"].count("host-shared") == 1
+    shared_edges = {
+        (edge_item["sourceId"], edge_item["targetId"])
+        for edge_item in edge["edges"]
+        if edge_item["relation"] == "application_run_host" and edge_item["targetId"] == "host-shared"
+    }
+    assert shared_edges == {(APP_A, "host-shared"), (APP_B, "host-shared")}
+    assert by_id["host-shared"]["health"]["state"] == "alarming"
+    assert by_id["host-shared"]["health"]["reason"] == "active_alarm"
+    assert by_id["host-shared"]["health"]["activeAlarmCount"] == 1
+    assert by_id["host-unreadable"]["health"]["reason"] == "monitor_unreadable"
+    assert by_id["host-unreadable"]["health"]["state"] == "unknown"
+    assert by_id["host-unmonitored"]["health"]["reason"] == "unmonitored"
+    assert by_id["host-unmonitored"]["health"]["state"] == "unknown"
+    assert by_id[APP_A]["health"]["reason"] == "active_alarm"
+    assert by_id[APP_A]["health"]["activeAlarmCount"] == 1
+    assert by_id[APP_A]["health"]["severityCounts"]["critical"] == 0
+    assert by_id[APP_B]["health"]["activeAlarmCount"] == 1
+    assert by_id[APP_B]["health"]["severityCounts"]["warning"] == 1
+    assert by_id[APP_B]["health"]["severityCounts"]["critical"] == 0
+    assert by_id[SYSTEM_A]["health"]["state"] == "alarming"
+    assert by_id[SYSTEM_A]["health"]["activeAlarmCount"] == 1
+    assert by_id[SYSTEM_A]["health"]["severityCounts"]["critical"] == 0
+    assert by_id[SYSTEM_A]["health"]["severityCounts"]["warning"] == 1
+
+    assert measured == [1, 1, 1], f"GROUP BY batches for 1, 10, and 100 distinct readable hosts: {measured}"
+    assert edge_batches == 1
 
 
 def _assert_scope_failure_log(records, *, failed_stage: str, error_type: str, system_count: int, sentinel: str, level: int, original: Exception):

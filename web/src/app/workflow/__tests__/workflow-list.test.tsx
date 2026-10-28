@@ -152,6 +152,12 @@ describe('流程列表', () => {
 
     expect(screen.queryByRole('button', { name: workflow.name })).toBeNull();
     expect(screen.getByRole('button', { name: /新建/ }).closest('[class*="gap-2"]')).not.toBeNull();
+    expect(within(screen.getByTestId('workflow-table-panel')).getAllByRole('button').map((button) => button.getAttribute('aria-label') || button.textContent || '').filter((label) => /导出|导入|刷新|新建/.test(label))).toEqual([
+      expect.stringMatching(/导出/),
+      expect.stringMatching(/导入/),
+      expect.stringMatching(/新建/),
+      expect.stringMatching(/刷新/),
+    ]);
     expect(screen.queryByRole('button', { name: '执行记录' })).toBeNull();
     const editButton = screen.getByRole('button', { name: /编辑/ });
     expect(editButton).not.toBeNull();
@@ -166,6 +172,120 @@ describe('流程列表', () => {
     expect(within(menu as HTMLElement).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['执行记录', '复制', '基本信息', '删除']);
     expect(within(menu as HTMLElement).queryByText('运行')).toBeNull();
     expect(menu.querySelector('.anticon')).toBeNull();
+  });
+
+  it('导出走当前选中的流程', async () => {
+    window.URL.createObjectURL = vi.fn(() => 'blob:workflow-pack');
+    window.URL.revokeObjectURL = vi.fn();
+    mocks.post.mockResolvedValue(new Blob([new Uint8Array([0x50, 0x4b, 0x03, 0x04])]));
+    renderPage();
+    await screen.findByText(workflow.name);
+
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    const exportButton = screen.getByRole('button', { name: /导出/ }) as HTMLButtonElement;
+    await waitFor(() => expect(exportButton.disabled).toBe(false));
+    fireEvent.click(exportButton);
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+      '/workflow/api/workflows/export/',
+      { ids: [workflow.id] },
+      expect.objectContaining({ responseType: 'blob', suppressErrorNotification: true }),
+    ));
+    expect(await screen.findByText('已下载流程压缩包')).not.toBeNull();
+  });
+
+  it('部分导出下载成功的压缩包，并用弹窗列出失败', async () => {
+    window.URL.createObjectURL = vi.fn(() => 'blob:workflow-pack');
+    window.URL.revokeObjectURL = vi.fn();
+    mocks.post.mockResolvedValue(new Blob([JSON.stringify({
+      result: true,
+      data: {
+        exported: 1,
+        failed: [{ name: '模板丢失', reason: '文档模板无法读取' }],
+        pack: window.btoa('PK'),
+      },
+    })]));
+    renderPage();
+    await screen.findByText(workflow.name);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    const exportButton = screen.getByRole('button', { name: /导出/ }) as HTMLButtonElement;
+    await waitFor(() => expect(exportButton.disabled).toBe(false));
+    fireEvent.click(exportButton);
+
+    expect((await screen.findAllByText('导出结果')).length).toBeGreaterThan(0);
+    expect(screen.getByText('已导出 1 条，失败 1 条')).not.toBeNull();
+    expect(screen.getByText('模板丢失：文档模板无法读取')).not.toBeNull();
+    expect(window.URL.createObjectURL).toHaveBeenCalled();
+  });
+
+  it('全部导出失败时只弹窗，不下载压缩包', async () => {
+    window.URL.createObjectURL = vi.fn(() => 'blob:workflow-pack');
+    mocks.post.mockRejectedValue({
+      payload: new Blob([JSON.stringify({
+        result: false,
+        message: '没有可导出的流程',
+        data: { exported: 0, failed: [{ name: '999', reason: '流程不存在或无权导出' }] },
+      })]),
+    });
+    renderPage();
+    await screen.findByText(workflow.name);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    const exportButton = screen.getByRole('button', { name: /导出/ }) as HTMLButtonElement;
+    await waitFor(() => expect(exportButton.disabled).toBe(false));
+    fireEvent.click(exportButton);
+
+    expect((await screen.findAllByText('导出结果')).length).toBeGreaterThan(0);
+    expect(screen.getByText('已导出 0 条，失败 1 条')).not.toBeNull();
+    expect(screen.getByText('999：流程不存在或无权导出')).not.toBeNull();
+    expect(window.URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('导入先选择组织和压缩包，确定后才提交', async () => {
+    mocks.post.mockResolvedValue({ created: [], failed: [], rebind: [] });
+    renderPage();
+    await screen.findByText(workflow.name);
+    fireEvent.click(screen.getByRole('button', { name: /导入/ }));
+    const dialog = (await screen.findByText('流程压缩包')).closest('.ant-modal') as HTMLElement;
+    const confirm = within(dialog).getByRole('button', { name: /确\s*定|OK/ }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    expect(mocks.post).not.toHaveBeenCalled();
+
+    const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File([new Uint8Array([0x50, 0x4b])], 'workflow-pack.zip', { type: 'application/zip' });
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } });
+    });
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    const [url, body, config] = mocks.post.mock.calls[0];
+    expect(url).toBe('/workflow/api/workflows/import/');
+    expect(body).toBeInstanceOf(FormData);
+    expect((body as FormData).getAll('team')).toEqual(['7']);
+    expect((body as FormData).get('file')).toBeInstanceOf(File);
+    expect(config).toEqual(expect.objectContaining({
+      headers: { 'Content-Type': 'multipart/form-data' },
+      suppressErrorNotification: true,
+    }));
+  });
+
+  it('超过 200MB 的压缩包在选择时被拦住，不会提交', async () => {
+    renderPage();
+    await screen.findByText(workflow.name);
+    fireEvent.click(screen.getByRole('button', { name: /导入/ }));
+    const dialog = (await screen.findByText('流程压缩包')).closest('.ant-modal') as HTMLElement;
+    const input = within(dialog).getByRole('button', { name: /选择压缩包/ }).querySelector('input[type="file"]')
+      ?? dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File([new Uint8Array([1])], 'workflow-pack.zip', { type: 'application/zip' });
+    Object.defineProperty(file, 'size', { value: 200 * 1024 * 1024 + 1 });
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } });
+    });
+
+    expect(await screen.findByText('流程压缩包不能超过 200MB')).not.toBeNull();
+    expect((within(dialog).getByRole('button', { name: /确\s*定|OK/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.post).not.toHaveBeenCalled();
   });
 
   it('状态表头筛选使用服务端列表查询', async () => {
@@ -237,6 +357,8 @@ describe('流程列表', () => {
 
     expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('is_builtin=true'), expect.anything());
     expect(screen.queryByRole('button', { name: /新建/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /导出/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /导入/ })).toBeNull();
     expect(screen.queryByRole('button', { name: '运行' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: /^启用状态/ })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: /^发布状态/ })).toBeNull();

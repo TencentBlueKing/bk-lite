@@ -19,10 +19,10 @@ import { isScreenWidgetItem } from "./screenItems";
 import type { DateRangeValue } from "@/app/ops-analysis/types/dateRange";
 import { buildRelativeTimeRangeFilterValue } from "@/app/ops-analysis/utils/filterValue";
 import {
-  type BindableParamType,
   buildDefaultFilterBindings,
+  discoverFollowedFilterParams,
   getBindableFilterParams,
-  getFilterDefinitionId,
+  preserveUnfollowedFilterBindings,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
 import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
 import { getScreenWidgetDefinition } from "../constants/widgets";
@@ -116,22 +116,16 @@ export const buildFiltersFromScreenItems = ({
   previousDefinitions: UnifiedFilterDefinition[];
   dataSources: DatasourceItem[];
 }): UnifiedFilterDefinition[] => {
-  const discoveredParams = new Map<
-    string,
-    ParamItem & { type: BindableParamType }
-  >();
-
-  viewSets.items.forEach((item) => {
-    if (!isScreenWidgetItem(item)) return;
-    const dataSource = resolveScreenItemDataSource(item, dataSources);
-    const params = resolveScreenWidgetParams(item, dataSource);
-    getBindableFilterParams(params).forEach((param) => {
-      const id = getFilterDefinitionId(param.name, param.type);
-      if (!discoveredParams.has(id)) {
-        discoveredParams.set(id, param);
-      }
-    });
-  });
+  const discoveredParams = discoverFollowedFilterParams(
+    viewSets.items.flatMap((item) => {
+      if (!isScreenWidgetItem(item)) return [];
+      const dataSource = resolveScreenItemDataSource(item, dataSources);
+      return [{
+        params: resolveScreenWidgetParams(item, dataSource),
+        filterBindings: item.valueConfig?.filterBindings,
+      }];
+    }),
+  );
 
   const existingDefinitions = new Map(
     previousDefinitions.map((definition) => [definition.id, definition]),
@@ -237,23 +231,27 @@ export const syncScreenFilterBindings = (
     if (!isScreenWidgetItem(item)) return item;
     const dataSource = resolveScreenItemDataSource(item, dataSources);
     const params = resolveScreenWidgetParams(item, dataSource);
-    const nextBindings = withApplicationTopologyFilterBinding(
-      item.chartType,
-      item.valueConfig?.sceneWidgetType,
-      mergeRoom3DFilterBinding(
-        item,
-        cleanupScreenFilterBindings(
-          buildDefaultFilterBindings(
+    const nextBindings = preserveUnfollowedFilterBindings(
+      item.valueConfig?.filterBindings,
+      params,
+      withApplicationTopologyFilterBinding(
+        item.chartType,
+        item.valueConfig?.sceneWidgetType,
+        mergeRoom3DFilterBinding(
+          item,
+          cleanupScreenFilterBindings(
+            buildDefaultFilterBindings(
+              params,
+              definitions,
+              item.valueConfig?.filterBindings,
+            ),
             params,
             definitions,
-            item.valueConfig?.filterBindings,
           ),
-          params,
           definitions,
         ),
         definitions,
       ),
-      definitions,
     );
 
     if (

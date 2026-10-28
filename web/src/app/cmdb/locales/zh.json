@@ -1465,7 +1465,44 @@
             "noTaskSelected": "请选择任务查看详情"
         },
         "password": "密码",
-        "sslVerify": "SSL 校验"
+        "sslVerify": "SSL 校验",
+        "customPlugin": {
+            "intro": "新建插件请上传脚本。编辑时可以在表单里改脚本，也可以重新上传覆盖。",
+            "create": "新建插件",
+            "loadFailed": "加载自定义插件失败",
+            "loadScriptFailed": "加载脚本失败",
+            "uploadRequired": "请上传脚本文件",
+            "saved": "已保存，引用中的任务将在下一轮采集使用新脚本",
+            "saveFailed": "保存失败",
+            "name": "名称",
+            "pluginId": "标识",
+            "model": "模型",
+            "os": "系统",
+            "version": "版本",
+            "references": "引用",
+            "action": "操作",
+            "edit": "编辑",
+            "delete": "删除",
+            "deleteTitle": "删除插件",
+            "deleteContent": "被采集任务引用的插件无法删除。",
+            "editTitle": "编辑自定义插件",
+            "createTitle": "新建自定义插件",
+            "pluginIdExtra": "只需填写后缀，保存时自动加上 custom_ 前缀",
+            "pluginIdRequired": "请填写标识",
+            "pluginIdPlaceholder": "host_scan",
+            "targetModel": "目标模型",
+            "targetModelRequired": "请选择目标模型",
+            "targetModelPlaceholder": "选择已有模型",
+            "operatingSystem": "操作系统",
+            "script": "脚本",
+            "scriptRequired": "请填写或上传脚本",
+            "outputHint": "脚本向 stdout 输出 JSON 数组，每条记录必须有 inst_name，字段名与模型属性一致。\n示例：[{\"inst_name\":\"192.168.1.10-demo\",\"ip_addr\":\"192.168.1.10\",\"port\":\"8080\"}]",
+            "selectedFile": "已选择 {name}，确认保存后生效",
+            "createUploadOnly": "新建只能上传脚本文件",
+            "uploadReplace": "上传并覆盖脚本",
+            "upload": "上传脚本",
+            "description": "描述"
+        }
     },
     "OidLibrary": {
         "title": "SOID库",
@@ -1524,6 +1561,11 @@
             "collect_automation_change": "自动采集",
             "model_management_change": "模型管理变更",
             "custom_reporting_change": "自定义上报变更"
+        },
+        "objectOpts": {
+            "instance": "资产实例",
+            "model": "模型管理",
+            "collectTask": "采集任务"
         }
     },
     "subscription": {

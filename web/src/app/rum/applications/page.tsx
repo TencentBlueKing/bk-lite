@@ -24,6 +24,7 @@ import {
   type RumApplicationsCatalog,
 } from '@/app/rum/api';
 import CreateApplicationDrawer from '@/app/rum/applications/ui/create-application-drawer';
+import HomeGlance from '@/app/rum/applications/ui/home-glance';
 import { CatalogKpi } from '@/app/rum/applications/ui/overview-kpi';
 import RumIconAction from '@/app/rum/components/rum-icon-action';
 import RumListToolbar from '@/app/rum/components/rum-list-toolbar';
@@ -334,6 +335,7 @@ export default function RumApplicationsPage() {
       ) : page && page.configured && !page.analyticsUnavailable && applications.length > 0 ? (
         <div className="mb-2 shrink-0">
           <CatalogKpi applications={applications} />
+          <HomeGlance applications={applications} hrefFor={overviewHref} />
         </div>
       ) : null}
 

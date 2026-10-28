@@ -2185,6 +2185,24 @@
     ]
   },
   {
+    "component": "script-editor",
+    "directApps": [
+      "job",
+      "workflow"
+    ],
+    "transitiveApps": [
+      "job",
+      "workflow"
+    ],
+    "stories": [
+      "job-family.stories.tsx",
+      "script-editor.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
+  },
+  {
     "component": "search-action-bar",
     "directApps": [
       "apm",

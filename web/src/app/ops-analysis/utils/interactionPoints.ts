@@ -41,10 +41,10 @@ const numericPoint = (
 };
 
 export const topNLinkPoints = (
-  items: Array<Pick<TopNItem, 'name' | 'source'>>,
+  items: Array<Pick<TopNItem, 'name' | 'source' | 'field'>>,
   valueField?: string,
 ): ChartLinkPoint[] => items.map((item) => {
-  const raw = item.source ? getValueByPath(item.source, valueField) : undefined;
+  const raw = item.source ? getValueByPath(item.source, item.field || valueField) : undefined;
   const fields = item.source ? chartLinkFields(item.source) : undefined;
   return numericPoint(raw, {
     seriesName: item.name,
@@ -67,9 +67,11 @@ export const buildInteractionPoints = (
     ValueConfig,
     | 'dimensionField'
     | 'valueField'
+    | 'pieScalarFields'
     | 'selectedFields'
     | 'topNLabelField'
     | 'topNValueField'
+    | 'topNScalarFields'
     | 'multiValueLabelField'
     | 'multiValueValueField'
     | 'cardList'
@@ -97,6 +99,7 @@ export const buildInteractionPoints = (
     return ChartDataTransformer.transformToPieData(rawData, {
       dimensionField: config?.dimensionField,
       valueField: config?.valueField,
+      pieScalarFields: config?.pieScalarFields,
     }).flatMap((item) => (item.__link ? [item.__link] : []));
   }
 
@@ -133,7 +136,9 @@ export const buildInteractionPoints = (
 
   if (chartType === 'topN') {
     return topNLinkPoints(
-      buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField),
+      buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField, {
+        scalarFields: config?.topNScalarFields,
+      }),
       config?.topNValueField,
     );
   }

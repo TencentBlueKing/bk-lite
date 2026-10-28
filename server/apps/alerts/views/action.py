@@ -79,12 +79,17 @@ class ActionCallbackView(APIView):
         if not verify_job_signature(request):
             return Response({"result": False, "message": "invalid signature"}, status=403)
 
-        data = request.data
+        data = request.data if isinstance(request.data, dict) else {}
         task_id = data.get("task_id")
+        # 缺失 task_id 时不能按 job_task_id IS NULL 查询，否则会改写尚未回写的执行记录。
+        if task_id is None or task_id == "":
+            return Response({"result": False}, status=status.HTTP_400_BAD_REQUEST)
+
         execution = ActionExecution.objects.filter(job_task_id=task_id).order_by("-id").first()
         if not execution:
             logger.info("[callback] 未找到对应的 ActionExecution: job_task_id=%s", task_id)
-            return Response({"result": True})
+            # do_callback_task 把 2xx 当成已送达。缺行返回 503，沿用发送端最多 5 次重试。
+            return Response({"result": False}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         status_val = "success" if data.get("status") == "success" else "failed"
         execution.status = status_val
@@ -195,7 +200,7 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         scoped_alerts = apply_team_scope_for_request(Alert.objects.all(), self.request)
-        qs = super().get_queryset().filter(alert__in=scoped_alerts)
+        qs = super().get_queryset().filter(alert__in=scoped_alerts).select_related("rule", "alert")
         alert_id = self.request.query_params.get("alert_id")
         rule_id = self.request.query_params.get("rule_id")
         status_val = self.request.query_params.get("status")

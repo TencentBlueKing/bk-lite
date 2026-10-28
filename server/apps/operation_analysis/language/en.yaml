@@ -628,6 +628,55 @@ dashboards:
         description: Enabled Channels as a share of configured Channels. Standard notification Channels have no toggle and count as enabled once configured; IM channels use enabled.
         params:
           organization: Organization
+  "dashboard::运维总览_内置":
+    name: Operations Overview
+    desc: Current resource, monitoring, and alert scale for the selected organization. Host performance and new versus closed alerts follow the selected time range.
+    filters:
+      organization:
+        name: Organization
+      time:
+        name: Time Range
+    widgets:
+      group-kpi:
+        name: Overview
+      ops-kpi-resources:
+        name: Resources
+      ops-kpi-monitor:
+        name: Monitor Instances
+      ops-kpi-nodes:
+        name: Nodes
+      ops-kpi-open-alerts:
+        name: Open Alerts
+      ops-kpi-severe:
+        name: Severe Alerts
+      group-resource:
+        name: Resources
+      ops-resource-types:
+        name: Resource Types
+      ops-app-total:
+        name: Applications
+      ops-app-with-alert:
+        name: With Related Alerts
+      ops-app-without-alert:
+        name: Without Related Alerts
+      ops-app-top:
+        name: Application Alert TOP 5
+      group-monitor:
+        name: Monitoring
+      ops-monitor-ring:
+        name: Monitor Access
+      ops-host-key-metrics:
+        name: Host Key Metrics
+      ops-monitor-alerts:
+        name: Monitor Anomalies TOP 5
+      group-alert:
+        name: Alerts
+      ops-alert-trend:
+        name: New vs Closed Alerts（$time$）
+      ops-alert-level:
+        name: Active Alert Levels
+      ops-alert-top:
+        name: Open Alerts TOP 5
 screens:
   "screen::告警运营大屏_内置":
     name: Alert Operations Screen
@@ -1112,7 +1161,7 @@ datasources:
       organization: Organization
   "告警快照统计::alert/get_alert_snapshot_statistics":
     name: Active Alert Snapshot
-    desc: Active alert status at query time; not affected by the time range. Includes active total, unassigned, pending, processing, and auto-recovery
+    desc: Active alert status at query time; not affected by the time range. Includes active total, unassigned, pending, processing, auto-recovery, and severe active alerts
     fields:
       active_count:
         title: Active Alerts
@@ -1132,6 +1181,9 @@ datasources:
       auto_recovery_rate:
         title: Auto-recovered Status Ratio
         description: Percentage from 0 to 100
+      severe_active_count:
+        title: Severe Active Alerts
+        description: Active alerts whose level id matches the Critical level name, not the display name
     params:
       organization: Organization
   "按渠道通知成功率::alert/get_notification_channel_stats":

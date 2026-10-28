@@ -24,7 +24,8 @@ export type DataSourceSourceType =
   | 'postgresql'
   | 'rest_api'
   | 'excel'
-  | 'prometheus';
+  | 'prometheus'
+  | 'elasticsearch';
 
 /** 接口返回字段定义（数据源级配置） */
 export interface ResponseFieldDefinition {

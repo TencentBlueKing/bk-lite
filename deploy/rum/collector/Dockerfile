@@ -1,4 +1,4 @@
-ARG GO_IMAGE=public.ecr.aws/docker/library/golang:1.26.8-alpine
+ARG GO_IMAGE=public.ecr.aws/docker/library/golang:1.26.10-alpine
 
 FROM ${GO_IMAGE} AS builder
 

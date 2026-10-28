@@ -634,6 +634,16 @@ def test_alert_get_trend_data_kwargs(alert_ana):
     assert _last(alert_ana.client) == ("run", "get_alert_trend_data", (), {"group_by": "level", "filters": {"a": 1}})
 
 
+def test_alert_get_open_close_trend_kwargs(alert_ana):
+    alert_ana.get_alert_open_close_trend(time=["2026-01-01T00:00:00Z", "2026-01-08T00:00:00Z"])
+    assert _last(alert_ana.client) == (
+        "run",
+        "get_alert_open_close_trend",
+        (),
+        {"time": ["2026-01-01T00:00:00Z", "2026-01-08T00:00:00Z"]},
+    )
+
+
 def test_alert_get_trend_data_positional(alert_ana):
     alert_ana.get_alert_trend_data("level", {"a": 1})
     assert _last(alert_ana.client) == ("run", "get_alert_trend_data", ("level", {"a": 1}), {})

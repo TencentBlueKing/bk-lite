@@ -15,6 +15,10 @@ import pytest
 from unittest.mock import patch
 
 from django.conf import settings
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+import apps.cmdb.models  # node_mgmt 装入后会加载 monitor，monitor 再引用 CMDB
+import apps.monitor.models  # job_mgmt 回调测试会装入 node_mgmt，其路由导入监控模型
 from apps.alerts.models.action import ActionRule, ActionExecution
 from apps.alerts.models.models import Alert
 from apps.job_mgmt.utils.callback_signer import get_signed_headers, sign_callback
@@ -76,7 +80,7 @@ def test_callback_bad_signature_rejected(_sig, api_client):
         data=json.dumps({"task_id": 4821}),
         content_type="application/json",
     )
-    assert resp.status_code in (401, 403)
+    assert resp.status_code == 403
 
 
 @pytest.mark.django_db
@@ -144,7 +148,7 @@ def test_callback_missing_signature_rejected(api_client):
         content_type="application/json",
         # 故意不传签名头
     )
-    assert resp.status_code in (401, 403)
+    assert resp.status_code == 403
 
 
 @pytest.mark.django_db
@@ -161,4 +165,98 @@ def test_callback_tampered_signature_rejected(api_client):
         HTTP_X_BK_LITE_SIGNATURE="deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
         HTTP_X_BK_LITE_SOURCE="bk-lite-job-mgmt",
     )
-    assert resp.status_code in (401, 403)
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.JobMgmt")
+def test_callback_before_job_task_id_is_retryable(_job, api_client):
+    """签名合法但 job_task_id 尚未写入时必须可重试，且不能改写尚未关联的执行记录。"""
+    execution = _exec(task_id=None, status="pending")
+    before_count = ActionExecution.objects.count()
+    body = {
+        "task_id": 4821,
+        "status": "success",
+        "total_count": 3,
+        "success_count": 2,
+        "failed_count": 1,
+        "finished_at": "2026-06-23T10:32:00Z",
+    }
+    early, headers = _post_signed(api_client, body)
+    assert early.status_code == 503
+    assert early.data == {"result": False}
+    _job.assert_not_called()
+    assert ActionExecution.objects.count() == before_count
+    execution.refresh_from_db()
+    assert execution.status == "pending"
+    assert execution.job_task_id is None
+    assert execution.result == {}
+
+    execution.job_task_id = 4821
+    execution.save(update_fields=["job_task_id"])
+    linked, _headers = _post_signed(api_client, body, headers)
+    assert linked.status_code == 200
+    assert linked.data["result"] is True
+    execution.refresh_from_db()
+    assert execution.status == "success"
+    assert execution.result["total_count"] == 3
+    assert execution.result["success_count"] == 2
+    assert execution.result["failed_count"] == 1
+    assert ActionExecution.objects.count() == before_count
+
+    duplicate, _headers = _post_signed(api_client, body, headers)
+    assert duplicate.status_code == 200
+    execution.refresh_from_db()
+    assert execution.status == "success"
+    assert execution.result["success_count"] == 2
+
+
+def _post_signed(api_client, body, headers=None):
+    headers = headers or get_signed_headers(body)
+    response = api_client.post(
+        "/api/v1/alerts/api/action_callback/",
+        data=json.dumps(body),
+        content_type="application/json",
+        HTTP_X_BK_LITE_TIMESTAMP=headers["X-BK-Lite-Timestamp"],
+        HTTP_X_BK_LITE_SIGNATURE=headers["X-BK-Lite-Signature"],
+        HTTP_X_BK_LITE_SOURCE=headers["X-BK-Lite-Source"],
+    )
+    return response, headers
+
+
+@pytest.mark.django_db
+def test_callback_without_task_id_does_not_match_null_job_task(api_client):
+    """没有 task_id 时返回 400，禁止用 job_task_id IS NULL 命中尚未回写的记录。"""
+    execution = _exec(task_id=None, status="pending")
+    body = {
+        "status": "success",
+        "total_count": 1,
+        "success_count": 1,
+        "failed_count": 0,
+        "finished_at": "2026-06-23T10:32:00Z",
+    }
+    with CaptureQueriesContext(connection) as captured:
+        response, _headers = _post_signed(api_client, body)
+    sql = "\n".join(query["sql"] for query in captured.captured_queries)
+    assert response.status_code == 400
+    assert response.data == {"result": False}
+    assert 'job_task_id" IS NULL' not in sql
+    execution.refresh_from_db()
+    assert execution.status == "pending"
+    assert execution.job_task_id is None
+    assert execution.result == {}
+
+
+@pytest.mark.django_db
+def test_callback_without_task_id_and_signature_stays_forbidden(api_client):
+    """签名校验仍在 task_id 校验之前，缺签名保持 403，且不改写空 job_task_id。"""
+    execution = _exec(task_id=None, status="pending")
+    response = api_client.post(
+        "/api/v1/alerts/api/action_callback/",
+        data=json.dumps({"status": "success"}),
+        content_type="application/json",
+    )
+    assert response.status_code == 403
+    execution.refresh_from_db()
+    assert execution.status == "pending"
+    assert execution.job_task_id is None

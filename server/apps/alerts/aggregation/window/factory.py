@@ -1,9 +1,35 @@
+import re
 from datetime import timedelta
 from enum import Enum
 
 from django.utils import timezone
 
 from apps.alerts.utils.util import parse_aggregation_window_size
+
+_NON_NEGATIVE_INTEGER_TEXT = re.compile(r"^[0-9]+$")
+_SESSION_TIMEOUT_ERROR = "观察时间必须为大于等于 0 的整数分钟。"
+
+
+def parse_session_timeout_minutes(value):
+    """把观察时间收成非负 int。布尔、小数、负数和非数字字符串拒绝。"""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError(_SESSION_TIMEOUT_ERROR)
+    if isinstance(value, str):
+        text = value.strip()
+        if not _NON_NEGATIVE_INTEGER_TEXT.fullmatch(text):
+            raise ValueError(_SESSION_TIMEOUT_ERROR)
+        return int(text)
+    if value < 0:
+        raise ValueError(_SESSION_TIMEOUT_ERROR)
+    return value
+
+
+def coerce_session_timeout_minutes(value, default=0):
+    """读取存量配置时使用。收不成的按 default，避免把原字符串交给 timedelta。"""
+    try:
+        return parse_session_timeout_minutes(value)
+    except (TypeError, ValueError):
+        return default
 
 
 class WindowType(str, Enum):
@@ -57,14 +83,15 @@ class WindowFactory:
             clamp=True,
         )
         time_out = params.get("time_out", False)
-        session_timeout = params.get("time_minutes", WindowFactory.DEFAULT_SESSION_TIMEOUT)
-        session_enabled = bool(time_out) and int(session_timeout or 0) > 0
+        raw_session_timeout = params.get("time_minutes", WindowFactory.DEFAULT_SESSION_TIMEOUT)
+        session_timeout_minutes = coerce_session_timeout_minutes(raw_session_timeout)
+        session_enabled = bool(time_out) and session_timeout_minutes > 0
 
         if session_enabled:
             return WindowConfig(
                 window_type=WindowType.SESSION,
                 window_size_minutes=window_size,
-                session_timeout_minutes=session_timeout,
+                session_timeout_minutes=session_timeout_minutes,
                 window_end=window_end,
             )
 

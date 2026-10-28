@@ -2635,12 +2635,27 @@ def get_model_association_options(model_id=None, user_info=None, **kwargs):
     return {"result": True, "data": list_model_association_options(language, model_id), "message": ""}
 
 
+def _classification_all_visible(value):
+    if value is True:
+        return True
+    if value is False or value is None:
+        return False
+    if isinstance(value, (int, float)) and value == 1:
+        return True
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 @nats_client.register
-def get_classification_instance_counts(classification_ids=None, user_info=None, **kwargs):
-    """按传入顺序返回所选分类的可见实例总数，包含 0。"""
+def get_classification_instance_counts(classification_ids=None, user_info=None, all_visible=None, **kwargs):
+    """按传入顺序返回所选分类的可见实例总数，包含 0。
+
+    classification_ids 为空时，只有显式 all_visible 才返回当前可见的全部分类。
+    显式传入的分类仍然优先，不会被 all_visible 扩成全量。
+    """
     del kwargs
     selected = normalize_text_list(classification_ids)
-    if not selected:
+    expand_visible = _classification_all_visible(all_visible)
+    if not selected and not expand_visible:
         raise AssetOverviewQueryError("分类不能为空")
 
     language = _resolve_nats_cmdb_language(user_info)
@@ -2656,6 +2671,8 @@ def get_classification_instance_counts(classification_ids=None, user_info=None, 
     model_classification_ids = {model.get("classification_id") for model in models if model.get("classification_id")}
     visible_classifications = [item for item in classifications if item.get("classification_id") in model_classification_ids]
     known = {item.get("classification_id") for item in visible_classifications}
+    if not selected:
+        selected = [item.get("classification_id") for item in visible_classifications if item.get("classification_id")]
     missing = [item for item in selected if item not in known]
     if missing:
         raise AssetOverviewQueryError(f"分类不存在或不可见: {', '.join(missing)}")

@@ -1,6 +1,6 @@
 'use client';
 
-import { MoreOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, MoreOutlined, PlusOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
 import { App, Button, Dropdown, Empty, Input, Popconfirm, Switch, Tag, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -16,6 +16,7 @@ import useApiClient from '@/utils/request';
 import { organizationDisplayText } from '../lib/organization-display';
 import type { ExecutionRecord, PaginatedResponse, WorkflowRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
+import { WorkflowImportDialog } from './workflow-import-dialog';
 import { WorkflowLaunchDialog } from './workflow-launch-dialog';
 import { WorkflowPermission } from './workflow-permission';
 import { WorkflowProfileDialog, type WorkflowProfileValue } from './workflow-profile-dialog';
@@ -51,6 +52,10 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
   const [profile, setProfile] = useState<{ mode: 'create' | 'edit' | 'copy'; workflow?: WorkflowRecord } | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
   const [runWorkflow, setRunWorkflow] = useState<WorkflowRecord>();
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const requestCoordinator = useRequestCoordinator(setLoading);
 
   const load = useCallback(async () => {
@@ -113,6 +118,151 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
       await load();
     } finally {
       setProfileBusy(false);
+    }
+  };
+
+  const exportFailureList = async (error: unknown) => {
+    const record = error as { payload?: unknown; response?: { data?: unknown } };
+    const raw = record.payload ?? record.response?.data;
+    if (raw == null) return null;
+    try {
+      const text = raw instanceof Blob ? await raw.text() : typeof raw === 'string' ? raw : JSON.stringify(raw);
+      const parsed = JSON.parse(text) as { data?: { exported?: number; failed?: { name: string; reason: string }[] } };
+      if (!Array.isArray(parsed.data?.failed)) return null;
+      return { exported: parsed.data?.exported ?? 0, failed: parsed.data.failed };
+    } catch {
+      return null;
+    }
+  };
+
+  const packErrorText = async (error: unknown) => {
+    const data = (error as { response?: { data?: unknown } })?.response?.data;
+    if (data instanceof Blob) {
+      try {
+        const parsed = JSON.parse(await data.text()) as { detail?: string };
+        return parsed.detail || '';
+      } catch {
+        return '';
+      }
+    }
+    if (data && typeof data === 'object' && 'detail' in data) return String((data as { detail?: unknown }).detail || '');
+    return '';
+  };
+
+  const downloadPack = (payload: Blob) => {
+    const url = window.URL.createObjectURL(payload);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'workflow-pack.zip';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const showExportResult = (exported: number, failed: { name: string; reason: string }[]) => {
+    if (!failed.length) {
+      message.success(t('workflowOrchestration.workflow.exportSuccess', '已下载流程压缩包'));
+      return;
+    }
+    const summary = t('workflowOrchestration.workflow.exportSummary', '已导出 {exported} 条，失败 {failed} 条', {
+      exported,
+      failed: failed.length,
+    });
+    modal.info({
+      title: t('workflowOrchestration.workflow.exportResultTitle', '导出结果'),
+      content: (
+        <div className="space-y-2">
+          <p>{summary}</p>
+          {failed.map((item) => <p key={`${item.name}-${item.reason}`}>{item.name}：{item.reason}</p>)}
+        </div>
+      ),
+    });
+  };
+
+  const exportWorkflows = async () => {
+    if (!selectedRowKeys.length || exporting) return;
+    setExporting(true);
+    try {
+      const payload = await post<Blob>(`${API}/workflows/export/`, { ids: selectedRowKeys }, {
+        responseType: 'blob',
+        suppressErrorNotification: true,
+      });
+      const header = await payload.slice(0, 2).text();
+      if (header === 'PK') {
+        downloadPack(payload);
+        showExportResult(0, []);
+        return;
+      }
+      const parsed = JSON.parse(await payload.text()) as {
+        data?: { exported?: number; failed?: { name: string; reason: string }[]; pack?: string };
+      };
+      const failed = parsed.data?.failed ?? [];
+      if (parsed.data?.pack) {
+        const binary = window.atob(parsed.data.pack);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+        downloadPack(new Blob([bytes], { type: 'application/zip' }));
+      }
+      showExportResult(parsed.data?.exported ?? 0, failed);
+    } catch (error) {
+      const failed = await exportFailureList(error);
+      if (failed) {
+        showExportResult(failed.exported, failed.failed);
+        return;
+      }
+      message.error((await packErrorText(error)) || t('workflowOrchestration.workflow.exportFailed', '没有可导出的流程'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const importWorkflows = async (team: number[], file: File) => {
+    if (importing) return;
+    setImporting(true);
+    try {
+      const body = new FormData();
+      team.forEach((id) => body.append('team', String(id)));
+      body.append('file', file);
+      const result = await post<{
+        created: { name: string; id: number }[];
+        failed: { name: string; reason: string }[];
+        rebind: { name: string; nodes: string[] }[];
+      }>(`${API}/workflows/import/`, body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        suppressErrorNotification: true,
+      });
+      setImportOpen(false);
+      const summary = t('workflowOrchestration.workflow.importSummary', '已导入 {created} 条，失败 {failed} 条', {
+        created: result.created.length,
+        failed: result.failed.length,
+      });
+      const elsewhere = includesCurrentOrganization(team)
+        ? ''
+        : t('workflowOrchestration.workflow.importedElsewhere', '已导入到 {organizations}，切换组织后可见', {
+          organizations: organizationDisplayText(team, flatGroups),
+        });
+      if (!result.failed.length && !result.rebind.length) message.success(elsewhere || summary);
+      else {
+        modal.info({
+          title: t('workflowOrchestration.workflow.importResultTitle', '导入结果'),
+          content: (
+            <div className="space-y-2">
+              <p>{summary}</p>
+              {elsewhere ? <p>{elsewhere}</p> : null}
+              {result.failed.map((item) => <p key={`${item.name}-${item.reason}`}>{item.name}：{item.reason}</p>)}
+              {result.rebind.map((item) => (
+                <p key={item.name}>{t('workflowOrchestration.workflow.rebindLine', '{name}需要重新选择：{nodes}', { name: item.name, nodes: item.nodes.join('、') })}</p>
+              ))}
+            </div>
+          ),
+        });
+      }
+      await load();
+    } catch (error) {
+      message.error((await packErrorText(error)) || t('workflowOrchestration.workflow.importFailed', '导入失败'));
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -361,15 +511,21 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
   return <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-4">
     <WorkflowTablePanel
       filters={<Input.Search className="w-[220px]" allowClear enterButton placeholder={t('workflowOrchestration.workflow.searchPlaceholder', '搜索流程名称')} value={queryDraft} onChange={(event) => { const value = event.target.value; setQueryDraft(value); if (!value) { setPagination((item) => ({ ...item, current: 1 })); setQuery(''); } }} onSearch={(value) => { setPagination((item) => ({ ...item, current: 1 })); setQuery(value.trim()); }} />}
-      actions={<><WorkflowPermission operation="View" area={permissionArea}><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission>{isMarket ? null : <WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={() => setProfile({ mode: 'create' })}>{t('common.new', '新建')}</Button></WorkflowPermission>}</>}
+      actions={<>{isMarket ? null : <><WorkflowPermission operation="View"><Button icon={<DownloadOutlined />} loading={exporting} disabled={!selectedRowKeys.length} onClick={() => void exportWorkflows()}>{t('workflowOrchestration.workflow.export', '导出')}</Button></WorkflowPermission><WorkflowPermission operation="Add"><Button icon={<UploadOutlined />} loading={importing} onClick={() => setImportOpen(true)}>{t('workflowOrchestration.workflow.import', '导入')}</Button></WorkflowPermission><WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={() => setProfile({ mode: 'create' })}>{t('common.new', '新建')}</Button></WorkflowPermission></>}<WorkflowPermission operation="View" area={permissionArea}><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission></>}
     >
-      <CustomTable rowKey="id" loading={loading} columns={visibleColumns} dataSource={records} className="[&_.ant-table-cell]:whitespace-nowrap" locale={{ emptyText: <Empty description={isMarket ? t('workflowOrchestration.workflow.marketEmpty', '还没有内置流程') : t('workflowOrchestration.workflow.empty', '当前组织还没有流程')} /> }} pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: count, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], onChange: (current, pageSize) => setPagination({ current, pageSize }) }} onChange={(_, tableFilters, __, extra) => {
+      <CustomTable rowKey="id" loading={loading} columns={visibleColumns} dataSource={records} className="[&_.ant-table-cell]:whitespace-nowrap" rowSelection={isMarket ? undefined : { selectedRowKeys, preserveSelectedRowKeys: true, onChange: (keys) => setSelectedRowKeys(keys.map((key) => Number(key)).filter((key) => Number.isInteger(key) && key > 0)) }} locale={{ emptyText: <Empty description={isMarket ? t('workflowOrchestration.workflow.marketEmpty', '还没有内置流程') : t('workflowOrchestration.workflow.empty', '当前组织还没有流程')} /> }} pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: count, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], onChange: (current, pageSize) => setPagination({ current, pageSize }) }} onChange={(_, tableFilters, __, extra) => {
         if (extra.action !== 'filter') return;
         setStatus(tableFilters.status?.[0] as ListStatus | undefined);
         setEnabledFilter(tableFilters.enabled?.[0] as EnabledFilter | undefined);
         setPagination((item) => ({ ...item, current: 1 }));
       }} />
     </WorkflowTablePanel>
+    <WorkflowImportDialog
+      open={!isMarket && importOpen}
+      confirmLoading={importing}
+      onCancel={() => { if (!importing) setImportOpen(false); }}
+      onSubmit={(value) => void importWorkflows(value.team, value.file)}
+    />
     <WorkflowProfileDialog
       open={Boolean(profile)}
       mode={profile?.mode || 'create'}

@@ -3,7 +3,7 @@
 import { Form, InputNumber, Select } from 'antd';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import ScriptEditor from '@/app/job/components/script-editor';
+import ScriptEditor from '@/components/script-editor';
 import { useTranslation } from '@/utils/i18n';
 import type { DataReferenceOption } from '../lib/data-references';
 import type { JsonSchema, NodeTarget } from '../lib/types';

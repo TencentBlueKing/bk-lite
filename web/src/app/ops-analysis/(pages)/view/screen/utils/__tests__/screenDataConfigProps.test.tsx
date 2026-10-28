@@ -2,7 +2,11 @@ import React, { memo, useState } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
-import { areScreenDataConfigPropsEqual } from '../screenDataConfigProps';
+import {
+  areScreenDataConfigPropsEqual,
+  isScreenPreviewHostVisible,
+  screenPreviewHostClassName,
+} from '../screenDataConfigProps';
 
 afterEach(cleanup);
 
@@ -63,5 +67,19 @@ describe('screen data config props', () => {
     expect(screen.getByTestId('source-name').textContent).toBe(
       'CMDB 模型实例明细',
     );
+  });
+
+  it('hides the preview host on the style tab and shows it for data and interaction', () => {
+    expect(isScreenPreviewHostVisible('style')).toBe(false);
+    expect(isScreenPreviewHostVisible('data')).toBe(true);
+    expect(isScreenPreviewHostVisible('interaction')).toBe(true);
+  });
+
+  it('overlays the preview on the canvas instead of taking a flex column', () => {
+    const visible = screenPreviewHostClassName(true);
+    expect(visible).toContain('absolute');
+    expect(visible).toContain('pointer-events-none');
+    expect(visible).not.toContain('shrink-0');
+    expect(screenPreviewHostClassName(false)).toBe('hidden');
   });
 });

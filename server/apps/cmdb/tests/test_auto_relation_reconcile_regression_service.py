@@ -5,7 +5,12 @@ from uuid import UUID
 import pytest
 
 from apps.cmdb.services import auto_relation_reconcile as mod
-from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService as SVC
+from apps.cmdb.services.auto_relation_reconcile import (
+    AUTO_RELATION_EDGE_RULE_ID_FIELD,
+    AUTO_RELATION_EDGE_SOURCE,
+    AUTO_RELATION_EDGE_SOURCE_FIELD,
+    AutoRelationRuleReconcileService as SVC,
+)
 from apps.cmdb.services.instance_identity import prepare_edge_endpoint_properties
 
 
@@ -268,3 +273,143 @@ def test_reconcile_reports_failed_instance_and_continues_other_sources(graph, mo
     assert result["failed"] == [{"instance_id": 1, "error": "graph unavailable"}]
     assert result["created"] == 2
     assert all(edge["src_inst_uuid"] == graph.instances[1]["inst_uuid"] for edge in graph.edges)
+
+
+def node(i, model, **fields):
+    row = {"_id": i, "inst_uuid": str(UUID(int=i, version=4)), "model_id": model}
+    row.update(fields)
+    return row
+
+
+def constrained_association(mapping, src_field):
+    return {
+        "model_asst_id": "r-constrained",
+        "src_model_id": "source",
+        "dst_model_id": "target",
+        "mapping": mapping,
+        "asst_id": "link",
+        "auto_relation_rule": {
+            "version": 1,
+            "rules": [
+                {
+                    "rule_id": "r-constrained",
+                    "enabled": True,
+                    "match_pairs": [{"src_field_id": src_field, "dst_field_id": "key", "matching_rule": "exact"}],
+                }
+            ],
+        },
+    }
+
+
+def edge_pairs(graph):
+    return {(edge["src_inst_uuid"], edge["dst_inst_uuid"]) for edge in graph.edges}
+
+
+def wire_real_mapping_check(monkeypatch, graph, association):
+    """让约束校验和全量同步读同一张内存图，不把 check_asso_mapping 换成空实现。"""
+    monkeypatch.setattr(mod, "GraphClient", lambda: graph)
+    monkeypatch.setattr("apps.cmdb.services.instance.GraphClient", lambda: graph)
+    monkeypatch.setattr(mod, "model_association_info_search", lambda _key: association)
+    monkeypatch.setattr("apps.cmdb.services.instance.ModelManage.model_association_info_search", lambda _model_asst_id: association)
+
+
+def owned_auto_edge(association, src_uuid, dst_uuid, edge_id=1):
+    return {
+        "_id": edge_id,
+        "model_asst_id": association["model_asst_id"],
+        "src_inst_uuid": src_uuid,
+        "dst_inst_uuid": dst_uuid,
+        AUTO_RELATION_EDGE_SOURCE_FIELD: AUTO_RELATION_EDGE_SOURCE,
+        AUTO_RELATION_EDGE_RULE_ID_FIELD: association["model_asst_id"],
+    }
+
+
+@pytest.mark.parametrize("mapping", ["1:n", "1:1"])
+@pytest.mark.parametrize("source_a_id,source_b_id", [(1, 2), (2, 1)])
+def test_full_sync_replaces_constrained_source_in_one_pass(monkeypatch, mapping, source_a_id, source_b_id):
+    source_a = node(source_a_id, "source", legacy="other", current="match")
+    source_b = node(source_b_id, "source", legacy="match", current="other")
+    target = node(11, "target", key="match")
+    graph = MemoryGraph([source_a, source_b, target])
+    association = constrained_association(mapping, "legacy")
+    wire_real_mapping_check(monkeypatch, graph, association)
+
+    first = SVC.full_sync_rule(association["model_asst_id"])
+    assert first["conflicts"] == 0
+    assert edge_pairs(graph) == {(source_b["inst_uuid"], target["inst_uuid"])}
+    assert graph.edges[0][AUTO_RELATION_EDGE_SOURCE_FIELD] == AUTO_RELATION_EDGE_SOURCE
+
+    association["auto_relation_rule"]["rules"][0]["match_pairs"][0]["src_field_id"] = "current"
+    second = SVC.full_sync_rule(association["model_asst_id"])
+    assert edge_pairs(graph) == {(source_a["inst_uuid"], target["inst_uuid"])}
+    assert second["conflicts"] == 0
+    assert graph.edges[0][AUTO_RELATION_EDGE_SOURCE_FIELD] == AUTO_RELATION_EDGE_SOURCE
+
+
+@pytest.mark.parametrize("mapping", ["1:n", "1:1"])
+def test_full_sync_keeps_manual_edge_and_conflicts(monkeypatch, mapping):
+    source_a = node(1, "source", key="match")
+    source_b = node(2, "source", key="other")
+    target = node(11, "target", key="match")
+    graph = MemoryGraph([source_a, source_b, target])
+    association = constrained_association(mapping, "key")
+    wire_real_mapping_check(monkeypatch, graph, association)
+    manual = {
+        "_id": 1,
+        "model_asst_id": association["model_asst_id"],
+        "src_inst_uuid": source_b["inst_uuid"],
+        "dst_inst_uuid": target["inst_uuid"],
+        "association_source": "manual",
+    }
+    graph.edges.append(manual)
+
+    result = SVC.full_sync_rule(association["model_asst_id"])
+    assert graph.edges == [manual]
+    assert result["created"] == 0
+    assert result["deleted"] == 0
+    assert result["conflicts"] == 1
+
+
+@pytest.mark.parametrize("failed_model", ["source", "target"])
+def test_full_sync_failed_snapshot_never_deletes_existing_edges(monkeypatch, failed_model):
+    source_a = node(1, "source", legacy="other", current="match")
+    source_b = node(2, "source", legacy="match", current="other")
+    target = node(11, "target", key="match")
+    spare = node(12, "target", key="spare")
+    graph = MemoryGraph([source_a, source_b, target, spare])
+    association = constrained_association("1:n", "legacy")
+    wire_real_mapping_check(monkeypatch, graph, association)
+    assert SVC.full_sync_rule(association["model_asst_id"])["created"] == 1
+    previous = list(graph.edges)
+    association["auto_relation_rule"]["rules"][0]["match_pairs"][0]["src_field_id"] = "current"
+    original = graph.query_entity
+
+    def fail(label, conditions, **kwargs):
+        model_id = next(condition["value"] for condition in conditions if condition["field"] == "model_id")
+        if model_id == failed_model and any(condition.get("type") == "id>" for condition in conditions):
+            raise RuntimeError(f"{failed_model} snapshot unavailable")
+        return original(label, conditions, **kwargs)
+
+    monkeypatch.setattr(mod, "AUTO_RELATION_BATCH_SIZE", 1)
+    monkeypatch.setattr(graph, "query_entity", fail)
+    with pytest.raises(RuntimeError, match=f"{failed_model} snapshot unavailable"):
+        SVC.full_sync_rule(association["model_asst_id"])
+    assert graph.edges == previous
+
+
+@pytest.mark.parametrize("mapping", ["1:n", "1:1"])
+def test_full_sync_keeps_later_matching_auto_edge_as_conflict(monkeypatch, mapping):
+    early = node(1, "source", key="match")
+    late = node(2, "source", key="match")
+    target = node(11, "target", key="match")
+    graph = MemoryGraph([early, late, target])
+    association = constrained_association(mapping, "key")
+    wire_real_mapping_check(monkeypatch, graph, association)
+    graph.edges.append(owned_auto_edge(association, late["inst_uuid"], target["inst_uuid"]))
+
+    result = SVC.full_sync_rule(association["model_asst_id"])
+    assert edge_pairs(graph) == {(late["inst_uuid"], target["inst_uuid"])}
+    assert graph.edges[0][AUTO_RELATION_EDGE_SOURCE_FIELD] == AUTO_RELATION_EDGE_SOURCE
+    assert result["created"] == 0
+    assert result["deleted"] == 0
+    assert result["conflicts"] >= 1

@@ -47,3 +47,17 @@ export const homepageDirectoryActionKeys = (
   }
   return keys;
 };
+
+/**
+ * 首页状态还在加载时的目录占位动作。
+ * 用禁用项占住菜单位置，避免状态返回后菜单突然变长；
+ * 不能把「尚未加载」当成「尚未设置」。
+ */
+export const homepageDirectoryLoadingPlaceholderKeys = (
+  item: { type?: string | null; data_id?: string | number | null },
+): HomepageDirectoryActionKey[] => {
+  if (item.type !== 'dashboard' || item.data_id == null || item.data_id === '') {
+    return [];
+  }
+  return ['setPersonal'];
+};

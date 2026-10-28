@@ -316,6 +316,20 @@ def test_classification_counts_keep_requested_order(model_perm, inst_perm, model
     result = nats.get_classification_instance_counts(classification_ids=["host_mgmt", "database"], user_info=USER_INFO)
     assert result["result"] is True
     assert [(item["classification_id"], item["value"]) for item in result["data"]] == [("host_mgmt", 0), ("database", 2)]
+    narrowed = nats.get_classification_instance_counts(
+        classification_ids=["database"],
+        all_visible="true",
+        user_info=USER_INFO,
+    )
+    assert [item["classification_id"] for item in narrowed["data"]] == ["database"]
+    expanded = nats.get_classification_instance_counts(classification_ids=[], all_visible="true", user_info=USER_INFO)
+    assert [item["classification_id"] for item in expanded["data"]] == ["database", "host_mgmt"]
+
+
+@pytest.mark.unit
+def test_classification_counts_reject_empty_selection_without_all_visible():
+    with pytest.raises(nats.AssetOverviewQueryError, match="分类不能为空"):
+        nats.get_classification_instance_counts(classification_ids=[], user_info=USER_INFO)
 
 
 @pytest.mark.unit
@@ -327,3 +341,12 @@ def test_resource_counts_without_permission_are_empty(model_perm):
         "data": [],
         "message": "",
     }
+
+
+@pytest.mark.unit
+def test_classification_instance_counts_is_registered_and_helper_is_not():
+    from nats_client.registry import default_registry
+
+    names = {item["name"] for item in default_registry.registry.values()}
+    assert "get_classification_instance_counts" in names
+    assert "_classification_all_visible" not in names

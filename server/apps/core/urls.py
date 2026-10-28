@@ -3,14 +3,23 @@ from django.urls import re_path
 from rest_framework import routers
 
 from apps.core.views import index_view
-from apps.core.views.gm_transport_view import gm_transport_public
 from apps.core.views.user_group import UserGroupViewSet
 
 admin.site.site_title = "Opspilot Admin"
 admin.site.site_header = admin.site.site_title
 public_router = routers.DefaultRouter()
+
+
+def _gm_transport_public_routes():
+    try:
+        from apps.core.enterprise.gm_transport_view import gm_transport_public
+    except ImportError:
+        return []
+    return [re_path(r"api/gm_transport_public/?$", gm_transport_public)]
+
+
 urlpatterns = [
-    re_path(r"api/gm_transport_public/?$", gm_transport_public),
+    *_gm_transport_public_routes(),
     re_path(r"api/login/", index_view.login),
     re_path(r"api/verify_otp_login/", index_view.verify_otp_login),
     re_path(r"api/wechat_login/", index_view.wechat_login),

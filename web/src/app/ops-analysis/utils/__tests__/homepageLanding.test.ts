@@ -3,9 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   effectiveHomepageHref,
   homepageLandingHref,
+  homepagePreferenceNavigationTarget,
   hrefAfterOrgInit,
   isBarePortalHomeTarget,
   isDashboardHomepagePath,
+  isPortalHomePath,
+  preferenceLandingHref,
   resolvePostLoginHref,
 } from '../homepageLanding';
 
@@ -104,5 +107,85 @@ describe('homepage landing resolution', () => {
       '/ops-console/home?dashboard_id=8',
     );
     vi.unstubAllGlobals();
+  });
+});
+
+describe('preference landing after switcher save', () => {
+  it('treats portal home paths as homepage routes', () => {
+    expect(isPortalHomePath('/ops-console/home')).toBe(true);
+    expect(isPortalHomePath('/ops-console/home/')).toBe(true);
+    expect(isPortalHomePath('/')).toBe(true);
+    expect(isPortalHomePath('/ops-analysis/view')).toBe(false);
+  });
+
+  it('builds the landing url from the saved preference', () => {
+    expect(preferenceLandingHref({
+      personal_mode: 'workbench',
+      personal_dashboard_id: null,
+      global_mode: 'dashboard',
+      global_dashboard_id: 105,
+    })).toBe('/ops-console/home');
+    expect(preferenceLandingHref({
+      personal_mode: 'follow',
+      personal_dashboard_id: null,
+      global_mode: 'dashboard',
+      global_dashboard_id: 105,
+    })).toBe('/ops-console/home?dashboard_id=105');
+    expect(preferenceLandingHref({
+      personal_mode: 'follow',
+      personal_dashboard_id: null,
+      global_mode: 'workbench',
+      global_dashboard_id: null,
+    })).toBe('/ops-console/home');
+    expect(preferenceLandingHref({
+      personal_mode: 'dashboard',
+      personal_dashboard_id: 3,
+      global_mode: 'workbench',
+      global_dashboard_id: null,
+    })).toBe('/ops-console/home?dashboard_id=3');
+  });
+
+  it('navigates only when already on portal home and the landing changed', () => {
+    const workbench = {
+      personal_mode: 'workbench' as const,
+      personal_dashboard_id: null,
+      global_mode: 'dashboard' as const,
+      global_dashboard_id: 105,
+    };
+    expect(homepagePreferenceNavigationTarget(
+      '/ops-console/home',
+      '?dashboard_id=105',
+      workbench,
+    )).toBe('/ops-console/home');
+    expect(homepagePreferenceNavigationTarget(
+      '/ops-console/home',
+      '',
+      workbench,
+    )).toBeNull();
+    expect(homepagePreferenceNavigationTarget(
+      '/ops-analysis/view',
+      '?dashboard_id=105',
+      workbench,
+    )).toBeNull();
+    expect(homepagePreferenceNavigationTarget(
+      '/ops-console/home',
+      '?dashboard_id=105',
+      {
+        personal_mode: 'follow',
+        personal_dashboard_id: null,
+        global_mode: 'dashboard',
+        global_dashboard_id: 105,
+      },
+    )).toBeNull();
+    expect(homepagePreferenceNavigationTarget(
+      '/ops-console/home',
+      '',
+      {
+        personal_mode: 'follow',
+        personal_dashboard_id: null,
+        global_mode: 'dashboard',
+        global_dashboard_id: 9,
+      },
+    )).toBe('/ops-console/home?dashboard_id=9');
   });
 });

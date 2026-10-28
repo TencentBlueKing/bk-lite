@@ -191,7 +191,7 @@
   "dataConnection": {
     "title": "连接方式",
     "introTitle": "连接库",
-    "introMsg": "统一管理 MySQL、PostgreSQL、REST 的地址和凭据，供数据源复用。NATS 仍使用命名空间。",
+    "introMsg": "统一管理 MySQL、PostgreSQL、REST、Elasticsearch 的地址和凭据，供数据源复用。NATS 仍使用命名空间。",
     "name": "名称",
     "type": "类型",
     "endpoint": "地址摘要",
@@ -216,6 +216,7 @@
     "extractConnectionTitle": "提取到连接库",
     "reenterPassword": "请重新输入密码后再提取",
     "overrideDatabase": "覆盖数据库名",
+    "overrideIndex": "覆盖索引",
     "relativePath": "相对路径"
   },
   "dateRange": {
@@ -268,14 +269,20 @@
       "postgresql": "PostgreSQL",
       "restApi": "REST API",
       "excel": "Excel",
-      "prometheus": "Prometheus"
+      "prometheus": "Prometheus",
+      "elasticsearch": "Elasticsearch"
     },
     "authType": "认证类型",
     "authTypes": {
       "none": "无",
       "basic": "Basic Auth",
-      "bearer": "Bearer Token"
+      "bearer": "Bearer Token",
+      "apiKey": "API Key"
     },
+    "index": "索引",
+    "queryDsl": "Query DSL",
+    "apiKey": "API Key",
+    "caCert": "CA 证书",
     "token": "Token",
     "testConnection": "测试连接",
     "testConnectionSuccess": "连接测试成功",
@@ -524,7 +531,6 @@
       "shareStatusHint": "ⓘ 分享页只展示架构，不显示实时状态和告警",
       "linkOpenMonitor": "在监控中打开 ↗",
       "linkOpenAlarm": "在告警中打开 ↗",
-
       "editor": {
         "icon": "图标",
         "replaceIcon": "替换",
@@ -1400,6 +1406,7 @@
     "displayFieldTip": "从数据源取一个数值字段，作为主值展示；有多个数值时，用此项决定显示哪一个。",
     "refreshFields": "刷新字段",
     "dataFields": "数据字段",
+    "numericSettings": "数值设置",
     "dimensionField": "维度",
     "dimensionFieldTipLine": "用这一列的值作为横轴上每个点的名称。",
     "dimensionFieldTipBar": "用这一列的值作为每根柱的名称。",
@@ -1408,6 +1415,11 @@
     "valueFieldTipLine": "用这一列的值作为纵轴上的读数。",
     "valueFieldTipBar": "用这一列的值作为柱的高度。",
     "valueFieldTipPie": "用这一列的值作为扇区的大小。",
+    "pieScalarFields": "标量扇区",
+    "pieScalarFieldsTip": "从同一个对象里选至少两个数值字段，每个字段画成一个扇区。数据本身已是数组时，仍按原扇区读取。",
+    "pieScalarField": "字段",
+    "pieScalarLabel": "扇区名称",
+    "pieScalarRemove": "删除",
     "multiValueLabelField": "标签",
     "multiValueLabelFieldTip": "每一项显示的名称。",
     "multiValueValueField": "数值",
@@ -1430,6 +1442,16 @@
     "eventTimelineLinkFieldTip": "可选。事件链接，不选则该位置为空。",
     "topNLabelFieldTip": "排行条目的名称。",
     "topNValueFieldTip": "排行条的长度。",
+    "topNScalarFields": "标量条目",
+    "topNScalarFieldsTip": "从同一个对象里选数值字段，每个字段变成一行，并保持这里的顺序。配了标量条目后，标签字段和数值字段不再使用。数据已是数组时，仍按标签和数值字段排名。",
+    "topNScalarField": "字段",
+    "topNScalarLabel": "条目名称",
+    "topNBarMode": "条形比例",
+    "topNBarModeTip": "相对：按当前列表里的最大值拉满。固定满分：按满分计算条宽，超过满分按满分显示。",
+    "topNBarModeRelative": "相对",
+    "topNBarModeAbsolute": "固定满分",
+    "topNBarMax": "满分",
+    "topNBarMaxTip": "固定满分时的分母。条宽是数值与满分之比，不是和列表最大值之比。不填时若组件已有仪表满分则用它。",
     "nodeGraphSourceFieldTip": "通信关系的源。",
     "nodeGraphTargetFieldTip": "通信关系的目标。",
     "nodeGraphValueFieldTip": "连线上的流量或次数。",
@@ -1996,15 +2018,15 @@
     }
   },
   "opsHomepage": {
-    "setPersonal": "设为首页",
-    "clearPersonal": "取消设为首页",
+    "setPersonal": "设为个人首页",
+    "clearPersonal": "取消个人首页",
     "setGlobal": "设为默认首页",
     "restoreGlobal": "取消默认首页",
     "openInAnalysis": "在运营分析中打开",
-    "setPersonalSuccess": "已设为我的首页",
-    "clearPersonalSuccess": "已取消我的首页，改为跟随全局默认。若全局默认仍是该仪表盘，下次登录还会进入。",
-    "setGlobalSuccess": "已设为全局默认首页",
-    "restoreGlobalSuccess": "已取消默认首页，默认首页恢复为工作台",
+    "setPersonalSuccess": "已设为个人首页",
+    "clearPersonalSuccess": "已设为默认首页",
+    "setGlobalSuccess": "已设为默认首页",
+    "restoreGlobalSuccess": "已取消默认首页",
     "fallbackMissing": "仪表盘不存在或已删除，已返回工作台",
     "fallbackOrg": "当前组织无法查看该仪表盘，已返回工作台",
     "backToHomepage": "返回首页"

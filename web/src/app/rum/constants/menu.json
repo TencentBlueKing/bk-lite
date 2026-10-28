@@ -1,6 +1,16 @@
 {
   "zh": [
     {
+      "title": "首页",
+      "icon": "yingyongguanli",
+      "url": "/rum/applications",
+      "name": "applications",
+      "children": [
+        { "title": "应用", "icon": "yingyongguanli", "url": "/rum/applications", "name": "applications" },
+        { "url": "/rum/applications/[name]/overview", "name": "application_overview", "isNotMenuItem": true }
+      ]
+    },
+    {
       "title": "体验",
       "icon": "yingyongtiyan",
       "url": "/rum/sessions",
@@ -38,14 +48,12 @@
     {
       "title": "集成",
       "icon": "zichan-quanbushebei",
-      "url": "/rum/applications",
+      "url": "/rum/setup",
       "name": "applications",
       "children": [
-        { "title": "应用", "icon": "yingyongguanli", "url": "/rum/applications", "name": "applications" },
         { "title": "接入", "icon": "settings-fill", "url": "/rum/setup", "name": "applications" },
         { "url": "/rum/setup/[name]", "name": "application_setup", "isNotMenuItem": true },
-        { "url": "/rum/applications/[name]", "name": "application_setup", "isNotMenuItem": true },
-        { "url": "/rum/applications/[name]/overview", "name": "application_overview", "isNotMenuItem": true }
+        { "url": "/rum/applications/[name]", "name": "application_setup", "isNotMenuItem": true }
       ]
     },
     {
@@ -59,6 +67,16 @@
     }
   ],
   "en": [
+    {
+      "title": "Home",
+      "icon": "yingyongguanli",
+      "url": "/rum/applications",
+      "name": "applications",
+      "children": [
+        { "title": "Applications", "icon": "yingyongguanli", "url": "/rum/applications", "name": "applications" },
+        { "url": "/rum/applications/[name]/overview", "name": "application_overview", "isNotMenuItem": true }
+      ]
+    },
     {
       "title": "Experience",
       "icon": "yingyongtiyan",
@@ -97,14 +115,12 @@
     {
       "title": "Integration",
       "icon": "zichan-quanbushebei",
-      "url": "/rum/applications",
+      "url": "/rum/setup",
       "name": "applications",
       "children": [
-        { "title": "Applications", "icon": "yingyongguanli", "url": "/rum/applications", "name": "applications" },
         { "title": "Setup", "icon": "settings-fill", "url": "/rum/setup", "name": "applications" },
         { "url": "/rum/setup/[name]", "name": "application_setup", "isNotMenuItem": true },
-        { "url": "/rum/applications/[name]", "name": "application_setup", "isNotMenuItem": true },
-        { "url": "/rum/applications/[name]/overview", "name": "application_overview", "isNotMenuItem": true }
+        { "url": "/rum/applications/[name]", "name": "application_setup", "isNotMenuItem": true }
       ]
     },
     {

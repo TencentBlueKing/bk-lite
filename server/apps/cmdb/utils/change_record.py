@@ -15,8 +15,6 @@ from apps.cmdb.models.change_record import (
     UPDATE_INST,
     ChangeRecord,
 )
-from apps.core.logger import cmdb_logger as logger
-from apps.rpc.system_mgmt import SystemMgmt
 
 # 需要镜像进平台操作日志的"管理类"变更场景
 _MIRROR_SCENARIOS = {MODEL_MANAGEMENT_CHANGE, COLLECT_AUTOMATION_CHANGE, CUSTOM_REPORTING_CHANGE, RELATION_CHANGE}
@@ -64,12 +62,14 @@ def _build_mirror_payload(*, inst_id, model_id, _type, operator, scenario, messa
 
 
 def _mirror_change_record(*, inst_id, model_id, _type, operator, scenario, message="", model_object="", before_data=None, after_data=None):
-    """将管理类变更记录经 NATS RPC 镜像进平台操作日志。失败绝不影响源写入。"""
+    """管理类变更写入现有镜像 outbox，提交后派发。负回执留给 consume 重试，不撤销源写入。"""
     if scenario not in _MIRROR_SCENARIOS:
         return
-    try:
-        SystemMgmt().save_operation_log(
-            **_build_mirror_payload(
+    from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService, dispatch_change_record_mirror
+
+    outboxes = ChangeRecordMirrorService.enqueue_payloads(
+        [
+            _build_mirror_payload(
                 inst_id=inst_id,
                 model_id=model_id,
                 _type=_type,
@@ -80,9 +80,10 @@ def _mirror_change_record(*, inst_id, model_id, _type, operator, scenario, messa
                 before_data=before_data,
                 after_data=after_data,
             )
-        )
-    except Exception as e:  # noqa: 镜像失败绝不影响源写入
-        logger.warning(f"mirror change_record to operation_log failed: {e}")
+        ]
+    )
+    for outbox in outboxes:
+        transaction.on_commit(lambda event_id=outbox.event_id: dispatch_change_record_mirror(event_id))
 
 
 def create_change_record(

@@ -4394,3 +4394,35 @@ ATTR:
     enabled: 是否启用
     priority: 优先级
     forest_inst_name: 林实例名
+ATTR_GROUP:
+  基本信息: 基本信息
+  归属信息: 归属信息
+  手工备注: 手工备注
+  技术信息: 技术信息
+  状态信息: 状态信息
+  管理信息: 管理信息
+  系统内置: 系统内置
+  自动发现信息: 自动发现信息
+  连接信息: 连接信息
+  采集信息: 采集信息
+  系统联动: 系统联动
+  默认分组: 默认分组
+  default: default
+ChangeRecordType:
+  create_entity: 创建
+  delete_entity: 删除
+  update_entity: 修改
+  execute: 执行
+  create_edge: 创建关联
+  delete_edge: 取消关联
+ChangeRecordScenario:
+  device_lifecycle: 设备流转
+  relation_change: 关系变更
+  ordinary_attribute_change: 普通属性变更
+  collect_automation_change: 自动采集
+  model_management_change: 模型管理变更
+  custom_reporting_change: 自定义上报变更
+ChangeRecordObject:
+  instance: 资产实例
+  model: 模型管理
+  collect_task: 采集任务

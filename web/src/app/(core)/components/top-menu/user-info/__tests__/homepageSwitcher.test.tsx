@@ -5,19 +5,38 @@ import type { HomepagePreferenceState } from '@/app/ops-analysis/utils/homepageD
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
-  refresh: vi.fn(async () => {}),
-  getState: vi.fn(),
+  replace: vi.fn(),
+  pathname: '/ops-analysis/view',
+  search: '',
+  messageSuccess: vi.fn(),
+  refreshLogo: vi.fn(async () => {}),
+  preferenceState: null as HomepagePreferenceState | null,
+  preferenceLoading: false,
+  reloadPreference: vi.fn(async () => {}),
   getAccess: vi.fn(),
   applyPersonal: vi.fn(),
   requestGet: vi.fn(),
   clientLoading: false,
   clientData: [{ name: 'ops-analysis' }] as Array<{ name: string }>,
-  shortcutEntry: { dashboardId: 99 } as { dashboardId: number } | null,
 }));
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mocks.push }),
+  useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
+  usePathname: () => mocks.pathname,
+  useSearchParams: () => new URLSearchParams(mocks.search.replace(/^\?/, '')),
 }));
+
+vi.mock('antd', async () => {
+  const actual = await vi.importActual<typeof import('antd')>('antd');
+  return {
+    ...actual,
+    message: {
+      ...actual.message,
+      success: mocks.messageSuccess,
+      error: vi.fn(),
+    },
+  };
+});
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({
@@ -33,16 +52,18 @@ vi.mock('@/utils/request', () => ({
 
 vi.mock('@/app/ops-analysis/api/homepage', () => ({
   useHomepageApi: () => ({
-    getState: mocks.getState,
     getAccess: mocks.getAccess,
-    applyPersonal: mocks.applyPersonal,
   }),
 }));
 
-vi.mock('@/app/ops-analysis/context/effectiveHomepage', () => ({
-  useEffectiveHomepage: () => ({
-    entry: mocks.shortcutEntry,
-    refresh: mocks.refresh,
+vi.mock('@/app/ops-analysis/context/homepagePreference', () => ({
+  useHomepagePreference: () => ({
+    state: mocks.preferenceState,
+    status: mocks.preferenceLoading ? 'loading' : (mocks.preferenceState ? 'ready' : 'idle'),
+    isLoading: mocks.preferenceLoading,
+    reload: mocks.reloadPreference,
+    applyPersonal: mocks.applyPersonal,
+    applyGlobal: vi.fn(),
   }),
 }));
 
@@ -76,16 +97,21 @@ const viewMenus = [
 
 const resetMocks = () => {
   mocks.push.mockReset();
-  mocks.refresh.mockReset();
-  mocks.refresh.mockResolvedValue(undefined);
-  mocks.getState.mockReset();
+  mocks.replace.mockReset();
+  mocks.pathname = '/ops-analysis/view';
+  mocks.search = '';
+  mocks.messageSuccess.mockReset();
+  mocks.refreshLogo.mockReset();
+  mocks.refreshLogo.mockResolvedValue(undefined);
+  mocks.reloadPreference.mockReset();
+  mocks.reloadPreference.mockImplementation(async () => {});
   mocks.getAccess.mockReset();
   mocks.applyPersonal.mockReset();
   mocks.requestGet.mockReset();
   mocks.clientLoading = false;
   mocks.clientData = [{ name: 'ops-analysis' }];
-  mocks.shortcutEntry = { dashboardId: 99 };
-  mocks.getState.mockResolvedValue(dashboardState);
+  mocks.preferenceLoading = false;
+  mocks.preferenceState = dashboardState;
   mocks.getAccess.mockImplementation(async (id: number) => {
     if (Number(id) === 9) {
       return { status: 'ok', name: '运维总览', desc: '', is_build_in: false };
@@ -105,7 +131,7 @@ const Harness = () => {
       <button type="button" data-testid="reload-homepage-state" onClick={() => { void menu.reloadState(); }}>
         reload
       </button>
-      <HomepageSwitcherRow mode={menu.personalMode} />
+      <HomepageSwitcherRow mode={menu.personalMode} dashboardName={menu.personalDashboardCaption} />
       <HomepageSwitcherPanel
         personalMode={menu.personalMode}
         adminDashboardName={menu.adminDashboardName}
@@ -139,10 +165,12 @@ afterEach(() => {
 describe('HomepageSwitcher', () => {
   it('shows the current choice on the parent row and opens from a click', () => {
     const onToggle = vi.fn();
-    render(<HomepageSwitcherRow mode="dashboard" onToggle={onToggle} />);
+    render(<HomepageSwitcherRow mode="dashboard" dashboardName="运维总览" onToggle={onToggle} />);
     const row = screen.getByTestId('homepage-switcher-row');
     expect(row.textContent).toContain('common.homepage');
+    expect(row.textContent).toContain('运维总览');
     expect(row.textContent).not.toContain('common.homepageFollowGlobal');
+    expect(row.textContent).not.toContain('common.homepagePanelTitle');
     fireEvent.mouseEnter(row);
     expect(onToggle).not.toHaveBeenCalled();
     fireEvent.click(row);
@@ -151,6 +179,11 @@ describe('HomepageSwitcher', () => {
     cleanup();
     render(<HomepageSwitcherRow mode="workbench" />);
     expect(screen.getByTestId('homepage-switcher-row').textContent).toContain('common.homepagePinWorkbench');
+    expect(screen.getByTestId('homepage-switcher-row').textContent).toContain('common.homepage');
+
+    cleanup();
+    render(<HomepageSwitcherRow mode="follow" />);
+    expect(screen.getByTestId('homepage-switcher-row').textContent).toContain('common.homepageFollowGlobal');
   });
 
   it('leaves both radios clear for a personal dashboard and keeps the name off a third option', () => {
@@ -166,16 +199,56 @@ describe('HomepageSwitcher', () => {
         onOpenSettings={vi.fn()}
       />,
     );
-    expect(screen.getByTestId('homepage-panel-title').textContent).toBe('common.homepage');
+    expect(screen.getByTestId('homepage-panel-title').textContent).toBe('common.homepagePanelTitle');
     expect(screen.getByTestId('homepage-option-icon-follow')).toBeTruthy();
     expect(screen.getByTestId('homepage-option-icon-workbench')).toBeTruthy();
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(2);
     expect(radios.every((radio) => radio.getAttribute('aria-checked') === 'false')).toBe(true);
     expect(screen.getByTestId('homepage-dashboard-settings').getAttribute('role')).toBeNull();
-    expect(screen.getByTestId('homepage-personal-dashboard-caption').textContent).toBe('业务大盘');
+    expect(screen.getByTestId('homepage-dashboard-settings').getAttribute('data-selected')).toBe('true');
+    expect(screen.getByTestId('homepage-dashboard-settings').innerHTML).toContain('text-[var(--color-primary)]');
+    expect(screen.getByTestId('homepage-personal-dashboard-caption').textContent).toBe('common.homepageCurrentHomepage:业务大盘');
     expect(screen.getByRole('radio', { name: 'common.homepageFollowGlobal' }).textContent)
       .toContain('common.homepageFollowGlobalCurrent:运维总览');
+  });
+
+  it('keeps the dashboard settings link unhighlighted while following default or console', () => {
+    const { rerender } = render(
+      <HomepageSwitcherPanel
+        personalMode="follow"
+        adminDashboardName="运维总览"
+        personalDashboardCaption={null}
+        showSettingsLink
+        applying={false}
+        onFollow={vi.fn()}
+        onPinWorkbench={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    const followLink = screen.getByTestId('homepage-dashboard-settings');
+    expect(followLink.getAttribute('data-selected')).toBe('false');
+    expect(followLink.innerHTML).not.toContain('text-[var(--color-primary)]');
+    expect(followLink.innerHTML).toContain('text-[var(--color-text-1)]');
+    expect(screen.getByTestId('homepage-personal-dashboard-caption').textContent).toBe(
+      'common.homepageDashboardSettingsHint',
+    );
+
+    rerender(
+      <HomepageSwitcherPanel
+        personalMode="workbench"
+        adminDashboardName={null}
+        personalDashboardCaption={null}
+        showSettingsLink
+        applying={false}
+        onFollow={vi.fn()}
+        onPinWorkbench={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    const workbenchLink = screen.getByTestId('homepage-dashboard-settings');
+    expect(workbenchLink.getAttribute('data-selected')).toBe('false');
+    expect(workbenchLink.innerHTML).not.toContain('text-[var(--color-primary)]');
   });
 
   it('checks follow global and omits the settings link when it must stay hidden', () => {
@@ -210,16 +283,16 @@ describe('useHomepageMenu', () => {
     cleanup();
   });
 
-  it('follows the administrator dashboard from homepage state, not the logo shortcut', async () => {
+  it('follows the default homepage preference without navigating away', async () => {
     resetMocks();
     render(<Harness />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('homepage-personal-dashboard-caption').textContent).toBe('业务大盘');
+      expect(screen.getByTestId('homepage-personal-dashboard-caption').textContent).toBe('common.homepageCurrentHomepage:业务大盘');
       expect(screen.getByRole('radio', { name: 'common.homepageFollowGlobal' }).textContent)
         .toContain('common.homepageFollowGlobalCurrent:运维总览');
     });
-    expect(mocks.getState).toHaveBeenCalledWith({ suppressErrorNotification: true });
+    expect(mocks.preferenceState?.personal_dashboard_id).toBe(3);
     expect(screen.getByTestId('homepage-dashboard-settings')).toBeTruthy();
     expect(screen.getAllByRole('radio').every((radio) => radio.getAttribute('aria-checked') === 'false')).toBe(true);
     expect(screen.getByTestId('homepage-switcher-row').textContent).toContain('common.homepage');
@@ -236,15 +309,14 @@ describe('useHomepageMenu', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'common.homepageFollowGlobal' }));
 
     await waitFor(() => {
-      expect(mocks.push).toHaveBeenCalledWith('/ops-console/home?dashboard_id=9');
+      expect(mocks.applyPersonal).toHaveBeenCalledWith({ action: 'clear' });
+      expect(mocks.messageSuccess).toHaveBeenCalledWith('common.homepageFollowGlobalSuccess');
     });
-    expect(mocks.applyPersonal).toHaveBeenCalledWith({ action: 'clear' });
-    expect(mocks.refresh).toHaveBeenCalled();
-    expect(mocks.push).not.toHaveBeenCalledWith('/ops-console/home?dashboard_id=3');
-    expect(mocks.push).not.toHaveBeenCalledWith('/ops-console/home?dashboard_id=99');
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 
-  it('returns to the workbench immediately after pinning the console', async () => {
+  it('pins the console preference without navigating away', async () => {
     resetMocks();
     mocks.applyPersonal.mockResolvedValue({
       ...dashboardState,
@@ -257,10 +329,11 @@ describe('useHomepageMenu', () => {
     });
     fireEvent.click(screen.getByRole('radio', { name: 'common.homepagePinWorkbench' }));
     await waitFor(() => {
-      expect(mocks.push).toHaveBeenCalledWith('/ops-console/home');
+      expect(mocks.applyPersonal).toHaveBeenCalledWith({ action: 'pin_workbench' });
+      expect(mocks.messageSuccess).toHaveBeenCalledWith('common.homepagePinWorkbenchSuccess');
     });
-    expect(mocks.applyPersonal).toHaveBeenCalledWith({ action: 'pin_workbench' });
-    expect(mocks.push.mock.calls.some((call) => String(call[0]).includes('dashboard_id'))).toBe(false);
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 
   it('opens the operations analysis directory from the settings link', async () => {
@@ -275,7 +348,7 @@ describe('useHomepageMenu', () => {
     mocks.getAccess.mockResolvedValue({ status: 'permission', name: '', desc: '', is_build_in: false });
     render(<Harness />);
     expect((await screen.findByTestId('homepage-personal-dashboard-caption')).textContent).toBe(
-      'common.homepagePersonalDashboardFallback',
+      'common.homepageCurrentHomepage:common.homepagePersonalDashboardFallback',
     );
     expect(screen.getByRole('radio', { name: 'common.homepageFollowGlobal' }).textContent)
       .not.toContain('common.homepageFollowGlobalCurrent');
@@ -333,8 +406,8 @@ describe('useHomepageMenu', () => {
 
   it('keeps the administrator name while reloading the same dashboard', async () => {
     resetMocks();
-    mocks.getState.mockResolvedValue(workbenchState);
-    render(<Harness />);
+    mocks.preferenceState = workbenchState;
+    const { rerender } = render(<Harness />);
 
     await waitFor(() => {
       expect(followRadio().textContent).toContain('common.homepageFollowGlobalCurrent:运维总览');
@@ -347,7 +420,8 @@ describe('useHomepageMenu', () => {
         resolveAccess = resolve;
       }),
     );
-    mocks.getState.mockResolvedValue({ ...workbenchState });
+    mocks.preferenceState = { ...workbenchState };
+    rerender(<Harness />);
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('reload-homepage-state'));
@@ -357,6 +431,7 @@ describe('useHomepageMenu', () => {
     expect(screen.getByTestId('homepage-personal-dashboard-caption').textContent).toBe(
       'common.homepageDashboardSettingsHint',
     );
+    expect(mocks.reloadPreference).toHaveBeenCalled();
     expect(mocks.getAccess).toHaveBeenCalledWith(9);
 
     await act(async () => {
@@ -367,8 +442,8 @@ describe('useHomepageMenu', () => {
 
   it('clears the administrator name when the bound dashboard changes', async () => {
     resetMocks();
-    mocks.getState.mockResolvedValue(workbenchState);
-    render(<Harness />);
+    mocks.preferenceState = workbenchState;
+    const { rerender } = render(<Harness />);
     await waitFor(() => {
       expect(followRadio().textContent).toContain('common.homepageFollowGlobalCurrent:运维总览');
     });
@@ -379,10 +454,11 @@ describe('useHomepageMenu', () => {
         resolveAccess = resolve;
       }),
     );
-    mocks.getState.mockResolvedValue({
+    mocks.preferenceState = {
       ...workbenchState,
       global_dashboard_id: 10,
-    });
+    };
+    rerender(<Harness />);
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('reload-homepage-state'));
@@ -409,15 +485,46 @@ describe('useHomepageMenu', () => {
       await Promise.resolve();
     });
     expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.messageSuccess).not.toHaveBeenCalled();
   });
 
-  it('sends the workbench when follow clears onto a global workbench', async () => {
+
+  it('finishes the preference save without navigating or waiting on logo refresh', async () => {
     resetMocks();
-    mocks.getState.mockResolvedValue({
+    let resolvePersonal: (value: HomepagePreferenceState) => void = () => {};
+    mocks.applyPersonal.mockImplementation(
+      () => new Promise<HomepagePreferenceState>((resolve) => {
+        resolvePersonal = resolve;
+      }),
+    );
+    render(<Harness />);
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'common.homepageFollowGlobal' })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'common.homepageFollowGlobal' }));
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.messageSuccess).not.toHaveBeenCalled();
+    await act(async () => {
+      resolvePersonal({
+        ...dashboardState,
+        personal_mode: 'follow',
+        personal_dashboard_id: null,
+      });
+    });
+    await waitFor(() => {
+      expect(mocks.applyPersonal).toHaveBeenCalledWith({ action: 'clear' });
+      expect(mocks.messageSuccess).toHaveBeenCalledWith('common.homepageFollowGlobalSuccess');
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it('clears onto a global workbench preference without navigating', async () => {
+    resetMocks();
+    mocks.preferenceState = {
       ...dashboardState,
       global_mode: 'workbench',
       global_dashboard_id: null,
-    });
+    };
     mocks.applyPersonal.mockResolvedValue({
       ...dashboardState,
       personal_mode: 'follow',
@@ -428,7 +535,66 @@ describe('useHomepageMenu', () => {
     render(<Harness />);
     fireEvent.click(await screen.findByRole('radio', { name: 'common.homepageFollowGlobal' }));
     await waitFor(() => {
-      expect(mocks.push).toHaveBeenCalledWith('/ops-console/home');
+      expect(mocks.applyPersonal).toHaveBeenCalledWith({ action: 'clear' });
+      expect(mocks.messageSuccess).toHaveBeenCalledWith('common.homepageFollowGlobalSuccess');
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it('stays put when pinning workbench off the portal home route', async () => {
+    resetMocks();
+    mocks.pathname = '/cmdb/resource';
+    mocks.applyPersonal.mockResolvedValue({
+      ...dashboardState,
+      personal_mode: 'workbench',
+      personal_dashboard_id: null,
+    });
+    render(<Harness />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'common.homepagePinWorkbench' }));
+    await waitFor(() => {
+      expect(mocks.applyPersonal).toHaveBeenCalledWith({ action: 'pin_workbench' });
+      expect(mocks.messageSuccess).toHaveBeenCalledWith('common.homepagePinWorkbenchSuccess');
+    });
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it('replaces onto bare console home when pinning workbench on a dashboard homepage', async () => {
+    resetMocks();
+    mocks.pathname = '/ops-console/home';
+    mocks.search = 'dashboard_id=105';
+    mocks.applyPersonal.mockResolvedValue({
+      ...dashboardState,
+      personal_mode: 'workbench',
+      personal_dashboard_id: null,
+    });
+    render(<Harness />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'common.homepagePinWorkbench' }));
+    await waitFor(() => {
+      expect(mocks.applyPersonal).toHaveBeenCalledWith({ action: 'pin_workbench' });
+      expect(mocks.messageSuccess).toHaveBeenCalledWith('common.homepagePinWorkbenchSuccess');
+      expect(mocks.replace).toHaveBeenCalledWith('/ops-console/home');
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it('replaces onto the default dashboard when following while already on portal home', async () => {
+    resetMocks();
+    mocks.pathname = '/ops-console/home';
+    mocks.search = '';
+    mocks.applyPersonal.mockResolvedValue({
+      ...dashboardState,
+      personal_mode: 'follow',
+      personal_dashboard_id: null,
+      global_mode: 'dashboard',
+      global_dashboard_id: 9,
+    });
+    render(<Harness />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'common.homepageFollowGlobal' }));
+    await waitFor(() => {
+      expect(mocks.applyPersonal).toHaveBeenCalledWith({ action: 'clear' });
+      expect(mocks.replace).toHaveBeenCalledWith('/ops-console/home?dashboard_id=9');
     });
   });
 });

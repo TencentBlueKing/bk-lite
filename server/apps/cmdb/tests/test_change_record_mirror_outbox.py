@@ -4,10 +4,16 @@ from unittest.mock import patch
 import pytest
 from django.utils.timezone import now
 
-from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, CREATE_INST, ChangeRecord
+from apps.cmdb.models.change_record import (
+    COLLECT_AUTOMATION_CHANGE,
+    CREATE_INST,
+    MODEL_MANAGEMENT_CHANGE,
+    UPDATE_INST,
+    ChangeRecord,
+)
 from apps.cmdb.models.operation import ChangeRecordMirrorOutbox
 from apps.cmdb.services.change_record_mirror import ChangeRecordMirrorService
-from apps.cmdb.utils.change_record import batch_create_change_record
+from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record
 
 
 def _records(count):
@@ -40,7 +46,7 @@ def _payloads(count):
 
 
 @pytest.mark.django_db(transaction=True)
-@patch("apps.cmdb.utils.change_record.SystemMgmt")
+@patch("apps.cmdb.services.change_record_mirror.SystemMgmt")
 @patch("apps.cmdb.services.change_record_mirror.dispatch_change_record_mirror")
 def test_batch_change_records_persist_bounded_outbox_without_sync_rpc(mock_dispatch, mock_sm):
     batch_create_change_record(
@@ -84,6 +90,39 @@ def test_negative_ack_stays_retryable_without_downstream_message(mock_sm, mock_d
     assert "unavailable" not in outbox.last_error
     assert outbox.last_error == "operation_log_rejected"
     assert outbox.next_attempt_at > now()
+
+    ChangeRecordMirrorOutbox.objects.filter(pk=outbox.pk).update(next_attempt_at=now() - timedelta(seconds=1))
+    assert ChangeRecordMirrorService.recover_ready() == 1
+    mock_dispatch.assert_called_once_with(outbox.event_id)
+
+
+@pytest.mark.django_db
+@patch("apps.cmdb.services.change_record_mirror.dispatch_change_record_mirror")
+@patch("apps.cmdb.services.change_record_mirror.SystemMgmt")
+def test_single_model_edit_false_receipt_stays_retryable(mock_sm, mock_dispatch):
+    mock_sm.return_value.save_operation_log.return_value = {"result": False, "message": "unavailable"}
+    create_change_record(
+        inst_id=42,
+        model_id="host",
+        label="模型管理",
+        _type=UPDATE_INST,
+        operator="alice",
+        message="修改模型. 模型名称: 旧名称",
+        model_object="模型管理",
+        scenario=MODEL_MANAGEMENT_CHANGE,
+        before_data={"model_name": "旧名称"},
+        after_data={"model_name": "新名称"},
+    )
+
+    assert ChangeRecord.objects.filter(inst_id=42).exists()
+    assert not mock_sm.return_value.save_operation_log.called
+    [outbox] = list(ChangeRecordMirrorOutbox.objects.all())
+    assert ChangeRecordMirrorService.consume(outbox.event_id, owner_token="worker-1") is False
+    outbox.refresh_from_db()
+    assert outbox.status == "retry"
+    assert outbox.last_error == "operation_log_rejected"
+    assert "unavailable" not in outbox.last_error
+    assert ChangeRecord.objects.filter(inst_id=42).exists()
 
     ChangeRecordMirrorOutbox.objects.filter(pk=outbox.pk).update(next_attempt_at=now() - timedelta(seconds=1))
     assert ChangeRecordMirrorService.recover_ready() == 1

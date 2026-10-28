@@ -42,45 +42,177 @@ class TransferImport:
         return field_id, message
 
     @staticmethod
+    def _distinct_identity_values(batch, field):
+        """同一字段按值去重。下拉枚举会把单选收成列表，不能直接放进 set。"""
+        seen = set()
+        values = []
+        for row in batch:
+            value = row[1].get(field)
+            if value is None:
+                continue
+            key = fingerprint(value)
+            if key in seen:
+                continue
+            seen.add(key)
+            values.append(value)
+        return values
+
+    @staticmethod
+    def _canonical_identity_value(attr, value):
+        """单选枚举把选项 id、选项名和 ``[id]`` 收成同一个匹配键。"""
+        if not isinstance(attr, dict) or attr.get("attr_type") != "enum" or value in (None, "", []):
+            return value
+        id_by_token = {}
+        for item in attr.get("option") or []:
+            if not isinstance(item, dict) or item.get("id") is None:
+                continue
+            option_id = item["id"]
+            id_by_token[str(option_id)] = option_id
+            name = item.get("name")
+            if name not in (None, ""):
+                id_by_token[str(name)] = option_id
+
+        def one(raw):
+            if isinstance(raw, (list, tuple, dict, set)):
+                return raw
+            mapped = id_by_token.get(str(raw))
+            return raw if mapped is None else mapped
+
+        multiple = (attr.get("enum_select_mode") or "single") == "multiple"
+        if isinstance(value, (list, tuple)):
+            mapped = [one(item) for item in value]
+            if not multiple and len(mapped) == 1:
+                return mapped[0]
+            return mapped
+        return one(value)
+
+    @staticmethod
+    def _identity_fingerprint(identities, attrs_by_id, source):
+        values = []
+        for field in identities:
+            raw = source.get(field) if isinstance(source, dict) else None
+            values.append(TransferImport._canonical_identity_value(attrs_by_id.get(field) or {}, raw))
+        return fingerprint(values)
+
+    @staticmethod
+    def _legacy_enum_scalars(attr, scalars):
+        """枚举列表里的选项 id，以及该字段上保存成选项名或选项 id 的字符串。"""
+        names_by_id = {}
+        id_by_name = {}
+        if isinstance(attr, dict) and attr.get("attr_type") == "enum":
+            for item in attr.get("option") or []:
+                if not isinstance(item, dict) or item.get("id") is None:
+                    continue
+                option_id = item["id"]
+                name = item.get("name")
+                if name not in (None, ""):
+                    names_by_id.setdefault(str(option_id), []).append(name)
+                    id_by_name[str(name)] = option_id
+        legacy = []
+        seen = set()
+
+        def add(value):
+            key = (type(value).__name__, value)
+            if key in seen:
+                return
+            seen.add(key)
+            legacy.append(value)
+
+        for scalar in scalars:
+            add(scalar)
+            token = str(scalar)
+            mapped = id_by_name.get(token)
+            if mapped is not None:
+                add(mapped)
+                token = str(mapped)
+            for name in names_by_id.get(token, []):
+                add(name)
+        return legacy
+
+    @staticmethod
+    def _field_filter_alternatives(field, attr, values):
+        """字符串唯一值仍走原查询。列表值同时按成员和旧字符串两种形态查找。"""
+        attr = attr or {}
+        if not any(isinstance(value, (list, tuple)) for value in values):
+            query_type = "int[]" if attr.get("attr_type") == "int" else "str[]"
+            return [[{"field": field, "type": query_type, "value": values}]]
+        scalars = []
+        seen = set()
+        for value in values:
+            members = value if isinstance(value, (list, tuple)) else [value]
+            for member in members:
+                if member in (None, "") or isinstance(member, (list, tuple, dict, set)):
+                    continue
+                key = (type(member).__name__, member)
+                if key in seen:
+                    continue
+                seen.add(key)
+                scalars.append(member)
+        alternatives = []
+        if scalars:
+            alternatives.append([{"field": field, "type": "list_any[]", "value": scalars}])
+        legacy = TransferImport._legacy_enum_scalars(attr, scalars)
+        if legacy:
+            alternatives.append([{"field": field, "type": "str[]", "value": legacy}])
+        if not alternatives:
+            alternatives.append([{"field": field, "type": "str[]", "value": []}])
+        return alternatives
+
+    @staticmethod
+    def _combine_filters(groups):
+        combos = [[]]
+        for alternatives in groups:
+            combos = [current + alternative for current in combos for alternative in alternatives]
+        return combos
+
+    @staticmethod
     def _load_unique_conflict_candidates(model_id, identities, attrs, batch, candidates, seen_ids):
         """按单个唯一字段补齐冲突候选。查不到或超上限时不阻断导入，写入期再兜底。"""
+        attrs_by_id = {item["attr_id"]: item for item in attrs}
         for field in identities:
-            values = list({row[1][field] for row in batch if row[1].get(field) is not None})
+            values = TransferImport._distinct_identity_values(batch, field)
             if not values:
                 continue
-            attr = next((item for item in attrs if item["attr_id"] == field), {})
-            cursor = None
-            while len(candidates) < 5000:
-                page_params = [
-                    {"field": "model_id", "type": "str=", "value": model_id},
-                    {"field": field, "type": "int[]" if attr.get("attr_type") == "int" else "str[]", "value": values},
-                ]
-                if cursor is not None:
-                    page_params.append({"field": "inst_uuid", "type": "str>", "value": cursor})
-                with GraphClient() as graph:
-                    found, _ = graph.query_entity(INSTANCE, page_params, page={"skip": 0, "limit": 500}, order="inst_uuid", include_count=False)
-                for existing in found:
-                    key = existing.get("_id", existing.get("inst_uuid"))
-                    if key not in seen_ids:
-                        seen_ids.add(key)
-                        candidates.append(existing)
-                if len(found) < 500:
-                    break
-                cursor = found[-1]["inst_uuid"]
+            for alternative in TransferImport._field_filter_alternatives(field, attrs_by_id.get(field), values):
+                param = alternative[0]
+                if not param["value"]:
+                    continue
+                cursor = None
+                while len(candidates) < 5000:
+                    page_params = [
+                        {"field": "model_id", "type": "str=", "value": model_id},
+                        param,
+                    ]
+                    if cursor is not None:
+                        page_params.append({"field": "inst_uuid", "type": "str>", "value": cursor})
+                    with GraphClient() as graph:
+                        found, _ = graph.query_entity(INSTANCE, page_params, page={"skip": 0, "limit": 500}, order="inst_uuid", include_count=False)
+                    for existing in found:
+                        key = existing.get("_id", existing.get("inst_uuid"))
+                        if key not in seen_ids:
+                            seen_ids.add(key)
+                            candidates.append(existing)
+                    if len(found) < 500:
+                        break
+                    cursor = found[-1]["inst_uuid"]
 
     @staticmethod
     def _match_batch(model_id, identities, attrs, batch, progress, offset, summary, total):
         """更新按全部唯一字段组合匹配；单字段查询只补冲突候选。"""
-        params = [{"field": "model_id", "type": "str=", "value": model_id}]
-        for field in identities:
-            values = list({row[1][field] for row in batch if row[1].get(field) is not None})
-            attr = next((item for item in attrs if item["attr_id"] == field), {})
-            params.append({"field": field, "type": "int[]" if attr.get("attr_type") == "int" else "str[]", "value": values})
+        attrs_by_id = {item["attr_id"]: item for item in attrs}
+        groups = [
+            TransferImport._field_filter_alternatives(field, attrs_by_id.get(field), TransferImport._distinct_identity_values(batch, field))
+            for field in identities
+        ]
         matches = defaultdict(list)
         candidates = []
         seen_ids = set()
+        matched_keys = set()
         combo_matched = False
-        if all(param["value"] for param in params):
+        for combo in TransferImport._combine_filters(groups):
+            params = [{"field": "model_id", "type": "str=", "value": model_id}, *combo]
+            if not all(param["value"] for param in params):
+                continue
             combo_matched = True
             cursor = None
             while True:
@@ -88,8 +220,10 @@ class TransferImport:
                 with GraphClient() as graph:
                     found, _ = graph.query_entity(INSTANCE, page_params, page={"skip": 0, "limit": 500}, order="inst_uuid", include_count=False)
                 for existing in found:
-                    matches[fingerprint([existing.get(field) for field in identities])].append(existing)
                     key = existing.get("_id", existing.get("inst_uuid"))
+                    if key not in matched_keys:
+                        matched_keys.add(key)
+                        matches[TransferImport._identity_fingerprint(identities, attrs_by_id, existing)].append(existing)
                     if key not in seen_ids:
                         seen_ids.add(key)
                         candidates.append(existing)
@@ -152,6 +286,7 @@ class TransferImport:
             raise TransferError("relation_limit", "关联数量超过 10 万条")
         check = importer.get_check_attr_map()
         identities = list(check["is_only"]) or ["inst_name"]
+        attrs_by_id = {item["attr_id"]: item for item in attrs}
         summary = dict(created=0, updated=0, failed_rows=0, created_relations=0, failed_relations=0)
         errors, relations, seen = [], [], set()
         successful = {}
@@ -169,7 +304,7 @@ class TransferImport:
                     summary["failed_rows"] += 1
                     progress(index, len(rows), summary, "writing_instances")
                     continue
-                identity = fingerprint([item.get(field) for field in identities])
+                identity = TransferImport._identity_fingerprint(identities, attrs_by_id, item)
                 existing = matches.get(identity, [])
                 row_problems = []
                 if identity in seen or len(existing) > 1:

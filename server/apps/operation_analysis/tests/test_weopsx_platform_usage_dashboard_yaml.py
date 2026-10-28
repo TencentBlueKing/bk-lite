@@ -66,6 +66,7 @@ def test_weopsx_yaml_parses_and_binds_organization_and_time():
     dashboard = document.dashboards[0]
     assert dashboard.name == "WeOpsX 平台使用"
     assert dashboard.key == "dashboard::WeOpsX平台使用_内置"
+    assert dashboard.other.get("gridCols") == 24
     filters = {item["key"]: item for item in dashboard.filters}
     assert set(filters) == {"organization", "time"}
     assert filters["organization"]["type"] == "string"
@@ -115,19 +116,19 @@ def test_weopsx_yaml_parses_and_binds_organization_and_time():
     assert "weopsx-cmdb-coverage" in widget_ids
     cmdb_group = next(item for item in dashboard.view_sets if item["id"] == "group-cmdb")
     assert [(c["id"], c["x"], c["y"], c["w"], c["h"]) for c in cmdb_group["subGridOpts"]["children"]] == [
-        ("weopsx-cmdb-classifications", 0, 0, 4, 3),
-        ("weopsx-cmdb-models", 4, 0, 4, 3),
-        ("weopsx-cmdb-instances", 8, 0, 4, 3),
-        ("weopsx-cmdb-coverage", 0, 3, 6, 5),
-        ("weopsx-cmdb-class-top", 6, 3, 6, 5),
+        ("weopsx-cmdb-classifications", 0, 0, 8, 6),
+        ("weopsx-cmdb-models", 8, 0, 8, 6),
+        ("weopsx-cmdb-instances", 16, 0, 8, 6),
+        ("weopsx-cmdb-coverage", 0, 6, 12, 10),
+        ("weopsx-cmdb-class-top", 12, 6, 12, 10),
     ]
     alert_group = next(item for item in dashboard.view_sets if item["id"] == "group-alert")
     assert [(c["id"], c["x"], c["y"], c["w"], c["h"]) for c in alert_group["subGridOpts"]["children"]] == [
-        ("weopsx-alert-active", 0, 0, 6, 3),
-        ("weopsx-alert-sources", 6, 0, 6, 3),
-        ("weopsx-alert-loop", 0, 3, 3, 5),
-        ("weopsx-alert-source-top", 3, 3, 4, 5),
-        ("weopsx-alert-rule-top", 7, 3, 5, 5),
+        ("weopsx-alert-active", 0, 0, 12, 6),
+        ("weopsx-alert-sources", 12, 0, 12, 6),
+        ("weopsx-alert-loop", 0, 6, 6, 10),
+        ("weopsx-alert-source-top", 6, 6, 8, 10),
+        ("weopsx-alert-rule-top", 14, 6, 10, 10),
     ]
     loop = next(widget for widget in widgets if widget["id"] == "weopsx-alert-loop")
     assert loop["valueConfig"]["gaugeMax"] == 200

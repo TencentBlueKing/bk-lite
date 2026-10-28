@@ -103,11 +103,13 @@ class DataConnection(MaintainerInfo, TimeInfo, Groups):
     TYPE_MYSQL = "mysql"
     TYPE_POSTGRESQL = "postgresql"
     TYPE_REST_API = "rest_api"
+    TYPE_ELASTICSEARCH = "elasticsearch"
 
     TYPE_CHOICES = [
         (TYPE_MYSQL, "MySQL"),
         (TYPE_POSTGRESQL, "PostgreSQL"),
         (TYPE_REST_API, "REST API"),
+        (TYPE_ELASTICSEARCH, "Elasticsearch"),
     ]
 
     name = models.CharField(max_length=255, verbose_name="数据连接名称")
@@ -132,6 +134,7 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
     SOURCE_TYPE_REST_API = "rest_api"
     SOURCE_TYPE_EXCEL = "excel"
     SOURCE_TYPE_PROMETHEUS = "prometheus"
+    SOURCE_TYPE_ELASTICSEARCH = "elasticsearch"
 
     SOURCE_TYPE_CHOICES = [
         (SOURCE_TYPE_NATS, "NATS"),
@@ -140,6 +143,7 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
         (SOURCE_TYPE_REST_API, "REST API"),
         (SOURCE_TYPE_EXCEL, "Excel"),
         (SOURCE_TYPE_PROMETHEUS, "Prometheus"),
+        (SOURCE_TYPE_ELASTICSEARCH, "Elasticsearch"),
     ]
 
     name = models.CharField(max_length=255, verbose_name="数据源名称")

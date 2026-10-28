@@ -7,6 +7,7 @@ import {
   canShowDashboardSettingsLink,
   followGlobalDescription,
   homepageParentLabelKey,
+  homepageParentRightLabel,
   homepageRadioChecked,
   hrefAfterFollowGlobal,
   hrefAfterPinWorkbench,
@@ -24,13 +25,17 @@ const switcherSource = readFileSync(path.join(userInfoDir, 'homepageSwitcher.tsx
 describe('homepage menu copy', () => {
   const keys = [
     'homepage',
+    'homepagePanelTitle',
     'homepageFollowGlobal',
     'homepageFollowGlobalHint',
     'homepageFollowGlobalCurrent',
+    'homepageFollowGlobalSuccess',
     'homepagePinWorkbench',
     'homepagePinWorkbenchHint',
+    'homepagePinWorkbenchSuccess',
     'homepageDashboardSettings',
     'homepageDashboardSettingsHint',
+    'homepageCurrentHomepage',
     'homepagePersonalDashboardFallback',
   ] as const;
 
@@ -40,14 +45,25 @@ describe('homepage menu copy', () => {
       expect(en.common[key]?.trim()).toBeTruthy();
     }
     expect(zh.common.homepage).toBe('首页');
-    expect(zh.common.homepageFollowGlobal).toBe('跟随全局默认');
-    expect(zh.common.homepageFollowGlobalHint).toBe('取消个人设置，使用管理员绑定的首页');
+    expect(zh.common.homepagePanelTitle).toBe('登录首页');
+    expect(zh.common.homepageFollowGlobal).toBe('默认首页');
+    expect(zh.common.homepageFollowGlobalHint).toBe('登录后进入管理员设置的默认首页');
     expect(zh.common.homepageFollowGlobalCurrent).toBe('（当前：{name}）');
-    expect(zh.common.homepagePinWorkbench).toBe('固定为控制台');
+    expect(zh.common.homepageFollowGlobalSuccess).toBe('已设为默认首页');
+    expect(zh.common.homepagePinWorkbench).toBe('控制台');
     expect(zh.common.homepagePinWorkbenchHint).toBe('登录后始终进入应用控制台');
-    expect(zh.common.homepageDashboardSettings).toBe('前往仪表盘设置');
-    expect(zh.common.homepageDashboardSettingsHint).toBe('选择或更换个人仪表盘首页');
+    expect(zh.common.homepagePinWorkbenchSuccess).toBe('已设为控制台');
+    expect(zh.common.homepageDashboardSettings).toBe('选择仪表盘作为首页');
+    expect(zh.common.homepageDashboardSettingsHint).toBe('从运营分析中选择我的登录首页');
     expect(zh.common.homepagePersonalDashboardFallback).toBe('已设个人仪表盘首页');
+    expect(zh.common.homepageCurrentHomepage).toBe('当前首页：{name}');
+    expect(en.common.homepage).toBe('Homepage');
+    expect(en.common.homepagePanelTitle).toBe('Login homepage');
+    expect(en.common.homepageFollowGlobal).toBe('Default homepage');
+    expect(en.common.homepagePinWorkbench).toBe('Console');
+    expect(en.common.homepageFollowGlobalSuccess).toBe('Set as default homepage');
+    expect(en.common.homepagePinWorkbenchSuccess).toBe('Set as console');
+    expect(en.common.homepageCurrentHomepage).toBe('Current homepage: {name}');
   });
 });
 
@@ -67,8 +83,14 @@ describe('homepage menu rules', () => {
     expect(switcherSource).not.toContain('entry');
     expect(homepageParentLabelKey('follow')).toBe('common.homepageFollowGlobal');
     expect(homepageParentLabelKey('workbench')).toBe('common.homepagePinWorkbench');
-    expect(homepageParentLabelKey('dashboard')).toBe('common.homepage');
-    expect(homepageParentLabelKey(null)).toBe('common.homepage');
+    expect(homepageParentLabelKey('dashboard')).toBeNull();
+    expect(homepageParentLabelKey(null)).toBeNull();
+    expect(homepageParentRightLabel('follow', null)).toEqual({ kind: 'i18n', key: 'common.homepageFollowGlobal' });
+    expect(homepageParentRightLabel('workbench', null)).toEqual({ kind: 'i18n', key: 'common.homepagePinWorkbench' });
+    expect(homepageParentRightLabel('dashboard', '运维总览')).toEqual({ kind: 'text', value: '运维总览' });
+    expect(homepageParentRightLabel('dashboard', '  ')).toBeNull();
+    expect(homepageParentRightLabel('dashboard', null)).toBeNull();
+    expect(homepageParentRightLabel(null, null)).toBeNull();
     expect(homepageRadioChecked('follow', 'follow')).toBe(true);
     expect(homepageRadioChecked('follow', 'workbench')).toBe(false);
     expect(homepageRadioChecked('workbench', 'workbench')).toBe(true);
@@ -93,7 +115,7 @@ describe('homepage menu rules', () => {
     expect(personalDashboardCaption('dashboard', null, true, '已设个人仪表盘首页')).toBe('已设个人仪表盘首页');
   });
 
-  it('navigates from the preference that was just saved', () => {
+  it('still exposes landing href helpers, but the switcher no longer navigates after save', () => {
     expect(hrefAfterFollowGlobal({
       global_mode: 'dashboard',
       global_dashboard_id: 9,
@@ -104,6 +126,11 @@ describe('homepage menu rules', () => {
     })).toBe('/ops-console/home');
     expect(hrefAfterFollowGlobal(null)).toBe('/ops-console/home');
     expect(hrefAfterPinWorkbench()).toBe('/ops-console/home');
+    expect(switcherSource).not.toContain('hrefAfterFollowGlobal');
+    expect(switcherSource).not.toContain('hrefAfterPinWorkbench');
+    expect(switcherSource).toContain("message.success(");
+    expect(switcherSource).toContain("t('common.homepageFollowGlobalSuccess')");
+    expect(switcherSource).toContain("t('common.homepagePinWorkbenchSuccess')");
   });
 
   it('hides dashboard settings until module access and view permission are both known', () => {
