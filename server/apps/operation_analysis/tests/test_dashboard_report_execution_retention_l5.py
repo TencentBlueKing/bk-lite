@@ -1,5 +1,6 @@
 """A8 Execution / Snapshot 180 天清理（D4 安全谓词）。"""
 
+import shutil
 from datetime import timedelta
 
 import pytest
@@ -297,6 +298,50 @@ def test_batch_limit_deletes_in_chunks(subscription):
     )
     assert second.deleted == 3
     assert DashboardReportExecution.objects.filter(pk__in=ids).count() == 0
+
+
+def test_directory_delete_failure_keeps_execution_and_pdf_for_retry(
+    subscription, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DASHBOARD_REPORT_ARTIFACT_ROOT", str(tmp_path))
+    now = timezone.now()
+    old = now - timedelta(days=181)
+    execution = _make_execution(
+        subscription,
+        status=DashboardReportExecution.Status.SUCCEEDED,
+        finished_at=old,
+        created_at=old,
+    )
+    _attach_related(execution, tmp_path=tmp_path)
+    pdf_path = tmp_path / f"execution-{execution.id}" / "report.pdf"
+
+    calls = {"count": 0}
+    original_rmtree = shutil.rmtree
+
+    def fail_once(path, ignore_errors=False):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise PermissionError("denied")
+        return original_rmtree(path)
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.execution_retention_cleanup_service.shutil.rmtree",
+        fail_once,
+    )
+    failed = ExecutionRetentionCleanupService.cleanup(now=now, retention_days=180)
+    assert failed.scanned == 1
+    assert failed.deleted == 0
+    assert failed.errors == 1
+    assert DashboardReportExecution.objects.filter(pk=execution.pk).exists()
+    assert DashboardReportPdfArtifact.objects.filter(execution_id=execution.id).exists()
+    assert pdf_path.read_bytes() == b"%PDF"
+
+    recovered = ExecutionRetentionCleanupService.cleanup(now=now, retention_days=180)
+    assert recovered.deleted == 1
+    assert recovered.errors == 0
+    assert not DashboardReportExecution.objects.filter(pk=execution.pk).exists()
+    assert not DashboardReportPdfArtifact.objects.filter(execution_id=execution.id).exists()
+    assert not pdf_path.exists()
 
 
 def test_beat_registers_execution_retention_cleanup_task():
