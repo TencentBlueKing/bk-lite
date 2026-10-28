@@ -377,6 +377,8 @@ class ScanCredentialResultService:
     def _upsert_success_hit(*, family_run, host, port, credential_id, soid, snapshot, target_type, stage):
         if stage in _DISCOVERY_STAGES:
             hit = ScanHit.objects.filter(family_run=family_run, host=host, port=port).order_by("id").first()
+            if hit is None and stage == "process" and not port:
+                hit = ScanHit.objects.filter(family_run=family_run, host=host).order_by("id").first()
         else:
             hit = ScanHit.objects.filter(
                 family_run=family_run,

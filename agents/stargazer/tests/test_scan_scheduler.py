@@ -144,6 +144,40 @@ async def test_process_stage_lists_once_and_emits_upgrade():
     assert listed == ["10.0.1.8"]
     stages = [event["stage"] for event in publisher.events]
     assert stages == ["port", "process", "done"]
+    process_event = next(event for event in publisher.events if event["stage"] == "process")
+    assert process_event["port"] == 3306
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_process_stage_does_not_invent_fingerprint_port():
+    scheduler = _scheduler()
+    publisher = MemoryScanPublisher()
+
+    async def probe(host, port, timeout=1.0):
+        del host, timeout
+        return port == 80
+
+    async def list_processes(host):
+        del host
+        return ["/usr/sbin/mysqld --datadir=/var/lib/mysql"]
+
+    orchestrator = ScanOrchestrator(scheduler, publisher, probe=probe, list_processes=list_processes)
+    request = ScanDiscoverRequest(
+        execution_id=23,
+        ip_ranges=[{"begin": "10.0.1.8", "end": "10.0.1.8"}],
+        port_fingerprints=[
+            {"port": 80, "target_type": "nginx"},
+            {"port": 3306, "target_type": "mysql"},
+        ],
+        process_fingerprints=[{"target_type": "mysql", "linux_process": r"mysqld|mariadbd"}],
+        host_login={"credential_id": "agent"},
+    )
+    await orchestrator.run(request)
+    process_event = next(event for event in publisher.events if event["stage"] == "process")
+    assert process_event["target_type"] == "mysql"
+    assert process_event["port"] == 0
+    assert all(not (event["stage"] == "process" and event["port"] == 3306) for event in publisher.events)
     await scheduler.shutdown()
 
 

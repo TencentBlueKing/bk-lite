@@ -160,7 +160,7 @@ class ScanOrchestrator:
                     logged_in_hosts.add(host)
                 matches = match_process_fingerprints(command_lines or [], request.process_fingerprints)
                 for match in matches:
-                    port = _port_for_type(request.port_fingerprints, match["target_type"], host, hits)
+                    port = _port_for_type(match["target_type"], host, hits)
                     event = scan_event(
                         execution_id=request.execution_id,
                         host=host,
@@ -260,14 +260,11 @@ def _append_host_collect_targets(hits: list[dict[str, Any]], logged_in_hosts: se
         existing.add((host, "host"))
 
 
-def _port_for_type(port_fingerprints, target_type: str, host: str, hits: list[dict[str, Any]]) -> int:
+def _port_for_type(target_type: str, host: str, hits: list[dict[str, Any]]) -> int:
     for hit in hits:
         if hit.get("host") == host and hit.get("target_type") == target_type:
-            return int(hit.get("port") or 0)
-    for fingerprint in port_fingerprints:
-        if str(fingerprint.get("target_type") or "") == target_type:
             try:
-                return int(fingerprint.get("port") or 0)
+                return int(hit.get("port") or 0)
             except (TypeError, ValueError):
                 return 0
     return 0

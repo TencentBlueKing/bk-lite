@@ -224,6 +224,71 @@ def test_process_stage_upgrades_same_hit_without_new_row():
     assert hit.confidence == ScanHit.CONFIDENCE_MEDIUM
     assert "port" in hit.evidence
     assert "process" in hit.evidence
+    assert hit.port == 3306
+
+
+def test_process_stage_without_listen_port_does_not_invent_fingerprint_port():
+    family_run = _scan_family_run(target_count=4)
+    execution = family_run.execution
+    receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "port",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 80,
+            "target_type": "nginx",
+        }
+    )
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "process",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 0,
+            "target_type": "mysql",
+        }
+    )
+
+    assert response["listed"] is True
+    mysql_hits = list(ScanHit.objects.filter(execution=execution, cmdb_model_id="mysql"))
+    assert len(mysql_hits) == 1
+    assert mysql_hits[0].port == 0
+    assert mysql_hits[0].confidence == ScanHit.CONFIDENCE_MEDIUM
+    assert ScanHit.objects.filter(execution=execution, cmdb_model_id="mysql", port=3306).count() == 0
+
+
+def test_process_stage_empty_port_upgrades_existing_same_host_model_row():
+    family_run = _scan_family_run(target_count=4)
+    execution = family_run.execution
+    receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "port",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 3306,
+            "target_type": "mysql",
+        }
+    )
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "process",
+            "status": "success",
+            "host": "10.0.1.60",
+            "port": 0,
+            "target_type": "mysql",
+        }
+    )
+
+    assert response["listed"] is True
+    hits = list(ScanHit.objects.filter(execution=execution, cmdb_model_id="mysql"))
+    assert len(hits) == 1
+    assert hits[0].port == 3306
+    assert hits[0].confidence == ScanHit.CONFIDENCE_MEDIUM
+    assert "process" in hits[0].evidence
 
 
 def test_collect_stage_failed_does_not_delete_discovery_hit():
