@@ -107,7 +107,10 @@ def policy_organization_ids(policy) -> set[int]:
 
 
 def service_visible_to_policy(policy, service) -> bool:
-    """策略没有组织时沿用旧行为；有组织则服务必须与之相交，否则本轮跳过。"""
+    """单服务策略保持组织解耦后的旧行为。多服务和应用范围才要求服务与策略组织相交。"""
+    mode = getattr(policy, "scope_mode", None) or ApmPolicy.ScopeMode.SERVICE
+    if mode == ApmPolicy.ScopeMode.SERVICE:
+        return True
     policy_orgs = policy_organization_ids(policy)
     if not policy_orgs:
         return True
@@ -1301,7 +1304,10 @@ class DjangoApmPolicyService:
             if not service_visible_to_policy(policy, service):
                 continue
             targets, _capped, known_endpoints, known_instances, known_dependencies = self._expand_service(policy, service, evaluated_at=evaluated_at)
-            for target in targets:
+            for index, target in enumerate(targets):
+                # 基线按天回退在首个目标查询后才把上限收到 20，必须在每个目标前重读。
+                if index >= self._target_limit(policy):
+                    break
                 self._evaluate_target(policy, target, evaluated_at=evaluated_at, cursor=cursor)
             self._close_absent_targets(
                 policy,
