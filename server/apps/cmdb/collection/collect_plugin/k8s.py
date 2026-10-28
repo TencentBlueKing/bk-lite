@@ -220,8 +220,11 @@ class CollectK8sMetrics:
             else:
                 continue
 
+            namespace = replicas_info.get("namespace")
+            if not namespace:
+                continue
             replicas_key_name = replicas_info[replicas_key]
-            replicas_map.setdefault(replicas_key, {}).update({replicas_key_name: replicas_info["index_value"]})
+            replicas_map.setdefault(replicas_key, {})[(namespace, replicas_key_name)] = replicas_info["index_value"]
 
         return replicas_map
 
@@ -292,8 +295,11 @@ class CollectK8sMetrics:
             else:
                 continue
 
+            namespace = annotations_info.get("namespace")
+            if not namespace:
+                continue
             annotations_key_name = annotations_info[replicas_key]
-            annotations_map.setdefault(replicas_key, {}).update({annotations_key_name: annotations_info["_annotation"]})
+            annotations_map.setdefault(replicas_key, {})[(namespace, annotations_key_name)] = annotations_info["_annotation"]
 
         replicas_map = self.search_replicas()
         result = []
@@ -302,9 +308,10 @@ class CollectK8sMetrics:
             inst_name_key = WORKLOAD_NAME_DICT[workload_info["index_key"]]
             namespace = f"{workload_info['instance_id']}/{workload_info['namespace']}"
 
+            metric_key = (workload_info["namespace"], workload_info[inst_name_key])
             replicas = 0
             if inst_name_key in REPLICAS_KEY:
-                replicas = replicas_map.get(inst_name_key, {}).get(workload_info[inst_name_key], 0)
+                replicas = replicas_map.get(inst_name_key, {}).get(metric_key, 0)
 
             inst_name = f"{workload_info[inst_name_key]}({self.cluster_name}/{workload_info['namespace']})"
             workload_type = WORKLOAD_TYPE_DICT[workload_info["index_key"]]
@@ -315,7 +322,7 @@ class CollectK8sMetrics:
                     "name": name,
                     "workload_type": workload_type,
                     "self_ns": namespace,
-                    "labels": annotations_map.get(inst_name_key, {}).get(workload_info[inst_name_key], ""),
+                    "labels": annotations_map.get(inst_name_key, {}).get(metric_key, ""),
                     "self_cluster": self.cluster_name,
                     "replicas": int(replicas),
                     "assos": [
@@ -336,7 +343,8 @@ class CollectK8sMetrics:
             key = (rs_info["namespace"], rs_info["replicaset"])
             owner = replicaset_owner_dict.get(key)
 
-            replicas = replicas_map.get(inst_name_key, {}).get(rs_info[inst_name_key], 0)
+            metric_key = (rs_info["namespace"], rs_info[inst_name_key])
+            replicas = replicas_map.get(inst_name_key, {}).get(metric_key, 0)
 
             if owner and owner["owner_kind"] in WORKLOAD_TYPE_DICT.values():
                 # 有有效所有者的ReplicaSet
@@ -348,7 +356,7 @@ class CollectK8sMetrics:
                     {
                         "inst_name": inst_name,
                         "name": name,
-                        "labels": annotations_map.get(inst_name_key, {}).get(rs_info[inst_name_key], ""),
+                        "labels": annotations_map.get(inst_name_key, {}).get(metric_key, ""),
                         "workload_type": workload_type,
                         "k8s_namespace": namespace,
                         "replicaset_name": rs_info["replicaset"],
@@ -377,7 +385,7 @@ class CollectK8sMetrics:
                     {
                         "inst_name": inst_name,
                         "name": name,
-                        "labels": annotations_map.get(inst_name_key, {}).get(rs_info[inst_name_key], ""),
+                        "labels": annotations_map.get(inst_name_key, {}).get(metric_key, ""),
                         "workload_type": workload_type,
                         "k8s_namespace": namespace,
                         "replicaset_name": rs_info["replicaset"],
@@ -416,9 +424,13 @@ class CollectK8sMetrics:
             if index_data["index_key"] == K8S_POD_INFO:
                 pod_info.append(index_data)
             elif index_data["index_key"] == K8S_POD_CONTAINER_RESOURCE_LIMITS:
-                resource_limits[(index_data["pod"], index_data["resource"])] = index_data["index_value"]
+                namespace = index_data.get("namespace")
+                if namespace:
+                    resource_limits[(namespace, index_data["pod"], index_data["resource"])] = index_data["index_value"]
             elif index_data["index_key"] == K8S_POD_CONTAINER_RESOURCE_REQUESTS:
-                resource_requests[(index_data["pod"], index_data["resource"])] = index_data["index_value"]
+                namespace = index_data.get("namespace")
+                if namespace:
+                    resource_requests[(namespace, index_data["pod"], index_data["resource"])] = index_data["index_value"]
 
         # 2. 构建workload查找索引（通过workload结果中的replicaset_name）
         workload_index = {}
@@ -447,7 +459,7 @@ class CollectK8sMetrics:
             # 4. 处理资源配额信息
             for resource_type in ["cpu", "memory"]:
                 # 处理限制资源
-                limit_value = resource_limits.get((pod["pod"], resource_type))
+                limit_value = resource_limits.get((pod["namespace"], pod["pod"], resource_type))
                 if limit_value:
                     if resource_type == "memory":
                         limit_value = int(float(limit_value) / 1024**3)
@@ -456,7 +468,7 @@ class CollectK8sMetrics:
                     pod_data[f"limit_{resource_type}"] = limit_value
 
                 # 处理请求资源
-                request_value = resource_requests.get((pod["pod"], resource_type))
+                request_value = resource_requests.get((pod["namespace"], pod["pod"], resource_type))
                 if request_value:
                     if resource_type == "memory":
                         request_value = int(float(request_value) / 1024**3)

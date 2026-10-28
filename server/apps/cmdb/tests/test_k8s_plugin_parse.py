@@ -132,9 +132,9 @@ def test_format_pod_metrics_with_node_and_workload_assos(monkeypatch):
             "created_by_kind": "ReplicaSet",
             "created_by_name": "web-rs-abc",
         },
-        {"index_key": K8S_POD_CONTAINER_RESOURCE_LIMITS, "pod": "web-rs-abc-x1", "resource": "cpu", "index_value": "2"},
-        {"index_key": K8S_POD_CONTAINER_RESOURCE_LIMITS, "pod": "web-rs-abc-x1", "resource": "memory", "index_value": str(2 * 1024**3)},
-        {"index_key": K8S_POD_CONTAINER_RESOURCE_REQUESTS, "pod": "web-rs-abc-x1", "resource": "cpu", "index_value": "1"},
+        {"index_key": K8S_POD_CONTAINER_RESOURCE_LIMITS, "pod": "web-rs-abc-x1", "namespace": "default", "resource": "cpu", "index_value": "2"},
+        {"index_key": K8S_POD_CONTAINER_RESOURCE_LIMITS, "pod": "web-rs-abc-x1", "namespace": "default", "resource": "memory", "index_value": str(2 * 1024**3)},
+        {"index_key": K8S_POD_CONTAINER_RESOURCE_REQUESTS, "pod": "web-rs-abc-x1", "namespace": "default", "resource": "cpu", "index_value": "1"},
     ]
     r.format_pod_metrics()
     out = r.result["k8s_pod"]
@@ -198,7 +198,7 @@ def test_format_pod_metrics_direct_workload_kind(monkeypatch):
 # format_workload_metrics
 # --------------------------------------------------------------------------
 def test_format_workload_metrics_deployment_with_replicas(monkeypatch):
-    r = _runner(monkeypatch, replicas_map={"deployment": {"web-deploy": "3"}})
+    r = _runner(monkeypatch, replicas_map={"deployment": {("default", "web-deploy"): "3"}})
     r.collection_metrics_dict["workload"] = [
         {
             "index_key": "prometheus_kube_deployment_created",
