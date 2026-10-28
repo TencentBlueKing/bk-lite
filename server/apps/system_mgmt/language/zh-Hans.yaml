@@ -225,6 +225,7 @@ status:
   success: 成功
   failed: 失败
 export:
+  too_many_rows: '导出行数超过上限 {limit}（当前 {count} 行）。请缩小筛选条件，或使用 selected_ids 导出已选记录。'
   login_log_sheet: 用户登录日志
   login_log_filename: 用户登录日志
   operation_log_sheet: 用户操作日志

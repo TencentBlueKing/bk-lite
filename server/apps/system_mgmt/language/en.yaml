@@ -256,6 +256,7 @@ status:
   success: Success
   failed: Failed
 export:
+  too_many_rows: 'Export exceeds the limit of {limit} rows (current count is {count}). Narrow the filters, or export the selected rows with selected_ids.'
   login_log_sheet: User login logs
   login_log_filename: user_login_logs
   operation_log_sheet: User operation logs
