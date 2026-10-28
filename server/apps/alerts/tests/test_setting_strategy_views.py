@@ -155,6 +155,88 @@ def test_system_setting_get_channel_list_accepts_global_config_permission(authen
     assert "email" in names
 
 
+def _as_non_superuser(user, permissions):
+    user.is_superuser = False
+    user.permission = {"alarm": set(permissions)}
+    return user
+
+
+@pytest.mark.django_db
+def test_system_setting_view_user_cannot_delete_no_dispatch_notice(authenticated_user):
+    user = _as_non_superuser(authenticated_user, {"global_config-View"})
+    setting = SystemSetting.objects.create(
+        key="no_dispatch_alert_notice",
+        value={"notify_every": 60},
+        is_activate=True,
+    )
+    request = _request("delete", f"/settings/{setting.id}/", user)
+    response = SystemSettingModelViewSet.as_view({"delete": "destroy"})(request, pk=str(setting.id))
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert SystemSetting.objects.filter(id=setting.id, key="no_dispatch_alert_notice").exists()
+
+
+@pytest.mark.django_db
+def test_system_setting_edit_user_can_delete_no_dispatch_notice(authenticated_user):
+    user = _as_non_superuser(authenticated_user, {"global_config-Edit"})
+    setting = SystemSetting.objects.create(
+        key="no_dispatch_alert_notice",
+        value={"notify_every": 60},
+        is_activate=True,
+    )
+    request = _request("delete", f"/settings/{setting.id}/", user)
+    response = SystemSettingModelViewSet.as_view({"delete": "destroy"})(request, pk=str(setting.id))
+    _render(response)
+    assert response.status_code == status.HTTP_200_OK
+    assert not SystemSetting.objects.filter(id=setting.id).exists()
+
+
+@pytest.mark.django_db
+def test_system_setting_retrieve_requires_global_config_view(authenticated_user):
+    setting = SystemSetting.objects.create(
+        key="no_dispatch_alert_notice",
+        value={"notify_every": 60},
+        is_activate=True,
+    )
+    denied = _as_non_superuser(authenticated_user, set())
+    denied_request = _request("get", f"/settings/{setting.id}/", denied)
+    denied_response = SystemSettingModelViewSet.as_view({"get": "retrieve"})(denied_request, pk=str(setting.id))
+    assert denied_response.status_code == status.HTTP_403_FORBIDDEN
+    assert SystemSetting.objects.filter(id=setting.id, key="no_dispatch_alert_notice").exists()
+
+    allowed = _as_non_superuser(authenticated_user, {"global_config-View"})
+    allowed_request = _request("get", f"/settings/{setting.id}/", allowed)
+    allowed_response = SystemSettingModelViewSet.as_view({"get": "retrieve"})(allowed_request, pk=str(setting.id))
+    payload = _render(allowed_response)
+    assert allowed_response.status_code == status.HTTP_200_OK
+    assert payload["data"]["key"] == "no_dispatch_alert_notice"
+    assert SystemSetting.objects.filter(id=setting.id, key="no_dispatch_alert_notice").exists()
+
+
+@pytest.mark.django_db
+def test_system_setting_superuser_can_retrieve_and_delete(superuser):
+    setting = SystemSetting.objects.create(
+        key="no_dispatch_alert_notice",
+        value={"notify_every": 60},
+        is_activate=True,
+    )
+    retrieve_request = _request("get", f"/settings/{setting.id}/", superuser)
+    retrieve_response = SystemSettingModelViewSet.as_view({"get": "retrieve"})(
+        retrieve_request, pk=str(setting.id)
+    )
+    payload = _render(retrieve_response)
+    assert retrieve_response.status_code == status.HTTP_200_OK
+    assert payload["data"]["key"] == "no_dispatch_alert_notice"
+    assert SystemSetting.objects.filter(id=setting.id).exists()
+
+    delete_request = _request("delete", f"/settings/{setting.id}/", superuser)
+    delete_response = SystemSettingModelViewSet.as_view({"delete": "destroy"})(
+        delete_request, pk=str(setting.id)
+    )
+    _render(delete_response)
+    assert delete_response.status_code == status.HTTP_200_OK
+    assert not SystemSetting.objects.filter(id=setting.id).exists()
+
+
 # --------------------------------------------------------------------------
 # AlarmStrategy
 # --------------------------------------------------------------------------

@@ -302,10 +302,35 @@ class ApmDeploymentEvent(AuditedModel):
 class ApmPolicy(AuditedModel):
     class MetricType(models.TextChoices):
         ERROR_RATE = "error_rate", "错误率"
+        ERROR_COUNT = "error_count", "错误数"
+        P50 = "p50", "P50"
+        P75 = "p75", "P75"
+        P90 = "p90", "P90"
         P95 = "p95", "P95"
         P99 = "p99", "P99"
+        LATENCY_AVG = "latency_avg", "平均时延"
+        LATENCY_MAX = "latency_max", "最大时延"
+        SLOW_REQUEST_COUNT = "slow_request_count", "慢请求数"
+        SLOW_REQUEST_RATE = "slow_request_rate", "慢请求占比"
+        APDEX = "apdex", "Apdex"
         THROUGHPUT = "throughput", "吞吐"
         NO_TRAFFIC = "no_traffic", "无流量"
+
+    SLOW_METRIC_TYPES = frozenset({MetricType.SLOW_REQUEST_COUNT, MetricType.SLOW_REQUEST_RATE})
+    COUNT_METRIC_TYPES = frozenset({MetricType.ERROR_COUNT, MetricType.SLOW_REQUEST_COUNT})
+    LATENCY_METRIC_TYPES = frozenset(
+        {
+            MetricType.P50,
+            MetricType.P75,
+            MetricType.P90,
+            MetricType.P95,
+            MetricType.P99,
+            MetricType.LATENCY_AVG,
+            MetricType.LATENCY_MAX,
+        }
+    )
+    RATIO_METRIC_TYPES = frozenset({MetricType.ERROR_RATE, MetricType.SLOW_REQUEST_RATE, MetricType.APDEX})
+    MIN_REQUEST_METRIC_TYPES = frozenset({MetricType.ERROR_RATE, MetricType.SLOW_REQUEST_RATE, MetricType.APDEX, *LATENCY_METRIC_TYPES})
 
     class Comparator(models.TextChoices):
         GREATER_THAN = "gt", ">"
@@ -324,6 +349,22 @@ class ApmPolicy(AuditedModel):
         MINIMUM = "min", "最小值"
         LAST = "last", "最新值"
 
+    class CompareMode(models.TextChoices):
+        ABSOLUTE = "absolute", "当前值"
+        PREVIOUS_WINDOW = "previous_window", "相对上一等长窗"
+        OFFSET_HOURS = "offset_hours", "N 小时前同窗"
+        OFFSET_DAYS = "offset_days", "N 天前同窗"
+        OFFSET_1H = "offset_1h", "1 小时前同窗"
+        OFFSET_24H = "offset_24h", "24 小时前同窗"
+        BASELINE_DAYS = "baseline_days", "近 N 天同窗均值"
+
+    MAX_COMPARE_OFFSET_HOURS = 840
+    MAX_COMPARE_OFFSET_DAYS = 35
+
+    class CompareValueKind(models.TextChoices):
+        DELTA = "delta", "变化量"
+        PERCENT = "percent", "变化率"
+
     class VersionMode(models.TextChoices):
         ALL = "all", "全部版本"
         SPECIFIC = "specific", "指定版本"
@@ -341,8 +382,16 @@ class ApmPolicy(AuditedModel):
     evaluation_interval = models.PositiveIntegerField(default=1)
     metric_window = models.PositiveIntegerField(default=5)
     aggregation = models.CharField(max_length=16, choices=Aggregation.choices, default=Aggregation.AVERAGE)
+    compare_mode = models.CharField(max_length=32, choices=CompareMode.choices, default=CompareMode.ABSOLUTE)
+    compare_offset_amount = models.PositiveIntegerField(null=True, blank=True)
+    compare_value_kind = models.CharField(max_length=16, blank=True, default="")
+    min_request_count = models.PositiveIntegerField(null=True, blank=True)
+    slow_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
+    apdex_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
     thresholds = models.JSONField(default=list)
     trigger_after = models.PositiveIntegerField(default=1)
+    trigger_window = models.PositiveIntegerField(null=True, blank=True)
+    recovery_threshold = models.JSONField(default=dict, blank=True)
     recover_after = models.PositiveIntegerField(default=3)
     no_data_after = models.PositiveIntegerField(null=True, blank=True)
     no_data_severity = models.CharField(max_length=16, choices=Severity.choices, blank=True, default="")
@@ -419,6 +468,7 @@ class ApmPolicyTargetState(AuditedModel):
     endpoint = models.CharField(max_length=512, blank=True, default="")
     version = models.CharField(max_length=256, blank=True, default="")
     evaluation_cursor = models.CharField(max_length=512, blank=True, default="")
+    hit_history = models.CharField(max_length=20, blank=True, default="")
     consecutive_hits = models.PositiveIntegerField(default=0)
     consecutive_recoveries = models.PositiveIntegerField(default=0)
     consecutive_no_data = models.PositiveIntegerField(default=0)

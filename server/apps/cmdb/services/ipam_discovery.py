@@ -218,8 +218,12 @@ def _writeback_subnet_utilization(subnet_ids):
     wb(set(subnet_ids))
 
 
-def apply_discovery_result(subnet_id, alive: list) -> dict:
-    """活跃 IP 回写台账。规格 §13.4。"""
+def apply_discovery_result(subnet_id, alive: list, *, snapshot_complete: bool = True) -> dict:
+    """活跃 IP 回写台账。规格 §13.4。
+
+    直接调用默认仍按完整对账把缺失地址标离线。只有 snapshot_complete 明确为 True
+    才执行离线；传入 False 时保留缺失地址的旧状态。
+    """
     # 保留参数名兼容后端内部调用；该边界传入值的语义已统一为 subnet UUID。
     subnet_uuid = subnet_id
     subnet_rows = _load_subnets_by_ids([subnet_uuid])
@@ -289,32 +293,33 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
             created += 1
             format_data["add"].append({"_status": "success", **upsert_inst_info})
 
-    for ip in existing:
-        if ip.get("auto_collect") is True and ip.get("ip_addr") not in alive_addrs:
-            try:
-                _mark_offline(ip["_id"])
-            except Exception as err:
-                failed += 1
-                logger.warning(
-                    "[IPDiscovery] mark_offline 失败 subnet_id=%s ip_id=%s err=%s,继续处理其他 IP",
-                    subnet_id,
-                    ip["_id"],
-                    err,
+    if snapshot_complete is True:
+        for ip in existing:
+            if ip.get("auto_collect") is True and ip.get("ip_addr") not in alive_addrs:
+                try:
+                    _mark_offline(ip["_id"])
+                except Exception as err:
+                    failed += 1
+                    logger.warning(
+                        "[IPDiscovery] mark_offline 失败 subnet_id=%s ip_id=%s err=%s,继续处理其他 IP",
+                        subnet_id,
+                        ip["_id"],
+                        err,
+                    )
+                    continue
+                offline += 1
+                format_data["update"].append(
+                    {
+                        "_status": "success",
+                        "_id": ip["_id"],
+                        "model_id": "ip",
+                        "inst_name": ip.get("inst_name") or ip.get("ip_addr"),
+                        "ip_addr": ip.get("ip_addr"),
+                        "subnet_id": str(subnet_id),
+                        "ip_status": ["offline"],
+                        "auto_collect": True,
+                    }
                 )
-                continue
-            offline += 1
-            format_data["update"].append(
-                {
-                    "_status": "success",
-                    "_id": ip["_id"],
-                    "model_id": "ip",
-                    "inst_name": ip.get("inst_name") or ip.get("ip_addr"),
-                    "ip_addr": ip.get("ip_addr"),
-                    "subnet_id": str(subnet_id),
-                    "ip_status": ["offline"],
-                    "auto_collect": True,
-                }
-            )
 
     _writeback_subnet_utilization([subnet_id])
     format_data["all"] = len(format_data["add"]) + len(format_data["update"]) + len(format_data["delete"])
@@ -327,8 +332,12 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
     }
 
 
-def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
-    """把 VM 中的 ip_info 指标行回写到 IPAM 台账。"""
+def apply_ip_discovery_vm_rows(task, rows: list[dict], *, snapshot_complete=None) -> dict:
+    """把 VM 中的 ip_info 指标行回写到 IPAM 台账。
+
+    snapshot_complete 只有明确为 True 时才允许对缺失地址做离线。
+    False 和未知都保留旧状态，本轮看到的地址仍按在线写入。
+    """
     selected_subnet_refs, _, _ = extract_subnet_discovery_params(task)
     selected_subnet_uuids = []
     for item in selected_subnet_refs:
@@ -354,7 +363,11 @@ def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
 
     summary = _empty_summary()
     for subnet_uuid in selected_subnet_uuids:
-        result = apply_discovery_result(subnet_uuid, alive_by_subnet.get(subnet_uuid, []))
+        result = apply_discovery_result(
+            subnet_uuid,
+            alive_by_subnet.get(subnet_uuid, []),
+            snapshot_complete=snapshot_complete is True,
+        )
         for key in ("created", "updated", "offline", "failed"):
             summary[key] += int(result.get(key, 0))
         result_format_data = result.get("format_data") or {}

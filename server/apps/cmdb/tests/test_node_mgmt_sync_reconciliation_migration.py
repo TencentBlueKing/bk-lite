@@ -10,13 +10,13 @@ from django.utils import timezone
 
 OLD_TARGET = [("cmdb", "0038_change_record_mirror_outbox")]
 NEW_TARGET = [("cmdb", "0039_node_mgmt_sync_reconciliation")]
-LATEST_TARGET = [("cmdb", "0042_collectmodels_system_code_unique")]
 
 
 @pytest.mark.parametrize("config_count", [0, 1])
 @pytest.mark.django_db(transaction=True)
 def test_reconciliation_migration_handles_empty_and_singleton_states(config_count):
     executor = MigrationExecutor(connection)
+    restore_targets = list(executor.loader.graph.leaf_nodes())
     executor.migrate(OLD_TARGET)
     try:
         old_apps = executor.loader.project_state(OLD_TARGET).apps
@@ -38,7 +38,10 @@ def test_reconciliation_migration_handles_empty_and_singleton_states(config_coun
             assert migrated_configs.objects.get().singleton_key == "default"
             assert migrated_runs.objects.get().status == "timeout"
     finally:
-        MigrationExecutor(connection).migrate(LATEST_TARGET)
+        MigrationExecutor(connection).migrate(restore_targets)
+    applied = set(MigrationExecutor(connection).recorder.applied_migrations())
+    missing = [node for node in restore_targets if node not in applied]
+    assert not missing
 
 
 @pytest.mark.django_db(transaction=True)
@@ -47,6 +50,7 @@ def test_reconciliation_migration_consolidates_duplicate_configs_on_postgresql()
         pytest.skip("pending trigger events is PostgreSQL-specific")
 
     executor = MigrationExecutor(connection)
+    restore_targets = list(executor.loader.graph.leaf_nodes())
     executor.migrate(OLD_TARGET)
     try:
         old_apps = executor.loader.project_state(OLD_TARGET).apps
@@ -89,7 +93,10 @@ def test_reconciliation_migration_consolidates_duplicate_configs_on_postgresql()
         with pytest.raises(IntegrityError), transaction.atomic():
             migrated_configs.objects.create(singleton_key="default")
     finally:
-        MigrationExecutor(connection).migrate(LATEST_TARGET)
+        MigrationExecutor(connection).migrate(restore_targets)
+    applied = set(MigrationExecutor(connection).recorder.applied_migrations())
+    missing = [node for node in restore_targets if node not in applied]
+    assert not missing
 
 
 @pytest.mark.django_db(transaction=True)
@@ -98,6 +105,7 @@ def test_reconciliation_migration_rolls_back_cleanly_and_can_be_retried(monkeypa
         pytest.skip("pending trigger events is PostgreSQL-specific")
 
     executor = MigrationExecutor(connection)
+    restore_targets = list(executor.loader.graph.leaf_nodes())
     executor.migrate(OLD_TARGET)
     try:
         old_apps = executor.loader.project_state(OLD_TARGET).apps
@@ -132,4 +140,7 @@ def test_reconciliation_migration_rolls_back_cleanly_and_can_be_retried(monkeypa
         assert new_apps.get_model("cmdb", "NodeMgmtSyncConfig").objects.count() == 1
         assert new_apps.get_model("cmdb", "NodeMgmtSyncRun").objects.filter(status="timeout").count() == 2
     finally:
-        MigrationExecutor(connection).migrate(LATEST_TARGET)
+        MigrationExecutor(connection).migrate(restore_targets)
+    applied = set(MigrationExecutor(connection).recorder.applied_migrations())
+    missing = [node for node in restore_targets if node not in applied]
+    assert not missing

@@ -155,3 +155,15 @@ def test_delete_user_row_allowed(superuser):
     response = PortFingerprintViewSet.as_view({"delete": "destroy"})(request, pk=row.id)
     assert response.status_code in (200, 204)
     assert not PortFingerprint.objects.filter(pk=row.id).exists()
+
+
+def test_authenticated_user_cannot_put_fingerprint(authenticated_user):
+    assert authenticated_user.is_superuser is False
+    row = PortFingerprint.objects.create(port=4400, target_type="mysql", protocol="tcp", built_in=False)
+
+    request, pk = _req("put", authenticated_user, data={"port": 4401, "target_type": "mysql"}, pk=row.id)
+    response = PortFingerprintViewSet.as_view({"put": "update"})(request, pk=pk)
+    assert response.status_code == 405
+    row.refresh_from_db()
+    assert row.port == 4400
+    assert row.target_type == "mysql"

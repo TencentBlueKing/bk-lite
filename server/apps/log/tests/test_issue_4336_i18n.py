@@ -25,6 +25,17 @@ KEYS = (
     "error.handler_invalid",
     "error.handler_required",
     "error.policy_name_exists",
+    "error.policy_aggregate_func_unsupported",
+    "error.policy_numeric_op_only",
+    "error.policy_threshold_number",
+    "error.policy_compare_invalid",
+    "error.policy_compare_func_unsupported",
+    "error.policy_quantile_invalid",
+    "error.policy_ratio_filter_invalid",
+    "error.policy_field_required",
+    "error.policy_trigger_count_range",
+    "error.policy_group_by_invalid",
+    "error.policy_sample_limit_range",
     "error.topn_unsupported",
     "error.type_extractor_unsupported",
     "error.collect_type_missing",
@@ -66,7 +77,6 @@ def test_unknown_locale_falls_back_to_chinese_instead_of_key():
 
 
 def test_views_hand_request_to_localized_serializers():
-    import re
     from pathlib import Path
 
     views_dir = Path(__file__).resolve().parents[1] / "views"

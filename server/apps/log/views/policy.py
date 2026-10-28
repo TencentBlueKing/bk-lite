@@ -37,6 +37,7 @@ from apps.log.services.alert_handlers import (
     record_closed_events,
 )
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
+from apps.log.services.policy_dry_run import LogPolicyDryRunService, is_dry_run_response
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -579,6 +580,14 @@ class PolicyViewSet(viewsets.ModelViewSet):
             crontab=format_crontab,
             enabled=True,
         )
+
+    @action(methods=["post"], detail=False, url_path="dry_run")
+    def dry_run(self, request):
+        """保存前试算。与保存同一套组织、日志分组和编辑 Operate 授权，不写告警数据。"""
+        result = LogPolicyDryRunService(request.data, request, self).run()
+        if is_dry_run_response(result):
+            return result
+        return WebUtils.response_success(result)
 
     @action(methods=["post"], detail=True, url_path="enable")
     def enable(self, request, pk=None):

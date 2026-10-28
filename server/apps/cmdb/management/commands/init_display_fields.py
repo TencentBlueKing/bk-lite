@@ -40,8 +40,9 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING('【试运行模式】不会实际修改数据')
             )
-            logger.warning("[InitDisplayFields] 试运行模式（功能暂未实现）")
-        
+            logger.warning("[InitDisplayFields] 试运行模式，已跳过写入")
+            return
+
         self.stdout.write(
             self.style.SUCCESS('开始初始化 _display 字段...')
         )

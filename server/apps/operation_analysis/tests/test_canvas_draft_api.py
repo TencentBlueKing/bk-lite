@@ -299,6 +299,69 @@ def test_other_team_canvas_returns_403(authenticated_user):
 
 
 @pytest.mark.django_db
+def test_removed_member_cannot_read_foreign_team_canvas_yaml(authenticated_user):
+    """A user who only belongs to organization A must not read organization B's canvas by presenting B's cookie."""
+
+    org_a = 1
+    org_b = 2
+    secret = "left-org-secret-description"
+    user = authenticated_user
+    user.is_superuser = False
+    user.group_list = [{"id": org_a, "name": "Org A"}]
+    user.permission = {"ops-analysis": {"view-EditChart"}}
+    dashboard = _dashboard(groups=[org_b], desc=secret)
+
+    yaml_response, yaml_payload = _call(
+        {"get": "yaml"},
+        "get",
+        user,
+        resource_type="dashboard",
+        pk=dashboard.id,
+        team=str(org_b),
+    )
+    assert yaml_response.status_code == status.HTTP_403_FORBIDDEN
+    assert secret not in json.dumps(yaml_payload)
+
+    checkpoint_response, checkpoint_payload = _call(
+        {"post": "checkpoints"},
+        "post",
+        user,
+        resource_type="dashboard",
+        pk=dashboard.id,
+        team=str(org_b),
+        data={"payload": {"view_sets": [], "name": "should-not-save"}},
+    )
+    assert checkpoint_response.status_code == status.HTTP_403_FORBIDDEN
+    assert secret not in json.dumps(checkpoint_payload)
+    assert CanvasDraftCheckpoint.objects.filter(resource_id=dashboard.id).count() == 0
+
+    user.group_list = [{"id": org_b, "name": "Org B"}]
+    member_response, member_payload = _call(
+        {"get": "yaml"},
+        "get",
+        user,
+        resource_type="dashboard",
+        pk=dashboard.id,
+        team=str(org_b),
+    )
+    assert member_response.status_code == status.HTTP_200_OK
+    assert secret in member_payload["data"]["yaml"]
+
+    user.group_list = [{"id": org_a, "name": "Org A"}]
+    user.is_superuser = True
+    superuser_response, superuser_payload = _call(
+        {"get": "yaml"},
+        "get",
+        user,
+        resource_type="dashboard",
+        pk=dashboard.id,
+        team=str(org_b),
+    )
+    assert superuser_response.status_code == status.HTTP_200_OK
+    assert secret in superuser_payload["data"]["yaml"]
+
+
+@pytest.mark.django_db
 def test_builtin_draft_returns_403(authenticated_user):
     user = _superuser(authenticated_user)
     dashboard = _dashboard(name="builtin-dash", is_build_in=True, build_in_key="builtin-dash")

@@ -125,7 +125,7 @@ class AggregationProcessor:
                 )
 
         except Exception as e:
-            logger.exception("[AlertAggregation] 聚合处理失败: %s", e)
+            logger.error("[AlertAggregation] 聚合处理失败: %s", e)
             raise
         finally:
             AlertBuilder.clear_event_cache()
@@ -231,7 +231,7 @@ class AggregationProcessor:
                 logger.info("[AlertAggregation] 策略 %s: 维度 %s 聚合成功", strategy.name, dimensions)
 
         except Exception as e:  # noqa
-            logger.exception("[AlertAggregation] 策略 %s 处理失败", strategy.name)
+            logger.error("[AlertAggregation] 策略 %s 处理失败", strategy.name)
             raise
 
     def _process_missing_detection_strategy(self, strategy: AlarmStrategy, now: datetime) -> None:
@@ -628,7 +628,7 @@ class AggregationProcessor:
             return True
 
         except Exception as e:
-            logger.error("[AlertAggregation] 策略 %s: 维度 %s 聚合失败: %s", strategy.name, dimensions, e, exc_info=True)
+            logger.error("[AlertAggregation] 策略 %s: 维度 %s 聚合失败: %s", strategy.name, dimensions, e)
             raise
 
     def _create_or_update_alerts(

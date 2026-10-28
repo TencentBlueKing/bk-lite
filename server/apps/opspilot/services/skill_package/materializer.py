@@ -32,6 +32,7 @@ from typing import Any
 import yaml
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.services.ppt_master_runtime import is_ppt_master_package
 
 # Agent Skills 规范约束
 NAME_MAX_LEN = 64
@@ -159,6 +160,17 @@ def _write_extracted_file(backend: Any, target: str, file: Path, name: str, rel:
         return False
 
 
+def _skill_markdown_text(package: Any) -> str:
+    """ppt-master 必须保留上游 SKILL.md，完整性检查依赖原文 frontmatter。"""
+    if is_ppt_master_package(package):
+        extracted_root = _get(package, "extracted_root", None)
+        if isinstance(extracted_root, Path):
+            skill_md = extracted_root / "SKILL.md"
+            if skill_md.is_file():
+                return skill_md.read_text(encoding="utf-8")
+    return render_skill_md(package)
+
+
 def materialize_skill_package(package: Any, backend: Any, skills_root: str = SKILLS_ROOT) -> list[str]:
     """把 package 物化为后端中的 SKILL.md 与附属资源，返回写入的路径列表。
 
@@ -182,7 +194,7 @@ def materialize_skill_package(package: Any, backend: Any, skills_root: str = SKI
     written: list[str] = []
 
     skill_md_path = f"{skill_dir}/SKILL.md"
-    backend.write(skill_md_path, render_skill_md(package))
+    backend.write(skill_md_path, _skill_markdown_text(package))
     written.append(skill_md_path)
 
     # 分支 1：流式路径（整个 extracted/）

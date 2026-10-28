@@ -29,7 +29,31 @@ error:
   channel_duplicate: The same notification channel cannot be selected twice.
   level_duplicate: The same alert level cannot be configured twice.
   threshold_finite: Threshold must be a finite number.
-  error_rate_range: Error-rate threshold must be between 0 and 1.
+  error_rate_range: Absolute thresholds for error rate, slow request rate, and Apdex must be between 0 and 1.
+  error_rate_delta_range: Delta thresholds for error rate, slow request rate, and Apdex must be between -1 and 1.
+  compare_absolute_kind: Current-value comparison cannot also select a delta or percent change.
+  compare_previous_kind: The previous equal window must use either a delta or a percent change.
+  compare_offset_percent_only: A same-window comparison only allows a percent change.
+  compare_offset_amount_required: Enter how many hours or days ago to compare.
+  compare_offset_amount_range: Hours must be from 1 to 840, and days must be from 1 to 35.
+  compare_offset_amount_unused: Only a same-window comparison can set hours or days.
+  compare_baseline_days_range: The same-window mean over recent days must use 2 to 7 days.
+  compare_baseline_days_kind: The same-window mean over recent days must use either a delta or a percent change.
+  compare_offset_shorter_than_window: The offset must be at least as long as the aggregation window.
+  compare_no_traffic_absolute: No-traffic policies can only compare the current value.
+  compare_min_request_metric: Minimum request count applies only to error rate, slow request rate, Apdex, and latency.
+  slow_threshold_required: Slow requests require a slow threshold.
+  slow_threshold_range: Slow threshold must be between 1 and 600000 milliseconds.
+  slow_threshold_unused: Only slow-request metrics can set a slow threshold.
+  apdex_threshold_required: Apdex requires T.
+  apdex_threshold_range: Apdex T must be between 1 and 600000 milliseconds.
+  apdex_threshold_unused: Only Apdex can set T.
+  apdex_comparator: Apdex current-value comparison only allows less-than or less-than-or-equal.
+  trigger_window_order: The trigger window must be at least the trigger count and at most 20.
+  recovery_shape: A recovery threshold only allows a comparator and a value.
+  recovery_direction: The recovery threshold must point the opposite way from the trigger line.
+  recovery_value: The recovery threshold must be a finite number.
+  no_traffic_plain: No-traffic policies cannot set a trigger window or a recovery threshold.
   threshold_comparator: Multi-level thresholds must use the same comparator.
   threshold_monotonic: Multi-level thresholds must stay monotonic across critical, error, and warning.
   deployment_window_limit: Deployment event query window cannot exceed 90 days

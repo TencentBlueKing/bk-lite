@@ -41,3 +41,36 @@ class AlertConstants:
     LEVEL_WARNING = "warning"
     LEVEL_ERROR = "error"
     LEVEL_CRITICAL = "critical"
+
+    # 聚合条件函数。count_delta 仍被接受，读写两侧归一为 count + delta + previous_window。
+    AGGREGATE_FUNCS = frozenset(
+        {
+            "count",
+            "sum",
+            "avg",
+            "max",
+            "min",
+            "count_uniq",
+            "quantile",
+            "ratio",
+            "count_rate",
+            "bytes_rate",
+        }
+    )
+    COUNT_DERIVED_FUNCS = frozenset({"count_rate", "count_delta"})
+    COMPARE_KINDS = frozenset({"absolute", "delta", "percent"})
+    COMPARE_TARGETS = frozenset({"previous_window", "offset_1h", "offset_24h", "offset_7d", "offset_hours", "offset_days"})
+    COMPARE_OFFSET_SECONDS = {"offset_1h": 3600, "offset_24h": 86400, "offset_7d": 604800}
+    COMPARE_LEGACY_OFFSETS = {"offset_1h": ("offset_hours", 1), "offset_24h": ("offset_hours", 24), "offset_7d": ("offset_days", 7)}
+    MAX_COMPARE_OFFSET_HOURS = 8760
+    MAX_COMPARE_OFFSET_DAYS = 365
+    COMPARABLE_FUNCS = frozenset({"count", "sum", "avg", "max", "min", "count_uniq", "quantile"})
+    QUANTILE_CHOICES = (0.5, 0.9, 0.95, 0.99)
+    RATIO_FILTER_MAX_LEN = 500
+    TRIGGER_COUNT_MAX = 5
+    COUNT_UNIQ_LIMIT = 1_000_000
+    # 对照窗缺分组时记 0 的函数。均值 / 分位缺分组是「没有值」。
+    MISSING_GROUP_ZERO_FUNCS = frozenset({"count", "count_uniq", "sum"})
+    SAMPLE_LIMIT_MAX = 10
+    DRY_RUN_ITEM_LIMIT = 200
+    NOTICE_SAMPLE_TEXT_MAX = 200

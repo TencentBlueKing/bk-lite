@@ -6,6 +6,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.scan_model import ScanExecution, ScanHit, ScanTask
+from apps.cmdb.serializers.scan_serializer import ScanTaskListSerializer
 from apps.cmdb.views.scan import ScanTaskViewSet
 
 pytestmark = pytest.mark.django_db
@@ -507,3 +508,231 @@ def test_create_still_requires_database_credentials(superuser, monkeypatch):
     request = _req("post", superuser, data=_payload(families=["database"], credentials={"database": []}), current_team="1")
     response = ScanTaskViewSet.as_view({"post": "create"})(request)
     assert response.status_code == 400
+
+
+def _org_user(user):
+    user.is_superuser = False
+    user.group_list = [{"id": 1, "name": "Org A"}]
+    user.permission = {
+        "cmdb": {
+            "auto_collection-View",
+            "auto_collection-Delete",
+            "auto_collection-Execute",
+        }
+    }
+    user.save(update_fields=["is_superuser", "group_list"])
+    return user
+
+
+def _task_rules(*_args, **_kwargs):
+    return {"team": [1], "instance": []}
+
+
+def _patch_task_rules(monkeypatch, rules):
+    monkeypatch.setattr("apps.core.utils.viewset_utils.get_permission_rules", rules)
+    monkeypatch.setattr("apps.core.utils.serializers.get_permission_rules", rules)
+
+
+def test_other_org_scan_detail_delete_and_exec_stay_hidden(authenticated_user, monkeypatch):
+    user = _org_user(authenticated_user)
+    _patch_task_rules(monkeypatch, _task_rules)
+    triggered = []
+    monkeypatch.setattr("django.db.transaction.on_commit", lambda fn: fn())
+    monkeypatch.setattr(
+        "apps.cmdb.tasks.celery_tasks.trigger_scan_execution.delay",
+        lambda execution_id: triggered.append(execution_id),
+    )
+    foreign = ScanTask.objects.create(name="org-b-scan", team=[2], families=["mysql"])
+    own = ScanTask.objects.create(name="org-a-scan", team=[1], families=["mysql"])
+
+    detail = ScanTaskViewSet.as_view({"get": "retrieve"})(_req("get", user, current_team="1"), pk=foreign.id)
+    detail_body = json.dumps(_body(detail))
+    assert detail.status_code == 404
+    assert "org-b-scan" not in detail_body
+
+    exec_response = ScanTaskViewSet.as_view({"post": "exec_scan"})(
+        _req("post", user, data={}, current_team="1"), pk=foreign.id
+    )
+    exec_body = json.dumps(_body(exec_response))
+    assert exec_response.status_code == 404
+    assert "org-b-scan" not in exec_body
+    assert not ScanExecution.objects.filter(task=foreign).exists()
+    assert triggered == []
+
+    delete_response = ScanTaskViewSet.as_view({"delete": "destroy"})(
+        _req("delete", user, current_team="1"), pk=foreign.id
+    )
+    delete_body = json.dumps(_body(delete_response))
+    assert delete_response.status_code == 404
+    assert "org-b-scan" not in delete_body
+    assert ScanTask.objects.filter(pk=foreign.id, name="org-b-scan").exists()
+
+    own_detail = ScanTaskViewSet.as_view({"get": "retrieve"})(_req("get", user, current_team="1"), pk=own.id)
+    assert own_detail.status_code == 200
+    assert _data(own_detail)["name"] == "org-a-scan"
+
+    _patch_task_rules(monkeypatch, lambda *_args, **_kwargs: {"team": [], "instance": []})
+    missing_rules = ScanTaskViewSet.as_view({"get": "retrieve"})(_req("get", user, current_team="1"), pk=own.id)
+    missing_body = json.dumps(_body(missing_rules))
+    assert missing_rules.status_code == 404
+    assert "org-a-scan" not in missing_body
+
+
+def test_list_queryset_loads_only_latest_execution(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = ScanTask.objects.create(name="scan-history", team=[1], families=["database"], credentials={})
+    empty = ScanTask.objects.create(name="scan-empty", team=[1], families=["database"], credentials={})
+    ScanExecution.objects.create(
+        task=task,
+        status=ScanExecution.STATUS_FAILED,
+        target_count=2,
+        received_count=1,
+        schedule={"batch": 1},
+    )
+    ScanExecution.objects.create(
+        task=task,
+        status=ScanExecution.STATUS_FAILED,
+        target_count=5,
+        received_count=3,
+        schedule={"batch": 2},
+    )
+    latest = ScanExecution.objects.create(
+        task=task,
+        status=ScanExecution.STATUS_COMPLETED,
+        target_count=8,
+        received_count=8,
+        schedule={"batch": 3},
+    )
+
+    view = ScanTaskViewSet()
+    view.action = "list"
+    loaded = {item.id: item for item in view.get_queryset().filter(id__in=[task.id, empty.id])}
+    history = loaded[task.id]
+    blank = loaded[empty.id]
+    history_count = len(history.prefetched_executions)
+    assert history_count == 1, f"列表每个任务装入 {history_count} 条执行，应只保留最新 1 条"
+    assert len(blank.prefetched_executions) == 0
+
+    execution = history.prefetched_executions[0]
+    assert execution.id == latest.id
+    assert "schedule" in execution.get_deferred_fields()
+
+    request = _req("get", superuser, current_team="1")
+    request.user = superuser
+    summary = ScanTaskListSerializer(history, context={"request": request}).data["latest_execution"]
+    assert summary == {
+        "id": latest.id,
+        "status": ScanExecution.STATUS_COMPLETED,
+        "target_count": 8,
+        "received_count": 8,
+    }
+    assert "schedule" in execution.get_deferred_fields()
+    empty_summary = ScanTaskListSerializer(blank, context={"request": request}).data["latest_execution"]
+    assert empty_summary is None
+
+
+def _scan_execution(name, team, host, port):
+    task = ScanTask.objects.create(name=name, team=team, families=["mysql"])
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    family_run = execution.family_runs.create(model_id="mysql", driver_type="protocol")
+    ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="mysql",
+        host=host,
+        port=port,
+        credential_id="",
+        status=ScanHit.STATUS_SUCCESS,
+    )
+    return task, execution
+
+
+def _raw(response):
+    if hasattr(response, "render"):
+        response.render()
+        return response.rendered_content.decode()
+    return response.content.decode()
+
+
+def test_execution_endpoints_follow_parent_task_scope(authenticated_user, monkeypatch):
+    user = authenticated_user
+    user.is_superuser = False
+    user.group_list = [{"id": 1}]
+    user.permission = {"cmdb": {"auto_collection-View", "auto_collection-Execute"}}
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+    writes = []
+
+    def _write(execution, hit_ids):
+        writes.append(execution.id)
+        return {"written": 1, "skipped": 0, "failed": 0, "items": []}
+
+    monkeypatch.setattr("apps.cmdb.services.scan_write_ci_service.ScanWriteCiService.write", _write)
+    monkeypatch.setattr("apps.cmdb.services.scan_hit_managed.annotate_scan_hits_managed", lambda hits, execution=None: hits)
+    _own_task, own_execution = _scan_execution("org-a-scan", [1], "10.1.1.1", 3306)
+    _foreign_task, foreign_execution = _scan_execution("org-b-scan", [2], "10.9.9.9", 39999)
+
+    detail = ScanTaskViewSet.as_view({"get": "execution_detail"})(
+        _req("get", user, current_team="1"),
+        eid=str(foreign_execution.id),
+    )
+    assert detail.status_code == 404
+    foreign_detail = _raw(detail)
+    assert "org-b-scan" not in foreign_detail
+    assert "10.9.9.9" not in foreign_detail
+    assert "39999" not in foreign_detail
+
+    hits = ScanTaskViewSet.as_view({"get": "execution_hits"})(
+        _req("get", user, query={"page": "1", "page_size": "20"}, current_team="1"),
+        eid=str(foreign_execution.id),
+    )
+    assert hits.status_code == 404
+    foreign_hits = _raw(hits)
+    assert "org-b-scan" not in foreign_hits
+    assert "10.9.9.9" not in foreign_hits
+    assert "39999" not in foreign_hits
+
+    own_detail = ScanTaskViewSet.as_view({"get": "execution_detail"})(
+        _req("get", user, current_team="1"),
+        eid=str(own_execution.id),
+    )
+    assert own_detail.status_code == 200
+    assert _data(own_detail)["task_name"] == "org-a-scan"
+
+    own_hits = ScanTaskViewSet.as_view({"get": "execution_hits"})(
+        _req("get", user, query={"page": "1", "page_size": "20"}, current_team="1"),
+        eid=str(own_execution.id),
+    )
+    assert own_hits.status_code == 200
+    assert "10.1.1.1" in _raw(own_hits)
+
+    write_response = ScanTaskViewSet.as_view({"post": "write_cmdb"})(
+        _req("post", user, data={"hit_ids": [1]}, current_team="1"),
+        eid=str(foreign_execution.id),
+    )
+    assert write_response.status_code == 404
+    assert writes == []
+    assert "org-b-scan" not in _raw(write_response)
+    assert "10.9.9.9" not in _raw(write_response)
+
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [], "instance": []},
+    )
+    no_rule_detail = ScanTaskViewSet.as_view({"get": "execution_detail"})(
+        _req("get", user, current_team="1"),
+        eid=str(own_execution.id),
+    )
+    assert no_rule_detail.status_code == 404
+    no_rule_body = _raw(no_rule_detail)
+    assert "org-a-scan" not in no_rule_body
+    assert "10.1.1.1" not in no_rule_body
+
+    no_rule_hits = ScanTaskViewSet.as_view({"get": "execution_hits"})(
+        _req("get", user, query={"page": "1", "page_size": "20"}, current_team="1"),
+        eid=str(own_execution.id),
+    )
+    assert no_rule_hits.status_code == 404
+    assert "10.1.1.1" not in _raw(no_rule_hits)

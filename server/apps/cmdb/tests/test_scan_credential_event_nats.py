@@ -1,7 +1,7 @@
 import pytest
 
 from apps.cmdb.models.collect_task_credential_hit import CollectTaskCredentialHit
-from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
+from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanFamilyRunProgress, ScanHit, ScanTask
 from apps.cmdb.nats.nats import receive_scan_credential_result
 
 pytestmark = pytest.mark.django_db
@@ -54,7 +54,7 @@ def test_scan_success_writes_hit_not_collect_credential_hit(mocker):
     assert hit.port == 3306
     family_run.refresh_from_db()
     assert family_run.received_count == 1
-    assert family_run.progress_hosts == ["10.0.1.20"]
+    assert list(ScanFamilyRunProgress.objects.filter(family_run=family_run).values_list("host", flat=True)) == ["10.0.1.20"]
     delay.assert_called_once_with(family_run.execution_id, "token-nats")
 
 
@@ -72,7 +72,7 @@ def test_scan_unreachable_counts_progress_without_hit():
     assert ScanHit.objects.count() == 0
     family_run.refresh_from_db()
     assert family_run.received_count == 1
-    assert family_run.progress_hosts == ["10.0.1.30"]
+    assert list(ScanFamilyRunProgress.objects.filter(family_run=family_run).values_list("host", flat=True)) == ["10.0.1.30"]
     family_run.execution.refresh_from_db()
     assert family_run.execution.received_count == 1
 
@@ -103,7 +103,7 @@ def test_scan_failed_counts_progress_success_lists_once():
     assert ScanHit.objects.get().credential_id == "cred-2"
     assert ScanHit.objects.get().status == ScanHit.STATUS_SUCCESS
     assert family_run.received_count == 1
-    assert family_run.progress_hosts == ["10.0.1.20"]
+    assert list(ScanFamilyRunProgress.objects.filter(family_run=family_run).values_list("host", flat=True)) == ["10.0.1.20"]
 
 
 def test_scan_credentials_exhausted_without_credential_id_counts_progress(mocker):
@@ -127,7 +127,7 @@ def test_scan_credentials_exhausted_without_credential_id_counts_progress(mocker
     assert ScanHit.objects.count() == 0
     family_run.refresh_from_db()
     assert family_run.received_count == 1
-    assert family_run.progress_hosts == ["10.0.1.40"]
+    assert list(ScanFamilyRunProgress.objects.filter(family_run=family_run).values_list("host", flat=True)) == ["10.0.1.40"]
     delay.assert_called_once_with(family_run.execution_id, "token-nats")
 
 

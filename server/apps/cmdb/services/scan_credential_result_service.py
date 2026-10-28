@@ -2,7 +2,14 @@ import hashlib
 
 from django.db import transaction
 
-from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, ScanExecution, ScanFamilyRun, ScanHit, scan_driver_type_for_model
+from apps.cmdb.models.scan_model import (
+    SCAN_DATABASE_TYPES,
+    ScanExecution,
+    ScanFamilyRun,
+    ScanFamilyRunProgress,
+    ScanHit,
+    scan_driver_type_for_model,
+)
 from apps.core.logger import cmdb_logger as logger
 
 _STATUS_MAP = {
@@ -290,20 +297,15 @@ class ScanCredentialResultService:
         hit_id = None
         with transaction.atomic():
             family_run = ScanFamilyRun.objects.select_for_update().select_related("execution").get(pk=family_run.pk)
-            progress_hosts = list(family_run.progress_hosts or [])
-            if host not in progress_hosts:
-                progress_hosts.append(host)
-                family_run.progress_hosts = progress_hosts
-                family_run.received_count = len(progress_hosts)
-                family_run.save(update_fields=["progress_hosts", "received_count", "updated_at"])
-                execution = family_run.execution
-                host_set = set()
-                for progress in ScanFamilyRun.objects.filter(execution=execution).values_list("progress_hosts", flat=True):
-                    host_set.update(host for host in (progress or []) if str(host or "").strip())
-                execution.received_count = len(host_set)
+            _progress, created = ScanFamilyRunProgress.objects.get_or_create(family_run=family_run, host=host)
+            execution = family_run.execution
+            if created:
+                family_run.received_count += 1
+                family_run.save(update_fields=["received_count", "updated_at"])
+                execution.received_count = (
+                    ScanFamilyRunProgress.objects.filter(family_run__execution=execution).values("host").distinct().count()
+                )
                 execution.save(update_fields=["received_count", "updated_at"])
-            else:
-                execution = family_run.execution
 
             # 大网段×多凭据场景下失败/不可达默认不进清单；三库鉴权失败例外写入一条空凭据占位。
             # 发现阶段 success 允许空凭据；collect 失败不得覆盖或删除已有发现行。

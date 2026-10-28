@@ -55,6 +55,7 @@ class CollectToolService:
     @staticmethod
     def get_accessible_task(request, task_id: int, operator: str = "View") -> CollectModels:
         from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
+        from apps.cmdb.views.collect import CollectModelViewSet
 
         try:
             # 系统采集任务只能由各自的专用编排器维护，不能借采集工具读取快照、
@@ -62,6 +63,14 @@ class CollectToolService:
             instance = CollectModels.objects.filter(is_system=False).get(id=task_id)
         except CollectModels.DoesNotExist:
             raise ValidationError(f"task_id={task_id} 对应任务不存在")
+
+        # 空的任务规则只能放行采集列表已经按当前组织收口的任务，不能跨组织恢复凭据。
+        scoped = CollectModelViewSet().get_queryset_by_permission(
+            request,
+            CollectModels.objects.filter(is_system=False, id=instance.id),
+        )
+        if not scoped.filter(id=instance.id).exists():
+            raise ValidationError("抱歉！您没有访问该采集任务的权限")
 
         permission_checker = InstanceTaskPermission()
         action = "exec_task" if operator == "Operator" else "retrieve"
@@ -392,7 +401,12 @@ class CollectToolService:
 
     @staticmethod
     def _get_decrypted_credential(instance: CollectModels) -> dict:
-        decrypted_cred = instance.decrypt_credentials or {}
+        decrypted_cred = instance.decrypt_credentials
+        if isinstance(decrypted_cred, list):
+            first = decrypted_cred[0] if decrypted_cred else {}
+            decrypted_cred = first if isinstance(first, dict) else {}
+        elif not decrypted_cred:
+            decrypted_cred = {}
         if not decrypted_cred and isinstance(instance.credential, dict):
             return dict(instance.credential)
         return decrypted_cred

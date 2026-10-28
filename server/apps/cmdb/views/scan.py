@@ -1,5 +1,6 @@
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Max, Prefetch, Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
@@ -31,13 +32,24 @@ class ScanTaskViewSet(AuthViewSet):
     permission_key = "task"
 
     def get_queryset(self):
+        latest_ids = ScanExecution.objects.order_by().values("task_id").annotate(latest_id=Max("id")).values("latest_id")
         return ScanTask.objects.prefetch_related(
             Prefetch(
                 "executions",
-                queryset=ScanExecution.objects.order_by("-id"),
+                queryset=ScanExecution.objects.filter(id__in=latest_ids)
+                .only("id", "task", "status", "target_count", "received_count")
+                .order_by("-id"),
                 to_attr="prefetched_executions",
             )
         )
+
+    def get_object(self):
+        queryset = self.get_queryset_by_permission(self.request, self.filter_queryset(self.get_queryset()))
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+        obj = get_object_or_404(queryset, **filter_kwargs)
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -50,7 +62,9 @@ class ScanTaskViewSet(AuthViewSet):
 
     @HasPermission("auto_collection-View")
     def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
     @HasPermission("auto_collection-Add")
     def create(self, request, *args, **kwargs):
@@ -74,6 +88,12 @@ class ScanTaskViewSet(AuthViewSet):
         from apps.cmdb.services.scan_trigger_service import recover_due_scan_execution
 
         execution = get_object_or_404(ScanExecution.objects.select_related("task"), pk=eid)
+        visible_tasks = self.get_queryset_by_permission(
+            self.request,
+            ScanTask.objects.filter(pk=execution.task_id),
+        )
+        if not visible_tasks.exists():
+            raise Http404
         return recover_due_scan_execution(execution)
 
     @HasPermission("auto_collection-Execute")

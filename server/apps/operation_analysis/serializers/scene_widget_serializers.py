@@ -65,9 +65,26 @@ class Application3DArchitectureRequestSerializer(_Application3DStrictSerializer)
     application_id = serializers.UUIDField()
 
 
+_ALARM_ID_MAX = 9223372036854775807
+
+
+def _invalid_alarm_id():
+    return oa_message(
+        "messages.sw_alarm_id_invalid",
+        "必须是 1 到 9223372036854775807 的十进制整数",
+    )
+
+
 class Application3DAlarmDetailRequestSerializer(_Application3DStrictSerializer):
     application_id = serializers.UUIDField()
-    alarm_id = serializers.CharField(allow_blank=False, max_length=100)
+    alarm_id = serializers.CharField(allow_blank=False, max_length=100, trim_whitespace=False)
+
+    def validate_alarm_id(self, value):
+        if isinstance(value, str) and value.isascii() and value.isdigit():
+            number = int(value)
+            if 1 <= number <= _ALARM_ID_MAX:
+                return str(number)
+        raise serializers.ValidationError(_invalid_alarm_id())
 
 
 class Application3DMetricRequestSerializer(Application3DAlarmDetailRequestSerializer):

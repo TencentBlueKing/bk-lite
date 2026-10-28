@@ -9,6 +9,7 @@ from typing import Any
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.services.asset_tags import system_tags_from_manifest
+from apps.opspilot.services.ppt_master_runtime import overlay_builtin_triggers
 from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT, SkillPackageImporter
 from apps.system_mgmt.models.user import Group
 
@@ -139,7 +140,7 @@ def seed_builtin_skill_package(
             "manifest": parsed["manifest"],
             "skill_markdown": parsed["skill_markdown"],
             "required_tools": parsed["required_tools"],
-            "triggers": parsed["triggers"],
+            "triggers": overlay_builtin_triggers(parsed["package_id"], parsed["triggers"]),
             "is_enabled": True,
             "is_build_in": True,
             "updated_by": "system",

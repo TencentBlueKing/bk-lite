@@ -3,6 +3,7 @@ import { Button, FormInstance } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
+import { FilterItem } from '@/app/log/types/integration';
 import {
   buildAlertNameVariables,
   insertAlertNameVariable
@@ -12,6 +13,7 @@ import strategyStyle from '../index.module.scss';
 interface AlertNameVariablesProps {
   form: FormInstance;
   groupBy?: string[];
+  conditions?: FilterItem[];
 }
 
 interface VariableItem {
@@ -22,10 +24,11 @@ interface VariableItem {
 
 const AlertNameVariables: React.FC<AlertNameVariablesProps> = ({
   form,
-  groupBy
+  groupBy,
+  conditions
 }) => {
   const { t } = useTranslation();
-  const variables = buildAlertNameVariables(groupBy);
+  const variables = buildAlertNameVariables(groupBy, conditions);
 
   const handleUseVariable = (variable: string) => {
     const currentValue = form.getFieldValue('alert_name') || '';
@@ -52,7 +55,9 @@ const AlertNameVariables: React.FC<AlertNameVariablesProps> = ({
         t(
           description === 'alertLevel'
             ? 'log.event.alertLevelVariable'
-            : 'log.event.groupFieldVariable'
+            : description === 'aggregateValue'
+              ? 'log.event.aggregateTemplateVariable'
+              : 'log.event.groupFieldVariable'
         )
     },
     {

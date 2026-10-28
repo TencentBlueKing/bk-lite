@@ -30,7 +30,9 @@ import { useSearchParams } from 'next/navigation';
 import { useDirectoryApi } from '@/app/ops-analysis/api/index';
 import { useUserInfoContext } from '@/context/userInfo';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
-import { ExportModal, ImportModal } from './importExport';
+import { ExportModal, ImportModal, ImportUpdateModal } from './importExport';
+import type { ImportUpdateResponse } from '@/app/ops-analysis/api/importExport';
+import { canvasSelectionAfterImportUpdate } from '@/app/ops-analysis/utils/canvasImportUpdate';
 import CopyCanvasModal from './copyCanvasModal';
 import { ObjectType } from '@/app/ops-analysis/api/importExport';
 import { buildDefaultScreenViewSets } from '@/app/ops-analysis/(pages)/view/screen/utils/viewport';
@@ -84,7 +86,7 @@ import {
 } from '@/app/ops-analysis/utils/homepageDirectoryActions';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
-  ({ onSelect, onDataUpdate }, ref) => {
+  ({ onSelect, onDataUpdate, onCanvasContentReplaced, beforeImportUpdate }, ref) => {
     const [form] = Form.useForm();
     const selectedCanvasType = Form.useWatch('canvasType', form) as
       | CanvasType
@@ -121,6 +123,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [exportItem, setExportItem] = useState<DirItem | null>(null);
     const [importModalVisible, setImportModalVisible] = useState(false);
     const [importTargetDir, setImportTargetDir] = useState<DirItem | null>(null);
+    const [importUpdateItem, setImportUpdateItem] = useState<DirItem | null>(null);
     const [copyModalVisible, setCopyModalVisible] = useState(false);
     const [copySource, setCopySource] = useState<DirItem | null>(null);
     const [copySubmitting, setCopySubmitting] = useState(false);
@@ -562,6 +565,15 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         label: t('opsAnalysisSidebar.exportYaml'),
         onClick: () => handleExport(item),
       };
+      const importUpdateAction: MoreActionsDropdownItem = {
+        key: 'importUpdate',
+        label: t('opsAnalysisSidebar.importUpdate'),
+        permission: 'EditChart',
+        onClick: () => {
+          if (!hasPermission(['EditChart'])) return;
+          setImportUpdateItem(item);
+        },
+      };
       const showResourceActions = shouldShowCanvasCopyAction(item);
 
       // 内置目录与五种内置画布：有目录编辑权时可改所属组织；内容与删除仍只读。
@@ -715,7 +727,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         },
       );
       if (showResourceActions) {
-        items.push(copyAction, exportAction);
+        items.push(copyAction, exportAction, importUpdateAction);
       }
       return withHomepageActions(item, items);
     };
@@ -1167,6 +1179,28 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             loadDirectories();
           }}
         />
+
+        {importUpdateItem && isCanvasType(importUpdateItem.type) && (
+          <ImportUpdateModal
+            visible
+            objectType={importUpdateItem.type}
+            objectId={parseInt(importUpdateItem.data_id, 10)}
+            objectName={importUpdateItem.name}
+            beforeSubmit={
+              beforeImportUpdate
+                ? () => beforeImportUpdate(importUpdateItem)
+                : undefined
+            }
+            onCancel={() => setImportUpdateItem(null)}
+            onSuccess={async (result: ImportUpdateResponse) => {
+              const updated = canvasSelectionAfterImportUpdate(importUpdateItem, result);
+              setImportUpdateItem(null);
+              onDataUpdate?.(updated);
+              onCanvasContentReplaced?.(updated);
+              await loadDirectories();
+            }}
+          />
+        )}
 
         <CopyCanvasModal
           open={copyModalVisible}

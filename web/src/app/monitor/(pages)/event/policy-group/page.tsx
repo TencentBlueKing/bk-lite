@@ -54,7 +54,7 @@ interface PolicyGroupRule {
   trigger_count?: number;
   recovery_condition?: number;
   recovery_threshold?: { method?: string; value?: number | null };
-  no_data_carrier?: boolean;
+  no_data_enabled?: boolean;
   policy_id?: number;
   open_alert_count?: number;
 }
@@ -222,6 +222,8 @@ const PolicyGroupPage: React.FC = () => {
     pageSize: 10,
   });
   const [ruleGroup, setRuleGroup] = useState<PolicyGroupRow | null>(null);
+  const [ruleKeyword, setRuleKeyword] = useState('');
+  const [ruleNoData, setRuleNoData] = useState<'on' | 'off' | null>(null);
   const [rulePagination, setRulePagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -304,6 +306,13 @@ const PolicyGroupPage: React.FC = () => {
     void loadGroups(objectId);
   }, [objectId, pagination.current, pagination.pageSize, appliedSearch]);
 
+  const openRuleList = (group: PolicyGroupRow) => {
+    setRuleKeyword('');
+    setRuleNoData(null);
+    setRulePagination((prev) => ({ ...prev, current: 1 }));
+    setRuleGroup(group);
+  };
+
   useEffect(() => {
     if (openedRuleList.current || searchParams.get('rules') !== '1') return;
     const targetId = searchParams.get('groupId');
@@ -311,8 +320,7 @@ const PolicyGroupPage: React.FC = () => {
     const group = groups.find((item) => String(item.id) === targetId);
     if (!group) return;
     openedRuleList.current = true;
-    setRulePagination((prev) => ({ ...prev, current: 1 }));
-    setRuleGroup(group);
+    openRuleList(group);
   }, [groups, searchParams]);
 
   const openMembers = async (group: PolicyGroupRow) => {
@@ -684,10 +692,7 @@ const PolicyGroupPage: React.FC = () => {
         <Button
           type="link"
           className="px-0"
-          onClick={() => {
-            setRulePagination((prev) => ({ ...prev, current: 1 }));
-            setRuleGroup(record as PolicyGroupRow);
-          }}
+          onClick={() => openRuleList(record as PolicyGroupRow)}
         >
           {(record.rules || []).length}
         </Button>
@@ -779,7 +784,16 @@ const PolicyGroupPage: React.FC = () => {
     memberPagination.current * memberPagination.pageSize
   );
   const ruleRows = ruleGroup?.rules || [];
-  const visibleRules = ruleRows.slice(
+  const ruleKeywordText = ruleKeyword.trim().toLowerCase();
+  const filteredRules = ruleRows.filter((item) => {
+    if (ruleNoData === 'on' && !item.no_data_enabled) return false;
+    if (ruleNoData === 'off' && item.no_data_enabled) return false;
+    if (!ruleKeywordText) return true;
+    const name = String(item.name || '').toLowerCase();
+    const plugin = String(item.plugin_name || '').toLowerCase();
+    return name.includes(ruleKeywordText) || plugin.includes(ruleKeywordText);
+  });
+  const visibleRules = filteredRules.slice(
     (rulePagination.current - 1) * rulePagination.pageSize,
     rulePagination.current * rulePagination.pageSize
   );
@@ -1051,17 +1065,41 @@ const PolicyGroupPage: React.FC = () => {
         closable={false}
         onClose={() => {
           setRuleGroup(null);
+          setRuleKeyword('');
+          setRuleNoData(null);
+          setRulePagination((prev) => ({ ...prev, current: 1 }));
         }}
       >
+          <SearchActionBar
+            searchProps={{
+              placeholder: '搜索名称或模板',
+              value: ruleKeyword,
+              onChange: (event) => {
+                setRuleKeyword(event.target.value);
+                setRulePagination((prev) => ({ ...prev, current: 1 }));
+              },
+            }}
+          />
           <CustomTable
             rowKey="id"
             dataSource={visibleRules}
-            pagination={{ ...rulePagination, total: ruleRows.length }}
+            pagination={{ ...rulePagination, total: filteredRules.length }}
             scroll={{ y: 'auto' }}
-            onChange={(next: Pagination) => {
+            onChange={(next, filters, _sorter, extra) => {
+              if (extra?.action === 'filter') {
+                const selected = filters?.no_data_enabled;
+                const value = Array.isArray(selected) && selected.length ? String(selected[0]) : '';
+                setRuleNoData(value === 'on' || value === 'off' ? value : null);
+                setRulePagination((prev) => ({
+                  ...prev,
+                  current: 1,
+                  pageSize: next.pageSize || prev.pageSize,
+                }));
+                return;
+              }
               setRulePagination((prev) => ({
                 ...prev,
-                current: next.pageSize !== prev.pageSize ? 1 : next.current,
+                current: next.pageSize !== prev.pageSize ? 1 : next.current || 1,
                 pageSize: next.pageSize || prev.pageSize,
               }));
             }}
@@ -1070,12 +1108,7 @@ const PolicyGroupPage: React.FC = () => {
                 title: t('common.name'),
                 dataIndex: 'name',
                 key: 'name',
-                render: (_, record) => (
-                  <span className="inline-flex flex-wrap items-center gap-2">
-                    <span>{record.name}</span>
-                    {record.no_data_carrier ? <StatusToneBadge tone="neutral" label="承载无数据" /> : null}
-                  </span>
-                ),
+                render: (_, record) => record.name,
               },
               {
                 title: '模板',
@@ -1083,6 +1116,24 @@ const PolicyGroupPage: React.FC = () => {
                 key: 'plugin_name',
                 width: 160,
                 render: (_, record) => record.plugin_name || '--',
+              },
+              {
+                title: '无数据',
+                dataIndex: 'no_data_enabled',
+                key: 'no_data_enabled',
+                width: 110,
+                filters: [
+                  { text: '已开启', value: 'on' },
+                  { text: '未开启', value: 'off' },
+                ],
+                filterMultiple: false,
+                filteredValue: ruleNoData ? [ruleNoData] : null,
+                render: (_, record) => (
+                  <StatusToneBadge
+                    tone={record.no_data_enabled ? 'success' : 'neutral'}
+                    label={record.no_data_enabled ? '已开启' : '未开启'}
+                  />
+                ),
               },
               {
                 title: t('common.action'),
@@ -1232,22 +1283,10 @@ const PolicyGroupPage: React.FC = () => {
         <div className="mb-3">
           <div className="mb-1">无数据告警</div>
           {noDataNote ? <div className={`mb-1 ${CONFIG_HINT_CLASS}`}>{noDataNote}</div> : null}
-          {detectionDraft.noDataEnabled == null ? (
-            <Select
-              className="w-[160px]"
-              placeholder="请选择"
-              options={[
-                { value: 'on', label: '开启' },
-                { value: 'off', label: '关闭' },
-              ]}
-              onChange={(value) => patchDetection({ noDataEnabled: value === 'on' })}
-            />
-          ) : (
-            <Switch
-              checked={detectionDraft.noDataEnabled}
-              onChange={(checked) => patchDetection({ noDataEnabled: checked })}
-            />
-          )}
+          <Switch
+            checked={detectionDraft.noDataEnabled === true}
+            onChange={(checked) => patchDetection({ noDataEnabled: checked })}
+          />
           <div className={`mt-[10px] ${CONFIG_HINT_CLASS}`}>查不到数据时告警。</div>
         </div>
         {detectionDraft.noDataEnabled ? (
