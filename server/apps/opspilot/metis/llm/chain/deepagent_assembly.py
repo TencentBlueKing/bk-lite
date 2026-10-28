@@ -663,7 +663,7 @@ class DeepAgentAssemblyMixin:
             "问全部实例的趋势、未来一段时间会不会超阈值时，用 monitor_summarize_metric_trend，"
             "它用完整历史算出汇总行；instance_ids 留空表示该对象全部已授权实例，禁止抽样查原始时序。"
             "本步可见 mlops_predict_timeseries 时，monitor_query_metric_data 成功后立刻调用它，"
-            "原样复制这次查询的 monitor_obj_id、metric、instance_ids，禁止把返回的点写入 data。"
+            "原样复制这次查询的 metric、instance_ids，禁止把返回的点写入 data，禁止重发监控查询。"
             "monitor_query_metric_data 返回空矩阵、无时序或空值是查询成功但没有数据，不是参数错误。"
             "禁止把空值说成参数无效，禁止因此改 instance_ids、dimensions、时间窗或 metric 重试。有数值就按数值回答。"
             "问「最近 N 分钟哪些主机使用率高/Top N」时用 monitor_get_host_resource_top_by_time，"

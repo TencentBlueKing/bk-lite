@@ -14,31 +14,28 @@ from apps.opspilot.metis.llm.tools.mlops.monitor_store import (
     cached_monitor_metrics,
     execution_id_from_config,
     latest_monitor_metric_query,
-    record_monitor_metric_query,
 )
 from apps.opspilot.metis.llm.tools.mlops.reshape import DEFAULT_TIMEZONE, prepare_series, summarize_prediction
 from apps.opspilot.metis.llm.tools.mlops.series import extract_monitor_series, select_series
-from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, format_monitor_caller_identity_required_error, resolve_monitor_user_info
+from apps.opspilot.metis.llm.tools.monitor.utils import format_monitor_caller_identity_required_error, resolve_monitor_user_info
 from apps.rpc.mlops import MLOps
 
 MAX_SERIES = 100
 CONCURRENCY = 5
 WALL_SECONDS = 240
 PREDICT_RPC_TIMEOUT_SECONDS = 140
-DECLARED_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000
-DECLARED_PARAMS_ERROR = (
-    "请同时传入 monitor_obj_id、metric、instance_ids，并与 monitor_query_metric_data 使用同一组参数。"
-    "instance_ids 必须原样复制 monitor_list_object_instances 返回的 instance_id，禁止改成 IP 或主机名。"
-)
+NO_SERIES_ERROR = "监控查询没有返回序列。请先调用 monitor_query_metric_data，再传相同的 metric。"
+NO_MATCHED_INSTANCE_ERROR = "监控结果里没有请求的实例"
 
 _TOOL_DESCRIPTION = (
     "用已绑定的 MLOps 时序预测服务预测未来。不要自己心算外推。"
     "view=summary 用于比较多条序列，回答哪台最危险、峰值何时出现，只返回每条的最大值、最终值和到达时间；"
     "view=trend 只允许 1 条序列，这时才列出预测点，同时返回摘要。"
-    "监控路径必须同时传入 monitor_obj_id、metric、instance_ids，三者都原样复制本轮 monitor_query_metric_data 的同名参数。"
+    "监控路径传 metric 和 instance_ids，二者都原样复制本轮 monitor_query_metric_data 的同名参数。"
+    "工具只使用本轮已经查到的序列，不会重新查询监控。"
     "instance_ids 的值来自 monitor_list_object_instances 的 instance_id，禁止改成 IP 或主机名，也不要把点写入 data。"
     "用户贴出的单条序列传 data。metric 和 data 只能有一个。"
-    "horizon_days 是用户要看的未来天数。steps 是未来点数不是天数，等于跨度除以输入点间隔。"
+    "horizon_days 是用户要看的未来天数，必须是正数。steps 是未来点数不是天数，等于跨度除以输入点间隔。"
     "向用户表述预测跨度时，用返回的频率乘以 steps 换算成真实时间。"
     "threshold 只在用户明确说出阈值时传入，不要默认 100。"
     "serving_id 在绑定了多个预测服务时必须从工具说明里的列表选择；只绑定一个时不用传。"
@@ -73,7 +70,6 @@ def mlops_predict_timeseries_impl(
     instance_ids: Optional[list] = None,
     data: Optional[list] = None,
     threshold: Optional[float] = None,
-    monitor_obj_id: Optional[str] = None,
     config: RunnableConfig = None,
     predict_caller=None,
     wall_seconds: float = WALL_SECONDS,
@@ -92,6 +88,8 @@ def mlops_predict_timeseries_impl(
         prepared_horizon = float(horizon_days)
     except (TypeError, ValueError):
         return {"success": False, "error": "horizon_days 必须是正数"}
+    if isinstance(horizon_days, bool) or not (prepared_horizon > 0):
+        return {"success": False, "error": "horizon_days 必须是正数"}
 
     try:
         identity = resolve_monitor_user_info(config)
@@ -103,19 +101,10 @@ def mlops_predict_timeseries_impl(
         return {"success": False, "error": serving_error}
 
     series, missing, none_matched = _load_series(config, metric, instance_ids, data)
-    if none_matched and data is None:
-        declared = _normalize_ids(instance_ids)
-        if str(metric or "").strip() and str(monitor_obj_id or "").strip() and declared:
-            queried, query_error = _query_declared_series(config, str(monitor_obj_id), str(metric), declared)
-            if query_error:
-                return {"success": False, "error": query_error}
-            series = extract_monitor_series(queried)
-            missing = []
-            none_matched = not series
     if none_matched:
-        if data is None and not (str(monitor_obj_id or "").strip() and _normalize_ids(instance_ids)):
-            return {"success": False, "error": DECLARED_PARAMS_ERROR}
-        return {"success": False, "error": "监控查询没有返回序列。请确认 instance_ids 原样复制自 monitor_list_object_instances 的 instance_id。"}
+        if missing:
+            return {"success": False, "error": NO_MATCHED_INSTANCE_ERROR}
+        return {"success": False, "error": NO_SERIES_ERROR}
     if view == "trend" and len(series) != 1:
         return {"success": False, "error": "view=trend 只允许 1 条序列，请先用 instance_ids 收成一台"}
     if len(series) > MAX_SERIES:
@@ -189,7 +178,6 @@ def mlops_predict_timeseries(
         Optional[list],
         Field(description="原样复制 monitor_query_metric_data 的 instance_ids，值是 monitor_list_object_instances 的 instance_id，禁止改成 IP"),
     ] = None,
-    monitor_obj_id: Annotated[Optional[str], Field(description="原样复制 monitor_query_metric_data 的 monitor_obj_id")] = None,
     serving_id: Annotated[Optional[int], Field(description="绑定多个预测服务时必填，值来自工具说明中的 id")] = None,
     data: Annotated[Optional[list], Field(description="仅用户自己贴出单条序列时传入；本轮已查监控时不要传")] = None,
     threshold: Annotated[Optional[float], Field(description="仅用户明确说出阈值时传入")] = None,
@@ -203,7 +191,6 @@ def mlops_predict_timeseries(
         instance_ids=instance_ids,
         data=data,
         threshold=threshold,
-        monitor_obj_id=monitor_obj_id,
         config=config,
     )
 
@@ -329,28 +316,6 @@ def _normalize_ids(instance_ids: Optional[list]) -> list[str]:
     return normalized
 
 
-def _query_declared_series(config: Optional[RunnableConfig], monitor_obj_id: str, metric: str, instance_ids: list[str]):
-    now_ms = int(time.time() * 1000)
-    result = call_monitor_rpc(
-        "query_monitor_data_by_metric",
-        config,
-        query_data={
-            "monitor_obj_id": monitor_obj_id,
-            "metric": metric,
-            "start": now_ms - DECLARED_LOOKBACK_MS,
-            "end": now_ms,
-            "step": "5m",
-            "instance_ids": list(instance_ids),
-            "dimensions": {},
-        },
-    )
-    if not isinstance(result, dict) or result.get("success") is False:
-        message = str(result.get("error") or "") if isinstance(result, dict) else ""
-        return None, message or "监控查询失败"
-    record_monitor_metric_query(config, metric, instance_ids, result, monitor_obj_id=monitor_obj_id)
-    return result, ""
-
-
 def _load_series(config: Optional[RunnableConfig], metric: Optional[str], instance_ids: Optional[list], data: Optional[list]):
     if data is not None:
         return [{"instance_id": None, "instance": "", "labels": {}, "points": list(data)}], [], False
@@ -364,8 +329,9 @@ def _load_series(config: Optional[RunnableConfig], metric: Optional[str], instan
     queried = _normalize_ids(entry.get("instance_ids"))
     if requested and requested != queried:
         selected, missing = select_series(series, requested)
-        if selected:
-            return selected, missing, False
+        if not selected:
+            return [], missing, True
+        return selected, missing, False
     return series, [], False
 
 

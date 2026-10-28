@@ -229,6 +229,19 @@ def test_pasted_points_are_rejected_when_several_metrics_are_cached(names):
     assert "hit" not in called
 
 
+def test_horizon_days_must_be_positive(names):
+    for horizon in (0, -1, True):
+        result = mlops_predict_timeseries_impl(
+            "summary",
+            horizon,
+            data=_hourly_points(20),
+            config=_config(),
+            predict_caller=_ok_predict(1),
+        )
+        assert result["success"] is False
+        assert result["error"] == "horizon_days 必须是正数"
+
+
 def test_rejects_when_metric_and_data_are_both_missing(names):
     result = mlops_predict_timeseries_impl("summary", 7, config=_config())
     assert result["success"] is False
@@ -245,12 +258,44 @@ def test_predict_uses_the_monitor_query_series(names):
     record_monitor_metric_query(
         _config(execution_id="exec-pass"),
         "disk.used",
-        ["10.10.50.11", "10.10.50.12"],
+        ["inst-11", "inst-12"],
         _monitor_payload(
             [
-                ({"instance": "10.10.50.11:9100", "device": "/dev/sda1"}, points),
-                ({"instance": "10.10.50.11:9100", "device": "/dev/sdb1"}, points),
-                ({"instance": "10.10.50.12:9100", "device": "/dev/sda1"}, points),
+                ({"instance_id": "inst-11", "instance": "10.10.50.11:9100", "device": "/dev/sda1"}, points),
+                ({"instance_id": "inst-11", "instance": "10.10.50.11:9100", "device": "/dev/sdb1"}, points),
+                ({"instance_id": "inst-12", "instance": "10.10.50.12:9100", "device": "/dev/sda1"}, points),
+            ]
+        ),
+    )
+    calls = []
+
+    def _predict(serving_id, data, steps, actor_context):
+        calls.append(serving_id)
+        return _ok_predict(1)(serving_id, data, steps, actor_context)
+
+    result = mlops_predict_timeseries_impl(
+        "summary",
+        5,
+        metric="disk.used",
+        instance_ids=["inst-11", "inst-12"],
+        config=_config(execution_id="exec-pass"),
+        predict_caller=_predict,
+    )
+    assert result["success"] is True
+    assert len(calls) == 3
+    assert all(not item["error"] for item in result["results"])
+
+
+def test_unmatched_instance_ids_reject_the_batch(names):
+    points = _hourly_points(400)
+    record_monitor_metric_query(
+        _config(execution_id="exec-miss"),
+        "disk.used",
+        ["inst-11", "inst-12"],
+        _monitor_payload(
+            [
+                ({"instance_id": "inst-11", "instance": "10.10.50.11:9100", "device": "/dev/sda1"}, points),
+                ({"instance_id": "inst-12", "instance": "10.10.50.12:9100", "device": "/dev/sda1"}, points),
             ]
         ),
     )
@@ -265,40 +310,72 @@ def test_predict_uses_the_monitor_query_series(names):
         5,
         metric="disk.used",
         instance_ids=["10.10.50.11", "10.10.50.99"],
-        config=_config(execution_id="exec-pass"),
+        config=_config(execution_id="exec-miss"),
+        predict_caller=_predict,
+    )
+    assert result["success"] is False
+    assert result["error"] == "监控结果里没有请求的实例"
+    assert calls == []
+
+
+def test_partial_instance_match_keeps_hits_and_records_missing(names):
+    points = _hourly_points(400)
+    record_monitor_metric_query(
+        _config(execution_id="exec-partial"),
+        "disk.used",
+        ["inst-11", "inst-12"],
+        _monitor_payload(
+            [
+                ({"instance_id": "inst-11", "instance": "10.10.50.11:9100", "device": "/dev/sda1"}, points),
+                ({"instance_id": "inst-11", "instance": "10.10.50.11:9100", "device": "/dev/sdb1"}, points),
+                ({"instance_id": "inst-12", "instance": "10.10.50.12:9100", "device": "/dev/sda1"}, points),
+            ]
+        ),
+    )
+    calls = []
+
+    def _predict(serving_id, data, steps, actor_context):
+        calls.append(data[-1]["value"])
+        return _ok_predict(1)(serving_id, data, steps, actor_context)
+
+    result = mlops_predict_timeseries_impl(
+        "summary",
+        5,
+        metric="disk.used",
+        instance_ids=["inst-11", "inst-missing"],
+        config=_config(execution_id="exec-partial"),
         predict_caller=_predict,
     )
     assert result["success"] is True
-    assert len(calls) == 3
-    assert all(not item["error"] for item in result["results"])
+    assert len(calls) == 2
+    missing = [item for item in result["results"] if item["error"]]
+    assert len(missing) == 1
+    assert missing[0]["instance_id"] == "inst-missing"
+    assert missing[0]["error"] == "监控结果里没有这个实例"
 
 
-def test_declared_params_query_monitor_when_cache_is_missing(names, monkeypatch):
-    captured = {}
+def test_cache_miss_does_not_requery_monitor(names, monkeypatch):
+    def _rpc(*_args, **_kwargs):
+        raise AssertionError("预测工具不应重发监控查询")
 
-    def _rpc(method, config, query_data):
-        captured["method"] = method
-        captured["query_data"] = query_data
-        return _monitor_payload([({"instance_id": "inst-1", "instance": "10.10.50.11:9100"}, _hourly_points(400))])
+    monkeypatch.setattr("apps.opspilot.metis.llm.tools.monitor.utils.call_monitor_rpc", _rpc)
+    calls = []
 
-    monkeypatch.setattr("apps.opspilot.metis.llm.tools.mlops.predict.call_monitor_rpc", _rpc)
+    def _predict(*args, **kwargs):
+        calls.append(args)
+        return _ok_predict(1)(*args, **kwargs)
+
     result = mlops_predict_timeseries_impl(
         "summary",
         5,
         metric="disk_used_percent",
         instance_ids=["inst-1"],
-        monitor_obj_id="host",
         config=_config(execution_id="exec-declared"),
-        predict_caller=_ok_predict(1),
+        predict_caller=_predict,
     )
-    query_data = captured["query_data"]
-    assert captured["method"] == "query_monitor_data_by_metric"
-    assert query_data["monitor_obj_id"] == "host"
-    assert query_data["metric"] == "disk_used_percent"
-    assert query_data["instance_ids"] == ["inst-1"]
-    assert query_data["end"] - query_data["start"] == 14 * 24 * 60 * 60 * 1000
-    assert result["success"] is True
-    assert len(result["results"]) == 1
+    assert result["success"] is False
+    assert "monitor_query_metric_data" in result["error"]
+    assert calls == []
 
 
 def test_boolean_result_envelope_still_reads_series(names):
@@ -328,7 +405,6 @@ def test_boolean_result_envelope_still_reads_series(names):
         5,
         metric="disk_used_percent",
         instance_ids=["inst-1"],
-        monitor_obj_id="host",
         config=_config(execution_id="exec-envelope"),
         predict_caller=_ok_predict(1),
     )
@@ -597,6 +673,50 @@ def test_timeout_marks_unfinished(names):
 
     rows = run_bounded([{"instance_id": "a"}, {"instance_id": "b"}], _slow, concurrency=1, wall_seconds=0.05)
     assert any(item["error"] == "预测超时" for item in rows)
+
+
+def test_negative_builtin_mlops_serving_ids_reach_runtime_config(mocker):
+    from apps.opspilot.services.builtin_tools import BUILTIN_MLOPS_TOOL_NAME
+    from apps.opspilot.services.chat_service import ChatService
+
+    llm_model = mocker.Mock()
+    llm_model.openai_api_base = "https://example.com/v1"
+    llm_model.openai_api_key = "key"
+    llm_model.model_name = "gpt-4o"
+    llm_model.protocol_type = "openai"
+    llm_model.vendor_id = None
+    llm_model.pk = 1
+    llm_model.context_window_tokens = 128000
+    mocker.patch("apps.opspilot.services.history_service.history_service.process_user_message_and_images", return_value=("hello", []))
+    mocker.patch("apps.opspilot.services.history_service.history_service.process_chat_history", return_value=[])
+    mocker.patch("apps.opspilot.services.chat_service.resolve_skill_params", return_value="system")
+    mocker.patch("apps.opspilot.services.chat_service.SkillTools.objects.filter", return_value=[])
+    mocker.patch("apps.opspilot.metis.llm.tools.mlops.predict.get_mlops_serving_prompt", return_value="已绑定")
+    request = {
+        "user_message": "hello",
+        "chat_history": [],
+        "skill_prompt": "system",
+        "skill_params": [],
+        "temperature": 0.1,
+        "user_id": 1,
+        "enable_rag": False,
+        "enable_rag_knowledge_source": False,
+        "skill_type": 1,
+        "locale": "zh-Hans",
+        "tools": [
+            {
+                "id": BUILTIN_MLOPS_TOOL_ID,
+                "name": BUILTIN_MLOPS_TOOL_NAME,
+                "kwargs": [{"key": "serving_ids", "value": "[7]", "type": "string"}],
+            }
+        ],
+    }
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(request, llm_model)
+
+    assert chat_kwargs["extra_config"]["serving_ids"] == "[7]"
+    configurable = {"user_id": str(request["user_id"]), **chat_kwargs["extra_config"]}
+    assert configurable["serving_ids"] == "[7]"
 
 
 def test_builtin_tool_descriptor_exposes_serving_ids():
