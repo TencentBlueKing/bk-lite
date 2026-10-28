@@ -168,6 +168,7 @@ describe('APM 告警详情事件列表', { timeout: 15000 }, () => {
     );
 
     expect(screen.getByTestId('metric-chart')).toBeTruthy();
+    expect(screen.queryByText('条件')).toBeNull();
     await userEvent.click(screen.getByRole('tab', { name: '事件' }));
     expect(await screen.findByText('认领')).toBeTruthy();
     expect(screen.getByText('分派')).toBeTruthy();

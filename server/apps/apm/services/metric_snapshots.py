@@ -4,6 +4,7 @@ from django.db import transaction
 
 from apps.apm.models import ApmAlert, ApmAlertMetricSnapshot, ApmEvent, ApmPolicy
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
+from apps.apm.services.policy_conditions import condition_value_map
 
 MAX_ALERT_METRIC_SNAPSHOTS = 1440
 
@@ -75,6 +76,16 @@ class ApmAlertMetricSnapshotStore:
                     "threshold": threshold,
                     "data_state": str(result.data_state),
                     "recovery_threshold": dict(policy.recovery_threshold or {}) or None,
+                    "condition_values": condition_value_map(result),
+                    "condition_details": [
+                        {
+                            "ref": row.get("ref"),
+                            "value": None if row.get("compared_value") is None else str(row.get("compared_value")),
+                            "threshold": row.get("threshold_value"),
+                            "matched_severity": row.get("matched_severity"),
+                        }
+                        for row in (result.condition_rows or ())
+                    ],
                 }
             )
             if len(snapshot.snapshots) > MAX_ALERT_METRIC_SNAPSHOTS:

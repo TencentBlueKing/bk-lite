@@ -590,6 +590,30 @@ export interface ApmPolicyNotificationTarget {
   recipients: string[];
 }
 
+export interface ApmPolicyRegularCondition {
+  ref: string;
+  role: 'regular';
+  metric_type: ApmPolicyMetric;
+  aggregation: ApmPolicyAggregation;
+  compare_mode?: ApmCompareMode;
+  compare_offset_amount?: number | null;
+  compare_value_kind?: ApmCompareValueKind | '';
+  min_request_count?: number | null;
+  slow_threshold_ms?: number | null;
+  apdex_threshold_ms?: number | null;
+  thresholds: Array<{ severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: number | string }>;
+}
+
+export interface ApmPolicyGuardCondition {
+  ref: string;
+  role: 'guard';
+  metric_type: ApmPolicyMetric | 'request_count';
+  comparator: ApmPolicyComparator;
+  value: number | string;
+}
+
+export type ApmPolicyCondition = ApmPolicyRegularCondition | ApmPolicyGuardCondition;
+
 export interface ApmPolicyInput {
   name: string;
   service_id: string;
@@ -620,6 +644,7 @@ export interface ApmPolicyInput {
   notification_targets: ApmPolicyNotificationTarget[];
   handlers?: Array<string | number>;
   is_enabled?: boolean;
+  conditions?: ApmPolicyCondition[];
 }
 
 export interface ApmPolicy extends ApmPolicyInput {
@@ -658,7 +683,7 @@ export interface ApmPolicySeriesPoint {
   request_count?: number | null;
 }
 
-export type ApmPolicyDataState = 'available' | 'no_data' | 'missing_baseline' | 'insufficient_samples' | 'hold';
+export type ApmPolicyDataState = 'available' | 'no_data' | 'missing_baseline' | 'insufficient_samples' | 'hold' | 'missing_condition_data';
 
 export interface ApmPolicyQueryResult {
   value: string | null;
@@ -682,7 +707,9 @@ export type ApmPolicyDryRunVerdict =
   | 'no_data'
   | 'missing_baseline'
   | 'insufficient_samples'
-  | 'hold';
+  | 'hold'
+  | 'guard_not_met'
+  | 'missing_condition_data';
 
 export interface ApmPolicyDryRunItem {
   endpoint: string;
@@ -696,6 +723,14 @@ export interface ApmPolicyDryRunItem {
   reason: string;
   hit_history_text?: string;
   baseline_days_used?: number | null;
+  conditions?: Array<{
+    ref: string;
+    current_value: string | null;
+    baseline_value: string | null;
+    compared_value: string | null;
+    matched_severity: ApmPolicySeverity | null;
+  }>;
+  guards?: Array<{ ref: string; value: string | null; matched: boolean }>;
 }
 
 export interface ApmPolicyDryRunResult {
@@ -812,6 +847,13 @@ export interface ApmAlertMetricSnapshotItem {
   } | null;
   data_state: ApmPolicyDataState;
   recovery_threshold?: { comparator: string; value: string } | null;
+  condition_values?: Record<string, string | null>;
+  condition_details?: Array<{
+    ref: string;
+    value: string | null;
+    threshold: string | null;
+    matched_severity: ApmPolicySeverity | null;
+  }>;
 }
 
 export interface ApmAlertMetricSnapshot {
@@ -840,6 +882,7 @@ export interface ApmEventSnapshot {
     current_value?: string | null;
     baseline_value?: string | null;
     result_unit?: string;
+    condition_values?: Record<string, string | null>;
   };
   trace_context: Record<string, unknown>;
   payload_status: 'pending' | 'available' | 'unavailable' | 'expired';

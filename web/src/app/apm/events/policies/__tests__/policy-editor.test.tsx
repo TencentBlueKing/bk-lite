@@ -540,6 +540,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
         }),
       ),
     );
+    expect(api.updatePolicy.mock.calls.at(-1)?.[1]).not.toHaveProperty('conditions');
   });
 
   it('相对上一等长窗切换变化量和变化率，阈值单位跟着变且数字不重算', async () => {
@@ -737,7 +738,8 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
     await screen.findByRole('combobox', { name: '触发方式' });
-    expect(screen.queryByText('前置条件')).toBeNull();
+    expect(screen.getByText('前置条件')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '添加前置条件' })).toBeNull();
 
     await user.click(screen.getByRole('combobox', { name: '触发方式' }));
     await user.click(await screen.findByText('在最近 N 个周期内'));
@@ -822,5 +824,34 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(payload.compare_offset_amount).toBe(3);
     expect(payload.recovery_threshold).toEqual({ comparator: 'gt', value: 40 });
     expect(payload.thresholds).toEqual([expect.objectContaining({ comparator: 'lt', value: 5 })]);
+  });
+
+  it('条件卡和前置段有上限，多条件按级别分行且恢复阈值只写在锚点', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    const addCondition = await screen.findByRole('button', { name: '添加条件' });
+    await user.click(addCondition);
+    await user.click(addCondition);
+    expect((addCondition as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getAllByRole('spinbutton', { name: '恢复阈值' })).toHaveLength(1);
+
+    await user.click(screen.getByText('前置条件'));
+    const addGuard = await screen.findByRole('button', { name: '添加前置条件' });
+    await user.click(addGuard);
+    await user.click(addGuard);
+    expect((addGuard as HTMLButtonElement).disabled).toBe(true);
+
+    await user.type(screen.getByRole('spinbutton', { name: 'b警告阈值' }), '20');
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    const regulars = payload.conditions.filter((item: { role: string }) => item.role === 'regular');
+    const guards = payload.conditions.filter((item: { role: string }) => item.role === 'guard');
+    expect(regulars).toHaveLength(3);
+    expect(guards).toHaveLength(2);
+    expect(regulars[0].ref).toBe('a');
+    expect(regulars[1].thresholds).toEqual([expect.objectContaining({ severity: 'warning', value: 20 })]);
+    expect(payload.conditions.every((item: object) => !('recovery_threshold' in item))).toBe(true);
+    expect(payload.recovery_threshold).toEqual({});
   });
 });

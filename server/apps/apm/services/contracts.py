@@ -523,6 +523,7 @@ class MetricDataState(StrEnum):
     MISSING_BASELINE = "missing_baseline"
     INSUFFICIENT_SAMPLES = "insufficient_samples"
     HOLD = "hold"
+    MISSING_CONDITION_DATA = "missing_condition_data"
 
 
 @dataclass(frozen=True)
@@ -541,6 +542,9 @@ class PolicyQueryResult:
     result_unit: str = ""
     window_ended_at: datetime | None = None
     baseline_days_used: int | None = None
+    condition_rows: tuple[Mapping[str, object], ...] = ()
+    guard_rows: tuple[Mapping[str, object], ...] = ()
+    guard_blocked: bool = False
 
 
 @dataclass(frozen=True)

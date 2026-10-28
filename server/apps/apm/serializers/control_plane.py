@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -7,6 +8,7 @@ from rest_framework import serializers
 from apps.apm.models import ApmApplication, ApmDeploymentEvent, ApmPolicy, ApmPolicyTargetState, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.identity import normalize_identity
 from apps.apm.services.policies import MAX_POLICY_TARGETS
+from apps.apm.services.policy_conditions import MIRROR_FIELDS, REQUEST_COUNT_METRIC, anchor_from_policy, compare_window_key
 from apps.apm.services.query import MAX_METRIC_WINDOW
 from apps.apm.services.status import catalog_status
 from apps.apm.utils.locale_text import serializer_text
@@ -477,6 +479,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     apdex_threshold_ms = serializers.IntegerField(required=False, allow_null=True)
     trigger_window = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=20)
     recovery_threshold = serializers.JSONField(required=False, allow_null=True)
+    conditions = serializers.JSONField(required=False)
     endpoints = serializers.ListField(
         child=serializers.CharField(max_length=512, allow_blank=False),
         required=False,
@@ -516,6 +519,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "slow_threshold_ms",
             "apdex_threshold_ms",
             "thresholds",
+            "conditions",
             "trigger_after",
             "trigger_window",
             "recovery_threshold",
@@ -563,6 +567,167 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     def validate_organizations(self, value):
         return sorted(set(value))
 
+    _CONDITION_REF = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,15}$")
+    _REGULAR_KEYS = frozenset(
+        {
+            "ref",
+            "role",
+            "metric_type",
+            "aggregation",
+            "compare_mode",
+            "compare_offset_amount",
+            "compare_value_kind",
+            "min_request_count",
+            "slow_threshold_ms",
+            "apdex_threshold_ms",
+            "thresholds",
+        }
+    )
+    _GUARD_KEYS = frozenset({"ref", "role", "metric_type", "comparator", "value"})
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not data.get("conditions"):
+            data["conditions"] = [anchor_from_policy(instance)]
+        return data
+
+    def _condition_error(self, key):
+        raise serializers.ValidationError({"conditions": serializer_text(self, key)})
+
+    def _validate_condition_list(self, raw, metric_window):
+        if not isinstance(raw, list):
+            self._condition_error("error.conditions_shape")
+        regulars = []
+        guards = []
+        refs = []
+        for item in raw:
+            if not isinstance(item, dict):
+                self._condition_error("error.conditions_shape")
+            if "recovery_threshold" in item:
+                self._condition_error("error.conditions_recovery_anchor")
+            role = item.get("role")
+            if role == "guard":
+                normalized = self._normalize_guard(item)
+                guards.append(normalized)
+            elif role == "regular":
+                normalized = self._normalize_regular(item, metric_window)
+                regulars.append(normalized)
+            else:
+                self._condition_error("error.conditions_shape")
+            refs.append(normalized["ref"])
+        if not 1 <= len(regulars) <= 3:
+            self._condition_error("error.conditions_count")
+        if len(guards) > 2:
+            self._condition_error("error.conditions_guard_count")
+        if len(refs) != len(set(refs)):
+            self._condition_error("error.conditions_ref_duplicate")
+        windows = {key for key in (compare_window_key(item) for item in regulars) if key is not None}
+        if len(windows) > 2:
+            self._condition_error("error.conditions_windows")
+        no_traffic = [item for item in regulars if item["metric_type"] == ApmPolicy.MetricType.NO_TRAFFIC]
+        if no_traffic and (len(regulars) != 1 or guards or no_traffic[0]["compare_mode"] != ApmPolicy.CompareMode.ABSOLUTE):
+            self._condition_error("error.conditions_no_traffic")
+        return regulars + guards
+
+    def _clean_ref(self, item):
+        ref = str(item.get("ref") or "")
+        if not self._CONDITION_REF.match(ref):
+            self._condition_error("error.conditions_shape")
+        return ref
+
+    def _normalize_guard(self, item):
+        unknown = set(item) - self._GUARD_KEYS
+        if unknown or item.get("metric_type") == ApmPolicy.MetricType.NO_TRAFFIC:
+            self._condition_error("error.conditions_guard_shape")
+        metric_type = str(item.get("metric_type") or "")
+        allowed = {choice for choice, _label in ApmPolicy.MetricType.choices} | {REQUEST_COUNT_METRIC}
+        if metric_type not in allowed:
+            self._condition_error("error.conditions_shape")
+        comparator = str(item.get("comparator") or "")
+        if comparator not in {choice for choice, _label in ApmPolicy.Comparator.choices}:
+            self._condition_error("error.conditions_shape")
+        value = self._finite_decimal(item.get("value"), "conditions", "error.threshold_finite")
+        return {
+            "ref": self._clean_ref(item),
+            "role": "guard",
+            "metric_type": metric_type,
+            "comparator": comparator,
+            "value": self._decimal_payload(value),
+        }
+
+    def _normalize_regular(self, item, metric_window):
+        if set(item) - self._REGULAR_KEYS:
+            self._condition_error("error.conditions_shape")
+        metric_type = str(item.get("metric_type") or "")
+        if metric_type not in {choice for choice, _label in ApmPolicy.MetricType.choices}:
+            self._condition_error("error.conditions_shape")
+        aggregation = str(item.get("aggregation") or ApmPolicy.Aggregation.AVERAGE)
+        if aggregation not in {choice for choice, _label in ApmPolicy.Aggregation.choices}:
+            self._condition_error("error.conditions_shape")
+        if metric_type in ApmPolicy.COUNT_METRIC_TYPES:
+            aggregation = ApmPolicy.Aggregation.AVERAGE
+        compare_mode = str(item.get("compare_mode") or ApmPolicy.CompareMode.ABSOLUTE)
+        if compare_mode not in {choice for choice, _label in ApmPolicy.CompareMode.choices}:
+            self._condition_error("error.conditions_shape")
+        compare_value_kind = item.get("compare_value_kind") or ""
+        compare_offset_amount = item.get("compare_offset_amount")
+        min_request_count = item.get("min_request_count")
+        slow_threshold_ms, apdex_threshold_ms = self._validate_metric_params(
+            metric_type,
+            item.get("slow_threshold_ms"),
+            item.get("apdex_threshold_ms"),
+        )
+        self._validate_compare(
+            metric_type,
+            compare_mode,
+            compare_value_kind,
+            min_request_count,
+            metric_window,
+            compare_offset_amount,
+        )
+        if compare_mode not in {
+            ApmPolicy.CompareMode.OFFSET_HOURS,
+            ApmPolicy.CompareMode.OFFSET_DAYS,
+            ApmPolicy.CompareMode.BASELINE_DAYS,
+        }:
+            compare_offset_amount = None
+        thresholds = item.get("thresholds")
+        if not isinstance(thresholds, list) or not thresholds:
+            self._condition_error("error.conditions_shape")
+        normalized = self._validate_thresholds(thresholds, metric_type, compare_mode, compare_value_kind)
+        return {
+            "ref": self._clean_ref(item),
+            "role": "regular",
+            "metric_type": metric_type,
+            "aggregation": aggregation,
+            "compare_mode": compare_mode,
+            "compare_offset_amount": compare_offset_amount,
+            "compare_value_kind": compare_value_kind or "",
+            "min_request_count": min_request_count,
+            "slow_threshold_ms": slow_threshold_ms,
+            "apdex_threshold_ms": apdex_threshold_ms,
+            "thresholds": normalized,
+        }
+
+    def _validated_anchor_fields(self, attrs, metric_type, compare_mode, compare_value_kind, min_request_count):
+        if "aggregation" in attrs:
+            aggregation = attrs["aggregation"]
+        elif self.instance is not None:
+            aggregation = self.instance.aggregation
+        else:
+            aggregation = ApmPolicy.Aggregation.AVERAGE
+        return {
+            "metric_type": metric_type,
+            "aggregation": aggregation,
+            "compare_mode": compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
+            "compare_offset_amount": attrs.get("compare_offset_amount"),
+            "compare_value_kind": compare_value_kind or "",
+            "min_request_count": min_request_count,
+            "slow_threshold_ms": attrs.get("slow_threshold_ms"),
+            "apdex_threshold_ms": attrs.get("apdex_threshold_ms"),
+            "thresholds": list(attrs.get("thresholds") or []),
+        }
+
     def validate(self, attrs):
         if self.instance is None and "service_id" not in attrs:
             raise serializers.ValidationError({"service_id": serializer_text(self, "error.field_required")})
@@ -570,6 +735,14 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if not str(environment).strip():
             raise serializers.ValidationError({"environment": serializer_text(self, "error.environment_required")})
         attrs["environment"] = str(environment).strip()
+        initial = self.initial_data if isinstance(getattr(self, "initial_data", None), dict) else {}
+        self._conditions_supplied = "conditions" in initial
+        if self._conditions_supplied:
+            metric_window = self._stored_or_incoming(attrs, "metric_window", 5)
+            self._pending_conditions = self._validate_condition_list(attrs.get("conditions"), metric_window)
+            anchor = next(item for item in self._pending_conditions if item["role"] == "regular")
+            for field in MIRROR_FIELDS:
+                attrs[field] = anchor[field]
 
         metric_type = attrs.get("metric_type", getattr(self.instance, "metric_type", None))
         compare_mode = self._stored_or_incoming(attrs, "compare_mode", ApmPolicy.CompareMode.ABSOLUTE)
@@ -653,6 +826,21 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             if len(channel_ids) != len(set(channel_ids)):
                 raise serializers.ValidationError({"notification_targets": serializer_text(self, "error.channel_duplicate")})
         self._validate_policy_handlers(attrs)
+        anchor_fields = self._validated_anchor_fields(attrs, metric_type, compare_mode, compare_value_kind, min_request_count)
+        if getattr(self, "_conditions_supplied", False):
+            synced = []
+            replaced = False
+            for item in self._pending_conditions:
+                if item["role"] == "regular" and not replaced:
+                    updated = dict(item)
+                    updated.update(anchor_fields)
+                    synced.append(updated)
+                    replaced = True
+                else:
+                    synced.append(item)
+            attrs["conditions"] = synced
+        elif self.instance is None or any(field in initial for field in MIRROR_FIELDS):
+            attrs["conditions"] = [{"ref": "a", "role": "regular", **anchor_fields}]
         return attrs
 
     def _policy_organization_ids(self, attrs):

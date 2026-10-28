@@ -54,6 +54,14 @@ error:
   recovery_direction: The recovery threshold must point the opposite way from the trigger line.
   recovery_value: The recovery threshold must be a finite number.
   no_traffic_plain: No-traffic policies cannot set a trigger window or a recovery threshold.
+  conditions_shape: The condition format is invalid.
+  conditions_count: A policy needs 1 to 3 regular conditions.
+  conditions_guard_count: A policy allows at most 2 guard conditions.
+  conditions_ref_duplicate: Condition refs must be unique.
+  conditions_guard_shape: A guard condition cannot set a level, a comparison baseline, or no-traffic.
+  conditions_windows: A policy allows at most two different comparison windows.
+  conditions_no_traffic: No-traffic can only stand alone as a current-value condition.
+  conditions_recovery_anchor: The recovery threshold applies only to the first condition.
   threshold_comparator: Multi-level thresholds must use the same comparator.
   threshold_monotonic: Multi-level thresholds must stay monotonic across critical, error, and warning.
   deployment_window_limit: Deployment event query window cannot exceed 90 days

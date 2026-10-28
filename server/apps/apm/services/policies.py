@@ -26,6 +26,7 @@ from apps.apm.services.contracts import (
     ServiceRedPoint,
 )
 from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore, resolve_result_unit
+from apps.apm.services.policy_conditions import evaluate_policy_conditions, uses_legacy_evaluation
 from apps.apm.services.snapshots import ApmEventSnapshotStore
 from apps.core.logger import apm_logger as logger
 
@@ -260,8 +261,14 @@ class DjangoApmPolicyService:
         endpoint: str,
         version: str,
         include_endpoints: bool,
+        cache: dict | None = None,
     ):
-        return self.metric_store.service_red(
+        slow = getattr(policy, "slow_threshold_ms", None) or None
+        apdex = getattr(policy, "apdex_threshold_ms", None) or None
+        key = (started_at, ended_at, endpoint or "", version or "", slow, apdex, include_endpoints)
+        if cache is not None and key in cache:
+            return cache[key]
+        red = self.metric_store.service_red(
             ServiceMetricQuery(
                 service_namespace=policy.service.namespace,
                 service_name=policy.service.name,
@@ -272,10 +279,13 @@ class DjangoApmPolicyService:
                 include_endpoints=include_endpoints,
                 endpoint=endpoint or "",
                 version=version or "",
-                slow_threshold_ms=getattr(policy, "slow_threshold_ms", None) or None,
-                apdex_threshold_ms=getattr(policy, "apdex_threshold_ms", None) or None,
+                slow_threshold_ms=slow,
+                apdex_threshold_ms=apdex,
             )
         )
+        if cache is not None:
+            cache[key] = red
+        return red
 
     @staticmethod
     def _baseline_offset(policy: ApmPolicy, window_minutes: int) -> timedelta | None:
@@ -337,6 +347,9 @@ class DjangoApmPolicyService:
         reason: str = "",
         window_ended_at: datetime | None = None,
         baseline_days_used: int | None = None,
+        condition_rows=(),
+        guard_rows=(),
+        guard_blocked: bool = False,
     ) -> PolicyQueryResult:
         return PolicyQueryResult(
             value=value,
@@ -353,6 +366,9 @@ class DjangoApmPolicyService:
             result_unit=resolve_result_unit(policy),
             window_ended_at=window_ended_at,
             baseline_days_used=baseline_days_used,
+            condition_rows=tuple(condition_rows),
+            guard_rows=tuple(guard_rows),
+            guard_blocked=guard_blocked,
         )
 
     def test_query(
@@ -362,7 +378,10 @@ class DjangoApmPolicyService:
         evaluated_at: datetime,
         endpoint: str | None = None,
         version: str | None = None,
+        cache: dict | None = None,
     ) -> PolicyQueryResult:
+        if isinstance(policy, ApmPolicy) and not uses_legacy_evaluation(policy):
+            return evaluate_policy_conditions(self, policy, evaluated_at=evaluated_at, endpoint=endpoint, version=version)
         target_endpoint, target_version = (endpoint, version) if endpoint is not None else self._targets(policy)[0]
         window = max(policy.metric_window, 1)
         window_end = evaluated_at - evaluation_delay()
@@ -374,6 +393,7 @@ class DjangoApmPolicyService:
             endpoint=target_endpoint or "",
             version=target_version or "",
             include_endpoints=True,
+            cache=cache,
         )
         current_value = self._aggregate(policy, current)
         if current_value is None:
@@ -410,6 +430,7 @@ class DjangoApmPolicyService:
                 window_end=window_end,
                 endpoint=target_endpoint or "",
                 version=target_version or "",
+                cache=cache,
             )
         offset = self._baseline_offset(policy, window)
         if offset is None:
@@ -434,6 +455,7 @@ class DjangoApmPolicyService:
             endpoint=target_endpoint or "",
             version=target_version or "",
             include_endpoints=False,
+            cache=cache,
         )
         baseline_value = self._aggregate(policy, baseline)
         if baseline_value is None or self._below_min_samples(policy, baseline):
@@ -495,6 +517,7 @@ class DjangoApmPolicyService:
         window_end: datetime,
         endpoint: str,
         version: str,
+        cache: dict | None = None,
     ) -> PolicyQueryResult:
         amount = int(policy.compare_offset_amount or 0)
         windows = tuple((current_start - timedelta(days=day), window_end - timedelta(days=day)) for day in range(1, max(amount, 0) + 1))
@@ -512,7 +535,7 @@ class DjangoApmPolicyService:
                 reason=BASELINE_DAYS_INSUFFICIENT_REASON,
                 baseline_days_used=0,
             )
-        reds = self._read_baseline_days(policy, windows, endpoint=endpoint, version=version)
+        reds = self._read_baseline_days(policy, windows, endpoint=endpoint, version=version, cache=cache)
         usable = []
         for red in reds:
             if not self._baseline_day_usable(policy, red):
@@ -572,7 +595,7 @@ class DjangoApmPolicyService:
             baseline_days_used=used,
         )
 
-    def _read_baseline_days(self, policy: ApmPolicy, windows, *, endpoint: str, version: str):
+    def _read_baseline_days(self, policy: ApmPolicy, windows, *, endpoint: str, version: str, cache: dict | None = None):
         if not self._baseline_days_fallback:
             reader = getattr(self.metric_store, "service_red_by_day", None)
             if reader is not None:
@@ -597,6 +620,7 @@ class DjangoApmPolicyService:
                         endpoint=endpoint,
                         version=version,
                         include_endpoints=False,
+                        cache=cache,
                     )
                 )
         except Exception as exc:
@@ -718,21 +742,39 @@ class DjangoApmPolicyService:
             state = states.get((endpoint, version))
             verdict = self._dry_run_verdict(result, state)
             history_text = self._hit_history_text(policy, state, result)
-            items.append(
-                {
-                    "endpoint": endpoint,
-                    "version": version,
-                    "verdict": verdict,
-                    "current_value": self._decimal_text(result.current_value),
-                    "baseline_value": self._decimal_text(result.baseline_value),
-                    "compared_value": self._decimal_text(result.value),
-                    "request_count": result.request_count,
-                    "matched_threshold": dict(result.threshold) if result.threshold and result.breached else None,
-                    "reason": history_text or self._dry_run_reason(policy, result, state, verdict),
-                    "hit_history_text": history_text,
-                    "baseline_days_used": result.baseline_days_used,
-                }
-            )
+            item = {
+                "endpoint": endpoint,
+                "version": version,
+                "verdict": verdict,
+                "current_value": self._decimal_text(result.current_value),
+                "baseline_value": self._decimal_text(result.baseline_value),
+                "compared_value": self._decimal_text(result.value),
+                "request_count": result.request_count,
+                "matched_threshold": dict(result.threshold) if result.threshold and result.breached else None,
+                "reason": history_text or self._dry_run_reason(policy, result, state, verdict),
+                "hit_history_text": history_text,
+                "baseline_days_used": result.baseline_days_used,
+            }
+            if result.condition_rows or result.guard_rows or result.guard_blocked:
+                item["conditions"] = [
+                    {
+                        "ref": row["ref"],
+                        "current_value": self._decimal_text(row.get("current_value")),
+                        "baseline_value": self._decimal_text(row.get("baseline_value")),
+                        "compared_value": self._decimal_text(row.get("compared_value")),
+                        "matched_severity": row.get("matched_severity"),
+                    }
+                    for row in result.condition_rows
+                ]
+                item["guards"] = [
+                    {
+                        "ref": row["ref"],
+                        "value": self._decimal_text(row.get("value")),
+                        "matched": bool(row.get("matched")),
+                    }
+                    for row in result.guard_rows
+                ]
+            items.append(item)
         return {
             "evaluated_at": evaluated_at,
             "compare_mode": policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
@@ -747,6 +789,10 @@ class DjangoApmPolicyService:
         }
 
     def _dry_run_verdict(self, result: PolicyQueryResult, state: ApmPolicyTargetState | None) -> str:
+        if result.guard_blocked:
+            return "guard_not_met"
+        if result.data_state == MetricDataState.MISSING_CONDITION_DATA:
+            return "missing_condition_data"
         if result.data_state == MetricDataState.HOLD:
             active = state is not None and state.status == ApmPolicyTargetState.Status.ACTIVE
             return "hold" if active else "ok"
@@ -767,6 +813,10 @@ class DjangoApmPolicyService:
         return "ok"
 
     def _dry_run_reason(self, policy: ApmPolicy, result: PolicyQueryResult, state, verdict: str) -> str:
+        if verdict == "guard_not_met":
+            return "前置条件未满足"
+        if verdict == "missing_condition_data":
+            return "条件缺数据"
         if verdict == "hold":
             return "恢复带内"
         if result.data_state == MetricDataState.INSUFFICIENT_SAMPLES:
@@ -861,7 +911,11 @@ class DjangoApmPolicyService:
                 state.save()
 
     def _advance_target(self, policy, state, result, evaluated_at):
-        if result.data_state in {MetricDataState.MISSING_BASELINE, MetricDataState.INSUFFICIENT_SAMPLES}:
+        if result.data_state in {
+            MetricDataState.MISSING_BASELINE,
+            MetricDataState.INSUFFICIENT_SAMPLES,
+            MetricDataState.MISSING_CONDITION_DATA,
+        }:
             return None
         threshold = dict(result.threshold) if result.threshold else None
         recover_after = policy.recover_after
@@ -997,7 +1051,14 @@ class DjangoApmPolicyService:
         title = f"APM {policy.name}{action_label}"
         shown = result.value if result.value is not None else "无数据"
         description = f"{policy.service.namespace}/{policy.service.name} [{policy.environment}] {metric_label}={shown}"
-        if (policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE) != ApmPolicy.CompareMode.ABSOLUTE:
+        if result.condition_rows:
+            parts = []
+            for row in result.condition_rows:
+                current = DjangoApmPolicyService._decimal_text(row.get("compared_value")) or "无数据"
+                line_threshold = row.get("threshold_value") or "—"
+                parts.append(f"{row['ref']}: 当前 {current}（阈值 {line_threshold}）")
+            description = "；".join(parts)
+        elif (policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE) != ApmPolicy.CompareMode.ABSOLUTE:
             current = result.current_value if result.current_value is not None else "无数据"
             baseline = result.baseline_value if result.baseline_value is not None else "无数据"
             compared = result.value if result.value is not None else "无数据"
@@ -1111,6 +1172,10 @@ class DjangoApmPolicyService:
                 "metric_type": policy.metric_type,
             },
         }
+        for row in result.condition_rows:
+            rendered = DjangoApmPolicyService._decimal_text(row.get("compared_value"))
+            if rendered is not None:
+                payload["labels"][f"{row['ref']}_value"] = rendered
         for target in policy.notification_targets.order_by("channel_id", "id"):
             recipients = [] if target.recipient_mode == "none" else list(target.recipients)
             ApmAlertOutbox.objects.get_or_create(

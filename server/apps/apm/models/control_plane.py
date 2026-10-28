@@ -389,6 +389,7 @@ class ApmPolicy(AuditedModel):
     slow_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
     apdex_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
     thresholds = models.JSONField(default=list)
+    conditions = models.JSONField(default=list, blank=True)
     trigger_after = models.PositiveIntegerField(default=1)
     trigger_window = models.PositiveIntegerField(null=True, blank=True)
     recovery_threshold = models.JSONField(default=dict, blank=True)

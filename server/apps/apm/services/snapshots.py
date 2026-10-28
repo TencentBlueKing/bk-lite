@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.apm.models import ApmEvent, ApmEventSnapshot, ApmEventSnapshotPayload, ApmPolicy
 from apps.apm.services.contracts import PolicyQueryResult
 from apps.apm.services.metric_snapshots import resolve_result_unit
+from apps.apm.services.policy_conditions import condition_value_map, effective_conditions
 from apps.core.logger import apm_logger as logger
 
 SNAPSHOT_RETENTION_DAYS = 90
@@ -89,6 +90,7 @@ class ApmEventSnapshotStore:
                 "apdex_threshold_ms": policy.apdex_threshold_ms,
                 "trigger_window": policy.trigger_window,
                 "recovery_threshold": dict(policy.recovery_threshold or {}),
+                "conditions": effective_conditions(policy),
             },
             "object_snapshot": {
                 "service_id": str(policy.service_id),
@@ -108,6 +110,7 @@ class ApmEventSnapshotStore:
                 "current_value": str(result.current_value) if result.current_value is not None else None,
                 "baseline_value": str(result.baseline_value) if result.baseline_value is not None else None,
                 "result_unit": resolve_result_unit(policy),
+                "condition_values": condition_value_map(result),
             },
             "trace_context": {
                 "service_namespace": policy.service.namespace,

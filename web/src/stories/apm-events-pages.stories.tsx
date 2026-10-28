@@ -996,6 +996,14 @@ function AlertTabContent({ alert: a }: { alert: EnrichedAlert }) {
         <div style={{ height: 220, position: 'relative' }}>
           <SnapshotLineChart metric={a.metric} threshold={a.threshold} />
         </div>
+        <div style={{ marginTop: 12 }}>
+          <Text strong>条件</Text>
+          <div style={{ marginTop: 8, color: TOKENS.textSecondary, fontSize: 12 }}>
+            a：当前值 12% · 当时阈值 5% · 命中
+            <br />
+            b：当前值 800 · 当时阈值 1000 · 未命中
+          </div>
+        </div>
       </div>
     </div>
   );

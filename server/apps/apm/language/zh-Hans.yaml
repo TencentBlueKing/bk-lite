@@ -54,6 +54,14 @@ error:
   recovery_direction: 恢复阈值的比较方向必须与触发线相反。
   recovery_value: 恢复阈值必须是有限数字。
   no_traffic_plain: 无流量不能带触发周期或恢复阈值。
+  conditions_shape: 条件格式不正确。
+  conditions_count: 常规条件须为 1 到 3 条。
+  conditions_guard_count: 前置条件最多 2 条。
+  conditions_ref_duplicate: 条件标识不能重复。
+  conditions_guard_shape: 前置条件不能带级别、比较基准或无流量。
+  conditions_windows: 一条策略最多两个不同的对照窗。
+  conditions_no_traffic: 无流量只能单独作为当前值条件。
+  conditions_recovery_anchor: 恢复阈值只能作用于第一条条件。
   threshold_comparator: 多级阈值必须使用相同比较符。
   threshold_monotonic: 多级阈值必须按严重、错误、警告保持单调。
   deployment_window_limit: 部署事件查询时间窗不能超过 90 天

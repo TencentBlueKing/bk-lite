@@ -498,6 +498,19 @@ export default function AlertDetailDrawer({
     [alert, metricSnapshot],
   );
   const percentAxis = snapshotUsesPercentAxis(metricSnapshot);
+  const conditionRows = useMemo(() => {
+    const latest = [...(metricSnapshot?.snapshots ?? [])].reverse().find((item) =>
+      (item.condition_details?.length ?? 0) > 1 || Object.keys(item.condition_values || {}).length > 1,
+    );
+    if (!latest) return [];
+    if ((latest.condition_details?.length ?? 0) > 1) return latest.condition_details ?? [];
+    return Object.entries(latest.condition_values || {}).map(([ref, value]) => ({
+      ref,
+      value,
+      threshold: null,
+      matched_severity: null,
+    }));
+  }, [metricSnapshot]);
   const eventStreamRows = useMemo(() => {
     if (!alert) return [];
     const windowStart = dayjs(alert.started_at).valueOf();
@@ -758,6 +771,7 @@ export default function AlertDetailDrawer({
                   ) : metricSnapshotError ? (
                     <CatalogState kind={metricSnapshotError} onRetry={() => onRetrySnapshot(alert)} />
                   ) : metricSnapshotRows.length ? (
+                    <>
                     <div
                       className={styles.alertDetailChart}
                       role="img"
@@ -846,6 +860,19 @@ export default function AlertDetailDrawer({
                         ]}
                       />
                     </div>
+                    {conditionRows.length > 1 ? (
+                      <div className="mt-3">
+                        <Typography.Text strong>{t('apm.alerts.conditions', '条件')}</Typography.Text>
+                        <Descriptions size="small" column={1} className="mt-2">
+                          {conditionRows.map((row) => (
+                            <Descriptions.Item key={row.ref} label={row.ref}>
+                              {`${t('apm.alerts.currentValue', '当前值')} ${row.value ?? '—'} · ${t('apm.alerts.thresholdAtTime', '当时阈值')} ${row.threshold ?? '—'} · ${row.matched_severity ? t('apm.alerts.matched', '命中') : t('apm.alerts.notMatched', '未命中')}`}
+                            </Descriptions.Item>
+                          ))}
+                        </Descriptions>
+                      </div>
+                    ) : null}
+                    </>
                   ) : (
                     <CatalogState kind="empty" description={t('apm.alerts.noMetricSnapshot', '暂无告警指标快照')} />
                   )}

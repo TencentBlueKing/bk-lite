@@ -19,6 +19,7 @@ import {
   Table,
   Tag,
   Typography,
+  Collapse,
 } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
@@ -42,6 +43,9 @@ import type {
   ApmPolicy,
   ApmPolicyAggregation,
   ApmPolicyComparator,
+  ApmPolicyCondition,
+  ApmPolicyGuardCondition,
+  ApmPolicyRegularCondition,
   ApmPolicyDryRunResult,
   ApmPolicyInput,
   ApmPolicyMetric,
@@ -61,9 +65,29 @@ interface ThresholdEditorRow {
   value: number | null;
 }
 
+interface ExtraConditionEditor {
+  ref: string;
+  metric_type: ApmPolicyMetric;
+  aggregation: ApmPolicyAggregation;
+  compare_mode: ApmCompareMode;
+  compare_offset_amount: number | null;
+  compare_value_kind: ApmCompareValueKind | '';
+  min_request_count: number | null;
+  slow_threshold_ms: number | null;
+  apdex_threshold_ms: number | null;
+  thresholds: ThresholdEditorRow[];
+}
+
+interface GuardEditor {
+  ref: string;
+  metric_type: ApmPolicyMetric | 'request_count';
+  comparator: ApmPolicyComparator;
+  value: number | null;
+}
+
 interface PolicyEditorValues extends Omit<
   ApmPolicyInput,
-  'service_id' | 'environment' | 'version_mode' | 'versions' | 'thresholds' | 'organizations'
+  'service_id' | 'environment' | 'version_mode' | 'versions' | 'thresholds' | 'organizations' | 'conditions'
 > {
   service_scope: string;
   organizations: number[];
@@ -72,6 +96,8 @@ interface PolicyEditorValues extends Omit<
   thresholds: ThresholdEditorRow[];
   recovery_comparator: ApmPolicyComparator;
   recovery_value: number | null;
+  extra_conditions: ExtraConditionEditor[];
+  guards: GuardEditor[];
 }
 
 const SEVERITIES: Array<{ value: ApmPolicySeverity; i18nKey: string; color: string }> = [
@@ -109,7 +135,34 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   no_data_alert_name: '${service} ${metric}',
   handlers: [],
   notification_targets: [],
+  extra_conditions: [],
+  guards: [],
 };
+
+const CONDITION_REFS = ['b', 'c', 'd', 'e'] as const;
+
+function blankThresholdRows(comparator: ApmPolicyComparator = 'gt'): ThresholdEditorRow[] {
+  return SEVERITIES.map(({ value }) => ({ severity: value, comparator, value: null }));
+}
+
+function blankExtraCondition(ref: string): ExtraConditionEditor {
+  return {
+    ref,
+    metric_type: 'throughput',
+    aggregation: 'avg',
+    compare_mode: 'absolute',
+    compare_offset_amount: null,
+    compare_value_kind: '',
+    min_request_count: null,
+    slow_threshold_ms: null,
+    apdex_threshold_ms: null,
+    thresholds: blankThresholdRows(),
+  };
+}
+
+function nextConditionRef(used: string[]) {
+  return CONDITION_REFS.find((ref) => !used.includes(ref)) ?? 'b';
+}
 
 function directoryErrorState(error: unknown): NotificationDirectoryState {
   return error instanceof HandledRequestError && error.status === 403 ? 'forbidden' : 'error';
@@ -167,6 +220,8 @@ const VERDICT_KEY = {
   missing_baseline: 'apm.policies.verdictMissingBaseline',
   insufficient_samples: 'apm.policies.verdictInsufficient',
   hold: 'apm.policies.verdictHold',
+  guard_not_met: 'apm.policies.verdictGuardNotMet',
+  missing_condition_data: 'apm.policies.verdictMissingConditionData',
 } as const;
 
 const TEMPLATE_VARIABLES = [
@@ -435,6 +490,125 @@ function AffixedNumber({
   );
 }
 
+function editorRowsFromThresholds(
+  metric: ApmPolicyMetric,
+  mode: ApmCompareMode | undefined,
+  kind: ApmCompareValueKind | '' | undefined,
+  thresholds: Array<{ severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: number | string }>,
+): ThresholdEditorRow[] {
+  const bySeverity = new Map(thresholds.map((item) => [item.severity, item]));
+  const commonComparator = thresholds[0]?.comparator ?? 'gt';
+  const resolved = resolvedCompareKind(metric, mode, kind);
+  return SEVERITIES.map(({ value: severity }) => {
+    const threshold = bySeverity.get(severity);
+    return {
+      severity,
+      comparator: threshold?.comparator ?? commonComparator,
+      value: threshold ? thresholdToEditorValue(metric, resolved, threshold.value) : null,
+    };
+  });
+}
+
+function splitStoredConditions(policy: ApmPolicy): Pick<PolicyEditorValues, 'extra_conditions' | 'guards'> {
+  const stored = policy.conditions || [];
+  const regulars = stored.filter((item): item is ApmPolicyRegularCondition => item.role === 'regular');
+  const guards = stored.filter((item): item is ApmPolicyGuardCondition => item.role === 'guard');
+  if (regulars.length <= 1 && guards.length === 0) return { extra_conditions: [], guards: [] };
+  return {
+    extra_conditions: regulars.slice(1).map((item) => ({
+      ref: item.ref,
+      metric_type: item.metric_type,
+      aggregation: item.aggregation,
+      compare_mode: item.compare_mode ?? 'absolute',
+      compare_offset_amount: item.compare_offset_amount ?? null,
+      compare_value_kind: item.compare_value_kind ?? '',
+      min_request_count: item.min_request_count ?? null,
+      slow_threshold_ms: item.slow_threshold_ms ?? null,
+      apdex_threshold_ms: item.apdex_threshold_ms ?? null,
+      thresholds: editorRowsFromThresholds(item.metric_type, item.compare_mode, item.compare_value_kind, item.thresholds),
+    })),
+    guards: guards.map((item) => ({
+      ref: item.ref,
+      metric_type: item.metric_type,
+      comparator: item.comparator,
+      value: item.metric_type === 'error_rate' || item.metric_type === 'slow_request_rate' || item.metric_type === 'apdex'
+        ? Number(item.value) * 100
+        : Number(item.value),
+    })),
+  };
+}
+
+function regularConditionPayload(
+  ref: string,
+  metric: ApmPolicyMetric,
+  aggregation: ApmPolicyAggregation,
+  compareMode: ApmCompareMode,
+  compareOffset: number | null,
+  compareKindInput: ApmCompareValueKind | '',
+  minRequest: number | null,
+  slow: number | null,
+  apdex: number | null,
+  rows: ThresholdEditorRow[],
+): ApmPolicyRegularCondition {
+  const kind = resolvedCompareKind(metric, compareMode, compareKindInput);
+  const offset = compareMode === 'offset_hours' || compareMode === 'offset_days' || compareMode === 'baseline_days';
+  return {
+    ref,
+    role: 'regular',
+    metric_type: metric,
+    aggregation: COUNT_METRICS.includes(metric) ? 'avg' : aggregation,
+    compare_mode: compareMode,
+    compare_offset_amount: offset ? compareOffset : null,
+    compare_value_kind: kind,
+    min_request_count: MIN_REQUEST_METRICS.includes(metric) ? minRequest ?? null : null,
+    slow_threshold_ms: SLOW_METRICS.includes(metric) ? slow ?? null : null,
+    apdex_threshold_ms: metric === 'apdex' ? apdex ?? 500 : null,
+    thresholds: normalizeThresholds(metric, kind, rows),
+  };
+}
+
+function buildConditions(values: PolicyEditorValues): ApmPolicyCondition[] | undefined {
+  const extras = values.extra_conditions || [];
+  const guards = (values.guards || []).filter((item) => item.value !== null && item.value !== undefined);
+  if (values.metric_type === 'no_traffic' || (!extras.length && !guards.length)) return undefined;
+  const anchor = regularConditionPayload(
+    'a',
+    values.metric_type,
+    values.aggregation,
+    values.compare_mode || 'absolute',
+    values.compare_offset_amount,
+    values.compare_value_kind,
+    values.min_request_count,
+    values.slow_threshold_ms ?? null,
+    values.apdex_threshold_ms ?? null,
+    values.thresholds,
+  );
+  return [
+    anchor,
+    ...extras.map((item) => regularConditionPayload(
+      item.ref,
+      item.metric_type,
+      item.aggregation,
+      item.compare_mode,
+      item.compare_offset_amount,
+      item.compare_value_kind,
+      item.min_request_count,
+      item.slow_threshold_ms,
+      item.apdex_threshold_ms,
+      item.thresholds,
+    )),
+    ...guards.map((item): ApmPolicyGuardCondition => ({
+      ref: item.ref,
+      role: 'guard',
+      metric_type: item.metric_type,
+      comparator: item.comparator,
+      value: item.metric_type === 'error_rate' || item.metric_type === 'slow_request_rate' || item.metric_type === 'apdex'
+        ? Number(item.value) / 100
+        : Number(item.value),
+    })),
+  ];
+}
+
 function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): PolicyEditorValues {
   const thresholds = new Map(policy.thresholds.map((item) => [item.severity, item]));
   const commonComparator = policy.thresholds[0]?.comparator ?? 'gt';
@@ -483,6 +657,7 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
       channel_id: target.channel_id,
       recipients: target.recipient_mode === 'none' ? [] : [...target.recipients],
     })),
+    ...splitStoredConditions(policy),
   };
 }
 
@@ -572,6 +747,22 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const evaluationInterval = Form.useWatch('evaluation_interval', form);
   const metricWindow = Form.useWatch('metric_window', form);
   const aggregation = Form.useWatch('aggregation', form);
+  const extraConditions = Form.useWatch('extra_conditions', form) ?? [];
+  const guardRows = Form.useWatch('guards', form) ?? [];
+  const templateRows = useMemo(() => {
+    const refs = [
+      ...(extraConditions.length || guardRows.length ? ['a'] : []),
+      ...extraConditions.map((item) => item?.ref).filter(Boolean),
+      ...guardRows.map((item) => item?.ref).filter(Boolean),
+    ];
+    return [
+      ...templateVariables,
+      ...refs.map((ref) => ({
+        name: `\${${ref}_value}`,
+        source: t('apm.policies.variableConditionValue', '条件 {ref} 的当前值', { ref }),
+      })),
+    ];
+  }, [extraConditions, guardRows, t, templateVariables]);
   const watchedThresholds = Form.useWatch('thresholds', form);
   const triggerWindow = Form.useWatch('trigger_window', form);
   const selectedEndpoints = Form.useWatch('endpoints', form);
@@ -977,6 +1168,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       ? encodeServiceScope(loadedPolicy.service_id, loadedPolicy.environment)
       : null;
     const preserveLegacyScope = Boolean(loadedPolicy && values.service_scope === originalScope);
+    const conditions = buildConditions(values);
     return {
       name: values.name,
       service_id: scope.serviceId,
@@ -1008,6 +1200,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
             : target.recipients,
         }))
         : [],
+      ...(conditions ? { conditions } : {}),
     };
   };
 
@@ -1095,6 +1288,10 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   };
 
   const applyMetric = (metric: ApmPolicyMetric) => {
+    if (metric === 'no_traffic') {
+      form.setFieldValue('extra_conditions', []);
+      form.setFieldValue('guards', []);
+    }
     if (metric === 'apdex' && form.getFieldValue('apdex_threshold_ms') == null) {
       form.setFieldValue('apdex_threshold_ms', 500);
     }
@@ -1346,6 +1543,130 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               </Select>
             </Form.Item>
           ) : null}
+          {metricType !== 'no_traffic' ? (
+            <Form.List name="extra_conditions">
+              {(fields, { add, remove }) => (
+                <div className="flex flex-col gap-3">
+                  {fields.map((field) => {
+                    const extra = extraConditions[field.name];
+                    const extraMetric = extra?.metric_type ?? 'throughput';
+                    return (
+                      <div key={field.key} className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="font-semibold text-[var(--color-text-1)]">
+                            {t('apm.policies.conditionCard', '条件 {ref}', { ref: extra?.ref || CONDITION_REFS[field.name] })}
+                          </span>
+                          <Button type="link" onClick={() => remove(field.name)}>
+                            {t('apm.policies.removeCondition', '移除')}
+                          </Button>
+                        </div>
+                        <Form.Item name={[field.name, 'ref']} hidden><Input /></Form.Item>
+                        <Form.Item name={[field.name, 'metric_type']} label={t('apm.policies.metric', '指标')}>
+                          <Select options={metricOptions.filter((item) => item.value !== 'no_traffic')} />
+                        </Form.Item>
+                        {SLOW_METRICS.includes(extraMetric) ? (
+                          <Form.Item name={[field.name, 'slow_threshold_ms']} label={t('apm.policies.slowThreshold', '慢阈值 (ms)')}>
+                            <NumberWithUnit min={1} max={600000} unit="ms" />
+                          </Form.Item>
+                        ) : null}
+                        {extraMetric === 'apdex' ? (
+                          <Form.Item name={[field.name, 'apdex_threshold_ms']} label={t('apm.policies.apdexThreshold', 'T (ms)')}>
+                            <NumberWithUnit min={1} max={600000} unit="ms" />
+                          </Form.Item>
+                        ) : null}
+                        {!COUNT_METRICS.includes(extraMetric) ? (
+                          <Form.Item name={[field.name, 'aggregation']} label={t('apm.policies.aggregation', '汇聚方法')}>
+                            <Select options={AGGREGATION_OPTIONS.map((item) => ({ value: item.value, label: t(item.i18nKey, item.fallback) }))} />
+                          </Form.Item>
+                        ) : null}
+                        <Form.Item name={[field.name, 'compare_mode']} label={t('apm.policies.compareBaseline', '比较基准')}>
+                          <Select
+                            options={[
+                              { value: 'absolute', label: t('apm.policies.compareAbsolute', '绝对值') },
+                              { value: 'previous_window', label: t('apm.policies.comparePreviousWindow', '上一等长窗') },
+                              { value: 'offset_hours', label: t('apm.policies.compareOffsetHours', 'N 小时前') },
+                              { value: 'baseline_days', label: t('apm.policies.compareBaselineDays', '历史同期') },
+                            ]}
+                          />
+                        </Form.Item>
+                        {MIN_REQUEST_METRICS.includes(extraMetric) ? (
+                          <Form.Item name={[field.name, 'min_request_count']} label={t('apm.policies.minRequestCount', '最低请求数')}>
+                            <InputNumber<number> min={1} max={100000} />
+                          </Form.Item>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                  <Button
+                    disabled={fields.length >= 2}
+                    onClick={() => {
+                      const used = [
+                        ...extraConditions.map((item) => item?.ref),
+                        ...guardRows.map((item) => item?.ref),
+                      ].filter(Boolean);
+                      add(blankExtraCondition(nextConditionRef(used)));
+                    }}
+                  >
+                    {t('apm.policies.addCondition', '添加条件')}
+                  </Button>
+                </div>
+              )}
+            </Form.List>
+          ) : null}
+          {metricType !== 'no_traffic' ? (
+            <Collapse
+              ghost
+              items={[{
+                key: 'guards',
+                label: t('apm.policies.guards', '前置条件'),
+                children: (
+                  <Form.List name="guards">
+                    {(fields, { add, remove }) => (
+                      <div className="flex flex-col gap-3">
+                        {fields.map((field) => (
+                          <div key={field.key} className="flex flex-wrap items-end gap-2">
+                            <Form.Item name={[field.name, 'ref']} hidden><Input /></Form.Item>
+                            <Form.Item name={[field.name, 'metric_type']} label={t('apm.policies.metric', '指标')} className="mb-0 min-w-40">
+                              <Select
+                                options={[
+                                  ...metricOptions.filter((item) => item.value !== 'no_traffic'),
+                                  { value: 'request_count', label: t('apm.policies.metricRequestCount', '请求数') },
+                                ]}
+                              />
+                            </Form.Item>
+                            <Form.Item name={[field.name, 'comparator']} label={t('apm.policies.comparator', '比较符')} className="mb-0 w-24">
+                              <Select options={comparatorOptions} />
+                            </Form.Item>
+                            <Form.Item name={[field.name, 'value']} label={t('apm.policies.guardValue', '门槛')} className="mb-0 w-32">
+                              <InputNumber<number> aria-label={t('apm.policies.guardValue', '门槛')} />
+                            </Form.Item>
+                            <Button type="link" onClick={() => remove(field.name)}>{t('apm.policies.removeCondition', '移除')}</Button>
+                          </div>
+                        ))}
+                        <Button
+                          disabled={fields.length >= 2}
+                          onClick={() => {
+                            const used = [
+                              ...extraConditions.map((item) => item?.ref),
+                              ...guardRows.map((item) => item?.ref),
+                            ].filter(Boolean);
+                            add({
+                              ref: nextConditionRef(used),
+                              metric_type: 'request_count',
+                              comparator: 'gte',
+                              value: 200,
+                            });
+                          }}
+                        >
+                          {t('apm.policies.addGuard', '添加前置条件')}
+                        </Button>
+                      </div>
+                    )}
+                  </Form.List>
+                ),
+              }]}
+            />
+          ) : null}
           <Typography.Text type="secondary" className={styles.scopeHint}>
             {t('apm.policies.scopeHint', '环境已并入服务范围；版本固定为全部版本。')}
           </Typography.Text>
@@ -1473,6 +1794,26 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                           unit={thresholdUnit}
                         />
                       </Form.Item>
+                      {extraConditions.map((extra, extraIndex) => (
+                        <div key={extra?.ref || extraIndex} className="ml-2 flex items-center">
+                          <span className="mr-2 shrink-0 text-[var(--color-text-2)]">{extra?.ref}</span>
+                          <Form.Item name={['extra_conditions', extraIndex, 'thresholds', index, 'comparator']} noStyle>
+                            <Select
+                              className={styles.thresholdComparator}
+                              aria-label={t('apm.policies.conditionComparatorAria', '{ref}{severity}比较符', { ref: extra?.ref, severity: row.label })}
+                              options={comparatorOptions}
+                            />
+                          </Form.Item>
+                          <Form.Item name={['extra_conditions', extraIndex, 'thresholds', index, 'value']} noStyle>
+                            <NumberWithUnit
+                              className={styles.thresholdValue}
+                              aria-label={t('apm.policies.conditionThresholdAria', '{ref}{severity}阈值', { ref: extra?.ref, severity: row.label })}
+                              placeholder={t('apm.policies.notEnabled', '不启用')}
+                              unit=""
+                            />
+                          </Form.Item>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -1768,7 +2109,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                       ),
                     },
                   ]}
-                  dataSource={templateVariables}
+                  dataSource={templateRows}
                 />
               </section>
               <section className={styles.sideSection}>
@@ -1868,6 +2209,14 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                             </Tag>
                           ),
                         },
+                        ...(dryRun.items.some((item) => item.conditions?.length)
+                          ? [{
+                            title: t('apm.policies.conditions', '条件'),
+                            dataIndex: 'conditions',
+                            render: (rows: ApmPolicyDryRunResult['items'][number]['conditions']) => (
+                              rows || []).map((row) => `${row.ref}: ${row.compared_value ?? '—'}`).join('；'),
+                          }]
+                          : []),
                         { title: t('apm.policies.dryRunCurrent', '当前值'), dataIndex: 'current_value', render: (value) => value ?? '—' },
                         { title: t('apm.policies.dryRunBaseline', '对照值'), dataIndex: 'baseline_value', render: (value) => value ?? '—' },
                         ...(compareMode === 'baseline_days'
