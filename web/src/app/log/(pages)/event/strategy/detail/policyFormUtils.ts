@@ -2,6 +2,7 @@ import type React from 'react';
 import { FUNCTION_LIST } from '@/app/log/constants';
 import { FilterItem } from '@/app/log/types/integration';
 import { ChannelItem, StrategyFields } from '@/app/log/types/event';
+import { compareOffsetReady, presentCompare } from '@/app/log/utils/compareTarget';
 
 export const conditionRequiresField = (func?: string | null) => {
   if (func === 'count_delta' || func === 'count_rate' || func === 'bytes_rate' || func === 'ratio') {
@@ -24,7 +25,7 @@ export const normalizeCondition = (condition: FilterItem): FilterItem => {
   }
   return {
     ...condition,
-    compare: condition.compare?.kind ? condition.compare : { kind: 'absolute' },
+    compare: presentCompare(condition.compare),
     params: condition.params || {},
   };
 };
@@ -50,7 +51,7 @@ export const hasIncompleteCondition = (conditions: FilterItem[]) =>
       return true;
     }
     const kind = item.compare?.kind || 'absolute';
-    if ((kind === 'percent' || kind === 'delta') && !item.compare?.to) {
+    if ((kind === 'percent' || kind === 'delta') && !compareOffsetReady(item.compare)) {
       return true;
     }
     if (item.func === 'quantile' && item.params?.quantile == null) {

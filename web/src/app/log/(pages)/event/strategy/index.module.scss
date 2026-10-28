@@ -135,9 +135,9 @@
 
             li {
                 display: flex;
-                flex-wrap: wrap;
+                flex-direction: column;
+                align-items: stretch;
                 gap: 8px;
-                align-items: center;
             }
         }
     }

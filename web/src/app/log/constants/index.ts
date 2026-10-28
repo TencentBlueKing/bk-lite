@@ -75,10 +75,27 @@ const COMPARE_KIND_LIST: LabeledOption[] = [
 
 const COMPARE_TARGET_LIST: LabeledOption[] = [
   { value: 'previous_window', labelKey: 'log.event.compareToPreviousWindow' },
+  { value: 'offset_hours', labelKey: 'log.event.compareOffsetHours' },
+  { value: 'offset_days', labelKey: 'log.event.compareOffsetDays' },
   { value: 'offset_1h', labelKey: 'log.event.compareToOffset1h' },
   { value: 'offset_24h', labelKey: 'log.event.compareToOffset24h' },
   { value: 'offset_7d', labelKey: 'log.event.compareToOffset7d' },
 ];
+
+const COMPARE_OFFSET_METHOD_LIST: LabeledOption[] = [
+  { value: 'previous_window', labelKey: 'log.event.compareToPreviousWindow' },
+  { value: 'offset_hours', labelKey: 'log.event.compareOffsetHours' },
+  { value: 'offset_days', labelKey: 'log.event.compareOffsetDays' },
+];
+
+const LEGACY_COMPARE_OFFSETS: Record<string, { to: 'offset_hours' | 'offset_days'; offset: number }> = {
+  offset_1h: { to: 'offset_hours', offset: 1 },
+  offset_24h: { to: 'offset_hours', offset: 24 },
+  offset_7d: { to: 'offset_days', offset: 7 },
+};
+
+const MAX_COMPARE_OFFSET_HOURS = 8760;
+const MAX_COMPARE_OFFSET_DAYS = 365;
 
 const QUANTILE_LIST = [0.5, 0.9, 0.95, 0.99];
 
@@ -104,6 +121,10 @@ export {
   FUNCTION_LIST,
   COMPARE_KIND_LIST,
   COMPARE_TARGET_LIST,
+  COMPARE_OFFSET_METHOD_LIST,
+  LEGACY_COMPARE_OFFSETS,
+  MAX_COMPARE_OFFSET_HOURS,
+  MAX_COMPARE_OFFSET_DAYS,
   QUANTILE_LIST,
   SCHEDULE_UNIT_MAP,
   LEVEL_MAP,

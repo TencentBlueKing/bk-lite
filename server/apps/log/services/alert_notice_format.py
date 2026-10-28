@@ -64,6 +64,16 @@ _TARGET_LABELS = {
 }
 
 
+def _target_label(compare):
+    target = compare.get("to")
+    offset = compare.get("offset")
+    if target == "offset_hours" and isinstance(offset, int) and not isinstance(offset, bool):
+        return f"{offset} 小时前"
+    if target == "offset_days" and isinstance(offset, int) and not isinstance(offset, bool):
+        return f"{offset} 天前"
+    return _TARGET_LABELS.get(target, target or "")
+
+
 def format_hit_line(aggregate_result):
     if not isinstance(aggregate_result, dict) or aggregate_result.get("count") is None:
         return ""
@@ -118,7 +128,7 @@ def format_condition_line(condition):
     compare = condition.get("compare") if isinstance(condition.get("compare"), dict) else {}
     kind = compare.get("kind") or "absolute"
     if kind in ("delta", "percent") and condition.get("baseline") is not None and condition.get("value") is not None:
-        target = _TARGET_LABELS.get(compare.get("to"), compare.get("to") or "")
+        target = _target_label(compare)
         if kind == "percent":
             change = f"{float(condition['value']):+.1f}%"
         else:

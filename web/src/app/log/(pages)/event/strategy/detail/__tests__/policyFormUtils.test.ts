@@ -143,6 +143,25 @@ describe('聚合条件函数', () => {
     });
   });
 
+  it('固定 7 天对照读成可改的天数', () => {
+    expect(
+      normalizeCondition({
+        func: 'sum',
+        field: 'bytes',
+        op: '>',
+        value: '1',
+        compare: { kind: 'percent', to: 'offset_7d' },
+      })
+    ).toEqual({
+      func: 'sum',
+      field: 'bytes',
+      op: '>',
+      value: '1',
+      compare: { kind: 'percent', to: 'offset_days', offset: 7 },
+      params: {},
+    });
+  });
+
   it('变化率缺对照、分位缺分位、占比缺分子筛选时视为未完成', () => {
     expect(
       hasIncompleteCondition([

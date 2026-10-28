@@ -694,7 +694,7 @@ class TestConditionBaseline:
             {"func": "count", "field": "_msg", "op": ">=", "value": "20"},
         )
         baselines = {
-            "offset_24h": {
+            "offset_hours:24": {
                 "status": "ok",
                 "window": {"start": 113600, "end": 113900},
                 "rows": {("order",): {"count__msg": 120}, ("cart",): {"count__msg": 0}},
@@ -853,7 +853,7 @@ class TestConditionBaseline:
         mocker.patch.object(mixed.vlogs_api, "query", side_effect=fake_mixed)
         mixed.evaluate_aggregate(200000, 200300)
         assert mixed_calls == [200000, 200000 - 86400, 200000 - 300]
-        assert set(mixed.baselines) == {"offset_24h", "previous_window"}
+        assert set(mixed.baselines) == {"offset_hours:24", "previous_window"}
         assert mixed.baseline_status == "ok"
 
     def test_quantile_not_numeric_and_bytes_rate(self):
@@ -1315,7 +1315,7 @@ class TestTriggerCount:
         baseline = events[0]["raw_data"]["aggregate_result"]["baseline"]
         assert baseline["values"]["count__msg"] == 120
         assert baseline["window"]["start"] == 1000 - 86400
-        assert scan.baselines["offset_24h"]["window"]["start"] == 1000 - 86400
+        assert scan.baselines["offset_hours:24"]["window"]["start"] == 1000 - 86400
         assert scan.baseline_status == "ok"
         assert events[0]["raw_data"]["aggregate_result"]["conditions"][0]["matched"] is True
 

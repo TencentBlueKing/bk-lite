@@ -2,7 +2,8 @@
 
 import React, { useMemo } from 'react';
 import { Table } from 'antd';
-import { COMPARE_KIND_LIST, COMPARE_TARGET_LIST, FUNCTION_LIST } from '@/app/log/constants';
+import { COMPARE_KIND_LIST, FUNCTION_LIST } from '@/app/log/constants';
+import { formatCompareTarget } from '@/app/log/utils/compareTarget';
 import {
   AggregateResultCondition,
   AggregateResultHit,
@@ -65,8 +66,7 @@ export const aggregateConditionText = (condition: AggregateHitCondition, t: Tran
   const kind = condition.compare?.kind;
   if (kind && kind !== 'absolute') {
     const kindText = labelOf(COMPARE_KIND_LIST, kind, t);
-    const target = condition.compare?.to;
-    const targetText = target ? labelOf(COMPARE_TARGET_LIST, target, t) : '';
+    const targetText = formatCompareTarget(condition.compare?.to, condition.compare?.offset, t);
     name = targetText ? `${name}（${kindText} / ${targetText}）` : `${name}（${kindText}）`;
   }
   return name;

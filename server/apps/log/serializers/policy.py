@@ -198,8 +198,14 @@ class PolicySerializer(serializers.ModelSerializer):
             if kind not in AlertConstants.COMPARE_KINDS:
                 raise serializers.ValidationError(serializer_text(self, "error.policy_compare_invalid"))
             if kind != "absolute":
-                if compare.get("to") not in AlertConstants.COMPARE_TARGETS:
+                target = compare.get("to")
+                if target not in AlertConstants.COMPARE_TARGETS:
                     raise serializers.ValidationError(serializer_text(self, "error.policy_compare_invalid"))
+                if target in ("offset_hours", "offset_days"):
+                    offset = compare.get("offset")
+                    limit = AlertConstants.MAX_COMPARE_OFFSET_HOURS if target == "offset_hours" else AlertConstants.MAX_COMPARE_OFFSET_DAYS
+                    if isinstance(offset, bool) or not isinstance(offset, int) or not 1 <= offset <= limit:
+                        raise serializers.ValidationError(serializer_text(self, "error.policy_compare_invalid"))
                 comparable = "count" if func == "count_delta" else func
                 if comparable not in AlertConstants.COMPARABLE_FUNCS:
                     raise serializers.ValidationError(serializer_text(self, "error.policy_compare_func_unsupported"))

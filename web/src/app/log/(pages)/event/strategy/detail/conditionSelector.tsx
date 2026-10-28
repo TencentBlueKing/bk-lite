@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Button, Input, Select, Card, Space } from 'antd';
+import { Button, Input, InputNumber, Select, Space } from 'antd';
 import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import { ConditionFilterProps } from '@/app/log/types/event';
 import { ListItem } from '@/app/log/types';
@@ -11,11 +11,12 @@ import { cloneDeep } from 'lodash';
 import {
   AggregateFunctionOption,
   COMPARE_KIND_LIST,
-  COMPARE_TARGET_LIST,
+  COMPARE_OFFSET_METHOD_LIST,
   FUNCTION_LIST,
   QUANTILE_LIST,
 } from '@/app/log/constants';
 import { useConditionList } from '@/app/log/hooks/event';
+import { compareOffsetLimit, presentCompare } from '@/app/log/utils/compareTarget';
 
 const { Option } = Select;
 
@@ -68,19 +69,42 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
 
   const handleCompareKind = (kind: string, index: number) => {
     const newData = cloneDeep(data);
-    const current = newData[index].compare || {};
+    const current = presentCompare(newData[index].compare);
     if (kind === 'absolute') {
       newData[index].compare = { kind: 'absolute' };
     } else {
-      newData[index].compare = current.to ? { kind, to: current.to } : { kind };
+      const to = current.to || 'previous_window';
+      newData[index].compare = to === 'offset_hours' || to === 'offset_days'
+        ? { kind, to, offset: current.offset || 1 }
+        : { kind, to };
     }
     onChange?.(newData);
   };
 
   const handleCompareTarget = (target: string, index: number) => {
     const newData = cloneDeep(data);
-    const kind = newData[index].compare?.kind || 'delta';
-    newData[index].compare = { kind, to: target };
+    const current = presentCompare(newData[index].compare);
+    const kind = current.kind || 'delta';
+    if (target === 'offset_hours' || target === 'offset_days') {
+      newData[index].compare = {
+        kind,
+        to: target,
+        offset: current.to === target && current.offset ? current.offset : 1,
+      };
+    } else {
+      newData[index].compare = { kind, to: target };
+    }
+    onChange?.(newData);
+  };
+
+  const handleOffset = (value: number | null, index: number) => {
+    const newData = cloneDeep(data);
+    const current = presentCompare(newData[index].compare);
+    newData[index].compare = {
+      kind: current.kind,
+      to: current.to,
+      offset: value == null ? undefined : Math.trunc(value),
+    };
     onChange?.(newData);
   };
 
@@ -123,7 +147,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
   };
 
   return (
-    <Card className="w-full">
+    <div className="w-full">
       {data.length ? (
         <ul className={groupingStyle.conditions}>
           {data.map((conditionItem, index) => {
@@ -132,20 +156,22 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
             );
             const legacyDelta = conditionItem.func === 'count_delta';
             const showField = !legacyDelta && (!functionOption || functionOption.needsField);
-            const compareKind = conditionItem.compare?.kind || 'absolute';
+            const presentedCompare = presentCompare(conditionItem.compare);
+            const compareKind = presentedCompare.kind || 'absolute';
             const comparable = functionOption ? functionOption.comparable !== false : !legacyDelta;
             const kindOptions = comparable
               ? COMPARE_KIND_LIST
               : COMPARE_KIND_LIST.filter((item) => item.value === 'absolute');
             const showTarget = comparable && compareKind !== 'absolute';
+            const customOffset = presentedCompare.to === 'offset_hours' || presentedCompare.to === 'offset_days';
             const showPercent = compareKind === 'percent';
             const showRatio = functionOption?.needsFilter === true;
             const showUnitSuffix = Boolean(functionOption?.unitKey) || showPercent || showRatio;
             return (
-              <li className="w-full" key={index}>
+              <li className="flex w-full flex-col items-stretch gap-2" key={index}>
                 <div className="flex w-full flex-wrap items-center gap-2">
                   <Select
-                    style={{ width: 216 }}
+                    style={{ width: 148 }}
                     popupMatchSelectWidth={false}
                     placeholder={t('log.event.selectFunction')}
                     showSearch
@@ -173,7 +199,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                   </Select>
                   {showField ? (
                     <Select
-                      style={{ width: 116 }}
+                      style={{ width: 104 }}
                       placeholder={t('log.event.selectField')}
                       showSearch
                       value={conditionItem.field}
@@ -215,7 +241,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                     />
                   ) : null}
                   <Select
-                    style={{ width: 120 }}
+                    style={{ width: 96 }}
                     placeholder={t('log.event.compareKind')}
                     value={compareKind}
                     onChange={(val) => handleCompareKind(val, index)}
@@ -226,20 +252,6 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                       </Option>
                     ))}
                   </Select>
-                  {showTarget ? (
-                    <Select
-                      style={{ width: 140 }}
-                      placeholder={t('log.event.compareTo')}
-                      value={conditionItem.compare?.to}
-                      onChange={(val) => handleCompareTarget(val, index)}
-                    >
-                      {COMPARE_TARGET_LIST.map((item) => (
-                        <Option value={item.value} key={item.value}>
-                          {t(item.labelKey)}
-                        </Option>
-                      ))}
-                    </Select>
-                  ) : null}
                   <Select
                     style={{ width: 112 }}
                     placeholder={t('log.event.selectCriteria')}
@@ -259,7 +271,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                     ))}
                   </Select>
                   {showUnitSuffix ? (
-                    <Space.Compact style={{ width: 148 }}>
+                    <Space.Compact style={{ width: 128 }}>
                       <Input
                         placeholder={t('log.event.enterThreshold')}
                         value={conditionItem.value}
@@ -285,6 +297,43 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
                   )}
                   <Button icon={<PlusOutlined />} onClick={handleAddCondition} />
                 </div>
+                {showTarget ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[var(--color-text-2)]">{t('log.event.compareTo')}</span>
+                    <Select
+                      style={{ width: 140 }}
+                      aria-label={t('log.event.compareTo')}
+                      value={presentedCompare.to}
+                      onChange={(val) => handleCompareTarget(val, index)}
+                    >
+                      {COMPARE_OFFSET_METHOD_LIST.map((item) => (
+                        <Option value={item.value} key={item.value}>
+                          {t(item.labelKey)}
+                        </Option>
+                      ))}
+                    </Select>
+                    {customOffset ? (
+                      <InputNumber
+                        style={{ width: 140 }}
+                        min={1}
+                        max={compareOffsetLimit(presentedCompare.to)}
+                        precision={0}
+                        value={presentedCompare.offset}
+                        aria-label={t(
+                          presentedCompare.to === 'offset_days'
+                            ? 'log.event.compareOffsetCountDay'
+                            : 'log.event.compareOffsetCountHour'
+                        )}
+                        addonAfter={t(
+                          presentedCompare.to === 'offset_days'
+                            ? 'log.event.compareOffsetUnitDay'
+                            : 'log.event.compareOffsetUnitHour'
+                        )}
+                        onChange={(value) => handleOffset(typeof value === 'number' ? value : null, index)}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
                 {legacyDelta ? (
                   <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">
                     {t('log.event.countDeltaTip')}
@@ -307,7 +356,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
       ) : (
         <Button icon={<PlusOutlined />} onClick={handleAddCondition} />
       )}
-    </Card>
+    </div>
   );
 };
 

@@ -71,6 +71,7 @@ export interface GroupRule {
 export interface PolicyCompare {
   kind?: string;
   to?: string;
+  offset?: number;
 }
 
 export interface PolicyConditionParams {

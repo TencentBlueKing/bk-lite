@@ -32,9 +32,11 @@ from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.services.alert_query_clue import freeze_log_alert_query_clue
 from apps.log.services.log_event_contract import to_logical_event
 from apps.log.services.policy_condition import (
+    baseline_key,
     collect_stats_expressions,
     compare_targets,
     condition_alias,
+    custom_offset_seconds,
     normalize_condition,
     parse_metric,
     stats_alias,
@@ -734,6 +736,8 @@ class LogPolicyScan:
             return window_start - duration, window_start
         offset = AlertConstants.COMPARE_OFFSET_SECONDS.get(compare_to)
         if offset is None:
+            offset = custom_offset_seconds(compare_to)
+        if offset is None:
             return None, None
         return window_start - offset, window_end - offset
 
@@ -966,7 +970,7 @@ class LogPolicyScan:
     def _resolve_condition(self, raw, condition, result, baselines, group_key, window_seconds, index):
         func = condition.get("func")
         field = condition.get("field") or "_msg"
-        compare = dict(condition.get("compare") or {"kind": "absolute"})
+        compare = dict(normalize_condition(condition).get("compare") or {"kind": "absolute"})
         kind = compare.get("kind") or "absolute"
         params = condition.get("params") or {}
         current, current_reason = self._current_metric(func, condition, result, window_seconds, index)
@@ -977,7 +981,7 @@ class LogPolicyScan:
                 func,
                 stats_alias(condition, index),
                 baselines,
-                compare.get("to"),
+                baseline_key(compare),
                 group_key,
             )
         value = None
@@ -1096,8 +1100,8 @@ class LogPolicyScan:
                         values[key] = parsed
             else:
                 for condition in conditions:
-                    compare = condition.get("compare") or {}
-                    if compare.get("to") != target or compare.get("kind") in (None, "absolute"):
+                    compare = normalize_condition(condition).get("compare") or {}
+                    if baseline_key(compare) != target or compare.get("kind") in (None, "absolute"):
                         continue
                     if condition.get("func") in AlertConstants.MISSING_GROUP_ZERO_FUNCS:
                         alias = stats_alias(condition, 0)

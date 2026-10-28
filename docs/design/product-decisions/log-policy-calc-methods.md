@@ -12,7 +12,7 @@
 - 第一批（已落地）：`count_rate`（条/秒）、变化量、只读试算端点、聚合样本 ≤10、回跳查询冻结、通知带命中数 / 样本 / 检索链接。
 - 第二批（已落地，2026-10-27）：
   - 函数新增 `count_uniq`（去重计数）、`quantile`（P50/P90/P95/P99）、`ratio`（占比，分子为 LogsQL 过滤、分母为策略查询）、`bytes_rate`（字节/秒）。
-  - 比较方式 `absolute / delta / percent`，对照 `previous_window / offset_1h / offset_24h / offset_7d`，适用于 `count / sum / avg / max / min / count_uniq / quantile`。
+  - 比较方式 `absolute / delta / percent`。对照是上一窗，或用户填写的 N 小时前 / N 天前（1..8760 小时，1..365 天）。固定的 1 小时 / 24 小时 / 7 天只作为旧值读入。适用于 `count / sum / avg / max / min / count_uniq / quantile`。
   - 规则级连续满足次数 `trigger_count` 1..5，无状态重查前 N−1 窗。
   - 策略级无数据告警已于 2026-10-28 撤回。断流用未分组 `count < 1`。
   - 试算、通知命中行、告警名称模板、详情页随契约扩展为逐条件展示。

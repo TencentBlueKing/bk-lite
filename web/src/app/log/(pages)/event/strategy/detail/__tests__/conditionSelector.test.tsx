@@ -84,7 +84,8 @@ describe('条件函数选择', () => {
     );
 
     expect(screen.getByText('log.event.compareKindPercent')).toBeTruthy();
-    expect(screen.getByText('log.event.compareToOffset24h')).toBeTruthy();
+    expect(screen.getByText('log.event.compareOffsetHours')).toBeTruthy();
+    expect(screen.getByLabelText('log.event.compareOffsetCountHour')).toBeTruthy();
     expect(screen.getByText('%')).toBeTruthy();
     expect(screen.getByText('log.event.percentTip')).toBeTruthy();
   });

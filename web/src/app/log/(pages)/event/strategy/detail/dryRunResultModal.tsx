@@ -8,7 +8,7 @@ import {
   formatAggregateReason,
 } from '@/app/log/components/aggregateConditionHit';
 import { parseRawLogData } from '@/app/log/components/public/alertRawLogEvidence';
-import { COMPARE_TARGET_LIST } from '@/app/log/constants';
+import { formatCompareTarget } from '@/app/log/utils/compareTarget';
 
 export interface LogDryRunCondition {
   func?: string;
@@ -71,10 +71,6 @@ const VERDICT_LABEL: Record<string, string> = {
   no_data: 'log.event.verdictNoData',
   would_trigger_no_data: 'log.event.verdictWouldTriggerNoData',
 };
-
-const TARGET_LABEL = Object.fromEntries(
-  COMPARE_TARGET_LIST.map((item) => [item.value, item.labelKey]),
-);
 
 const formatWindow = (window?: LogDryRunWindow) => {
   if (!window || window.start == null || window.end == null) {
@@ -237,7 +233,7 @@ const DryRunResultModal: React.FC<DryRunResultModalProps> = ({ open, data, onClo
         ) : null}
         {baselines.map(([target, info]) => (
           <span key={target} data-testid={`dry-run-baseline-${target}`}>
-            <span>{t(TARGET_LABEL[target] || target)}</span>
+            <span>{formatCompareTarget(target, undefined, t)}</span>
             {': '}
             {formatWindow(info.window)}
             {' '}

@@ -141,7 +141,7 @@ export interface AggregateResultCondition {
   threshold?: string | number;
   matched?: boolean;
   reason?: string;
-  compare?: { kind?: string; to?: string };
+  compare?: { kind?: string; to?: string; offset?: number };
   params?: { quantile?: number; filter?: string };
 }
 

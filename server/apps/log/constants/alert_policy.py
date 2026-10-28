@@ -59,8 +59,11 @@ class AlertConstants:
     )
     COUNT_DERIVED_FUNCS = frozenset({"count_rate", "count_delta"})
     COMPARE_KINDS = frozenset({"absolute", "delta", "percent"})
-    COMPARE_TARGETS = frozenset({"previous_window", "offset_1h", "offset_24h", "offset_7d"})
+    COMPARE_TARGETS = frozenset({"previous_window", "offset_1h", "offset_24h", "offset_7d", "offset_hours", "offset_days"})
     COMPARE_OFFSET_SECONDS = {"offset_1h": 3600, "offset_24h": 86400, "offset_7d": 604800}
+    COMPARE_LEGACY_OFFSETS = {"offset_1h": ("offset_hours", 1), "offset_24h": ("offset_hours", 24), "offset_7d": ("offset_days", 7)}
+    MAX_COMPARE_OFFSET_HOURS = 8760
+    MAX_COMPARE_OFFSET_DAYS = 365
     COMPARABLE_FUNCS = frozenset({"count", "sum", "avg", "max", "min", "count_uniq", "quantile"})
     QUANTILE_CHOICES = (0.5, 0.9, 0.95, 0.99)
     RATIO_FILTER_MAX_LEN = 500

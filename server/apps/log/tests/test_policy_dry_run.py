@@ -408,9 +408,9 @@ def test_dry_run_returns_conditions_and_baselines(authenticated_user, mocker):
     assert response.status_code == 200
     data = _body(response)["data"]
     assert data["baseline_status"] == "ok"
-    assert set(data["baselines"]) == {"offset_24h", "previous_window"}
-    assert data["baselines"]["offset_24h"]["status"] == "ok"
-    assert data["baselines"]["offset_24h"]["window"] == {"start": offset_start, "end": window_end - 86400}
+    assert set(data["baselines"]) == {"offset_hours:24", "previous_window"}
+    assert data["baselines"]["offset_hours:24"]["status"] == "ok"
+    assert data["baselines"]["offset_hours:24"]["window"] == {"start": offset_start, "end": window_end - 86400}
     assert data["baselines"]["previous_window"]["window"]["start"] == prev_start
     assert starts.count(offset_start) == 1
     assert starts.count(prev_start) == 1

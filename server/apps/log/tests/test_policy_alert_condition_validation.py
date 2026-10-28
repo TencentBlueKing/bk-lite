@@ -156,6 +156,33 @@ def test_absolute_legacy_count_keeps_non_numeric_operator():
     assert stored["compare"] == {"kind": "absolute"}
 
 
+def test_custom_offset_is_stored_and_legacy_target_is_normalized():
+    custom = _condition("count", value="20")
+    custom["rule"]["conditions"][0]["compare"] = {"kind": "percent", "to": "offset_days", "offset": 3}
+    serializer = _serializer(custom)
+    assert serializer.is_valid(), serializer.errors
+    stored = serializer.validated_data["alert_condition"]["rule"]["conditions"][0]["compare"]
+    assert stored == {"kind": "percent", "to": "offset_days", "offset": 3}
+
+    legacy = _condition("count", value="20")
+    legacy["rule"]["conditions"][0]["compare"] = {"kind": "delta", "to": "offset_7d"}
+    legacy_serializer = _serializer(legacy)
+    assert legacy_serializer.is_valid(), legacy_serializer.errors
+    assert legacy_serializer.validated_data["alert_condition"]["rule"]["conditions"][0]["compare"] == {
+        "kind": "delta",
+        "to": "offset_days",
+        "offset": 7,
+    }
+
+
+def test_custom_offset_out_of_range_is_rejected():
+    condition = _condition("count", value="20")
+    condition["rule"]["conditions"][0]["compare"] = {"kind": "percent", "to": "offset_hours", "offset": 0}
+    serializer = _serializer(condition)
+    assert not serializer.is_valid()
+    assert "比较方式或对照无效" in str(serializer.errors)
+
+
 def test_count_uniq_and_percent_payload_is_accepted():
     condition = _condition("count", value="50")
     condition["rule"]["conditions"] = [

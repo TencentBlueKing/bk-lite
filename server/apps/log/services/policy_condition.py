@@ -30,6 +30,14 @@ def normalize_condition(condition):
     compare = normalized.get("compare")
     if not isinstance(compare, dict) or not compare.get("kind"):
         normalized["compare"] = {"kind": "absolute"}
+    else:
+        compare = dict(compare)
+        legacy = AlertConstants.COMPARE_LEGACY_OFFSETS.get(compare.get("to"))
+        if legacy:
+            compare["to"], compare["offset"] = legacy
+        if compare.get("to") == "previous_window":
+            compare.pop("offset", None)
+        normalized["compare"] = compare
     if not isinstance(normalized.get("params"), dict):
         normalized["params"] = {}
     if normalized.get("func") in ("count_rate", "bytes_rate", "ratio") and not normalized.get("field"):
@@ -157,6 +165,35 @@ def uses_previous_count_delta(condition):
     return normalized.get("func") == "count" and compare.get("kind") == "delta" and compare.get("to") == "previous_window"
 
 
+def custom_offset_seconds(compare_to):
+    """offset_hours:N / offset_days:N 换成秒。非法键返回 None。"""
+    if not isinstance(compare_to, str) or ":" not in compare_to:
+        return None
+    family, _, raw = compare_to.partition(":")
+    try:
+        amount = int(raw)
+    except ValueError:
+        return None
+    if family == "offset_hours" and 1 <= amount <= AlertConstants.MAX_COMPARE_OFFSET_HOURS:
+        return amount * 3600
+    if family == "offset_days" and 1 <= amount <= AlertConstants.MAX_COMPARE_OFFSET_DAYS:
+        return amount * 86400
+    return None
+
+
+def baseline_key(compare):
+    """对照查询的键。自定义小时 / 天数带上数量，避免不同偏移共用一次查询。"""
+    if not isinstance(compare, dict):
+        return None
+    target = compare.get("to")
+    if target in ("offset_hours", "offset_days"):
+        offset = compare.get("offset")
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 1:
+            return None
+        return f"{target}:{offset}"
+    return target or None
+
+
 def compare_targets(conditions):
     """条件里出现的对照时段，按出现顺序去重。绝对值不占查询。"""
     targets = []
@@ -165,7 +202,7 @@ def compare_targets(conditions):
             continue
         compare = normalize_condition(condition).get("compare") or {}
         kind = compare.get("kind")
-        target = compare.get("to")
+        target = baseline_key(compare)
         if kind in (None, "absolute") or not target or target in targets:
             continue
         targets.append(target)
