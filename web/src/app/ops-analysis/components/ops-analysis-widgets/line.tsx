@@ -523,7 +523,7 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
       surfaceProps={{
         loading,
         hasData: !!(isDataReady && chartData && chartData.categories.length > 0),
-        containerClassName: 'flex h-full min-h-0 w-full',
+        containerClassName: 'mt-2 flex h-full min-h-0 w-full',
         loadingClassName: 'flex h-full w-full items-center justify-center',
         emptyClassName: 'flex h-full w-full items-center justify-center',
       }}

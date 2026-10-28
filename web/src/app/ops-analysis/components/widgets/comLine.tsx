@@ -629,7 +629,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
 
   return (
     <div
-      className="h-full flex"
+      className="mt-2 h-full flex"
       style={{ gap: scaleScreenMetric(8, screenRenderContext) }}
     >
       {/* 图表区域 */}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppstoreOutlined, ExportOutlined, RightOutlined, SyncOutlined } from '@ant-design/icons';
+import { AppstoreFilled, ExportOutlined, RightOutlined } from '@ant-design/icons';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useHomepageApi } from '@/app/ops-analysis/api/homepage';
 import { useHomepagePreference } from '@/app/ops-analysis/context/homepagePreference';
@@ -236,13 +236,36 @@ export const HomepageSwitcherRow = ({ mode, dashboardName, onToggle }: HomepageS
   );
 };
 
+/**
+ * @ant-design/icons 无 SyncFilled。
+ * 用粗描边双弧同步（Phosphor arrows-clockwise 几何），比 Material Sync 细弧更有分量；尺寸跟 text-[15px] / h-6。
+ */
+const SyncFilledIcon = () => (
+  <svg
+    viewBox="0 0 256 256"
+    width="1em"
+    height="1em"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="30"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <polyline points="168 40 208 40 208 80" />
+    <path d="M32 128A96 96 0 0 1 192.5 64.5L208 49" />
+    <polyline points="88 216 48 216 48 176" />
+    <path d="M224 128a96 96 0 0 1-160.5 63.5L48 207" />
+  </svg>
+);
+
 const OptionGlyph = ({ variant }: { variant: 'follow' | 'workbench' }) => (
   <span
     data-testid={variant === 'follow' ? 'homepage-option-icon-follow' : 'homepage-option-icon-workbench'}
-    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-bg)] text-[13px] text-[var(--color-primary)]"
+    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-bg)] text-[15px] text-[var(--color-primary)]"
     aria-hidden
   >
-    {variant === 'follow' ? <SyncOutlined /> : <AppstoreOutlined />}
+    {variant === 'follow' ? <SyncFilledIcon /> : <AppstoreFilled />}
   </span>
 );
 
