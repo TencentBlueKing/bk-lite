@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("alerts", "0036_alert_owners"),
+        ("alerts", "0037_alertremindertask_generation"),
     ]
 
     operations = [
