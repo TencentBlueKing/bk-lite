@@ -333,7 +333,58 @@ class DirectoryModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         return Response(result)
 
 
-class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
+def _import_update_canvas(viewset, request):
+    """按 URL 中的画布 id 覆盖定义。编辑权限与内置拒绝与更新该画布相同。"""
+    from rest_framework import status
+
+    from apps.operation_analysis.common.audit_log import log_ops_analysis_import_results
+    from apps.operation_analysis.serializers.import_export_serializers import ImportUpdateRequestSerializer
+    from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
+    from apps.operation_analysis.services.import_export.canvas_import_update_service import CanvasImportUpdateService
+
+    instance = viewset.get_object()
+    _raise_if_builtin(instance, "编辑")
+    access_error = viewset._validate_update_access(request, instance, {})
+    if access_error is not None:
+        return access_error
+
+    serializer = ImportUpdateRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    outcome = CanvasImportUpdateService.apply(
+        canvas=instance,
+        yaml_content=serializer.validated_data["yaml_content"],
+        updated_by=getattr(request.user, "username", "") or "",
+    )
+    if not outcome["success"]:
+        return Response(
+            {"message": outcome["message"], "data": {"errors": outcome["errors"]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    instance.refresh_from_db()
+    response = Response(
+        {
+            "canvas_id": instance.pk,
+            "name": instance.name,
+            "desc": instance.desc or "",
+            "object_type": outcome["object_type"],
+            "summary": outcome.get("summary") or {},
+        }
+    )
+    label = CANVAS_TYPE_REGISTRY[outcome["object_type"]].node_label
+    log_ops_analysis_success(request, response, "update", f"导入更新{label}: {instance.name}")
+    log_ops_analysis_import_results(request, outcome.get("results"))
+    return response
+
+
+class CanvasImportUpdateMixin:
+    @HasPermission("view-EditChart")
+    @action(detail=True, methods=["post"], url_path="import-update")
+    def import_update(self, request, *args, **kwargs):
+        return _import_update_canvas(self, request)
+
+
+class DashboardModelViewSet(CanvasImportUpdateMixin, BuiltinVisibleMixin, AuthViewSet):
     """
     仪表盘
     """
@@ -410,7 +461,7 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         )
 
 
-class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
+class TopologyModelViewSet(CanvasImportUpdateMixin, BuiltinVisibleMixin, AuthViewSet):
     """
     拓扑图
     """
@@ -485,7 +536,7 @@ class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         )
 
 
-class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
+class ArchitectureModelViewSet(CanvasImportUpdateMixin, BuiltinVisibleMixin, AuthViewSet):
     """
     架构图
     """
@@ -593,7 +644,7 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         return Response(ArchitectureMonitorLinkService.resolve(request, request.query_params.get("monitor_id")))
 
 
-class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):
+class CanvasModelViewSet(CanvasImportUpdateMixin, BuiltinVisibleMixin, AuthViewSet):
     """
     新增画布类型的轻量共享 ViewSet。
     现有 Dashboard/Topology/Architecture 保持原样，避免本次变更扩大行为面。
