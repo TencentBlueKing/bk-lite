@@ -130,20 +130,12 @@ def test_trigger_count_above_five_is_rejected():
     assert "连续满足次数" in str(serializer.errors)
 
 
-def test_no_data_enabled_non_boolean_is_rejected():
+def test_stored_no_data_is_dropped_on_write():
     condition = _condition("count")
-    condition["no_data"] = {"enabled": "yes", "level": "warning"}
+    condition["no_data"] = {"enabled": "yes", "level": "fatal"}
     serializer = _serializer(condition, alert_type="keyword")
-    assert not serializer.is_valid()
-    assert "布尔" in str(serializer.errors)
-
-
-def test_no_data_level_fatal_is_rejected():
-    condition = _condition("count")
-    condition["no_data"] = {"enabled": True, "level": "fatal"}
-    serializer = _serializer(condition)
-    assert not serializer.is_valid()
-    assert "无数据告警级别无效" in str(serializer.errors)
+    assert serializer.is_valid(), serializer.errors
+    assert "no_data" not in serializer.validated_data["alert_condition"]
 
 
 def test_count_delta_is_normalized_on_write():

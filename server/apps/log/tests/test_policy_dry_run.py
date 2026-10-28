@@ -486,7 +486,7 @@ def test_dry_run_ratio_denominator_zero_and_hit_ratio(authenticated_user, mocker
 
 
 @pytest.mark.django_db
-def test_dry_run_would_trigger_no_data(authenticated_user, mocker):
+def test_dry_run_ignores_stored_no_data_and_uses_count_below_one(authenticated_user, mocker):
     _allow_policy_operations(mocker)
     mocker.patch("apps.log.services.policy_dry_run._safe_now", return_value=FIXED_NOW)
     window_start, _, prev_start = _window_bounds()
@@ -495,11 +495,11 @@ def test_dry_run_would_trigger_no_data(authenticated_user, mocker):
         if start == prev_start:
             return [{"count__msg": "4"}]
         if start == window_start and "stats" in query:
-            return []
+            return [{"count__msg": "0"}]
         return []
 
     mocker.patch("apps.log.tasks.services.policy_scan.VictoriaMetricsAPI.query", fake_query)
-    payload = _aggregate_payload(
+    silent = _aggregate_payload(
         "no-data-dry-run",
         [1],
         alert_condition={
@@ -512,16 +512,33 @@ def test_dry_run_would_trigger_no_data(authenticated_user, mocker):
             },
         },
     )
-    response = _post_dry_run(payload, authenticated_user)
-    assert response.status_code == 200
-    data = _body(response)["data"]
-    assert len(data["items"]) == 1
-    item = data["items"][0]
-    assert item["verdict"] == "would_trigger_no_data"
-    assert item["no_data"] is True
+    silent_response = _post_dry_run(silent, authenticated_user)
+    assert silent_response.status_code == 200
+    silent_items = _body(silent_response)["data"]["items"]
+    assert silent_items
+    assert all(item["verdict"] != "would_trigger_no_data" for item in silent_items)
+    assert all(item["no_data"] is False for item in silent_items)
+    assert silent_items[0]["verdict"] == "no_trigger"
+
+    below = _aggregate_payload(
+        "count-below-one",
+        [1],
+        alert_condition={
+            "query": "*",
+            "group_by": [],
+            "no_data": {"enabled": True, "level": "error"},
+            "rule": {
+                "mode": "and",
+                "conditions": [{"func": "count", "field": "_msg", "op": "<", "value": "1"}],
+            },
+        },
+    )
+    below_response = _post_dry_run(below, authenticated_user)
+    assert below_response.status_code == 200
+    item = _body(below_response)["data"]["items"][0]
+    assert item["verdict"] == "would_trigger"
+    assert item["no_data"] is False
     assert item["count"] == 0
-    assert item["previous_count"] == 4
-    assert item["group"] == {}
 
 
 @pytest.mark.django_db
@@ -649,8 +666,6 @@ def test_dry_run_no_data_ignores_trigger_count(authenticated_user, mocker):
     )
     response = _post_dry_run(payload, authenticated_user)
     assert response.status_code == 200
-    item = _body(response)["data"]["items"][0]
-    assert item["verdict"] == "would_trigger_no_data"
-    assert item["no_data"] is True
-    assert item["previous_count"] == 4
-    assert "streak" not in item
+    items = _body(response)["data"]["items"]
+    assert all(item["verdict"] != "would_trigger_no_data" for item in items)
+    assert all(item.get("no_data") is not True for item in items)

@@ -14,14 +14,6 @@ from apps.log.utils.user_display import format_user_identifiers
 _NUMERIC_COMPARE_OPS = {">", "<", ">=", "<=", "=", "!="}
 _FIELD_REQUIRED_FUNCS = frozenset({"sum", "avg", "max", "min", "count_uniq", "quantile"})
 _ALWAYS_NUMERIC_FUNCS = frozenset({"count_rate", "count_delta", "count_uniq", "quantile", "ratio", "bytes_rate"})
-_ALERT_LEVELS = frozenset(
-    {
-        AlertConstants.LEVEL_INFO,
-        AlertConstants.LEVEL_WARNING,
-        AlertConstants.LEVEL_ERROR,
-        AlertConstants.LEVEL_CRITICAL,
-    }
-)
 
 
 def _is_finite_number(value):
@@ -145,10 +137,10 @@ class PolicySerializer(serializers.ModelSerializer):
         return None
 
     def validate_alert_condition(self, value):
-        """聚合条件校验比较方式与新函数。无数据级别、连续次数对两种告警类型都校验。"""
+        """聚合条件校验比较方式与新函数。连续次数对两种告警类型都校验。已保存的 no_data 忽略。"""
         if not isinstance(value, dict):
             return value
-        self._validate_no_data(value)
+        value = {key: item for key, item in value.items() if key != "no_data"}
         rule = value.get("rule") if isinstance(value.get("rule"), dict) else {}
         self._validate_trigger_count(rule)
         if self._current_alert_type() != AlertConstants.TYPE_AGGREGATE:
@@ -179,20 +171,6 @@ class PolicySerializer(serializers.ModelSerializer):
         stored_rule["conditions"] = normalized_conditions
         stored["rule"] = stored_rule
         return stored
-
-    def _validate_no_data(self, value):
-        if "no_data" not in value or value.get("no_data") is None:
-            return
-        no_data = value.get("no_data")
-        if not isinstance(no_data, dict):
-            raise serializers.ValidationError(serializer_text(self, "error.policy_no_data_level_invalid"))
-        if "enabled" in no_data and not isinstance(no_data.get("enabled"), bool):
-            raise serializers.ValidationError(serializer_text(self, "error.policy_no_data_enabled_invalid"))
-        level = no_data.get("level")
-        if level is None:
-            return
-        if level not in _ALERT_LEVELS:
-            raise serializers.ValidationError(serializer_text(self, "error.policy_no_data_level_invalid"))
 
     def _validate_trigger_count(self, rule):
         if not isinstance(rule, dict) or "trigger_count" not in rule or rule.get("trigger_count") is None:

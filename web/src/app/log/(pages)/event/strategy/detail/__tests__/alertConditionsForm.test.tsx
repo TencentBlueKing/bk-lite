@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { Form } from 'antd';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -56,23 +56,6 @@ const Harness = () => {
     </Form>
   );
 };
-
-describe('无数据告警开关', () => {
-  it('打开开关后出现级别，关闭时隐藏', () => {
-    render(<Harness />);
-
-    expect(screen.getByText('log.event.noDataAlert')).toBeTruthy();
-    expect(screen.getByText('log.event.noDataTip')).toBeTruthy();
-    expect(screen.queryByText('log.event.noDataLevel')).toBeNull();
-
-    fireEvent.click(screen.getByRole('switch'));
-    expect(screen.getByText('log.event.noDataLevel')).toBeTruthy();
-    expect(screen.getAllByText('log.event.warning').length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole('switch'));
-    expect(screen.queryByText('log.event.noDataLevel')).toBeNull();
-  });
-});
 
 describe('连续满足次数', () => {
   it('缺省 1，上限 5', () => {

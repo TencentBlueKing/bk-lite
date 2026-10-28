@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Input, Select, InputNumber, Radio, Switch } from 'antd';
+import { Form, Input, Select, InputNumber, Radio } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useTermList } from '@/app/log/hooks/integration/common/other';
 import ConditionSelector from './conditionSelector';
@@ -48,7 +48,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const LEVEL_LIST = useLevelList();
   const SCHEDULE_LIST = useScheduleList();
   const TERM_LIST = useTermList();
-  const noDataEnabled = Form.useWatch(['no_data', 'enabled']);
   const lockedPolicyType = policyType || 'keyword';
   const conditionVisibility = getAlertConditionVisibility(lockedPolicyType);
 
@@ -234,35 +233,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           </Form.Item>
         </Form.Item>
       )}
-      <Form.Item<StrategyFields>
-        label={<span className="w-[100px]">{t('log.event.noDataAlert')}</span>}
-      >
-        <Form.Item
-          name={['no_data', 'enabled']}
-          valuePropName="checked"
-          initialValue={false}
-          noStyle
-        >
-          <Switch />
-        </Form.Item>
-        <div className="text-[var(--color-text-3)] mt-[10px]">
-          {t('log.event.noDataTip')}
-        </div>
-      </Form.Item>
-      {noDataEnabled ? (
-        <Form.Item<StrategyFields>
-          name={['no_data', 'level']}
-          label={<span className="w-[100px]">{t('log.event.noDataLevel')}</span>}
-        >
-          <Radio.Group>
-            {LEVEL_LIST.map((item) => (
-              <Radio key={item.value} value={item.value}>
-                {item.label}
-              </Radio>
-            ))}
-          </Radio.Group>
-        </Form.Item>
-      ) : null}
       <Form.Item<StrategyFields>
         required
         label={<span className="w-[100px]">{t('log.event.frequency')}</span>}

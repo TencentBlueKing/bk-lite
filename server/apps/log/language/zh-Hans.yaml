@@ -128,8 +128,6 @@ error:
   policy_ratio_filter_invalid: 占比筛选无效
   policy_field_required: 聚合字段不能为空
   policy_trigger_count_range: 连续满足次数须在 1 到 5 之间
-  policy_no_data_level_invalid: 无数据告警级别无效
-  policy_no_data_enabled_invalid: 无数据告警开关须为布尔值
   policy_group_by_invalid: 分组字段格式错误
   policy_sample_limit_range: 样本条数须在 1 到 10 之间
   topn_unsupported: 该字段不支持 TopN 统计

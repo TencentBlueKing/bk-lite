@@ -29,23 +29,6 @@ export const normalizeCondition = (condition: FilterItem): FilterItem => {
   };
 };
 
-/** 读入策略时回填无数据开关。缺省关闭。 */
-export const readPolicyNoData = (
-  alertCondition?: StrategyFields['alert_condition']
-): NonNullable<StrategyFields['no_data']> => {
-  const source = alertCondition?.no_data;
-  if (!source || typeof source !== 'object') {
-    return { enabled: false };
-  }
-  const next: NonNullable<StrategyFields['no_data']> = {
-    enabled: source.enabled === true,
-  };
-  if (source.level) {
-    next.level = source.level;
-  }
-  return next;
-};
-
 /** 读入策略时回填连续满足次数。缺省 1。 */
 export const readPolicyTriggerCount = (
   alertCondition?: StrategyFields['alert_condition']
@@ -375,10 +358,6 @@ export const buildStrategyPayload = (
       trigger_count: values.trigger_count
     };
   }
-  if (values.no_data && typeof values.no_data === 'object') {
-    params.alert_condition.no_data = values.no_data as StrategyFields['no_data'];
-  }
-
   if (options.isEdit) {
     params.id = options.formData?.id;
   } else {

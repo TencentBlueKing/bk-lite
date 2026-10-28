@@ -4,6 +4,8 @@ Status: implemented
 
 实施记录：B1 `1215d99119` / `ba074cfa8f`，B2 `03c696af7a` / `7fa8e1cc4f`，B3 `03536ea953` / `efdaae8a46`；验证与已接受偏差见 `verification.md`。
 
+2026-10-28 撤回策略级「无数据告警」。下文里关于 `no_data` 开关、无数据事件、`would_trigger_no_data` 的段落不再是当前行为。已保存的 `no_data` 在写入时丢弃、扫描和试算忽略，不做迁移。整段查询断流用未分组条件 `count < 1`：VictoriaLogs 在 0 条时仍返回一行 `count=0`，条件会计算。分组消失不支持。历史告警若 `aggregate_result.no_data = true`，详情和通知仍按原正文展示。
+
 需求来源：CTeam 需求 p398_715 的第二批。第一批（速率、变化量、试算、样本回跳）已按
 `specs/changes/log-policy-calc-methods/spec.md` 落地（提交 `437e5c1f24`）。产品在 2026-10-27 复核后要求
 按客户实际场景补齐竞品具备的计算能力，并以本仓库技术栈（VictoriaLogs LogsQL、Django、Ant Design 表单）

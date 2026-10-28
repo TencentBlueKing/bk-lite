@@ -5,7 +5,6 @@ import {
   buildStrategyPayload,
   hasIncompleteCondition,
   normalizeCondition,
-  readPolicyNoData,
   readPolicyTriggerCount,
   pruneNoticeUsers,
   seedNoticeUsersFromHandlers,
@@ -86,7 +85,7 @@ describe('聚合条件函数', () => {
     ).toBe(true);
   });
 
-  it('透传 compare、params、no_data 和 trigger_count', () => {
+  it('透传 compare、params 和 trigger_count，不写 no_data', () => {
     const payload = buildStrategyPayload(
       {
         alert_type: 'aggregate',
@@ -128,7 +127,7 @@ describe('聚合条件函数', () => {
       },
     ]);
     expect(payload.alert_condition?.rule?.trigger_count).toBe(3);
-    expect(payload.alert_condition?.no_data).toEqual({ enabled: true, level: 'warning' });
+    expect(payload.alert_condition?.no_data).toBeUndefined();
   });
 
   it('count_delta 读入显示为计数、变化量和上一窗', () => {
@@ -171,15 +170,6 @@ describe('聚合条件函数', () => {
         },
       ])
     ).toBe(false);
-  });
-
-  it('读入时回填无数据开关，缺省关闭', () => {
-    expect(readPolicyNoData({ no_data: { enabled: true, level: 'warning' } })).toEqual({
-      enabled: true,
-      level: 'warning',
-    });
-    expect(readPolicyNoData({})).toEqual({ enabled: false });
-    expect(readPolicyNoData({ no_data: { enabled: false } })).toEqual({ enabled: false });
   });
 
   it('读入时回填连续满足次数，缺省和越界都是 1', () => {
