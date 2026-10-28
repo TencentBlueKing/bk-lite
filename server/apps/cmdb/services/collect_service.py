@@ -4,6 +4,7 @@
 # @Author: windyzhao
 import copy
 import uuid
+from contextlib import nullcontext
 
 from celery import current_app
 from django.conf import settings
@@ -20,9 +21,10 @@ from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.services.collect_credential_contract import API_SECRET_MASK
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_hit_state_service import CollectHitStateService
-from apps.cmdb.services.collection_offset_policy import restore_owned_offsets
+from apps.cmdb.services.collection_offset_policy import restore_owned_offsets, supports_task
 from apps.cmdb.services.collection_offset_service import CollectionOffsetService
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
+from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
 from apps.cmdb.services.vmware_collection_scope import VmwareCollectionScope
 from apps.cmdb.tasks.celery_tasks import sync_collect_task
 from apps.cmdb.utils.base import get_current_team_from_request
@@ -345,6 +347,10 @@ class CollectModelService(object):
         格式化更新时的凭据参数
         """
         credential = data.get("credential")
+        if getattr(instance, "model_id", "") == "ssl_cer" and not credential:
+            # format_params 会丢掉空列表。证书任务没有凭据，更新名称或周期时写回 []。
+            data["credential"] = []
+            return
         task_type = getattr(instance, "task_type", "")
         if not credential and not instance.is_k8s and task_type != CollectPluginTypes.IP:
             raise BaseAppException("采集凭据不能为空！")
@@ -673,22 +679,55 @@ class CollectModelService(object):
         update_data["params"] = params
 
     @classmethod
-    def update(cls, request, view_self, payload=None, *, credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE):
+    def update(
+        cls,
+        request,
+        view_self,
+        payload=None,
+        *,
+        credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE,
+        scan_append=False,
+    ):
         initial = view_self.get_object()
         source = cls._request_payload(request, payload)
+        # 错峰任务本来就会拿这把保存锁。其他扫描追加复用同一把，避免再套一把相反顺序的锁。
+        append_lock = nullcontext()
+        if scan_append and not (supports_task(initial) or supports_task(source)):
+            append_lock = UniqueWriteLockService.hold([CollectionOffsetService.LOCK_KEY])
         with (
             transaction.atomic(),
             VmwareCollectionScope.serialize_save(initial, data=source),
             CollectionOffsetService.serialize(initial, data=source),
+            append_lock,
         ):
-            return cls._update_under_lock(request, view_self, payload, credential_pool_max_size=credential_pool_max_size)
+            return cls._update_under_lock(
+                request,
+                view_self,
+                payload,
+                credential_pool_max_size=credential_pool_max_size,
+                scan_append=scan_append,
+            )
+
+    @staticmethod
+    def _merge_scan_append(instance, source):
+        """扫描追加只在保存锁内把本次增量并进刚读到的实例和凭据。"""
+        from apps.cmdb.services.scan_collect_task import merge_credential_items, merge_instance_payloads
+
+        source["instances"] = merge_instance_payloads(instance.instances, source.get("instances"))
+        source["credential"] = merge_credential_items(
+            instance.model_id,
+            instance.decrypt_credentials,
+            source.get("credential"),
+        )
 
     @classmethod
-    def _update_under_lock(cls, request, view_self, payload, *, credential_pool_max_size):
+    def _update_under_lock(cls, request, view_self, payload, *, credential_pool_max_size, scan_append=False):
         # 取得分配锁后重新读取任务，避免使用锁前的偏移/周期/权限状态。
         instance = view_self.get_object()
         old_instance = copy.deepcopy(instance)
         source = cls._request_payload(request, payload)
+        if scan_append:
+            cls._merge_scan_append(instance, source)
 
         cls.has_permission(request, instance, view_self)
         update_data, is_interval, scan_cycle = cls.format_params(source)

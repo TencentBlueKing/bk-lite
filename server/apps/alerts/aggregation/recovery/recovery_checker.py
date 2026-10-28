@@ -217,7 +217,7 @@ def _attach_fallback_recoveries(alert: Alert) -> int:
 
     added = 0
     for fallback_key, times in fallback_times.items():
-        source_pk, item, resource_name, _source_id = fallback_key
+        source_pk, item, resource_name, _source_id, _team = fallback_key
         candidate_alert_pks = set(
             Alert.objects.filter(
                 status__in=AlertStatus.ACTIVATE_STATUS,

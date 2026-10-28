@@ -26,10 +26,10 @@ const menuIdentity = (items: MenuItem[]): unknown =>
   }));
 
 describe('RUM 顶栏信息架构', () => {
-  it.each(['zh', 'en'] as const)('%s 一级顺序为体验 · 质量 · 事件 · 集成 · 数据治理', (locale) => {
+  it.each(['zh', 'en'] as const)('%s 一级顺序为首页 · 体验 · 质量 · 事件 · 集成 · 数据治理', (locale) => {
     const expected = locale === 'zh'
-      ? ['体验', '质量', '事件', '集成', '数据治理']
-      : ['Experience', 'Quality', 'Events', 'Integration', 'Governance'];
+      ? ['首页', '体验', '质量', '事件', '集成', '数据治理']
+      : ['Home', 'Experience', 'Quality', 'Events', 'Integration', 'Governance'];
     expect(menu[locale].map((item) => item.title)).toEqual(expected);
   });
 
@@ -61,22 +61,26 @@ describe('RUM 顶栏信息架构', () => {
     );
   });
 
-  it('集成是应用与接入，不含添加接入或接入实例', () => {
+  it('首页是应用，集成只留接入', () => {
+    const home = menu.zh.find((item) => item.title === '首页');
+    expect(home?.url).toBe('/rum/applications');
+    expect(home?.name).toBe('applications');
+    expect(visibleTitles(home?.children)).toEqual(['应用']);
+    expect(
+      home?.children?.some((item) => item.url === '/rum/applications/[name]/overview' && item.isNotMenuItem),
+    ).toBe(true);
     const integration = menu.zh.find((item) => item.title === '集成');
-    expect(integration?.url).toBe('/rum/applications');
+    expect(integration?.url).toBe('/rum/setup');
     expect(integration?.name).toBe('applications');
-    expect(visibleTitles(integration?.children)).toEqual(['应用', '接入']);
+    expect(visibleTitles(integration?.children)).toEqual(['接入']);
     expect(integration?.children?.some((item) => item.url === '/rum/setup' && !item.isNotMenuItem)).toBe(true);
     expect(integration?.children?.some((item) => item.url === '/rum/setup/[name]' && item.isNotMenuItem)).toBe(true);
-    expect(
-      integration?.children?.some((item) => item.url === '/rum/applications/[name]/overview' && item.isNotMenuItem),
-    ).toBe(true);
     expect(menu.zh.some((group) => visibleTitles(group.children).includes('添加接入'))).toBe(false);
     expect(menu.zh.some((group) => visibleTitles(group.children).includes('接入实例'))).toBe(false);
   });
 
   it('应用详情高亮应用，接入详情高亮接入', () => {
-    expect(findMatchedMenuPath(asMenus('zh'), '/rum/applications/store/overview')?.[0].title).toBe('集成');
+    expect(findMatchedMenuPath(asMenus('zh'), '/rum/applications/store/overview')?.[0].title).toBe('首页');
     expect(findMatchedMenuPath(asMenus('zh'), '/rum/applications/store/overview')?.[1].title).toBe('应用');
     expect(findMatchedMenuPath(asMenus('zh'), '/rum/setup/store')?.[0].title).toBe('集成');
     expect(findMatchedMenuPath(asMenus('zh'), '/rum/setup/store')?.[1].title).toBe('接入');
@@ -94,5 +98,14 @@ describe('RUM 顶栏信息架构', () => {
 
   it('RUM 根路径仍落到应用列表', () => {
     expect(readFileSync(join(rumRoot, 'page.tsx'), 'utf8')).toMatch(/redirect\('\/rum\/applications'\)/);
+  });
+
+  it('总览带四个分派入口并返回应用列表', () => {
+    const src = readFileSync(join(rumRoot, 'applications/[name]/overview/page.tsx'), 'utf8');
+    expect(src).toContain('/rum/sessions?${scope}');
+    expect(src).toContain('/rum/views?${scope}');
+    expect(src).toContain('/rum/errors?${scope}');
+    expect(src).toContain('/rum/funnels?${scope}');
+    expect(src).toContain("router.push('/rum/applications')");
   });
 });

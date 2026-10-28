@@ -145,6 +145,7 @@ messages:
   dashboard_view_denied: "无权查看该仪表盘"
   canvas_missing_action: "源画布已不存在，不能执行该操作"
   canvas_view_denied: "无权查看该画布"
+  canvas_edit_denied: "无权编辑该画布"
   referenced_datasource_missing: "画布引用的数据源不存在: {ids}"
   referenced_datasource_denied: "无权查看画布引用的数据源: {datasource_id}"
   email_channel_required: "报告订阅必须指定邮件通道"
