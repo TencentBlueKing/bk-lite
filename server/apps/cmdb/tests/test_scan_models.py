@@ -96,6 +96,8 @@ def test_scan_execution_and_hit_can_be_created():
     serialized = ScanHitSerializer(hit).data
     assert serialized["confidence"] == ScanHit.CONFIDENCE_LOW
     assert serialized["evidence"] == []
+    assert serialized["cmdb_managed"] is False
+    assert serialized["monitor_managed"] is False
 
 
 def test_middleware_family_normalizes_and_maps_job_plugin():

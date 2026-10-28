@@ -18,6 +18,8 @@ export interface ScanHitItem {
   inst_uuid: string;
   port?: number;
   unmatch_reason?: string;
+  cmdb_managed?: boolean;
+  monitor_managed?: boolean;
   snapshot?: Record<string, unknown>;
   confidence?: 'low' | 'medium' | 'high' | string;
   evidence?: string[];
@@ -27,6 +29,9 @@ export const TERMINAL_STATUSES = new Set(['completed', 'failed', 'timed_out']);
 export const SCAN_CONFIDENCE_LEVELS = ['high', 'medium', 'low'] as const;
 export type ScanConfidenceLevel = (typeof SCAN_CONFIDENCE_LEVELS)[number];
 export const DEFAULT_SCAN_CONFIDENCE_FILTER: ScanConfidenceLevel[] = ['high', 'medium'];
+export const SCAN_MANAGED_FILTERS = ['cmdb_unmanaged', 'cmdb_managed', 'monitor_unmanaged', 'monitor_managed'] as const;
+export type ScanManagedFilter = (typeof SCAN_MANAGED_FILTERS)[number];
+export const DEFAULT_SCAN_MANAGED_FILTER: ScanManagedFilter[] = [...SCAN_MANAGED_FILTERS];
 
 export const hitConfidence = (hit: ScanHitItem): ScanConfidenceLevel => {
   const value = String(hit.confidence || 'low');
@@ -50,6 +55,43 @@ export const filterHitsByConfidence = (hits: ScanHitItem[], selected: Iterable<s
     return [];
   }
   return hits.filter((hit) => wanted.has(hitConfidence(hit)));
+};
+
+export const hitIsCmdbManaged = (hit: ScanHitItem) => Boolean(hit.cmdb_managed);
+export const hitIsMonitorManaged = (hit: ScanHitItem) => Boolean(hit.monitor_managed);
+
+export const countHitsByManaged = (hits: ScanHitItem[]) => {
+  const counts: Record<ScanManagedFilter, number> = {
+    cmdb_unmanaged: 0,
+    cmdb_managed: 0,
+    monitor_unmanaged: 0,
+    monitor_managed: 0,
+  };
+  hits.forEach((hit) => {
+    if (hitIsCmdbManaged(hit)) {
+      counts.cmdb_managed += 1;
+    } else {
+      counts.cmdb_unmanaged += 1;
+    }
+    if (hitIsMonitorManaged(hit)) {
+      counts.monitor_managed += 1;
+    } else {
+      counts.monitor_unmanaged += 1;
+    }
+  });
+  return counts;
+};
+
+export const filterHitsByManaged = (hits: ScanHitItem[], selected: Iterable<string>) => {
+  const wanted = new Set(selected);
+  if (wanted.size === 0) {
+    return [];
+  }
+  return hits.filter((hit) => {
+    const cmdbKey = hitIsCmdbManaged(hit) ? 'cmdb_managed' : 'cmdb_unmanaged';
+    const monitorKey = hitIsMonitorManaged(hit) ? 'monitor_managed' : 'monitor_unmanaged';
+    return wanted.has(cmdbKey) && wanted.has(monitorKey);
+  });
 };
 export const HIT_FETCH_SIZE = 200;
 export const TABLE_PAGE_SIZE = 20;

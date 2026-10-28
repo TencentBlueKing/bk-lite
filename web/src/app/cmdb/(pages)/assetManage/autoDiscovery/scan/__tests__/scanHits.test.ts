@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   countHitsByConfidence,
+  countHitsByManaged,
   DEFAULT_SCAN_CONFIDENCE_FILTER,
+  DEFAULT_SCAN_MANAGED_FILTER,
   filterHitsByConfidence,
+  filterHitsByManaged,
   hitConfidence,
   hitHasCmdbInstance,
   hitHasCollectCredential,
+  hitIsCmdbManaged,
+  hitIsMonitorManaged,
   isLinkMonitorFamilyTab,
   isScanDatabaseType,
   isScanLinkMonitorType,
@@ -57,6 +62,29 @@ describe('扫描清单辅助', () => {
     expect(countHitsByConfidence(rows)).toEqual({ high: 1, medium: 1, low: 2 });
     expect(filterHitsByConfidence(rows, DEFAULT_SCAN_CONFIDENCE_FILTER).map((item) => item.id)).toEqual([2, 3]);
     expect(filterHitsByConfidence(rows, [])).toEqual([]);
+  });
+
+  it('按 CMDB / 监控纳管组合筛选', () => {
+    const rows = [
+      hit({ id: 1, cmdb_managed: true, monitor_managed: true }),
+      hit({ id: 2, cmdb_managed: true, monitor_managed: false }),
+      hit({ id: 3, cmdb_managed: false, monitor_managed: true }),
+      hit({ id: 4, cmdb_managed: false, monitor_managed: false }),
+    ];
+    expect(hitIsCmdbManaged(rows[0])).toBe(true);
+    expect(hitIsMonitorManaged(rows[2])).toBe(true);
+    expect(countHitsByManaged(rows)).toEqual({
+      cmdb_managed: 2,
+      cmdb_unmanaged: 2,
+      monitor_managed: 2,
+      monitor_unmanaged: 2,
+    });
+    expect(filterHitsByManaged(rows, DEFAULT_SCAN_MANAGED_FILTER).map((item) => item.id)).toEqual([1, 2, 3, 4]);
+    expect(filterHitsByManaged(rows, ['cmdb_unmanaged', 'monitor_unmanaged', 'monitor_managed']).map((item) => item.id)).toEqual([
+      3, 4,
+    ]);
+    expect(filterHitsByManaged(rows, ['cmdb_managed', 'monitor_unmanaged']).map((item) => item.id)).toEqual([2]);
+    expect(filterHitsByManaged(rows, [])).toEqual([]);
   });
 
   it('数据库和中间件族走同步到监控', () => {

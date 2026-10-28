@@ -324,6 +324,8 @@ class ScanHitSerializer(UsernameSerializer):
     family_model_id = serializers.CharField(source="family_run.model_id", read_only=True)
     credential_label = serializers.SerializerMethodField()
     unmatch_reason = serializers.SerializerMethodField()
+    cmdb_managed = serializers.SerializerMethodField()
+    monitor_managed = serializers.SerializerMethodField()
 
     class Meta:
         model = ScanHit
@@ -344,6 +346,8 @@ class ScanHitSerializer(UsernameSerializer):
             "attached_inst_uuid",
             "error_code",
             "unmatch_reason",
+            "cmdb_managed",
+            "monitor_managed",
             "confidence",
             "evidence",
             "snapshot",
@@ -356,6 +360,12 @@ class ScanHitSerializer(UsernameSerializer):
 
     def get_unmatch_reason(self, obj):
         return unmatch_reason_for_hit(obj)
+
+    def get_cmdb_managed(self, obj):
+        return bool(getattr(obj, "cmdb_managed", False))
+
+    def get_monitor_managed(self, obj):
+        return bool(getattr(obj, "monitor_managed", False))
 
 
 def _credential_label_for_hit(hit: ScanHit) -> str:

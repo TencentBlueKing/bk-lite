@@ -114,6 +114,9 @@ class ScanTaskViewSet(AuthViewSet):
         page = paginator.paginate_queryset(queryset, request, view=self)
         if page is None:
             raise BaseAppException("命中清单必须分页")
+        from apps.cmdb.services.scan_hit_managed import annotate_scan_hits_managed
+
+        annotate_scan_hits_managed(page, execution)
         serializer = ScanHitSerializer(page, many=True, context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 

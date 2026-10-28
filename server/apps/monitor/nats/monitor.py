@@ -3500,6 +3500,19 @@ def monitor_ingest_from_source(params):
 
 
 @nats_client.register
+def monitor_instances_exist(params):
+    """按 cmdb_id / IP 批量判断监控实例是否已存在。签名为 (params)，须整包。"""
+    from apps.monitor.services.instance_existence import list_existing_monitor_instances
+
+    params = dict(params or {})
+    return list_existing_monitor_instances(
+        cmdb_ids=params.get("cmdb_ids"),
+        ips=params.get("ips"),
+        allowed_org_ids=params.get("allowed_org_ids"),
+    )
+
+
+@nats_client.register
 def monitor_list_cmdb_bind_candidates(params):
     """列出可手绑的监控实例。签名为 (params)，须整包。"""
     from apps.monitor.services.cmdb_bind import list_cmdb_bind_candidates
