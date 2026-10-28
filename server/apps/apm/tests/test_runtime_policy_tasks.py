@@ -57,7 +57,7 @@ def test_dispatch_only_schedules_enabled_policies(mocker):
     result = dispatch_apm_policy_evaluations.run()
 
     assert result["dispatched"] == 1
-    delay.assert_called_once_with(str(enabled.id), result["evaluated_at"])
+    delay.assert_called_once_with(str(enabled.id), result["evaluated_at"], str(enabled.service_id))
 
 
 def test_dispatch_interval_uses_continuous_epoch_cadence_across_hour_boundaries(mocker):
@@ -76,7 +76,7 @@ def test_dispatch_interval_uses_continuous_epoch_cadence_across_hour_boundaries(
 
     assert due["dispatched"] == 1
     assert skipped["dispatched"] == 0
-    delay.assert_called_once_with(str(policy.id), due["evaluated_at"])
+    delay.assert_called_once_with(str(policy.id), due["evaluated_at"], str(policy.service_id))
 
 
 def test_outbox_task_reports_deferred_failures_without_unbounded_task_retry(mocker):

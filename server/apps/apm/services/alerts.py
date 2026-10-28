@@ -9,15 +9,7 @@ from django.db.models import Count, Q, QuerySet
 from django.db.models.functions import TruncHour
 from django.utils import timezone
 
-from apps.apm.models import (
-    ApmAlert,
-    ApmAlertOutbox,
-    ApmEvent,
-    ApmEventSnapshot,
-    ApmPolicy,
-    ApmPolicyNotificationTarget,
-    ApmPolicyTargetState,
-)
+from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmEventSnapshot, ApmPolicy, ApmPolicyNotificationTarget, ApmPolicyTargetState
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
 from apps.apm.services.policies import DjangoApmPolicyService
 from apps.core.logger import apm_logger as logger
@@ -77,9 +69,7 @@ class DjangoApmAlertService:
         if status_group == "active":
             queryset = queryset.filter(status=ApmAlert.Status.ACTIVE)
         elif status_group == "history":
-            queryset = queryset.filter(
-                status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED)
-            )
+            queryset = queryset.filter(status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED))
         if severity:
             queryset = queryset.filter(severity=severity)
         if metric_type:
@@ -109,15 +99,11 @@ class DjangoApmAlertService:
         my_alert: bool = False,
         actor=None,
     ) -> list[dict]:
-        event_queryset = ApmEvent.objects.exclude(
-            action__in=(ApmEvent.Action.CLAIMED, ApmEvent.Action.ASSIGNED, ApmEvent.Action.REASSIGNED)
-        )
+        event_queryset = ApmEvent.objects.exclude(action__in=(ApmEvent.Action.CLAIMED, ApmEvent.Action.ASSIGNED, ApmEvent.Action.REASSIGNED))
         if status_group == "active":
             event_queryset = event_queryset.filter(alert__status=ApmAlert.Status.ACTIVE)
         elif status_group == "history":
-            event_queryset = event_queryset.filter(
-                alert__status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED)
-            )
+            event_queryset = event_queryset.filter(alert__status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED))
         if my_alert:
             mine = self.filter_my_handler_alerts(
                 self.queryset(organization_id=organization_id, organization_ids=organization_ids),
@@ -147,9 +133,7 @@ class DjangoApmAlertService:
         if outboxes_prefetched:
             delivery_statuses = [delivery.delivery_status for event in events for delivery in event.outbox_entries.all()]
         else:
-            delivery_statuses = list(
-                ApmAlertOutbox.objects.filter(event__alert=alert).values_list("delivery_status", flat=True)
-            )
+            delivery_statuses = list(ApmAlertOutbox.objects.filter(event__alert=alert).values_list("delivery_status", flat=True))
         status_set = set(delivery_statuses)
         if not status_set:
             notification_status = "none"
@@ -173,6 +157,7 @@ class DjangoApmAlertService:
             "environment": alert.environment,
             "endpoint": alert.endpoint,
             "version": alert.version,
+            "instance_id": alert.instance_id,
             "metric_type": alert.metric_type,
             "severity": alert.severity,
             "status": alert.status,
@@ -396,9 +381,7 @@ class DjangoApmAlertService:
 
     @staticmethod
     def filter_my_handler_alerts(queryset, actor):
-        return queryset.filter(
-            build_json_membership_query(queryset, "handlers", DjangoApmAlertService.handler_match_values(actor))
-        )
+        return queryset.filter(build_json_membership_query(queryset, "handlers", DjangoApmAlertService.handler_match_values(actor)))
 
     @staticmethod
     def _lookup_user(identifier):
@@ -446,15 +429,11 @@ class DjangoApmAlertService:
 
     @staticmethod
     def normalize_assign_handlers(identifiers, organization_ids) -> list:
-        return DjangoApmAlertService._normalize_handlers(
-            identifiers, organization_ids, allow_empty=False, scope_label="告警"
-        )
+        return DjangoApmAlertService._normalize_handlers(identifiers, organization_ids, allow_empty=False, scope_label="告警")
 
     @staticmethod
     def normalize_policy_handlers(identifiers, organization_ids) -> list:
-        return DjangoApmAlertService._normalize_handlers(
-            identifiers, organization_ids, allow_empty=True, scope_label="策略"
-        )
+        return DjangoApmAlertService._normalize_handlers(identifiers, organization_ids, allow_empty=True, scope_label="策略")
 
     @staticmethod
     def _has_person_channel(policy) -> bool:
@@ -586,9 +565,7 @@ class DjangoApmAlertService:
             alert=alert,
             action=action,
             title=f"APM {alert.policy_name}{action_label}",
-            description=DjangoApmAlertService._handler_event_description(
-                action, actor=actor, handlers=alert.handlers
-            ),
+            description=DjangoApmAlertService._handler_event_description(action, actor=actor, handlers=alert.handlers),
             severity=alert.severity,
             service=alert.service_name,
             item=alert.metric_type,

@@ -29,6 +29,7 @@ class ApmEventSnapshotStore:
         endpoint: str,
         version: str,
         threshold: dict[str, str] | None,
+        service=None,
     ) -> ApmEventSnapshot:
         unit = {
             ApmPolicy.MetricType.ERROR_RATE: "ratio",
@@ -91,11 +92,15 @@ class ApmEventSnapshotStore:
                 "trigger_window": policy.trigger_window,
                 "recovery_threshold": dict(policy.recovery_threshold or {}),
                 "conditions": effective_conditions(policy),
+                "scope_mode": getattr(policy, "scope_mode", None) or "service",
+                "service_ids": [str(item) for item in (getattr(policy, "service_ids", None) or [])],
+                "endpoint_mode": getattr(policy, "endpoint_mode", None) or "service",
+                "instance_mode": getattr(policy, "instance_mode", None) or "all",
             },
             "object_snapshot": {
-                "service_id": str(policy.service_id),
-                "service_namespace": policy.service.namespace,
-                "service_name": policy.service.name,
+                "service_id": str((service or policy.service).id),
+                "service_namespace": (service or policy.service).namespace,
+                "service_name": (service or policy.service).name,
                 "endpoint": endpoint,
                 "environment": policy.environment,
                 "version": version,
@@ -113,8 +118,8 @@ class ApmEventSnapshotStore:
                 "condition_values": condition_value_map(result),
             },
             "trace_context": {
-                "service_namespace": policy.service.namespace,
-                "service_name": policy.service.name,
+                "service_namespace": (service or policy.service).namespace,
+                "service_name": (service or policy.service).name,
                 "endpoint": endpoint,
                 "environment": policy.environment,
                 "version": version,

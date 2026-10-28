@@ -142,6 +142,7 @@ def _count_field(values: dict[str, float], key: str) -> int | None:
 
 
 MAX_TOP_ENDPOINTS = 10
+MAX_SERVICE_ENDPOINTS = 100
 MAX_CLIENT_ROLLUPS = 40
 MAX_ENDPOINT_NAME_LENGTH = 256
 _RAW_SPAN_PARSE_LIMIT = 1001
@@ -823,6 +824,7 @@ class VictoriaTracesTelemetryStore:
             query.environment,
             endpoint=query.endpoint,
             version=query.version,
+            instance_id=query.instance_id or "",
         )
         entry_filters = self._entry_span_filters(
             query.service_namespace,
@@ -830,6 +832,7 @@ class VictoriaTracesTelemetryStore:
             query.environment,
             endpoint=query.endpoint,
             version=query.version,
+            instance_id=query.instance_id or "",
         )
         final_stats = _red_final_stats(query)
         aggregate_base = self._bounded_spans(deduped) if exact_dedup else entry_filters
@@ -890,6 +893,7 @@ class VictoriaTracesTelemetryStore:
             query.environment,
             endpoint=query.endpoint,
             version=query.version,
+            instance_id=query.instance_id or "",
         )
         spans = " or ".join(f"_time:[{_logsql_time(started_at)}, {_logsql_time(ended_at)})" for started_at, ended_at in windows)
         scoped = f"({spans}) {entry}"
@@ -908,6 +912,35 @@ class VictoriaTracesTelemetryStore:
             window_seconds = max(int((window_end - window_start).total_seconds()), 1)
             reds.append(self._red_from_values(values, window_seconds))
         return tuple(reds)
+
+    def service_endpoints(self, query: ServiceMetricQuery, limit: int = MAX_SERVICE_ENDPOINTS) -> tuple[ServiceEndpointRed, ...]:
+        """当前窗入口 Span 按端点计数，上限 100，按请求数降序。不复用 top_endpoints 的 10 条上限。"""
+        window_seconds = _validate_window(query.started_at, query.ended_at)
+        bounded = max(1, min(int(limit), MAX_SERVICE_ENDPOINTS))
+        entry_filters = self._entry_span_filters(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            instance_id=query.instance_id or "",
+        )
+        endpoint_query = f"{entry_filters} | stats by (name) count() as requests | sort by (requests) desc | limit {bounded}"
+        rows = self._stats(endpoint_query, query.started_at, query.ended_at)
+        remapped: list[dict[str, Any]] = []
+        for row in rows:
+            metric = row.get("metric")
+            if not isinstance(metric, dict):
+                continue
+            remapped.append(
+                {
+                    **row,
+                    "metric": {
+                        **metric,
+                        "endpoint": metric.get("name", ""),
+                        "__name__": metric.get("__name__") or "requests",
+                    },
+                }
+            )
+        return self._endpoint_red(remapped, window_seconds)[:bounded]
 
     def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
         if not 1 <= query.sample_limit <= 50:
@@ -1566,6 +1599,7 @@ class VictoriaTracesTelemetryStore:
         *,
         endpoint: str = "",
         version: str = "",
+        instance_id: str = "",
     ) -> str:
         filters = [
             "*",
@@ -1578,6 +1612,8 @@ class VictoriaTracesTelemetryStore:
             filters.append(f"name:={_logsql_string(endpoint)}")
         if version:
             filters.append(f"{_VERSION_FIELD}:={_logsql_string(version)}")
+        if instance_id:
+            filters.append(f"{_INSTANCE_FIELD}:={_logsql_string(instance_id)}")
         return " ".join(filters)
 
     def _deduped_entry_query(
@@ -1588,12 +1624,20 @@ class VictoriaTracesTelemetryStore:
         *,
         endpoint: str = "",
         version: str = "",
+        instance_id: str = "",
         keep_name: bool = False,
     ) -> str:
         fields = "max(duration) as duration, max(status_code) as status_code"
         if keep_name:
             fields += ", max(name) as endpoint"
-        base = self._entry_span_filters(namespace, service_name, environment, endpoint=endpoint, version=version)
+        base = self._entry_span_filters(
+            namespace,
+            service_name,
+            environment,
+            endpoint=endpoint,
+            version=version,
+            instance_id=instance_id,
+        )
         return f"{base} | stats by (trace_id, span_id) {fields}"
 
     @staticmethod

@@ -458,6 +458,11 @@ class PolicyOrganizationsField(serializers.ListField):
 
 class ApmPolicySerializer(serializers.ModelSerializer):
     service_id = serializers.UUIDField(required=False)
+    scope_mode = serializers.ChoiceField(choices=ApmPolicy.ScopeMode.choices, required=False)
+    service_ids = serializers.ListField(child=serializers.UUIDField(), required=False, allow_empty=True, max_length=20)
+    application = serializers.PrimaryKeyRelatedField(queryset=ApmApplication.objects.all(), required=False, allow_null=True)
+    endpoint_mode = serializers.ChoiceField(choices=ApmPolicy.EndpointMode.choices, required=False)
+    instance_mode = serializers.ChoiceField(choices=ApmPolicy.InstanceMode.choices, required=False)
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
     organizations = PolicyOrganizationsField(
@@ -500,6 +505,11 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "id",
             "name",
             "service_id",
+            "scope_mode",
+            "service_ids",
+            "application",
+            "endpoint_mode",
+            "instance_mode",
             "service_namespace",
             "service_name",
             "organizations",
@@ -729,13 +739,17 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
-        if self.instance is None and "service_id" not in attrs:
+        initial = self.initial_data if isinstance(getattr(self, "initial_data", None), dict) else {}
+        scope_mode = attrs.get(
+            "scope_mode",
+            getattr(self.instance, "scope_mode", ApmPolicy.ScopeMode.SERVICE) or ApmPolicy.ScopeMode.SERVICE,
+        )
+        if self.instance is None and "service_id" not in attrs and scope_mode == ApmPolicy.ScopeMode.SERVICE:
             raise serializers.ValidationError({"service_id": serializer_text(self, "error.field_required")})
         environment = attrs.get("environment", getattr(self.instance, "environment", ""))
         if not str(environment).strip():
             raise serializers.ValidationError({"environment": serializer_text(self, "error.environment_required")})
         attrs["environment"] = str(environment).strip()
-        initial = self.initial_data if isinstance(getattr(self, "initial_data", None), dict) else {}
         self._conditions_supplied = "conditions" in initial
         if self._conditions_supplied:
             metric_window = self._stored_or_incoming(attrs, "metric_window", 5)
@@ -789,6 +803,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
 
         endpoints = attrs.get("endpoints", list(getattr(self.instance, "endpoints", []) or []))
         attrs["endpoints"] = list(dict.fromkeys(item.strip() for item in endpoints))
+        self._apply_scope(attrs, initial)
         versions = attrs.get("versions", list(getattr(self.instance, "versions", []) or []))
         attrs["versions"] = list(dict.fromkeys(item.strip() for item in versions))
         version_mode = attrs.get("version_mode", getattr(self.instance, "version_mode", ApmPolicy.VersionMode.ALL))
@@ -842,6 +857,63 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         elif self.instance is None or any(field in initial for field in MIRROR_FIELDS):
             attrs["conditions"] = [{"ref": "a", "role": "regular", **anchor_fields}]
         return attrs
+
+    def _apply_scope(self, attrs, initial):
+        scope_mode = attrs.get(
+            "scope_mode",
+            getattr(self.instance, "scope_mode", ApmPolicy.ScopeMode.SERVICE) or ApmPolicy.ScopeMode.SERVICE,
+        )
+        if scope_mode == ApmPolicy.ScopeMode.SERVICES:
+            raw_ids = attrs.get("service_ids", list(getattr(self.instance, "service_ids", None) or []))
+            ordered = []
+            for item in raw_ids:
+                text = str(item)
+                if text not in ordered:
+                    ordered.append(text)
+            if not 2 <= len(ordered) <= 20:
+                raise serializers.ValidationError({"service_ids": serializer_text(self, "error.scope_service_ids")})
+            found = {str(item.id): item for item in ApmService.objects.filter(id__in=ordered)}
+            if len(found) != len(ordered):
+                raise serializers.ValidationError({"service_ids": serializer_text(self, "error.scope_service_ids")})
+            attrs["scope_mode"] = scope_mode
+            attrs["service_ids"] = ordered
+            attrs["service_id"] = found[ordered[0]].id
+            attrs["application"] = None
+        elif scope_mode == ApmPolicy.ScopeMode.APPLICATION:
+            application = attrs.get("application", getattr(self.instance, "application", None))
+            if application is None:
+                raise serializers.ValidationError({"application": serializer_text(self, "error.scope_application_required")})
+            first = (
+                ApmService.objects.filter(application=application, archived_at__isnull=True)
+                .order_by("normalized_namespace", "normalized_name", "id")
+                .first()
+            )
+            if first is None:
+                raise serializers.ValidationError({"application": serializer_text(self, "error.scope_application_empty")})
+            attrs["scope_mode"] = scope_mode
+            attrs["application"] = application
+            attrs["service_ids"] = []
+            attrs["service_id"] = first.id
+        else:
+            attrs["scope_mode"] = ApmPolicy.ScopeMode.SERVICE
+            attrs["service_ids"] = []
+            attrs["application"] = None
+
+        if "endpoint_mode" in initial:
+            endpoint_mode = attrs.get("endpoint_mode") or ApmPolicy.EndpointMode.SERVICE
+        elif attrs.get("endpoints"):
+            endpoint_mode = ApmPolicy.EndpointMode.SELECTED
+        else:
+            endpoint_mode = getattr(self.instance, "endpoint_mode", None) or ApmPolicy.EndpointMode.SERVICE
+            if endpoint_mode == ApmPolicy.EndpointMode.SELECTED and not attrs.get("endpoints"):
+                endpoint_mode = ApmPolicy.EndpointMode.SERVICE
+        if endpoint_mode in {ApmPolicy.EndpointMode.SERVICE, ApmPolicy.EndpointMode.ALL}:
+            attrs["endpoints"] = []
+        attrs["endpoint_mode"] = endpoint_mode
+        attrs["instance_mode"] = attrs.get(
+            "instance_mode",
+            getattr(self.instance, "instance_mode", None) or ApmPolicy.InstanceMode.ALL,
+        )
 
     def _policy_organization_ids(self, attrs):
         if "organizations" in attrs:

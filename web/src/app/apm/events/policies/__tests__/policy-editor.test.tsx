@@ -854,4 +854,28 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(payload.conditions.every((item: object) => !('recovery_threshold' in item))).toBe(true);
     expect(payload.recovery_threshold).toEqual({});
   });
+
+  it('全部端点隐藏手选框，按实例提示一台一条告警，存量保存不带范围字段', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+
+    expect(await screen.findByLabelText('端点')).not.toBeNull();
+    await user.click(screen.getByLabelText('端点模式'));
+    await user.click(await screen.findByText('全部端点'));
+    expect(screen.queryByLabelText('端点')).toBeNull();
+    await user.click(screen.getByLabelText('实例维度'));
+    await user.click(await screen.findByText('按实例'));
+    expect(screen.getByText('按实例判定会一台一条告警，建议只对核心服务开')).not.toBeNull();
+
+    await user.click(screen.getByLabelText('端点模式'));
+    await user.click(await screen.findByText('手选端点'));
+    await user.click(screen.getByLabelText('实例维度'));
+    await user.click(await screen.findByText('不按实例拆'));
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    const payload = api.updatePolicy.mock.calls.at(-1)?.[1];
+    expect(payload).not.toHaveProperty('scope_mode');
+    expect(payload).not.toHaveProperty('endpoint_mode');
+    expect(payload).not.toHaveProperty('instance_mode');
+  });
 });

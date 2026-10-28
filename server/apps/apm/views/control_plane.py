@@ -1181,6 +1181,11 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         saved_policy = get_object_or_404(self.get_queryset(), id=policy_id) if policy_id else None
         try:
             policy = ApmPolicy(service=service, **values)
+            organizations = payload.get("organizations")
+            if organizations is not None:
+                policy._scope_organization_ids = organizations
+            elif saved_policy is not None:
+                policy._scope_organization_ids = list(saved_policy.organization_links.values_list("organization", flat=True))
             result = self._service().dry_run(policy, evaluated_at=timezone.now(), saved_policy=saved_policy)
         except TelemetryStoreUnavailable as exc:
             return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)

@@ -370,12 +370,37 @@ class ApmPolicy(AuditedModel):
         SPECIFIC = "specific", "指定版本"
         GROUPED = "grouped", "按版本"
 
+    class ScopeMode(models.TextChoices):
+        SERVICE = "service", "单服务"
+        SERVICES = "services", "多服务"
+        APPLICATION = "application", "按应用"
+
+    class EndpointMode(models.TextChoices):
+        SERVICE = "service", "服务整体"
+        SELECTED = "selected", "手选端点"
+        ALL = "all", "全部端点"
+
+    class InstanceMode(models.TextChoices):
+        ALL = "all", "不按实例拆"
+        GROUPED = "grouped", "按实例"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=256)
     service = models.ForeignKey(ApmService, on_delete=models.CASCADE, related_name="policies")
+    scope_mode = models.CharField(max_length=16, choices=ScopeMode.choices, default=ScopeMode.SERVICE)
+    service_ids = models.JSONField(default=list, blank=True)
+    application = models.ForeignKey(
+        ApmApplication,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="policies",
+    )
     environment = models.CharField(max_length=256)
     alert_name = models.CharField(max_length=512, blank=True, default="")
     endpoints = models.JSONField(default=list)
+    endpoint_mode = models.CharField(max_length=16, choices=EndpointMode.choices, default=EndpointMode.SERVICE)
+    instance_mode = models.CharField(max_length=16, choices=InstanceMode.choices, default=InstanceMode.ALL)
     version_mode = models.CharField(max_length=16, choices=VersionMode.choices, default=VersionMode.ALL)
     versions = models.JSONField(default=list)
     metric_type = models.CharField(max_length=32, choices=MetricType.choices)
@@ -465,9 +490,18 @@ class ApmPolicyTargetState(AuditedModel):
         ACTIVE = "active", "告警中"
 
     policy = models.ForeignKey(ApmPolicy, on_delete=models.CASCADE, related_name="target_states")
+    service = models.ForeignKey(
+        ApmService,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="policy_target_states",
+    )
     target_key = models.CharField(max_length=512)
     endpoint = models.CharField(max_length=512, blank=True, default="")
     version = models.CharField(max_length=256, blank=True, default="")
+    instance_id = models.CharField(max_length=256, blank=True, default="")
+    missed_rounds = models.PositiveIntegerField(default=0)
     evaluation_cursor = models.CharField(max_length=512, blank=True, default="")
     hit_history = models.CharField(max_length=20, blank=True, default="")
     consecutive_hits = models.PositiveIntegerField(default=0)
@@ -518,6 +552,7 @@ class ApmAlert(AuditedModel):
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE, db_index=True)
     endpoint = models.CharField(max_length=512, blank=True, default="")
     version = models.CharField(max_length=256, blank=True, default="")
+    instance_id = models.CharField(max_length=256, blank=True, default="")
     operator = models.CharField(max_length=150, blank=True, default="")
     handlers = models.JSONField(default=list)
     current_value = models.DecimalField(max_digits=20, decimal_places=6, null=True, blank=True)

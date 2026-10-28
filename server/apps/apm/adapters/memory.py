@@ -264,6 +264,9 @@ class InMemoryMetricStore:
         self._slo_measurements = [(key, item) for key, item in self._slo_measurements if key != query]
         self._slo_measurements.append((query, value))
 
+    def service_endpoints(self, query: ServiceMetricQuery, limit: int = 100) -> tuple:
+        return ()
+
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         return next(value for key, value in self._service_metrics if key == query)
 

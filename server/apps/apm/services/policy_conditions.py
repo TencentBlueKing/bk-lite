@@ -137,7 +137,7 @@ def log_condition_failure(policy, exc: Exception) -> None:
     )
 
 
-def _query_one(service, policy, condition, *, anchor, evaluated_at, endpoint, version, cache):
+def _query_one(service, policy, condition, *, anchor, evaluated_at, endpoint, version, cache, instance_id="", target_service=None):
     view = ConditionView(policy, condition, anchor=anchor)
     try:
         return service.test_query(
@@ -146,6 +146,8 @@ def _query_one(service, policy, condition, *, anchor, evaluated_at, endpoint, ve
             endpoint=endpoint,
             version=version,
             cache=cache,
+            instance_id=instance_id,
+            target_service=target_service,
         )
     except TelemetryStoreUnavailable:
         raise
@@ -225,7 +227,7 @@ def _guard_metric(guard: dict) -> dict:
     }
 
 
-def _guard_value(service, policy, guard, anchor_result, *, evaluated_at, endpoint, version, cache):
+def _guard_value(service, policy, guard, anchor_result, *, evaluated_at, endpoint, version, cache, instance_id="", target_service=None):
     if guard["metric_type"] == REQUEST_COUNT_METRIC:
         if anchor_result.request_count is None:
             return None
@@ -245,6 +247,8 @@ def _guard_value(service, policy, guard, anchor_result, *, evaluated_at, endpoin
             version=version or "",
             include_endpoints=True,
             cache=cache,
+            instance_id=instance_id,
+            service=target_service,
         )
     except TelemetryStoreUnavailable:
         raise
@@ -254,7 +258,7 @@ def _guard_value(service, policy, guard, anchor_result, *, evaluated_at, endpoin
     return service._aggregate(view, red)
 
 
-def evaluate_policy_conditions(service, policy, *, evaluated_at, endpoint, version):
+def evaluate_policy_conditions(service, policy, *, evaluated_at, endpoint, version, instance_id="", target_service=None):
     if endpoint is None:
         endpoint, version = service._targets(policy)[0]
     conditions = effective_conditions(policy)
@@ -271,6 +275,8 @@ def evaluate_policy_conditions(service, policy, *, evaluated_at, endpoint, versi
         endpoint=endpoint,
         version=version,
         cache=cache,
+        instance_id=instance_id,
+        target_service=target_service,
     )
     rows = [_condition_row(str(anchor.get("ref") or "a"), anchor_result)]
     if anchor_result.data_state in _UNDECIDED:
@@ -287,6 +293,8 @@ def evaluate_policy_conditions(service, policy, *, evaluated_at, endpoint, versi
             endpoint=endpoint,
             version=version,
             cache=cache,
+            instance_id=instance_id,
+            target_service=target_service,
         )
         rows.append(_condition_row(str(condition.get("ref") or ""), result))
         if result.data_state in _UNDECIDED or result.value is None:
@@ -305,6 +313,8 @@ def evaluate_policy_conditions(service, policy, *, evaluated_at, endpoint, versi
             endpoint=endpoint,
             version=version,
             cache=cache,
+            instance_id=instance_id,
+            target_service=target_service,
         )
         if observed is None:
             guard_rows.append({"ref": guard["ref"], "value": None, "matched": False})

@@ -617,6 +617,11 @@ export type ApmPolicyCondition = ApmPolicyRegularCondition | ApmPolicyGuardCondi
 export interface ApmPolicyInput {
   name: string;
   service_id: string;
+  scope_mode?: 'service' | 'services' | 'application';
+  service_ids?: string[];
+  application?: string | null;
+  endpoint_mode?: 'service' | 'selected' | 'all';
+  instance_mode?: 'all' | 'grouped';
   organizations: number[];
   environment: string;
   alert_name?: string;
@@ -709,9 +714,12 @@ export type ApmPolicyDryRunVerdict =
   | 'insufficient_samples'
   | 'hold'
   | 'guard_not_met'
-  | 'missing_condition_data';
+  | 'missing_condition_data'
+  | 'service_not_visible';
 
 export interface ApmPolicyDryRunItem {
+  service?: string;
+  instance?: string;
   endpoint: string;
   version: string;
   verdict: ApmPolicyDryRunVerdict;
@@ -802,6 +810,7 @@ export interface ApmAlert {
   environment: string;
   endpoint: string;
   version: string;
+  instance_id?: string;
   metric_type: ApmPolicyMetric;
   severity: ApmPolicySeverity;
   status: 'active' | 'recovered' | 'closed';

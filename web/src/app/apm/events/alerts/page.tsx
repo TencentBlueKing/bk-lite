@@ -422,6 +422,11 @@ export default function ApmAlertsPage() {
       render: (_, item) => (
         <div className={styles.alertServiceCell}>
           <span className={styles.alertServiceName} title={item.service_name}>{item.service_name}</span>
+          {item.instance_id ? (
+            <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.instance_id}>
+              {item.instance_id}
+            </Typography.Text>
+          ) : null}
           <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.endpoint || t('apm.alerts.allEndpoints', '全部端点')}>
             {item.endpoint || t('apm.alerts.allEndpoints', '全部端点')}
           </Typography.Text>

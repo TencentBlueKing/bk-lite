@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 from hashlib import sha256
+from typing import NamedTuple
 from uuid import UUID, uuid4
 
 from django.db import transaction
@@ -13,8 +14,9 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
-from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmPolicy, ApmPolicyTargetState, ApmServiceInstance
+from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmPolicy, ApmPolicyTargetState, ApmService, ApmServiceInstance
 from apps.apm.services.contracts import (
+    InstanceActivityQuery,
     MetricDataState,
     MetricStore,
     NotificationDelivery,
@@ -38,6 +40,64 @@ BASELINE_DAYS_INSUFFICIENT_REASON = "baseline_days_insufficient"
 _EVALUATION_DELAY_RE = re.compile(r"^\s*(\d+)\s*s?\s*$")
 DEFAULT_EVALUATION_DELAY_SECONDS = 60
 MAX_EVALUATION_DELAY_SECONDS = 600
+
+
+class PolicyTarget(NamedTuple):
+    service: ApmService
+    endpoint: str
+    version: str
+    instance_id: str
+    request_count: int
+
+
+def policy_target_key(service_id, endpoint: str, version: str, instance_id: str = "") -> str:
+    return sha256(
+        f"service={service_id}\x00endpoint={endpoint or ''}\x00version={version or ''}\x00instance={instance_id or ''}".encode()
+    ).hexdigest()
+
+
+def effective_endpoint_mode(policy) -> str:
+    mode = getattr(policy, "endpoint_mode", None) or ApmPolicy.EndpointMode.SERVICE
+    if mode == ApmPolicy.EndpointMode.SERVICE and list(getattr(policy, "endpoints", None) or []):
+        return ApmPolicy.EndpointMode.SELECTED
+    return mode
+
+
+def policy_organization_ids(policy) -> set[int]:
+    override = getattr(policy, "_scope_organization_ids", None)
+    if override is not None:
+        return {int(item) for item in override}
+    if not getattr(policy, "pk", None):
+        return set()
+    return set(policy.organization_links.values_list("organization", flat=True))
+
+
+def service_visible_to_policy(policy, service) -> bool:
+    """策略没有组织时沿用旧行为；有组织则服务必须与之相交，否则本轮跳过。"""
+    policy_orgs = policy_organization_ids(policy)
+    if not policy_orgs:
+        return True
+    service_orgs = set(service.organization_links.values_list("organization", flat=True))
+    return bool(policy_orgs & service_orgs)
+
+
+def scope_services(policy) -> list[ApmService]:
+    mode = getattr(policy, "scope_mode", None) or ApmPolicy.ScopeMode.SERVICE
+    if mode == ApmPolicy.ScopeMode.SERVICES:
+        ordered = [str(item) for item in (getattr(policy, "service_ids", None) or [])]
+        found = {
+            str(item.id): item for item in ApmService.objects.filter(id__in=ordered, archived_at__isnull=True).prefetch_related("organization_links")
+        }
+        return [found[item] for item in ordered if item in found]
+    if mode == ApmPolicy.ScopeMode.APPLICATION and getattr(policy, "application_id", None):
+        return list(
+            ApmService.objects.filter(application_id=policy.application_id, archived_at__isnull=True)
+            .prefetch_related("organization_links")
+            .order_by("normalized_namespace", "normalized_name", "id")
+        )
+    return [policy.service]
+
+
 SEVERITY_LEVEL = {
     ApmPolicy.Severity.CRITICAL: "0",
     ApmPolicy.Severity.ERROR: "1",
@@ -221,14 +281,13 @@ class DjangoApmPolicyService:
         return sum(values, Decimal(0)) / Decimal(len(values))
 
     @staticmethod
-    def _targets(policy: ApmPolicy) -> list[tuple[str, str]]:
-        endpoints = list(policy.endpoints or []) or [""]
+    def _version_values(policy: ApmPolicy, service) -> list[str]:
         if policy.version_mode == ApmPolicy.VersionMode.SPECIFIC:
-            versions = list(policy.versions or [])
-        elif policy.version_mode == ApmPolicy.VersionMode.GROUPED:
+            return list(policy.versions or [])
+        if policy.version_mode == ApmPolicy.VersionMode.GROUPED:
             versions = list(
                 ApmServiceInstance.objects.filter(
-                    service=policy.service,
+                    service=service,
                     environment=policy.environment,
                     archived_at__isnull=True,
                 )
@@ -237,10 +296,13 @@ class DjangoApmPolicyService:
                 .values_list("version", flat=True)
                 .distinct()[:100]
             )
-            if not versions:
-                versions = [""]
-        else:
-            versions = [""]
+            return versions or [""]
+        return [""]
+
+    @staticmethod
+    def _targets(policy: ApmPolicy) -> list[tuple[str, str]]:
+        endpoints = list(policy.endpoints or []) or [""]
+        versions = DjangoApmPolicyService._version_values(policy, policy.service)
         return [(endpoint, version) for endpoint in endpoints for version in versions][:MAX_POLICY_TARGETS]
 
     def _target_limit(self, policy: ApmPolicy) -> int:
@@ -249,8 +311,8 @@ class DjangoApmPolicyService:
         return MAX_POLICY_TARGETS
 
     @staticmethod
-    def _target_key(endpoint: str, version: str) -> str:
-        return sha256(f"endpoint={endpoint}\x00version={version}".encode()).hexdigest()
+    def _target_key(service_id, endpoint: str, version: str, instance_id: str = "") -> str:
+        return policy_target_key(service_id, endpoint, version, instance_id)
 
     def _read_window(
         self,
@@ -262,16 +324,31 @@ class DjangoApmPolicyService:
         version: str,
         include_endpoints: bool,
         cache: dict | None = None,
+        instance_id: str = "",
+        service=None,
     ):
+        target = service or policy.service
         slow = getattr(policy, "slow_threshold_ms", None) or None
         apdex = getattr(policy, "apdex_threshold_ms", None) or None
-        key = (started_at, ended_at, endpoint or "", version or "", slow, apdex, include_endpoints)
+        key = (
+            str(getattr(target, "id", "") or ""),
+            target.namespace,
+            target.name,
+            started_at,
+            ended_at,
+            endpoint or "",
+            version or "",
+            instance_id or "",
+            slow,
+            apdex,
+            include_endpoints,
+        )
         if cache is not None and key in cache:
             return cache[key]
         red = self.metric_store.service_red(
             ServiceMetricQuery(
-                service_namespace=policy.service.namespace,
-                service_name=policy.service.name,
+                service_namespace=target.namespace,
+                service_name=target.name,
                 environment=policy.environment,
                 started_at=started_at,
                 ended_at=ended_at,
@@ -281,6 +358,7 @@ class DjangoApmPolicyService:
                 version=version or "",
                 slow_threshold_ms=slow,
                 apdex_threshold_ms=apdex,
+                instance_id=instance_id or "",
             )
         )
         if cache is not None:
@@ -379,9 +457,19 @@ class DjangoApmPolicyService:
         endpoint: str | None = None,
         version: str | None = None,
         cache: dict | None = None,
+        instance_id: str = "",
+        target_service=None,
     ) -> PolicyQueryResult:
         if isinstance(policy, ApmPolicy) and not uses_legacy_evaluation(policy):
-            return evaluate_policy_conditions(self, policy, evaluated_at=evaluated_at, endpoint=endpoint, version=version)
+            return evaluate_policy_conditions(
+                self,
+                policy,
+                evaluated_at=evaluated_at,
+                endpoint=endpoint,
+                version=version,
+                instance_id=instance_id,
+                target_service=target_service,
+            )
         target_endpoint, target_version = (endpoint, version) if endpoint is not None else self._targets(policy)[0]
         window = max(policy.metric_window, 1)
         window_end = evaluated_at - evaluation_delay()
@@ -394,6 +482,8 @@ class DjangoApmPolicyService:
             version=target_version or "",
             include_endpoints=True,
             cache=cache,
+            instance_id=instance_id,
+            service=target_service,
         )
         current_value = self._aggregate(policy, current)
         if current_value is None:
@@ -431,6 +521,8 @@ class DjangoApmPolicyService:
                 endpoint=target_endpoint or "",
                 version=target_version or "",
                 cache=cache,
+                instance_id=instance_id,
+                target_service=target_service,
             )
         offset = self._baseline_offset(policy, window)
         if offset is None:
@@ -456,6 +548,8 @@ class DjangoApmPolicyService:
             version=target_version or "",
             include_endpoints=False,
             cache=cache,
+            instance_id=instance_id,
+            service=target_service,
         )
         baseline_value = self._aggregate(policy, baseline)
         if baseline_value is None or self._below_min_samples(policy, baseline):
@@ -518,6 +612,8 @@ class DjangoApmPolicyService:
         endpoint: str,
         version: str,
         cache: dict | None = None,
+        instance_id: str = "",
+        target_service=None,
     ) -> PolicyQueryResult:
         amount = int(policy.compare_offset_amount or 0)
         windows = tuple((current_start - timedelta(days=day), window_end - timedelta(days=day)) for day in range(1, max(amount, 0) + 1))
@@ -535,7 +631,15 @@ class DjangoApmPolicyService:
                 reason=BASELINE_DAYS_INSUFFICIENT_REASON,
                 baseline_days_used=0,
             )
-        reds = self._read_baseline_days(policy, windows, endpoint=endpoint, version=version, cache=cache)
+        reds = self._read_baseline_days(
+            policy,
+            windows,
+            endpoint=endpoint,
+            version=version,
+            cache=cache,
+            instance_id=instance_id,
+            target_service=target_service,
+        )
         usable = []
         for red in reds:
             if not self._baseline_day_usable(policy, red):
@@ -595,12 +699,30 @@ class DjangoApmPolicyService:
             baseline_days_used=used,
         )
 
-    def _read_baseline_days(self, policy: ApmPolicy, windows, *, endpoint: str, version: str, cache: dict | None = None):
+    def _read_baseline_days(
+        self,
+        policy: ApmPolicy,
+        windows,
+        *,
+        endpoint: str,
+        version: str,
+        cache: dict | None = None,
+        instance_id: str = "",
+        target_service=None,
+    ):
         if not self._baseline_days_fallback:
             reader = getattr(self.metric_store, "service_red_by_day", None)
             if reader is not None:
                 try:
-                    query = self._metric_query(policy, started_at=windows[-1][0], ended_at=windows[0][1], endpoint=endpoint, version=version)
+                    query = self._metric_query(
+                        policy,
+                        started_at=windows[-1][0],
+                        ended_at=windows[0][1],
+                        endpoint=endpoint,
+                        version=version,
+                        instance_id=instance_id,
+                        service=target_service,
+                    )
                     reds = tuple(reader(query, windows))
                     if len(reds) != len(windows):
                         raise TelemetryStoreUnavailable("baseline")
@@ -621,6 +743,8 @@ class DjangoApmPolicyService:
                         version=version,
                         include_endpoints=False,
                         cache=cache,
+                        instance_id=instance_id,
+                        service=target_service,
                     )
                 )
         except Exception as exc:
@@ -628,10 +752,11 @@ class DjangoApmPolicyService:
             raise TelemetryStoreUnavailable("baseline") from None
         return tuple(reds)
 
-    def _metric_query(self, policy, *, started_at, ended_at, endpoint, version) -> ServiceMetricQuery:
+    def _metric_query(self, policy, *, started_at, ended_at, endpoint, version, instance_id: str = "", service=None) -> ServiceMetricQuery:
+        target = service or policy.service
         return ServiceMetricQuery(
-            service_namespace=policy.service.namespace,
-            service_name=policy.service.name,
+            service_namespace=target.namespace,
+            service_name=target.name,
             environment=policy.environment,
             started_at=started_at,
             ended_at=ended_at,
@@ -641,6 +766,7 @@ class DjangoApmPolicyService:
             version=version or "",
             slow_threshold_ms=getattr(policy, "slow_threshold_ms", None) or None,
             apdex_threshold_ms=getattr(policy, "apdex_threshold_ms", None) or None,
+            instance_id=instance_id or "",
         )
 
     @staticmethod
@@ -724,6 +850,146 @@ class DjangoApmPolicyService:
             "threshold": None,
         }
 
+    def _log_scope_failure(self, policy, stage: str, exc: Exception) -> None:
+        proxy = RuntimeError(type(exc).__name__)
+        logger.warning(
+            "event=apm_policy_scope_failed policy_id=%s failed_stage=%s error_type=%s",
+            "" if getattr(policy, "pk", None) is None else str(policy.pk),
+            stage,
+            type(exc).__name__,
+            exc_info=(type(proxy), proxy, exc.__traceback__),
+        )
+
+    def _window_bounds(self, policy, evaluated_at: datetime) -> tuple[datetime, datetime]:
+        window = max(policy.metric_window, 1)
+        window_end = evaluated_at - evaluation_delay()
+        return window_end - timedelta(minutes=window), window_end
+
+    def _active_endpoints(self, policy, service, started_at: datetime, ended_at: datetime) -> list[tuple[str, int]]:
+        query = ServiceMetricQuery(
+            service_namespace=service.namespace,
+            service_name=service.name,
+            environment=policy.environment,
+            started_at=started_at,
+            ended_at=ended_at,
+            include_breakdown=False,
+            include_endpoints=False,
+        )
+        try:
+            rows = self.metric_store.service_endpoints(query, limit=MAX_POLICY_TARGETS)
+        except TelemetryStoreUnavailable:
+            raise
+        except Exception as exc:
+            self._log_scope_failure(policy, "service_endpoints", exc)
+            raise TelemetryStoreUnavailable("service_endpoints") from None
+        ranked = [(row.endpoint, int((row.request_rate or 0) * 1_000_000)) for row in rows if row.endpoint]
+        ranked.sort(key=lambda item: -item[1])
+        return ranked
+
+    def _active_instances(self, policy, service, started_at: datetime, ended_at: datetime) -> list[tuple[str, int]]:
+        try:
+            activities = self.metric_store.instance_activity(InstanceActivityQuery(started_at=started_at, ended_at=ended_at))
+        except TelemetryStoreUnavailable:
+            raise
+        except Exception as exc:
+            self._log_scope_failure(policy, "instance_activity", exc)
+            raise TelemetryStoreUnavailable("instance_activity") from None
+        ids = []
+        for item in activities:
+            if item.service_name != service.name or (item.service_namespace or "") != (service.namespace or ""):
+                continue
+            if item.environment != policy.environment or not item.instance_id:
+                continue
+            ids.append(item.instance_id)
+        return [(item, 0) for item in dict.fromkeys(ids)]
+
+    def _expand_service(self, policy, service, *, evaluated_at: datetime):
+        started_at, ended_at = self._window_bounds(policy, evaluated_at)
+        mode = effective_endpoint_mode(policy)
+        if mode == ApmPolicy.EndpointMode.ALL:
+            endpoint_rows = self._active_endpoints(policy, service, started_at, ended_at)
+        elif mode == ApmPolicy.EndpointMode.SELECTED:
+            names = list(policy.endpoints or []) or [""]
+            endpoint_rows = [(name, 0) for name in names]
+        else:
+            endpoint_rows = [("", 0)]
+        versions = self._version_values(policy, service) or [""]
+        if (getattr(policy, "instance_mode", None) or ApmPolicy.InstanceMode.ALL) == ApmPolicy.InstanceMode.GROUPED:
+            instance_rows = self._active_instances(policy, service, started_at, ended_at)
+        else:
+            instance_rows = [("", 0)]
+        product = [
+            PolicyTarget(service, endpoint, version, instance_id, int(endpoint_count or instance_count or 0))
+            for endpoint, endpoint_count in endpoint_rows
+            for version in versions
+            for instance_id, instance_count in instance_rows
+        ]
+        product.sort(key=lambda item: -item.request_count)
+        limit = self._target_limit(policy)
+        return (
+            product[:limit],
+            len(product) > limit,
+            [name for name, _count in endpoint_rows],
+            [item for item, _count in instance_rows],
+        )
+
+    def _close_absent_targets(self, policy, service, *, known_endpoints, known_instances, evaluated_at: datetime, cursor: str) -> None:
+        dynamic_endpoints = effective_endpoint_mode(policy) == ApmPolicy.EndpointMode.ALL
+        dynamic_instances = (getattr(policy, "instance_mode", None) or ApmPolicy.InstanceMode.ALL) == ApmPolicy.InstanceMode.GROUPED
+        if not dynamic_endpoints and not dynamic_instances:
+            return
+        endpoint_set = set(known_endpoints)
+        instance_set = set(known_instances)
+        states = list(ApmPolicyTargetState.objects.filter(policy=policy, service=service))
+        for state in states:
+            absent = (dynamic_endpoints and bool(state.endpoint) and state.endpoint not in endpoint_set) or (
+                dynamic_instances and bool(state.instance_id) and state.instance_id not in instance_set
+            )
+            if not absent or state.evaluation_cursor == cursor:
+                continue
+            state.missed_rounds = (state.missed_rounds or 0) + 1
+            state.evaluation_cursor = cursor
+            if state.missed_rounds < (policy.recover_after or 1):
+                state.save(update_fields=["missed_rounds", "evaluation_cursor", "updated_at"])
+                continue
+            if state.status == ApmPolicyTargetState.Status.ACTIVE and state.active_alert_id:
+                result = self._query_result(
+                    policy,
+                    value=None,
+                    breached=False,
+                    evaluated_at=evaluated_at,
+                    data_state=MetricDataState.AVAILABLE,
+                    series=(),
+                )
+                self._record_event(
+                    policy,
+                    state,
+                    result,
+                    evaluated_at,
+                    state.active_alert_id,
+                    ApmEvent.Action.RECOVERED,
+                    {"severity": state.current_severity or ApmPolicy.Severity.WARNING, "comparator": "gt", "value": ""},
+                )
+            state.delete()
+
+    @staticmethod
+    def _invisible_item(service) -> dict:
+        return {
+            "service": service.name,
+            "instance": "",
+            "endpoint": "",
+            "version": "",
+            "verdict": "service_not_visible",
+            "current_value": None,
+            "baseline_value": None,
+            "compared_value": None,
+            "request_count": None,
+            "matched_threshold": None,
+            "reason": "服务不在策略组织可见范围",
+            "hit_history_text": "",
+            "baseline_days_used": None,
+        }
+
     def dry_run(
         self,
         policy: ApmPolicy,
@@ -732,19 +998,41 @@ class DjangoApmPolicyService:
         saved_policy: ApmPolicy | None = None,
     ) -> dict:
         """只读复用 test_query。不写目标状态、告警、事件、快照或通知。"""
-        targets = self._targets(policy)
         states = {}
         if saved_policy is not None and getattr(saved_policy, "pk", None):
-            states = {(state.endpoint, state.version): state for state in saved_policy.target_states.all()}
+            states = {
+                (str(state.service_id or ""), state.endpoint, state.version, getattr(state, "instance_id", "") or ""): state
+                for state in saved_policy.target_states.all()
+            }
         items = []
-        for endpoint, version in targets[:DRY_RUN_TARGET_LIMIT]:
-            result = self.test_query(policy, evaluated_at=evaluated_at, endpoint=endpoint, version=version)
-            state = states.get((endpoint, version))
+        expanded: list[PolicyTarget] = []
+        scope_truncated = False
+        for service in scope_services(policy):
+            if not service_visible_to_policy(policy, service):
+                items.append(self._invisible_item(service))
+                continue
+            targets, capped, _endpoints, _instances = self._expand_service(policy, service, evaluated_at=evaluated_at)
+            scope_truncated = scope_truncated or capped
+            expanded.extend(targets)
+        for target in expanded[:DRY_RUN_TARGET_LIMIT]:
+            result = self.test_query(
+                policy,
+                evaluated_at=evaluated_at,
+                endpoint=target.endpoint,
+                version=target.version,
+                instance_id=target.instance_id,
+                target_service=target.service,
+            )
+            state = states.get((str(target.service.id), target.endpoint, target.version, target.instance_id))
+            if state is None:
+                state = states.get(("", target.endpoint, target.version, target.instance_id))
             verdict = self._dry_run_verdict(result, state)
             history_text = self._hit_history_text(policy, state, result)
             item = {
-                "endpoint": endpoint,
-                "version": version,
+                "service": target.service.name,
+                "instance": target.instance_id,
+                "endpoint": target.endpoint,
+                "version": target.version,
                 "verdict": verdict,
                 "current_value": self._decimal_text(result.current_value),
                 "baseline_value": self._decimal_text(result.baseline_value),
@@ -783,8 +1071,8 @@ class DjangoApmPolicyService:
             "result_unit": resolve_result_unit(policy),
             "slow_threshold_ms": getattr(policy, "slow_threshold_ms", None),
             "apdex_threshold_ms": getattr(policy, "apdex_threshold_ms", None),
-            "total_targets": len(targets),
-            "truncated": len(targets) > DRY_RUN_TARGET_LIMIT,
+            "total_targets": len(expanded),
+            "truncated": scope_truncated or len(expanded) > DRY_RUN_TARGET_LIMIT,
             "items": items,
         }
 
@@ -853,62 +1141,102 @@ class DjangoApmPolicyService:
             return f"本轮命中 1 / {needed}（{window} 轮内）"
         return f"近 {window} 轮命中 {counted} / {needed}"
 
-    def evaluate(self, policy_id: UUID, *, evaluated_at: datetime) -> None:
-        policy = ApmPolicy.objects.select_related("service").prefetch_related("organization_links").get(id=policy_id)
+    def evaluate(self, policy_id: UUID, *, evaluated_at: datetime, service_id=None) -> None:
+        policy = ApmPolicy.objects.select_related("service", "application").prefetch_related("organization_links").get(id=policy_id)
         if not policy.is_enabled:
             return
         cursor = self._cursor(evaluated_at)
-        targets = self._targets(policy)
-        for index, (endpoint, version) in enumerate(targets):
-            if index >= self._target_limit(policy):
-                break
-            target_key = self._target_key(endpoint, version)
-            state, _ = ApmPolicyTargetState.objects.get_or_create(
-                policy=policy,
-                target_key=target_key,
-                defaults={"endpoint": endpoint, "version": version},
-            )
-            if state.evaluation_cursor == cursor:
+        services = scope_services(policy)
+        if service_id is not None:
+            services = [item for item in services if str(item.id) == str(service_id)]
+        for service in services:
+            if not service_visible_to_policy(policy, service):
                 continue
-            try:
-                result = self.test_query(policy, evaluated_at=evaluated_at, endpoint=endpoint, version=version)
-            except Exception:
-                ApmPolicyTargetState.objects.filter(policy=policy, target_key=target_key).exclude(evaluation_cursor=cursor).update(
-                    last_failed_at=timezone.now()
-                )
-                raise
+            targets, _capped, known_endpoints, known_instances = self._expand_service(policy, service, evaluated_at=evaluated_at)
+            for target in targets:
+                self._evaluate_target(policy, target, evaluated_at=evaluated_at, cursor=cursor)
+            self._close_absent_targets(
+                policy,
+                service,
+                known_endpoints=known_endpoints,
+                known_instances=known_instances,
+                evaluated_at=evaluated_at,
+                cursor=cursor,
+            )
 
-            with transaction.atomic():
-                locked_policy = (
-                    ApmPolicy.objects.select_related("service").prefetch_related("organization_links").select_for_update().get(id=policy_id)
-                )
-                state, _ = ApmPolicyTargetState.objects.select_for_update().get_or_create(
+    def _evaluate_target(self, policy, target: PolicyTarget, *, evaluated_at: datetime, cursor: str) -> None:
+        target_key = self._target_key(target.service.id, target.endpoint, target.version, target.instance_id)
+        state, _ = ApmPolicyTargetState.objects.get_or_create(
+            policy=policy,
+            target_key=target_key,
+            defaults={
+                "endpoint": target.endpoint,
+                "version": target.version,
+                "instance_id": target.instance_id,
+                "service": target.service,
+            },
+        )
+        if state.evaluation_cursor == cursor:
+            return
+        try:
+            result = self.test_query(
+                policy,
+                evaluated_at=evaluated_at,
+                endpoint=target.endpoint,
+                version=target.version,
+                instance_id=target.instance_id,
+                target_service=target.service,
+            )
+        except Exception:
+            ApmPolicyTargetState.objects.filter(policy=policy, target_key=target_key).exclude(evaluation_cursor=cursor).update(
+                last_failed_at=timezone.now()
+            )
+            raise
+
+        with transaction.atomic():
+            locked_policy = (
+                ApmPolicy.objects.select_related("service", "application")
+                .prefetch_related("organization_links")
+                .select_for_update(of=("self",))
+                .get(id=policy.id)
+            )
+            state, _ = ApmPolicyTargetState.objects.select_for_update().get_or_create(
+                policy=locked_policy,
+                target_key=target_key,
+                defaults={
+                    "endpoint": target.endpoint,
+                    "version": target.version,
+                    "instance_id": target.instance_id,
+                    "service": target.service,
+                },
+            )
+            if not locked_policy.is_enabled or state.evaluation_cursor == cursor or locked_policy.updated_at != policy.updated_at:
+                return
+            state.service = target.service
+            state.instance_id = target.instance_id
+            state.endpoint = target.endpoint
+            state.version = target.version
+            state.missed_rounds = 0
+            active_alert = ApmAlert.objects.filter(external_id=state.active_alert_id).first() if state.active_alert_id else None
+            evaluation_threshold = self._evaluation_threshold(
+                locked_policy,
+                state,
+                result,
+            )
+            event_snapshot = self._advance_target(locked_policy, state, result, evaluated_at)
+            alert = event_snapshot.alert if event_snapshot is not None else active_alert
+            if alert is not None:
+                ApmAlertMetricSnapshotStore.record(
+                    alert=alert,
+                    event=event_snapshot.event if event_snapshot is not None else None,
                     policy=locked_policy,
-                    target_key=target_key,
-                    defaults={"endpoint": endpoint, "version": version},
+                    result=result,
+                    threshold=evaluation_threshold,
                 )
-                if not locked_policy.is_enabled or state.evaluation_cursor == cursor or locked_policy.updated_at != policy.updated_at:
-                    continue
-                active_alert = ApmAlert.objects.filter(external_id=state.active_alert_id).first() if state.active_alert_id else None
-                evaluation_threshold = self._evaluation_threshold(
-                    locked_policy,
-                    state,
-                    result,
-                )
-                event_snapshot = self._advance_target(locked_policy, state, result, evaluated_at)
-                alert = event_snapshot.alert if event_snapshot is not None else active_alert
-                if alert is not None:
-                    ApmAlertMetricSnapshotStore.record(
-                        alert=alert,
-                        event=event_snapshot.event if event_snapshot is not None else None,
-                        policy=locked_policy,
-                        result=result,
-                        threshold=evaluation_threshold,
-                    )
-                state.evaluation_cursor = cursor
-                state.last_succeeded_at = evaluated_at
-                state.last_failed_at = None
-                state.save()
+            state.evaluation_cursor = cursor
+            state.last_succeeded_at = evaluated_at
+            state.last_failed_at = None
+            state.save()
 
     def _advance_target(self, policy, state, result, evaluated_at):
         if result.data_state in {
@@ -1049,8 +1377,9 @@ class DjangoApmPolicyService:
             ApmEvent.Action.CLOSED: "人工关闭",
         }[action]
         title = f"APM {policy.name}{action_label}"
+        target_service = state.service or policy.service
         shown = result.value if result.value is not None else "无数据"
-        description = f"{policy.service.namespace}/{policy.service.name} [{policy.environment}] {metric_label}={shown}"
+        description = f"{target_service.namespace}/{target_service.name} [{policy.environment}] {metric_label}={shown}"
         if result.condition_rows:
             parts = []
             for row in result.condition_rows:
@@ -1063,16 +1392,16 @@ class DjangoApmPolicyService:
             baseline = result.baseline_value if result.baseline_value is not None else "无数据"
             compared = result.value if result.value is not None else "无数据"
             description = (
-                f"{policy.service.namespace}/{policy.service.name} " f"[{policy.environment}] {metric_label} 当前 {current}，对照 {baseline}，变化 {compared}"
+                f"{target_service.namespace}/{target_service.name} " f"[{policy.environment}] {metric_label} 当前 {current}，对照 {baseline}，变化 {compared}"
             )
-        resource_name = f"{policy.service.namespace}/{policy.service.name}".lstrip("/")
+        resource_name = f"{target_service.namespace}/{target_service.name}".lstrip("/")
         alert_defaults = {
             "policy": policy,
-            "service": policy.service,
+            "service": target_service,
             "policy_id_snapshot": str(policy.id),
             "policy_name": policy.name,
-            "service_namespace": policy.service.namespace,
-            "service_name": policy.service.name,
+            "service_namespace": target_service.namespace,
+            "service_name": target_service.name,
             "environment": policy.environment,
             "metric_type": policy.metric_type,
             "severity": threshold["severity"],
@@ -1083,14 +1412,15 @@ class DjangoApmPolicyService:
             "last_event_at": evaluated_at,
             "endpoint": state.endpoint,
             "version": state.version,
+            "instance_id": state.instance_id or "",
         }
         alert, created = ApmAlert.objects.get_or_create(external_id=external_id, defaults=alert_defaults)
         alert.policy = policy
-        alert.service = policy.service
+        alert.service = target_service
         alert.policy_id_snapshot = str(policy.id)
         alert.policy_name = policy.name
-        alert.service_namespace = policy.service.namespace
-        alert.service_name = policy.service.name
+        alert.service_namespace = target_service.namespace
+        alert.service_name = target_service.name
         alert.environment = policy.environment
         alert.metric_type = policy.metric_type
         alert.severity = threshold["severity"]
@@ -1100,6 +1430,7 @@ class DjangoApmPolicyService:
         alert.last_event_at = evaluated_at
         alert.endpoint = state.endpoint
         alert.version = state.version
+        alert.instance_id = state.instance_id or ""
         if action == ApmEvent.Action.RECOVERED:
             alert.status = ApmAlert.Status.RECOVERED
             alert.ended_at = evaluated_at
@@ -1119,10 +1450,10 @@ class DjangoApmPolicyService:
                 "title": title,
                 "description": description,
                 "severity": threshold["severity"],
-                "service": policy.service.name,
+                "service": target_service.name,
                 "item": policy.metric_type,
                 "value": result.value,
-                "resource_id": str(policy.service.id),
+                "resource_id": str(target_service.id),
                 "resource_name": resource_name,
                 "policy_id": str(policy.id),
                 "environment": policy.environment,
@@ -1138,6 +1469,7 @@ class DjangoApmPolicyService:
             endpoint=state.endpoint,
             version=state.version,
             threshold=threshold,
+            service=target_service,
         )
         payload = {
             "event_key": event_id,
@@ -1151,10 +1483,10 @@ class DjangoApmPolicyService:
             "start_time": str(int(alert.started_at.timestamp())),
             "end_time": str(int(evaluated_at.timestamp())) if action in {"recovered", "closed"} else None,
             "rule_id": str(policy.id),
-            "service": policy.service.name,
+            "service": target_service.name,
             "item": policy.metric_type,
             "value": float(result.value) if result.value is not None else None,
-            "resource_id": str(policy.service.id),
+            "resource_id": str(target_service.id),
             "resource_type": "apm_service",
             "resource_name": resource_name,
             "organizations": organizations,
@@ -1163,10 +1495,11 @@ class DjangoApmPolicyService:
                 "policy_id": str(policy.id),
                 "policy_name": policy.name,
                 "environment": policy.environment,
-                "service_namespace": policy.service.namespace,
-                "service_name": policy.service.name,
+                "service_namespace": target_service.namespace,
+                "service_name": target_service.name,
                 "endpoint": state.endpoint,
                 "version": state.version,
+                **({"instance": state.instance_id} if state.instance_id else {}),
                 "compare_mode": policy.compare_mode or ApmPolicy.CompareMode.ABSOLUTE,
                 "compare_offset_amount": policy.compare_offset_amount,
                 "metric_type": policy.metric_type,

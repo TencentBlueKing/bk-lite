@@ -36,6 +36,7 @@ import { useTranslation } from '@/utils/i18n';
 import { HandledRequestError } from '@/utils/request';
 import { formatUserName } from '@/utils/userDisplay';
 import type {
+  ApmApplication,
   ApmCompareMode,
   ApmCompareValueKind,
   ApmNotificationChannel,
@@ -98,6 +99,7 @@ interface PolicyEditorValues extends Omit<
   recovery_value: number | null;
   extra_conditions: ExtraConditionEditor[];
   guards: GuardEditor[];
+  scope_environment?: string;
 }
 
 const SEVERITIES: Array<{ value: ApmPolicySeverity; i18nKey: string; color: string }> = [
@@ -112,6 +114,11 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   organizations: [],
   alert_name: '${service} ${metric} ${comparator} ${threshold}',
   endpoints: [],
+  scope_mode: 'service',
+  endpoint_mode: 'selected',
+  instance_mode: 'all',
+  service_ids: [],
+  scope_environment: '',
   metric_type: 'error_rate',
   evaluation_interval: 1,
   metric_window: 5,
@@ -222,10 +229,12 @@ const VERDICT_KEY = {
   hold: 'apm.policies.verdictHold',
   guard_not_met: 'apm.policies.verdictGuardNotMet',
   missing_condition_data: 'apm.policies.verdictMissingConditionData',
+  service_not_visible: 'apm.policies.verdictServiceNotVisible',
 } as const;
 
 const TEMPLATE_VARIABLES = [
   { name: '${service}', i18nKey: 'apm.policies.variableService' },
+  { name: '${instance}', i18nKey: 'apm.policies.variableInstance' },
   { name: '${endpoint}', i18nKey: 'apm.policies.variableEndpoint' },
   { name: '${version}', i18nKey: 'apm.policies.variableVersion' },
   { name: '${metric}', i18nKey: 'apm.policies.variableMetric' },
@@ -236,6 +245,22 @@ const TEMPLATE_VARIABLES = [
   { name: '${trigger_at}', i18nKey: 'apm.policies.variableTriggeredAt' },
   { name: '${group_by}', i18nKey: 'apm.policies.variableGroupBy' },
 ];
+
+function scopePayload(values: PolicyEditorValues): Partial<ApmPolicyInput> {
+  const scopeMode = values.scope_mode || 'service';
+  const endpointMode = values.endpoint_mode || 'selected';
+  const instanceMode = values.instance_mode || 'all';
+  const legacy = scopeMode === 'service' && instanceMode === 'all' && endpointMode !== 'all';
+  if (legacy) return {};
+  return {
+    scope_mode: scopeMode,
+    endpoint_mode: endpointMode,
+    instance_mode: instanceMode,
+    endpoints: endpointMode === 'selected' ? values.endpoints || [] : [],
+    ...(scopeMode === 'services' ? { service_ids: values.service_ids || [] } : {}),
+    ...(scopeMode === 'application' && values.application ? { application: values.application } : {}),
+  };
+}
 
 function encodeServiceScope(serviceId: string, environment: string) {
   return `${serviceId}:${encodeURIComponent(environment)}`;
@@ -652,6 +677,12 @@ function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): Poli
     no_data_severity: policy.no_data_severity,
     no_data_alert_name: policy.no_data_alert_name || defaultNoDataAlertName,
     endpoints: policy.endpoints,
+    scope_mode: policy.scope_mode || 'service',
+    service_ids: policy.service_ids || [],
+    application: policy.application || undefined,
+    scope_environment: policy.environment,
+    endpoint_mode: policy.endpoint_mode || (policy.endpoints.length ? 'selected' : 'service'),
+    instance_mode: policy.instance_mode || 'all',
     handlers: policy.handlers || [],
     notification_targets: policy.notification_targets.map((target) => ({
       channel_id: target.channel_id,
@@ -704,6 +735,7 @@ function buildMetricPreviewPayload(
     no_data_severity: '',
     no_data_alert_name: '',
     notification_targets: [],
+    ...scopePayload(values),
   };
 }
 
@@ -732,6 +764,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     getPolicy,
     getServiceRed,
     getServices,
+    getApplications,
     isLoading,
     previewPolicy,
     dryRunPolicy,
@@ -739,6 +772,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   } = useApmApi();
   const [form] = Form.useForm<PolicyEditorValues>();
   const serviceScope = Form.useWatch('service_scope', form);
+  const scopeMode = Form.useWatch('scope_mode', form) || 'service';
+  const endpointMode = Form.useWatch('endpoint_mode', form) || 'selected';
+  const instanceMode = Form.useWatch('instance_mode', form) || 'all';
   const metricType = Form.useWatch('metric_type', form) ?? 'error_rate';
   const compareMode = Form.useWatch('compare_mode', form) ?? 'absolute';
   const compareOffsetAmount = Form.useWatch('compare_offset_amount', form);
@@ -772,6 +808,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const organizationKey = (organizations || []).join(',');
   const policyName = Form.useWatch('name', form);
   const [services, setServices] = useState<ApmService[]>([]);
+  const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [channels, setChannels] = useState<ApmNotificationChannel[]>([]);
   const [recipients, setRecipients] = useState<ApmNotificationRecipient[]>([]);
   const [channelState, setChannelState] = useState<NotificationDirectoryState>('loading');
@@ -962,6 +999,21 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     };
   }, [getServiceRed, serviceScope]);
 
+  useEffect(() => {
+    if (scopeMode !== 'application' || !getApplications) return undefined;
+    let cancelled = false;
+    void getApplications()
+      .then((items) => {
+        if (!cancelled) setApplications(items);
+      })
+      .catch(() => {
+        if (!cancelled) setApplications([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getApplications, scopeMode]);
+
   const serviceOptions = useMemo(() => {
     const activeOptions = services
       .filter((item) => !item.archived_at)
@@ -1135,7 +1187,16 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   });
 
   const buildPayload = (values: PolicyEditorValues): ApmPolicyInput | null => {
-    const scope = decodeServiceScope(values.service_scope);
+    const scopeMode = values.scope_mode || 'service';
+    const decoded = decodeServiceScope(values.service_scope || '');
+    const applicationMatch = applications.find((item) => item.id === values.application);
+    const scopedService = scopeMode === 'services'
+      ? values.service_ids?.[0] || ''
+      : scopeMode === 'application'
+        ? services.find((item) => !item.archived_at && item.application_id === applicationMatch?.application_id)?.id || ''
+        : decoded.serviceId;
+    const scopedEnvironment = scopeMode === 'service' ? decoded.environment : values.scope_environment || '';
+    const scope = { serviceId: scopedService, environment: scopedEnvironment };
     const compareKind = resolvedCompareKind(values.metric_type, values.compare_mode, values.compare_value_kind);
     const thresholds = normalizeThresholds(values.metric_type, compareKind, values.thresholds);
     if (!thresholds.length) {
@@ -1201,6 +1262,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         }))
         : [],
       ...(conditions ? { conditions } : {}),
+      ...scopePayload(values),
     };
   };
 
@@ -1427,6 +1489,49 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       status: 'process' as const,
       description: (
         <div className={styles.stepContent}>
+          <Form.Item name="scope_mode" label={t('apm.policies.scopeMode', '范围模式')}>
+            <Select
+              options={[
+                { value: 'service', label: t('apm.policies.scopeService', '单服务') },
+                { value: 'services', label: t('apm.policies.scopeServices', '多服务') },
+                { value: 'application', label: t('apm.policies.scopeApplication', '按应用') },
+              ]}
+            />
+          </Form.Item>
+          {scopeMode === 'services' ? (
+            <Form.Item name="service_ids" label={t('apm.policies.serviceIds', '服务列表')} rules={[{ required: true, message: t('apm.policies.serviceRequired', '请选择服务') }]}>
+              <Select
+                mode="multiple"
+                showSearch
+                optionFilterProp="label"
+                options={services.filter((item) => !item.archived_at).map((item) => ({
+                  value: item.id,
+                  label: `${item.namespace ? `${item.namespace} / ` : ''}${item.name}`,
+                }))}
+              />
+            </Form.Item>
+          ) : null}
+          {scopeMode === 'application' ? (
+            <Form.Item name="application" label={t('apm.policies.application', '应用')} rules={[{ required: true, message: t('apm.policies.serviceRequired', '请选择服务') }]}>
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={applications.map((item) => ({ value: item.id, label: item.name }))}
+              />
+            </Form.Item>
+          ) : null}
+          {scopeMode !== 'service' ? (
+            <Form.Item name="scope_environment" label={t('apm.policies.scopeEnvironment', '环境')} rules={[{ required: true, message: t('apm.policies.serviceRequired', '请选择服务') }]}>
+              <Select
+                showSearch
+                options={[...new Set(services.flatMap((item) => (item.environment_views || []).map((view) => view.environment).filter(Boolean)))].map((environment) => ({
+                  value: environment,
+                  label: environment,
+                }))}
+              />
+            </Form.Item>
+          ) : null}
+          {scopeMode === 'service' ? (
           <Form.Item name="service_scope" label={t('apm.common.service', '服务')} rules={[{ required: true, message: t('apm.policies.serviceRequired', '请选择服务') }]}>
             <Select
               showSearch
@@ -1446,6 +1551,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               }}
             />
           </Form.Item>
+          ) : null}
           <Form.Item
             name="organizations"
             label={t('apm.policies.organizations', '所属组织')}
@@ -1475,6 +1581,19 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                 : t('apm.policies.selectOrganizationFirst', '请先选择所属组织')}
             />
           </Form.Item>
+          <Form.Item name="endpoint_mode" label={t('apm.policies.endpointMode', '端点模式')}>
+            <Select
+              options={[
+                { value: 'service', label: t('apm.policies.endpointModeService', '服务整体') },
+                { value: 'selected', label: t('apm.policies.endpointModeSelected', '手选端点') },
+                { value: 'all', label: t('apm.policies.endpointModeAll', '全部端点') },
+              ]}
+              onChange={(value) => {
+                if (value !== 'selected') form.setFieldValue('endpoints', []);
+              }}
+            />
+          </Form.Item>
+          {endpointMode === 'selected' ? (
           <Form.Item name="endpoints" label={t('apm.common.endpoint', '端点')} extra={t('apm.policies.endpointScopeHint', '不选则按服务级别监控（整体聚合）')}>
             <Select
               mode="multiple"
@@ -1486,6 +1605,19 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                 ? t('apm.policies.endpointPlaceholder', '选择端点，不选表示全部端点')
                 : t('apm.policies.selectServiceFirst', '请先选择服务')}
               disabled={!serviceScope}
+            />
+          </Form.Item>
+          ) : null}
+          <Form.Item
+            name="instance_mode"
+            label={t('apm.policies.instanceMode', '实例维度')}
+            extra={instanceMode === 'grouped' ? t('apm.policies.instanceModeHint', '按实例判定会一台一条告警，建议只对核心服务开') : undefined}
+          >
+            <Select
+              options={[
+                { value: 'all', label: t('apm.policies.instanceModeAll', '不按实例拆') },
+                { value: 'grouped', label: t('apm.policies.instanceModeGrouped', '按实例') },
+              ]}
             />
           </Form.Item>
           <Form.Item name="metric_type" label={t('apm.policies.metric', '指标')} rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}>
@@ -2192,13 +2324,13 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     <Table
                       size="small"
                       pagination={false}
-                      rowKey={(row) => `${row.endpoint}|${row.version}`}
+                      rowKey={(row) => `${row.service || ''}|${row.instance || ''}|${row.endpoint}|${row.version}`}
                       dataSource={dryRun.items}
                       columns={[
                         {
                           title: t('apm.policies.dryRunTarget', '目标'),
                           dataIndex: 'endpoint',
-                          render: (_value, row) => [row.endpoint, row.version].filter(Boolean).join(' ') || t('apm.alerts.serviceLevel', '服务级'),
+                          render: (_value, row) => [row.service, row.instance, row.endpoint, row.version].filter(Boolean).join(' ') || t('apm.alerts.serviceLevel', '服务级'),
                         },
                         {
                           title: t('apm.policies.dryRunVerdict', '结论'),

@@ -349,6 +349,7 @@ class ServiceMetricQuery:
     include_endpoints: bool = True
     slow_threshold_ms: int | None = None
     apdex_threshold_ms: int | None = None
+    instance_id: str = ""
 
 
 @dataclass(frozen=True)
