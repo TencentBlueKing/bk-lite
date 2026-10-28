@@ -649,7 +649,7 @@
       "dependencyHint": "Leave empty to monitor every dependency in the current window, up to 40",
       "dependencyPlaceholder": "Select dependencies, or leave empty for all",
       "verdictServiceNotVisible": "Service not visible",
-      "endpointPlaceholder": "Select endpoints; leave empty for all endpoints",
+      "endpointPlaceholder": "Select endpoints; leave empty to aggregate the whole service",
       "selectServiceFirst": "Select a service first",
       "metricRequired": "Please select a metric",
       "metricWindow": "Aggregation window",

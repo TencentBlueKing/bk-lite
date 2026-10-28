@@ -747,6 +747,7 @@ function buildMetricPreviewPayload(
   const scope = decodeServiceScope(values.service_scope ?? '');
   const compareKind = resolvedCompareKind(values.metric_type, values.compare_mode, values.compare_value_kind);
   const thresholds = normalizeThresholds(values.metric_type, compareKind, values.thresholds);
+  if (values.metric_type === 'slo_burn_rate' && !values.slo) return null;
   if (
     !scope.serviceId
     || !scope.environment
@@ -765,7 +766,7 @@ function buildMetricPreviewPayload(
     organizations: values.organizations || [],
     environment: scope.environment,
     alert_name: values.alert_name || '',
-    endpoints: values.endpoints || [],
+    endpoints: values.metric_type === 'slo_burn_rate' ? [] : values.endpoints || [],
     version_mode: preserveLegacyScope ? loadedPolicy?.version_mode ?? 'all' : 'all',
     versions: preserveLegacyScope ? loadedPolicy?.versions ?? [] : [],
     metric_type: values.metric_type,
@@ -783,6 +784,13 @@ function buildMetricPreviewPayload(
     no_data_alert_name: '',
     notification_targets: [],
     ...scopePayload(values),
+    ...(values.metric_type === 'slo_burn_rate'
+      ? {
+        slo: values.slo,
+        burn_long_window_minutes: values.burn_long_window_minutes ?? null,
+        burn_short_window_minutes: values.burn_short_window_minutes ?? null,
+      }
+      : {}),
   };
 }
 
@@ -833,6 +841,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const evaluationInterval = Form.useWatch('evaluation_interval', form);
   const metricWindow = Form.useWatch('metric_window', form);
   const aggregation = Form.useWatch('aggregation', form);
+  const sloId = Form.useWatch('slo', form);
+  const burnLongWindow = Form.useWatch('burn_long_window_minutes', form);
+  const burnShortWindow = Form.useWatch('burn_short_window_minutes', form);
   const extraConditions = Form.useWatch('extra_conditions', form) ?? [];
   const guardRows = Form.useWatch('guards', form) ?? [];
   const templateRows = useMemo(() => {
@@ -1287,6 +1298,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     compareKind,
     minRequestCount,
     thresholds: watchedThresholds || [],
+    sloId,
+    burnLongWindow,
+    burnShortWindow,
   });
 
   const buildPayload = (values: PolicyEditorValues): ApmPolicyInput | null => {
@@ -1663,6 +1677,12 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   form.setFieldValue('service_scope', encodeServiceScope(selected.service_id, selected.environment));
                   form.setFieldValue('scope_mode', 'service');
                   form.setFieldValue('scope_environment', selected.environment);
+                  const currentOrganizations = form.getFieldValue('organizations') || [];
+                  if (currentOrganizations.length) return;
+                  const service = services.find((item) => item.id === selected.service_id);
+                  if (service?.organization_ids?.length) {
+                    form.setFieldValue('organizations', service.organization_ids);
+                  }
                 }}
               />
             </Form.Item>
@@ -1718,7 +1738,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               options={serviceOptions}
               placeholder={t('apm.common.selectService', '选择服务')}
               onChange={(value) => {
-                form.setFieldValue('endpoints', []);
+                if (form.getFieldValue('endpoint_mode') === 'selected') {
+                  form.setFieldValue('endpoints', []);
+                }
                 setPreview(null);
                 const currentOrganizations = form.getFieldValue('organizations') || [];
                 if (currentOrganizations.length) return;
@@ -1803,9 +1825,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                 { value: 'selected', label: t('apm.policies.endpointModeSelected', '手选端点') },
                 { value: 'all', label: t('apm.policies.endpointModeAll', '全部端点') },
               ]}
-              onChange={(value) => {
-                if (value !== 'selected') form.setFieldValue('endpoints', []);
-              }}
             />
           </Form.Item>
           {endpointMode === 'selected' ? (
@@ -1817,7 +1836,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               optionFilterProp="label"
               options={endpointOptions}
               placeholder={serviceScope
-                ? t('apm.policies.endpointPlaceholder', '选择端点，不选表示全部端点')
+                ? t('apm.policies.endpointPlaceholder', '选择端点，不选则按服务整体聚合')
                 : t('apm.policies.selectServiceFirst', '请先选择服务')}
               disabled={!serviceScope}
             />

@@ -649,7 +649,7 @@
       "dependencyHint": "不选则监控当前窗全部依赖，最多 40 条",
       "dependencyPlaceholder": "选择依赖，不选表示全部",
       "verdictServiceNotVisible": "服务不可见",
-      "endpointPlaceholder": "选择端点，不选表示全部端点",
+      "endpointPlaceholder": "选择端点，不选则按服务整体聚合",
       "selectServiceFirst": "请先选择服务",
       "metricRequired": "请选择指标",
       "metricWindow": "汇聚周期",
