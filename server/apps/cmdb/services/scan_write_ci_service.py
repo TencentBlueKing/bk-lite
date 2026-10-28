@@ -342,7 +342,7 @@ class ScanWriteCiService:
                         }
                     )
                 continue
-            backfill_hit_identities(family_run, dict(refined), controller_result)
+            backfill_hit_identities(family_run, dict(refined), controller_result, selected=batch)
             for hit, model_id, _row in batch:
                 hit.refresh_from_db()
                 if hit.inst_uuid:
