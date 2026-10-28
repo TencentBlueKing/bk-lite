@@ -93,6 +93,9 @@ class ScanTaskListSerializer(AuthSerializer):
             execution = executions[0] if executions else None
         if execution is None:
             return None
+        from apps.cmdb.services.scan_trigger_service import recover_due_scan_execution
+
+        execution = recover_due_scan_execution(execution)
         return {
             "id": execution.id,
             "status": execution.status,
@@ -341,6 +344,8 @@ class ScanHitSerializer(UsernameSerializer):
             "attached_inst_uuid",
             "error_code",
             "unmatch_reason",
+            "confidence",
+            "evidence",
             "snapshot",
             "created_at",
             "updated_at",

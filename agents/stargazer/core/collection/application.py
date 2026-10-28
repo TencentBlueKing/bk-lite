@@ -15,6 +15,8 @@ from core.collection.constants import (
     DEFAULT_MAX_ACTIVE_TARGETS,
     DEFAULT_MONITORING_MAX_ACTIVE_TARGETS,
     DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS,
+    DEFAULT_SCAN_JOB_MAX_IN_FLIGHT,
+    DEFAULT_SCAN_MAX_ACTIVE_TARGETS,
     DEFAULT_TARGET_TASK_WINDOW,
 )
 from core.collection.contracts import TargetExecutorSettings
@@ -68,6 +70,8 @@ class CollectionApplicationSettings:
     configuration_max_active_targets: int = DEFAULT_CONFIGURATION_MAX_ACTIVE_TARGETS
     monitoring_max_active_targets: int = DEFAULT_MONITORING_MAX_ACTIVE_TARGETS
     network_topology_max_active_targets: int = DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS
+    scan_max_active_targets: int = DEFAULT_SCAN_MAX_ACTIVE_TARGETS
+    scan_job_max_in_flight: int = DEFAULT_SCAN_JOB_MAX_IN_FLIGHT
     target_task_window: int = DEFAULT_TARGET_TASK_WINDOW
     sync_sdk_max_in_flight: int = 16
     remote_job_max_in_flight: int = 20
@@ -100,6 +104,7 @@ class CollectionApplicationSettings:
             self.configuration_max_active_targets,
             self.monitoring_max_active_targets,
             self.network_topology_max_active_targets,
+            self.scan_max_active_targets,
         )
         if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in workload_limits):
             raise ValueError("workload target limits must be positive integers")
@@ -114,6 +119,7 @@ class CollectionApplicationSettings:
                 self.sync_sdk_max_in_flight,
                 self.remote_job_max_in_flight,
                 self.default_async_max_in_flight,
+                self.scan_job_max_in_flight,
             )
         ):
             raise ValueError("capacity group limits must be greater than zero")
@@ -157,6 +163,11 @@ class CollectionApplicationSettings:
                 DEFAULT_MONITORING_MAX_ACTIVE_TARGETS,
             ),
             network_topology_max_active_targets=network_topology_max_active_targets,
+            scan_max_active_targets=concurrency_limit_from_env(
+                "SCAN_MAX_ACTIVE_TARGETS",
+                DEFAULT_SCAN_MAX_ACTIVE_TARGETS,
+            ),
+            scan_job_max_in_flight=int(os.getenv("SCAN_JOB_MAX_IN_FLIGHT", str(DEFAULT_SCAN_JOB_MAX_IN_FLIGHT))),
             target_task_window=concurrency_limit_from_env("TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW),
             sync_sdk_max_in_flight=int(os.getenv("SYNC_SDK_MAX_IN_FLIGHT", "16")),
             remote_job_max_in_flight=int(os.getenv("REMOTE_JOB_MAX_IN_FLIGHT", "20")),
@@ -195,6 +206,8 @@ class CollectionApplication:
         resource_sampler=None,
     ) -> None:
         self.settings = settings or CollectionApplicationSettings()
+        self._schedule = schedule
+        self._scan_publisher = None
         self._redis = redis_client
         self._metrics = CollectionMetrics()
         if plugin_factory is None:
@@ -244,11 +257,14 @@ class CollectionApplication:
                 WorkloadClass.CONFIGURATION: self.settings.configuration_max_active_targets,
                 WorkloadClass.MONITORING: self.settings.monitoring_max_active_targets,
                 WorkloadClass.NETWORK_TOPOLOGY: self.settings.network_topology_max_active_targets,
+                WorkloadClass.SCAN: self.settings.scan_max_active_targets,
             },
             capacity_group_limits={
                 "sync_sdk": self.settings.sync_sdk_max_in_flight,
                 "remote_job": self.settings.remote_job_max_in_flight,
                 "default": self.settings.default_async_max_in_flight,
+                "scan": self.settings.scan_max_active_targets,
+                "scan_job": self.settings.scan_job_max_in_flight,
             },
             metrics=self._metrics,
         )
@@ -311,6 +327,51 @@ class CollectionApplication:
         self._submission_counts[status] = self._submission_counts.get(status, 0) + 1
         return submission
 
+    async def submit_scan(self, payload: dict) -> Submission:
+        from core.scan.collect_plugin import collect_scan_plugin
+        from core.scan.events import NatsScanPublisher
+        from core.scan.orchestrator import ScanDiscoverRequest, ScanOrchestrator
+        from core.scan.process_list import list_scan_processes
+
+        request = ScanDiscoverRequest.from_payload(payload or {})
+        hosts = request.hosts
+        if request.execution_id in (None, ""):
+            raise ValueError("execution_id is required")
+        if not hosts:
+            raise ValueError("at least one target is required")
+        publisher = self._scan_publisher or NatsScanPublisher(request.credential_result_subject)
+        host_login = request.host_login
+
+        async def list_processes(host: str):
+            return await list_scan_processes(host, host_login, access_point=request.access_point)
+
+        async def collect_plugin(hit, pool):
+            return await collect_scan_plugin(
+                hit,
+                pool,
+                host_login=host_login,
+                collect_task_id=request.execution_id,
+            )
+
+        orchestrator = ScanOrchestrator(
+            self._scheduler,
+            publisher,
+            list_processes=list_processes if host_login else None,
+            collect_plugin=collect_plugin,
+        )
+        self._schedule(
+            orchestrator.run(request),
+            name=f"scan-discover:{request.execution_id}",
+        )
+        submission = Submission(
+            task_id=f"scan:{request.execution_id}",
+            status=SubmissionStatus.ACCEPTED,
+            fence=1,
+            summary={"target_count": len(hosts), "workload_class": request.workload_class.value},
+        )
+        self._submission_counts[submission.status.value] = self._submission_counts.get(submission.status.value, 0) + 1
+        return submission
+
     async def shutdown(self) -> None:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self.settings.shutdown_grace_seconds
@@ -345,6 +406,7 @@ class CollectionApplication:
                 "configured_configuration_max_active_targets": self.settings.configuration_max_active_targets,
                 "configured_monitoring_max_active_targets": self.settings.monitoring_max_active_targets,
                 "configured_network_topology_max_active_targets": self.settings.network_topology_max_active_targets,
+                "configured_scan_max_active_targets": self.settings.scan_max_active_targets,
                 "configured_target_task_window": self.settings.target_task_window,
                 "target_slots_peak": self._scheduler.peak,
                 "network_topology_active_targets": self._scheduler.topology_active,
@@ -563,6 +625,7 @@ class CollectionApplication:
             "configuration_max_active_targets": self.settings.configuration_max_active_targets,
             "monitoring_max_active_targets": self.settings.monitoring_max_active_targets,
             "network_topology_max_active_targets": self.settings.network_topology_max_active_targets,
+            "scan_max_active_targets": self.settings.scan_max_active_targets,
             "target_task_window": self.settings.target_task_window,
             **capacity,
             "event_loop_lag_seconds": self._loop_lag.latest_seconds,

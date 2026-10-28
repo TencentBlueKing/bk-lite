@@ -32,22 +32,29 @@ import ScanDeviceTypePicker from './ScanDeviceTypePicker';
 import ScanUnmatchedGroupTable from './ScanUnmatchedGroupTable';
 import { summarizeScanBatchResult, type ScanBatchKind } from './scanHitBatch';
 import {
+  DEFAULT_SCAN_CONFIDENCE_FILTER,
   EMPTY_SOID_KEY,
   GROUP_PAGE_SIZE,
   HIT_FETCH_SIZE,
+  SCAN_CONFIDENCE_LEVELS,
   SCAN_PERMISSION_PATH,
   SOID_LIBRARY_PATH,
   TABLE_PAGE_SIZE,
   TERMINAL_STATUSES,
+  countHitsByConfidence,
   displayValue,
+  filterHitsByConfidence,
   groupDbUnmatchedByFamily,
   groupNetworkUnmatchedBySoid,
+  hitHasCollectCredential,
   hitSoid,
+  isLinkMonitorFamilyTab,
+  isScanMiddlewareType,
   oidLibraryUrl,
   portLibraryUrl,
   snapshotText,
   sortedMatchedFamilies,
-  isScanMiddlewareType,
+  type ScanConfidenceLevel,
   type ScanExecutionSummary,
   type ScanHitItem,
 } from './scanHits';
@@ -86,6 +93,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
   const [matchedPage, setMatchedPage] = useState(1);
   const [networkGroupPage, setNetworkGroupPage] = useState(1);
   const [dbGroupPage, setDbGroupPage] = useState(1);
+  const [confidenceFilter, setConfidenceFilter] = useState<ScanConfidenceLevel[]>(DEFAULT_SCAN_CONFIDENCE_FILTER);
 
   // SOID 指纹弹窗
   const [fingerprintOpen, setFingerprintOpen] = useState(false);
@@ -191,6 +199,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     setMatchedPage(1);
     setNetworkGroupPage(1);
     setDbGroupPage(1);
+    setConfidenceFilter(DEFAULT_SCAN_CONFIDENCE_FILTER);
     fetchAllHits(execution.id).catch((error) => {
       console.error(error);
       message.error(t('Scan.noHits'));
@@ -233,7 +242,12 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     return unmatchedHits.filter((hit) => hit.unmatch_reason === 'credential_failed');
   }, [unmatchedHits]);
 
-  const matchedFamilies = useMemo(() => sortedMatchedFamilies(matchedHits), [matchedHits]);
+  const confidenceCounts = useMemo(() => countHitsByConfidence(matchedHits), [matchedHits]);
+  const visibleMatchedHits = useMemo(
+    () => filterHitsByConfidence(matchedHits, confidenceFilter),
+    [confidenceFilter, matchedHits]
+  );
+  const matchedFamilies = useMemo(() => sortedMatchedFamilies(visibleMatchedHits), [visibleMatchedHits]);
 
   useEffect(() => {
     if (!matchedFamilies.length) {
@@ -246,9 +260,28 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
   }, [familyTab, matchedFamilies]);
 
   const familyHits = useMemo(
-    () => matchedHits.filter((hit) => (hit.family_model_id || hit.protocol) === familyTab),
-    [familyTab, matchedHits]
+    () => visibleMatchedHits.filter((hit) => (hit.family_model_id || hit.protocol) === familyTab),
+    [familyTab, visibleMatchedHits]
   );
+
+  const toggleConfidence = (level: ScanConfidenceLevel, checked: boolean) => {
+    setConfidenceFilter((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(level);
+      } else {
+        next.delete(level);
+      }
+      return SCAN_CONFIDENCE_LEVELS.filter((item) => next.has(item));
+    });
+    setMatchedPage(1);
+  };
+
+  const confidenceLabel = (level: ScanConfidenceLevel) => {
+    if (level === 'high') return t('Scan.confidenceHigh');
+    if (level === 'medium') return t('Scan.confidenceMedium');
+    return t('Scan.confidenceLow');
+  };
 
   const networkUnmatchedGroups = useMemo(
     () => groupNetworkUnmatchedBySoid(networkUnmatchedHits),
@@ -323,10 +356,6 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     }
 
     const selectedHits = hits.filter((item) => selectedHitIds.includes(item.id));
-    if (kind === 'monitor' && selectedHits.some((item) => isScanMiddlewareType(item.family_model_id))) {
-      message.warning(t('Scan.middlewarePushMonitorHint'));
-      return;
-    }
     const dbUnmatchedSelected = selectedHits.filter((item) => item.unmatch_reason === 'credential_failed');
     const networkUnmatchedSelected = selectedHits.filter(
       (item) => item.unmatch_reason && item.unmatch_reason !== 'credential_failed'
@@ -498,6 +527,20 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
 
   const matchedColumns = useMemo(() => {
     const hostCol = { title: t('Scan.host'), dataIndex: 'host', key: 'host', render: renderHost };
+    const confidenceCol = {
+      title: t('Scan.confidence'),
+      key: 'confidence',
+      render: (_: unknown, record: ScanHitItem) => {
+        const value = String(record.confidence || 'low');
+        const label =
+          value === 'high' ? t('Scan.confidenceHigh') : value === 'medium' ? t('Scan.confidenceMedium') : t('Scan.confidenceLow');
+        return (
+          <Tag className="!m-0 !rounded !border-[var(--color-border-2)] !bg-[var(--color-fill-1)] !px-1.5 !text-xs !text-[var(--color-text-2)]">
+            {label}
+          </Tag>
+        );
+      },
+    };
     const credentialCol = {
       title: t('Scan.credential'),
       key: 'credential',
@@ -526,6 +569,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
           key: 'osVersion',
           render: (_: unknown, record: ScanHitItem) => snapshotText(record, ['os_version']),
         },
+        confidenceCol,
         credentialCol,
       ];
     }
@@ -548,6 +592,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
           key: 'cmdb_model_id',
           render: (value: string) => value || '--',
         },
+        confidenceCol,
         credentialCol,
       ];
     }
@@ -586,6 +631,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
             return val ? <span className="font-mono text-xs text-[var(--color-text-2)]">{val}</span> : '--';
           },
         },
+        confidenceCol,
         credentialCol,
       ];
     }
@@ -614,6 +660,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
           render: (_: unknown, record: ScanHitItem) =>
             snapshotText(record, ['conf_path', 'config_path', 'install_path', 'bin_path', 'nginx_path']),
         },
+        confidenceCol,
         credentialCol,
       ];
     }
@@ -635,6 +682,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
         key: 'cmdb_model_id',
         render: (value: string) => value || '--',
       },
+      confidenceCol,
       credentialCol,
     ];
   }, [familyTab, t]);
@@ -718,8 +766,9 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
 
   const actionsDisabled = hitsLoading || !canSplitUnmatched;
   const exportDisabled = hitsLoading || isOnlyDbUnmatchedSelected || !selectedHitIds.length || !canSplitUnmatched;
-  const monitorDisabled =
-    exportDisabled || familyTab === 'middleware' || isScanMiddlewareType(familyTab);
+  const collectDisabled = exportDisabled || selectedHits.some((item) => !hitHasCollectCredential(item));
+  const monitorDisabled = exportDisabled;
+  const linkMonitorTab = isLinkMonitorFamilyTab(familyTab);
   const targetCount = activeExecution?.target_count ?? 0;
   const receivedCount = activeExecution?.received_count ?? 0;
   const progressPercent = targetCount ? Math.min(100, Math.round((receivedCount / targetCount) * 100)) : 0;
@@ -758,9 +807,13 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
               </Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
-              <Button loading={batchLoading} disabled={exportDisabled} onClick={() => handleBatch('collect')}>
-                {t('Scan.writeCmdbAndGenerate')}
-              </Button>
+              <Tooltip title={collectDisabled && selectedHits.length ? t('Scan.generateCollectNeedsCredential') : undefined}>
+                <span>
+                  <Button loading={batchLoading} disabled={collectDisabled} onClick={() => handleBatch('collect')}>
+                    {t('Scan.writeCmdbAndGenerate')}
+                  </Button>
+                </span>
+              </Tooltip>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Execute']} permissionPath={SCAN_PERMISSION_PATH}>
               <Button
@@ -769,7 +822,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
                 disabled={monitorDisabled}
                 onClick={() => handleBatch('monitor')}
               >
-                {t('Scan.pushMonitor')}
+                {linkMonitorTab ? t('Scan.syncToMonitor') : t('Scan.pushMonitor')}
               </Button>
             </PermissionWrapper>
           </Space>
@@ -874,7 +927,22 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
               ),
               children: (
                 <div>
-                  {!hitsLoading && matchedHits.length === 0 ? (
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-[var(--color-text-3)]">{t('Scan.confidence')}</span>
+                    {SCAN_CONFIDENCE_LEVELS.map((level) => (
+                      <Tag.CheckableTag
+                        key={level}
+                        checked={confidenceFilter.includes(level)}
+                        onChange={(checked) => toggleConfidence(level, checked)}
+                        className="!mr-0 !rounded-md !border !border-[var(--color-border-2)] !px-2.5 !py-0.5 !text-xs"
+                      >
+                        {confidenceLabel(level)}
+                        <span className="ml-1 font-mono">{confidenceCounts[level]}</span>
+                      </Tag.CheckableTag>
+                    ))}
+                    <span className="text-xs text-[var(--color-text-4)]">{t('Scan.confidenceFilterTip')}</span>
+                  </div>
+                  {!hitsLoading && visibleMatchedHits.length === 0 ? (
                     <div className="py-8">
                       <CompactEmptyState description={t('Scan.noHits')} />
                     </div>
@@ -888,7 +956,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
                           setMatchedPage(1);
                         }}
                         items={matchedFamilies.map((family) => {
-                          const count = matchedHits.filter(
+                          const count = visibleMatchedHits.filter(
                             (hit) => (hit.family_model_id || hit.protocol) === family
                           ).length;
                           return {

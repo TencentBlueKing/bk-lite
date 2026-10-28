@@ -201,6 +201,12 @@
               "isNotMenuItem": true
             },
             {
+              "title": "进程指纹",
+              "url": "/cmdb/assetManage/autoDiscovery/featureLibrary/process",
+              "name": "soid_library",
+              "isNotMenuItem": true
+            },
+            {
               "title": "采集工具",
               "icon": "shujumoxingguanli",
               "url": "/cmdb/assetManage/autoDiscovery/featureLibrary/collectionTool",
@@ -421,6 +427,12 @@
             {
               "title": "Port fingerprint",
               "url": "/cmdb/assetManage/autoDiscovery/featureLibrary/port",
+              "name": "soid_library",
+              "isNotMenuItem": true
+            },
+            {
+              "title": "Process fingerprint",
+              "url": "/cmdb/assetManage/autoDiscovery/featureLibrary/process",
               "name": "soid_library",
               "isNotMenuItem": true
             },

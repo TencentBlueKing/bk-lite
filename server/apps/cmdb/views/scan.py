@@ -50,9 +50,7 @@ class ScanTaskViewSet(AuthViewSet):
 
     @HasPermission("auto_collection-View")
     def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        return super().retrieve(request, *args, **kwargs)
 
     @HasPermission("auto_collection-Add")
     def create(self, request, *args, **kwargs):
@@ -73,7 +71,10 @@ class ScanTaskViewSet(AuthViewSet):
         return WebUtils.response_success()
 
     def _get_execution(self, eid):
-        return get_object_or_404(ScanExecution.objects.select_related("task"), pk=eid)
+        from apps.cmdb.services.scan_trigger_service import recover_due_scan_execution
+
+        execution = get_object_or_404(ScanExecution.objects.select_related("task"), pk=eid)
+        return recover_due_scan_execution(execution)
 
     @HasPermission("auto_collection-Execute")
     @action(methods=["post"], detail=True, url_path="exec")

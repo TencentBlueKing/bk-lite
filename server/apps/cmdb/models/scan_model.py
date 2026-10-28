@@ -11,6 +11,13 @@ SCAN_DATABASE_FAMILY = "database"
 SCAN_DATABASE_TYPES = frozenset({"mysql", "postgresql", "mssql"})
 SCAN_MIDDLEWARE_FAMILY = "middleware"
 SCAN_MIDDLEWARE_TYPES = frozenset({"nginx", "tomcat", "kafka", "zookeeper", "rabbitmq", "consul", "etcd"})
+SCAN_WRITE_DATABASE_TYPES = SCAN_DATABASE_TYPES | frozenset({"oracle", "influxdb", "redis", "mongodb", "es"})
+SCAN_WRITE_MIDDLEWARE_TYPES = SCAN_MIDDLEWARE_TYPES | frozenset(
+    {"apache", "openresty", "memcached", "minio", "haproxy", "iis", "activemq", "rocketmq", "squid", "nacos"}
+)
+SCAN_JOB_COLLECT_TYPES = SCAN_MIDDLEWARE_TYPES | frozenset(
+    {"apache", "openresty", "memcached", "minio", "haproxy", "iis", "activemq", "rocketmq", "squid", "host"}
+)
 SCAN_JOB_OPTIONAL_FAMILIES = frozenset({"host", SCAN_MIDDLEWARE_FAMILY})
 SCAN_AGENT_CREDENTIAL_ID = "agent"
 SCAN_SNMP_VERSIONS = frozenset({"v2", "v2c", "v3"})
@@ -145,7 +152,7 @@ def resolve_scan_task_credential(task, family_model_id: str, credential_id: str)
 
 
 def scan_driver_type_for_model(model_id: str) -> str:
-    if model_id == "host" or model_id in SCAN_MIDDLEWARE_TYPES:
+    if model_id == "host" or model_id in SCAN_WRITE_MIDDLEWARE_TYPES:
         return CollectDriverTypes.JOB
     return CollectDriverTypes.PROTOCOL
 
@@ -155,8 +162,10 @@ def scan_task_type_for_model(model_id: str) -> str:
         return CollectPluginTypes.SNMP
     if model_id == "host":
         return CollectPluginTypes.HOST
-    if model_id in SCAN_MIDDLEWARE_TYPES:
+    if model_id in SCAN_WRITE_MIDDLEWARE_TYPES:
         return CollectPluginTypes.MIDDLEWARE
+    if model_id in {"redis", "mongodb", "es"}:
+        return CollectPluginTypes.DB
     return CollectPluginTypes.PROTOCOL
 
 
@@ -325,6 +334,16 @@ class ScanHit(TimeInfo):
     collect_task_id = models.PositiveIntegerField(null=True, blank=True, default=None, help_text="已生成的采集任务ID")
     error_code = models.CharField(max_length=64, blank=True, default="")
     snapshot = JSONField(default=dict)
+    CONFIDENCE_LOW = "low"
+    CONFIDENCE_MEDIUM = "medium"
+    CONFIDENCE_HIGH = "high"
+    CONFIDENCE_CHOICES = (
+        (CONFIDENCE_LOW, "低"),
+        (CONFIDENCE_MEDIUM, "中"),
+        (CONFIDENCE_HIGH, "高"),
+    )
+    confidence = models.CharField(max_length=16, choices=CONFIDENCE_CHOICES, default=CONFIDENCE_LOW)
+    evidence = JSONField(default=list, help_text="发现证据：port / process / collect")
 
     class Meta:
         verbose_name = "扫描命中"
