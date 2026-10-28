@@ -615,3 +615,90 @@ def test_poll_middleware_port_probe_keeps_matching_types_only(mocker):
     _drain_scan_jobs(execution, mocker)
     model_ids = set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True))
     assert model_ids == {"nginx"}
+
+
+def _expire_batch_and_execution(execution):
+    from datetime import timedelta
+
+    from django.utils.timezone import now
+
+    execution.refresh_from_db()
+    past = now() - timedelta(seconds=1)
+    schedule = dict(execution.schedule or {})
+    schedule["batch_deadline_at"] = past.isoformat()
+    execution.schedule = schedule
+    execution.deadline_at = past
+    execution.save(update_fields=["schedule", "deadline_at", "updated_at"])
+
+
+def _host_and_middleware_task(**overrides):
+    values = {
+        "families": ["host", "middleware"],
+        "credentials": {
+            "host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}],
+            "middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}],
+        },
+        "cloud_region": {"id": 1},
+        "ip_ranges": [{"begin": "10.0.1.1", "end": "10.0.1.1"}],
+    }
+    values.update(overrides)
+    return _scan_task(**values)
+
+
+def test_poll_skipped_host_timeout_enqueues_empty_middleware_and_completes(mocker):
+    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
+    task = _host_and_middleware_task()
+    execution = ScanExecution.objects.create(task=task)
+    mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        return_value=TriggerResult("accepted", 1, 1),
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    host_run = ScanFamilyRun.objects.get(execution=execution, model_id="host")
+    assert host_run.admit_status == ScanFamilyRun.ADMIT_ACCEPTED
+    assert int(host_run.target_count or 0) == 1
+    assert host_run.received_count == 0
+
+    _expire_batch_and_execution(execution)
+    result = poll_scan_finalize(execution.id, execution.claim_token)
+
+    assert result["status"] == ScanExecution.STATUS_COMPLETED
+    execution.refresh_from_db()
+    assert execution.schedule.get("middleware_enqueued") is True
+    host_run.refresh_from_db()
+    assert host_run.received_count == 0
+    assert host_run.admit_status == ScanFamilyRun.ADMIT_ACCEPTED
+    assert not ScanFamilyRun.objects.filter(execution=execution).exclude(model_id="host").exists()
+
+
+def test_poll_skipped_host_batch_waits_while_later_host_batch_unfinished(mocker):
+    mocker.patch("apps.cmdb.services.scan_schedule_service.SCAN_JOB_BATCH_SIZE", 1)
+    mocker.patch("apps.cmdb.services.scan_schedule_service.probe_open_ports", return_value={})
+    task = _host_and_middleware_task(ip_ranges=[{"begin": "10.0.1.1", "end": "10.0.1.2"}])
+    execution = ScanExecution.objects.create(task=task)
+    mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        return_value=TriggerResult("accepted", 1, 1),
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    assert ScanFamilyRun.objects.filter(execution=execution, model_id="host").count() == 1
+
+    _expire_batch_and_execution(execution)
+    result = poll_scan_finalize(execution.id, execution.claim_token)
+
+    assert result["status"] == "waiting"
+    execution.refresh_from_db()
+    assert execution.schedule.get("middleware_enqueued") is False
+    host_runs = list(ScanFamilyRun.objects.filter(execution=execution, model_id="host").order_by("batch_index"))
+    assert len(host_runs) == 2
+    assert host_runs[0].received_count == 0
+    assert host_runs[1].admit_status == ScanFamilyRun.ADMIT_ACCEPTED
+    assert int(host_runs[1].target_count or 0) == 1
+    assert host_runs[1].received_count == 0
+    assert not ScanFamilyRun.objects.filter(execution=execution).exclude(model_id="host").exists()
