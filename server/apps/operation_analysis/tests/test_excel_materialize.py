@@ -814,3 +814,199 @@ def test_result_file_is_not_persisted_after_processing_expires(monkeypatch):
     assert ds.excel_candidate_slot_id == second.id
     runtime = load_excel_runtime(ds, limit=10)
     assert runtime["items"] == [{"name": "a", "value": 1}]
+
+
+@pytest.mark.django_db
+def test_saved_transform_enqueue_failure_stays_recoverable(monkeypatch, django_capture_on_commit_callbacks):
+    """转换配置已保存，但重算任务投递失败时必须留下可补扫的意图。"""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.operation_analysis.services.excel_materialize import build_excel_materialization_payload
+    from apps.operation_analysis.services.excel_materialize.submit import (
+        schedule_resubmit_excel_from_saved_source,
+    )
+    from apps.operation_analysis.tasks.tasks import rescan_pending_excel_materializations_task
+
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    assert ExcelMaterializer().materialize_candidate(slot.id)["ok"] is True
+    ds.refresh_from_db()
+    ds.transform_config = {
+        "enabled": True,
+        "language": "python",
+        "script": "def transform(rows, params):\n    return rows[:1]\n",
+    }
+    ds.save(update_fields=["transform_config", "updated_at"])
+
+    class BoomTask:
+        @staticmethod
+        def delay(datasource_id):
+            raise OSError("broker down")
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks.resubmit_excel_from_saved_source_task",
+        BoomTask,
+    )
+    with django_capture_on_commit_callbacks(execute=True):
+        schedule_resubmit_excel_from_saved_source(ds.id)
+
+    ds.refresh_from_db()
+    runtime = load_excel_runtime(ds, limit=10)
+    assert runtime["items"] == [{"name": "a", "value": 1}]
+    payload = build_excel_materialization_payload(ds)
+
+    rescan_calls = []
+
+    class RecordingTask:
+        @staticmethod
+        def delay(datasource_id):
+            rescan_calls.append(datasource_id)
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks.resubmit_excel_from_saved_source_task",
+        RecordingTask,
+    )
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(updated_at=timezone.now() - timedelta(seconds=120))
+    rescan_pending_excel_materializations_task(older_than_seconds=60)
+
+    warning_text = " ".join(runtime["warnings"])
+    problems = []
+    if resolve_excel_runtime_status(ds) != "processing":
+        problems.append(f"status={resolve_excel_runtime_status(ds)}")
+    if not runtime["warnings"] or ("正在更新" not in warning_text and "updating" not in warning_text.lower()):
+        problems.append(f"warnings={runtime['warnings']}")
+    if payload["can_retry"] is not True:
+        problems.append(f"can_retry={payload['can_retry']}")
+    if rescan_calls != [ds.id]:
+        problems.append(f"rescan_calls={rescan_calls}")
+    if getattr(ds, "excel_resubmit_pending", None) is not True:
+        problems.append(f"excel_resubmit_pending={getattr(ds, 'excel_resubmit_pending', None)}")
+    assert not problems, problems
+
+
+@pytest.mark.django_db
+def test_resubmit_task_clears_pending_flag_after_candidate(monkeypatch):
+    from apps.operation_analysis.tasks.tasks import resubmit_excel_from_saved_source_task
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks.materialize_excel_candidate_task.delay",
+        lambda slot_id: None,
+    )
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    assert ExcelMaterializer().materialize_candidate(slot.id)["ok"] is True
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(excel_resubmit_pending=True)
+
+    result = resubmit_excel_from_saved_source_task(ds.id)
+
+    ds.refresh_from_db()
+    assert result["ok"] is True
+    assert ds.excel_resubmit_pending is False
+    assert ds.excel_candidate_slot_id is not None
+    runtime = load_excel_runtime(ds, limit=10)
+    assert runtime["items"] == [{"name": "a", "value": 1}]
+
+
+@pytest.mark.django_db
+def test_resubmit_task_clears_pending_flag_when_source_missing():
+    from apps.operation_analysis.tasks.tasks import resubmit_excel_from_saved_source_task
+
+    ds = _excel_datasource()
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(excel_resubmit_pending=True)
+
+    result = resubmit_excel_from_saved_source_task(ds.id)
+
+    ds.refresh_from_db()
+    assert result["ok"] is False
+    assert result["code"] == "excel_resubmit_failed"
+    assert ds.excel_resubmit_pending is False
+
+
+@pytest.mark.django_db
+def test_resubmit_task_clears_pending_flag_when_source_type_leaves_excel():
+    from apps.operation_analysis.tasks.tasks import resubmit_excel_from_saved_source_task
+
+    ds = _excel_datasource()
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(
+        excel_resubmit_pending=True,
+        source_type=DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
+    )
+
+    result = resubmit_excel_from_saved_source_task(ds.id)
+
+    ds.refresh_from_db()
+    assert result == {"ok": False, "code": "not_excel", "datasource_id": ds.id}
+    assert ds.excel_resubmit_pending is False
+
+
+@pytest.mark.django_db
+def test_unchanged_transform_does_not_mark_resubmit_pending(
+    authenticated_user, monkeypatch, django_capture_on_commit_callbacks
+):
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    ds = _excel_datasource(name="excel-unchanged-transform", transform_config={})
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    assert ExcelMaterializer().materialize_candidate(slot.id)["ok"] is True
+    ds.refresh_from_db()
+
+    calls = []
+
+    class RecordingTask:
+        @staticmethod
+        def delay(datasource_id):
+            calls.append(datasource_id)
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks.resubmit_excel_from_saved_source_task",
+        RecordingTask,
+    )
+
+    request = APIRequestFactory().put("/operation_analysis/api/data_source/1/", data={}, format="json")
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    request.user = authenticated_user
+    force_authenticate(request, user=authenticated_user)
+    payload = {
+        "name": ds.name,
+        "rest_api": "",
+        "source_type": "excel",
+        "desc": "只改描述",
+        "connection": None,
+        "connection_config": {},
+        "query_config": ds.query_config or {},
+        "transform_config": {},
+        "params": [],
+        "chart_type": ["table"],
+        "field_schema": [],
+        "groups": [1],
+        "namespaces": [],
+        "tag": [],
+    }
+    serializer = DataSourceAPIModelSerializer(ds, context={"request": request}, data=payload)
+    assert serializer.is_valid(), serializer.errors
+    with django_capture_on_commit_callbacks(execute=True):
+        serializer.save()
+
+    ds.refresh_from_db()
+    assert ds.excel_resubmit_pending is False
+    assert calls == []
+
+    payload["transform_config"] = {
+        "enabled": True,
+        "language": "python",
+        "script": "def transform(rows, params):\n    return rows\n",
+    }
+    changed = DataSourceAPIModelSerializer(ds, context={"request": request}, data=payload)
+    assert changed.is_valid(), changed.errors
+    with django_capture_on_commit_callbacks(execute=True):
+        changed.save()
+
+    ds.refresh_from_db()
+    assert ds.excel_resubmit_pending is True
+    assert calls == [ds.id]
+    assert resolve_excel_runtime_status(ds) == "processing"

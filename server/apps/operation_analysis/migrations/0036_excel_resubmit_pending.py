@@ -8,8 +8,8 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.AddField(
-            model_name="excelmaterializationslot",
-            name="processing_started_at",
-            field=models.DateTimeField(blank=True, null=True, verbose_name="开始处理时间"),
+            model_name="datasourceapimodel",
+            name="excel_resubmit_pending",
+            field=models.BooleanField(default=False, verbose_name="Excel 重算待投递"),
         ),
     ]

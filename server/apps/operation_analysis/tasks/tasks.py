@@ -139,6 +139,7 @@ def resubmit_excel_from_saved_source_task(datasource_id: int) -> dict:
         return {"ok": False, "code": "datasource_missing", "datasource_id": datasource_id}
 
     if datasource.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+        DataSourceAPIModel.objects.filter(pk=datasource.id).update(excel_resubmit_pending=False)
         return {"ok": False, "code": "not_excel", "datasource_id": datasource_id}
 
     try:
@@ -148,8 +149,10 @@ def resubmit_excel_from_saved_source_task(datasource_id: int) -> dict:
             schedule=True,
         )
     except ValueError as exc:
+        DataSourceAPIModel.objects.filter(pk=datasource.id).update(excel_resubmit_pending=False)
         return {"ok": False, "code": "excel_resubmit_failed", "message": str(exc)}
 
+    # 候选创建事务里已经清掉标记。这里不再无条件清，避免盖掉提交之后新的投递失败。
     return {"ok": True, "slot_id": slot.id, "generation": slot.generation}
 
 
@@ -257,9 +260,32 @@ def rescan_pending_excel_materializations_task(
                 slot_id,
                 type(exc).__name__,
             )
+
+    pending_resubmits = list(
+        DataSourceAPIModel.objects.filter(
+            source_type=DataSourceAPIModel.SOURCE_TYPE_EXCEL,
+            excel_resubmit_pending=True,
+            updated_at__lte=cutoff,
+        )
+        .order_by("id")
+        .values_list("id", flat=True)[: max(1, int(limit))]
+    )
+    resubmit_enqueued = 0
+    for resubmit_id in pending_resubmits:
+        try:
+            resubmit_excel_from_saved_source_task.delay(int(resubmit_id))
+            resubmit_enqueued += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[ExcelMaterialize] rescan resubmit enqueue failed datasource_id=%s err=%s",
+                resubmit_id,
+                type(exc).__name__,
+            )
     return {
         "scanned": len(pending),
         "enqueued": enqueued,
+        "resubmit_scanned": len(pending_resubmits),
+        "resubmit_enqueued": resubmit_enqueued,
         "processing_clock_filled": processing["clock_filled"],
         "processing_expired": processing["expired"],
         "sweep": sweep_abandoned_excel_materializations(limit=limit),

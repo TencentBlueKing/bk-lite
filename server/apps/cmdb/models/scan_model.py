@@ -300,6 +300,16 @@ class ScanFamilyRun(TimeInfo):
         unique_together = (("execution", "model_id", "driver_type", "batch_index"),)
 
 
+class ScanFamilyRunProgress(TimeInfo):
+    family_run = models.ForeignKey(ScanFamilyRun, on_delete=models.CASCADE, related_name="progress_entries")
+    host = models.CharField(max_length=64)
+
+    class Meta:
+        verbose_name = "扫描族进度地址"
+        verbose_name_plural = verbose_name
+        unique_together = (("family_run", "host"),)
+
+
 class ScanHit(TimeInfo):
     STATUS_SUCCESS = "success"
     STATUS_FAILED = "failed"

@@ -179,6 +179,7 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
         verbose_name="Excel 当前候选槽位",
     )
     excel_materialization_generation = models.PositiveIntegerField(default=0, verbose_name="Excel 物化代数")
+    excel_resubmit_pending = models.BooleanField(default=False, verbose_name="Excel 重算待投递")
     # [内部预留] 当前无产品功能依赖，仅用于历史兼容透传（导入导出/内置数据导入）；前端不暴露、运行时不校验
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
     params = JSONField(help_text="API请求参数", verbose_name="请求参数", blank=True, null=True)

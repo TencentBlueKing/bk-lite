@@ -271,6 +271,25 @@ def _protocol_released(execution: ScanExecution) -> bool:
     return bool(execution.deadline_at and now() >= execution.deadline_at)
 
 
+def _skipped_family_run_ids(schedule) -> set[int]:
+    skipped = set()
+    for item in schedule.get("skipped_family_run_ids") or []:
+        try:
+            skipped.add(int(item))
+        except (TypeError, ValueError):
+            continue
+    return skipped
+
+
+def _remember_skipped_family_run(schedule, family_run) -> None:
+    family_run_id = int(family_run.id)
+    if family_run_id in _skipped_family_run_ids(schedule):
+        return
+    skipped = list(schedule.get("skipped_family_run_ids") or [])
+    skipped.append(family_run_id)
+    schedule["skipped_family_run_ids"] = skipped
+
+
 def _host_queue_finished(execution: ScanExecution, schedule) -> bool:
     if not schedule.get("host_selected"):
         return True
@@ -281,12 +300,21 @@ def _host_queue_finished(execution: ScanExecution, schedule) -> bool:
     host_pending = any(index >= cursor and item.get("model_id") == "host" for index, item in enumerate(queue))
     if host_pending:
         return False
+    skipped = _skipped_family_run_ids(schedule)
     in_flight_id = schedule.get("in_flight_family_run_id")
     if in_flight_id:
         family_run = ScanFamilyRun.objects.filter(pk=in_flight_id).first()
-        if family_run and family_run.model_id == "host" and not scan_schedule.family_run_finished(family_run):
+        if (
+            family_run
+            and family_run.model_id == "host"
+            and family_run.id not in skipped
+            and not scan_schedule.family_run_finished(family_run)
+        ):
             return False
-    return all(scan_schedule.family_run_finished(family_run) for family_run in execution.family_runs.filter(model_id="host"))
+    return all(
+        scan_schedule.family_run_finished(family_run) or family_run.id in skipped
+        for family_run in execution.family_runs.filter(model_id="host")
+    )
 
 
 def _ensure_job_queue(task: ScanTask, execution: ScanExecution) -> dict:
@@ -400,6 +428,7 @@ def _advance_scan_jobs(task: ScanTask, execution: ScanExecution) -> bool:
             if not _batch_stuck(schedule):
                 return True
             logger.info("[ScanTrigger] 跳过卡住的 JOB 批次 execution=%s family_run=%s", execution.id, family_run.id)
+            _remember_skipped_family_run(schedule, family_run)
         schedule = _clear_in_flight(schedule)
         execution.schedule = schedule
         execution.save(update_fields=["schedule", "updated_at"])
