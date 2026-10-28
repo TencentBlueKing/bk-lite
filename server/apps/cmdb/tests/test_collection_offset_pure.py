@@ -239,3 +239,33 @@ def test_stacked_divisors_match_exhaustive_when_phase_exceeds_scan_limit(monkeyp
         assert all(stop <= 4096 for stop in seen), seen
         assert chosen.offset_minutes == midpoint_expected[period]
         assert chosen.offset_minutes == _exhaustive_best_offset(2, period, midpoint_existing)
+
+
+def test_mixed_long_and_short_cycles_keep_candidate_budget(monkeypatch):
+    """已有 10000 分钟和 30 分钟时，再保存 10000 分钟不能按较小公约数铺满相位。"""
+    from apps.cmdb.services import collection_offset as offset
+
+    seen = []
+    captured = {}
+    real_midpoints = offset._circular_midpoints
+    real_residues = offset._large_phase_residues
+
+    def wrapped_midpoints(positions, modulus):
+        seen.append(len(positions))
+        return real_midpoints(positions, modulus)
+
+    def wrapped_residues(pairs, phase_period, preferred):
+        result = real_residues(pairs, phase_period, preferred)
+        captured["count"] = len(result)
+        return result
+
+    monkeypatch.setattr(offset, "_circular_midpoints", wrapped_midpoints)
+    monkeypatch.setattr(offset, "_large_phase_residues", wrapped_residues)
+    existing = [
+        CollectionSchedule(1, 10000, 20, 0, 5),
+        CollectionSchedule(2, 30, 20, 0, 5),
+    ]
+    chosen = assign_offset(task_id=3, cycle_minutes=10000, target_count=20, existing=existing)
+    assert seen, seen
+    assert max(seen) <= 256 and captured["count"] <= 256, (seen, captured["count"])
+    assert chosen.offset_minutes == 4995
