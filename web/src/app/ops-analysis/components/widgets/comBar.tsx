@@ -360,7 +360,7 @@ const BarChart: React.FC<BarChartProps> = ({
   }
 
   return (
-    <div className="h-full flex flex-row">
+    <div className="mt-2 h-full flex flex-row">
       {/* 图表区域 */}
       <div ref={chartPaneRef} className="flex-1 min-h-0">
         <ReactEcharts
