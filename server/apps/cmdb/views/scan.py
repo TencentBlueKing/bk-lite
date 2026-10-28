@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import Max, Prefetch, Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
@@ -84,7 +85,14 @@ class ScanTaskViewSet(AuthViewSet):
         return WebUtils.response_success()
 
     def _get_execution(self, eid):
-        return get_object_or_404(ScanExecution.objects.select_related("task"), pk=eid)
+        execution = get_object_or_404(ScanExecution.objects.select_related("task"), pk=eid)
+        visible_tasks = self.get_queryset_by_permission(
+            self.request,
+            ScanTask.objects.filter(pk=execution.task_id),
+        )
+        if not visible_tasks.exists():
+            raise Http404
+        return execution
 
     @HasPermission("auto_collection-Execute")
     @action(methods=["post"], detail=True, url_path="exec")

@@ -599,3 +599,109 @@ def test_list_queryset_loads_only_latest_execution(superuser, monkeypatch):
     assert "schedule" in execution.get_deferred_fields()
     empty_summary = ScanTaskListSerializer(blank, context={"request": request}).data["latest_execution"]
     assert empty_summary is None
+
+
+def _scan_execution(name, team, host, port):
+    task = ScanTask.objects.create(name=name, team=team, families=["mysql"])
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    family_run = execution.family_runs.create(model_id="mysql", driver_type="protocol")
+    ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="mysql",
+        host=host,
+        port=port,
+        credential_id="",
+        status=ScanHit.STATUS_SUCCESS,
+    )
+    return task, execution
+
+
+def _raw(response):
+    if hasattr(response, "render"):
+        response.render()
+        return response.rendered_content.decode()
+    return response.content.decode()
+
+
+def test_execution_endpoints_follow_parent_task_scope(authenticated_user, monkeypatch):
+    user = authenticated_user
+    user.is_superuser = False
+    user.group_list = [{"id": 1}]
+    user.permission = {"cmdb": {"auto_collection-View", "auto_collection-Execute"}}
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+    writes = []
+
+    def _write(execution, hit_ids):
+        writes.append(execution.id)
+        return {"written": 1, "skipped": 0, "failed": 0, "items": []}
+
+    monkeypatch.setattr("apps.cmdb.services.scan_write_ci_service.ScanWriteCiService.write", _write)
+    _own_task, own_execution = _scan_execution("org-a-scan", [1], "10.1.1.1", 3306)
+    _foreign_task, foreign_execution = _scan_execution("org-b-scan", [2], "10.9.9.9", 39999)
+
+    detail = ScanTaskViewSet.as_view({"get": "execution_detail"})(
+        _req("get", user, current_team="1"),
+        eid=str(foreign_execution.id),
+    )
+    assert detail.status_code == 404
+    foreign_detail = _raw(detail)
+    assert "org-b-scan" not in foreign_detail
+    assert "10.9.9.9" not in foreign_detail
+    assert "39999" not in foreign_detail
+
+    hits = ScanTaskViewSet.as_view({"get": "execution_hits"})(
+        _req("get", user, query={"page": "1", "page_size": "20"}, current_team="1"),
+        eid=str(foreign_execution.id),
+    )
+    assert hits.status_code == 404
+    foreign_hits = _raw(hits)
+    assert "org-b-scan" not in foreign_hits
+    assert "10.9.9.9" not in foreign_hits
+    assert "39999" not in foreign_hits
+
+    own_detail = ScanTaskViewSet.as_view({"get": "execution_detail"})(
+        _req("get", user, current_team="1"),
+        eid=str(own_execution.id),
+    )
+    assert own_detail.status_code == 200
+    assert _data(own_detail)["task_name"] == "org-a-scan"
+
+    own_hits = ScanTaskViewSet.as_view({"get": "execution_hits"})(
+        _req("get", user, query={"page": "1", "page_size": "20"}, current_team="1"),
+        eid=str(own_execution.id),
+    )
+    assert own_hits.status_code == 200
+    assert "10.1.1.1" in _raw(own_hits)
+
+    write_response = ScanTaskViewSet.as_view({"post": "write_cmdb"})(
+        _req("post", user, data={"hit_ids": [1]}, current_team="1"),
+        eid=str(foreign_execution.id),
+    )
+    assert write_response.status_code == 404
+    assert writes == []
+    assert "org-b-scan" not in _raw(write_response)
+    assert "10.9.9.9" not in _raw(write_response)
+
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [], "instance": []},
+    )
+    no_rule_detail = ScanTaskViewSet.as_view({"get": "execution_detail"})(
+        _req("get", user, current_team="1"),
+        eid=str(own_execution.id),
+    )
+    assert no_rule_detail.status_code == 404
+    no_rule_body = _raw(no_rule_detail)
+    assert "org-a-scan" not in no_rule_body
+    assert "10.1.1.1" not in no_rule_body
+
+    no_rule_hits = ScanTaskViewSet.as_view({"get": "execution_hits"})(
+        _req("get", user, query={"page": "1", "page_size": "20"}, current_team="1"),
+        eid=str(own_execution.id),
+    )
+    assert no_rule_hits.status_code == 404
+    assert "10.1.1.1" not in _raw(no_rule_hits)
