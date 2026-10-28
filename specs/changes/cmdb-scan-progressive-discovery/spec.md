@@ -96,6 +96,7 @@ Status: ready
 - 三阶段需要跑 `*_info` 时，调度模块调用现有插件实现，仍受扫描配额约束，并按命中过滤目标，禁止对全网段再打 7 种中间件脚本。
 - Server 触发改为把网段、指纹快照、可选凭据交给扫描调度，不再为每个模型各 `admit` 一枪全量 `collect_info`。指纹快照在触发时从特征库读取，本轮执行内不变；特征库改动只影响下次执行。
 - 命中仍经现有扫描凭据/结果 subject 回填 `ScanHit`。一、二阶段没有采集凭据时也要回传，使用稳定的阶段结果事件（成功发现 / 不可达），不得要求 `credential_id` 非空才写清单。
+- 三阶段（及未开启的后续阶段）全部结束后 Stargazer 发 `stage=done`。Server 凭此收口，不以「去重 host 是否到齐」作为递进扫描完成条件；墙钟只做保险。SNMP 协议族若仍在跑，等该族 `family_run` 收齐或墙钟到期。Celery 倒计时链丢失时，周期任务 `recover_due_scan_executions` 回收到期或已 done 的 running 执行，不依赖用户打开抽屉。
 - 现有 Server 侧 JOB 切批工作队列（8 IP、协议先打）不再作为中间件发现本体；扫描内调度改由 Stargazer 扫描模块负责。SNMP 成功地址仍可从二阶段登录目标中剔除。
 
 ### 清单、可信度与出口
@@ -115,7 +116,8 @@ Status: ready
 
 - 端口 / 进程指纹：内置同步幂等、用户行不覆盖、停用后本轮不探；进程 Tab CRUD 权限对齐特征库。
 - 扫描触发：不勾数据库仍按特征库探 3306；不勾中间件仍按特征库探 80 并在有主机登录时匹配 nginx 进程；勾选数据库才对命中调用 `mysql_info`。
-- 凭据回传：无 `credential_id` 的端口/进程发现仍写 `ScanHit`；三阶段失败不删该行。
+- 凭据回传：无 `credential_id` 的端口/进程发现仍写 `ScanHit`；三阶段失败不删该行；`stage=done` 标记执行结束并踢收口，不写命中。
+- 收口：`scan_admitted` 后仅 `scan_done`（及协议族收齐）才 `completed`；仅 `received_count` 到齐不得收口；周期任务回收到期 running。
 - 清单序列化：`confidence` / `evidence` 出现在命中详情。
 - 写 CI：用户勾选的低可信 MySQL 可写入；未勾选不写。
 - 生成采集：无库凭据的疑似行拒绝。

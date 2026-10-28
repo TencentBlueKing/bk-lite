@@ -2,6 +2,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 
@@ -34,6 +35,7 @@ SCAN_WALL_CLOCK_MAX = timedelta(hours=2)
 SCAN_DEFAULT_PLUGIN_TIMEOUT = 60
 SCAN_ADMIT_CONCURRENCY = 16
 SCAN_JOB_BATCH_STUCK_FACTOR = 3
+SCAN_RECOVER_BATCH = 50
 _PROTOCOL_DISCOVERY_FAMILIES = frozenset({"network", "physcial_server"})
 
 _TERMINAL = frozenset(
@@ -587,8 +589,25 @@ def _finish_execution(execution, claim_token, terminal_status):
     return {"status": terminal_status, "execution_id": execution.id}
 
 
-def _scan_received_done(execution: ScanExecution) -> bool:
+def _protocol_discovery_pending(execution: ScanExecution) -> bool:
+    family_runs = ScanFamilyRun.objects.filter(execution=execution, model_id__in=_PROTOCOL_DISCOVERY_FAMILIES)
+    for family_run in family_runs:
+        if not scan_schedule.family_run_finished(family_run):
+            return True
+    return False
+
+
+def scan_pipeline_done(execution: ScanExecution) -> bool:
+    schedule = execution.schedule or {}
+    if schedule.get("scan_admitted"):
+        if not schedule.get("scan_done"):
+            return False
+        return not _protocol_discovery_pending(execution)
     return int(execution.target_count or 0) > 0 and int(execution.received_count or 0) >= int(execution.target_count or 0)
+
+
+def _scan_received_done(execution: ScanExecution) -> bool:
+    return scan_pipeline_done(execution)
 
 
 def _scan_timed_out(execution: ScanExecution) -> bool:
@@ -596,7 +615,7 @@ def _scan_timed_out(execution: ScanExecution) -> bool:
 
 
 def recover_due_scan_execution(execution: ScanExecution | None) -> ScanExecution | None:
-    """Celery 倒计时链丢失时，读接口把已到期/已收齐的执行收口。"""
+    """Celery 倒计时链丢失时，把已到期或扫描已结束的执行收口。"""
     if execution is None:
         return None
     if execution.status in _TERMINAL or execution.status == ScanExecution.STATUS_FINALIZING:
@@ -606,6 +625,29 @@ def recover_due_scan_execution(execution: ScanExecution | None) -> ScanExecution
     poll_scan_finalize(execution.id, execution.claim_token)
     execution.refresh_from_db()
     return execution
+
+
+def recover_stuck_scan_executions(*, limit=SCAN_RECOVER_BATCH):
+    """周期补偿：不依赖有人打开抽屉，把到期或已 done 的 running 执行收口。"""
+    try:
+        batch_size = max(int(limit), 0)
+    except (TypeError, ValueError):
+        batch_size = SCAN_RECOVER_BATCH
+    running = ScanExecution.objects.filter(status=ScanExecution.STATUS_RUNNING)
+    due = running.filter(Q(deadline_at__lte=now()) | Q(schedule__scan_done=True)).order_by("id")
+    execution_ids = list(due.values_list("id", flat=True)[:batch_size])
+    recovered = 0
+    for execution_id in execution_ids:
+        execution = ScanExecution.objects.filter(pk=execution_id).first()
+        if execution is None:
+            continue
+        previous = execution.status
+        recover_due_scan_execution(execution)
+        execution.refresh_from_db()
+        if execution.status in _TERMINAL and execution.status != previous:
+            recovered += 1
+    logger.info("event=scan_executions_recovered scanned=%s recovered=%s", len(execution_ids), recovered)
+    return {"scanned": len(execution_ids), "recovered": recovered}
 
 
 def poll_scan_finalize(execution_id, claim_token):

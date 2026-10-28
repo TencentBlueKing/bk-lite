@@ -227,15 +227,71 @@ def test_finalize_with_stale_token_does_not_mutate(mocker):
     assert execution.status == ScanExecution.STATUS_RUNNING
 
 
-def test_poll_completes_when_unique_hosts_received(mocker):
+def _mark_scan_done(execution):
+    schedule = dict(execution.schedule or {})
+    schedule["scan_done"] = True
+    execution.schedule = schedule
+    execution.save(update_fields=["schedule"])
+
+
+def test_poll_does_not_complete_on_received_count_while_scan_admitted(mocker):
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    execution.received_count = 3
+    execution.save(update_fields=["received_count"])
+
+    result = poll_scan_finalize(execution.id, execution.claim_token)
+
+    assert result["status"] == "waiting"
+    execution.refresh_from_db()
+    assert execution.status == ScanExecution.STATUS_RUNNING
+
+
+def test_poll_completes_when_scan_done(mocker):
     task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
     execution = ScanExecution.objects.create(task=task)
     _patch_stargazer(mocker, scan_total=3)
     mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
     trigger_scan_execution(execution.id)
     execution.refresh_from_db()
-    execution.received_count = 3
-    execution.save(update_fields=["received_count"])
+    _mark_scan_done(execution)
+
+    result = poll_scan_finalize(execution.id, execution.claim_token)
+
+    assert result["status"] == ScanExecution.STATUS_COMPLETED
+
+
+def test_poll_waits_when_scan_done_but_protocol_family_pending(mocker):
+    task = _scan_task()
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.collect_service.CollectModelService.push_butch_node_params")
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    _mark_scan_done(execution)
+
+    result = poll_scan_finalize(execution.id, execution.claim_token)
+
+    assert result["status"] == "waiting"
+    execution.refresh_from_db()
+    assert execution.status == ScanExecution.STATUS_RUNNING
+
+
+def test_poll_completes_when_scan_done_and_protocol_family_finished(mocker):
+    task = _scan_task()
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.collect_service.CollectModelService.push_butch_node_params")
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    family_run = ScanFamilyRun.objects.get(execution=execution, model_id="network")
+    family_run.received_count = family_run.target_count
+    family_run.save(update_fields=["received_count"])
+    _mark_scan_done(execution)
 
     result = poll_scan_finalize(execution.id, execution.claim_token)
 
@@ -251,8 +307,7 @@ def test_recover_completes_when_celery_poll_chain_is_lost(mocker):
     mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
     trigger_scan_execution(execution.id)
     execution.refresh_from_db()
-    execution.received_count = 3
-    execution.save(update_fields=["received_count"])
+    _mark_scan_done(execution)
 
     recovered = recover_due_scan_execution(execution)
 
@@ -310,6 +365,62 @@ def test_poll_waits_when_scan_in_progress(mocker):
     assert execution.status == ScanExecution.STATUS_RUNNING
 
 
+def test_recover_stuck_scan_executions_closes_due_without_get(mocker):
+    from datetime import timedelta
+
+    from django.utils.timezone import now
+
+    from apps.cmdb.services.scan_trigger_service import recover_stuck_scan_executions
+
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    execution.deadline_at = now() - timedelta(minutes=1)
+    execution.save(update_fields=["deadline_at"])
+
+    result = recover_stuck_scan_executions()
+
+    execution.refresh_from_db()
+    assert result["recovered"] == 1
+    assert execution.status == ScanExecution.STATUS_TIMED_OUT
+
+
+def test_recover_stuck_scan_executions_closes_scan_done_without_get(mocker):
+    from apps.cmdb.services.scan_trigger_service import recover_stuck_scan_executions
+
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    mocker.patch("apps.cmdb.services.scan_finalize_service.write_scan_execution", return_value={"status": "written"})
+    trigger_scan_execution(execution.id)
+    execution.refresh_from_db()
+    _mark_scan_done(execution)
+
+    result = recover_stuck_scan_executions()
+
+    execution.refresh_from_db()
+    assert result["recovered"] == 1
+    assert execution.status == ScanExecution.STATUS_COMPLETED
+
+
+def test_recover_stuck_scan_executions_ignores_in_progress(mocker):
+    from apps.cmdb.services.scan_trigger_service import recover_stuck_scan_executions
+
+    task = _scan_task(families=["host"], credentials={"host": []}, cloud_region={"id": 1})
+    execution = ScanExecution.objects.create(task=task)
+    _patch_stargazer(mocker, scan_total=3)
+    trigger_scan_execution(execution.id)
+
+    result = recover_stuck_scan_executions()
+
+    execution.refresh_from_db()
+    assert result["recovered"] == 0
+    assert execution.status == ScanExecution.STATUS_RUNNING
+
+
 def test_trigger_network_defaults_missing_snmp_version(mocker):
     task = _scan_task(
         families=["network"],
@@ -333,3 +444,18 @@ def test_trigger_network_defaults_missing_snmp_version(mocker):
     headers = captured[0]
     assert headers.get("cmdbcredential_0_version") == "v2"
     assert headers.get("cmdbcredential_1_version") == "v3"
+
+
+def test_recover_due_scan_executions_task_is_registered(mocker):
+    from apps.cmdb.config import CELERY_BEAT_SCHEDULE
+    from apps.cmdb.tasks import celery_tasks
+
+    recover = mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.recover_stuck_scan_executions",
+        return_value={"scanned": 2, "recovered": 1},
+    )
+    entry = CELERY_BEAT_SCHEDULE["recover_due_scan_executions"]
+    assert entry["task"] == "apps.cmdb.tasks.celery_tasks.recover_due_scan_executions"
+    assert celery_tasks.recover_due_scan_executions.name == entry["task"]
+    assert celery_tasks.recover_due_scan_executions.run() == {"scanned": 2, "recovered": 1}
+    recover.assert_called_once_with()

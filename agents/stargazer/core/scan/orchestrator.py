@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Mapping, Sequence
 
 from core.collection.enums import WorkloadClass
-from core.scan.events import scan_event
+from core.logger import logger, safe_exception_info
+from core.scan.events import scan_done_event, scan_event
 from core.scan.ips import expand_scan_hosts
 from core.scan.process_match import match_process_fingerprints
 from core.scan.tcp_probe import probe_tcp
@@ -83,6 +84,30 @@ class ScanOrchestrator:
         self._collect_plugin = collect_plugin
 
     async def run(self, request: ScanDiscoverRequest) -> dict[str, Any]:
+        status = "success"
+        error_code = ""
+        try:
+            return await self._run_stages(request)
+        except Exception:
+            status = "failed"
+            error_code = "scan_failed"
+            raise
+        finally:
+            await self._publish_done(request.execution_id, status=status, error_code=error_code)
+
+    async def _publish_done(self, execution_id, *, status: str, error_code: str = "") -> None:
+        try:
+            event = scan_done_event(execution_id=execution_id, status=status, error_code=error_code)
+            await self._publisher.publish(event)
+        except Exception as error:
+            logger.error(
+                "event=scan_done_publish_failed execution_id=%s failed_stage=scan_done error_type=%s",
+                execution_id,
+                type(error).__name__,
+                exc_info=safe_exception_info(error),
+            )
+
+    async def _run_stages(self, request: ScanDiscoverRequest) -> dict[str, Any]:
         hosts = request.hosts
         hits: list[dict[str, Any]] = []
 

@@ -111,9 +111,10 @@ async def test_port_stage_emits_success_and_process_upgrades_without_ssh_skips_p
         process_fingerprints=[{"target_type": "mysql", "linux_process": r"mysqld|mariadbd"}],
     )
     await orchestrator.run(request)
-    assert [event["stage"] for event in publisher.events] == ["port"]
+    assert [event["stage"] for event in publisher.events] == ["port", "done"]
     assert publisher.events[0]["target_type"] == "mysql"
     assert publisher.events[0]["status"] == "success"
+    assert publisher.events[-1]["collect_task_id"] == 9
     await scheduler.shutdown()
 
 
@@ -142,7 +143,7 @@ async def test_process_stage_lists_once_and_emits_upgrade():
     await orchestrator.run(request)
     assert listed == ["10.0.1.8"]
     stages = [event["stage"] for event in publisher.events]
-    assert stages == ["port", "process"]
+    assert stages == ["port", "process", "done"]
     await scheduler.shutdown()
 
 
@@ -174,7 +175,8 @@ async def test_collect_stage_only_hits_with_credentials():
     assert collected == [("mysql", "10.0.1.8", 3306, 1)]
     stages = [event["stage"] for event in publisher.events]
     assert "collect" in stages
-    assert all(event["target_type"] != "nginx" or event["stage"] != "collect" for event in publisher.events)
+    assert stages[-1] == "done"
+    assert all(event.get("target_type") != "nginx" or event.get("stage") != "collect" for event in publisher.events)
     await scheduler.shutdown()
 
 
@@ -202,6 +204,7 @@ async def test_collect_failure_keeps_port_event_and_emits_failed():
     stages = [(event["stage"], event["status"]) for event in publisher.events]
     assert ("port", "success") in stages
     assert ("collect", "failed") in stages
+    assert stages[-1] == ("done", "success")
     await scheduler.shutdown()
 
 
@@ -257,6 +260,49 @@ async def test_host_collect_runs_on_port_hit_hosts():
     )
     await orchestrator.run(request)
     assert collected == ["host"]
+    assert publisher.events[-1]["stage"] == "done"
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_closed_ports_still_publish_done():
+    scheduler = _scheduler()
+    publisher = MemoryScanPublisher()
+
+    async def probe(host, port, timeout=1.0):
+        del host, port, timeout
+        return False
+
+    orchestrator = ScanOrchestrator(scheduler, publisher, probe=probe)
+    request = ScanDiscoverRequest(
+        execution_id=31,
+        ip_ranges=[{"begin": "10.0.1.8", "end": "10.0.1.10"}],
+        port_fingerprints=[{"port": 3306, "target_type": "mysql"}],
+    )
+    await orchestrator.run(request)
+    assert [event["stage"] for event in publisher.events] == ["done"]
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_publish_done_after_stage_failure():
+    scheduler = _scheduler()
+    publisher = MemoryScanPublisher()
+
+    async def probe(host, port, timeout=1.0):
+        del host, port, timeout
+        raise RuntimeError("probe boom")
+
+    orchestrator = ScanOrchestrator(scheduler, publisher, probe=probe)
+    request = ScanDiscoverRequest(
+        execution_id=32,
+        ip_ranges=[{"begin": "10.0.1.8", "end": "10.0.1.8"}],
+        port_fingerprints=[{"port": 3306, "target_type": "mysql"}],
+    )
+    with pytest.raises(RuntimeError, match="probe boom"):
+        await orchestrator.run(request)
+    assert publisher.events[-1]["stage"] == "done"
+    assert publisher.events[-1]["status"] == "failed"
     await scheduler.shutdown()
 
 

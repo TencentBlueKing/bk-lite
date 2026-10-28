@@ -24,6 +24,7 @@ _CREDENTIAL_FAILURE_ERROR_CODES = frozenset(
     }
 )
 _DISCOVERY_STAGES = frozenset({"port", "process", "collect"})
+_SCAN_DONE_STAGE = "done"
 _STAGE_CONFIDENCE = {
     "port": ScanHit.CONFIDENCE_LOW,
     "process": ScanHit.CONFIDENCE_MEDIUM,
@@ -213,6 +214,13 @@ class ScanCredentialResultService:
         if not task_id:
             return {"result": False, "message": "collect_task_id is required"}
 
+        stage = str(data.get("stage") or "").strip().lower()
+        if stage == _SCAN_DONE_STAGE:
+            return cls._mark_scan_done(task_id)
+        return cls._process_hit_result(data, task_id, stage, parse_datetime=parse_datetime)
+
+    @classmethod
+    def _process_hit_result(cls, data: dict, task_id, stage, parse_datetime=None):
         host = str(data.get("host") or "").strip()
         credential_id = str(data.get("credential_id") or "").strip()
         if credential_id.lower() in _EMPTY_CREDENTIAL_IDS:
@@ -221,7 +229,6 @@ class ScanCredentialResultService:
         raw_status = str(data.get("status") or "").strip().lower()
         if not raw_status:
             raw_status = "success" if data.get("success") else "failed"
-        stage = str(data.get("stage") or "").strip().lower()
         target_type = str(data.get("target_type") or "").strip()
 
         if not host:
@@ -351,9 +358,7 @@ class ScanCredentialResultService:
                 elif existing is not None:
                     hit_id = existing.id
 
-            should_finalize = (
-                execution.target_count > 0 and execution.received_count >= execution.target_count and execution.status == ScanExecution.STATUS_RUNNING
-            )
+            should_finalize = execution.status == ScanExecution.STATUS_RUNNING and cls._pipeline_done(execution)
 
         if should_finalize:
             cls._kick_finalize(execution)
@@ -434,12 +439,48 @@ class ScanCredentialResultService:
             return 0
         return port if port > 0 else 0
 
+    @classmethod
+    def _mark_scan_done(cls, task_id):
+        try:
+            execution = ScanExecution.objects.filter(pk=task_id).first()
+        except (TypeError, ValueError, OverflowError):
+            execution = None
+        if execution is None:
+            return {"result": False, "message": "collect_task_id does not exist"}
+        if execution.status in {
+            ScanExecution.STATUS_COMPLETED,
+            ScanExecution.STATUS_FAILED,
+            ScanExecution.STATUS_TIMED_OUT,
+            ScanExecution.STATUS_FINALIZING,
+        }:
+            return {"result": True, "scan_done": True, "listed": False, "task_id": execution.id}
+
+        should_finalize = False
+        with transaction.atomic():
+            execution = ScanExecution.objects.select_for_update().get(pk=execution.pk)
+            schedule = dict(execution.schedule or {})
+            schedule["scan_done"] = True
+            execution.schedule = schedule
+            execution.save(update_fields=["schedule", "updated_at"])
+            should_finalize = execution.status == ScanExecution.STATUS_RUNNING and cls._pipeline_done(execution)
+        logger.info("event=scan_done_received execution=%s", execution.id)
+
+        if should_finalize:
+            cls._kick_finalize(execution)
+        return {"result": True, "scan_done": True, "listed": False, "task_id": execution.id}
+
+    @staticmethod
+    def _pipeline_done(execution):
+        from apps.cmdb.services.scan_trigger_service import scan_pipeline_done
+
+        return scan_pipeline_done(execution)
+
     @staticmethod
     def _kick_finalize(execution):
         from apps.cmdb.tasks.celery_tasks import finalize_scan_execution
 
         logger.info(
-            "[ScanCredentialResult] 回传已齐 execution=%s received=%s target=%s",
+            "event=scan_pipeline_ready execution=%s received=%s target=%s",
             execution.id,
             execution.received_count,
             execution.target_count,

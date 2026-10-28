@@ -295,6 +295,51 @@ def test_collect_stage_success_upgrades_same_hit_and_records_credential():
     assert hit.snapshot.get("version") == "8.0"
 
 
+def test_scan_done_event_marks_schedule_and_kicks_finalize(mocker):
+    family_run = _scan_family_run(target_count=3, model_id="host")
+    execution = family_run.execution
+    execution.schedule = {"scan_admitted": True, "scan_done": False}
+    execution.save(update_fields=["schedule"])
+    delay = mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.delay")
+
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "done",
+            "status": "success",
+        }
+    )
+
+    assert response["result"] is True
+    assert response["listed"] is False
+    assert ScanHit.objects.count() == 0
+    execution.refresh_from_db()
+    assert execution.schedule["scan_done"] is True
+    assert execution.received_count == 0
+    delay.assert_called_once_with(execution.id, "token-nats")
+
+
+def test_scan_done_event_does_not_complete_when_protocol_pending(mocker):
+    family_run = _scan_family_run(target_count=3, model_id="network")
+    execution = family_run.execution
+    execution.schedule = {"scan_admitted": True}
+    execution.save(update_fields=["schedule"])
+    delay = mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.delay")
+
+    response = receive_scan_credential_result(
+        data={
+            "collect_task_id": execution.id,
+            "stage": "done",
+            "status": "success",
+        }
+    )
+
+    assert response["result"] is True
+    execution.refresh_from_db()
+    assert execution.schedule["scan_done"] is True
+    delay.assert_not_called()
+
+
 def test_db_plain_failed_without_auth_code_is_not_listed():
     family_run = _scan_family_run(target_count=2)
     response = receive_scan_credential_result(

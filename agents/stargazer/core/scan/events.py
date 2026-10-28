@@ -25,6 +25,17 @@ class NatsScanPublisher:
         await get_control_transport().publish_collection_callback(self._subject, dict(event))
 
 
+def scan_done_event(*, execution_id, status: str = "success", error_code: str = "") -> dict[str, Any]:
+    payload = {
+        "collect_task_id": execution_id,
+        "stage": "done",
+        "status": status,
+    }
+    if error_code:
+        payload["error_code"] = error_code
+    return payload
+
+
 def scan_event(
     *,
     execution_id,
