@@ -30,6 +30,9 @@ BUILTIN_LOG_TOOL_NAME = "log"
 BUILTIN_ACTIVEDIRECTORY_TOOL_ID = -10
 BUILTIN_ACTIVEDIRECTORY_TOOL_NAME = "activedirectory"
 
+BUILTIN_MLOPS_TOOL_ID = -11
+BUILTIN_MLOPS_TOOL_NAME = "mlops"
+
 IDENTITY_ONLY_BUILTIN_TOOLS = {
     BUILTIN_MONITOR_TOOL_ID: BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_CMDB_TOOL_ID: BUILTIN_CMDB_TOOL_NAME,
@@ -411,4 +414,43 @@ def build_builtin_activedirectory_runtime_tool(tool_kwargs):
         "enable_auth": False,
         "auth_token": "",
         "extra_tools_prompt": get_ad_instances_prompt(tool_kwargs),
+    }
+
+
+def build_builtin_mlops_tool(loader: LanguageLoader):
+    from apps.opspilot.metis.llm.tools.mlops import CONSTRUCTOR_PARAMS as mlops_constructor_params
+    from apps.opspilot.metis.llm.tools.mlops import __all__ as mlops_exports
+
+    description = loader.get(f"tools.{BUILTIN_MLOPS_TOOL_NAME}.description") or "MLOps built-in tool"
+    return {
+        "id": BUILTIN_MLOPS_TOOL_ID,
+        "name": BUILTIN_MLOPS_TOOL_NAME,
+        "display_name": _get_display_name(loader, BUILTIN_MLOPS_TOOL_NAME, "MLOps"),
+        "description": description,
+        "description_tr": description,
+        "icon": "gongjuji",
+        "team": [],
+        "tags": [],
+        "params": {
+            "name": BUILTIN_MLOPS_TOOL_NAME,
+            "url": f"langchain:{BUILTIN_MLOPS_TOOL_NAME}",
+            "kwargs": _build_kwargs_from_params(mlops_constructor_params),
+            "enable_auth": False,
+            "auth_token": "",
+        },
+        "is_build_in": True,
+        "tools": _build_sub_tools(BUILTIN_MLOPS_TOOL_NAME, mlops_exports, loader),
+    }
+
+
+def build_builtin_mlops_runtime_tool(tool_kwargs):
+    from apps.opspilot.metis.llm.tools.mlops.predict import get_mlops_serving_prompt
+
+    return {
+        "name": BUILTIN_MLOPS_TOOL_NAME,
+        "url": f"langchain:{BUILTIN_MLOPS_TOOL_NAME}",
+        "enable_auth": False,
+        "auth_token": "",
+        "extra_tools_prompt": get_mlops_serving_prompt(tool_kwargs),
+        "extra_param_prompt": tool_kwargs or {},
     }

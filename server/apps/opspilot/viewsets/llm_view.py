@@ -50,6 +50,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
     BUILTIN_LOG_TOOL_NAME,
+    BUILTIN_MLOPS_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_MSSQL_TOOL_NAME,
     BUILTIN_MYSQL_TOOL_NAME,
@@ -60,6 +61,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_attachment_file_tool,
     build_builtin_cmdb_tool,
     build_builtin_log_tool,
+    build_builtin_mlops_tool,
     build_builtin_monitor_tool,
     build_builtin_mssql_tool,
     build_builtin_mysql_tool,
@@ -1203,6 +1205,32 @@ class SkillToolsViewSet(AuthViewSet):
             if server:
                 SSRFValidator.validate(str(server).strip())
 
+    @action(detail=False, methods=["get"], url_path="timeseries_predict_servings")
+    @HasPermission("tool_list-View")
+    def timeseries_predict_servings(self, request):
+        """列出当前组织可选的时序预测服务，供智能体绑定。"""
+        # 延迟导入：mlops.nats_api 会拉起时序预测视图，避免 OpsPilot 启动时加载。
+        from apps.mlops.nats_api import get_mlops_module_data
+
+        team_id = get_current_team(request)
+        if not team_id:
+            return Response({"result": False, "message": "当前组织不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+        actor_context = {
+            "is_superuser": bool(getattr(request.user, "is_superuser", False)),
+            "group_list": getattr(request.user, "group_list", None) or [],
+            "locale": getattr(request.user, "locale", None) or "zh-Hans",
+        }
+        result = get_mlops_module_data(
+            "serving",
+            "timeseries_predict_serving",
+            1,
+            500,
+            team_id,
+            actor_context=actor_context,
+            predictable_only=True,
+        )
+        return Response(result)
+
     @HasPermission("tool_list-View")
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
@@ -1228,6 +1256,8 @@ class SkillToolsViewSet(AuthViewSet):
                 response.data.append(build_builtin_mssql_tool(loader))
             if not any(item.get("name") == BUILTIN_ACTIVEDIRECTORY_TOOL_NAME for item in response.data):
                 response.data.append(build_builtin_activedirectory_tool(loader))
+            if not any(item.get("name") == BUILTIN_MLOPS_TOOL_NAME for item in response.data):
+                response.data.append(build_builtin_mlops_tool(loader))
             for item in response.data:
                 if isinstance(item, dict) and isinstance(item.get("id"), int) and item["id"] < 0:
                     apply_fallback_tool_tags(item)

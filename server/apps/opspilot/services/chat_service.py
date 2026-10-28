@@ -19,6 +19,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
     BUILTIN_LOG_TOOL_NAME,
+    BUILTIN_MLOPS_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_MSSQL_TOOL_NAME,
     BUILTIN_MYSQL_TOOL_NAME,
@@ -30,6 +31,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_attachment_file_runtime_tool,
     build_builtin_cmdb_runtime_tool,
     build_builtin_log_runtime_tool,
+    build_builtin_mlops_runtime_tool,
     build_builtin_monitor_runtime_tool,
     build_builtin_mssql_runtime_tool,
     build_builtin_mysql_runtime_tool,
@@ -458,6 +460,7 @@ class ChatService:
             BUILTIN_ORACLE_TOOL_NAME: None,
             BUILTIN_MSSQL_TOOL_NAME: None,
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: None,
+            BUILTIN_MLOPS_TOOL_NAME: None,
         }
         builtin_builders = {
             BUILTIN_ATTACHMENT_FILE_TOOL_NAME: build_builtin_attachment_file_runtime_tool,
@@ -470,6 +473,7 @@ class ChatService:
             BUILTIN_ORACLE_TOOL_NAME: build_builtin_oracle_runtime_tool,
             BUILTIN_MSSQL_TOOL_NAME: build_builtin_mssql_runtime_tool,
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: build_builtin_activedirectory_runtime_tool,
+            BUILTIN_MLOPS_TOOL_NAME: build_builtin_mlops_runtime_tool,
         }
 
         selected_tool_ids = [tool["id"] for tool in selected_tools if isinstance(tool.get("id"), int) and tool["id"] > 0]
@@ -573,6 +577,11 @@ class ChatService:
 
         for i in tool_map.values():
             extra_config.update(i)
+        # 负 ID 内置工具不进 tool_map。mlops 的 serving_ids 必须进 extra_config，
+        # 运行时才会随 extra_config 展开到 configurable，供 _resolve_serving 读取。
+        mlops_kwargs = selected_builtin_kwargs.get(BUILTIN_MLOPS_TOOL_NAME) or {}
+        if mlops_kwargs.get("serving_ids") not in (None, ""):
+            extra_config["serving_ids"] = mlops_kwargs["serving_ids"]
         extra_config.update({"execution_id": chat_kwargs["execution_id"]})
         if kwargs.get("attachment_id"):
             extra_config["attachment_id"] = kwargs["attachment_id"]
@@ -792,6 +801,9 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
         chat_kwargs["extra_config"] = runtime_extra_config
     if conversation_key:
         runtime_extra_config["conversation_key"] = conversation_key
+    skill_session_id = str(kwargs.get("skill_session_id") or "").strip()
+    if skill_session_id:
+        runtime_extra_config["skill_session_id"] = skill_session_id
     pending_question = kwargs.get("pending_question")
     if isinstance(pending_question, dict):
         runtime_extra_config["pending_question"] = pending_question

@@ -72,12 +72,17 @@ class WecomSdkTransport:
         body = payload.get("body") or {}
         stream = body.get("stream") or {}
         frame = {"headers": payload.get("headers") or {}}
+        reply_kwargs = {}
+        msg_item = stream.get("msg_item")
+        if msg_item:
+            reply_kwargs["msg_item"] = msg_item
         future = asyncio.run_coroutine_threadsafe(
             self._client.reply_stream(
                 frame,
                 stream.get("id") or "",
                 stream.get("content") or "",
                 bool(stream.get("finish")),
+                **reply_kwargs,
             ),
             self._loop,
         )

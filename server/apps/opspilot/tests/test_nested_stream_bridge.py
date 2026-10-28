@@ -173,6 +173,29 @@ def test_repeated_successful_tool_call_is_denied():
     assert denied.tool_call_id == "call-2"
 
 
+def test_repeated_failed_tool_call_is_allowed():
+    args = {"view": "summary", "horizon_days": 5, "metric": "disk_used_percent"}
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "mlops_predict_timeseries", "args": args},
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[{"id": "call-1", "name": "mlops_predict_timeseries", "args": args}],
+                ),
+                ToolMessage(
+                    content='{"success": false, "error": "请同时传入 monitor_obj_id、metric、instance_ids"}',
+                    tool_call_id="call-1",
+                    name="mlops_predict_timeseries",
+                ),
+            ],
+        },
+    )()
+    assert repeated_successful_tool_denial(request) is None
+
+
 @pytest.mark.asyncio
 async def test_owned_bridge_stamps_planned_step_index():
     queue = asyncio.Queue()
