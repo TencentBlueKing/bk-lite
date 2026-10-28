@@ -2,7 +2,7 @@ import hashlib
 
 from django.db import transaction
 
-from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, ScanExecution, ScanFamilyRun, ScanHit
+from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, ScanExecution, ScanFamilyRun, ScanFamilyRunProgress, ScanHit
 from apps.core.logger import cmdb_logger as logger
 
 _STATUS_MAP = {
@@ -220,12 +220,10 @@ class ScanCredentialResultService:
         hit_id = None
         with transaction.atomic():
             family_run = ScanFamilyRun.objects.select_for_update().select_related("execution").get(pk=family_run.pk)
-            progress_hosts = list(family_run.progress_hosts or [])
-            if host not in progress_hosts:
-                progress_hosts.append(host)
-                family_run.progress_hosts = progress_hosts
-                family_run.received_count = len(progress_hosts)
-                family_run.save(update_fields=["progress_hosts", "received_count", "updated_at"])
+            _progress, created = ScanFamilyRunProgress.objects.get_or_create(family_run=family_run, host=host)
+            if created:
+                family_run.received_count += 1
+                family_run.save(update_fields=["received_count", "updated_at"])
                 execution = family_run.execution
                 execution.received_count = sum(ScanFamilyRun.objects.filter(execution=execution).values_list("received_count", flat=True))
                 execution.save(update_fields=["received_count", "updated_at"])
