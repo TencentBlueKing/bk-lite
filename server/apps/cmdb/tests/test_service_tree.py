@@ -9,6 +9,7 @@ from apps.cmdb.services.service_tree import (
     APPLICATION_RUN_HOST,
     SYSTEM_CONTAINS_APPLICATION,
     ServiceTreeService,
+    _lookup_hosts_for_rows,
     applications_by_system,
     assign_host_plan,
     build_service_tree,
@@ -706,6 +707,140 @@ def test_plan_import_rows_scans_each_host_once():
         assert plan["errors"] == []
         assert [item["host_uuid"] for item in plan["assign"]] == [host["inst_uuid"] for host in raw_hosts]
     assert mismatches == []
+
+
+_HOST_UUID = "123e4567-e89b-42d3-a456-426614174000"
+_OTHER_HOST_UUID = "123e4567-e89b-42d3-a456-426614174001"
+
+
+def _import_row(host, application="门户前端", system="门户"):
+    return {"应用系统": system, "应用": application, "主机标识": host}
+
+
+class _RecordingGraph:
+    def __init__(self, hosts):
+        self.hosts = list(hosts)
+        self.calls = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def query_entity(self, label, params, **kwargs):
+        self.calls.append(list(params))
+        indexed = {item.get("field"): item.get("value") for item in params}
+        if indexed.get("model_id") != "host":
+            return [], 0
+        matched = list(self.hosts)
+        if "inst_uuid" in indexed:
+            wanted = set(indexed["inst_uuid"] or [])
+            matched = [item for item in matched if item.get("inst_uuid") in wanted]
+        elif "inst_name" in indexed:
+            wanted = set(indexed["inst_name"] or [])
+            matched = [item for item in matched if item.get("inst_name") in wanted]
+        elif "ip_addr" in indexed:
+            wanted = set(indexed["ip_addr"] or [])
+            matched = [item for item in matched if item.get("ip_addr") in wanted]
+        else:
+            matched = []
+        return matched, len(matched)
+
+
+def _patch_host_graph(monkeypatch, hosts):
+    graph = _RecordingGraph(hosts)
+
+    def factory(**kwargs):
+        return graph
+
+    monkeypatch.setattr("apps.cmdb.services.instance.GraphClient", factory)
+    monkeypatch.setattr("apps.cmdb.services.service_tree.GraphClient", factory)
+    return graph
+
+
+def _query_values(graph, field):
+    values = []
+    for params in graph.calls:
+        for item in params:
+            if item.get("field") == field:
+                values.extend(item.get("value") or [])
+    return values
+
+
+def test_import_preload_accepts_name_ip_and_uuid_and_keeps_unknown_row(monkeypatch, caplog):
+    caplog.set_level(logging.ERROR, logger="apps.core.exceptions.base_app_exception")
+    host = {
+        "inst_uuid": _HOST_UUID,
+        "inst_name": "web-1",
+        "ip_addr": "192.0.2.10",
+        "model_id": "host",
+    }
+    graph = _patch_host_graph(monkeypatch, [host])
+    rows = [
+        _import_row("web-1"),
+        _import_row("192.0.2.10"),
+        _import_row(_HOST_UUID),
+        _import_row("missing-host"),
+    ]
+
+    hosts = _lookup_hosts_for_rows(rows)
+
+    assert match_host("web-1", hosts)["inst_uuid"] == _HOST_UUID
+    assert match_host("192.0.2.10", hosts)["inst_uuid"] == _HOST_UUID
+    assert match_host(_HOST_UUID, hosts)["inst_uuid"] == _HOST_UUID
+    uuid_values = _query_values(graph, "inst_uuid")
+    assert uuid_values == [_HOST_UUID]
+    assert "web-1" not in uuid_values
+    assert "192.0.2.10" not in uuid_values
+    assert "missing-host" not in uuid_values
+    assert "web-1" in _query_values(graph, "inst_name")
+    assert "192.0.2.10" in _query_values(graph, "ip_addr")
+    assert "inst_uuid 必须是 UUIDv4" not in caplog.text
+
+    plan = plan_import_rows(
+        system_name="门户",
+        system_uuid="s1",
+        rows=rows,
+        existing_tree={"apps": {"a:/门户前端": "a1"}},
+        hosts=hosts,
+    )
+    assert plan["create_nodes"] == []
+    assert [item["host_uuid"] for item in plan["assign"]] == [_HOST_UUID, _HOST_UUID, _HOST_UUID]
+    assert [(item["row"], item["message"]) for item in plan["errors"]] == [(4, "找不到对应的主机")]
+
+
+def test_import_preload_reports_ambiguous_host_name_per_row(monkeypatch):
+    _patch_host_graph(
+        monkeypatch,
+        [
+            {
+                "inst_uuid": _HOST_UUID,
+                "inst_name": "web-1",
+                "ip_addr": "192.0.2.10",
+                "model_id": "host",
+            },
+            {
+                "inst_uuid": _OTHER_HOST_UUID,
+                "inst_name": "web-1",
+                "ip_addr": "192.0.2.11",
+                "model_id": "host",
+            },
+        ],
+    )
+    rows = [_import_row("web-1")]
+
+    plan = plan_import_rows(
+        system_name="门户",
+        system_uuid="s1",
+        rows=rows,
+        existing_tree={"apps": {}},
+        hosts=_lookup_hosts_for_rows(rows),
+    )
+
+    assert plan["assign"] == []
+    assert plan["create_nodes"] == []
+    assert [(item["row"], item["message"]) for item in plan["errors"]] == [(1, "主机标识匹配不唯一")]
 
 
 def test_build_service_tree_shows_contains_application_even_if_asst_id_is_not_seeded_name():
