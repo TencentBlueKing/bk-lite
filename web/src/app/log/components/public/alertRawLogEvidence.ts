@@ -144,6 +144,7 @@ export interface AggregateResultCondition {
   compare?: { kind?: string; to?: string; offset?: number };
   params?: { quantile?: number; filter?: string };
   level?: string | null;
+  role?: string;
   thresholds?: Array<{ level: string; value: string | number; matched?: boolean }>;
 }
 

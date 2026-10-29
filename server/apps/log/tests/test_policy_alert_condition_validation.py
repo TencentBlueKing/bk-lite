@@ -371,7 +371,7 @@ def test_and_level_sets_must_match_and_or_may_differ():
     shared["rule"]["mode"] = "and"
     rejected = _serializer(shared)
     assert not rejected.is_valid()
-    assert "级别必须一致" in str(rejected.errors)
+    assert "这一档还没填完" in str(rejected.errors)
 
     shared["rule"]["mode"] = "or"
     accepted = PolicySerializer(
@@ -395,3 +395,71 @@ def test_unknown_or_duplicate_level_is_rejected():
     assert not _serializer(duplicate).is_valid()
     empty = _with_thresholds(_condition("count"), [])
     assert not _serializer(empty).is_valid()
+
+
+def _guard(func="count_uniq", field="user", op=">=", value="20"):
+    condition = _condition(func, op=op, value=value, field=field)
+    condition["rule"]["conditions"][0]["role"] = "guard"
+    return condition
+
+
+def test_missing_role_is_stored_as_regular():
+    serializer = _serializer(_condition("count"))
+    assert serializer.is_valid(), serializer.errors
+    stored = serializer.validated_data["alert_condition"]["rule"]["conditions"][0]
+    assert stored["role"] == "regular"
+
+
+def _with_regular(condition):
+    condition["rule"]["conditions"].insert(
+        0,
+        {"role": "regular", "func": "count", "field": "_msg", "op": ">", "value": "1"},
+    )
+    return condition
+
+
+def test_guard_stores_one_threshold_and_drops_a_ladder():
+    serializer = _serializer(_with_regular(_guard()))
+    assert serializer.is_valid(), serializer.errors
+    stored = serializer.validated_data["alert_condition"]["rule"]["conditions"][1]
+    assert stored["role"] == "guard"
+    assert stored["compare"] == {"kind": "absolute"}
+    assert "thresholds" not in stored
+    assert stored["value"] == "20"
+
+    ladder = _with_regular(_guard())
+    ladder["rule"]["conditions"][1]["thresholds"] = [{"level": "warning", "value": "20"}]
+    rejected = _serializer(ladder)
+    assert not rejected.is_valid()
+    assert "只有一个门槛" in str(rejected.errors)
+
+
+def test_guard_rejects_delta_and_or_and_a_policy_with_only_guards():
+    delta = _with_regular(_guard())
+    delta["rule"]["conditions"][1]["compare"] = {"kind": "delta", "to": "previous_window"}
+    rejected_delta = _serializer(delta)
+    assert not rejected_delta.is_valid()
+    assert "只能比当前值" in str(rejected_delta.errors)
+
+    either = _with_regular(_guard())
+    either["rule"]["mode"] = "or"
+    rejected_or = _serializer(either)
+    assert not rejected_or.is_valid()
+    assert "不能带前置条件" in str(rejected_or.errors)
+
+    only_guard = _serializer(_guard())
+    assert not only_guard.is_valid()
+    assert "至少要有一条常规条件" in str(only_guard.errors)
+
+
+def test_and_level_sets_ignore_guards():
+    condition = _with_thresholds(
+        _condition("count"),
+        [{"level": "warning", "value": "10"}, {"level": "error", "value": "50"}],
+    )
+    condition["rule"]["conditions"][0]["role"] = "regular"
+    condition["rule"]["conditions"].append({"role": "guard", "func": "count_uniq", "field": "user", "op": ">=", "value": "20"})
+    serializer = _serializer(condition)
+    assert serializer.is_valid(), serializer.errors
+    roles = [item["role"] for item in serializer.validated_data["alert_condition"]["rule"]["conditions"]]
+    assert roles == ["regular", "guard"]

@@ -92,4 +92,5 @@ export interface FilterItem {
   compare?: PolicyCompare;
   params?: PolicyConditionParams;
   thresholds?: PolicyThreshold[];
+  role?: 'regular' | 'guard';
 }

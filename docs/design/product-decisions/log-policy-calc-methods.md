@@ -1,7 +1,7 @@
 # 日志策略计算方式产品决策记忆
 
 - 最近更新：2026-10-29
-- 当前规格：`specs/changes/log-policy-scenario-fit/spec.md`（implemented，2026-10-29）；阈值阶梯 `specs/changes/log-policy-level-ladder/spec.md`（implemented，2026-10-29）；计算方式第二批 `specs/changes/log-policy-calc-catalog/spec.md`（implemented，2026-10-27）；第一批 `specs/changes/log-policy-calc-methods/spec.md`（implemented）
+- 当前规格：`specs/changes/log-policy-condition-levels/spec.md`（implemented，2026-10-29）；场景回归 `specs/changes/log-policy-scenario-fit/spec.md`（implemented，2026-10-29）；阈值阶梯 `specs/changes/log-policy-level-ladder/spec.md`（implemented，2026-10-29）；计算方式第二批 `specs/changes/log-policy-calc-catalog/spec.md`（implemented，2026-10-27）；第一批 `specs/changes/log-policy-calc-methods/spec.md`（implemented）
 
 ## 产品定位
 
@@ -56,6 +56,7 @@
   原因：聚合告警已是指标型（阶梯、同比、分位、只升不降），不恢复会让活跃列表越积越多；Datadog / Elastic / Grafana / SLS 对阈值型日志告警都自动恢复。恢复不走普通通知渠道，避免日志空窗抖动刷屏。
 - 2026-10-29：关键字策略不走连续次数。原因：事件型告警要的抑噪是「本窗命中 ≥ N 条」，「连续 N 窗都出现」会吞掉偶发但严重的异常，且与「命中即告警」的定位相悖。
 - 2026-10-29：速率单位维持「条/秒」，不改为「条/分钟」。已保存阈值与通知正文按条/秒记录，改单位需要迁移存量阈值，收益不抵成本。
+- 2026-10-29：聚合条件分成常规和前置。常规条件的三档在级别表里按行对齐，同一条件共用一个比较符并严格单调。前置条件是绝对门槛，比较符和数字写在条件卡上，不参与级别；未通过等于本窗不满足。任意满足不能带前置。原因：级别是跨条件合成的，堆在每张卡上看不出对齐；前置没有档，放进表里会把「过不过线」写成另一个级别。日志没有监控那种「只改阈值」的第二处编辑面，所以数字不放表底。
 
 ## 明确后置
 
@@ -78,8 +79,10 @@
 - 2026-10-28 撤回策略级无数据告警。日志空窗是常态，分组消失先不做；断流交给未分组 `count < 1`。
 - 2026-10-29 替代「日志告警仍由人工关闭，不引入恢复状态机」：聚合策略按 `recover_after` 自动恢复，关键字策略维持人工关闭。阈值阶梯规格里「级别只升不降」的理由（没有恢复状态机）随之由「有恢复、无滞回」接管：级别仍只升不降，恢复由连续不满足窗数判定。
 - 2026-10-29 替代「关键字策略也校验 / 使用 `trigger_count`」：关键字改用 `min_hits`。
+- 2026-10-29 替代「全部满足靠保存校验让各条件的级别集合一致，并且不做级别 × 条件的格子」：常规条件改到级别表里按行填，某一档填不齐就不能保存。格子不给每一档单独的运算符。前置条件不进这张表。
 
 ## 决策来源
 
 2026-10-27 CTeam 需求 p398_715 两轮分析：第一轮按需求原文落地速率 / 变化量 / 试算 / 样本回跳；第二轮产品复核要求按客户场景对照竞品（Datadog Log Monitor / Change Alert、Elastic Custom & Log Threshold、Grafana Loki、Splunk 告警、阿里云 SLS）尽量补齐，并以 VictoriaLogs LogsQL 原生 `count_uniq / quantile / count() if / sum_len` 为落法依据。
 2026-10-29 产品复核「APM / 日志策略是否照搬监控」：聚合自动恢复与速率单位两项待确认按推荐方案拍板，其余为 MVP 建议项一并落入 `log-policy-scenario-fit`。
+2026-10-29 产品确认日志聚合条件改成「条件卡 + 级别表」：常规条件按行填档，前置条件的数字留在卡上。规格 `specs/changes/log-policy-condition-levels/spec.md`。

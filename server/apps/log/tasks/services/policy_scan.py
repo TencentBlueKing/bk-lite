@@ -37,6 +37,7 @@ from apps.log.services.policy_condition import (
     combine_levels,
     compare_targets,
     condition_alias,
+    condition_role,
     condition_thresholds,
     custom_offset_seconds,
     highest_hit_level,
@@ -1016,33 +1017,42 @@ class LogPolicyScan:
         else:
             value = current
         op = raw.get("op")
-        explicit_thresholds = isinstance(raw.get("thresholds"), list)
-        default_level = getattr(self.policy, "alert_level", None)
-        steps = condition_thresholds(raw, default_level)
-        if explicit_thresholds:
-            hit_level = None
-            tier_flags = []
-            if value is not None and op:
-                hit_level = highest_hit_level(value, op, steps, self._compare_values)
-                for step in steps:
-                    step_value = step.get("value")
-                    tier_flags.append(bool(step_value is not None and self._compare_values(value, op, step_value)))
-            else:
-                tier_flags = [False for _ in steps]
-            matched = hit_level is not None
-            if hit_level:
-                threshold = next((step.get("value") for step in steps if step.get("level") == hit_level), raw.get("value"))
-            else:
-                usable = [step for step in steps if step.get("level") in AlertConstants.LEVEL_RANK]
-                lightest = min(usable, key=lambda step: AlertConstants.LEVEL_RANK[step["level"]]) if usable else None
-                threshold = lightest.get("value") if lightest else raw.get("value")
-        else:
+        is_guard = condition_role(raw) == "guard" or condition_role(condition) == "guard"
+        if is_guard:
             threshold = raw.get("value")
-            matched = False
-            if value is not None and op and threshold is not None:
-                matched = bool(self._compare_values(value, op, threshold))
-            hit_level = default_level if matched else None
+            matched = bool(value is not None and op and threshold is not None and self._compare_values(value, op, threshold))
+            hit_level = None
+            explicit_thresholds = False
             tier_flags = []
+        else:
+            explicit_thresholds = isinstance(raw.get("thresholds"), list)
+            default_level = getattr(self.policy, "alert_level", None)
+            steps = condition_thresholds(raw, default_level)
+            if explicit_thresholds:
+                hit_level = None
+                tier_flags = []
+                if value is not None and op:
+                    hit_level = highest_hit_level(value, op, steps, self._compare_values)
+                    for step in steps:
+                        step_value = step.get("value")
+                        tier_flags.append(bool(step_value is not None and self._compare_values(value, op, step_value)))
+                else:
+                    tier_flags = [False for _ in steps]
+                matched = hit_level is not None
+                if hit_level:
+                    threshold = next((step.get("value") for step in steps if step.get("level") == hit_level), raw.get("value"))
+                else:
+                    usable = [step for step in steps if step.get("level") in AlertConstants.LEVEL_RANK]
+                    lightest = min(usable, key=lambda step: AlertConstants.LEVEL_RANK[step["level"]]) if usable else None
+                    threshold = lightest.get("value") if lightest else raw.get("value")
+            else:
+                threshold = raw.get("value")
+                matched = False
+                if value is not None and op and threshold is not None:
+                    matched = bool(self._compare_values(value, op, threshold))
+                hit_level = default_level if matched else None
+                tier_flags = []
+                steps = []
         resolved = {
             "func": func,
             "field": field,
@@ -1055,7 +1065,9 @@ class LogPolicyScan:
             "level": hit_level,
             "reason": reason or "",
         }
-        if explicit_thresholds:
+        if is_guard:
+            resolved["role"] = "guard"
+        elif explicit_thresholds:
             resolved["thresholds"] = [
                 {"level": step.get("level"), "value": step.get("value"), "matched": flag} for step, flag in zip(steps, tier_flags)
             ]
@@ -1264,8 +1276,13 @@ class LogPolicyScan:
     def _combine_resolved_conditions(self, resolved, mode):
         results = []
         hit_levels = []
+        guards_passed = True
         for item in resolved:
             if not isinstance(item, dict):
+                continue
+            if item.get("role") == "guard":
+                if not item.get("matched"):
+                    guards_passed = False
                 continue
             if not item.get("func") or not item.get("op") or item.get("threshold") is None:
                 continue
@@ -1280,6 +1297,8 @@ class LogPolicyScan:
             results.append(matched)
             if matched:
                 hit_levels.append(item.get("level") or getattr(self.policy, "alert_level", None))
+        if mode != "or" and not guards_passed:
+            return False, None
         triggered = self._combine_condition_results(results, mode)
         if not triggered:
             return False, None
@@ -2122,10 +2141,14 @@ class LogPolicyScan:
     def _first_regular_value(self, aggregate_data):
         """第一条常规条件的算出值。拿不到数值时回落到计数。"""
         conditions = aggregate_data.get("conditions") if isinstance(aggregate_data, dict) else None
-        if isinstance(conditions, list) and conditions and isinstance(conditions[0], dict):
-            parsed = parse_metric(conditions[0].get("value"), as_int=False)
-            if parsed is not None:
-                return parsed
+        if isinstance(conditions, list):
+            for item in conditions:
+                if not isinstance(item, dict) or item.get("role") == "guard":
+                    continue
+                parsed = parse_metric(item.get("value"), as_int=False)
+                if parsed is not None:
+                    return parsed
+                break
         if isinstance(aggregate_data, dict):
             return aggregate_data.get("count", 0)
         return 0

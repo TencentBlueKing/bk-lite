@@ -37,7 +37,7 @@ export const formatAggregateMetric = (value: number | null | undefined) => {
 };
 
 export const thresholdLadderPieces = (condition: AggregateHitCondition) => {
-  if (!condition.thresholds?.length) {
+  if (condition.role === 'guard' || !condition.thresholds?.length) {
     return null;
   }
   return condition.thresholds.map((step) => ({
@@ -75,12 +75,13 @@ export const aggregateConditionText = (condition: AggregateHitCondition, t: Tran
     name = `${funcName}(${condition.field})`;
   }
   const kind = condition.compare?.kind;
+  const prefix = condition.role === 'guard' ? `${t('log.event.roleGuard')} ` : '';
   if (kind && kind !== 'absolute') {
     const kindText = labelOf(COMPARE_KIND_LIST, kind, t);
     const targetText = formatCompareTarget(condition.compare?.to, condition.compare?.offset, t);
     name = targetText ? `${name}（${kindText} / ${targetText}）` : `${name}（${kindText}）`;
   }
-  return name;
+  return `${prefix}${name}`;
 };
 
 export function readRawAggregateResult(rawData: unknown): AggregateResultHit | null {
@@ -212,8 +213,12 @@ export function AggregateConditionTable({
         title: t('log.event.matched'),
         dataIndex: 'matched',
         key: 'matched',
-        render: (matched: boolean | undefined) =>
-          matched ? t('log.event.verdictWouldTrigger') : t('log.event.verdictNoTrigger'),
+        render: (matched: boolean | undefined, condition: AggregateHitCondition) => {
+          if (condition.role === 'guard') {
+            return matched ? t('log.event.guardPassed') : t('log.event.guardMissed');
+          }
+          return matched ? t('log.event.verdictWouldTrigger') : t('log.event.verdictNoTrigger');
+        },
       },
       {
         title: t('log.event.reason'),

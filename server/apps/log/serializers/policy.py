@@ -5,7 +5,7 @@ from rest_framework import serializers
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.models.policy import Alert, Event, EventRawData, Policy
 from apps.log.services.access_scope import LogAccessScopeService
-from apps.log.services.policy_condition import canonical_quantile, highest_enabled_level, normalize_condition
+from apps.log.services.policy_condition import canonical_quantile, condition_role, highest_enabled_level, normalize_condition
 from apps.log.utils.locale_text import serializer_text
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.policy_config import validate_timing_config
@@ -175,6 +175,7 @@ class PolicySerializer(serializers.ModelSerializer):
         for condition in conditions:
             self._validate_aggregate_condition(condition)
             normalized_conditions.append(self._store_aggregate_condition(condition))
+        self._validate_condition_roles(rule, normalized_conditions)
         self._validate_and_level_sets(rule, normalized_conditions)
         stored = dict(value)
         stored_rule = dict(rule)
@@ -254,6 +255,12 @@ class PolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(serializer_text(self, "error.policy_quantile_invalid"))
         if func == "ratio":
             self._validate_ratio_filter(condition.get("params"))
+        role = condition_role(condition)
+        if role not in ("regular", "guard"):
+            raise serializers.ValidationError(serializer_text(self, "error.policy_role_invalid"))
+        if role == "guard":
+            self._validate_guard_condition(condition, kind)
+            return
         if "thresholds" in condition:
             self._validate_threshold_ladder(condition, func, kind)
             return
@@ -262,6 +269,28 @@ class PolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(serializer_text(self, "error.policy_numeric_op_only"))
             if not _is_finite_number(condition.get("value")):
                 raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_number"))
+
+    def _validate_guard_condition(self, condition, kind):
+        if kind != "absolute":
+            raise serializers.ValidationError(serializer_text(self, "error.policy_guard_not_absolute"))
+        raw = condition.get("thresholds")
+        if isinstance(raw, list) and raw:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_guard_no_ladder"))
+        if condition.get("op") not in _NUMERIC_COMPARE_OPS:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_numeric_op_only"))
+        if not _is_finite_number(condition.get("value")):
+            raise serializers.ValidationError(serializer_text(self, "error.policy_threshold_number"))
+
+    def _validate_condition_roles(self, rule, conditions):
+        mode = rule.get("mode") if isinstance(rule, dict) else None
+        if mode is None:
+            mode = "and"
+        guards = [item for item in conditions if condition_role(item) == "guard"]
+        regulars = [item for item in conditions if condition_role(item) != "guard"]
+        if not regulars:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_regular_required"))
+        if mode == "or" and guards:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_guard_with_or"))
 
     def _validate_threshold_ladder(self, condition, func, kind):
         raw = condition.get("thresholds")
@@ -305,6 +334,12 @@ class PolicySerializer(serializers.ModelSerializer):
 
     def _store_aggregate_condition(self, condition):
         normalized = normalize_condition(condition)
+        if condition_role(condition) == "guard":
+            normalized["role"] = "guard"
+            normalized.pop("thresholds", None)
+            normalized["compare"] = {"kind": "absolute"}
+            return normalized
+        normalized["role"] = "regular"
         raw = condition.get("thresholds")
         if not isinstance(raw, list):
             return normalized
@@ -342,7 +377,7 @@ class PolicySerializer(serializers.ModelSerializer):
             mode = "and"
         if mode != "and":
             return
-        level_sets = [self._enabled_level_set(condition) for condition in conditions]
+        level_sets = [self._enabled_level_set(condition) for condition in conditions if condition_role(condition) != "guard"]
         if len(set(level_sets)) > 1:
             raise serializers.ValidationError(serializer_text(self, "error.policy_level_set_mismatch"))
 

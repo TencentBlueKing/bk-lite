@@ -2125,6 +2125,56 @@ class TestAggregateRecovery:
         assert Alert.objects.filter(policy=policy, status=AlertConstants.STATUS_RECOVERED).count() == 1
         assert Alert.objects.get(policy=policy, status=AlertConstants.STATUS_NEW).id != alert.id
 
+    def test_missed_guard_counts_as_unsatisfied(self, mocker):
+        policy = _aggregate_policy(
+            alert_condition={
+                "query": "*",
+                "group_by": ["host"],
+                "rule": {
+                    "mode": "and",
+                    "recover_after": 2,
+                    "conditions": [
+                        {
+                            "role": "regular",
+                            "func": "count",
+                            "field": "_msg",
+                            "op": ">",
+                            "value": "2",
+                            "thresholds": [
+                                {"level": "warning", "value": "2"},
+                                {"level": "error", "value": "50"},
+                            ],
+                        },
+                        {"role": "guard", "func": "count_uniq", "field": "user", "op": ">=", "value": "20"},
+                    ],
+                },
+            }
+        )
+        base = timezone.datetime(2026, 10, 29, 4, 0, tzinfo=timezone.utc)
+        _run_aggregate(
+            policy,
+            mocker,
+            base,
+            [{"host": "a", "count__msg": "9", "count_uniq_user": "25"}],
+            "hit",
+        )
+        alert = Alert.objects.get(policy=policy)
+        assert alert.status == AlertConstants.STATUS_NEW
+        assert alert.value == 9
+        assert alert.level == "warning"
+
+        _run_aggregate(
+            policy,
+            mocker,
+            base + timezone.timedelta(minutes=5),
+            [{"host": "a", "count__msg": "9", "count_uniq_user": "3"}],
+            "guard-miss",
+        )
+        alert.refresh_from_db()
+        assert alert.status == AlertConstants.STATUS_NEW
+        assert alert.info_event_count == 1
+        assert alert.level == "warning"
+
     def test_failed_window_does_not_change_recovery_count(self, mocker):
         policy = _aggregate_policy()
         base = timezone.datetime(2026, 10, 29, 2, 0, tzinfo=timezone.utc)

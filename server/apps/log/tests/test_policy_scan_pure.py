@@ -1543,3 +1543,52 @@ class TestThresholdLadder:
         assert level_rank("warning") > level_rank("info")
         assert not level_rank("warning") > level_rank("critical")
         assert not level_rank("error") > level_rank("error")
+
+    def test_guard_does_not_set_the_level_and_blocks_when_missed(self):
+        scan = _scan(alert_type="aggregate", alert_level="critical")
+        rule = {
+            "mode": "and",
+            "conditions": [
+                self._ladder(),
+                {"role": "guard", "func": "count_uniq", "field": "user", "op": ">=", "value": "20"},
+            ],
+        }
+        passed = scan._extract_aggregate_data({"count__msg": "60", "count_uniq_user": "25"}, rule)
+        triggered, level = scan._check_rule_conditions(passed, rule)
+        assert triggered is True
+        assert level == "error"
+        assert passed["conditions"][1]["role"] == "guard"
+        assert passed["conditions"][1]["matched"] is True
+        assert passed["conditions"][1]["level"] is None
+        assert "thresholds" not in passed["conditions"][1]
+        assert scan._first_regular_value(passed) == 60
+
+        missed = scan._extract_aggregate_data({"count__msg": "60", "count_uniq_user": "3"}, rule)
+        assert scan._check_rule_conditions(missed, rule) == (False, None)
+
+    def test_or_ignores_a_guard_and_takes_the_higher_level(self):
+        scan = _scan(alert_type="aggregate", alert_level="warning")
+        rule = {
+            "mode": "or",
+            "conditions": [
+                {"role": "guard", "func": "count_uniq", "field": "user", "op": ">=", "value": "20"},
+                self._ladder(),
+            ],
+        }
+        data = scan._extract_aggregate_data({"count__msg": "12", "count_uniq_user": "1"}, rule)
+        triggered, level = scan._check_rule_conditions(data, rule)
+        assert triggered is True
+        assert level == "warning"
+        assert scan._first_regular_value(data) == 12
+
+    def test_unparsed_first_regular_falls_back_to_count(self):
+        scan = _scan(alert_type="aggregate", alert_level="warning")
+        data = {
+            "count": 7,
+            "conditions": [
+                {"role": "guard", "value": 3},
+                {"role": "regular", "value": "n/a"},
+                {"role": "regular", "value": 12},
+            ],
+        }
+        assert scan._first_regular_value(data) == 7

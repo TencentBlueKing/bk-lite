@@ -145,3 +145,58 @@ def test_ladder_notice_names_the_hit_level():
     content_index = lines.index("告警内容：错误超过 200")
     assert lines[content_index + 1] == "级别：严重"
     assert "计数：300 > 200（严重）" in content
+
+
+def test_guard_notice_is_separate_from_the_level_line():
+    raw = {
+        "aggregate_result": {
+            "count": 60,
+            "level": "error",
+            "conditions": [
+                {
+                    "role": "guard",
+                    "func": "count_uniq",
+                    "field": "user",
+                    "current": 3,
+                    "value": 3,
+                    "op": ">=",
+                    "threshold": "20",
+                    "matched": False,
+                    "level": None,
+                    "compare": {"kind": "absolute"},
+                },
+                {
+                    "role": "regular",
+                    "func": "count",
+                    "field": "_msg",
+                    "current": 60,
+                    "value": 60,
+                    "op": ">",
+                    "threshold": "50",
+                    "level": "error",
+                    "matched": True,
+                    "thresholds": [
+                        {"level": "warning", "value": "10", "matched": True},
+                        {"level": "error", "value": "50", "matched": True},
+                    ],
+                    "compare": {"kind": "absolute"},
+                },
+            ],
+        },
+        "samples": [],
+        "jump_query": {"query": "level:error", "window_start": 1700000000, "window_end": 1700000300},
+    }
+    event = SimpleNamespace(
+        id=None,
+        alert_id=None,
+        event_time="2026-10-29T03:00:00Z",
+        content="错误超过 50",
+        raw_data=raw,
+    )
+    policy = SimpleNamespace(name="前置策略", log_groups=["g1"])
+    _title, content = format_aggregate_notice(event, policy, raw, raw["jump_query"], base_url="https://example.test")
+    assert "前置条件" in content
+    assert "未通过" in content
+    assert "级别：错误" in content
+    assert "（错误）" in content
+    assert "（前置" not in content

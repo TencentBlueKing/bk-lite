@@ -127,6 +127,12 @@ def format_condition_line(condition):
     else:
         body = _format_countish(headline)
     text = f"{label}：{body}"
+    if condition.get("role") == "guard":
+        op = condition.get("op") or ""
+        threshold = _format_threshold_text(condition.get("threshold"))
+        status = "通过" if condition.get("matched") else "未通过"
+        clause = f"{op} {threshold}".strip()
+        return f"前置条件 {text} {clause}（{status}）".strip()
     clause = _threshold_clause(condition)
     if clause:
         text = f"{text} {clause}"

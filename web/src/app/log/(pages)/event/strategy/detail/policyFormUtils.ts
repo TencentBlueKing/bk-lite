@@ -13,6 +13,10 @@ export const conditionRequiresField = (func?: string | null) => {
 };
 
 export const POLICY_LEVELS = ['warning', 'error', 'critical'] as const;
+export const DISPLAY_LEVELS = ['critical', 'error', 'warning'] as const;
+
+export const conditionRole = (condition: FilterItem) =>
+  condition.role === 'guard' ? 'guard' : 'regular';
 export const LEVEL_RANK: Record<string, number> = { warning: 1, error: 2, critical: 3 };
 export const LADDER_OPS = new Set(['>', '>=', '<', '<=']);
 
@@ -33,6 +37,11 @@ export const normalizeCondition = (condition: FilterItem, alertLevel?: string): 
       compare: presentCompare(condition.compare),
       params: condition.params || {},
     };
+  if (condition.role === 'guard') {
+    const guard = { ...next, role: 'guard' as const, compare: { kind: 'absolute' as const } };
+    delete guard.thresholds;
+    return guard;
+  }
   if (!isPolicyLevel(alertLevel) || Array.isArray(condition.thresholds)) {
     return next;
   }
@@ -152,13 +161,16 @@ const filledThresholds = (item: FilterItem) =>
     (step) => isPolicyLevel(step.level) && String(step.value ?? '').trim() !== ''
   );
 
-/** 变化量 / 变化率要对照，分位要分位，占比要分子筛选。有阶梯时至少一档有值。 */
+/** 变化量 / 变化率要对照，分位要分位，占比要分子筛选。有阶梯时至少一档有值。前置只看单个门槛。 */
 export const hasIncompleteCondition = (conditions: FilterItem[]) =>
   conditions.some((item) => {
-    const ladder = Array.isArray(item.thresholds);
-    const hasValue = ladder
-      ? filledThresholds(item).length > 0
-      : item.value != null && String(item.value) !== '';
+    const guard = conditionRole(item) === 'guard';
+    const ladder = !guard && Array.isArray(item.thresholds);
+    const hasValue = guard
+      ? item.value != null && String(item.value) !== ''
+      : ladder
+        ? filledThresholds(item).length > 0
+        : item.value != null && String(item.value) !== '';
     if (!item.func || !item.op || !hasValue) {
       return true;
     }
@@ -166,6 +178,9 @@ export const hasIncompleteCondition = (conditions: FilterItem[]) =>
       return true;
     }
     const kind = item.compare?.kind || 'absolute';
+    if (guard && kind !== 'absolute') {
+      return true;
+    }
     if ((kind === 'percent' || kind === 'delta') && !compareOffsetReady(item.compare)) {
       return true;
     }
@@ -185,6 +200,9 @@ export const isNumericCompare = (func?: string | null, kind?: string | null) =>
 /** 数值比较场景下阈值不是有限数。只在 hasIncompleteCondition 为 false 后调用。 */
 export const hasNonNumericThreshold = (conditions: FilterItem[]) =>
   conditions.some((item) => {
+    if (conditionRole(item) === 'guard') {
+      return isNumericCompare(item.func, 'absolute') && !Number.isFinite(Number(item.value));
+    }
     const kind = presentCompare(item.compare).kind || 'absolute';
     const numericRequired = isNumericCompare(item.func, kind) || LADDER_OPS.has(String(item.op));
     if (Array.isArray(item.thresholds)) {
@@ -207,7 +225,7 @@ const orderedThresholdNumbers = (item: FilterItem) =>
 /** 多档时 >/>= 必须随级别升高，</<= 必须随级别降低。 */
 export const hasThresholdOrderError = (conditions: FilterItem[]) =>
   conditions.some((item) => {
-    if (!item.op || !LADDER_OPS.has(item.op) || !Array.isArray(item.thresholds)) {
+    if (conditionRole(item) === 'guard' || !item.op || !LADDER_OPS.has(item.op) || !Array.isArray(item.thresholds)) {
       return false;
     }
     const numbers = orderedThresholdNumbers(item);
@@ -229,7 +247,7 @@ export const hasMismatchedLevelSets = (conditions: FilterItem[], mode?: string |
     return false;
   }
   const sets = conditions
-    .filter((item) => Array.isArray(item.thresholds))
+    .filter((item) => conditionRole(item) !== 'guard' && Array.isArray(item.thresholds))
     .map((item) =>
       filledThresholds(item)
         .map((step) => step.level)
@@ -242,16 +260,32 @@ export const hasMismatchedLevelSets = (conditions: FilterItem[], mode?: string |
   return new Set(sets).size > 1;
 };
 
-const storedConditions = (conditions: FilterItem[]) =>
+export const hasNoRegularCondition = (conditions: FilterItem[]) =>
+  conditions.length > 0 && conditions.every((item) => conditionRole(item) === 'guard');
+
+export const hasGuardWithAny = (conditions: FilterItem[], mode?: string | null) =>
+  mode === 'or' && conditions.some((item) => conditionRole(item) === 'guard');
+
+const storedConditions = (conditions: FilterItem[]): FilterItem[] =>
   conditions.map((condition) => {
+    if (conditionRole(condition) === 'guard') {
+      const next: FilterItem = {
+        ...condition,
+        role: 'guard',
+        compare: { kind: 'absolute' },
+      };
+      delete next.thresholds;
+      return next;
+    }
     if (!Array.isArray(condition.thresholds)) {
-      return condition;
+      return { ...condition, role: 'regular' as const };
     }
     const steps = filledThresholds(condition)
       .map((step) => ({ level: step.level, value: String(step.value) }))
       .sort((left, right) => LEVEL_RANK[left.level] - LEVEL_RANK[right.level]);
     return {
       ...condition,
+      role: 'regular' as const,
       thresholds: steps,
       value: steps[0] ? steps[0].value : condition.value,
     };
@@ -261,6 +295,9 @@ const highestEnabledLevel = (conditions: FilterItem[]) => {
   let best = 0;
   let level = '';
   conditions.forEach((condition) => {
+    if (conditionRole(condition) === 'guard') {
+      return;
+    }
     filledThresholds(condition).forEach((step) => {
       const rank = LEVEL_RANK[step.level] || 0;
       if (rank > best) {

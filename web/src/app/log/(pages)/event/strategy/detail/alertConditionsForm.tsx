@@ -13,8 +13,10 @@ import {
   getAlertConditionVisibility,
   getDefaultShowFields,
   hasBackfillGap,
+  hasGuardWithAny,
   hasIncompleteCondition,
   hasMismatchedLevelSets,
+  hasNoRegularCondition,
   hasNonNumericThreshold,
   hasThresholdOrderError,
 } from './policyFormUtils';
@@ -68,6 +70,12 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     }
     if (hasIncompleteCondition(conditions)) {
       return Promise.reject(new Error(t('log.event.conditionValidate')));
+    }
+    if (hasNoRegularCondition(conditions)) {
+      return Promise.reject(new Error(t('log.event.regularRequired')));
+    }
+    if (hasGuardWithAny(conditions, term)) {
+      return Promise.reject(new Error(t('log.event.guardWithOr')));
     }
     if (hasNonNumericThreshold(conditions)) {
       return Promise.reject(new Error(t('log.event.thresholdNumberValidate')));

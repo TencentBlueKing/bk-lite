@@ -70,6 +70,16 @@ def condition_thresholds(condition, default_level):
     return [{"level": default_level, "value": condition.get("value")}]
 
 
+def condition_role(condition):
+    """缺省、空字符串和旧数据都是常规条件。未知值原样返回，交给校验拒绝。"""
+    if not isinstance(condition, dict):
+        return "regular"
+    role = condition.get("role")
+    if role in (None, "", "regular"):
+        return "regular"
+    return role
+
+
 def highest_hit_level(value, op, thresholds, compare):
     """同一个数按同一运算符逐档比较，命中档取最高。未命中返回 None。"""
     if value is None or not op or compare is None:
@@ -106,7 +116,7 @@ def highest_enabled_level(conditions, fallback=None):
     best_rank = 0
     saw = False
     for condition in conditions or []:
-        if not isinstance(condition, dict):
+        if not isinstance(condition, dict) or condition_role(condition) == "guard":
             continue
         raw = condition.get("thresholds")
         if isinstance(raw, list) and raw:

@@ -126,7 +126,12 @@ error:
   policy_threshold_required: 至少填写一档阈值
   policy_threshold_order: 多档阈值必须按级别严格单调
   policy_threshold_single: 该运算符或非数值比较只允许一档阈值
-  policy_level_set_mismatch: 全部满足时，各条件启用的级别必须一致
+  policy_level_set_mismatch: 全部满足时，这一档还没填完
+  policy_role_invalid: 条件类型只能是常规或前置条件
+  policy_guard_not_absolute: 前置条件只能比当前值
+  policy_guard_no_ladder: 前置条件只有一个门槛
+  policy_guard_with_or: 任意满足不能带前置条件，请先去掉前置或改回全部满足
+  policy_regular_required: 至少要有一条常规条件
   policy_compare_invalid: 比较方式或对照无效
   policy_compare_func_unsupported: 该函数不支持这种比较方式
   policy_quantile_invalid: 分位数必须是 0.5、0.9、0.95 或 0.99

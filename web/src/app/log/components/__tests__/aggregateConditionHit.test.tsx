@@ -59,6 +59,7 @@ describe('聚合命中区', () => {
 
   it('阶梯阈值标出每一档是否命中，旧条件没有阶梯', () => {
     expect(thresholdLadderPieces({ op: '>', threshold: 1 })).toBeNull();
+    expect(thresholdLadderPieces({ role: 'guard', op: '>=', threshold: 20, matched: false })).toBeNull();
     expect(
       thresholdLadderPieces({
         op: '>',

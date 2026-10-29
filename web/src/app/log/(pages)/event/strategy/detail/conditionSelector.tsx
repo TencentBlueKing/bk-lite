@@ -4,6 +4,7 @@ import React from 'react';
 import { Button, Input, InputNumber, Radio, Select } from 'antd';
 import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import { ConditionFilterProps } from '@/app/log/types/event';
+import { FilterItem } from '@/app/log/types/integration';
 import { ListItem } from '@/app/log/types';
 import { useTranslation } from '@/utils/i18n';
 import { cloneDeep } from 'lodash';
@@ -19,15 +20,18 @@ import { compareOffsetLimit, presentCompare } from '@/app/log/utils/compareTarge
 import {
   conditionWithLadderSlots,
   displayedThresholdSlots,
+  DISPLAY_LEVELS,
   isNumericCompare,
   LADDER_OPS,
-  POLICY_LEVELS,
   thresholdsForOperator,
 } from './policyFormUtils';
 
 const { Option } = Select;
 
 const MEMBERSHIP_OPS = new Set(['in', 'nin']);
+
+const conditionLetter = (index: number) =>
+  index < 26 ? String.fromCharCode(97 + index) : `a${index + 1}`;
 
 const ConditionSelector: React.FC<ConditionFilterProps> = ({
   data = [],
@@ -189,6 +193,76 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
     onChange?.(newData);
   };
 
+  const handleRoleChange = (role: string, index: number) => {
+    const previous = data[index];
+    const newData = cloneDeep(data);
+    if (role === 'guard') {
+      const slots = displayedThresholdSlots(previous);
+      const filled = ['warning', 'error', 'critical']
+        .map((level) => slots[level])
+        .find((value) => value !== '') || previous.value || '';
+      const next: FilterItem = {
+        ...previous,
+        role: 'guard',
+        value: filled,
+        compare: { kind: 'absolute' },
+      };
+      delete next.thresholds;
+      newData[index] = next;
+    } else {
+      newData[index] = conditionWithLadderSlots(
+        { ...previous, role: 'regular' },
+        { warning: previous.value || '', error: '', critical: '' }
+      );
+    }
+    onChange?.(newData);
+  };
+
+  const operatorChoices = (conditionItem: FilterItem) => {
+    const compareKind = presentCompare(conditionItem.compare).kind || 'absolute';
+    const numericCompare = isNumericCompare(conditionItem.func, compareKind);
+    const operatorOptions = [...aggregateOperators];
+    if (MEMBERSHIP_OPS.has(String(conditionItem.op)) && !numericCompare) {
+      const currentOp = conditionList.find(
+        (item) => String(item.id) === String(conditionItem.op)
+      );
+      if (currentOp) {
+        operatorOptions.push(currentOp);
+      }
+    }
+    return { numericCompare, operatorOptions };
+  };
+
+  const columnUnit = (conditionItem: FilterItem) => {
+    const option = FUNCTION_LIST.find((item) => item.value === conditionItem.func);
+    const kind = presentCompare(conditionItem.compare).kind || 'absolute';
+    if (option?.unitKey) {
+      return t(option.unitKey);
+    }
+    if (kind === 'percent' || conditionItem.func === 'ratio') {
+      return '%';
+    }
+    return '';
+  };
+
+  const writeLevelSlot = (
+    conditionItem: FilterItem,
+    level: string,
+    val: number | string | null,
+    index: number
+  ) => {
+    const ladder = conditionItem.op == null || LADDER_OPS.has(String(conditionItem.op));
+    if (ladder) {
+      handleLadderValueChange(level, val, index);
+      return;
+    }
+    handleExclusiveSlotChange(level, val, index);
+  };
+
+  const regularColumns = data
+    .map((conditionItem, index) => ({ conditionItem, index }))
+    .filter(({ conditionItem }) => conditionItem.role !== 'guard');
+
   const handleAddCondition = () => {
     const newData = [...data, { field: null, op: null, value: '' }];
     onChange?.(newData);
@@ -218,6 +292,7 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
         <span>{t('log.event.matchSuffix')}</span>
       </div>
       <div className="flex flex-col gap-3 p-3">
+        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('log.event.conditionSection')}</div>
         {data.map((conditionItem, index) => {
           const functionOption = FUNCTION_LIST.find(
             (item) => item.value === conditionItem.func
@@ -227,31 +302,12 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
           const presentedCompare = presentCompare(conditionItem.compare);
           const compareKind = presentedCompare.kind || 'absolute';
           const comparable = functionOption ? functionOption.comparable !== false : !legacyDelta;
-          const showTarget = comparable && compareKind !== 'absolute';
           const customOffset = presentedCompare.to === 'offset_hours' || presentedCompare.to === 'offset_days';
           const showPercent = compareKind === 'percent';
           const showRatio = functionOption?.needsFilter === true;
-          const showUnitSuffix = Boolean(functionOption?.unitKey) || showPercent || showRatio;
-          const numericCompare = isNumericCompare(conditionItem.func, compareKind);
-          const operatorOptions = [...aggregateOperators];
-          if (MEMBERSHIP_OPS.has(String(conditionItem.op)) && !numericCompare) {
-            const currentOp = conditionList.find(
-              (item) => String(item.id) === String(conditionItem.op)
-            );
-            if (currentOp) {
-              operatorOptions.push(currentOp);
-            }
-          }
-          const ladder = conditionItem.op != null && LADDER_OPS.has(String(conditionItem.op));
-          const levelSlots = conditionItem.op != null;
-          const slots = displayedThresholdSlots(conditionItem);
-          const thresholdAddon = !showUnitSuffix
-            ? undefined
-            : conditionItem.func === 'count_rate'
-              ? t('log.event.countRateUnit')
-              : conditionItem.func === 'bytes_rate'
-                ? t('log.event.bytesRateUnit')
-                : '%';
+          const guard = conditionItem.role === 'guard';
+          const { numericCompare, operatorOptions } = operatorChoices(conditionItem);
+          const showTarget = comparable && !guard && compareKind !== 'absolute';
           return (
             <div
               className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3"
@@ -262,9 +318,9 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]"
                   aria-label={t('log.event.conditionIndex', '条件 {index}', { index: index + 1 })}
                 >
-                  {index + 1}
+                  {conditionLetter(index)}
                 </span>
-                <div className="grid min-w-0 flex-1 grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-2.5">
+                <div className="grid min-w-0 flex-1 grid-cols-[3rem_minmax(0,1fr)] items-center gap-x-2 gap-y-2.5">
                   <span className="text-[var(--color-text-2)]">{t('log.event.statRow')}</span>
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <Select
@@ -299,27 +355,6 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
                         </Option>
                       ))}
                     </Select>
-                    {showField ? (
-                      <Select
-                        style={{ width: 160 }}
-                        placeholder={t('log.event.selectField')}
-                        showSearch
-                        value={conditionItem.field}
-                        onChange={(val) =>
-                          handleConditionChange({
-                            val,
-                            index,
-                            field: 'field'
-                          })
-                        }
-                      >
-                        {fields.map((item: string) => (
-                          <Option value={item} key={item}>
-                            {item}
-                          </Option>
-                        ))}
-                      </Select>
-                    ) : null}
                     {functionOption?.needsQuantile ? (
                       <Select
                         style={{ width: 88 }}
@@ -346,6 +381,41 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
                       </>
                     ) : null}
                   </div>
+                  {showField ? (
+                    <>
+                      <span className="text-[var(--color-text-2)]">{t('log.event.fieldRow')}</span>
+                      <Select
+                        style={{ width: 160 }}
+                        placeholder={t('log.event.selectField')}
+                        showSearch
+                        value={conditionItem.field}
+                        onChange={(val) =>
+                          handleConditionChange({
+                            val,
+                            index,
+                            field: 'field'
+                          })
+                        }
+                      >
+                        {fields.map((item: string) => (
+                          <Option value={item} key={item}>
+                            {item}
+                          </Option>
+                        ))}
+                      </Select>
+                    </>
+                  ) : null}
+                  <span className="text-[var(--color-text-2)]">{t('log.event.conditionRole')}</span>
+                  <Select
+                    style={{ width: 140 }}
+                    aria-label={t('log.event.conditionRole')}
+                    value={guard ? 'guard' : 'regular'}
+                    options={[
+                      { value: 'regular', label: t('log.event.roleRegular') },
+                      { value: 'guard', label: t('log.event.roleGuard'), disabled: term === 'or' },
+                    ]}
+                    onChange={(val) => handleRoleChange(val, index)}
+                  />
                   {comparable ? (
                     <>
                       <span className="text-[var(--color-text-2)]">{t('log.event.compareRow')}</span>
@@ -360,129 +430,100 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
                         options={COMPARE_KIND_LIST.map((item) => ({
                           value: item.value,
                           label: t(item.labelKey),
+                          disabled: guard && item.value !== 'absolute',
                         }))}
                       />
-                      {showTarget ? (
-                        <>
-                          <span className="text-[var(--color-text-2)]">{t('log.event.compareTo')}</span>
-                          <Select
-                            style={{ width: 120 }}
-                            aria-label={t('log.event.compareTo')}
-                            value={presentedCompare.to}
-                            onChange={(val) => handleCompareTarget(val, index)}
-                          >
-                            {COMPARE_OFFSET_METHOD_LIST.map((item) => (
-                              <Option value={item.value} key={item.value}>
-                                {t(item.labelKey)}
-                              </Option>
-                            ))}
-                          </Select>
-                          {customOffset ? (
-                            <InputNumber
-                              style={{ width: 120 }}
-                              min={1}
-                              max={compareOffsetLimit(presentedCompare.to)}
-                              precision={0}
-                              value={presentedCompare.offset}
-                              aria-label={t(
-                                presentedCompare.to === 'offset_days'
-                                  ? 'log.event.compareOffsetCountDay'
-                                  : 'log.event.compareOffsetCountHour'
-                              )}
-                              addonAfter={t(
-                                presentedCompare.to === 'offset_days'
-                                  ? 'log.event.compareOffsetUnitDay'
-                                  : 'log.event.compareOffsetUnitHour'
-                              )}
-                              onChange={(value) => handleOffset(typeof value === 'number' ? value : null, index)}
-                            />
-                          ) : null}
-                        </>
-                      ) : null}
                       </div>
                     </>
                   ) : null}
-                  <span className="text-[var(--color-text-2)]">{t('log.event.triggerRow')}</span>
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <Select
-                      style={{ width: 112 }}
-                      placeholder={t('log.event.selectCriteria')}
-                      value={
-                        MEMBERSHIP_OPS.has(String(conditionItem.op)) && numericCompare
-                          ? undefined
-                          : conditionItem.op
-                      }
-                      options={operatorOptions.map((item: ListItem) => ({
-                        value: item.id,
-                        label: item.name,
-                      }))}
-                      onChange={(val) =>
-                        handleConditionChange({
-                          val,
-                          index,
-                          field: 'op'
-                        })
-                      }
-                    />
-                    {levelSlots ? (
-                      <div className="flex min-w-0 flex-1 flex-wrap gap-2">
-                      {POLICY_LEVELS.map((level) => {
-                        const writeSlot = (val: number | string | null) => (
-                          ladder
-                            ? handleLadderValueChange(level, val, index)
-                            : handleExclusiveSlotChange(level, val, index)
-                        );
-                        return numericCompare || ladder ? (
+                  {showTarget ? (
+                    <>
+                      <span className="text-[var(--color-text-2)]">{t('log.event.compareTo')}</span>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <Select
+                          style={{ width: 120 }}
+                          aria-label={t('log.event.compareTo')}
+                          value={presentedCompare.to}
+                          onChange={(val) => handleCompareTarget(val, index)}
+                        >
+                          {COMPARE_OFFSET_METHOD_LIST.map((item) => (
+                            <Option value={item.value} key={item.value}>
+                              {t(item.labelKey)}
+                            </Option>
+                          ))}
+                        </Select>
+                        {customOffset ? (
                           <InputNumber
-                            key={level}
-                            style={{ width: 168 }}
+                            style={{ width: 120 }}
+                            min={1}
+                            max={compareOffsetLimit(presentedCompare.to)}
+                            precision={0}
+                            value={presentedCompare.offset}
+                            aria-label={t(
+                              presentedCompare.to === 'offset_days'
+                                ? 'log.event.compareOffsetCountDay'
+                                : 'log.event.compareOffsetCountHour'
+                            )}
+                            addonAfter={t(
+                              presentedCompare.to === 'offset_days'
+                                ? 'log.event.compareOffsetUnitDay'
+                                : 'log.event.compareOffsetUnitHour'
+                            )}
+                            onChange={(value) => handleOffset(typeof value === 'number' ? value : null, index)}
+                          />
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
+                  {guard ? (
+                    <>
+                      <span className="text-[var(--color-text-2)]">{t('log.event.guardThreshold')}</span>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <Select
+                          style={{ width: 112 }}
+                          placeholder={t('log.event.selectCriteria')}
+                          value={
+                            MEMBERSHIP_OPS.has(String(conditionItem.op)) && numericCompare
+                              ? undefined
+                              : conditionItem.op
+                          }
+                          options={operatorOptions.map((item: ListItem) => ({
+                            value: item.id,
+                            label: item.name,
+                          }))}
+                          onChange={(val) =>
+                            handleConditionChange({
+                              val,
+                              index,
+                              field: 'op'
+                            })
+                          }
+                        />
+                        {numericCompare ? (
+                          <InputNumber
+                            style={{ width: 140 }}
                             placeholder={t('log.event.enterThreshold')}
-                            aria-label={levelLabel(level)}
-                            addonBefore={levelLabel(level)}
-                            addonAfter={level === 'critical' ? thresholdAddon : undefined}
                             value={
-                              slots[level] !== '' && Number.isFinite(Number(slots[level]))
-                                ? Number(slots[level])
+                              Number.isFinite(Number(conditionItem.value)) && conditionItem.value !== ''
+                                ? Number(conditionItem.value)
                                 : null
                             }
-                            onChange={writeSlot}
+                            onChange={(val) => handleNumericValueChange(val, index)}
                           />
                         ) : (
                           <Input
-                            key={level}
-                            style={{ width: 168 }}
+                            style={{ width: 140 }}
                             placeholder={t('log.event.enterThreshold')}
-                            aria-label={levelLabel(level)}
-                            addonBefore={levelLabel(level)}
-                            value={slots[level]}
-                            onChange={(event) => writeSlot(event.target.value)}
-                            {...(level === 'critical' && thresholdAddon ? { addonAfter: thresholdAddon } : {})}
+                            value={conditionItem.value}
+                            onChange={(e) => handleValueChange(e, index)}
                           />
-                        );
-                      })}
+                        )}
                       </div>
-                    ) : numericCompare ? (
-                      <InputNumber
-                        style={{ width: 140 }}
-                        placeholder={t('log.event.enterThreshold')}
-                        addonAfter={thresholdAddon}
-                        value={
-                          Number.isFinite(Number(conditionItem.value)) && conditionItem.value !== ''
-                            ? Number(conditionItem.value)
-                            : null
-                        }
-                        onChange={(val) => handleNumericValueChange(val, index)}
-                      />
-                    ) : (
-                      <Input
-                        style={{ width: 140 }}
-                        placeholder={t('log.event.enterThreshold')}
-                        value={conditionItem.value}
-                        onChange={(e) => handleValueChange(e, index)}
-                        {...(thresholdAddon ? { addonAfter: thresholdAddon } : {})}
-                      />
-                    )}
-                  </div>
+                      <div className="col-span-2 text-xs leading-5 text-[var(--color-text-3)]">
+                        {t('log.event.guardHint')}
+                      </div>
+                    </>
+                  ) : null}
                   {legacyDelta ? (
                     <div className="col-span-2 text-xs leading-5 text-[var(--color-text-3)]">
                       {t('log.event.countDeltaTip')}
@@ -520,6 +561,87 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
         >
           {t('log.event.addCondition')}
         </Button>
+        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('log.event.levelSection')}</div>
+        <div
+          className="overflow-x-auto rounded-md border border-[var(--color-border-2)]"
+          aria-label={t('log.event.levelSection')}
+        >
+          <div
+            className="grid min-w-[36rem] items-center gap-2 p-3"
+            style={{ gridTemplateColumns: `5.5rem repeat(${Math.max(regularColumns.length, 1)}, minmax(12rem, 1fr))` }}
+          >
+            <span />
+            {regularColumns.length ? regularColumns.map(({ conditionItem, index }) => {
+              const option = FUNCTION_LIST.find((item) => item.value === conditionItem.func);
+              const unit = columnUnit(conditionItem);
+              return (
+                <div key={`head-${index}`} className="flex min-w-0 items-baseline gap-2 text-sm">
+                  <span className="font-mono font-semibold text-[var(--color-primary)]">{conditionLetter(index)}</span>
+                  <span className="truncate text-[var(--color-text-1)]">{option ? functionName(option) : ''}</span>
+                  {unit ? <span className="shrink-0 text-[var(--color-text-3)]">{unit}</span> : null}
+                </div>
+              );
+            }) : <span />}
+            {DISPLAY_LEVELS.map((level) => (
+              <React.Fragment key={level}>
+                <span className="text-[var(--color-text-2)]">{levelLabel(level)}</span>
+                {regularColumns.length ? regularColumns.map(({ conditionItem, index }) => {
+                  const { numericCompare, operatorOptions } = operatorChoices(conditionItem);
+                  const slots = displayedThresholdSlots(conditionItem);
+                  const useNumber = numericCompare || (conditionItem.op != null && LADDER_OPS.has(String(conditionItem.op)));
+                  return (
+                    <div key={`${level}-${index}`} className="flex min-w-0 items-center gap-1">
+                      <Select
+                        style={{ width: 112 }}
+                        placeholder={t('log.event.selectCriteria')}
+                        aria-label={`${conditionLetter(index)} ${levelLabel(level)} ${t('log.event.selectCriteria')}`}
+                        value={
+                          MEMBERSHIP_OPS.has(String(conditionItem.op)) && numericCompare
+                            ? undefined
+                            : conditionItem.op
+                        }
+                        options={operatorOptions.map((item: ListItem) => ({
+                          value: item.id,
+                          label: item.name,
+                        }))}
+                        onChange={(val) =>
+                          handleConditionChange({
+                            val,
+                            index,
+                            field: 'op'
+                          })
+                        }
+                      />
+                      {useNumber ? (
+                        <InputNumber
+                          className="min-w-0 flex-1"
+                          placeholder={t('log.event.enterThreshold')}
+                          aria-label={levelLabel(level)}
+                          value={
+                            slots[level] !== '' && Number.isFinite(Number(slots[level]))
+                              ? Number(slots[level])
+                              : null
+                          }
+                          onChange={(val) => writeLevelSlot(conditionItem, level, val, index)}
+                        />
+                      ) : (
+                        <Input
+                          placeholder={t('log.event.enterThreshold')}
+                          aria-label={levelLabel(level)}
+                          value={slots[level]}
+                          onChange={(event) => writeLevelSlot(conditionItem, level, event.target.value, index)}
+                        />
+                      )}
+                    </div>
+                  );
+                }) : <span />}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+        <div className="text-xs leading-5 text-[var(--color-text-3)]">
+          {term === 'or' ? t('log.event.levelTableOrHint') : t('log.event.levelTableAndHint')}
+        </div>
       </div>
     </div>
   );

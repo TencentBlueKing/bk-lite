@@ -5,8 +5,10 @@ import {
   buildStrategyPayload,
   getDefaultShowFields,
   hasBackfillGap,
+  hasGuardWithAny,
   hasIncompleteCondition,
   hasMismatchedLevelSets,
+  hasNoRegularCondition,
   hasNonNumericThreshold,
   hasThresholdOrderError,
   isNumericCompare,
@@ -76,8 +78,8 @@ describe('聚合条件函数', () => {
     );
 
     expect(payload.alert_condition?.rule?.conditions).toEqual([
-      { func: 'count_rate', field: '_msg', op: '>', value: '0.5' },
-      { func: 'count_delta', field: '_msg', op: '>', value: '50' },
+      { func: 'count_rate', field: '_msg', op: '>', value: '0.5', role: 'regular' },
+      { func: 'count_delta', field: '_msg', op: '>', value: '50', role: 'regular' },
     ]);
   });
 
@@ -132,6 +134,7 @@ describe('聚合条件函数', () => {
         value: '50',
         compare: { kind: 'percent', to: 'offset_24h' },
         params: { quantile: 0.95 },
+        role: 'regular',
       },
     ]);
     expect(payload.alert_condition?.rule?.trigger_count).toBe(3);
@@ -429,6 +432,72 @@ describe('聚合条件函数', () => {
           { level: 'warning', value: '10' },
           { level: 'critical', value: '200' },
         ],
+        role: 'regular',
+      },
+    ]);
+  });
+
+  it('前置条件不参与级别，保存时只留一个门槛', () => {
+    const regular = {
+      func: 'count',
+      field: '_msg',
+      op: '>',
+      value: '10',
+      thresholds: [{ level: 'warning', value: '10' }],
+    };
+    const other = {
+      func: 'avg',
+      field: 'duration',
+      op: '>',
+      value: '50',
+      thresholds: [{ level: 'error', value: '50' }],
+    };
+    const guard = {
+      func: 'count_uniq',
+      field: 'user',
+      op: '>=',
+      value: '20',
+      role: 'guard' as const,
+      thresholds: [{ level: 'critical', value: '99' }],
+    };
+    expect(hasMismatchedLevelSets([regular, other, guard], 'and')).toBe(true);
+    expect(hasMismatchedLevelSets([regular, guard], 'and')).toBe(false);
+    expect(hasGuardWithAny([regular, guard], 'or')).toBe(true);
+    expect(hasGuardWithAny([regular, guard], 'and')).toBe(false);
+    expect(hasNoRegularCondition([guard])).toBe(true);
+    expect(normalizeCondition(guard, 'error').thresholds).toBeUndefined();
+    expect(normalizeCondition(guard, 'error').compare).toEqual({ kind: 'absolute' });
+
+    const payload = buildStrategyPayload(
+      {
+        alert_type: 'aggregate',
+        alert_level: 'warning',
+        query: 'level:error',
+        schedule: 5,
+        period: 5,
+      } as StrategyFields,
+      {
+        unit: 'min',
+        periodUnit: 'min',
+        channelList: [],
+        conditions: [guard, regular],
+        term: 'and',
+        isEdit: false,
+      }
+    );
+    expect(payload.alert_level).toBe('warning');
+    expect(payload.alert_condition?.rule?.conditions).toEqual([
+      {
+        func: 'count_uniq',
+        field: 'user',
+        op: '>=',
+        value: '20',
+        role: 'guard',
+        compare: { kind: 'absolute' },
+      },
+      {
+        ...regular,
+        role: 'regular',
       },
     ]);
   });

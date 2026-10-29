@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/utils/i18n', () => ({
@@ -43,7 +43,7 @@ describe('条件函数选择', () => {
       />
     );
 
-    expect(screen.getAllByRole('combobox')).toHaveLength(2);
+    expect(screen.getAllByRole('combobox')).toHaveLength(5);
     expect(screen.queryByText('service')).toBeNull();
     expect(screen.queryByRole('radio', { name: 'log.event.compareKindAbsolute' })).toBeNull();
     expect(screen.queryByRole('radio', { name: 'log.event.compareKindDelta' })).toBeNull();
@@ -134,7 +134,7 @@ describe('条件函数选择', () => {
       />
     );
 
-    expect(screen.getAllByRole('combobox')).toHaveLength(3);
+    expect(screen.getAllByRole('combobox')).toHaveLength(6);
     expect(screen.queryByLabelText('log.event.deleteCondition')).toBeNull();
   });
 
@@ -210,7 +210,7 @@ describe('条件函数选择', () => {
 
     expect(
       screen.getAllByLabelText('log.event.conditionIndex').map((node) => node.textContent)
-    ).toEqual(['1', '2']);
+    ).toEqual(['a', 'b']);
     const deleteButtons = screen.getAllByLabelText('log.event.deleteCondition');
     expect(deleteButtons).toHaveLength(2);
     fireEvent.click(deleteButtons[0]);
@@ -228,7 +228,7 @@ describe('条件函数选择', () => {
       />
     );
 
-    const selected = screen.getByText('log.equalto');
+    const selected = screen.getAllByText('log.equalto')[0];
     expect(selected.closest('.ant-select-selection-item')).toBeTruthy();
     expect(selected.closest('.ant-select-selection-item')?.textContent).toBe('log.equalto');
 
@@ -280,7 +280,7 @@ describe('条件函数选择', () => {
         onChange={onChange}
       />
     );
-    fireEvent.mouseDown(screen.getByText('log.moreThan').closest('.ant-select')!.querySelector('.ant-select-selector')!);
+    fireEvent.mouseDown(screen.getAllByText('log.moreThan')[0].closest('.ant-select')!.querySelector('.ant-select-selector')!);
     expect(
       [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
     ).toEqual([
@@ -354,12 +354,12 @@ describe('条件函数选择', () => {
       />
     );
 
-    expect(screen.getByRole('textbox')).toBe(screen.getByPlaceholderText('log.event.enterThreshold'));
+    expect(screen.getAllByRole('textbox')).toHaveLength(3);
     expect(screen.queryByRole('spinbutton')).toBeNull();
     expect(screen.queryByLabelText('log.event.alarmLevel')).toBeNull();
 
     fireEvent.mouseDown(
-      screen.getByText('log.event.selectCriteria').closest('.ant-select')!.querySelector('.ant-select-selector')!
+      screen.getAllByText('log.event.selectCriteria')[0].closest('.ant-select')!.querySelector('.ant-select-selector')!
     );
     expect(
       [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
@@ -384,7 +384,7 @@ describe('条件函数选择', () => {
       />
     );
 
-    const selected = screen.getByText('log.include');
+    const selected = screen.getAllByText('log.include')[0];
     expect(selected.closest('.ant-select-selection-item')).toBeTruthy();
     fireEvent.mouseDown(selected.closest('.ant-select')!.querySelector('.ant-select-selector')!);
     expect(
@@ -439,12 +439,55 @@ describe('条件函数选择', () => {
     expect(screen.queryByRole('combobox', { name: 'log.event.alarmLevel' })).toBeNull();
     expect(screen.getByText('log.event.warning')).toBeTruthy();
     expect(screen.getByText('log.event.critical')).toBeTruthy();
-    fireEvent.change(thresholds[2], { target: { value: 'fatal' } });
+    fireEvent.change(thresholds[0], { target: { value: 'fatal' } });
     expect(onChange).toHaveBeenCalledWith([
       expect.objectContaining({
         value: 'fatal',
         thresholds: [{ level: 'critical', value: 'fatal' }],
       }),
     ]);
+  });
+
+  it('切到前置后这一列离开级别表，门槛留在卡上', () => {
+    const onChange = vi.fn();
+    const first = { func: 'count', field: '_msg', op: '>', value: '12' };
+    const second = { func: 'count_uniq', field: 'user', op: '>=', value: '20' };
+    const view = render(
+      <ConditionFilter
+        data={[first, second]}
+        fields={['_msg', 'user']}
+        term="and"
+        onTermChange={vi.fn()}
+        onChange={onChange}
+      />
+    );
+
+    const secondCard = screen.getAllByLabelText('log.event.conditionIndex')[1].closest('div.rounded-md') as HTMLElement;
+    const roleSelect = secondCard.querySelectorAll('.ant-select')[2];
+    fireEvent.mouseDown(roleSelect.querySelector('.ant-select-selector')!);
+    fireEvent.click(screen.getByText('log.event.roleGuard'));
+    const next = onChange.mock.calls[0][0];
+    expect(next[0]).toEqual(first);
+    expect(next[1]).toEqual(expect.objectContaining({
+      role: 'guard',
+      value: '20',
+      compare: { kind: 'absolute' },
+    }));
+    expect(next[1].thresholds).toBeUndefined();
+
+    view.rerender(
+      <ConditionFilter
+        data={next}
+        fields={['_msg', 'user']}
+        term="and"
+        onTermChange={vi.fn()}
+        onChange={onChange}
+      />
+    );
+    expect(screen.getByText('log.event.guardThreshold')).toBeTruthy();
+    expect(screen.getByText('log.event.guardHint')).toBeTruthy();
+    const table = screen.getByLabelText('log.event.levelSection');
+    expect(within(table).getByText('a')).toBeTruthy();
+    expect(within(table).queryByText('b')).toBeNull();
   });
 });
