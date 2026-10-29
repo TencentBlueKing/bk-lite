@@ -1167,6 +1167,8 @@
       "normal": "正常"
     },
     "addView": "添加组件",
+    "moduleLicenseCanvasEmpty": "当前账号缺少相关模块许可，暂无可展示内容",
+    "moduleLicenseCanvasEmptyHint": "请联系管理员开通相关模块",
     "viewShort": "组件",
     "groupShort": "分组",
     "filterType": "筛选类型",

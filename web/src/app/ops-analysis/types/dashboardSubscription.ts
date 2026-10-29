@@ -157,4 +157,6 @@ export interface DashboardExecutionRenderInput {
   execution_id: number;
   input_snapshot: DashboardReportExecutionSnapshot;
   render_snapshot: DashboardReportRenderSnapshot;
+  /** 执行创建者在 get_client / license 过滤后的 app 名。缺省表示渲染输入不完整。 */
+  authorized_app_names?: string[];
 }

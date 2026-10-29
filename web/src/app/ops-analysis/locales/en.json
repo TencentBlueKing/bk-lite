@@ -1167,6 +1167,8 @@
       "normal": "Normal"
     },
     "addView": "Add Widget",
+    "moduleLicenseCanvasEmpty": "This account lacks the module licenses needed to show anything here.",
+    "moduleLicenseCanvasEmptyHint": "Contact an administrator to enable the related modules.",
     "viewShort": "Widget",
     "groupShort": "Group",
     "filterType": "Filter Type",

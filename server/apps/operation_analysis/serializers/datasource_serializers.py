@@ -149,12 +149,14 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             "field_schema",
             "is_build_in",
             "build_in_key",
+            "required_app",
             "namespaces",
             "tag",
         ]
         extra_kwargs = {
             "is_build_in": {"read_only": True},
             "build_in_key": {"read_only": True},
+            "required_app": {"read_only": True},
             "connection": {"required": False, "allow_null": True},
             "connection_overrides": {"required": False},
             "groups": {"required": True},
@@ -375,8 +377,12 @@ class DataSourceBriefSerializer(BaseFormatTimeSerializer, AuthSerializer):
             "params",
             "field_schema",
             "is_build_in",
+            "required_app",
             "connection",
         ]
+        extra_kwargs = {
+            "required_app": {"read_only": True},
+        }
 
 
 class DataSourceDetailSerializer(DataSourceAPIModelSerializer):

@@ -73,11 +73,29 @@ export const snapshotCanvasesForPrint = async (
   await Promise.all(images.map(waitForImageDecode));
 };
 
-const applyExpandStyles = (element: HTMLElement) => {
+/** GridStack 12 parseHeight 只接受 auto 或带单位数字；fit-content 会抛 Invalid height val。 */
+export const GRID_STACK_MEASURABLE_MIN_HEIGHT = 'auto';
+
+const GRID_STACK_PARSEABLE_MIN_HEIGHT =
+  /^(auto|)$|^-?(?:\d+\.?\d*|\.\d+)(px|em|rem|vh|vw|%|cm|mm)?$/i;
+
+export const restoreGridStackMeasurableMinHeight = (element: HTMLElement) => {
+  const inline = element.style.minHeight.trim();
+  const measured = (inline || window.getComputedStyle(element).minHeight).trim();
+  if (GRID_STACK_PARSEABLE_MIN_HEIGHT.test(measured)) {
+    return;
+  }
+  element.style.minHeight = GRID_STACK_MEASURABLE_MIN_HEIGHT;
+};
+
+const applyExpandStyles = (
+  element: HTMLElement,
+  minHeight: string = 'fit-content',
+) => {
   element.style.overflow = 'visible';
   element.style.height = 'auto';
   element.style.maxHeight = 'none';
-  element.style.minHeight = 'fit-content';
+  element.style.minHeight = minHeight;
   element.style.flex = 'none';
 
   const computedPosition = window.getComputedStyle(element).position;
@@ -119,9 +137,13 @@ async function preparePrintLayoutExpand(
   });
 
   if (options.expandGridStack) {
-    root
-      .querySelectorAll<HTMLElement>('.grid-stack')
-      .forEach(applyExpandStyles);
+    root.querySelectorAll<HTMLElement>('.grid-stack').forEach((element) => {
+      const laidOutHeight = element.offsetHeight;
+      applyExpandStyles(
+        element,
+        laidOutHeight > 0 ? `${laidOutHeight}px` : GRID_STACK_MEASURABLE_MIN_HEIGHT,
+      );
+    });
   }
 
   let ancestor: HTMLElement | null = root.parentElement;

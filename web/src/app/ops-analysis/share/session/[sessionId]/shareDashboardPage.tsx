@@ -125,6 +125,11 @@ export default function ShareDashboardPage() {
             selectedDashboard={selectedItem}
             shareMode
             shareSessionId={params.sessionId}
+            shareAuthorizedAppNames={
+              Array.isArray(canvas.authorized_app_names)
+                ? canvas.authorized_app_names
+                : null
+            }
             getDashboardDetailOverride={getDetailOverride}
           />
         );
