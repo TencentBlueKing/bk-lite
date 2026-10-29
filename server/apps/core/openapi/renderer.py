@@ -179,12 +179,17 @@ def validate_entry(name: str, entry, internal_services=(), allowlist=None):
     if not isinstance(required_roles, list):
         return None, "invalid required_roles"
 
+    callback_paths = entry.get("callback_paths") or []
+    if callback_paths and (not isinstance(callback_paths, list) or not all(isinstance(p, str) and p for p in callback_paths)):
+        return None, "invalid callback_paths"
+
     return (
         {
             "name": name,
             "base_url": base_url.rstrip("/"),
             "strip_prefix": bool(entry.get("strip_prefix", True)),
             "paths": paths or [],
+            "callback_paths": callback_paths,
             "auth_mode": auth_mode,
             "secrets": secrets,
             "rate_limit": rate_limit,
