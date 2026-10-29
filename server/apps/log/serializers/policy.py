@@ -137,14 +137,17 @@ class PolicySerializer(serializers.ModelSerializer):
         return None
 
     def validate_alert_condition(self, value):
-        """聚合条件校验比较方式与新函数。连续次数对两种告警类型都校验。已保存的 no_data 忽略。"""
+        """聚合条件校验比较方式与新函数。关键字只保留命中条数。已保存的 no_data 忽略。"""
         if not isinstance(value, dict):
             return value
         value = {key: item for key, item in value.items() if key != "no_data"}
         rule = value.get("rule") if isinstance(value.get("rule"), dict) else {}
-        self._validate_trigger_count(rule)
         if self._current_alert_type() != AlertConstants.TYPE_AGGREGATE:
-            return value
+            stored = dict(value)
+            stored["rule"] = self._keyword_rule(rule)
+            return stored
+        self._validate_trigger_count(rule)
+        self._validate_recover_after(rule)
 
         if "group_by" in value and value.get("group_by") is not None:
             group_by = value.get("group_by")
@@ -158,7 +161,13 @@ class PolicySerializer(serializers.ModelSerializer):
 
         conditions = rule.get("conditions") if isinstance(rule, dict) else None
         if not conditions:
-            return value
+            stored = dict(value)
+            stored_rule = dict(rule)
+            stored_rule.pop("min_hits", None)
+            if "recover_after" in rule:
+                stored_rule["recover_after"] = self._checked_recover_after(rule.get("recover_after"))
+            stored["rule"] = stored_rule
+            return stored
         if not isinstance(conditions, list):
             raise serializers.ValidationError(serializer_text(self, "error.policy_aggregate_func_unsupported"))
 
@@ -169,9 +178,37 @@ class PolicySerializer(serializers.ModelSerializer):
         self._validate_and_level_sets(rule, normalized_conditions)
         stored = dict(value)
         stored_rule = dict(rule)
+        stored_rule.pop("min_hits", None)
         stored_rule["conditions"] = normalized_conditions
+        if "recover_after" in rule:
+            stored_rule["recover_after"] = self._checked_recover_after(rule.get("recover_after"))
         stored["rule"] = stored_rule
         return stored
+
+    def _keyword_rule(self, rule):
+        source = rule if isinstance(rule, dict) else {}
+        cleaned = {key: item for key, item in source.items() if key not in {"trigger_count", "recover_after", "min_hits"}}
+        cleaned["min_hits"] = self._checked_min_hits(source.get("min_hits", 1))
+        return cleaned
+
+    def _checked_min_hits(self, value):
+        if value is None:
+            value = 1
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= AlertConstants.MIN_HITS_MAX:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_min_hits_range"))
+        return value
+
+    def _validate_recover_after(self, rule):
+        if not isinstance(rule, dict) or "recover_after" not in rule:
+            return
+        self._checked_recover_after(rule.get("recover_after"))
+
+    def _checked_recover_after(self, value):
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= AlertConstants.RECOVER_AFTER_MAX:
+            raise serializers.ValidationError(serializer_text(self, "error.policy_recover_after_range"))
+        return value
 
     def _validate_trigger_count(self, rule):
         if not isinstance(rule, dict) or "trigger_count" not in rule or rule.get("trigger_count") is None:

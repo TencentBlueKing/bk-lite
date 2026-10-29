@@ -156,19 +156,28 @@ describe('关键字和聚合说明', () => {
     expect(screen.queryByText('log.event.alarmLevel')).toBeNull();
     expect(screen.getByText('log.event.aggregateQueryCriteriaTips')).toBeTruthy();
     expect(screen.getByText('log.event.triggerCountTip')).toBeTruthy();
+    expect(screen.getByText('log.event.recoverAfter')).toBeTruthy();
+    expect(screen.getByTestId('recover-after')).toBeTruthy();
     expect(screen.queryByText('log.event.queryCriteriaTips')).toBeNull();
-    expect(screen.queryByText('log.event.keywordTriggerCountTip')).toBeNull();
+    expect(screen.queryByText('log.event.minHits')).toBeNull();
   });
 
-  it('关键字查询说明和连续次数说明用关键字口径，不渲染规则区', () => {
+  it('关键字用命中条数，不渲染连续次数和规则区', () => {
     render(<Harness policyType="keyword" />);
 
     expect(screen.getByText('log.event.alarmLevel')).toBeTruthy();
     expect(screen.getByText('log.event.queryCriteriaTips')).toBeTruthy();
-    expect(screen.getByText('log.event.keywordTriggerCountTip')).toBeTruthy();
+    expect(screen.getByText('log.event.minHits')).toBeTruthy();
+    expect(screen.getByText('log.event.minHitsTip')).toBeTruthy();
     expect(screen.queryByText('log.event.aggregateQueryCriteriaTips')).toBeNull();
-    expect(screen.queryByText('log.event.triggerCountTip')).toBeNull();
+    expect(screen.queryByText('log.event.triggerCount')).toBeNull();
+    expect(screen.queryByText('log.event.recoverAfter')).toBeNull();
     expect(screen.queryByText('log.integration.rule')).toBeNull();
+    const node = screen.getByTestId('min-hits');
+    const input = node.tagName === 'INPUT' ? node : node.querySelector('input');
+    expect(input?.getAttribute('aria-valuemin')).toBe('1');
+    expect(input?.getAttribute('aria-valuemax')).toBe('100000');
+    expect(input?.getAttribute('aria-valuenow')).toBe('1');
   });
 });
 

@@ -11,6 +11,8 @@ import {
   hasThresholdOrderError,
   isNumericCompare,
   normalizeCondition,
+  readPolicyMinHits,
+  readPolicyRecoverAfter,
   readPolicyTriggerCount,
   pruneNoticeUsers,
   seedNoticeUsersFromHandlers,
@@ -203,12 +205,15 @@ describe('聚合条件函数', () => {
     expect(readPolicyTriggerCount({ rule: { mode: 'and', conditions: [], trigger_count: 6 } })).toBe(1);
   });
 
-  it('关键字策略也写入连续满足次数', () => {
+  it('关键字策略写入命中条数，不写连续次数和自动恢复', () => {
     const payload = buildStrategyPayload(
       {
         alert_type: 'keyword',
         query: 'error',
         trigger_count: 2,
+        recover_after: 3,
+        recover_enabled: true,
+        min_hits: 4,
         schedule: 5,
         period: 5,
       } as StrategyFields,
@@ -221,7 +226,56 @@ describe('聚合条件函数', () => {
         isEdit: false,
       }
     );
-    expect(payload.alert_condition?.rule?.trigger_count).toBe(2);
+    expect(payload.alert_condition?.rule?.min_hits).toBe(4);
+    expect(payload.alert_condition?.rule?.trigger_count).toBeUndefined();
+    expect(payload.alert_condition?.rule?.recover_after).toBeUndefined();
+    expect(readPolicyMinHits({ rule: { mode: 'and', conditions: [], min_hits: 4 } })).toBe(4);
+    expect(readPolicyMinHits({})).toBe(1);
+  });
+
+  it('聚合策略按开关写入自动恢复周期', () => {
+    const enabled = buildStrategyPayload(
+      {
+        alert_type: 'aggregate',
+        query: 'error',
+        trigger_count: 2,
+        recover_enabled: true,
+        recover_after: 3,
+        schedule: 5,
+        period: 5,
+      } as StrategyFields,
+      {
+        unit: 'min',
+        periodUnit: 'min',
+        channelList: [],
+        conditions: [{ func: 'count', field: '_msg', op: '>', value: '1' }],
+        term: 'and',
+        isEdit: false,
+      }
+    );
+    expect(enabled.alert_condition?.rule?.recover_after).toBe(3);
+    expect(enabled.alert_condition?.rule?.min_hits).toBeUndefined();
+    const disabled = buildStrategyPayload(
+      {
+        alert_type: 'aggregate',
+        query: 'error',
+        recover_enabled: false,
+        recover_after: 3,
+        schedule: 5,
+        period: 5,
+      } as StrategyFields,
+      {
+        unit: 'min',
+        periodUnit: 'min',
+        channelList: [],
+        conditions: [{ func: 'count', field: '_msg', op: '>', value: '1' }],
+        term: 'and',
+        isEdit: false,
+      }
+    );
+    expect(disabled.alert_condition?.rule?.recover_after).toBeNull();
+    expect(readPolicyRecoverAfter({ rule: { mode: 'and', conditions: [], recover_after: 3 } })).toBe(3);
+    expect(readPolicyRecoverAfter({})).toBeNull();
   });
 
   it('数值比较只认数值函数和非当前值', () => {

@@ -175,7 +175,15 @@ const Alert: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (_, { status }) => (
-        <Tag color={status === 'new' ? 'blue' : 'var(--color-text-4)'}>
+        <Tag
+          color={
+            status === 'new'
+              ? 'blue'
+              : status === 'recovered'
+                ? 'var(--color-success)'
+                : 'var(--color-text-4)'
+          }
+        >
           {STATE_MAP[status]}
         </Tag>
       )
@@ -311,7 +319,7 @@ const Alert: React.FC = () => {
     const recentTimeRange = getRecentTimeRange(timeValues);
     const isActive = tab === 'activeAlarms';
     const params = {
-      status: isActive ? 'new' : 'closed',
+      status: isActive ? 'new' : 'closed,recovered',
       levels: filtersMap.level.join(','),
       content: searchText || '',
       page: pagination.current,

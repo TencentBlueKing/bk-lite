@@ -26,10 +26,14 @@ class AlertConstants:
     # 告警状态
     STATUS_NEW = "new"
     STATUS_CLOSED = "closed"
+    STATUS_RECOVERED = "recovered"
     STATUS_CHOICES = [
         (STATUS_NEW, "活跃"),
+        (STATUS_RECOVERED, "自动恢复"),
         (STATUS_CLOSED, "关闭"),
     ]
+    RECOVER_AFTER_MAX = 10
+    MIN_HITS_MAX = 100000
 
     # 告警类型
     TYPE_KEYWORD = "keyword"

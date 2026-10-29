@@ -67,6 +67,7 @@ class LogPolicyScan:
         self.baseline_status = "not_required"
         self.baselines = {}
         self.window_observed = False
+        self.recovery_frozen = False
         self.aggregation_query = ""
         self.observed_final_query = ""
 
@@ -336,11 +337,13 @@ class LogPolicyScan:
                     )
                     continue
                 total_count = self._parse_count_value(result.get("total_count"), default=0)
+                min_hits = self._min_hits()
                 items.append(
                     {
                         "group_values": group_values,
                         "total_count": total_count,
-                        "triggered": total_count > 0,
+                        "min_hits": min_hits,
+                        "triggered": total_count >= min_hits,
                         "final_query": final_query,
                         "sample_limit": sample_limit,
                         "group_by": group_by,
@@ -349,18 +352,18 @@ class LogPolicyScan:
                 )
             return items
 
-        logs = self.vlogs_api.query(query=final_query, start=window_start, end=window_end, limit=sample_limit)
         self.window_observed = True
-        if not logs:
-            return []
         total_count = self._get_keyword_match_count(final_query, window_start, window_end)
-        if total_count <= 0:
-            total_count = len(logs)
+        min_hits = self._min_hits()
+        logs = self.vlogs_api.query(query=final_query, start=window_start, end=window_end, limit=sample_limit) or []
+        if total_count < min_hits and not logs:
+            return []
         return [
             {
                 "group_values": {},
                 "total_count": total_count,
-                "triggered": total_count > 0,
+                "min_hits": min_hits,
+                "triggered": total_count >= min_hits,
                 "final_query": final_query,
                 "sample_limit": sample_limit,
                 "group_by": [],
@@ -548,7 +551,16 @@ class LogPolicyScan:
                 keys.add(self._row_group_key(row, group_by))
         return keys
 
+    def _min_hits(self):
+        """本窗命中条数。缺省和非法值按 1。"""
+        rule = (getattr(self.policy, "alert_condition", None) or {}).get("rule")
+        raw = rule.get("min_hits", 1) if isinstance(rule, dict) else 1
+        if raw is None or isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+            return 1
+        return min(raw, AlertConstants.MIN_HITS_MAX)
+
     def _mark_window_failed(self, rows):
+        self.recovery_frozen = True
         for row in rows or []:
             if not isinstance(row, dict):
                 continue
@@ -599,7 +611,7 @@ class LogPolicyScan:
 
     def _detection_rows(self, window_start, window_end):
         if getattr(self.policy, "alert_type", None) == AlertConstants.TYPE_KEYWORD:
-            return self._rows_with_streak(window_start, window_end, self.evaluate_keyword)
+            return self.evaluate_keyword(window_start, window_end)
         return self._rows_with_streak(window_start, window_end, self.evaluate_aggregate)
 
     def aggregate_alert_detection(self):
@@ -608,6 +620,7 @@ class LogPolicyScan:
         try:
             start_timestamp, end_timestamp = self._get_scan_window()
             rows = self._detection_rows(start_timestamp, end_timestamp)
+            self.last_detection_rows = rows
             alert_condition = self.policy.alert_condition or {}
             group_by = self._normalize_group_by(alert_condition.get("group_by", []))
             rule = alert_condition.get("rule", {}) or {}
@@ -628,7 +641,7 @@ class LogPolicyScan:
                     "source_id": identity.source_id,
                     "level": aggregate_data.get("level") or self.policy.alert_level,
                     "content": rendered_alert_name,
-                    "value": aggregate_data.get("count", 0),
+                    "value": self._first_regular_value(aggregate_data),
                     "jump_query": jump_query,
                     "raw_data": {
                         "aggregate_result": aggregate_data,
@@ -1490,6 +1503,15 @@ class LogPolicyScan:
                         existing_event = candidate_event
                         break
 
+                terminal_statuses = {
+                    getattr(AlertConstants, "STATUS_CLOSED", "closed"),
+                    getattr(AlertConstants, "STATUS_RECOVERED", "recovered"),
+                }
+                if existing_event is not None and getattr(existing_event.alert, "status", None) in terminal_statuses:
+                    if existing_event.id == event_id:
+                        continue
+                    existing_event = None
+
                 if existing_event:
                     # 同一执行的旧 worker 可能在较新结果提交后才返回；旧结果只能复用，
                     # 不得回退 Event/Alert/RawData/快照的时间与内容。
@@ -1507,6 +1529,7 @@ class LogPolicyScan:
                     alert_obj.value = event.get("value", alert_obj.value)
                     alert_obj.content = event["content"]
                     alert_obj.end_event_time = self.scan_time
+                    alert_obj.info_event_count = 0
                     alerts_to_update.append(alert_obj)
 
                     existing_event.event_time = self.scan_time
@@ -1543,6 +1566,7 @@ class LogPolicyScan:
                     alert_obj.value = event.get("value", alert_obj.value)
                     alert_obj.content = event["content"]
                     alert_obj.end_event_time = self.scan_time
+                    alert_obj.info_event_count = 0
                     alerts_to_update.append(alert_obj)
                 else:
                     # 不存在活跃告警，准备创建
@@ -1655,6 +1679,7 @@ class LogPolicyScan:
                         current_alert.value = desired_alert.value
                         current_alert.content = desired_alert.content
                         current_alert.end_event_time = desired_alert.end_event_time
+                        current_alert.info_event_count = 0
                         refreshed_alerts[current_alert.id] = current_alert
                     alerts_to_update = list(refreshed_alerts.values())
 
@@ -1676,7 +1701,7 @@ class LogPolicyScan:
                     if alerts_to_update:
                         Alert.objects.bulk_update(
                             alerts_to_update,
-                            ["value", "content", "level", "end_event_time", "notice"],
+                            ["value", "content", "level", "end_event_time", "notice", "info_event_count"],
                             batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
                         )
                         logger.debug(f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}")
@@ -2094,12 +2119,108 @@ class LogPolicyScan:
         except Exception as e:
             logger.error(f"notice failed for policy {self.policy.id}: {e}")
 
+    def _first_regular_value(self, aggregate_data):
+        """第一条常规条件的算出值。拿不到数值时回落到计数。"""
+        conditions = aggregate_data.get("conditions") if isinstance(aggregate_data, dict) else None
+        if isinstance(conditions, list) and conditions and isinstance(conditions[0], dict):
+            parsed = parse_metric(conditions[0].get("value"), as_int=False)
+            if parsed is not None:
+                return parsed
+        if isinstance(aggregate_data, dict):
+            return aggregate_data.get("count", 0)
+        return 0
+
+    def _recover_after(self):
+        rule = (getattr(self.policy, "alert_condition", None) or {}).get("rule")
+        raw = rule.get("recover_after") if isinstance(rule, dict) else None
+        if isinstance(raw, bool) or not isinstance(raw, int) or not 1 <= raw <= AlertConstants.RECOVER_AFTER_MAX:
+            return None
+        return raw
+
+    def _recovery_should_wait(self):
+        if not getattr(self, "window_observed", False) or getattr(self, "recovery_frozen", False):
+            return True
+        if getattr(self, "baseline_status", "not_required") == "unavailable":
+            return True
+        for row in getattr(self, "last_detection_rows", None) or []:
+            if isinstance(row, dict) and row.get("reason") == "window_failed":
+                return True
+        return False
+
+    def reconcile_recoveries(self, events):
+        """聚合策略：连续不满足则自动恢复。查询失败不计数也不清零。"""
+        recover_after = self._recover_after()
+        if recover_after is None or getattr(self.policy, "alert_type", None) != AlertConstants.TYPE_AGGREGATE:
+            return []
+        if self._recovery_should_wait():
+            return []
+        triggered = set()
+        for event in events or []:
+            if not isinstance(event, dict):
+                continue
+            if event.get("source_id"):
+                triggered.add(event["source_id"])
+            for alias in event.get("source_id_aliases") or []:
+                triggered.add(alias)
+        recovered = []
+        from apps.log.services.alert_lifecycle_notify import deliver_log_alert_lifecycle
+
+        with transaction.atomic():
+            alerts = list(Alert.objects.select_for_update().filter(policy_id=self.policy.id, status=AlertConstants.STATUS_NEW).order_by("id"))
+            for alert in alerts:
+                if alert.source_id in triggered:
+                    if alert.info_event_count != 0:
+                        alert.info_event_count = 0
+                        alert.save(update_fields=["info_event_count", "updated_at"])
+                    continue
+                alert.info_event_count = (alert.info_event_count or 0) + 1
+                if alert.info_event_count < recover_after:
+                    alert.save(update_fields=["info_event_count", "updated_at"])
+                    continue
+                alert.status = AlertConstants.STATUS_RECOVERED
+                alert.end_event_time = self.scan_time
+                alert.operator = ""
+                should_notify = bool(self.policy.notice)
+                if should_notify:
+                    alert.notice = False
+                alert.save(update_fields=["info_event_count", "status", "end_event_time", "operator", "notice", "updated_at"])
+                event_id = self._build_event_id(f"{alert.source_id}:recovered")
+                event, _created = Event.objects.get_or_create(
+                    id=event_id,
+                    defaults={
+                        "policy": self.policy,
+                        "source_id": alert.source_id,
+                        "alert": alert,
+                        "event_time": self.scan_time,
+                        "value": None,
+                        "level": alert.level or "",
+                        "action": Event.Action.RECOVERED,
+                        "content": alert.content or "",
+                        "notice_result": [],
+                        "notified": not should_notify,
+                    },
+                )
+                recovered.append(alert)
+                if should_notify:
+                    closed_at = alert.end_event_time
+                    alert_id = alert.id
+                    transaction.on_commit(
+                        lambda alert_id=alert_id, event_time=closed_at: deliver_log_alert_lifecycle(
+                            alert_id,
+                            event_time,
+                            AlertConstants.STATUS_RECOVERED,
+                        )
+                    )
+                if event.action != Event.Action.RECOVERED:
+                    event.action = Event.Action.RECOVERED
+                    event.save(update_fields=["action"])
+        return recovered
+
     def run(self):
         """运行策略扫描"""
         try:
             events = []
 
-            # 根据告警类型进行不同的检测
             if self.policy.alert_type == AlertConstants.TYPE_KEYWORD:
                 events = self.keyword_alert_detection()
             elif self.policy.alert_type == AlertConstants.TYPE_AGGREGATE:
@@ -2108,16 +2229,15 @@ class LogPolicyScan:
                 logger.warning(f"Unknown alert type: {self.policy.alert_type} for policy {self.policy.id}")
                 return
 
+            event_objs = self.create_events(events) if events else []
+            if self.policy.alert_type == AlertConstants.TYPE_AGGREGATE:
+                self.reconcile_recoveries(events)
             if not events:
                 logger.info(f"No alert events detected for policy {self.policy.id}")
                 return
 
             logger.info(f"Detected {len(events)} alert events for policy {self.policy.id}")
 
-            # 创建事件记录
-            event_objs = self.create_events(events)
-
-            # 事件通知
             if self.policy.notice and event_objs:
                 self.notice(event_objs)
 

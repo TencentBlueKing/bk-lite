@@ -9,7 +9,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.log.models.log_group import LogGroup, LogGroupOrganization
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
-from apps.log.services.policy_dry_run import DRY_RUN_FAIL_TEMPLATE
+from apps.log.services.policy_dry_run import DRY_RUN_FAIL_TEMPLATE, LogPolicyDryRunService
 from apps.log.views.policy import PolicyViewSet
 
 FIXED_NOW = datetime(2026, 10, 27, 8, 0, tzinfo=timezone.utc)
@@ -688,3 +688,14 @@ def test_aggregate_dry_run_item_includes_level():
     assert item["level"] == "error"
     assert item["verdict"] == "would_trigger"
     assert item["conditions"][0]["level"] == "error"
+
+
+def test_keyword_dry_run_item_uses_min_hits():
+    below = LogPolicyDryRunService._keyword_item({"total_count": 2, "min_hits": 3, "triggered": False, "group_values": {}})
+    assert below["verdict"] == "no_trigger"
+    assert below["min_hits"] == 3
+    assert below["total_count"] == 2
+
+    hit = LogPolicyDryRunService._keyword_item({"total_count": 3, "min_hits": 3, "triggered": True, "group_values": {}})
+    assert hit["verdict"] == "would_trigger"
+    assert hit["total_count"] == 3

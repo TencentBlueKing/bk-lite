@@ -130,6 +130,52 @@ def test_trigger_count_above_five_is_rejected():
     assert "连续满足次数" in str(serializer.errors)
 
 
+def test_keyword_min_hits_replaces_trigger_count_and_recover_after():
+    condition = {
+        "query": "OutOfMemoryError",
+        "rule": {"trigger_count": 3, "recover_after": 2, "min_hits": 4},
+    }
+    serializer = _serializer(condition, alert_type="keyword")
+    assert serializer.is_valid(), serializer.errors
+    rule = serializer.validated_data["alert_condition"]["rule"]
+    assert rule["min_hits"] == 4
+    assert "trigger_count" not in rule
+    assert "recover_after" not in rule
+
+
+def test_keyword_min_hits_defaults_to_one_and_rejects_out_of_range():
+    missing = _serializer({"query": "oom", "rule": {}}, alert_type="keyword")
+    assert missing.is_valid(), missing.errors
+    assert missing.validated_data["alert_condition"]["rule"]["min_hits"] == 1
+
+    rejected = _serializer({"query": "oom", "rule": {"min_hits": 100001}}, alert_type="keyword")
+    assert not rejected.is_valid()
+    assert "命中条数" in str(rejected.errors)
+
+
+def test_aggregate_recover_after_is_bounded_and_drops_min_hits():
+    rejected = _condition("count")
+    rejected["rule"]["recover_after"] = 11
+    rejected_serializer = _serializer(rejected)
+    assert not rejected_serializer.is_valid()
+    assert "自动恢复" in str(rejected_serializer.errors)
+
+    accepted = _condition("count")
+    accepted["rule"]["recover_after"] = 3
+    accepted["rule"]["min_hits"] = 9
+    serializer = _serializer(accepted)
+    assert serializer.is_valid(), serializer.errors
+    rule = serializer.validated_data["alert_condition"]["rule"]
+    assert rule["recover_after"] == 3
+    assert "min_hits" not in rule
+
+    cleared = _condition("count")
+    cleared["rule"]["recover_after"] = None
+    cleared_serializer = _serializer(cleared)
+    assert cleared_serializer.is_valid(), cleared_serializer.errors
+    assert cleared_serializer.validated_data["alert_condition"]["rule"]["recover_after"] is None
+
+
 def test_stored_no_data_is_dropped_on_write():
     condition = _condition("count")
     condition["no_data"] = {"enabled": "yes", "level": "fatal"}

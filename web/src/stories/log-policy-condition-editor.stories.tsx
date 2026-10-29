@@ -7,6 +7,7 @@ import { FilterItem } from '@/app/log/types/integration';
 
 /**
  * 日志聚合策略的告警条件编辑器。一条条件一张卡：统计、比较、触发。
+ * 运算符为大于、大于等于、小于、小于等于、等于、不等于；已保存的包括 / 不包括仍回显。
  */
 
 type LocaleJson = Record<string, unknown>;

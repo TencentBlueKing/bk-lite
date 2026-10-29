@@ -26,6 +26,8 @@ import {
   getLockedPolicyType,
   normalizeCondition,
   pruneNoticeUsers,
+  readPolicyMinHits,
+  readPolicyRecoverAfter,
   readPolicyTriggerCount,
   shouldPruneNoticeUsers,
   shouldRequireNoticeUsers
@@ -332,7 +334,10 @@ const StrategyOperation = () => {
       schedule: scheduleValue || '',
       query: alert_condition.query || '',
       group_by: alert_condition.group_by || null,
-      trigger_count: readPolicyTriggerCount(alert_condition)
+      trigger_count: readPolicyTriggerCount(alert_condition),
+      min_hits: readPolicyMinHits(alert_condition),
+      recover_after: readPolicyRecoverAfter(alert_condition) ?? 3,
+      recover_enabled: readPolicyRecoverAfter(alert_condition) != null
     };
     if (alert_type === 'aggregate') {
       setTerm(alert_condition.rule?.mode || '');

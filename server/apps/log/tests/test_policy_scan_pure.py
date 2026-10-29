@@ -196,14 +196,14 @@ class TestBuildQueryWithLogGroups:
         query_mock = mocker.patch.object(
             scan.vlogs_api,
             "query",
-            side_effect=[[{"_msg": "error A"}], [{"total_count": "1"}]],
+            side_effect=[[{"total_count": "1"}], [{"_msg": "error A"}]],
         )
 
         events = scan.keyword_alert_detection()
 
         assert events
-        assert query_mock.call_args_list[0].kwargs["query"] == '_msg:"error"'
-        assert query_mock.call_args_list[1].kwargs["query"] == '_msg:"error" | stats count() as total_count'
+        assert query_mock.call_args_list[0].kwargs["query"] == '_msg:"error" | stats count() as total_count'
+        assert query_mock.call_args_list[1].kwargs["query"] == '_msg:"error"'
         assert events[0]["raw_data"] == [{"message": "error A"}]
         assert events[0]["jump_query"]["query"] == '_msg:"error"'
         assert events[0]["jump_query"]["window_start"] < events[0]["jump_query"]["window_end"]
@@ -1364,26 +1364,69 @@ class TestTriggerCount:
 
         baseline_starts, baseline_events = run(None)
         once_starts, once_events = run(1)
-        assert baseline_starts == once_starts
+        assert baseline_starts == once_starts == [1000, 1000]
         assert len(baseline_events) == len(once_events) == 1
         triple_starts, triple_events = run(3)
-        assert triple_starts == [700, 700, 400, 400, 1000, 1000]
+        assert triple_starts == [1000, 1000]
         assert len(triple_events) == 1
         assert triple_events[0]["value"] == 4
-        _starts, missed = run(3, miss_previous=True)
-        assert missed == []
+        missed_starts, missed = run(3, miss_previous=True)
+        assert missed_starts == [1000, 1000]
+        assert len(missed) == 1
         records, handler, logger, previous_level = _capture_warnings()
         try:
-            _starts, failed = run(3, fail_previous=True)
+            failed_starts, failed = run(3, fail_previous=True)
         finally:
             logger.removeHandler(handler)
             logger.setLevel(previous_level)
-        assert failed == []
+        assert failed_starts == [1000, 1000]
+        assert len(failed) == 1
         template = "event=log_policy_streak_failed policy_id=%s failed_stage=%s window_index=%s error_type=%s"
         matched = [record for record in records if record.msg == template]
-        assert len(matched) == 1
-        assert matched[0].args == (11, "streak", 1, "RuntimeError")
-        assert "SENTINEL_KEYWORD_STREAK_QUERY" not in matched[0].getMessage()
+        assert matched == []
+
+    def test_keyword_min_hits_uses_match_count(self, mocker):
+        def detect(total, min_hits=3):
+            policy = _policy(
+                id=21,
+                alert_type="keyword",
+                alert_condition={"query": "error", "rule": {"min_hits": min_hits, "trigger_count": 5}},
+            )
+            scan = LogPolicyScan(policy, window_start=1000, window_end=1300)
+
+            def fake_query(query, start, end, limit=10):
+                if "stats" in query:
+                    return [{"total_count": str(total)}]
+                return [{"_msg": "a"}, {"_msg": "b"}]
+
+            mocker.patch.object(scan.vlogs_api, "query", side_effect=fake_query)
+            return scan.keyword_alert_detection()
+
+        assert detect(2) == []
+        events = detect(3)
+        assert len(events) == 1
+        assert events[0]["value"] == 3
+
+    def test_avg_event_value_is_the_computed_average(self, mocker):
+        policy = _policy(
+            id=22,
+            alert_type="aggregate",
+            alert_name="耗时",
+            alert_condition={
+                "query": "*",
+                "group_by": [],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "avg", "field": "duration", "op": ">", "value": "500"}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, window_start=1000, window_end=1600)
+        mocker.patch.object(scan.vlogs_api, "query", return_value=[{"avg_duration": "800.5"}])
+        mocker.patch.object(scan, "_fetch_aggregate_samples", return_value={})
+        events = scan.aggregate_alert_detection()
+        assert len(events) == 1
+        assert events[0]["value"] == pytest.approx(800.5)
 
 
 class TestThresholdLadder:

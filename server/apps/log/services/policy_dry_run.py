@@ -161,20 +161,26 @@ class LogPolicyDryRunService:
     @staticmethod
     def _keyword_item(row):
         count = row.get("total_count") or 0
+        min_hits = row.get("min_hits", 1)
         reason = row.get("reason") or ""
         streak_blocks = "streak" in row and not row.get("triggered")
+        triggered = row.get("triggered")
+        if triggered is None:
+            triggered = count > 0
         if reason == "window_failed" or streak_blocks:
             verdict = "no_trigger"
-        elif count > 0:
+        elif triggered:
             verdict = "would_trigger"
         elif count == 0:
             verdict = "no_trigger"
         else:
-            verdict = "no_data"
+            verdict = "no_trigger"
         return LogPolicyDryRunService._with_streak(
             {
                 "group": row.get("group_values") or {},
                 "count": count,
+                "total_count": count,
+                "min_hits": min_hits,
                 "previous_count": None,
                 "count_rate": None,
                 "count_delta": None,

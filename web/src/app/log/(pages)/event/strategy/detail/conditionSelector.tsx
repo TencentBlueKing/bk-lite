@@ -14,7 +14,7 @@ import {
   FUNCTION_LIST,
   QUANTILE_LIST,
 } from '@/app/log/constants';
-import { useConditionList } from '@/app/log/hooks/event';
+import { useAggregateOperatorList, useConditionList } from '@/app/log/hooks/event';
 import { compareOffsetLimit, presentCompare } from '@/app/log/utils/compareTarget';
 import {
   conditionWithLadderSlots,
@@ -38,6 +38,7 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
 }) => {
   const { t } = useTranslation();
   const conditionList = useConditionList();
+  const aggregateOperators = useAggregateOperatorList();
 
   const functionName = (item: AggregateFunctionOption) => t(item.labelKey);
 
@@ -232,9 +233,7 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
           const showRatio = functionOption?.needsFilter === true;
           const showUnitSuffix = Boolean(functionOption?.unitKey) || showPercent || showRatio;
           const numericCompare = isNumericCompare(conditionItem.func, compareKind);
-          const operatorOptions = conditionList.filter(
-            (item) => !MEMBERSHIP_OPS.has(String(item.id))
-          );
+          const operatorOptions = [...aggregateOperators];
           if (MEMBERSHIP_OPS.has(String(conditionItem.op)) && !numericCompare) {
             const currentOp = conditionList.find(
               (item) => String(item.id) === String(conditionItem.op)
@@ -242,12 +241,6 @@ const ConditionSelector: React.FC<ConditionFilterProps> = ({
             if (currentOp) {
               operatorOptions.push(currentOp);
             }
-          }
-          if (
-            (conditionItem.op === '>=' || conditionItem.op === '<=')
-            && !operatorOptions.some((item) => String(item.id) === String(conditionItem.op))
-          ) {
-            operatorOptions.push({ id: conditionItem.op, name: conditionItem.op });
           }
           const ladder = conditionItem.op != null && LADDER_OPS.has(String(conditionItem.op));
           const levelSlots = conditionItem.op != null;

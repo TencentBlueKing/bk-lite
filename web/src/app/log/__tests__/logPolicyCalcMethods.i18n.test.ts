@@ -38,7 +38,12 @@ const keys = [
   'log.event.ratioFilterTip',
   'log.event.triggerCount',
   'log.event.triggerCountTip',
-  'log.event.keywordTriggerCountTip',
+  'log.event.minHits',
+  'log.event.minHitsTip',
+  'log.event.recoverAfter',
+  'log.event.recoverAfterTip',
+  'log.moreThanOrEqual',
+  'log.lessThanOrEqual',
   'log.event.aggregateQueryCriteriaTips',
   'log.event.thresholdNumberValidate',
   'log.event.thresholdOrderValidate',
@@ -126,7 +131,13 @@ describe('日志策略计算方式文案', () => {
     expect(enMessages['log.event.funcCountDelta']).toBe('Change');
     expect(zhMessages['log.event.dryRun']).toBe('试算');
     expect(zhMessages['log.event.openInSearch']).toBe('在检索中打开');
-    expect(zhMessages['log.event.triggerCountTip']).toBe('连续 N 个检测窗都满足才告警');
+    expect(zhMessages['log.event.triggerCountTip']).toBe(
+      '最近 N 个相邻周期（按周期长度向前平移）都满足才告警'
+    );
+    expect(zhMessages['log.event.setFrequency']).toBe('多久扫描一次日志');
+    expect(zhMessages['log.event.setPeriod']).toBe('每次统计最近多长时间的日志');
+    expect(zhMessages['log.event.minHitsTip']).toBe('本窗命中达到该条数才告警');
+    expect(enMessages['log.event.keywordTriggerCountTip']).toBeUndefined();
     expect(zhMessages['log.event.noDataWindowLine']).toBe('本窗无日志，上一窗 {count} 条');
   });
 });

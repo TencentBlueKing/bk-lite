@@ -71,8 +71,8 @@ class TestKeywordAlertDetection:
             scan.vlogs_api,
             "query",
             side_effect=[
-                [{"_msg": "error A"}, {"_msg": "error B"}],  # 样本
-                [{"total_count": "7"}],  # count
+                [{"total_count": "7"}],
+                [{"_msg": "error A"}, {"_msg": "error B"}],
             ],
         )
         events = scan.keyword_alert_detection()
@@ -95,16 +95,15 @@ class TestKeywordAlertDetection:
         mocker.patch.object(scan.vlogs_api, "query", return_value=[])
         assert scan.keyword_alert_detection() == []
 
-    def test_count_zero_falls_back_to_logs_length(self, mocker):
+    def test_count_zero_does_not_fall_back_to_sample_length(self, mocker):
         policy = _make_policy()
         scan = LogPolicyScan(policy)
         mocker.patch.object(
             scan.vlogs_api,
             "query",
-            side_effect=[[{"_msg": "x"}], [{"total_count": "0"}]],
+            side_effect=[[{"total_count": "0"}], [{"_msg": "x"}]],
         )
-        events = scan.keyword_alert_detection()
-        assert events[0]["value"] == 1
+        assert scan.keyword_alert_detection() == []
 
     def test_keyword_snapshot_freezes_jump_query(self, mocker):
         policy = _make_policy(alert_condition={"query": "error", "limit": 3})
@@ -112,7 +111,7 @@ class TestKeywordAlertDetection:
         mocker.patch.object(
             scan.vlogs_api,
             "query",
-            side_effect=[[{"_msg": "error A"}], [{"total_count": "2"}]],
+            side_effect=[[{"total_count": "2"}], [{"_msg": "error A"}]],
         )
         _install_memory_json_storage(mocker)
         events = scan.keyword_alert_detection()
@@ -1858,10 +1857,10 @@ class TestRun:
             scan.vlogs_api,
             "query",
             side_effect=[
-                [{"_msg": "err"}],
                 [{"total_count": "2"}],
                 [{"_msg": "err"}],
                 [{"total_count": "2"}],
+                [{"_msg": "err"}],
             ],
         )
 
@@ -1893,7 +1892,7 @@ class TestRun:
             mocker.patch.object(
                 scan.vlogs_api,
                 "query",
-                side_effect=[[{"_msg": "err"}], [{"total_count": "2"}]],
+                side_effect=[[{"total_count": "2"}], [{"_msg": "err"}]],
             )
 
         first_scan.run()
@@ -1937,7 +1936,7 @@ class TestRun:
         mocker.patch.object(
             scan.vlogs_api,
             "query",
-            side_effect=[[{"_msg": "err"}], [{"total_count": "2"}]],
+            side_effect=[[{"total_count": "2"}], [{"_msg": "err"}]],
         )
 
         scan.run()
@@ -1974,7 +1973,7 @@ class TestRun:
         mocker.patch.object(
             scan.vlogs_api,
             "query",
-            side_effect=[[{"_msg": "err"}], [{"total_count": "2"}]],
+            side_effect=[[{"total_count": "2"}], [{"_msg": "err"}]],
         )
 
         scan.run()
@@ -1987,7 +1986,7 @@ class TestRun:
         mocker.patch.object(
             scan.vlogs_api,
             "query",
-            side_effect=[[{"_msg": "err"}], [{"total_count": "2"}]],
+            side_effect=[[{"total_count": "2"}], [{"_msg": "err"}]],
         )
         scan.run()
         assert Alert.objects.filter(policy=policy).count() == 1
@@ -2011,7 +2010,7 @@ class TestRun:
         mocker.patch.object(
             scan.vlogs_api,
             "query",
-            side_effect=[[{"_msg": "err"}], [{"total_count": "2"}]],
+            side_effect=[[{"total_count": "2"}], [{"_msg": "err"}]],
         )
         notice = mocker.patch.object(scan, "notice")
         scan.run()
@@ -2023,3 +2022,200 @@ class TestRun:
         mocker.patch.object(scan.vlogs_api, "query", side_effect=RuntimeError("vm"))
         with pytest.raises(RuntimeError):
             scan.run()
+
+
+def _aggregate_policy(**overrides):
+    condition = {
+        "query": "*",
+        "group_by": ["host"],
+        "rule": {
+            "mode": "and",
+            "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+            "recover_after": 2,
+        },
+    }
+    data = dict(
+        name="recover-policy",
+        alert_type="aggregate",
+        alert_name="${host} 聚合",
+        alert_condition=condition,
+        notice=False,
+    )
+    data.update(overrides)
+    if "alert_condition" in overrides:
+        data["alert_condition"] = overrides["alert_condition"]
+    return _make_policy(**data)
+
+
+def _run_aggregate(policy, mocker, scan_time, rows, execution_key, callbacks=None):
+    scan = LogPolicyScan(policy, scan_time=scan_time, execution_key=execution_key)
+    mocker.patch.object(scan, "_fetch_aggregate_samples", return_value={})
+    mocker.patch.object(scan.vlogs_api, "query", return_value=rows)
+    if callbacks is None:
+        scan.run()
+    else:
+        with callbacks(execute=True):
+            scan.run()
+    return scan
+
+
+class TestAggregateRecovery:
+    def test_consecutive_misses_recover_then_retrigger_opens_a_new_alert(self, mocker, django_capture_on_commit_callbacks):
+        channel = Channel.objects.create(
+            name="告警中心",
+            channel_type="nats",
+            config={"method_name": "receive_alert_events"},
+            description="",
+        )
+        policy = _aggregate_policy(notice=True, notice_type_id=channel.id, notice_type="nats")
+        send = mocker.patch(
+            "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+            return_value={"result": True},
+        )
+        mocker.patch.object(LogPolicyScan, "notice", return_value=None)
+        base = timezone.datetime(2026, 10, 29, 1, 0, tzinfo=timezone.utc)
+        hit = [{"host": "a", "count__msg": "9"}]
+        miss = [{"host": "a", "count__msg": "1"}]
+
+        _run_aggregate(policy, mocker, base, hit, "w1", django_capture_on_commit_callbacks)
+        alert = Alert.objects.get(policy=policy)
+        assert alert.status == AlertConstants.STATUS_NEW
+        assert alert.info_event_count == 0
+
+        _run_aggregate(policy, mocker, base + timezone.timedelta(minutes=5), miss, "w2", django_capture_on_commit_callbacks)
+        alert.refresh_from_db()
+        assert alert.status == AlertConstants.STATUS_NEW
+        assert alert.info_event_count == 1
+
+        recovering = _run_aggregate(
+            policy,
+            mocker,
+            base + timezone.timedelta(minutes=10),
+            miss,
+            "w3",
+            django_capture_on_commit_callbacks,
+        )
+        alert.refresh_from_db()
+        assert alert.status == AlertConstants.STATUS_RECOVERED
+        assert alert.operator == ""
+        assert alert.end_event_time == recovering.scan_time
+        recovered_events = list(Event.objects.filter(alert=alert, action=Event.Action.RECOVERED))
+        assert len(recovered_events) == 1
+        assert recovered_events[0].value is None
+        assert recovered_events[0].content == alert.content
+        assert recovered_events[0].level == alert.level
+        assert send.call_count == 1
+        assert send.call_args.args[2]["events"][0]["action"] == "recovered"
+
+        _run_aggregate(
+            policy,
+            mocker,
+            base + timezone.timedelta(minutes=10),
+            miss,
+            "w3",
+            django_capture_on_commit_callbacks,
+        )
+        alert.refresh_from_db()
+        assert alert.status == AlertConstants.STATUS_RECOVERED
+        assert Event.objects.filter(alert=alert, action=Event.Action.RECOVERED).count() == 1
+        assert send.call_count == 1
+
+        _run_aggregate(policy, mocker, base + timezone.timedelta(minutes=15), hit, "w4", django_capture_on_commit_callbacks)
+        assert Alert.objects.filter(policy=policy, status=AlertConstants.STATUS_NEW).count() == 1
+        assert Alert.objects.filter(policy=policy, status=AlertConstants.STATUS_RECOVERED).count() == 1
+        assert Alert.objects.get(policy=policy, status=AlertConstants.STATUS_NEW).id != alert.id
+
+    def test_failed_window_does_not_change_recovery_count(self, mocker):
+        policy = _aggregate_policy()
+        base = timezone.datetime(2026, 10, 29, 2, 0, tzinfo=timezone.utc)
+        _run_aggregate(policy, mocker, base, [{"host": "a", "count__msg": "9"}], "ok")
+        alert = Alert.objects.get(policy=policy)
+        Alert.objects.filter(id=alert.id).update(info_event_count=1)
+
+        scan = LogPolicyScan(policy, scan_time=base + timezone.timedelta(minutes=5), execution_key="fail")
+        mocker.patch.object(scan.vlogs_api, "query", side_effect=RuntimeError("vm down"))
+        with pytest.raises(RuntimeError):
+            scan.run()
+        alert.refresh_from_db()
+        assert alert.info_event_count == 1
+        assert alert.status == AlertConstants.STATUS_NEW
+
+        frozen = LogPolicyScan(policy, scan_time=base + timezone.timedelta(minutes=10), execution_key="frozen")
+        frozen.window_observed = True
+        frozen.recovery_frozen = True
+        frozen.last_detection_rows = [{"reason": "window_failed", "triggered": False}]
+        frozen.reconcile_recoveries([])
+        alert.refresh_from_db()
+        assert alert.info_event_count == 1
+        assert alert.status == AlertConstants.STATUS_NEW
+
+    def test_missing_group_counts_as_a_miss(self, mocker, django_capture_on_commit_callbacks):
+        policy = _aggregate_policy()
+        base = timezone.datetime(2026, 10, 29, 3, 0, tzinfo=timezone.utc)
+        _run_aggregate(policy, mocker, base, [{"host": "a", "count__msg": "9"}], "hit", django_capture_on_commit_callbacks)
+        _run_aggregate(policy, mocker, base + timezone.timedelta(minutes=5), [], "gone", django_capture_on_commit_callbacks)
+        alert = Alert.objects.get(policy=policy)
+        assert alert.status == AlertConstants.STATUS_NEW
+        assert alert.info_event_count == 1
+
+    def test_policy_without_recover_after_never_recovers(self, mocker, django_capture_on_commit_callbacks):
+        condition = {
+            "query": "*",
+            "group_by": ["host"],
+            "rule": {
+                "mode": "and",
+                "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+            },
+        }
+        policy = _aggregate_policy(name="legacy-aggregate", alert_condition=condition)
+        base = timezone.datetime(2026, 10, 29, 4, 0, tzinfo=timezone.utc)
+        _run_aggregate(policy, mocker, base, [{"host": "a", "count__msg": "9"}], "hit", django_capture_on_commit_callbacks)
+        _run_aggregate(policy, mocker, base + timezone.timedelta(minutes=5), [], "miss-1", django_capture_on_commit_callbacks)
+        _run_aggregate(policy, mocker, base + timezone.timedelta(minutes=10), [], "miss-2", django_capture_on_commit_callbacks)
+        alert = Alert.objects.get(policy=policy)
+        assert alert.status == AlertConstants.STATUS_NEW
+        assert alert.info_event_count == 0
+        assert Event.objects.filter(policy=policy, action=Event.Action.RECOVERED).count() == 0
+
+    def test_keyword_scan_does_not_reconcile_recovery(self, mocker):
+        policy = _make_policy(
+            name="keyword-no-recover",
+            alert_condition={"query": "error", "rule": {"recover_after": 1, "min_hits": 1}},
+        )
+        alert = Alert.objects.create(
+            id="keyword-active",
+            policy=policy,
+            source_id=f"policy_{policy.id}",
+            level="warning",
+            status=AlertConstants.STATUS_NEW,
+            info_event_count=4,
+            start_event_time=timezone.now(),
+        )
+        scan = LogPolicyScan(policy, execution_key="keyword-miss")
+        mocker.patch.object(scan.vlogs_api, "query", return_value=[])
+        scan.run()
+        alert.refresh_from_db()
+        assert alert.status == AlertConstants.STATUS_NEW
+        assert alert.info_event_count == 4
+
+    def test_avg_alert_value_is_the_computed_average(self, mocker):
+        policy = _make_policy(
+            name="avg-value",
+            alert_type="aggregate",
+            alert_name="耗时",
+            alert_condition={
+                "query": "*",
+                "group_by": [],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "avg", "field": "duration", "op": ">", "value": "500"}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy, execution_key="avg")
+        mocker.patch.object(scan, "_fetch_aggregate_samples", return_value={})
+        mocker.patch.object(scan.vlogs_api, "query", return_value=[{"avg_duration": "800.5"}])
+        scan.run()
+        alert = Alert.objects.get(policy=policy)
+        assert alert.value == pytest.approx(800.5)
+        assert alert.value != 0

@@ -241,7 +241,14 @@ describe('条件函数选择', () => {
     expect(optionText('log.lessThan')).toBe('log.lessThan');
     expect(
       [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
-    ).toEqual(['log.equalto', 'log.notequalTo', 'log.moreThan', 'log.lessThan']);
+    ).toEqual([
+      'log.moreThan',
+      'log.moreThanOrEqual',
+      'log.lessThan',
+      'log.lessThanOrEqual',
+      'log.equalto',
+      'log.notequalTo',
+    ]);
   });
 
   it('变化量和变化率不提供包括、不包括，并清掉已选的包括', () => {
@@ -276,7 +283,14 @@ describe('条件函数选择', () => {
     fireEvent.mouseDown(screen.getByText('log.moreThan').closest('.ant-select')!.querySelector('.ant-select-selector')!);
     expect(
       [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
-    ).toEqual(['log.equalto', 'log.notequalTo', 'log.moreThan', 'log.lessThan']);
+    ).toEqual([
+      'log.moreThan',
+      'log.moreThanOrEqual',
+      'log.lessThan',
+      'log.lessThanOrEqual',
+      'log.equalto',
+      'log.notequalTo',
+    ]);
   });
 
   it('点击添加条件时在末尾追加空条件', () => {
@@ -329,7 +343,7 @@ describe('条件函数选择', () => {
     ]);
   });
 
-  it('新建计数当前值的运算符只有四个数值比较，阈值仍是文本框', () => {
+  it('新建计数当前值的运算符是六个比较符，阈值仍是文本框', () => {
     render(
       <ConditionFilter
         data={[{ func: 'count', field: null, op: null, value: '' }]}
@@ -349,7 +363,14 @@ describe('条件函数选择', () => {
     );
     expect(
       [...document.querySelectorAll('.ant-select-item-option')].map((node) => node.textContent)
-    ).toEqual(['log.equalto', 'log.notequalTo', 'log.moreThan', 'log.lessThan']);
+    ).toEqual([
+      'log.moreThan',
+      'log.moreThanOrEqual',
+      'log.lessThan',
+      'log.lessThanOrEqual',
+      'log.equalto',
+      'log.notequalTo',
+    ]);
   });
 
   it('旧的包括条件在当前值下仍然回显', () => {

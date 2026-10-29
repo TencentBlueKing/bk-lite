@@ -125,6 +125,28 @@ export const readPolicyTriggerCount = (
   return raw;
 };
 
+/** 聚合策略自动恢复周期。不是 1..10 的整数视为未开启。 */
+export const readPolicyRecoverAfter = (
+  alertCondition?: StrategyFields['alert_condition']
+): number | null => {
+  const raw = alertCondition?.rule?.recover_after;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > 10) {
+    return null;
+  }
+  return raw;
+};
+
+/** 关键字本窗命中条数。缺省和非法值按 1。 */
+export const readPolicyMinHits = (
+  alertCondition?: StrategyFields['alert_condition']
+): number => {
+  const raw = alertCondition?.rule?.min_hits;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > 100000) {
+    return 1;
+  }
+  return raw;
+};
+
 const filledThresholds = (item: FilterItem) =>
   (item.thresholds || []).filter(
     (step) => isPolicyLevel(step.level) && String(step.value ?? '').trim() !== ''
@@ -547,21 +569,28 @@ export const buildStrategyPayload = (
   };
 
   if (params.alert_type === 'aggregate') {
+    const recoverAfter =
+      values.recover_enabled && typeof values.recover_after === 'number'
+        ? values.recover_after
+        : null;
     params.alert_condition.rule = {
       mode: options.term || 'and',
-      conditions
+      conditions,
+      recover_after: recoverAfter,
+      ...(typeof values.trigger_count === 'number'
+        ? { trigger_count: values.trigger_count }
+        : {})
     };
     const derived = highestEnabledLevel(conditions);
     if (derived) {
       params.alert_level = derived;
     }
   }
-  if (typeof values.trigger_count === 'number') {
-    const rule = params.alert_condition.rule;
+  if (params.alert_type === 'keyword') {
     params.alert_condition.rule = {
-      mode: rule?.mode || options.term || 'and',
-      conditions: rule?.conditions || [],
-      trigger_count: values.trigger_count
+      mode: options.term || 'and',
+      conditions: [],
+      min_hits: typeof values.min_hits === 'number' ? values.min_hits : 1
     };
   }
   if (options.isEdit) {

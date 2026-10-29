@@ -78,6 +78,9 @@ export interface StrategyFields {
     level?: string;
   };
   trigger_count?: number;
+  recover_after?: number | null;
+  recover_enabled?: boolean;
+  min_hits?: number;
   alert_condition?: {
     group_by?: string[];
     query?: string;
@@ -89,6 +92,8 @@ export interface StrategyFields {
       mode: string;
       conditions: FilterItem[];
       trigger_count?: number;
+      recover_after?: number | null;
+      min_hits?: number;
     };
   };
   show_fields?: string[];

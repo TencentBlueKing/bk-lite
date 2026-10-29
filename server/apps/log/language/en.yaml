@@ -144,6 +144,8 @@ error:
   policy_ratio_filter_invalid: Ratio filter is invalid
   policy_field_required: Aggregation field is required
   policy_trigger_count_range: Consecutive match count must be an integer from 1 to 5
+  policy_recover_after_range: Automatic recovery must be an integer from 1 to 10
+  policy_min_hits_range: Minimum hits must be an integer from 1 to 100000
   policy_group_by_invalid: Group-by fields are invalid
   policy_sample_limit_range: Sample size must be an integer from 1 to 10
   topn_unsupported: This field does not support TopN statistics

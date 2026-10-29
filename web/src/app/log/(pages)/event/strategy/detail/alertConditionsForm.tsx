@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Input, Select, InputNumber, Radio, Tag } from 'antd';
+import { Form, Input, Select, InputNumber, Radio, Switch, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import ConditionSelector from './conditionSelector';
 import { StrategyFields } from '@/app/log/types/event';
@@ -292,24 +292,76 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           {t('log.event.setFrequency')}
         </div>
       </Form.Item>
-      <Form.Item<StrategyFields>
-        label={<span className="w-[100px]">{t('log.event.triggerCount')}</span>}
-      >
-        <Form.Item name="trigger_count" initialValue={1} noStyle>
-          <InputNumber
-            data-testid="trigger-count"
-            min={1}
-            max={5}
-            precision={0}
-            style={{ width: 120 }}
-          />
+      {lockedPolicyType === 'keyword' ? (
+        <Form.Item<StrategyFields>
+          label={<span className="w-[100px]">{t('log.event.minHits')}</span>}
+        >
+          <Form.Item name="min_hits" initialValue={1} noStyle>
+            <InputNumber
+              data-testid="min-hits"
+              min={1}
+              max={100000}
+              precision={0}
+              style={{ width: 160 }}
+            />
+          </Form.Item>
+          <div className="text-[var(--color-text-3)] mt-[10px]">
+            {t('log.event.minHitsTip')}
+          </div>
         </Form.Item>
-        <div className="text-[var(--color-text-3)] mt-[10px]">
-          {lockedPolicyType === 'keyword'
-            ? t('log.event.keywordTriggerCountTip')
-            : t('log.event.triggerCountTip')}
-        </div>
-      </Form.Item>
+      ) : (
+        <>
+          <Form.Item<StrategyFields>
+            label={<span className="w-[100px]">{t('log.event.triggerCount')}</span>}
+          >
+            <Form.Item name="trigger_count" initialValue={1} noStyle>
+              <InputNumber
+                data-testid="trigger-count"
+                min={1}
+                max={5}
+                precision={0}
+                style={{ width: 120 }}
+              />
+            </Form.Item>
+            <div className="text-[var(--color-text-3)] mt-[10px]">
+              {t('log.event.triggerCountTip')}
+            </div>
+          </Form.Item>
+          <Form.Item<StrategyFields>
+            label={<span className="w-[100px]">{t('log.event.recoverAfter')}</span>}
+          >
+            <div className="flex items-center gap-[8px]">
+              <Form.Item
+                name="recover_enabled"
+                valuePropName="checked"
+                initialValue
+                noStyle
+              >
+                <Switch data-testid="recover-enabled" />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate>
+                {({ getFieldValue }) =>
+                  getFieldValue('recover_enabled') ? (
+                    <Form.Item name="recover_after" initialValue={3} noStyle>
+                      <InputNumber
+                        data-testid="recover-after"
+                        min={1}
+                        max={10}
+                        precision={0}
+                        addonBefore={t('log.event.recoverAfterBefore')}
+                        addonAfter={t('log.event.recoverAfterAfter')}
+                      />
+                    </Form.Item>
+                  ) : null
+                }
+              </Form.Item>
+            </div>
+            <div className="text-[var(--color-text-3)] mt-[10px]">
+              {t('log.event.recoverAfterTip')}
+            </div>
+          </Form.Item>
+        </>
+      )}
       <Form.Item<StrategyFields>
         required
         label={<span className="w-[100px]">{t('log.event.period')}</span>}

@@ -133,6 +133,8 @@ error:
   policy_ratio_filter_invalid: 占比筛选无效
   policy_field_required: 聚合字段不能为空
   policy_trigger_count_range: 连续满足次数须在 1 到 5 之间
+  policy_recover_after_range: 自动恢复周期须在 1 到 10 之间
+  policy_min_hits_range: 命中条数须在 1 到 100000 之间
   policy_group_by_invalid: 分组字段格式错误
   policy_sample_limit_range: 样本条数须在 1 到 10 之间
   topn_unsupported: 该字段不支持 TopN 统计
