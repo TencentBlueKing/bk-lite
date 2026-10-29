@@ -203,6 +203,30 @@ class SSHPlugin:
 
         return exec_params
 
+    def _ssh_material_present(self) -> bool:
+        return any(str(value or "").strip() for value in (self.username, self.password, self.private_key))
+
+    @staticmethod
+    def _is_nats_transport_error(error: BaseException) -> bool:
+        if isinstance(error, TimeoutError):
+            return True
+        return type(error).__name__ in {"NoRespondersError", "ConnectionClosedError", "TimeoutError"}
+
+    async def _request_execute(self, script_content: str, *, local: bool) -> Dict[str, Any]:
+        saved_node_info = self.node_info
+        if not local:
+            self.node_info = {}
+        try:
+            exec_params = self._build_exec_params(script_content)
+        finally:
+            self.node_info = saved_node_info
+        if local:
+            subject = f"local.execute.{saved_node_info['id']}"
+        else:
+            subject = f"ssh.execute.{self.node_id}"
+        payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
+        return await nats_request(subject, payload=payload, timeout=self.nats_timeout)
+
     def _parse_collect_output(self, collect_output: str) -> List[Dict[str, Any]]:
         if not collect_output:
             return []
@@ -286,16 +310,7 @@ class SSHPlugin:
             # 1. 读取脚本内容
             script_content = await asyncio.to_thread(self._read_script)
 
-            # 2. 构建执行参数
-            exec_params = self._build_exec_params(script_content)
-            # 3. 判断执行模式（本地 or SSH）
             execution_mode = "local" if self.node_info else "ssh"
-            # 如果是local，则使用对应的node_id
-            if execution_mode == "local":
-                subject = f"{execution_mode}.execute.{self.node_info['id']}"
-            else:
-                subject = f"{execution_mode}.execute.{self.node_id}"
-
             logger.debug(
                 "event=ssh_script_execute mode=%s host=%s model_id=%s task_id=%s",
                 execution_mode,
@@ -303,10 +318,19 @@ class SSHPlugin:
                 self.model_id,
                 self.collection_task_id,
             )
-
-            # 4. 通过 NATS 执行
-            payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
-            response = await nats_request(subject, payload=payload, timeout=self.nats_timeout)
+            try:
+                response = await self._request_execute(script_content, local=bool(self.node_info))
+            except Exception as error:
+                if not (self.node_info and self._is_nats_transport_error(error) and self._ssh_material_present()):
+                    raise
+                logger.warning(
+                    "event=ssh_script_local_fallback host=%s model_id=%s task_id=%s error_type=%s",
+                    self.host,
+                    self.model_id,
+                    self.collection_task_id,
+                    type(error).__name__,
+                )
+                response = await self._request_execute(script_content, local=False)
             if response.get("success"):
                 if need_raw:
                     return response

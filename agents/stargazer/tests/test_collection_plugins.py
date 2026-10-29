@@ -55,6 +55,7 @@ async def test_job_plugin_injects_run_node_info_before_service_probe_and_collect
                 "id": "node-9",
                 "ip": "10.10.24.9",
                 "operating_system": "linux",
+                "nats_executor_online": True,
             }
 
     class Service:
@@ -96,6 +97,40 @@ async def test_job_plugin_injects_run_node_info_before_service_probe_and_collect
 
     assert len(captured) == 2
     assert all(params["node_info"]["id"] == "node-9" for params in captured)
+
+
+@pytest.mark.asyncio
+async def test_job_plugin_keeps_ssh_when_nats_executor_is_offline():
+    captured = []
+
+    class Lookup:
+        async def get(self, target, *, connect_host=""):
+            return {
+                "id": "node-9",
+                "ip": target,
+                "operating_system": "linux",
+                "nats_executor_online": False,
+            }
+
+    class Service:
+        def __init__(self, params):
+            captured.append(params)
+
+        async def collect(self):
+            return 'host{collect_status="success"} 1'
+
+    plugin = ConfigurationCollectionPlugin(service_factory=Service, node_info_lookup=Lookup())
+    await plugin.collect(
+        "10.10.24.9",
+        {"credential_id": "credential-1"},
+        TargetCollectionContext(
+            task_id="job-node-offline",
+            plugin_ref="host.config",
+            fence=1,
+            params={"model_id": "host", "executor_type": "job"},
+        ),
+    )
+    assert "node_info" not in captured[0]
 
 
 @pytest.mark.asyncio
@@ -507,7 +542,7 @@ async def test_factory_scopes_one_node_info_batch_to_one_job_run():
 
     async def load(ips, **_context):
         load_calls.append(tuple(ips))
-        return [{"id": f"node-{ip}", "ip": ip, "operating_system": "linux"} for ip in ips]
+        return [{"id": f"node-{ip}", "ip": ip, "operating_system": "linux", "nats_executor_online": True} for ip in ips]
 
     class Service:
         def __init__(self, params):
@@ -555,7 +590,7 @@ async def test_job_probe_and_collect_credentials_reuse_one_run_lookup():
         nonlocal calls
         calls += 1
         await asyncio.sleep(0)
-        return [{"id": "node-1", "ip": ips[0], "operating_system": "linux"}]
+        return [{"id": "node-1", "ip": ips[0], "operating_system": "linux", "nats_executor_online": True}]
 
     class Service:
         def __init__(self, params):

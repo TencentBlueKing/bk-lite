@@ -154,19 +154,23 @@ class ConfigurationCollectionPlugin:
         if self._node_info_lookup is not None:
             await self._node_info_lookup.close()
 
+    async def job_local_node(self, target: str, *, connect_host: str = "") -> dict[str, Any] | None:
+        """同云区域且 NATS-Executor 在线时返回该节点，供本地执行和预检豁免使用。"""
+        if self._node_info_lookup is None:
+            return None
+        node_info = await self._node_info_lookup.get(target, connect_host=connect_host)
+        if isinstance(node_info, Mapping) and node_info.get("nats_executor_online") is True:
+            return dict(node_info)
+        return None
+
     async def _prepare_job_params(self, target: str, params: dict[str, Any]) -> None:
         params.pop("node_info", None)
         if str(params.get("executor_type") or "").lower() != "job":
             return
-        if self._node_info_lookup is None:
-            return
         connect_host = str(params.get("connect_ip") or params.get("host") or "")
-        node_info = await self._node_info_lookup.get(
-            target,
-            connect_host=connect_host,
-        )
+        node_info = await self.job_local_node(target, connect_host=connect_host)
         if node_info:
-            params["node_info"] = dict(node_info)
+            params["node_info"] = node_info
 
 
 class MonitorCollectionPlugin:

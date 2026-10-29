@@ -567,8 +567,31 @@ class NodeService:
             qs = qs.filter(nodeorganization__organization__in=organization_ids).distinct()
         if cloud_region_id:
             qs = qs.filter(cloud_region_id=cloud_region_id)
-        nodes = list(qs.filter(ip__in=normalized_ips).order_by("ip", "id").values("id", "ip", "operating_system"))
+        rows = qs.filter(ip__in=normalized_ips).order_by("ip", "id").values("id", "ip", "operating_system", "status")
+        nodes = [
+            {
+                "id": row["id"],
+                "ip": row["ip"],
+                "operating_system": row["operating_system"],
+                "nats_executor_online": NodeService._nats_executor_online(row.get("status")),
+            }
+            for row in rows
+        ]
         return {"nodes": nodes}
+
+    @staticmethod
+    def _nats_executor_online(status):
+        """节点状态里 NATS-Executor 的运行标记。0 表示 Running。"""
+        collectors = status.get("collectors") if isinstance(status, dict) else None
+        if not isinstance(collectors, list):
+            return False
+        for collector in collectors:
+            if not isinstance(collector, dict):
+                continue
+            collector_id = str(collector.get("collector_id") or "").strip().lower()
+            if collector_id.startswith("natsexecutor") and collector.get("status") == 0:
+                return True
+        return False
 
     @staticmethod
     def get_nodes_with_child_config(node_ids, collector, collect_type):

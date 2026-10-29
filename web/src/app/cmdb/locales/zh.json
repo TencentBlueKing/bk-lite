@@ -700,7 +700,7 @@
         "ipRangeOrderInvalid": "起始 IP 不可大于结束 IP",
         "ipRangeTooLarge": "IP 范围不可超过 /21 网段（最多 2048 个地址）",
         "ipRangeCycleHint": "当前 IP 段地址数较多，单次采集耗时会明显增加，请评估是否需要拉长采集周期。",
-        "hostCredentialOptionalTip": "JOB 采集仅在目标主机已接入可用 Agent 时可不填登录凭据；否则需填写远程登录账号和密码。选择“已有凭据”时需选定凭据。",
+        "hostCredentialOptionalTip": "同一云区域里 NATS-Executor 在线的节点不用填写登录凭据；其他目标仍需要远程登录账号和密码。选择“已有凭据”时需选定凭据。",
         "legacyNetworkCredentialTip": "当前任务沿用已有的平台账户凭据。",
         "legacyJobCredentialTip": "当前任务沿用已有的用户名密码凭据。",
         "switchToSshCredential": "改用 SSH 凭据",
