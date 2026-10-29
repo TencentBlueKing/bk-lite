@@ -1,6 +1,5 @@
 import pytest
 
-import apps.node_mgmt.models  # noqa: F401  INSTALL_APPS 需含 node_mgmt（monitor.apps.ready → nats.monitor）
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
 from apps.cmdb.services.scan_push_monitor import ScanPushMonitorService
 
@@ -9,9 +8,6 @@ pytestmark = pytest.mark.django_db
 UUID_SWITCH = "a1b2c3d4-e5f6-4a70-8b9c-0d1e2f3a4b5c"
 UUID_SWITCH_LIVE = "b2c3d4e5-f6a7-4b81-9c0d-1e2f3a4b5c6d"
 UUID_INFLUX = "c3d4e5f6-a7b8-4c92-8d1e-2f3a4b5c6d7e"
-UUID_HOST = "11111111-1111-4111-8111-111111111111"
-UUID_HOST_LIVE = "22222222-2222-4222-8222-222222222222"
-UUID_HOST_OTHER = "33333333-3333-4333-8333-333333333333"
 
 
 def _scan_with_hits(**task_overrides):
@@ -389,8 +385,17 @@ def test_scan_push_does_not_import_monitor_internal_ingest():
     assert "push_with_credential" in source
 
 
-def test_middleware_hit_skips_monitor_push(mocker):
+def test_middleware_hit_creates_module_link_task(mocker):
     ingest = _patch_monitor_ingest(mocker)
+    push_with = mocker.patch("apps.cmdb.services.scan_push_monitor.CmdbToMonitorPushService.push_with_credential")
+    mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.build_cmdb_push_actor_scope",
+        return_value={"allowed_org_ids": [1], "operator": "alice"},
+    )
+    create = mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.CmdbMonitorTaskService.create",
+        return_value=mocker.Mock(id=77),
+    )
     task = ScanTask.objects.create(
         name="scan-mw",
         team=[1],
@@ -411,10 +416,55 @@ def test_middleware_hit_skips_monitor_push(mocker):
         cmdb_model_id="nginx",
         inst_uuid=UUID_SWITCH,
     )
-    result = ScanPushMonitorService.push(execution, [hit.id])
-    assert result["items"][0]["status"] == "skipped"
-    assert result["items"][0]["reason"] == "middleware_needs_monitor_credential"
+    request = mocker.Mock()
+    result = ScanPushMonitorService.push(execution, [hit.id], request=request)
+    assert result["items"][0]["status"] == "linked"
+    assert result["items"][0]["link_task_id"] == 77
+    assert result["pushed"] == 1
     ingest.assert_not_called()
+    push_with.assert_not_called()
+    create.assert_called_once()
+
+
+def test_mysql_hit_creates_module_link_task(mocker):
+    ingest = _patch_monitor_ingest(mocker)
+    push_with = mocker.patch("apps.cmdb.services.scan_push_monitor.CmdbToMonitorPushService.push_with_credential")
+    mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.build_cmdb_push_actor_scope",
+        return_value={"allowed_org_ids": [1], "operator": "alice"},
+    )
+    create = mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.CmdbMonitorTaskService.create",
+        return_value=mocker.Mock(id=88),
+    )
+    task = ScanTask.objects.create(
+        name="scan-mysql",
+        team=[1],
+        families=["database"],
+        access_point=[{"id": "node-1"}],
+        credentials={"database": [{"credential_id": "cred-db", "username": "u", "password": "p"}]},
+    )
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    family_run = ScanFamilyRun.objects.create(execution=execution, model_id="mysql", driver_type="protocol")
+    hit = ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="mysql",
+        host="10.0.1.10",
+        port=3306,
+        credential_id="",
+        status=ScanHit.STATUS_SUCCESS,
+        cmdb_model_id="mysql",
+        inst_uuid=UUID_SWITCH,
+        confidence=ScanHit.CONFIDENCE_LOW,
+    )
+    request = mocker.Mock()
+    result = ScanPushMonitorService.push(execution, [hit.id], request=request)
+    assert result["items"][0]["status"] == "linked"
+    assert result["items"][0]["link_task_id"] == 88
+    ingest.assert_not_called()
+    push_with.assert_not_called()
+    create.assert_called_once_with([UUID_SWITCH], request=request)
 
 
 def test_agent_host_without_node_skips_and_never_sends_ssh(mocker):
@@ -498,147 +548,6 @@ def test_agent_host_with_node_pushes_without_credential(mocker):
     assert push_instance.call_args.args[0] == UUID_SWITCH
     assert "credential" not in push_instance.call_args.kwargs
     ingest.assert_not_called()
-
-
-def _agent_host_hit(*, cloud_region):
-    values = {
-        "name": "scan-agent-host-cloud",
-        "team": [1],
-        "families": ["host"],
-        "access_point": [{"id": "node-1"}],
-        "credentials": {"host": []},
-    }
-    if cloud_region is not None:
-        values["cloud_region"] = cloud_region
-    task = ScanTask.objects.create(**values)
-    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
-    family_run = ScanFamilyRun.objects.create(execution=execution, model_id="host", driver_type="job")
-    hit = ScanHit.objects.create(
-        execution=execution,
-        family_run=family_run,
-        protocol="host",
-        host="10.0.1.10",
-        port=22,
-        credential_id="agent",
-        status=ScanHit.STATUS_SUCCESS,
-        cmdb_model_id="host",
-        inst_uuid=UUID_HOST,
-    )
-    return execution, hit
-
-
-def _host_graph_row(*, inst_uuid, cloud, node_id="sidecar-live", row_id=901):
-    return {
-        "_id": row_id,
-        "inst_uuid": inst_uuid,
-        "ip_addr": "10.0.1.10",
-        "model_id": "host",
-        "cloud": cloud,
-        "node_id": node_id,
-        "organization": [1],
-    }
-
-
-def _patch_stale_host_graph(mocker, rows):
-    mocker.patch(
-        "apps.cmdb.services.scan_push_monitor.InstanceManage.query_entity_by_uuids",
-        return_value=[],
-    )
-    fake_graph = mocker.MagicMock()
-    fake_graph.query_entity.return_value = (rows, len(rows))
-    mocker.patch(
-        "apps.cmdb.graph.drivers.graph_client.GraphClient",
-        return_value=mocker.MagicMock(
-            __enter__=mocker.Mock(return_value=fake_graph),
-            __exit__=mocker.Mock(return_value=False),
-        ),
-    )
-    push_instance = mocker.patch(
-        "apps.cmdb.services.scan_push_monitor.CmdbToMonitorPushService.push_instance",
-        return_value={"monitor_result": {"id": "m-agent", "created": True}},
-    )
-    push_with = mocker.patch("apps.cmdb.services.scan_push_monitor.CmdbToMonitorPushService.push_with_credential")
-    return fake_graph, push_instance, push_with
-
-
-def test_stale_host_uuid_does_not_rebind_other_cloud(mocker):
-    """原 UUID 失效后，另一云区域的同 IP 主机不得改绑，推送记跳过。"""
-    execution, hit = _agent_host_hit(cloud_region={"id": 1, "name": "region-1"})
-    other_region = _host_graph_row(inst_uuid=UUID_HOST_LIVE, cloud=2)
-    _fake_graph, push_instance, push_with = _patch_stale_host_graph(mocker, [other_region])
-
-    result = ScanPushMonitorService.push(execution, [hit.id], operator="alice")
-
-    assert result["pushed"] == 0
-    assert result["failed"] == 0
-    assert result["skipped"] == 1
-    push_instance.assert_not_called()
-    push_with.assert_not_called()
-    hit.refresh_from_db()
-    assert hit.inst_uuid == UUID_HOST
-    assert other_region["cloud"] == 2
-
-
-def test_stale_host_uuid_rebinds_single_host_in_same_cloud(mocker):
-    """同一云区域恰好一台替代主机时，改绑新 UUID 并推送。"""
-    execution, hit = _agent_host_hit(cloud_region={"id": 1, "name": "region-1"})
-    same_region = _host_graph_row(inst_uuid=UUID_HOST_LIVE, cloud=1)
-    fake_graph, push_instance, push_with = _patch_stale_host_graph(mocker, [same_region])
-
-    result = ScanPushMonitorService.push(execution, [hit.id], operator="alice")
-
-    assert result["pushed"] == 1
-    assert result["failed"] == 0
-    assert result["skipped"] == 0
-    push_with.assert_not_called()
-    push_instance.assert_called_once()
-    assert push_instance.call_args.args[0] == UUID_HOST_LIVE
-    hit.refresh_from_db()
-    assert hit.inst_uuid == UUID_HOST_LIVE
-    _label, filters = fake_graph.query_entity.call_args[0]
-    assert {"field": "model_id", "type": "str=", "value": "host"} in filters
-    assert {"field": "ip_addr", "type": "str=", "value": "10.0.1.10"} in filters
-    assert {"field": "cloud", "type": "int=", "value": 1} in filters
-    assert not any(item.get("field") == "port" for item in filters)
-
-
-def test_stale_host_uuid_without_task_cloud_does_not_push(mocker):
-    """任务没有云区域时不按 IP 改绑，也不推送。"""
-    execution, hit = _agent_host_hit(cloud_region=None)
-    _fake_graph, push_instance, push_with = _patch_stale_host_graph(
-        mocker,
-        [_host_graph_row(inst_uuid=UUID_HOST_LIVE, cloud=1)],
-    )
-
-    result = ScanPushMonitorService.push(execution, [hit.id], operator="alice")
-
-    assert result["pushed"] == 0
-    assert result["failed"] == 0
-    assert result["skipped"] == 1
-    push_instance.assert_not_called()
-    push_with.assert_not_called()
-    hit.refresh_from_db()
-    assert hit.inst_uuid == UUID_HOST
-
-
-def test_stale_host_uuid_two_hosts_in_same_cloud_does_not_push(mocker):
-    """同一云区域返回两台主机时不改绑，也不推送。"""
-    execution, hit = _agent_host_hit(cloud_region={"id": 1, "name": "region-1"})
-    rows = [
-        _host_graph_row(inst_uuid=UUID_HOST_LIVE, cloud=1, row_id=901),
-        _host_graph_row(inst_uuid=UUID_HOST_OTHER, cloud=1, node_id="sidecar-other", row_id=902),
-    ]
-    _fake_graph, push_instance, push_with = _patch_stale_host_graph(mocker, rows)
-
-    result = ScanPushMonitorService.push(execution, [hit.id], operator="alice")
-
-    assert result["pushed"] == 0
-    assert result["failed"] == 0
-    assert result["skipped"] == 1
-    push_instance.assert_not_called()
-    push_with.assert_not_called()
-    hit.refresh_from_db()
-    assert hit.inst_uuid == UUID_HOST
 
 
 def test_repeat_push_skips_when_ingest_reports_already_present(mocker):

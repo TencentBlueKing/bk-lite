@@ -1,7 +1,8 @@
 # CMDB 扫描中间件产品决策记忆
 
-- 最近更新：2026-09-18
-- 当前规格：`specs/changes/cmdb-scan-middleware/spec.md`
+- 最近更新：2026-10-28
+- 当前规格：`specs/changes/cmdb-scan-middleware/spec.md`（发现本体已被三阶段扫描替代）
+- 替代规格：`specs/changes/cmdb-scan-progressive-discovery/spec.md`
 
 ## 产品定位
 
@@ -41,6 +42,7 @@
 
 - 2026-09-18 `cmdb-scan-discovery` 将中间件 JOB 列为扫描族范围外；本规格将其纳入第一期，发现走 SSH/Agent，监控建采仍后置。
 - 2026-09-18 讨论中一度考虑「只勾中间件且 SSH 时也不要云区域、Agent 也不要」；已改为：Agent 必须有云区域。
+- 2026-10-28 发现本体改为特征库端口/进程指纹 + 三阶段调度；7 个 `*_info` JOB 只保留为凭据充足时的配置补全，见 `cmdb-scan-progressive.md`。
 
 ## 决策来源
 

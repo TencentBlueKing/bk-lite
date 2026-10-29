@@ -7,7 +7,7 @@ from django_filters import CharFilter, FilterSet
 
 from apps.cmdb.collection.physical_server_protocol import PHYSICAL_SERVER_MODEL_ID
 from apps.cmdb.constants.constants import CollectDriverTypes
-from apps.cmdb.models.collect_model import CollectModels, OidMapping, PortFingerprint
+from apps.cmdb.models.collect_model import CollectModels, OidMapping, PortFingerprint, ProcessFingerprint
 
 
 class CollectModelFilter(FilterSet):
@@ -66,3 +66,18 @@ class PortFingerprintFilter(FilterSet):
     class Meta:
         model = PortFingerprint
         fields = ["target_type", "protocol", "port"]
+
+
+class ProcessFingerprintFilter(FilterSet):
+    target_type = CharFilter(field_name="target_type", label="类型")
+    search = CharFilter(method="filter_search", label="进程")
+
+    class Meta:
+        model = ProcessFingerprint
+        fields = ["target_type", "enabled"]
+
+    def filter_search(self, queryset, name, value):
+        keyword = str(value or "").strip()
+        if not keyword:
+            return queryset
+        return queryset.filter(Q(linux_process__icontains=keyword) | Q(windows_image__icontains=keyword))

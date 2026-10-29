@@ -46,6 +46,7 @@ EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
         "monitor_clear_cmdb_id",
         "monitor_count_credential_refs",
         "monitor_ingest_from_source",
+        "monitor_instances_exist",
         "monitor_refresh_credential_refs",
         "monitor_list_cmdb_bind_candidates",
         "monitor_instance_metrics",

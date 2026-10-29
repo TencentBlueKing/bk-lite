@@ -60,6 +60,16 @@ def test_monitor_ingest_from_source(monitor):
     )
 
 
+def test_monitor_instances_exist(monitor):
+    monitor.ingest_client = monitor.client
+    monitor.instances_exist(cmdb_ids=["u1"], ips=["10.0.0.1"], allowed_org_ids=[1])
+    assert _last(monitor.client) == (
+        "monitor_instances_exist",
+        (),
+        {"params": {"cmdb_ids": ["u1"], "ips": ["10.0.0.1"], "allowed_org_ids": [1]}},
+    )
+
+
 def test_monitor_list_cmdb_bind_candidates(monitor):
     monitor.ingest_client = monitor.client
     monitor.list_cmdb_bind_candidates(object_name="Host", query="web", allowed_org_ids=[1])

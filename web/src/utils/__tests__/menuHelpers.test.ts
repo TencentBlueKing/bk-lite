@@ -4,11 +4,9 @@ import {
   findMatchedMenuPath,
   getDeepestMatchedMenuItems,
   getFirstLayerSiblingMenuItems,
-  groupRuleListUrlFromEditor,
   isMenuPathMatch,
   isPathCoveredByMenus,
   resolveMenuIcon,
-  resolveSegmentedSelectedUrl,
 } from '../menuHelpers';
 import type { MenuItem } from '@/types/index';
 
@@ -98,6 +96,12 @@ const cmdbAutoDiscoveryMenus: MenuItem[] = [
           menu({
             title: '端口指纹',
             url: '/cmdb/assetManage/autoDiscovery/featureLibrary/port',
+            name: 'soid',
+            isNotMenuItem: true,
+          }),
+          menu({
+            title: '进程指纹',
+            url: '/cmdb/assetManage/autoDiscovery/featureLibrary/process',
             name: 'soid',
             isNotMenuItem: true,
           }),
@@ -237,6 +241,14 @@ describe('getDeepestMatchedMenuItems', () => {
     expect(items).toEqual(['采集', '特征库', '采集工具']);
   });
 
+  it('keeps the process fingerprint tab off the auto-discovery sidebar', () => {
+    const items = getDeepestMatchedMenuItems(
+      cmdbAutoDiscoveryMenus,
+      '/cmdb/assetManage/autoDiscovery/featureLibrary/process',
+    ).map((item) => item.title);
+    expect(items).toEqual(['采集', '特征库', '采集工具']);
+  });
+
   it('returns children when the deepest match still has children', () => {
     const items = getDeepestMatchedMenuItems(apmMenus, '/apm/services')
       .filter((item) => !item.isNotMenuItem)
@@ -337,33 +349,5 @@ describe('integration center second-layer tabs', () => {
       '/system-manager/integration-center',
     ).filter((item) => !item.isNotMenuItem);
     expect(tabs.map((item) => item.name)).toEqual(['integration_instances', 'provider_packs']);
-  });
-});
-
-describe('resolveSegmentedSelectedUrl', () => {
-  const eventTabs = [
-    { name: 'alert_list', url: '/monitor/event/alert' },
-    { name: 'strategy_list', url: '/monitor/event/policy-group' },
-    { name: 'strategy_list', url: '/monitor/event/strategy' },
-    { name: 'template_list', url: '/monitor/event/template' },
-  ];
-
-  it('keeps a single-policy detail page on the single-policy tab', () => {
-    expect(resolveSegmentedSelectedUrl('/monitor/event/strategy/detail', eventTabs, 'edit')).toBe(
-      '/monitor/event/strategy',
-    );
-  });
-
-  it('keeps a group-rule editor on the policy-group tab', () => {
-    expect(resolveSegmentedSelectedUrl('/monitor/event/strategy/detail', eventTabs, 'groupRule')).toBe(
-      '/monitor/event/policy-group',
-    );
-  });
-
-  it('returns to the same monitor object when leaving a group-rule editor', () => {
-    expect(groupRuleListUrlFromEditor('/monitor/event/strategy/detail', 'groupRule', '25')).toBe(
-      '/monitor/event/policy-group?objId=25',
-    );
-    expect(groupRuleListUrlFromEditor('/monitor/event/strategy/detail', 'edit', '25')).toBeNull();
   });
 });

@@ -351,6 +351,26 @@ def test_existing_collect_instance_is_skipped(mocker):
     assert CollectModels.objects.filter(name__startswith="scan-gen").count() == 0
 
 
+def test_mysql_without_credential_is_skipped(mocker):
+    _patch_side_effects(mocker)
+    task = _task(families=["database"], credentials={"database": []})
+    execution, hits = _execution_with_hits(
+        task,
+        ["10.0.1.10"],
+        family="mysql",
+        protocol="mysql",
+        port=3306,
+        credential_id="",
+        cmdb_model_id="mysql",
+    )
+
+    result = ScanCollectGenerateService.generate(execution, [hits[0].id])
+
+    assert result["skipped"] == 1
+    assert result["items"][0]["reason"] == "no_credential"
+    assert CollectModels.objects.count() == 0
+
+
 def test_no_ci_hit_is_skipped(mocker):
     _patch_side_effects(mocker)
     task = _task()

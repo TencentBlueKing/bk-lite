@@ -4,7 +4,7 @@ from apps.cmdb.services.port_fingerprint import sync_builtin_port_fingerprints
 
 
 class Command(BaseCommand):
-    help = "同步内置数据库端口指纹（3306/5432/1433）"
+    help = "同步内置端口指纹（可网段发现的配置采集对象监听口）"
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true", help="仅统计，不写数据库")

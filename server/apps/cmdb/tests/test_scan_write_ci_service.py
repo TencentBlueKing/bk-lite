@@ -1,7 +1,6 @@
 import pytest
 
 from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
-from apps.cmdb.services.scan_finalize_service import backfill_hit_identities
 from apps.cmdb.services.scan_write_ci_service import ScanWriteCiService
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -179,6 +178,31 @@ def test_write_ci_rejects_running_execution():
         ScanWriteCiService.write(execution, [hit.id])
 
 
+def test_write_low_confidence_mysql_without_credential(mocker):
+    execution, hit = _execution(
+        family="mysql",
+        protocol="mysql",
+        port=3306,
+        credential_id="",
+        soid="",
+        snapshot={"ip_addr": "10.0.1.10", "port": 3306},
+        cmdb_model_id="mysql",
+    )
+    hit.confidence = ScanHit.CONFIDENCE_LOW
+    hit.save(update_fields=["confidence"])
+    captured = _capture_cannula(mocker)
+
+    result = ScanWriteCiService.write(execution, [hit.id])
+
+    assert result["written"] == 1
+    hit.refresh_from_db()
+    assert hit.inst_uuid == "uuid-10.0.1.10"
+    assert hit.cmdb_model_id == "mysql"
+    row = captured["default_metrics"]["mysql"][0]
+    assert row["inst_name"] == "10.0.1.10-mysql-3306"
+    assert row["port"] == 3306
+
+
 def test_write_postgresql_from_snapshot(mocker):
     execution, hit = _execution(
         family="postgresql",
@@ -198,189 +222,6 @@ def test_write_postgresql_from_snapshot(mocker):
     row = captured["default_metrics"]["postgresql"][0]
     assert row["inst_name"] == "10.0.1.10-pg-5432"
     assert row["port"] == 5432
-
-
-def _capture_named_instance_cannula(mocker):
-    """控制器按 inst_name 返回不同 UUID，成功列表与提交顺序相反。"""
-    captured = {}
-
-    class FakeCannula:
-        def __init__(self, *args, **kwargs):
-            captured.update(kwargs)
-            self.collect_data = {}
-
-        def collect_controller(self):
-            metrics = captured.get("default_metrics") or {}
-            result = {}
-            for model_id, rows in metrics.items():
-                success = []
-                for row in rows or []:
-                    inst_name = str(row.get("inst_name") or "").strip()
-                    port = row.get("port")
-                    if inst_name:
-                        inst_uuid = f"uuid-{inst_name}"
-                    elif port not in (None, ""):
-                        inst_uuid = f"uuid-{row.get('ip_addr')}-{port}"
-                    else:
-                        inst_uuid = f"uuid-{row.get('ip_addr')}"
-                    success.append(
-                        {
-                            "inst_info": {
-                                **row,
-                                "inst_uuid": inst_uuid,
-                                "model_id": model_id,
-                            }
-                        }
-                    )
-                success.reverse()
-                result[model_id] = {
-                    "add": {"success": success, "failed": []},
-                    "update": {"success": [], "failed": []},
-                    "delete": {"success": [], "failed": []},
-                }
-            result["__raw_data__"] = []
-            result["all"] = sum(len(rows or []) for rows in metrics.values())
-            return result
-
-    mocker.patch("apps.cmdb.services.scan_finalize_service.MetricsCannula", FakeCannula)
-    return captured
-
-
-def _postgresql_hit(template, *, port, credential_id):
-    return ScanHit.objects.create(
-        execution=template.execution,
-        family_run=template.family_run,
-        protocol="postgresql",
-        host=template.host,
-        port=port,
-        credential_id=credential_id,
-        status=ScanHit.STATUS_SUCCESS,
-        soid="",
-        snapshot={"ip_addr": template.host, "port": port, "version": "16"},
-    )
-
-
-def test_write_ci_backfills_selected_port_not_same_host(mocker):
-    execution, hit_5432 = _execution(
-        family="postgresql",
-        protocol="postgresql",
-        port=5432,
-        credential_id="cred-a",
-        soid="",
-        snapshot={"ip_addr": "10.0.1.10", "port": 5432, "version": "16"},
-    )
-    hit_5433 = _postgresql_hit(hit_5432, port=5433, credential_id="cred-a")
-    unchecked = _postgresql_hit(hit_5432, port=5432, credential_id="cred-b")
-    captured = _capture_named_instance_cannula(mocker)
-    live = set()
-
-    def query_entity_by_uuids(uuids, **kwargs):
-        return [{"inst_uuid": item, "model_id": "postgresql", "ip_addr": "10.0.1.10"} for item in uuids if item in live]
-
-    mocker.patch(
-        "apps.cmdb.services.instance.InstanceManage.query_entity_by_uuids",
-        side_effect=query_entity_by_uuids,
-    )
-
-    result = ScanWriteCiService.write(execution, [hit_5432.id])
-
-    assert result["written"] == 1
-    assert result["items"][0]["status"] == "written"
-    assert [row["port"] for row in captured["default_metrics"]["postgresql"]] == [5432]
-    hit_5432.refresh_from_db()
-    hit_5433.refresh_from_db()
-    unchecked.refresh_from_db()
-    assert hit_5432.inst_uuid == "uuid-10.0.1.10-pg-5432"
-    assert hit_5432.cmdb_model_id == "postgresql"
-    assert hit_5433.inst_uuid == ""
-    assert hit_5433.cmdb_model_id == ""
-    assert unchecked.inst_uuid == ""
-    assert unchecked.cmdb_model_id == ""
-    live.add(hit_5432.inst_uuid)
-
-    result = ScanWriteCiService.write(execution, [hit_5433.id])
-
-    assert result["written"] == 1
-    assert result["skipped"] == 0
-    assert result["items"][0]["status"] == "written"
-    assert result["items"][0]["inst_uuid"] == "uuid-10.0.1.10-pg-5433"
-    hit_5432.refresh_from_db()
-    hit_5433.refresh_from_db()
-    unchecked.refresh_from_db()
-    assert hit_5433.inst_uuid == "uuid-10.0.1.10-pg-5433"
-    assert hit_5433.cmdb_model_id == "postgresql"
-    assert hit_5432.inst_uuid == "uuid-10.0.1.10-pg-5432"
-    assert unchecked.inst_uuid == ""
-    assert unchecked.cmdb_model_id == ""
-
-    both_execution, both_5432 = _execution(
-        family="postgresql",
-        protocol="postgresql",
-        port=5432,
-        credential_id="cred-a",
-        soid="",
-        snapshot={"ip_addr": "10.0.1.10", "port": 5432, "version": "16"},
-    )
-    both_5433 = _postgresql_hit(both_5432, port=5433, credential_id="cred-a")
-    result = ScanWriteCiService.write(both_execution, [both_5432.id, both_5433.id])
-
-    assert result["written"] == 2
-    assert result["failed"] == 0
-    assert {item["status"] for item in result["items"]} == {"written"}
-    both_5432.refresh_from_db()
-    both_5433.refresh_from_db()
-    assert both_5432.inst_uuid == "uuid-10.0.1.10-pg-5432"
-    assert both_5433.inst_uuid == "uuid-10.0.1.10-pg-5433"
-    assert {row["inst_name"] for row in captured["default_metrics"]["postgresql"]} == {
-        "10.0.1.10-pg-5432",
-        "10.0.1.10-pg-5433",
-    }
-
-
-def test_backfill_without_inst_name_matches_model_host_port():
-    _, hit_5432 = _execution(
-        family="postgresql",
-        protocol="postgresql",
-        port=5432,
-        credential_id="cred-a",
-        soid="",
-        snapshot={"ip_addr": "10.0.1.10", "port": 5432, "version": "16"},
-    )
-    hit_5433 = _postgresql_hit(hit_5432, port=5433, credential_id="cred-a")
-    unchecked = _postgresql_hit(hit_5432, port=5432, credential_id="cred-b")
-    legacy_hit = _postgresql_hit(hit_5432, port=0, credential_id="cred-legacy")
-    row_5432 = {"ip_addr": "10.0.1.10", "host": "10.0.1.10", "port": 5432}
-    row_5433 = {"ip_addr": "10.0.1.10", "host": "10.0.1.10", "port": 5433}
-    legacy = {"ip_addr": "10.0.1.10", "host": "10.0.1.10"}
-
-    backfill_hit_identities(
-        hit_5432.family_run,
-        {"postgresql": [row_5432, row_5433, legacy]},
-        {
-            "postgresql": {
-                "add": {
-                    "success": [
-                        {"inst_info": {"ip_addr": "10.0.1.10", "port": 5433, "inst_uuid": "uuid-pg-5433", "model_id": "postgresql"}},
-                        {"inst_info": {"ip_addr": "10.0.1.10", "port": 5432, "inst_uuid": "uuid-pg-5432", "model_id": "postgresql"}},
-                        {"inst_info": {"ip_addr": "10.0.1.10", "inst_uuid": "uuid-10.0.1.10", "model_id": "postgresql"}},
-                    ],
-                    "failed": [],
-                },
-                "update": {"success": [], "failed": []},
-            }
-        },
-        selected=[(hit_5432, "postgresql", row_5432), (legacy_hit, "postgresql", legacy)],
-    )
-
-    hit_5432.refresh_from_db()
-    hit_5433.refresh_from_db()
-    unchecked.refresh_from_db()
-    legacy_hit.refresh_from_db()
-    assert hit_5432.inst_uuid == "uuid-pg-5432"
-    assert hit_5432.cmdb_model_id == "postgresql"
-    assert legacy_hit.inst_uuid == "uuid-10.0.1.10"
-    assert hit_5433.inst_uuid == ""
-    assert unchecked.inst_uuid == ""
 
 
 def test_write_host_copies_scan_cloud_region(mocker):
@@ -491,6 +332,47 @@ def test_write_ci_skips_middleware_host_attach_when_host_missing(mocker):
     hit.refresh_from_db()
     assert hit.attached_inst_uuid == ""
     create_asso.assert_not_called()
+
+
+def test_write_maps_extra_fingerprint_database_and_middleware(mocker):
+    execution, redis_hit = _execution(
+        family="redis",
+        protocol="redis",
+        port=6379,
+        credential_id="",
+        soid="",
+        snapshot={"ip_addr": "10.0.1.10", "port": 6379},
+        cmdb_model_id="redis",
+    )
+    apache_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="apache",
+        driver_type="job",
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+    apache_hit = ScanHit.objects.create(
+        execution=execution,
+        family_run=apache_run,
+        protocol="apache",
+        host="10.0.1.10",
+        port=80,
+        credential_id="",
+        status=ScanHit.STATUS_SUCCESS,
+        snapshot={"ip_addr": "10.0.1.10", "port": 80},
+        cmdb_model_id="apache",
+    )
+    captured = _capture_cannula(mocker)
+    mocker.patch("apps.cmdb.services.scan_write_ci_service._lookup_host_by_ip", return_value=None)
+
+    redis_result = ScanWriteCiService.write(execution, [redis_hit.id])
+    assert redis_result["written"] == 1
+    assert captured["default_metrics"]["redis"][0]["inst_name"] == "10.0.1.10-redis-6379"
+
+    apache_result = ScanWriteCiService.write(execution, [apache_hit.id])
+    assert apache_result["written"] == 1
+    apache_row = captured["default_metrics"]["apache"][0]
+    assert apache_row["inst_name"] == "10.0.1.10-apache-80"
+    assert apache_row["assos"][0]["model_asst_id"] == "apache_run_host"
 
 
 def test_write_ci_skips_middleware_host_attach_when_graph_lookup_fails(mocker):

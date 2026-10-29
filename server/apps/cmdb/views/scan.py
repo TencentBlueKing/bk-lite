@@ -85,6 +85,8 @@ class ScanTaskViewSet(AuthViewSet):
         return WebUtils.response_success()
 
     def _get_execution(self, eid):
+        from apps.cmdb.services.scan_trigger_service import recover_due_scan_execution
+
         execution = get_object_or_404(ScanExecution.objects.select_related("task"), pk=eid)
         visible_tasks = self.get_queryset_by_permission(
             self.request,
@@ -92,7 +94,7 @@ class ScanTaskViewSet(AuthViewSet):
         )
         if not visible_tasks.exists():
             raise Http404
-        return execution
+        return recover_due_scan_execution(execution)
 
     @HasPermission("auto_collection-Execute")
     @action(methods=["post"], detail=True, url_path="exec")
@@ -132,6 +134,9 @@ class ScanTaskViewSet(AuthViewSet):
         page = paginator.paginate_queryset(queryset, request, view=self)
         if page is None:
             raise BaseAppException("命中清单必须分页")
+        from apps.cmdb.services.scan_hit_managed import annotate_scan_hits_managed
+
+        annotate_scan_hits_managed(page, execution)
         serializer = ScanHitSerializer(page, many=True, context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 

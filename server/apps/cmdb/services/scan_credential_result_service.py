@@ -2,7 +2,14 @@ import hashlib
 
 from django.db import transaction
 
-from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, ScanExecution, ScanFamilyRun, ScanFamilyRunProgress, ScanHit
+from apps.cmdb.models.scan_model import (
+    SCAN_DATABASE_TYPES,
+    ScanExecution,
+    ScanFamilyRun,
+    ScanFamilyRunProgress,
+    ScanHit,
+    scan_driver_type_for_model,
+)
 from apps.core.logger import cmdb_logger as logger
 
 _STATUS_MAP = {
@@ -23,6 +30,23 @@ _CREDENTIAL_FAILURE_ERROR_CODES = frozenset(
         "unauthorized",
     }
 )
+_DISCOVERY_STAGES = frozenset({"port", "process", "collect"})
+_SCAN_DONE_STAGE = "done"
+_STAGE_CONFIDENCE = {
+    "port": ScanHit.CONFIDENCE_LOW,
+    "process": ScanHit.CONFIDENCE_MEDIUM,
+    "collect": ScanHit.CONFIDENCE_HIGH,
+}
+_STAGE_EVIDENCE = {
+    "port": "port",
+    "process": "process",
+    "collect": "collect",
+}
+_CONFIDENCE_RANK = {
+    ScanHit.CONFIDENCE_LOW: 1,
+    ScanHit.CONFIDENCE_MEDIUM: 2,
+    ScanHit.CONFIDENCE_HIGH: 3,
+}
 
 
 def _validate_v2_identity(data: dict) -> str:
@@ -76,6 +100,49 @@ def _validate_v2_identity(data: dict) -> str:
     if str(data.get("event_id")) != expected_event_id:
         return "event_id conflicts with event identity"
     return ""
+
+
+def _merge_confidence(current: str, incoming: str) -> str:
+    current_rank = _CONFIDENCE_RANK.get(str(current or ""), 0)
+    incoming_rank = _CONFIDENCE_RANK.get(str(incoming or ""), 0)
+    if incoming_rank > current_rank:
+        return incoming
+    return current or incoming or ScanHit.CONFIDENCE_LOW
+
+
+def _merge_evidence(current, token: str) -> list:
+    items = [str(item) for item in (current or []) if str(item or "").strip()]
+    marker = str(token or "").strip()
+    if marker and marker not in items:
+        items.append(marker)
+    return items
+
+
+def _resolve_family_run(task_id, *, stage: str, target_type: str):
+    family_run = ScanFamilyRun.objects.select_related("execution").filter(pk=task_id).first()
+    if not stage:
+        return family_run, ""
+    execution = ScanExecution.objects.filter(pk=task_id).first()
+    if execution is None and family_run is not None:
+        execution = family_run.execution
+    if execution is None:
+        return None, "collect_task_id does not exist"
+    model_id = target_type
+    if not model_id and family_run is not None and family_run.execution_id == execution.id:
+        model_id = family_run.model_id
+    if not model_id:
+        return None, "target_type is required"
+    family_run, _created = ScanFamilyRun.objects.get_or_create(
+        execution=execution,
+        model_id=model_id,
+        driver_type=scan_driver_type_for_model(model_id),
+        batch_index=0,
+        defaults={
+            "target_count": execution.target_count,
+            "admit_status": ScanFamilyRun.ADMIT_ACCEPTED,
+        },
+    )
+    return family_run, ""
 
 
 def _normalize_scan_outcome(data: dict):
@@ -154,6 +221,13 @@ class ScanCredentialResultService:
         if not task_id:
             return {"result": False, "message": "collect_task_id is required"}
 
+        stage = str(data.get("stage") or "").strip().lower()
+        if stage == _SCAN_DONE_STAGE:
+            return cls._mark_scan_done(task_id)
+        return cls._process_hit_result(data, task_id, stage, parse_datetime=parse_datetime)
+
+    @classmethod
+    def _process_hit_result(cls, data: dict, task_id, stage, parse_datetime=None):
         host = str(data.get("host") or "").strip()
         credential_id = str(data.get("credential_id") or "").strip()
         if credential_id.lower() in _EMPTY_CREDENTIAL_IDS:
@@ -162,19 +236,22 @@ class ScanCredentialResultService:
         raw_status = str(data.get("status") or "").strip().lower()
         if not raw_status:
             raw_status = "success" if data.get("success") else "failed"
+        target_type = str(data.get("target_type") or "").strip()
 
         if not host:
             return {"result": False, "message": "host is required"}
 
-        # success 必须带凭据；failed / unreachable / credentials_exhausted 等可无凭据，只计进度。
+        # 凭据采集 success 必须带凭据；port/process/collect 发现事件允许空凭据落清单。
         wants_success = raw_status == "success" or bool(data.get("success"))
-        if wants_success and not credential_id:
+        if wants_success and not credential_id and stage not in _DISCOVERY_STAGES:
             return {"result": False, "message": "host and credential_id are required"}
 
         try:
-            family_run = ScanFamilyRun.objects.select_related("execution").filter(pk=task_id).first()
+            family_run, resolve_error = _resolve_family_run(task_id, stage=stage, target_type=target_type)
         except (TypeError, ValueError, OverflowError):
-            family_run = None
+            family_run, resolve_error = None, "collect_task_id does not exist"
+        if resolve_error:
+            return {"result": False, "message": resolve_error}
         if family_run is None:
             return {"result": False, "message": "collect_task_id does not exist"}
 
@@ -221,63 +298,69 @@ class ScanCredentialResultService:
         with transaction.atomic():
             family_run = ScanFamilyRun.objects.select_for_update().select_related("execution").get(pk=family_run.pk)
             _progress, created = ScanFamilyRunProgress.objects.get_or_create(family_run=family_run, host=host)
+            execution = family_run.execution
             if created:
                 family_run.received_count += 1
                 family_run.save(update_fields=["received_count", "updated_at"])
-                execution = family_run.execution
-                execution.received_count = sum(ScanFamilyRun.objects.filter(execution=execution).values_list("received_count", flat=True))
+                execution.received_count = (
+                    ScanFamilyRunProgress.objects.filter(family_run__execution=execution).values("host").distinct().count()
+                )
                 execution.save(update_fields=["received_count", "updated_at"])
-            else:
-                execution = family_run.execution
 
             # 大网段×多凭据场景下失败/不可达默认不进清单；三库鉴权失败例外写入一条空凭据占位。
-            if hit_status == ScanHit.STATUS_SUCCESS and credential_id:
-                ScanHit.objects.filter(
-                    family_run=family_run,
-                    host=host,
-                    port=port,
-                    credential_id="",
-                    status=ScanHit.STATUS_FAILED,
-                ).delete()
-                hit, _created = ScanHit.objects.update_or_create(
+            # 发现阶段 success 允许空凭据；collect 失败不得覆盖或删除已有发现行。
+            if hit_status == ScanHit.STATUS_SUCCESS and (credential_id or stage in _DISCOVERY_STAGES):
+                if credential_id:
+                    ScanHit.objects.filter(
+                        family_run=family_run,
+                        host=host,
+                        port=port,
+                        credential_id="",
+                        status=ScanHit.STATUS_FAILED,
+                    ).delete()
+                hit_id = cls._upsert_success_hit(
                     family_run=family_run,
                     host=host,
                     port=port,
                     credential_id=credential_id,
-                    defaults={
-                        "execution": family_run.execution,
-                        "protocol": family_run.model_id,
-                        "status": ScanHit.STATUS_SUCCESS,
-                        "soid": soid,
-                        "error_code": "",
-                        "snapshot": snapshot,
-                    },
+                    soid=soid,
+                    snapshot=snapshot,
+                    target_type=target_type,
+                    stage=stage,
                 )
-                hit_id = hit.id
             elif (
                 hit_status == ScanHit.STATUS_FAILED
                 and family_run.model_id in SCAN_DATABASE_TYPES
                 and str(data.get("error_code") or "").strip() in _CREDENTIAL_FAILURE_ERROR_CODES
             ):
-                hit, _created = ScanHit.objects.update_or_create(
+                existing = ScanHit.objects.filter(
                     family_run=family_run,
                     host=host,
                     port=port,
                     credential_id="",
-                    defaults={
-                        "execution": family_run.execution,
-                        "protocol": family_run.model_id,
-                        "status": ScanHit.STATUS_FAILED,
-                        "soid": soid,
-                        "error_code": str(data.get("error_code") or "").strip(),
-                        "snapshot": snapshot,
-                    },
-                )
-                hit_id = hit.id
+                ).first()
+                if existing is not None and existing.status == ScanHit.STATUS_SUCCESS:
+                    hit_id = existing.id
+                elif stage != "collect":
+                    hit, _created = ScanHit.objects.update_or_create(
+                        family_run=family_run,
+                        host=host,
+                        port=port,
+                        credential_id="",
+                        defaults={
+                            "execution": family_run.execution,
+                            "protocol": family_run.model_id,
+                            "status": ScanHit.STATUS_FAILED,
+                            "soid": soid,
+                            "error_code": str(data.get("error_code") or "").strip(),
+                            "snapshot": snapshot,
+                        },
+                    )
+                    hit_id = hit.id
+                elif existing is not None:
+                    hit_id = existing.id
 
-            should_finalize = (
-                execution.target_count > 0 and execution.received_count >= execution.target_count and execution.status == ScanExecution.STATUS_RUNNING
-            )
+            should_finalize = execution.status == ScanExecution.STATUS_RUNNING and cls._pipeline_done(execution)
 
         if should_finalize:
             cls._kick_finalize(execution)
@@ -291,6 +374,68 @@ class ScanCredentialResultService:
         }
 
     @staticmethod
+    def _upsert_success_hit(*, family_run, host, port, credential_id, soid, snapshot, target_type, stage):
+        if stage in _DISCOVERY_STAGES:
+            hit = ScanHit.objects.filter(family_run=family_run, host=host, port=port).order_by("id").first()
+            if hit is None and stage == "process" and not port:
+                hit = ScanHit.objects.filter(family_run=family_run, host=host).order_by("id").first()
+        else:
+            hit = ScanHit.objects.filter(
+                family_run=family_run,
+                host=host,
+                port=port,
+                credential_id=credential_id,
+            ).first()
+        incoming_confidence = _STAGE_CONFIDENCE.get(stage, "")
+        incoming_evidence = _STAGE_EVIDENCE.get(stage, "")
+        model_id = target_type or family_run.model_id
+        if hit is None:
+            hit = ScanHit.objects.create(
+                execution=family_run.execution,
+                family_run=family_run,
+                protocol=family_run.model_id,
+                host=host,
+                port=port,
+                credential_id=credential_id,
+                status=ScanHit.STATUS_SUCCESS,
+                soid=soid,
+                cmdb_model_id=model_id,
+                error_code="",
+                snapshot=snapshot,
+                confidence=incoming_confidence or ScanHit.CONFIDENCE_LOW,
+                evidence=_merge_evidence([], incoming_evidence),
+            )
+            return hit.id
+        merged_snapshot = dict(hit.snapshot or {})
+        merged_snapshot.update(snapshot or {})
+        hit.status = ScanHit.STATUS_SUCCESS
+        hit.soid = soid or hit.soid
+        hit.error_code = ""
+        hit.snapshot = merged_snapshot
+        if credential_id and not hit.credential_id:
+            hit.credential_id = credential_id
+        if model_id and not hit.cmdb_model_id:
+            hit.cmdb_model_id = model_id
+        if incoming_confidence:
+            hit.confidence = _merge_confidence(hit.confidence, incoming_confidence)
+        if incoming_evidence:
+            hit.evidence = _merge_evidence(hit.evidence, incoming_evidence)
+        hit.save(
+            update_fields=[
+                "status",
+                "soid",
+                "error_code",
+                "snapshot",
+                "cmdb_model_id",
+                "credential_id",
+                "confidence",
+                "evidence",
+                "updated_at",
+            ]
+        )
+        return hit.id
+
+    @staticmethod
     def _parse_port(value):
         try:
             port = int(value)
@@ -298,12 +443,48 @@ class ScanCredentialResultService:
             return 0
         return port if port > 0 else 0
 
+    @classmethod
+    def _mark_scan_done(cls, task_id):
+        try:
+            execution = ScanExecution.objects.filter(pk=task_id).first()
+        except (TypeError, ValueError, OverflowError):
+            execution = None
+        if execution is None:
+            return {"result": False, "message": "collect_task_id does not exist"}
+        if execution.status in {
+            ScanExecution.STATUS_COMPLETED,
+            ScanExecution.STATUS_FAILED,
+            ScanExecution.STATUS_TIMED_OUT,
+            ScanExecution.STATUS_FINALIZING,
+        }:
+            return {"result": True, "scan_done": True, "listed": False, "task_id": execution.id}
+
+        should_finalize = False
+        with transaction.atomic():
+            execution = ScanExecution.objects.select_for_update().get(pk=execution.pk)
+            schedule = dict(execution.schedule or {})
+            schedule["scan_done"] = True
+            execution.schedule = schedule
+            execution.save(update_fields=["schedule", "updated_at"])
+            should_finalize = execution.status == ScanExecution.STATUS_RUNNING and cls._pipeline_done(execution)
+        logger.info("event=scan_done_received execution=%s", execution.id)
+
+        if should_finalize:
+            cls._kick_finalize(execution)
+        return {"result": True, "scan_done": True, "listed": False, "task_id": execution.id}
+
+    @staticmethod
+    def _pipeline_done(execution):
+        from apps.cmdb.services.scan_trigger_service import scan_pipeline_done
+
+        return scan_pipeline_done(execution)
+
     @staticmethod
     def _kick_finalize(execution):
         from apps.cmdb.tasks.celery_tasks import finalize_scan_execution
 
         logger.info(
-            "[ScanCredentialResult] 回传已齐 execution=%s received=%s target=%s",
+            "event=scan_pipeline_ready execution=%s received=%s target=%s",
             execution.id,
             execution.received_count,
             execution.target_count,

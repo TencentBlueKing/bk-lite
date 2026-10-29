@@ -15,6 +15,7 @@ from apps.cmdb.views.k8s_setup import K8sSetupOpenViewSet, K8sSetupViewSet
 from apps.cmdb.views.model import ModelViewSet
 from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
 from apps.cmdb.views.port_fingerprint import PortFingerprintViewSet
+from apps.cmdb.views.process_fingerprint import ProcessFingerprintViewSet
 from apps.cmdb.views.public_enum_library import PublicEnumLibraryViewSet
 from apps.cmdb.views.scan import ScanTaskViewSet
 from apps.cmdb.views.scene_view import SceneViewViewSet
@@ -37,6 +38,7 @@ router.register(r"api/service_tree", ServiceTreeViewSet, basename="service_tree"
 router.register(r"api/config_file_versions", ConfigFileVersionViewSet, basename="config_file_versions")
 router.register(r"api/oid", OidModelViewSet, basename="oid")
 router.register(r"api/port_fingerprint", PortFingerprintViewSet, basename="port_fingerprint")
+router.register(r"api/process_fingerprint", ProcessFingerprintViewSet, basename="process_fingerprint")
 router.register(r"api/field_groups", FieldGroupViewSet, basename="field_groups")
 router.register(r"api/user_configs", UserPersonalConfigViewSet, basename="user_configs")
 router.register(

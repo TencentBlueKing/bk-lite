@@ -246,6 +246,53 @@ async def collect(request):
         )
 
 
+@collect_router.post("/scan_discover")
+async def scan_discover(request):
+    """扫描发现入口：独立 SCAN 配额，不复用 collect_info。"""
+    await request.receive_body()
+    payload = request.json or {}
+    try:
+        submission = await get_collection_application().submit_scan(payload)
+    except ValueError as error:
+        logger.warning("Scan discover request rejected: %s", error)
+        return response.json({"error": "invalid_request", "message": str(error)}, status=400)
+    except Exception:
+        logger.error("Scan discover admission failed", exc_info=True)
+        return response.json({"error": "admission_unavailable"}, status=503)
+
+    hosts = []
+    try:
+        from core.scan.ips import expand_scan_hosts
+
+        hosts = expand_scan_hosts(payload.get("ip_ranges") or [])
+    except Exception:
+        hosts = []
+    http_status = {
+        SubmissionStatus.ACCEPTED: 202,
+        SubmissionStatus.DUPLICATE_ACTIVE: 202,
+        SubmissionStatus.BUSY: 429,
+    }[submission.status]
+    headers = {
+        "X-Task-ID": submission.task_id,
+        "X-Task-Status": submission.status.value,
+        "X-Fencing-Token": str(submission.fence),
+        "X-Target-Count": str((submission.summary or {}).get("target_count") or len(hosts)),
+        "X-Workload-Class": WorkloadClass.SCAN.value,
+    }
+    if submission.status == SubmissionStatus.BUSY:
+        headers["Retry-After"] = "1"
+    return response.json(
+        {
+            "result": True,
+            "task_id": submission.task_id,
+            "status": submission.status.value,
+            "workload_class": WorkloadClass.SCAN.value,
+        },
+        headers=headers,
+        status=http_status,
+    )
+
+
 @collect_router.post("/pc_test_connection")
 async def pc_test_connection(request):
     """

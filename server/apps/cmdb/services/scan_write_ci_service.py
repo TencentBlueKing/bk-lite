@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, SCAN_MIDDLEWARE_TYPES, ScanExecution, ScanHit
+from apps.cmdb.models.scan_model import SCAN_WRITE_DATABASE_TYPES, SCAN_WRITE_MIDDLEWARE_TYPES, ScanExecution, ScanHit
 from apps.cmdb.services.scan_finalize_service import attach_snmp_hits_to_physical, backfill_hit_identities, write_refined_metrics
 from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
 from apps.cmdb.services.scan_identity import UNMATCH_CREDENTIAL_FAILED, ensure_scan_execution_terminal, suggested_network_type, unmatch_reason_for_hit
@@ -14,7 +14,11 @@ _DB_INST_NAME_SUFFIX = {
     "mysql": "mysql",
     "postgresql": "pg",
     "mssql": "mssql",
+    "oracle": "oracle",
     "influxdb": "influxdb",
+    "redis": "redis",
+    "mongodb": "mongo",
+    "es": "es",
 }
 
 
@@ -168,10 +172,15 @@ def mapping_row_from_hit(hit: ScanHit) -> tuple[str, dict] | None:
         return _map_host_row(hit, snapshot, host)
     if family == "physcial_server":
         return _map_physical_row(snapshot, host)
-    if family in SCAN_DATABASE_TYPES:
+    if family in SCAN_WRITE_DATABASE_TYPES:
         return _map_database_row(hit, snapshot, host, family)
-    if family in SCAN_MIDDLEWARE_TYPES:
+    if family in SCAN_WRITE_MIDDLEWARE_TYPES:
         return _map_middleware_row(hit, snapshot, host, family)
+    cmdb_model = str(getattr(hit, "cmdb_model_id", "") or "").strip()
+    if cmdb_model in SCAN_WRITE_DATABASE_TYPES:
+        return _map_database_row(hit, snapshot, host, cmdb_model)
+    if cmdb_model in SCAN_WRITE_MIDDLEWARE_TYPES:
+        return _map_middleware_row(hit, snapshot, host, cmdb_model)
     return None
 
 
@@ -203,7 +212,7 @@ def attach_middleware_hits_to_host(execution: ScanExecution):
 
     hits = (
         execution.hits.filter(
-            family_run__model_id__in=SCAN_MIDDLEWARE_TYPES,
+            family_run__model_id__in=SCAN_WRITE_MIDDLEWARE_TYPES,
             status=ScanHit.STATUS_SUCCESS,
         )
         .exclude(inst_uuid="")
@@ -342,7 +351,7 @@ class ScanWriteCiService:
                         }
                     )
                 continue
-            backfill_hit_identities(family_run, dict(refined), controller_result, selected=batch)
+            backfill_hit_identities(family_run, dict(refined), controller_result)
             for hit, model_id, _row in batch:
                 hit.refresh_from_db()
                 if hit.inst_uuid:
